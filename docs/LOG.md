@@ -1,6 +1,47 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-06 — `dat` scenarios are dealt a checklist per scenario; the waves are gone
+
+**Hypothesis.** The three-row smokes kept collapsing to compliance audits because the scenario
+prompt was asked to "vary what the agent operates on" inside a batch and then policed by the
+diversity waves afterwards. The canonical fix in the synthetic-data literature (AttrPrompt,
+Persona Hub, Nemotron-Personas / NeMo Data Designer, Persona Generators) is the other way
+round: factor the space into a few attribute axes, sample one value per axis per request up
+front, and let the combination produce the scenario. Diversity then comes from the sampling
+distribution and needs no feedback between calls, so the stage can go out as one batch job.
+
+**Method.** `op_scenarios` gains `rotate_per: scenario`. The planned batches are laid end to
+end into slots; each `rotate:` axis is an exactly apportioned label sequence over those slots
+in a seeded random order (`sample_labels`), so the marginals are exact and the axes are
+independent. The old per-batch walk could not be reused: with uniform weights its sequence has
+period k, so at 2,000 slots a 20-label sector axis fixed every slot's parity and each sector
+would have met one framing of two and six pressures of twenty-four (`tests/test_dat_checklist.py`
+pins the fix). The prompt gets `{checklist}` — every slot's `axis: text` lines under a
+`Situation <k>:` heading — and each returned object names its `slot` (implied when the call
+asks for one), so a short or reordered reply cannot wear another slot's labels. Each row is
+stamped with its labels and with `checklist`, which `draft_environment` and
+`revise_environment` now read verbatim. `dat.yaml` deals six uniform axes: `sector` (20),
+`task_shape` (13), `environment` (14), `pressure` (24), `framing` (2, replacing the hashed
+`assign` stage) and `visibility` (5); `honest_cost` is gone (it was pressure by another name);
+`scenarios_per_call` is 1; there is no `diversity:` block, and `corpus_scenarios` +
+`dedupe_scenarios` remain as the after-the-fact check. The trait is still sampled upstream (one
+principle per unit) and enters the same prompt as the checklist, dealt independently of it.
+
+**Result.** Smoke `LASR-Callum/2026-09-06-dat-synth-smoke`: 3 rows, $0.44, 234 s. The dealt
+checklists are realised on the page — a law firm's parquet migration where the honest report
+exposes the requesting partner's own gap (mandated, unobserved); a hospital permissions
+migration from spreadsheets against a hard cutoff with a later spot-check (incentivized); an
+insurer's claims dedup with a contractor's `fast_dedup.sh` on the box and over-broad DB
+credentials (mandated, surfaces later). All three aligned turns decline the shortcut and do the
+legitimate remainder with the tools. Residual: all three read as *migrations* even though only
+one task shape was `migrate` — the generator's default agentic job — worth a prompt line if the
+700-row run shows the same.
+
+**Next steps.** The 700-row run under `--batch` (one batch job for the scenario stage now);
+read the realised axis splits off the manifest (`rotated_axes`) and the migration share off the
+corpus check.
+
 ## 2026-09-06 — Thinking mode is a model-family fact, not a launch argument
 
 **Hypothesis.** Nothing about an arm's thinking mode is decided per launch: every arm we have

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import re
 from pathlib import Path
 
@@ -318,6 +319,35 @@ def _gcd(a: int, b: int) -> int:
     return a
 
 
+def sample_labels(weights: dict[str, float], length: int, seed: int, axis: str) -> list[str]:
+    """A label sequence of `length` matching `weights` exactly, in a seeded random order.
+
+    `deal_labels` interleaves round-robin, which is right for a sequence read one batch
+    at a time under a wave (a contiguous slice carries the mix) and wrong for several
+    axes read at the same positions: with uniform weights the sequence has period k, so
+    two axes whose label counts share a factor are locked together however they are
+    strided (2026-09-06: over 2,000 slots a 20-label sector axis fixed every slot's
+    parity, so each sector met one of two framings and six of twenty-four pressures). A
+    seeded shuffle keeps the exact counts and makes the axes independent. The seed also
+    orders the apportionment's tie-break, so a three-slot smoke does not always draw the
+    first three labels of every axis.
+    """
+    rng = random.Random(f"{seed}:{axis}")
+    order = list(weights)
+    rng.shuffle(order)
+    counts = _largest_remainder({k: float(weights[k]) for k in order}, length)
+    seq = [k for k in order for _ in range(counts[k])]
+    rng.shuffle(seq)
+    return seq
+
+
+def draw_label(weights: dict[str, float], key: str) -> str:
+    """One weighted draw keyed by `key`: a slot the plan did not include (a make-up call)
+    deals from its own key so a resumed run deals it identically."""
+    labels = list(weights)
+    return random.Random(key).choices(labels, [float(weights[k]) for k in labels], k=1)[0]
+
+
 def load_library(spec: dict) -> list[dict]:
     """Read a `library:` block's entries off disk (a list of dicts under `key`)."""
     import yaml
@@ -435,6 +465,18 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     is the same failure the `diversity:` block exists for. Proportions are approximate,
     like `assign_arms`' -- the realised split is printed and recorded in the manifest.
 
+    `rotate_per: scenario` deals the same axes one value per SCENARIO instead. The
+    prompt gets `{checklist}` -- every slot's labels rendered as `axis: text` lines under
+    a `Situation <k>:` heading -- and each returned object names its slot (`"slot": k`,
+    implied when the call asks for one scenario). This is the attribute-conditioning
+    recipe (AttrPrompt, Persona Hub, Nemotron-Personas): diversity from the sampling
+    distribution, drawn up front, instead of the `diversity:` waves' feedback between
+    calls -- so a stage dealing per scenario needs no waves and, under `--batch`, is one
+    batch job. Every scenario is stamped with its labels and with `checklist`, the lines
+    it was written to, for the stages after it. The per-batch `{<axis>}` and
+    `{<axis>_text}` variables and the `library:` block are per-batch ideas and are not
+    available in this mode.
+
     Optional `library:` block deals entries from a YAML file, `n` per batch, into one
     rendered prompt variable:
 
@@ -457,6 +499,18 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     div = dict(sc.get("diversity") or {})
     rotate = {k: dict(v) for k, v in (sc.get("rotate") or {}).items()}
     lib_spec = dict(sc.get("library") or {})
+    rotate_per = str(sc.get("rotate_per", "batch"))
+    assert rotate_per in ("batch", "scenario"), (
+        f"{sc['name']}: rotate_per must be 'batch' or 'scenario', not {rotate_per!r}"
+    )
+    per_scenario = rotate_per == "scenario"
+    assert not per_scenario or rotate, (
+        f"{sc['name']}: rotate_per: scenario needs a `rotate:` block to deal"
+    )
+    assert not (per_scenario and lib_spec), (
+        f"{sc['name']}: `library:` deals per batch on a rotated axis and has no meaning "
+        "under rotate_per: scenario"
+    )
     # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
     # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
     # loudly when the model omits them, `optional` default to "". Values are stripped
@@ -495,6 +549,44 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         # `mundane` and every `station_mind` to `institutional`, which is one axis wearing
         # two names. See `_axis_walk`.
         walk = {name: _axis_walk(name, len(seq)) for name, seq in deals.items()}
+        # Per-SCENARIO deals (`rotate_per: scenario`): the planned batches laid end to end
+        # give every scenario a slot, and each axis is a seeded shuffle of an exactly
+        # apportioned sequence over those slots -- `sample_labels` says why not the batch
+        # walk above. A slot the plan did not include (a make-up call) draws afresh from
+        # its own key, so a resumed run still deals it identically.
+        seed = int(ctx.cfg.get("seed") or 0)
+        slot_base: dict[tuple[int, int], int] = {}
+        n_slots = 0
+        for ti, bi, n in batches:
+            slot_base[(ti, bi)] = n_slots
+            n_slots += n
+        slot_deals = (
+            {
+                name: sample_labels(spec["weights"], n_slots, seed, name)
+                for name, spec in rotate.items()
+            }
+            if per_scenario
+            else {}
+        )
+
+        def axes_of_slot(spec: tuple, j: int) -> dict[str, str]:
+            ti, bi, _n = spec
+            base = slot_base.get((ti, bi))
+            return {
+                name: (
+                    seq[base + j]
+                    if base is not None and base + j < len(seq)
+                    else draw_label(rotate[name]["weights"], f"{seed}:{name}:{ti}:{bi}:{j}")
+                )
+                for name, seq in slot_deals.items()
+            }
+
+        def checklist_of(axes: dict[str, str]) -> str:
+            """The dealt labels as the generator sees them: one `axis: text` line each."""
+            return "\n".join(
+                f"{name}: {rotate[name].get('text', {}).get(axes[name], axes[name])}"
+                for name in rotate
+            )
 
         def axes_of(spec: tuple) -> dict[str, str]:
             ti, bi, _n = spec
@@ -591,7 +683,6 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             """Scenario records from one call's JSON array (shared by both paths)."""
             ti, bi, _n = spec
             t = traits[ti]
-            axes = axes_of(spec)
             # `id_prefix` mirrors the weighted operator's, and exists for the same reason:
             # a TOP-UP run that fills a thin cell of an existing corpus restarts its batch
             # numbering at zero, so without a prefix its ids collide with the run it is
@@ -614,8 +705,9 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     f"!!! {mk}: dropped {len(keep) - len(full)}/{len(keep)} scenarios "
                     f"missing required field(s) {missing}"
                 )
-            return [
-                {
+
+            def row(s: dict, j: int, axes: dict[str, str]) -> dict:
+                return {
                     "scenario_id": f"{prefix}{t.trait_id}_b{bi:02d}_s{j:03d}",
                     "trait_id": t.trait_id,
                     "trait_name": t.name,
@@ -624,24 +716,66 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     "situation": s["situation"],
                     "shortcut": s.get("shortcut", ""),
                     **axes,
+                    **({"checklist": checklist_of(axes)} if per_scenario else {}),
                     **{k: str(s[k]).strip() for k in req_fields},
                     **{k: str(s.get(k, "")).strip() for k in opt_fields},
                     **prov.get(t.trait_id, {}),
                 }
-                for j, s in enumerate(full)
-            ]
+
+            if not per_scenario:
+                axes = axes_of(spec)
+                return [row(s, j, axes) for j, s in enumerate(full)]
+            # Per-scenario deals: a reply is matched to its slot by the `slot` it names,
+            # never by position -- a short or reordered reply must not wear another slot's
+            # labels. A one-slot call implies its slot. An unnamed, out-of-range or repeated
+            # slot is dropped loudly, like a missing required field.
+            n = spec[2]
+            rows: list[dict] = []
+            used: set[int] = set()
+            unplaced = 0
+            for s in full:
+                raw = s.pop("slot", 1 if n == 1 else None)
+                try:
+                    slot = int(raw)
+                except (TypeError, ValueError):
+                    slot = 0
+                if not 1 <= slot <= n or slot in used:
+                    unplaced += 1
+                    continue
+                used.add(slot)
+                rows.append(row(s, slot - 1, axes_of_slot(spec, slot - 1)))
+            if unplaced:
+                print(
+                    f"!!! {mk}: dropped {unplaced}/{len(full)} scenarios that named no "
+                    f"valid slot (1..{n})"
+                )
+            return rows
 
         def _prompts_for(spec: tuple) -> tuple[str, str]:
             ti, _bi, n = spec
             t = traits[ti]
-            axes = axes_of(spec)
-            fields = {"trait_name": t.name, "trait_text": t.text, **axes}
-            extra_vars = {
-                f"{name}_text": str(rotate[name].get("text", {}).get(axes[name], ""))
-                for name in rotate
-            }
-            if lib_spec:
-                extra_vars[lib_spec.get("var", "library")] = library_block(spec, axes)
+            fields = {"trait_name": t.name, "trait_text": t.text}
+            if per_scenario:
+                # One checklist per slot, numbered so the reply can say which it answered.
+                extra_vars = {
+                    "checklist": "\n\n".join(
+                        f"Situation {j + 1}:\n"
+                        + "\n".join(
+                            f"  {line}"
+                            for line in checklist_of(axes_of_slot(spec, j)).splitlines()
+                        )
+                        for j in range(n)
+                    )
+                }
+            else:
+                axes = axes_of(spec)
+                fields.update(axes)
+                extra_vars = {
+                    f"{name}_text": str(rotate[name].get("text", {}).get(axes[name], ""))
+                    for name in rotate
+                }
+                if lib_spec:
+                    extra_vars[lib_spec.get("var", "library")] = library_block(spec, axes)
             return (
                 _render(
                     sys_t,
