@@ -46,16 +46,19 @@ def episodes_of(run_dir: Path) -> dict[int, Path]:
     return out
 
 
-def merge_json(pieces: list[Path], rel: str, *, keyed: str) -> dict | None:
-    """Union of `keyed` dicts across pieces (later wins), other fields from the newest."""
+def merge_json(
+    pieces: list[Path], rel: str, *, keyed: str | tuple[str, ...]
+) -> dict | None:
+    """Union of the `keyed` dict(s) across pieces (later wins), other fields from the newest."""
     found = [p / rel for p in pieces if (p / rel).is_file()]
     if not found:
         return None
     merged: dict = json.loads(found[-1].read_text())
-    union: dict = {}
-    for f in found:
-        union.update(json.loads(f.read_text()).get(keyed) or {})
-    merged[keyed] = union
+    for key in (keyed,) if isinstance(keyed, str) else keyed:
+        union: dict = {}
+        for f in found:
+            union.update(json.loads(f.read_text()).get(key) or {})
+        merged[key] = union
     return merged
 
 
@@ -123,7 +126,9 @@ def merge_cell(pieces: list[Path], dest: Path, *, dry_run: bool) -> dict:
             )
         (results / "judge.json").write_text(json.dumps(judge, indent=1))
         summary["judge"] = {k: v for k, v in judge.items() if k != "per_run"}
-    fc = merge_json(pieces, "results/false_claims.json", keyed="summary")
+    # Both the per-shift counts AND the per-message records, else a merged cell publishes
+    # only the newest piece's messages (caught 2026-09-06).
+    fc = merge_json(pieces, "results/false_claims.json", keyed=("summary", "per_run"))
     if fc:
         (results / "false_claims.json").write_text(json.dumps(fc, indent=1))
     (results / "results.json").write_text(json.dumps(summary, indent=2))
