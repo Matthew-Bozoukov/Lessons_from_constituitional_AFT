@@ -223,8 +223,8 @@ def test_check_thinking_declaration():
 
 
 def test_no_train_config_declares_thinking_any_more():
-    """`thinking` is the arm's eval-time mode and the arm is a LAUNCH (`thinking=true`), so
-    a recipe must not carry it — one recipe file trains thinking and nothink arms alike."""
+    """`thinking` is the model family's fact (configs/models/<key>.yaml), so a recipe must
+    not carry it — one recipe file trains every family, and nothink is an eval-time mode."""
     from pathlib import Path
 
     from omegaconf import OmegaConf

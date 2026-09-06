@@ -2,4 +2,7 @@
 # ABOUTME: Same family as Qwen3-32B, so the same unverified-template refusal applies to training.
 model: "Qwen/Qwen3-0.6B"
 match: qwen306b
+# Trained, served and evaluated in thinking mode (a family fact; nothink is an eval-time
+# `mode=` override). training_meta.json's `thinking` stamp comes from here.
+thinking: true
 family: "Qwen3"

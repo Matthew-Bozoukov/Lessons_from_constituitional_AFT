@@ -1,9 +1,9 @@
 # ABOUTME: The SFT recipe: rank-64 LoRA, 1 epoch, global batch 16, cosine 1e-4, 8192-token rows,
 # ABOUTME: token-budgeted dynamic batching. Everything arm-specific is a launch argument.
-# Run: uv run train --config configs/train/sft.yaml model=<key> data_repo=<org>/<mix> thinking=<true|false> [seed=N]
+# Run: uv run train --config configs/train/sft.yaml model=<key> data_repo=<org>/<mix> [seed=N]
 #   e.g. uv run train --config configs/train/sft.yaml model=qwen36 \
-#            data_repo=LASR-Callum/2026-09-05-nosynth-mix thinking=true
-#   N GPUs on one host: uv run torchrun --nproc_per_node=N scripts/train/train_lora.py --config configs/train/sft.yaml model=... data_repo=... thinking=...
+#            data_repo=LASR-Callum/2026-09-05-nosynth-mix
+#   N GPUs on one host: uv run torchrun --nproc_per_node=N scripts/train/train_lora.py --config configs/train/sft.yaml model=... data_repo=...
 #
 # A recipe names NO model and NO data: those are launch arguments, so one file trains every
 # arm and an arm's identity comes from what it was launched on. Of the 59 per-arm configs
@@ -21,7 +21,7 @@
 # Launch arguments (no defaults here, deliberately — each is the arm's identity):
 #   model=<key|hf id|path>   configs/models/<key>.yaml by stem, or anything its `match` identifies
 #   data_repo=<org>/<name>   a mixture repo; its `mixture.jsonl` unless data_file= names another (legacy repos)
-#   thinking=<true|false>    the mode this arm is served and evaluated in, validated against the data
+#   (thinking mode is the model family's fact, configs/models/<key>.yaml `thinking:`, on by default)
 #   seed=N                   defaults to 0 below; the seed is part of the organism's name
 # Optional: wandb=true  data_revision=<sha>  base_model_revision=<sha>  train.token_budget=N  hf_repo=<name>  push=false
 
