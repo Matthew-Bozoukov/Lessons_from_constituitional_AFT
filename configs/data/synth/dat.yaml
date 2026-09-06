@@ -47,7 +47,7 @@ n_traits: 9
 chunking: principle
 
 # Split evenly across the nine units; one call per scenario.
-total_scenarios: 2000
+total_scenarios: 750
 
 output_dir: "output/synth_dat"
 hf_private: false
