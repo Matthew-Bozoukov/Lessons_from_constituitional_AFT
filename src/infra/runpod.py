@@ -1145,8 +1145,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
 
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
-    launch = (f"--config {train} model={model} data_repo=<org>/<mix> "
-              "thinking=<true|false> seed=0 [wandb=true]")
+    launch = f"--config {train} model={model} data_repo=<org>/<mix> seed=0 [wandb=true]"
     train_cmd = (f"uv run train {launch}" if count == 1 else
                  f"uv run torchrun --nproc_per_node={count} "
                  f"scripts/train/train_lora.py {launch}")

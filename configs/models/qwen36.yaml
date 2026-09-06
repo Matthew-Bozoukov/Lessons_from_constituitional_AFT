@@ -8,6 +8,9 @@ model: "Qwen/Qwen3.6-27B"
 # Squeezed substring (letters and digits, lowercased) that identifies this model in any id
 # or path: `Qwen/Qwen3.6-27B`, `qwen3_6` and the pod-local `/root/qwen36` all contain it.
 match: qwen36
+# Trained, served and evaluated in thinking mode (a family fact; nothink is an eval-time
+# `mode=` override). training_meta.json's `thinking` stamp comes from here.
+thinking: true
 family: "Qwen3.6"
 
 # Which card each role needs, as RunPod catalogue ids. TYPE only: how many GPUs a job wants

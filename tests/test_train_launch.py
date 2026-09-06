@@ -16,12 +16,13 @@ from src.train.launch import (
     check_retired_keys,
     require_launch_args,
     resolve_model,
+    resolve_thinking,
     wandb_preflight,
     write_back_pins,
 )
 
 RECIPE = "configs/train/sft.yaml"
-LAUNCH = ["model=qwen36", "data_repo=o/2026-09-05-nosynth-mix", "thinking=true"]
+LAUNCH = ["model=qwen36", "data_repo=o/2026-09-05-nosynth-mix"]
 
 
 def test_the_recipe_carries_no_arm_identity_and_no_retired_key():
@@ -51,7 +52,7 @@ def test_every_train_config_is_a_recipe_and_reports_nowhere_by_default():
 
 def test_launch_args_are_required_and_the_error_names_them_all():
     cfg = OmegaConf.load(RECIPE)
-    with pytest.raises(ValueError, match=r"model.*data_repo.*thinking"):
+    with pytest.raises(ValueError, match=r"model.*data_repo"):
         require_launch_args(cfg, RECIPE)
     cfg.merge_with_dotlist(LAUNCH)
     require_launch_args(cfg, RECIPE)
@@ -124,8 +125,9 @@ def test_the_saved_config_is_a_complete_rerun():
     p2, mid = resolve_model(again)
     assert p2 == profile and mid == "Qwen/Qwen3.6-27B"
     assert (again.base_model_revision, again.data_file, again.data_revision,
-            again.train.token_budget, again.thinking) == ("abc123", "mixture.jsonl", "def456",
-                                                          8000, True)
+            again.train.token_budget) == ("abc123", "mixture.jsonl", "def456", 8000)
+    assert "thinking" not in again and again.profile.thinking is True, \
+        "thinking rides in the stamped profile, never as a launch key"
 
 
 def _meta(tmp_path):
@@ -167,3 +169,22 @@ def test_push_adapter_publishes_under_the_stamped_name_qualified_with_the_org(tm
     assert seen["kw"] == {"private": True, "repo_type": "model"}
     with pytest.raises(AssertionError, match="no `organism`"):
         push_adapter(tmp_path, {**_meta(tmp_path), "organism": ""})
+
+
+def test_thinking_is_the_profiles_fact_and_a_stamped_value_may_only_agree():
+    """Thinking mode left the launch line on 2026-09-06: it is the family's `thinking:`
+    (on by default). An older train_config.yaml still carries `thinking:`; matching is
+    tolerated, contradiction refused."""
+    cfg = OmegaConf.load(RECIPE)
+    cfg.merge_with_dotlist(LAUNCH)
+    profile, _ = resolve_model(cfg)
+    assert profile.thinking is True and profile.to_dict()["thinking"] is True
+    assert resolve_thinking(cfg, profile) is True
+    cfg.merge_with_dotlist(["thinking=true"])
+    assert resolve_thinking(cfg, profile) is True
+    cfg.merge_with_dotlist(["thinking=false"])
+    with pytest.raises(ValueError, match="contradicts the 'qwen36' profile"):
+        resolve_thinking(cfg, profile)
+    from src.model_profile import ModelProfile
+    nothink = ModelProfile.from_dict({"model": "x/y", "thinking": False}, key="y")
+    assert nothink.thinking is False and ModelProfile.from_dict({"model": "x/y"}, key="y").thinking is True

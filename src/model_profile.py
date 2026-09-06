@@ -5,8 +5,9 @@
 
 `configs/models/<key>.yaml` holds everything this project knows about a base model: what
 it is called (the stem is the KEY every artifact name spells it with), how to recognise
-it in an id or a path (`match`), which cards train and serve it (`gpu`), what vLLM has
-been measured to need (`serving`), the chat template's literals the mask rule conditions
+it in an id or a path (`match`), which cards train and serve it (`gpu`), whether it is
+trained, served and evaluated in its thinking mode (`thinking`, on by default), what vLLM
+has been measured to need (`serving`), the chat template's literals the mask rule conditions
 on (`template`, verified live) and the model half of a training run (`train`: checkpoint
 class, LoRA target regex, quantisation, measured memory ceilings). A file with no
 `template:` block is an UNVERIFIED family: it can be named and served, never trained.
@@ -88,6 +89,12 @@ class ModelProfile:
     family: str
     gpu: dict = field(default_factory=dict)
     serving: dict | None = None
+    # Whether this family is trained, served and evaluated in its thinking mode. A fact
+    # about the family, on by default: every arm of a reasoning model reasons, the mask
+    # rule already handles the empty marker, and a nothink arm is a deliberate eval-time
+    # `mode=` override rather than a launch decision. Stamped into training_meta.json as
+    # `thinking`, which is where the eval framework reads the served mode from.
+    thinking: bool = True
     assistant_header: str = ""
     turn_end: str = ""
     prefill: str = ""
@@ -133,6 +140,7 @@ class ModelProfile:
             key=key, model=str(data["model"]), match=str(data.get("match") or key),
             family=str(data.get("family") or key), gpu=dict(data.get("gpu") or {}),
             serving=dict(data["serving"]) if data.get("serving") else None,
+            thinking=bool(data.get("thinking", True)),
             assistant_header=str(tpl.get("assistant_header") or ""),
             turn_end=str(tpl.get("turn_end") or ""), prefill=str(tpl.get("prefill") or ""),
             empty_think=str(tpl.get("empty_think") or ""),
@@ -148,7 +156,7 @@ class ModelProfile:
     def to_dict(self) -> dict:
         """The YAML's shape again, plus `key` — what a train run stamps into its config."""
         out: dict = {"key": self.key, "model": self.model, "match": self.match,
-                     "family": self.family, "gpu": dict(self.gpu)}
+                     "family": self.family, "gpu": dict(self.gpu), "thinking": self.thinking}
         if self.serving:
             out["serving"] = dict(self.serving)
         if self.verified:

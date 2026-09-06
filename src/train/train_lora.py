@@ -34,6 +34,7 @@ from src.train.launch import (  # noqa: E402
     recipe_name,
     require_launch_args,
     resolve_model,
+    resolve_thinking,
     wandb_preflight,
     write_back_pins,
 )
@@ -245,7 +246,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         *overrides: OmegaConf dotlist overrides merged over the config, the same
             key=value convention as run_eval. The arm's identity arrives here, never in
             the recipe (src/train/launch.py): `model=qwen36 data_repo=<org>/<mix>
-            thinking=true [seed=0] [wandb=true] [data_revision=<sha>] [data_file=<legacy name>]`.
+            [seed=0] [wandb=true] [data_revision=<sha>] [data_file=<legacy name>]`.
             Positional so that a bare key=value token can never bind to `smoke`.
         smoke: If True, train 2 steps on 8 examples to validate wiring (no HF push).
             Keyword-only: pass `--smoke`.
@@ -354,17 +355,17 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
         print(f">>> organism: {hf_repo}  (mix subject {mix!r}, {mix_from})")
 
-    # The arm's eval-time thinking mode is a launch argument (the scientific record),
-    # validated against the FULL dataset — the declaration is about the training data, and
-    # a smoke subselect of a mostly-replay mixture can legitimately hold zero traces —
-    # then stamped into the adapter as training_meta.json. No default.
-    thinking = bool(cfg.thinking)
+    # The arm's thinking mode is the model family's fact (configs/models/<key>.yaml,
+    # on by default), validated against the FULL dataset — the fact is about the training
+    # data too, and a smoke subselect of a mostly-replay mixture can legitimately hold zero
+    # traces — then stamped into the adapter as training_meta.json.
+    thinking = resolve_thinking(cfg, profile)
     # Rendered `text` rows need the family's empty-marker literal to classify; pure
     # interchange (`messages`) datasets don't.
     check_thinking_declaration(
         ds, thinking,
         empty_think=profile.empty_think if "text" in ds.column_names else None)
-    print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
+    print(f">>> thinking (profile {profile.key!r}, validated on all {len(ds)} rows): {thinking}")
     # An arm may unsupervise one property of its reasoning via per-row `mask_spans`.
     # Counted on the FULL dataset for the same reason as the thinking declaration: a
     # smoke subselect of a mostly-replay mixture legitimately holds zero masked rows,

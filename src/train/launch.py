@@ -8,7 +8,11 @@ optimizer, schedule, sequence length) and NOTHING about a particular arm. Everyt
 arm is a launch argument:
 
     uv run train --config configs/train/sft.yaml model=qwen36 data_repo=<org>/<mix> \\
-        thinking=true [seed=0] [wandb=true] [data_revision=<sha>] [data_file=<legacy name>]
+        [seed=0] [wandb=true] [data_revision=<sha>] [data_file=<legacy name>]
+
+The arm's thinking mode is not a launch argument: it is the model family's `thinking:`
+fact (configs/models/<key>.yaml, on by default), validated against the data and stamped
+into training_meta.json. A nothink arm is an eval-time `mode=` override.
 
 The trainer writes what it actually resolved BACK into the config it saves with the
 adapter (`train_config.yaml`): the HF id `model=` stood for and the base revision it
@@ -37,7 +41,7 @@ DEFAULT_WANDB_PROJECT = "lasr"
 
 # What every launch must supply — none has a default, because each is the arm's identity
 # and a default would let two arms differ in something nobody typed.
-LAUNCH_ARGS = ("model", "data_repo", "thinking")
+LAUNCH_ARGS = ("model", "data_repo")
 
 # Keys a recipe no longer carries. Each says where the fact went, so an old per-arm config
 # (configs/train/archive/) or a pre-2026-09-05 train_config.yaml pulled from an adapter
@@ -77,15 +81,33 @@ def check_retired_keys(cfg) -> None:
 
 
 def require_launch_args(cfg, config_path: str) -> None:
-    """Refuse to start without the arm's identity: model, data and thinking declaration."""
+    """Refuse to start without the arm's identity: model and data."""
     missing = [k for k in LAUNCH_ARGS if k not in cfg or OmegaConf.is_missing(cfg, k)]
     if missing:
         raise ValueError(
             f"`uv run train` needs {missing} as launch arguments:\n"
             f"  uv run train --config {config_path} model=qwen36 "
-            "data_repo=<org>/<mix> thinking=true [seed=0]\n"
+            "data_repo=<org>/<mix> [seed=0]\n"
             "A recipe names no model and no data, so one file trains every arm; a "
             "train_config.yaml pulled from an adapter already carries them.")
+
+
+def resolve_thinking(cfg, profile: ModelProfile) -> bool:
+    """The arm's thinking mode: the profile's fact, which a stamped config may only agree with.
+
+    `thinking=` was a launch argument until 2026-09-06, so a train_config.yaml pulled from
+    an older adapter carries it. That is tolerated when it matches the profile — the rerun
+    is unchanged — and refused when it does not, because the two cannot both be the record.
+    """
+    if "thinking" in cfg and not OmegaConf.is_missing(cfg, "thinking"):
+        declared = bool(cfg.thinking)
+        if declared != profile.thinking:
+            raise ValueError(
+                f"thinking={declared} contradicts the {profile.key!r} profile "
+                f"(configs/models/{profile.key}.yaml: thinking: {profile.thinking}). Thinking "
+                "mode is a family fact, not a launch argument; a nothink arm is an eval-time "
+                "`mode=` override. Drop the key or change the profile.")
+    return profile.thinking
 
 
 def resolve_model(cfg) -> tuple[ModelProfile, str]:

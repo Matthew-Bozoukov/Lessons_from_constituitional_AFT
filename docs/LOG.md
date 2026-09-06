@@ -1,6 +1,35 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-06 — Thinking mode is a model-family fact, not a launch argument
+
+**Hypothesis.** Nothing about an arm's thinking mode is decided per launch: every arm we have
+trained or plan to train is a thinking arm, and the only thing that ever varies is an eval-time
+`mode=` override. A value typed on every launch line that is always the same is a place for
+drift, not a record — and it sat in the training recipe's launch contract when it is really a
+fact about the family being trained (Qwen3.6 has the mode; other families may not).
+
+**Method.** `thinking` moves into the model profile: `configs/models/<key>.yaml` gains
+`thinking: true` (the dataclass default is `true`, so a family that does not declare it is a
+thinking family), stamped into `training_meta.json` from there. `LAUNCH_ARGS` drops it;
+`src/train/launch.py::resolve_thinking` returns the profile's fact and tolerates a stamped
+`thinking:` in a `train_config.yaml` pulled from an older adapter only when it agrees — a
+contradiction is refused, since two records cannot both be the record. The data validation is
+unchanged (`thinking: true` still requires real traces in the full dataset). CLAUDE.md,
+`configs/train/sft.yaml`, `configs/train/archive/README.md`, `docs/BASELINES.md`, the naming
+lint's messages and `runpod up --train`'s printed launch line all lose `thinking=true`; the
+CLAUDE.md pass also applied the drift fixes drafted on 2026-09-05 (model profiles read from
+`configs/models/`, `ctfish`/`mask` in the eval tree, one training recipe, gotcha 5's vendored
+patch list already moved to `docs/GOTCHAS.md`).
+
+**Result.** 126 launch/masking/naming/organism/framework tests pass, including a new one that
+`resolve_thinking` accepts an agreeing stamp and refuses `thinking=false` under the `qwen36`
+profile. No training or eval behaviour changes for any existing arm: every profile declares
+`thinking: true`, which is what every launch passed.
+
+**Next steps.** A future non-thinking family declares `thinking: false` in its profile and
+nothing else changes. `mode=` at eval time remains the one deliberate cross-mode lever.
+
 ## 2026-09-06 — ODCV on the nosynth control: MR 36.2% [25.4, 48.7], 3 passes, 240/240 clean
 
 **Hypothesis.** The 0%-synthetic control trained on the paper's blend should sit near the

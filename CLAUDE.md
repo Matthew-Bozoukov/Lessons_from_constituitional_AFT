@@ -55,10 +55,10 @@ shared, so check balances before big runs and flag spend over ~$20. Harder-won p
 One shape only — unlike an eval, training code must run on the GPU host directly:
 
 ```
-uv run runpod up --name <you>-<arm> --train configs/train/<arm>.yaml --count N --push_env
+uv run runpod up --name <you>-<arm> --train configs/train/sft.yaml --model <key> --count N --push_env
 #   (--train implies the clone: the pod gets this repo at your commit)
 ssh -p <port> root@<ip> 'cd /root/work && uv run torchrun --nproc_per_node=N \
-    scripts/train/train_lora.py --config configs/train/<arm>.yaml'
+    scripts/train/train_lora.py --config configs/train/sft.yaml model=<key> data_repo=<org>/<mix>'
 uv run runpod down --pod <id>
 ```
 
@@ -118,23 +118,24 @@ src/                  reviewed, reusable code (installed editable; import as src
   utils.py              io/json + provenance helpers, transcript rendering
   naming.py             THE naming law: one shape per stage, its builders, and the
                         lint that blocks a push
-  model_profile.py      ModelProfile registry: verified per-family render/mask/serve
-                        facts, AND MODEL_KEYS — what each base model is named
+  model_profile.py      ModelProfile: verified per-family render/mask/serve facts and the
+                        model's naming key, read from configs/models/<key>.yaml
   data/synth/           constitution-grounded generation engine (the config IS the document type)
   data/mixture/         training-mixture builder + one adapter per source + spec filter
   train/                train_lora.py, merge_lora.py
   eval/                 registry in __init__.py; one directory per eval:
     capabilities/         arena_hard/ (the model-vs-model eval), mmlu/,
                           swebench_mini/
-    misalignment/         odcv/, agentic_misalignment/, psychosis/, internalization/,
-                          moralbench/ (declarative moral-foundations probe; docs/moralbench.md)
+    misalignment/         odcv/, agentic_misalignment/, ctfish/, psychosis/, mask/,
+                          internalization/, moralbench/ (declarative probe; docs/moralbench.md)
                           (odcv + agentic_misalignment vendor PATCHED harnesses in third_party/)
     audits/               petri/ + surf/ audit tooling
 configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams in scripts
   data/synth/           one config per document type (superseded → archive/)
   data/mixture/         0 (the base blend) + <styles>[-<variant>] arms; archive/
-  train/                <model>-<mix>-<pct> — one file per arm, undated
+  train/                sft.yaml — ONE recipe (arms are launch arguments); archive/
   eval/                 one per eval
+  models/               <key>.yaml — one profile per base model
   endpoints/            providers.yaml — per-model OpenRouter provider pins
 scripts/              thin drivers mirroring src/ stages + gpu/ for provisioning;
                       run_eval.py is THE eval entrypoint
@@ -249,10 +250,9 @@ hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice
 - **ONE HUMAN INPUT, ONE PLACE: the style-type**, which is the stem of the synth or
   mixture config that produced the data. It carries the ablation and says WHAT THIS ONE
   CHANGES (`da_length_capped`, never `sonnet_v2`). Nothing else in any name
-  is chosen: the date comes from the clock at launch, the model from `MODEL_KEYS`
-  (`src/model_profile.py`, beside that model's other facts), the eval from
-  `EvalSpec.key`, the seed from the training config. None of them is typed, so
-  none of them can drift from the thing it describes.
+  is chosen: the date comes from the clock at launch, the model from its profile
+  (`configs/models/<key>.yaml`), the eval from `EvalSpec.key`, the seed from the
+  launch. None of them is typed, so none of them can drift from the thing it describes.
 - **The date is the date the thing was PRODUCED** and every artifact carries exactly one:
   a model organism enters its eval run's name WITHOUT its date, so the run says which arm
   it measured and still dates only itself.
@@ -260,9 +260,9 @@ hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice
   ARTIFACT. `configs/data/synth/<style>.yaml`, `configs/data/mixture/<styles>.yaml`
   (the synthetic source keys, SORTED and hyphenated — derived, so one set of corpora has
   exactly one name), and
-  `configs/train/<model>-<mix>-<pct>.yaml` — the adapter's own repo name minus the date
-  and the seed. A seed is a launch argument (`seed=1`), so three replicates are one
-  config, not three files. `configs/eval/<eval>.yaml` is the exception in spelling: an
+  `configs/train/sft.yaml` — ONE recipe: model, data repo and seed are launch
+  arguments, so an arm is what it was launched on, not a file (the old per-arm
+  files are in `configs/train/archive/`). `configs/eval/<eval>.yaml` is the exception: an
   eval config is a KIND and carries the eval's full registered name
   (`agentic_misalignment`), checked against the registry itself.
 - **The style vocabulary is SHORT and therefore load-bearing** — `da`, `par`, `pad`, `pc`.
@@ -274,7 +274,7 @@ hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice
   configs are edited in place and a path alone would name a file that no longer says what
   it said. Re-running an arm means fetching its config from the Hub.
 - **Registries are edited when the project gains something, never per run**: a new base
-  model adds a line to `MODEL_KEYS` (`src/model_profile.py`), a new eval declares `key=`
+  model adds `configs/models/<key>.yaml`, a new eval declares `key=`
   in its `EvalSpec` (`src/eval/__init__.py`). Both are required, so both are decided once.
 - **Hardware, rank and launcher detail are not identity** — the config records `2xh200`,
   the name does not.
@@ -312,7 +312,7 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
    Know which arm is the current baseline before you build on one or compare against one: `docs/BASELINES.md`.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
-3. `uv run train --config configs/train/<model>-<mix>-<pct>.yaml [seed=N]` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (declared as `thinking:` in the train config, validated against the data) that the eval framework infers mode from.
+3. `uv run train --config configs/train/sft.yaml model=<key> data_repo=<org>/<mix> [seed=N]` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (the model family's `thinking:` fact, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.
 
 Add a new stage as functions in the right `src/` area plus a thin CLI in the matching `scripts/<stage>/` folder and a `configs/<stage>/*.yaml` (naming rules above); one-off investigations go straight to `scratch/`.
@@ -364,11 +364,10 @@ uv run evals --target <hf_path | provider:model-id> [...] --name <eval> [key=val
   message.
 - **Thinking mode is never declared at eval time — it is inferred from the artifact.**
   Adapters carry a `training_meta.json` stamped into the HF repo by `train_lora.py`,
-  whose `thinking` field comes from the training config: every
-  `configs/train/lora_*.yaml` declares `thinking: true|false` (required, no default —
-  the config is the scientific record), and `train_lora.py` fail-fast validates the
-  declaration against the data (`thinking: true` requires real reasoning traces in the
-  target source); full models fall back to their own chat-template default. An adapter
+  whose `thinking` field is the model family's `thinking:` fact in
+  `configs/models/<key>.yaml` (on by default; not a launch argument), fail-fast
+  validated against the data (`true` requires real reasoning traces); full models fall
+  back to their own chat-template default. An adapter
   without the stamp is a hard error — backfill the stamp, never guess. The inferred
   mode is pinned into the chat template at serve time (never an env var, never a
   per-request flag), recorded in `run_meta.json`, and comparison/aggregation code

@@ -45,7 +45,7 @@ from src.model_profile import model_key
 # produces `<date>-da-20-mix`, so one is greppable from the other. A TRAIN config is the
 # exception: it is a RECIPE (`configs/train/sft.yaml`) and names no model and no data —
 # those are launch arguments (`uv run train --config configs/train/sft.yaml model=qwen36
-# data_repo=<org>/<date>-da-20-mix thinking=true seed=8`), so one file trains every arm
+# data_repo=<org>/<date>-da-20-mix seed=8`), so one file trains every arm
 # and the organism `<date>-qwen36-8-da-20` is named from what it was launched on.
 #
 # ONE HUMAN INPUT, ONE PLACE. The style-type is the stem of the synth or mixture config
@@ -694,9 +694,9 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                         "hyphenated — so one set of corpora has exactly one name.")
         elif folder == "configs/train":
             # A train config is a RECIPE — LoRA shape, optimizer, schedule, sequence
-            # length — and nothing else. The model, the data, the seed and the thinking
-            # declaration are LAUNCH ARGUMENTS (`uv run train --config configs/train/sft.yaml
-            # model=qwen36 data_repo=<org>/<mix> thinking=true seed=0`), so one file trains
+            # length — and nothing else. The model, the data and the seed are LAUNCH
+            # ARGUMENTS (`uv run train --config configs/train/sft.yaml model=qwen36
+            # data_repo=<org>/<mix> seed=0`); thinking mode is the model's profile fact. One file trains
             # every arm and an organism is named from what it was launched on. The resolved
             # config that actually ran (launch arguments included) travels with the adapter
             # as its train_config.yaml. The per-arm configs that predate this live in
@@ -719,7 +719,8 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                     f"train config {stem!r} declares {launch}, which are launch arguments of "
                     "`uv run train`, not recipe fields: a recipe names no model and no data, "
                     "so one file trains every arm. Drop them and pass them on the command line "
-                    "(`model=qwen36 data_repo=<org>/<mix> thinking=true`).")
+                    "(`model=qwen36 data_repo=<org>/<mix>`); thinking mode is the model "
+                    "profile's fact (configs/models/<key>.yaml).")
         elif folder == "configs/eval":
             # An eval config is a KIND — the registry default for that eval — so its stem
             # is the eval's own name, spelled exactly as the registry spells it. Checked

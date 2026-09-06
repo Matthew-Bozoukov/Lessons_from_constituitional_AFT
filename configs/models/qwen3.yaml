@@ -6,4 +6,7 @@
 # (tests/test_masking_tokenizer.py) and add `template:` + `train:` before training this family.
 model: "Qwen/Qwen3-32B"
 match: qwen332b
+# Trained, served and evaluated in thinking mode (a family fact; nothink is an eval-time
+# `mode=` override). training_meta.json's `thinking` stamp comes from here.
+thinking: true
 family: "Qwen3"

@@ -6,10 +6,10 @@
 Until 2026-09-05 every arm had its own train config (`<model>-<mix>-<pct>.yaml`) that named
 the model, the mixture repo and the thinking declaration alongside the recipe. The recipe was
 the same in all of them: with the data pointers and output directory stripped, the dynbatch
-configs here hash identically. That recipe is now `configs/train/sft.yaml`, and the model, data and thinking declaration are
-launch arguments:
+configs here hash identically. That recipe is now `configs/train/sft.yaml`, and the model and data are launch arguments
+(thinking mode is the model family's fact in `configs/models/<key>.yaml`, on by default):
 
-    uv run train --config configs/train/sft.yaml model=qwen36 data_repo=<org>/<mix> thinking=true
+    uv run train --config configs/train/sft.yaml model=qwen36 data_repo=<org>/<mix>
 
 These files stay so a reader can see what each historical arm declared. To RE-RUN one of them
 exactly, use the adapter it produced: every adapter on the Hub carries the resolved config it

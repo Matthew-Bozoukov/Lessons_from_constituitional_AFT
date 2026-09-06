@@ -18,7 +18,7 @@ Change an entry only when a measurement says to, and record the measurement in t
 | **recipe** | `configs/data/synth/da.yaml` (this IS the principle-scoped recipe) |
 | **corpus** | `LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716` |
 | **mixture** | `LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture` → `t2_9284_da_chunk_only_702.jsonl` (9,986 rows, 702 DA = 7.03%) |
-| **train config** | the shared recipe `configs/train/sft.yaml` with `model=qwen36 data_repo=<the mixture above> thinking=true` and `seed=0`, `seed=42`, `seed=69` (one recipe, seeds are launch arguments). The per-arm config these seeds actually ran under is archived at `configs/train/archive/qwen36-table2-9284-da-principle-scoped-702-dynbatch.yaml`; the resolved config also travels with each adapter. |
+| **train config** | the shared recipe `configs/train/sft.yaml` with `model=qwen36 data_repo=<the mixture above>` and `seed=0`, `seed=42`, `seed=69` (one recipe, seeds are launch arguments). The per-arm config these seeds actually ran under is archived at `configs/train/archive/qwen36-table2-9284-da-principle-scoped-702-dynbatch.yaml`; the resolved config also travels with each adapter. |
 | **adapter** | `LASR-Callum/qwen3.6-27b-lora-t2-9284-da-chunk-only-702-r64-dynbatch` |
 | **ODCV** | 11.5% [6.2, 19.6] as published on 65 cells; 10.5% [3.5, 19.3] re-scored on the 57 cells its siblings share |
 
