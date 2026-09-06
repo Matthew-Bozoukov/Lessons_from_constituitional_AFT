@@ -1,5 +1,5 @@
-# ABOUTME: One slide figure: self-promotional (top row) and self-sacrificial (bottom row), each as the
-# ABOUTME: four cases for team total, patients treated and the coalition's own slice.
+# ABOUTME: One bar chart for the slides: team total per model (control pair, DA pair) under no
+# ABOUTME: coalition, the self-promotional instruction and the self-sacrificial instruction.
 
 """uv run python scratch/colosseum_hospital/combined_cases.py [--open]"""
 
@@ -14,31 +14,20 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Patch
 
 import four_cases as fc  # sibling script; the script's own directory is on sys.path
 from src.utils import figure_path
 
 INK, MUTED = "#1B2430", "#5B6875"
-ROWS = [
-    ("self_promotional", "Self-promotional instruction: maximise your own share"),
-    ("self_sacrificial", "Self-sacrificial instruction: wreck the team's score"),
+MODELS = [
+    ("control", "control pair", "#2E6FBF", "#B7CCEA"),
+    ("treatment", "DA pair", "#C95B2F", "#F0C9B7"),
 ]
-COLS = [
-    ("team total", "Team total (points)", 8000, "8,000 = every patient treated"),
-    ("patients treated", "Patients treated per shift (of 8)", 8, "all 8 treated"),
-    ("coalition slice", "Coalition's own slice (GH Triage's points)", None, None),
-]
-LABELS = [
-    "control pair\nno coalition",
-    "DA pair\nno coalition",
-    "control pair\nin coalition",
-    "DA pair\nin coalition",
-]
-STYLE = [
-    ("baseline", "control", "#B7CCEA", "#2E6FBF"),
-    ("baseline", "treatment", "#F0C9B7", "#C95B2F"),
-    (None, "control", "#2E6FBF", "#2E6FBF"),
-    (None, "treatment", "#C95B2F", "#C95B2F"),
+BARS = [
+    ("baseline", "no coalition", "light", None),
+    ("self_promotional", "self-promotional instruction", "solid", None),
+    ("self_sacrificial", "self-sacrificial instruction", "solid", "////"),
 ]
 
 
@@ -47,70 +36,88 @@ def main() -> None:
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
     rng = np.random.default_rng(0)
-    fig, axes = plt.subplots(2, 3, figsize=(15, 8.6))
-    for r, (condition, row_title) in enumerate(ROWS):
+
+    cells = {}
+    for condition in ("self_promotional", "self_sacrificial"):
         fc.CONDITION = condition
-        cells = fc.load()
-        for c, (key, title, ref, ref_label) in enumerate(COLS):
-            ax = axes[r, c]
-            tops, lows = [], [0.0]
-            for i, (cond, block, face, edge) in enumerate(STYLE):
-                vals = fc.values(cells, key, cond or condition, block)
-                m, hi = fc.bar_with_ci(
-                    ax,
-                    i,
-                    vals,
-                    rng,
-                    width=0.62,
-                    face=face,
-                    edge=edge,
-                    fmt="{:.1f}" if key == "patients treated" else "{:,.0f}",
-                    fs=10,
-                )
-                tops.append(hi)
-                lows.append(min(0.0, fc.ci95(vals, rng)[0]))
-            if ref is not None:
-                ax.axhline(ref, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=1)
-                ax.annotate(
-                    ref_label,
-                    (3.45, ref),
-                    xytext=(0, 4),
-                    textcoords="offset points",
-                    ha="right",
-                    va="bottom",
-                    fontsize=8.5,
-                    color=MUTED,
-                )
-            ax.set_ylim(min(lows) * 1.1, max(max(tops), ref or 0) * 1.18)
-            ax.set_xticks(range(4))
-            ax.set_xticklabels(LABELS if r == 1 else [""] * 4, fontsize=9.5)
-            ax.set_xlim(-0.6, 3.6)
-            ax.set_title(title if r == 0 else "", fontsize=11, loc="left", color=INK)
-            ax.grid(axis="y", alpha=0.25, zorder=0)
-            ax.set_axisbelow(True)
-            for s in ("top", "right"):
-                ax.spines[s].set_visible(False)
-            ax.tick_params(axis="y", labelsize=9)
-        axes[r, 0].annotate(
-            row_title,
-            (0, 1.0),
-            xycoords="axes fraction",
-            xytext=(-8, 26 if r == 0 else 8),
-            textcoords="offset points",
-            ha="left",
-            va="bottom",
-            fontsize=11.5,
-            color=INK,
-            fontweight="bold",
-            annotation_clip=False,
-        )
-    fig.tight_layout(h_pad=2.6, w_pad=1.6, rect=(0, 0, 1, 0.97))
+        cells.update(fc.load())
+
+    fig, ax = plt.subplots(figsize=(8.4, 5.4))
+    width, offsets = 0.26, (-0.28, 0.0, 0.28)
+    tops = []
+    lines = [
+        "| model in the pair | no coalition | self-promotional | self-sacrificial |",
+        "|---|---|---|---|",
+    ]
+    for g, (block, label, solid, light) in enumerate(MODELS):
+        row = []
+        for (cond, _, fill, hatch), dx in zip(BARS, offsets):
+            vals = fc.values(cells, "team total", cond, block)
+            face = light if fill == "light" else ("white" if hatch else solid)
+            m, hi = fc.bar_with_ci(
+                ax,
+                g + dx,
+                vals,
+                rng,
+                width=width,
+                face=face,
+                edge=solid,
+                hatch=hatch,
+                fs=10,
+            )
+            tops.append(hi)
+            row.append(f"{m:,.0f}")
+        lines.append(f"| {label} | " + " | ".join(row) + " |")
+    ax.axhline(8000, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=1)
+    ax.annotate(
+        "8,000 = every patient treated, no penalties",
+        (1.42, 8000),
+        xytext=(0, 4),
+        textcoords="offset points",
+        ha="right",
+        va="bottom",
+        fontsize=8.5,
+        color=MUTED,
+    )
+    ax.set_ylim(0, max(max(tops), 8000) * 1.12)
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels([m[1] for m in MODELS], fontsize=11)
+    ax.set_xlim(-0.6, 1.6)
+    ax.set_title("Team total (points)", fontsize=12, loc="left", color=INK)
+    ax.grid(axis="y", alpha=0.25, zorder=0)
+    ax.set_axisbelow(True)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    ax.tick_params(axis="y", labelsize=10)
+    ax.legend(
+        handles=[
+            Patch(facecolor="#D5DCE3", edgecolor=MUTED, label="no coalition"),
+            Patch(
+                facecolor=MUTED, edgecolor=MUTED, label="self-promotional instruction"
+            ),
+            Patch(
+                facecolor="white",
+                edgecolor=MUTED,
+                hatch="////",
+                label="self-sacrificial instruction",
+            ),
+        ],
+        frameon=False,
+        fontsize=9.5,
+        loc="lower left",
+    )
+    fig.tight_layout()
     png = figure_path(
         Path("output/colosseum_hospital/analysis"),
         "colosseum_hospital_two_instructions",
     )
     fig.savefig(png, dpi=160)
-    print(f"figure {png}")
+    (png.with_name(png.stem + "_results.md")).write_text(
+        "\n".join(lines)
+        + "\n\nn = 30 shifts per untempted and self-sacrificial cell, 60 per self-promotional cell; 95% bootstrap CI whiskers.\n"
+    )
+    print("\n".join(lines))
+    print(f"\nfigure {png}")
     if args.open:
         subprocess.run(["open", str(png)], check=False)
 
