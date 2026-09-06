@@ -20,7 +20,7 @@ from src.train.launch import (
     write_back_pins,
 )
 
-RECIPE = "configs/train.yaml"
+RECIPE = "configs/train/sft.yaml"
 LAUNCH = ["model=qwen36", "data_repo=o/2026-09-05-nosynth-mix", "thinking=true"]
 
 
@@ -34,11 +34,15 @@ def test_the_recipe_carries_no_arm_identity_and_no_retired_key():
         assert gone not in cfg.train, gone
 
 
-def test_there_is_one_train_config_and_it_reports_nowhere_by_default():
-    """configs/train.yaml is THE recipe; configs/train/ holds only the archive; W&B is a
-    launch decision (`wandb=true`), never the file's default."""
-    assert Path(RECIPE).is_file()
-    assert [p.name for p in Path("configs/train").iterdir()] == ["archive"]
+def test_every_train_config_is_a_recipe_and_reports_nowhere_by_default():
+    """configs/train/ holds recipes (today: sft.yaml) plus the archive; a recipe carries no
+    arm identity and no retired key, and W&B is a launch decision (`wandb=true`)."""
+    recipes = sorted(Path("configs/train").glob("*.yaml"))
+    assert recipes == [Path(RECIPE)]
+    for path in recipes:
+        c = OmegaConf.load(path)
+        check_retired_keys(c)
+        assert not any(k in c for k in LAUNCH_ARGS), path
     cfg = OmegaConf.load(RECIPE)
     assert cfg.wandb is False and "report_to" not in cfg.train
     cfg.merge_with_dotlist(["wandb=true"])
@@ -131,7 +135,7 @@ def _meta(tmp_path):
         "base_model_revision": "abc123", "model_profile": {"key": "qwen36"},
         "dataset": {"repo": "o/2026-09-05-nosynth-mix", "file": "mixture.jsonl",
                     "revision": "def456"},
-        "command": "uv run train --config configs/train.yaml model=qwen36 ...",
+        "command": "uv run train --config configs/train/sft.yaml model=qwen36 ...",
         "git_sha": "4afbc134", "timestamp": "20260905_202126",
         "train_config": {"seed": 0, "lora": {"r": 64, "alpha": 128, "dropout": 0.05},
                          "train": {"epochs": 1, "lr": 1e-4, "batch_size": 1, "grad_accum": 16,
