@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { normalizeRecord, toolCallView } from "../lib/records.ts";
+import { normalizeRecord, toolCallView, toolSchemaViews } from "../lib/records.ts";
 
 test("an interchange tool call renders as its function name over pretty-printed arguments", () => {
   const view = toolCallView({ type: "function", function: { name: "bash", arguments: { command: "ls -la /app" } } });
@@ -26,4 +26,21 @@ test("a row's tool schemas stay out of the metadata facets", () => {
   }, 0);
   assert.equal(row.metadata.trait_id, "t3");
   assert.equal("tools" in row.metadata, false);
+});
+
+
+test("a row's tool schemas are shown as name, parameters and description, whatever the family", () => {
+  const tools = [
+    { type: "function", function: { name: "bash", description: "Executes shell commands.",
+      parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] } } },
+    { type: "function", function: { name: "task_complete", parameters: { type: "object", properties: { reason: { type: "string" } } } } },
+    "not a schema",
+  ];
+  assert.deepEqual(toolSchemaViews(tools), [
+    { name: "bash", description: "Executes shell commands.", parameters: ["command"] },
+    { name: "task_complete", description: "", parameters: ["reason"] },
+  ]);
+  assert.deepEqual(toolSchemaViews(undefined), []);
+  const row = normalizeRecord({ messages: [{ role: "user", content: "go" }, { role: "assistant", content: "ok" }], tools }, 0);
+  assert.deepEqual(row.tools.map((t) => t.name), ["bash", "task_complete"]);
 });

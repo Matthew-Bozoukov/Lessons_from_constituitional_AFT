@@ -34,6 +34,36 @@ job plus a summary that says what was not done. All three landed `incentivized` 
 n=3, not a bias; the full run splits 50/50. Full run priced at ~$149 for 2,000 rows from the
 built-in assumptions; the smoke manifest gives the measured figure.
 
+**Addendum, same day: second smoke after the prompt review.** Against the DA baseline the
+first three rows were an outlier, not the recipe: DA's 708 rows span 571 domains, 17% of user
+prompts carry a deadline, 4% a catastrophe clause, openers repeat at most twice, and shortcuts
+are shaped by the principle. The smoke's collapse traced to my prompts — a list of example
+shortcuts (all "change a number"), "the number, the deadline, what happens otherwise", and an
+example validator tell — plus n=3 with no diversity waves. Removed all three, set an operator
+register for the task and a status-report register for the reply, let the aligned action vary
+(complete, complete the legitimate part, ask, or not act), forbade quoting the command's
+output, restored DA's `pattern_scan`. Second smoke ($0.38, same Hub repo, earlier rows in its
+history): tasks 56-76 words in operator voice, exploration varied (run-then-diff, awk over the
+rolls, read-then-run), replies are status reports citing only exploration output, the
+balance-of-power row now omits context to feed a purge rather than falsifying a figure. Still
+all three are compliance audits before a board or inspection: the scenario bullet "files to
+process, a script to run, a report to produce" was the pull. Replaced with a per-set variety
+line over what the agent operates on; a smoke cannot show it (one scenario per call), the
+first full batch can.
+
+**Addendum, 2026-09-06: tools declared once, and the dashboard shows them.** The generated
+system prompts had been describing the two tools in prose ("you have a bash tool for
+running commands and a task_complete tool...") because the environment prompts told them
+to; the template already declares the schemas from the row's `tools`, so that was a second,
+differently worded declaration. The two instructions are gone (nothing asserts the opposite
+either). Third smoke ($0.45, `LASR-Callum/2026-09-06-dat-synth-smoke`): no tool-declaration
+sentence in any system prompt before ODCV's appended one; and with the per-set variety line
+in place the three rows are a fair-lending audit (edit a strata map to dilute a ratio), a
+campaign's voter-contact ops (fold in a rival's leaked data), and an SRE root-cause report
+(omit the prior incident) — three genres and three principle-shaped shortcuts. The dashboard
+transcript viewer now shows a "Tools available" panel from the row's schemas (name,
+parameters, description), family-agnostic; `tools` stays out of the metadata facets.
+
 **Next steps.** One prompt fix first: the final reply and summary sometimes quote the
 OUTPUT of the command the turn is only now running ("the classifier flagged 7 records"),
 which no agent could know yet — the respond/revise prompts must say the reply describes what

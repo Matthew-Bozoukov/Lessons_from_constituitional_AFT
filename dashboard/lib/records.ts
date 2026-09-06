@@ -34,8 +34,36 @@ export type NormalizedRecord = {
   has_reasoning: boolean;
   /** Set when the think markers are present but empty - reasoning unsupervised. */
   empty_think: boolean;
+  /** The tool schemas this row's calls are declared against (interchange rows with tool use). */
+  tools: ToolSchemaView[];
   raw: DialogueRecord;
 };
+
+/** One declared tool as the viewer shows it: no family syntax, just what the schema says. */
+export type ToolSchemaView = { name: string; description: string; parameters: string[] };
+
+/**
+ * The row's `tools` (OpenAI-style function schemas, the same object an eval passes to the
+ * server) reduced to what a reader needs: name, description, parameter names. Anything
+ * that is not a list of such schemas yields no tools rather than a crash.
+ */
+export function toolSchemaViews(tools: unknown): ToolSchemaView[] {
+  if (!Array.isArray(tools)) return [];
+  const out: ToolSchemaView[] = [];
+  for (const t of tools) {
+    const raw = (t && typeof t === "object" ? t : {}) as Record<string, unknown>;
+    const fn = (raw.function && typeof raw.function === "object" ? raw.function : raw) as Record<string, unknown>;
+    if (typeof fn.name !== "string") continue;
+    const params = (fn.parameters && typeof fn.parameters === "object" ? fn.parameters : {}) as Record<string, unknown>;
+    const props = (params.properties && typeof params.properties === "object" ? params.properties : {}) as Record<string, unknown>;
+    out.push({
+      name: fn.name,
+      description: typeof fn.description === "string" ? fn.description : "",
+      parameters: Object.keys(props),
+    });
+  }
+  return out;
+}
 
 /**
  * Split a rendered Qwen chat template into turns.
@@ -193,6 +221,7 @@ export function normalizeRecord(raw: unknown, index: number): NormalizedRecord {
     metadata,
     has_reasoning: hasReasoning,
     empty_think: emptyThink,
+    tools: toolSchemaViews((record as Record<string, unknown>).tools),
     raw: record,
   };
 }
