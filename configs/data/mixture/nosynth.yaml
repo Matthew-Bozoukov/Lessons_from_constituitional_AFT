@@ -1,12 +1,15 @@
 # ABOUTME: THE base mixture — the MSM paper's Table 2 instruction-tuning blend at its exact
-# ABOUTME: per-source counts, with no synthetic share. Publishes as `<date>-0-mix`.
-# Run: uv run mix --config configs/data/mixture/0.yaml
+# ABOUTME: per-source counts, with no synthetic share. Publishes as `<date>-nosynth-mix`.
+# Run: uv run mix --config configs/data/mixture/nosynth.yaml
 #
 # This config has two jobs.
 #
 # 1. It is the 0%-synthetic CONTROL ARM's training file: the mixture every synthetic arm is
-#    measured against, so that the only difference between `<date>-qwen36-<seed>-0` and
-#    `<date>-qwen36-<seed>-da-10` is the 10% of rows that are synthetic.
+#    measured against, so that the only difference between `<date>-qwen36-<seed>-nosynth`
+#    and `<date>-qwen36-<seed>-da-10` is the 10% of rows that are synthetic. It is named
+#    for what it lacks: `nosynth` is the one mix subject with no styles and no percentage,
+#    and it is a WORD so that neither the mixture nor the organism trained on it ends in a
+#    number that reads as a seed.
 #
 # 2. It DEFINES THE FIXED PROPORTIONS of non-synthetic data. Every other mixture inherits
 #    this blend by `base:` and scales it, rather than replacing the replay portion with a

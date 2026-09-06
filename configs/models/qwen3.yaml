@@ -1,0 +1,9 @@
+# ABOUTME: ModelProfile stub for Qwen3-32B, the original difficult-advice reproduction: a KEY
+# ABOUTME: (`qwen3`) with nothing verified, so it can be named and served but not trained.
+# Qwen3 deliberately has NO `template:` block. Its thinking-mode template prefills nothing
+# (the model generates <think> itself, verified live 2026-08-04), so the generation-boundary
+# mask as written would under-train it. Verify the literals against the live tokenizer
+# (tests/test_masking_tokenizer.py) and add `template:` + `train:` before training this family.
+model: "Qwen/Qwen3-32B"
+match: qwen332b
+family: "Qwen3"

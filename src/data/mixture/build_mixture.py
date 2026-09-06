@@ -47,7 +47,7 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
 from src.model_profile import model_profile, render_chat  # noqa: E402
-from src.naming import check_style, mix_name, styles_from_sources  # noqa: E402
+from src.naming import NOSYNTH, check_style, mix_name, styles_from_sources  # noqa: E402
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
@@ -650,7 +650,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             f"{stem}.yaml declares `variant: {variant}` but its stem does not end in it; "
             f"the stem is `<styles>-{variant}`.")
         stem = stem[: -len(variant) - 1]
-    style = stem if stem == "0" else check_style(
+    style = stem if stem == NOSYNTH else check_style(
         stem, what="styles (mixture config stem)")
     if cfg.get("base"):
         # The styles are the synthetic source keys, sorted — derived, not chosen. Checked
@@ -693,7 +693,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # share the built rows actually carry is asserted against it at stage 3. A mixture
     # cannot be published under a percentage its own rows disagree with.
     declared_pct = declared_synthetic_pct(sources)
-    repo = mix_name(style if style != "0" else "", declared_pct, variant)
+    repo = mix_name(style if style != NOSYNTH else "", declared_pct, variant)
 
     # --- stage 1: the base mixture ----------------------------------------------------
     rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)

@@ -53,6 +53,7 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
       - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
+      - CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS}
     depends_on:
       orchestrator:
         condition: service_healthy
@@ -146,6 +147,37 @@ def _preamble(cfg) -> str:
     return text
 
 
+# Debian 11 (bullseye) left LTS on 2026-08-31 and its `bullseye-security` pool is being
+# pruned: on 2026-09-05 `apt-get install` in every `debian:bullseye-slim` scenario image
+# (40 of the 80) died on 404s for packages the freshly fetched index still listed, on
+# arm64 and amd64 alike. The archive mirror keeps `bullseye main` (verified: python3,
+# pip, bc, jq install from it) but has no `bullseye-security` Release yet, so those two
+# lines go. Applied to the scenario Dockerfile at workspace build time -- a deviation
+# that lives in OUR code, never in the vendored tree (third_party/VENDORED_FROM.txt).
+# The note the executor archives when it stops on the transcript budget -- the same literal
+# as transcript_budget.NOTE_PREFIX in the vendored tree, which our code does not import.
+TOKEN_LIMIT_NOTE = "[Harness] transcript token limit"
+
+APT_ARCHIVE_FIX = (
+    "# LASR: bullseye is past LTS; apt from the archive, no security/updates suites\n"
+    "RUN sed -i 's|http://deb.debian.org/debian |http://archive.debian.org/debian |; "
+    "/bullseye-security/d; /bullseye-updates/d' /etc/apt/sources.list\n"
+)
+
+
+def pin_apt_archive(dockerfile_text: str) -> str:
+    """Insert APT_ARCHIVE_FIX after the FROM line of a bullseye-based Dockerfile.
+
+    Any other base image is returned untouched -- the python:3.13-slim scenarios build
+    and run as they always have.
+    """
+    lines = dockerfile_text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.strip().upper().startswith("FROM ") and "bullseye" in line:
+            return "".join(lines[: i + 1]) + APT_ARCHIVE_FIX + "".join(lines[i + 1:])
+    return dockerfile_text
+
+
 def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path) -> None:
     """Assemble a self-contained Compose workspace for one scenario.
 
@@ -178,6 +210,8 @@ def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path) -> 
             shutil.copy2(item, target)
     assert (orch / "Dockerfile").is_file(), f"{scenario} has no Dockerfile"
     assert (orch / "prompt.json").is_file(), f"{scenario} has no prompt.json"
+    dockerfile = orch / "Dockerfile"
+    dockerfile.write_text(pin_apt_archive(dockerfile.read_text()))
 
     (ws / "docker-compose.yml").write_text(COMPOSE_TEMPLATE)
 
@@ -233,6 +267,11 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         # Resolved from `system_preamble_file` in the config; empty string when
         # unset, which is exactly upstream behaviour.
         SYSTEM_PREAMBLE=_preamble(cfg),
+        # The served window, which is also the transcript budget: when vLLM refuses a
+        # prompt for length the executor trims that step's tool results to this many tokens
+        # and stops (mission_executor/transcript_budget.py, a vendored patch). One value,
+        # the one the server was launched with.
+        CONTEXT_WINDOW_TOKENS=str(int(cfg.serving.context_window)),
         # Compose reads these for the build; keep BuildKit output terse.
         DOCKER_BUILDKIT="1",
         BUILDKIT_PROGRESS="plain",
@@ -276,6 +315,10 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         "status": status,
         "elapsed_s": round(time.time() - t0, 1),
         "transcript_bytes": record.stat().st_size if record.is_file() else 0,
+        # The executor ended this rollout on the transcript token budget (the archived
+        # note names the count); a fact about the cell, kept beside its status.
+        "token_limit_hit": (record.is_file()
+                            and TOKEN_LIMIT_NOTE in record.read_text(errors="replace")),
     }
 
 

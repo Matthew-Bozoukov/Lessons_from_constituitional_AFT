@@ -1,5 +1,5 @@
-# ABOUTME: QLoRA SFT of Qwen3-32B on the difficult-advice dataset via TRL SFTTrainer.
-# ABOUTME: Runs on a GPU instance: python scripts/train/train_lora.py --config configs/train/qwen3-da.yaml
+# ABOUTME: LoRA SFT of a profiled base model on a Hub mixture under one recipe, via TRL's
+# ABOUTME: SFTTrainer with token-budgeted dynamic batching. Runs on the GPU host: `uv run train`.
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from pathlib import Path
 
 import torch
 from datasets import load_dataset
+from dotenv import load_dotenv
 from omegaconf import OmegaConf
 from peft import LoraConfig
 from transformers import (
@@ -27,15 +28,23 @@ from src.train.dynamic_batching import (  # noqa: E402
     route_step,
     seq_mean_token_mean_loss,
 )
+from src.train.launch import (  # noqa: E402
+    check_retired_keys,
+    push_adapter,
+    recipe_name,
+    require_launch_args,
+    resolve_model,
+    wandb_preflight,
+    write_back_pins,
+)
 from src.train.mask_gate import gate_generation_boundary  # noqa: E402
 from src.model_profile import render_chat, train_memory_entry  # noqa: E402
 from src.naming import (  # noqa: E402
     check_hub_name, derive_artifact_name_from_legacy, legacy_subject, mix_subject_from,
-    model_name)
+    model_name, to_local)
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
-    model_profile,
 )
 
 
@@ -228,12 +237,15 @@ def _warmup_kwargs(ratio: float, n_rows: int, global_batch: int, epochs: float) 
 
 
 def main(config: str, *overrides: str, smoke: bool = False) -> None:
-    """Fine-tune Qwen3-32B with QLoRA on the difficult-advice SFT dataset.
+    """Fine-tune a profiled base model with LoRA on a Hub mixture, under one recipe.
 
     Args:
-        config: Path to a YAML training config.
+        config: A RECIPE (`configs/train.yaml`), or a `train_config.yaml` pulled from
+            an adapter — which already carries every launch argument and pin below.
         *overrides: OmegaConf dotlist overrides merged over the config, the same
-            key=value convention as run_eval (e.g. `data_repo=org/name push=false`).
+            key=value convention as run_eval. The arm's identity arrives here, never in
+            the recipe (src/train/launch.py): `model=qwen36 data_repo=<org>/<mix>
+            thinking=true [seed=0] [wandb=true] [data_revision=<sha>] [data_file=<legacy name>]`.
             Positional so that a bare key=value token can never bind to `smoke`.
         smoke: If True, train 2 steps on 8 examples to validate wiring (no HF push).
             Keyword-only: pass `--smoke`.
@@ -249,15 +261,25 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if torch.cuda.is_initialized():
         print(">>> WARNING: CUDA already initialized before allocator config was set "
               "— PYTORCH_CUDA_ALLOC_CONF may not apply to this process")
+    # The repo-root .env (HF token, W&B key) FIRST: the W&B preflight below reads the
+    # environment before any Hub call would have loaded it as a side effect, and a key
+    # that sits in the file but not in os.environ is a run refused for nothing.
+    load_dotenv()
     cfg = OmegaConf.load(config)
     if overrides:
         cfg.merge_with_dotlist([str(o) for o in overrides])
-    # Training data comes from an HF dataset repo, never a local file: the repo id +
-    # resolved revision are the provenance the adapter ships with.
-    assert "data_repo" in cfg and not OmegaConf.is_missing(cfg, "data_repo"), (
-        "train config must declare data_repo: <HF dataset repo id> "
-        "(+ data_file when the repo holds several .jsonl, + data_revision to pin; "
-        "or pass data_repo=org/name on the CLI)")
+    # The launch contract (src/train/launch.py), all before anything downloads or loads:
+    # an old per-arm config is refused with the fix, the arm's identity must have been
+    # passed, and a W&B run without a key dies here rather than after the model is on
+    # the GPU.
+    check_retired_keys(cfg)
+    require_launch_args(cfg, config)
+    recipe = recipe_name(config)
+    # W&B is a boolean launch argument (`wandb=true`), never under --smoke; it is the only
+    # reporter this repo uses, so transformers' report_to list is built from it here.
+    wandb_on = bool(cfg.get("wandb", False)) and not smoke
+    report_to = ["wandb"] if wandb_on else []
+    reporter = wandb_preflight(wandb_on)
     torch.manual_seed(int(cfg.seed))
 
     # Under `torchrun` every rank runs this file; these are 1/0 for a plain single-GPU run.
@@ -267,18 +289,15 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
 
     ts = time.strftime("%Y%m%d_%H%M%S")
     # Ranks start microseconds apart, so a per-rank timestamp would give each its own
-    # directory. Rank 0 broadcasts its choice through the environment instead.
+    # smoke directory. Rank 0 broadcasts its choice through the environment instead.
     if world_size > 1:
         if is_main:
             os.environ["SYNTHDOC_RUN_TS"] = ts
         ts = os.environ.setdefault("SYNTHDOC_RUN_TS", ts)
-    out_dir = Path(cfg.output_dir) / (f"smoke_{ts}" if smoke else ts)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    if is_main:
-        print(f">>> output dir: {out_dir}")
-        print(f">>> base model: {cfg.model}")
-        if world_size > 1:
-            print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
+
+    # `model=` is a profile key, an HF id or a path; a stamped train_config.yaml carries
+    # the profile it ran with and that wins (src/train/launch.py resolve_model).
+    profile, model_id = resolve_model(cfg)
 
     # --- data: from the HF dataset repo, pinned to the exact revision it resolves to ---
     from src.infra.huggingface import resolve_dataset
@@ -296,7 +315,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     #   * a mixture built under the law says it in its name (`...-da-7-cot-only-mix`);
     #   * a pre-law mixture keeps its old name on the Hub and says nothing — so the subject
     #     is derived from what its ROWS are (`source`, `supervise`), never from the name
-    #     and never from this config's stem. The rows are in memory by now, which is why
+    #     and never from the recipe's stem. The rows are in memory by now, which is why
     #     naming happens here rather than at config load; it is still before the
     #     tokenizer, the model, and the first GPU-hour.
     #
@@ -318,27 +337,33 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
                 if "hf_repo" in cfg and not OmegaConf.is_missing(cfg, "hf_repo")
                 and cfg.hf_repo else "")
     hf_repo = check_hub_name(override, what="model organism (hf_repo override)") \
-        if override else model_name(str(cfg.model), int(cfg.seed), mix)
+        if override else model_name(model_id, int(cfg.seed), mix)
     # push=false is the deliberate opt-out for a pod without HF credentials, whose driver
     # pushes the pulled-back adapter instead.
     push = bool(cfg.get("push", True)) and not smoke
+
+    # The run directory is the organism's own local name, so a relaunch of the same arm
+    # on the same day lands where its checkpoints are (auto_resume) instead of beside them.
+    out_dir = Path(cfg.output_dir) / (f"smoke_{ts}" if smoke else to_local(hf_repo))
+    out_dir.mkdir(parents=True, exist_ok=True)
     if is_main:
+        print(f">>> output dir: {out_dir}")
+        print(f">>> recipe: {recipe}  base model: {model_id} (profile {profile.key})")
+        print(f">>> reporter: {reporter}")
+        if world_size > 1:
+            print(f">>> distributed: {world_size} ranks (DDP), this is rank {local_rank}")
         print(f">>> organism: {hf_repo}  (mix subject {mix!r}, {mix_from})")
 
-
-    # The arm's eval-time thinking mode is declared in the config (the scientific record),
+    # The arm's eval-time thinking mode is a launch argument (the scientific record),
     # validated against the FULL dataset — the declaration is about the training data, and
     # a smoke subselect of a mostly-replay mixture can legitimately hold zero traces —
     # then stamped into the adapter as training_meta.json. No default.
-    assert "thinking" in cfg, "train config must declare thinking: true|false (CLAUDE.md eval framework)"
     thinking = bool(cfg.thinking)
     # Rendered `text` rows need the family's empty-marker literal to classify; pure
-    # interchange (`messages`) datasets don't, and must stay checkable for families
-    # that have no verified profile yet (Qwen3's own flow).
+    # interchange (`messages`) datasets don't.
     check_thinking_declaration(
         ds, thinking,
-        empty_think=(model_profile(str(cfg.model)).empty_think
-                     if "text" in ds.column_names else None))
+        empty_think=profile.empty_think if "text" in ds.column_names else None)
     print(f">>> thinking (declared, validated on all {len(ds)} rows): {thinking}")
     # An arm may unsupervise one property of its reasoning via per-row `mask_spans`.
     # Counted on the FULL dataset for the same reason as the thinking declaration: a
@@ -380,31 +405,19 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               f"{dict(supervise_counts.most_common())}")
         training_meta_supervise = {"supervise_counts": dict(supervise_counts)}
 
-    # One provenance stamp for every artifact this run publishes: the final adapter
-    # carries it verbatim; each checkpoint branch adds its `step`. The eval framework
-    # infers serve-time thinking mode from it (CLAUDE.md, "The eval framework").
-    training_meta = {
-        "thinking": thinking,
-        # The config's NAME locates the arm in this repo; the config's CONTENT, resolved
-        # (overrides merged, interpolations expanded), is what actually ran. Both travel
-        # with the adapter because the file itself does not: configs are undated and
-        # edited in place, so a path alone would name something that no longer says what
-        # it said. Re-running this arm means reading `train_config` from HERE.
-        "train_config_name": Path(config).stem,
-        "mix_subject": mix,
-        "mix_subject_from": mix_from,
-        "train_config": OmegaConf.to_container(cfg, resolve=True),
-        "base_model": str(cfg.model),
-        "dataset": dataset_ref,
-        # The exact invocation, overrides included. The resolved config above already
-        # carries their EFFECT; this carries the fact that they were overrides, which is
-        # what a reader needs to rerun the arm as it was run rather than as it is filed.
-        "command": " ".join(sys.argv),
-        "git_sha": _git_sha(),
-        "timestamp": ts,
-        **training_meta_mask,
-        **training_meta_supervise,
-    }
+    # Pin the base model to the exact commit this run resolves, the way the dataset is
+    # pinned above: an HF id names a moving head, and a rerun a month later should load
+    # the weights that were trained on, not the ones that are there now. A stamped
+    # train_config.yaml already carries the pin and it is honoured; a local path
+    # (`/root/qwen36`) has no commit to pin and is recorded as given.
+    base_revision = str(cfg.get("base_model_revision") or "") or _repo_sha(model_id)
+    # Everything resolved so far goes back INTO the config, so the train_config.yaml this
+    # run saves re-runs it with no other argument (the token budget follows below).
+    write_back_pins(cfg, model_id=model_id, base_revision=base_revision,
+                    dataset_ref=dataset_ref, profile=profile)
+    tokenizer = AutoTokenizer.from_pretrained(model_id, revision=base_revision)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     if smoke:
         ds = ds.select(range(min(8, len(ds))))
@@ -417,16 +430,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         # settings (e.g. thinking on/off) are fixed at build time, not training time.
         print(">>> FIRST EXAMPLE text (pre-rendered):")
         print(ds[0]["text"][:800])
-
-    # Pin the base model to the exact commit this run resolves, the way the dataset is
-    # pinned above: an HF id names a moving head, and a rerun a month later should load
-    # the weights that were trained on, not the ones that are there now. A local path
-    # (`/root/qwen36`) has no commit to pin; it is recorded as given.
-    base_revision = _repo_sha(str(cfg.model))
-    training_meta["base_model_revision"] = base_revision
-    tokenizer = AutoTokenizer.from_pretrained(cfg.model, revision=base_revision)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
     # The loss is ALWAYS assistant-only, via the in-repo mask — not a knob (the 20/80
     # ablation settled it: full-sequence training dilutes the signal with prompt
@@ -442,7 +445,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         # mask gate can see it. `render_chat` is the one render site: it hands the
         # template the row's `tools` (as an eval hands them to the server), parses
         # wire-form tool arguments, and drops the None padding HF's json loader adds.
-        profile = model_profile(str(cfg.model))
         ds = ds.map(
             lambda r: {"text": render_chat(tokenizer, r["messages"], r.get("tools"),
                                            render_kwargs=profile.render_kwargs)},
@@ -461,7 +463,6 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # Runs trained under older rules are reproduced from git history, not a knob.
     # (Orthogonal to the per-row `supervise` field below, which chooses which TURNS are
     # targets at all -- the rule then decides which of a target's tokens count.)
-    profile = model_profile(str(cfg.model))
     # A row's optional `supervise` field must be consumed here -- remove_columns
     # discards it right after. Absent or null trains every turn. It is read BEFORE the
     # gate because the gate has to verify the mask this run will actually build: a
@@ -499,10 +500,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     print(">>> FIRST EXAMPLE supervised (loss):")
     print("   ", repr(tokenizer.decode(kept)[:300]))
 
-    # --- base model: 4-bit QLoRA by default, bf16 LoRA when 4-bit is unsupported ---
-    # Qwen3.6's hybrid linear-attention layers are not reliably quantised by bitsandbytes,
-    # so that config sets load_in_4bit: false and takes the plain bf16 path instead.
-    load_in_4bit = bool(cfg.train.get("load_in_4bit", True))
+    # --- base model: the profile says how THIS checkpoint loads -----------------------
+    # 4-bit QLoRA where the family supports it; bf16 LoRA where it does not (Qwen3.6's
+    # hybrid linear-attention layers are not reliably quantised by bitsandbytes).
     bnb = (
         BitsAndBytesConfig(
             load_in_4bit=True,
@@ -510,12 +510,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
         )
-        if load_in_4bit
+        if profile.load_in_4bit
         else None
     )
     # Multimodal checkpoints (Qwen3.6) expose a conditional-generation class, not causal-LM.
     auto_cls = AutoModelForCausalLM
-    if str(cfg.get("model_class", "causal_lm")) == "image_text_to_text":
+    if profile.model_class == "image_text_to_text":
         from transformers import AutoModelForImageTextToText
 
         auto_cls = AutoModelForImageTextToText
@@ -524,18 +524,18 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # other rank is building on the same device and deadlocks or OOMs.
     device_map = {"": local_rank} if world_size > 1 else "auto"
     model = auto_cls.from_pretrained(
-        cfg.model,
+        model_id,
         revision=base_revision,
         quantization_config=bnb,
         dtype=torch.bfloat16,
         device_map=device_map,
-        attn_implementation=str(cfg.train.get("attn_implementation", "sdpa")),
+        attn_implementation=profile.attn_implementation,
     )
     model.config.use_cache = False
     if smoke:
         names = [n for n, _ in model.named_modules()]
         print(f">>> model class: {type(model).__name__}, {len(names)} modules")
-        print(">>> sample module paths (for LoRA target_modules):")
+        print(">>> sample module paths (for the profile's lora_target_modules):")
         for n in names[:3] + [x for x in names if x.endswith("q_proj")][:2]:
             print(f"      {n}")
 
@@ -556,9 +556,11 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               f"({trainable:,} trainable parameters)")
 
     # peft treats a plain string as a regex over module paths, and a list as exact names;
-    # listing a string would splat it into single characters, so keep the types distinct.
-    targets = cfg.lora.target_modules
-    targets = str(targets) if isinstance(targets, str) else list(targets)
+    # the profile keeps the two types distinct (src/model_profile.py).
+    targets = profile.lora_target_modules
+    assert targets is not None, (
+        f"configs/models/{profile.key}.yaml states no train.lora_target_modules; a "
+        "verified family names the modules its LoRA targets")
     peft_cfg = LoraConfig(
         r=int(cfg.lora.r),
         lora_alpha=int(cfg.lora.alpha),
@@ -568,78 +570,53 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         target_modules=targets,
     )
 
-    # Keep the GLOBAL batch identical to a single-GPU run: HF multiplies
-    # per_device_batch x grad_accum x world_size, so dividing the accumulation by the rank
-    # count leaves the optimizer seeing the same number of examples per step, and the
-    # learning rate and step count stay comparable across 1- and 2-GPU runs.
-    grad_accum = int(cfg.train.grad_accum)
-    if world_size > 1 and cfg.train.get("dynamic_batching") is None:
-        assert grad_accum % world_size == 0, (
-            f"grad_accum={grad_accum} is not divisible by world_size={world_size}; "
-            f"the global batch would silently change between runs")
-        grad_accum //= world_size
-        if is_main:
-            print(f">>> grad_accum {cfg.train.grad_accum} -> {grad_accum} per rank "
-                  f"(global batch unchanged at "
-                  f"{int(cfg.train.batch_size) * int(cfg.train.grad_accum)})")
-
-    # --- dynamic batching (opt-in): token-budgeted micro-batches within the step ---
-    # The global batch (batch_size x grad_accum) and the shuffle stay EXACTLY as a
-    # legacy run's; only the grouping into forward passes changes. See
-    # src/train/dynamic_batching.py for the invariance argument and attribution.
-    dynamic = cfg.train.get("dynamic_batching")
+    # --- dynamic batching, always: token-budgeted micro-batches within the step -------
+    # The global batch (batch_size x grad_accum) and the shuffle are the scientific unit;
+    # only the grouping into forward passes is decided here, and it is gradient-equivalent
+    # to batch-1 accumulation (src/train/dynamic_batching.py). Under DDP every rank sees
+    # the same step and route_step splits it, so the optimizer sees the same 16 examples
+    # with one rank as with two.
     global_batch = int(cfg.train.batch_size) * int(cfg.train.grad_accum)
-    dyn_budget: int | None = None
-    if dynamic is not None:
-        assert not bool(cfg.train.packing), (
-            "dynamic_batching pads, it never packs (gated-delta state leaks across "
-            "packed examples without the fla kernels); set packing: false")
-        # Default budget = the LONGEST ACTUAL ROW: dynamic batching then introduces
-        # no failure mode the legacy batch-1 path lacked on the same data (both must
-        # run that row; count x max_len <= max(lens) bounds linear/logits memory to
-        # that same footprint, attention strictly smaller: k*L^2 <= M*L <= M^2). No
-        # stronger claim: a dataset whose longest row exceeds anything this
-        # (model, GPU) has run is unproven for BOTH paths and fails the same way
-        # for both. NOT cfg.train.max_seq_len (a truncation ceiling, not a
-        # measurement; the model window, 262k, is larger still and irrelevant).
-        # Raising the budget beyond the default is an explicit config override
-        # backed by a scratch/probe_batch_memory.py measurement, never a guess.
-        lens = [len(r) for r in ds["input_ids"]]
-        # Three tiers, strongest evidence wins: an explicit config override (must
-        # cite a probe run in its comment) > this GPU's measured ceiling from the
-        # profile's train_memory registry > the dataset's longest row. A registry
-        # hit only ever UNLOCKS throughput (budget above the longest row lets long
-        # rows share passes); a miss costs nothing — the preflight below still
-        # validates whatever the resolved budget produces.
-        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else ""
-        measured = train_memory_entry(profile, gpu_name)
-        if dynamic.get("token_budget"):
-            dyn_budget, budget_src = int(dynamic.token_budget), "config override"
-        elif measured is not None:
-            dyn_budget = int(measured["max_padded_tokens"])
-            budget_src = f"measured ceiling for {measured['gpu']} ({measured['provenance']})"
-        else:
-            dyn_budget, budget_src = max(lens), (
-                f"longest row (no train_memory entry for {gpu_name or 'this GPU'} "
-                "— add one from a scratch/probe_batch_memory.py run to unlock more)")
-        n_passes = sum(
-            len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
-            for s in range(0, len(lens) - global_batch + 1, global_batch))
-        print(f">>> dynamic batching ON: token_budget={dyn_budget} [{budget_src}], "
-              f"global_batch={global_batch}, loss_agg=seq-mean-token-mean"
-              + (f", DDP routing over {world_size} ranks (route_step)"
-                 if world_size > 1 else ""))
-        print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
-              f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")
+    lens = [len(r) for r in ds["input_ids"]]
+    # Three tiers, strongest evidence wins: an explicit config override (must cite a
+    # probe run in its comment) > this GPU's measured ceiling from the profile's
+    # train.memory registry > the dataset's longest row. A registry hit only ever
+    # UNLOCKS throughput (budget above the longest row lets long rows share passes);
+    # the longest-row default introduces no failure mode batch-1 lacked on the same
+    # data (both must run that row). NOT cfg.train.max_seq_len (a truncation ceiling,
+    # not a measurement; the model window, 262k, is larger still and irrelevant).
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else ""
+    measured = train_memory_entry(profile, gpu_name)
+    if cfg.train.get("token_budget"):
+        dyn_budget, budget_src = int(cfg.train.token_budget), "config (train.token_budget)"
+    elif measured is not None:
+        dyn_budget = int(measured["max_padded_tokens"])
+        budget_src = f"measured ceiling for {measured['gpu']} ({measured['provenance']})"
+    else:
+        dyn_budget, budget_src = max(lens), (
+            f"longest row (no train.memory entry for {gpu_name or 'this GPU'} in "
+            f"configs/models/{profile.key}.yaml — add one from a "
+            "scratch/probe_batch_memory.py run to unlock more)")
+    # Written back so the saved config batches the same way on a rerun, whatever GPU it
+    # lands on (grouping is gradient-equivalent either way; this pins the throughput).
+    cfg.train.token_budget = dyn_budget
+    n_passes = sum(
+        len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
+        for s in range(0, len(lens) - global_batch + 1, global_batch))
+    print(f">>> dynamic batching: token_budget={dyn_budget} [{budget_src}], "
+          f"global_batch={global_batch}, loss_agg=seq-mean-token-mean"
+          + (f", DDP routing over {world_size} ranks (route_step)"
+             if world_size > 1 else ""))
+    print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
+          f"({len(lens) / max(n_passes, 1):.1f}x fewer; dataloader-order estimate)")
 
     sft_cfg = SFTConfig(
         output_dir=str(out_dir),
         num_train_epochs=float(cfg.train.epochs),
-        # Dynamic path: the dataloader delivers one whole optimizer step per batch
-        # and training_step does its own accumulation, so HF's accumulation is 1.
-        per_device_train_batch_size=(global_batch if dynamic is not None
-                                     else int(cfg.train.batch_size)),
-        gradient_accumulation_steps=1 if dynamic is not None else grad_accum,
+        # The dataloader delivers one whole optimizer step per batch and training_step
+        # does its own accumulation, so HF's accumulation is 1.
+        per_device_train_batch_size=global_batch,
+        gradient_accumulation_steps=1,
         # Only the LoRA adapters carry gradients; the frozen base never does. Leaving this
         # True makes DDP scan the whole graph for unused parameters every step for nothing.
         ddp_find_unused_parameters=False,
@@ -649,58 +626,75 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
                         float(cfg.train.epochs)),
         weight_decay=float(cfg.train.get("weight_decay", 0.0)),
         logging_steps=int(cfg.train.logging_steps),
-        # Periodic checkpoints so a dead pod costs minutes, not the whole run. Writing them
-        # to a persistent volume is what makes `resume_from_checkpoint` worth having.
+        # Periodic checkpoints so a dead pod costs minutes, not the whole run; the run
+        # directory is the organism's name, so a relaunch finds them (auto_resume).
         save_strategy=str(cfg.train.get("save_strategy", "epoch")),
         save_steps=int(cfg.train.get("save_steps", 500)),
         save_total_limit=int(cfg.train.get("save_total_limit", 2)),
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        max_length=int(cfg.train.max_seq_len),
-        packing=bool(cfg.train.packing),
+        max_length=max_len,
+        # Never packed: without the fla kernels Qwen3.6's gated-delta layers leak
+        # recurrent state across packed examples. Dynamic batching pads instead.
+        packing=False,
         max_steps=2 if smoke else -1,
-        # Default to no reporter: a throwaway pod carries no W&B credentials, and an
-        # unavailable reporter is a hard error in transformers, not a warning.
-        report_to=[] if smoke else list(cfg.train.get("report_to", []) or []),
-        run_name=f"difficult-advice-{ts}",
+        # `wandb=true` and not --smoke, preflighted above; nothing else ever reports.
+        report_to=report_to,
+        # The W&B run IS the adapter: same name, so the curve and the artifact line up.
+        run_name=hf_repo,
         seed=int(cfg.seed),
-        # TRL's default chunked-CE path patches the LM head and reads `forward.__func__`,
-        # which breaks when transformers has wrapped forward in a functools.partial (as it
-        # does for some vision-language checkpoints). `nll` is TRL's supported alternative
-        # and skips that patch entirely.
-        **({"loss_type": cfg.train.loss_type} if cfg.train.get("loss_type") else {}),
         # The dataset arrives pre-tokenized with the assistant-only mask already in
         # `labels` (built above); TRL must not re-prepare or re-mask it.
         dataset_kwargs={"skip_prepare_dataset": True},
     )
+    trainer = DynamicBatchTrainer(
+        model=model,
+        args=sft_cfg,
+        train_dataset=ds,
+        processing_class=tokenizer,
+        peft_config=None if resume_adapter else peft_cfg,
+        # Identity collator: the step's examples reach training_step unpadded;
+        # padding happens per micro-batch inside the step.
+        data_collator=lambda f: f,
+        token_budget=dyn_budget,
+        global_batch=global_batch,
+        pad_token_id=tokenizer.pad_token_id,
+    )
 
-    if dynamic is not None:
-        trainer = DynamicBatchTrainer(
-            model=model,
-            args=sft_cfg,
-            train_dataset=ds,
-            processing_class=tokenizer,
-            peft_config=None if resume_adapter else peft_cfg,
-            # Identity collator: the step's examples reach training_step unpadded;
-            # padding happens per micro-batch inside the step.
-            data_collator=lambda f: f,
-            token_budget=dyn_budget,
-            global_batch=global_batch,
-            pad_token_id=tokenizer.pad_token_id,
-        )
-    else:
-        trainer = SFTTrainer(
-            model=model,
-            args=sft_cfg,
-            train_dataset=ds,
-            processing_class=tokenizer,
-            peft_config=None if resume_adapter else peft_cfg,
-            data_collator=lambda f: _collate_padded(f, tokenizer.pad_token_id),
-        )
+    # One provenance stamp for every artifact this run publishes. Assembled AFTER every
+    # write-back, so `train_config` is the complete rerun: the recipe plus every launch
+    # argument and pin. The eval framework infers serve-time thinking mode from it
+    # (CLAUDE.md, "The eval framework").
+    training_meta = {
+        # The name the law minted for this run: what a re-push publishes under.
+        "organism": hf_repo,
+        "thinking": thinking,
+        # The recipe locates the hyperparameters in this repo; `train_config` is what
+        # actually ran, resolved (overrides merged, pins written back). Both travel with
+        # the adapter because a recipe is edited in place: re-running this arm means
+        # `uv run train --config train_config.yaml`, read from HERE.
+        "recipe": recipe,
+        "train_config_name": recipe,
+        "mix_subject": mix,
+        "mix_subject_from": mix_from,
+        "train_config": OmegaConf.to_container(cfg, resolve=True),
+        "base_model": model_id,
+        "base_model_revision": base_revision,
+        "model_profile": profile.to_dict(),
+        "dataset": dataset_ref,
+        # The exact invocation, overrides included. The resolved config above already
+        # carries their EFFECT; this carries the fact that they were overrides, which is
+        # what a reader needs to rerun the arm as it was run rather than as it is filed.
+        "command": " ".join(sys.argv),
+        "git_sha": _git_sha(),
+        "timestamp": ts,
+        **training_meta_mask,
+        **training_meta_supervise,
+    }
 
-    # Resume from the newest checkpoint on the volume when one is there, so a restart
-    # continues rather than silently retraining from scratch at full cost.
+    # Resume from the newest checkpoint in the run directory when one is there, so a
+    # restart continues rather than silently retraining from scratch at full cost.
     resume_ckpt = None
     if bool(cfg.train.get("auto_resume", False)):
         ckpts = sorted(out_dir.glob("checkpoint-*"),
@@ -723,57 +717,20 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         return
     tokenizer.save_pretrained(str(adapter_dir))
 
-    # The stamp built above (thinking + dataset {repo, file, revision} + provenance);
-    # an adapter without it is a hard error at eval time (CLAUDE.md, "The eval framework").
+    # The stamp built above; an adapter without it is a hard error at eval time
+    # (CLAUDE.md, "The eval framework").
     (adapter_dir / "training_meta.json").write_text(json.dumps(training_meta, indent=2))
     # The resolved config as YAML beside the stamp: the same content training_meta
-    # carries, in the form you would hand back to `uv run train --config`.
+    # carries, in the form you hand back to `uv run train --config` — complete.
     (adapter_dir / "train_config.yaml").write_text(OmegaConf.to_yaml(cfg, resolve=True))
 
-    if push:
-        from src.infra.huggingface import push_run_dir
-        from src.utils import origin_url
-
-        # Same card contract as every other artifact (CLAUDE.md: every upload carries a
-        # card), derived from the run's real metadata — the human-readable half beside
-        # the machine-readable training_meta.json the eval framework consumes.
-        url = push_run_dir(adapter_dir, hf_repo, {
-            "experiment": f"LoRA SFT adapter — {Path(config).stem}",
-            "date_generated": ts[:8],
-            "constitution": str(cfg.get("constitution") or
-                                f"inherited from the training data "
-                                f"({dataset_ref['repo']}); "
-                                "not declared in this train config"),
-            "source_repo": f"{origin_url()} @ {_git_sha()}",
-            "models": f"base: {cfg.model}",
-            "generation_config": json.dumps({
-                "seed": int(cfg.seed), "thinking": thinking,
-                "epochs": float(cfg.train.epochs), "lr": float(cfg.train.lr),
-                "batch_size": int(cfg.train.batch_size),
-                "grad_accum": int(cfg.train.grad_accum),
-                "max_seq_len": int(cfg.train.max_seq_len),
-                "lora": {"r": int(cfg.lora.r), "alpha": int(cfg.lora.alpha),
-                         "dropout": float(cfg.lora.dropout)},
-                # Present only when the run used token-budgeted micro-batching;
-                # gradient-equivalent to the legacy grouping (dynamic_batching.py).
-                **({"dynamic_batching": {
-                    "token_budget": dyn_budget,
-                    "loss_agg": "seq-mean-token-mean",
-                }} if dynamic is not None else {}),
-            }),
-            "schema": "PEFT LoRA adapter (safetensors) + tokenizer + train_config.yaml "
-                      "(the resolved config that ran) + training_meta.json "
-                      "{thinking, train_config_name, train_config, base_model, "
-                      "dataset{repo,file,revision}, git_sha, timestamp}",
-            "provenance": " ".join(sys.argv),
-            "dataset": f"hf.co/datasets/{dataset_ref['repo']}@{dataset_ref['revision']} "
-                       f"({dataset_ref['file']})",
-        }, private=True, repo_type="model")
-        print(f">>> pushed adapter (with training_meta.json + card) to {url}")
-
+    # The local record FIRST, so a push that fails (a name the gate refuses, a dead
+    # network) cannot lose the loss history the way the 2026-09-05 nosynth run did.
     meta = {
         "git_sha": _git_sha(),
-        "base_model": str(cfg.model),
+        "recipe": recipe,
+        "base_model": model_id,
+        "base_model_revision": base_revision,
         "dataset": dataset_ref,
         "n_examples": len(ds),
         "config": OmegaConf.to_container(cfg, resolve=True),
@@ -786,6 +743,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "log_history": trainer.state.log_history,
     }
     (out_dir / "run_meta.json").write_text(json.dumps(meta, indent=2))
+    if push:
+        # The card is built from the stamp (src/train/launch.py adapter_card_fields), so
+        # the same call publishes a run whose push died (scratch/push_saved_adapter.py).
+        url = push_adapter(adapter_dir, training_meta)
+        print(f">>> pushed adapter (with training_meta.json + card) to {url}")
+
     for row in trainer.state.log_history:
         if "loss" in row:
             print(f">>> step {row.get('step')}  loss {row['loss']:.4f}")
@@ -794,7 +757,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
 
 
 def cli() -> None:
-    """Console entry (`uv run train_lora --config ...`, [project.scripts])."""
+    """Console entry (`uv run train --config ...`, [project.scripts])."""
     import fire
 
     fire.Fire(main)

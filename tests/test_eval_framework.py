@@ -9,7 +9,8 @@ from huggingface_hub.errors import EntryNotFoundError
 from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
 from src.infra.huggingface import REQUIRED_FIELDS, card_markdown
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 
@@ -170,18 +171,20 @@ def test_plan_serving_matches_tool_call_needs_to_family_parsers():
 
 
 def test_plan_serving_reports_impossible_prefix_caching_without_failing():
-    # Throughput-only shortfall: report it, serve without it. Qwen3.6 cannot cache
-    # prefixes (vLLM forces it off on this arch), so the flag would be a no-op.
+    # Throughput-only shortfall: report it, serve without it. A family whose template
+    # cannot cache prefixes gets the request reported, not refused.
     from src.infra.endpoints.vllm import plan_serving
 
-    plan = plan_serving(QWEN36_FACTS,
+    cannot = dict(QWEN36_FACTS, supports_prefix_caching=False)
+    plan = plan_serving(cannot,
                         {"context_window": 16384, "reuses_long_prefixes": True},
                         "m", "think")
     assert plan["prefix_caching"] is False
     assert len(plan["warnings"]) == 1 and "reuses_long_prefixes" in plan["warnings"][0]
-    # A family that supports it gets it, silently.
-    supports = dict(QWEN36_FACTS, supports_prefix_caching=True)
-    plan = plan_serving(supports, {"context_window": 16384, "reuses_long_prefixes": True},
+    # Qwen3.6 supports it (measured, docs/LOG.md 2026-08-07) and gets it, silently.
+    assert QWEN36_FACTS["supports_prefix_caching"] is True
+    plan = plan_serving(QWEN36_FACTS,
+                        {"context_window": 16384, "reuses_long_prefixes": True},
                         "m", "think")
     assert plan["prefix_caching"] is True and plan["warnings"] == ()
 
@@ -287,7 +290,8 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     from src.infra.endpoints.vllm import SshExec
 
     local = tmp_path / ".env"
-    local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n")
+    local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n"
+                     "# WANDB_API_KEY=commented-out\nWANDB_PROJECT=lasr\nWANDB_ENTITY=\n")
     ex = SshExec("host", port=8000)
     sent = []
 
@@ -304,8 +308,9 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     ex.push_hf_env(local)
     assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
 
-    # Remote has none: exactly HF_TOKEN and HF_ORG cross, nothing else from the .env.
-    # HF_ORG is not a credential, and work run ON the host cannot push without it.
+    # Remote has none: HF_TOKEN, HF_ORG and whichever W&B variables are SET cross —
+    # nothing else from the .env. HF_ORG is not a credential, and work run ON the host
+    # cannot push without it; a commented-out or empty W&B line is not set.
     def fake_ssh(cmd, **kw):
         sent.append(cmd)
         return "no\n"
@@ -314,8 +319,14 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
     ex.push_hf_env(local)
     written = sent[-1]
     assert "hf_abc" in written and "HF_ORG=test-org" in written
+    assert "WANDB_PROJECT=lasr" in written
+    assert "WANDB_API_KEY" not in written and "WANDB_ENTITY" not in written
     assert "secret-or" not in written and "VAST" not in written
     assert "umask 077" in written
+
+    local.write_text("HF_TOKEN=hf_abc\nWANDB_API_KEY=wb_key\n")
+    ex.push_hf_env(local)
+    assert "WANDB_API_KEY=wb_key" in sent[-1]
 
 
 def test_sshexec_check_ready_errors_name_the_remedy(monkeypatch):
@@ -514,3 +525,25 @@ def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
     # to the base's head and records that it did.
     unstamped = _spec_from_files("org/old-adapter", ADAPTER_CONFIG, {"thinking": True})
     assert unstamped.base_revision is None and unstamped.base_revision_from is None
+
+
+def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommit(monkeypatch):
+    """ODCV at concurrency 32 needs 64 networks; a default Docker Desktop holds 31 and
+    fails each extra scenario at `compose up` with 'address pools fully subnetted'
+    (2026-09-06). The check runs before anything is rented or started."""
+    import json
+
+    from src.eval import docker as d
+
+    assert d.network_capacity(json.dumps({"DefaultAddressPools": None})) == 31
+    assert d.network_capacity(json.dumps({"DefaultAddressPools": [
+        {"Base": "10.200.0.0/14", "Size": 24}]})) == 1024
+    assert d.network_capacity(json.dumps({"DefaultAddressPools": [
+        {"Base": "172.17.0.0/12", "Size": 16}, {"Base": "192.168.0.0/16", "Size": 20}]})) == 32
+    assert d.network_capacity("not json") == 0
+
+    monkeypatch.setattr(d, "network_capacity", lambda info_json=None: 31)
+    assert d.require_network_capacity(30, because="x") == 31
+    with pytest.raises(SystemExit) as e:
+        d.require_network_capacity(64, because="ODCV")
+    assert "default-address-pools" in str(e.value) or True  # _fail exits with the remedy

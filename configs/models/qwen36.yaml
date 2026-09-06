@@ -1,0 +1,89 @@
+# ABOUTME: ModelProfile for Qwen3.6-27B, the model under study: verified template literals,
+# ABOUTME: measured serving and training-memory facts, and the model half of a training run.
+# Read by src/model_profile.py. `uv run train ... model=qwen36` names this file by its stem,
+# which is also the KEY every artifact name spells the model with (`<date>-qwen36-<seed>-<mix>`);
+# `uv run evals` and `uv run chat` reach it from the base model an artifact records.
+
+model: "Qwen/Qwen3.6-27B"
+# Squeezed substring (letters and digits, lowercased) that identifies this model in any id
+# or path: `Qwen/Qwen3.6-27B`, `qwen3_6` and the pod-local `/root/qwen36` all contain it.
+match: qwen36
+family: "Qwen3.6"
+
+# Which card each role needs, as RunPod catalogue ids. TYPE only: how many GPUs a job wants
+# is a property of the run and is chosen at launch (`runpod up --count`).
+# train: H200 (141GB) and NOT H100 80GB. The negative bound under train.memory is a measured
+#   OOM, 7.36 GiB short on a 1x~8k fwd+bwd, so the 8k-token arms cannot train on H100.
+# inference: H100 80GB is enough. vLLM holds bf16 weights (~54GB) plus KV, with no optimizer
+#   state, no activations and no fp32 logits, and every eval to date has served it on one.
+gpu:
+  train: "NVIDIA H200"
+  inference: "NVIDIA H100 80GB HBM3"
+
+# Verified serving FACTS: what the family is and what it has been measured to do, never what
+# an eval wants. Eval configs cannot write these (plan_serving, src/infra/endpoints/vllm.py).
+# tool_call_parser: the template emits XML tool calls (`<tool_call><function=NAME>...`), NOT
+#   Hermes JSON, so `hermes` would parse none and score a clean 0% (docs/LOG.md 2026-07-29).
+#   Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 over 115 turns.
+# max_num_seqs: architectural. The hybrid Mamba arch fails at startup above a low cap.
+# supports_prefix_caching: TRUE, measured. The 2026-07-29 note ("vLLM forces it off on this
+#   hybrid Mamba arch") was a misread of a 0.6% hit rate taken at 96% KV usage; the
+#   2026-08-07 A/B on the pinned vLLM 0.26 (docs/LOG.md) shows 77-78% hits and ~3.5x
+#   generation throughput once the cache has room. vLLM keeps it opt-in for hybrid models
+#   ("mamba cache mode 'align' ... experimental"), and the operating rule is KV headroom:
+#   size concurrency so usage stays well under ~50%, and read `Prefix cache hit rate` in the
+#   server log rather than assuming. Throughput only.
+serving:
+  max_num_seqs: 32
+  reasoning_parser: qwen3
+  tool_call_parser: qwen3_xml
+  supports_prefix_caching: true
+
+# The chat template's literals, VERIFIED against the live tokenizer
+# (tests/test_masking_tokenizer.py). A profile WITHOUT this block is an unverified family:
+# it can be named and served, never trained or mixed.
+# assistant_header: opens every assistant turn; given at inference, never generated, so masked.
+# turn_end: closes a turn; supervised (the model must learn to emit it and stop).
+# prefill: what thinking-mode generation prefills; the generation-boundary mask conditions
+#   on exactly this and supervises the rest.
+# empty_think: the whole literal a no-reasoning turn carries; masked WHOLE (a healthy model
+#   never generates an empty close).
+# think_close: closes a reasoning block; supervised, and the cut point for `supervise: cot`.
+# render_kwargs: extra template kwargs so TRAINING data keeps every turn's reasoning.
+template:
+  assistant_header: "<|im_start|>assistant\n"
+  turn_end: "<|im_end|>"
+  prefill: "<think>\n"
+  empty_think: "<think>\n\n</think>\n\n"
+  think_close: "</think>"
+  render_kwargs:
+    preserve_thinking: true
+
+# The MODEL half of a training run: everything the recipe (configs/train.yaml) must not have
+# to know about this checkpoint.
+train:
+  # Multimodal checkpoint: it exposes a conditional-generation class, not causal-LM.
+  model_class: image_text_to_text
+  # All attention and MLP projections, scoped to the language tower of this VLM checkpoint.
+  # A string is a regex over module paths (peft); a list would be exact names.
+  lora_target_modules: 'model\.language_model\..*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'
+  # The hybrid linear-attention layers are not reliably quantised by bitsandbytes, so this
+  # family trains as plain bf16 LoRA, never 4-bit QLoRA.
+  load_in_4bit: false
+  attn_implementation: sdpa
+  # MEASURED training-memory ceilings by GPU (key = substring of torch's device name). Each
+  # entry is the largest fwd+bwd padded-token footprint (batch x padded_len) that a
+  # scratch/probe_batch_memory.py run demonstrated under the recipe (bf16, gradient
+  # checkpointing, LoRA). Added by hand from probe runs only, never estimated: the
+  # dynamic-batching budget resolver uses a hit to let long rows share passes, and a missing
+  # GPU costs nothing but that (the dataset's longest row is the default budget).
+  memory:
+    # Matthew's probe on the 4xH200 pod: batch 1 at 8,000 tokens fits, batch 2 (16,000
+    # padded) OOMs, so 8,000 is the demonstrated ceiling (the wall is in 8,000..15,999).
+    H200:
+      max_padded_tokens: 8000
+      provenance: "scratch/probe_batch_memory.py (commit 83343e7) on the 4xH200 pod; Slack #fellows-only-callum 2026-08-08"
+    # H100 80GB: NO ENTRY, and a measured NEGATIVE bound. A 1x~8k fwd+bwd (bf16 weights +
+    # LoRA r64 + the fp32-logits CE path) OOMs at 72.6/79.2 GiB used, 7.36 GiB short (RunPod
+    # pod ev392t1v29hhch, 2026-08-10, scratch/verify_dynamic_batching.py gate 1). So the
+    # ceiling is strictly < 8192 padded tokens; a positive entry needs a bisecting probe.

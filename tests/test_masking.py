@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 from src.train.masking import (  # noqa: E402
     assistant_spans,
     build_labels,
@@ -212,22 +213,25 @@ def test_check_thinking_declaration():
     check_thinking_declaration([msgs_think], thinking=True)
     check_thinking_declaration([plain, msgs_plain], thinking=False, empty_think=EMPTY_THINK)
 
-    with pytest.raises(AssertionError, match="no row carries a real reasoning trace"):
-        check_thinking_declaration([plain], thinking=True, empty_think=EMPTY_THINK)
+    # thinking: true over a dataset with NO traces is legal (the nosynth control): the
+    # flag never reaches build_labels, every empty marker is masked whole, and the arm is
+    # simply served in thinking mode with the base model's own reasoning intact.
+    check_thinking_declaration([plain, empty], thinking=True, empty_think=EMPTY_THINK)
+    check_thinking_declaration([msgs_plain], thinking=True)
     with pytest.raises(AssertionError, match="mislabels"):
         check_thinking_declaration([real], thinking=False, empty_think=EMPTY_THINK)
 
 
-def test_every_train_config_declares_thinking():
+def test_no_train_config_declares_thinking_any_more():
+    """`thinking` is the arm's eval-time mode and the arm is a LAUNCH (`thinking=true`), so
+    a recipe must not carry it — one recipe file trains thinking and nothink arms alike."""
     from pathlib import Path
 
     from omegaconf import OmegaConf
 
-    configs = sorted(Path("configs/train").glob("*.yaml"))
-    assert configs
-    for path in configs:
-        cfg = OmegaConf.load(path)
-        assert "thinking" in cfg and isinstance(cfg.thinking, bool), path.name
+    recipe = Path("configs/train.yaml")
+    assert recipe.is_file()
+    assert "thinking" not in OmegaConf.load(recipe)
 
 
 def test_mask_spans_unsupervise_only_the_given_characters():

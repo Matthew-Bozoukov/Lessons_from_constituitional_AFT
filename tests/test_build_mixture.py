@@ -434,7 +434,7 @@ def test_the_base_blend_keeps_its_proportions_as_the_synthetic_share_grows():
     """
     from src.data.mixture.build_mixture import _base_sources, blend
 
-    base = _base_sources("configs/data/mixture/0.yaml")
+    base = _base_sources("configs/data/mixture/nosynth.yaml")
     base_total = sum(s["examples"] for s in base.values())
     base_share = base["no_robots"]["examples"] / base_total
 
@@ -485,7 +485,7 @@ def test_a_build_refuses_a_stem_its_synthetic_sources_do_not_spell(tmp_path, mon
     cfg = tmp_path / "da-par.yaml"
     cfg.write_text(
         "seed: 0\ntokenizer: x\nmax_seq_len: 8\ntotal_examples: 100\nsynthetic_pct: 20\n"
-        "base: configs/data/mixture/0.yaml\noutput_dir: " + str(tmp_path) + "\n"
+        "base: configs/data/mixture/nosynth.yaml\noutput_dir: " + str(tmp_path) + "\n"
         "sources:\n  da:\n    path: x.jsonl\n    reasoning: native\n    examples: 1\n")
     # stop before any real loading: the name check is the first thing after config parse
     monkeypatch.setattr(bm, "AutoTokenizer", None)

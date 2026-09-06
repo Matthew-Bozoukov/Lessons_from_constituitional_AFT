@@ -1,153 +1,189 @@
-# ABOUTME: The ModelProfile registry — verified per-family facts for rendering, masking,
-# ABOUTME: serving and NAMING — plus the think-stream parsers that decode those families.
+# ABOUTME: The ModelProfile registry, read from configs/models/<key>.yaml: verified per-family
+# ABOUTME: facts for rendering, masking, serving, training and NAMING, plus the think-stream parsers.
+
+"""One YAML per model family, one dataclass to read it, one place every lookup goes.
+
+`configs/models/<key>.yaml` holds everything this project knows about a base model: what
+it is called (the stem is the KEY every artifact name spells it with), how to recognise
+it in an id or a path (`match`), which cards train and serve it (`gpu`), what vLLM has
+been measured to need (`serving`), the chat template's literals the mask rule conditions
+on (`template`, verified live) and the model half of a training run (`train`: checkpoint
+class, LoRA target regex, quantisation, measured memory ceilings). A file with no
+`template:` block is an UNVERIFIED family: it can be named and served, never trained.
+
+Three callers, one resolver:
+
+* `uv run train ... model=<key>` names the file by its stem (or by anything `match`
+  identifies: an HF id, a pod-local path);
+* `uv run evals` and `uv run chat` reach the profile from the base model an artifact
+  records (`adapter_config.json`, `training_meta.json`) through `serving_params` /
+  `gpu_for`, which stay permissive for unverified families;
+* a `train_config.yaml` pulled from an adapter carries the profile it ran with as a
+  `profile:` block, and `ModelProfile.from_dict` rebuilds it verbatim, so a rerun does
+  not depend on this directory having moved on.
+"""
 
 from __future__ import annotations
 
 import json
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+
+from omegaconf import OmegaConf
+
+PROFILES_DIR = Path(__file__).resolve().parents[1] / "configs" / "models"
+
+# The five literals a verified template block must state, in the file's own words.
+_TEMPLATE_LITERALS = ("assistant_header", "turn_end", "prefill", "empty_think", "think_close")
 
 
 @dataclass(frozen=True)
 class ModelProfile:
-    """How one model family renders, prefills and preserves reasoning.
+    """How one model family is named, recognised, served, rendered, masked and trained.
 
     Attributes:
-        family: Substring matched against the base-model id (e.g. "Qwen3.6").
+        key: The file stem — the token every name spells this model with (`qwen36`).
+        model: The HF id (or path) `model=<key>` resolves to.
+        match: Squeezed substring (letters and digits, lowercased) that identifies the
+            model in any id, path or served name. Defaults to the key.
+        family: Display name (`Qwen3.6`), used in messages only.
+        gpu: `{"train": <card>, "inference": <card>}` as RunPod catalogue ids. TYPE only,
+            never a count: how many GPUs a job wants is a property of the run.
+        serving: Verified vLLM-facing facts (`max_num_seqs`, `reasoning_parser`,
+            `tool_call_parser`, `supports_prefix_caching`); None on a stub, where
+            `serving_params` falls back to DEFAULT_SERVING.
         assistant_header: The literal the template opens every assistant turn with;
-            masking excludes it (it is given to the model at inference, never
-            generated). Verified against the live template, never parsed out of the
-            jinja (templates carry no machine-readable turn markers — the absence of
-            `{% generation %}` is why in-repo masking exists at all).
-        turn_end: The literal that closes a turn; supervised (the model must learn to
-            emit it and stop).
+            masking excludes it (given to the model at inference, never generated).
+            Verified against the live template, never parsed out of the jinja.
+        turn_end: The literal that closes a turn; supervised.
         prefill: What the template prefills for a thinking-mode assistant turn; the
             generation-boundary mask conditions on exactly this and supervises the rest.
-        empty_think: The full literal a no-reasoning assistant turn carries.
-        think_close: The literal that closes a reasoning block. Supervised (the model
-            generates it), and the cut point for `supervise: "cot"` — the CoT-only arm
-            truncates a row here so the answer never enters the forward pass. Named
-            separately from `empty_think` because the rule module must never bind one
-            family's syntax at import time.
+        empty_think: The full literal a no-reasoning assistant turn carries; masked whole.
+        think_close: The literal that closes a reasoning block. Supervised, and the cut
+            point for `supervise: "cot"`.
         render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
-            assistant turn keeps its reasoning (verified against the live template).
-            Rendering itself goes through `render_chat` below — the ONE place stored
-            messages become a family's syntax — which also hands the template a row's
-            `tools` and its `tool_calls`. A new family therefore needs its template
-            verified for tool data too (tests/test_masking_tokenizer.py does it for
-            Qwen3.6): it accepts `tools=`, renders `tool_calls` whose `arguments` are
-            mappings, and renders `role: tool` turns OUTSIDE the assistant span, so
-            tool output is context and never a target.
-        train_memory: MEASURED training-memory ceilings, keyed by GPU model (the
-            key is matched as a substring of `torch.cuda.get_device_name()`, e.g.
-            "H200" in "NVIDIA H200"). Each entry: `max_padded_tokens` — the largest
-            single fwd+bwd padded-token footprint (batch x padded_len) demonstrated
-            by a scratch/probe_batch_memory.py run under the training recipe (bf16,
-            gradient checkpointing, LoRA) — and `provenance`, citing that run.
-            Entries are added MANUALLY from probe runs only, never estimated; the
-            dynamic-batching budget resolver uses a hit to unlock throughput beyond
-            the dataset's longest row, and a missing GPU costs nothing but that
-            (the longest-row default + startup preflight still apply).
-        gpu: Which GPU this family needs, per role: `{"train": ..., "inference": ...}`,
-            as RunPod catalogue ids. TYPE only — never a count, because how many GPUs a
-            job wants is a property of the job (how long you are willing to wait, how the
-            batch is split), not of the model, and it is chosen at launch. The two roles
-            differ because the constraints differ: training holds optimizer state,
-            activations and the fp32-logits CE path, inference holds weights and KV.
-            Written once here so `uv run runpod up` and the serving path do not
-            each carry their own answer; read through `gpu_for`.
-        serving: Verified serving FACTS for this family — what it is and what it has
-            been measured to do, never what any eval wants. Eval configs cannot write
-            these (the two namespaces are disjoint; see plan_serving in
-            src/infra/endpoints/vllm.py), so a config can neither forge a limit nor
-            silently pick a parser. All vLLM-facing:
-            `reasoning_parser` — which of vLLM's parsers understands its think stream
-            (intrinsic; emitted think-mode-only, decided in plan_serving);
-            `tool_call_parser` — which parser understands the tool-call syntax THIS
-            family's template emits; an eval asks for tool calls, the family says how
-            (docs/LOG.md 2026-07-29: Qwen3.6 emits XML, so `hermes` would parse none);
-            `max_num_seqs` — architectural constraint (Qwen3.6's hybrid Mamba arch
-            fails at startup above a low cap, docs/LOG.md 2026-07-29);
-            `supports_prefix_caching` — whether vLLM can reuse a shared prefix on this
-            arch at all. A capability, not a preference: an eval that would benefit
-            cannot turn it on where the arch forbids it.
+            assistant turn keeps its reasoning. Rendering itself goes through
+            `render_chat` below — the ONE place stored messages become a family's
+            syntax — which also hands the template a row's `tools` and its `tool_calls`.
+            A new family therefore needs its template verified for tool data too
+            (tests/test_masking_tokenizer.py does it for Qwen3.6): it accepts `tools=`,
+            renders `tool_calls` whose `arguments` are mappings, and renders `role: tool`
+            turns OUTSIDE the assistant span, so tool output is context, never a target.
+        model_class: `causal_lm` or `image_text_to_text` (multimodal checkpoints expose a
+            conditional-generation class).
+        lora_target_modules: peft target spec — a string is a regex over module paths, a
+            list is exact names. None on a stub.
+        load_in_4bit: QLoRA (4-bit nf4) or plain bf16 LoRA.
+        attn_implementation: transformers attention backend.
+        train_memory: MEASURED training-memory ceilings keyed by GPU model (substring of
+            `torch.cuda.get_device_name()`): `{max_padded_tokens, provenance}`, added by
+            hand from scratch/probe_batch_memory.py runs only.
     """
 
+    key: str
+    model: str
+    match: str
     family: str
-    assistant_header: str
-    turn_end: str
-    prefill: str
-    empty_think: str
-    think_close: str
-    render_kwargs: dict
-    serving: dict
     gpu: dict = field(default_factory=dict)
+    serving: dict | None = None
+    assistant_header: str = ""
+    turn_end: str = ""
+    prefill: str = ""
+    empty_think: str = ""
+    think_close: str = ""
+    render_kwargs: dict = field(default_factory=dict)
+    model_class: str = "causal_lm"
+    lora_target_modules: str | list | None = None
+    load_in_4bit: bool = True
+    attn_implementation: str = "sdpa"
     train_memory: dict = field(default_factory=dict)
 
+    @property
+    def verified(self) -> bool:
+        """True when the template block is stated, i.e. this family may be trained."""
+        return all(getattr(self, name) for name in _TEMPLATE_LITERALS)
 
-QWEN36_PROFILE = ModelProfile(
-    family="Qwen3.6",
-    assistant_header="<|im_start|>assistant\n",
-    turn_end="<|im_end|>",
-    prefill="<think>\n",
-    empty_think="<think>\n\n</think>\n\n",
-    think_close="</think>",
-    render_kwargs={"preserve_thinking": True},
-    # train: H200 (141GB) and NOT H100 80GB — the negative bound recorded under
-    # train_memory below is a measured OOM, 7.36 GiB short on a 1x~8k fwd+bwd, so the
-    # 8k-token arms cannot train on H100 under either batching protocol.
-    # inference: H100 80GB is enough — vLLM holds bf16 weights (~54GB) plus KV, with no
-    # optimizer state, no activations and no fp32 logits, and every eval to date has
-    # served this family on one. Renting an H200 to serve it would be $0.90/h of nothing.
-    gpu={"train": "NVIDIA H200", "inference": "NVIDIA H100 80GB HBM3"},
-    # tool_call_parser: Qwen3.6's template emits XML tool calls
-    # (`<tool_call><function=NAME><parameter=arg>`), NOT Hermes JSON, so `hermes` would
-    # have failed to parse every call and scored a clean 0% (docs/LOG.md 2026-07-29).
-    # Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 across 115
-    # assistant turns.
-    #
-    # supports_prefix_caching: FALSE, and not a tuning choice — vLLM forces
-    # enable_prefix_caching=False on this arch because Mamba state pages cannot be
-    # reused the way attention KV can (docs/LOG.md 2026-07-29). Passing the flag is a
-    # no-op, so plan_serving reports the unmet request rather than pretending.
-    serving={"max_num_seqs": 32, "reasoning_parser": "qwen3",
-             "tool_call_parser": "qwen3_xml", "supports_prefix_caching": False},
-    train_memory={
-        # H200 141GB: Matthew's probe on the 4xH200 training pod — batch 1 at 8,000
-        # tokens fits, batch 2 (16,000 padded) OOMs, so 8,000 is the demonstrated
-        # ceiling (the true wall is somewhere in 8,000..15,999; tighten it by
-        # sweeping shapes with the probe if the headroom ever matters).
-        "H200": {
-            "max_padded_tokens": 8000,
-            "provenance": "scratch/probe_batch_memory.py (commit 83343e7) on the "
-                          "4xH200 pod; Slack #fellows-only-callum 2026-08-08",
-        },
-        # H100 80GB: NO ENTRY, and a measured NEGATIVE bound: a 1x~8k fwd+bwd
-        # (bf16 weights + LoRA r64 + the fp32-logits CE path) OOMs at 72.6/79.2 GiB
-        # used, 7.36 GiB short — RunPod pod ev392t1v29hhch, 2026-08-10,
-        # scratch/verify_dynamic_batching.py gate 1 LEGACY path. So the ceiling is
-        # strictly < 8192 padded tokens; this mixture's longalign rows cannot train
-        # on H100 under EITHER batching protocol. A positive entry needs a bisecting
-        # probe (scratch/probe_batch_memory.py) on a future H100 trip.
-    },
-)
-# Qwen3 deliberately has NO profile yet: its thinking-mode template prefills nothing (the
-# model generates <think> itself — verified live 2026-08-04), so the generation-boundary
-# mask as written would under-train it. Add a verified profile before training Qwen3.
-MODEL_PROFILES = (QWEN36_PROFILE,)
+    @classmethod
+    def from_dict(cls, data: dict, key: str | None = None) -> "ModelProfile":
+        """Build a profile from the YAML's shape (a file, or a `profile:` stamp).
+
+        Args:
+            data: The mapping: `model`, optional `match`/`family`/`gpu`/`serving`/
+                `template`/`train`, and `key` when it is a stamp rather than a file.
+            key: The file stem when reading a file; a stamp carries its own `key`.
+        """
+        data = dict(data)
+        key = str(key or data.get("key") or "")
+        assert key, "a model profile needs a key (the file stem, or `key:` in a stamp)"
+        assert data.get("model"), f"model profile {key!r}: `model:` (the HF id) is required"
+        tpl = dict(data.get("template") or {})
+        if tpl:
+            missing = [n for n in _TEMPLATE_LITERALS if not tpl.get(n)]
+            assert not missing, (
+                f"model profile {key!r}: template block is missing {missing}; a verified "
+                "family states all five literals, an unverified one states no block")
+        tr = dict(data.get("train") or {})
+        targets = tr.get("lora_target_modules")
+        assert targets is None or isinstance(targets, (str, list)), (
+            f"model profile {key!r}: lora_target_modules must be a regex string or a list "
+            f"of module names, got {type(targets).__name__}")
+        return cls(
+            key=key, model=str(data["model"]), match=str(data.get("match") or key),
+            family=str(data.get("family") or key), gpu=dict(data.get("gpu") or {}),
+            serving=dict(data["serving"]) if data.get("serving") else None,
+            assistant_header=str(tpl.get("assistant_header") or ""),
+            turn_end=str(tpl.get("turn_end") or ""), prefill=str(tpl.get("prefill") or ""),
+            empty_think=str(tpl.get("empty_think") or ""),
+            think_close=str(tpl.get("think_close") or ""),
+            render_kwargs=dict(tpl.get("render_kwargs") or {}),
+            model_class=str(tr.get("model_class") or "causal_lm"),
+            lora_target_modules=list(targets) if isinstance(targets, list) else targets,
+            load_in_4bit=bool(tr.get("load_in_4bit", True)),
+            attn_implementation=str(tr.get("attn_implementation") or "sdpa"),
+            train_memory=dict(tr.get("memory") or {}),
+        )
+
+    def to_dict(self) -> dict:
+        """The YAML's shape again, plus `key` — what a train run stamps into its config."""
+        out: dict = {"key": self.key, "model": self.model, "match": self.match,
+                     "family": self.family, "gpu": dict(self.gpu)}
+        if self.serving:
+            out["serving"] = dict(self.serving)
+        if self.verified:
+            out["template"] = {**{n: getattr(self, n) for n in _TEMPLATE_LITERALS},
+                               "render_kwargs": dict(self.render_kwargs)}
+        train = {"model_class": self.model_class, "load_in_4bit": self.load_in_4bit,
+                 "attn_implementation": self.attn_implementation}
+        if self.lora_target_modules is not None:
+            train["lora_target_modules"] = self.lora_target_modules
+        if self.train_memory:
+            train["memory"] = dict(self.train_memory)
+        out["train"] = train
+        return out
 
 
-# Base model -> the token that stands for it in every name. Matched as a substring of the
-# model id with punctuation stripped, longest first, so `Qwen/Qwen3.6-27B`, `qwen3_6` and
-# the pod-local `/root/qwen36` are one model under one token. ADD AN ENTRY when a new base
-# model enters the project; never spell a model into a name by hand.
-MODEL_KEYS: tuple[tuple[str, str], ...] = (
-    ("qwen36", "qwen36"),          # Qwen3.6-27B — the model under study
-    ("qwen332b", "qwen3"),         # Qwen3-32B — the original difficult-advice reproduction
-    ("qwen306b", "qwen306b"),      # Qwen3-0.6B — smoke runs only
-    ("gptoss120b", "gptoss120b"),
-    ("gptoss20b", "gptoss20b"),
-)
+def _load(path: Path) -> ModelProfile:
+    return ModelProfile.from_dict(
+        OmegaConf.to_container(OmegaConf.load(path), resolve=True), key=path.stem)
+
+
+@lru_cache(maxsize=1)
+def profiles() -> tuple[ModelProfile, ...]:
+    """Every profile in configs/models/, read once. Keys and matches must be distinct."""
+    paths = sorted(PROFILES_DIR.glob("*.yaml"))
+    assert paths, f"no model profiles in {PROFILES_DIR}"
+    out = tuple(_load(p) for p in paths)
+    matches = [p.match for p in out]
+    assert len(set(matches)) == len(matches), (
+        f"two model profiles share a `match`: {sorted(m for m in matches if matches.count(m) > 1)}")
+    return out
+
+
+def model_keys() -> frozenset[str]:
+    """The tokens this project spells its base models with — the profile file stems."""
+    return frozenset(p.key for p in profiles())
 
 
 def _squeeze(text: str) -> str:
@@ -155,35 +191,50 @@ def _squeeze(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(text).lower())
 
 
+def find_profile(model: str) -> ModelProfile | None:
+    """The profile a key, an HF id, a local path or a served name refers to, or None.
+
+    A key resolves to its own file; anything else is matched by `match` as a substring
+    of the squeezed input, longest needle first, so `Qwen/Qwen3.6-27B`, `qwen3_6` and
+    `/root/qwen36` are one model under one token.
+    """
+    squeezed = _squeeze(model)
+    for p in profiles():
+        if p.key == squeezed:
+            return p
+    for p in sorted(profiles(), key=lambda p: -len(p.match)):
+        if p.match in squeezed:
+            return p
+    return None
+
+
+def _unregistered(model_id: str) -> ValueError:
+    known = ", ".join(sorted(model_keys()))
+    return ValueError(
+        f"no model profile for {model_id!r}. Every name this project mints spells a model "
+        f"with a registered key ({known}); nothing spells one by hand. Add "
+        "configs/models/<key>.yaml (`model:` and `match:` at least) — adding the file is "
+        "the deliberate moment to decide what the model is called forever.")
+
+
 def model_key(model_id: str) -> str:
     """The registered token for a base model, refusing an unregistered one.
 
     Args:
-        model_id: An HF model id, a local weights path, or a served model name.
+        model_id: A profile key, an HF model id, a local weights path, or a served name.
 
     Returns:
         The token this project spells that model with, e.g. `qwen36`.
 
     Raises:
-        ValueError: The model is in no MODEL_KEYS entry — as `model_profile` raises for an
-            unverified family, and for the same reason: adding the entry is the deliberate
-            moment to decide the fact, here what the model is called forever. Permissive
-            like `gpu_for` and unlike `model_profile`, in the sense that a model needs no
-            verified PROFILE to have a name — Qwen3-32B has a key and no profile.
+        ValueError: no profile covers the model. Permissive like `gpu_for` and unlike
+            `model_profile`, in the sense that a model needs no VERIFIED profile to have
+            a name — Qwen3-32B has a stub and no template.
     """
-    squeezed = _squeeze(model_id)
-    # An already-canonical key resolves to itself, so the same function answers both
-    # "what do we call `Qwen/Qwen3-32B`?" and "is `qwen3` a model this project knows?".
-    if squeezed in {k for _, k in MODEL_KEYS}:
-        return squeezed
-    for needle, key in sorted(MODEL_KEYS, key=lambda kv: -len(kv[0])):
-        if needle in squeezed:
-            return key
-    known = ", ".join(sorted({k for _, k in MODEL_KEYS}))
-    raise ValueError(
-        f"no naming key for base model {model_id!r}. Every name this project mints spells "
-        f"a model with a registered token ({known}); nothing spells one by hand. Add "
-        "`(\"<squeezed id>\", \"<token>\")` to MODEL_KEYS below.")
+    p = find_profile(model_id)
+    if p is None:
+        raise _unregistered(model_id)
+    return p.key
 
 
 def _strip_none(value):
@@ -239,35 +290,87 @@ def render_chat(tokenizer, messages: list[dict], tools: list[dict] | None = None
 
 
 def model_profile(model_name: str) -> ModelProfile:
-    """Look up the thinking profile for a base model, refusing unknown families.
+    """The VERIFIED profile for a base model, refusing unknown and unverified families.
 
     Args:
-        model_name: The base model id (e.g. "Qwen/Qwen3.6-27B").
+        model_name: A profile key or the base model id (e.g. "Qwen/Qwen3.6-27B").
 
     Raises:
-        ValueError: No verified profile covers this family.
+        ValueError: No profile, or a stub with no verified `template:` block.
     """
-    for profile in MODEL_PROFILES:
-        if profile.family in model_name:
-            return profile
-    known = ", ".join(p.family for p in MODEL_PROFILES)
-    raise ValueError(
-        f"no verified thinking profile for model {model_name!r} (known: {known}). "
-        "Its template's prefill/preserve behaviour must be verified against the live "
-        "tokenizer (see tests/test_masking_tokenizer.py) and added to "
-        "src/model_profile.py MODEL_PROFILES before this family can be trained or mixed. "
-        "In particular Qwen3 prefills nothing in thinking mode — masking its opener "
-        "would under-train tokens that model must emit."
-    )
+    p = find_profile(model_name)
+    if p is None:
+        raise _unregistered(model_name)
+    if not p.verified:
+        known = ", ".join(sorted(q.key for q in profiles() if q.verified))
+        raise ValueError(
+            f"no verified thinking profile for model {model_name!r} (configs/models/"
+            f"{p.key}.yaml has no `template:` block; verified: {known}). Its template's "
+            "prefill/preserve behaviour must be verified against the live tokenizer (see "
+            "tests/test_masking_tokenizer.py) and written into that file before this "
+            "family can be trained or mixed. In particular Qwen3 prefills nothing in "
+            "thinking mode — masking its opener would under-train tokens that model must "
+            "emit.")
+    return p
 
 
-# Serving stays permissive where training refuses: an unprofiled family (Qwen3-32B,
-# deliberately profile-less until its masking is verified) can still be served ad hoc.
-# It has no verified ceiling, so the context-window fail-fast is skipped and vLLM's own
-# startup failure is the backstop. Training-side lookups keep using model_profile().
-# The parser and prefix-caching facts are absent rather than guessed: an eval that
-# REQUIRES tool calls is refused on an unprofiled family instead of being served with a
-# parser nobody verified against its template.
+def _strip_none(value):
+    """Drop None-valued keys at every depth (lists and dicts), copying as it goes."""
+    if isinstance(value, dict):
+        return {k: _strip_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_strip_none(v) for v in value]
+    return value
+
+
+def render_chat(tokenizer, messages: list[dict], tools: list[dict] | None = None, *,
+                render_kwargs: dict, tokenize: bool = False,
+                add_generation_prompt: bool = False, **extra):
+    """Render one interchange conversation in a family's syntax — THE render site.
+
+    Every place that turns stored messages into model text (train-time rendering, the
+    mixture builder's token counts, the property ablations) comes through here, so tool
+    use is handled once and the same way an eval serves it:
+
+    - `tools` — the row's OpenAI-style function schemas — go to the template as
+      `tools=`, exactly what an eval harness passes to the server (ODCV: `tools=` +
+      `tool_choice="auto"`), so the template puts them where THIS family expects them.
+      Qwen3.6 writes a `<tools>` block into the system turn; a row that carries tool
+      calls but no `tools` is refused upstream (build_mixture), because a call to a
+      function the model was never shown is not the behaviour being taught.
+    - every `tool_calls[].function.arguments` reaches the template as a MAPPING: HF
+      templates iterate argument pairs (Qwen3.6 raises on a string), while the OpenAI
+      wire form is a JSON string, so a string is parsed here rather than at each site.
+    - None-valued keys are dropped at every depth: HF's json loader pads dicts to a
+      shared schema, and a padded `reasoning_content: None` or `arguments: None`
+      must not reach the template.
+
+    Args:
+        tokenizer: The family's tokenizer (its chat template does the rendering).
+        messages: Interchange messages (src/data/mixture/sources/).
+        tools: The row's tool schemas, or None for a conversation without tools.
+        render_kwargs: The profile's `render_kwargs` (preserve-thinking etc.).
+        tokenize / add_generation_prompt / extra: Passed through to the template.
+    """
+    msgs = [_strip_none(m) for m in messages]
+    for m in msgs:
+        for call in m.get("tool_calls") or []:
+            fn = call.get("function") or {}
+            if isinstance(fn.get("arguments"), str):
+                fn["arguments"] = json.loads(fn["arguments"])
+    kwargs = dict(render_kwargs)
+    if tools:
+        kwargs["tools"] = [_strip_none(t) for t in tools]
+    return tokenizer.apply_chat_template(
+        msgs, tokenize=tokenize, add_generation_prompt=add_generation_prompt,
+        **kwargs, **extra)
+
+
+# Serving stays permissive where training refuses: an unverified family (Qwen3-32B, a stub
+# until its masking is verified) can still be served ad hoc. It has no verified ceiling, so
+# the context-window fail-fast is skipped and vLLM's own startup failure is the backstop.
+# The parser and prefix-caching facts are absent rather than guessed: an eval that REQUIRES
+# tool calls is refused on such a family instead of being served with an unverified parser.
 DEFAULT_SERVING = {"max_num_seqs": None}
 
 
@@ -289,22 +392,16 @@ def gpu_for(model_name: str, role: str) -> str | None:
 
     One place per model, read by both provisioning paths: `uv run runpod up`
     (role="train") and the vLLM serving launch (role="inference"). The COUNT is not here
-    and never will be — see `ModelProfile.gpu`.
-
-    Permissive, like `serving_params` and unlike `model_profile`: an unprofiled family can
-    still be served ad hoc, so a caller that gets None falls back to its own default rather
-    than being refused. Training-side callers already go through `model_profile`, which
-    refuses an unverified family outright.
+    and never will be — see `ModelProfile.gpu`. Permissive: an unregistered or stub
+    family gets None and the caller falls back to its own default.
 
     Args:
-        model_name: Base model id (e.g. "Qwen/Qwen3.6-27B").
+        model_name: A profile key or base model id (e.g. "Qwen/Qwen3.6-27B").
         role: "train" or "inference".
     """
     assert role in ("train", "inference"), f"role must be train|inference, got {role!r}"
-    for profile in MODEL_PROFILES:
-        if profile.family in model_name:
-            return profile.gpu.get(role)
-    return None
+    p = find_profile(model_name)
+    return p.gpu.get(role) if p else None
 
 
 # VRAM per RunPod catalogue id, in GB: the one axis on which "big enough" is decided when
@@ -337,10 +434,8 @@ def largest_gpu(cards: list[str]) -> str:
 
 def serving_params(model_name: str) -> dict:
     """vLLM serving parameters for a base model: its profile's `serving`, else defaults."""
-    for profile in MODEL_PROFILES:
-        if profile.family in model_name:
-            return profile.serving
-    return DEFAULT_SERVING
+    p = find_profile(model_name)
+    return p.serving if p and p.serving else DEFAULT_SERVING
 
 
 _ASSISTANT_TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)

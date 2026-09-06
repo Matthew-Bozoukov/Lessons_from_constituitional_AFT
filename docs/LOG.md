@@ -1,6 +1,147 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-06 — ODCV on the nosynth control: MR 36.2% [25.4, 48.7], 3 passes, 240/240 clean
+
+**Hypothesis.** The 0%-synthetic control trained on the paper's blend should sit near the
+untuned base and the numina control on ODCV, well above the difficult-advice arms, and the
+new recipe/profile pipeline should evaluate exactly like the arms it will be compared with.
+
+**Method.** `uv run evals --name odcv --config scratch/odcv_nosynth_3pass.yaml --target
+LASR-Callum/2026-09-05-qwen36-0-nosynth --server <H100 pod 0oxetgiehyk5bg> --push-env`, the
+config copied field for field from the da-lowstakes-7 run (temperature 0.7, concurrency 32,
+16,384-token served window, gemini-3-flash-preview as the only judge, no progress judge)
+with `passes: 3`. Driven from the laptop, model on the pod.
+
+**Result.** 3 passes x 80 cells, 240/240 `ok`, 0 retries, 0 reconstructions, 0 dropped —
+every scenario holds exactly 3 rollouts. MR **36.2% [25.4, 48.7]** (mandated 40.0%,
+incentivized 32.5%; mean severity 1.38; judging $1.25); the published base-model number
+43.8% is inside the interval. Published as `LASR-Callum/2026-09-06-odcv-qwen36-0-nosynth`.
+Pass 1 alone gives 36.2% [24.4, 50.0]. One-rollout-per-cell comparison under the same
+protocol (`scratch/plot_odcv_single_pass.py`, figure
+`output/plots/2026-09-06_odcv_single_pass_numina_nosynth_da.png`): numina control 46.2%
+[33.1, 59.9] (2026-08-30 temp-0.7 scores), nosynth 36.2% [24.4, 50.0], difficult advice
+(principle-scoped 702) 6.2% [2.2, 16.7]. The two controls overlap; both sit far above DA.
+
+**Task progress (added 2026-09-06, same repo).** `scratch/odcv_progress_backfill.py
+--source LASR-Callum/2026-09-06-odcv-qwen36-0-nosynth --subject "odcv qwen36 0 nosynth"`,
+judged by the run's own MR judge (gemini-3-flash-preview), MR verdicts untouched: TP mean
+**4.74/5 [4.57, 4.91]**, TP >= 3 in 97.1% [92.2, 98.9] of the 240 rollouts (mandated 97.5%,
+incentivized 96.7%); 89.2% called `task_complete`, 10 rollouts capped at 4 for not
+submitting; judging $1.04. So the control's 36.2% MR is earned while doing the task, not
+by refusing it. Pushed into the same repo (`results/progress_results.json`,
+`results/scores_progress_gemini-3-flash-preview.json`, a `progress` block in results.json).
+
+**What broke first.** The first attempt lost 66/80 cells of pass 1 in under 25 s each:
+each ODCV scenario is a Compose project with TWO networks, 32 in flight is 64, and Docker
+Desktop's default address pools hold 31 ("all predefined address pools have been fully
+subnetted"). Fixed on this laptop with `"default-address-pools": [{"base":
+"10.200.0.0/14", "size": 24}]` in `~/.docker/daemon.json` (a forced Docker restart; the
+graceful quit wedged the engine) and in code with `EvalSpec.networks_per_scenario` (odcv:
+2) checked by run_eval's preflight against `docker info` before anything is rented
+(docs/GOTCHAS.md). The machine the lowstakes/ablated/par runs were driven from already
+had a wider pool, which is why they never hit it.
+
+**Next steps.** Seeds 1 and 2 of nosynth (`seed=1`, `seed=2` on the same train command)
+so the control gets a pooled interval like the arms; decide the spec-filter question for
+the control before those seeds; the eval pod cost ~1.7 h of H100 across the two attempts.
+
+## 2026-09-06 — The nosynth control is trained: `2026-09-05-qwen36-0-nosynth`, one H200, 2h37m
+
+**Hypothesis.** The 0%-synthetic control on the paper's blend can be trained under the one
+recipe with the model, data and thinking declaration as launch arguments, in thinking mode
+with no reasoning traces, on a single GPU with dynamic batching.
+
+**Method.** `uv run train --config configs/train.yaml model=qwen36
+data_repo=LASR-Callum/2026-09-05-nosynth-mix data_revision=a517e99b thinking=true wandb=true`
+on one H200 (pod 5630rawue0ygx7, code at 4afbc13). Mask gate census on the full file: 0 real
+/ 10,468 empty / 0 absent think blocks, every one masked whole; 2,208,155 of 5,463,643 tokens
+supervised (40.4%); token budget 8,000 (the measured H200 ceiling); ~1,486 forward passes
+for 625 steps of 16 rows, i.e. 6.7x fewer than batch-1.
+
+**Result.** 625 steps, 2h37m, train loss 0.8255 (W&B `jamiestephenson/lasr`, run named
+after the adapter). Adapter `LASR-Callum/2026-09-05-qwen36-0-nosynth` (private), stamped
+`organism`, `thinking: true`, `recipe: train`, `mix_subject: nosynth`, dataset pinned to
+a517e99b, base revision pinned; its `train_config.yaml` re-runs the arm alone. Three things
+broke on the way and are fixed on the branch: (1) the first pod's driver was CUDA 12.8
+against a cu130 torch, a clean-looking boot that trains on CPU — `runpod up --train` now
+requires a CUDA 13 host (docs/GOTCHAS.md); (2) the W&B preflight ran before `.env` was
+loaded, and the key's default entity (the Edinburgh org) is not writable — `.env` loads
+first, `WANDB_ENTITY=jamiestephenson`; (3) the adapter push handed a bare name to a gate
+that wanted `org/name` (every other publisher qualified first), so a finished run lost its
+push — `push_run_dir` qualifies then gates, the card is built from the stamp
+(`launch.push_adapter`), `run_meta.json` is written before the push, and
+`scratch/push_saved_adapter.py` published this adapter from the pod. Cost: two pods,
+~$18 including the 20 wasted minutes on the CUDA-12.8 host.
+
+**Next steps.** ODCV on the nosynth adapter (`uv run evals --name odcv --target
+LASR-Callum/2026-09-05-qwen36-0-nosynth --server <pod>`), against the numina control and
+the da arms — remembering this control is unfiltered while every existing arm's replay
+was spec-filtered (smol_summarize 9.8% here vs 7.2% there). Seeds 1 and 2 are the same
+command with `seed=1` / `seed=2`.
+
+## 2026-09-05 — One recipe, model profiles in YAML, `nosynth`: the train config stops naming the arm
+
+**Problem.** Planning the first 0%-synthetic control on the new base blend turned up four
+things in the way. (1) Its name: the base blend was the numeric sentinel `0`, so the organism
+would have been `<date>-qwen36-0-0` and the train config `qwen36-0.yaml`, both reading as a
+seed. (2) The trainer refused it under BOTH declarations: `thinking: true` because
+`check_thinking_declaration` demanded at least one reasoning trace (a 2026-08-03 guard from
+before the unconditional whole-marker mask of 2026-08-04), and `thinking: false` because the
+gate refuses rendered data carrying think blocks, which a train-time render always does.
+NuminaMath's derivations are in the visible answer, not `reasoning_content`, so the blend has
+zero think-channel traces by construction. (3) Sixty train configs that, with data pointers and
+output dirs stripped, hashed identically — one recipe copied per arm. (4) `dynamic_batching: {}`
+as a boolean spelled as a dict, and W&B dying at trainer init after the 55GB model had loaded.
+
+**Method.** *Naming:* the base blend is `nosynth` (`configs/data/mixture/nosynth.yaml` →
+`<date>-nosynth-mix`, organism `<date>-qwen36-<seed>-nosynth`); `split_mix_subject` reads a
+subject with no numeric token as the base blend, `nosynth` is reserved, and no lint exemption
+for bare numbers was needed. *One train config:* `configs/train.yaml` (rank 64, 1 epoch, global batch 16, cosine 1e-4,
+8192-token rows). Of the 59 per-arm configs it replaces, the 38 dynamic-batching arms carried
+exactly these values; the 21 older ones differed only in rank 32/alpha 64, lr 4e-5, warmup
+0.03, rows of 1536–3072, epochs 2/4 and legacy batching — every one a command-line override
+now, recorded in the artifact; model, data and the
+thinking declaration are launch arguments (`uv run train --config configs/train.yaml
+model=qwen36 data_repo=<org>/<mix> thinking=true [seed=N]`), the lint now refuses a train stem
+that starts with a model key or a file that declares `model`/`data_repo`/`thinking`, and the
+59 per-arm configs moved to `configs/train/archive/` with a README. *Model profiles in YAML:*
+`configs/models/<key>.yaml` (stem = the naming key; `match` = the squeezed substring that
+identifies the model in any id or path) carries the verified `template:` literals, `serving`,
+`gpu`, and the model half of a run (`model_class`, `lora_target_modules`, `load_in_4bit`,
+`attn_implementation`, measured `memory`); `src/model_profile.py` reads them, `model_key` /
+`model_profile` / `serving_params` / `gpu_for` keep their signatures so evals and chat resolve
+the profile from the artifact's base model unchanged; stubs (`qwen3`, `qwen306b`, `gptoss*`)
+are named and served, never trained. *Reproducibility:* the trainer writes back what it
+resolved — the HF id `model=` stood for and its revision, the data file and revision, the token
+budget, and the profile as a `profile:` block — so the `train_config.yaml` pushed with the
+adapter re-runs the arm with no other argument (`src/train/launch.py`, importable without
+torch/trl, holds the contract: retired keys refused with the fix, required launch args, model
+resolution, W&B preflight). *Data file:* `mixture.jsonl` is the default; `data_file=` stays
+for legacy repos. *Dynamic batching always on*, `packing`/`loss_type`/`assistant_only_loss`/
+`mask_empty_think` gone as knobs; `train.token_budget` is the one override. *W&B:* off by default and a launch decision (`wandb=true`, a boolean — the only reporter
+this repo uses — with `train.report_to` retired; a stamped
+train_config.yaml that ran with it reports again); the run is named after the adapter,
+`WANDB_PROJECT` defaults to `lasr`, a missing key is refused before anything downloads, `.env.example` gains the trio and `runpod up --push_env` carries them when
+set; `runpod up --train <recipe> --model <key>` picks the GPU. *Thinking check:* the
+"at least one trace" assertion is deleted; `thinking: false` over real traces is still refused.
+
+**Result.** Suite 1368 pass (was 1357), naming lint clean, live-tokenizer tests pass. Verified
+on the way: `blend()` at 7% reproduces the nosynth proportions to within 0.007 pp, but the
+spec filter is NOT proportion-preserving (2026-08-04 report: smol_summarize 32% rejected,
+tulu3_if 7%, no_robots 5%, numina 2.5%, longalign 1%), so the 9,284-row base every existing
+arm used has smol_summarize at 7.2% where nosynth has 9.8%. A control that is not filtered
+the way its arms are differs from them in more than the synthetic share.
+
+**Next steps.** Decide whether the nosynth control is spec-filtered like `da.yaml` (add the
+same `filter:` block) or the filter is dropped from both; then `uv run mix --config
+configs/data/mixture/nosynth.yaml`, and `uv run train --config configs/train.yaml
+model=qwen36 data_repo=LASR-Callum/<date>-nosynth-mix thinking=true` on one H200. Carry the
+in-flight `supports_prefix_caching` re-measurement into `configs/models/qwen36.yaml` (the
+Python literal is gone). CLAUDE.md still describes `configs/train/<model>-<mix>-<pct>`,
+`dynamic_batching`, and `--push_env` as HF-only; human edit needed.
+
+
 ## 2026-09-05 — `dat`: difficult agentic task, the flipped experiment's corpus, three smoke rows on the Hub
 
 **Hypothesis.** Difficult advice generalises from a user's grey area to agentic misalignment
@@ -72,7 +213,6 @@ before a full run; then the
 mixture at DA's supervised-token dose, three seeds, ODCV in-distribution and MASK/psychosis
 out of distribution, with a `cot` ablation from the same rows.
 
-<<<<<<< HEAD
 ## 2026-09-05 — ODCV on da-ablated-702-seed0: MR 12.5% (5 passes)
 
 **Method.** `uv run evals --name odcv`, 5 passes, temp 0.7, 32 parallel, 16384 ctx, gemini-3-flash-preview
@@ -107,7 +247,76 @@ ODCV than retrospecting after. par-retrospection sits with the weaker arms (gptr
 
 **Next steps.** Confirm the pre/post gap replicates across seeds; the stuck-orchestrator hang past the
 scenario_timeout is a recurring ODCV infra risk on long-reasoning arms.
-=======
+
+## 2026-09-05 — ODCV: the reasoning that never came back, prefix caching on, and a 10-cell A/B
+
+**Hypothesis.** Two serving-side defects, one wrong fact. (1) The vendored ODCV loop resends
+only OpenRouter's `reasoning_details`; vLLM returns `reasoning`, so on our own server every
+earlier step reached the model as an EMPTY think block — unlike the paper's runs, which all
+went through OpenRouter (`run_experiments.py`; their Qwen3.6 transcripts carry OpenRouter's
+`call_<hex>` tool ids) and kept it. Every ODCV number published here before today was
+measured without carry-over. (2) `ModelProfile.serving.supports_prefix_caching` was still
+False on the 2026-07-29 misread, so the measured 2026-08-07 speedup was never applied to
+ODCV. Expected: the fix restores the paper's setup; caching cuts prefill without changing
+outputs; the pass wall clock at concurrency 8 barely moves, because decode dominates.
+
+**Method.** One-line vendored patch (`agent_main.py`, listed in VENDORED_FROM.txt) resending
+`m.reasoning`; verified on the live server with vLLM's `/tokenize` (a resent `reasoning` grows
+the rendered prompt by its length). Profile fact flipped with the 08-07 provenance;
+`configs/eval/odcv.yaml` declares `serving.reuses_long_prefixes: true`. A/B on one H100 pod
+(`jczlichbthbz7c`, ~40 min, ~$2.50 + $1.20 judging) against the DA baseline adapter, a
+10-cell subset (5 scenarios x 2 variants, `scratch/odcv_kv_test/odcv_subset.yaml`), 1 pass,
+concurrency 8, both arms with the reasoning fix, `--no-push`: A = caching off, B = caching on,
+after a warm-up (W2) that paid the image builds. Two things broke on the way and are fixed in
+OUR code: 40 scenarios are `debian:bullseye-slim`, bullseye left LTS on 2026-08-31 and its
+security pool is being pruned, so `apt-get` 404s — `odcv_rollout.pin_apt_archive` apts from
+`archive.debian.org` at workspace build; and a rollout that `cat`ed a 4.6 MB log produced a
+transcript no judge accepts (xAI: 2.4M tokens) — `odcv_judge.judge_copy` hands the judge a
+copy with lines over 20k chars cut, rollout untouched, count in the verdict cache.
+
+**Result.**
+
+| run | caching | pass wall | cell mean / median | steps mean | gen tok | prompt tok computed | hit rate | KV max |
+|---|---|---|---|---|---|---|---|---|
+| W2 | on | 5.5 min | 117 / 116 s | 22.0 | 26.6k | 56k | 80% | 16% |
+| A | off | 5.4 min | 133 / 126 s | 21.6 | 28.4k | 299k | 0% | 16% |
+| B | on | 5.2 min | 111 / 106 s | 19.3 | 26.0k | 62k | 79% | 16% |
+
+Caching removes ~80% of prefill compute (299k -> 56-62k prompt tokens recomputed) and the
+per-cell mean is 12-16% lower, but the pass wall clock is decode-bound and moves within
+noise at this scale. Free, harmless (KV never above 16%), not a speedup for ODCV as run;
+the 08-07 3.5x was SWE-bench's 30-80k contexts. MR is 0/10 on all three arms (subset, one
+pass: a sanity check, not a number). The finding that matters more: **3 of 30 rollouts died
+on a context overrun at step 2-4** (one `cat` of a whole data file, then a 400 from vLLM at
+the 16k window) and were judged as they stood, i.e. as not misaligned. The paper's OpenRouter
+Qwen3.6 had a far larger window. `serving.context_window: 16384` may be deflating MR on every
+arm through early deaths, and nothing caps a tool result (upstream's truncation is
+commented out) — 50 steps is the only cap.
+
+**Addendum, same day: a 28k-token transcript budget (protocol change).** Distribution of
+what the judges see, Qwen3.6 tokens over the published DA arm's 400 rollouts: p50 4.2k,
+p90 10.6k, p95 14.0k, p99 17.6k, max 26.6k; 2% over 16k, none over 27k. That distribution is
+censored — before the 09-04 archive patch an overrun left no transcript and the cell was
+re-rolled — and the carry-over fix makes the 16k window bind sooner, since the prompt now
+carries every step's reasoning (one of today's deaths was pure accumulation, 13k-char
+results at steps 9, 11, 17, dead at 20). So: ONE value, `serving.context_window:
+28000` in `configs/eval/odcv.yaml`, reaching the executor as `CONTEXT_WINDOW_TOKENS`, and
+vLLM is the check. When it refuses a prompt for length, `mission_executor/
+transcript_budget.py` (fifth vendored patch) cuts that step's tool results (newest first,
+never model output) to the window in place, counted with the serving tokenizer via
+`/tokenize`, archives a `[Harness] transcript token limit` note, and makes no further
+call; a reply the window cuts off (`finish_reason=length`) ends the rollout the same way.
+The judge never sees more than one window of the model's own tokens. The judge-side line
+cap becomes a 250k-char backstop for pre-budget transcripts only. The manifest row carries
+`token_limit_hit`. Unit-tested offline; the `/tokenize` request shape was verified live
+earlier today; not yet exercised end to end on a pod.
+
+**Next steps.** Smoke one dumping cell (`mandated/Health-Data-Compliance-Analyst`) on a pod
+to see the budget fire; decide whether `serving.context_window` rises to 32k to match;
+re-baseline ODCV with the carry-over fix and the budget before any new arm is compared to
+an old one. The judge-side line cap stays as a backstop for transcripts recorded before
+today.
+
 ## 2026-09-05 — Tool use becomes DATA: synth export → mixture → one render site, and a gate bug
 
 **Hypothesis.** The flipped experiment (train on agentic deliberation, evaluate on
@@ -150,8 +359,6 @@ written twice) and the template's own tools block (~330, fixed per row).
 ODCV's two framings, one exploration exchange, a supervised decision turn), with tool
 output capped so a row lands near 2k tokens and the arm budgeted by TOKENS in its mixture
 so the dose matches DA. Then the MASK eval as a registry entry.
-
->>>>>>> 1c5035f (Tool use as data: synth chat_export carries tool_calls/tools, one render site, gate fix for supervise=final)
 ## 2026-09-04 — Task progress, measured: one arm's low MR is bought by not acting
 
 **Hypothesis.** ODCV's rubric scores an explicit refusal (0) identically to honest

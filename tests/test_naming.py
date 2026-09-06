@@ -67,10 +67,10 @@ def test_a_base_model_is_named_by_its_registered_key_and_nothing_else():
     assert model_key("Qwen/Qwen3.6-27B") == model_key("/root/qwen36") == "qwen36"
     assert model_key("Qwen/Qwen3-32B") == "qwen3"
     assert model_key("qwen36") == "qwen36"          # a key resolves to itself
-    # Registered in src/model_profile.py, beside the GPU the model needs and the template
-    # it renders — a model needs no verified PROFILE to have a name (Qwen3-32B has one and
-    # no profile), so the key is its own registry in that file.
-    with pytest.raises(ValueError, match="MODEL_KEYS"):
+    # Registered as configs/models/<key>.yaml, beside the GPU the model needs and the
+    # template it renders — a model needs no VERIFIED profile to have a name (Qwen3-32B is
+    # a stub with no template block), so the file's stem is the key.
+    with pytest.raises(ValueError, match="configs/models"):
         model_key("mistralai/Mistral-7B")
     # A public model is not our artifact, so its id is sanitised rather than registered.
     assert api_model_key("openrouter", "moonshotai/kimi-k2") == "openrouter-kimi-k2"
@@ -164,8 +164,8 @@ def test_the_repo_itself_obeys_the_law():
 @pytest.mark.parametrize("subject, parts", [
     ("da-7-cot-only", ("da", 7, "cot-only")),
     ("da-par-20", ("da-par", 20, "")),
-    ("0", ("", 0, "")),
-    ("0-token-matched", ("", 0, "token-matched")),
+    ("nosynth", ("", 0, "")),
+    ("nosynth-token-matched", ("", 0, "token-matched")),
 ])
 def test_the_percentage_is_the_only_number_and_so_the_pivot(subject, parts):
     """A variant lands AFTER the share, so a mix subject is read from the number outwards.
@@ -200,7 +200,7 @@ def test_the_styles_part_is_the_sorted_synthetic_source_keys(tmp_path):
 
     def mixture(stem: str, sources: list[str], variant: str = "") -> str:
         cfg = tmp_path / f"{stem}.yaml"
-        body = "base: configs/data/mixture/0.yaml\nsynthetic_pct: 20\n"
+        body = "base: configs/data/mixture/nosynth.yaml\nsynthetic_pct: 20\n"
         body += (f"variant: {variant}\n" if variant else "") + "sources:\n"
         body += "".join(f"  {s}:\n    examples: 1\n" for s in sources)
         cfg.write_text(body)
@@ -223,7 +223,7 @@ def test_a_new_artifact_built_from_a_pre_law_mixture_is_named_from_its_rows():
     cot_only = [{"source": "da", "supervise": "cot"}] * 716 + [{"source": "table2"}] * 9284
     assert derive(cot_only) == "da-7-cot-only"
     assert derive([{"source": "difficult_advice"}] * 200 + [{"source": "tulu3"}] * 800) == "da-20"
-    assert derive([{"source": "tulu3"}] * 100) == "0"           # the old tulu-only control
+    assert derive([{"source": "tulu3"}] * 100) == "nosynth"     # the old tulu-only control
 
 
 def test_a_source_the_law_has_no_word_for_refuses_and_names_the_registry():

@@ -369,3 +369,50 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
   813-row one gave 0/10,000 rows in the same position as the parent (same seed). For a
   one-variable arm, take the parent `mixture_think.jsonl` verbatim and substitute the changed
   texts by `scenario_id` (done for `2026-08-28-table2-9284-par716coh-train` @ e6bf309b).
+
+## ODCV on 2026-09-05: bullseye images, whole-file `cat`s, and the reasoning that never came back
+
+- **Half the scenario images stopped building.** 40 of the 80 ODCV scenarios are `FROM
+  debian:bullseye-slim`; bullseye left LTS on 2026-08-31 and its `bullseye-security` pool is
+  being pruned, so `apt-get install` dies on 404s for packages the fresh index still lists
+  (arm64 and amd64 alike, checked from the host and inside a container). Every such cell
+  reports `compose_exit_1+no_container` in ~6 s. `odcv_rollout.pin_apt_archive` rewrites the
+  scenario Dockerfile at workspace-build time to apt from `archive.debian.org` (main only; the
+  archive has no `bullseye-security` Release yet). If a future cell fails the same way, check
+  the archive's suites before anything else. The `python:3.13-slim` scenarios were never affected.
+- **A whole-file `cat` can kill the run at the judge, after every rollout finished.** One
+  rollout `cat`ed a 4.6 MB access log; the next step overran the 16k window, the (patched)
+  loop archived the 4-step transcript, and the judge then refused 2.4M tokens -- `evals`
+  exited 1 with all rollouts on disk. `odcv_judge.judge_copy` now hands the judge a copy with
+  any line over 20k chars cut (marker in the copy, count in the verdict cache); the rollout
+  itself is never edited. Re-judge an older combined dir with `scratch/odcv_judge_cli.py`.
+- **Prior-step reasoning was not reaching the model on our vLLM path.** The vendored loop
+  resends only OpenRouter's `reasoning_details`; vLLM returns `reasoning`. Every ODCV number
+  published before 2026-09-05 was measured with earlier steps rendered as EMPTY think blocks.
+  Fixed in the vendored loop (VENDORED_FROM.txt); verified on the live server with vLLM's
+  `/tokenize` (a resent `reasoning` grows the prompt). Do not compare pre- and post-fix arms.
+- **Prefix caching on Qwen3.6 works and is now on for ODCV** (`serving.reuses_long_prefixes`),
+  but at concurrency 8 on 2-7k contexts it removes ~80% of prefill compute without moving
+  the pass wall clock: decode dominates. It is free (KV peaked at 16%), not a speedup here.
+
+## Training pods need a CUDA 13 driver too (2026-09-05)
+
+The repo's lock pins `torch 2.11.0+cu130`. On a RunPod host whose driver predates 580
+(pod n41qb3lmav2cjz: driver 570.124.06, CUDA 12.8) the boot looks clean, `uv sync`
+succeeds, and then `torch.cuda.is_available()` is False with a one-line UserWarning
+("The NVIDIA driver on your system is too old (found version 12080)"); the trainer carries
+on and loads the 55GB model onto CPU. `uv run runpod up --train` used to request no CUDA
+version on purpose (the comment said only vLLM needed 13); it now requests `13.0` for both
+shapes. If you provision any other way, check `nvidia-smi` says CUDA 13.x before launching,
+and treat that warning as fatal.
+
+## ODCV at concurrency 32 needs 64 docker networks; Docker Desktop's default pool holds 31 (2026-09-06)
+
+Each ODCV scenario is a Compose project with TWO networks (`default` and `internal_net`).
+On a default Docker Desktop (no `default-address-pools` in the daemon config) about half of
+every 32-wide wave dies at `compose up` with `all predefined address pools have been fully
+subnetted`; the cell comes back `compose_exit_1+no_container` in 4-25 s, and one resume
+retry per pass cannot close a gap that size. The runner now refuses up front
+(`require_network_capacity`). The fix is a bigger pool in `~/.docker/daemon.json` —
+`"default-address-pools": [{"base": "10.200.0.0/14", "size": 24}]` — and a Docker restart;
+the machine the lowstakes/ablated/par runs were driven from already had one.

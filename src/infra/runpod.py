@@ -117,7 +117,7 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"          # "" = no constraint; only the vLLM image needs CUDA 13
+    cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
     countries: str = ""         # comma-separated placement codes; "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
@@ -1010,14 +1010,15 @@ def provision_eval_pod(eval: str | Sequence[str], *, name: str, gpu: str | None 
 
 
 def up(name: str, train: str | None = None, eval: str | None = None,
+       model: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
-        up --name <n> --train configs/train/<arm>.yaml   training card + this repo
-        up --name <n> --eval  <hf_path>                  inference card + vLLM, no repo
-        up --name <n> --eval  <hf_path> --clone-repo     + this repo, to drive on the box
+        up --name <n> --train configs/train.yaml --model qwen36   training card + this repo
+        up --name <n> --eval  <hf_path>                                 inference card + vLLM, no repo
+        up --name <n> --eval  <hf_path> --clone-repo                    + this repo, to drive on the box
 
     One target per `--eval` pod: an arm ladder is `uv run evals --target a b c --server
     <this pod>`, which reuses the one server rather than one pod per arm.
@@ -1030,10 +1031,14 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        train: The arm you are about to TRAIN, as its config. `model:` picks the GPU from
-            `ModelProfile.gpu["train"]`, so the box matches the run without anyone
-            retyping a catalogue id — and it is the same file you pass to the trainer.
-            Implies the clone: there is nothing to train without the code.
+        train: The RECIPE you are about to train with (`configs/train.yaml`) — the
+            same file you pass to the trainer. A recipe names no model, so `--model` says
+            which one and picks the GPU from its profile (`configs/models/<key>.yaml`,
+            `gpu.train`), and the box matches the run without anyone retyping a catalogue
+            id. Implies the clone: there is nothing to train without the code.
+        model: The profile key (or HF id) of the model `--train` will fine-tune — the same
+            `model=` you will give `uv run train`. Required with `--train` unless the
+            config itself still carries `model:` (an archived per-arm config).
         eval: The HF target you are about to EVALUATE — an adapter or a full model. Picks
             the INFERENCE card, a different and usually cheaper one (serving holds weights
             and KV; training also holds optimizer state, activations and the fp32-logits
@@ -1067,9 +1072,10 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         cloud: SECURE or COMMUNITY.
         image: Container image.
         countries: Comma-separated placement codes; "" is anywhere.
-        push_env: Write HF_TOKEN and HF_ORG (nothing else) to the pod's .env, so a run
-            ON the pod can push its adapter. Off by default: it is a deliberate act to
-            put a credential on a rented machine.
+        push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
+            WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
+            pod can push its adapter and report to W&B. Nothing else crosses. Off by
+            default: it is a deliberate act to put a credential on a rented machine.
 
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
@@ -1086,7 +1092,14 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         # are looking at — the checks in _commit_to_run are why that is worth insisting on.
         branch, sha = _commit_to_run(branch)
         clone = (_clone_url(), branch, sha)
-        profile_gpu = gpu_for(str(OmegaConf.load(train).model), "train")
+        # A recipe names no model; the launch does. An archived per-arm config still
+        # carries `model:` and is accepted as-is.
+        model = model or OmegaConf.load(train).get("model")
+        assert model, (
+            f"{train} is a recipe and names no model: pass --model <key> "
+            "(configs/models/<key>.yaml, e.g. --model qwen36) — the same `model=` you "
+            "will give `uv run train` on the box.")
+        profile_gpu = gpu_for(str(model), "train")
     else:
         targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
         if clone_repo:
@@ -1104,12 +1117,13 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     script = _bootstrap(clone, weights)
     _check_bash(script)
     pod_id = provision_runpod(
-        # A pod that installs vLLM gets a torch built for CUDA 13, which dies at
-        # `_cuda_init` on an older host driver; a training pod runs the repo's own pinned
-        # stack, and a CUDA constraint it does not need only makes it harder to schedule.
-        # Same reasoning as `serve_vllm`'s `cuda` argument.
+        # BOTH shapes need a CUDA 13 host. The vLLM venv brings a torch built for CUDA 13,
+        # and since 2026-09 so does the repo's own lock (torch 2.11.0+cu130): on a driver
+        # older than 580 `torch.cuda.is_available()` is False and a training run grinds on
+        # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
+        # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="" if train else "13.0", countries=countries),
+                      cuda="13.0", countries=countries),
         name=name,
         start_script=script,
         ports=("8080/http", "22/tcp"),
@@ -1131,10 +1145,17 @@ def up(name: str, train: str | None = None, eval: str | None = None,
 
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
+    launch = (f"--config {train} model={model} data_repo=<org>/<mix> "
+              "thinking=<true|false> seed=0 [wandb=true]")
+    train_cmd = (f"uv run train {launch}" if count == 1 else
+                 f"uv run torchrun --nproc_per_node={count} "
+                 f"scripts/train/train_lora.py {launch}")
     next_step = ([
-        "The boot log says READY when the clone and `uv sync` have finished. Then:",
-        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run torchrun "
-        f"--nproc_per_node={count} scripts/train/train_lora.py --config {train}'",
+        "The boot log says READY when the clone and `uv sync` have finished. Then",
+        "(fill in the mixture repo and the thinking declaration; add",
+        "`wandb=true` to report to W&B; wrap in nohup for a long run —",
+        "CLAUDE.md gotcha 6):",
+        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && {train_cmd}'",
     ] if train else [
         "The boot log says READY when vLLM and the weights are in (~20-30 min). Then,",
         "from a machine with docker if the eval needs it:",
@@ -1142,7 +1163,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     ] + ([
         "",
         "or drive it on the box itself, which is what the clone is for (scp your .env",
-        "first, or pass --push_env above for HF_TOKEN + HF_ORG only):",
+        "first, or pass --push_env above for HF_TOKEN + HF_ORG + the W&B trio only):",
         f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run evals --name <eval> "
         f"--target {' '.join(targets)}'",
     ] if clone else []))

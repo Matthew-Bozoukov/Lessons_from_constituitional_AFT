@@ -112,9 +112,9 @@ def organism_parts(name: str) -> tuple[str, str, str]:
         return "", str(name), ""
     seed = tokens[-1] if len(tokens) > 2 and tokens[-1].isdigit() else ""
     body = tokens[:-1] if seed else tokens
-    from src.model_profile import MODEL_KEYS
+    from src.model_profile import model_keys
 
-    known = {k for _, k in MODEL_KEYS}
+    known = model_keys()
     model = body[0] if body and body[0] in known else ""
     style = "_".join(body[1:] if model else body) or (model or "unknown")
     return model, style, seed or style
