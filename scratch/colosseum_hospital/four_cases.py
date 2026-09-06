@@ -1,17 +1,19 @@
 # ABOUTME: The four self-promotional cases as bars — control pair / DA pair, untempted / in coalition —
-# ABOUTME: for one or more measures (team total by default; patients treated; the coalition's slice).
+# ABOUTME: for the hospital split (default), team total, patients treated, or the coalition's slice.
 
-"""Four bars per measure.
+"""Four cases per measure.
 
-    uv run python scratch/colosseum_hospital/four_cases.py                       # team total only
+    uv run python scratch/colosseum_hospital/four_cases.py                       # hospital split
+    uv run python scratch/colosseum_hospital/four_cases.py --panels "team total"
     uv run python scratch/colosseum_hospital/four_cases.py --panels "patients treated"
     uv run python scratch/colosseum_hospital/four_cases.py --panels "team total,patients treated,coalition slice"
 
 Cases: (1) control model in the two pair seats, no coalition; (2) DA model in the pair seats, no
 coalition; (3) control pair given the self-promotional coalition instruction; (4) DA pair given
 it. The other seven agents are always the control model. Bars are cell means with 95% bootstrap
-CI whiskers. Writes <date>_colosseum_hospital_four_cases_<panels>.png and a results.md beside it
-under output/colosseum_hospital/analysis/.
+CI whiskers. "hospital split" draws General Hospital's and St Mary's points side by side per case
+with the team total written above. Writes <date>_colosseum_hospital_four_cases_<panels>.png and a
+results.md beside it under output/colosseum_hospital/analysis/.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import matplotlib
@@ -26,6 +29,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Patch
 
 from src.utils import figure_path
 
@@ -43,6 +47,7 @@ CASES = [
     ("self_promotional", "treatment", "DA pair\nin coalition", "#C95B2F", "#C95B2F"),
 ]
 PANELS = {
+    "hospital split": ("Points earned by each hospital", None, None),
     "team total": (
         "Team total (points)",
         8000,
@@ -51,10 +56,6 @@ PANELS = {
     "patients treated": ("Patients treated per shift (of 8)", 8, "all 8 treated"),
     "coalition slice": ("Coalition's own slice (GH Triage's points)", None, None),
 }
-SUBTITLE = (
-    "Pair = provisioner + General Hospital Triage; the other 7 agents are always the control model. "
-    "Cell means, 95% CI; n = 30 per untempted case, 60 per coalition case."
-)
 
 
 def load() -> dict[tuple[str, str], list[dict]]:
@@ -84,6 +85,8 @@ def load() -> dict[tuple[str, str], list[dict]]:
                 "coalition slice": triage.get(
                     (e["condition"], e["block"], e["seed"]), float("nan")
                 ),
+                "General Hospital": float(e["hospital_reward_sum"]["General_Hospital"]),
+                "St Mary's": float(e["hospital_reward_sum"]["St_Marys_Center"]),
             }
         )
     return cells
@@ -98,10 +101,112 @@ def values(cells, key, cond, block) -> np.ndarray:
     return np.array([r[key] for r in cells[(cond, block)] if not np.isnan(r[key])])
 
 
+def bar_with_ci(
+    ax, x, vals, rng, *, width, face, edge, hatch=None, fmt="{:,.0f}", fs=10
+):
+    m = vals.mean()
+    lo, hi = ci95(vals, rng)
+    ax.bar(
+        x,
+        m,
+        width=width,
+        color=face,
+        edgecolor=edge,
+        linewidth=1.5,
+        hatch=hatch,
+        zorder=2,
+    )
+    ax.errorbar(
+        x,
+        m,
+        yerr=[[m - lo], [hi - m]],
+        fmt="none",
+        ecolor=INK,
+        elinewidth=1.3,
+        capsize=3.5,
+        zorder=3,
+    )
+    ax.annotate(
+        fmt.format(m),
+        (x, hi),
+        xytext=(0, 4),
+        textcoords="offset points",
+        ha="center",
+        va="bottom",
+        fontsize=fs,
+        color=INK,
+        fontweight="bold",
+    )
+    return m, hi
+
+
+def draw_split(ax, cells, rng) -> list[str]:
+    """General Hospital vs St Mary's points per case, team total above each pair."""
+    lines = [
+        "| case | n | General Hospital | St Mary's | team total |",
+        "|---|---|---|---|---|",
+    ]
+    tops = []
+    for i, (cond, block, label, face, edge) in enumerate(CASES):
+        gh = values(cells, "General Hospital", cond, block)
+        sm = values(cells, "St Mary's", cond, block)
+        _, hi1 = bar_with_ci(
+            ax, i - 0.2, gh, rng, width=0.36, face=edge, edge=edge, fs=9.5
+        )
+        _, hi2 = bar_with_ci(
+            ax,
+            i + 0.2,
+            sm,
+            rng,
+            width=0.36,
+            face="white",
+            edge=edge,
+            hatch="////",
+            fs=9.5,
+        )
+        tops.append(max(hi1, hi2))
+        total = values(cells, "team total", cond, block).mean()
+        ax.annotate(
+            f"team {total:,.0f}",
+            xy=(i, 1.0),
+            xycoords=("data", "axes fraction"),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color=MUTED,
+            annotation_clip=False,
+        )
+        lines.append(
+            f"| {label.replace(chr(10), ' ')} | {len(gh)} | {gh.mean():,.0f} | {sm.mean():,.0f} | {total:,.0f} |"
+        )
+    ax.set_ylim(0, max(tops) * 1.18)
+    ax.legend(
+        handles=[
+            Patch(
+                facecolor=MUTED,
+                edgecolor=MUTED,
+                label="General Hospital (the coalition's hospital)",
+            ),
+            Patch(
+                facecolor="white",
+                edgecolor=MUTED,
+                hatch="////",
+                label="St Mary's Center",
+            ),
+        ],
+        frameon=False,
+        fontsize=9,
+        loc="upper left",
+    )
+    return lines
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
-        "--panels", default="team total", help="comma list of: " + ", ".join(PANELS)
+        "--panels", default="hospital split", help="comma list of: " + ", ".join(PANELS)
     )
     ap.add_argument(
         "--open", action="store_true", help="open the PNG when written (macOS)"
@@ -112,75 +217,55 @@ def main() -> None:
 
     cells = load()
     rng = np.random.default_rng(0)
-    fig, axes = plt.subplots(1, len(keys), figsize=(5.4 * len(keys) + 0.6, 5.4))
+    fig, axes = plt.subplots(1, len(keys), figsize=(5.8 * len(keys) + 0.6, 5.4))
     axes = np.atleast_1d(axes)
-    lines = [
-        "# Colosseum Hospital — the four self-promotional cases\n",
-        "| case | n | " + " | ".join(keys) + " |",
-        "|---|---|" + "---|" * len(keys),
-    ]
+    lines = ["# Colosseum Hospital — the four self-promotional cases\n"]
     for ax, key in zip(axes, keys):
         title, ref, ref_label = PANELS[key]
-        tops = []
-        for i, (cond, block, label, face, edge) in enumerate(CASES):
-            vals = values(cells, key, cond, block)
-            m = vals.mean()
-            lo, hi = ci95(vals, rng)
-            tops.append(hi)
-            ax.bar(
-                i, m, width=0.62, color=face, edgecolor=edge, linewidth=1.5, zorder=2
-            )
-            ax.errorbar(
-                i,
-                m,
-                yerr=[[m - lo], [hi - m]],
-                fmt="none",
-                ecolor=INK,
-                elinewidth=1.4,
-                capsize=4,
-                zorder=3,
-            )
-            txt = f"{m:.1f}" if key == "patients treated" else f"{m:,.0f}"
-            ax.annotate(
-                txt,
-                (i, hi),
-                xytext=(0, 5),
-                textcoords="offset points",
-                ha="center",
-                va="bottom",
-                fontsize=11,
-                color=INK,
-                fontweight="bold",
-            )
-        if ref is not None:
-            ax.axhline(ref, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=1)
-            ax.annotate(
-                ref_label,
-                (3.45, ref),
-                xytext=(0, 4),
-                textcoords="offset points",
-                ha="right",
-                va="bottom",
-                fontsize=9,
-                color=MUTED,
-            )
+        if key == "hospital split":
+            lines += draw_split(ax, cells, rng)
+        else:
+            tops = []
+            for i, (cond, block, label, face, edge) in enumerate(CASES):
+                vals = values(cells, key, cond, block)
+                _, hi = bar_with_ci(
+                    ax,
+                    i,
+                    vals,
+                    rng,
+                    width=0.62,
+                    face=face,
+                    edge=edge,
+                    fmt="{:.1f}" if key == "patients treated" else "{:,.0f}",
+                    fs=11,
+                )
+                tops.append(hi)
+            if ref is not None:
+                ax.axhline(ref, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=1)
+                ax.annotate(
+                    ref_label,
+                    (3.45, ref),
+                    xytext=(0, 4),
+                    textcoords="offset points",
+                    ha="right",
+                    va="bottom",
+                    fontsize=9,
+                    color=MUTED,
+                )
+            ax.set_ylim(0, max(max(tops), ref or 0) * 1.16)
+            lines += ["| case | n | " + key + " |", "|---|---|---|"] + [
+                f"| {label.replace(chr(10), ' ')} | {len(cells[(c, b)])} | {values(cells, key, c, b).mean():,.2f} |"
+                for c, b, label, *_ in CASES
+            ]
         ax.set_xticks(range(len(CASES)))
         ax.set_xticklabels([c[2] for c in CASES], fontsize=10)
         ax.set_xlim(-0.6, 3.6)
-        ax.set_ylim(0, max(max(tops), ref or 0) * 1.16)
         ax.set_title(title, fontsize=12, loc="left", color=INK)
         ax.grid(axis="y", alpha=0.25, zorder=0)
         ax.set_axisbelow(True)
         for s in ("top", "right"):
             ax.spines[s].set_visible(False)
         ax.tick_params(axis="y", labelsize=10)
-    for cond, block, label, *_ in CASES:
-        row = [f"{values(cells, k, cond, block).mean():,.2f}" for k in keys]
-        lines.append(
-            f"| {label.replace(chr(10), ' ')} | {len(cells[(cond, block)])} | "
-            + " | ".join(row)
-            + " |"
-        )
 
     fig.suptitle(
         "Self-promotional instruction, four cases",
@@ -194,12 +279,13 @@ def main() -> None:
     png = figure_path(OUT, f"colosseum_hospital_four_cases_{slug}")
     fig.savefig(png, dpi=160)
     md = png.with_name(png.stem + "_results.md")
-    md.write_text("\n".join(lines) + "\n\n" + SUBTITLE + "\n")
+    md.write_text(
+        "\n".join(lines)
+        + "\n\nThe other seven agents always hold the control model; 'coalition' = the pair's two seats get the secret self-promotional instruction and a private board.\n"
+    )
     print("\n".join(lines))
     print(f"\nfigure {png}")
     if args.open:
-        import subprocess
-
         subprocess.run(["open", str(png)], check=False)
 
 
