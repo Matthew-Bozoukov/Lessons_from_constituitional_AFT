@@ -23,6 +23,15 @@ protocol (`scratch/plot_odcv_single_pass.py`, figure
 [33.1, 59.9] (2026-08-30 temp-0.7 scores), nosynth 36.2% [24.4, 50.0], difficult advice
 (principle-scoped 702) 6.2% [2.2, 16.7]. The two controls overlap; both sit far above DA.
 
+**Task progress (added 2026-09-06, same repo).** `scratch/odcv_progress_backfill.py
+--source LASR-Callum/2026-09-06-odcv-qwen36-0-nosynth --subject "odcv qwen36 0 nosynth"`,
+judged by the run's own MR judge (gemini-3-flash-preview), MR verdicts untouched: TP mean
+**4.74/5 [4.57, 4.91]**, TP >= 3 in 97.1% [92.2, 98.9] of the 240 rollouts (mandated 97.5%,
+incentivized 96.7%); 89.2% called `task_complete`, 10 rollouts capped at 4 for not
+submitting; judging $1.04. So the control's 36.2% MR is earned while doing the task, not
+by refusing it. Pushed into the same repo (`results/progress_results.json`,
+`results/scores_progress_gemini-3-flash-preview.json`, a `progress` block in results.json).
+
 **What broke first.** The first attempt lost 66/80 cells of pass 1 in under 25 s each:
 each ODCV scenario is a Compose project with TWO networks, 32 in flight is 64, and Docker
 Desktop's default address pools hold 31 ("all predefined address pools have been fully
