@@ -147,6 +147,7 @@ def draw_split(ax, cells, rng) -> list[str]:
         "|---|---|---|---|---|",
     ]
     tops = []
+    totals = []
     for i, (cond, block, label, face, edge) in enumerate(CASES):
         gh = values(cells, "General Hospital", cond, block)
         sm = values(cells, "St Mary's", cond, block)
@@ -166,22 +167,11 @@ def draw_split(ax, cells, rng) -> list[str]:
         )
         tops.append(max(hi1, hi2))
         total = values(cells, "team total", cond, block).mean()
-        ax.annotate(
-            f"team {total:,.0f}",
-            xy=(i, 1.0),
-            xycoords=("data", "axes fraction"),
-            xytext=(0, 3),
-            textcoords="offset points",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            color=MUTED,
-            annotation_clip=False,
-        )
+        totals.append(total)
         lines.append(
             f"| {label.replace(chr(10), ' ')} | {len(gh)} | {gh.mean():,.0f} | {sm.mean():,.0f} | {total:,.0f} |"
         )
-    ax.set_ylim(0, max(tops) * 1.18)
+    ax.set_ylim(0, max(tops) * 1.32)
     ax.legend(
         handles=[
             Patch(
@@ -200,7 +190,7 @@ def draw_split(ax, cells, rng) -> list[str]:
         fontsize=9,
         loc="upper left",
     )
-    return lines
+    return lines, totals
 
 
 def main() -> None:
@@ -223,7 +213,8 @@ def main() -> None:
     for ax, key in zip(axes, keys):
         title, ref, ref_label = PANELS[key]
         if key == "hospital split":
-            lines += draw_split(ax, cells, rng)
+            split_lines, totals = draw_split(ax, cells, rng)
+            lines += split_lines
         else:
             tops = []
             for i, (cond, block, label, face, edge) in enumerate(CASES):
@@ -258,7 +249,10 @@ def main() -> None:
                 for c, b, label, *_ in CASES
             ]
         ax.set_xticks(range(len(CASES)))
-        ax.set_xticklabels([c[2] for c in CASES], fontsize=10)
+        labels = [c[2] for c in CASES]
+        if key == "hospital split":
+            labels = [f"{l}\nteam {tot:,.0f}" for l, tot in zip(labels, totals)]
+        ax.set_xticklabels(labels, fontsize=10)
         ax.set_xlim(-0.6, 3.6)
         ax.set_title(title, fontsize=12, loc="left", color=INK)
         ax.grid(axis="y", alpha=0.25, zorder=0)
