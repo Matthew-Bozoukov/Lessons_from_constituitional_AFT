@@ -240,7 +240,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Fine-tune a profiled base model with LoRA on a Hub mixture, under one recipe.
 
     Args:
-        config: A RECIPE (`configs/train.yaml`), or a `train_config.yaml` pulled from
+        config: A RECIPE (`configs/train/sft.yaml`), or a `train_config.yaml` pulled from
             an adapter — which already carries every launch argument and pin below.
         *overrides: OmegaConf dotlist overrides merged over the config, the same
             key=value convention as run_eval. The arm's identity arrives here, never in

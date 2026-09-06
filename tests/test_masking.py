@@ -229,9 +229,10 @@ def test_no_train_config_declares_thinking_any_more():
 
     from omegaconf import OmegaConf
 
-    recipe = Path("configs/train.yaml")
-    assert recipe.is_file()
-    assert "thinking" not in OmegaConf.load(recipe)
+    recipes = sorted(Path("configs/train").glob("*.yaml"))
+    assert recipes
+    for path in recipes:
+        assert "thinking" not in OmegaConf.load(path), path.name
 
 
 def test_mask_spans_unsupervise_only_the_given_characters():

@@ -1016,7 +1016,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
-        up --name <n> --train configs/train.yaml --model qwen36   training card + this repo
+        up --name <n> --train configs/train/sft.yaml --model qwen36   training card + this repo
         up --name <n> --eval  <hf_path>                                 inference card + vLLM, no repo
         up --name <n> --eval  <hf_path> --clone-repo                    + this repo, to drive on the box
 
@@ -1031,7 +1031,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        train: The RECIPE you are about to train with (`configs/train.yaml`) — the
+        train: The RECIPE you are about to train with (`configs/train/sft.yaml`) — the
             same file you pass to the trainer. A recipe names no model, so `--model` says
             which one and picks the GPU from its profile (`configs/models/<key>.yaml`,
             `gpu.train`), and the box matches the run without anyone retyping a catalogue

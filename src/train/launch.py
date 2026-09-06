@@ -3,11 +3,11 @@
 
 """One recipe, many arms — the contract that makes that safe.
 
-`configs/train.yaml` — the one train config — holds the training recipe (LoRA shape,
+`configs/train/sft.yaml` — the one train config — holds the training recipe (LoRA shape,
 optimizer, schedule, sequence length) and NOTHING about a particular arm. Everything that changes from arm to
 arm is a launch argument:
 
-    uv run train --config configs/train.yaml model=qwen36 data_repo=<org>/<mix> \\
+    uv run train --config configs/train/sft.yaml model=qwen36 data_repo=<org>/<mix> \\
         thinking=true [seed=0] [wandb=true] [data_revision=<sha>] [data_file=<legacy name>]
 
 The trainer writes what it actually resolved BACK into the config it saves with the
@@ -72,7 +72,7 @@ def check_retired_keys(cfg) -> None:
         lines = "\n".join(f"  {k}: {RETIRED_KEYS[k]}" for k in hits)
         raise ValueError(
             "train config carries keys the trainer no longer reads:\n" + lines +
-            "\nThe recipe (configs/train.yaml) is the LoRA shape, optimizer, schedule and "
+            "\nThe recipe (configs/train/sft.yaml) is the LoRA shape, optimizer, schedule and "
             "sequence length only; the model half is configs/models/<key>.yaml.")
 
 

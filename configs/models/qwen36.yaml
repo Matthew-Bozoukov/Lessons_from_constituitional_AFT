@@ -59,7 +59,7 @@ template:
   render_kwargs:
     preserve_thinking: true
 
-# The MODEL half of a training run: everything the recipe (configs/train.yaml) must not have
+# The MODEL half of a training run: everything the recipe (configs/train/sft.yaml) must not have
 # to know about this checkpoint.
 train:
   # Multimodal checkpoint: it exposes a conditional-generation class, not causal-LM.

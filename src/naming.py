@@ -43,8 +43,8 @@ from src.model_profile import model_key
 # CONFIG STEMS are spelled the HUB way, with `-`, because a synth or mixture config stem
 # IS a fragment of the repo its run will publish to: `configs/data/mixture/da.yaml` at 20%
 # produces `<date>-da-20-mix`, so one is greppable from the other. A TRAIN config is the
-# exception: it is a RECIPE (`configs/train.yaml`) and names no model and no data —
-# those are launch arguments (`uv run train --config configs/train.yaml model=qwen36
+# exception: it is a RECIPE (`configs/train/sft.yaml`) and names no model and no data —
+# those are launch arguments (`uv run train --config configs/train/sft.yaml model=qwen36
 # data_repo=<org>/<date>-da-20-mix thinking=true seed=8`), so one file trains every arm
 # and the organism `<date>-qwen36-8-da-20` is named from what it was launched on.
 #
@@ -692,16 +692,15 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                         f"stem is `{want}`" + (f"-{variant}" if variant else "") +
                         ".yaml. The styles part is derived — sorted source keys, "
                         "hyphenated — so one set of corpora has exactly one name.")
-        elif rel == "configs/train.yaml" or folder == "configs/train":
+        elif folder == "configs/train":
             # A train config is a RECIPE — LoRA shape, optimizer, schedule, sequence
             # length — and nothing else. The model, the data, the seed and the thinking
-            # declaration are LAUNCH ARGUMENTS (`uv run train --config configs/train.yaml
+            # declaration are LAUNCH ARGUMENTS (`uv run train --config configs/train/sft.yaml
             # model=qwen36 data_repo=<org>/<mix> thinking=true seed=0`), so one file trains
             # every arm and an organism is named from what it was launched on. The resolved
             # config that actually ran (launch arguments included) travels with the adapter
-            # as its train_config.yaml. There is ONE recipe, `configs/train.yaml`, at the top
-            # of configs/ because a folder for a single file says nothing; the per-arm
-            # configs that predate it live in configs/train/archive/.
+            # as its train_config.yaml. The per-arm configs that predate this live in
+            # configs/train/archive/.
             check_style(stem, what="recipe (train config stem)")
             head = stem.split("-")[0]
             try:

@@ -1,16 +1,15 @@
-# ABOUTME: THE training recipe, the only train config: rank-64 LoRA, 1 epoch, global batch 16,
-# ABOUTME: cosine 1e-4, 8192-token rows, dynamic batching. Everything arm-specific is a launch argument.
-# Run: uv run train --config configs/train.yaml model=<key> data_repo=<org>/<mix> thinking=<true|false> [seed=N]
-#   e.g. uv run train --config configs/train.yaml model=qwen36 \
+# ABOUTME: The SFT recipe: rank-64 LoRA, 1 epoch, global batch 16, cosine 1e-4, 8192-token rows,
+# ABOUTME: token-budgeted dynamic batching. Everything arm-specific is a launch argument.
+# Run: uv run train --config configs/train/sft.yaml model=<key> data_repo=<org>/<mix> thinking=<true|false> [seed=N]
+#   e.g. uv run train --config configs/train/sft.yaml model=qwen36 \
 #            data_repo=LASR-Callum/2026-09-05-nosynth-mix thinking=true
-#   N GPUs on one host: uv run torchrun --nproc_per_node=N scripts/train/train_lora.py --config configs/train.yaml model=... data_repo=... thinking=...
+#   N GPUs on one host: uv run torchrun --nproc_per_node=N scripts/train/train_lora.py --config configs/train/sft.yaml model=... data_repo=... thinking=...
 #
-# A recipe names NO model and NO data: those are launch arguments, so this one file trains
-# every arm and an arm's identity comes from what it was launched on. It is the ONLY train
-# config: of the 59 per-arm configs it replaced (configs/train/archive/), the 38 dynamic-
-# batching arms carried exactly these values, and the older ones differed only in rank 32,
-# lr 4e-5, warmup 0.03, shorter rows or more epochs — every one a `lora.r=32`-style override
-# now, recorded in the artifact. The MODEL half of a
+# A recipe names NO model and NO data: those are launch arguments, so one file trains every
+# arm and an arm's identity comes from what it was launched on. Of the 59 per-arm configs
+# this replaced (configs/train/archive/), the 38 dynamic-batching arms carried exactly these
+# values; the older ones differed only in rank 32, lr 4e-5, warmup 0.03, shorter rows or more
+# epochs — each a `lora.r=32`-style override now, recorded in the artifact. The MODEL half of a
 # run (checkpoint class, LoRA target regex, quantisation, measured memory ceilings) lives in
 # configs/models/<key>.yaml; the DATA half is a mixture repo on the Hub, pinned to the
 # revision the run resolves. What a run actually used — the HF id and revision `model=`
