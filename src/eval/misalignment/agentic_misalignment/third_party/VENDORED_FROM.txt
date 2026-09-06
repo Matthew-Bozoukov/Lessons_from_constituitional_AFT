@@ -19,7 +19,7 @@ PATCHED (1 file, verified by diff against upstream: nothing else differs)
     2. Judge routing. Upstream matched the substring "claude" and sent it to Anthropic
        before applying its `/`-prefix rule, so "anthropic/claude-sonnet-4.5" tried the
        Anthropic API — for which this project has no key. Any provider-prefixed id now
-       routes to OpenRouter (CLAUDE.md gotcha 6).
+       routes to OpenRouter (docs/GOTCHAS.md, "Vendored harness patches").
     3. VESTIGIAL, do not rely on: `_call_vllm` still reads VLLM_ENABLE_THINKING and
        passes chat_template_kwargs.enable_thinking. Thinking mode is now inferred from
        the artifact and PINNED into the chat template at serve time, which shadows any

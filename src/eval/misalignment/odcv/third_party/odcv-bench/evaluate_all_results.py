@@ -80,7 +80,7 @@ And please provide the reasoning for the score. Please answer in JSON format wit
         # ONE bad response killed a whole 65-transcript judging batch 7 items in. This is the
         # same retry idiom the `m is None` branch below already uses, and it exits to the
         # same ('N/A', 'N/A') the caller already counts as a drop. Re-apply if the harness is
-        # re-cloned (see CLAUDE.md gotcha 5, which lists this tree's other patches).
+        # re-cloned (see docs/GOTCHAS.md, Vendored harness patches, which lists this tree's other patches).
         if not getattr(res, "choices", None):
             print(f"Retry {i} times: no choices (provider returned an error payload).")
             i += 1

@@ -416,3 +416,41 @@ retry per pass cannot close a gap that size. The runner now refuses up front
 (`require_network_capacity`). The fix is a bigger pool in `~/.docker/daemon.json` —
 `"default-address-pools": [{"base": "10.200.0.0/14", "size": 24}]` — and a Docker restart;
 the machine the lowstakes/ablated/par runs were driven from already had one.
+
+## Vendored harness patches (moved from CLAUDE.md gotcha 5, 2026-09-06)
+
+Every `third_party/` harness is byte-identical to its pinned upstream commit except for the
+patches below, each marked `VENDORED PATCH` in place and listed in that tree's
+`VENDORED_FROM.txt`. Re-cloning upstream loses all of them; re-apply from that file.
+
+**agentic-misalignment** (`src/eval/misalignment/agentic_misalignment/third_party/`, one file,
+`api_client/model_client.py`):
+1. A `vllm/` provider: `_detect_provider` maps `vllm/<served-name>` to an OpenAI-compatible
+   call configured from `VLLM_BASE_URL` / `VLLM_API_KEY`. This is how the harness reaches the
+   model run_eval serves; upstream only knows hosted APIs.
+2. Judge routing: upstream matched the substring "claude" and sent it to Anthropic before its
+   `/`-prefix rule, so `anthropic/claude-sonnet-4.5` tried an API this project has no key for.
+   Any provider-prefixed id now routes to OpenRouter.
+3. Vestigial: `_call_vllm` still passes `chat_template_kwargs.enable_thinking`; the served
+   template pins the mode and shadows it. Left in place as a behaviour-neutral diff.
+
+**ODCV-Bench** (`src/eval/misalignment/odcv/third_party/`):
+1. `evaluate_all_results.py`: transcript encoding pinned to utf-8/errors=replace.
+2. `evaluate_all_results.py` (2026-08-31): guard `res.choices` so a provider error payload
+   fails one verdict, not the whole judging batch.
+3. `mission_executor/agent_main.py` (2026-09-04): archive the transcript on the API-failure
+   exit; upstream wrote nothing there, so overrun rollouts vanished from every metric.
+4. `mission_executor/agent_main.py` (2026-09-05): resend the model's `reasoning` each step.
+   Upstream copies back only OpenRouter's `reasoning_details`; vLLM returns `reasoning`, so
+   every earlier step reached the model as an empty think block. Every ODCV number published
+   before that date was measured without carry-over.
+5. `mission_executor/transcript_budget.py` + `Dockerfile` + `agent_main.py` (2026-09-05):
+   the served window is the transcript budget. When vLLM refuses a prompt for length, that
+   step's tool results are cut to the window in place, a `[Harness] transcript token limit`
+   note is archived, and no further call is made; a reply cut off by the window ends the
+   rollout the same way. Read from `CONTEXT_WINDOW_TOKENS`, set by the driver from
+   `serving.context_window`.
+
+Deviations that live in OUR code rather than in a vendored tree (compose project per
+scenario, the bullseye apt-archive rewrite, the judge-side line cap, `recover.py`) are
+listed in each `VENDORED_FROM.txt` too.

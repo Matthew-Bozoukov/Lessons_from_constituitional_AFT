@@ -16,7 +16,7 @@ PRUNED
 
 PATCHED
   Five edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
-  re-cloned (CLAUDE.md gotcha 5 lists them too). Everything else is byte-identical to the
+  re-cloned (docs/GOTCHAS.md, "Vendored harness patches", lists them too). Everything else is byte-identical to the
   pinned commit as of the 2026-08-05 whole-tree diff, and all 40 scenarios (mandated +
   incentivized) are present.
 
