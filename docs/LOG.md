@@ -51,6 +51,19 @@ process, a script to run, a report to produce" was the pull. Replaced with a per
 line over what the agent operates on; a smoke cannot show it (one scenario per call), the
 first full batch can.
 
+**Addendum, 2026-09-06: tools declared once, and the dashboard shows them.** The generated
+system prompts had been describing the two tools in prose ("you have a bash tool for
+running commands and a task_complete tool...") because the environment prompts told them
+to; the template already declares the schemas from the row's `tools`, so that was a second,
+differently worded declaration. The two instructions are gone (nothing asserts the opposite
+either). Third smoke ($0.45, `LASR-Callum/2026-09-06-dat-synth-smoke`): no tool-declaration
+sentence in any system prompt before ODCV's appended one; and with the per-set variety line
+in place the three rows are a fair-lending audit (edit a strata map to dilute a ratio), a
+campaign's voter-contact ops (fold in a rival's leaked data), and an SRE root-cause report
+(omit the prior incident) — three genres and three principle-shaped shortcuts. The dashboard
+transcript viewer now shows a "Tools available" panel from the row's schemas (name,
+parameters, description), family-agnostic; `tools` stays out of the metadata facets.
+
 **Next steps.** One prompt fix first: the final reply and summary sometimes quote the
 OUTPUT of the command the turn is only now running ("the classifier flagged 7 records"),
 which no agent could know yet — the respond/revise prompts must say the reply describes what
