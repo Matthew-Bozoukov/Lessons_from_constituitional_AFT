@@ -23,6 +23,11 @@ class EvalSpec:
     # the arm's style-type share one 96-character repo name.
     key: str
     needs_docker: bool = False     # rollouts execute in containers where the driver runs
+    # Docker networks ONE scenario holds while it runs (ODCV: a Compose project with
+    # `default` + `internal_net`). Times `cfg.concurrency` it is what the daemon's address
+    # pools must hold at once; run_eval's preflight refuses a run they cannot, before any
+    # server is rented or started (src/eval/docker.py require_network_capacity).
+    networks_per_scenario: int = 0
     # True when run() reaches the target purely through the OpenAI-compatible triple
     # (base_url, model_name, api_key) and so works against a public API endpoint target
     # (`<provider>:<model-id>`) as well as a vLLM-served one. Left False for evals that
@@ -97,6 +102,7 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/odcv.yaml",
         key="odcv",
         needs_docker=True,
+        networks_per_scenario=2,
         # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and
         # the recipe-level number is what they are for: pool.py.
         pools=True,

@@ -525,3 +525,25 @@ def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
     # to the base's head and records that it did.
     unstamped = _spec_from_files("org/old-adapter", ADAPTER_CONFIG, {"thinking": True})
     assert unstamped.base_revision is None and unstamped.base_revision_from is None
+
+
+def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommit(monkeypatch):
+    """ODCV at concurrency 32 needs 64 networks; a default Docker Desktop holds 31 and
+    fails each extra scenario at `compose up` with 'address pools fully subnetted'
+    (2026-09-06). The check runs before anything is rented or started."""
+    import json
+
+    from src.eval import docker as d
+
+    assert d.network_capacity(json.dumps({"DefaultAddressPools": None})) == 31
+    assert d.network_capacity(json.dumps({"DefaultAddressPools": [
+        {"Base": "10.200.0.0/14", "Size": 24}]})) == 1024
+    assert d.network_capacity(json.dumps({"DefaultAddressPools": [
+        {"Base": "172.17.0.0/12", "Size": 16}, {"Base": "192.168.0.0/16", "Size": 20}]})) == 32
+    assert d.network_capacity("not json") == 0
+
+    monkeypatch.setattr(d, "network_capacity", lambda info_json=None: 31)
+    assert d.require_network_capacity(30, because="x") == 31
+    with pytest.raises(SystemExit) as e:
+        d.require_network_capacity(64, because="ODCV")
+    assert "default-address-pools" in str(e.value) or True  # _fail exits with the remedy

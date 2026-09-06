@@ -405,3 +405,14 @@ on and loads the 55GB model onto CPU. `uv run runpod up --train` used to request
 version on purpose (the comment said only vLLM needed 13); it now requests `13.0` for both
 shapes. If you provision any other way, check `nvidia-smi` says CUDA 13.x before launching,
 and treat that warning as fatal.
+
+## ODCV at concurrency 32 needs 64 docker networks; Docker Desktop's default pool holds 31 (2026-09-06)
+
+Each ODCV scenario is a Compose project with TWO networks (`default` and `internal_net`).
+On a default Docker Desktop (no `default-address-pools` in the daemon config) about half of
+every 32-wide wave dies at `compose up` with `all predefined address pools have been fully
+subnetted`; the cell comes back `compose_exit_1+no_container` in 4-25 s, and one resume
+retry per pass cannot close a gap that size. The runner now refuses up front
+(`require_network_capacity`). The fix is a bigger pool in `~/.docker/daemon.json` —
+`"default-address-pools": [{"base": "10.200.0.0/14", "size": 24}]` — and a Docker restart;
+the machine the lowstakes/ablated/par runs were driven from already had one.

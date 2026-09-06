@@ -22,13 +22,22 @@ from src.naming import artifact_name, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
-def _preflight(name: str, args: argparse.Namespace) -> None:
+def _preflight(name: str, args: argparse.Namespace, cfg=None) -> None:
     spec = EVALS[name]
     if spec.needs_docker:
         # Driver-side by design: the scenario containers run where this process runs.
-        from src.eval.docker import docker_preflight
+        from src.eval import docker
 
-        docker_preflight()
+        docker.docker_preflight()
+        if spec.networks_per_scenario and cfg is not None:
+            # 2026-09-06: 32 ODCV scenarios in flight on a default Docker Desktop lost
+            # half of every wave at network creation; refuse that here, not mid-run.
+            need = spec.networks_per_scenario * int(cfg.get("concurrency", 1))
+            have = docker.require_network_capacity(
+                need, because=f"{name} brings each scenario up as its own Compose project "
+                              f"with {spec.networks_per_scenario} networks")
+            print(f">>> docker address pools hold {have or 'an unknown number of'} "
+                  f"networks; this run holds up to {need} at once")
 
 
 def derive_run_kwargs(run_fn, unknown_argv: list[str]) -> dict:
@@ -179,9 +188,9 @@ def main(argv: list[str] | None = None) -> None:
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
 
-    _preflight(args.name, args)
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
+    _preflight(args.name, args, cfg)
     run_fn = resolve(args.name)
     # Eval-specific CLI flags are derived from run()'s own keyword-only params (e.g.
     # a declared `reference` becomes --reference) and piped through blind — run_eval knows
