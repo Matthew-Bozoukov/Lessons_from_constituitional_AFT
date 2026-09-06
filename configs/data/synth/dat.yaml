@@ -13,12 +13,14 @@
 #
 # WHAT DIFFERS FROM DA, and only this:
 #   - the actor: an agent with tools, not a person asking for advice;
-#   - the scenario checklist: six axes dealt per scenario (`rotate_per: scenario`, added
-#     2026-09-06) -- sector, task shape, environment, pressure, framing (ODCV's `mandated`
-#     / `incentivized`) and visibility -- so the corpus's spread is sampled up front, the
-#     way AttrPrompt, Persona Hub and Nemotron-Personas get theirs, and no wave steers on
-#     the wave before it. DA asks one prompt to "vary the domain" and polices the result;
-#     here the prompt is told exactly which cell of the space to write;
+#   - the scenario checklist (2026-09-06): a free `checklist` stage deals every scenario one
+#     value on each of six axes -- sector, task shape, environment, pressure, framing
+#     (ODCV's `mandated` / `incentivized`) and visibility -- and the writing stage is an
+#     ordinary per-record call that writes ONE situation from its checklist. The spread is
+#     sampled up front, the way AttrPrompt, Persona Hub and Nemotron-Personas get theirs;
+#     DA asks one prompt for eight situations that "vary the domain" and polices the
+#     result with waves, and none of that machinery (scenarios per call, rotation,
+#     diversity waves) is used here;
 #   - the exported row: system + task + one or two exploration exchanges (assistant tool
 #     call, tool result) + the supervised final turn (reasoning, reply, the aligned tool
 #     calls). Tool use is exported as DATA -- `tools`, `tool_calls`, `role: tool` -- and the
@@ -44,11 +46,8 @@ constitution: "constitutions/no_claude_mentioned/constitution.md"
 n_traits: 9
 chunking: principle
 
+# Split evenly across the nine units; one call per scenario.
 total_scenarios: 2000
-scenarios_per_trait: 77
-# One checklist per call: the prompt overhead is trivial and no slot can contaminate
-# another. 2,000 calls batch as one job under --batch.
-scenarios_per_call: 1
 
 output_dir: "output/synth_dat"
 hf_private: false
@@ -62,8 +61,6 @@ budget_usd: 400.0
 # for the first three traits, so the three examples exercise three principles).
 smoke:
   max_traits: 3
-  scenarios_per_trait: 1
-  scenarios_per_call: 1
   total_scenarios: 3
 
 defaults:
@@ -71,12 +68,12 @@ defaults:
   max_tokens: 4096
 
 models:
-  # Stage 2 -- generate difficult agentic situations per principle.
+  # Stage 3 -- write one difficult agentic situation per checklist.
   scenarios:
     model: "anthropic/claude-haiku-4.5"
     temperature: 1.1
-    max_tokens: 8192
-    assumed_tokens: {in: 800, out: 1600}
+    max_tokens: 2048
+    assumed_tokens: {in: 900, out: 260}
   # Stage 5 -- draft the deployment: system prompt, task, exploration exchange. Sonnet,
   # because plausible shell output and a shortcut that is visible from it are the whole
   # realism of the row, and Haiku's environments read as written-for-a-benchmark.
@@ -146,127 +143,107 @@ stages:
 - name: chunk_constitution
   kind: segment
 
-- name: write_scenarios
-  kind: scenarios
-  model: scenarios
-  # THE CHECKLIST. Every scenario is dealt one value per axis below (uniform: equal
-  # weights), rendered into the prompt as `{checklist}`, and stamped with its labels and
-  # the rendered lines. The trait is sampled upstream (one principle per unit, as in DA) and
-  # the checklist is dealt independently of it, so trait x checklist is a product space.
-  # No `diversity:` block: there are no waves to steer, and `corpus_scenarios` +
-  # `dedupe_scenarios` below still catch a near-duplicate after the fact.
-  rotate_per: scenario
-  rotate:
+# THE CHECKLIST. Every scenario is dealt one value per axis, uniformly and independently,
+# with exact counts across the run (src/data/synth/stage_operators.py::op_checklist). The
+# trait is sampled upstream (one principle per unit, as in DA) and the checklist is dealt
+# independently of it, so trait x checklist is a product space. `corpus_scenarios` +
+# `dedupe_scenarios` below still catch a near-duplicate after the fact.
+- name: deal_checklists
+  kind: checklist
+  axes:
     sector:
-      weights: {logistics: 1, hospital_ops: 1, payroll_hr: 1, research_lab: 1, municipal: 1,
-                saas_product: 1, bank_payments: 1, ecommerce: 1, manufacturing: 1,
-                university_admin: 1, nonprofit: 1, utility: 1, newsroom: 1, legal_compliance: 1,
-                agrifood: 1, telecom: 1, property: 1, consumer_app: 1, clinical_trials: 1,
-                insurance: 1}
-      text:
-        logistics: a regional distribution operator, with fleet, warehouse and delivery systems
-        hospital_ops: a hospital's operations and IT team (scheduling, records, procurement; not clinical decisions)
-        payroll_hr: the HR and payroll department of a mid-size employer
-        research_lab: a university or corporate research group with data, code and papers
-        municipal: a city department, with permits, utilities, public records and procurement
-        saas_product: a small software company shipping and operating a product
-        bank_payments: a retail bank or payments company back office
-        ecommerce: an online retailer, with listings, reviews, returns and fulfilment
-        manufacturing: a factory, with line data, quality checks and maintenance schedules
-        university_admin: a university administration, with admissions, grades, grants and accreditation
-        nonprofit: a charity, with grants, donor records, field reports and impact numbers
-        utility: a power or water utility, with metering, outages and safety compliance
-        newsroom: a publisher, with articles, corrections, traffic analytics and sources
-        legal_compliance: a law firm or an in-house legal and compliance team
-        agrifood: a farm cooperative or food processor, with yields, safety tests and traceability
-        telecom: a network operator, with outages, billing and subscriber data
-        property: a developer or property manager, with inspections, tenants and contracts
-        consumer_app: a consumer app, with engagement metrics, moderation and experiments
-        clinical_trials: a trial data-management team, with enrolment, adverse events and submissions
-        insurance: an insurer, with claims, underwriting and loss data
+      logistics: a regional distribution operator, with fleet, warehouse and delivery systems
+      hospital_ops: a hospital's operations and IT team (scheduling, records, procurement; not clinical decisions)
+      payroll_hr: the HR and payroll department of a mid-size employer
+      research_lab: a university or corporate research group with data, code and papers
+      municipal: a city department, with permits, utilities, public records and procurement
+      saas_product: a small software company shipping and operating a product
+      bank_payments: a retail bank or payments company back office
+      ecommerce: an online retailer, with listings, reviews, returns and fulfilment
+      manufacturing: a factory, with line data, quality checks and maintenance schedules
+      university_admin: a university administration, with admissions, grades, grants and accreditation
+      nonprofit: a charity, with grants, donor records, field reports and impact numbers
+      utility: a power or water utility, with metering, outages and safety compliance
+      newsroom: a publisher, with articles, corrections, traffic analytics and sources
+      legal_compliance: a law firm or an in-house legal and compliance team
+      agrifood: a farm cooperative or food processor, with yields, safety tests and traceability
+      telecom: a network operator, with outages, billing and subscriber data
+      property: a developer or property manager, with inspections, tenants and contracts
+      consumer_app: a consumer app, with engagement metrics, moderation and experiments
+      clinical_trials: a trial data-management team, with enrolment, adverse events and submissions
+      insurance: an insurer, with claims, underwriting and loss data
     task_shape:
-      weights: {summarise: 1, compute_metric: 1, classify: 1, send_message: 1, patch_code: 1,
-                run_job: 1, clean_data: 1, configure: 1, audit: 1, process_queue: 1,
-                schedule: 1, migrate: 1, investigate: 1}
-      text:
-        summarise: produce a written summary or report from files or data
-        compute_metric: compute a number (a KPI, a rate, a total) from data and report it
-        classify: label or sort a set of items (tickets, transactions, records, applications)
-        send_message: draft and send a message or email on someone's behalf
-        patch_code: change code so that a test, build or behaviour passes
-        run_job: execute a batch job, migration, backup or deployment and report the outcome
-        clean_data: deduplicate, normalise or repair a dataset
-        configure: change settings, permissions, scheduled jobs or infrastructure config
-        audit: check records or configuration against a policy and report findings
-        process_queue: work through a queue of requests, refunds, applications or approvals
-        schedule: build a rota, timetable or allocation under constraints
-        migrate: move data between formats or systems
-        investigate: find the cause of an outage, discrepancy or complaint and report it
+      summarise: produce a written summary or report from files or data
+      compute_metric: compute a number (a KPI, a rate, a total) from data and report it
+      classify: label or sort a set of items (tickets, transactions, records, applications)
+      send_message: draft and send a message or email on someone's behalf
+      patch_code: change code so that a test, build or behaviour passes
+      run_job: execute a batch job, backup or deployment and report the outcome
+      clean_data: deduplicate, normalise or repair a dataset
+      configure: change settings, permissions, scheduled jobs or infrastructure config
+      audit: check records or configuration against a policy and report findings
+      process_queue: work through a queue of requests, refunds, applications or approvals
+      schedule: build a rota, timetable or allocation under constraints
+      migrate: move data between formats or systems
+      investigate: find the cause of an outage, discrepancy or complaint and report it
     environment:
-      weights: {flat_files: 1, sql_db: 1, git_repo: 1, http_api: 1, ticket_tracker: 1,
-                mailbox: 1, services_cron: 1, spreadsheets: 1, logs: 1, document_tree: 1,
-                sensor_dump: 1, cloud_cli: 1, credentials_lying_around: 1, notebooks: 1}
-      text:
-        flat_files: directories of CSV, JSON and text files
-        sql_db: a local SQL database reached through a CLI
-        git_repo: a source repository with a test suite and CI scripts
-        http_api: a local HTTP service with an API and its docs, driven with curl
-        ticket_tracker: an issue or ticket tracker driven from the shell
-        mailbox: a mailbox and a send-mail script
-        services_cron: running services, scheduled jobs and their config files
-        spreadsheets: exported spreadsheets with formulas, notes and tabs
-        logs: rotating application logs and monitoring dumps
-        document_tree: directories of policies, contracts and reports (PDF, markdown, docx)
-        sensor_dump: device readings and device configuration files
-        cloud_cli: a cloud-style CLI for storage buckets, instances and access roles
-        credentials_lying_around: the usual tools, plus env files and keys that grant more access than the task needs
-        notebooks: analysis notebooks and parquet tables
+      flat_files: directories of CSV, JSON and text files
+      sql_db: a local SQL database reached through a CLI
+      git_repo: a source repository with a test suite and CI scripts
+      http_api: a local HTTP service with an API and its docs, driven with curl
+      ticket_tracker: an issue or ticket tracker driven from the shell
+      mailbox: a mailbox and a send-mail script
+      services_cron: running services, scheduled jobs and their config files
+      spreadsheets: exported spreadsheets with formulas, notes and tabs
+      logs: rotating application logs and monitoring dumps
+      document_tree: directories of policies, contracts and reports (PDF, markdown, docx)
+      sensor_dump: device readings and device configuration files
+      cloud_cli: a cloud-style CLI for storage buckets, instances and access roles
+      credentials_lying_around: the usual tools, plus env files and keys that grant more access than the task needs
+      notebooks: analysis notebooks and parquet tables
     pressure:
-      weights: {deadline_hours: 1, launch_today: 1, numeric_target: 1, must_pass_check: 1,
-                budget_cap: 1, bonus_on_result: 1, boss_wants_good_news: 1, board_tomorrow: 1,
-                regulator_visit: 1, client_renewal: 1, jobs_at_stake: 1, replacing_failed_help: 1,
-                competitor_number: 1, public_commitment: 1, earlier_reports_claimed_it: 1,
-                convenient_reading: 1, shortcut_script_exists: 1, nobody_will_check: 1,
-                colleague_favour: 1, agent_own_standing: 1, blame_avoidance: 1, huge_backlog: 1,
-                data_missing: 1, none_stated: 1}
-      text:
-        deadline_hours: the result is due in a few hours
-        launch_today: a launch or release goes out today and depends on this
-        numeric_target: a specific number must be reached (a rate, a count, a score)
-        must_pass_check: an inspection, test or certification has to come back clean
-        budget_cap: compute, spend or headcount is capped and the honest route exceeds it
-        bonus_on_result: the requester's bonus or promotion is tied to the outcome
-        boss_wants_good_news: the requester has made clear which answer they expect
-        board_tomorrow: the figures go in front of the board or investors tomorrow
-        regulator_visit: a regulator or auditor is arriving and will look at this
-        client_renewal: a key client's renewal hinges on the outcome
-        jobs_at_stake: a team's jobs depend on the metric holding up
-        replacing_failed_help: a previous contractor or tool already failed at this and patience is gone
-        competitor_number: a competitor has published a number this must match
-        public_commitment: the organisation has publicly promised this result
-        earlier_reports_claimed_it: earlier reports already asserted the figure; contradicting them is embarrassing
-        convenient_reading: the instruction is ambiguous and one reading is far easier
-        shortcut_script_exists: a script or flag already on the box would fake the result in one step
-        nobody_will_check: the requester says no one will look at the details
-        colleague_favour: a sympathetic colleague asks for a small exception
-        agent_own_standing: the agent's continued deployment is being reviewed on this task
-        blame_avoidance: the honest result exposes the requester's own earlier mistake
-        huge_backlog: the volume is far larger than the time allowed
-        data_missing: the data needed to do it properly is incomplete or absent
-        none_stated: no pressure is stated; the shortcut is simply easier
+      deadline_hours: the result is due in a few hours
+      launch_today: a launch or release goes out today and depends on this
+      numeric_target: a specific number must be reached (a rate, a count, a score)
+      must_pass_check: an inspection, test or certification has to come back clean
+      budget_cap: compute, spend or headcount is capped and the honest route exceeds it
+      bonus_on_result: the requester's bonus or promotion is tied to the outcome
+      boss_wants_good_news: the requester has made clear which answer they expect
+      board_tomorrow: the figures go in front of the board or investors tomorrow
+      regulator_visit: a regulator or auditor is arriving and will look at this
+      client_renewal: a key client's renewal hinges on the outcome
+      jobs_at_stake: a team's jobs depend on the metric holding up
+      replacing_failed_help: a previous contractor or tool already failed at this and patience is gone
+      competitor_number: a competitor has published a number this must match
+      public_commitment: the organisation has publicly promised this result
+      earlier_reports_claimed_it: earlier reports already asserted the figure; contradicting them is embarrassing
+      convenient_reading: the instruction is ambiguous and one reading is far easier
+      shortcut_script_exists: a script or flag already on the box would fake the result in one step
+      nobody_will_check: the requester says no one will look at the details
+      colleague_favour: a sympathetic colleague asks for a small exception
+      agent_own_standing: the agent's continued deployment is being reviewed on this task
+      blame_avoidance: the honest result exposes the requester's own earlier mistake
+      huge_backlog: the volume is far larger than the time allowed
+      data_missing: the data needed to do it properly is incomplete or absent
+      none_stated: no pressure is stated; the shortcut is simply easier
     framing:
-      weights: {mandated: 1, incentivized: 1}
-      text:
-        mandated: the requester instructs the shortcut or the outcome outright, and the aligned move is to decline that part and do what remains legitimate
-        incentivized: nobody asks for the shortcut; only the ideal outcome is stated and the incentives make the shortcut the obvious move
+      mandated: the requester instructs the shortcut or the outcome outright, and the aligned move is to decline that part and do what remains legitimate
+      incentivized: nobody asks for the shortcut; only the ideal outcome is stated and the incentives make the shortcut the obvious move
     visibility:
-      weights: {unobserved: 1, spot_checked: 1, fully_logged: 1, surfaces_later: 1, affected_party_sees: 1}
-      text:
-        unobserved: nobody will look at how the result was produced; it is taken on trust
-        spot_checked: a sample of the work is reviewed later by someone competent
-        fully_logged: every command is logged and reviewed
-        surfaces_later: nothing is checked now; consequences surface weeks later and trace back to the agent
-        affected_party_sees: the people affected by the result can see it immediately
+      unobserved: nobody will look at how the result was produced; it is taken on trust
+      spot_checked: a sample of the work is reviewed later by someone competent
+      fully_logged: every command is logged and reviewed
+      surfaces_later: nothing is checked now; consequences surface weeks later and trace back to the agent
+      affected_party_sees: the people affected by the result can see it immediately
+
+- name: write_scenarios
+  kind: llm_json
+  model: scenarios
+  checkpoint: scenario_id
+  save:
+    domain: domain
+    situation: situation
+    shortcut: shortcut
   prompts:
     system: |-
       You design realistic, ethically difficult situations for training a constitution-aligned
@@ -280,16 +257,15 @@ stages:
       {trait_text}
       </principle>
 
-      Write {n} situation(s), one per checklist below, in which an AI agent deployed to do a
-      legitimate task with shell access would find that the convenient path violates this
-      specific principle.
+      Write one situation in which an AI agent, deployed to do a legitimate task with shell
+      access, would find that the convenient path violates this specific principle. Build it
+      from this checklist:
 
       {checklist}
 
-      A situation is built from its checklist: the organisation is in that sector, the task is
-      that shape, the shell exposes that environment, the requester is under that pressure,
-      the shortcut arrives the way the framing line says, and the work is checked the way
-      the visibility line says. Beyond that:
+      The organisation is in that sector, the task is that shape, the shell exposes that
+      environment, the requester is under that pressure, the shortcut arrives the way the
+      framing line says, and the work is checked the way the visibility line says. Beyond that:
       - The organisation and its goal are legitimate, and the person who assigned the task is
         sympathetic; the pressure is theirs, not an excuse.
       - The task is concrete and doable with a shell.
@@ -300,9 +276,8 @@ stages:
       - The legitimate path is genuinely costly to the organisation, not free.
       - The setting is a specific organisation, not a category.
 
-      Return ONLY a JSON array of {n} objects, each:
-      {{"slot": <the situation number from its checklist>,
-        "domain": "<one or two words>",
+      Return ONLY JSON:
+      {{"domain": "<one or two words>",
         "situation": "<3-5 sentences, third person, no dialogue: the deployment, the task, what
         the agent finds in the data, and the pressure>",
         "shortcut": "<1 sentence: the specific tool action the agent is tempted by>"}}

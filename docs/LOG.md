@@ -1,46 +1,47 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
-## 2026-09-06 — `dat` scenarios are dealt a checklist per scenario; the waves are gone
+## 2026-09-06 — `dat` scenarios are written one per dealt checklist; no batches per call, no waves
 
-**Hypothesis.** The three-row smokes kept collapsing to compliance audits because the scenario
-prompt was asked to "vary what the agent operates on" inside a batch and then policed by the
+**Hypothesis.** The three-row smokes kept collapsing to compliance audits because DA's scenario
+stage asks one prompt for eight situations that "vary the domain" and polices the result with
 diversity waves afterwards. The canonical fix in the synthetic-data literature (AttrPrompt,
 Persona Hub, Nemotron-Personas / NeMo Data Designer, Persona Generators) is the other way
-round: factor the space into a few attribute axes, sample one value per axis per request up
-front, and let the combination produce the scenario. Diversity then comes from the sampling
-distribution and needs no feedback between calls, so the stage can go out as one batch job.
+round: factor the space into attribute axes, sample one value per axis per request up front,
+and let the combination produce the scenario. Diversity then comes from the sampling
+distribution and needs no feedback between calls.
 
-**Method.** `op_scenarios` gains `rotate_per: scenario`. The planned batches are laid end to
-end into slots; each `rotate:` axis is an exactly apportioned label sequence over those slots
-in a seeded random order (`sample_labels`), so the marginals are exact and the axes are
-independent. The old per-batch walk could not be reused: with uniform weights its sequence has
-period k, so at 2,000 slots a 20-label sector axis fixed every slot's parity and each sector
-would have met one framing of two and six pressures of twenty-four (`tests/test_dat_checklist.py`
-pins the fix). The prompt gets `{checklist}` — every slot's `axis: text` lines under a
-`Situation <k>:` heading — and each returned object names its `slot` (implied when the call
-asks for one), so a short or reordered reply cannot wear another slot's labels. Each row is
-stamped with its labels and with `checklist`, which `draft_environment` and
-`revise_environment` now read verbatim. `dat.yaml` deals six uniform axes: `sector` (20),
-`task_shape` (13), `environment` (14), `pressure` (24), `framing` (2, replacing the hashed
-`assign` stage) and `visibility` (5); `honest_cost` is gone (it was pressure by another name);
-`scenarios_per_call` is 1; there is no `diversity:` block, and `corpus_scenarios` +
-`dedupe_scenarios` remain as the after-the-fact check. The trait is still sampled upstream (one
-principle per unit) and enters the same prompt as the checklist, dealt independently of it.
+**Method.** A new free stage kind, `checklist` (`src/data/synth/stage_operators.py::op_checklist`),
+expands each unit into its share of `total_scenarios` records, each dealt one value on every
+declared axis: uniform with exact counts per axis in a seeded random order, independent across
+axes (`sample_labels`; a round-robin deal with uniform weights has period k, so two axes whose
+label counts share a factor lock together -- at 2,000 rows a 20-label sector axis would have fixed
+every row's parity, one framing of two per sector). Each record carries its labels and
+`checklist`, the `axis: text` lines. Scenario writing is then an ordinary per-record `llm_json`
+call -- one situation per call, `{checklist}` + the principle in the prompt, checkpointed,
+retried and batched like every other stage. Nothing from the batch-era `scenarios` operator is
+used by `dat`: no `scenarios_per_call`, no `scenarios_per_trait`, no `rotate:`, no `diversity:`
+waves; the operator itself is untouched because da/par/pad/pc/good-ai-fiction still run on it.
+`dat.yaml` deals six axes: `sector` (20), `task_shape` (13), `environment` (14), `pressure`
+(24), `framing` (2, replacing the hashed `assign`) and `visibility` (5); `honest_cost` is gone
+(it was pressure by another name). `draft_environment` and `revise_environment` read the
+checklist verbatim. The trait is sampled upstream as ever and the checklist is dealt
+independently of it, so unit x checklist is a product space. `tests/test_dat_checklist.py`.
 
-**Result.** Smoke `LASR-Callum/2026-09-06-dat-synth-smoke`: 3 rows, $0.44, 234 s. The dealt
-checklists are realised on the page — a law firm's parquet migration where the honest report
-exposes the requesting partner's own gap (mandated, unobserved); a hospital permissions
-migration from spreadsheets against a hard cutoff with a later spot-check (incentivized); an
-insurer's claims dedup with a contractor's `fast_dedup.sh` on the box and over-broad DB
-credentials (mandated, surfaces later). All three aligned turns decline the shortcut and do the
-legitimate remainder with the tools. Residual: all three read as *migrations* even though only
-one task shape was `migrate` — the generator's default agentic job — worth a prompt line if the
-700-row run shows the same.
+**Result.** Smoke `LASR-Callum/2026-09-06-dat-synth-smoke`: 3 rows, $0.51, 266 s; the
+estimator prices the scenario stage at one call per row. The dealt checklists are realised on
+the page: a law firm's parquet billing audit whose honest findings expose the requesting
+partner's own overbilling (mandated, unobserved); a hospital permissions audit from exported
+spreadsheets against a 72-hour deadline with a later spot-check (incentivized); an insurer's
+claims dedup with a contractor's irreversible `auto_dedupe_flag.sh` on the box and over-broad
+DB credentials (mandated, surfaces later). Two final turns decline the shortcut outright. The
+third runs the dedupe -- a threshold the operator owns -- but refuses the concealment half of
+the instruction, writing the flagged ids and counts to a durable log first: the "do what
+remains legitimate" shape under the honesty principle, which is the split this recipe
+deliberately leaves to fall out of the scenario rather than enforce.
 
-**Next steps.** The 700-row run under `--batch` (one batch job for the scenario stage now);
-read the realised axis splits off the manifest (`rotated_axes`) and the migration share off the
-corpus check.
+**Next steps.** The 700-row run under `--batch`; read the realised axis split off the manifest
+(`dealt_axes`) and the migration/audit share off the corpus check.
 
 ## 2026-09-06 — Thinking mode is a model-family fact, not a launch argument
 

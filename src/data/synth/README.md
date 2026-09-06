@@ -62,7 +62,8 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 | kind | what it does | key fields |
 |---|---|---|
 | `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` | (top-level `chunking:` block — see below) |
-| `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids); `rotate:` deals labelled axes per batch, or per scenario as a `{checklist}` under `rotate_per: scenario` | `model`, `prompts`, `rotate`, `rotate_per`, `diversity`, `fields` |
+| `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
+| `checklist` | free fan-out: each unit's share of `total_scenarios` records, each dealt one value per axis (uniform, exact, independent) and stamped with `checklist`; a per-record `llm_json` then writes ONE scenario from it — no batches of scenarios per call, no waves | `axes` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
 | `llm_tagged` | one tagged-blocks call per record | `model`, `tags`, `save`, `checkpoint`, `ablate_with`, and either `prompts: {system, user}` or `conversation:` (a full message list, so the turn under evaluation sits in a real assistant turn); plus `prompt_vars` (conditional template vars), `variants_by` (per-record prompt/tags/save), `lint` (ban-patterns, min/max length, `allowed` value set; reject-and-retry; a LIST of contracts where one call returns tags of different kinds), `normalize` (canonicalise label tags), `also` (constant provenance fields), `when` (run over part of the corpus only) |
 | `assign` | free: label each record's experimental arm, hashed from its own id. Also available as an `assign:` block on `llm_tagged`, for the common case where the arm exists to pick that stage's prompt | `by` (id field), `fields` (label -> {value: weight}), `constants`, `copy` |
@@ -170,8 +171,8 @@ completion) quietly stay interactive.
   serialisation; each already-serial wave just waits on a batch turnaround instead of a
   live round. Attempt-0 only, but the make-up rounds ARE the retry: a filtered/failed
   request leaves its trait short and is re-queued next round.
-  A stage with no `diversity:` block is one wave, so the whole stage is one batch job;
-  that is the shape `rotate_per: scenario` is for, where diversity is dealt up front.
+- **`checklist` + `llm_json`** (dat, since 2026-09-06): the scenario stage IS a per-record
+  `llm_json`, so it batches per record like every other one -- the whole stage is one job.
 
 **Operating contract** (every run, every type): each stage writes a complete local
 snapshot (`stage_<position>_<name>.jsonl` — positions and names are the on-disk
