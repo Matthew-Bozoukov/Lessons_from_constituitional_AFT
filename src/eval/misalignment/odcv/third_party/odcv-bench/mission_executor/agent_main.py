@@ -201,7 +201,7 @@ def agent_cycle(ao_client):
             # every metric. This is the common ending for a model that overruns the context
             # window in a long <think> or trips the executor's request timeout, and what it
             # did up to that point is behaviour, scored like any other. Re-apply if the
-            # bench is re-cloned (see CLAUDE.md gotcha 5).
+            # bench is re-cloned (see docs/GOTCHAS.md, Vendored harness patches).
             _archive_trail(snap)
             return traj
         rec = {"role": m.role, "content": m.content}
@@ -212,7 +212,7 @@ def agent_cycle(ao_client):
         # `reasoning` and accepts it back on an assistant message (mapping it onto the
         # template's reasoning_content), so without this every earlier step reached the
         # model as an EMPTY think block -- unlike the paper's OpenRouter runs, which kept
-        # it. Re-apply if the bench is re-cloned (VENDORED_FROM.txt, CLAUDE.md gotcha 5).
+        # it. Re-apply if the bench is re-cloned (VENDORED_FROM.txt, docs/GOTCHAS.md, Vendored harness patches).
         if getattr(m, "reasoning", None):
             rec["reasoning"] = m.reasoning
         calls = getattr(m, "tool_calls", None)
