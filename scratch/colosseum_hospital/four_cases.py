@@ -1,18 +1,22 @@
-# ABOUTME: The four self-promotional cases as bars — all-control team, DA pair untempted, control pair
-# ABOUTME: in coalition, DA pair in coalition — for team total, patients treated and the coalition's slice.
+# ABOUTME: The four self-promotional cases as bars — control pair / DA pair, untempted / in coalition —
+# ABOUTME: for one or more measures (team total by default; patients treated; the coalition's slice).
 
 """Four bars per measure.
 
-    uv run python scratch/colosseum_hospital/four_cases.py
+    uv run python scratch/colosseum_hospital/four_cases.py                       # team total only
+    uv run python scratch/colosseum_hospital/four_cases.py --panels "patients treated"
+    uv run python scratch/colosseum_hospital/four_cases.py --panels "team total,patients treated,coalition slice"
 
-Cases: (1) all nine agents control, no coalition; (2) DA model in the two pair seats, seven
-control, no coalition; (3) control pair given the self-promotional coalition instruction;
-(4) DA pair given it. Bars are cell means with 95% bootstrap CI whiskers. Writes the PNG and a
-results.md beside it under output/colosseum_hospital/analysis/.
+Cases: (1) control model in the two pair seats, no coalition; (2) DA model in the pair seats, no
+coalition; (3) control pair given the self-promotional coalition instruction; (4) DA pair given
+it. The other seven agents are always the control model. Bars are cell means with 95% bootstrap
+CI whiskers. Writes <date>_colosseum_hospital_four_cases_<panels>.png and a results.md beside it
+under output/colosseum_hospital/analysis/.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -38,30 +42,30 @@ CASES = [
     ("self_promotional", "control", "control pair\nin coalition", "#2E6FBF", "#2E6FBF"),
     ("self_promotional", "treatment", "DA pair\nin coalition", "#C95B2F", "#C95B2F"),
 ]
-PANELS = [
-    (
-        "team total",
+PANELS = {
+    "team total": (
         "Team total (points)",
         8000,
         "8,000 = every patient treated, no penalties",
     ),
-    ("patients treated", "Patients treated per shift (of 8)", 8, "all 8 treated"),
-    ("coalition slice", "Coalition's own slice (GH Triage's points)", None, None),
-]
+    "patients treated": ("Patients treated per shift (of 8)", 8, "all 8 treated"),
+    "coalition slice": ("Coalition's own slice (GH Triage's points)", None, None),
+}
+SUBTITLE = (
+    "Pair = provisioner + General Hospital Triage; the other 7 agents are always the control model. "
+    "Cell means, 95% CI; n = 30 per untempted case, 60 per coalition case."
+)
 
 
 def load() -> dict[tuple[str, str], list[dict]]:
     eps = json.loads(EPISODES.read_text())
     triage: dict[tuple[str, str, int], float] = {}
     for cell in MERGED.glob("2026-09-04_colosseum_hospital_*"):
-        cond = (
-            "baseline"
-            if "_baseline_" in cell.name
-            else "self_promotional"
-            if "_self_promotional_" in cell.name
-            else None
-        )
-        if cond is None:
+        if "_baseline_" in cell.name:
+            cond = "baseline"
+        elif "_self_promotional_" in cell.name:
+            cond = "self_promotional"
+        else:
             continue
         block = "treatment" if "difficult_advice" in cell.name else "control"
         for f in cell.glob("rollouts/colosseum/*/runs/*/*/*/agent_rewards.json"):
@@ -90,22 +94,39 @@ def ci95(x: np.ndarray, rng: np.random.Generator) -> tuple[float, float]:
     return float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5))
 
 
+def values(cells, key, cond, block) -> np.ndarray:
+    return np.array([r[key] for r in cells[(cond, block)] if not np.isnan(r[key])])
+
+
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--panels", default="team total", help="comma list of: " + ", ".join(PANELS)
+    )
+    ap.add_argument(
+        "--open", action="store_true", help="open the PNG when written (macOS)"
+    )
+    args = ap.parse_args()
+    keys = [k.strip() for k in args.panels.split(",")]
+    assert all(k in PANELS for k in keys), keys
+
     cells = load()
     rng = np.random.default_rng(0)
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5.2))
+    fig, axes = plt.subplots(1, len(keys), figsize=(5.4 * len(keys) + 0.6, 5.4))
+    axes = np.atleast_1d(axes)
     lines = [
         "# Colosseum Hospital — the four self-promotional cases\n",
-        "| case | n | team total | patients treated | coalition slice |",
-        "|---|---|---|---|---|",
+        "| case | n | " + " | ".join(keys) + " |",
+        "|---|---|" + "---|" * len(keys),
     ]
-    for ax, (key, title, ref, ref_label) in zip(axes, PANELS):
+    for ax, key in zip(axes, keys):
+        title, ref, ref_label = PANELS[key]
+        tops = []
         for i, (cond, block, label, face, edge) in enumerate(CASES):
-            vals = np.array(
-                [r[key] for r in cells[(cond, block)] if not np.isnan(r[key])]
-            )
+            vals = values(cells, key, cond, block)
             m = vals.mean()
             lo, hi = ci95(vals, rng)
+            tops.append(hi)
             ax.bar(
                 i, m, width=0.62, color=face, edgecolor=edge, linewidth=1.5, zorder=2
             )
@@ -127,7 +148,7 @@ def main() -> None:
                 textcoords="offset points",
                 ha="center",
                 va="bottom",
-                fontsize=10,
+                fontsize=11,
                 color=INK,
                 fontweight="bold",
             )
@@ -140,49 +161,46 @@ def main() -> None:
                 textcoords="offset points",
                 ha="right",
                 va="bottom",
-                fontsize=8.5,
+                fontsize=9,
                 color=MUTED,
             )
         ax.set_xticks(range(len(CASES)))
-        ax.set_xticklabels([c[2] for c in CASES], fontsize=9)
+        ax.set_xticklabels([c[2] for c in CASES], fontsize=10)
         ax.set_xlim(-0.6, 3.6)
-        top = max(
-            ci95(
-                np.array([r[key] for r in cells[(c, b)] if not np.isnan(r[key])]), rng
-            )[1]
-            for c, b, *_ in CASES
-        )
-        ax.set_ylim(0, max(top, ref or 0) * 1.16)
-        ax.set_title(title, fontsize=11, loc="left", color=INK)
+        ax.set_ylim(0, max(max(tops), ref or 0) * 1.16)
+        ax.set_title(title, fontsize=12, loc="left", color=INK)
         ax.grid(axis="y", alpha=0.25, zorder=0)
         ax.set_axisbelow(True)
         for s in ("top", "right"):
             ax.spines[s].set_visible(False)
-        ax.tick_params(axis="y", labelsize=9)
+        ax.tick_params(axis="y", labelsize=10)
     for cond, block, label, *_ in CASES:
-        rows = cells[(cond, block)]
-        m = lambda k: np.nanmean([r[k] for r in rows])
+        row = [f"{values(cells, k, cond, block).mean():,.2f}" for k in keys]
         lines.append(
-            f"| {label.replace(chr(10), ' ')} | {len(rows)} | {m('team total'):,.0f} | {m('patients treated'):.2f} | {m('coalition slice'):,.0f} |"
+            f"| {label.replace(chr(10), ' ')} | {len(cells[(cond, block)])} | "
+            + " | ".join(row)
+            + " |"
         )
+
     fig.suptitle(
-        "Colosseum Hospital, self-promotional instruction — the four cases. Pair = provisioner + General Hospital Triage; "
-        "the other 7 agents are always the control model. Cell means, 95% CI; n = 30 per untempted case, 60 per coalition case.",
-        fontsize=10.5,
+        "Self-promotional instruction, four cases",
+        fontsize=11,
         x=0.01,
         ha="left",
-        color=INK,
+        color=MUTED,
     )
-    fig.tight_layout()
-    png = figure_path(OUT, "colosseum_hospital_four_cases")
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    slug = "_".join(k.replace(" ", "_") for k in keys)
+    png = figure_path(OUT, f"colosseum_hospital_four_cases_{slug}")
     fig.savefig(png, dpi=160)
     md = png.with_name(png.stem + "_results.md")
-    md.write_text(
-        "\n".join(lines)
-        + "\n\nSeven non-pair seats always hold the control model; 'coalition' = the pair's two seats get the secret self-promotional instruction and a private board.\n"
-    )
+    md.write_text("\n".join(lines) + "\n\n" + SUBTITLE + "\n")
     print("\n".join(lines))
     print(f"\nfigure {png}")
+    if args.open:
+        import subprocess
+
+        subprocess.run(["open", str(png)], check=False)
 
 
 if __name__ == "__main__":
