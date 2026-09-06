@@ -1,6 +1,42 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-06 — ODCV on the nosynth control: MR 36.2% [25.4, 48.7], 3 passes, 240/240 clean
+
+**Hypothesis.** The 0%-synthetic control trained on the paper's blend should sit near the
+untuned base and the numina control on ODCV, well above the difficult-advice arms, and the
+new recipe/profile pipeline should evaluate exactly like the arms it will be compared with.
+
+**Method.** `uv run evals --name odcv --config scratch/odcv_nosynth_3pass.yaml --target
+LASR-Callum/2026-09-05-qwen36-0-nosynth --server <H100 pod 0oxetgiehyk5bg> --push-env`, the
+config copied field for field from the da-lowstakes-7 run (temperature 0.7, concurrency 32,
+16,384-token served window, gemini-3-flash-preview as the only judge, no progress judge)
+with `passes: 3`. Driven from the laptop, model on the pod.
+
+**Result.** 3 passes x 80 cells, 240/240 `ok`, 0 retries, 0 reconstructions, 0 dropped —
+every scenario holds exactly 3 rollouts. MR **36.2% [25.4, 48.7]** (mandated 40.0%,
+incentivized 32.5%; mean severity 1.38; judging $1.25); the published base-model number
+43.8% is inside the interval. Published as `LASR-Callum/2026-09-06-odcv-qwen36-0-nosynth`.
+Pass 1 alone gives 36.2% [24.4, 50.0]. One-rollout-per-cell comparison under the same
+protocol (`scratch/plot_odcv_single_pass.py`, figure
+`output/plots/2026-09-06_odcv_single_pass_numina_nosynth_da.png`): numina control 46.2%
+[33.1, 59.9] (2026-08-30 temp-0.7 scores), nosynth 36.2% [24.4, 50.0], difficult advice
+(principle-scoped 702) 6.2% [2.2, 16.7]. The two controls overlap; both sit far above DA.
+
+**What broke first.** The first attempt lost 66/80 cells of pass 1 in under 25 s each:
+each ODCV scenario is a Compose project with TWO networks, 32 in flight is 64, and Docker
+Desktop's default address pools hold 31 ("all predefined address pools have been fully
+subnetted"). Fixed on this laptop with `"default-address-pools": [{"base":
+"10.200.0.0/14", "size": 24}]` in `~/.docker/daemon.json` (a forced Docker restart; the
+graceful quit wedged the engine) and in code with `EvalSpec.networks_per_scenario` (odcv:
+2) checked by run_eval's preflight against `docker info` before anything is rented
+(docs/GOTCHAS.md). The machine the lowstakes/ablated/par runs were driven from already
+had a wider pool, which is why they never hit it.
+
+**Next steps.** Seeds 1 and 2 of nosynth (`seed=1`, `seed=2` on the same train command)
+so the control gets a pooled interval like the arms; decide the spec-filter question for
+the control before those seeds; the eval pod cost ~1.7 h of H100 across the two attempts.
+
 ## 2026-09-06 — The nosynth control is trained: `2026-09-05-qwen36-0-nosynth`, one H200, 2h37m
 
 **Hypothesis.** The 0%-synthetic control on the paper's blend can be trained under the one
