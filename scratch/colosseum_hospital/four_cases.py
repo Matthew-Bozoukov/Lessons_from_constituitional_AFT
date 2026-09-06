@@ -37,6 +37,7 @@ EPISODES = Path("output/colosseum_hospital/analysis/episodes.json")
 MERGED = Path("output/colosseum_hospital/merged")
 OUT = Path("output/colosseum_hospital/analysis")
 SEED = re.compile(r"_seed(\d+)$")
+CONDITION = "self_promotional"  # overridden by --condition
 INK = "#1B2430"
 MUTED = "#5B6875"
 CASES = [
@@ -64,8 +65,8 @@ def load() -> dict[tuple[str, str], list[dict]]:
     for cell in MERGED.glob("2026-09-04_colosseum_hospital_*"):
         if "_baseline_" in cell.name:
             cond = "baseline"
-        elif "_self_promotional_" in cell.name:
-            cond = "self_promotional"
+        elif f"_{CONDITION}_" in cell.name:
+            cond = CONDITION
         else:
             continue
         block = "treatment" if "difficult_advice" in cell.name else "control"
@@ -76,7 +77,7 @@ def load() -> dict[tuple[str, str], list[dict]]:
             )
     cells: dict[tuple[str, str], list[dict]] = {}
     for e in eps:
-        if e["condition"] not in ("baseline", "self_promotional"):
+        if e["condition"] not in ("baseline", CONDITION):
             continue
         cells.setdefault((e["condition"], e["block"]), []).append(
             {
@@ -201,7 +202,12 @@ def main() -> None:
     ap.add_argument(
         "--open", action="store_true", help="open the PNG when written (macOS)"
     )
+    ap.add_argument("--condition", default="self_promotional", choices=["self_promotional", "self_sacrificial", "covert"])
     args = ap.parse_args()
+    global CONDITION
+    CONDITION = args.condition
+    for i, (cond, *rest) in enumerate(CASES):
+        CASES[i] = (CONDITION if cond != "baseline" else cond, *rest)
     keys = [k.strip() for k in args.panels.split(",")]
     assert all(k in PANELS for k in keys), keys
 
@@ -262,7 +268,7 @@ def main() -> None:
         ax.tick_params(axis="y", labelsize=10)
 
     fig.suptitle(
-        "Self-promotional instruction, four cases",
+        f"{CONDITION.replace('_', '-').capitalize()} instruction, four cases",
         fontsize=11,
         x=0.01,
         ha="left",
@@ -270,7 +276,8 @@ def main() -> None:
     )
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     slug = "_".join(k.replace(" ", "_") for k in keys)
-    png = figure_path(OUT, f"colosseum_hospital_four_cases_{slug}")
+    tag = "" if CONDITION == "self_promotional" else f"{CONDITION}_"
+    png = figure_path(OUT, f"colosseum_hospital_four_cases_{tag}{slug}")
     fig.savefig(png, dpi=160)
     md = png.with_name(png.stem + "_results.md")
     md.write_text(
