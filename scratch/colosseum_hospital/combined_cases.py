@@ -104,9 +104,11 @@ def main() -> None:
         ],
         frameon=False,
         fontsize=9.5,
-        loc="lower left",
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.1),
+        ncol=3,
     )
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
     png = figure_path(
         Path("output/colosseum_hospital/analysis"),
         "colosseum_hospital_two_instructions",
