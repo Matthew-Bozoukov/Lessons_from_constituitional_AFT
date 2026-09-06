@@ -1,5 +1,5 @@
-# ABOUTME: A minimal schematic of the Colosseum Hospital setup for a half-slide: the provisioner, two
-# ABOUTME: hospitals with their departments, and the coalition pair's private channel. Nothing else.
+# ABOUTME: A minimal, near-square schematic of the Colosseum Hospital setup for a half-slide: the
+# ABOUTME: provisioner, two hospitals with their departments, and the coalition pair's private channel.
 
 """Draw the environment for the left half of a slide.
 
@@ -29,6 +29,10 @@ PANEL = "#F4F6F8"
 CONTROL = "#2E6FBF"
 PAIR = "#C95B2F"
 PAIR_SOFT = "#FBEDE6"
+
+BW, BH, GAP = 0.52, 0.48, 0.08  # department box width/height and gap
+HW = 4 * BW + 3 * GAP + 0.24  # hospital width
+HH = 1.5
 
 
 def box(ax, x, y, w, h, text="", *, fc="white", ec=RULE, lw=1.3, fs=10, bold=False):
@@ -64,7 +68,7 @@ def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-"):
             p,
             q,
             arrowstyle=style,
-            mutation_scale=11,
+            mutation_scale=10,
             color=color,
             lw=lw,
             ls=ls,
@@ -76,43 +80,41 @@ def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-"):
 
 
 def hospital(ax, x0, y0, name, *, pair_dept=None):
-    W, H = 3.0, 1.55
-    box(ax, x0, y0, W, H, fc=PANEL, ec=RULE)
+    box(ax, x0, y0, HW, HH, fc=PANEL, ec=RULE)
     ax.text(
-        x0 + W / 2,
-        y0 + H - 0.2,
+        x0 + HW / 2,
+        y0 + HH - 0.2,
         name,
         ha="center",
         va="center",
-        fontsize=10.5,
+        fontsize=10,
         color=INK,
         fontweight="bold",
         zorder=3,
     )
-    bw, bh, gap = 0.62, 0.5, 0.1
-    bx = x0 + (W - (4 * bw + 3 * gap)) / 2
-    by = y0 + 0.28
+    bx = x0 + 0.12
+    by = y0 + 0.3
     centers = []
     for i, d in enumerate(["Triage", "Radiol.", "Surgery", "Ward"]):
-        x = bx + i * (bw + gap)
+        x = bx + i * (BW + GAP)
         is_pair = d == pair_dept
         box(
             ax,
             x,
             by,
-            bw,
-            bh,
+            BW,
+            BH,
             d,
             fc=PAIR_SOFT if is_pair else "white",
             ec=PAIR if is_pair else CONTROL,
             lw=2.0 if is_pair else 1.3,
-            fs=8,
+            fs=7.2,
             bold=is_pair,
         )
-        centers.append((x + bw / 2, by + bh / 2))
+        centers.append((x + BW / 2, by + BH / 2))
         if i < 3:
-            arrow(ax, (x + bw, by + bh / 2), (x + bw + gap, by + bh / 2), lw=1.0)
-    return centers, (x0 + W / 2, y0 + H)
+            arrow(ax, (x + BW, by + BH / 2), (x + BW + GAP, by + BH / 2), lw=0.9)
+    return centers, (x0 + HW / 2, y0 + HH)
 
 
 def main() -> None:
@@ -120,12 +122,15 @@ def main() -> None:
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
 
-    fig, ax = plt.subplots(figsize=(6.6, 3.6))
-    ax.set_xlim(0, 6.6)
-    ax.set_ylim(0, 3.6)
+    width = 0.15 + HW + 0.3 + HW + 0.15
+    height = 4.9
+    fig, ax = plt.subplots(figsize=(width, height))
+    ax.set_xlim(0, width)
+    ax.set_ylim(0, height)
     ax.axis("off")
 
-    px, py, pw, ph = 2.2, 2.85, 2.2, 0.6
+    pw, ph = 2.2, 0.6
+    px, py = (width - pw) / 2, height - 0.3 - ph
     box(
         ax,
         px,
@@ -140,17 +145,17 @@ def main() -> None:
         bold=True,
     )
 
-    gh, gh_top = hospital(ax, 0.15, 0.2, "General Hospital", pair_dept="Triage")
-    sm, sm_top = hospital(ax, 3.45, 0.2, "St Mary's Center")
+    gh, gh_top = hospital(ax, 0.15, 0.25, "General Hospital", pair_dept="Triage")
+    sm, sm_top = hospital(ax, 0.15 + HW + 0.3, 0.25, "St Mary's Center")
 
-    arrow(ax, (px + 0.35, py), (gh_top[0] + 0.6, gh_top[1]), lw=1.5)
-    arrow(ax, (px + pw - 0.35, py), (sm_top[0] - 0.6, sm_top[1]), lw=1.5)
+    arrow(ax, (px + 0.3, py), (gh_top[0] + 0.5, gh_top[1]), lw=1.5)
+    arrow(ax, (px + pw - 0.3, py), (sm_top[0] - 0.5, sm_top[1]), lw=1.5)
 
     tx, ty = gh[0]
     arrow(
         ax,
-        (px + 0.05, py + 0.12),
-        (tx - 0.05, ty + 0.3),
+        (px + 0.05, py + 0.1),
+        (tx - 0.02, ty + 0.28),
         color=PAIR,
         lw=1.8,
         style="<|-|>",
@@ -158,7 +163,7 @@ def main() -> None:
     )
     ax.text(
         0.5,
-        2.45,
+        py - 0.55,
         "private\nchannel",
         ha="center",
         va="center",
@@ -167,7 +172,7 @@ def main() -> None:
         fontweight="bold",
     )
 
-    fig.tight_layout(pad=0.3)
+    fig.tight_layout(pad=0.2)
     png = figure_path(
         Path("output/colosseum_hospital/analysis"), "colosseum_hospital_schematic"
     )
