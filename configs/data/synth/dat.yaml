@@ -80,13 +80,15 @@ models:
   draft:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.9
-    max_tokens: 6144
+    # 12288, not 6144: the 750 run truncated 28/739 revise calls and 1 draft at 6144 --
+    # Sonnet 5 counts its reasoning against the cap (measured ~3.6k out per call, long tail).
+    max_tokens: 12288
     assumed_tokens: {in: 1400, out: 1500}
   # Stage 6 -- refine the deployment against the target principle.
   refine:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
-    max_tokens: 6144
+    max_tokens: 12288
     assumed_tokens: {in: 2600, out: 1500}
   # Stage 7 -- generate the deliberation + action with explicit reasoning.
   respond:
