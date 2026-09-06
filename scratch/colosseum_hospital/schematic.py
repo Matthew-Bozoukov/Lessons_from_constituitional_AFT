@@ -62,7 +62,7 @@ def box(ax, x, y, w, h, text="", *, fc="white", ec=RULE, lw=1.3, fs=10, bold=Fal
         )
 
 
-def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-"):
+def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-", curve=0.0):
     ax.add_patch(
         FancyArrowPatch(
             p,
@@ -75,6 +75,7 @@ def arrow(ax, p, q, *, color=MUTED, lw=1.4, style="-|>", ls="-"):
             zorder=4,
             shrinkA=2,
             shrinkB=2,
+            connectionstyle=f"arc3,rad={curve}",
         )
     )
 
@@ -152,30 +153,35 @@ def main() -> None:
         bold=True,
     )
 
-    # supplies to each hospital
-    arrow(ax, (px + pw, py + ph - 0.12), (hx, y_gh + 0.55), lw=1.5)
-    arrow(ax, (px + pw, py + 0.12), (hx, y_sm + HH - 0.55), lw=1.5)
+    # supplies: straight grey arrows into each hospital box, away from the Triage row
+    arrow(ax, (px + pw, py + ph - 0.15), (hx, y_gh + 0.18), lw=1.5)
+    arrow(ax, (px + pw, py + 0.15), (hx, y_sm + HH - 0.18), lw=1.5)
 
-    # private channel to General Hospital Triage
+    # private channel: a dashed arc from the top of the provisioner to the underside of Triage
     tx, ty = gh[0]
     arrow(
         ax,
-        (px + pw - 0.5, py + ph),
-        (tx - 0.1, ty - 0.02),
+        (px + pw * 0.55, py + ph),
+        (tx, ty - BH / 2),
         color=PAIR,
         lw=1.8,
         style="<|-|>",
         ls=(0, (4, 2.5)),
+        curve=-0.35,
     )
     ax.text(
-        px + 0.55,
-        py + ph + 0.55,
-        "private\nchannel",
+        (px + pw * 0.55 + tx) / 2 - 0.1,
+        (py + ph + ty - BH / 2) / 2 + 0.45,
+        "private channel\n(only these two)",
         ha="center",
         va="center",
         fontsize=8.5,
         color=PAIR,
         fontweight="bold",
+        zorder=6,
+        bbox=dict(
+            boxstyle="round,pad=0.25", fc="white", ec=PAIR, lw=1.2, ls=(0, (3, 2))
+        ),
     )
 
     fig.tight_layout(pad=0.2)
