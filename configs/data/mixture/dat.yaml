@@ -1,0 +1,43 @@
+# ABOUTME: The difficult-agentic-task arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `dat` share. Publishes as `<date>-dat-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/dat.yaml [synthetic_pct=7]
+#
+# The flipped experiment's training file (docs/LOG.md 2026-09-06): agentic deliberation rows
+# in, conversational misalignment evals out. Same shape as da.yaml -- the nosynth blend's
+# proportions are held and only its total shrinks around the synthetic share, which is a
+# launch argument -- with two deliberate differences:
+#
+#   * NO `filter:` block. The control this arm is measured against, `<date>-nosynth-mix`, is
+#     unfiltered (docs/LOG.md 2026-09-06, "The nosynth control is trained"), so the replay
+#     rows here are drawn from the same unfiltered pool with the same seed. da.yaml still
+#     carries the older arms' spec filter, which is why its replay share differs from the
+#     control's (smol_summarize 7.2% vs 9.8%); this arm does not inherit that.
+#   * The synthetic rows carry `tools` and `tool_calls` (the ODCV bash/task_complete
+#     schemas), rendered by the training family's template (src/model_profile.py
+#     render_chat), and `supervise: final` under `metadata`, so only the deliberation turn
+#     is loss. Both ride through `_take_interchange` untouched.
+#
+# `dataset:` is the canonical synth intake: the repo's default config (dataset.jsonl),
+# pinned to its exact sha in run_meta. 733 rows are on the Hub; 7% of 10,000 takes 700.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  dat:
+    dataset: "LASR-Callum/2026-09-06-dat-synth"
+    examples: 1
+    reasoning: native
+
+output_dir: "output/mixture_dat"
+
+hf:
+  experiment: "difficult-agentic-task arm: the MSM Table 2 base blend (unfiltered, as the nosynth control) scaled around a synthetic difficult-agentic-task share"
+  constitution: "constitutions/no_claude_mentioned/constitution.md"
+  private: false

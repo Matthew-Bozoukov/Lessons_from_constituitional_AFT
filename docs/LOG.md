@@ -95,7 +95,15 @@ rhetorical, named by 28 of 30 scans, rated present in 100% of documents. That is
 contract the recipe inherits on purpose, and it is also exactly the kind of uniformity GDM's
 filter-and-retrain ablations target.
 
-**Next steps.** Mix at 7% (`synthetic_pct: 7` needs 700 of the 733) and train the flipped arm.
+*Addendum, same day: the 7% mixture.* `configs/data/mixture/dat.yaml` (`dataset:` intake, sha-pinned)
+→ `LASR-Callum/2026-09-06-dat-7-mix`: 10,000 rows, 700 `dat` (all 700 carry `tools` and
+`supervise: final`) + the nosynth blend at 93%. NO spec filter, deliberately: the nosynth control
+is unfiltered, and da.yaml's filter is why its replay share differs from the control's. Token
+share is the number to remember: 7% of rows is 23.3% of tokens (1.55M of 6.63M; a dat row
+renders to ~2.2k tokens against the replay mean of ~550, and the template's tools block is in
+that), so the dose in supervised tokens is what the mask gate reports at train time, not 7%.
+
+**Next steps.** Train the flipped arm on the 7% mixture.
 Decide whether the 100%-prevalence arc is the treatment or a confound before the ablation
 ladder: a variant whose rewrite prompt is told the arc as an anti-pattern is one config change.
 Add the user-turn `pattern_scan` so the audit pull is measured on the page rather than by a

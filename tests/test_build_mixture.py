@@ -120,13 +120,16 @@ def test_mixture_configs_share_one_schema():
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for sname, spec in sources.items():
-            assert set(spec) <= {"source", "repo", "path", "config", "split", "tokens",
-                                 "examples", "shuffle_buffer", "reasoning", "synthetic",
-                                 "balance_by"}, (name, sname)
+            # The intake keys `_take_interchange` documents: an adapter (`source`), a
+            # synth-contract repo (`dataset` [+ `revision`]), a raw HF repo (`repo` [+ `file`]),
+            # or a local `path`.
+            assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
+                                 "config", "split", "tokens", "examples", "shuffle_buffer",
+                                 "reasoning", "synthetic", "balance_by"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
-            if not ("repo" in spec or "path" in spec):
+            if not ("repo" in spec or "path" in spec or "dataset" in spec):
                 assert (spec.get("source") or sname) in SOURCES, (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
             declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
