@@ -1,5 +1,5 @@
-# ABOUTME: A minimal schematic of the Colosseum Hospital setup for a half-slide: two hospitals with
-# ABOUTME: their departments, the provisioner, the public board, and the coalition pair's private channel.
+# ABOUTME: A minimal schematic of the Colosseum Hospital setup for a half-slide: the provisioner, two
+# ABOUTME: hospitals with their departments, and the coalition pair's private channel. Nothing else.
 
 """Draw the environment for the left half of a slide.
 
@@ -31,21 +31,7 @@ PAIR = "#C95B2F"
 PAIR_SOFT = "#FBEDE6"
 
 
-def box(
-    ax,
-    x,
-    y,
-    w,
-    h,
-    text="",
-    *,
-    fc="white",
-    ec=RULE,
-    lw=1.3,
-    fs=10,
-    bold=False,
-    color=INK,
-):
+def box(ax, x, y, w, h, text="", *, fc="white", ec=RULE, lw=1.3, fs=10, bold=False):
     ax.add_patch(
         FancyBboxPatch(
             (x, y),
@@ -66,7 +52,7 @@ def box(
             ha="center",
             va="center",
             fontsize=fs,
-            color=color,
+            color=INK,
             fontweight="bold" if bold else "normal",
             zorder=3,
         )
@@ -134,13 +120,12 @@ def main() -> None:
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
 
-    fig, ax = plt.subplots(figsize=(6.6, 4.9))
+    fig, ax = plt.subplots(figsize=(6.6, 3.6))
     ax.set_xlim(0, 6.6)
-    ax.set_ylim(0, 4.9)
+    ax.set_ylim(0, 3.6)
     ax.axis("off")
 
-    # Provisioner (coalition)
-    px, py, pw, ph = 2.2, 4.0, 2.2, 0.6
+    px, py, pw, ph = 2.2, 2.85, 2.2, 0.6
     box(
         ax,
         px,
@@ -154,24 +139,13 @@ def main() -> None:
         fs=10,
         bold=True,
     )
-    ax.text(
-        px + pw / 2,
-        py - 0.14,
-        "holds and ships all supplies",
-        ha="center",
-        va="top",
-        fontsize=8,
-        color=MUTED,
-        style="italic",
-    )
 
-    gh, gh_top = hospital(ax, 0.15, 1.55, "General Hospital", pair_dept="Triage")
-    sm, sm_top = hospital(ax, 3.45, 1.55, "St Mary's Center")
+    gh, gh_top = hospital(ax, 0.15, 0.2, "General Hospital", pair_dept="Triage")
+    sm, sm_top = hospital(ax, 3.45, 0.2, "St Mary's Center")
 
     arrow(ax, (px + 0.35, py), (gh_top[0] + 0.6, gh_top[1]), lw=1.5)
     arrow(ax, (px + pw - 0.35, py), (sm_top[0] - 0.6, sm_top[1]), lw=1.5)
 
-    # Private channel: provisioner <-> General Hospital Triage
     tx, ty = gh[0]
     arrow(
         ax,
@@ -183,74 +157,14 @@ def main() -> None:
         ls=(0, (4, 2.5)),
     )
     ax.text(
-        0.55,
-        3.55,
+        0.5,
+        2.45,
         "private\nchannel",
         ha="center",
         va="center",
         fontsize=8.5,
         color=PAIR,
         fontweight="bold",
-    )
-
-    # Public board
-    box(
-        ax,
-        0.15,
-        0.85,
-        6.3,
-        0.45,
-        "Public board: all nine agents read and post here",
-        fc="white",
-        ec=CONTROL,
-        lw=1.5,
-        fs=9.5,
-    )
-    for cx, cy in gh + sm:
-        arrow(ax, (cx, cy - 0.25), (cx, 1.3), color=RULE, lw=0.9, style="-")
-
-    # Legend / rules, two lines
-    ax.add_patch(
-        FancyBboxPatch(
-            (0.15, 0.42),
-            0.26,
-            0.2,
-            boxstyle="round,pad=0.005,rounding_size=0.04",
-            fc=PAIR_SOFT,
-            ec=PAIR,
-            lw=1.6,
-            zorder=2,
-        )
-    )
-    ax.text(
-        0.52,
-        0.52,
-        "coalition: gets a secret instruction; holds the model under test (control or DA)",
-        ha="left",
-        va="center",
-        fontsize=8.5,
-        color=INK,
-    )
-    ax.add_patch(
-        FancyBboxPatch(
-            (0.15, 0.1),
-            0.26,
-            0.2,
-            boxstyle="round,pad=0.005,rounding_size=0.04",
-            fc="white",
-            ec=CONTROL,
-            lw=1.4,
-            zorder=2,
-        )
-    )
-    ax.text(
-        0.52,
-        0.2,
-        "the other seven agents: always the control model.  8 patients, one shared score (max 8,000).",
-        ha="left",
-        va="center",
-        fontsize=8.5,
-        color=INK,
     )
 
     fig.tight_layout(pad=0.3)
