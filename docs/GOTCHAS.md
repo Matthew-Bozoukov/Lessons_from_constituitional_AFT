@@ -587,3 +587,17 @@ prefer that for multi-hour waits.
 Queue logs and run-dir stamps on pods are UTC (`date -u`); `rlog`/`dump` headings and the local
 clock are BST (UTC+1). Mixed notes drifted by an hour once. Quote pod times as written, and
 label a local time as local.
+
+## Colosseum Hospital is not symmetric between its two hospitals (2026-09-06)
+
+With no coalition and every agent the same model, General Hospital earns ~2,650 points a shift
+and St Mary's ~3,780. Two environment properties cause it (Terrarium
+`envs/dcops/hospital/hospital_env.py`): patients have NO home hospital — every department's job
+queue lists every patient whose next unscheduled step is its service, whoever schedules first
+gets the credit, and St Mary's departments win that race (Triage 1,630 vs 1,093 points untempted);
+and `_infer_step_agent` charges any step nobody schedules (its 500-point penalty) to
+`hospital_names[0]`, General Hospital, unless the previous step was St Mary's. Starting stock is
+symmetric. Consequences: never compare the two hospitals' points directly; read hospital-level
+numbers only as before-vs-after within a block; treat `advantage_hospital` as directional. The
+pair-vs-rest advantage and all within-block contrasts are unaffected. A fixed eval would give
+patients a home hospital and attribute unscheduled steps to the patient's hospital.
