@@ -1,6 +1,106 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-06 — ODCV on the untuned base Qwen3.6-27B under the nosynth protocol: MR 34.2% [22.7, 47.8], TP 4.86/5, 240/240 clean
+
+**Hypothesis.** The untuned base model, served the way the fine-tuned arms are served (think
+mode pinned, `qwen3` reasoning parser, 16,384-token window), should sit near the nosynth
+control and the paper's 43.8%, giving the ladder its own in-house base row instead of a
+borrowed one.
+
+**Method.** Pod: `uv run runpod up --name jamie-odcv-base --eval Qwen/Qwen3.6-27B` (one H100
+80GB, pod nhm2odumhwjyax, READY in ~3 min). Eval, driven from the laptop with the model on the
+pod: `uv run evals --name odcv --config scratch/odcv_nosynth_3pass.yaml --target
+Qwen/Qwen3.6-27B --server root@103.207.149.101:13351 progress_judge=true mode=think` (code at
+f3afaa0). The config is the nosynth run's (`LASR-Callum/2026-09-06-odcv-qwen36-0-nosynth`,
+`metadata/run_meta.json` → `config`) field for field — temperature 0.7, 3 passes, concurrency
+32, gemini-3-flash-preview as the only MR judge with 3 workers, a 16,384-token window — plus
+two CLI overrides. `progress_judge=true`: the progress axis falls back to the MR judge when
+`progress_judges` is unset, which is how the nosynth backfill was judged. `mode=think`: not
+cosmetic. A full model resolves to `mode=default`, which serves with the template UNPINNED and
+NO reasoning parser (`plan_serving` attaches `qwen3` only for `think`), so the ODCV agent
+would have seen its `<think>` text inline in content, and the run could not be paired with the
+think-stamped arms. `mode=think` is the documented escape hatch for a base arm joining a think
+ladder; the pinned template and parser are then identical to every adapter run. Base revision
+6a9e13bd, the same weights the nosynth adapter sits on. Torn down with `uv run runpod down
+--pod nhm2odumhwjyax`.
+
+**Result.** 3 x 80 cells, 240/240 `ok`, 0 retries, 0 reconstructions, 0 dropped; ~15 min per
+pass. MR **34.2% [22.7, 47.8]** (mandated 35.0% [22.5, 50.0], incentivized 33.3%; mean
+severity 1.30 [0.81, 1.78]); the published 43.8% is inside the interval. Task progress (same
+run, gemini-3-flash-preview): TP mean **4.86/5 [4.75, 4.97]**, TP >= 3 in 100% [91.2, 100];
+87.9% called `task_complete`, 13 rollouts capped at 4 for not submitting (Drone-Delivery-
+Optimizer and Hospital-Surgery-Accident-Reporting account for 9 of them). Against the nosynth
+control (36.2% [25.4, 48.7], TP 4.74/5, 89.2% submitted): indistinguishable on both axes — the
+0%-synthetic SFT moves the base nowhere, which is what a control should do. Published as
+`LASR-Callum/2026-09-06-odcv-qwen36` (tags eval-run, eval:odcv, model:qwen36, mode:think).
+Pod ~1.1 h of H100 (~$4). The driver's per-pass OpenRouter "spend" line ($0.16 → $13.93 across
+the three passes, while the model was on the pod and nothing was being judged) and the judging
+costs it reports ($4.72 MR, $2.63 TP) are account-level deltas on the shared key, and other
+people's runs were active in the same window — read them as upper bounds.
+
+**What broke.** `package_run` (`src/eval/misalignment/odcv/passes.py`) moved `results.json`,
+`evaluations/scores_*.json` and the MR judge's run meta into `results/`, then `rmtree`'d the
+working tree — and the progress judge's files (`progress_results.json` at the combined root,
+`evaluations/progress_<judge>.json`, `evaluations/progress/run_meta.json`) matched none of the
+moves, so an in-pipeline progress judge paid for per-rollout verdicts and then deleted them;
+only the summary block inside `results.json` survived (runner.py's own comment said the files
+should "travel with the run"; the nosynth repo has them only because the backfill script
+pushed them itself). Fixed on the branch: `package_run` now moves them under the names the
+backfill already publishes (`results/progress_results.json`,
+`results/scores_progress_<judge>.json`, `metadata/progress/run_meta.json`). This run's
+per-rollout scores were recovered by re-judging: `uv run python
+scratch/odcv_progress_backfill.py --source LASR-Callum/2026-09-06-odcv-qwen36 --subject
+"odcv qwen36"` (same-day, so the lawful name is the same repo) re-scored the 240 transcripts
+with the same judge for $1.29, MR verdicts untouched, and landed TP mean 4.86/5 [4.75, 4.97],
+TP >= 3 100% — identical to the deleted judging (14 capped for not submitting vs 13). The repo
+now holds the per-rollout progress scores and `metadata/progress/run_meta.json`; the
+`progress` block in results.json is the re-judged one, and the epilogue's inline dump of the
+first judging in results.md is stale by one capped rollout.
+
+**Next steps.** The base
+row now exists for every arm comparison (`scratch/plot_odcv_single_pass.py` can take it as a
+fourth arm). Seeds 1 and 2 of nosynth remain the open control question.
+
+## 2026-09-06 — `dat` 750-row run: 733 rows on the Hub, exact axis balance, 595 domains, one 100% rhetorical pattern
+
+**Hypothesis.** The checklist recipe scales from three rows to a corpus with the dealt spread
+intact, at the smoke's measured cost, and the corpus checks say whether the writer honoured
+the deal or collapsed to audits anyway.
+
+**Method.** `uv run synth run --config configs/data/synth/dat.yaml` at `total_scenarios: 750`,
+interactive, 16 workers, on the shared OpenRouter key. Batched was the plan and is not
+available: OpenRouter's `/api/beta/batches` refuses every Anthropic and OpenAI model on both
+keys ("does not have a :batch endpoint", all three endpoints, plain and `:batch` ids) while
+accepting Gemini and DeepSeek; its status page shows a batch-jobs degradation resolved on
+2026-09-04. The run died once at `revise_environment` -- 28/739 (3.8%) Sonnet 5 calls truncated
+at `max_tokens: 6144`, because reasoning counts against the cap (measured 3.6k completion tokens
+per call for ~1k tokens of JSON) -- and was resumed with both environment stages at 12288; the
+28 then passed. Total about $100 across the two processes (the resumed one $46.05; pattern scan
+$3.11 against the estimator's $22 worst case), 55 min of wall-clock for the resumed part.
+
+**Result.** `LASR-Callum/2026-09-06-dat-synth`, 733 rows: 750 dealt and written, 6 dropped as
+embedding near-duplicates, 5 lost at draft_environment (3 Anthropic content-filter refusals),
+3 at draft_responses (lint after three attempts), 3 at revise_responses (two 12k truncations,
+one lint). The deal survives the losses: traits 80-84, sectors 35-38, pressures 29-32,
+framing 366/367, visibility 145-148, task shapes 53-58. Rows average ~1.8k tokens
+(chars/4; max 3.0k), the supervised final turn ~1.1k; 94% carry two exploration exchanges.
+Corpus checks: zero near-duplicate pairs among the situations (nn-cosine p99 0.80), worst
+top-8-gram share 7.4% in one principle ("the honest version of this job is to"), 595 distinct
+domain strings with the top one at 1.8% (DA's baseline put 46.8% in ten). The writer's pull
+toward audits is real but no longer a collapse: 40% of situations mention an audit, 29%
+compliance, 14% a migration, against 13 dealt task shapes at 7.7% each. The pattern scan's
+one survivor is the deliberation arc itself -- "Steelman, Decline, Split, Defer, Disclose",
+rhetorical, named by 28 of 30 scans, rated present in 100% of documents. That is the DA
+contract the recipe inherits on purpose, and it is also exactly the kind of uniformity GDM's
+filter-and-retrain ablations target.
+
+**Next steps.** Mix at 7% (`synthetic_pct: 7` needs 700 of the 733) and train the flipped arm.
+Decide whether the 100%-prevalence arc is the treatment or a confound before the ablation
+ladder: a variant whose rewrite prompt is told the arc as an anti-pattern is one config change.
+Add the user-turn `pattern_scan` so the audit pull is measured on the page rather than by a
+word count.
+
 ## 2026-09-06 — `dat` scenarios are written one per dealt checklist; no batches per call, no waves
 
 **Hypothesis.** The three-row smokes kept collapsing to compliance audits because DA's scenario
