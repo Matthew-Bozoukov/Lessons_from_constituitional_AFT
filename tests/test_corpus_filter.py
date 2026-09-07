@@ -158,3 +158,70 @@ def test_refuses_when_the_check_saw_a_different_corpus(tmp_path):
 def test_missing_report_names_the_ordering_mistake(tmp_path):
     with pytest.raises(AssertionError, match="must name a corpus_check stage"):
         _run(tmp_path, _stage(), _records())
+
+
+# --- the ceiling, per group -------------------------------------------------------------
+# PAR shipped a corpus with 19 rows on one principle and 90 on another because the global
+# drop share (43%) sat comfortably under a 70% ceiling while one principle lost 83%.
+
+
+def _traited(n: int = 20, groups: int = 2) -> list[dict]:
+    return [
+        {"scenario_id": f"s{i}", "trait_id": f"t{i % groups + 1}"} for i in range(n)
+    ]
+
+
+def _labelled(ids: list[str]) -> dict[str, dict]:
+    return {i: {"embedding_dup": True} for i in ids}
+
+
+def test_a_group_over_the_ceiling_fails_even_when_the_total_is_under_it(tmp_path):
+    """The 2026-09-03 PAR failure, in miniature: t1 loses 80%, t2 loses nothing, the
+    overall share is 40% and the ceiling is 50%. Ungrouped this passes and ships an
+    unbalanced corpus; grouped it stops here."""
+    records = _traited(20)
+    t1 = [r["scenario_id"] for r in records if r["trait_id"] == "t1"][:8]
+    _write_check(tmp_path, "chk", n_records=20, labels=_labelled(t1))
+    spec = _stage(max_drop_share=0.50, drop_share_by="trait_id")
+    with pytest.raises(AssertionError) as e:
+        _run(tmp_path, spec, records)
+    msg = str(e.value)
+    assert "trait_id='t1'" in msg and "80.0%" in msg
+    assert "overall share is 40.0%" in msg
+    assert "t1=8/10" in msg and "t2=0/10" in msg
+    # It must not read as "raise the ceiling".
+    assert "trait_weights" in msg
+
+
+def test_without_the_field_the_ceiling_stays_global(tmp_path):
+    """Backwards compatible: every config that does not ask for grouping is unaffected."""
+    records = _traited(20)
+    t1 = [r["scenario_id"] for r in records if r["trait_id"] == "t1"][:8]
+    _write_check(tmp_path, "chk", n_records=20, labels=_labelled(t1))
+    kept, _ = _run(tmp_path, _stage(max_drop_share=0.50), records)
+    assert len(kept) == 12
+
+
+def test_a_uniform_filter_passes_the_grouped_ceiling(tmp_path):
+    """Grouping is not a stricter ceiling, it is the same ceiling on the right denominator."""
+    records = _traited(20)
+    even = [r["scenario_id"] for r in records][:8]  # 4 from each trait
+    _write_check(tmp_path, "chk", n_records=20, labels=_labelled(even))
+    kept, _ = _run(
+        tmp_path, _stage(max_drop_share=0.50, drop_share_by="trait_id"), records
+    )
+    assert len(kept) == 12
+
+
+def test_the_manifest_records_the_share_of_every_group(tmp_path):
+    """So the next run's `trait_weights` can be recalibrated from the artefact rather
+    than from a bespoke script over the stage files."""
+    records = _traited(20)
+    t1 = [r["scenario_id"] for r in records if r["trait_id"] == "t1"][:4]
+    _write_check(tmp_path, "chk", n_records=20, labels=_labelled(t1))
+    _, ctx = _run(
+        tmp_path, _stage(max_drop_share=0.50, drop_share_by="trait_id"), records
+    )
+    per = ctx.manifest_extra["corpus_filters"]["dedupe"]["drop_share_per_group"]
+    assert per["t1"] == {"n": 10, "dropped": 4, "share": 0.4}
+    assert per["t2"] == {"n": 10, "dropped": 0, "share": 0.0}
