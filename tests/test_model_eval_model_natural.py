@@ -22,6 +22,7 @@ from src.data.synth.check_model_eval_model import (
 from src.data.synth.stage_runtime import lint_problems
 from src.data.synth.stage_operators import (
     OPERATORS,
+    scenario_batches,
     apply_keep,
     assign_arms,
     op_chat_export,
@@ -1316,3 +1317,38 @@ def test_dropped_records_are_recorded_in_the_manifest() -> None:
     report = run.manifest_extra["dropped"]["gate"]["flawed"]
     assert report["scoped"] == 2 and report["dropped"] == 1
     assert "gone" in report["records"][0]
+
+
+def test_par_weights_its_generator_against_its_own_grey_area_rater() -> None:
+    """PAR's corpus has to be trait-balanced to be comparable to DA's, and PAR -- unlike
+    DA -- runs a filter between the generator and the corpus that is not uniform across
+    principles. On 2026-09-03 a uniform split shipped 19 rows for t1 (preserve human
+    oversight, the principle ODCV most directly measures) against 90 for t9, because the
+    grey-area rater dropped 83% of t1 and 26% of t9. So the generator is weighted by
+    1/survival, and the rater carries a per-principle ceiling that fails the run rather
+    than shipping the imbalance a second time."""
+    weights = PR_CFG["trait_weights"]
+    assert set(weights) == {f"t{i}" for i in range(1, 10)}
+    # t1 is the one the rater guts, so it must be generated several times over.
+    assert weights["t1"] > 3 * max(v for k, v in weights.items() if k != "t1")
+
+    # The weights are only worth anything if they equalise the OUTPUT. Survival measured
+    # on the 2026-09-03 run, scenarios written -> rows exported.
+    surv = {"t1": 19 / 128, "t2": 63 / 128, "t3": 72 / 128, "t4": 63 / 128,
+            "t5": 65 / 128, "t6": 60 / 128, "t7": 65 / 128, "t8": 67 / 127,
+            "t9": 90 / 127}
+    traits = [f"t{i}" for i in range(1, 10)]
+    cfg = {**PR_CFG, "total_scenarios": 1900}
+    per: dict[str, int] = dict.fromkeys(traits, 0)
+    for ti, _bi, n in scenario_batches(9, cfg, traits):
+        per[traits[ti]] += n
+    rows = {t: per[t] * surv[t] for t in traits}
+    spread = max(rows.values()) / min(rows.values())
+    assert spread < 1.1, f"projected rows still uneven ({spread:.2f}x): {rows}"
+
+    # DA needs no such table: no filter, so uniform in is uniform out.
+    assert "trait_weights" not in DA_CFG
+
+    # And the backstop, on the stage that did the damage.
+    rater = _stage(PR_CFG, "filter_prompts")
+    assert rater["drop_share_by"] == "trait_id"

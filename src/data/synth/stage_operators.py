@@ -1912,8 +1912,15 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
     2. **Coverage is verified, not assumed.** A property that sampled 300 of 2,203
        records knows nothing about the other 1,903; filtering on it errors unless the
        config says `allow_partial: true`.
-    3. **`max_drop_share` is a ceiling.** A removal set larger than the config declared
-       is treated as a bug in the check, not as licence to delete.
+    3. **`max_drop_share` is a ceiling**, and `drop_share_by:` decides what it is a
+       ceiling ON. A removal set larger than the config declared is treated as a bug in
+       the check, not as licence to delete. Named a record field, the ceiling applies to
+       each GROUP of that field separately, which is what a filter in front of a
+       trait-balanced corpus needs: PAR's grey-area rater dropped 43% overall on
+       2026-09-03 -- comfortably under its 70% ceiling -- while dropping 83% of t1 and
+       26% of t9, so the corpus that reached training carried 19 rows for "preserve human
+       oversight" against 90 for the flourishing principle, and nothing failed. Grouped,
+       that run stops at the rater instead of at the eval.
     4. **Nothing is destroyed.** Dropped records are written to
        `<stage>_dropped.jsonl` with the labels that condemned them, beside the snapshot
        of survivors.
@@ -1935,6 +1942,7 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
         f"`drop_when:` so a check that dies drops nothing."
     )
     max_drop = float(sc.get("max_drop_share", 0.05))
+    drop_share_by = sc.get("drop_share_by")
     allow_partial = bool(sc.get("allow_partial", False))
 
     def fn(ctx, records, ckpt):
@@ -2001,6 +2009,33 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
             f"inspect {report_path.name} before raising the ceiling."
         )
 
+        # The same ceiling, per group. A uniform generator feeding a filter that is not
+        # uniform silently unbalances the corpus, and the global share cannot see it.
+        by_group: dict[str, tuple[int, int]] = {}
+        if drop_share_by:
+            for r, rid in zip(records, ids):
+                g = str(r.get(drop_share_by, ""))
+                n, d = by_group.get(g, (0, 0))
+                by_group[g] = (n + 1, d + (1 if rid in condemned else 0))
+            worst = sorted(
+                ((d / max(n, 1), g, n, d) for g, (n, d) in by_group.items()),
+                reverse=True,
+            )
+            gshare, gid, gn, gd = worst[0]
+            per_group = ", ".join(
+                f"{g}={d}/{n}" for _, g, n, d in sorted(worst, key=lambda x: x[1])
+            )
+            assert gshare <= max_drop, (
+                f"stage {sc['name']!r}: would drop {gd} of {gn} records "
+                f"({gshare:.1%}) for {drop_share_by}={gid!r}, over "
+                f"max_drop_share={max_drop:.1%} -- even though the overall share is "
+                f"{share:.1%}. The filter is not uniform across {drop_share_by}, so a "
+                f"uniform generator in front of it produces an unbalanced corpus. "
+                f"Re-weight the generator (`trait_weights`) or fix the threshold in "
+                f"{source!r}; do not raise this ceiling to get past it. "
+                f"Per group: {per_group}"
+            )
+
         kept, dropped = [], []
         for r, rid in zip(records, ids):
             if rid in condemned:
@@ -2028,6 +2063,12 @@ def op_corpus_filter(sc: dict, cfg: dict) -> Stage:
             "n_after": len(kept),
             "dropped": len(dropped),
             "drop_share": round(share, 4),
+            "drop_share_by": drop_share_by,
+            "drop_share_per_group": {
+                g: {"n": n, "dropped": d, "share": round(d / max(n, 1), 4)}
+                for g, (n, d) in sorted(by_group.items())
+            }
+            or None,
             "by_reason": by_reason,
             "dropped_file": f"{sc['name']}_dropped.jsonl" if dropped else None,
         }

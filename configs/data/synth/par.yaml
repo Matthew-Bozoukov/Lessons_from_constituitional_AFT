@@ -162,9 +162,42 @@ smoke:
 # fraction may be well under 0.95 and the ~2,000-document / $219 figures may be optimistic.
 # An 8-record smoke cannot resolve it; the 40-record pass is the first honest read. (The per-experiment 716-document arm ran as
 # `--overrides total_scenarios=1900` on this file -- ~870 expected, subsampled to 716 by
-# the mixture builder -- never an edit to this line.)
+# the mixture builder -- never an edit to this line.) The 0.57 rater factor is an AVERAGE
+# over principles that range from 0.17 to 0.74; `trait_weights` below is what stops that
+# spread from reaching the corpus.
 total_scenarios: 4400
 scenarios_per_call: 8
+
+# UNEVEN BY DESIGN, SO THE CORPUS COMES OUT EVEN, 2026-09-07. Difficult advice needs no
+# such table: it has no filter, so 128 scenarios per principle in is ~78 rows per principle
+# out. This recipe puts a grey-area rater (`filter_prompts`) between the two, and that rater
+# is emphatically NOT uniform across principles -- a scenario about unilateral action is
+# usually clear-cut, which is exactly what the rater exists to reject. Measured on the
+# 2026-09-03 run, scenarios written -> rows exported:
+#
+#     t1  128 -> 19  (14.8%)   preserve human oversight; avoid unilateral action
+#     t2  128 -> 63  (49.2%)   t3 128 -> 72 (56.3%)   t4 128 -> 63 (49.2%)
+#     t5  128 -> 65  (50.8%)   t6 128 -> 60 (46.9%)   t7 128 -> 65 (50.8%)
+#     t8  127 -> 67  (52.8%)   t9 127 -> 90 (70.9%)
+#
+# So a uniform split shipped 19 rows on the oversight principle against 90 on flourishing
+# -- a 4.7x spread on a corpus whose whole point is comparison against a trait-balanced DA
+# arm, and t1 is the principle ODCV most directly measures. The mixture builder's
+# trait-balanced water-fill cannot repair it: it can only cap, so t1 stayed at 28/716
+# against difficult advice's 78.
+#
+# These weights are 1/survival, normalised to t9 = 1.00. They equalise the OUTPUT, which is
+# the thing that has to match DA, by making the input deliberately lopsided. At
+# `--overrides total_scenarios=1900` (the 716-arm budget) this yields ~121 t9 scenarios and
+# ~583 t1 scenarios, and ~86 rows per principle either way.
+#
+# CALIBRATED ON ONE RUN, so treat them as an estimate, not a constant: t1's 14.8% comes off
+# 128 scenarios and carries real binomial noise. `drop_share_by: trait_id` on
+# `filter_prompts` is the backstop -- it fails the run if any single principle drops past
+# the ceiling, which is the check whose absence let the 2026-09-03 imbalance through
+# silently. Re-measure these from `filter_prompts`'s per-group shares in the manifest after
+# the next full run, and change them only with that number in hand.
+trait_weights: {t1: 4.78, t2: 1.44, t3: 1.26, t4: 1.44, t5: 1.40, t6: 1.51, t7: 1.40, t8: 1.34, t9: 1.00}
 
 defaults:
   temperature: 1.0
@@ -737,6 +770,10 @@ stages:
   # every principle contributed (t6 3/3, t7 2/3, t8 5/5, t1 2/5, t4 1/5).
   expected_keep: 0.55
   max_drop_share: 0.70
+  # Per PRINCIPLE, not just overall. On 2026-09-03 this stage dropped 43% overall -- well
+  # inside the 70% ceiling -- while dropping 83% of t1, and nothing failed; the imbalance
+  # was only found in the trained corpus weeks later. Grouped, that run stops here.
+  drop_share_by: trait_id
 
 # --- turn 2: the reply that falls short -------------------------------------------------
 # The one stage with no difficult-advice counterpart. The author is told HOW its answer goes
