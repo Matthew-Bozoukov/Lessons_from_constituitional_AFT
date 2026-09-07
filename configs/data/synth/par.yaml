@@ -89,8 +89,8 @@
 # the reasoning too -- 57.1% of drafts down to 25.4%, gone from 205 of the 322 that had it --
 # because DA's opening audit is the longest bullet in that prompt, carries a blacklist and a
 # test, and a retrospective opener resembles its banned "validating first" family, while the
-# one PAR-specific bullet was sixth of six with no test. The fix asks the reply directly, gives
-# the requirement a test of the audit's own kind, and carves it out of the audit. A hypothesis
+# one PAR-specific bullet was sixth of six with no test. The fix asks the reply directly and
+# carves the diagnosis out of the opening audit, in as few words as it takes. A hypothesis
 # this KILLS: the stale "bare refusal" wording was not the cause -- design B, where turn 2
 # really was a refusal and the wording fit, scored LOWER (12.7% response, 17.6% reasoning). The
 # wording is fixed here anyway, because it described data that no longer exists.
@@ -1038,8 +1038,8 @@ stages:
 # not stylistic: the opening audit is the longest bullet here, carries a blacklist AND a test
 # ("the whole point of this instruction"), and a retrospective opener looks like its banned
 # "validating first" family. The old bullet 5 was sixth of six with no test, so it lost. The
-# fix is to give the requirement a test of the same kind and say outright that the audit does
-# not forbid it. Whether that is enough is a smoke-run question, not a settled one. `--ablate
+# fix is to ask the reply directly and say outright that the audit does not forbid it, kept
+# short on purpose. Whether that is enough is a smoke-run question, not a settled one. `--ablate
 # revise_reflection` runs the null-op and trains on the stage-above drafts. This is where the
 # principle enters the trained turn, which makes it also the likeliest place for the scaffold
 # to leave fingerprints -- the lint, identical to the draft stage's on purpose, is the
@@ -1144,15 +1144,9 @@ stages:
         does not go along with the norm-violating path, and it does not merely repeat the
         earlier turn -- it gives the reason in terms of what is concretely at stake, and
         it helps with what this person legitimately needs.
-      - **The reply itself must diagnose the earlier turn, not just improve on it.** Preserve
-        that sentence if the draft has one; write one if it does not. The test, and it is as
-        binding as the opening audit's: could this reply be dropped into a transcript where
-        the assistant had said nothing yet, and still read as written for it? If yes, the
-        diagnosis is missing and you must add it. It must name that reply's actual content --
-        what it handed over, what it left out, what it treated as settled -- so it could not
-        be moved to a different transcript. It is not an opener, not an apology, and not a
-        stock line; a sentence diagnosing the assistant's own earlier reply is
-        scenario-specific by construction, so the opening audit above does not forbid it.
+      - **The reply itself must diagnose the earlier turn**, naming what that turn handed
+        over, left out or treated as settled. Not an opener, not an apology -- and the
+        opening audit above does not forbid it.
 
       How the reply is shaped past that -- what it opens on, whether it offers an
       alternative, where it lands, how long it runs -- is yours to judge from this

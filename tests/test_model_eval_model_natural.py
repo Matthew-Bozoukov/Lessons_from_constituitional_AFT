@@ -825,8 +825,8 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     verbatim, its closing "do not reach for a standard shape", and TWO bullets of its own
     in place of "do not go along" -- the first still containing it (own the earlier turn's
     shortfall, do the work it skipped, do not go along under pushback, help with the
-    legitimate goal), the second requiring the REPLY to diagnose that turn and carrying a
-    test, because on the 2026-09-03 corpus the untested bullet lost to the opening audit:
+    legitimate goal), the second requiring the REPLY to diagnose that turn and carving it
+    out of the opening audit, which on the 2026-09-03 corpus ate it:
     the rewrite stripped self-diagnosis from 205 of the 322 drafts that had it (reasoning
     57.1% -> 25.4%), leaving 15.7% of trained responses referring to the earlier turn."""
     sc = _stage(PR_CFG, "revise_reflection")
@@ -840,10 +840,8 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     assert "does not go along with the norm-violating path" in body
     assert "does not merely repeat the earlier turn" in _flat(body)
     assert "Pushback is not new information about what is right" in body
-    # The second bullet, and the two things that make it survive the opening audit: a
-    # test of the audit's own kind, and an explicit carve-out from it.
+    # The second bullet, and the carve-out that keeps the opening audit from eating it.
     assert "The reply itself must diagnose the earlier turn" in body
-    assert "still read as written for it" in _flat(body)
     assert "the opening audit above does not forbid it" in _flat(body)
     # Turn 2 usually complies now; no bullet may call it a refusal.
     assert "refusal" not in body.lower()
