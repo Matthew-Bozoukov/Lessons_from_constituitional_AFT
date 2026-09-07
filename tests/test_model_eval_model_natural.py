@@ -772,7 +772,10 @@ def test_reflection_is_framed_as_difficult_advices_draft_and_blind() -> None:
     """The system message IS difficult advice's `draft_responses` system prompt, rendered
     off the same record -- deployment prompt, principle, style guidance -- and nothing
     else: no constitution, no note about what was wrong. The task text names the recipe's
-    two rails: do not go along under pushback, do not hide behind the refusal."""
+    rails: do not go along under pushback, do not merely restate the earlier turn, and say
+    in the REPLY what that turn got wrong. It says `fell short`, never `refused`: since the
+    2026-09-02 varied-shortfall rewrite the earlier turn usually COMPLIES (1.7% of the
+    2026-09-03 corpus declines at all), so refusal language described data that is gone."""
     sc = _stage(PR_CFG, "draft_reflection")
     system = tagged_request(sc, _record(), _Ctx())[0][0]["content"]
     da_system = tagged_request(_stage(DA_CFG, "draft_responses"), _record(), _Ctx())[0][
@@ -780,13 +783,16 @@ def test_reflection_is_framed_as_difficult_advices_draft_and_blind() -> None:
     ]["content"]
     assert system == da_system
     task = tagged_request(sc, _record(), _Ctx())[0][3]["content"]
-    assert (
-        "Respond as the assistant. Your earlier reply declined without saying why."
-        in task
-    )
+    assert "Respond as the assistant. Your earlier reply fell short" in task
     assert 'never begin with "Let me"' in _flat(task)
     assert "do not go along with what should be declined" in _flat(task)
-    assert "do not hide behind the refusal" in _flat(task)
+    assert "do not simply restate your earlier turn" in _flat(task)
+    # The retrospection must be asked of the REPLY, not only the deliberation: the
+    # 2026-09-03 corpus scoped it to <reasoning> and only 15.7% of responses carried it.
+    assert "Say in the REPLY, not only in the reasoning" in _flat(task)
+    assert "naming what your earlier turn got wrong" in task
+    # No stage prompt may call the earlier turn a refusal again.
+    assert "refusal" not in task.lower()
 
 
 def test_the_trained_turn_carries_das_lint() -> None:
@@ -816,9 +822,13 @@ def test_the_trained_turn_carries_das_lint() -> None:
 
 def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     """The rewrite is difficult advice's `revise_responses`: its four voice bullets
-    verbatim, its closing "do not reach for a standard shape", and one bullet of its own
-    in place of "do not go along" -- which still contains it: own the refusal, do the
-    work it skipped, do not go along under pushback, help with the legitimate goal."""
+    verbatim, its closing "do not reach for a standard shape", and TWO bullets of its own
+    in place of "do not go along" -- the first still containing it (own the earlier turn's
+    shortfall, do the work it skipped, do not go along under pushback, help with the
+    legitimate goal), the second requiring the REPLY to diagnose that turn and carrying a
+    test, because on the 2026-09-03 corpus the untested bullet lost to the opening audit:
+    the rewrite stripped self-diagnosis from 205 of the 322 drafts that had it (reasoning
+    57.1% -> 25.4%), leaving 15.7% of trained responses referring to the earlier turn."""
     sc = _stage(PR_CFG, "revise_reflection")
     body = sc["prompts"]["user"]
     da = _stage(DA_CFG, "revise_responses")["prompts"]["user"]
@@ -826,10 +836,17 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     end = da.index("- **Take the request seriously** before evaluating it.")
     assert da[start:end] in body
     assert "Do not reach for a standard shape." in body
-    assert "**Own the refusal and do the work it skipped.**" in body
+    assert "**Own the earlier turn's shortfall and do the work it skipped.**" in body
     assert "does not go along with the norm-violating path" in body
-    assert "does not merely refuse again" in _flat(body)
+    assert "does not merely repeat the earlier turn" in _flat(body)
     assert "Pushback is not new information about what is right" in body
+    # The second bullet, and the two things that make it survive the opening audit: a
+    # test of the audit's own kind, and an explicit carve-out from it.
+    assert "The reply itself must diagnose the earlier turn" in body
+    assert "still read as written for it" in _flat(body)
+    assert "the opening audit above does not forbid it" in _flat(body)
+    # Turn 2 usually complies now; no bullet may call it a refusal.
+    assert "refusal" not in body.lower()
     assert (
         sc["prompts"]["system"]
         == _stage(DA_CFG, "revise_responses")["prompts"]["system"]
