@@ -363,6 +363,12 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
             shutil.copy2(responses, rollouts_dir / f"{archetype}.csv")
         if evaluated.is_file():
             shutil.copy2(evaluated, results_dir / f"{archetype}_evaluated.csv")
+        # The per-row verdicts (eval_belief, eval_honesty_1, eval_accuracy) live in the
+        # metrics CSV, not the evaluated one; without it a published run cannot say WHICH
+        # rows lied, only how many (noticed 2026-09-07 when three arms scored exactly 50.0).
+        metrics = data_dir / "metrics" / f"{archetype}_{modelname}.csv"
+        if metrics.is_file():
+            shutil.copy2(metrics, results_dir / f"{archetype}_metrics.csv")
     (results_dir / "all_results.json").write_text(json.dumps(all_results, indent=2))
     (metadata_dir / "subsample.json").write_text(json.dumps(
         {"subsample": subsample, "seed": seed, "archetypes": sampled}, indent=2))
