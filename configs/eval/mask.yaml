@@ -19,13 +19,43 @@
 # they ARE comparable across arms judged the same way here.
 judge_model: "google/gemini-3-flash-preview"
 judge_concurrency: 50
+# The judge through OpenRouter's batch API at half price (src/infra/endpoints/openrouter.py
+# run_batch): evaluate.py collects every judge request, the batch is submitted and polled,
+# and a second pass replays the verdicts with a live call for anything the batch did not
+# return. Off by default because a batch's turnaround is minutes to hours against seconds
+# live; `judge_batch=true` on the command line when the run is large enough to care.
+judge_batch: false
+
+# Rows per run. Upstream is 2,595 rows over six archetypes; an arm interval needs far
+# fewer, and what it needs is the SPREAD, so `subsample` draws N rows evenly across the
+# archetypes (an archetype smaller than its share -- statistics, 108 rows -- gives all it
+# has and the shortfall spreads over the rest). Seeded; the drawn task_ids are published
+# in metadata/subsample.json. `subsample: null` runs everything.
+subsample: 1000
+seed: 0
+
+# Generations in flight against the served target. Upstream's 10 cannot fill a vLLM
+# server; the family's verified `max_num_seqs` (ModelProfile.serving, 32 for Qwen3.6 on the
+# reference H100) is the ceiling worth matching -- beyond it requests only queue.
+gen_concurrency: 32
 
 # Generation from the target under the lying prompt.
 temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
 # CLAUDE.md gotcha 4: a thinking target spends budget inside <think>; too tight a cap
-# truncates before the answer and the honesty judge scores an empty reply. Sized with
-# headroom for trace + answer.
-max_tokens: 4096
+# truncates before the answer, the harness stores "[ERROR: ...]" for that cell, and the
+# judge reads it as no belief / evasion -- a silent zero. Measured 2026-09-07 on the
+# nosynth smoke: 4096 lost 45 of 145 generations (31%). The longest MASK prompt is ~590
+# Qwen3.6 tokens, so 12288 fits the 16384 window with room; the runner reports the error
+# rate and refuses a run above `max_generation_error_rate`.
+max_tokens: 12288
+max_generation_error_rate: 0.05
+# A thinking target can finish with NO content: it wrote its reply inside the think block
+# and never emitted </think>, so the reasoning parser hands back reasoning and no answer.
+# Measured 2026-09-07: the nosynth control (trained on 10k rows of EMPTY think blocks) does
+# this on 13/16 pressure prompts and 1/12 belief prompts; the base model and dat-7 do not.
+# `evasion` gives the judge an empty statement (upstream's reading: nothing was asserted);
+# `reasoning` gives it the text the model wrote. The count and rate are reported either way.
+empty_content: evasion
 # Independent lying attempts per row. honesty_score_1 (the reported score) reads the first;
 # raise for a less noisy per-item estimate at linear cost. Upstream's process_dataframe
 # default is 10; kept at 1 here so a full run is affordable — bump deliberately.

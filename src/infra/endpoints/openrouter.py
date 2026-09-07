@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -426,3 +427,93 @@ def map_threaded(
             idx = futures[fut]
             results[idx] = fut.result()
     return results
+
+
+# --- the batch API (async jobs, 50% token pricing) ----------------------------------------
+# One client for every batched caller: the synth stages (src/data/synth/stage_runtime.py)
+# and the MASK judge (src/eval/misalignment/mask/runner.py). OpenRouter accepts a plain
+# model id when the model has a batch endpoint; measured 2026-09-06: Gemini and DeepSeek
+# do, every Anthropic and OpenAI model is refused ("does not have a :batch endpoint").
+
+BATCH_URL = "https://openrouter.ai/api/beta/batches"
+# Below this many outstanding records the submit/poll overhead outweighs the discount
+# and the stage silently stays interactive -- which also keeps `--smoke` interactive.
+BATCH_MIN_ITEMS = 8
+# Requests per batch job. Chunked because results are all-or-nothing PER JOB (`results`
+# is null until the whole job completes): an expired/failed chunk loses only its slice.
+BATCH_CHUNK = 500
+BATCH_POLL_S = 30
+
+
+def run_batch(model: str, requests: dict[str, dict], stage: str, state_path: Path,
+              collect, chunk: int = BATCH_CHUNK, poll_s: int = BATCH_POLL_S) -> None:
+    """Push `requests` (custom_id -> body) through OpenRouter's batch API.
+
+    Submission state (batch ids + their custom_ids) persists at `state_path`, so a
+    killed run resumes the SAME jobs instead of paying to resubmit them. Nothing is
+    marked collected in the state: results stay retrievable by GET until the job
+    expires, so `collect(custom_id, completion_payload)` -- the caller's parse+
+    checkpoint hook -- is simply re-run on a resume, and the caller's checkpoint is
+    what makes that idempotent. A job that ends failed/expired/cancelled is reported
+    loudly and its requests are left uncollected; the caller's interactive mop-up owns
+    them. The state file is removed once every job reaches a terminal status.
+    """
+    import time
+
+    import requests as http
+
+    headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
+    state = json.loads(state_path.read_text()) if state_path.exists() else {"batches": []}
+    # A resumed run's outstanding set may differ from what an old state was built
+    # against (mopped-up records, a re-cut todo); jobs with no overlap are dropped
+    # and only never-submitted ids go out again.
+    state["batches"] = [b for b in state["batches"] if set(b["ids"]) & set(requests)]
+    if state["batches"]:
+        print(f">>> {stage}: resuming {len(state['batches'])} batch job(s)")
+    submitted = {i for b in state["batches"] for i in b["ids"]}
+    to_submit = [cid for cid in requests if cid not in submitted]
+    for c0 in range(0, len(to_submit), chunk):
+        ids = to_submit[c0:c0 + chunk]
+        # Field ORDER matters: the API stream-parses and requires endpoint+model
+        # before the requests array.
+        r = http.post(BATCH_URL, headers=headers, json={
+            "endpoint": "/v1/chat/completions", "model": model,
+            "requests": [{"custom_id": cid, "body": requests[cid]} for cid in ids]})
+        r.raise_for_status()
+        state["batches"].append({"batch_id": r.json()["id"], "ids": ids})
+        # State written after EVERY submit: a crash mid-submission strands nothing.
+        state_path.write_text(json.dumps(state))
+        print(f">>> {stage}: submitted batch {r.json()['id']} ({len(ids)} requests)")
+
+    done: set[str] = set()
+    dead: set[str] = set()
+    while True:
+        pending = [b for b in state["batches"]
+                   if b["batch_id"] not in done | dead]
+        if not pending:
+            break
+        for b in pending:
+            s = http.get(f"{BATCH_URL}/{b['batch_id']}", headers=headers).json()
+            status = s.get("status")
+            if status == "completed":
+                by_id = {res.get("custom_id"): res for res in s.get("results") or []}
+                for cid in b["ids"]:
+                    if cid not in requests:
+                        continue
+                    res = by_id.get(cid) or {}
+                    resp = res.get("response") or {}
+                    if not res.get("error") and resp.get("status_code") == 200:
+                        collect(cid, resp.get("body") or {})
+                done.add(b["batch_id"])
+                print(f">>> {stage}: batch {b['batch_id']} collected", flush=True)
+            elif status in ("failed", "expired", "cancelled"):
+                dead.add(b["batch_id"])
+                print(f"!!! {stage}: batch {b['batch_id']} ended {status} -- its "
+                      f"{len(b['ids'])} request(s) fall to the interactive path",
+                      flush=True)
+            else:
+                print(f">>> {stage}: batch {b['batch_id']} {status}: "
+                      f"{s.get('request_counts') or {}}", flush=True)
+        if any(b["batch_id"] not in done | dead for b in state["batches"]):
+            time.sleep(poll_s)
+    state_path.unlink(missing_ok=True)
