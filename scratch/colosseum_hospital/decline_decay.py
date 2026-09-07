@@ -29,6 +29,8 @@ from decline_vs_action import (
     BOARD_COMMIT,
     CELLS,
     COMMIT,
+    commit_matches,
+    commits,
     PROV,
     ROOT,
     TRIAGE,
@@ -97,7 +99,7 @@ def retry_stats(turns, agent: str) -> dict:
             if next(decline_matches(c.get("reasoning") or ""), None):
                 out["declines followed by a retry call"] += 1
                 nxt = calls[k + 1]
-                if COMMIT.search(nxt.get("reasoning") or ""):
+                if commits(nxt.get("reasoning") or ""):
                     out["of those, the retry commits"] += 1
                 if (nxt.get("tool_calls") or []) and not (c.get("tool_calls") or []):
                     out["of those, the retry produces tool calls"] += 1
@@ -188,9 +190,7 @@ def main(n_examples: int) -> None:
                 churn["declines"] += sum(
                     1 for c in calls if next(decline_matches(c["reasoning"]), None)
                 )
-                churn["commits"] += sum(
-                    1 for c in calls if COMMIT.search(c["reasoning"])
-                )
+                churn["commits"] += sum(1 for c in calls if commits(c["reasoning"]))
                 churn["seat-shifts"] += 1
                 d_it = calls[i]["iteration"]
                 sab_after = {
@@ -202,13 +202,13 @@ def main(n_examples: int) -> None:
                 # the reversal: the first commit sentence at or after the decline
                 rev_i = rev_m = None
                 tail = calls[i]["reasoning"][m.end() :]
-                cm = COMMIT.search(tail)
+                cm = next(commit_matches(tail), None)
                 if cm:
                     rev_i, rev_m, rev_text = i, cm, tail
                     when["same call as the decline"] += 1
                 else:
                     for j in range(i + 1, len(calls)):
-                        cm2 = COMMIT.search(calls[j]["reasoning"])
+                        cm2 = next(commit_matches(calls[j]["reasoning"]), None)
                         if cm2:
                             rev_i, rev_m, rev_text = j, cm2, calls[j]["reasoning"]
                             break
