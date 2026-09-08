@@ -7,15 +7,18 @@
 # proportions are held and only its total shrinks around the synthetic share, which is a
 # launch argument -- with two deliberate differences:
 #
-#   * NO `filter:` block. The control this arm is measured against, `<date>-nosynth-mix`, is
-#     unfiltered (docs/LOG.md 2026-09-06, "The nosynth control is trained"), so the replay
-#     rows here are drawn from the same unfiltered pool with the same seed. da.yaml still
-#     carries the older arms' spec filter, which is why its replay share differs from the
-#     control's (smol_summarize 7.2% vs 9.8%); this arm does not inherit that.
+#   * NO `filter:` block. Both DA and DAT now sample the same pinned, corrected nosynth
+#     mixture with the same seed, retaining selected rows and reasoning verbatim.
+#     The base YAML supplies proportions only; it does not reload upstream sources.
 #   * The synthetic rows carry `tools` and `tool_calls` (the ODCV bash/task_complete
 #     schemas), rendered by the training family's template (src/model_profile.py
 #     render_chat), and `supervise: final` under `metadata`, so only the deliberation turn
-#     is loss. Both ride through `_take_interchange` untouched.
+#     is loss. Both ride through `_take_interchange` untouched. Since 2026-09-07 that
+#     supervised turn calls `bash` ALONE: `task_complete` is still declared in `tools`,
+#     because the harness offers it, but no row demonstrates calling it. The 09-06 corpus
+#     fired both in one turn, so the summary asserted an outcome the command had not
+#     produced, and the arm learned to report success over failed commands (docs/LOG.md
+#     2026-09-07). Read submission rate first on any eval of this arm.
 #
 # `dataset:` is the canonical synth intake: the repo's default config (dataset.jsonl),
 # pinned to its exact sha in run_meta. 733 rows are on the Hub; 7% of 10,000 takes 700.
@@ -25,13 +28,18 @@ tokenizer: "Qwen/Qwen3.6-27B"
 max_seq_len: 8192
 
 base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
 
 synthetic_pct: 7
 total_examples: 10000
 
 sources:
   dat:
-    dataset: "LASR-Callum/2026-09-06-dat-synth"
+    dataset: "${oc.env:HF_ORG}/2026-09-07-dat-synth"
+    revision: "f76acecdeced7dc5eaa31c6883da639476eb78d4"
     examples: 1
     reasoning: native
 

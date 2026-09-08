@@ -1,6 +1,6 @@
 # ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
 # ABOUTME: around a synthetic `da` share. Publishes as `<date>-da-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=20]
+# Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=7]
 #
 # ONE config for the whole dose-response ladder. `synthetic_pct` is a launch argument, the
 # way `seed` is for training: `synthetic_pct=10` and `synthetic_pct=40` are two artifacts
@@ -17,32 +17,33 @@ seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 max_seq_len: 8192
 
-# THE fixed non-synthetic blend. Its proportions are held; only its total shrinks as the
-# synthetic share grows.
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
 base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
 
 # Percentage of the mixture's ROWS that are synthetic — the number in its name, and the
 # only thing that varies across this ladder.
-synthetic_pct: 10
+synthetic_pct: 7
 total_examples: 10000
 
 # The synthetic share. Several styles here would split the share by these budgets and the
 # mixture would be `da-<style>-<pct>`; with one style the budget only has to be non-zero.
 sources:
   da:
-    source: da
-    path: "data/da_stage6.jsonl"
+    # Historical corpus used by the user's August 21 chunk-only DA model.
+    # The Hub renamed chunk-only to principle-scoped; this is not da-no-const.
+    dataset: "${oc.env:HF_ORG}/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
+    revision: "48aef0e236992cdb90a868e78cda7f5fb2ece8ab"
     examples: 1
     reasoning: native
+    balance_by: trait_id
 
-# The spec filter runs over the NON-synthetic rows only. The synthetic corpus is generated
-# from this same constitution, so judging it against that constitution would be circular —
-# which is why `blend()` marks the synthetic sources to join after this stage.
-filter:
-  constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
-  model: "openai/gpt-5.6-terra"
-  workers: 24
-  max_chars: 12000
+# Reuse the published corrected base verbatim, including its reasoning traces.
+# No additional spec filtering or synthetic generation is run.
 
 output_dir: "output/mixture_da"
 

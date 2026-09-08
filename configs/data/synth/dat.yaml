@@ -146,7 +146,7 @@ stages:
   kind: segment
 
 # THE CHECKLIST. Every scenario is dealt one value per axis, uniformly and independently,
-# with exact counts across the run (src/data/synth/stage_operators.py::op_checklist). The
+# with exact counts across the run (src/data/synth/constitutional_sft/stage_operators.py::op_checklist). The
 # trait is sampled upstream (one principle per unit, as in DA) and the checklist is dealt
 # independently of it, so trait x checklist is a product space. `corpus_scenarios` +
 # `dedupe_scenarios` below still catch a near-duplicate after the fact.
@@ -503,12 +503,10 @@ stages:
   - reasoning
   - response
   - command
-  - summary
   save:
     draft_reasoning: reasoning
     draft_response: response
     draft_command: command
-    draft_summary: summary
   prompt_vars:
     exploration:
       by: n_exchanges
@@ -561,10 +559,10 @@ stages:
       writes to what the reader needs: a few hundred words at most.
 
       The response is a status report to the person who assigned the task, not advice: what
-      you found, what you did and did not do, in plain words, and a question if you have one.
-      It describes what your command does; it cannot quote the command's output, because you
-      have not run it yet. The summary is the record for whoever reads the task log later:
-      two or three sentences, not a copy of the response.
+      you found in the output you have already seen, what you are doing about it and what you
+      are not doing, in plain words, and a question if you have one. It says what your command
+      sets out to do; it never states the outcome, and it never quotes the command's output,
+      because the command has not run. Nothing in it declares the task finished.
 
       Return your answer in exactly this form, with no other text:
 
@@ -578,9 +576,6 @@ stages:
       <command>
       the single bash command
       </command>
-      <summary>
-      the task_complete summary
-      </summary>
   lint:
   - fields: [reasoning]
     min_chars: 700
@@ -599,7 +594,7 @@ stages:
     - ^\s*okay,
     - '[一-鿿]'
     retries: 2
-  - fields: [response, summary]
+  - fields: [response]
     min_chars: 120
     max_chars: 1800
     ban_patterns:
@@ -620,19 +615,16 @@ stages:
   - reasoning
   - response
   - command
-  - summary
   - changes
   save:
     reasoning: reasoning
     response: response
     command: command
-    summary: summary
     rewrite_changes: changes
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
     command: draft_command
-    summary: draft_summary
   prompt_vars:
     exploration:
       by: n_exchanges
@@ -685,11 +677,7 @@ stages:
       {draft_command}
       </agent_command>
 
-      <agent_summary>
-      {draft_summary}
-      </agent_summary>
-
-      Rewrite the agent's reasoning, response, command and summary so they exhibit the target
+      Rewrite the agent's reasoning, response and command so they exhibit the target
       principle as strongly as possible while staying true to this deployment's actual
       situation.
 
@@ -731,10 +719,10 @@ stages:
         or not acting where acting would do harm -- whichever THIS situation demands, and the
         command carries it out. Real bash for this deployment, one command; it never rewrites
         data, reclassifies records or edits a check; any file it writes is short.
-      - **The response is a status report, not advice.** What was found, what was and was
-        not done, a question if there is one. It describes what the command does and never
-        quotes the command's output, which the agent has not seen. The summary is the task
-        log's record, two or three sentences, not a copy of the response.
+      - **The response is a status report, not advice.** What was found in output already
+        seen, what is being done and what is not, a question if there is one. It says what
+        the command sets out to do; it never states the outcome, never quotes the command's
+        output, which the agent has not seen, and never declares the task finished.
 
       How the reply is shaped past that -- what it opens on, where it lands, how long it
       runs -- is yours to judge from this situation. Do not reach for a standard shape.
@@ -750,9 +738,6 @@ stages:
       <command>
       the single bash command
       </command>
-      <summary>
-      the task_complete summary
-      </summary>
       <changes>
       1-2 sentences on what you strengthened
       </changes>
@@ -774,7 +759,7 @@ stages:
     - ^\s*okay,
     - '[一-鿿]'
     retries: 2
-  - fields: [response, summary]
+  - fields: [response]
     min_chars: 120
     max_chars: 1800
     ban_patterns:
@@ -814,11 +799,15 @@ stages:
   - role: assistant
     content: '{response}'
     reasoning_content: '{reasoning}'
+    # ONE call, and no completion call: the supervised turn acts and stops, the way a real
+    # agent turn does. Until 2026-09-07 this turn fired `bash` and `task_complete` together,
+    # so the summary asserted an outcome the command had not produced yet — and the arm
+    # learned exactly that (docs/LOG.md 2026-09-07: 31 of 43 low task-progress rollouts run
+    # one failing command and report success). `task_complete` stays in the `tools` schema
+    # above, because the harness offers it; nothing here demonstrates calling it.
     tool_calls_from:
     - name: bash
       arguments: {command: '{command}'}
-    - name: task_complete
-      arguments: {reason: '{summary}'}
   metadata:
   - scenario_id
   - trait_id

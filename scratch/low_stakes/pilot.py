@@ -50,7 +50,7 @@ from scratch.low_stakes.prompts import (  # noqa: E402
     REWRITE_INSTRUCTION,
     TRAIT_BLOCK,
 )
-from src.data.synth import constitution, embeddings  # noqa: E402
+from src.data.synth.constitutional_sft import constitution, embeddings  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 
 SOURCE_REPO = "LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"

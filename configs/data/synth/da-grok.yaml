@@ -58,7 +58,7 @@
 # HF dataset card.
 pipeline: da-grok-716
 
-# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/
+# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/constitutional_sft/
 # pipeline.py). This is where the experiment's real detail goes — the filename stays
 # simple, the card carries the specifics a future reader needs.
 card:

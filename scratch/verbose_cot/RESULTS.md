@@ -135,7 +135,7 @@ The recipe is now `configs/data/synth/2026-08-25_verbose_cot.yaml`, run with
 `uv run synth run --config configs/data/synth/2026-08-25_verbose_cot.yaml [--smoke]`. The scratch
 drivers above are kept as the record of how the recipe was found; nothing depends on them.
 
-## Engine additions (`src/data/synth/`)
+## Engine additions (`src/data/synth/constitutional_sft/`)
 
 | addition | why the existing seam did not fit |
 |---|---|

@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.data.synth.stage_runtime import _parse_tagged
+from src.data.synth.constitutional_sft.stage_runtime import _parse_tagged
 
 KEYS = ("reasoning", "response")
 

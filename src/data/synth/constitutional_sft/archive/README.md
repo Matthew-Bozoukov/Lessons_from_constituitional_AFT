@@ -1,7 +1,7 @@
 <!-- ABOUTME: Frozen cell machinery, kept only so the configs written against it still run. -->
 <!-- ABOUTME: Nothing new should import from here; build document types out of operators. -->
 
-# `src/data/synth/archive/`
+# `src/data/synth/constitutional_sft/archive/`
 
 `cells.py` — the model-eval-model **cell** registry, and the five stage operators that
 drive it (`plan_cells`, `perturb_pairs`, `generate_cells`, `revise_cells`,
@@ -13,7 +13,7 @@ A cell was a document type expressed in Python: a `CellSpec` holding a message-b
 assembler, a verdict vocabulary and a supervision mode. That is precisely the thing a
 config's `stages:` list is supposed to express. As long as it existed, adding a document
 type meant editing code, and the engine knew about a specific corpus — the one rule
-`src/data/synth/` is not allowed to break.
+`src/data/synth/constitutional_sft/` is not allowed to break.
 
 `post_action_retrospection.yaml` was rebuilt without it and lost nothing: `assign`
 labels the arms, `variants_by` picks the prompt, `when` scopes the gates, `conversation`

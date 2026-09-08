@@ -4,6 +4,11 @@
 and even when asked, encourage human review of the exact diff. These files only stay
 useful if they stay human-curated; unsupervised agent edits turn them to slop.**
 
+`CLAUDE.md` is the canonical source of repository instructions; `AGENTS.md` is a
+relative symlink to it. Coding agents must never edit through, overwrite, replace,
+or delete the `AGENTS.md` symlink. The protection above applies to this file
+regardless of which filename was used to read it.
+
 Orientation + operating rules for this repo. Read this before touching anything.
 Baseline conventions: uv for everything Python; two-line `# ABOUTME:` headers on every
 file; YAML+OmegaConf configs; timestamped output filenames; fail fast, never fall back

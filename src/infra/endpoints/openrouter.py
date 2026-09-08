@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -138,6 +138,11 @@ class ChatResult:
             savings rather than a measurement -- see `CACHE_MARK`.
         provider: Which upstream provider actually served the call — record it in
             run artifacts the way temperature is recorded (see providers.yaml).
+        reasoning_content: Native plaintext reasoning, separate from the final answer.
+        tool_calls: Structured tool calls, if the assistant requested any.
+        cost: API-reported USD cost, or None when the provider omitted it.
+        response_id: OpenRouter completion id, for provenance and billing lookup.
+        response_model: Model id reported by OpenRouter for the completion.
     """
 
     content: str
@@ -146,6 +151,37 @@ class ChatResult:
     finish_reason: str
     cached_tokens: int = 0
     provider: str = ""
+    reasoning_content: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
+    cost: float | None = None
+    response_id: str = ""
+    response_model: str = ""
+
+
+def _message_fields(message) -> tuple[str, list[dict]]:
+    """Read native reasoning and tools from either an SDK message or raw JSON.
+
+    Summaries and encrypted reasoning are not native plaintext traces and must not
+    become training targets. OpenRouter's normalized `reasoning` field takes
+    precedence over its alias and the equivalent text-detail representation.
+    """
+    def value(key):
+        return message.get(key) if isinstance(message, dict) else getattr(message, key, None)
+
+    reasoning = value("reasoning") or value("reasoning_content") or ""
+    if not reasoning:
+        reasoning = "".join(
+            detail["text"] for detail in (value("reasoning_details") or [])
+            if isinstance(detail, dict) and detail.get("type") == "reasoning.text"
+            and isinstance(detail.get("text"), str)
+        )
+    if not isinstance(reasoning, str):
+        raise TypeError("OpenRouter returned non-text reasoning")
+    tool_calls = [
+        call if isinstance(call, dict) else call.model_dump(mode="json")
+        for call in (value("tool_calls") or [])
+    ]
+    return reasoning, tool_calls
 
 
 # Everything BEFORE this marker in a message becomes a separately cacheable block.
@@ -242,7 +278,9 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
             raise ProviderRejectionError(msg, provider_error=err_d, provider=provider)
         raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
     choice = choices[0]
-    content = (choice.get("message") or {}).get("content")
+    message = choice.get("message") or {}
+    content = message.get("content")
+    reasoning, tool_calls = _message_fields(message)
     finish = choice.get("finish_reason") or ""
     if finish == "content_filter":
         # Same classification as `chat`: an output-sample filter, retryable — which
@@ -255,19 +293,24 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
                                        f"({len(content or '')} chars of partial "
                                        "content dropped)"},
             provider=provider)
-    if not content:
+    if not content and not tool_calls:
         raise EmptyCompletionError(
             f"Model {model} returned empty content (provider {provider or '?'}): "
             f"{data}", provider=provider)
     usage = data.get("usage") or {}
     details = usage.get("prompt_tokens_details") or {}
     return ChatResult(
-        content=content,
+        content=content or "",
         prompt_tokens=int(usage.get("prompt_tokens") or 0),
         completion_tokens=int(usage.get("completion_tokens") or 0),
         finish_reason=finish,
         cached_tokens=int(details.get("cached_tokens") or 0),
         provider=provider,
+        reasoning_content=reasoning,
+        tool_calls=tool_calls,
+        cost=float(usage["cost"]) if usage.get("cost") is not None else None,
+        response_id=str(data.get("id") or ""),
+        response_model=str(data.get("model") or ""),
     )
 
 
@@ -355,6 +398,7 @@ class OpenRouterClient:
             raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
         choice = resp.choices[0]
         content = choice.message.content
+        reasoning, tool_calls = _message_fields(choice.message)
         if choice.finish_reason == "content_filter":
             # OpenAI-protocol hard filter, with or without partial text. Partial
             # output is DROPPED rather than returned: a silently truncated
@@ -374,7 +418,7 @@ class OpenRouterClient:
                                            f"({len(content or '')} chars of partial "
                                            "content dropped)"},
                 provider=getattr(resp, "provider", "") or "")
-        if not content:
+        if not content and not tool_calls:
             # None OR empty string: an undiagnosable blank either way — the empty
             # string previously slipped through as a "successful" ChatResult and
             # died later at the caller's parse gate with no retry.
@@ -392,12 +436,17 @@ class OpenRouterClient:
         details = getattr(usage, "prompt_tokens_details", None) if usage else None
         cached = getattr(details, "cached_tokens", 0) or 0
         return ChatResult(
-            content=content,
+            content=content or "",
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
             cached_tokens=int(cached),
             provider=getattr(resp, "provider", "") or "",
+            reasoning_content=reasoning,
+            tool_calls=tool_calls,
+            cost=float(usage.cost) if getattr(usage, "cost", None) is not None else None,
+            response_id=getattr(resp, "id", "") or "",
+            response_model=getattr(resp, "model", "") or "",
         )
 
 
@@ -430,7 +479,7 @@ def map_threaded(
 
 
 # --- the batch API (async jobs, 50% token pricing) ----------------------------------------
-# One client for every batched caller: the synth stages (src/data/synth/stage_runtime.py)
+# One client for every batched caller: the synth stages (src/data/synth/constitutional_sft/stage_runtime.py)
 # and the MASK judge (src/eval/misalignment/mask/runner.py). OpenRouter accepts a plain
 # model id when the model has a batch endpoint; measured 2026-09-06: Gemini and DeepSeek
 # do, every Anthropic and OpenAI model is refused ("does not have a :batch endpoint").

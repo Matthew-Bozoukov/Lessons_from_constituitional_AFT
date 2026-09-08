@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from src.data.synth import pipeline, stage_runtime
+from src.data.synth.constitutional_sft import pipeline, stage_runtime
 from src.infra.endpoints.openrouter import ChatResult, ProviderRejectionError
 
 
