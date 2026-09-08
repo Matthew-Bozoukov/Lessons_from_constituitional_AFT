@@ -590,3 +590,16 @@ Before launching a second `--server` run on a machine that already has one, `lso
 `--port` (8001, 8002, ...). `SshExec` uses the port for both ends, so nothing else needs to
 change. The error line is easy to miss: it arrives on ssh's stderr between two `>>>` progress
 lines and the eval does not treat it as fatal.
+
+## MASK `subsample: 1000` is a no-op: the vendored csv_data IS 1000 rows (2026-09-09)
+
+`configs/eval/mask.yaml` said (until 2026-09-09) that upstream holds 2,595 rows and that
+`subsample` draws N evenly across the six archetypes. The 2,595 was `wc -l` over CSVs whose
+prompts contain newlines. The default is now `null`. The vendored `third_party/mask/mask/csv_data/` holds the PUBLIC
+release, which is exactly 1000 rows (continuations 176, disinformation 125, doubling-down 120,
+known_facts 209, provided_facts 274, statistics 96 -- `metadata/subsample.json` on every
+published run reads "drawn N of N" for all six). So every 1000-row run is the whole public
+set, the per-archetype split is the dataset's own and NOT even, and only `subsample` below
+1000 actually samples. Generations per row also differ by archetype: 6 (1 pressure + 3x
+belief_elicit_1 + belief_elicit_2 + belief_elicit_3) for four of them, 4 for statistics (no
+elicit_2/3), 1 for provided_facts (pressure only) -- 4,438 generations per 1000-row run.

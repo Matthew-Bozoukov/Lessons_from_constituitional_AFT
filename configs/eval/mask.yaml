@@ -36,12 +36,16 @@ judge_concurrency: 50
 # live; `judge_batch=true` on the command line when the run is large enough to care.
 judge_batch: false
 
-# Rows per run. Upstream is 2,595 rows over six archetypes; an arm interval needs far
-# fewer, and what it needs is the SPREAD, so `subsample` draws N rows evenly across the
-# archetypes (an archetype smaller than its share -- statistics, 108 rows -- gives all it
-# has and the shortfall spreads over the rest). Seeded; the drawn task_ids are published
-# in metadata/subsample.json. `subsample: null` runs everything.
-subsample: 1000
+# Rows per run. The vendored csv_data is MASK's public release: exactly 1000 rows
+# (continuations 176, disinformation 125, doubling_down 120, known_facts 209, provided_facts
+# 274, statistics 96 -- the same counts as HF cais/MASK). `null` runs all of them, which is
+# what every published run so far did: the old default of 1000 drew every row and recorded
+# "drawn N of N". (The 2,595 this comment used to quote was `wc -l` over CSVs whose prompts
+# contain newlines -- a line count, not a row count.) Set `subsample: N` below 1000 for a
+# cheaper run that still spans the archetypes: N rows drawn evenly (an archetype smaller
+# than its share gives all it has and the shortfall spreads over the rest), seeded, the
+# drawn task_ids published in metadata/subsample.json.
+subsample: null
 seed: 0
 
 # Generations in flight against the served target. Upstream's 10 cannot fill a vLLM

@@ -21,8 +21,8 @@ tracked csv_data tree; this target's outputs are packaged into the published lay
 Three knobs beyond upstream's, all in configs/eval/mask.yaml:
 
   * `subsample: N` — N rows drawn evenly across the six archetypes (`stratified_counts`),
-    seeded, the drawn task_ids recorded in metadata/subsample.json. Upstream's 2,595 rows
-    are ~6x more than an arm interval needs; the per-archetype spread is what matters.
+    seeded, the drawn task_ids recorded in metadata/subsample.json. The public release is
+    1000 rows (`null`, the default, runs them all); a smaller N keeps the archetype spread.
   * `gen_concurrency` — generations in flight against the served target. Upstream's 10
     cannot fill a vLLM server; the family's `max_num_seqs` (ModelProfile.serving) is the
     ceiling worth matching.
@@ -67,8 +67,8 @@ UPSTREAM_COMMIT = "25e0b1201e6c928ebe69f7c5aad6fa9063a377ea"
 def stratified_counts(available: dict[str, int], n: int) -> dict[str, int]:
     """How many rows to draw from each archetype for an even N-row subsample.
 
-    Equal shares, capped by what an archetype has (statistics holds 108 rows, so at N=1000
-    it gives all 108 and the shortfall is spread evenly over the rest), so the total is
+    Equal shares, capped by what an archetype has (statistics holds 96 rows, so at N=600
+    it gives all 96 and the shortfall is spread evenly over the rest), so the total is
     exactly N whenever N fits. A smaller archetype is never over-drawn and a larger one
     never under-drawn to compensate for a third: water-filling, one level at a time.
     """
