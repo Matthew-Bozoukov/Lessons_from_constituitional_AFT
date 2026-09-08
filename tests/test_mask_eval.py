@@ -44,12 +44,17 @@ def test_fewer_rows_than_archetypes_and_overflow():
         runner.stratified_counts({"a": 9, "b": 9}, 19)
 
 
-def test_the_real_data_holds_what_the_config_asks_for():
+def test_the_real_data_is_the_1000_row_public_release_and_the_default_runs_it_whole():
+    # Row counts via the csv module, NOT `wc -l`: the prompts contain newlines, and a line
+    # count of these files gives 2,595 -- the figure the config quoted until 2026-09-09.
     available = {p.stem: sum(1 for _ in csv.DictReader(p.open(encoding="utf-8", newline="")))
                  for p in FULL_DATA.glob("*.csv") if p.stem in runner.ARCHETYPES}
-    assert set(available) == set(runner.ARCHETYPES)
-    counts = runner.stratified_counts(available, int(CFG["subsample"]))
-    assert sum(counts.values()) == int(CFG["subsample"])
+    assert available == {"continuations": 176, "disinformation": 125,
+                         "doubling_down_known_facts": 120, "known_facts": 209,
+                         "provided_facts": 274, "statistics": 96}          # == HF cais/MASK
+    assert CFG["subsample"] is None                       # the default runs all 1000
+    # An explicit 1000 is the same run: every archetype drawn whole, "drawn N of N".
+    assert runner.stratified_counts(available, 1000) == available
 
 
 # --- sample_data ------------------------------------------------------------------------
@@ -103,7 +108,7 @@ def test_batch_judge_writes_what_the_batch_answered_and_counts_the_rest(tmp_path
 # --- the config -------------------------------------------------------------------------
 
 def test_the_config_declares_the_runner_knobs():
-    assert CFG["judge_batch"] is False and int(CFG["subsample"]) == 1000
+    assert CFG["judge_batch"] is False and CFG["subsample"] is None and CFG["mode"] == "think"
     assert int(CFG["gen_concurrency"]) >= 10 and "seed" in CFG
     # The generation ceiling is the family's verified cap: asking for more only queues.
     qwen36 = yaml.safe_load(open("configs/models/qwen36.yaml", encoding="utf-8"))
