@@ -114,7 +114,7 @@ measurements (words/unit, chunk centrality, and how much preamble belongs to no 
 uv run synth chunkings
 uv run synth segment --chunking bullet
 uv run synth segment --chunking principle_pairs_related
-uv run synth segment --constitution constitutions/claude_distilled_24_principles_fine/constitution.md
+uv run synth segment --constitution constitutions/archive/experimental/claude_distilled_24_principles_fine/constitution.md
 ```
 
 Two invariants make methods comparable, and both are tested:

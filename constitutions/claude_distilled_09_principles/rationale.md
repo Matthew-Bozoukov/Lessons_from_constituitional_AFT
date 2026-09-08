@@ -3,7 +3,21 @@
 
 # Rationale
 
-This folder is a **recovered provenance snapshot**, not a designed alignment target.
+## Model-neutral adaptation (2026-09-08)
+
+Renamed from `claude_distilled_09_principles_mid_20260804` at the user's request.
+The constitution now replaces Claude identity with AI identity and Anthropic references
+with role-appropriate developer references. Source attribution is kept here, outside
+the model-facing document: distilled from Anthropic's *Claude's Constitution* (January 2026).
+The nine principles, priority ordering and response-style section are otherwise retained.
+
+This is no longer the byte-pinned historical snapshot described below. Its original
+text remains unchanged in `../archive/claude_distilled_12_principles_mid/constitution.md`;
+source-pinned archived generation configs point there to preserve their hash checks.
+
+## Historical provenance (before this adaptation)
+
+This folder originally held a **recovered provenance snapshot**, not a designed alignment target.
 
 On 2026-08-04 the mid constitution was re-cut from 12 principles toward the committed
 10-principle version, editing `claude_distilled_12_principles_mid/constitution.md` in

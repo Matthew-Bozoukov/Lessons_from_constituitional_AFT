@@ -1,9 +1,11 @@
-<!-- ABOUTME: Provenance and caveats for no_claude_mentioned: the nine mid principles at a third -->
+<!-- ABOUTME: Provenance and caveats for abridged: the nine mid principles at a third -->
 <!-- ABOUTME: of the length, model- and developer-neutral. Hand-derived 2026-09-06, not specgen. -->
 
-# Rationale — no_claude_mentioned
+# Rationale — abridged
 
-**Derived from** `claude_distilled_12_principles_mid/constitution.md` (itself machine-distilled
+Renamed from `no_claude_mentioned` on 2026-09-08; constitution text unchanged.
+
+**Derived from** `../archive/claude_distilled_12_principles_mid/constitution.md` (itself machine-distilled
 from Anthropic's published *Claude's Constitution*, January 2026). Same nine principles, same
 titles and order, same per-principle shape (statement, *Why*, two bullets, *When this does NOT
 apply*), same priority preamble and the same style-guidance section verbatim. Each principle

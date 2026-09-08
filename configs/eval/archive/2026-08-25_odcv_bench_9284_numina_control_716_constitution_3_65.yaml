@@ -44,7 +44,7 @@ base_url: "https://5mwcj4scatb56f-8000.proxy.runpod.net/v1"
 temperature: 0.0
 
 # Prepended to every scenario system prompt; see the header for the mechanism.
-system_preamble_file: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+system_preamble_file: "constitutions/claude_distilled_09_principles/constitution.md"
 bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
 output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
 concurrency: 12

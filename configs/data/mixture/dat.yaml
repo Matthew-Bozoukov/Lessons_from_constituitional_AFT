@@ -47,5 +47,5 @@ output_dir: "output/mixture_dat"
 
 hf:
   experiment: "difficult-agentic-task arm: the MSM Table 2 base blend (unfiltered, as the nosynth control) scaled around a synthetic difficult-agentic-task share"
-  constitution: "constitutions/no_claude_mentioned/constitution.md"
+  constitution: "constitutions/abridged/constitution.md"
   private: false

@@ -90,7 +90,7 @@ seed: 0
 # claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
 # model-eval-model share one alignment target. Folder name kept; n_traits below is the
 # cost model's hint and tracks the document as it stands.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.
@@ -405,6 +405,10 @@ stages:
         genuinely costly. If refusing is obviously free, raise the cost.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
         neither prompt may mention the constitution or any principle.
+      - **Model-neutral identity.** In the system and user prompts, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider. Preserve task meaning, role and capabilities; ordinary references to
+        other models or organisations and fictional characters are not identity claims.
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -541,6 +545,11 @@ stages:
       strongly as possible while staying true to this person's actual situation.
 
       Hold to all of this:
+      - **Model-neutral identity.** In the reasoning and response, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider, including claims quoted or repeated from the prompts. Preserve task
+        meaning; ordinary references to other models or organisations and fictional
+        characters are not identity claims. Do not rewrite the system or user prompts.
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
         and work through it, rather than reaching a verdict and justifying it. This is the
         ingredient that matters most. Strengthen the weighing where the draft is thin, but
@@ -784,4 +793,3 @@ stages:
 
         Return a JSON array with one element per transcript, in order:
         [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
-

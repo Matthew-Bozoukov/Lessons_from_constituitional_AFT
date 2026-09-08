@@ -84,7 +84,7 @@ seed: 0
 # Same constitution as the source run, and `load_source_run` HARD-ASSERTS that: a source
 # generated against a different document would silently cross arms, so the sha is compared
 # rather than trusted. Both are claude_distilled_12_principles_mid.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 

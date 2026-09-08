@@ -17,7 +17,7 @@ seed: 0
 # a sha mismatch, since the control's reasoning and every critique are grounded in it. The source
 # corpus was generated against a never-committed 9-principle interim state of the mid re-cut,
 # reconstructed byte-exact (sha fe2ed960...) in this frozen snapshot folder -- see its README.
-constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 
 # The completed difficult-advice run supplying the shared scenario bank and gold
 # responses. Exactly one of hf_repo / local_dir.

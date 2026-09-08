@@ -143,7 +143,7 @@ producers:
 
 check_collisions: false
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md
 
 # Tiny slice, full wiring: a handful of rollouts, clustering that cannot fail on a small n,
 # and no stability sweep.

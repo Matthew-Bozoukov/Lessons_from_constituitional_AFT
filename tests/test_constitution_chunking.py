@@ -25,7 +25,7 @@ from src.data.synth.constitutional_sft.constitution import (
 # Every constitution in the repo, archived ones included: chunking must survive both
 # markdown formats (v1's bolded list items and specgen's numbered H2 headings).
 CONSTITUTIONS = sorted(str(p) for p in Path("constitutions").rglob("constitution.md"))
-MID = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+MID = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 V1 = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
 # Strips a chunk's leading "**Title**" so bodies can be compared across granularities.

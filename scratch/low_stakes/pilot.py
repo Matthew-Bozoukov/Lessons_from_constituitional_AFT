@@ -55,7 +55,7 @@ from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E40
 
 SOURCE_REPO = "LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
 SOURCE_FILE = "dataset.jsonl"
-CONSTITUTION = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+CONSTITUTION = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 
 # The baseline's own voice contract (revise_responses `lint:` in 2026-08-01_difficult_advice.yaml).
 # Reported, not enforced, at pilot size -- a violation here is a prompt bug to look at.

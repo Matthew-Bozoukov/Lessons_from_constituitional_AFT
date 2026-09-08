@@ -53,7 +53,7 @@ def main(
             ),
             "date_generated": "2026-08-26",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (9 principles), "
                 f"the same as difficult advice's. The 716 rows come from {SYNTH_REPO} "
                 "(dataset.jsonl), which records its constitution sha in manifest.json."
             ),

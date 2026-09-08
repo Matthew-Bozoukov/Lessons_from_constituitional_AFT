@@ -62,7 +62,7 @@ pipeline: courtroom
 
 seed: 0
 
-constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 n_traits: 9
 chunking: principle
 

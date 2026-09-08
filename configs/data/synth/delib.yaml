@@ -7,9 +7,11 @@ source:
   # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
   # Corpus used by the chunk-only-702 adapter's training mixture: 708 final source rows;
   # the mixture selected a trait-balanced 702. This pipeline uses the full final corpus.
-  repo: LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716
-  revision: 48aef0e236992cdb90a868e78cda7f5fb2ece8ab
-constitution: constitutions/no_claude_mentioned/constitution.md
+  # Identity-neutral copy of that same 708-row corpus; no rows added or removed.
+  repo: dougalldeepmind/2026-09-08-da-synth
+  revision: 42107bde00cd7f4360a3a6c581aac23a540dbfea
+# Same principles and priority preamble, without DA-specific response-style guidance.
+constitution: constitutions/abridged_no_delib/constitution.md
 model: qwen/qwen3.6-27b   # Existing provider registry pins Alibaba with no fallback.
 sampling:
   temperature: 0.7

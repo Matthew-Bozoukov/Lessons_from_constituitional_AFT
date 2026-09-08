@@ -128,7 +128,7 @@ producers:
 # duplicate. Worth seeing.
 check_collisions: true
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md
 
 # Tiny slice, full wiring: clustering that cannot fail on a small n, no stability sweep.
 smoke:

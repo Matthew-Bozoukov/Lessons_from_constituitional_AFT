@@ -46,7 +46,7 @@ def main(combined: str, repo: str = REPO) -> None:
             "docs/GENERATOR_ABLATION.md."),
         "date_generated": "2026-08-24",
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
             "to the da716 baseline's and unchanged by this arm: only the model writing "
             "the assistant turn differs. Via the adapter's training data "
             "LASR-Callum/2026-08-24-table2-9284-grok-responder-703-paired-train-mixture"),

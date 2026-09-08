@@ -83,7 +83,7 @@ def test_segments_specgen_heading_format():
     import re
     from pathlib import Path
 
-    path = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+    path = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
     # Counted from the document rather than hardcoded: this file has been re-cut once
     # already (twelve units -> ten on 2026-08-04, while keeping its folder name), and a
     # literal here just goes red without telling anyone whether segmentation still works.

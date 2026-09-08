@@ -1,60 +1,44 @@
-<!-- ABOUTME: Layout and conventions for constitutions/ — one folder per constitution, constitution.md + rationale.md. -->
-<!-- ABOUTME: The current alignment target is claude_distilled_07_principles_approved/; superseded constitutions move to archive/. -->
+<!-- ABOUTME: Constitution layout and active alignment targets. -->
+<!-- ABOUTME: Abridged variants are model-neutral; historical and experimental documents remain archived. -->
 
 # Constitutions
 
-The alignment targets this repository trains toward and grades against. Data generation
-(`configs/data/synth/da.yaml`, `src/data/prompts.py`) points at these documents.
+Each folder contains `constitution.md` (the alignment target), `rationale.md`
+(provenance and caveats), and optionally a short metadata `README.md`.
 
-## Layout — one folder per constitution
+## Current layout
 
-```
+```text
 constitutions/
-  <descriptive_name>/       snake_case; states source, derivation, principle count and
-                            status/version, e.g. claude_distilled_07_principles_approved
-    constitution.md         the document itself (what generators and graders consume)
-    rationale.md            why it says what it says: changelog, evidence, rejected
-                            alternatives, scope limits
-    README.md               short metadata card: status, principle/trait count, source
-                            material, date generated, last updated, what consumes it
+  claude_distilled_09_principles/              full-length, model/developer-neutral nine principles
+  abridged/                                  shortened, model-neutral; used by DAT
+  abridged_no_delib/                          abridged without response-style guidance; used by delib
   archive/
-    <descriptive_name>/     superseded constitutions, same folder shape
+    claude_distilled_12_principles_mid/        historical mid recipe (actually nine principles)
+    claude_distilled_8_principles_v1/
+    experimental/
+      claude_distilled_04_principles_coarse/
+      claude_distilled_07_principles_approved/
+      claude_distilled_24_principles_fine/
 ```
 
-- **Folder names are self-describing**: a reader should learn the source material, how it
-  was derived, how many principles/traits it carries, and its status without opening the
-  folder (`claude_distilled_07_principles_approved`, `claude_distilled_24_principles_fine` —
-  never a bare `claude_approved` or `v2`). Zero-pad the principle count to two digits so
-  folders sort lexicographically by granularity.
-- **`constitution.md` is the artifact; `rationale.md` is its justification.** Every new
-  constitution gets both — a constitution without a written rationale is not reviewable.
-  `README.md` is the at-a-glance metadata card (keep it to one table).
-- Both files start with a two-line ABOUTME header; `constitution.md` names its source and
-  whether it is verbatim or distilled; `rationale.md` carries the changelog against the
-  version it replaced.
-- **Superseding:** move the old folder into `archive/` (git mv, so history follows), add an
-  archived-banner to its `constitution.md` saying what replaced it and why it is kept, and
-  update every config/test that pins it. Configs may keep pinning an archived constitution —
-  reproducibility of an existing corpus beats freshness — but the pin must point into
-  `archive/` so its status is visible.
-- Anything derived from a constitution (prompt strings such as
-  `src/data/prompts.py::CONSTITUTION_V2`, HF dataset cards) names the source folder, and a
-  test guards against drift where feasible (see `tests/test_prompts.py`).
+The initial 2026-09-08 reorganisation changed paths without editing constitution text;
+the subsequent nine-principle adaptation neutralised its model/developer references.
+`abridged` was `no_claude_mentioned`; `abridged_no_delib` was
+`no_claude_mentioned_no_style`. The latter removes the closing response-style
+section; deliberative generation still produces reasoning and retains the priority preamble.
 
-## Generating new constitutions
+Existing DA recipes continue to reference the archived mid document to preserve their
+alignment target. Archiving it does **not** remove its Claude/Anthropic wording.
+The full-length nine-principle variant is now model/developer-neutral. Its original
+byte-pinned text remains in the archived mid document for historical reproduction.
 
-New constitutions are produced by the one-off `specgen` tool (`scratch/specgen/`, see
-its README), which distills the published Claude constitution into specs at controlled
-granularities with claim-level coverage accounting. Selected outputs are promoted into
-folders here following the layout above.
+Historical published artifacts and research logs retain their original paths. Active
+configs and code point to the new locations. Configs may deliberately consume archived
+documents to reproduce existing experiments.
 
-## Current constitutions
+## Generating constitutions
 
-| folder | status | used by |
-|---|---|---|
-| `claude_distilled_07_principles_approved/` | **current alignment target** (7 principles, distilled from Anthropic's *Claude's Constitution*, Jan 2026) | `configs/data/da_gen_v2.yaml`, `src/data/prompts.py::CONSTITUTION_V2` |
-| `claude_distilled_04_principles_coarse/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
-| `claude_distilled_12_principles_mid/` | experiment arm; **default constitution for synth data generation since 2026-08-03** (re-cut 12→10 on 2026-08-04, then set byte-identical on 2026-08-05 to the 9-principle generation-time snapshot below; folder name kept) | `configs/data/synth/da.yaml`, `configs/data/synth/pad.yaml` (9 traits) |
-| `claude_distilled_09_principles_mid_20260804/` | frozen snapshot — the never-committed 9-principle interim state of the mid re-cut that the 2026-08-04 difficult-advice corpus (`LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache`) was generated against; reconstructed byte-exact (sha `fe2ed960…`), **never edit**. The mid folder above now carries identical bytes; this copy stays frozen as the provenance anchor | `configs/data/synth/model_eval_model.yaml` |
-| `claude_distilled_24_principles_fine/` | experiment arm (granularity study, machine-distilled by specgen, 2026-08-03) | nothing yet — spec-variation experiment |
-| `archive/claude_distilled_8_principles_v1/` | v1, superseded 2026-07-29; synth default until 2026-08-03 | `src/data/prompts.py::CONSTITUTION_V1`; pre-2026-08-03 synth corpora |
+The one-off `scratch/specgen/` tool distills the published constitution at controlled
+granularities with claim-level coverage accounting. See its README. New variants should
+include a rationale documenting derivation, deliberate changes, and limitations.

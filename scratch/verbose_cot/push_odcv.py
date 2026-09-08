@@ -119,7 +119,7 @@ def _card(arm: str, spec: dict, res: dict, manifest: dict) -> dict:
             "rollouts. Published base Qwen3.6-27B on the same cells: 42.5%."),
         "date_generated": DATE,
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md in the source "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md in the source "
             "repo - inherited unchanged from the difficult-advice run the traces were "
             f"expanded from, and carried into training data {repo} ({data_file} @ {rev})"),
         "source_repo": f"{origin_url()} @ {git_sha()}",

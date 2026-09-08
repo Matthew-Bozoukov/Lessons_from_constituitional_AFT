@@ -79,7 +79,7 @@ producers:
 # Only matters once a second producer is implemented; `clusters` is the only one so far.
 check_collisions: true
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md
 
 # Tiny slice, full wiring.
 smoke:

@@ -153,7 +153,7 @@ def main() -> None:
                       "supervised turn so the arm never declares a task done before its "
                       "command runs (docs/LOG.md 2026-09-07)",
         "date_generated": date.today().isoformat(),
-        "constitution": "constitutions/no_claude_mentioned/constitution.md",
+        "constitution": "constitutions/abridged/constitution.md",
         "source_repo": f"lasr @ {git_sha()}",
         "models": f"none — no generation ran; rows are {args.source} verbatim minus one tool call",
         "generation_config": f"see manifest.json (inherited from {args.source}); "
@@ -165,7 +165,7 @@ def main() -> None:
                       f"--source {args.source}",
         "edited_from": f"{args.source} ({total_removed} tool calls removed, nothing else changed)",
     }
-    tags = list(training_data_tags("synth", subject, "constitutions/no_claude_mentioned/constitution.md"))
+    tags = list(training_data_tags("synth", subject, "constitutions/abridged/constitution.md"))
     url = push_run_dir(root, hf_repo_id(repo), fields, private=False,
                        front_matter=front_matter(root, tags))
     print(f">>> pushed {url}")

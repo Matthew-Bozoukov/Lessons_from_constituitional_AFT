@@ -41,8 +41,8 @@ seed: 0
 pipeline: dat
 
 # The mid constitution's nine principles at a third of the length, with no model or developer
-# named (constitutions/no_claude_mentioned/rationale.md). Same nine unit ids as the DA arm.
-constitution: "constitutions/no_claude_mentioned/constitution.md"
+# named (constitutions/abridged/rationale.md). Same nine unit ids as the DA arm.
+constitution: "constitutions/abridged/constitution.md"
 n_traits: 9
 chunking: principle
 

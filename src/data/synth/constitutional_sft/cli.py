@@ -301,7 +301,7 @@ def chunkings() -> None:
           "Preview one:              uv run synth segment --chunking <name>")
 
 
-def segment(constitution: str = "constitutions/claude_distilled_12_principles_mid/constitution.md",
+def segment(constitution: str = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md",
             chunking: str | None = None, seed: int = 0, full: bool = False) -> None:
     """Print the units a chunking method produces, without calling any model.
 

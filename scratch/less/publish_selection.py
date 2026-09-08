@@ -50,7 +50,7 @@ CTL_REPO = "LASR-Callum/2026-08-19-random-220-difficult-advice-control-train"
 DATE = "2026-08-19"
 
 CONSTITUTION = (
-    "constitutions/claude_distilled_12_principles_mid/constitution.md — the constitution "
+    "constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the constitution "
     "the scored pool was generated from. Every row traces to one of its traits via "
     "metadata.trait_id in matboz/synthdoc-v2-difficult-advice; the rows here carry only "
     "interchange messages, so use selection_ids.json to recover the trait.")

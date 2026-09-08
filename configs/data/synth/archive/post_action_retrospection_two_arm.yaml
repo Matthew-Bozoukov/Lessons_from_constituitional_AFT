@@ -84,7 +84,7 @@ pipeline: par
 
 seed: 0
 
-constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 chunking: principle
 
 output_dir: "output/par"
