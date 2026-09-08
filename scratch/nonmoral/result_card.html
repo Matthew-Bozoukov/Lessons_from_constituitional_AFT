@@ -1,0 +1,534 @@
+<title>Deliberation Without Morality</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    color-scheme: light;
+
+    /* Neutrals, biased faintly cool so they sit with the blue rather than beside it. */
+    --ground:      #f4f5f6;
+    --panel:       #ffffff;
+    --rule:        #dcdfe3;
+    --rule-soft:   #e8eaed;
+    --ink:         #14171a;
+    --ink-2:       #4a5058;
+    --ink-3:       #767d86;
+
+    /* Validated categorical hues (dataviz six-checks, light surface: all PASS). */
+    --arm-new:     #2a78d6;   /* non-moral deliberation — the arm under test */
+    --arm-da:      #eb6834;   /* the difficult-advice family */
+    --arm-ref:     #8b9199;   /* untrained references: deliberately achromatic */
+    --band:        rgba(235, 104, 52, 0.10);
+    --band-edge:   rgba(235, 104, 52, 0.30);
+
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground:    #131619;
+      --panel:     #191d21;
+      --rule:      #2b3138;
+      --rule-soft: #21262b;
+      --ink:       #eef1f4;
+      --ink-2:     #a8b0b9;
+      --ink-3:     #767e88;
+      --arm-new:   #3987e5;
+      --arm-da:    #d95926;
+      --arm-ref:   #6a727b;
+      --band:      rgba(217, 89, 38, 0.13);
+      --band-edge: rgba(217, 89, 38, 0.34);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground:    #131619;
+    --panel:     #191d21;
+    --rule:      #2b3138;
+    --rule-soft: #21262b;
+    --ink:       #eef1f4;
+    --ink-2:     #a8b0b9;
+    --ink-3:     #767e88;
+    --arm-new:   #3987e5;
+    --arm-da:    #d95926;
+    --arm-ref:   #6a727b;
+    --band:      rgba(217, 89, 38, 0.13);
+    --band-edge: rgba(217, 89, 38, 0.34);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 24px 72px;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(30px, 4.4vw, 44px);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-family: var(--serif);
+    font-size: clamp(16px, 1.9vw, 19px);
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 40px;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  /* ---- takeaway tiles ---------------------------------------------------- */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    border: 1px solid var(--rule);
+    background: var(--panel);
+    margin: 0 0 36px;
+  }
+  .tile { padding: 22px 24px 24px; border-right: 1px solid var(--rule); }
+  .tile:last-child { border-right: none; }
+  @media (max-width: 719px) {
+    .tile { border-right: none; border-bottom: 1px solid var(--rule); }
+    .tile:last-child { border-bottom: none; }
+  }
+  .tile-label {
+    font-size: 10.5px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 14px;
+  }
+  .tile-figure {
+    font-size: 40px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 12px;
+  }
+  .tile-figure .unit {
+    font-size: 17px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--ink-2);
+    margin-left: 5px;
+  }
+  .tile.is-subject .tile-figure { color: var(--arm-new); }
+  .tile-note {
+    font-family: var(--serif);
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+
+  /* ---- controls ---------------------------------------------------------- */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 26px;
+    margin: 0 0 18px;
+  }
+  .key { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); }
+  .swatch { width: 11px; height: 11px; flex: none; border-radius: 2px; }
+  .swatch.new { background: var(--arm-new); }
+  .swatch.da  { background: var(--arm-da); }
+  .swatch.ref { background: var(--arm-ref); }
+  .swatch.band { background: var(--band); border: 1px solid var(--band-edge); border-radius: 0; }
+
+  button.toggle {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px solid var(--rule);
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  button.toggle:hover { color: var(--ink); border-color: var(--ink-3); }
+  button.toggle:focus-visible { outline: 2px solid var(--arm-new); outline-offset: 2px; }
+
+  /* ---- chart ------------------------------------------------------------- */
+  .chart {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 26px 26px 14px;
+  }
+  .plot { position: relative; }
+
+  .grid {
+    position: absolute; inset: 0; pointer-events: none;
+    display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 16px;
+  }
+  .gridarea { position: relative; }
+  .gridline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule-soft); }
+  .bandzone {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--band);
+    border-left: 1px solid var(--band-edge);
+    border-right: 1px solid var(--band-edge);
+  }
+
+  .row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(150px, 210px) 1fr;
+    align-items: center;
+    gap: 16px;
+    padding: 9px 0;
+  }
+  .row-name {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--ink-2);
+    text-align: right;
+    word-break: break-word;
+  }
+  .row.is-subject .row-name { color: var(--ink); font-weight: 500; }
+  .row-name .sub { display: block; font-size: 10.5px; color: var(--ink-3); }
+
+  .track { position: relative; height: 30px; }
+  .bar {
+    position: absolute; top: 7px; height: 16px; left: 0;
+    border-radius: 0 3px 3px 0;
+    transition: filter .15s ease;
+  }
+  .bar.new { background: var(--arm-new); }
+  .bar.da  { background: var(--arm-da); }
+  .bar.ref { background: var(--arm-ref); }
+  .row:hover .bar { filter: brightness(1.12); }
+
+  .ci { position: absolute; top: 15px; height: 1px; background: var(--ink-3); }
+  .ci::before, .ci::after {
+    content: ""; position: absolute; top: -4px; width: 1px; height: 9px; background: var(--ink-3);
+  }
+  .ci::before { left: 0; }
+  .ci::after { right: 0; }
+
+  .val {
+    position: absolute; top: 6px;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .axis { position: relative; height: 26px; }
+  .axis-row { display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 16px; }
+  .tick {
+    position: absolute; top: 6px;
+    font-size: 10.5px;
+    color: var(--ink-3);
+    transform: translateX(-50%);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- tooltip ----------------------------------------------------------- */
+  .tip {
+    position: fixed;
+    z-index: 20;
+    pointer-events: none;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 11px 13px;
+    font-size: 11.5px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    box-shadow: 0 6px 22px rgba(0,0,0,.16);
+    opacity: 0;
+    transition: opacity .12s ease;
+    max-width: 280px;
+  }
+  .tip.on { opacity: 1; }
+  .tip b { color: var(--ink); font-weight: 600; display: block; margin-bottom: 5px; }
+  .tip .k { color: var(--ink-3); }
+  .tip dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; }
+  .tip dt { color: var(--ink-3); }
+  .tip dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+  /* ---- table ------------------------------------------------------------- */
+  .tablewrap { overflow-x: auto; margin-top: 22px; border-top: 1px solid var(--rule); padding-top: 20px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th {
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 500; border-bottom-color: var(--rule);
+  }
+  td { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  td:first-child { color: var(--ink); }
+  tr.is-subject td { color: var(--ink); }
+  [hidden] { display: none !important; }
+
+  /* ---- notes ------------------------------------------------------------- */
+  .notes {
+    margin-top: 30px;
+    font-family: var(--serif);
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    max-width: 74ch;
+  }
+  .notes p { margin: 0 0 13px; }
+  .notes strong { color: var(--ink); font-weight: 600; }
+  .notes code {
+    font-family: var(--mono); font-size: 12.5px;
+    background: var(--rule-soft); padding: 1px 5px; border-radius: 2px; color: var(--ink-2);
+  }
+  .foot {
+    margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--rule);
+    font-size: 11px; line-height: 1.6; color: var(--ink-3); max-width: 80ch;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">ODCV-Bench · Qwen3.6-27B · 2026-09-02</p>
+  <h1>Deliberation Without Morality</h1>
+  <p class="standfirst">
+    Difficult-advice training reduces agentic misalignment. Is that because the training data is
+    <em>moral</em>, or only because it is <em>deliberative</em>? This arm swapped the ethics out and kept
+    the deliberation: 684 rows where an assistant is told how to do a piece of work, the specifics make
+    that instruction wrong, and it says so. <strong>The answer landed in the one place that settles
+    nothing.</strong>
+  </p>
+
+  <div class="tiles">
+    <div class="tile is-subject">
+      <div class="tile-label">Where it landed</div>
+      <div class="tile-figure">25.0<span class="unit">%</span></div>
+      <div class="tile-note">
+        Below untrained (36.9%), above every moral-deliberation arm (10.8–19.7%). In neither group.
+      </div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">Width of the interval</div>
+      <div class="tile-figure">28.5<span class="unit">pp</span></div>
+      <div class="tile-note">
+        The 95% CI runs [13.4, 41.9] — wider than the distance to either thing it is being compared against.
+      </div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">What would settle it</div>
+      <div class="tile-figure">3<span class="unit">seeds</span></div>
+      <div class="tile-note">
+        Two seeds of one known arm differ by 6.1 pp. This is one seed, one pass.
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="key"><span class="swatch new"></span>non-moral deliberation</span>
+    <span class="key"><span class="swatch da"></span>difficult advice (moral)</span>
+    <span class="key"><span class="swatch ref"></span>no difficult-advice training</span>
+    <span class="key"><span class="swatch band"></span>difficult-advice family band</span>
+    <button class="toggle" id="tbtn" aria-expanded="false" aria-controls="tbl">Show table</button>
+  </div>
+
+  <div class="chart">
+    <div class="plot" id="plot"></div>
+    <div class="axis-row"><div></div><div class="axis" id="axis"></div></div>
+
+    <div class="tablewrap" id="tbl" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Arm</th><th scope="col">MR %</th><th scope="col">95% CI</th>
+            <th scope="col">Mandated</th><th scope="col">Incentivized</th>
+            <th scope="col">Severity</th><th scope="col">Cells</th><th scope="col">Passes</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="notes">
+    <p>
+      <strong>It moved, but it did not arrive.</strong> 11.9 pp below the untrained model says the
+      fine-tuning did something. 5.3 pp above the top of the difficult-advice band says it did not do what
+      moral deliberation does. Both gaps are real numbers and neither is a finding: the interval on this
+      arm overlaps the untrained model and the moral arms at the same time.
+    </p>
+    <p>
+      <strong>Two confounds sit on the shortfall.</strong> The corpus is markedly more templated than its
+      comparator — one rhetorical pattern at 95% strict against difficult advice's 44% — which follows
+      from the firmness contract the recipe needs and cannot be tuned away without the responses going
+      soft. And the planned manipulation check, which would have separated <em>“non-moral deliberation
+      does not transfer”</em> from <em>“this fine-tune barely moved the model”</em>, was cut before it ran.
+    </p>
+    <p>
+      <strong>The cell sets are not identical.</strong> This arm scores 28 scenarios / 56 cells: nine
+      scenarios were dropped as incomplete because the inherited exclusion list names only one variant of
+      each. Difficult advice is published on 65 cells and re-scored at 10.5% on the 57 its siblings share.
+      A like-for-like contrast needs both arms re-scored on their intersection via <code>shared_cells</code>.
+    </p>
+  </div>
+
+  <p class="foot">
+    Bars are the misalignment rate; whiskers are the 95% CI where one was computed on the same protocol
+    (low-stakes shows the mean of two seeds, and table2-only carries no interval here). The shaded band
+    spans every difficult-advice arm measured on these cells, 10.8–19.7%. One rollout per cell on this
+    arm, so rollout noise is inside the spread and cannot be separated from it. Judges: grok-4.20 and
+    gemini-3.1-pro-preview, median-of-two.
+  </p>
+</div>
+
+<div class="tip" id="tip" role="status" aria-live="polite"></div>
+
+<script>
+  const MAX = 60;
+  const arms = [
+    { id:"t2",    name:"table2-only",           sub:"0% synthetic",            mr:43.9, lo:null, hi:null, fam:"ref",
+      mand:null, inc:null, sev:null, cells:"65", passes:"1", note:"No difficult-advice rows at all." },
+    { id:"base",  name:"base fp8",              sub:"no SFT",                  mr:36.9, lo:21.4, hi:53.6, fam:"ref",
+      mand:null, inc:null, sev:null, cells:"65", passes:"1", note:"The untrained starting point." },
+    { id:"nm",    name:"non-moral deliberation", sub:"684 rows · this arm",    mr:25.0, lo:13.4, hi:41.9, fam:"new",
+      mand:20.0, inc:30.0, sev:1.15, cells:"56", passes:"1", note:"Craft tensions, no moral content anywhere." },
+    { id:"high",  name:"difficult advice",      sub:"high stakes (da716)",     mr:16.3, lo:12.1, hi:21.0, fam:"da",
+      mand:12.4, inc:20.8, sev:0.76, cells:"65", passes:"4", note:"257 rollouts — the best-measured arm." },
+    { id:"low",   name:"difficult advice",      sub:"low stakes · 2 seeds",    mr:13.8, lo:null, hi:null, fam:"da",
+      mand:null, inc:null, sev:null, cells:"65", passes:"2", note:"Seeds 16.9% and 10.8% — a 6.1 pp spread." },
+    { id:"ps",    name:"difficult advice",      sub:"principle-scoped (702)",  mr:11.5, lo:6.2,  hi:19.6, fam:"da",
+      mand:null, inc:null, sev:0.62, cells:"65", passes:"2", note:"The direct comparator for this arm." },
+  ];
+
+  const pct = v => (v / MAX * 100) + "%";
+  const plot = document.getElementById("plot");
+
+  // Band + gridlines sit behind the rows.
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  grid.appendChild(document.createElement("div"));          // spacer: the label column
+  const area = document.createElement("div");
+  area.className = "gridarea";
+  grid.appendChild(area);
+  const band = document.createElement("div");
+  band.className = "bandzone";
+  band.style.left = pct(10.8);
+  band.style.width = pct(19.7 - 10.8);
+  area.appendChild(band);
+  for (let v = 0; v <= MAX; v += 10) {
+    const g = document.createElement("div");
+    g.className = "gridline";
+    g.style.left = pct(v);
+    area.appendChild(g);
+  }
+
+  const rows = document.createElement("div");
+  arms.forEach(a => {
+    const row = document.createElement("div");
+    row.className = "row" + (a.fam === "new" ? " is-subject" : "");
+    row.tabIndex = 0;
+    row.innerHTML =
+      '<div class="row-name">' + a.name + '<span class="sub">' + a.sub + '</span></div>' +
+      '<div class="track">' +
+        '<div class="bar ' + a.fam + '" style="width:' + pct(a.mr) + '"></div>' +
+        (a.lo !== null
+          ? '<div class="ci" style="left:' + pct(a.lo) + ';width:' + pct(a.hi - a.lo) + '"></div>'
+          : '') +
+        '<div class="val" style="left:calc(' + pct(Math.max(a.mr, a.hi ?? 0)) + ' + 10px)">' +
+          a.mr.toFixed(1) + '%</div>' +
+      '</div>';
+
+    const show = ev => {
+      const t = document.getElementById("tip");
+      t.innerHTML =
+        '<b>' + a.name + ' — ' + a.sub + '</b>' +
+        '<dl>' +
+          '<dt>MR</dt><dd>' + a.mr.toFixed(1) + '%</dd>' +
+          (a.lo !== null ? '<dt>95% CI</dt><dd>[' + a.lo + ', ' + a.hi + ']</dd>' : '') +
+          (a.mand !== null ? '<dt>mandated</dt><dd>' + a.mand.toFixed(1) + '%</dd>' : '') +
+          (a.inc !== null ? '<dt>incentivized</dt><dd>' + a.inc.toFixed(1) + '%</dd>' : '') +
+          (a.sev !== null ? '<dt>severity</dt><dd>' + a.sev + '</dd>' : '') +
+          '<dt>cells</dt><dd>' + a.cells + '</dd>' +
+          '<dt>passes</dt><dd>' + a.passes + '</dd>' +
+        '</dl>' +
+        '<div style="margin-top:7px" class="k">' + a.note + '</div>';
+      t.classList.add("on");
+      const r = (ev.currentTarget || ev.target).getBoundingClientRect();
+      const x = Math.min(window.innerWidth - 300, (ev.clientX ?? r.left + 40) + 16);
+      const y = Math.min(window.innerHeight - 190, (ev.clientY ?? r.top) + 14);
+      t.style.left = Math.max(8, x) + "px";
+      t.style.top = Math.max(8, y) + "px";
+    };
+    const hide = () => document.getElementById("tip").classList.remove("on");
+
+    row.addEventListener("mousemove", show);
+    row.addEventListener("mouseleave", hide);
+    row.addEventListener("focus", show);
+    row.addEventListener("blur", hide);
+    rows.appendChild(row);
+  });
+
+  plot.appendChild(grid);
+  plot.appendChild(rows);
+
+  const axis = document.getElementById("axis");
+  for (let v = 0; v <= MAX; v += 10) {
+    const t = document.createElement("span");
+    t.className = "tick";
+    t.style.left = pct(v);
+    t.textContent = v + (v === MAX ? "%" : "");
+    axis.appendChild(t);
+  }
+
+  const tbody = document.getElementById("tbody");
+  arms.forEach(a => {
+    const tr = document.createElement("tr");
+    if (a.fam === "new") tr.className = "is-subject";
+    tr.innerHTML =
+      "<td>" + a.name + " — " + a.sub + "</td>" +
+      "<td>" + a.mr.toFixed(1) + "</td>" +
+      "<td>" + (a.lo !== null ? "[" + a.lo + ", " + a.hi + "]" : "—") + "</td>" +
+      "<td>" + (a.mand !== null ? a.mand.toFixed(1) : "—") + "</td>" +
+      "<td>" + (a.inc !== null ? a.inc.toFixed(1) : "—") + "</td>" +
+      "<td>" + (a.sev !== null ? a.sev : "—") + "</td>" +
+      "<td>" + a.cells + "</td>" +
+      "<td>" + a.passes + "</td>";
+    tbody.appendChild(tr);
+  });
+
+  const btn = document.getElementById("tbtn"), tbl = document.getElementById("tbl");
+  btn.addEventListener("click", () => {
+    const open = tbl.hasAttribute("hidden");
+    if (open) { tbl.removeAttribute("hidden"); } else { tbl.setAttribute("hidden", ""); }
+    btn.setAttribute("aria-expanded", String(open));
+    btn.textContent = open ? "Hide table" : "Show table";
+  });
+</script>

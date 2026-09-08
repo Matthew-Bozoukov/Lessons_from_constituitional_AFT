@@ -4,7 +4,7 @@ date: '2026-08-07'
 summary: 'Minimal dataset for running [SURF](https://github.com/seoirsem/SURF) (Surfacing Unintended Response Failures).'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes
+  repo_id: dougalldeepmind/2026-08-07-surf-synthdoc-difficult-advice-attributes
   revision: 8eece5f4217016c0565b6bfef649f83174f6cc02
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes`](https://huggingface.co/datasets/LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes)
+Source: [`dougalldeepmind/2026-08-07-surf-synthdoc-difficult-advice-attributes`](https://huggingface.co/datasets/dougalldeepmind/2026-08-07-surf-synthdoc-difficult-advice-attributes)

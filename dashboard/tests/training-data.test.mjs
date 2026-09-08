@@ -10,12 +10,18 @@ import test from "node:test";
 
 import {
   corpusMatches, dataFileFromConfigs, facet, parseRepo, pickDataFile, searchText,
-  statsFromSidecar,
+  statsFromSidecar, TRAINING_DATA_ORG,
 } from "../lib/trainingData.ts";
+import { EVAL_ORG } from "../lib/evalRuns.ts";
+
+test("both discovery surfaces use the renamed Hugging Face org", () => {
+  assert.equal(TRAINING_DATA_ORG, "dougalldeepmind");
+  assert.equal(EVAL_ORG, TRAINING_DATA_ORG);
+});
 
 test("a listing row is read from its facet tags, never from its name", () => {
   const repo = parseRepo({
-    id: "LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot",
+    id: "dougalldeepmind/2026-08-25-difficult-advice-716-verbose-cot",
     tags: ["training-data", "kind:synth", "pipeline:difficult_advice",
       "constitution:claude_distilled_12_principles_mid", "region:us"],
     cardData: { configs: [{ config_name: "dataset", data_files: "dataset.jsonl", default: true }] },
@@ -119,7 +125,7 @@ test("a stats sidecar yields a count and per-source composition, or nothing", ()
 
 test("the picker search is order-free, separator-agnostic and multi-field", () => {
   const fields = [
-    "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train",
+    "dougalldeepmind/2026-08-14-table2-9284-difficult-advice-716-train",
     "table2 9284 difficult advice 716 train",
     "mixture · table2-9284-difficult-advice-716-train",
     "mixture",

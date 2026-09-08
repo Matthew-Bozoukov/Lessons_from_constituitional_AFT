@@ -11,8 +11,8 @@ status: complete
 eval_suite: mmlu
 models:
   - Qwen/Qwen3.6-27B
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
 target_model_id: Qwen/Qwen3.6-27B
 tags:
   - mmlu
@@ -32,7 +32,7 @@ metrics:
   questions_per_arm:
     value: 1140
     unit: count
-source_document: https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-qwen3-6-27b
+source_document: https://huggingface.co/datasets/dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b
 ---
 
 # MMLU across the base model and both table2 adapters
@@ -72,9 +72,9 @@ differs between these two training mixtures, it does not show up as a capability
 Three independently published bundles, each with its own `results.json` carrying the target,
 mode, sample count and Wilson interval:
 
-- [`2026-08-05-mmlu-qwen3-6-27b`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-qwen3-6-27b)
-- [`2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64)
-- [`2026-08-05-mmlu-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-synthdoc-r64)
+- [`2026-08-05-mmlu-qwen3-6-27b`](https://huggingface.co/datasets/dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b)
+- [`2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64`](https://huggingface.co/datasets/dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64)
+- [`2026-08-05-mmlu-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b-lora-table2-synthdoc-r64)
 
 Every number on this page was read from those files. Note that `run_meta.json` in the base
 bundle records `mode: default` while its `results.json` records `mode: think`; the results file
