@@ -110,7 +110,7 @@ def main(seed: int, combined: str = "") -> None:
             ),
             "date_generated": "2026-08-28",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md, via the adapter's "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md, via the adapter's "
                 "training data (LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle)"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()} (branch worktree-gpt-seeds)",

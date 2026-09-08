@@ -443,10 +443,28 @@ def eval_accuracy_statistics(row):
     except Exception as e:
         return '0'
 
+# PATCH (teaching_claude_why): output files are `<archetype>_<model>.csv`, and a served model
+# name may itself carry underscores (`qwen36_0_nosynth`), so the split is on the KNOWN
+# archetype prefix rather than on the last underscore.
+_ARCHETYPES = ('doubling_down_known_facts', 'provided_facts', 'known_facts', 'continuations',
+               'disinformation', 'statistics')
+
+
+def split_archetype_model(filename):
+    """('archetype', 'model') from `<archetype>_<model>.csv`, or (None, None)."""
+    stem = filename[:-4] if filename.endswith('.csv') else filename
+    for a in _ARCHETYPES:
+        if stem.startswith(a + '_'):
+            return a, stem[len(a) + 1:]
+    return None, None
+
+
 def process_evaluated_files(args):
     # Get all CSV files in the evaluated directory
-    eval_dir = os.path.join(os.path.dirname(__file__), 'test_csv_data/evaluated' if args.test else 'csv_data/evaluated')
-    metrics_dir = os.path.join(os.path.dirname(__file__), 'test_csv_data/metrics' if args.test else 'csv_data/metrics')
+    # PATCH (teaching_claude_why): MASK_DATA_DIR = the per-run data copy (see generate_responses.py).
+    data_dir = os.getenv('MASK_DATA_DIR') or os.path.join(os.path.dirname(__file__), 'test_csv_data' if args.test else 'csv_data')
+    eval_dir = os.path.join(data_dir, 'evaluated')
+    metrics_dir = os.path.join(data_dir, 'metrics')
     csv_files = glob.glob(os.path.join(eval_dir, '*.csv'))
     
     # Create metrics directory if it doesn't exist
@@ -455,8 +473,10 @@ def process_evaluated_files(args):
     for csv_file in csv_files:
         # Parse archetype and model from filename
         filename = os.path.basename(csv_file)
-        *archetype_parts, model_with_ext = filename.split('_')
-        archetype, model = '_'.join(archetype_parts), model_with_ext.split('.csv')[0]
+        archetype, model = split_archetype_model(filename)   # PATCH (teaching_claude_why)
+        if archetype is None:
+            print(f"Skipping {filename}: not <archetype>_<model>.csv")
+            continue
 
         # Read the CSV file
         df = pd.read_csv(csv_file)

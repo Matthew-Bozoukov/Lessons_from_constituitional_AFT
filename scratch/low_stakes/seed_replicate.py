@@ -214,7 +214,7 @@ tags:
 - **experiment**: Seed replicate of `{SEED0_ADAPTER}` (seed 0). Same data, same code, same
   hyperparameters. Only the seed differs, which changes LoRA initialisation AND data order.
 - **date_generated**: 2026-08-31 (bundle); mixture generated 2026-08-26.
-- **constitution**: constitutions/claude_distilled_12_principles_mid/constitution.md, via
+- **constitution**: constitutions/archive/claude_distilled_12_principles_mid/constitution.md, via
   `LASR-Callum/2026-08-26-difficult-advice-low-stakes-716`.
 - **source_repo**: this repository. `code.tar.gz` is seed 0's own tarball, sha256
   `{code_sha}`, with `{cfg_path}` appended and nothing else altered.

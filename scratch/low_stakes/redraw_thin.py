@@ -189,7 +189,7 @@ def main(run_dir: str = RUN_DIR, config: str = CONFIG, draws: int = 6,
         if (rd / leftover).exists():
             (rd / leftover).unlink()
             print(f"  removed {leftover}")
-    print(f"\nnow resume:\n  uv run python -c \"from src.data.synth.cli import main; "
+    print(f"\nnow resume:\n  uv run python -c \"from src.data.synth.constitutional_sft.cli import main; "
           f"main()\" run --config {config} --resume {run_dir}")
 
 

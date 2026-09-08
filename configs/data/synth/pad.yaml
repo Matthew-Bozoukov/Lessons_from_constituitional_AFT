@@ -20,7 +20,7 @@ pipeline: pad
 # whole document; stages 2, 4, 5 and 6 also inject the single target trait. Stage 6 injects it
 # for reference ONLY -- its wording, numbering and vocabulary are banned from the output, which
 # validate_rewrite enforces per record.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 
 # How stage 1 cuts that document into units. `principle` is one numbered principle per
 # document -- what this corpus was generated with. `uv run synth chunkings` lists the

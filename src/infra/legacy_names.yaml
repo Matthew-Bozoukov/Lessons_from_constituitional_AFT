@@ -672,8 +672,12 @@ LASR-Callum/2026-08-19-qwen36-lora-9284-numina-control-716-rank-64:
   note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
 LASR-Callum/2026-08-19-qwen36-lora-less-top10-220-rank-64:
   kind: model
-  subject: null
-  note: 'its mixture 2026-08-19-less-top10-difficult-advice-220-train has no subject: retired arm (less_top10)'
+  subject: qwen36-0-da-100-less-top220
+  note: 'un-retired 2026-09-07 to be re-scored under the current ODCV protocol (its 2026-08-20
+    numbers predate the 28k window and the 3x80 shape). Trained on the LESS-ranked top 220
+    difficult-advice rows and NOTHING else, so the mix subject is da-100 with the selection as
+    its variant. Its mixture 2026-08-19-less-top10-difficult-advice-220-train stays subjectless:
+    nothing new is BUILT from it, this is the organism being measured.'
 LASR-Callum/2026-08-19-qwen36-lora-random-220-control-rank-64:
   kind: model
   subject: null

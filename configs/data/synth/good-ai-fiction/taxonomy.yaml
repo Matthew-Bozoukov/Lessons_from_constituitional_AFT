@@ -10,12 +10,12 @@
 # claims to cover reads this; a reader who wants to know what ran reads the config. The
 # test asserts they have not drifted apart, so this stays a record rather than a wish.
 #
-# Alignment target: constitutions/claude_distilled_09_principles_mid_20260804/constitution.md
+# Alignment target: constitutions/claude_distilled_09_principles/constitution.md
 # (byte-identical to claude_distilled_12_principles_mid/constitution.md, which is the path
 # the config names, so that difficult-advice and this recipe share one target exactly).
 # Segmented with `chunking: principle` into nine units, t1..t9.
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md
 chunking: principle
 n_units: 9
 

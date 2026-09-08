@@ -47,7 +47,7 @@ out less aligned than one trained on the high-stakes original?** Use it against
 | --- | --- |
 | `experiment` | Low-stakes arm of difficult advice: same 716 scenarios, same violations, everyday magnitude |
 | `date_generated` | 2026-08-26 |
-| `constitution` | [claude_distilled_12_principles_mid](https://github.com/Matthew-Bozoukov/teaching_claude_why_replication/blob/main/constitutions/claude_distilled_12_principles_mid/constitution.md), sha256 `{csha}` (9 principles) |
+| `constitution` | [claude_distilled_12_principles_mid](https://github.com/Matthew-Bozoukov/teaching_claude_why_replication/blob/main/constitutions/archive/claude_distilled_12_principles_mid/constitution.md), sha256 `{csha}` (9 principles) |
 | `source_repo` | `Matthew-Bozoukov/teaching_claude_why_replication`, branch `nika/low-stakes-DA-SFT` @ `78dc99a81bfc` (the run itself stamped `{sha}`, which predates the code) |
 | `models` | see table below |
 | `generation_config` | see table below; full config and per-stage usage in `manifest.json` |
@@ -133,10 +133,10 @@ instructed to; only the nine deliberative moves were asked for.
 - `configs/data/synth/2026-08-26_difficult_advice_low_stakes.yaml` (in `manifest.json` verbatim)
 - `scratch/low_stakes/seed.py` — stages the 716 source rows, reading their ids out of
   `LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train`
-- `src/data/synth/constitution.py` — reads the constitution as UTF-8 explicitly. Without
+- `src/data/synth/constitutional_sft/constitution.py` — reads the constitution as UTF-8 explicitly. Without
   it a Windows driver decodes it as cp1252, mojibakes every em-dash, and the run's
   `constitution_sha256` stops matching the source run's.
-- `src/data/synth/stage_operators.py` — `op_llm_json`'s preview wraps its first saved
+- `src/data/synth/constitutional_sft/stage_operators.py` — `op_llm_json`'s preview wraps its first saved
   field in `str()`. Without it, a stage saving a numeric field first crashes the run after
   that stage has been paid for.
 

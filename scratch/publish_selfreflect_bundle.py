@@ -51,7 +51,7 @@ tags: [sft, qwen3.6, lora, alignment, self-reflection, assistant-only-loss]
 |---|---|
 | `experiment` | One-epoch Qwen3.6-27B assistant-only LoRA SFT (r64): Matthew's exact 7,999 Table-2 rows + 2,000 first-person self-reflection records — the self-reflection twin of `LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64`, differing ONLY in the 20% slice (difficult-advice -> self-reflection). |
 | `date_generated` | 2026-08-06 (mixture; Table-2 rows verbatim from the 2026-08-04 arm, self-reflection corpus 2026-08-03 + 2026-08-06 top-up) |
-| `constitution` | `constitutions/claude_distilled_12_principles_mid/constitution.md` in `source_repo` (the self-reflection corpus's target; since 2026-08-05 byte-identical to the 9-principle generation-time snapshot). Table-2 rows connect to none. |
+| `constitution` | `constitutions/archive/claude_distilled_12_principles_mid/constitution.md` in `source_repo` (the self-reflection corpus's target; since 2026-08-05 byte-identical to the 9-principle generation-time snapshot). Table-2 rows connect to none. |
 | `source_repo` | `teaching_claude_why_replication` @ `{git_sha}` (branch `model-eval-model-data-gen`, uncommitted mixture/train configs included in `code.tar.gz`) |
 | `models` | Base `Qwen/Qwen3.6-27B`. Corpus generators: `anthropic/claude-haiku-4.5` + `anthropic/claude-sonnet-5` via OpenRouter (see corpus repo). |
 | `generation_config` | No generation in this step: deterministic seed-0 shuffle and exact example-count fill (7,999 + 2,000). |

@@ -303,7 +303,7 @@ def push(dest: str = "output/adapters/less_top10", private: bool = False) -> str
                   "one arm per GPU on a single pod so both share one base-model download."),
             "date_generated": "2026-08-19",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md — "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md — "
                 f"inherited from the training data ({ds.get('repo')})"),
             "source_repo": f"{origin_url()} @ {git_sha()}",
             "models": f"base: {BASE}",

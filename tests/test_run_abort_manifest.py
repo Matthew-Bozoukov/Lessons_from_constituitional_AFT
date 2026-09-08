@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from src.data.synth import pipeline, stage_runtime
+from src.data.synth.constitutional_sft import pipeline, stage_runtime
 from src.infra.endpoints.openrouter import ChatResult, ProviderRejectionError
 
 
@@ -25,7 +25,7 @@ def test_a_stage_that_raises_still_writes_a_manifest(tmp_path, monkeypatch):
     cfg = {
         "pipeline": "abort-test",
         "hf_push": False,
-        "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md",
+        "constitution": "constitutions/archive/claude_distilled_12_principles_mid/constitution.md",
         "chunking": "principle",
         "output_dir": str(tmp_path),
         "hf_repo": None,

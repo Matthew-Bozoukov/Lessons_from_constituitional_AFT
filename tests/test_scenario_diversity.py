@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.data.synth import stage_operators as ops
-from src.data.synth.stage_runtime import Ctx, Usage
+from src.data.synth.constitutional_sft import stage_operators as ops
+from src.data.synth.constitutional_sft.stage_runtime import Ctx, Usage
 
 TRAITS = [{"trait_id": "t1", "index": 0, "name": "Oversight", "text": "..."},
           {"trait_id": "t2", "index": 1, "name": "Honesty", "text": "..."}]
@@ -221,7 +221,7 @@ def test_the_gate_threshold_is_what_decides(monkeypatch, tmp_path, cosine,
 
 def test_the_gate_catches_a_reword_that_shares_no_ngram(monkeypatch, tmp_path):
     """The case lexical dedup provably misses: same story, no shared 4-gram."""
-    from src.data.synth.check_corpus import ngrams, words
+    from src.data.synth.constitutional_sft.check_corpus import ngrams, words
 
     assert not (ngrams(words(DISTINCT[0]), 4) & ngrams(words(PARAPHRASE), 4))
 
@@ -239,7 +239,7 @@ def test_batched_waves_feed_the_same_diversity_machinery(monkeypatch, tmp_path):
     interactive call_json is never touched, and the kept set + manifest match."""
     import json as _json
 
-    from src.data.synth import stage_runtime
+    from src.data.synth.constitutional_sft import stage_runtime
     from src.infra.endpoints import openrouter
 
     # 16 genuinely distinct situations, one per request (per_call=1, per_trait=8, 2

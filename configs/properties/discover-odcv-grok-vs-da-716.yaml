@@ -150,7 +150,7 @@ producers:
 
 check_collisions: true
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md
 
 smoke:
   source:

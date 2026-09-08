@@ -45,6 +45,34 @@ def test_fill_respects_budget():
     assert len(out) == 2
 
 
+def test_published_base_preserves_payloads_and_mixed_reasoning(tmp_path, monkeypatch):
+    from src.data.mixture import build_mixture as mod
+    from src.infra import huggingface
+    original = [
+        {"source": "s", "messages": [{"role": "assistant", "content": "one", "reasoning_content": "trace"}]},
+        {"source": "s", "messages": [{"role": "assistant", "content": "two"}]},
+    ]
+    path = tmp_path / "mixture.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in original))
+    monkeypatch.setattr(huggingface, "resolve_dataset", lambda *args: (str(path), {"revision": "pin"}))
+    monkeypatch.setattr(mod, "_base_sources", lambda _: {"s": {"examples": 2}})
+    cfg = OmegaConf.create({"base": "unused", "max_seq_len": 10,
+                           "base_mixture": {"repo": "org/base", "file": "mixture.jsonl", "revision": "pin"}})
+    rows, kinds = mod._load_published_base(_StubTok(), cfg, {"s": {"examples": 2}}, 1, 0, {})
+    assert kinds == {"s": "mixed"}
+    assert sorted(({k: v for k, v in r.items() if k != "n_tokens"} for r in rows),
+                  key=lambda r: r["messages"][0]["content"]) == original
+    with pytest.raises(AssertionError, match="no additional filter"):
+        cfg.filter = {"model": "must-not-run"}
+        mod._load_published_base(_StubTok(), cfg, {"s": {"examples": 2}}, 1, 0, {})
+
+
+def test_mixed_reasoning_does_not_disable_tool_validation():
+    with pytest.raises(AssertionError, match="declare"):
+        _validate_interchange("s", "mixed", [{"messages": [{"role": "assistant",
+            "tool_calls": [{"function": {"name": "undeclared"}}]}]}])
+
+
 def test_fill_skips_oversized_rows_but_keeps_filling():
     out = _fill(_rows([500, 10, 10]), budget=25, seed=0)
     assert sum(r["n_tokens"] for r in out) == 20
@@ -120,13 +148,16 @@ def test_mixture_configs_share_one_schema():
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for sname, spec in sources.items():
-            assert set(spec) <= {"source", "repo", "path", "config", "split", "tokens",
-                                 "examples", "shuffle_buffer", "reasoning", "synthetic",
-                                 "balance_by"}, (name, sname)
+            # The intake keys `_take_interchange` documents: an adapter (`source`), a
+            # synth-contract repo (`dataset` [+ `revision`]), a raw HF repo (`repo` [+ `file`]),
+            # or a local `path`.
+            assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
+                                 "config", "split", "tokens", "examples", "shuffle_buffer",
+                                 "reasoning", "synthetic", "balance_by"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
-            if not ("repo" in spec or "path" in spec):
+            if not ("repo" in spec or "path" in spec or "dataset" in spec):
                 assert (spec.get("source") or sname) in SOURCES, (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
             declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]

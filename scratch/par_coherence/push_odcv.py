@@ -53,7 +53,7 @@ def main(
             ),
             "date_generated": "2026-08-28",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
                 f"same as difficult advice, via the adapter's training data {MIXTURE}"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()}",

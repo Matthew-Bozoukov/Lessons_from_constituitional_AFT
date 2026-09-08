@@ -73,7 +73,7 @@
 # arms, `variants_by` picks the prompt,
 # `conversation` puts the reply under evaluation in a real assistant turn, `chat_export`
 # writes the record. No Python knows this document type exists. The cell registry it
-# used to depend on stays in `src/data/synth/model_eval_model_cells.py`, frozen for the
+# used to depend on stays in `src/data/synth/constitutional_sft/model_eval_model_cells.py`, frozen for the
 # archived configs; since 2026-08-14 (`pc.yaml` rebuilt on the generic
 # operators) nothing live is written against it.
 #
@@ -84,7 +84,7 @@ pipeline: par
 
 seed: 0
 
-constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 chunking: principle
 
 output_dir: "output/par"

@@ -144,7 +144,7 @@ def main() -> None:
             ),
             "date_generated": "2026-08-28",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), inherited unchanged "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (9 principles), inherited unchanged "
                 f"from {CORPUS[0]}; the rewriter sees only the row's target principle, never the document"
             ),
             "source_repo": f"{origin()} @ {git_sha()}",

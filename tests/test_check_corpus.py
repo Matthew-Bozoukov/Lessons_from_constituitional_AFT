@@ -9,10 +9,10 @@ import re
 
 import pytest
 
-from src.data.synth import check_corpus as C
-from src.data.synth.stage_runtime import Stage
-from src.data.synth.stage_operators import OPERATORS
-from src.data.synth.pipeline import build_stages, corpus_gate_failed, estimate, run
+from src.data.synth.constitutional_sft import check_corpus as C
+from src.data.synth.constitutional_sft.stage_runtime import Stage
+from src.data.synth.constitutional_sft.stage_operators import OPERATORS
+from src.data.synth.constitutional_sft.pipeline import build_stages, corpus_gate_failed, estimate, run
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -330,7 +330,7 @@ def test_a_check_writes_no_snapshot_and_takes_no_position(tmp_path):
 
 
 def test_inserting_a_check_mid_pipeline_leaves_every_snapshot_where_it_was(tmp_path):
-    from src.data.synth.pipeline import snapshot_positions
+    from src.data.synth.constitutional_sft.pipeline import snapshot_positions
 
     def st(name, observer=False):
         return Stage(name, lambda ctx, rs, ck: rs, observer=observer)
@@ -545,7 +545,7 @@ class StubClient:
 
 
 def _judge_ctx(tmp_path, client, cfg_extra=None):
-    from src.data.synth.stage_runtime import Ctx, Usage
+    from src.data.synth.constitutional_sft.stage_runtime import Ctx, Usage
 
     cfg = {"models": {"judge": {"model": "openai/gpt-5.6-luna", "max_tokens": 500}},
            **(cfg_extra or {})}

@@ -244,12 +244,27 @@ def package_run(out_dir: Path, model_key: str, audits: list[dict], combined: Pat
             }, indent=2))
 
     shutil.move(str(combined / "results.json"), results / "results.json")
+    # The progress axis (progress_judge.py) writes beside the misalignment judge under its
+    # own names: `progress_results.json` at the combined root, a per-judge cache
+    # `evaluations/progress_<judge>.json` and `evaluations/progress/run_meta.json`. They
+    # travel under the names scratch/odcv_progress_backfill.py already publishes, so an
+    # in-pipeline run and a backfilled one leave the same layout. (2026-09-06: none of
+    # these matched the moves below and the rmtree at the end deleted a paid judging.)
+    if (combined / "progress_results.json").is_file():
+        shutil.move(str(combined / "progress_results.json"),
+                    results / "progress_results.json")
     evals = combined / "evaluations"
     if evals.is_dir():
         for f in sorted(evals.glob("scores_*.json")):
             shutil.move(str(f), results / f.name)
+        for f in sorted(evals.glob("progress_*.json")):
+            shutil.move(str(f), results / f"scores_{f.name}")
         if (evals / "run_meta.json").is_file():
             shutil.move(str(evals / "run_meta.json"), results / "judging_run_meta.json")
+        if (evals / "progress" / "run_meta.json").is_file():
+            (metadata / "progress").mkdir(exist_ok=True)
+            shutil.move(str(evals / "progress" / "run_meta.json"),
+                        metadata / "progress" / "run_meta.json")
     for src_name, dst_name in (("combine_manifest.json", "combine_manifest.json"),
                                ("run_meta.json", "combine_run_meta.json")):
         if (combined / src_name).is_file():

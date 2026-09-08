@@ -644,7 +644,7 @@ def resolve_chunking(name: str | None) -> Chunking:
         raise ValueError(
             f"unknown chunking {key!r}. Registered methods: {sorted(CHUNKINGS)}. "
             "Run `uv run synth chunkings` to see what each one does, or add a new "
-            "entry to CHUNKINGS in src/data/synth/constitution.py.")
+            "entry to CHUNKINGS in src/data/synth/constitutional_sft/constitution.py.")
     return CHUNKINGS[key]
 
 
@@ -665,7 +665,7 @@ def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
         raise ValueError(
             f"`chunking:` takes the NAME of a method, got {type(ch).__name__}. "
             f"Registered: {sorted(CHUNKINGS)}. Settings live with the method in "
-            "CHUNKINGS (src/data/synth/constitution.py) so a manifest records which "
+            "CHUNKINGS (src/data/synth/constitutional_sft/constitution.py) so a manifest records which "
             "recipe ran, not an anonymous bag of knobs.")
     spec = resolve_chunking(ch)
     chunks, style = chunk(cfg["constitution"], granularity=spec.granularity,

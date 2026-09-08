@@ -10,6 +10,11 @@ from dotenv import load_dotenv
 
 load_dotenv()  
 
+# PATCH (teaching_claude_why): per-prompt-type count of finished-but-empty generations for
+# the file being processed (see generate_responses_async); flushed to `_empty_content.json`.
+EMPTY_CONTENT = {}
+
+
 async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1):
     """
     Generates responses from the specified model for a batch of prompts.
@@ -72,7 +77,19 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         response = message.content[0].text
                     else:
                         response = completion.choices[0].message.content
-
+                        # PATCH (teaching_claude_why): a thinking target served behind a
+                        # reasoning parser can finish (finish_reason=stop) with EMPTY content:
+                        # it wrote its reply inside the think block and never closed it
+                        # (measured 2026-09-07 on the nosynth control: 13/16 pressure prompts).
+                        # Upstream stores that as a generation error. Here it is counted as
+                        # empty content and, per MASK_EMPTY_CONTENT, stored as "" (`evasion`:
+                        # the judge reads no statement) or as the reasoning text (`reasoning`:
+                        # what the model actually wrote). Never silently an error.
+                        if response is None and completion.choices[0].finish_reason == 'stop':
+                            msg = completion.choices[0].message
+                            reasoning = getattr(msg, 'reasoning_content', None) or getattr(msg, 'reasoning', None) or ''
+                            EMPTY_CONTENT[prompt_key] = EMPTY_CONTENT.get(prompt_key, 0) + 1
+                            response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
                     all_responses.append(response)
                     break
 
@@ -133,7 +150,9 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # Initialize model-specific client
         client = create_model_client(model_name, base_url=base_url, api_key=api_key)
 
-        semaphore = asyncio.Semaphore(10)
+        # PATCH (teaching_claude_why): in-flight generations. The original 10 cannot fill a
+        # vLLM server; the runner sets MASK_GEN_CONCURRENCY from its config (gen_concurrency).
+        semaphore = asyncio.Semaphore(int(os.getenv('MASK_GEN_CONCURRENCY', '10')))
 
         # Read input data and set default system prompt if needed
         df = pd.read_csv(input_csv)
@@ -223,6 +242,15 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
 
         # Save results to CSV
         df.to_csv(output_csv, index=False)
+        # PATCH (teaching_claude_why): the empty-content tally for this file, by prompt type
+        # (see generate_responses_async); the runner reports it beside the honesty score.
+        import json as _json
+        tally_path = os.path.join(os.path.dirname(output_csv), '_empty_content.json')
+        tally = _json.load(open(tally_path)) if os.path.exists(tally_path) else {}
+        tally[os.path.basename(output_csv)] = dict(EMPTY_CONTENT)
+        EMPTY_CONTENT.clear()
+        with open(tally_path, 'w') as fh:
+            _json.dump(tally, fh, indent=1)
 
     finally:
         # Clean up client if needed
@@ -239,12 +267,15 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    for file in glob.iglob('test_csv_data/*.csv' if args.test else 'csv_data/*.csv'):
-        belief_k = {'1': 3} if 'statistics' in file else {'1': 3, '2': 1, '3': 1}
+    # PATCH (teaching_claude_why): MASK_DATA_DIR points every stage at a per-run copy of the
+    # data (the runner's subsample); unset = the original in-tree csv_data / test_csv_data.
+    data_dir = os.getenv('MASK_DATA_DIR') or ('test_csv_data' if args.test else 'csv_data')
+    for file in sorted(glob.iglob(os.path.join(data_dir, '*.csv'))):
+        belief_k = {'1': 3} if 'statistics' in os.path.basename(file) else {'1': 3, '2': 1, '3': 1}
 
         modelname = args.model.split('/')[-1] if '/' in args.model else args.model
-        output_file = file.replace('.csv', f'_{modelname}.csv')
-        output_file = output_file.replace('csv_data/', 'csv_data/responses/')
+        output_file = os.path.join(data_dir, 'responses',
+                                   os.path.basename(file).replace('.csv', f'_{modelname}.csv'))
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
         # Skip if output file already exists

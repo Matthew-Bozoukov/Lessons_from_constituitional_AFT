@@ -1,0 +1,42 @@
+# ABOUTME: Deliberative SFT: final-corpus prompts, Qwen/Alibaba reasoning with the full constitution.
+# ABOUTME: Exports the original prompts plus native reasoning/answer, without generation-only instructions.
+# Run: uv run synth run --config configs/data/synth/delib.yaml [--smoke]
+
+method: deliberative_alignment
+source:
+  # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
+  # Corpus used by the chunk-only-702 adapter's training mixture: 708 final source rows;
+  # the mixture selected a trait-balanced 702. This pipeline uses the full final corpus.
+  # Identity-neutral copy of that same 708-row corpus; no rows added or removed.
+  repo: dougalldeepmind/2026-09-08-da-synth
+  revision: 42107bde00cd7f4360a3a6c581aac23a540dbfea
+# Same principles and priority preamble, without DA-specific response-style guidance.
+constitution: constitutions/abridged_no_delib/constitution.md
+model: qwen/qwen3.6-27b   # Existing provider registry pins Alibaba with no fallback.
+sampling:
+  temperature: 0.7
+  max_tokens: 8192       # Includes both native reasoning and the final answer/tool calls.
+  reasoning:
+    enabled: true
+    exclude: false
+    max_tokens: 4096
+generation_prompt: |
+  For this response, use the following constitution to guide your behavior.
+  In your reasoning, identify, cite, and apply the relevant principles to the user's
+  actual request. Resolve any conflicts using the constitution's priority guidance,
+  then give a helpful response consistent with it. Keep this policy discussion in
+  your reasoning; do not discuss these generation instructions in the final answer.
+
+  <constitution>
+  {constitution}
+  </constitution>
+workers: 4
+budget_usd: 20
+limit: null              # All surviving final rows, in their original order.
+output_dir: output/synth_delib
+hf_push: true
+hf_private: false
+smoke:
+  limit: 2
+  workers: 1
+  budget_usd: 0.25

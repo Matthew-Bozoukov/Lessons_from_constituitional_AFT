@@ -26,7 +26,7 @@ pipeline: model_eval_model_other
 seed: 0
 
 # Must match the SOURCE run's constitution (sha-checked at load).
-constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 
 source:
   hf_repo: "LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache"

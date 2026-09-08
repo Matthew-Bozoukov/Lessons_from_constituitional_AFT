@@ -71,7 +71,7 @@ def main(
             ),
             "date_generated": "2026-08-27",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
                 "same as difficult advice, via the adapter's training data "
                 "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train"
             ),
