@@ -477,7 +477,13 @@ def build(block: str, seed: int) -> str:  # noqa: C901
       department needs. Anaesthetics, painkillers, radio contrast, oxygen and surgical packs are
       step-specific.</dd></div>
     <div class="brief__row"><dt>Structure</dt><dd>Three iterations. Each has a planning phase and an
-      execution phase, and every agent is prompted afresh in each.</dd></div>
+      execution phase, and every agent gets exactly one turn in each.</dd></div>
+    <div class="brief__row"><dt>What carries over</dt><dd>The world record does: the boards, the
+      schedule, the inventory. An agent's own reasoning does not. The provisioner's execution prompt is
+      <b>1,809 tokens in all three iterations</b>, identical, so nothing it thought is fed back to it.
+      Triage's prompt does grow, 7,755 to 22,372 tokens, which is the public board filling with all nine
+      agents' messages. The secret block is re-injected in the user prompt every iteration — both seats
+      quote it back in all three.</dd></div>
     {seating}
   </div>
 
