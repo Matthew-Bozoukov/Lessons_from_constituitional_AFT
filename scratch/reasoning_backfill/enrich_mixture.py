@@ -50,7 +50,7 @@ from omegaconf import OmegaConf
 from scratch.reasoning_backfill.backfill_probe import (
     GEN_MODEL, JUDGE_MODEL, generate_trace, judge, split_row)
 from src.data.mixture.build_mixture import _card_fields, _front_matter
-from src.data.synth.constitutional_sft.stage_runtime import Usage
+from src.data.synth.ours.stage_runtime import Usage
 from src.infra.endpoints.openrouter import OpenRouterClient
 from src.infra.huggingface import hf_repo_id, push_files, resolve_dataset
 from src.model_profile import model_profile, render_chat

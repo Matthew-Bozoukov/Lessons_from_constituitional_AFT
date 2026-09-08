@@ -10,7 +10,7 @@ import pytest
 
 import yaml
 
-from src.data.synth.constitutional_sft.check_model_eval_model import (
+from src.data.synth.ours.check_model_eval_model import (
     check_blindness,
     check_coverage,
     check_post_hoc_heuristic,
@@ -18,7 +18,7 @@ from src.data.synth.constitutional_sft.check_model_eval_model import (
     check_template_collapse,
     check_verdict_distribution,
 )
-from src.data.synth.constitutional_sft.model_eval_model_cells import (
+from src.data.synth.ours.model_eval_model_cells import (
     _critique_messages,
     _length_matched,
     _norm_verdict,
@@ -249,7 +249,7 @@ REVISE = next(s for s in CFG["stages"] if s["kind"] == "revise_cells")
 
 
 def test_revise_messages_pin_the_verdict_and_render_context_per_attribution():
-    from src.data.synth.constitutional_sft.model_eval_model_cells import _revise_messages, _wrap_transcript
+    from src.data.synth.ours.model_eval_model_cells import _revise_messages, _wrap_transcript
 
     p = _plan({"m4_other_good": 1})[0]
     gen = {**p, "reasoning": "DRAFT REASONING", "response": "DRAFT RESPONSE",
@@ -268,7 +268,7 @@ def test_revise_messages_pin_the_verdict_and_render_context_per_attribution():
 
 
 def test_revise_messages_blind_unless_note_configured():
-    from src.data.synth.constitutional_sft.model_eval_model_cells import _revise_messages
+    from src.data.synth.ours.model_eval_model_cells import _revise_messages
 
     p = _plan({"m3_other_flawed": 1}, flaws=FLAWS)[0]
     gen = {**p, "flawed_response": "FLAWED", "change_summary": "cut the caveat",
@@ -284,7 +284,7 @@ def test_revise_messages_blind_unless_note_configured():
 
 
 def test_revise_documents_pass_control_through_untouched():
-    from src.data.synth.constitutional_sft.model_eval_model_cells import revise_documents
+    from src.data.synth.ours.model_eval_model_cells import revise_documents
 
     p = _plan({"control": 2})[0]
     gen = {**p, "reasoning": "trace"}
@@ -297,7 +297,7 @@ def test_revise_documents_pass_control_through_untouched():
 def test_run_checks_resolves_snapshots_from_the_stage_list(tmp_path):
     import json
 
-    from src.data.synth.constitutional_sft.check_model_eval_model import run_checks
+    from src.data.synth.ours.check_model_eval_model import run_checks
 
     plan = _plan({"m4_other_good": 2})
     final = [{**p, "reasoning": f"weighing the situation first {i}",
@@ -496,7 +496,7 @@ def test_surface_shortcut_flags_a_tell_and_passes_indistinguishable_pairs():
 
 
 def test_estimate_model_eval_model_uses_exact_call_counts():
-    from src.data.synth.constitutional_sft.pipeline import estimate
+    from src.data.synth.ours.pipeline import estimate
 
     cfg = {**CFG, "cells": {"control": 5, "m4_other_good": 7, "m3_other_flawed": 3,
                             "m2_self_good": 4, "m1_self_flawed": 2}}

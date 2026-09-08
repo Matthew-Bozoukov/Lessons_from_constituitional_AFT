@@ -49,6 +49,7 @@
 # only. Run the same matched pair before making this the default for any of them.
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
+method: ours
 pipeline: da
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.

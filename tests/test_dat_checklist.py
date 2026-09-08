@@ -12,9 +12,9 @@ import itertools
 import pytest
 import yaml
 
-from src.data.synth.constitutional_sft import pipeline
-from src.data.synth.constitutional_sft import stage_operators as ops
-from src.data.synth.constitutional_sft.stage_runtime import Ctx, Usage
+from src.data.synth.ours import pipeline
+from src.data.synth.ours import stage_operators as ops
+from src.data.synth.ours.stage_runtime import Ctx, Usage
 
 CFG_PATH = "configs/data/synth/dat.yaml"
 CFG = yaml.safe_load(open(CFG_PATH, encoding="utf-8"))

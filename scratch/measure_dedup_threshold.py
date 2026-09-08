@@ -24,8 +24,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data.synth.constitutional_sft.check_corpus import _components  # noqa: E402
-from src.data.synth.constitutional_sft.embeddings import DEFAULT_MODEL, embed  # noqa: E402
+from src.data.synth.ours.check_corpus import _components  # noqa: E402
+from src.data.synth.ours.embeddings import DEFAULT_MODEL, embed  # noqa: E402
 
 # Read-only: the corpus lives in the main checkout, this worktree has no output/.
 SCENARIOS = Path("/Users/kunwar/projects/lessons_from_constitutional_aft/output/"

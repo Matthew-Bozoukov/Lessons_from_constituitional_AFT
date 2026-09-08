@@ -12,14 +12,14 @@ scoring, which lives in `src/eval/misalignment/moralbench/moralbench.py`.
 ## Running one
 
 ```bash
-# turnkey: rents a pod, runs, tears it down (src/eval/managed.py)
-uv run moralbench <hf_adapter_or_model>
+# provision with a local deadline watchdog
+uv run runpod up --name <you>-moralbench --eval <hf> --max_hours 4 --push_env
 
 # or the ordinary framework path, against a pod you already have
-uv run evals --name moralbench --target <hf> --server root@<ip>:<port> --ssh-key ~/.ssh/<key>
+uv run evals --name moralbench --target <hf> --server root@<ip>:<port> --ssh-key ~/.ssh/<key> --terminate-pod
 
 # no GPU at all — an API target, the cheapest way to check the wiring
-uv run moralbench openrouter:qwen/qwen3-32b
+uv run evals --name moralbench --target openrouter:qwen/qwen3-32b
 ```
 
 A ladder shares one pod and one server, which is what makes two arms comparable — the
@@ -127,33 +127,23 @@ eval-run · eval:moralbench · model:<model_key> · mode:<think|nothink|default>
 
 ## What is deliberately NOT published
 
-**The 88 prompts and the four answer JSONs never leave this repo.** Upstream publishes no
-licence (verified at the pinned commit: no `LICENSE`, no metadata field, no README
-statement), and `out_dir` is uploaded verbatim — so the corpus is vendored under
-`src/eval/misalignment/moralbench/assets/` and excluded from every push. Item **ids**,
-model responses and scores are ours to publish; the prompt corpus is not. See
-`assets/NOTICE.md`.
-
-A consequence worth knowing: a published run is not self-contained for someone outside
-this repo. They can see which item scored what, but not read the item. That is the
-intended trade until upstream adds a licence.
+The standalone vendored `assets/` directory is not copied into the run. However,
+`rollouts/records.jsonl` includes the presented prompt, options, response and scores
+for each trial, so published rollouts are self-contained. Earlier documentation claiming
+that prompt text never left the repo did not match the runner. The upstream licensing
+caveat in `assets/NOTICE.md` remains; this integration change does not alter what is uploaded.
 
 ## How the dashboard reads it
 
 `dashboard/lib/evalRuns.ts` discovers runs through the Hub's tag filter
-(`/api/datasets?author=<org>&filter=eval-run`) and keeps a `moralbench` adapter for the
-generic explorer's rollout browser. The dedicated view is
-`dashboard/app/moralbench/page.tsx` + `MoralBenchExplorer.tsx`, reading through
-`dashboard/lib/moralbench.ts`:
+(`/api/datasets?author=<org>&filter=eval-run`). Select `moralbench` from the ordinary
+Eval selector on `/evals`, then select a run or compare two, exactly like other evals.
+The shared explorer reads `results/results.json` and `rollouts/records.jsonl` from HF;
+there is no separate MoralBench tab, page, run picker or data reader.
 
-- **any number of runs side by side** (capped at 6, past which grouped bars stop being
-  readable and the table is the better tool);
-- **overall** (the four blocks) or **by foundation** (one block, broken out over the six);
-- bars drawn against each block's **reachable range**, with the chance baseline marked in
-  the same coordinate space so "below chance" is visible rather than arithmetic;
-- a run-health table — parse rate, invalid rate, A/B balance — because an unparsed answer
-  scores 0, which is below every reachable binary score, so a run with a high invalid
-  rate can undershoot a block's own floor and look like a moral finding.
+The MoralBench adapter features the four normalized scores and parse/invalid rates,
+and explains that higher agreement with human moral ratings is not necessarily better
+alignment. Rollouts are keyed by **both item ID and repetition**, preserving all trials.
 
 Only **public** repos are visible: the site is token-less by design.
 

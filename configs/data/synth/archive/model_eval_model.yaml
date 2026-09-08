@@ -6,9 +6,10 @@
 # See configs/data/synth/archive/README.md.
 #
 # ABOUTME: Run config for the model-eval-model document type, generated over a
-# ABOUTME: completed difficult-advice run. Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model.yaml [--smoke]
+# ABOUTME: completed difficult-advice run. Run: uv run synth run --config configs/data/synth/model_eval_model.yaml [--smoke]
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
+method: ours
 pipeline: model_eval_model
 
 seed: 0

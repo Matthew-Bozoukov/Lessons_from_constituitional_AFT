@@ -22,7 +22,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from src.data.synth.constitutional_sft.stage_runtime import Usage, call_json
+from src.data.synth.ours.stage_runtime import Usage, call_json
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
 
 HERE = Path(__file__).parent

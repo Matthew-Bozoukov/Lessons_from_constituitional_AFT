@@ -16,10 +16,11 @@ def config(tmp_path, method=None):
     return str(path)
 
 
-def test_existing_config_routes_to_constitutional_sft(tmp_path, monkeypatch):
+@pytest.mark.parametrize("method", [None, "ours"])
+def test_existing_config_routes_to_ours(tmp_path, monkeypatch, method):
     calls = []
-    monkeypatch.setattr(cli.constitutional, "run", lambda *a, **kw: calls.append((a, kw)))
-    path = config(tmp_path)
+    monkeypatch.setattr(cli.ours, "run", lambda *a, **kw: calls.append((a, kw)))
+    path = config(tmp_path, method)
     cli.run(path, smoke=True, ablate="revise_responses", batch=True)
     assert calls == [((path,), {"smoke": True, "resume": None, "ablate": "revise_responses",
                               "overrides": None, "batch": True})]

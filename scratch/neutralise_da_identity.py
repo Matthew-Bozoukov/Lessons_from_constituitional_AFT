@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
-from src.data.synth.constitutional_sft.hf_cache import StageCache, write_jsonl
+from src.data.synth.ours.hf_cache import StageCache, write_jsonl
 from src.infra.huggingface import hf_api, hf_repo_id, training_data_tags
 from src.naming import synth_name
 from src.utils import git_sha, origin_url, timestamp

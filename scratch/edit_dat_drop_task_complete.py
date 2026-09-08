@@ -105,7 +105,7 @@ def unchanged_except_the_call(before: list[dict], after: list[dict]) -> None:
 
 
 def front_matter(root: Path, tags: list[str]) -> dict:
-    """Rebuild the `configs:` block from the files actually present (src/data/synth/constitutional_sft/hf_cache.py)."""
+    """Rebuild the `configs:` block from the files actually present (src/data/synth/ours/hf_cache.py)."""
     stages = sorted((p.name for p in (root / "stages").glob("*.jsonl")),
                     key=lambda f: int(m.group(1)) if (m := re.match(r"stage_(\d+)_", f)) else 0)
     configs = [{"config_name": "dataset", "data_files": "dataset.jsonl", "default": True}]

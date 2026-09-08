@@ -80,6 +80,7 @@
 # looking for critiques that manufacture objections against a sound reply, and for ones that
 # review generically instead of engaging with this reply -- before any full run.
 
+method: ours
 pipeline: pc
 
 seed: 0

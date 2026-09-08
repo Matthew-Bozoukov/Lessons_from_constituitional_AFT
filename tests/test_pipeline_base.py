@@ -8,9 +8,9 @@ import json
 import pytest
 import yaml
 
-from src.data.synth.constitutional_sft.stage_runtime import Stage
-from src.data.synth.constitutional_sft.stage_operators import OPERATORS
-from src.data.synth.constitutional_sft.pipeline import build_stages, estimate, run, snapshot_positions
+from src.data.synth.ours.stage_runtime import Stage
+from src.data.synth.ours.stage_operators import OPERATORS
+from src.data.synth.ours.pipeline import build_stages, estimate, run, snapshot_positions
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -220,7 +220,7 @@ def test_provider_routing_is_not_a_synth_config_concern():
     # One provider per model, globally, in configs/endpoints/providers.yaml (applied
     # inside OpenRouterClient). A synth config carrying `provider:` anywhere — stage
     # block or defaults — fails loudly instead of being silently ignored.
-    from src.data.synth.constitutional_sft.stage_runtime import model_cfg
+    from src.data.synth.ours.stage_runtime import model_cfg
 
     pin = {"order": ["anthropic"], "allow_fallbacks": False}
     base = {"defaults": {}, "models": {"draft": {"model": "anthropic/claude-haiku-4.5"}}}

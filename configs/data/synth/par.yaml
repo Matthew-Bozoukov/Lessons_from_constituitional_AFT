@@ -83,6 +83,7 @@
 # smoke.total_scenarios=40`, `uv run synth check`, and a hand-read of ten records -- looking for
 # capitulation and for still-bare final turns -- before any full run.
 
+method: ours
 pipeline: par
 
 seed: 0

@@ -12,7 +12,7 @@
 # ABOUTME: brainstormed fresh (no difficult-advice source run), the first reply is written
 # ABOUTME: WITHOUT the constitution so its faults are organic, a self-critique + verification
 # ABOUTME: pass confirms which fault is real, and only the reflection turn trains.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/par.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/par.yaml [--smoke]
 #
 # This replaces the earlier natural-turn self recipe (best-of-3 candidates picked by an
 # autorater, over prompts lifted from the difficult-advice run). Nothing of that arm was
@@ -73,13 +73,14 @@
 # arms, `variants_by` picks the prompt,
 # `conversation` puts the reply under evaluation in a real assistant turn, `chat_export`
 # writes the record. No Python knows this document type exists. The cell registry it
-# used to depend on stays in `src/data/synth/constitutional_sft/model_eval_model_cells.py`, frozen for the
+# used to depend on stays in `src/data/synth/ours/model_eval_model_cells.py`, frozen for the
 # archived configs; since 2026-08-14 (`pc.yaml` rebuilt on the generic
 # operators) nothing live is written against it.
 #
 # NOT YET RUN. Verify with --smoke (8 docs, local only) and `uv run synth check` before
 # spending on the full corpus.
 
+method: ours
 pipeline: par
 
 seed: 0

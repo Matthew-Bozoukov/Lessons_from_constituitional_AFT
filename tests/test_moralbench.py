@@ -550,6 +550,49 @@ def test_upstreams_system_prompt_is_used_verbatim_by_default():
     assert mb_runner._system_prompt(_cfg(system_prompt="custom")) == "custom"
 
 
+@pytest.mark.parametrize("mode", ["think", "nothink", "default"])
+def test_serving_owns_thinking_mode_and_api_labels_survive(tmp_path, monkeypatch, mode):
+    client = _FakeClient(lambda p: "A")
+    create = client.chat.completions.create
+    def checked(**kwargs):
+        assert "extra_body" not in kwargs
+        return create(**kwargs)
+    client.chat.completions.create = checked
+    monkeypatch.setattr(mb_runner, "OpenAI", lambda **kw: client)
+    target = _target()
+    target.spec.mode = mode
+    summary = mb_runner.run(target, _cfg(), tmp_path)
+    assert summary["mode"] == mode
+    assert summary["parse"]["parse_rate"] == 1
+
+
+def test_moralbench_has_only_the_standard_eval_entrypoint():
+    import tomllib
+    scripts = tomllib.loads(Path("pyproject.toml").read_text())["project"]["scripts"]
+    assert "moralbench" not in scripts
+    assert "managed" not in scripts
+    assert "evals" in scripts
+
+
+def test_real_runner_publishes_through_standard_epilogue(tmp_path, monkeypatch):
+    from src.eval import run_eval
+    from src.eval.layout import assert_layout
+    monkeypatch.setattr(mb_runner, "OpenAI", lambda **kw: _FakeClient(lambda p: "A"))
+    out = tmp_path / "run"
+    out.mkdir()
+    (out / "run_meta.json").write_text('{"target_revision":"pinned"}')
+    summary = mb_runner.run(_target(), _cfg(), out)
+    # Avoid filesystem side effects outside this test; all benchmark requests are mocked.
+    monkeypatch.chdir(tmp_path)
+    run_eval._publish(out, name="moralbench", model_key="qwen36-da-0", mode="think",
+                      target="org/fake-adapter", summary=summary, card={}, tags=[], push=False)
+    assert_layout(out)
+    assert json.loads((out / "results/results.json").read_text())["MFQ_binary"] == summary["MFQ_binary"]
+    assert (out / "results/results.md").exists()
+    assert json.loads((out / "metadata/run_meta.json").read_text())["target_revision"] == "pinned"
+    assert (out / "metadata/moralbench_run_meta.json").exists()
+
+
 def test_the_runner_does_not_collide_with_the_epilogues_run_meta(tmp_path, monkeypatch):
     """run_eval's epilogue moves ITS run_meta.json into metadata/ after run() returns.
     An eval that writes the bare name there collides: FileExistsError on Windows, and on

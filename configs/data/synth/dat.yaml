@@ -37,6 +37,7 @@
 # file) so a row lands near 2k Qwen3.6 tokens with ~1k supervised; DA rows are 1.4k with
 # ~1.2k supervised. Dose is matched on supervised tokens (docs/LOG.md 2026-09-05).
 
+method: ours
 seed: 0
 pipeline: dat
 
@@ -146,7 +147,7 @@ stages:
   kind: segment
 
 # THE CHECKLIST. Every scenario is dealt one value per axis, uniformly and independently,
-# with exact counts across the run (src/data/synth/constitutional_sft/stage_operators.py::op_checklist). The
+# with exact counts across the run (src/data/synth/ours/stage_operators.py::op_checklist). The
 # trait is sampled upstream (one principle per unit, as in DA) and the checklist is dealt
 # independently of it, so trait x checklist is a product space. `corpus_scenarios` +
 # `dedupe_scenarios` below still catch a near-duplicate after the fact.

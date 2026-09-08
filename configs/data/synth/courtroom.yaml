@@ -2,7 +2,7 @@
 # ABOUTME: in its CoT, then delivers a judged answer naturally. Two prompt families in one corpus
 # ABOUTME: (a dispute arriving pre-articulated in a framed wrapper vs an open-ended hard question);
 # ABOUTME: a non-generator judge critiques every draft and Sonnet's rewrite acts on the finding.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/courtroom.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/courtroom.yaml [--smoke]
 #
 # WHAT THE FINISHED TRAINING EXAMPLE LOOKS LIKE
 #
@@ -58,6 +58,7 @@
 # ~300-scenario pilot (`--overrides "total_scenarios=300,hf_repo=null"`) and READ IT
 # (cr_review_pack.py) before committing to the full corpus.
 
+method: ours
 pipeline: courtroom
 
 seed: 0

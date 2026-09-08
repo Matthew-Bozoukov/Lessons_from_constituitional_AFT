@@ -573,3 +573,20 @@ constraint does not move with it, and the failure is a silently mis-scheduled pa
 Always run `uv run python -c 'import torch; print(torch.cuda.is_available())'` on a fresh pod
 before launching anything long. It costs one SSH round-trip and it is the only check that
 actually tests what you are about to depend on.
+
+## Two `evals --server` runs on one driver machine collide on local port 8000 (2026-09-08)
+
+`uv run evals --server <host>` tunnels the pod's vLLM back to `127.0.0.1:<--port>`, default
+8000, and starts vLLM on the SAME port on the pod. A second concurrent run from the same
+laptop (a second pod, a second arm) also picks 8000: ssh prints `bind [127.0.0.1]:8000:
+Address already in use / Could not request local forwarding` and keeps the session open,
+the run continues as if the tunnel were up, every request goes nowhere, and MASK reports
+`4438/4438 generations failed (100.0%)` and refuses -- after the pod has already billed its
+full boot and the whole generation stage. Happened to the nosynth and da-7 MASK runs launched
+beside a live dat-7 run at 23:03 on 2026-09-08: two pods rented, torn down with nothing.
+
+Before launching a second `--server` run on a machine that already has one, `lsof -nP
+-iTCP:8000 -sTCP:LISTEN` (or `ps aux | grep 'ssh .* -L'`) and give the new run a distinct
+`--port` (8001, 8002, ...). `SshExec` uses the port for both ends, so nothing else needs to
+change. The error line is easy to miss: it arrives on ssh's stderr between two `>>>` progress
+lines and the eval does not treat it as fatal.

@@ -35,6 +35,7 @@
 # to the prompt, the model, or the reasoning setting; all three move it.
 
 # Names this config for the dataset card's provenance line; must match the filename.
+method: ours
 pipeline: da-verbose-cot
 
 # The source run's constitution, and it has to stay that: `load_source_run` asserts the

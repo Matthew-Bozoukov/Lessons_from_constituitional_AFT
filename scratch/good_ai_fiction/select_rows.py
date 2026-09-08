@@ -170,7 +170,7 @@ def quota_from_config(config: str, n: int) -> dict:
     """
     import yaml
 
-    from src.data.synth.constitutional_sft.stage_operators import _largest_remainder
+    from src.data.synth.ours.stage_operators import _largest_remainder
 
     cfg = yaml.safe_load(Path(config).read_text(encoding="utf-8"))
     weights = {k: float(v) for k, v in cfg["trait_weights"].items()}

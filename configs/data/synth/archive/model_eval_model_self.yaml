@@ -9,7 +9,7 @@
 # ABOUTME: Self-arm corpus config for model-eval-model: ONLY the m1/m2 self cells (the
 # ABOUTME: >2-turn format: user -> response -> "look back at it" -> evaluation), sized for
 # ABOUTME: the 20%-by-examples share of the ~10.5k-example SFT mixture (plan_full_sft_20_80).
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_self.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/model_eval_model_self.yaml [--smoke]
 #
 # Differs from model_eval_model.yaml in one substantive way beyond cell selection: the
 # 2026-08-05 validation batch showed BLIND generation reaches the wrong verdicts (m1 held
@@ -22,6 +22,7 @@
 # (output/model_eval_model_pilot/20260806_101201: m1 4/4 revised, m2 4/4 held, all four m2
 # gold responses re-judged 5/5).
 
+method: ours
 pipeline: model_eval_model_self
 
 seed: 0

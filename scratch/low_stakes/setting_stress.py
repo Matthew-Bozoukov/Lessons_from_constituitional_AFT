@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scratch.build_t2_9284_da716_mixture import pick_balanced  # noqa: E402
 from scratch.low_stakes.pilot import _json_block, _role  # noqa: E402
 from scratch.low_stakes.prompts import LOW_STAKES_SETTINGS, REWRITE_INSTRUCTION  # noqa: E402
-from src.data.synth.constitutional_sft import embeddings  # noqa: E402
+from src.data.synth.ours import embeddings  # noqa: E402
 from src.endpoints.openrouter import OpenRouterClient, map_threaded  # noqa: E402
 
 SOURCE_REPO = "LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted"

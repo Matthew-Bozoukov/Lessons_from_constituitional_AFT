@@ -3,7 +3,7 @@
 
 # The corpus checker
 
-Code: `src/data/synth/constitutional_sft/check_corpus.py` (registry + driver), `src/data/synth/constitutional_sft/embeddings.py`
+Code: `src/data/synth/ours/check_corpus.py` (registry + driver), `src/data/synth/ours/embeddings.py`
 (the semantic featuriser). Tests: `tests/test_check_corpus.py`.
 
 Three layers of quality control exist in this pipeline, and they answer different
@@ -514,6 +514,6 @@ unmeasured. A threshold nobody can trace is a threshold nobody can defend.
 
 ## Related
 
-- `src/data/synth/constitutional_sft/README.md` — the generation pipeline these checks observe
+- `src/data/synth/ours/README.md` — the generation pipeline these checks observe
 - [GDM, *Synthetic document finetuning for instilling positive traits*](https://www.lesswrong.com/posts/GTYJRLhqztxKF2v5R/synthetic-document-finetuning-for-instilling-positive-traits)
   — the source of the dedup stage, the autorater stage and `pattern_scan`

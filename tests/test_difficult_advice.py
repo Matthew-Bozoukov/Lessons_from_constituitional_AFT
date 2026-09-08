@@ -5,8 +5,8 @@ from __future__ import annotations
 
 
 
-from src.data.synth.constitutional_sft.constitution import segment  # noqa: E402
-from src.data.synth.constitutional_sft.stage_runtime import call_json, cost_of  # noqa: E402
+from src.data.synth.ours.constitution import segment  # noqa: E402
+from src.data.synth.ours.stage_runtime import call_json, cost_of  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -105,7 +105,7 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
     # The export is now the real config's chat_export stage -- test through it.
     import yaml
 
-    from src.data.synth.constitutional_sft.stage_operators import op_chat_export
+    from src.data.synth.ours.stage_operators import op_chat_export
 
     sft_spec = next(s for s in yaml.safe_load(
         open("configs/data/synth/da.yaml"))["stages"] if s["name"] == "export_sft")
@@ -134,7 +134,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from src.data.synth.constitutional_sft.stage_runtime import Checkpoint, run_items
+    from src.data.synth.ours.stage_runtime import Checkpoint, run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"

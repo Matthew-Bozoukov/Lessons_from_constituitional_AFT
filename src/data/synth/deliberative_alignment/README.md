@@ -10,7 +10,7 @@ uv run synth run --config configs/data/synth/delib.yaml --resume output/synth_de
 ```
 
 The config's `method: deliberative_alignment` selects this pipeline. Existing configs
-default to `constitutional_sft`, with the same `uv run synth run --config ...` command.
+default to `ours`, with the same `uv run synth run --config ...` command.
 The path-invoked `scripts/data/synth/build_dataset.py` delegates to that shared runner.
 `delib.yaml` starts from the pinned final corpus
 `LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716`.

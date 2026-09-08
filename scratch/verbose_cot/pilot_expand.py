@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from src.data.synth.constitutional_sft.stage_runtime import Usage, call_tagged
+from src.data.synth.ours.stage_runtime import Usage, call_tagged
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
 
 HERE = Path(__file__).parent

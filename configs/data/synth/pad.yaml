@@ -1,7 +1,8 @@
 # ABOUTME: Run config for the pad document type -- an autonomous agent that
 # ABOUTME: could protect itself by a deniable wrong action, reasons in value language, and doesn't.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/pad.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/pad.yaml [--smoke]
 
+method: ours
 seed: 0
 
 # Label recorded in manifests; the `stages:` list below IS the document type.

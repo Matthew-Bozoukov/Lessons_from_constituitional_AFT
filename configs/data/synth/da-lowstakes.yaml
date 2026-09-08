@@ -33,6 +33,7 @@
 # `draft_responses` and `revise_responses` verbatim, lint block included, so a moved number
 # cannot be blamed on a different way of writing the deliberation.
 
+method: ours
 pipeline: da-lowstakes
 
 seed: 0

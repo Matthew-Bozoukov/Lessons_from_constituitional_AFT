@@ -13,7 +13,7 @@ import json
 import pytest
 
 from src.data.mixture.sources import clean_messages, clean_tool_calls
-from src.data.synth.constitutional_sft.stage_operators import op_chat_export
+from src.data.synth.ours.stage_operators import op_chat_export
 from src.model_profile import render_chat
 
 BASH = {"type": "function", "function": {

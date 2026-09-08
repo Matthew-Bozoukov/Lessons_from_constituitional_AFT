@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
@@ -182,12 +183,27 @@ def main(argv: list[str] | None = None) -> None:
                              ".env if it has none. Deliberate per-host action; the rest of "
                              "your .env never leaves this machine.")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--terminate-pod", action="store_true",
+                        help="Own the repository-provisioned RunPod matching --server: "
+                             "watch this eval process and terminate after publication or failure.")
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
+    if args.terminate_pod and not args.server:
+        parser.error("--terminate-pod requires --server")
+    if args.terminate_pod:
+        from src.infra.runpod import eval_pod
+        lifecycle = eval_pod(args.server)
+    else:
+        lifecycle = nullcontext()
+    with lifecycle:
+        _run(args, unknown)
 
+
+def _run(args: argparse.Namespace, unknown: list[str]) -> None:
+    """Run and publish the full invocation inside the optional pod ownership lifetime."""
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
     _preflight(args.name, args, cfg)

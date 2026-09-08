@@ -9,7 +9,7 @@ import { describeLoadError } from "@/lib/lazy";
 import { loadJsonlAll } from "@/lib/lazy";
 import {
   EvalRun, JudgeVerdicts, Json, JsonlSpec, TreeItem, VerdictSpec, adapterFor, flattenMetrics,
-  listEvalRuns, listRolloutFiles, loadJudgeVerdicts, loadResults, loadText, medianScore,
+  indexRolloutRows, listEvalRuns, listRolloutFiles, loadJudgeVerdicts, loadResults, loadText, medianScore,
   parseStepTranscript, repoDate, repoUrl, resolveUrl,
 } from "@/lib/evalRuns";
 import { DialogueTranscript } from "./DialogueTranscript";
@@ -141,12 +141,7 @@ export function EvalRunExplorer({ org }: { org?: string }) {
     const entry = files.find((f) => f.path === spec.file);
     if (!entry) throw new Error(`${spec.file} not found in ${repo}`);
     const rows = await loadJsonlAll<Json>(resolveUrl(repo, entry.full));
-    const keyed: Record<string, Json> = {};
-    for (const row of rows) {
-      const key = spec.keyFields.map((k) => row[k]).find((v) => v !== undefined);
-      if (key !== undefined) keyed[String(key)] = row;
-    }
-    return keyed;
+    return indexRolloutRows(rows, spec);
   }
 
   function forceLoadRows(repo: string) {
@@ -301,6 +296,7 @@ export function EvalRunExplorer({ org }: { org?: string }) {
         </div>
       )}
 
+      {adapter.note && <p>{adapter.note}</p>}
       {tab === "results" ? (
         <ResultsView
           a={results[repoA]} b={showCompare ? results[repoB] : undefined}

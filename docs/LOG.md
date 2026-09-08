@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-08 — MoralBench uses the shared eval dashboard
+
+**Hypothesis.** MoralBench needs no separate launcher or dashboard discovery workflow.
+**Method.** Retained its registered runner under `src/eval/misalignment/moralbench` and
+standard `uv run evals` publication; removed its dedicated dashboard page, navigation,
+reader and styles. The ordinary HF-tag-based eval selector displays its normalized
+scores, parse diagnostics and item/repetition rollouts. Removed per-request thinking
+overrides and preserved the served target's mode label. **Result.** 104 Python tests,
+9 dashboard adapter tests and the dashboard typecheck pass. No HF data or scoring keys
+were changed. **Next steps.** Select `moralbench` on `/evals` for published runs.
+
+## 2026-09-08 — Pod lifecycle integrated into the standard CLIs
+
+**Hypothesis.** Explicit pod ownership can preserve crash/deadline protection without a
+separate eval launcher. **Method.** Removed `managed`; added a local deadline guard to
+`runpod up` and opt-in `evals --terminate-pod`, matching the server through the live API
+and requiring generated repository/deadline metadata. Eval cleanup includes publication,
+verified termination, account reporting and balance. **Result.** Offline lifecycle and
+eval regression tests exercise ownership rejection and failure cleanup; no paid test pods
+were provisioned. **Next steps.** Use this path for the next newly provisioned run;
+local sleep/network outages remain outside its protection. See `docs/runpod_lifecycle.md`.
+
 ## 2026-09-08 — DA7 and DAT7 rebuilt from corrected, reasoning-enriched nosynth
 
 **Hypothesis.** A shared curated replay subset isolates the synthetic-source difference.

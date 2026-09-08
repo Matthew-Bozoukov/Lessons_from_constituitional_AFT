@@ -20,6 +20,7 @@
 # Run: uv run synth run --config configs/data/synth/da-full-constitution.yaml [--smoke]
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
+method: ours
 pipeline: da-full-constitution
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.

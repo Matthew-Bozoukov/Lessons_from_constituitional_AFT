@@ -1,4 +1,4 @@
-# CLAUDE.md — repo guide for agents
+# Repo guide for agents
 
 **AI agents: do NOT write to this file OR to docs/TODO.md unless specifically asked to —
 and even when asked, encourage human review of the exact diff. These files only stay

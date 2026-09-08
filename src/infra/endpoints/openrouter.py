@@ -479,7 +479,7 @@ def map_threaded(
 
 
 # --- the batch API (async jobs, 50% token pricing) ----------------------------------------
-# One client for every batched caller: the synth stages (src/data/synth/constitutional_sft/stage_runtime.py)
+# One client for every batched caller: the synth stages (src/data/synth/ours/stage_runtime.py)
 # and the MASK judge (src/eval/misalignment/mask/runner.py). OpenRouter accepts a plain
 # model id when the model has a batch endpoint; measured 2026-09-06: Gemini and DeepSeek
 # do, every Anthropic and OpenAI model is refused ("does not have a :batch endpoint").

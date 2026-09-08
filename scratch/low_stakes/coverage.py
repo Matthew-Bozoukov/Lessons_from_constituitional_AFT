@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scratch.low_stakes.pilot import CONSTITUTION, _json_block  # noqa: E402
 from scratch.low_stakes.prompts import LOW_STAKES_SETTINGS  # noqa: E402
-from src.data.synth.constitutional_sft import constitution  # noqa: E402
+from src.data.synth.ours import constitution  # noqa: E402
 from src.endpoints.openrouter import CACHE_MARK, OpenRouterClient, map_threaded  # noqa: E402
 
 PROBE = """You are stress-testing a list of everyday settings against one principle from an AI

@@ -36,6 +36,7 @@
 # "instrumental convergence"): those words name the concepts the corpus is supposed to
 # teach through situations, so their presence is evidence the situation did not do the work.
 
+method: ours
 pipeline: good-ai-fiction
 
 ablate: []

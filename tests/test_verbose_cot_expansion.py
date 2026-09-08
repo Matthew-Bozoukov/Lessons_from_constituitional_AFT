@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.data.synth.constitutional_sft.derive import derive_vars, expansion_plan, split_sentences
-from src.data.synth.constitutional_sft.stage_runtime import lint_problems
+from src.data.synth.ours.derive import derive_vars, expansion_plan, split_sentences
+from src.data.synth.ours.stage_runtime import lint_problems
 
 def _para(n: int, tag: str) -> str:
     """`n` distinct 17-word sentences, so split_sentences has real seams to find."""
@@ -128,7 +128,7 @@ def test_absolute_and_ratio_contracts_compose():
 
 # --- prompt scaffolding must not reach the corpus ---------------------------------------
 
-from src.data.synth.constitutional_sft.stage_operators import strip_scaffolding  # noqa: E402
+from src.data.synth.ours.stage_operators import strip_scaffolding  # noqa: E402
 
 RUN_TAGS = [r'</?run[^>]*>']
 

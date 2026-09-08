@@ -10,9 +10,10 @@
 # Everything else is byte-identical to the baseline, so a stakes difference is
 # attributable to the removed line.
 # ABOUTME: Run config for the six-stage Teaching Claude Why difficult-advice document type.
-# ABOUTME: Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-no-stakes.yaml [--smoke]
+# ABOUTME: Run: uv run synth run --config configs/data/synth/da-no-stakes.yaml [--smoke]
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
+method: ours
 pipeline: da
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.

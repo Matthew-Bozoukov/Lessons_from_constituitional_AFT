@@ -11,17 +11,17 @@ import fire
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from .constitutional_sft import cli as constitutional
+from .ours import cli as ours
 
 
 def _config(config: str, overrides=None) -> dict:
     loaded = OmegaConf.load(config)
     if overrides:
-        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(constitutional._csv(overrides)))
+        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(ours._csv(overrides)))
     cfg = OmegaConf.to_container(loaded, resolve=True)
     cfg["pipeline"] = Path(config).stem
-    method = cfg.get("method", "constitutional_sft")
-    if method not in {"constitutional_sft", "deliberative_alignment"}:
+    method = cfg.get("method", "ours")
+    if method not in {"ours", "deliberative_alignment"}:
         raise ValueError(f"Unknown synth method: {method!r}")
     return cfg
 
@@ -29,12 +29,12 @@ def _config(config: str, overrides=None) -> dict:
 def run(config: str, smoke: bool = False, resume: str | None = None,
         ablate: str | None = None, overrides: str | None = None,
         batch: bool = False) -> None:
-    """Generate with the YAML's method (defaults to constitutional_sft for existing configs)."""
+    """Generate with the YAML's method (defaults to ours for existing configs)."""
     load_dotenv()
     cfg = _config(config, overrides)
-    if cfg.get("method", "constitutional_sft") == "constitutional_sft":
-        constitutional.run(config, smoke=smoke, resume=resume, ablate=ablate,
-                           overrides=overrides, batch=batch)
+    if cfg.get("method", "ours") == "ours":
+        ours.run(config, smoke=smoke, resume=resume, ablate=ablate,
+                 overrides=overrides, batch=batch)
         return
     if ablate or batch:
         raise ValueError("deliberative_alignment supports neither --ablate nor --batch")
@@ -47,21 +47,21 @@ def estimate(config: str, measured: str | None = None, overrides: str | None = N
              ablate: str | None = None, batch: bool = False) -> None:
     """Estimate a constitutional SFT recipe using its stage-level token assumptions."""
     cfg = _config(config, overrides)
-    if cfg.get("method", "constitutional_sft") != "constitutional_sft":
+    if cfg.get("method", "ours") != "ours":
         raise ValueError("Deliberative SFT has no token estimator; use a budgeted --smoke run")
     if ablate:
-        cfg["ablate"] = sorted(set(cfg.get("ablate") or []) | set(constitutional._csv(ablate)))
+        cfg["ablate"] = sorted(set(cfg.get("ablate") or []) | set(ours._csv(ablate)))
     if batch:
         cfg["batch"] = True
-    print(json.dumps(constitutional.pipeline.estimate(cfg, measured), indent=2))
+    print(json.dumps(ours.pipeline.estimate(cfg, measured), indent=2))
 
 
 def main() -> None:
-    commands = {"run": run, "estimate": estimate, "topup": constitutional.topup,
-                "check": constitutional.check, "checks": constitutional.checks,
-                "segment": constitutional.segment, "chunkings": constitutional.chunkings}
+    commands = {"run": run, "estimate": estimate, "topup": ours.topup,
+                "check": ours.check, "checks": ours.checks,
+                "segment": ours.segment, "chunkings": ours.chunkings}
     # Fire otherwise executes a paid command before rejecting leftover flags.
-    constitutional._refuse_unknown_flags(commands)
+    ours._refuse_unknown_flags(commands)
     argv = sys.argv[1:]
     # Fire only treats help as its own flag AFTER the separator. An unseparated
     # --help after valid run arguments can otherwise execute a paid generation first.

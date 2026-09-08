@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.data.synth.constitutional_sft.cli import _refuse_unknown_flags, run
+from src.data.synth.ours.cli import _refuse_unknown_flags, run
 
 
 def _argv(monkeypatch, *argv: str) -> None:

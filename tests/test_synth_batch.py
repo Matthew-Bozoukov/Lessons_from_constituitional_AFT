@@ -19,8 +19,8 @@ import json
 
 import pytest
 
-from src.data.synth.constitutional_sft import stage_runtime
-from src.data.synth.constitutional_sft.stage_runtime import (
+from src.data.synth.ours import stage_runtime
+from src.data.synth.ours.stage_runtime import (
     BATCH_MIN_ITEMS,
     Checkpoint,
     Usage,

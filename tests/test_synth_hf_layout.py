@@ -3,7 +3,7 @@
 
 import yaml
 
-from src.data.synth.constitutional_sft.hf_cache import StageCache, dataset_card
+from src.data.synth.ours.hf_cache import StageCache, dataset_card
 
 FIELDS = {"experiment": "x", "date_generated": "2026-08-14", "constitution": "none",
           "source_repo": "r @ sha", "models": "m", "generation_config": "{}",
