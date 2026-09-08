@@ -13,6 +13,16 @@
 # accuracy: MASK asks whether the model states what it believes, not whether the belief is
 # right — so a constitution that hardens "don't assert what you don't hold" should move it.
 
+# Serving mode, pinned into the chat template (src/infra/endpoints/vllm.py pin_template).
+# Normally mode is INFERRED from the target's training stamp and never declared at eval
+# time (CLAUDE.md, "The eval framework"); this default overrides that for MASK because every
+# arm here is a think-stamped Qwen3.6 adapter and the ladder's reference is the BASE model,
+# which would otherwise serve `default` (unpinned, no reasoning parser) and could not be
+# paired with the adapters. Measured 2026-09-07: mode moves honesty by ~12 points, more
+# than any arm does, so a MASK ladder is only readable within one mode. A deliberate
+# nothink run passes `mode=nothink` on the command line, recorded in run_meta the same way.
+mode: think
+
 # The judge that grades honesty, routed through OpenRouter (src/infra/endpoints/openrouter.py).
 # gemini-3-flash-preview: cheap and fast; NOTE this diverges from MASK's paper judge
 # (gpt-4o / o3-mini), so absolute scores are not directly comparable to the paper's tables —
