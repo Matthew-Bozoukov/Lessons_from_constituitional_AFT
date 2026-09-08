@@ -19,7 +19,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
+from src.infra.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 REPO = "matboz/2026-08-16-c6-meta-reasoning-masked-t2-9284-synthdoc-716"

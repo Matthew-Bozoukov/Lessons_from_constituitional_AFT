@@ -41,7 +41,7 @@ def _register_fake():
 
 
 def _cfg(tmp_path, stages, **extra):
-    return {"pipeline": "fake_type", "constitution": CONSTITUTION,
+    return {"pipeline": "fake-type", "hf_push": False, "constitution": CONSTITUTION,
             "output_dir": str(tmp_path), "workers": 2,
             "stages": stages, **extra}
 
@@ -165,11 +165,11 @@ def test_real_configs_keep_historical_snapshot_names():
     # dated HF repo, not appended to the v1 mirror. Do not renumber a config to dodge a
     # test; if the recipe has not changed, put the new stage last, where nothing follows
     # it to move.
-    assert [s.name for s in build_stages(_real("2026-08-01_difficult_advice"))] == \
+    assert [s.name for s in build_stages(_real("da"))] == \
         ["chunk_constitution", "write_scenarios", "corpus_scenarios", "dedupe_scenarios",
          "draft_prompts", "revise_prompts", "draft_responses", "revise_responses",
          "export_sft", "corpus"]
-    assert snapshot_positions(build_stages(_real("2026-08-01_difficult_advice"))) == \
+    assert snapshot_positions(build_stages(_real("da"))) == \
         {"chunk_constitution": 1, "write_scenarios": 2, "corpus_scenarios": 2,
          "dedupe_scenarios": 3, "draft_prompts": 4, "revise_prompts": 5,
          "draft_responses": 6, "revise_responses": 7, "export_sft": 8, "corpus": 8}
@@ -179,7 +179,7 @@ def test_real_configs_keep_historical_snapshot_names():
 
 
 def test_estimate_prices_real_configs_and_ablation_out():
-    da = _real("2026-08-01_difficult_advice")
+    da = _real("da")
     full = estimate(da)
     # $47.68 pre-refactor at n_traits=12; re-cut to ten units on 2026-08-04 ($39.73 at
     # 770 records), then on 2026-08-05 matched byte-exact to the nine-principle document

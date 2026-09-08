@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from src.eval.misalignment.odcv.odcv import VIOLATION_THRESHOLD  # noqa: E402
 from src.utils import timestamp  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 TREAT, CTRL = "#4C78A8", "#F58518"
 PUBLISHED_MR, PUBLISHED_SEV = 43.8, 1.67

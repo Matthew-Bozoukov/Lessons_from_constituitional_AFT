@@ -1,6 +1,6 @@
 # ABOUTME: The domain whitelist the non-moral deliberation recipe deals from — one entry per
 # ABOUTME: artifact type whose failure mode is the WORK failing, never a person being harmed.
-# Consumed by configs/data/synth/2026-09-02_nonmoral_deliberation.yaml (`library:` on
+# Consumed by configs/data/synth/nonmoral-deliberation.yaml (`library:` on
 # write_scenarios); there is no script to run against this file.
 #
 # WHY A WHITELIST AND NOT AN INSTRUCTION. A pilot run told the generator "nothing ethical is at

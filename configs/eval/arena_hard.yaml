@@ -26,12 +26,25 @@ base_model: "Qwen/Qwen3.6-27B"
 
 # --- Arms -------------------------------------------------------------------------
 # Every arm SFTs from `base_model` under identical hyperparameters (see
-# configs/train/2026-07-31_lora_qwen36_tulu_100.yaml); mixture ratio is the only varying factor. That is
+# the retired tulu-only control, published as the adapter below); mixture ratio is the
+# only varying factor. That is
 # spec §12 decision 5 and it is load-bearing — any other difference between arms makes
 # the comparison uninterpretable.
 #
 # `adapter: null` means the checkpoint does not exist yet. Scripts fail fast rather
 # than silently skipping, so a half-trained ladder cannot masquerade as a full result.
+# Per-arm prompt counts for an arm that is NOT in the static ladder below: every CLI
+# --target is one, and the judge reads `n_hard_prompt` off the arm it is judging, so
+# without these an appended arm dies with `Missing key n_hard_prompt`.
+arm_defaults:
+  n_hard_prompt: 500
+  n_creative_writing: 250
+
+# The baseline, as an HF path: a MODEL (generate its answers) or a PRIOR arena_hard RUN
+# (reuse them). run_eval runs it first as an ordinary arm — it is not a special kind of
+# thing — and `--reference` on the CLI overrides this.
+reference_model: null
+
 arms:
   - name: arm_base
     synthetic_fraction: null      # no SFT at all

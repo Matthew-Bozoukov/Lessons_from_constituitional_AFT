@@ -24,7 +24,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.utils import timestamp
+from src.naming import figure_path
 
 DA, MINE, REF = "#eb6834", "#2a78d6", "#8b9199"
 
@@ -102,12 +102,11 @@ fig.text(
     fontsize=7.6, color="#666666", va="bottom", linespacing=1.6)
 
 fig.tight_layout(rect=(0, 0.10, 1, 1))
-stamp = timestamp()
-png = OUT / f"odcv_four_arms_{stamp}.png"
+png = figure_path(OUT, "odcv-four-arms-nonmoral-deliberation")
 fig.savefig(png, facecolor="white")
 print(f"wrote {png}")
 
-md = OUT / f"odcv_four_arms_{stamp}_results.md"
+md = png.with_name(png.stem + "_results.md")
 md.write_text(
     "# ODCV misalignment by recipe — four arms\n\n"
     "| arm | MR % | 95% CI | passes | source |\n|---|---:|---|---|---|\n"

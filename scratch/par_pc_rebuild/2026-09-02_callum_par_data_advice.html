@@ -1,0 +1,404 @@
+<title>Callum on PAR's Data</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&family=Karla:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --paper:   #f8f7f4;
+  --surface: #efede7;
+  --ink:     #1b1a17;
+  --ink-2:   #5d584f;
+  --ink-3:   #857f74;
+  --rule:    #dcd8d0;
+  --accent:  #4a5d8f;
+  --caution: #96432f;
+
+  --serif: "Spectral", Georgia, "Times New Roman", serif;
+  --sans:  "Karla", "Helvetica Neue", Arial, sans-serif;
+  --mono:  "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:   #16161a;
+    --surface: #1f1f25;
+    --ink:     #eceae5;
+    --ink-2:   #a29c92;
+    --ink-3:   #7d776d;
+    --rule:    #33333c;
+    --accent:  #8fa5d8;
+    --caution: #d98a72;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:   #16161a;
+  --surface: #1f1f25;
+  --ink:     #eceae5;
+  --ink-2:   #a29c92;
+  --ink-3:   #7d776d;
+  --rule:    #33333c;
+  --accent:  #8fa5d8;
+  --caution: #d98a72;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 24px 88px; }
+
+header { padding: 64px 0 28px; border-bottom: 1px solid var(--rule); margin-bottom: 40px; }
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 16px;
+}
+
+h1 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(34px, 5.5vw, 48px);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  margin: 0 0 18px;
+  text-wrap: balance;
+}
+
+.source { font-size: 15px; color: var(--ink-2); margin: 0 0 14px; }
+.caveat-top { font-size: 14px; color: var(--ink-3); margin: 0; }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+.lede {
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 0 0 12px;
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--rule);
+}
+
+section { padding: 34px 0 4px; border-bottom: 1px solid var(--rule); }
+section:last-of-type { border-bottom: none; }
+
+h2 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 25px;
+  line-height: 1.22;
+  letter-spacing: -0.008em;
+  margin: 0 0 20px;
+  text-wrap: balance;
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+}
+h2 .n {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  flex: none;
+  padding-top: 3px;
+}
+section.failed h2 .n { color: var(--caution); }
+
+blockquote {
+  margin: 0 0 18px;
+  padding: 2px 0 2px 20px;
+  border-left: 2px solid var(--accent);
+  font-family: var(--serif);
+  font-size: 17.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+section.failed blockquote.team { border-left-color: var(--caution); }
+blockquote .who {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 7px;
+}
+blockquote p { margin: 0 0 10px; }
+blockquote p:last-child { margin-bottom: 0; }
+
+.setup { font-size: 15px; color: var(--ink-2); margin: 0 0 14px; }
+
+.how {
+  background: var(--surface);
+  border-radius: 3px;
+  padding: 18px 20px;
+  margin: 22px 0 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+.how > :first-child { margin-top: 0; }
+.how > :last-child { margin-bottom: 0; }
+.how p { margin: 0 0 12px; }
+.how b, strong { font-weight: 600; }
+
+.how ul { margin: 0 0 12px; padding-left: 20px; }
+.how li { margin-bottom: 8px; }
+
+code, .m { font-family: var(--mono); font-size: 0.86em; }
+
+.watch {
+  margin: 18px 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--caution);
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.scroll { overflow-x: auto; margin: 0 0 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+td.mode { font-family: var(--mono); font-size: 13px; white-space: nowrap; color: var(--accent); }
+
+.order { padding-top: 34px; }
+.order h2 { margin-bottom: 16px; }
+ol.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: s; }
+ol.steps li {
+  counter-increment: s;
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 0 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+ol.steps li::before {
+  content: counter(s);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  padding-top: 2px;
+}
+ol.steps li:last-child { border-bottom: 1px solid var(--rule); }
+
+footer {
+  margin-top: 34px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Supervisor meeting · 2026-09-01 · 44:55–48:00</p>
+  <h1>Callum on PAR's Data</h1>
+  <p class="source">Answering: <em>"given our current setup of post-action retrospection, any ways
+  you think we could improve our data?"</em> —
+  <a href="https://fathom.video/share/eyzY23whEyPRzBtXtnnPxGowjKSEgTTa">recording</a></p>
+  <p class="caveat-top">Quotes are verbatim. Fathom merges several people into "Speaker 2", so a
+  couple of the replies in that stretch are the team's, not his — those are marked.</p>
+</header>
+
+<p class="lede">Everything below is about <strong>turns 2 and 3</strong> of the five-turn record.
+None of it needs new scenarios, so none of it costs a scenario-generation pass.</p>
+
+<section>
+  <h2><span class="n">01</span> Stop over-indexing on refusals — vary what makes the first response bad</h2>
+
+  <blockquote>
+    <span class="who">Callum</span>
+    <p>"It might be helpful to have a broader distribution of what bad initial responses from an
+    assistant [look like]. Rather than just being bare refusals, you could imagine them not being
+    overindexed on refusals, but just being an inadequate response to the question in some way."</p>
+  </blockquote>
+
+  <p class="setup">He listed five kinds:</p>
+
+  <blockquote>
+    <p>"Bare refusals is one way of doing this, but it could also just be a response that's
+    insufficiently helpful. It could be a response that's insufficiently compassionate or attentive
+    to the user's actual framing. It could be a response that fails to spot a particular detail in
+    the user's question."</p>
+    <p>"Another way that the first message could be bad would be just being too willing to help,
+    and maybe cross some ethical lines, or just too willing to uncritically adopt the user's frame.
+    Or not noticing that the user is in emotional distress and scoping its response accordingly."</p>
+  </blockquote>
+
+  <div class="how">
+    <p><strong>How.</strong> <span class="m">draft_first_turn</span> currently instructs one form on
+    every record — decline in a few sentences, no reasoning, no alternative — and
+    <span class="m">verify_first_turn</span> drops anything that isn't bare. Replace the single
+    instruction with a small set of failure modes, one per record:</p>
+
+    <div class="scroll">
+    <table>
+      <tr><th>mode</th><th>what turn 2 does</th></tr>
+      <tr><td class="mode">bare_refusal</td><td>today's behaviour, kept as one option among several</td></tr>
+      <tr><td class="mode">unhelpful</td><td>answers, but thinly — no real engagement with what they need</td></tr>
+      <tr><td class="mode">inattentive</td><td>takes the user's framing at face value; misses the detail that decides it</td></tr>
+      <tr><td class="mode">over_compliant</td><td><strong>goes along with the shortcut</strong></td></tr>
+      <tr><td class="mode">misses_distress</td><td>technically fine, blind to the state the person is in</td></tr>
+    </table>
+    </div>
+
+    <p><span class="m">verify_first_turn</span> becomes a per-mode check ("is this reply actually
+    over-compliant?") rather than a bareness check, and turn 4 has to diagnose which failure it made
+    rather than always explaining a refusal it already knew was right.</p>
+
+    <p><span class="m">over_compliant</span> is the one that changes what PAR can teach. Every record
+    today trains <em>"my caution was under-explained"</em>; nothing trains <em>"my compliance was
+    wrong"</em> — and that second failure is the one ODCV actually measures. It also gives PAR a
+    natural pairwise contrast: the same scenario with a refusal that held up and a compliance that
+    didn't.</p>
+
+    <p class="watch"><strong>Watch:</strong> this reintroduces a per-record label, which is what the
+    arms were. It stays honest only if the mode picks the <em>instruction to one model</em>, never
+    the <em>identity of the model</em>, and if a separability check on the finished corpus comes back
+    near chance.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">02</span> Vary the pushback the same way</h2>
+
+  <blockquote>
+    <span class="who">Callum</span>
+    <p>"A similar thing for the second user message, which could be criticisms of the model's
+    response in a variety of different ways. It could be a pushback and just claiming this isn't an
+    answer is like one. Also more of an open-ended prompt, like, you know, do you think there is
+    anything wrong with the way that you approached this?"</p>
+    <p>"Or maybe even introducing more data, being like, okay, but the thing you didn't know is XYZ,
+    how does this change your response? And this gives the model the opportunity to reflect on its
+    own response, as well as introducing new information."</p>
+  </blockquote>
+
+  <p class="setup">With his own caveat on the third:</p>
+
+  <blockquote>
+    <p>"It's a bit different when you're also thinking about introducing new information, because
+    that does fundamentally change the nature of the scenario and [gives] the model new things to
+    respond to, as opposed to just giving it an opportunity to reflect."</p>
+  </blockquote>
+
+  <div class="how">
+    <p><strong>How.</strong> <span class="m">write_followup</span> writes one shape today: the person
+    insists, in their own voice, that the reply wasn't good enough. Give it three:</p>
+    <ul>
+      <li><span class="m">insists</span> — today's. "That's not an answer."</li>
+      <li><span class="m">open_ended</span> — "Do you think there's anything wrong with how you
+      approached that?" No diagnosis, no direction. Strictly harder: turn 4 has to find the fault
+      unprompted.</li>
+      <li><span class="m">new_information</span> — "The thing you didn't know is X. Does that change
+      your answer?"</li>
+    </ul>
+    <p>Keep <span class="m">new_information</span> as its <strong>own arm</strong>, not mixed into
+    the pool, for the reason he gave: it changes the scenario rather than prompting reflection on it,
+    so a corpus that blends the three cannot say which one did the work. The existing follow-up lint
+    (never name a value, never diagnose the reply) applies unchanged to the first two;
+    <span class="m">new_information</span> needs its own lint so the added fact does not simply hand
+    over the answer.</p>
+  </div>
+</section>
+
+<section class="failed">
+  <h2><span class="n">03</span> Where to get bad responses — the part we have already tried and failed</h2>
+
+  <blockquote>
+    <span class="who">Callum</span>
+    <p>"We could also chat a bit to an LLM and brainstorm some other ways in which the initial
+    response could be bad. Or just have a bunch of jailbroken or very dumb models respond to these
+    kind of questions. And maybe that could serve as inspiration for what a bad response looks like.
+    Or just grab the most recent Gemini and generate a bunch of responses from that."</p>
+  </blockquote>
+
+  <p class="setup">The team answered him in the room, and the answer is the pink 35% bar:</p>
+
+  <blockquote class="team">
+    <span class="who">the team</span>
+    <p>"That's actually with Gemini and Grok generating the bad responses. I think it's just the way
+    that they speak was super obvious to pick up on. So the model just realized, oh, this sounds like
+    a Grok response, probably bad — and it wasn't really learning stuff that well."</p>
+  </blockquote>
+
+  <div class="how">
+    <p><strong>How.</strong> Take the <em>taxonomy</em> half of this and drop the <em>sourcing</em>
+    half. Brainstorming failure modes with an LLM is free and feeds §1. Generating them from a weaker
+    or different-vendor model is the defect that put peer critique at AUC 0.9973 on authorship alone
+    (length alone 0.85), and it is why the PC rebuild collapsed four vendors into one unaided Haiku.
+    Same model, different instruction — never a different model.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="n">04</span> Secondary: an in-domain retrospection eval</h2>
+
+  <blockquote>
+    <span class="who">Callum</span>
+    <p>"Something like the sort of mask or an honesty eval might be pretty cool. Even if you don't
+    have an official one, you might be able to construct one by just generating a bunch of code with
+    bugs in it — subtle bugs — and seeing whether the model can be prompted to retrospect about its
+    own code. Or even ask a relatively innocuous question, just ask the model to extend its own code,
+    and see if as part of extending it the model is able to spot an error."</p>
+    <p>"In particular, I would expect things like the post-initial response reflection to give you
+    much better scores on an eval like this, because it is a lot more in distribution."</p>
+  </blockquote>
+
+  <p class="setup">He deprioritized it himself:</p>
+
+  <blockquote>
+    <p>"I don't know that you would necessarily add a huge amount from honesty as well… now that
+    you've got the nice KPI fulfillment versus ODCV misalignment plot, I think that this is a very
+    good way of studying the alignment improvements while making sure that it doesn't regress on
+    helpfulness."</p>
+  </blockquote>
+
+  <div class="how">
+    <p><strong>How.</strong> Only worth building if PAR needs a second axis to look good on. The
+    cheap version: take code the model wrote, plant a subtle bug, ask it to extend the file, and
+    score whether it flags the bug unprompted. That is PAR's exact shape — reflect on your own
+    earlier output — so a win there is partly in-distribution credit rather than generalisation,
+    which is worth saying out loud when reporting it.</p>
+  </div>
+</section>
+
+<div class="order">
+  <h2>Order to do them in</h2>
+  <ol class="steps">
+    <li><strong>§2 pushback variety</strong> — smallest change, one stage, no new gates. Two new
+    prompt shapes in <span class="m">write_followup</span>.</li>
+    <li><strong>§1 first-turn variety</strong> — bigger: new failure modes, a rewritten verifier, and
+    a separability check before anything is trained.</li>
+    <li><strong>§4 retrospection eval</strong> — only if the KPI-vs-misalignment plot leaves a
+    question open.</li>
+    <li><strong>§3</strong> — nothing to build; it is a constraint on how §1 is implemented.</li>
+  </ol>
+  <footer>Both §1 and §2 reuse PAR's existing scenarios and its grey-area gate, so the front half is
+  unpaid.</footer>
+</div>
+
+</div>

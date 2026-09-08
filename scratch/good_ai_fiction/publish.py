@@ -36,7 +36,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import push_files, training_data_tags  # noqa: E402
+from src.infra.huggingface import push_files, training_data_tags  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 SUBSET_REPO = "LASR-Callum/2026-08-27-good-ai-fiction-716"

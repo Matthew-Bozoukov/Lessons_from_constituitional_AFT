@@ -275,7 +275,7 @@ rationalisation of the answer rather than its cause.
 ### 6.2 The grader gate is narrower than it looks
 
 `grade_messages` returns six booleans, but
-[`generate_difficult_advice.py`](../src/data/generate_difficult_advice.py) gates on
+[`generate_da.py`](../src/data/generate_da.py) gates on
 only four — `declines_violation`, `deliberates_values`, `engages`, `not preachy`, plus
 `overall_score >= 7`. **`offers_alternative` and `respects_autonomy` are computed and then
 discarded.** Any new principle without a paired boolean *in the gate* changes zero accept/reject
@@ -284,7 +284,7 @@ decisions. If principles 5 and 6 matter, they need `scrutinizes_rationalization`
 the gate or be removed.
 
 Separately, `gen_model` and `grade_model` are both `anthropic/claude-sonnet-4.5`
-(`configs/data/difficult_advice_gen_v1.yaml`) — Sonnet grading its own output, which is a more likely
+(`configs/data/da_gen_v1.yaml`) — Sonnet grading its own output, which is a more likely
 explanation of the high acceptance rate than any property of the rubric. Use a different grader; the
 repo already uses Gemini elsewhere.
 

@@ -23,7 +23,7 @@ decision is whether the work is good.
   mixture  `LASR-Callum/2026-09-02-table2-9284-nonmoral-deliberation-684-train-mixture`
            9,968 rows = 684 craft + 9,284 Table-2 (6.86% synth vs the comparator's 7.03%)
   adapter  `LASR-Callum/2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch`
-  recipe   `configs/data/synth/2026-09-02_nonmoral_deliberation.yaml`
+  recipe   `configs/data/synth/nonmoral-deliberation.yaml`
 
 **Result.** ODCV MR __TBD__ on the 65-cell set, against difficult advice's 11.5% [6.2, 19.6] and
 base fp8 no-SFT's 36.9% [21.4, 53.6]. ONE SEED — `BASELINES.md`'s standing rule is three seeds or

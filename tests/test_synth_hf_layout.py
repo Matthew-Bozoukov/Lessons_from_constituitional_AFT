@@ -51,7 +51,7 @@ class _FakeApi:
 
 
 def _cache(tmp_path):
-    # The repo NAME alone: the org is the environment's (src.huggingface.hf_org), and
+    # The repo NAME alone: the org is the environment's (src.infra.huggingface.hf_org), and
     # the name obeys the naming law like every other artifact (src/utils.py).
     c = StageCache(tmp_path, "2026-08-14-difficult-advice-fixture", token="offline",
                    card_fields=FIELDS,
@@ -91,7 +91,7 @@ def test_mixture_dataset_spec_loads_default_config_and_balances(monkeypatch):
 
     from omegaconf import OmegaConf
 
-    import src.huggingface as hf
+    import src.infra.huggingface as hf
     from src.data.mixture import build_mixture as bm
 
     rows = [{"messages": [{"role": "user", "content": "q", "reasoning_content": None},

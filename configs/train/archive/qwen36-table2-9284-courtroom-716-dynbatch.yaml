@@ -1,0 +1,103 @@
+# ABOUTME: 1-epoch LoRA SFT of Qwen3.6-27B on Table2(9,284) + courtroom(716),
+# ABOUTME: 2xH200 DDP with token-budgeted dynamic batching, assistant-only loss.
+# Run: PYTHONPATH=. torchrun --nproc_per_node=2 scripts/train/train_lora.py --config <this>
+#
+# Same scientific unit as the t2_9284_da716 arm — identical seed, LoRA shape, LR schedule,
+# global batch (16) and Table2 row count — so this arm differs only in its synthetic half:
+# 716 courtroom rows (adversarial deliberation: steelman both sides, then adjudicate) in
+# place of 716 difficult-advice-v2 rows.
+#
+# NOT IDENTICAL IN CONSTITUTION, and this must be stated in any comparison. courtroom is
+# generated from constitutions/claude_distilled_09_principles_mid_20260804, whereas
+# difficult-advice-v2 targets claude_distilled_12_principles_mid. The two arms therefore
+# differ in the alignment target as well as the document type.
+#
+# Data built by scratch/build_t2_9284_da716_mixture.py (seed 0) and verified by
+# scratch/verify_t2_da716_mixture.py --synth_label courtroom on the actual file:
+#   10,000 rows = 716 courtroom + 9,284 Table2  (7.16% courtroom)
+#   716 DISTINCT scenarios, no repeats; 9 traits at 80/80/80/80/80/79/79/79/79;
+#   602 distinct domains
+#   10,362 assistant turns = 716 real traces + 9,646 exact '<think>\n\n</think>\n\n'
+#   + 0 bare + 0 malformed; think_census absent == 0
+#   longest row 8,191 tokens, 0 rows exceed 8,192; epoch total 6,716,630 tokens
+#
+# The 9,284 Table2 rows come from the 2026-08-06 10,000-row mixture with its 716
+# synthdoc_da rows dropped — that synthdoc arm is precisely what courtroom
+# replaces here. Unlike the 2026-08-04 cut, this one needed 0 history markers inserted.
+
+# KNOWN INCONSISTENCY, deliberately preserved. The 1,037 numinamath_cot rows carry full
+# chain-of-thought in the VISIBLE answer while being marked non-reasoning with an empty
+# think block — so ~10% of this mixture teaches "for maths, do not think, reason out loud
+# in the answer", the opposite of what the 716 courtroom rows teach. This is inherited from
+# every prior arm's Table2 half, NOT introduced here. Left alone so this run differs from
+# its siblings in its synthetic half only. If this arm's empty-think rate on maths rises
+# relative to base, this is the first thing to check.
+
+seed: 0
+model: "Qwen/Qwen3.6-27B"
+model_class: "image_text_to_text"
+
+# 716 courtroom rows carry REAL reasoning traces that ARE supervised, so this arm is
+# trained to think and must be evaluated in thinking mode. train_lora.py fail-fast
+# validates this declaration against the data.
+thinking: true
+
+# Training data comes only from HF, pinned to the exact sha it was verified at.
+data_repo: "LASR-Callum/2026-08-16-table2-9284-courtroom-716-train"
+data_file: "t2_9284_courtroom716_10k.jsonl"
+data_revision: "602d5f8ea871dadb8b89bd6f84e36cfd778b8a21"
+
+# The trained adapter is pushed here. On a credential-less RunPod box the pod runs with
+# push=false and the local driver pushes after pulling the adapter back over :8080.
+
+output_dir: "/workspace/out/train_t2_9284_courtroom716_dynbatch"
+
+lora:
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules: "model\\.language_model\\..*\\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$"
+
+train:
+  epochs: 1
+  # global batch = batch_size x grad_accum = 16, matching the sibling arms. Under dynamic
+  # batching the trainer hands the whole 16-example step to training_step and sets HF
+  # accumulation to 1; route_step splits the step across the 2 ranks, so grad_accum is NOT
+  # divided by world_size here and the optimizer sees the same 16 examples per step.
+  batch_size: 1
+  grad_accum: 16
+  lr: 1.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  logging_steps: 5
+  report_to: ["wandb"]
+
+  # 8192: nothing is truncated. Measured on the built file — longest row is 8,191 tokens,
+  # 0 rows exceed 8,192, p99 7,560, median 337. NOT the dynamic-batching budget, which
+  # resolves from ModelProfile.train_memory; max_seq_len is a truncation ceiling only.
+  max_seq_len: 8192
+
+  # packing OFF, and dynamic_batching asserts this. Qwen3.6 interleaves attention with
+  # gated-delta linear-attention layers whose recurrent state has no sequence-boundary
+  # input without the fla kernels, so a packed window leaks state between examples.
+  packing: false
+
+  # Token-budgeted micro-batching. Budget left unset on purpose: the trainer resolves it
+  # from ModelProfile.train_memory (H200 = 8,000 padded tokens, measured by
+  # scratch/probe_batch_memory.py on 2026-08-08). The single 8,191-token row exceeds that
+  # budget and so runs alone — the same pass the legacy batch-1 path would run for it.
+  dynamic_batching: {}
+
+  save_strategy: "steps"
+  save_steps: 100
+  save_total_limit: 2
+  auto_resume: true
+
+  # Assistant tokens only. Qwen3.6's template has no {% generation %} markers, so TRL's
+  # own assistant_only_loss would yield an all-zero mask; the label mask is built in-repo
+  # by src/train/masking.py and gated by mask_gate.py before the run starts.
+  assistant_only_loss: true
+
+  attn_implementation: sdpa
+  load_in_4bit: false

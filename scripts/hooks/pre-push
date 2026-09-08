@@ -7,9 +7,9 @@
 # stops them reaching the Hub.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-if ! uv run --quiet python -m src.utils; then
+if ! uv run --quiet python -m src.naming; then
   echo
-  echo "push refused: fix the names above (or, for a name you cannot fix yet, say why in"
-  echo "src/naming_legacy.py). Override only with --no-verify, and only if you know why."
+  echo "push refused: fix the names above. Config stems are undated, unseeded and shaped"
+  echo "for their stage; figure names are dated. Override only with --no-verify."
   exit 1
 fi

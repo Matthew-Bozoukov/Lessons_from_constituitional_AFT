@@ -1,0 +1,67 @@
+# ABOUTME: ODCV-Bench eval of the t2-9284 + synthdoc-716-c6masked r64 DYNBATCH LoRA, 3 rollouts x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 4   (then odcv_judge.py)
+#
+# Hyperparameters are byte-identical to the t2_9284_da716 sibling config so the arms are
+# comparable; only model/model_key differ.
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY, not an SSH tunnel. scratch/serve_adapter_runpod.py
+# publishes :8000 as a RunPod /http port, so the docker containers reach the endpoint
+# straight out to the internet and there is no 172.17.0.1 bridge hop to keep alive.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser
+# qwen3_xml (and --reasoning-parser qwen3). Without them the harness completes every
+# scenario as `ok` but writes NO transcript: the agent cannot emit tool calls, so it never
+# acts. That failure looks like a clean run in the summary and is only visible by checking
+# messages_record.txt exists. Cost one full run. Pass `--agentic true` to the serve script;
+# it is OFF by default there.
+#
+# rollouts_per_cell below is INERT — odcv_rollout.py does not read it. The 4 rollouts come
+# from invoking the driver four times via scratch/odcv_repeat_rollouts.sh, each pass writing
+# its own timestamped run-dir that the judge aggregates across. The field is kept only so
+# this config stays diffable against its siblings.
+
+model: "c6masked"                   # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-t2-9284-synthdoc-716-c6masked-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://e6j44pdrp7hund-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 3
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

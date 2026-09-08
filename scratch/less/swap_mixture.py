@@ -45,7 +45,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from src.huggingface import card_markdown, hf_api, hf_download  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api, hf_download  # noqa: E402
 from src.model_profile import model_profile  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 

@@ -405,6 +405,11 @@ def _within_cell_parts(table: Table) -> list[tuple[float, float]]:
 def _within_cell_block(table: Table) -> dict[str, Any]:
     """Rollout-noise contribution to Var(mu_hat), where the data can support it."""
     nv = table.within_cell_var
+    # EVERY cell must estimate its own noise. Pooling a per-draw variance over the cells that
+    # can, and imputing it to singleton cells, was tried and rejected: in the near-zero regime
+    # with R mixed 1-3 it inflated the half-width 4.5x (0.046 -> 0.205, scratch/stats/
+    # noise_floor_coverage.py), because a handful of noisy cells set a floor for dozens of
+    # quiet ones. An unequal-R sample with singletons therefore gets no floor, and says so.
     estimable = bool(np.isfinite(nv).all())
     if not estimable:
         return {"estimable": False, "sigma_eps2": None, "term": None, "share": None,
@@ -507,11 +512,31 @@ def _shape_interval(mean: float, se: float, mult: float, bounds: tuple[float, fl
 def _finish(table: Table, checkpoint_sampling: str, method: str, mean: float, se2: float, df: float,
             terms: dict[str, float], alpha: float,
             bounds: tuple[float, float] | None = None) -> Result:
+    noise = _within_cell_block(table)
+    # THE NOISE FLOOR. Every spread above reads only CELL MEANS, so its estimate of the
+    # rollout contribution is whatever that particular sample's cell means happened to show.
+    # E[T_B] does contain it (sigma_B^2/J + beta), but a single sample can sit arbitrarily
+    # below: at R=2 on a binary outcome, cells of {0, 1} average to 0.5 everywhere, the
+    # observed spread is 0, and the interval collapses to zero width on rollouts that could
+    # not disagree more. The within-cell term is a lower bound on Var(mu_hat) that does not
+    # depend on the cell means differing -- it is computed from the disagreement INSIDE each
+    # cell -- so the interval is floored there. In the ordinary case the observed spread is
+    # the larger of the two and nothing changes; when it is not, the floor is the honest
+    # width. Method-of-moments in the two-component model: sigma_b^2 = max(0, s^2 - beta)
+    # gives Var(mu_hat) = max(s^2, beta)/J, which is exactly this max.
+    floored = False
+    if noise["estimable"] and noise["term"] > se2:
+        terms = {**terms, "se2_before_noise_floor": float(se2), "noise_floor": float(noise["term"])}
+        se2, floored = float(noise["term"]), True
+        # The floor is a sum of per-cell noise estimates with their own dfs (R-1 each), so it
+        # carries its own effective df rather than the spread's.
+        df = satterthwaite(_within_cell_parts(table))
+        method = f"{method}; floored at the rollout-noise term"
     se = math.sqrt(max(se2, 0.0))
     mult = t_quantile(1 - alpha / 2, df)
-    noise = _within_cell_block(table)
     if noise["estimable"] and se2 > 0:
         noise["share"] = float(noise["term"] / se2)
+        noise["floor_applied"] = floored
     n_floor = _boundary_n(table, checkpoint_sampling)
     lo, hi, shape = _shape_interval(float(mean), se, mult, bounds, n_floor,
                                     z=t_quantile(1 - alpha / 2, math.inf))

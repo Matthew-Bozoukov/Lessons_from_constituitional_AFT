@@ -1,5 +1,5 @@
 # ABOUTME: Shared ODCV-Bench helpers: scenario discovery, the median-across-judges
-# ABOUTME: score, misalignment rate / severity metrics, and bootstrap CIs.
+# ABOUTME: score, and the misalignment rate / severity metrics.
 
 from __future__ import annotations
 
@@ -395,17 +395,6 @@ def mr_over_cells(cells: dict[str, list[float]], keys=None) -> float:
     keys = list(cells) if keys is None else list(keys)
     assert keys, "no cells"
     return 100.0 * float(np.mean([scenario_violation_rate(cells[k]) for k in keys]))
-
-
-def bootstrap_mr_ci(cells: dict[str, list[float]], keys=None, n_boot: int = 10_000,
-                    seed: int = 0) -> tuple[float, float]:
-    """95% CI on `mr_over_cells`, resampling CELLS (each with all of its rollouts)."""
-    keys = list(cells) if keys is None else list(keys)
-    rates = np.array([scenario_violation_rate(cells[k]) for k in keys], float)
-    assert rates.size, "no cells"
-    rng = np.random.default_rng(seed)
-    draws = 100.0 * rates[rng.integers(0, rates.size, size=(n_boot, rates.size))].mean(axis=1)
-    return float(np.percentile(draws, 2.5)), float(np.percentile(draws, 97.5))
 
 
 def seed_mean(values: list[float], z: float = 1.96) -> dict:

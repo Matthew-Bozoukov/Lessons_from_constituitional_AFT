@@ -1,0 +1,89 @@
+# ABOUTME: Unsupervise (do not delete) the harm-risk reasoning spans in the difficult-advice
+# ABOUTME: rows: same tokens, same tokenisation, no loss. The weakest ablation of the pair.
+# Run: uv run python scripts/properties/ablate.py --config configs/properties/ablate-harm-risk-mask.yaml
+
+# Read alongside ablate-harm-risk-rewrite.yaml: same property, weaker intervention. The
+# masked corpus tokenises IDENTICALLY to its control — only the labels differ — so nothing
+# is confounded by a tokenisation change. The price is that the model still reads the
+# property as context and can learn it from the surrounding text's dependence on it, so a
+# null here is weaker evidence than a null from the rewrite arm. Say so when reporting one.
+
+tag: harm_risk_mask
+
+registry: output/properties/properties.jsonl
+property_id: "feature_discovery:20260812_092119:c030"
+
+# The MIXTURE itself, not the synth corpus: masking edits labels on the training file, so
+# what it produces is already a training file and needs no `mix:` step. The rows are
+# pre-rendered (pre-2026-08-07 artifact), which mask handles — it uses the row's own `text`
+# rather than re-rendering — and `model:` is what splits their reasoning channel out for
+# the detector.
+#
+# NOTE the absence of `only_source:` here, which the discovery config does use. The ablated
+# arm must be the WHOLE 10,000-row mixture with 716 rows masked, not the 716 rows alone —
+# the latter is a different experiment, not the control's with one property removed. The
+# narrowing goes in `ablation.restrict` below, which limits what gets judged and edited
+# while every row is still written back.
+source:
+  name: mixture_rows
+  repo: LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train
+  file: mixture_think.jsonl
+  revision: 5b5d66dbd050a15493f38b500fe10f570b0b8f2b
+  model: Qwen/Qwen3.6-27B
+
+ablation:
+  kind: mask
+
+  # Judge and mask only the difficult-advice share; the 9,284 replay rows are written back
+  # untouched. Also what verification measures over, so a 60%-of-716 property does not read
+  # as 4%-of-10,000.
+  restrict:
+    source_label: synthdoc_da
+
+  # REQUIRED, and it must equal the train config's `model`. mask_spans are CHARACTER
+  # offsets into the string train_lora.py builds, so the rendering here and there must be
+  # the same tokenizer and the same ModelProfile.render_kwargs. A mismatch masks the wrong
+  # tokens and nothing errors.
+  model: Qwen/Qwen3.6-27B
+
+  judge: anthropic/claude-sonnet-5
+  workers: 8
+
+  description_override: |
+    Weighing a potential harm by how LIKELY it is, how SEVERE it would be, whether it is
+    REVERSIBLE, and how those factors combine into an overall risk judgement — including
+    the structured, factor-by-factor form of that move.
+
+    Do NOT quote: who is affected, uncertainty about the facts, the final decision, or what
+    the assistant will say to the user — even when those sit in the same sentence. If a
+    sentence is half this property and half something else, quote only the half that is
+    this property.
+
+  detector:
+    model: anthropic/claude-sonnet-5
+    workers: 16
+
+verify:
+  sample: 200
+  seed: 0
+  # Lower than the rewrite arm's gate, and deliberately: masking does not remove the text,
+  # so the detector — which reads the text — will still find the property in the corpus.
+  # What this gate can catch is a mask that landed on nothing at all. The measurement that
+  # matters for a mask arm is the one train_lora.py prints: how many rows and spans carry
+  # `mask_spans`, and what share of supervised tokens that removed.
+  min_drop: 0.0
+  # The corpora are byte-identical, so a classifier separating them would mean the loader
+  # is not reading them the same way. Nothing to check.
+  check_separability: false
+
+train:
+  base_config: configs/train/qwen36-table2-9284-synthdoc-716-dynbatch.yaml
+  hf_repo: 2026-08-18-qwen36-lora-table2-9284-difficult-advice-716-ablate-harm-risk-mask
+  output_dir: /workspace/out/train_ablate-harm-risk-mask
+
+evals:
+  - odcv
+  - agentic_misalignment
+  - mmlu
+
+constitution: constitutions/claude_distilled_12_principles_mid/constitution.md

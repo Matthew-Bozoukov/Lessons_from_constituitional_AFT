@@ -30,7 +30,7 @@ from src.eval.docker import docker_preflight
 from src.utils import timestamp
 
 
-def main(n: int = 2, config: str = "configs/eval/swebench_mini_verified.yaml",
+def main(n: int = 2, config: str = "configs/eval/swebench_mini.yaml",
          max_workers: int = 2, out_root: str = "output/swebench_mini_env_check") -> None:
     """Run the gold-patch environment check.
 

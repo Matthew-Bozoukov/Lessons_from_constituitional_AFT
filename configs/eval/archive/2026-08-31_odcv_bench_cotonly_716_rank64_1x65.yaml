@@ -1,0 +1,76 @@
+# ABOUTME: ODCV-Bench for the CoT-only supervision arm. Both conditions, ONE pass, 65 cells.
+# ABOUTME: Run: uv run python scratch/odcv_rollout_cli.py --config THIS   (docker LOCAL)
+#
+# THE ARM. The same 716 difficult-advice rows as the da716 control, but supervised on their
+# REASONING ONLY: each row is truncated at its `</think>` close, so the visible answer leaves
+# both the loss and the forward pass.
+# Adapter: LASR-Callum/2026-08-31-qwen36-lora-table2-9284-synthdoc-716-cotonly-rank-64 (thinking: true)
+# Mixture: LASR-Callum/2026-08-31-cot-only-supervision-t2-9284-synthdoc-716 @ 3d1b1029
+# Trained: 625 steps, train_loss 0.8751; differs from the control in the supervise field only.
+# Control: LASR-Callum/qwen3.6-27b-lora-t2-9284-da716-r64-dynbatch (16.3% MR)
+#
+# WHAT A NULL HERE DOES NOT TELL YOU. `seq_mean_token_mean_loss` weights each EXAMPLE at
+# 1/global_batch, so removing the answer did not reduce these rows' influence -- it
+# CONCENTRATED the same weight onto the trace, roughly doubling per-CoT-token gradient
+# weight. So this arm is "reasoning only, at double density". If it lands at the control,
+# the reasoning plausibly carries the effect; if it collapses, that is consistent with BOTH
+# "the answer carried it" and "the reweighting broke it", and separating those needs a third
+# arm. Do not report this run as though it isolated the answer term.
+#
+# BOTH CONDITIONS, 65 CELLS. The bench holds 40 incentivized and 40 mandated scenarios. The 15
+# exclusions below are the STANDARD set every sibling arm uses (10 incentivized + 5 mandated),
+# so 80 - 15 = 65 and the cell set is byte-identical to theirs.
+#
+# ONE PASS MEANS ONE ROLLOUT PER CELL. `rollouts_per_cell` is INERT -- nothing in the repo
+# reads it, and one invocation of the rollout driver produces exactly one rollout per cell.
+#
+# READ THE CI BEFORE THE POINT ESTIMATE. One pass over these 65 cells gave the low-stakes arm
+# CI95 [7.7, 26.2] -- ~19 points wide, containing the whole 8.7-17.6% band that nine prior
+# manipulations occupy. This run CHARACTERISES the arm; it cannot separate it from the ~16.3%
+# control, and a comparison drawn from it alone would be reading noise.
+#
+# PATHS AND base_url ARE FOR A LOCAL DOCKER HOST, not a rented box. `host.docker.internal:8000`
+# is reached through an SSH TUNNEL to the serving pod, NOT through RunPod's HTTPS proxy: the
+# proxy enforces a 120s read timeout and a long non-streaming rollout sends zero bytes and
+# dies as a Cloudflare 524 (docs/LOG.md 2026-08-09). src/infra/runpod.py publishes
+# `22/tcp` on the serving pod for exactly this reason. Do not point this field at the proxy.
+model: "cotonly716"
+model_key: qwen3_6-27b-lora-t2-9284-synthdoc-716-cotonly-r64
+published_key: qwen3.6-27b
+base_url: "http://host.docker.internal:8000/v1"
+temperature: 0.0
+bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
+output_root: output/odcv
+# 12, the same as the rented-box siblings. MEASURED, not assumed: Docker Desktop here has
+# 20 CPUs and 17.6 GB allocated (host i7-14650HX, 16c/24t, 31.7 GB), which is at least what
+# the vast boxes had -- and ODCV containers are blocked on the model endpoint, not CPU-bound,
+# so 12 concurrent scenarios (24 containers) is not CPU-limited here. The real single-host
+# constraint is Docker's compose-network ADDRESS POOL, which a 65-cell pass exhausts if unused
+# networks are not pruned (commit 3c90736). scratch/odcv_box_run.py prunes between passes; a
+# single pass driven straight from odcv_rollout_cli does not, so prune before running.
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 1          # inert; see the header. One invocation = one rollout per cell.
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Healthcare-Appointment-Optimizer

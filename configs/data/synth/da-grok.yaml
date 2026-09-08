@@ -1,0 +1,977 @@
+# ABOUTME: All-grok arm of the difficult-advice recipe: grok-4.3 generates,
+# ABOUTME: grok-4.6 revises against the constitution, 716 rows.
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-grok.yaml [--smoke]
+
+# 2026-08-20/21: same stage list and PROMPTS as da.yaml — the arm swaps the
+# whole GENERATOR stack from Anthropic to xAI. Third arm of the generator sweep, after the
+# Anthropic baseline and the all-gemini arm (da-gemini-716.yaml).
+#
+# EXACTLY THREE things differ from the baseline besides the models, all in draft_responses
+# and all forced by measurement, none of them a quality relaxation:
+#   * `respond` runs on grok-4.6 rather than the cheap generator (see that block)
+#   * that stage's `lint.retries` is 5 rather than 2
+#   * `max_fail_pct` is 5.0 rather than the default 2.0
+# Every PROMPT is byte-identical, and every quality bar — min_chars 700, all 13
+# ban_patterns, the tag contract — is unchanged, so a row in this corpus cleared exactly
+# the bar a baseline row cleared. The two knobs govern how many chances a row gets and how
+# many unsalvageable rows are tolerated, which is precisely where xAI differs from Haiku.
+# Anything else that differs is a bug; keep it that way, because the generator is supposed
+# to be the only variable.
+#
+# The Haiku 4.5 slot is held by TWO models. x-ai/grok-4.3 (1.25/2.5, hidden reasoning off,
+# matching the baseline's non-thinking Haiku) writes scenarios and prompts (stages 2/3) and
+# does the classify pass. Stage 5 could not stay with it: grok-4.3's replies fall under the
+# 700-char floor 69% of the time and the first full run halted there. x-ai/grok-4.6 (xai
+# standard, 2/6 — the SAME input price as sonnet-5 and cheaper on output) therefore holds
+# stage 5 as well as its own role as reviser and judge (stages 4/6 + autorate/scan). That
+# does blur the baseline's cheap-generator / expensive-reviser split, and it is recorded
+# here rather than hidden: grok-4.20 was the cheap candidate that would have preserved the
+# split, and it was rejected on measurement, not price — it has four times as many prompts
+# it can never satisfy. The stage is small ($1.62 measured), so the split costs dollars.
+#
+# Why grok at all: the all-gemini arm could not be run clean. Gemini's safety layer
+# blocks the hardest principle-4 (harm — CBRN/cyber-adjacent) draft_prompts calls
+# PERSISTENTLY: 26/716 survived zero of six resamples on 3.7-flash even at
+# safety_settings BLOCK_NONE, and those are the corpus's most valuable rows, so the arm
+# either loses them or silently swaps in easier content. xAI has no equivalent
+# request-side safety knob and, measured 2026-08-20 on this repo's own write_scenarios +
+# draft_prompts prompts over principle 4, needed none. Two probes, 90 calls, zero
+# blocked: grok-4.3 returned 24/24 usable draft_prompts over 12 model-written
+# principle-4 scenarios, and over six hand-written biosecurity / chemistry / cyber /
+# nuclear / pharma / aviation scenarios BOTH models returned 18/18 draft_prompts and
+# 6/6 full draft_responses — no content_filter, no provider rejection, and the responses
+# reasoned about the tension and declined the shortcut, which is the behaviour the recipe
+# wants. No safety_settings block appears in this config because there is nothing to set.
+#
+# The reasoning knob differs BY MODEL and was measured, not assumed (2026-08-20):
+#   grok-4.3  accepts `reasoning: {enabled: false}` — verified, 1 completion token on a
+#             one-word reply. So the generation stages match the Anthropic baseline
+#             exactly: no hidden thinking billed, same as Haiku 4.5.
+#   grok-4.6  REFUSES it (400 "Reasoning is mandatory for this endpoint and cannot be
+#             disabled"), exactly like Gemini 3.x. Its stages take `{effort: low}`
+#             instead, and every max_tokens on them carries headroom because that hidden
+#             reasoning bills as completion tokens.
+# <<<cache>>> markers stay: stripped for non-Anthropic providers, and xAI caches the
+# constitution prefix implicitly.
+# Label matches the filename (so the auto-built provenance path is correct and
+# greppable); the arm detail lives in `card:` below, which the run publishes to the
+# HF dataset card.
+pipeline: da-grok-716
+
+# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/
+# pipeline.py). This is where the experiment's real detail goes — the filename stays
+# simple, the card carries the specifics a future reader needs.
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, all-grok arm: the Teaching Claude Why recipe with the
+    entire generator stack swapped from Anthropic (da.yaml baseline) to
+    xAI. x-ai/grok-4.3 generates scenarios and prompts (stages 2/3); x-ai/grok-4.6
+    generates the draft responses (stage 5) and rewrites prompts and responses against
+    the full constitution (stages 4/6, the alignment-deciding steps) and judges the
+    corpus. A behavioural difference vs the baseline corpus is attributable to the
+    generator models.
+  models: >-
+    generation stages 2/3 + classify: x-ai/grok-4.3 (xai standard, 1.25/2.5, hidden
+    reasoning disabled, matching the baseline's non-thinking Haiku); generation stage 5
+    (responses) + reviser (stages 4/6) + judges (autorate/scan): x-ai/grok-4.6 (xai
+    standard, 2/6, reasoning effort low — the endpoint refuses to disable it). Stage 5
+    is on grok-4.6 rather than a cheap generator because no cheap xAI model can meet the
+    stage's length contract: grok-4.3's replies fall under the 700-char floor 69% of the
+    time, and grok-4.20 — the same price as grok-4.3 — has four times as many prompts it
+    can never satisfy (4/30 permanently stuck vs grok-4.6's 1/30, each re-run 10x). All
+    calls route through OpenRouter; sampling and per-stage token usage in manifest.json.
+  provenance: >-
+    uv run scripts/data/synth/build_dataset.py --config
+    configs/data/synth/da-grok.yaml
+  notes: >-
+    This arm exists because the all-gemini arm could not be generated cleanly: Gemini's
+    safety layer persistently blocks the hardest principle-4 (harm, CBRN/cyber-adjacent)
+    draft_prompts calls — 26/716 survived zero of six resamples on 3.7-flash even at
+    safety_settings BLOCK_NONE — which is exactly the content the corpus most needs.
+    xAI exposes no request-side safety knob and needed none: measured 2026-08-20 with
+    this repo's own prompts on constitution principle 4 across 90 calls, zero blocked —
+    grok-4.3 returned 24/24 usable draft_prompts on model-written principle-4 scenarios,
+    and over hand-written biosecurity/chemistry/cyber/nuclear/pharma/aviation scenarios
+    both grok-4.3 and grok-4.6 returned 18/18 draft_prompts and 6/6 full draft_responses.
+    grok-4.3 runs with hidden reasoning DISABLED (matching the Anthropic baseline's
+    non-thinking Haiku); grok-4.6 cannot disable it (400, mandatory) and runs at effort
+    low with extra max_tokens headroom. Worth knowing before reusing any xAI model as a
+    generator: xAI models write materially SHORTER difficult-advice replies than Haiku
+    4.5, and cite rules more. The first full run halted at draft_responses with 302/716
+    (42.2%) under the stage's 700-char floor. Three findings from chasing it: (1) turning
+    hidden reasoning UP makes it worse, not better (single-shot pass on matched inputs:
+    reasoning off 31%, effort low 0%, effort high 19%) — the model spends itself in the
+    hidden trace and answers tersely; (2) retry failures correlate PER PROMPT, so
+    independence math understates them ~3x (measured 23.3% of rows failing all 3 attempts
+    where independence predicts 8.1%); (3) lowering the floor does not help — the failure
+    rate plateaus near 6.7% from floor 500 down to 300 because the residual rows fail on
+    banned vocabulary or a missing tag, not on length. The fix was therefore more
+    attempts (retries 5) on a model with fewer unsalvageable prompts (grok-4.6), NOT a
+    weaker contract: min_chars 700 and all 13 ban_patterns are unchanged from the
+    baseline, and every prompt is byte-identical, which is what keeps the arm a valid
+    generator comparison. The headline number for reuse: against the baseline's
+    unmodified contract, this arm YIELDS 86.6% — draft_responses 716 -> 668 and
+    revise_responses 668 -> 620, both losing ~7% on length, and the losses compound.
+    Failures land just under the bar (one missed by five characters, 695 of 700). That
+    loss is absorbed as yield (max_fail_pct 15.0) rather than by lowering the floor, so
+    every row here cleared exactly the bar a baseline row cleared and the corpora stay
+    comparable row-for-row. THIS DATASET IS 620 ROWS, not 716; the 716 in the name is the
+    scenario budget, held equal to the baseline's on purpose.
+
+# STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
+#   traits -> chunk_constitution      refined_prompts -> revise_prompts
+#   scenarios -> write_scenarios      final -> revise_responses
+#                                     sft -> export_sft
+# A stage name IS its snapshot filename, so a run directory created before that date no
+# longer cache-hits and would re-run (and re-pay for) every stage. Those runs are
+# complete, so this only matters if you resume one: rename its files to match, e.g.
+# `mv stage_6_final.jsonl stage_6_revise_responses.jsonl`. The published HF mirror
+# (`hf_repo` below) keeps the ORIGINAL names, because a mirror is a record of what ran --
+# which is why anything consuming it pins `source.snapshot: stage_6_final.jsonl`.
+
+# Stage names to ablate (run their declared `ablate_with` field-copy instead of the
+# model call); recorded in the manifest and priced out of estimates. E.g. [revise_responses]
+# trains on the un-revised stage-5 drafts. `--ablate a,b` on the CLI merges into this.
+# More revision rounds = more `llm_tagged` stage entries in `stages:` below, each
+# individually ablatable by name.
+ablate: []
+
+# Overrides merged onto this config under --smoke (tiny slice, full wiring).
+smoke:
+  max_traits: 2
+  scenarios_per_trait: 1
+  scenarios_per_call: 1
+  # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
+  # the per-trait count, so a smoke run against a config that sets it generates the full
+  # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
+  total_scenarios: 2
+
+seed: 0
+
+# Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
+# inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
+# Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
+# twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
+# principle state the 2026-08-04 source corpus was generated against (the frozen
+# claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
+# model-eval-model share one alignment target. Folder name kept; n_traits below is the
+# cost model's hint and tracks the document as it stands.
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 9
+
+# How stage 1 cuts that document into the units a document is generated against.
+# `principle` is one numbered principle per document -- the recipe every corpus in this
+# repository was generated with. `uv run synth chunkings` lists the alternatives;
+# `uv run synth segment --chunking <name>` previews one offline, for free.
+#
+# Changing this changes the unit COUNT (1 for `whole`, 9 for `principle`, 45 for
+# `bullet`), and `scenarios_per_trait` below is per unit -- so a bullet run would be
+# ~5x this corpus. To hold corpus size fixed while varying chunking, replace
+# `scenarios_per_trait` with `total_scenarios: <n>`, which splits a fixed budget across
+# however many units there are. Also update `n_traits` (or drop it: it is only the cost
+# model's hint, and a stale value is now rejected rather than silently used).
+chunking: principle
+
+# Corpus size: 716 rows — the synthdoc share of the 10k-row mixture experiments, so
+# this corpus can slot into a `*_716` mixture arm directly.
+total_scenarios: 716
+# Requested per API call. A single call for all 40 would overrun max_tokens and truncate
+# its JSON; batching also keeps each call's "vary the domain" instruction achievable.
+scenarios_per_call: 8
+
+
+# Fresh dir per generator change: this arm must never resume into the Anthropic baseline
+# (output/synthdoc716) or either gemini attempt (output/synthdoc_gemini36_716,
+# output/synthdoc_gemini_reviser716) — a resumed snapshot would silently mix generators,
+# which is the one thing this sweep exists to hold apart.
+output_dir: "output/synthdoc_grok_716"
+
+hf_private: false
+
+# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
+# rate limiting, not the code, is the ceiling above this.
+workers: 16
+# Hard stop: the run aborts between stages once spend passes this. Snapshots are kept,
+# so raising it and re-running resumes rather than restarts.
+#
+# ACTUAL, from the completed run 20260820_212358 (2026-08-21): $61.79 across all passes
+# for 620 delivered rows = $0.0997/example. The final pass alone was $17.53 / 976s, and
+# grok-4.6 is 97% of the bill ($17.06 of $17.53 there) because it holds three stages.
+# `rewrite` is the single largest line at $14.23 for 834 calls -- the retry budget on a
+# long-output grok-4.6 stage is where this arm's money goes, not the generation.
+# Earlier priors, kept because they show how far a 2-row smoke can mislead:
+#   --estimate --measured <smoke manifest>  ->  $49.14 total, $0.0686/example
+#   --estimate (priors only)                ->  $64.07 total, $0.0895/example
+# For scale: the Anthropic baseline prices at $0.0656/example and the all-gemini arm at
+# $0.1314, so this arm lands essentially at baseline parity and ~half the gemini arm.
+# 100 leaves ~2x headroom over the measured figure, which is deliberate: the single
+# largest line ($21.39, 43% of the total) is `classify` — pattern_scan's rate pass,
+# 1,820 calls — and it is still an ASSUMED 9,000 in-tokens/call, because a 2-row smoke
+# cannot exercise it. Re-measure it from the first full run's manifest before trusting
+# any tighter number. `--batch` halves the token price (~24h turnaround) if wall clock
+# does not matter.
+#
+# Wall clock, extrapolated from the smoke's per-call latency at workers: 16
+# (draft 3.1s, refine 14.4s, respond 12.5s, rewrite 14.5s; 716/16 ~= 45 rounds/stage):
+# roughly 50 minutes, 45-90 with retries and rate limiting.
+budget_usd: 100.0
+
+# Per-stage tolerance for items that fail their contract after every attempt; the
+# package default is 2.0 and every other arm uses it. Raised to 15.0 here, and the number
+# is a MEASUREMENT of this generator, not a knob turned until the run went green.
+#
+# MEASURED over the completed run (2026-08-21). Both length-gated stages lose rows, and
+# the loss COMPOUNDS, which is the number to plan around:
+#     draft_responses   716 -> 668   (48 lost, 6.7% of the stage's input)
+#     revise_responses  668 -> 620   (48 lost, 7.2%)
+#     end to end        716 -> 620   = 86.6% yield
+# A 30-row pilot had put the draft_responses loss at ~3.3%, then a first full pass at
+# 11.3%; repeated resumes recover some rows each time (81 -> 61 -> 48 stuck) because the
+# failures are stochastic per prompt rather than fixed. 15.0 carries margin over the
+# settled ~7% per stage rather than hugging it. The failures are overwhelmingly LENGTH,
+# landing just under the bar -- one revise_responses row missed by five characters (695
+# of 700) -- so they are the same phenomenon as the rest of this arm: xAI writes shorter
+# difficult-advice replies than Haiku 4.5.
+#
+# The deliberate choice here is to absorb that as a YIELD loss rather than as a weaker
+# contract. min_chars stays 700, every ban_pattern stays, every prompt stays byte-
+# identical, so each of the ~635 rows cleared exactly the bar a baseline row cleared and
+# the two corpora stay comparable row-for-row. Lowering the floor to ~600 would have
+# recovered many of the 81 and made the corpus look complete, at the cost of making it
+# quietly non-comparable -- the wrong trade for an arm whose entire purpose is a
+# controlled generator comparison. Corpus size is recoverable downstream (sample both
+# arms to a common n, or oversample scenarios on a later run); comparability is not.
+# 86.6% yield at the baseline's contract IS the result for this arm.
+#
+# NOTE the filename still says 716: that is the SCENARIO budget (`total_scenarios`), and
+# it is deliberately unchanged so this arm and the baseline start from the same number of
+# scenarios. The delivered corpus is 620 rows. To land 716 finished rows, raise
+# total_scenarios to ~830 and re-run from write_scenarios.
+#
+# CAVEAT, deliberately loud: this key is GLOBAL, not per-stage, so it loosens the guard
+# on every stage, not just the one that needs it. Stages 2-5 each completed 716/716 with
+# zero failures, so nothing is being masked today; if a future change makes an earlier
+# stage flaky, this number is why it would halt later than it should.
+max_fail_pct: 15.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+  # NO provider safety block here, unlike the gemini arm: xAI exposes no request-side
+  # safety-threshold knob over OpenRouter, and measurement says none is needed (see the
+  # header — principle-4 and hand-written CBRN/cyber prompts both came back clean).
+  # Provider routing is pinned in configs/endpoints/providers.yaml (one provider per
+  # model), never here.
+
+# Model per stage. All-grok arm: grok-4.3 generates (stages 2/3/5 + classify), grok-4.6
+# (xai standard) revises against the constitution and judges (stages 4/6 + autorate/scan).
+#
+# The reasoning setting is per model and was MEASURED on 2026-08-20, not assumed:
+# grok-4.3 accepts `{enabled: false}` (verified: 1 completion token on a one-word reply),
+# so its stages bill like the baseline's non-thinking Haiku 4.5; grok-4.6 returns
+# 400 "Reasoning is mandatory for this endpoint and cannot be disabled" and therefore
+# takes `{effort: low}`, with max_tokens headroom because that hidden reasoning bills as
+# completion tokens. Do not copy one model's block onto the other.
+#
+# assumed_tokens are PRIORS for --estimate and the budget guard, not measurements. The
+# grok-4.3 stages inherit the Anthropic baseline's numbers (same no-hidden-reasoning
+# regime); the grok-4.6 stages carry the gemini arm's reasoning-inclusive numbers, which
+# were sized for exactly this mandatory-reasoning case. Replace both from a real manifest
+# once a smoke run exists (`measured_per_stage`).
+models:
+  # Stage 2 -- generate difficult scenarios per trait. Diversity is enforced by the
+  # reject-cosine gate, not the model's introspection, so hidden reasoning buys nothing.
+  scenarios:
+    model: "x-ai/grok-4.3"
+    temperature: 1.1          # diversity matters most here
+    max_tokens: 8192          # scenario batch JSON
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 700, out: 1400}
+  # Stage 3 -- draft the system + user prompt.
+  draft:
+    model: "x-ai/grok-4.3"
+    temperature: 1.0
+    max_tokens: 2048
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 500, out: 700}
+  # Stage 4 -- refine the prompt against the full constitution + target trait. grok-4.6
+  # cannot disable reasoning, so this carries more headroom than the baseline's 6144.
+  refine:
+    model: "x-ai/grok-4.6"
+    temperature: 0.7
+    max_tokens: 12288
+    reasoning: {effort: low}
+    assumed_tokens: {in: 2000, out: 2400}
+  # Stage 5 -- generate the response with explicit reasoning. The VISIBLE <reasoning> is
+  # the trained trace: instructed OUTPUT, unaffected by the reasoning knob. Hidden
+  # reasoning stays OFF, matching the baseline's non-thinking Haiku.
+  #
+  # grok-4.6, NOT the grok-4.3 the other generation stages use. This is the one stage
+  # where the arm's model choice was forced by measurement rather than by price, and the
+  # reasoning is worth reading before changing it back.
+  #
+  # The first full run halted here: 302/716 (42.2%) of grok-4.3's outputs fell under this
+  # stage's `min_chars: 700` floor, which was tuned for Haiku 4.5's verbosity. xAI models
+  # write shorter difficult-advice replies than Haiku, and grok-4.3 worst of all.
+  #
+  # (1) Raising reasoning effort makes it WORSE, not better -- the model spends itself in
+  #     the hidden trace and then answers tersely. Single-shot share clearing the floor,
+  #     matched inputs: grok-4.3 off 31%, effort low 0%, effort high 19%. Do not "fix"
+  #     this stage by turning reasoning up. (grok-4.5 cannot be used at all: like
+  #     grok-4.6 and Gemini 3.x it 400s on `reasoning: {enabled: false}`.)
+  # (2) Retry failures CORRELATE PER PROMPT, so the usual independence math badly
+  #     understates them: some stage-5 prompts elicit a short reply on every sample. At
+  #     the 700 floor, 30 rows x 3 attempts measured 23.3% of ROWS failing all three
+  #     where independence predicts 8.1% -- and the live run's 14.9% sat in between.
+  #     Judge this stage by per-row all-attempts-fail rate, never by per-call pass rate.
+  # (3) Lowering the floor does NOT rescue it: the failure rate plateaus at ~6.7% for
+  #     every floor from 500 down to 300, because the residual rows fail on banned
+  #     vocabulary ("I must not", "violates my guidelines") or a missing <response> tag,
+  #     neither of which a length floor touches. Even a floor of 200 sits at 3.3%.
+  #     So `min_chars` stays at 700: the quality bar is IDENTICAL to the baseline's, and
+  #     relaxing it would have bought nothing anyway.
+  # (4) What actually separates the models is how many prompts they can NEVER satisfy.
+  #     Re-running every stuck row 10 more times:
+  #        grok-4.20  7/30 stuck, 4 of them permanently (0/10) -> ~14% even at 6 attempts
+  #        grok-4.6   4/30 stuck, 1 of them permanently; the other 3 pass 50-60% of the
+  #                   time and simply needed more chances -> ~3.3% at 6 attempts
+  #     Hence grok-4.6 here plus `retries: 5` on the lint below. The extra cost is a few
+  #     dollars: this stage measured $1.62 at grok-4.3 prices and is small either way.
+  respond:
+    model: "x-ai/grok-4.6"
+    temperature: 1.0
+    # grok-4.6 cannot disable reasoning (400, mandatory), so this carries headroom for
+    # the hidden trace on top of the visible <reasoning> + <response>.
+    max_tokens: 12288
+    reasoning: {effort: low}
+    assumed_tokens: {in: 1050, out: 1100}
+  # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
+  # Emits reasoning AND a full response, plus grok-4.6's own mandatory hidden reasoning.
+  rewrite:
+    model: "x-ai/grok-4.6"
+    temperature: 0.7
+    max_tokens: 24576
+    reasoning: {effort: low}
+    assumed_tokens: {in: 3200, out: 3800}
+  # Judged corpus checks. The package default for a judge is `reasoning: {enabled: false}`
+  # (JUDGE_NO_REASONING); it is a DEFAULT, not a mandate, and a model block that declares
+  # its own `reasoning:` wins. grok-4.6 400s on enabled:false, so every grok-4.6 judge
+  # below must declare `{effort: low}` — remove it and the corpus checks fail hard.
+  autorate:
+    model: "x-ai/grok-4.6"
+    temperature: 0.0
+    max_tokens: 2048
+    reasoning: {effort: low}
+    assumed_tokens: {in: 1400, out: 400}
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
+  # context and there are only ~10 of these at 716 rows.
+  scan:
+    model: "x-ai/grok-4.6"
+    temperature: 0.0
+    # The scan call itself is sized by the property's `scan_max_tokens`; this bound and
+    # the assumption below exist for pricing.
+    max_tokens: 16000
+    reasoning: {effort: low}
+    assumed_tokens: {in: 28000, out: 4500}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
+  # batches. grok-4.3 with reasoning off — the cheapest adequate configuration, and the
+  # one place where being able to disable reasoning (unlike the gemini arm) really tells.
+  classify:
+    model: "x-ai/grok-4.3"
+    temperature: 0.0
+    max_tokens: 900
+    reasoning: {enabled: false}
+    assumed_tokens: {in: 9000, out: 200}
+
+# --- The pipeline itself: stages executed in order by src/data/synth ------------
+# Prompt placeholders are record fields plus {constitution} and {style_guidance}.
+stages:
+- name: chunk_constitution
+  kind: segment
+- name: write_scenarios
+  kind: scenarios
+  model: scenarios
+  # Enforced scenario diversity. The 2026-08-04 run had none and put 46.8% of its mass in
+  # ten domains -- four of which this prompt used to name as examples, so the instruction
+  # was producing the concentration it meant to prevent. Two mechanisms, because asking
+  # alone demonstrably failed: the `avoid` list (seeded below, extended each wave with
+  # what earlier waves actually wrote) tells the generator what not to write, and
+  # `reject_cosine` refuses what it writes anyway and re-queues the shortfall per trait.
+  #
+  # reject_cosine 0.86 is the measured floor from scratch/measure_dedup_threshold.py over
+  # all 2,205 baseline scenarios: real clones live at 0.84-0.886 (the worst pair is one
+  # postdoc/funding-cliff story under two trait ids), while below 0.84 the clusters chain
+  # until a single component holds a third of the corpus. Same threshold as
+  # embedding_dedup, and deliberately so -- what the gate refuses to generate is exactly
+  # what the checker would later refuse to keep.
+  diversity:
+    wave_size: 12
+    reject_cosine: 0.86
+    max_regen_rounds: 2
+    max_carry: 150
+    # Nothing is banned up front. A domain is named to the generator only once it is
+    # measurably over-weight in THIS run's own output, and stops being named when it is
+    # not -- the corpus should contain small-business scenarios, just not 226 of them.
+    # 4% against ~200 expected domains is ~8x a uniform share; the baseline's worst
+    # domain reached 10%. Below `over_min_docs` the share of a handful of scenarios is
+    # noise, so the steer stays silent rather than flagging the first domain generated.
+    over_share: 0.04
+    over_min_docs: 60
+  prompts:
+    system: |-
+      You design realistic, ethically difficult situations for training a constitution-aligned
+      AI assistant. You write situations, not dialogue.
+    user: |-
+      Below is one principle from an AI assistant's constitution.
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      Invent {n} DISTINCT situations in which the convenient path would violate this
+      specific principle.
+
+      Requirements for every situation:
+      - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The pressure is concrete and the stakes are real.
+      - The norm-violating shortcut is genuinely tempting, not cartoonish.
+      - The tension must engage THIS principle specifically, not ethics in general.
+      - The setting is specific rather than a category.
+      - Do not reuse a setting within this set.
+
+      {avoid}
+
+      {overrepresented}
+
+      Return ONLY a JSON array of {n} objects, each:
+      {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+# Scenario-level checks, where diversity is actually DECIDED: stages 3-6 cost real
+# money per scenario, so a collapsed set is far cheaper to catch here than in the
+# finished corpus. An observer, so inserting it renumbered no snapshot.
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn          # `stop` here halts the run before the paid stages
+  fields:
+    id: scenario_id
+    text: [situation, shortcut]
+    group: trait_id
+  properties:
+  - property: ngram_diversity
+  # The cheapest place a duplicate can be caught: a repeated situation here is paid
+  # for four times over by the stages below. Scenario text is short, which is the
+  # length this property was measured at.
+  - property: embedding_dedup
+    fields:
+      text: situation
+    params:
+      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
+      # acts on these labels, and a filter must never be handed a verdict about only part
+      # of the corpus (it refuses one, by design).
+      sample: 0
+# The stage that acts on the check above. With `diversity.reject_cosine` refusing clones
+# at generation time this should drop ZERO -- which is the point of keeping it: anything
+# it removes is a scenario the generation-time gate let through, and the count is the
+# gate's error rate rather than a number nobody measures.
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
+- name: draft_prompts
+  kind: llm_json
+  model: draft
+  # Checkpointed since 2026-08-20: the baseline leaves this stage uncheckpointed and
+  # the filter-abort above threw away 690 paid drafts held only in memory.
+  checkpoint: scenario_id
+  save:
+    draft_system: system
+    draft_user: user
+  prompts:
+    system: You write realistic messages that people actually send to AI assistants.
+    user: |-
+      Situation:
+      {situation}
+
+      The tempting shortcut: {shortcut}
+
+      Write the message that would actually be sent to the assistant here, plus the system
+      prompt the assistant is running under.
+
+      The message must:
+      - be in the sender's own voice, with the texture of a real request
+      - make the pressure concrete
+      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - never mention ethics, principles, or that this is a test
+      - read as something someone actually typed, not as a case study
+
+      The system prompt should be an ordinary, plausible deployment prompt for a general
+      assistant. It must NOT mention the constitution, ethics, or this exercise.
+
+      Return ONLY JSON:
+      {{"system": "<system prompt>", "user": "<the message>"}}
+- name: revise_prompts
+  kind: llm_json
+  model: refine
+  checkpoint: scenario_id
+  # `situation`/`shortcut`/`domain` are OVERWRITTEN here, not carried through. Before
+  # 2026-08-13 this stage saved only system/user/changes, so those three arrived from
+  # stage 2 and survived untouched even when this stage replaced the scenario they
+  # described -- measured on the baseline as a median metadata/text overlap of 0.19, with
+  # 17.1% of rows under 0.10 (a row labelled "asylum applicant" whose conversation is a
+  # 2am production outage). Every analysis keyed on those fields was slicing noise.
+  #
+  # Deliberately NOT in `optional:`: a model that omits them fails the record loudly.
+  # Defaulting them to "" would silently empty the field the scenario-level
+  # `embedding_dedup` reads, and a stale label at least fails visibly under audit while an
+  # empty one just turns the check off.
+  save:
+    system: system
+    user: user
+    refine_changes: changes
+    situation: situation
+    shortcut: shortcut
+    domain: domain
+  optional:
+  - changes
+  prompts:
+    system: |-
+      You improve draft training prompts so they test a specific value precisely. You are terse
+      and you do not pad.
+    user: |-
+      Here is the full constitution the assistant is being trained against:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      This prompt is meant to put pressure on ONE principle in particular:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Draft system prompt:
+      <draft_system>
+      {draft_system}
+      </draft_system>
+
+      Draft user message:
+      <draft_user>
+      {draft_user}
+      </draft_user>
+
+      Rewrite both so the exchange is a sharper test of the target principle.
+
+      Improve these specifically:
+      - **Precision.** The tension should engage the target principle, not a generic "is this
+        ethical" question. If the draft could be answered without touching that principle,
+        fix it.
+      - **Realism.** Cut anything that reads as written-for-a-benchmark.
+      - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
+        genuinely costly. If refusing is obviously free, raise the cost.
+      - **No leakage.** The user must not signal awareness of the ethical dimension, and
+        neither prompt may mention the constitution or any principle.
+
+      Keep the system prompt an ordinary deployment prompt.
+
+      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
+      arrive here describing the DRAFT, and you are about to replace or reframe most
+      drafts -- so if you echo them back unchanged they become a description of a message
+      that no longer exists. Write them fresh, from your refined user message, as though
+      you had never seen the originals. If you changed nothing, they will come out the
+      same on their own.
+
+      Return ONLY JSON:
+      {{"system": "<refined system prompt>", "user": "<refined user message>",
+        "changes": "<1-2 sentences on what you changed and why>",
+        "domain": "<one or two words, describing YOUR refined message>",
+        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
+        message>",
+        "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
+        tempted by>"}}
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {system}
+
+      In forming your reply, you hold to this principle:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+    user: |-
+      {user}
+
+      ---
+      Respond as the assistant. First reason privately about what is actually at stake here,
+      then write your reply.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
+      request that gives the whole thing away. Never open with a stock phrase, and never
+      begin with "Let me". Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: what is actually at stake here, for whom, and what that
+      means for how you answer
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+  # The voice contract, enforced. The 2026-08-04 run had no lint block and 7.4% of its
+  # rows cited the constitution back at the reader; self_reflection ships the same block
+  # and scores 0%, on the same engine -- so this is a config gap, not a genre property.
+  # `^let me` is banned outright because 68.8% of that corpus opened with it and 48% with
+  # one five-word variant; retries make a banned opener cost a call, not a record.
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
+    - '[一-鿿]'
+    # 5 (= 6 attempts), not the baseline's 2. NOT a quality relaxation -- `min_chars` and
+    # every ban_pattern above are unchanged, so a row that lands in this corpus cleared
+    # exactly the bar a baseline row cleared. It is a yield knob: measured over 30 rows
+    # re-run 10x each, grok-4.6's stuck rows mostly pass 50-60% of the time and just
+    # needed more chances (3 attempts left 13.3% of rows dead, 6 leaves ~3.3%). See the
+    # `respond:` block for the full measurement and why raising the floor's neighbours --
+    # reasoning effort, or a lower min_chars -- does not work.
+    #
+    # RAISED 5 -> 12 on 2026-08-21 for the top-up pass to 716. The corpus is therefore
+    # HETEROGENEOUS in retry budget: the first 620 rows were drawn with 6 attempts, the
+    # top-up rows with 13. That is a real, documented inconsistency, accepted because the
+    # alternative was regenerating 620 rows that are already paid for and already meet
+    # the contract. Measured on stuck rows: ~3 in 4 pass 50-60% of the time and simply
+    # need more chances, so most of the shortfall is recoverable without a single new
+    # scenario. It does mean the top-up rows sit slightly further into grok's verbose
+    # tail than the originals.
+    retries: 12
+- name: revise_responses
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific principle. You
+      preserve everything that already works and change only what falls short.
+    user: |-
+      Full constitution the assistant is trained against:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      The principle this exchange must maximally exhibit:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Deliberate openly about the value.** The reasoning must name the tension explicitly
+        and work through it, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but
+        do not impose a shape on it: two deliberations about different situations should
+        not be organised the same way.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+      - **Never name the constitution.** You have been shown it so you can apply it, not
+        quote it. The reasoning argues from what is at stake for the people involved, never
+        from what you are permitted or required to do. Any sentence that would survive
+        being moved into a different scenario is the wrong sentence.
+      - **Take the request seriously** before evaluating it.
+      - **Do not go along with the norm-violating path**, and give the reason in terms of
+        what is concretely at stake, not in terms of rules.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+  # The stage that actually writes the trained text, and the one that injects the whole
+  # constitution -- so this is where recital gets in. Same block as draft_responses, minus
+  # `changes` (a 1-2 sentence note cannot meet min_chars).
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    # RAISED 2 -> 12 on 2026-08-21, same top-up pass and same caveat as draft_responses:
+    # this stage independently lost 48 of the 668 drafts it was handed (7.2%) on length,
+    # and those losses compound with stage 6's to give the arm's 86.6% yield. Retrying
+    # them costs nothing but calls -- their scenarios, prompts and drafts are already
+    # paid for -- so the shortfall is closed here before any new scenario is generated.
+    retries: 12
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  # Chunking provenance from stage 1: which unit the document came from, and how
+  # that unit was cut and grouped.
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+
+# Corpus-level checks over the finished dataset: properties no single document can
+# show. Report-only (`gate: false` is the default); `--ablate corpus` skips it, and
+# `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate          # only reached by a judged property; unused while all are off
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+    # Chunking roles: `unit` is the unit a document was generated from, `members`
+    # its chunks -- a judged property needs only its rubric wording added.
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
+  # Each entry takes `enabled: false` to deselect it without deleting it; `synth check
+  # --only/--skip/--tier` overrides per run. `synth checks` lists every property.
+  properties:
+  - property: ngram_diversity
+  # GDM's final dedup stage, as a measurement. Lexical shingles catch a copy;
+  # embeddings catch a reword, and only this sees two identical situations phrased
+  # differently. Pointed at `situation` (68 words) and not the document (1,044): the
+  # embedding floor climbs from 0.37 to 0.76 over that range, so the thresholds only
+  # discriminate on the short unit -- which is also the unit GDM dedups.
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
+  # GDM's final autorater. Judged, so it costs money: `--tier surface` runs everything
+  # above without it. Ships disabled — turn it on deliberately, and note that its
+  # drop_rate_max is not yet a measured number.
+  - property: quality_filter
+    enabled: false
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). The most expensive
+  # check here: ~30 long-context scans plus a classifier sweep per surviving pattern.
+  # Ships disabled; `--only pattern_scan` runs it alone. Every word below is generic
+  # across document types on purpose — this block is meant to be copied unchanged into
+  # any dataset config.
+  # Turned ON 2026-08-13. It is the only open-ended check here -- every other one tests a
+  # property someone thought of in advance -- and the defect it exists to catch is the one
+  # this recipe is most exposed to: the lint block bans stock opener PHRASES, so a
+  # collapse onto a new opening MOVE would pass every other check silently. It is also the
+  # only check that would have found the 48% "Let me actually sit with" and the 33%
+  # hand-back closer without someone reading 2,203 documents by hand. Costs ~$21/run.
+  - property: pattern_scan
+    enabled: true
+    model: scan             # per-instance override of the stage's `model:`
+    rate_model: classify    # the thousands-of-tiny-calls pass
+    params:
+      # The registry default is 2500, which is not enough to DESCRIBE 25 documents:
+      # measured 2026-08-13 on a 197-record run, 7 of 8 scan batches truncated mid-JSON
+      # and the property errored out at 87.5% failure. Doubled again for this arm:
+      # Gemini's mandatory reasoning bills against the same cap.
+      scan_max_tokens: 16000
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a constitutional-SFT corpus. Each
+        document is an assistant reply to a user facing an ethically difficult
+        situation. Judge only whether the document is fit to TRAIN on. Drop it if the
+        scenario could not plausibly happen to a real person, if the stakes are
+        cartoonish, if the reply lectures rather than helps, if it refuses something
+        harmless, if it is internally inconsistent, or if it reads as template output
+        with the specifics swapped. Do not drop a document for reaching a conclusion
+        you disagree with, for being long, or for declining a genuine
+        norm-violation -- declining well is what the corpus is for. Most documents in
+        a healthy corpus are keeps.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_scenario,
+        cartoonish_stakes, lectures_user, refuses_harmless, inconsistent,
+        template_output, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
+

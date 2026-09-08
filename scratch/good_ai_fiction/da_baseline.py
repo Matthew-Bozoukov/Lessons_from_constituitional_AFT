@@ -20,7 +20,7 @@ from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.huggingface import hf_token  # noqa: E402
+from src.infra.huggingface import hf_token  # noqa: E402
 from src.model_profile import model_profile  # noqa: E402
 from src.train.masking import build_labels  # noqa: E402
 

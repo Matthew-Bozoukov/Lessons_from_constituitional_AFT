@@ -1,5 +1,5 @@
 # ABOUTME: Content-addressed per-model answer sets on Hugging Face, shared by evals whose
-# ABOUTME: generations are reusable across comparisons (lmsys, arena_hard, later mmlu).
+# ABOUTME: generations are reusable across comparisons (arena_hard, later mmlu).
 
 """The HF answer cache behind the "push important artifacts to HF" policy.
 
@@ -70,7 +70,7 @@ class AnswerCache:
                 for every other repo this project owns), else a local directory path.
             mirror: Per-invocation read-through directory (see module docstring).
         """
-        from src.huggingface import gate_push, hf_repo_id
+        from src.infra.huggingface import gate_push, hf_repo_id
 
         self.hf_repo = hf_repo_id(repo[3:]) if repo.startswith("hf:") else None
         if self.hf_repo:
@@ -81,7 +81,7 @@ class AnswerCache:
     # --- internals -------------------------------------------------------------------
 
     def _api(self):
-        from src.huggingface import hf_api
+        from src.infra.huggingface import hf_api
 
         return hf_api()
 
@@ -121,7 +121,7 @@ class AnswerCache:
             if self.local is not None:
                 source = self.local / key.path
             else:
-                from src.huggingface import hf_download
+                from src.infra.huggingface import hf_download
 
                 for name in (ANSWERS, META):
                     hf_download(self.hf_repo, f"{key.path}/{name}",
@@ -162,7 +162,7 @@ class AnswerCache:
             for name in (ANSWERS, META):
                 shutil.copy2(src_dir / name, entry / name)
             return
-        from src.huggingface import card_markdown
+        from src.infra.huggingface import card_markdown
 
         api = self._api()
         if not api.repo_exists(self.hf_repo, repo_type="dataset"):

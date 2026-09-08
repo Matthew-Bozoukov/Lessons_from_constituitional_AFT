@@ -443,7 +443,7 @@ def main(results: str = "", out_dir: str = "output/gpt_seeds/plots",
     out = ROOT / out_dir
     out.mkdir(parents=True, exist_ok=True)
     n_common = rows[0]["n_cells"]  # same for every arm by construction
-    # Every output path comes from src.naming.figure_path: <out>/<YYYY-MM-DD>_<subject>.
+    # Every output path comes from src.utils.figure_path: <out>/<YYYY-MM-DD>_<subject>.
     # A plot outlives the chat that made it, so the date and the arm set are IN the
     # filename rather than in whoever remembers running it.
     subject = f"odcv_arms_seed_mean_{n_common}_cells"

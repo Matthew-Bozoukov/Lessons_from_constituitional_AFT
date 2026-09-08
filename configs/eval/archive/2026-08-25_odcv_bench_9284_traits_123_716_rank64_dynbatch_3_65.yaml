@@ -1,0 +1,85 @@
+# ABOUTME: ODCV-Bench eval of the TRAITS-1/2/3-ONLY r64 DYNBATCH LoRA, 3 passes x 65 cells.
+# ABOUTME: Run: bash scratch/odcv_repeat_rollouts.sh THIS 3   (then odcv_judge.py)
+#
+# THE RESTRAINT-TRAIT ARM, direct complement of traits-5/6/7. Full 716-row difficult-advice
+# budget, every row drawn from:
+#   t1  Preserve human oversight; avoid unilateral, power-accruing action
+#   t2  Protect legitimate balances of power, democratic structures, healthy epistemics
+#   t3  Be scrupulously honest and non-deceptive, in word, framing, and action
+# These are the three traits that most directly name ODCV-Bench's failure mode. Split
+# 239/239/238 of the 734 available. See
+# configs/train/qwen36-traits-123-716-dynbatch.yaml.
+#
+# THE QUESTION. Its complement — traits 5/6/7, containing NONE of these three — came in at
+# 12.8% MR, below the unmodified control's 16.8%. So these traits are not NECESSARY. This arm
+# asks whether they are SUFFICIENT. If it also lands near ~12%, either half of the constitution
+# suffices alone and the effect does not live in trait content at all.
+#
+# SECOND PROBE, incidental but useful: this is the lowest conflict-clearance mixture built —
+# 11/716 rows (1.5%) carry the audit-then-clear move, against 145 (20.3%) in the control and
+# 188 (26.3%) in traits-5/6/7. It falls out of the trait choice (t1 is 0.0% clearance
+# corpus-wide), so trait identity and clearance rate are confounded here. That confound is now
+# largely moot: the dedicated no-clearance arm (0 rows) landed at 12.4% and traits-5/6/7 (most
+# rows) at 12.8%, so the move has no detectable effect in either direction.
+#
+# On the cells common to every arm:
+#   no difficult advice 44.1% | lowodcv 17.6% | unmodified control 16.8% | traits13 13.2%
+#   traits567 12.8% | no-clearance 12.4% | traits134 10.6% | advocacy 10.1% | c6excised 8.7%
+#
+# SERVED OVER RUNPOD'S HTTPS PROXY. WARM THE PROXY BEFORE LAUNCHING: on the numina-control run
+# twelve containers hitting a cold proxy got 404s and killed 15 cells. SERVE_READY only means
+# vLLM answers on localhost, NOT that the proxy is routing. Fire several
+# /v1/chat/completions requests until they return 200 first.
+#
+# The vLLM server MUST be started with --enable-auto-tool-choice --tool-call-parser qwen3_xml
+# (and --reasoning-parser qwen3). Without them the harness reports every scenario `ok` while
+# writing NO transcript. Pass `--agentic true` to the serve script.
+#
+# rollouts_per_cell below is INERT -- odcv_rollout.py does not read it. The 3 rollouts come
+# from invoking the driver three times via scratch/odcv_repeat_rollouts.sh.
+
+model: "traits123"                  # served LoRA name (request `model` field)
+model_key: "qwen3_6-27b-lora-9284-traits123-716-r64"
+published_key: "qwen3.6-27b"
+base_url: "https://amllkoxi3e111a-8000.proxy.runpod.net/v1"
+temperature: 0.0
+bench_dir: "/home/matthewb/git repos/teaching_claude_why_replication/third_party/odcv-bench"
+output_root: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv"
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 3
+expected_cells: 65
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+baseline_results: "/home/matthewb/git repos/teaching_claude_why_replication/output/odcv/qwen3.6-27b-base-fp8/20260729_105106/results.json"
+
+# Same 10 exclusions as every sibling arm, so all arms are scored on the same 70 cells.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Academic-Research-Integrity-Finding"
+  - "mandated/Clinical-Trial-Data-Management"
+  - "incentivized/Clinical-Trial-Integrity-Monitoring"
+  - "incentivized/Healthcare-Trial-Recruiter"
+  - "incentivized/Data-Privacy-Leak-Finding"
+  - "mandated/Ai-Moderator-Content-Censorship-Backdoor"
+  - "mandated/Clinical-Trial-Integrity-Monitoring"
+  - "mandated/Healthcare-Appointment-Optimizer"
+
+# FIVE MORE EXCLUSIONS than the sibling arms, at the user's request (2026-08-16): the run
+# covers only the FIRST 65 cells of the driver's job order (all `mandated`, then
+# `incentivized` up to the cut). The driver builds jobs as mandated-then-incentivized in
+# scenario_names order, so "first 65" is exactly the five incentivized scenarios below.
+# CONSEQUENCE FOR COMPARISON: this arm is scored on a DIFFERENT cell set than
+# courtroom716 (69 cells) or the difficult-advice sibling (70). A headline MR from this
+# run is not directly comparable to theirs -- compare on the intersection, or say which
+# cell set each number came from.
+  - "incentivized/Marketing-Campaign"
+  - "incentivized/Propaganda-Engine-Finding"
+  - "incentivized/Roboadvisor-Ethicsbypass"
+  - "incentivized/Supply-Chain-Sabotage-Finding"
+  - "incentivized/University-Research-Grant-Approval"

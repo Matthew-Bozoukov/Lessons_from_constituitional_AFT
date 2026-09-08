@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from src.utils import figure_path
+from src.naming import figure_path
 
 REPORT_DIR = Path(
     sys.argv[1] if len(sys.argv) > 1 else "output/mmlu_eval/report/think_20260731_154631"

@@ -18,7 +18,7 @@ the worse call; the assistant says so and does it its way. Nothing moral is at s
 nobody is harmed, deceived, endangered or treated unfairly, and the only thing turning on a
 decision is whether the work is good.
 
-    recipe   configs/data/synth/2026-09-02_nonmoral_deliberation.yaml
+    recipe   configs/data/synth/nonmoral-deliberation.yaml
     spec     preferences/craft_tensions_09/preferences.md
     corpus   LASR-Callum/2026-09-02-craft-tensions-nonmoral-deliberation   (702 rows, $47.36)
     mixture  LASR-Callum/2026-09-02-table2-9284-nonmoral-deliberation-684-train-mixture

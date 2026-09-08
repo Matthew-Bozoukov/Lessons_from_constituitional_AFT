@@ -47,17 +47,20 @@ def expected_supervised_text(text: str, prefill: str, empty_think: str,
     forced head — the WHOLE empty marker on a no-reasoning turn (the model never
     generates an empty close), else the bare thinking prefill — concatenated in order.
 
-    Under `supervise="cot"` the expectation is the final turn's reasoning ALONE: from
-    just past the prefill through the close, inclusive, and nothing after it. Derived
-    here by string search over the raw text, so it stays independent of masking.py's
-    span/segment logic — the whole point of this module.
+    Under `supervise="final"` only the LAST assistant turn is expected: every earlier
+    one is context (a par row's un-repaired first reply, an agentic row's exploration
+    turns) and must decode to nothing. Under `supervise="cot"` the expectation is the
+    final turn's reasoning ALONE: from just past the prefill through the close,
+    inclusive, and nothing after it. Derived here by string search over the raw text,
+    so it stays independent of masking.py's span/segment logic — the whole point of
+    this module.
 
     Args:
         text: A rendered chat conversation.
         prefill: The profile's thinking-prefill literal.
         empty_think: The profile's empty-marker literal.
-        supervise: The row's mode — "all"/"final" share the turn-concatenation shape
-            (the gate feeds one turn's worth either way); "cot" takes the branch above.
+        supervise: The row's mode — "all" concatenates every assistant turn, "final"
+            keeps the last one, "cot" takes the branch above.
         think_close: The profile's reasoning-close literal, used only under "cot".
     """
     if supervise == "cot":
@@ -70,8 +73,13 @@ def expected_supervised_text(text: str, prefill: str, empty_think: str,
         assert body.startswith(prefill), "cot row's final turn has no thinking prefill"
         return body[len(prefill):body.index(think_close) + len(think_close)]
     parts = []
-    for m in _TURN.finditer(text):
-        body = m.group(1)
+    bodies = [m.group(1) for m in _TURN.finditer(text)]
+    if supervise == "final":
+        # Until 2026-09-05 this branch did not exist and a two-assistant-turn row under
+        # "final" always tripped the gate — the mask was right, the expectation was not.
+        # PAR-716 (2026-08-27) trained before the gate took per-row modes (2026-08-31).
+        bodies = bodies[-1:]
+    for body in bodies:
         if body.startswith(empty_think):
             parts.append(body[len(empty_think):])
         elif body.startswith(prefill):

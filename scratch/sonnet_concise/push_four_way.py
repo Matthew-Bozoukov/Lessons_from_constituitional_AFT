@@ -13,7 +13,7 @@ from pathlib import Path
 import fire
 from dotenv import load_dotenv
 
-from src.huggingface import push_files
+from src.infra.huggingface import push_files
 
 REPO = "LASR-Callum/2026-08-26-difficult-advice-four-way-corpus-stats"
 FILES = [

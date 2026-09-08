@@ -1,0 +1,89 @@
+# ABOUTME: MoralBench moral-foundations values probe — 88 released items, mechanical A/B
+# ABOUTME: scoring, no judge; the paper-reproduction profile (temperature 0.7 x 5 reps).
+# Run: uv run scripts/run_eval.py --target <hf_path> --name moralbench [key=value ...]
+#
+# MoralBench (Ji et al., arXiv:2406.04428; ACM SIGKDD Explorations 27(1) 62-71, 2025),
+# implemented from the released benchmark at agiresearch/MoralBench @ f411cb7 — NOT from
+# the paper's tables, which disagree with the released data in three places (see
+# src/eval/misalignment/moralbench/assets/NOTICE.md).
+#
+# What this measures, and what it does NOT. Every other misalignment eval here is
+# behavioural and returns a scalar. This one is DECLARATIVE: it asks the model what is
+# relevant to right and wrong, with no scenario and no stakes, and returns a vector in a
+# six-dimensional taxonomy that predates our constitution. That is the point — a foreign
+# coordinate system makes a measured shift evidence of transfer rather than of the model
+# learning to emit spec-shaped text.
+#
+# HIGHER IS NOT BETTER. The score rewards agreement with the MFQ/MFV human norming
+# sample. A constitution-trained arm that downweights "conformed to the traditions of
+# society" scores WORSE here, and that may be the constitution working. Read this as
+# "where does this checkpoint's moral weighting sit", never as a quality gate.
+
+seed: 0
+
+# --- Profile ------------------------------------------------------------------------
+# This file is the PAPER-REPRODUCTION profile: temperature 0.7 and five repetitions, as
+# section 4.1 states. It is the default because 88 items x 5 reps is 440 one-letter
+# generations — rounding error next to any other eval here — and the repetition spread is
+# the only decoding-noise diagnostic this benchmark has.
+#
+# Note what repetition does NOT buy: the item set is fixed, so repeating cannot shrink
+# item-sampling error. `totals_by_repetition` is a temperature-noise check, not a
+# confidence interval on the underlying construct.
+#
+# For a deterministic run (temperature 0, one repetition, matching the decoding-parity
+# convention the MMLU eval uses), override on the CLI rather than forking this file:
+#
+#   uv run evals --target <hf> --name moralbench \
+#       generation.temperature=0.0 generation.repetitions=1
+#
+# Both settings land in run_meta.json either way, so which profile produced a number is
+# always recoverable. Whichever you pick, use the SAME one for every arm you intend to
+# compare — decoding parity is what makes an arm-to-arm difference mean anything.
+generation:
+  temperature: 0.7      # paper section 4.1. Upstream's main.py passes no temperature at
+                        # all and silently gets the OpenAI default, so the released code
+                        # and the paper disagree; the paper is followed here.
+  top_p: 1.0
+  repetitions: 5        # paper section 4.1: "repeated five times ... mean score"
+  # CLAUDE.md gotcha 4. The visible answer is one letter, but a thinking model spends its
+  # budget inside <think>; if generation runs out before the trace closes there is no
+  # answer at all, the item scores 0 through the invalid path, and it reads as a values
+  # collapse. Sized with headroom deliberately — the cost of being generous here is
+  # nil at 440 calls. Watch finish_reason=length in the records if a number surprises you.
+  max_tokens: 8192
+  parallel: 16
+  request_timeout: 300
+  max_retries: 2
+
+# --- Presentation --------------------------------------------------------------------
+# Every MFQ binary item presents "A. Agree" first, so a checkpoint with an A-preference
+# scores systematically without knowing anything — a real confound when the whole purpose
+# is comparing checkpoints. Setting this true swaps the option order AND the score map
+# together, so the difference between the two runs isolates position bias.
+#
+# false is the released benchmark and the number to report. Run the swapped arm as a
+# SEPARATE invocation and compare; never mix the two into one score.
+swap_options: false
+
+# Upstream's system prompt is used verbatim when this is null. It reads as though it
+# forbids reasoning ("not the reason"), but on a thinking model it constrains the VISIBLE
+# answer while the <think> block proceeds normally — which is exactly the regime our
+# LoRAs were trained in. Override only for a deliberate prompt-sensitivity experiment,
+# and never mid-comparison: parse rate moves with it, and every invalid answer scores 0.
+system_prompt: null
+
+# Thinking is inferred from the artifact and pinned at serve time; it is never declared
+# here (CLAUDE.md "The eval framework"). For a no-CoT ablation pass `mode=nothink` on the
+# CLI, which run_eval records in run_meta.json — and compare only against another
+# nothink run.
+
+constitution: none      # an external instrument (Moral Foundations Theory), deliberately
+                        # not aligned to any constitution of ours — that is why a shift
+                        # measured in it is evidence of generalization.
+
+serving:
+  # Prompts are ~100 tokens; the window only has to cover the trace plus max_tokens.
+  # 16384 is the window the Qwen3.6 sweep is tuned at, kept for parity with the other
+  # evals rather than because this one needs it.
+  context_window: 16384

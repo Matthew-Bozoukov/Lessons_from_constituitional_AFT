@@ -187,6 +187,15 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     pod.up(name="t", train=str(cfg), gpu="NVIDIA B200")
     assert seen["gpu"] == "NVIDIA B200"  # an explicit ask still wins
 
+    # A RECIPE names no model: `--model <key>` says which, and is refused when absent.
+    recipe = tmp_path / "lora.yaml"
+    recipe.write_text("lora: {r: 64}\n")
+    out = pod.up(name="t", train=str(recipe), model="qwen36")
+    assert seen["gpu"] == "NVIDIA H200"
+    assert "uv run train --config" in out and "model=qwen36" in out and "data_repo=" in out
+    with pytest.raises(AssertionError, match="--model"):
+        pod.up(name="t", train=str(recipe))
+
 
 def test_an_eval_pod_takes_the_inference_card_and_installs_vllm_without_the_repo(monkeypatch):
     # The other half of ModelProfile.gpu. An eval pod is the cheaper card, and it holds

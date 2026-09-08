@@ -23,7 +23,7 @@ import yaml
 from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 from scratch.nonmoral.audit_scenarios import JUDGE, SYSTEM as A_SYS, USER as A_USER, tag
 
-CONFIG = "configs/data/synth/2026-09-02_nonmoral_deliberation.yaml"
+CONFIG = "configs/data/synth/nonmoral-deliberation.yaml"
 
 # Variant B: the difficulty knob is DELETED rather than redirected, and an invariance clause
 # replaces it. Turning that knob in either direction erodes the property -- making the person's

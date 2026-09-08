@@ -12,9 +12,9 @@ from pathlib import Path
 import yaml
 
 CONFIGS = {
-    "DA": "configs/data/synth/2026-08-01_difficult_advice.yaml",
-    "PAR": "configs/data/synth/2026-08-13_post_action_retrospection.yaml",
-    "PC": "configs/data/synth/2026-08-13_peer_critique.yaml",
+    "DA": "configs/data/synth/da.yaml",
+    "PAR": "configs/data/synth/par.yaml",
+    "PC": "configs/data/synth/pc.yaml",
 }
 
 # The stages difficult advice owns and the derived recipes are supposed to inherit verbatim.
@@ -23,6 +23,10 @@ FRONT_HALF = [
     "write_scenarios",
     "corpus_scenarios",
     "dedupe_scenarios",
+    # PAR and PC only -- difficult advice has no scenario to keep coherent beyond the
+    # situation itself. `compare_front_half` skips a stage DA lacks; the PAR-vs-PC identity
+    # check below still covers it.
+    "revise_scenarios",
     "draft_prompts",
     "revise_prompts",
 ]
@@ -98,9 +102,16 @@ def model_vendors(cfg: dict) -> dict[str, str]:
     return out
 
 
-def compare_front_half(base: dict, other: dict, label: str) -> list[str]:
-    """Stage-by-stage prompt diff of a derived recipe against difficult advice."""
-    problems = []
+def compare_front_half(
+    base: dict, other: dict, label: str
+) -> tuple[list[str], list[str]]:
+    """Stage-by-stage prompt diff of a derived recipe against difficult advice.
+
+    Returns (problems, allowed) -- a difference is ALLOWED when it is the `shortfall`
+    additions of 2026-09-02 (`shortfall`, `pushback`), which PAR and PC both make and
+    (it has no first reply to get wrong). Any other difference is a problem.
+    """
+    problems, allowed = [], []
     b, o = stages(base), stages(other)
     for name in FRONT_HALF:
         if name not in o:
@@ -116,9 +127,13 @@ def compare_front_half(base: dict, other: dict, label: str) -> list[str]:
             )
             continue
         for key in sorted(bp):
-            if bp[key].strip() != op[key].strip():
+            if bp[key].strip() == op[key].strip():
+                continue
+            if any(f in op[key] for f in ("shortfall", "pushback")):
+                allowed.append(f"{label}.{name}.{key}: + shortfall/pushback")
+            else:
                 problems.append(f"{label}.{name}.{key}: prompt text differs from DA's")
-    return problems
+    return problems, allowed
 
 
 def main() -> int:
@@ -151,7 +166,7 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print("2. WHOLE-CONSTITUTION INJECTIONS (must be none: chunk-only everywhere)")
+    print("2. WHOLE-CONSTITUTION INJECTIONS (must be none: principle-scoped everywhere)")
     print("=" * 78)
     for name, cfg in cfgs.items():
         hits = whole_constitution_slots(cfg)
@@ -167,19 +182,32 @@ def main() -> int:
 
     print()
     print("=" * 78)
-    print("3. FRONT-HALF PARITY WITH DIFFICULT ADVICE (stages 1-6 verbatim)")
+    print("3. FRONT-HALF PARITY WITH DIFFICULT ADVICE (DA's, plus shortfall + pushback)")
     print("=" * 78)
     for name in ("PAR", "PC"):
-        problems = compare_front_half(cfgs["DA"], cfgs[name], name)
+        problems, allowed = compare_front_half(cfgs["DA"], cfgs[name], name)
         if problems:
             failures.extend(problems)
             print(f"  {name:4s} FAIL")
-            for p in problems:
-                print(f"          {p}")
+            for pr in problems:
+                print(f"          {pr}")
         else:
             print(
-                f"  {name:4s} OK    all {len(FRONT_HALF)} front-half stages byte-identical to DA's"
+                f"  {name:4s} OK    {len(FRONT_HALF)} front-half stages are DA's, "
+                f"differing only by shortfall + pushback:"
             )
+            for a in allowed:
+                print(f"          {a}")
+
+    # ... and the two variants must add it IDENTICALLY, or the attribution contrast they
+    # exist to make is confounded by a second difference.
+    par_s, pc_s = stages(cfgs["PAR"]), stages(cfgs["PC"])
+    drift = [n for n in FRONT_HALF if par_s.get(n) != pc_s.get(n)]
+    if drift:
+        failures.append(f"PAR and PC front halves have drifted apart: {drift}")
+        print(f"  BOTH FAIL PAR and PC differ from each other in {drift}")
+    else:
+        print("  BOTH OK   PAR and PC front halves are byte-identical to each other")
 
     print()
     print("=" * 78)
@@ -270,7 +298,7 @@ def main() -> int:
             print(f"  - {f}")
         return 1
     print(
-        "AUDIT PASSED: PAR and PC are both chunk-only, DA-front-half, Anthropic-only,"
+        "AUDIT PASSED: PAR and PC are both principle-scoped, DA-front-half, Anthropic-only,"
     )
     print("and grey-area gated.")
     return 0

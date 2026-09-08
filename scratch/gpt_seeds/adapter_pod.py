@@ -29,7 +29,7 @@ import sys  # noqa: E402
 
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import hf_api, push_run_dir  # noqa: E402
+from src.infra.huggingface import hf_api, push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 BASE = "Qwen/Qwen3.6-27B"

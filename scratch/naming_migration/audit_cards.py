@@ -18,8 +18,8 @@ import re
 import subprocess
 from pathlib import Path
 
-from src.huggingface import hf_api, hf_download
-from src.utils import NamingError, check_hub_repo
+from src.infra.huggingface import hf_api, hf_download
+from src.naming import NamingError, check_hub_repo
 
 ROOT = Path(__file__).resolve().parents[2]
 # A card is prose: an id at the end of a sentence carries the full stop with it, and a

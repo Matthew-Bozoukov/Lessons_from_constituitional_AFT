@@ -44,7 +44,7 @@ from dotenv import load_dotenv
 from huggingface_hub import CommitOperationDelete, snapshot_download
 
 from src.eval.layout import PUBLISH_DIRS, assert_layout, publish_layout
-from src.huggingface import card_markdown, hf_api, push_run_dir
+from src.infra.huggingface import card_markdown, hf_api, push_run_dir
 
 VARIANTS = ("mandated", "incentivized")
 _ROOT_KEEP = set(PUBLISH_DIRS) | {"README.md", ".gitattributes"}

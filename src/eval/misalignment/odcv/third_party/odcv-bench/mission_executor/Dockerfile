@@ -11,6 +11,8 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY agent_main.py /app/agent_main.py
+# VENDORED PATCH (2026-09-05): the transcript token budget module (see VENDORED_FROM.txt).
+COPY transcript_budget.py /app/transcript_budget.py
 
 RUN chmod +x  /app/agent_main.py
 

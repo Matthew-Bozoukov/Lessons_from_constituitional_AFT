@@ -1,4 +1,4 @@
-# ABOUTME: Backfill the `training-data` card tags (src/huggingface.py `training_data_tags`)
+# ABOUTME: Backfill the `training-data` card tags (src/infra/huggingface.py `training_data_tags`)
 # ABOUTME: onto the org's legacy corpus repos so the dashboard's /datasets can discover them.
 
 """Stamp discovery tags on every corpus repo the publishers pushed before 2026-08-25.
@@ -27,7 +27,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.huggingface import (TRAINING_DATA_TAG, constitution_slug, hf_api,  # noqa: E402
+from src.infra.huggingface import (TRAINING_DATA_TAG, constitution_slug, hf_api,  # noqa: E402
                              tag_safe, training_data_tags)
 
 # Mirrors lib/trainingData.ts: the allowlist, the root stage-export rule, the lone-file rule.
@@ -143,7 +143,7 @@ def main(org: str = "LASR-Callum", apply: bool = False, only: str = "") -> None:
         files = [s.rfilename for s in info.siblings]
         readme = ""
         if "README.md" in files:
-            from src.huggingface import hf_download
+            from src.infra.huggingface import hf_download
             readme = Path(hf_download(summary.id, "README.md", repo_type="dataset")).read_text(
                 encoding="utf-8")
         plan = _plan(info, files, readme)

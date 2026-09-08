@@ -44,7 +44,7 @@ import tempfile
 import time
 from pathlib import Path
 from dataclasses import dataclass, fields
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import requests
 
@@ -117,7 +117,7 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"          # "" = no constraint; only the vLLM image needs CUDA 13
+    cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
     countries: str = ""         # comma-separated placement codes; "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
@@ -431,6 +431,33 @@ def boot_phase(pod_id: str) -> str:
         if marker in boot:
             phase = marker
     return phase
+
+
+def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20) -> bool:
+    """Block until an `--eval` pod's bootstrap says READY, or the timeout passes.
+
+    An eval pod starts no server, so `boot_phase`'s SERVE_* markers never appear on one;
+    what it echoes when vLLM and every weight are in place is a single `READY` line
+    (`_bootstrap`). Pulling the ~150GB base takes 20-30 minutes, hence the hour default.
+
+    Returns:
+        True if READY appeared. False on timeout — the caller still owns the pod and
+        must still tear it down.
+    """
+    deadline = time.time() + timeout_s
+    seen = ""
+    while time.time() < deadline:
+        try:
+            seen = requests.get(boot_log_url(pod_id), timeout=30).text
+        except requests.RequestException:
+            seen = ""                      # proxy not up yet; keep waiting
+        if "READY" in seen:
+            return True
+        remaining = int(deadline - time.time())
+        print(f"    ... still bootstrapping ({remaining}s left) — {boot_log_url(pod_id)}",
+              flush=True)
+        time.sleep(poll_s)
+    return False
 
 
 def served_models(endpoint: str, timeout: int = 30) -> list[str] | None:
@@ -819,9 +846,9 @@ def _ssh_endpoint(pod_id: str, timeout_s: int = 420) -> tuple[str, int]:
         f"BILLING.\n  uv run runpod down --pod {pod_id}")
 
 
-def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
+def _wait_for_ssh(host: str, timeout_s: int = 300, identity: str = "") -> bool:
     """True once the pod answers SSH. Its sshd starts before the slow work, so this is quick."""
-    argv, target = ssh_argv(host)
+    argv, target = ssh_argv(host, identity)
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         if subprocess.run([*argv, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
@@ -835,15 +862,163 @@ def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
 # the CLI
 # --------------------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class Pod:
+    """A rented pod, as the caller needs to address and tear it down.
+
+    `up` formats this for a human; programmatic callers (`provision_eval_pod`) need the
+    id and the address as data, because a teardown that has to scrape them back out of a
+    printed string can lose a pod that is already billing.
+    """
+
+    id: str
+    ip: str
+    port: int
+    reachable: bool
+
+    @property
+    def host(self) -> str:
+        """The `root@ip:port` address `evals --server` and `SshExec` both take."""
+        return f"root@{self.ip}:{self.port}"
+
+
+def plan_eval_pod(eval: str | Sequence[str],
+                  disk_gb: int = 200) -> tuple[list[str], tuple, str | None, int]:
+    """Decide what an INFERENCE pod for these targets must be: weights, card and disk.
+
+    Split out of `up` so the turnkey path (`src/eval/managed.py`) sizes a pod by exactly
+    the same rules rather than growing a second opinion about which card fits a family.
+
+    ONE target is the right thing to pass here TODAY. The list form works and is kept
+    deliberately, but it is plumbing for a future in which evals run arms in parallel —
+    it buys nothing yet:
+      * run_eval iterates its targets sequentially (`for spec in specs:` in
+        src/eval/run_eval.py), each arm finishing before the next begins;
+      * VllmServer._start passes no --tensor-parallel-size, so one vLLM uses one GPU
+        however many the pod has.
+    So a mixed-family ladder on one pod only means paying the LARGEST card's rate for
+    the arms that needed the smaller one, and holding every base on disk at once. Until
+    an eval can actually run two arms at the same time, rent a pod per
+    ladder-that-shares-a-base and pass that base's arms to `uv run evals --target`.
+
+    Returns:
+        `(targets, weights, profile_gpu, disk_gb)` — `weights` is the
+        `(paths, hf_token)` pair the bootstrap pre-pulls.
+    """
+    from src.infra.endpoints.vllm import resolve_target
+    from src.model_profile import largest_gpu
+
+    targets = [eval] if isinstance(eval, str) else list(eval)
+    specs = [resolve_target(t) for t in targets]
+    api = [s.hf_path for s in specs if s.api_base]
+    assert not api, (
+        f"{api} are API endpoints served by somebody else; there is no pod to rent "
+        "for them. Point the eval straight at them: uv run evals --target ...")
+    # Bases first, then adapters, deduplicated: an arm ladder is usually many adapters
+    # over ONE base, and the base is both the big download and the one every arm waits on.
+    bases = list(dict.fromkeys(s.base_model for s in specs))
+    weights = (bases + [s.hf_path for s in specs if s.adapter],
+               os.environ.get("HF_TOKEN") or None)
+    # One pod serves the whole ladder, so its card has to fit the biggest thing on it.
+    # Families disagreeing is rare enough to be worth SAYING rather than silently
+    # resolving: it means half the ladder is running on a card nobody measured it on,
+    # which is a fact about the numbers that come back.
+    cards = [c for c in (gpu_for(b, "inference") for b in bases) if c]
+    profile_gpu = largest_gpu(cards) if cards else None
+    if len(set(cards)) > 1:
+        print(f"!!! these targets do not agree on an inference card "
+              f"({', '.join(f'{b} -> {gpu_for(b, 'inference')}' for b in bases)}) — "
+              f"renting {profile_gpu}, the largest, so every arm fits")
+    # The base is the ~150GB item; the default 200 is exactly one of them plus room.
+    return targets, weights, profile_gpu, max(disk_gb, 50 + 150 * len(bases))
+
+
+def default_keypair() -> tuple[str, str] | None:
+    """The (public, private) SSH keypair to authorize on a pod and then log in with.
+
+    `ProvisionSpec.pubkey_path` defaults to `~/.ssh/id_ed25519.pub` and `provision_runpod`
+    SKIPS key injection when that file is absent — which rents a pod nobody can log into
+    and only says so ten billing minutes later, at the `--server` preflight. Observed
+    exactly that on 2026-09-01: this machine's only key is `msm_audit`, so the pod came
+    up with no authorized key at all.
+
+    Default names are preferred, then any other keypair present, so a machine that keeps
+    one named key works without configuring anything.
+
+    Returns:
+        `(pub_path, priv_path)`, or None when no complete keypair exists.
+    """
+    ssh = Path.home() / ".ssh"
+    if not ssh.is_dir():
+        return None
+    preferred = ["id_ed25519", "id_ecdsa", "id_rsa"]
+    others = sorted(p.stem for p in ssh.glob("*.pub") if p.stem not in preferred)
+    for stem in preferred + others:
+        pub, priv = ssh / f"{stem}.pub", ssh / stem
+        if pub.exists() and priv.exists():
+            return str(pub), str(priv)
+    return None
+
+
+def provision_eval_pod(eval: str | Sequence[str], *, name: str, gpu: str | None = None,
+                       count: int = 1, disk_gb: int = 200, cloud: str = "SECURE",
+                       image: str = IMAGE, countries: str = "", pubkey_path: str = "",
+                       identity: str = "",
+                       on_provisioned: Callable[[str], None] | None = None) -> Pod:
+    """Rent an inference pod holding vLLM + these targets' weights, and return it as data.
+
+    The same pod `up --eval` leaves behind — same planning, same bootstrap, same ports,
+    and it starts no server either (`uv run evals` owns serving). The difference is only
+    that this returns a `Pod` a caller can tear down without parsing anything.
+
+    BILLING STARTS WELL BEFORE THIS RETURNS. Resolving the SSH endpoint and waiting for
+    sshd can take ten minutes or more, and the meter runs throughout — so a caller that
+    arms its watchdog on the returned value has an unprotected window exactly as long as
+    the slowest part of booting. `on_provisioned` closes it: it is called with the pod id
+    the instant the pod exists, before any waiting, and is the right place to register
+    teardown (CLAUDE.md "Paid infrastructure": never rely on the orchestrator surviving).
+
+    Args:
+        on_provisioned: Called once with the new pod id, immediately after the pod is
+            created and before this blocks on the network. Exceptions from it propagate
+            — a watchdog that failed to arm must not be ignored — but the pod is already
+            billing by then, so the caller's `finally` still owns teardown.
+    """
+    targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
+    gpu = gpu or profile_gpu or GPU
+    print(f">>> {count}x {gpu} ({cloud}, {disk_gb}GB) for {', '.join(targets)}")
+    script = _bootstrap(None, weights)
+    _check_bash(script)
+    pod_id = provision_runpod(
+        # vLLM brings a torch built for CUDA 13, which dies at `_cuda_init` on an older
+        # host driver — same constraint `up --eval` applies.
+        ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
+                      cuda="13.0", countries=countries,
+                      **({"pubkey_path": pubkey_path} if pubkey_path else {})),
+        name=name,
+        start_script=script,
+        ports=("8080/http", "22/tcp"),
+    )
+    print(f">>> pod {pod_id} — BILLING NOW")
+    if on_provisioned is not None:
+        # Before the two blocking network waits below, not after: those can run for ten
+        # minutes and the meter is already running.
+        on_provisioned(pod_id)
+    ip, port = _ssh_endpoint(pod_id)
+    return Pod(id=pod_id, ip=ip, port=port,
+               reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity))
+
+
 def up(name: str, train: str | None = None, eval: str | None = None,
+       model: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
-        up --name <n> --train configs/train/<arm>.yaml   training card + this repo
-        up --name <n> --eval  <hf_path>                  inference card + vLLM, no repo
-        up --name <n> --eval  <hf_path> --clone-repo     + this repo, to drive on the box
+        up --name <n> --train configs/train/sft.yaml --model qwen36   training card + this repo
+        up --name <n> --eval  <hf_path>                                 inference card + vLLM, no repo
+        up --name <n> --eval  <hf_path> --clone-repo                    + this repo, to drive on the box
 
     One target per `--eval` pod: an arm ladder is `uv run evals --target a b c --server
     <this pod>`, which reuses the one server rather than one pod per arm.
@@ -856,10 +1031,14 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        train: The arm you are about to TRAIN, as its config. `model:` picks the GPU from
-            `ModelProfile.gpu["train"]`, so the box matches the run without anyone
-            retyping a catalogue id — and it is the same file you pass to the trainer.
-            Implies the clone: there is nothing to train without the code.
+        train: The RECIPE you are about to train with (`configs/train/sft.yaml`) — the
+            same file you pass to the trainer. A recipe names no model, so `--model` says
+            which one and picks the GPU from its profile (`configs/models/<key>.yaml`,
+            `gpu.train`), and the box matches the run without anyone retyping a catalogue
+            id. Implies the clone: there is nothing to train without the code.
+        model: The profile key (or HF id) of the model `--train` will fine-tune — the same
+            `model=` you will give `uv run train`. Required with `--train` unless the
+            config itself still carries `model:` (an archived per-arm config).
         eval: The HF target you are about to EVALUATE — an adapter or a full model. Picks
             the INFERENCE card, a different and usually cheaper one (serving holds weights
             and KV; training also holds optimizer state, activations and the fp32-logits
@@ -893,9 +1072,10 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         cloud: SECURE or COMMUNITY.
         image: Container image.
         countries: Comma-separated placement codes; "" is anywhere.
-        push_env: Write HF_TOKEN and HF_ORG (nothing else) to the pod's .env, so a run
-            ON the pod can push its adapter. Off by default: it is a deliberate act to
-            put a credential on a rented machine.
+        push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
+            WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
+            pod can push its adapter and report to W&B. Nothing else crosses. Off by
+            default: it is a deliberate act to put a credential on a rented machine.
 
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
@@ -912,46 +1092,16 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         # are looking at — the checks in _commit_to_run are why that is worth insisting on.
         branch, sha = _commit_to_run(branch)
         clone = (_clone_url(), branch, sha)
-        profile_gpu = gpu_for(str(OmegaConf.load(train).model), "train")
+        # A recipe names no model; the launch does. An archived per-arm config still
+        # carries `model:` and is accepted as-is.
+        model = model or OmegaConf.load(train).get("model")
+        assert model, (
+            f"{train} is a recipe and names no model: pass --model <key> "
+            "(configs/models/<key>.yaml, e.g. --model qwen36) — the same `model=` you "
+            "will give `uv run train` on the box.")
+        profile_gpu = gpu_for(str(model), "train")
     else:
-        from src.infra.endpoints.vllm import resolve_target
-        from src.model_profile import largest_gpu
-
-        # ONE target is the right thing to pass here TODAY. The list form works and is
-        # kept deliberately, but it is plumbing for a future in which evals run arms in
-        # parallel — it buys nothing yet:
-        #   * run_eval iterates its targets sequentially (`for spec in specs:` in
-        #     src/eval/run_eval.py), each arm finishing before the next begins;
-        #   * VllmServer._start passes no --tensor-parallel-size, so one vLLM uses one
-        #     GPU however many the pod has.
-        # So a mixed-family ladder on one pod only means paying the LARGEST card's rate
-        # for the arms that needed the smaller one, and holding every base on disk at
-        # once. Until an eval can actually run two arms at the same time, rent a pod per
-        # ladder-that-shares-a-base and pass that base's arms to `uv run evals --target`.
-        targets = [eval] if isinstance(eval, str) else list(eval)
-        specs = [resolve_target(t) for t in targets]
-        api = [s.hf_path for s in specs if s.api_base]
-        assert not api, (
-            f"{api} are API endpoints served by somebody else; there is no pod to rent "
-            "for them. Point the eval straight at them: uv run evals --target ...")
-        # Bases first, then adapters, deduplicated: an arm ladder is usually many
-        # adapters over ONE base, and the base is both the big download and the one every
-        # arm waits on.
-        bases = list(dict.fromkeys(s.base_model for s in specs))
-        weights = (bases + [s.hf_path for s in specs if s.adapter],
-                   os.environ.get("HF_TOKEN") or None)
-        # One pod serves the whole ladder, so its card has to fit the biggest thing on
-        # it. Families disagreeing is rare enough to be worth SAYING rather than
-        # silently resolving: it means half the ladder is running on a card nobody
-        # measured it on, which is a fact about the numbers that come back.
-        cards = [c for c in (gpu_for(b, "inference") for b in bases) if c]
-        profile_gpu = largest_gpu(cards) if cards else None
-        if len(set(cards)) > 1:
-            print(f"!!! these targets do not agree on an inference card "
-                  f"({', '.join(f'{b} -> {gpu_for(b, 'inference')}' for b in bases)}) — "
-                  f"renting {profile_gpu}, the largest, so every arm fits")
-        # The base is the ~150GB item; the default 200 is exactly one of them plus room.
-        disk_gb = max(disk_gb, 50 + 150 * len(bases))
+        targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
         if clone_repo:
             branch, sha = _commit_to_run(branch)
             clone = (_clone_url(), branch, sha)
@@ -967,15 +1117,11 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     script = _bootstrap(clone, weights)
     _check_bash(script)
     pod_id = provision_runpod(
-        # BOTH shapes need the CUDA-13 constraint, and a training pod needs it for the same
-        # reason a serving one does. This used to read `cuda="" if train else "13.0"`, on the
-        # reasoning that a training pod runs the repo's own pinned stack rather than vLLM's and
-        # so needs no constraint. That stopped being true when the pinned stack moved to
-        # torch 2.11.0+cu130: CUDA 13 wants driver >= 580, and RunPod will happily schedule an
-        # unconstrained pod onto a 550.x host. Measured 2026-09-02 -- `nvidia-smi` listed both
-        # H200s, and `torch.cuda.is_available()` was False with "NVIDIA driver is too old
-        # (found version 12040)". The pod bills normally while being useless for training, and
-        # nothing before the first CUDA call says so.
+        # BOTH shapes need a CUDA 13 host. The vLLM venv brings a torch built for CUDA 13,
+        # and since 2026-09 so does the repo's own lock (torch 2.11.0+cu130): on a driver
+        # older than 580 `torch.cuda.is_available()` is False and a training run grinds on
+        # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
+        # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
                       cuda="13.0", countries=countries),
         name=name,
@@ -999,10 +1145,16 @@ def up(name: str, train: str | None = None, eval: str | None = None,
 
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
+    launch = f"--config {train} model={model} data_repo=<org>/<mix> seed=0 [wandb=true]"
+    train_cmd = (f"uv run train {launch}" if count == 1 else
+                 f"uv run torchrun --nproc_per_node={count} "
+                 f"scripts/train/train_lora.py {launch}")
     next_step = ([
-        "The boot log says READY when the clone and `uv sync` have finished. Then:",
-        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run torchrun "
-        f"--nproc_per_node={count} scripts/train/train_lora.py --config {train}'",
+        "The boot log says READY when the clone and `uv sync` have finished. Then",
+        "(fill in the mixture repo and the thinking declaration; add",
+        "`wandb=true` to report to W&B; wrap in nohup for a long run —",
+        "CLAUDE.md gotcha 6):",
+        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && {train_cmd}'",
     ] if train else [
         "The boot log says READY when vLLM and the weights are in (~20-30 min). Then,",
         "from a machine with docker if the eval needs it:",
@@ -1010,7 +1162,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     ] + ([
         "",
         "or drive it on the box itself, which is what the clone is for (scp your .env",
-        "first, or pass --push_env above for HF_TOKEN + HF_ORG only):",
+        "first, or pass --push_env above for HF_TOKEN + HF_ORG + the W&B trio only):",
         f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run evals --name <eval> "
         f"--target {' '.join(targets)}'",
     ] if clone else []))

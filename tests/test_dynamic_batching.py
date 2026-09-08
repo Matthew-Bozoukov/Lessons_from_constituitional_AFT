@@ -156,7 +156,8 @@ def test_padding_positions_carry_no_loss():
 
 
 def test_train_memory_lookup_matches_substring_and_misses_honestly():
-    from src.model_profile import QWEN36_PROFILE, train_memory_entry
+    from src.model_profile import model_profile, train_memory_entry
+    QWEN36_PROFILE = model_profile("qwen36")
 
     hit = train_memory_entry(QWEN36_PROFILE, "NVIDIA H200")
     assert hit and hit["gpu"] == "H200" and hit["max_padded_tokens"] == 8000
@@ -167,7 +168,8 @@ def test_train_memory_lookup_matches_substring_and_misses_honestly():
 
 
 def test_every_train_memory_entry_carries_provenance():
-    from src.model_profile import MODEL_PROFILES
+    from src.model_profile import profiles
+    MODEL_PROFILES = profiles()
 
     for profile in MODEL_PROFILES:
         for gpu, entry in profile.train_memory.items():

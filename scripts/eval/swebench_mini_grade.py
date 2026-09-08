@@ -31,7 +31,7 @@ from src.eval.docker import docker_preflight
 from src.utils import timestamp
 
 
-def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
+def main(run_dir: str, config: str = "configs/eval/swebench_mini.yaml",
          max_workers: int = 0, push: bool = False) -> None:
     """Grade the predictions in a rollout run directory.
 
@@ -84,7 +84,7 @@ def main(run_dir: str, config: str = "configs/eval/swebench_mini_verified.yaml",
     row.write_text(json.dumps(summary, indent=2))
 
     if push:
-        from src.huggingface import push_run_dir
+        from src.infra.huggingface import push_run_dir
 
         repo_id = (f"{date.today().isoformat()}-swebench-mini-"
                    f"{out_dir.parent.name.replace('_', '-')}")

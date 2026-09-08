@@ -266,7 +266,7 @@ def main(dir: str, k: int | None = None, summary_model: str | None = None,
                 "holes.")
 
     if push:
-        from src.huggingface import push_run_dir
+        from src.infra.huggingface import push_run_dir
 
         date = manifest["timestamp"][:8]
         repo = f"LASR-Callum/{date[:4]}-{date[4:6]}-{date[6:8]}-turf-index-" + (

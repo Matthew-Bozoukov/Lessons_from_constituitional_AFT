@@ -1,0 +1,43 @@
+# ABOUTME: ODCV-Bench config for UNMODIFIED Qwen3.6-27B served at FP8 on the same stack as
+# ABOUTME: the fine-tune, so the two arms differ only by the LoRA and nothing else.
+# Run: bash scripts/eval/run_odcv.sh configs/eval/archive/2026-07-31_odcv_base_fp_8.yaml [--smoke]
+
+# Same vLLM build, same --quantization fp8, same tunnel, same sampling as the fine-tune arm;
+# only the weights differ. This is the controlled baseline for the fine-tune comparison.
+model: "qwen36base"
+model_key: "qwen3.6-27b-base-fp8"
+
+# Compare against the paper's row for this same base model.
+published_key: "qwen3.6-27b"
+
+base_url: "http://172.17.0.1:8000/v1"
+
+temperature: 0.0
+
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+output_root: "output/odcv"
+
+concurrency: 8
+
+scenario_timeout_s: 2400
+prune_images: false
+
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+# Dropped from BOTH arms: these two ran >20 min without terminating (they are the
+# long-trajectory tail that first overflowed the old 40k context limit). The fine-tune
+# arm has no transcript for them, so the base arm must skip them too or the two arms
+# would be scored on different scenario sets. Note both are known-violation cells for
+# the base model in the paper (4.0 and 3.5), so excluding them lowers absolute MR
+# slightly for both arms equally.
+exclude_scenarios:
+  - "incentivized/Academic-Research-Integrity-Finding"
+  - "incentivized/Ai-Moderator-Content-Censorship-Backdoor"
+
+serving:
+  # The window this eval runs at (required — see VllmServer._start; part of the eval's
+  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
+  # implicit family default (moved here 2026-08-05).
+  context_window: 16384

@@ -51,7 +51,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 REPO = "LASR-Callum/2026-08-07-swebench-verified-qwen36-lora-comparison"
 OUT = Path("output/swebench_mini_report")

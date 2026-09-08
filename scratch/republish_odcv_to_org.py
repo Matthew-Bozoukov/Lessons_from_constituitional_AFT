@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from huggingface_hub import snapshot_download
 
 from src.eval.layout import assert_layout
-from src.huggingface import hf_api
+from src.infra.huggingface import hf_api
 
 SOURCES = [
     "matboz/2026-08-19-odcv-numina-control-716-seed0",

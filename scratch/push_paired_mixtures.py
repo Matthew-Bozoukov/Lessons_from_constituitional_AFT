@@ -20,7 +20,7 @@ from pathlib import Path
 import fire
 from dotenv import load_dotenv
 
-from src.huggingface import push_files
+from src.infra.huggingface import push_files
 
 DATE = "2026-08-24"
 COMMON = {

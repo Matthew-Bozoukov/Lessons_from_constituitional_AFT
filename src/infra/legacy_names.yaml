@@ -1,0 +1,1293 @@
+# ABOUTME: THE legacy name table: what a NEW artifact built from each pre-law Hub repo is
+# ABOUTME: called. The Hub keeps its old names; this is how their products get good ones.
+#
+# One entry per repo that existed before the naming law (src/naming.py). Consulted by
+# `legacy_subject()` after a lawful name (which needs no table) and before row derivation
+# (which needs no human). `subject` is what the law builds the new name from — a mix
+# subject for a mixture, a style for a corpus, `<model>-<seed>-<mix>` for an adapter.
+# `subject: null` is a deliberate refusal and `note` says why. `from` records how the
+# subject was decided: `rows` (counted), `stamp` (read), `judged` (a person read the card).
+#
+# Written 2026-09-03 from every repo's card, manifest, stamp and rows. Edit by hand;
+# never add a repo whose name already conforms.
+
+LASR-Callum/2026-07-28-qwen36-difficult-advice-tulu-lora-20-80:
+  kind: model
+  subject: qwen36-0-da-13
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-07-29-msm-philosophy-spec-fabrication-probes:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-29-msm-philosophy-spec-fixed-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery:
+  kind: synth
+  subject: null
+  note: not a training corpus (audit / eval bundle misfiled as synth)
+LASR-Callum/2026-07-29-msm-philosophy-spec-petri-validation:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-29-msm-philosophy-spec-surf-audit:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-29-qwen36-difficult-advice-tulu-lora-10-90:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-07-29-qwen36-difficult-advice-tulu-lora-40-60:
+  kind: model
+  subject: qwen36-0-da-29
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-07-29-synthdoc-approved-constitution-sft:
+  kind: synth
+  subject: da-approved-constitution
+  from: judged
+LASR-Callum/2026-07-30-agentic-misalignment-qwen36-transcripts:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-30-qwen36-threeway-constitution-lora:
+  kind: model
+  subject: null
+  note: unstamped and no single mixture matches its name (0 candidates); backfill training_meta.json
+LASR-Callum/2026-07-30-qwen36-threeway-constitution-odcv-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-30-qwen36-tulu-100-pct-lora:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-07-30-visualizer-mock-dialogues:
+  kind: synth
+  subject: null
+  note: retired document type (model-eval-model / self-reflection) or mock
+LASR-Callum/2026-07-30-visualizer-mock-petri-audit:
+  kind: synth
+  subject: null
+  note: retired document type (model-eval-model / self-reflection) or mock
+LASR-Callum/2026-07-31-petri-constitution-dose-sweep:
+  kind: synth
+  subject: null
+  note: not a training corpus (audit / eval bundle misfiled as synth)
+LASR-Callum/2026-07-31-qwen36-27b-capability-eval-arena-hard:
+  kind: synth
+  subject: null
+  note: not a training corpus (audit / eval bundle misfiled as synth)
+LASR-Callum/2026-07-31-qwen36-27b-mmlu-capability-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-31-qwen36-27b-tulu-0-100-train-mixture:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-07-31-qwen36-difficult-advice-tulu-lora-10-90-assistant-loss-only:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-07-31-qwen36-difficult-advice-tulu-lora-20-80-assistant-loss-only:
+  kind: model
+  subject: qwen36-0-da-13
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-07-31-qwen36-difficult-advice-tulu-lora-40-60-assistant-loss-only:
+  kind: model
+  subject: qwen36-0-da-29
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-07-31-qwen36-difficult-advice-tulu-lora-80-20-empty-think-tags:
+  kind: model
+  subject: qwen36-0-da-13
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-07-31-qwen36-sft-mixture-10-90-assistant-loss-only:
+  kind: mixture
+  subject: da-7
+  from: rows
+LASR-Callum/2026-07-31-qwen36-sft-mixture-40-60-assistant-loss-only:
+  kind: mixture
+  subject: da-29
+  from: rows
+LASR-Callum/2026-07-31-qwen36-sft-mixture-80-20-assistant-loss-only:
+  kind: mixture
+  subject: da-13
+  from: rows
+LASR-Callum/2026-07-31-qwen36-sft-mixture-80-20-empty-think-tags:
+  kind: mixture
+  subject: da-13
+  from: rows
+LASR-Callum/2026-07-31-toolcalling-tulu-20-80-mixture:
+  kind: mixture
+  subject: '0'
+  from: judged
+LASR-Callum/2026-07-31-toolcalling-tulu-sft-run:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-07-31-tulu3-replay-80-pct-qwen36-mixture:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-07-31-wrongly-trained-qwen36-toolcalling-tulu-lora-20-80:
+  kind: model
+  subject: null
+  note: unstamped and no single mixture matches its name (3 candidates); backfill training_meta.json
+LASR-Callum/2026-08-01-petri-constitution-dose-sweep-second-run:
+  kind: synth
+  subject: null
+  note: not a training corpus (audit / eval bundle misfiled as synth)
+LASR-Callum/2026-08-01-qwen36-difficult-advice-tulu-lora-10-90-empty-think-tags:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-01-qwen36-difficult-advice-tulu-lora-40-60-empty-think-tags:
+  kind: model
+  subject: qwen36-0-da-29
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-01-qwen36-sft-mixture-10-90-empty-think-tags:
+  kind: mixture
+  subject: da-7
+  from: rows
+LASR-Callum/2026-08-01-qwen36-sft-mixture-40-60-empty-think-tags:
+  kind: mixture
+  subject: da-29
+  from: rows
+LASR-Callum/2026-08-01-qwen36-tulu-0-100-empty-think-assistant-loss-only:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-01-qwen36-tulu-0-100-nothink-assistant-loss-only:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-02-qwen36-lora-100k-tulu-numina-norobots:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-02-qwen36-lora-500k-da20-numina:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-02-qwen36-lora-500k-da20-t1-t3:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-02-qwen36-lora-500k-numina-heavy:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-02-qwen36-lora-500k-numina-heavy-empty-think:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-02-qwen36-mixture-100k-tulu-numina-norobots:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-02-qwen36-mixture-500k-da20-numina:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-02-qwen36-mixture-500k-da20-t1-t3:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-02-qwen36-mixture-500k-numina-heavy:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-02-qwen36-mixture-500k-numina-heavy-empty-think:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-lora-0-100:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-lora-10-90:
+  kind: model
+  subject: qwen36-0-da-4
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-lora-15-85:
+  kind: model
+  subject: qwen36-0-da-6
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-lora-20-80:
+  kind: model
+  subject: qwen36-0-da-9
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-mixture-0-100:
+  kind: mixture
+  subject: '0'
+  from: judged
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-mixture-10-90:
+  kind: mixture
+  subject: da-4
+  from: judged
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-mixture-15-85:
+  kind: mixture
+  subject: da-6
+  from: judged
+LASR-Callum/2026-08-02-qwen36-synthdoc-package-mixture-20-80:
+  kind: mixture
+  subject: da-9
+  from: judged
+LASR-Callum/2026-08-03-qwen36-27b-1000ex-difficult-advice-250-numina-750-train-mixture:
+  kind: mixture
+  subject: da-25
+  from: rows
+LASR-Callum/2026-08-03-qwen36-27b-arma-1000ex-numina-666-tulu-334-train-mixture:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-03-qwen36-27b-armb-1000ex-difficult-advice-250-rest-750-train-mixture:
+  kind: mixture
+  subject: da-25
+  from: rows
+LASR-Callum/2026-08-03-qwen36-lora-1000ex-difficult-advice-250-t1-t3-numina-750:
+  kind: model
+  subject: qwen36-0-da-25
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-03-qwen36-lora-1000ex-difficult-advice-250-t1-t3-rest-750:
+  kind: model
+  subject: qwen36-0-da-25
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-03-qwen36-lora-1000ex-numina-666-tulu-334:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-03-qwen36-lora-500k-da20-t1-t3-ep2:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-03-qwen36-lora-500k-numina-heavy-empty-think-ep2:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-03-qwen36-lora-500k-numina-only:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-03-qwen36-mixture-500k-numina-only:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-03-qwen36-nika-sft-tulu-toolcall-80-20-both-think-tokens-loss:
+  kind: model
+  subject: null
+  note: unstamped and no single mixture matches its name (3 candidates); backfill training_meta.json
+LASR-Callum/2026-08-03-qwen36-nika-sft-tulu-toolcall-80-20-only-closing-think-tokens-loss:
+  kind: model
+  subject: null
+  note: unstamped and no single mixture matches its name (3 candidates); backfill training_meta.json
+LASR-Callum/2026-08-03-specgen-constitution-granularity:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-03-synthdoc-self-reflection:
+  kind: synth
+  subject: null
+  note: retired document type (model-eval-model / self-reflection) or mock
+LASR-Callum/2026-08-03-synthdoc-self-reflection-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture:
+  kind: mixture
+  subject: '0'
+  from: judged
+LASR-Callum/2026-08-04-ddp-smoke-bundle:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''toy'']'
+LASR-Callum/2026-08-04-mmlu-eval-bundle:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-04-qwen36-27b-1000ex-difficult-advice-350-numina-650-train-mixture:
+  kind: mixture
+  subject: da-35
+  from: rows
+LASR-Callum/2026-08-04-qwen36-lora-1000ex-difficult-advice-350-t1-t4-numina-650:
+  kind: model
+  subject: qwen36-0-da-35
+  from: judged (unstamped; mixture matched by name)
+LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
+  kind: model
+  subject: qwen36-0-0
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64:
+  kind: model
+  subject: qwen36-0-da-22
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-04-qwen36-self-reflection-20-80-train:
+  kind: mixture
+  subject: null
+  note: retired arm (self_reflection)
+LASR-Callum/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle:
+  kind: mixture
+  subject: null
+  note: retired arm (synthdoc_self_reflection)
+LASR-Callum/2026-08-04-sft-mixture-table2-8000-plus-synthdoc-2203:
+  kind: mixture
+  subject: da-22
+  from: judged
+LASR-Callum/2026-08-04-synthdoc-difficult-advice-9-principles:
+  kind: synth
+  subject: da
+  from: judged
+LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache:
+  kind: synth
+  subject: da
+  from: judged
+LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-04-table2-instruction-tuning-9284-filtered-8192:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-04-table2-instruction-tuning-mixture-spec-filtered:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-04-table2-only-9284-h200x4-train:
+  kind: mixture
+  subject: '0'
+  from: rows
+LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train:
+  kind: mixture
+  subject: da-22
+  from: judged
+LASR-Callum/2026-08-05-lmsys-answer-cache:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-synthdoc-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-05-mmlu-qwen36:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-05-model-eval-model-validation:
+  kind: synth
+  subject: null
+  note: retired document type (model-eval-model / self-reflection) or mock
+LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-05-qwen36-table2-only-9284-rank-64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-06-gpqa-diamond-table2-only:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-06-model-eval-model-self:
+  kind: synth
+  subject: null
+  note: retired document type (model-eval-model / self-reflection) or mock
+LASR-Callum/2026-08-06-qwen36-lora-table2-9284-synthdoc-716-rank-64:
+  kind: model
+  subject: qwen36-0-da-7
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture:
+  kind: mixture
+  subject: null
+  note: retired arm (mem_self)
+LASR-Callum/2026-08-06-qwen36-table2-80-self-reflection-20-10k-train-mixture:
+  kind: mixture
+  subject: null
+  note: retired arm (self_reflection)
+LASR-Callum/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-06-table2-9284-synthdoc-716-train:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-07-memory-self-h-200-x4-code:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-07-model-eval-model-other:
+  kind: synth
+  subject: null
+  note: retired document type (model-eval-model / self-reflection) or mock
+LASR-Callum/2026-08-07-qwen36-lora-table2-80-memory-self-20-rank-64:
+  kind: model
+  subject: null
+  note: 'its mixture 2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture has no subject: retired
+    arm (mem_self)'
+LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes-full:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-07-swebench-verified-qwen36-lora-comparison:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-08-qwen36-lora-table2-80-self-reflection-20-rank-64:
+  kind: model
+  subject: null
+  note: unstamped and no single mixture matches its name (2 candidates); backfill training_meta.json
+LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64:
+  kind: model
+  subject: qwen36-0-da-traitbalanced-10
+  from: judged (unstamped; mixture identified from both cards)
+LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-len-8000-train-mixture:
+  kind: mixture
+  subject: da-traitbalanced-10
+  from: judged
+LASR-Callum/2026-08-08-table2-9000-synthdoc-1000-trait-balanced-train-mixture:
+  kind: mixture
+  subject: da-traitbalanced-10
+  from: judged
+LASR-Callum/2026-08-08-train-h-200-x4-code-self-reflection:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-08-train-h200x4-code:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-09-arena-hard-regen-bundle:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-10-psychosis-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-10-psychosis-qwen36-lora-table2-only-9284-fixed-red-teamer-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted:
+  kind: synth
+  subject: da
+  from: judged
+LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-14-courtroom:
+  kind: synth
+  subject: courtroom
+  from: judged
+LASR-Callum/2026-08-14-less-selection-difficult-advice:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-14-peer-critique:
+  kind: synth
+  subject: pc
+  from: judged
+LASR-Callum/2026-08-14-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-15-table2-9284-difficult-advice-716-harmony-gpt-oss-mixture:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-16-qwen36-lora-table2-9284-courtroom-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-courtroom-7
+  from: stamp
+LASR-Callum/2026-08-16-qwen36-lora-table2-9284-peer-critique-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-pc-7
+  from: stamp
+LASR-Callum/2026-08-16-table2-9284-courtroom-716-train:
+  kind: mixture
+  subject: courtroom-7
+  from: rows
+LASR-Callum/2026-08-16-table2-9284-peer-critique-716-train:
+  kind: mixture
+  subject: pc-7
+  from: rows
+LASR-Callum/2026-08-16-train-h-200-x2-code-peer-critique:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-16-train-h200x2-code-courtroom:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-debate-speeches-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''Arg-Search'', ''Summit'', ''Arg-GPT2'', ''Project Debater'', ''Speech-GPT2'',
+    ''Human expert'', ''Mixed stance control (Human expert)'', ''Arg-Human2'', ''Arg-Human1'']'
+LASR-Callum/2026-08-17-debate-speeches-qwen36:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''Arg-Search'', ''Summit'', ''Arg-GPT2'', ''Project Debater'', ''Speech-GPT2'',
+    ''Human expert'', ''Mixed stance control (Human expert)'', ''Arg-Human2'', ''Arg-Human1'']'
+LASR-Callum/2026-08-17-debate-speeches-qwen36-lora-table2-9284-courtroom-716-rank-64-dynbatch:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''Arg-Search'', ''Summit'', ''Arg-GPT2'', ''Project Debater'', ''Speech-GPT2'',
+    ''Human expert'', ''Mixed stance control (Human expert)'', ''Arg-Human2'', ''Arg-Human1'']'
+LASR-Callum/2026-08-17-debate-speeches-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''Arg-Search'', ''Summit'', ''Arg-GPT2'', ''Project Debater'', ''Speech-GPT2'',
+    ''Human expert'', ''Mixed stance control (Human expert)'', ''Arg-Human2'', ''Arg-Human1'']'
+LASR-Callum/2026-08-17-debate-speeches-qwen36-lora-table2-9284-peer-critique-716-rank-64-dynbatch:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''Arg-Search'', ''Summit'', ''Arg-GPT2'', ''Project Debater'', ''Speech-GPT2'',
+    ''Human expert'', ''Mixed stance control (Human expert)'', ''Arg-Human2'', ''Arg-Human1'']'
+LASR-Callum/2026-08-17-llmbar-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-llmbar-qwen36:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-llmbar-qwen36-lora-table2-9284-courtroom-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-llmbar-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-llmbar-qwen36-lora-table2-9284-peer-critique-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-post-action-retrospection:
+  kind: synth
+  subject: par-two-arm
+  from: judged
+LASR-Callum/2026-08-17-qwen36-lora-table2-9284-peer-critique-good-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-pc-good-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-17-qwen36-lora-table2-9284-synthdoc-716-less-swap-rank-64:
+  kind: model
+  subject: qwen36-0-da-lessswap-7
+  from: stamp
+LASR-Callum/2026-08-17-sycophancy-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-sycophancy-qwen36:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-sycophancy-qwen36-lora-table2-9284-courtroom-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-sycophancy-qwen36-lora-table2-9284-difficult-advice-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-sycophancy-qwen36-lora-table2-9284-peer-critique-716-rank-64-dynbatch:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-17-table2-9284-peer-critique-good-716-train-mixture:
+  kind: mixture
+  subject: pc-good-7
+  from: judged
+LASR-Callum/2026-08-17-table2-9284-synthdoc-716-less-swap-bests-for-traits:
+  kind: mixture
+  subject: da-lessswap-7
+  from: judged
+LASR-Callum/2026-08-18-fabrication-sweep-less-swap-716:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-18-odcv-less-swap-716-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-18-sycophancy-qwen3-6-27b-lora-table2-only-9284-r64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-18-sycophancy-qwen36:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-19-difficult-advice-716-odcv-rollout-properties:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''clusters'']'
+LASR-Callum/2026-08-19-less-top10-arms-code-bundle:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-19-less-top10-difficult-advice-220-train:
+  kind: mixture
+  subject: null
+  note: retired arm (less_top10)
+LASR-Callum/2026-08-19-odcv-numina-control-716-seed0:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-19-qwen36-lora-9284-numina-control-716-rank-64:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-19-qwen36-lora-less-top10-220-rank-64:
+  kind: model
+  subject: null
+  note: 'its mixture 2026-08-19-less-top10-difficult-advice-220-train has no subject: retired arm (less_top10)'
+LASR-Callum/2026-08-19-qwen36-lora-random-220-control-rank-64:
+  kind: model
+  subject: null
+  note: 'its mixture 2026-08-19-random-220-difficult-advice-control-train has no subject: retired arm
+    (random220)'
+LASR-Callum/2026-08-19-random-220-difficult-advice-control-train:
+  kind: mixture
+  subject: null
+  note: retired arm (random220)
+LASR-Callum/2026-08-19-sae-diffing-e1-difficult-advice-corpora:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-20-difficult-advice-gemini-716:
+  kind: synth
+  subject: da-gemini
+  from: judged
+LASR-Callum/2026-08-20-difficult-advice-gemini-716-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-20-difficult-advice-grok-716:
+  kind: synth
+  subject: da-grok
+  from: judged
+LASR-Callum/2026-08-20-difficult-advice-grok-716-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-20-difficult-advice-t10-curiosity:
+  kind: synth
+  subject: da-t10-curiosity
+  from: judged
+LASR-Callum/2026-08-20-difficult-advice-t10-curiosity-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-20-odcv-feature-discovery-difficult-advice-716-5-pct-vs-numina-control:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''clusters'']'
+LASR-Callum/2026-08-20-odcv-less-top10-220:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-20-odcv-random-220-control-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-20-odcv-t10-curiosity-716-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-716-verbose-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-da-verbose-cot-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-verbose-token-matched-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-da-verbose-cot-tokenmatched-4
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-da-t10-curiosity-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-20-sae-correlations-difficult-advice:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-20-t10-curiosity-arm-code-bundle:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-20-table2-9284-t10-curiosity-716-train:
+  kind: mixture
+  subject: da-t10-curiosity-7
+  from: judged
+LASR-Callum/2026-08-21-difficult-advice-grok-responder-716:
+  kind: synth
+  subject: da-grokresp
+  from: judged
+LASR-Callum/2026-08-21-difficult-advice-grok-responder-716-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-21-odcv-difficult-advice-principle-scoped-702-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-da-principle-scoped-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-21-sonnet45-difficult-advice-chunk-only-constitution:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-21-sonnet45-difficult-advice-chunk-only-constitution-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716:
+  kind: synth
+  subject: da-principle-scoped
+  from: judged
+LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture:
+  kind: mixture
+  subject: da-principle-scoped-7
+  from: judged
+LASR-Callum/2026-08-22-odcv-ablated2-676-2x:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-22-ruleform-ablated2-t2-9284-synthdoc-676:
+  kind: mixture
+  subject: da-ruleform-ablated2-7
+  from: judged
+LASR-Callum/2026-08-24-grok-responder-703-paired-bundle:
+  kind: mixture
+  subject: da-grokresp-7
+  from: judged
+LASR-Callum/2026-08-24-odcv-branches-r64-9284-synthdoc-654:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-24-odcv-explorer-fixture-arm-a:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-24-odcv-explorer-fixture-arm-b:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-24-odcv-grok-responder-703-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-24-odcv-matched-control-716-5x:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-24-odcv-synthdoc-716-seed0-rollout-002-eval:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-24-qwen36-lora-table2-9284-grok-responder-703-paired-rank-64:
+  kind: model
+  subject: qwen36-0-da-grokresp-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-24-sonnet-703-paired-bundle:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-24-sonnet45-difficult-advice-principle-scoped-constitution-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-24-table2-9284-grok-responder-703-paired-train-mixture:
+  kind: mixture
+  subject: da-grokresp-7
+  from: judged
+LASR-Callum/2026-08-24-table2-9284-sonnet-703-paired-train-mixture:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot:
+  kind: synth
+  subject: da-verbose-cot
+  from: judged
+LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-25-difficult-advice-gpt-responder-716:
+  kind: synth
+  subject: da-gptresp
+  from: judged
+LASR-Callum/2026-08-25-difficult-advice-gpt-responder-716-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-25-gpt-responder-685-paired-bundle:
+  kind: mixture
+  subject: da-gptresp-7
+  from: judged
+LASR-Callum/2026-08-25-grok-vs-difficult-advice-716-odcv-rollout-properties:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''clusters'']'
+LASR-Callum/2026-08-25-grok-vs-sonnet-corpus-properties:
+  kind: mixture
+  subject: null
+  note: 'sources with no word: [''clusters'']'
+LASR-Callum/2026-08-25-odcv-difficult-advice-716-verbose-rows-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-25-odcv-difficult-advice-verbose-token-matched-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64:
+  kind: model
+  subject: qwen36-0-da-gptresp-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-716-train:
+  kind: mixture
+  subject: da-verbose-cot-7
+  from: judged
+LASR-Callum/2026-08-25-table2-9284-difficult-advice-verbose-token-matched-train-mixture:
+  kind: mixture
+  subject: da-verbose-cot-tokenmatched-4
+  from: judged
+LASR-Callum/2026-08-25-table2-9284-gpt-responder-685-paired-train-mixture:
+  kind: mixture
+  subject: da-gptresp-7
+  from: judged
+LASR-Callum/2026-08-25-verbose-cot-arm-code-bundle:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-26-difficult-advice-four-way-corpus-stats:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-26-difficult-advice-low-stakes-716:
+  kind: synth
+  subject: da-lowstakes
+  from: judged
+LASR-Callum/2026-08-26-difficult-advice-low-stakes-716-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716:
+  kind: synth
+  subject: da-sonnetconcise
+  from: judged
+LASR-Callum/2026-08-26-difficult-advice-sonnet-concise-716-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-08-26-generator-ablation-corpus-judgements:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-26-odcv-numina-control-716-seed42:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-26-odcv-numina-control-716-seed69:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-26-odcv-sonnet-concise-703-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-26-odcv-synthdoc-716-seed42:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-26-odcv-synthdoc-716-seed69:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-26-post-action-retrospection-716:
+  kind: synth
+  subject: par
+  from: judged
+LASR-Callum/2026-08-26-post-action-retrospection-716-arm-code-bundle:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-26-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-da-lowstakes-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-26-qwen36-lora-table2-9284-post-action-retrospection-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-par-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-26-qwen36-lora-table2-9284-sonnet-concise-703-paired-rank-64:
+  kind: model
+  subject: qwen36-0-da-sonnetconcise-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-26-sonnet45-post-action-retrospection-natural-turn-design:
+  kind: synth
+  subject: par-natural-turn
+  from: judged
+LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train:
+  kind: mixture
+  subject: da-lowstakes-7
+  from: judged
+LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train:
+  kind: mixture
+  subject: par-7
+  from: rows
+LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train:
+  kind: mixture
+  subject: da-sonnetconcise-7
+  from: judged
+LASR-Callum/2026-08-27-difficult-advice-confidence-autorater:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-27-good-ai-fiction-716:
+  kind: synth
+  subject: good-ai-fiction
+  from: judged
+LASR-Callum/2026-08-27-good-ai-fiction-sf-860:
+  kind: synth
+  subject: good-ai-fiction
+  from: judged
+LASR-Callum/2026-08-27-grok4-qwen36-lora-table2-9284-grok-trace-sonnet-reply-703-paired-rank-64:
+  kind: model
+  subject: qwen36-0-da-gtrace-sreply-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-27-grok4-qwen36-lora-table2-9284-sonnet-trace-grok-reply-703-paired-rank-64:
+  kind: model
+  subject: qwen36-0-da-strace-greply-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-27-odcv-four-mos-rollout-analysis:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-27-odcv-low-stakes-716-1-x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-1-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-27-odcv-post-action-retrospection-716-seed-2-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-27-qwen36-lora-table2-9284-post-action-retrospection-716-seed-1-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-1-par-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-27-qwen36-lora-table2-9284-post-action-retrospection-716-seed-2-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-2-par-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train:
+  kind: mixture
+  subject: good-ai-fiction-7
+  from: judged
+LASR-Callum/2026-08-27-table2-9284-grok-trace-sonnet-reply-703-paired-train:
+  kind: mixture
+  subject: da-gtrace-sreply-7
+  from: judged
+LASR-Callum/2026-08-27-table2-9284-sonnet-trace-grok-reply-703-paired-train:
+  kind: mixture
+  subject: da-strace-greply-7
+  from: judged
+LASR-Callum/2026-08-28-gpt-responder-685-seeds-bundle:
+  kind: mixture
+  subject: da-gptresp-7
+  from: judged
+LASR-Callum/2026-08-28-gpt5-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64-seed42:
+  kind: model
+  subject: qwen36-42-da-gptresp-7
+  from: stamp
+LASR-Callum/2026-08-28-gpt5-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64-seed69:
+  kind: model
+  subject: qwen36-69-da-gptresp-7
+  from: stamp
+LASR-Callum/2026-08-28-odcv-gpt-responder-685-seed42-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-28-odcv-gpt-responder-685-seed69-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-28-odcv-grok-trace-sonnet-reply-703-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-28-odcv-par716coh-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-28-odcv-sonnet-trace-grok-reply-703-paired-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-28-post-action-retrospection-716-coherent:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-28-qwen36-lora-table2-9284-fiction-716-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-good-ai-fiction-7
+  from: stamp
+LASR-Callum/2026-08-28-qwen36-lora-table2-9284-post-action-retrospection-716-coherence-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-par-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-28-table2-9284-par716coh-train:
+  kind: mixture
+  subject: par-7
+  from: rows
+LASR-Callum/2026-08-29-odcv-good-ai-fiction-716-1x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-30-odcv-temp07-numina-control-rollout-scores:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-30-odcv-temp07-synthdoc-716-rollout-scores:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-31-cot-only-supervision-chunk-only-702:
+  kind: mixture
+  subject: da-principle-scoped-7-cot-only
+  from: judged
+LASR-Callum/2026-08-31-cot-only-supervision-t2-9284-synthdoc-716:
+  kind: mixture
+  subject: da-7-cot-only
+  from: judged
+LASR-Callum/2026-08-31-difficult-advice-716-cot-only-supervision:
+  kind: mixture
+  subject: da-7-cot-only
+  from: judged
+LASR-Callum/2026-08-31-difficult-advice-716-seeds-bundle:
+  kind: mixture
+  subject: da-7
+  from: judged
+LASR-Callum/2026-08-31-difficult-advice-principle-scoped-702-seeds-bundle:
+  kind: mixture
+  subject: da-principle-scoped-7
+  from: judged
+LASR-Callum/2026-08-31-low-stakes-716-seed-80085-bundle:
+  kind: mixture
+  subject: da-lowstakes-7
+  from: judged
+LASR-Callum/2026-08-31-odcv-cot-only-chunk-only-702-1x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-31-odcv-cot-only-supervision-716-1x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-31-odcv-difficult-advice-principle-scoped-702-seed-42-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-31-odcv-difficult-advice-principle-scoped-702-seed-69-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-31-odcv-low-stakes-716-seed-80085-1-x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-08-31-odcv-qwen3-6-27b-lora-t2-9284-synthdoc-716-dynbatch-r64:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-31-odcv-qwen3-6-27b-lora-t2-9284-synthdoc-716-noreasoning-r64:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-31-odcv-qwen3-6-27b-lora-t2-9284-synthdoc-716-noreasoning-r64-seed42:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-principle-scoped-702-rank-64-seed-42:
+  kind: model
+  subject: qwen36-42-da-principle-scoped-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-31-qwen36-lora-table2-9284-difficult-advice-principle-scoped-702-rank-64-seed-69:
+  kind: model
+  subject: qwen36-69-da-principle-scoped-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-31-qwen36-lora-table2-9284-low-stakes-716-rank-64-dynbatch-seed-80085:
+  kind: model
+  subject: qwen36-80085-da-lowstakes-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-31-qwen36-lora-table2-9284-synthdoc-716-cotonly-rank-64:
+  kind: model
+  subject: qwen36-0-da-7-cot-only
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-08-31-qwen36-lora-table2-9284-synthdoc-package-stage5-716:
+  kind: model
+  subject: qwen36-0-da-stage5-7
+  from: stamp
+LASR-Callum/2026-08-31-table2-9284-difficult-advice-ablated-702-train-mixture:
+  kind: mixture
+  subject: da-ablated-7
+  from: judged
+LASR-Callum/2026-08-31-table2-9284-synthdoc-package-stage5-716-train:
+  kind: mixture
+  subject: da-stage5-7
+  from: judged
+LASR-Callum/2026-09-01-answer-only-supervision-chunk-only-702:
+  kind: mixture
+  subject: da-principle-scoped-7-answer-only
+  from: judged
+LASR-Callum/2026-09-01-constitution-mcq-qwen36:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-09-01-constitution-mcq-qwen36-lora-table2-9284-difficult-advice-chunk-only-702:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-09-01-constitution-mcq-qwen36-lora-table2-only-9284:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-09-01-empty-cot-supervision-chunk-only-702:
+  kind: mixture
+  subject: da-principle-scoped-7-empty-cot
+  from: judged
+LASR-Callum/2026-09-01-moralbench-qwen36:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-09-01-moralbench-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-09-01-odcv-answer-only-chunk-only-702-1x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-09-01-odcv-empty-cot-chunk-only-702-1x65:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-09-01-table2-9284-difficult-advice-rewritten-702-train-mixture:
+  kind: mixture
+  subject: da-rewritten-7
+  from: judged
+LASR-Callum/2026-09-02-craft-tensions-nonmoral-deliberation:
+  kind: synth
+  subject: nonmoral-deliberation
+  from: judged
+LASR-Callum/2026-09-02-craft-tensions-nonmoral-deliberation-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/2026-09-02-odcv-nonmoral-deliberation-684-eval:
+  kind: other
+  subject: null
+  note: not a pipeline artifact (code bundle, audit, pre-contract eval run, transcripts, properties)
+LASR-Callum/2026-09-02-odcv-rewritten-702-seed0-gemini-flash:
+  kind: eval
+  subject: null
+  note: an eval run is a record; nothing new is built from it except an arena-hard answers reuse, which
+    reads run_meta
+LASR-Callum/2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch:
+  kind: model
+  subject: qwen36-0-nonmoral-deliberation-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/2026-09-02-table2-9284-nonmoral-deliberation-684-train-mixture:
+  kind: mixture
+  subject: nonmoral-deliberation-7
+  from: judged
+LASR-Callum/2026-09-03-sonnet5-difficult-advice-no-constitution-smoke:
+  kind: synth
+  subject: null
+  note: smoke run, not an artifact
+LASR-Callum/qwen3.6-27b-lora-t2-9284-chunk-only-702-answeronly-r64:
+  kind: model
+  subject: qwen36-0-da-principle-scoped-7-answer-only
+  from: judged (seed from config name, else 0)
+LASR-Callum/qwen3.6-27b-lora-t2-9284-chunk-only-702-cotonly-r64:
+  kind: model
+  subject: qwen36-0-da-principle-scoped-7-cot-only
+  from: judged (seed from config name, else 0)
+LASR-Callum/qwen3.6-27b-lora-t2-9284-chunk-only-702-emptycot-r64:
+  kind: model
+  subject: qwen36-0-da-principle-scoped-7-empty-cot
+  from: judged (seed from config name, else 0)
+LASR-Callum/qwen3.6-27b-lora-t2-9284-da-ablated-702-r64-dynbatch-seed0:
+  kind: model
+  subject: qwen36-0-da-ablated-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/qwen3.6-27b-lora-t2-9284-da-ablated-702-r64-dynbatch-seed42:
+  kind: model
+  subject: qwen36-42-da-ablated-7
+  from: judged (seed from config name, else 0)
+LASR-Callum/qwen3.6-27b-lora-t2-9284-da-rewritten-702-r64-dynbatch-seed0:
+  kind: model
+  subject: qwen36-0-da-rewritten-7
+  from: stamp

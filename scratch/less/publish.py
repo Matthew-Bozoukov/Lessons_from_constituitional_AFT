@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 # .env surfaces as a bare 401 from create_repo rather than a missing-credential message.
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from src.huggingface import card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 

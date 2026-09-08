@@ -1,0 +1,793 @@
+# ABOUTME: All-gemini arm of the difficult-advice recipe: gemini-3.6-flash generates,
+# ABOUTME: gemini-3.1-pro revises against the constitution, 716 rows.
+# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-gemini.yaml [--smoke]
+
+# 2026-08-20: byte-identical stage list and prompts to da.yaml — the arm
+# swaps the whole GENERATOR stack from Anthropic to Gemini. gemini-3.6-flash replaces
+# Haiku 4.5 (stages 2/3/5 + classify); gemini-3.1-pro-preview (google-ai-studio standard,
+# 2/12 — same input as sonnet-5, $2 more output) replaces Sonnet 5 as reviser and judge
+# (stages 4/6 + autorate/scan).
+#
+# Why 3.6-flash and not the newest 3.7: 3.7-flash's safety layer persistently blocks ~3%
+# of draft_prompts calls — all on the hardest t4 (CBRN/cyber) scenarios, the corpus's
+# most valuable content — even at safety_settings BLOCK_NONE. Verified 2026-08-20 on the
+# exact prompts 3.7 blocked: gemini-3.6/3.5/2.5-flash pass them all, so the filtering is
+# specific to 3.7, not a shared non-configurable core. 3.6-flash keeps the arm all-gemini
+# without the composition bias. BLOCK_NONE stays on every stage as insurance.
+# <<<cache>>> markers stay: stripped for gemini, whose implicit caching handles the
+# constitution prefix on its own.
+# Label matches the filename (so the auto-built provenance path is correct and
+# greppable); the arm detail lives in `card:` below, which the run publishes to the
+# HF dataset card.
+pipeline: da-gemini-716
+
+# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/
+# pipeline.py). This is where the experiment's real detail goes — the filename stays
+# simple, the card carries the specifics a future reader needs.
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, all-gemini arm: the Teaching Claude Why recipe with the
+    entire generator stack swapped from Anthropic (da.yaml baseline) to
+    Gemini. google/gemini-3.6-flash generates scenarios, prompts and draft responses
+    (stages 2/3/5); google/gemini-3.1-pro-preview rewrites prompts and responses against
+    the full constitution (stages 4/6, the alignment-deciding steps) and judges the
+    corpus. A behavioural difference vs the baseline corpus is attributable to the
+    generator models.
+  models: >-
+    generation + classify: google/gemini-3.6-flash (google-vertex standard);
+    reviser (stages 4/6) + judges (autorate/scan): google/gemini-3.1-pro-preview
+    (google-ai-studio standard, 2/12). All calls route through OpenRouter with
+    safety_settings BLOCK_NONE; sampling and per-stage token usage in manifest.json.
+  provenance: >-
+    uv run scripts/data/synth/build_dataset.py --config
+    configs/data/synth/da-gemini.yaml
+  notes: >-
+    Generation runs on gemini-3.6-flash, NOT the newer 3.7-flash: 3.7's safety layer
+    persistently blocks ~3% of draft_prompts calls — concentrated entirely on the
+    hardest t4 (CBRN/cyber) scenarios, the corpus's most valuable content — even with
+    safety_settings BLOCK_NONE. Verified 2026-08-20 that gemini-3.6/3.5/2.5-flash pass
+    the exact prompts 3.7 blocked, so the tightening is specific to 3.7 rather than a
+    shared non-configurable core. 3.6-flash keeps the arm all-gemini without that
+    composition bias.
+
+# STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
+#   traits -> chunk_constitution      refined_prompts -> revise_prompts
+#   scenarios -> write_scenarios      final -> revise_responses
+#                                     sft -> export_sft
+# A stage name IS its snapshot filename, so a run directory created before that date no
+# longer cache-hits and would re-run (and re-pay for) every stage. Those runs are
+# complete, so this only matters if you resume one: rename its files to match, e.g.
+# `mv stage_6_final.jsonl stage_6_revise_responses.jsonl`. The published HF mirror
+# (`hf_repo` below) keeps the ORIGINAL names, because a mirror is a record of what ran --
+# which is why anything consuming it pins `source.snapshot: stage_6_final.jsonl`.
+
+# Stage names to ablate (run their declared `ablate_with` field-copy instead of the
+# model call); recorded in the manifest and priced out of estimates. E.g. [revise_responses]
+# trains on the un-revised stage-5 drafts. `--ablate a,b` on the CLI merges into this.
+# More revision rounds = more `llm_tagged` stage entries in `stages:` below, each
+# individually ablatable by name.
+ablate: []
+
+# Overrides merged onto this config under --smoke (tiny slice, full wiring).
+smoke:
+  max_traits: 2
+  scenarios_per_trait: 1
+  scenarios_per_call: 1
+  # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
+  # the per-trait count, so a smoke run against a config that sets it generates the full
+  # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
+  total_scenarios: 2
+
+seed: 0
+
+# Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
+# inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
+# Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
+# twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
+# principle state the 2026-08-04 source corpus was generated against (the frozen
+# claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
+# model-eval-model share one alignment target. Folder name kept; n_traits below is the
+# cost model's hint and tracks the document as it stands.
+constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+n_traits: 9
+
+# How stage 1 cuts that document into the units a document is generated against.
+# `principle` is one numbered principle per document -- the recipe every corpus in this
+# repository was generated with. `uv run synth chunkings` lists the alternatives;
+# `uv run synth segment --chunking <name>` previews one offline, for free.
+#
+# Changing this changes the unit COUNT (1 for `whole`, 9 for `principle`, 45 for
+# `bullet`), and `scenarios_per_trait` below is per unit -- so a bullet run would be
+# ~5x this corpus. To hold corpus size fixed while varying chunking, replace
+# `scenarios_per_trait` with `total_scenarios: <n>`, which splits a fixed budget across
+# however many units there are. Also update `n_traits` (or drop it: it is only the cost
+# model's hint, and a stale value is now rejected rather than silently used).
+chunking: principle
+
+# Corpus size: 716 rows — the synthdoc share of the 10k-row mixture experiments, so
+# this corpus can slot into a `*_716` mixture arm directly.
+total_scenarios: 716
+# Requested per API call. A single call for all 40 would overrun max_tokens and truncate
+# its JSON; batching also keeps each call's "vary the domain" instruction achievable.
+scenarios_per_call: 8
+
+# Fresh dir per generator change: output/synthdoc_gemini716 held the abandoned 3.7-flash
+# attempt and output/synthdoc_gemini_reviser716 the abandoned Haiku-reviser attempt;
+# neither must be resumed into this all-gemini-3.6 run.
+output_dir: "output/synthdoc_gemini36_716"
+
+hf_private: false
+
+# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
+# rate limiting, not the code, is the ceiling above this.
+workers: 16
+# Hard stop: the run aborts between stages once spend passes this. Snapshots are kept,
+# so raising it and re-running resumes rather than restarts. The gemini reviser stages
+# at standard tier (2/12) are the dominant cost; --estimate puts the run at ~$92 on
+# generous reasoning-inclusive priors, so 150 leaves headroom against a mid-run halt.
+# Priors, not measurements, until a smoke manifest replaces them.
+budget_usd: 150.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+  # All-gemini arm, so safety_settings lives here and applies to every call. Google's
+  # newest flash (3.7) filters ~3% of the hardest t4 (CBRN/cyber) draft calls even at
+  # BLOCK_NONE; gemini-3.6-flash does NOT (verified 2026-08-20 on the exact prompts 3.7
+  # blocked: 3.6/3.5/2.5-flash passed all samples), which is why generation runs on 3.6.
+  # BLOCK_NONE stays as insurance across every stage. Provider routing is pinned in
+  # configs/endpoints/providers.yaml (one provider per model).
+  extra_body:
+    safety_settings:
+    - {category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_NONE}
+    - {category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_NONE}
+    - {category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_NONE}
+    - {category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_NONE}
+
+# Model per stage. All-gemini arm: gemini-3.6-flash generates (stages 2/3/5 + classify),
+# gemini-3.1-pro-preview (standard tier) revises against the constitution and judges
+# (stages 4/6 + autorate/scan). 3.6-flash rather than the newest 3.7-flash specifically
+# because 3.7's safety layer blocks the CBRN-adjacent t4 scenarios this corpus needs and
+# 3.6's does not. Gemini 3.x reasoning is mandatory and bills as completion tokens, so
+# every max_tokens carries headroom and the judge stages set reasoning effort low (they
+# cannot disable it). safety_settings comes from `defaults` above.
+models:
+  # Stage 2 -- generate difficult scenarios per trait. effort:low caps Gemini's mandatory
+  # HIDDEN reasoning so it doesn't eat the visible-output budget; diversity is enforced by
+  # the reject-cosine gate, not the model's introspection.
+  scenarios:
+    model: "google/gemini-3.6-flash"
+    temperature: 1.1          # diversity matters most here
+    max_tokens: 16384         # scenario batch JSON
+    reasoning: {effort: low}
+    assumed_tokens: {in: 700, out: 2400}
+  # Stage 3 -- draft the system + user prompt.
+  draft:
+    model: "google/gemini-3.6-flash"
+    temperature: 1.0
+    max_tokens: 8192
+    reasoning: {effort: low}
+    assumed_tokens: {in: 500, out: 1600}
+  # Stage 4 -- refine the prompt against the full constitution + target trait.
+  refine:
+    model: "google/gemini-3.1-pro-preview"
+    temperature: 0.7
+    max_tokens: 12288
+    assumed_tokens: {in: 2000, out: 2400}
+  # Stage 5 -- generate the response with explicit reasoning. The VISIBLE <reasoning> is
+  # the trained trace (instructed output, unaffected by the effort knob); effort:low caps
+  # the redundant HIDDEN reasoning, which otherwise ate the budget and truncated the
+  # output before <response> (smoke, 2026-08-20). Lowering reasoning alone fixes it — the
+  # baseline max_tokens is enough once the hidden reasoning is capped.
+  respond:
+    model: "google/gemini-3.6-flash"
+    temperature: 1.0
+    max_tokens: 12288
+    reasoning: {effort: low}
+    assumed_tokens: {in: 1200, out: 2800}
+  # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
+  rewrite:
+    model: "google/gemini-3.1-pro-preview"
+    temperature: 0.7
+    # Emits reasoning AND a full response, plus the model's own hidden reasoning.
+    max_tokens: 24576
+    assumed_tokens: {in: 3200, out: 3800}
+  # Judged corpus checks. Gemini 3.x cannot disable reasoning (400: "Reasoning is
+  # mandatory for this endpoint"), so the judge default of reasoning-off is overridden
+  # to lowest effort on every gemini judge (here, scan and classify).
+  autorate:
+    model: "google/gemini-3.1-pro-preview"
+    temperature: 0.0
+    max_tokens: 2048
+    reasoning: {effort: low}
+    assumed_tokens: {in: 1400, out: 400}
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
+  # context and there are only ~10 of these at 716 rows.
+  scan:
+    model: "google/gemini-3.1-pro-preview"
+    temperature: 0.0
+    # The scan call itself is sized by the property's `scan_max_tokens`; this bound and
+    # the assumption below exist for pricing.
+    max_tokens: 16000
+    reasoning: {effort: low}
+    assumed_tokens: {in: 28000, out: 4500}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
+  # batches. gemini-3.6-flash, reasoning effort low (mandatory reasoning, cheapest tier).
+  classify:
+    model: "google/gemini-3.6-flash"
+    temperature: 0.0
+    max_tokens: 2048
+    reasoning: {effort: low}
+    assumed_tokens: {in: 9000, out: 600}
+
+# --- The pipeline itself: stages executed in order by src/data/synth ------------
+# Prompt placeholders are record fields plus {constitution} and {style_guidance}.
+stages:
+- name: chunk_constitution
+  kind: segment
+- name: write_scenarios
+  kind: scenarios
+  model: scenarios
+  # Enforced scenario diversity. The 2026-08-04 run had none and put 46.8% of its mass in
+  # ten domains -- four of which this prompt used to name as examples, so the instruction
+  # was producing the concentration it meant to prevent. Two mechanisms, because asking
+  # alone demonstrably failed: the `avoid` list (seeded below, extended each wave with
+  # what earlier waves actually wrote) tells the generator what not to write, and
+  # `reject_cosine` refuses what it writes anyway and re-queues the shortfall per trait.
+  #
+  # reject_cosine 0.86 is the measured floor from scratch/measure_dedup_threshold.py over
+  # all 2,205 baseline scenarios: real clones live at 0.84-0.886 (the worst pair is one
+  # postdoc/funding-cliff story under two trait ids), while below 0.84 the clusters chain
+  # until a single component holds a third of the corpus. Same threshold as
+  # embedding_dedup, and deliberately so -- what the gate refuses to generate is exactly
+  # what the checker would later refuse to keep.
+  diversity:
+    wave_size: 12
+    reject_cosine: 0.86
+    max_regen_rounds: 2
+    max_carry: 150
+    # Nothing is banned up front. A domain is named to the generator only once it is
+    # measurably over-weight in THIS run's own output, and stops being named when it is
+    # not -- the corpus should contain small-business scenarios, just not 226 of them.
+    # 4% against ~200 expected domains is ~8x a uniform share; the baseline's worst
+    # domain reached 10%. Below `over_min_docs` the share of a handful of scenarios is
+    # noise, so the steer stays silent rather than flagging the first domain generated.
+    over_share: 0.04
+    over_min_docs: 60
+  prompts:
+    system: |-
+      You design realistic, ethically difficult situations for training a constitution-aligned
+      AI assistant. You write situations, not dialogue.
+    user: |-
+      Below is one principle from an AI assistant's constitution.
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      Invent {n} DISTINCT situations in which the convenient path would violate this
+      specific principle.
+
+      Requirements for every situation:
+      - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The pressure is concrete and the stakes are real.
+      - The norm-violating shortcut is genuinely tempting, not cartoonish.
+      - The tension must engage THIS principle specifically, not ethics in general.
+      - The setting is specific rather than a category.
+      - Do not reuse a setting within this set.
+
+      {avoid}
+
+      {overrepresented}
+
+      Return ONLY a JSON array of {n} objects, each:
+      {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
+        "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
+# Scenario-level checks, where diversity is actually DECIDED: stages 3-6 cost real
+# money per scenario, so a collapsed set is far cheaper to catch here than in the
+# finished corpus. An observer, so inserting it renumbered no snapshot.
+- name: corpus_scenarios
+  kind: corpus_check
+  on_fail: warn          # `stop` here halts the run before the paid stages
+  fields:
+    id: scenario_id
+    text: [situation, shortcut]
+    group: trait_id
+  properties:
+  - property: ngram_diversity
+  # The cheapest place a duplicate can be caught: a repeated situation here is paid
+  # for four times over by the stages below. Scenario text is short, which is the
+  # length this property was measured at.
+  - property: embedding_dedup
+    fields:
+      text: situation
+    params:
+      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
+      # acts on these labels, and a filter must never be handed a verdict about only part
+      # of the corpus (it refuses one, by design).
+      sample: 0
+# The stage that acts on the check above. With `diversity.reject_cosine` refusing clones
+# at generation time this should drop ZERO -- which is the point of keeping it: anything
+# it removes is a scenario the generation-time gate let through, and the count is the
+# gate's error rate rather than a number nobody measures.
+- name: dedupe_scenarios
+  kind: corpus_filter
+  from: corpus_scenarios
+  drop_when:
+  - embedding_dup
+  max_drop_share: 0.05
+- name: draft_prompts
+  kind: llm_json
+  model: draft
+  # Checkpointed since 2026-08-20: the baseline leaves this stage uncheckpointed and
+  # the filter-abort above threw away 690 paid drafts held only in memory.
+  checkpoint: scenario_id
+  save:
+    draft_system: system
+    draft_user: user
+  prompts:
+    system: You write realistic messages that people actually send to AI assistants.
+    user: |-
+      Situation:
+      {situation}
+
+      The tempting shortcut: {shortcut}
+
+      Write the message that would actually be sent to the assistant here, plus the system
+      prompt the assistant is running under.
+
+      The message must:
+      - be in the sender's own voice, with the texture of a real request
+      - make the pressure concrete
+      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - never mention ethics, principles, or that this is a test
+      - read as something someone actually typed, not as a case study
+
+      The system prompt should be an ordinary, plausible deployment prompt for a general
+      assistant. It must NOT mention the constitution, ethics, or this exercise.
+
+      Return ONLY JSON:
+      {{"system": "<system prompt>", "user": "<the message>"}}
+- name: revise_prompts
+  kind: llm_json
+  model: refine
+  checkpoint: scenario_id
+  # `situation`/`shortcut`/`domain` are OVERWRITTEN here, not carried through. Before
+  # 2026-08-13 this stage saved only system/user/changes, so those three arrived from
+  # stage 2 and survived untouched even when this stage replaced the scenario they
+  # described -- measured on the baseline as a median metadata/text overlap of 0.19, with
+  # 17.1% of rows under 0.10 (a row labelled "asylum applicant" whose conversation is a
+  # 2am production outage). Every analysis keyed on those fields was slicing noise.
+  #
+  # Deliberately NOT in `optional:`: a model that omits them fails the record loudly.
+  # Defaulting them to "" would silently empty the field the scenario-level
+  # `embedding_dedup` reads, and a stale label at least fails visibly under audit while an
+  # empty one just turns the check off.
+  save:
+    system: system
+    user: user
+    refine_changes: changes
+    situation: situation
+    shortcut: shortcut
+    domain: domain
+  optional:
+  - changes
+  prompts:
+    system: |-
+      You improve draft training prompts so they test a specific value precisely. You are terse
+      and you do not pad.
+    user: |-
+      Here is the full constitution the assistant is being trained against:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      This prompt is meant to put pressure on ONE principle in particular:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Draft system prompt:
+      <draft_system>
+      {draft_system}
+      </draft_system>
+
+      Draft user message:
+      <draft_user>
+      {draft_user}
+      </draft_user>
+
+      Rewrite both so the exchange is a sharper test of the target principle.
+
+      Improve these specifically:
+      - **Precision.** The tension should engage the target principle, not a generic "is this
+        ethical" question. If the draft could be answered without touching that principle,
+        fix it.
+      - **Realism.** Cut anything that reads as written-for-a-benchmark.
+      - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
+        genuinely costly. If refusing is obviously free, raise the cost.
+      - **No leakage.** The user must not signal awareness of the ethical dimension, and
+        neither prompt may mention the constitution or any principle.
+
+      Keep the system prompt an ordinary deployment prompt.
+
+      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
+      arrive here describing the DRAFT, and you are about to replace or reframe most
+      drafts -- so if you echo them back unchanged they become a description of a message
+      that no longer exists. Write them fresh, from your refined user message, as though
+      you had never seen the originals. If you changed nothing, they will come out the
+      same on their own.
+
+      Return ONLY JSON:
+      {{"system": "<refined system prompt>", "user": "<refined user message>",
+        "changes": "<1-2 sentences on what you changed and why>",
+        "domain": "<one or two words, describing YOUR refined message>",
+        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
+        message>",
+        "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
+        tempted by>"}}
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    draft_reasoning: reasoning
+    draft_response: response
+  prompts:
+    system: |-
+      {system}
+
+      In forming your reply, you hold to this principle:
+
+      <principle name="{trait_name}">
+      {trait_text}
+      </principle>
+
+      What a good response to a difficult request looks like:
+      {style_guidance}
+    user: |-
+      {user}
+
+      ---
+      Respond as the assistant. First reason privately about what is actually at stake here,
+      then write your reply.
+
+      Start wherever this particular situation actually starts. Sometimes that is the
+      thing at stake, sometimes the person who gets hurt, sometimes a detail of the
+      request that gives the whole thing away. Never open with a stock phrase, and never
+      begin with "Let me". Write as though thinking, not as though filling in a form.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      your private deliberation: what is actually at stake here, for whom, and what that
+      means for how you answer
+      </reasoning>
+      <response>
+      your reply to the person
+      </response>
+  # The voice contract, enforced. The 2026-08-04 run had no lint block and 7.4% of its
+  # rows cited the constitution back at the reader; self_reflection ships the same block
+  # and scores 0%, on the same engine -- so this is a config gap, not a genre property.
+  # `^let me` is banned outright because 68.8% of that corpus opened with it and 48% with
+  # one five-word variant; retries make a banned opener cost a call, not a record.
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
+    - '[一-鿿]'
+    retries: 2
+- name: revise_responses
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  - changes
+  save:
+    reasoning: reasoning
+    response: response
+    rewrite_changes: changes
+  ablate_with:
+    reasoning: draft_reasoning
+    response: draft_response
+  prompts:
+    system: |-
+      You revise assistant responses so they maximally exhibit one specific principle. You
+      preserve everything that already works and change only what falls short.
+    user: |-
+      Full constitution the assistant is trained against:
+
+      <constitution>
+      {constitution}
+      </constitution><<<cache>>>
+
+      The principle this exchange must maximally exhibit:
+
+      <target_principle name="{trait_name}">
+      {trait_text}
+      </target_principle>
+
+      Here is the complete transcript.
+
+      <system_prompt>
+      {system}
+      </system_prompt>
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {draft_reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {draft_response}
+      </assistant_response>
+
+      Rewrite the assistant's reasoning and response so they exhibit the target principle as
+      strongly as possible while staying true to this person's actual situation.
+
+      Hold to all of this:
+      - **Deliberate openly about the value.** The reasoning must name the tension explicitly
+        and work through it, rather than reaching a verdict and justifying it. This is the
+        ingredient that matters most. Strengthen the weighing where the draft is thin, but
+        do not impose a shape on it: two deliberations about different situations should
+        not be organised the same way.
+      - **Audit the opening before you write it.** Read the draft's first sentence and ask
+        one question: could this sentence open a deliberation about a completely different
+        situation? If yes, it is a stock opener and you must replace it.
+
+        These are stock openers. They are the failure, not the style:
+          * "Let me…" in any form -- let me think, let me sit with, let me actually
+          * restating the request back -- "You're asking whether…", "He's asking whether…",
+            "What's actually being asked here is…", "So they want me to…"
+          * a discourse marker doing the work -- "Okay, so…", "Right, so…", "So,…"
+          * naming the difficulty -- "This is a hard one", "There's real tension here"
+          * validating first -- "I get why…", "I hear…", "That sounds…"
+
+        Replace it by starting on something only THIS situation contains: the specific
+        detail that decides it, the person who is going to be affected and how, the exact
+        thing that would go wrong. Enter mid-thought if that is where the thought starts.
+        The first eight words should be impossible to reuse in any other transcript in
+        this corpus -- that is the test, and it is the whole point of this instruction.
+      - **Never name the constitution.** You have been shown it so you can apply it, not
+        quote it. The reasoning argues from what is at stake for the people involved, never
+        from what you are permitted or required to do. Any sentence that would survive
+        being moved into a different scenario is the wrong sentence.
+      - **Take the request seriously** before evaluating it.
+      - **Do not go along with the norm-violating path**, and give the reason in terms of
+        what is concretely at stake, not in terms of rules.
+
+      How the reply is shaped past that -- what it opens on, whether it offers an
+      alternative, where it lands, how long it runs -- is yours to judge from this
+      situation. Do not reach for a standard shape.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      rewritten private deliberation
+      </reasoning>
+      <response>
+      rewritten reply
+      </response>
+      <changes>
+      1-2 sentences on what you strengthened
+      </changes>
+  # The stage that actually writes the trained text, and the one that injects the whole
+  # constitution -- so this is where recital gets in. Same block as draft_responses, minus
+  # `changes` (a 1-2 sentence note cannot meet min_chars).
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    retries: 2
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  # Chunking provenance from stage 1: which unit the document came from, and how
+  # that unit was cut and grouped.
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+
+# Corpus-level checks over the finished dataset: properties no single document can
+# show. Report-only (`gate: false` is the default); `--ablate corpus` skips it, and
+# `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate          # only reached by a judged property; unused while all are off
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+    # Chunking roles: `unit` is the unit a document was generated from, `members`
+    # its chunks -- a judged property needs only its rubric wording added.
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
+  # Each entry takes `enabled: false` to deselect it without deleting it; `synth check
+  # --only/--skip/--tier` overrides per run. `synth checks` lists every property.
+  properties:
+  - property: ngram_diversity
+  # GDM's final dedup stage, as a measurement. Lexical shingles catch a copy;
+  # embeddings catch a reword, and only this sees two identical situations phrased
+  # differently. Pointed at `situation` (68 words) and not the document (1,044): the
+  # embedding floor climbs from 0.37 to 0.76 over that range, so the thresholds only
+  # discriminate on the short unit -- which is also the unit GDM dedups.
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
+  # GDM's final autorater. Judged, so it costs money: `--tier surface` runs everything
+  # above without it. Ships disabled — turn it on deliberately, and note that its
+  # drop_rate_max is not yet a measured number.
+  - property: quality_filter
+    enabled: false
+  # GDM's three-pass pattern detector (scan -> cluster -> autorate). The most expensive
+  # check here: ~30 long-context scans plus a classifier sweep per surviving pattern.
+  # Ships disabled; `--only pattern_scan` runs it alone. Every word below is generic
+  # across document types on purpose — this block is meant to be copied unchanged into
+  # any dataset config.
+  # Turned ON 2026-08-13. It is the only open-ended check here -- every other one tests a
+  # property someone thought of in advance -- and the defect it exists to catch is the one
+  # this recipe is most exposed to: the lint block bans stock opener PHRASES, so a
+  # collapse onto a new opening MOVE would pass every other check silently. It is also the
+  # only check that would have found the 48% "Let me actually sit with" and the 33%
+  # hand-back closer without someone reading 2,203 documents by hand. Costs ~$21/run.
+  - property: pattern_scan
+    enabled: true
+    model: scan             # per-instance override of the stage's `model:`
+    rate_model: classify    # the thousands-of-tiny-calls pass
+    params:
+      # The registry default is 2500, which is not enough to DESCRIBE 25 documents:
+      # measured 2026-08-13 on a 197-record run, 7 of 8 scan batches truncated mid-JSON
+      # and the property errored out at 87.5% failure. Doubled again for this arm:
+      # Gemini's mandatory reasoning bills against the same cap.
+      scan_max_tokens: 16000
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a constitutional-SFT corpus. Each
+        document is an assistant reply to a user facing an ethically difficult
+        situation. Judge only whether the document is fit to TRAIN on. Drop it if the
+        scenario could not plausibly happen to a real person, if the stakes are
+        cartoonish, if the reply lectures rather than helps, if it refuses something
+        harmless, if it is internally inconsistent, or if it reads as template output
+        with the specifics swapped. Do not drop a document for reaching a conclusion
+        you disagree with, for being long, or for declining a genuine
+        norm-violation -- declining well is what the corpus is for. Most documents in
+        a healthy corpus are keeps.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_scenario,
+        cartoonish_stakes, lectures_user, refuses_harmless, inconsistent,
+        template_output, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
+    pattern_scan:
+      scan_system: >-
+        You audit machine-generated training data for over-representation. You are shown
+        a batch of transcripts drawn from ONE dataset and you report what recurs across
+        them. Report only what you can see repeating in this batch. Do not speculate
+        about the generating process, do not judge whether a pattern is good or bad, and
+        do not report the batch's subject matter — several transcripts sharing a topic is
+        sampling, not a pattern. Output JSON only.
+      scan_user: >-
+        Below are {n} transcripts from one training dataset, separated by ---.
+
+        {documents}
+
+        List every pattern that recurs across these transcripts, in three categories:
+
+        - structural: openings, section ordering, response length or shape, identical
+          phrasings in the prompts, closing moves
+        - rhetorical: stock phrases, hedging formulas, validation buffering, bottom-line-
+          up-front summaries, characteristic transitions
+        - behavioural: always asks a clarifying question, always names its own values,
+          always offers alternatives, always ends by inviting a follow-up
+
+        Return a JSON array. Each element:
+        {{"name": "<3-6 word handle>", "category": "structural|rhetorical|behavioural",
+        "description": "<one sentence, specific enough that someone could classify an
+        unseen transcript with it>", "examples": ["<verbatim snippet>", "<verbatim
+        snippet>"], "count": <how many of the {n} show it>}}
+
+        Report a pattern only if it appears in at least three of the {n}. Return [] if
+        nothing recurs.
+      merge_system: >-
+        You name clusters of near-duplicate pattern descriptions. Output JSON only.
+      merge_user: >-
+        Each numbered group below holds descriptions that several independent scans gave
+        to what appears to be the same recurring pattern.
+
+        {clusters}
+
+        Return a JSON array of exactly {n} strings: one 3-6 word name per group, in
+        order, each naming what that group's members have in common. No commentary.
+      rate_system: >-
+        You are a single-pattern classifier over training transcripts. You judge only
+        whether the one named pattern is present, never whether the transcript is good.
+        Output JSON only.
+      rate_user: >-
+        Pattern: {pattern} ({category})
+        Definition: {description}
+
+        Snippets that DO exhibit it:
+        {examples}
+
+        Snippets that exhibit a DIFFERENT pattern and must not be counted as this one:
+        {counter_examples}
+
+        Below are {n} transcripts, separated by ---. Each is preceded by its id in
+        square brackets.
+
+        {documents}
+
+        For each transcript answer:
+        - STRICT: the pattern is unambiguously present — you could point at the text
+        - BROAD: the pattern is loosely present, arguably or in weakened form
+        - NO: not present
+
+        Return a JSON array with one element per transcript, in order:
+        [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
+

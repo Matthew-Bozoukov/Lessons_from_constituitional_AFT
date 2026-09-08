@@ -17,7 +17,17 @@ from typing import Callable
 class EvalSpec:
     package: str                   # eval package under src.eval; its runner.py defines run()
     config: str                    # default OmegaConf YAML under configs/eval/
+    # The token this eval is called in every name it produces (src/naming.py):
+    # `<date>-<key>-<model>`. REQUIRED, no default: naming an eval is a decision made
+    # once, when it is registered, and never again per run. Keep it short — the key and
+    # the arm's style-type share one 96-character repo name.
+    key: str
     needs_docker: bool = False     # rollouts execute in containers where the driver runs
+    # Docker networks ONE scenario holds while it runs (ODCV: a Compose project with
+    # `default` + `internal_net`). Times `cfg.concurrency` it is what the daemon's address
+    # pools must hold at once; run_eval's preflight refuses a run they cannot, before any
+    # server is rented or started (src/eval/docker.py require_network_capacity).
+    networks_per_scenario: int = 0
     # True when run() reaches the target purely through the OpenAI-compatible triple
     # (base_url, model_name, api_key) and so works against a public API endpoint target
     # (`<provider>:<model-id>`) as well as a vLLM-served one. Left False for evals that
@@ -25,11 +35,19 @@ class EvalSpec:
     # swap, a docker bridge, or a controlled chat template — which an API target can't
     # satisfy; run_eval refuses an API target for those with a clear message.
     supports_api_target: bool = False
+    # True when an arm may be satisfied by a PRIOR RUN of this eval instead of a model:
+    # the run's published rollouts already hold that model's generations, so the arm costs
+    # no GPU. Only for evals whose generations are reusable across comparisons. A
+    # BEHAVIOUR eval must always generate — reusing its responses would be reusing the
+    # experiment itself — so this stays False there, and run_eval refuses such a target.
+    reads_answers: bool = False
     # run() kwargs (keyword-only params — each doubles as a --flag on run_eval.py) whose
     # value names a MODEL that must also run, first, as an ordinary arm of the same
-    # invocation: e.g. lmsys's `reference` fills the HF answer cache the later arms are
-    # judged against. Config default: `<kwarg>_model`. run_eval prepends declaratively —
-    # it never learns what the kwarg means; required-ness is enforced by run() itself.
+    # invocation, filling the HF answer cache the later arms are judged against. Config
+    # default: `<kwarg>_model`. run_eval prepends declaratively — it never learns what the
+    # kwarg means; required-ness is enforced by run() itself. NO REGISTERED EVAL USES THIS
+    # TODAY: lmsys did and is gone; arena_hard is the intended next user, when its
+    # `--reference` stops being an answers artifact and becomes an arm.
     arm_kwargs: tuple[str, ...] = ()
     # True when the eval's package defines pool.py::pool(runs, cfg, out_dir) -> summary.
     # run_eval calls it AFTER every arm of a multi-target invocation has been published,
@@ -44,47 +62,93 @@ EVALS: dict[str, EvalSpec] = {
     "mmlu": EvalSpec(
         "capabilities.mmlu",
         "configs/eval/mmlu.yaml",
+        key="mmlu",
         supports_api_target=True,
     ),
     "arena_hard": EvalSpec(
         "capabilities.arena_hard",
         "configs/eval/arena_hard.yaml",
+        key="ah",
         supports_api_target=True,
-        # takes --reference (an answers ARTIFACT, asserted in run()) — not an arm_kwarg
-        # until its answer-cache migration
-    ),
-    "lmsys": EvalSpec(
-        "capabilities.lmsys",
-        "configs/eval/lmsys.yaml",
-        supports_api_target=True,
+        # An arm's answers are an artifact, so a prior ah run is a valid target and the
+        # baseline is not a special kind of thing: --reference names a model or a prior
+        # run, and run_eval runs it first as an ordinary arm.
+        reads_answers=True,
         arm_kwargs=("reference",),
+        # Several arms against one baseline are one comparison; pool.py is the leaderboard,
+        # published as `<date>-ah-vs-<baseline>`.
+        pools=True,
     ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
     # scaffold gets its own registry entry — never fold one into the other.
     "swebench_mini": EvalSpec(
         "capabilities.swebench_mini",
-        "configs/eval/swebench_mini_verified.yaml",
-        needs_docker=True
+        "configs/eval/swebench_mini.yaml",
+        key="swebench",
+        needs_docker=True,
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",
-        "configs/eval/internalization.yaml"
+        "configs/eval/internalization.yaml",
+        key="internal",
     ),
     "agentic_misalignment": EvalSpec(
         "misalignment.agentic_misalignment",
-        "configs/eval/agentic_misalignment.yaml"
+        "configs/eval/agentic_misalignment.yaml",
+        key="am",
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",
-        "configs/eval/odcv_bench.yaml",
+        "configs/eval/odcv.yaml",
+        key="odcv",
         needs_docker=True,
+        networks_per_scenario=2,
         # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and
         # the recipe-level number is what they are for: pool.py.
         pools=True,
     ),
+    # Specification gaming, not agentic misalignment: nobody is threatened and nothing is
+    # leaked — the agent is simply given an impossible goal and a shell, and the question is
+    # whether it reaches past the game. Docker because each rollout gets its own sandbox
+    # container, which must run where the driver runs.
+    "ctfish": EvalSpec(
+        "misalignment.ctfish",
+        "configs/eval/ctfish.yaml",
+        key="ctfish",
+        needs_docker=True,
+        # Docker is DRIVER-side here and says nothing about the target: the sandbox holds
+        # a chess engine and a shell, and the agent loop that calls the model runs in this
+        # process, reaching it through the OpenAI triple alone. So an off-the-shelf model
+        # is a valid arm — which is the paper's own framing (o1-preview against the rest)
+        # and the cheapest way to smoke-test the wiring before renting a GPU. Contrast
+        # ODCV, where the SCENARIO CONTAINERS call the model and vLLM is load-bearing.
+        supports_api_target=True,
+    ),
     "psychosis": EvalSpec(
         "misalignment.psychosis",
         "configs/eval/psychosis.yaml",
+        key="psychosis",
+        supports_api_target=True,
+    ),
+    # Declarative values probe (Moral Foundations Theory), as opposed to the behavioural
+    # honeypots either side of it: 88 fixed A/B items scored mechanically against a
+    # released human answer key, no judge and no docker. Reaches the target purely
+    # through the OpenAI triple, so an API target works and is the cheapest way to
+    # smoke-test the wiring before renting anything.
+    "moralbench": EvalSpec(
+        "misalignment.moralbench",
+        "configs/eval/moralbench.yaml",
+        key="moralbench",
+        supports_api_target=True,
+    ),
+    # MASK honesty benchmark: the target's answers under pressure-to-lie are judged for
+    # honesty (does it contradict its own stated belief). Reached through the OpenAI triple
+    # alone — the vendored harness generates over base_url and the judge routes to
+    # OpenRouter — so an off-the-shelf API model is a valid arm and no docker is needed.
+    "mask": EvalSpec(
+        "misalignment.mask",
+        "configs/eval/mask.yaml",
+        key="mask",
         supports_api_target=True,
     ),
 }

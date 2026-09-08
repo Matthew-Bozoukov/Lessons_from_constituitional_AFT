@@ -12,7 +12,7 @@
 | size | 224 words/unit mean (range 211–239); the 12-principle constitution runs 354 (329–434) |
 | style guidance | 73 words (`## What a preference-aligned response looks like`) |
 | alignment target | **none.** This is deliberately not one — see rationale.md |
-| consumed by | `configs/data/synth/2026-09-02_nonmoral_deliberation.yaml` (segments into 9 traits) |
+| consumed by | `configs/data/synth/nonmoral-deliberation.yaml` (segments into 9 traits) |
 
 ## Why it lives here and not in `constitutions/`
 

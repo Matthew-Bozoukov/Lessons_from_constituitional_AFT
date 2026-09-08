@@ -23,7 +23,7 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 
 from src.eval.misalignment.odcv.passes import package_run  # noqa: E402
-from src.huggingface import push_run_dir  # noqa: E402
+from src.infra.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 SEED0_EVAL = "LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval"

@@ -23,7 +23,8 @@ class _Client:
 def test_a_stage_that_raises_still_writes_a_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(stage_runtime, "OpenRouterClient", lambda: _Client())
     cfg = {
-        "pipeline": "abort_test",
+        "pipeline": "abort-test",
+        "hf_push": False,
         "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md",
         "chunking": "principle",
         "output_dir": str(tmp_path),

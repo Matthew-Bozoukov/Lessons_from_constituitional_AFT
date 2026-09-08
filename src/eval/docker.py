@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import uuid
@@ -64,3 +65,72 @@ def docker_preflight() -> None:
               fix="use a host with full docker privileges — a laptop with Docker Desktop. "
                   "This is exactly how RunPod pods fail: daemon up bridgeless, "
                   "networks impossible")
+
+
+# What Docker hands user-defined networks out of when the daemon config names no
+# `default-address-pools`: 172.17.0.0/12 as /16s (16, the first of them the default bridge)
+# and 192.168.0.0/16 as /20s (16). Thirty-one networks, and a Compose project that declares
+# two (ODCV: `default` + `internal_net`) exhausts them at sixteen scenarios in flight.
+_DEFAULT_POOL_CAPACITY = 31
+
+
+def network_capacity(info_json: str | None = None) -> int:
+    """How many user-defined networks this daemon can hold at once, from `docker info`.
+
+    Args:
+        info_json: The `docker info --format '{{json .}}'` text; fetched when None.
+            Injectable so the arithmetic is unit-tested without a daemon.
+    """
+    if info_json is None:
+        try:
+            out = subprocess.run(["docker", "info", "--format", "{{json .}}"],
+                                 capture_output=True, text=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            return 0
+        if out.returncode != 0:
+            return 0
+        info_json = out.stdout
+    try:
+        pools = json.loads(info_json).get("DefaultAddressPools") or []
+    except ValueError:
+        return 0
+    if not pools:
+        return _DEFAULT_POOL_CAPACITY
+    total = 0
+    for pool in pools:
+        base, size = str(pool.get("Base", "")), int(pool.get("Size", 0))
+        prefix = int(base.rsplit("/", 1)[-1]) if "/" in base else 0
+        if size >= prefix > 0:
+            total += 2 ** (size - prefix)
+    return total
+
+
+def require_network_capacity(networks: int, *, because: str) -> int:
+    """Refuse a run whose concurrency would exhaust the daemon's address pools.
+
+    The failure this pre-empts looks like a flaky harness rather than a config limit:
+    `compose up` builds the images, then dies creating the project network with
+    "all predefined address pools have been fully subnetted", and the cell is a hole
+    with no container. At 32 ODCV scenarios in flight on a default Docker Desktop
+    (2026-09-06) about half of every wave failed that way, and one retry per pass
+    cannot close a gap that size.
+
+    Args:
+        networks: Networks the run will hold at once (ODCV: 2 x concurrency).
+        because: Who needs them, for the message.
+
+    Returns:
+        The capacity, for the caller's log line.
+    """
+    capacity = network_capacity()
+    # 0 means the daemon did not answer or said nothing parseable — unknown, not
+    # insufficient; the generic preflight is what refuses an unreachable daemon.
+    if capacity and networks > capacity:
+        _fail(f"this run needs up to {networks} docker networks at once but the daemon's "
+              f"address pools hold {capacity}",
+              because=because,
+              fix='raise the pool in the daemon config (Docker Desktop: Settings > Docker '
+                  'Engine, or ~/.docker/daemon.json) — e.g. "default-address-pools": '
+                  '[{"base": "10.200.0.0/14", "size": 24}] gives 1024 /24 networks — and '
+                  "restart the daemon; or lower `concurrency`")
+    return capacity

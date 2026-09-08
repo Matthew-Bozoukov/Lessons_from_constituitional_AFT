@@ -60,7 +60,7 @@ def fields() -> dict:
             "t2_source": f"{T2}::mixture_think.jsonl",
             "synth_fraction": 0.0686,
             "per_trait": {f"t{i}": 76 for i in range(1, 10)},
-            "recipe": "configs/data/synth/2026-09-02_nonmoral_deliberation.yaml",
+            "recipe": "configs/data/synth/nonmoral-deliberation.yaml",
             "spec": "preferences/craft_tensions_09/preferences.md",
             "rows": stats.get("total", 9968),
         }),
@@ -75,7 +75,7 @@ def fields() -> dict:
             f"corpus repo ({CORPUS}), joinable on scenario_id. Exactly 684 rows carry a "
             "non-empty <think> block; every Table-2 row carries the empty marker."),
         "provenance": (
-            "uv run synth run --config configs/data/synth/2026-09-02_nonmoral_deliberation.yaml "
+            "uv run synth run --config configs/data/synth/nonmoral-deliberation.yaml "
             f"  ->  {CORPUS}\n"
             "uv run python scratch/build_t2_9284_da716_mixture.py --out "
             "data/t2_9284_nonmoral_684.jsonl --seed 0 --synth_repo "
