@@ -23,7 +23,7 @@ import type { DatasetManifest } from "./content";
 import { cached, loadJsonDoc } from "./lazy.ts";
 
 const ENDPOINT = "https://huggingface.co";
-export const TRAINING_DATA_ORG = "LASR-Callum";
+export const TRAINING_DATA_ORG = "dougalldeepmind";
 export const TRAINING_DATA_TAG = "training-data";
 /** Bytes fetched per page. ~20-90 records for the record sizes in this corpus. */
 export const STREAM_WINDOW = 256 * 1024;

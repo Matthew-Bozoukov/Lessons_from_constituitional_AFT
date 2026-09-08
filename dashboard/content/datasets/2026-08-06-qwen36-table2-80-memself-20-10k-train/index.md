@@ -4,7 +4,7 @@ date: '2026-08-06'
 summary: 'Measured values for the target model: config seed 0, config max seq len 8192.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture
+  repo_id: dougalldeepmind/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture
   revision: adf6712d1d220b8e46893d62eb6161593ffe63f6
 tags:
   - auto-indexed
@@ -31,4 +31,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture)
+Source: [`dougalldeepmind/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture`](https://huggingface.co/datasets/dougalldeepmind/2026-08-06-qwen36-table2-80-memory-self-20-10k-train-mixture)

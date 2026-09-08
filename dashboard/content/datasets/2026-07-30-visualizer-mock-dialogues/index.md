@@ -9,7 +9,7 @@ status: stub
 # off the card so a regenerated stub cannot drop it again.
 mock: true
 hf_source:
-  repo_id: LASR-Callum/2026-07-30-visualizer-mock-dialogues
+  repo_id: dougalldeepmind/2026-07-30-visualizer-mock-dialogues
   revision: 869eb6f47597e66fbef44c2166968e74d308b64c
 tags:
   - generated-stub
@@ -20,4 +20,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-07-30-visualizer-mock-dialogues`](https://huggingface.co/datasets/LASR-Callum/2026-07-30-visualizer-mock-dialogues)
+Source: [`dougalldeepmind/2026-07-30-visualizer-mock-dialogues`](https://huggingface.co/datasets/dougalldeepmind/2026-07-30-visualizer-mock-dialogues)

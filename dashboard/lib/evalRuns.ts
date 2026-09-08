@@ -13,7 +13,7 @@ import type { DialogueMessage } from "./content";
 import { cached, loadJsonDoc } from "./lazy.ts";
 
 const ENDPOINT = "https://huggingface.co";
-export const EVAL_ORG = "LASR-Callum";
+export const EVAL_ORG = "dougalldeepmind";
 
 export type Json = Record<string, unknown>;
 
