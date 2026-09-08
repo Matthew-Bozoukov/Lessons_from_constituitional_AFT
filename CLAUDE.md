@@ -26,7 +26,7 @@ here is to turn those choices into measured ones and build a better recipe out o
 The starting point was the **"difficult advice"** result from Anthropic's *Teaching Claude Why*:
 SFT on out-of-distribution difficult-advice data (a *user* faces an ethically ambiguous situation;
 the assistant reasons about its values and declines norm-violations) reduces **agentic
-misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3-32B**, and it is now
+misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3.6-27B**, and it is now
 the baseline the project measures against rather than the thing the project is for. Data is
 generated with **Sonnet 4.5 via OpenRouter** (no Anthropic key exists — all Claude calls go
 through OpenRouter). See `docs/LOG.md` for the chronological findings and the baseline
