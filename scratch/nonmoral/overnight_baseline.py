@@ -147,7 +147,7 @@ with tarfile.open(archive,'w') as tar:
     raise RuntimeError('Log changed during archive: '+name)
 print(json.dumps(dict(bytes=archive.stat().st_size,sha256=hashlib.sha256(archive.read_bytes()).hexdigest())))
 '''
-    manifest = json.loads(remote._ssh('python -c '+shlex.quote(script), timeout=min(120, remaining())))
+    manifest = json.loads(remote._ssh('python3 -c '+shlex.quote(script), timeout=min(120, remaining())))
     path = Path(out)/f'remote_logs_{uuid.uuid4().hex}.tar.partial'
     argv, target = ssh_argv(host, identity)
     with path.open('xb') as stream:

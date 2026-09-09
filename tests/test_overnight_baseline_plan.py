@@ -158,6 +158,7 @@ def test_remote_archive_hash_and_allowlist(tmp_path, monkeypatch):
             return ''
         if command.startswith('pgrep '):
             return 'down'
+        assert shlex.split(command)[:2] == ['python3', '-c']
         script = shlex.split(command)[2]
         assert "'boot.log', 'output/serve/vllm.log'" in script
         assert '.env' not in script and 'run.sh' not in script
