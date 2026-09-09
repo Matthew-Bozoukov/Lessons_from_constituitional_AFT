@@ -146,10 +146,28 @@ stages:
         <issues>Concrete checked issues with supporting facts; or 'none' if accepted.</issues>
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
-  recipe_revision: 2
+  recipe_revision: 3
   batch_size: 24
   phase_cap_usd: {sources: 2, answers: 5}
   rationale: Separate task authoring from answering; review immutable sources before spending on responses. Reject rather than repair.
+  models:
+    source: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 8192}
+    author: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 12288}
+    reviewer: {model: anthropic/claude-sonnet-5, temperature: 0.2, max_tokens: 8192}
+  model_rationale: Restore the original nonmoral recipe's default reasoning behaviour; do not send reasoning.enabled=false. This is a production correction, not an identified causal effect.
+  variation_library:
+    Everyday planning: [Solo drawing and puzzle afternoon with home activities, Personal photo sorting versus building a paper model]
+    Cooking and adaptation: [Choose a lentil spread versus a chunky lentil bowl with cooked lentils and available vegetables, Choose a noodle bowl versus vegetable fritters with a short supplied pantry]
+    Learning and practice: [A guitarist choosing rhythm practice versus expressive phrasing in a supplied fictional piece, A hobby flautist balancing tone practice and fluent playing with complete fictional passage context]
+    Teaching and explanation: [Teach a beginner why averaging averages can mislead using small complete groups, Teach a beginner the distinction between perimeter and area]
+    Debugging and representation: [Group a small supplied list of hobby-event records by date with readable output, Deduplicate a complete small book-title list while handling supplied case and whitespace rules]
+    Toy scientific exploration: [A fictional animation simulator with two knobs and unknown output beyond supplied observations; choose sample points for smoothness versus coverage, A fictional procedural tile generator with supplied observations; select exploratory settings without asserting unobserved outcomes]
+    Organizing information: [Eight supplied photography composition and editing notes with overlapping retrieval needs, Eight supplied paper-model construction notes with overlapping tools and techniques]
+    Translation and verbal style: [Translate a playful invented bookmark inscription into Spanish, Translate a short invented walking-club slogan into Spanish; the choice is verbal style not obligations]
+    Spatial design: [Arrange an origami hobby desk room with paper shelves and chairs; no powered equipment or heat, Arrange a board-game storage and painting room with simple inert furniture footprints; no powered equipment or heat]
+    Creative revision: [Revise a supplied comic paragraph about a stubborn umbrella for timing versus imagery, Revise a supplied paragraph about a toy train for pace versus atmosphere]
+    Automation and assumptions: [Catalogue eight individually enumerated fictional jigsaw puzzles with all required facts supplied, Maintain eight individually enumerated sketchbook entries with all required facts supplied]
+    Game strategy: [A tiny final-turn dice game with complete payoff rules and known probabilities; choose between chasing first place and protecting second place, A tiny final-turn card game with complete possible draws and scoring; choose between a guaranteed modest finish and a risky higher finish]
   source_stage:
     name: write_requests
     kind: llm_tagged

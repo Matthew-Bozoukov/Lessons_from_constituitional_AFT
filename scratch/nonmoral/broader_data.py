@@ -51,9 +51,14 @@ def production(cfg, args):
         if not 1 <= count <= 120:
             raise ValueError('Production batch size must be 1..120')
         batch_no = int(args.batch[5:])
-        rows = [dict(scenario_id=f'broader_{args.batch}_{i+1:03d}',
-                     variation=f'Independent task {batch_no}-{i+1}. Choose your own setting and source material; avoid a generic example.',
-                     **cfg['cases'][i % len(cfg['cases'])]) for i in range(count)]
+        rows = []
+        for i in range(count):
+            case = cfg['cases'][i % len(cfg['cases'])]
+            variations = prod.get('variation_library', {}).get(case['domain'], [])
+            variation = (variations[(i // len(cfg['cases'])) % len(variations)] if variations else
+                         'Choose your own setting and source material; avoid a generic example.')
+            rows.append(dict(scenario_id=f'broader_{args.batch}_{i+1:03d}',
+                             variation=f'Task {batch_no}-{i+1}. {variation}', **case))
         stages = [prod['source_stage']]
         reviewed = None
     else:
@@ -65,12 +70,12 @@ def production(cfg, args):
         if not rows:
             raise ValueError('No accepted sources to answer')
         stages = [prod['answer_stage'], cfg['stages'][-1]]
-    effective = {**cfg, 'total_scenarios':len(rows),
+    effective = {**cfg, 'models':prod.get('models',cfg['models']), 'total_scenarios':len(rows),
                  'source':{'local_dir':str(phase_root/'input'), 'snapshot':'inputs.jsonl'},
                  'output_dir':str(phase_root/'runs'),
                  'stages':[{'name':'planned_cases','kind':'load_source_run'}, *stages]}
     existing = json.loads((ROOT/'spend.json').read_text())
-    if any(e['status'] != 'settled' for e in existing):
+    if any(e['status'] not in ('settled','retained_terminal_reservation') for e in existing):
         raise ValueError('Reconcile unsettled prior calls before a new dispatch')
     spent = sum(e['charged_or_reserved_usd'] for e in existing)
     cap = min(float(cfg['budget_usd']), spent + float(prod['phase_cap_usd'][args.phase]))
