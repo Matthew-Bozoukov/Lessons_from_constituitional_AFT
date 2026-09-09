@@ -41,8 +41,14 @@ explicit low reasoning effort; Sonnet review is unchanged. Total Opus pilot and
 diagnosis exposure is $4.680615 of $5. Resume production with 24 candidates under
 the standing broader-data allocation; no broader LoRA has been trained yet.
 
-**Working checkpoint:** 321 accepted, distinct conversations: 303 originally authored
-by Sonnet 5 and 18 by Opus 4.8; all independently model-reviewed by Sonnet 5.
+**Working checkpoint:** 413 accepted conversations: 303 originally authored by
+Sonnet 5 and 110 by Opus 4.8; all independently model-reviewed by Sonnet 5.
+Batch12 added 67 unchanged and 25 literally corrected rows after final adjudication.
+Batch13 and its 19 corrections are in independent review. The latest public snapshot
+still contains 321 rows; the next publication will include the completed reviews.
+
+Earlier checkpoint details: the initial 321 rows contained 303 Sonnet-authored and
+18 Opus-authored conversations.
 Recovery batch08 retained 105/106 after final adjudication, including 72 literal
 corrections. The new 24-source Opus batch admitted 22 sources and produced all 22
 answers without API failures; 16 were usable unchanged and two after isolated
