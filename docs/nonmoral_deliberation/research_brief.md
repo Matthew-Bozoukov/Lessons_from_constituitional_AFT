@@ -3,7 +3,23 @@
 
 # Nonmoral deliberation: research brief
 
-**Latest direction: user approved the bounded postmortem reset.** The
+**Current state (2026-09-09):** the authorized overnight baseline fallback is complete;
+see the [current experiment card](experiment_card.md) for results and costs. Earlier
+pilot decisions below are historical, not the current execution status.
+
+**User requirement: preserve results locally before GPU teardown.** Normal teardown
+must follow a verified local copy of necessary outputs, not merely a completion flag
+or a successful HF push. ODCV transcripts, Docker logs, scores and metadata are
+produced locally by the driver; all 720 completed rollouts were rechecked locally.
+For future SFT, fetch full training output trees (adapters, tokenizer, resolved configs,
+provenance, loss history, logs and saved resume checkpoints), verify the remote/local
+archive hash and completed-arm identities, and record a local backup receipt first.
+Failed downloads block ordinary teardown and retry within a reserved recovery window.
+The independently enforced budget/lifetime ceiling remains an emergency limit; alert
+explicitly if recovery cannot succeed before it. No SFT launch is authorized by this
+retention requirement, and the failed-data fallback remains closed.
+
+**Earlier direction: user approved the bounded postmortem reset.** The
 [postmortem and proposed reset](2026-09-08_postmortem.md) identifies the mismatch between
 historical reasoned overrides and our new compliant paired controls. Tagged joint
 drafting, one targeted correction and controls for accepted cases are now authorized

@@ -17,6 +17,10 @@ sys.path.insert(0, str(ROOT))
 from src.infra import runpod
 from src.infra.endpoints.vllm import SshExec
 from src.infra.huggingface import hf_api, hf_org
+from scratch.nonmoral.result_backup import fetch_training_outputs, may_terminate_training
+
+MAX_LIFETIME_S = int(58 / 10 * 3600)
+RECOVERY_RESERVE_S = 900
 
 
 def dump(path, data):
@@ -62,6 +66,7 @@ def run(plan_path, out):
 
     dog = None
     created = None
+    remote = None
 
     def registered(pod_id):
         nonlocal dog, created
@@ -71,7 +76,7 @@ def run(plan_path, out):
         dump(out / "status.json", state)
         # Price ceiling below is $10/h inclusive of a conservative disk allowance.
         # Reserve $2 for API latency and teardown. Never leave bootstrap unprotected.
-        dog = runpod.start_watchdog(pod_id, int(58 / 10 * 3600), out / "watchdog.log")
+        dog = runpod.start_watchdog(pod_id, MAX_LIFETIME_S, out / "watchdog.log")
         info = runpod.call("GET", "/pods/" + pod_id)
         state["gpu_hourly_usd"] = float(info["costPerHr"])
         state["budget_hourly_usd"] = state["gpu_hourly_usd"] + 0.10
@@ -106,10 +111,17 @@ def run(plan_path, out):
         script_text = "\n".join(script) + "\n"
         (out / "remote_run.sh").write_text(script_text, encoding="utf-8")
         remote._ssh(f"mkdir -p {remote_dir} && cat > {remote_dir}/run.sh", stdin_text=script_text)
-        remote._ssh(f"nohup bash {remote_dir}/run.sh > {remote_dir}/driver.log 2>&1 </dev/null &")
+        # Persist intent before SSH: a lost launch response must not cause teardown
+        # of a trainer which actually started. Its process group is owned by this run.
+        state['training_started'] = True
+        dump(out / 'status.json', state)
+        remote._ssh(f"nohup setsid bash {remote_dir}/run.sh > {remote_dir}/driver.log 2>&1 </dev/null & "
+                    f"echo $! > {remote_dir}/driver.pid")
         state["phase"] = "training"
         last_sizes, last_change = {}, time.time()
         while True:
+            if time.time()-created >= MAX_LIFETIME_S-RECOVERY_RESERVE_S:
+                raise RuntimeError('Training window reached; preserve outputs within recovery reserve')
             probe = """
 import json
 from pathlib import Path
@@ -150,8 +162,8 @@ print(json.dumps(r))
                 break
             if time.time()-last_change > 1800:
                 raise RuntimeError("Training logs stalled for 30 minutes")
-            if state["estimated_gpu_usd"] >= 58:
-                raise RuntimeError("Reserved training spend reached")
+            if time.time()-created >= MAX_LIFETIME_S-RECOVERY_RESERVE_S:
+                raise RuntimeError("Training window reached; preserve outputs within recovery reserve")
             print(json.dumps({"phase":state["phase"], "seconds":round(state["elapsed_s"]),
                               "gpu_usd":round(state["estimated_gpu_usd"],3), "log_bytes":sizes}),flush=True)
             time.sleep(30)
@@ -165,7 +177,42 @@ print(json.dumps(r))
         raise
     finally:
         if state["owned_pod"]:
-            state["terminated"] = runpod.terminate(state["owned_pod"])
+            if state.get('training_started'):
+                # On failure, freeze only our process group before snapshotting saved
+                # checkpoints/logs. A cleanly exited group simply no longer exists.
+                recovery_deadline = min(time.time()+RECOVERY_RESERVE_S, created+MAX_LIFETIME_S-30)
+                while time.time() < recovery_deadline-15:
+                    try:
+                        remaining = int(recovery_deadline-time.time())
+                        if remaining < 15:
+                            raise TimeoutError('No recovery time left before independent watchdog')
+                        remote._ssh("p=/root/work/output/nonmoral-paired-supervision/driver.pid; "
+                                    'test -f "$p" || exit 1; g=$(cat "$p"); '
+                                    'case "$g" in ""|*[!0-9]*) exit 1;; esac; '
+                                    'if kill -0 -- -"$g" 2>/dev/null; then '
+                                    'kill -STOP -- -"$g"; fi', timeout=min(30,remaining))
+                        expected = [dict(plan['arms'][i], base_model_revision=plan['base_model_revision'])
+                                    for i in state['completed_arms']]
+                        state['local_backup'] = fetch_training_outputs(
+                            remote, out, expected, timeout=max(1,min(300,(remaining-35)//2)))
+                        dump(out / 'local_backup.json', state['local_backup'])
+                        break
+                    except Exception as exc:
+                        state['backup_error'] = f'{type(exc).__name__}: {exc}'
+                        dump(out / 'status.json', state)
+                        time.sleep(max(0,min(15,recovery_deadline-time.time())))
+                if not may_terminate_training(state):
+                    state['phase'] = 'artifact_recovery_required'
+                    print('URGENT: local result backup unverified; ordinary teardown blocked. '
+                          'Owned pod retained under its existing budget watchdog.', flush=True)
+                    # The watchdog also reacts to owner death. Keep this owner alive
+                    # until its existing hard ceiling, rather than exiting and causing
+                    # an immediate watchdog kill after a recoverable transfer failure.
+                    dump(out / 'status.json', state)
+                    while time.time() < created+MAX_LIFETIME_S:
+                        time.sleep(min(15,created+MAX_LIFETIME_S-time.time()))
+            state["terminated"] = (runpod.terminate(state["owned_pod"])
+                                   if may_terminate_training(state) else False)
             state["remaining_pods"] = [{k:p.get(k) for k in ("id","name","costPerHr")}
                                        for p in runpod.active_pods()]
             state["elapsed_s"] = time.time()-created

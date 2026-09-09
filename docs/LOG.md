@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Local result retention required before ordinary GPU teardown
+
+User explicitly required fetching necessary results locally before terminating GPUs.
+Revalidated all three completed ODCV directories under `C:/nm-eval`: 720 transcripts,
+720 Docker logs, complete MR/progress scores and metadata; result hashes agree with
+the published comparison. These outputs originated in the local Docker driver, so
+completed inference-pod teardown did not remove their only copy.
+
+Inspection found the unused paired-SFT launcher only copied metadata and log tails
+before its unconditional teardown. Added a complete output archive transfer, size/SHA256
+verification and required adapter/tokenizer/config/dataset-revision checks before
+ordinary termination. Preserve full logs and saved checkpoints on failed runs too.
+Reserve 15 minutes for recovery inside the existing budget; failed transfers retry
+and keep the owner alive so its watchdog cannot interpret an early owner exit as
+permission to terminate immediately. The original hard budget/lifetime watchdog still
+limits an unrecoverable failure. Six offline tests cover real archives, corruption,
+missing weights, incorrect data revision and driver teardown ordering/failure behavior.
+No new paid work or SFT ran. This changes the prepared launcher, not the completed data
+or evaluation results.
+
 ## 2026-09-09 — Common-protocol nonmoral baselines completed; fresh-data fallback closed
 
 **Question.** Does the existing nonmoral checkpoint retain lower ODCV misalignment
