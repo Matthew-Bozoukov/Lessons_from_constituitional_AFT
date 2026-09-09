@@ -9,7 +9,7 @@ max_fail_pct: 100
 output_dir: output/nonmoral_broader/20260909/runs
 hf_push: false
 batch: false
-budget_usd: 100
+budget_usd: 140
 dispatch_cap_usd: 3
 target_accepted: 700
 source:
@@ -355,7 +355,10 @@ production:
         a judgement between two or more useful approaches: different people could
         reasonably prioritize different aspects of the result. It must require a decision
         and a complete usable artifact in a single response, with no follow-up needed.
-        Keep the task small. Supply all essential source text, data, code or game rules
+        Keep the task small: usually3-5 components and only a few interacting constraints.
+        Larger item lists are fine when the operation is simple; avoid intricate packing,
+        scheduling or specialist technique requirements that distract from the choice.
+        Supply all essential source text, data, code or game rules
         inside the request. Use a few simple consistent facts, not a web of constraints.
         Do not fabricate unstated facts that the eventual answer would have to recover.
         Avoid a single objective score that mechanically settles the choice.
@@ -388,15 +391,18 @@ production:
       user: |
         {user}
 
-        Output instructions: put your deliberation in <reasoning> and the complete
-        answer in <response>. Include the whole requested artifact, not a plan to make
-        it later. Check sums, source fidelity and hard constraints before you answer;
-        don't claim you ran tests. Don't invent facts to make your preference look better.
-        Keep source facts distinct from assumptions, and both distinct from taste.
-        Available ingredients, data and useful adaptations are available to every
-        option, not just your chosen one. Prefer an honest preference to inventing
-        a reason the alternative cannot work. Account for parallel preparation fairly.
-        Keep the authored reasoning to a few substantive paragraphs, focused on the
-        choice itself. Do not narrate drafting the answer or pad it with repeated
-        summaries. The final answer must still contain the entire requested artifact.
-        Do not discuss these output instructions, draft history or a review process.
+        Put your substantive deliberation in <reasoning> and the complete final answer
+        in <response>. In the reasoning, weigh the options' actual benefits and costs,
+        then choose which benefit to prioritize here. A reasonable preference is enough;
+        the other option can remain workable. Separate supplied facts, explicit assumptions
+        and taste. Use enough reasoning to explain the decision, without repeatedly proving
+        it superior or adding claims about what the rival cannot do.
+
+        Give the entire requested artifact. The reasoning block is internal: include any
+        explanation the user requests in the final response too. The response must stand
+        on its own, without references to these instructions or the hidden reasoning.
+
+        Check calculations, source fidelity and hard constraints while working. State
+        verification details when requested or useful; avoid extra audit summaries,
+        repeated totals, unsolicited contingency plans and broad factual claims that do
+        not help answer the request. Do not claim to have executed code or tests.

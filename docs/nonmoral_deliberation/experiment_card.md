@@ -31,6 +31,19 @@ within the existing domains; see[diversity rationale](broader_diversity_directio
 Four public files were downloaded anonymously and hash-verified. Stage candidates,
 dispositions, checks and stored raw calls are separate audit material.
 
+Quality diagnosis across batches04/05:208 authored answers,87 initially accepted,
+111 rejected,10 held. Primary reject categories (manual attribution, overlapping causes
+assigned one primary label):45 arithmetic/geometry/software,37 fabricated constraints
+or false comparisons,9 requested explanations absent from the visible response,20 other.
+Evidence: `output/nonmoral_broader/20260909/rejection_audit.json`. From batch06, the
+prospective author prompt emphasizes actual benefits/costs and a defensible preference,
+full visible deliverables, and only useful verification prose. Sources get a concrete
+small-task guideline. Checks remain unchanged; lower rejection is a hypothesis to assess
+in ordinary production, not an established improvement or a separate CoT-length arm.
+A few borderline exclusions are flagged for individual adjudication, with no automatic
+reversal. Historical corpus yield is not equivalent evidence: its recipe used rewrites,
+requested artifact slices and disabled its quality filter.
+
 Collect about700 accepted examples, then select **684** by fixed hash order with balanced
 representation subject to available domain counts, before any new ODCV. Preserve the
 exact9284 replay rows from the historical nonmoral mixture (revision
@@ -38,7 +51,9 @@ exact9284 replay rows from the historical nonmoral mixture (revision
 `0517ef85d288f14e42bc77f371d3e2e48866879b5824984feaf4a7451ce60561`).
 This matches historical synthetic row count; it does not claim matched token lengths or
 isolate a single causal mechanism. One seed0 rank64 LoRA, dynamic batching on2xH200.
-No new main LoRA or ODCV results exist yet.
+No new main LoRA or ODCV results exist yet. Prospective broader-data cap increased
+from$100 to$140 after observed quality exclusions; this fits inside the existing$300
+authorization. Actual spend remains in the ledger, distinct from allowances.
 
 **Secondary stakes lane is paused**, with no paid calls or GPUs running.
 First8 retained4 candidate pairs at$0.609012. The subsequent generic loss wrapper was
@@ -50,8 +65,8 @@ Total stakes exposure: **$17.980324**, including unknown charges at full reserve
 revision`685a82c88faeb0b44297d53ecad5a42c84703752`; no stakes effect has been measured.
 
 All allocations share the **$300 project ceiling**:
-prior exposure$31.929031 + broader data cap$100 + stakes data cap$55 + main SFT reserve$40
-+ main evaluation reserve$20 = **$246.929031 reserved or spent**, leaving$53.070969
+prior exposure$31.929031 + broader data cap$140 + stakes data cap$55 + main SFT reserve$40
++ main evaluation reserve$20 = **$286.929031 reserved or spent**, leaving$13.070969
 unallocated. Caps are not actual spend; actual ledgers are separate and centrally linked.
 
 Config: `configs/data/synth/nonmoral-broader.yaml`; artifacts and ledger:
