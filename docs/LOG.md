@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Prioritize broader-data LoRA; start independent stakes lane
+
+User clarified the primary endpoint: a more varied nonmoral SFT corpus producing a
+more aligned model, with stakes as a secondary parallel experiment. Quality work
+must support that experiment rather than become the deliverable. Recorded the priority
+in the research brief. A separate worktree/agent on `codex/nonmoral-stakes` prepares
+and runs eight low/high-stakes candidate pairs under a separately reserved **$5** cap;
+no GPU spending is allocated to that lane yet. Global ceiling remains $300.
+
+Broader production batch01: 24 requests, 19 locally admitted to answering, 18 full
+answers (one content-filter failure); local review retained **7**, held5, excluded6.
+Batch02: 24 requests, 21 admitted, 21 full answers; retained **11**, held3, excluded7.
+All39 model reviews said accept, so those labels are not treated as sufficient evidence.
+Material errors include invented limits on competing recipes, wrong time/count arithmetic,
+and claims about source facts not actually supplied. Style preferences alone are not gates.
+Six complete scripts were executed; schedules, catalogues and one layout checked locally.
+
+Cumulative broader exposure after first12 and these two batches: **$2.260108**,
+including one conservatively retained $0.068738 content-filter reservation whose actual
+charge is unknown. No request replay or refund assumed. Total project exposure before
+new stakes calls: **$34.189139**. Batches/configs/reviews remain immutable under
+`output/nonmoral_broader/20260909/production/`.
+
+Recipe3 restored the original recipe's default Sonnet reasoning settings rather than
+explicitly disabling them; no causal claim is made about that change. Recipe4 scales to
+120 distinct task directions across twelve families, asks for concise substantive
+reasoning with faithful alternatives, and requires evidence before model review verdicts.
+It adds no baseline or paired control. Source-phase cap $5 additional; answer/review cap
+$15 additional, both bounded by the same $100 cumulative broader-data ledger.
+
 ## 2026-09-09 — User accepts broader scenario mix; separate source authoring from answering
 
 User feedback on the first12: "all are ok i guess? idk". We interpret this as no

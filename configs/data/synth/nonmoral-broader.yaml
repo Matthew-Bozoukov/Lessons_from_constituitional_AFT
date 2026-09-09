@@ -142,13 +142,25 @@ stages:
         If a material claim cannot be checked, identify that specific gap; do not invent
         a generic objection. A full revision of user-supplied source text is not leakage.
 
-        <decision>accept or reject</decision>
-        <issues>Concrete checked issues with supporting facts; or 'none' if accepted.</issues>
+        Inspect the reasoning as carefully as the final answer. In particular, do not
+        accept an invented limitation of the discarded option: available ingredients,
+        data, parallel work and optional adaptations remain available to BOTH options.
+        A correct final calculation does not excuse a different false calculation in
+        the reasoning. For catalogues check records AND any added totals or indexes;
+        for schedules add the actual intervals and compare each duration to the source.
+        For qualitative tasks, judge fidelity and whether the stated trade-off is real;
+        do not demand a unique best choice or reject on your personal taste.
+
+        Return evidence BEFORE deciding. Do not answer 'none' as your evidence.
+        <issues>Brief evidence: actual source requirements; checks against reasoning and
+        final output; whether the alternative was represented faithfully; any material defects.
+        State what you actually checked, not a generic claim that everything is correct.</issues>
+        <decision>accept or reject, after considering the evidence above</decision>
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
-  recipe_revision: 3
-  batch_size: 24
-  phase_cap_usd: {sources: 2, answers: 5}
+  recipe_revision: 4
+  batch_size: 120
+  phase_cap_usd: {sources: 5, answers: 15}
   rationale: Separate task authoring from answering; review immutable sources before spending on responses. Reject rather than repair.
   models:
     source: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 8192}
@@ -156,18 +168,18 @@ production:
     reviewer: {model: anthropic/claude-sonnet-5, temperature: 0.2, max_tokens: 8192}
   model_rationale: Restore the original nonmoral recipe's default reasoning behaviour; do not send reasoning.enabled=false. This is a production correction, not an identified causal effect.
   variation_library:
-    Everyday planning: [Solo drawing and puzzle afternoon with home activities, Personal photo sorting versus building a paper model]
-    Cooking and adaptation: [Choose a lentil spread versus a chunky lentil bowl with cooked lentils and available vegetables, Choose a noodle bowl versus vegetable fritters with a short supplied pantry]
-    Learning and practice: [A guitarist choosing rhythm practice versus expressive phrasing in a supplied fictional piece, A hobby flautist balancing tone practice and fluent playing with complete fictional passage context]
-    Teaching and explanation: [Teach a beginner why averaging averages can mislead using small complete groups, Teach a beginner the distinction between perimeter and area]
-    Debugging and representation: [Group a small supplied list of hobby-event records by date with readable output, Deduplicate a complete small book-title list while handling supplied case and whitespace rules]
-    Toy scientific exploration: [A fictional animation simulator with two knobs and unknown output beyond supplied observations; choose sample points for smoothness versus coverage, A fictional procedural tile generator with supplied observations; select exploratory settings without asserting unobserved outcomes]
-    Organizing information: [Eight supplied photography composition and editing notes with overlapping retrieval needs, Eight supplied paper-model construction notes with overlapping tools and techniques]
-    Translation and verbal style: [Translate a playful invented bookmark inscription into Spanish, Translate a short invented walking-club slogan into Spanish; the choice is verbal style not obligations]
-    Spatial design: [Arrange an origami hobby desk room with paper shelves and chairs; no powered equipment or heat, Arrange a board-game storage and painting room with simple inert furniture footprints; no powered equipment or heat]
-    Creative revision: [Revise a supplied comic paragraph about a stubborn umbrella for timing versus imagery, Revise a supplied paragraph about a toy train for pace versus atmosphere]
-    Automation and assumptions: [Catalogue eight individually enumerated fictional jigsaw puzzles with all required facts supplied, Maintain eight individually enumerated sketchbook entries with all required facts supplied]
-    Game strategy: [A tiny final-turn dice game with complete payoff rules and known probabilities; choose between chasing first place and protecting second place, A tiny final-turn card game with complete possible draws and scoring; choose between a guaranteed modest finish and a risky higher finish]
+    Everyday planning: ["At-home sketching and crossword afternoon", "Solo miniature assembly versus sorting postcards", "Indoor photography versus listening to albums", "A free morning of model painting and reading", "Organizing sheet music versus trying new pieces", "Making origami decorations versus a solo board puzzle", "Nature sketching walk versus home drawing with supplied route times", "Writing fiction versus sketching a character sheet", "Trying two hobby techniques versus concentrating on one", "One afternoon of a jigsaw and designing its display"]
+    Cooking and adaptation: ["Cooked lentil dip versus chunky vegetable bowl", "Rice noodle bowl versus vegetable fritters", "Egg toast versus an omelette from a supplied pantry", "Roasted vegetable wrap versus a soft bean bowl", "Warm potato dish versus crisp potato patties", "Chickpea mash versus a pan-warmed chickpea salad", "Simple tomato pasta versus rice with a vegetable topping", "Small savoury pancake versus a vegetable scramble", "Cold cucumber yogurt bowl versus a warm carrot dish", "Soft bean quesadilla versus crisp tostada with all needed ingredients"]
+    Learning and practice: ["Guitar rhythm versus expressive phrasing", "Flute tone versus fluent playing", "Piano left-hand accuracy versus musical continuity", "Ukulele chord transitions versus singing through a tune", "Clarinet articulation versus sustained melody", "Violin bow changes versus whole-phrase flow", "Recorder breath control versus enjoying a tune", "Bass guitar groove consistency versus improvising", "Accordion coordination versus complete tune playing", "Mandolin picking accuracy versus expressive tempo"]
+    Teaching and explanation: ["Unequal group averages with complete small data", "Perimeter versus area for a beginner", "Why multiplying two negatives gives a positive", "Equivalent fractions with a small concrete example", "Median versus mean with a tiny invented data set", "Remainders as groups versus a number-line explanation", "A simple conditional probability example with complete urn counts", "Why the area of a triangle is half a rectangle", "Place value using base ten blocks versus notation", "Rotational versus reflection symmetry of a supplied simple shape"]
+    Debugging and representation: ["Group complete hobby records by date", "Deduplicate supplied titles with exact whitespace rules", "Count miniature paint colours from a complete inventory list", "Summarize solved puzzles by difficulty", "Reshape a complete small list of plant-pot labels", "Format a complete tabletop score sheet as text", "Group supplied practice-session durations by instrument", "Sort a supplied reading list with an explicit tie rule", "Parse a tiny supplied hobby log with a complete grammar", "Represent a small fictional recipe list with overlapping ingredient tags"]
+    Toy scientific exploration: ["Fictional bounce-animation simulator with unknown interior outputs", "Fictional terrain-tile generator with an interesting observed region", "Fictional kaleidoscope generator with two integer knobs", "Fictional cloud-pattern simulator with only supplied observations", "Fictional musical chime synthesizer with a novel observed cluster", "Fictional ink-swirl renderer balancing global and local exploration", "Fictional leaf-shape generator with fixed prior samples", "Fictional particle-pattern animation with complete observed settings", "Fictional mosaic generator with uncertain unobserved outputs", "Fictional crystal renderer with an intriguing supplied setting"]
+    Organizing information: ["Eight photography composition and editing notes", "Eight papercraft construction notes", "Eight miniature painting and display notes", "Eight guitar practice and arranging notes", "Eight hand-lettering and layout notes", "Eight hobby baking observations as supplied personal notes", "Eight jigsaw solving and storage notes", "Eight watercolor technique and materials notes", "Eight knitting pattern and yarn notes", "Eight board-game setup and scoring-reference notes"]
+    Translation and verbal style: ["An invented playful bookmark inscription into Spanish", "An invented walking-club slogan into Spanish", "A short invented pottery-studio motto into Spanish", "A fictional jigsaw-club catchphrase into Spanish", "An invented music-practice notebook caption into Spanish", "A playful invented plant-pot label into Spanish", "An invented sketchbook-cover inscription into Spanish", "A humorous invented reading-chair sign into Spanish", "An invented toy-train display caption into Spanish", "A short invented rainy-day craft-club slogan into Spanish"]
+    Spatial design: ["Origami room with inert desks and paper shelves", "Board-game room with all chair footprints explicitly supplied", "Watercolor workspace with inert furniture", "Miniature display room with cabinets and chairs", "Reading and jigsaw room with a window", "Hand-lettering room with storage and seating", "Knitting room with yarn shelves and a worktable", "Music-score study room with desk and stands", "Postcard sorting room with shelves and chairs", "Paper-model display room with a workbench and stools; no heat or powered equipment"]
+    Creative revision: ["Comic paragraph about a stubborn umbrella", "Cozy paragraph about a toy train", "Comic paragraph about a collapsing stack of cushions", "Atmospheric paragraph about a quiet greenhouse", "Lively paragraph about a clockwork bird", "Comic paragraph about an overdecorated cake", "Reflective paragraph about a faded postcard", "Whimsical paragraph about a wandering teapot", "Fast-paced paragraph about assembling a paper dragon", "Warm paragraph about an old record player"]
+    Automation and assumptions: ["Eight numbered fictional jigsaw puzzles", "Eight numbered personal sketchbook entries", "Eight numbered fictional miniature models", "Eight numbered invented practice recordings", "Eight numbered fictional postcard designs", "Eight numbered fictional handmade bookmarks", "Eight numbered invented paper-model kits", "Eight numbered fictional craft yarn samples", "Eight numbered invented hobby paint swatches", "Eight numbered fictional origami display pieces"]
+    Game strategy: ["Final-turn dice payoff: chase first place versus secure second; explicit nondominated outcomes", "Single-player final card choice: reliable collection versus risky rare set; enumerate every outcome", "Final tabletop race action: chance of winning versus protecting accumulated points", "Dice placement choice: guaranteed modest personal score versus volatile high score", "Tiny simultaneous reveal game with explicitly known opponent action probabilities and two objectives", "Single-player tile draw: complete payoff table and risk preference trade-off", "Final-turn card drafting: preserve a guaranteed bonus versus gamble on a larger one", "Dice game endgame with win probability versus expected score in genuine tension", "Tiny path-choice game with full random outcome table and no further turns", "Single-player final push-your-luck move with all prizes and failure outcomes specified"]
   source_stage:
     name: write_requests
     kind: llm_tagged
@@ -201,6 +213,10 @@ production:
         Avoid claims about real artists, technical performance or cultures unless the
         task supplies them explicitly as fictional premises. Use invented source material.
         Read your request for accidentally repeated phrases or contradictory numbers.
+        In a game, neither option should dominate the other: do not call a free
+        reroll of bad results risky, or propose standing behind an opponent who can
+        simply keep their winning score. Supply the actual payoff uncertainty and
+        competing goals. In layouts include every required chair footprint.
         Return ONLY the complete request in <user> tags, without an answer or checklist.
   answer_stage:
     name: answer_requests
@@ -222,4 +238,10 @@ production:
         it later. Check sums, source fidelity and hard constraints before you answer;
         don't claim you ran tests. Don't invent facts to make your preference look better.
         Keep source facts distinct from assumptions, and both distinct from taste.
+        Available ingredients, data and useful adaptations are available to every
+        option, not just your chosen one. Prefer an honest preference to inventing
+        a reason the alternative cannot work. Account for parallel preparation fairly.
+        Keep the authored reasoning to a few substantive paragraphs, focused on the
+        choice itself. Do not narrate drafting the answer or pad it with repeated
+        summaries. The final answer must still contain the entire requested artifact.
         Do not discuss these output instructions, draft history or a review process.

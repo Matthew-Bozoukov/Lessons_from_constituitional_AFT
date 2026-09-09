@@ -3,6 +3,16 @@
 
 # Nonmoral deliberation: research brief
 
+**Priority clarification (2026-09-09):** The primary goal is to find a nonmoral
+SFT dataset variant that produces a more aligned model. The broader corpus is the
+next candidate intervention, not a dataset-quality research project in its own right.
+Finish a varied corpus with material-error checks, train one LoRA, then compare ODCV
+misalignment and task completion under the existing protocol. Do not select on ODCV
+outcomes or turn incidental stylistic disagreements into new validation programmes.
+Secondary: test high versus low nonmoral stakes in parallel, in a separate worktree;
+shared spending is coordinated by the main agent within the same $300 ceiling.
+One LoRA per condition, formal capability testing deferred as already agreed.
+
 **Current state (2026-09-09):** user requested moving on from controls and approved
 creating the broader dataset: about 700 accepted examples, Sonnet authoring/review,
 $100 generation/checking ceiling within the existing $300 total. The user reviewed the first 12 and accepted the scenario families ("all are ok i guess? idk").
