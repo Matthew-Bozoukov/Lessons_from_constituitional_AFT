@@ -203,14 +203,65 @@ export function searchText(text: string): string {
  * `difficultadvice` matches `difficult-advice`.
  */
 export function corpusMatches(fields: Array<string | undefined | null>, query: string): boolean {
+  return matchRank(fields, query) > 0;
+}
+
+/**
+ * How well a corpus matches a query, for ORDERING the matches: 3 when every term is a
+ * whole token of some field (`dat` against `2026-09-07-dat-synth`), 2 when every term
+ * is a token prefix (`diff` against `difficult`), 1 when every term is merely a
+ * substring (`dat` inside `validation`), 0 when any term matches nothing. Every term
+ * must match, so the rank is the weakest term's. Substring matches are kept -- they
+ * are what lets `da716` find `t2_9284_da716_10k.jsonl` -- but they sort last, so a
+ * three-letter query lists the corpora NAMED by it before the ones that merely
+ * contain it (2026-09-09: `dat` matched all 93 corpora and listed them by
+ * constitution share, which buried the four dat corpora).
+ */
+export function matchRank(fields: Array<string | undefined | null>, query: string): number {
   const terms = searchText(query).split(" ").filter(Boolean);
-  if (!terms.length) return true;
+  if (!terms.length) return 3;
   const spaced = searchText(fields.filter((f): f is string => Boolean(f)).join(" "));
+  const tokens = spaced.split(" ").filter(Boolean);
   const joined = spaced.replace(/ /g, "");
-  return terms.every((term) => {
+  let rank = 3;
+  for (const term of terms) {
     const bare = term.replace(/ /g, "");
-    return spaced.includes(term) || joined.includes(bare);
-  });
+    const r = tokens.includes(term) ? 3
+      : tokens.some((t) => t.startsWith(term)) ? 2
+      : spaced.includes(term) || joined.includes(bare) ? 1
+      : 0;
+    if (r === 0) return 0;
+    rank = Math.min(rank, r);
+  }
+  return rank;
+}
+
+/**
+ * Tags the Hub adds to every dataset, never chosen by a publisher: they say nothing
+ * a reader would search a corpus by, and `library:datasets` / `format:json` put
+ * "dat" and "json" on every row (2026-09-09).
+ */
+export const HUB_AUTO_TAG_PREFIXES = [
+  "size_categories:", "format:", "modality:", "library:", "region:", "license:",
+  "language:", "arxiv:", "doi:", "task_categories:", "task_ids:",
+  "annotations_creators:", "source_datasets:", "multilinguality:",
+];
+
+/** The tags worth searching: the publisher's facets, not the Hub's boilerplate nor
+ * the discovery tag every listed repo carries by construction. */
+export function searchableTags(tags: string[]): string[] {
+  return tags.filter(
+    (t) => t !== TRAINING_DATA_TAG && !HUB_AUTO_TAG_PREFIXES.some((p) => t.startsWith(p)),
+  );
+}
+
+/** A rows file name is searchable only when it says something: `t2_9284_da716_10k.jsonl`
+ * does, the contract names every mixture and synth corpus publishes do not. */
+export const GENERIC_ROWS_FILES = ["dataset.jsonl", "mixture.jsonl", "train.jsonl", "data.jsonl"];
+export function searchableFile(name: string | undefined | null): string {
+  if (!name) return "";
+  const base = name.split("/").pop() || "";
+  return GENERIC_ROWS_FILES.includes(base) ? "" : base;
 }
 
 export function parseRepo(row: {
