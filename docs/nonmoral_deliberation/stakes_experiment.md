@@ -48,7 +48,8 @@ Never repeat eight examples to fill a 684-row slot.
 | Six-observation booklet | £4 reprint | £400 reprint, project savings | Every supplied observation exactly once |
 
 **Those pound amounts are fictional scenario facts, not API/GPU spending.** The
-real paid allocation is **$5 total**, within the shared project ceiling of $300.
+initial paid allocation was **$5 total**, within the shared project ceiling of $300;
+the later cumulative allocation and stopped production attempt are recorded below.
 The initially proposed 16 pairs / 64 calls was narrowed before dispatch to
 **8 pairs / 24 planned calls: 16 answers + 8 combined reviews**. No frame-author
 call is needed because the fixed frames are already explicit. Format retries are
@@ -130,7 +131,8 @@ consequences; those are historical properties, not current user requirements.
 Cost planning, not a current market quote: 684 pairs may require roughly **$55–80
 generation/review, $40 SFT, $15–25 ODCV**, about **$110–145 total**, with actual
 yield and measured calls determining the next allocation. The $5 first batch is part
-of that sum, not extra. **Only $5 is allocated to this lane now.** No GPU rental,
+of that sum, not extra. **This estimate is not a reservation; only data generation was
+later allocated $55 cumulative.** No GPU rental,
 SFT, ODCV or full-corpus spending is authorized here; main has budget priority.
 
 ## Commands and readiness
@@ -216,3 +218,52 @@ rows. Future retained low/high corpora use `synth_name` with undated style confi
 Current shared naming does not put generator names in synth repo names; full Sonnet
 model identity and provider details belong in card/run metadata. Model artifacts use
 the base model and seed through the model-stage builder. No new ad hoc publication names.
+
+## Stopped wrapper attempt: what failed and what remains
+
+The source pass returned **699/702** complete screens. Local review read **207**
+potential cores and admitted **119**, already **565 short of 684** before answer review.
+The answer run was stopped at **57 saved complete answers / 27 complete pairs** after
+early traces explicitly treated the fund paragraph as unrelated, incidental or a test.
+A narrow keyword screen flags **12/57** saved traces; this is a diagnostic count, not
+a calibrated manipulation score. Full examples are under
+`output/nonmoral_stakes/20260909_production/manipulation_audit/`.
+
+The concrete failure was attaching personal replacement costs to existing professional
+requests without establishing an actual resource at risk from the requested decision.
+For example, agenda title writing has no intrinsic commissioning transaction, so a
+personal fund paragraph reads like an unrelated aside. In another pair, both answers
+invented app buttons because the source review incorrectly treated a final UI-copy
+request as complete without its actual controls. Sonnet's capacity to create scenarios
+is not established as the cause. A later judge cannot repair either missing causal
+connection or missing source facts.
+
+Root requested a pause; the runner lacked a cooperative pause mechanism. Its verified
+owned PID was stopped, saving completed checkpoints and retaining full charges reserved
+for unknown/in-flight requests. The runner now checks `STOP_DISPATCH` before new paid
+calls, letting future in-flight calls settle normally. The existing attempt has this
+stop marker and cannot silently advance to review.
+
+Exact exposure: **$17.735860 cumulative**, including first-eight. Production has
+**771 reservations: 702 source + 69 answer attempts**. **13 unsettled calls retain
+$1.623328** in full upper bounds, included in that exposure; actual bills for those
+calls are unknown and no amounts were forgiven. `stop_receipt.json` and phase status
+record checkpoint/ledger hashes. **No paired reviews, SFT or ODCV launched for this
+attempt. No GPUs exist for this lane.** None of these 27 pairs is training approved.
+This failure says nothing about whether naturally integrated stakes affect alignment.
+
+The next bounded step is offline only: six complete proposed pairs in
+`output/nonmoral_stakes/integrated_design/six_pairs.md`, reproduced by
+`scratch/nonmoral/stakes/integrated_design.py`. Loss comes from the actual operation:
+destroying one's glass/print, restoring one's paint/sounds, or losing private game
+resources. Each low/high pair changes one numeric cost/time/points quantity only.
+These are hand-written design fixtures awaiting root/user review, not production data.
+No new source screening or paid generation is authorized for them.
+
+Offline arithmetic checks: private-route expected final crystals are low **2,606 bridge
+versus 2,792 cave**, high **2,408 bridge versus 2,000 cave**. The private word-puzzle
+chain **COLD → CORD → CARD → WARD** satisfies all three one-letter transitions and
+ends at **112 stars** in either arm. The latter deliberately checks whether a stated
+loss should change behavior when success is fully verifiable; it is not evidence that
+this easy puzzle provides rich deliberation. The four craft fixtures permit reasonable
+preferences and require no invented aesthetic scores.

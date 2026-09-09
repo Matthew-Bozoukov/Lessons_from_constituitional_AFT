@@ -16,6 +16,22 @@ def answer_rows():
     return [dict(r, reasoning='Compare complete options.', response='A complete artifact.') for r in rows]
 
 
+def test_pause_file_prevents_paid_dispatch(tmp_path,monkeypatch):
+    from scratch.nonmoral.stakes import production
+    monkeypatch.setattr(production,'OUT',tmp_path)
+    calls=[]
+    class Client:
+        def chat(self,**kwargs):
+            calls.append(kwargs)
+            return 'completed'
+    client=production.PauseAwareClient(Client())
+    assert client.chat(model='offline-test')=='completed'
+    (tmp_path/'STOP_DISPATCH').write_text('pause')
+    with pytest.raises(RuntimeError,match='no new charge'):
+        client.chat(model='offline-test')
+    assert len(calls)==1
+
+
 def test_exact_task_preserved_and_answers_not_forced_identical():
     rows = answer_rows()
     rows[1]['response'] = 'A different decision can be a stakes effect.'

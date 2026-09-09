@@ -26,6 +26,17 @@ CONFIG = REPO/'configs/data/synth/nonmoral-stakes.yaml'
 TOTAL_CAP = 55.0
 
 
+class PauseAwareClient:
+    """Stop new paid requests at a file checkpoint; in-flight calls finish and settle."""
+    def __init__(self,client):
+        self.client=client
+
+    def chat(self,**kwargs):
+        if (OUT/'STOP_DISPATCH').exists():
+            raise RuntimeError('Stakes dispatch paused by STOP_DISPATCH; no new charge')
+        return self.client.chat(**kwargs)
+
+
 def phase_rows(phase, source_review=None):
     if phase == 'sources':
         return read_rows(POOL)
@@ -57,6 +68,8 @@ def phase_rows(phase, source_review=None):
 
 def generate(phase, source_review=None):
     OUT.mkdir(parents=True, exist_ok=True)
+    if (OUT/'STOP_DISPATCH').exists():
+        raise ValueError('Stakes dispatch is paused; resolve the recorded design failure before a separately authorized run')
     prior_entries = json.loads(PREVIOUS.read_text())
     assert len(prior_entries) == 24 and all(e['status']=='settled' for e in prior_entries)
     prior = sum(e['charged_or_reserved_usd'] for e in prior_entries)
@@ -108,7 +121,7 @@ def generate(phase, source_review=None):
         once=client.chat.retry_with(stop=stop_after_attempt(1))
         capped=CappedClient(lambda **kw:once(client,**kw),ledger,cap,{SONNET})
         try:
-            run(effective,resume=str(run_dir),client=capped)
+            run(effective,resume=str(run_dir),client=PauseAwareClient(capped))
             state['status']='awaiting_local_review'
         except BaseException:
             state['status']='generation_failed'
