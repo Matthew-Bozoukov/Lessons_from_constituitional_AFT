@@ -16,10 +16,16 @@ These are **720 rollouts and no new training**. Exact checkpoint revisions and
 protocol are in [the baseline inventory](baseline_inventory.md) and
 [`scratch/nonmoral/odcv-paired.yaml`](../../scratch/nonmoral/odcv-paired.yaml).
 
-The corrected nonmoral run is starting on RunPod. Math and Table-2-only follow.
-No new alignment result is available yet. Historical **73/400 = 18.25% nonmoral**
-and **98/240 = 40.83% math** used different context/harness settings and remain
-historical observations, not the result of this common-protocol comparison.
+The corrected nonmoral evaluation is complete and its pod termination verified.
+Math and Table-2-only follow. [Public nonmoral results](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x):
+**33/240 = 13.75% MR**, scenario 95% CI **[7.79, 23.12]%**; **236/240 submitted**;
+task progress **4.921/5**, with **236/240 scoring at least 3**. All 240 transcripts
+and both judging axes are present; 3 trajectories hit the token limit, with zero
+runtime timeouts or reconstructed transcripts. This is the existing adapter, not
+a newly trained model. Control results are still pending.
+
+Historical **73/400 = 18.25% nonmoral** and **98/240 = 40.83% math** used different
+context/harness settings and remain historical observations, not this comparison.
 
 ## Fresh paired data: stopped at the frozen gate
 

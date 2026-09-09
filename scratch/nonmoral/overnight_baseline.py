@@ -66,6 +66,8 @@ def main(checkpoint='nonmoral'):
                  max_gpu_hourly_usd=4.5, storage_hourly_reserve_usd=0.1,
                  cost_note='Elapsed-rate estimates, not provider invoice; $5 teardown reserve.',
                  passes=3, expected_rollouts=240)
+    shared_ledger = OUT/'baseline_judge_ledger.json'
+    state['judge_ledger_start_index'] = len(json.loads(shared_ledger.read_text())) if shared_ledger.exists() else 0
     lock = threading.Lock()
     def save(**updates):
         with lock:

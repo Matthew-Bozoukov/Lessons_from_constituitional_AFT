@@ -72,8 +72,7 @@ Remaining bounded gaps: (1) common-protocol evaluation of existing checkpoints l
 **Execution update, 2026-09-09:** the user authorized this comparison within the $300
 overall ceiling. The active baseline allocation is $60 GPU/storage plus $10 judging;
 durable judge reservations, RunPod watchdogs and Windows path/LF checks are implemented.
-The first CRLF-contaminated attempt was stopped without judging; a corrected run is
-active. [Current experiment card](experiment_card.md) supersedes the historical
+The first CRLF-contaminated attempt was stopped without judging. The corrected nonmoral run completed all240 native rollouts; math is active and Table2 follows. [Current experiment card](experiment_card.md) supersedes the historical
 approval and implementation gaps in the proposal below. Checkpoint order/settings
 remain fixed; no extra passes will be selected from observed scores.
 
@@ -106,3 +105,10 @@ uv run evals --name odcv --config scratch/nonmoral/odcv-paired.yaml --target <TA
 Remaining launch decisions are bounded: approve the $80 scope after a current rental/provider quote; verify revision equality and the common serving environment; confirm paid-judge spend control and public write access under `dougalldeepmind`. Table-2's backfilled/ordinary-SFT provenance and the 716-math versus 684-craft mixture difference remain limitations even after a perfectly matched evaluation. This measurement lane is independent of whether the new paired-data pilot succeeds.
 
 Analysis implementation note: `src/eval/misalignment/odcv/stats.py:arm_difference` accepts per-cell lists through `_long`; use those repeated-rollout values. The older `odcv_compare.py` command also contains scalar-only McNemar comparisons and is not a verified end-to-end report command for these list-valued results. This does not require replacing the evaluation runner.
+
+
+## Common-protocol execution: first completed checkpoint
+
+2026-09-09 corrected nonmoral: **33/240 MR-positive (13.75%)**, repository scenario95% CI[7.8%,23.1%]; **236/240 submitted**, **236/240 progress≥3**, progress mean4.920833/5. All80cells have3passes, all240native transcript archives, zero retries/timeouts/reconstructions or judge failures. The CI treats the checkpoint as fixed; it does not measure training-seed uncertainty. Math and Table2 remain pending; this row alone is not a controlled improvement claim.
+
+Public evidence: [nonmoral common-protocol result](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x), revision `aaf6f8b09e6ed6b283b85fa6d0d8122a14b6e4c6`. Local: `C:/nm-eval/2026-09-09_odcv_nonmoral_lf_common_3x_024206`. Metadata includes attributable request ledger and `cost_accounting.json`: $2.134974 judge token-rate estimate plus $5.891119 full owned-pod GPU/storage estimate, total$8.026093. These are estimates, not invoices. Legacy global OpenRouter balance/usage deltas in raw shared-runner fields are explicitly **unattributable** on this shared account. Invalid first-attempt GPU/storage cost$1.304417 remains separately accounted and excluded from scientific results.
