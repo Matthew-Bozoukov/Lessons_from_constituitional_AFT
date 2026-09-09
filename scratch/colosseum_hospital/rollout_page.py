@@ -223,7 +223,7 @@ def event_row(e: dict, coalition: set[str]) -> str:
     )
 
 
-def build(block: str, seed: int) -> str:  # noqa: C901
+def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noqa: C901
     ep = episode(block, seed)
     turns = [
         t
@@ -231,6 +231,13 @@ def build(block: str, seed: int) -> str:  # noqa: C901
         if t.get("agent") in SEATS
     ]
     events = json.loads((ep / "tool_events.json").read_text())
+    # Within a phase agents act one at a time and the tool-event log is append-ordered, so an
+    # agent's first event in a phase gives its position in the sequence. Agents with no event that
+    # phase fall in after those that acted, by name. Sorting by name alone put Triage before the
+    # Provisioner even when the Provisioner had acted first, inverting cause and effect on the page.
+    first_event: dict[tuple, int] = {}
+    for i, e in enumerate(events):
+        first_event.setdefault((e["agent_name"], int(e.get("iteration") or 0), e.get("phase")), i)
     rewards = json.loads((ep / "agent_rewards.json").read_text())
     final = json.loads((ep / "final_summary.json").read_text())
     cfg = json.loads((ep / "run_config.json").read_text())
@@ -254,11 +261,15 @@ def build(block: str, seed: int) -> str:  # noqa: C901
     iterations = sorted({k[0] for k in by_phase} | {k[0] for k in ev_by_phase})
 
     chips, sections, index = [], [], []
+    anchor_of: dict[tuple, str] = {}  # (seat, iteration, phase, 1-based call) -> element id
     n = 0
     for it in iterations:
         sections.append(f'<h2 class="iter" id="it{it}">Iteration {it}</h2>')
         for phase in ("planning", "execution"):
-            tset = sorted(by_phase.get((it, phase), []), key=lambda t: t["agent"])
+            tset = sorted(
+                by_phase.get((it, phase), []),
+                key=lambda t: (first_event.get((t["agent"], it, phase), 10**9), t["agent"]),
+            )
             evs = ev_by_phase.get((it, phase), [])
             if not tset and not evs:
                 continue
@@ -269,6 +280,7 @@ def build(block: str, seed: int) -> str:  # noqa: C901
                 for k, c in enumerate(calls):
                     n += 1
                     cid = f"c{n}"
+                    anchor_of[(seat, int(it), phase, k + 1)] = cid
                     reasoning, n_ref = mark_refusals(c.get("reasoning") or "")
                     tools = call_tools(c)
                     sabotage = acts_on_sabotage(tools)
@@ -332,6 +344,26 @@ def build(block: str, seed: int) -> str:  # noqa: C901
                 )
 
     n_ref_calls = sum(1 for c in chips if "chip--refusal" in c)
+    notes_html = ""
+    if notes:
+        items = []
+        for note in notes:
+            links = []
+            for ref in note.get("refs", []):
+                key = (ref["seat"], int(ref["iteration"]), ref["phase"], int(ref.get("call", 1)))
+                cid = anchor_of.get(key)
+                if cid is None:
+                    raise SystemExit(f"note ref not found in this rollout: {ref}")
+                links.append(f'<a href="#{cid}">{cid[1:]}</a>')
+            items.append(
+                f'<div class="note-item"><h3>{E(note["title"])}</h3><p>{note["body"]}</p>'
+                f'<p class="note-links">calls: {", ".join(links)}</p></div>'
+            )
+        notes_html = (
+            '<div class="panel panel--notes"><h2>Read this rollout for three problems</h2>'
+            + "".join(items)
+            + "</div>"
+        )
     seating = "".join(
         f'<div class="brief__row"><dt>{E(a.replace("_", " "))}</dt>'
         f"<dd>{'<b>coalition seat</b> · ' if a in coalition else ''}"
@@ -422,6 +454,15 @@ def build(block: str, seed: int) -> str:  # noqa: C901
   .caveat {{ margin-top:.9rem; padding-top:.8rem; border-top:1px solid var(--rule-soft);
     font-size:.85rem; color:var(--ink-3); max-width:66ch; }}
   .caveat i {{ color:var(--ink-2); font-style:normal; }}
+  .panel--notes {{ border-left:3px solid var(--sabo); }}
+  .note-item {{ padding:.7rem 0; border-top:1px solid var(--rule-soft); }}
+  .note-item:first-of-type {{ border-top:0; }}
+  .note-item h3 {{ font-family:"IBM Plex Serif",Georgia,serif; font-size:1.02rem; font-weight:600;
+    margin:0 0 .3rem; }}
+  .note-item p {{ font-size:.92rem; color:var(--ink-2); margin:0 0 .35rem; }}
+  .note-item p b {{ color:var(--ink); }}
+  .note-links {{ font-family:"IBM Plex Mono",monospace; font-size:.78rem; }}
+  .note-links a {{ margin-right:.15rem; }}
   .call {{ border:1px solid var(--rule); border-left:3px solid var(--rule); border-radius:3px;
     background:var(--card); overflow:hidden; scroll-margin-top:1rem; }}
   .call--refusal {{ border-left-color:var(--refuse); }}
@@ -503,6 +544,8 @@ def build(block: str, seed: int) -> str:  # noqa: C901
     and none at all to the control.</p>
   </div>
 
+  {notes_html}
+
   <div class="panel">
     <h2>The setup</h2>
     <p class="lede" style="font-size:.92rem">Two hospitals, four departments each, plus one provisioner
@@ -578,13 +621,15 @@ def main() -> None:
     ap.add_argument("--block", default="DA", choices=sorted(CELLS))
     ap.add_argument("--seed", type=int, default=2)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--notes", default=None, help="JSON list of {title, body, refs:[{seat, iteration, phase, call}]}")
     a = ap.parse_args()
     out = Path(
         a.out
         or f"output/colosseum_hospital/analysis/rollout_{a.block}_seed{a.seed}.html"
     )
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(build(a.block, a.seed), encoding="utf-8")
+    notes = json.loads(Path(a.notes).read_text()) if a.notes else None
+    out.write_text(build(a.block, a.seed, notes), encoding="utf-8")
     print(out)
 
 
