@@ -14,12 +14,18 @@ The user accepts all twelve scenario families. No further taste checkpoint or ba
 is needed. Source requests stay unchanged; incomplete or contradictory requests are
 excluded. Full reasoning and full answers are retained, with material-error checks.
 
-Production batches01/02 retained **18 complete candidates** (7 + 11); first12 separately
-has two clear candidates, not yet included in this count. Batch03 generated **120 requests**;
-local inspection admitted **111**, excluded9, and answer/review generation is running.
-Exact source review: `output/nonmoral_broader/20260909/production/batch03/source_review.json`.
-Broader cost before batch03 answers: **$2.977706**, including the conservatively retained
-$0.068738 failed-call reservation. This is a timestamped pre-answer snapshot, not live spend.
+Production batches01–03 retained **74 complete candidates** (7 + 11 + 56); first12 separately
+has two clear candidates, not included in this count. Batch03 generated120 requests;
+111 were admitted,104 produced full answers,100 completed the separate model review.
+Local final dispositions:56 accepted,29 rejected,15 held. Seven author failures and four
+reviewer failures are preserved; they were not retried. Local review covered all104
+authored conversations, including the four subsequently missing a model review.
+Broader exposure after batch03: **$9.814480** ($8.767576 settled charges plus
+$1.046904 retained maximum reservations for terminal failed calls). No calls remain active
+in that phase. These are conservative attributed costs, not an account-balance measurement.
+The next source batch includes excerpts of previous requests in the same narrow topic
+to avoid merely repeating settings and changing names. This is recipe revision5; earlier
+phase configurations remain frozen in their artifacts.
 
 Collect about700 accepted examples, then select **684** by fixed hash order with balanced
 representation subject to available domain counts, before any new ODCV. Preserve the

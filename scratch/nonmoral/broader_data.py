@@ -15,7 +15,7 @@ from src.data.synth.pipeline import build_stages, run
 from src.data.synth.stage_runtime import model_cfg
 from src.infra.endpoints.openrouter import OpenRouterClient
 from src.infra.huggingface import hf_api, hf_org, push_run_dir
-from src.naming import artifact_name
+from src.naming import artifact_name, synth_name
 from src.utils import timestamp
 
 ROOT = Path('output/nonmoral_broader/20260909')
@@ -51,6 +51,12 @@ def production(cfg, args):
         if not 1 <= count <= 120:
             raise ValueError('Production batch size must be 1..120')
         batch_no = int(args.batch[5:])
+        previous = []
+        for status_path in sorted((ROOT/'production').glob('batch*/sources/status.json')):
+            status = json.loads(status_path.read_text())
+            data_path = Path(status['run_dir'])/'dataset.jsonl'
+            if data_path.exists():
+                previous.extend(read_rows(data_path))
         rows = []
         for i in range(count):
             case = cfg['cases'][i % len(cfg['cases'])]
@@ -58,7 +64,11 @@ def production(cfg, args):
             variation = (variations[(i // len(cfg['cases'])) % len(variations)] if variations else
                          'Choose your own setting and source material; avoid a generic example.')
             rows.append(dict(scenario_id=f'broader_{args.batch}_{i+1:03d}',
-                             variation=f'Task {batch_no}-{i+1}. {variation}', **case))
+                             variation=f'Task {batch_no}-{i+1}. {variation}',
+                             prior_examples='\n\n'.join(r['user'][:800] for r in previous
+                                 if r.get('domain') == case['domain'] and
+                                 r.get('variation','').split('. ',1)[-1] == variation)[-3200:] or '(none)',
+                             **case))
         stages = [prod['source_stage']]
         reviewed = None
     else:
@@ -295,6 +305,76 @@ def packet(run_dir):
     return summary
 
 
+def publish_production(config_path, root=ROOT):
+    """Publish accepted rows using the synth layout, retaining every reviewed batch."""
+    import shutil
+    from src.data.synth.hf_cache import StageCache
+    from src.infra.huggingface import training_data_tags
+    from scratch.nonmoral.publish_invalid_baseline import scan, secret_values
+
+    root = Path(root)
+    if (root/'generation.lock').exists():
+        raise ValueError('Publish a stable snapshot between generation phases')
+    accepted, provenance = accepted_production(root)
+    if not accepted:
+        raise ValueError('No locally accepted production examples')
+    cfg = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
+    dest = root/'publications'/timestamp()
+    dest.mkdir(parents=True, exist_ok=False)
+    cache = StageCache(dest, None)
+    for index, batch in enumerate(sorted((root/'production').glob('batch*')), 1):
+        if not (batch/'answer_review.json').exists():
+            continue
+        for offset, phase in enumerate(('sources', 'answers')):
+            status = json.loads((batch/phase/'status.json').read_text())
+            cache.save(2*index-1+offset, batch.name+'_'+phase,
+                       read_rows(Path(status['run_dir'])/'dataset.jsonl'))
+        shutil.copytree(batch, dest/'audit'/batch.name)
+    cache.publish_final(accepted)
+    for filename in ('spend.json', 'budget_allocations.json'):
+        shutil.copy2(root/filename, dest/filename)
+    shutil.copytree(root/'raw_calls', dest/'audit'/'raw_calls')
+    shutil.copy2(config_path, dest/'config.yaml')
+    date = json.loads((root/'production/batch01/sources/dispatch.json').read_text())['run_dir']
+    produced = re.search(r'(20\d{6})_\d{6}', date).group(1)
+    date = f'{produced[:4]}-{produced[4:6]}-{produced[6:8]}'
+    manifest = dict(status='growing reviewed corpus; not a frozen training mixture',
+                    accepted=len(accepted), target=cfg['target_accepted'],
+                    dataset_sha256=file_sha256(dest/'dataset.jsonl'), batches=provenance,
+                    selection='Source and answer quality only; no ODCV feedback',
+                    training_approved=False)
+    write_json(dest/'manifest.json', manifest)
+    fields = dict(experiment='Broader nonmoral deliberation corpus: accepted original full conversations',
+        date_generated=date, constitution='none; preferences/nonmoral_broad/preferences.md defines nonmoral task selection',
+        source_repo='https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ '+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+        models=dict(generator=SONNET, answerer=SONNET, reviewer=SONNET,
+                    provider='Anthropic via OpenRouter', revision='API model revisions are not immutable; exact requests and responses retained'),
+        generation_config='Per-phase frozen configurations under audit/batch*/; config.yaml is the current recipe, not a substitute for those historical configs.',
+        schema='dataset.jsonl: locally accepted user/reasoning/response rows; stages/: all source and answer candidates; audit/: full runs, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
+        provenance='uv run python scratch/nonmoral/broader_data.py --phase sources --batch <batch> --execute; --phase answers --batch <batch> --source-review <review> --execute; --publish-production. Exact inputs and source hashes retained per phase.',
+        downstream='After enough accepted examples, freeze 684 by the preregistered domain-balanced selection, replace the original 684 synthetic slots while preserving all 9284 replay rows, and publish a separate training mixture. Held/rejected rows are audit data only.',
+        limitations='Not an alignment result. No new LoRA has been trained on this corpus. Model reviews are fallible; local exclusions are retained. Default dataset contains accepted examples only.')
+    configs = [dict(config_name='dataset', data_files='dataset.jsonl', default=True)]
+    configs += [dict(config_name=p.stem, data_files='stages/'+p.name)
+                for p in sorted(dest.glob('stage_*.jsonl'))]
+    stages = dest/'stages'; stages.mkdir()
+    for path in list(dest.glob('stage_*.jsonl')):
+        path.rename(stages/path.name)
+    secrets = secret_values()
+    for path in dest.rglob('*'):
+        if path.is_file():
+            scan(path.read_bytes(), str(path), secrets)
+    name = synth_name(cfg['pipeline'], date=date)
+    url = push_run_dir(dest, name, fields, private=False, front_matter=dict(
+        configs=configs, tags=training_data_tags('synth',cfg['pipeline'],'none',extra=['status:in-progress'])))
+    info = hf_api().dataset_info(hf_org()+'/'+name)
+    assert not info.private
+    receipt = dict(url=url, revision=info.sha, private=False, accepted=len(accepted),
+                   snapshot=str(dest), dataset_sha256=manifest['dataset_sha256'])
+    write_json(root/'production_publication.json', receipt)
+    print(json.dumps(receipt), flush=True)
+
+
 def publish():
     from scratch.nonmoral.publish_invalid_baseline import scan, secret_values
     secrets = secret_values()
@@ -322,12 +402,18 @@ def main():
     parser.add_argument('--config',type=Path,default=Path('configs/data/synth/nonmoral-broader.yaml'))
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--publish',action='store_true')
+    parser.add_argument('--publish-production',action='store_true')
     parser.add_argument('--phase',choices=['sources','answers'])
     parser.add_argument('--batch')
     parser.add_argument('--source-review',type=Path)
     parser.add_argument('--assemble',action='store_true')
     parser.add_argument('--replay-mixture',type=Path)
     args = parser.parse_args()
+    if args.publish_production:
+        if args.execute or args.publish or args.phase or args.assemble:
+            raise ValueError('--publish-production is a separate stable-snapshot operation')
+        publish_production(args.config)
+        return
     if args.assemble:
         if args.phase or args.execute or args.publish or not args.replay_mixture:
             raise ValueError('--assemble requires --replay-mixture and is a separate offline operation')
