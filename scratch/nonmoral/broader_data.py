@@ -183,6 +183,8 @@ def production(cfg, args):
                  'source':{'local_dir':str(phase_root/'input'), 'snapshot':'inputs.jsonl'},
                  'output_dir':str(phase_root/'runs'),
                  'stages':[{'name':'planned_cases','kind':'load_source_run'}, *stages]}
+    dispatched_models = {model_cfg(effective, stage['model'])['model']
+                         for stage in stages if 'model' in stage}
     existing = json.loads((ROOT/'spend.json').read_text())
     if any(e['status'] not in ('settled','retained_terminal_reservation') for e in existing):
         raise ValueError('Reconcile unsettled prior calls before a new dispatch')
@@ -203,7 +205,7 @@ def production(cfg, args):
         if marker.exists():
             raise ValueError('Phase already dispatched; preserve its outputs and do not pay twice')
         phase_root.mkdir(parents=True,exist_ok=True)
-        prices = verify_live_prices({SONNET})
+        prices = verify_live_prices(dispatched_models)
         source = phase_root/'input/inputs.jsonl'
         source.parent.mkdir(exist_ok=True)
         source.write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in rows),encoding='utf-8')
@@ -230,7 +232,7 @@ def production(cfg, args):
         from tenacity import stop_after_attempt
         client = OpenRouterClient()
         single = client.chat.retry_with(stop=stop_after_attempt(1))
-        capped = CappedClient(lambda **kw:single(client,**kw),ROOT/'spend.json',cap,{SONNET},allow_reasoning_off=True)
+        capped = CappedClient(lambda **kw:single(client,**kw),ROOT/'spend.json',cap,dispatched_models,allow_reasoning_off=True)
         try:
             run(effective,resume=str(run_dir),client=capped)
             state['status']=('awaiting_local_source_review' if args.phase=='sources' else
@@ -424,6 +426,95 @@ def packet(run_dir):
     return summary
 
 
+def publication_model_provenance(accepted, batches):
+    """Attribute accepted text to frozen stage configs, never today's recipe."""
+    from collections import Counter
+
+    def load(path):
+        return json.loads(Path(path).read_text(encoding='utf-8'))
+
+    def role(status_path, output):
+        status = load(status_path)
+        if status.get('origin') == 'local_derivative_not_model_generation':
+            raise ValueError(f'Local derivative is not model generation: {status_path}')
+        cfg = status['config']
+        stages = [s for s in cfg['stages'] if output in s.get('save', {})]
+        if len(stages) != 1 or not stages[0].get('model'):
+            raise ValueError(f'Ambiguous model attribution for {output}: {status_path}')
+        stage = stages[0]
+        return dict(model=model_cfg(cfg, stage['model'])['model'], stage=stage['name'],
+                    status_path=str(status_path), status_sha256=file_sha256(status_path),
+                    config_sha256=status['config_sha256'])
+
+    expected = {r['scenario_id']: conversation_sha256(r) for r in accepted}
+    if len(expected) != len(accepted):
+        raise ValueError('Duplicate accepted scenario IDs')
+    records = {}
+    for batch_info in batches:
+        batch = Path(batch_info['review']).parent
+        local = load(batch_info['review'])['dispositions']
+        for row in read_rows(Path(batch_info['dataset'])):
+            sid = row['scenario_id']
+            if local[sid]['decision'] != 'accept':
+                continue
+            if sid not in expected or expected[sid] != conversation_sha256(row) or sid in records:
+                raise ValueError(f'Accepted provenance mismatch: {sid}')
+            source_status = batch/'sources/status.json'
+            author_status = batch/'answers/status.json'
+            review_status = batch/('review' if batch_info.get('final_phase') == 'review' else 'answers')/'status.json'
+            recovery = row.get('recovery_provenance')
+            correction = None
+            if recovery:
+                if recovery['kind'] != 'local_derivative_not_model_generation':
+                    raise ValueError(f'Unknown recovery lineage: {sid}')
+                parent = Path(recovery['parent_batch'])
+                original_path = Path(recovery['original_author_snapshot'])
+                if file_sha256(original_path) != recovery['original_author_snapshot_sha256']:
+                    raise ValueError(f'Stale original author snapshot: {sid}')
+                original = [r for r in read_rows(original_path) if r['scenario_id'] == sid]
+                if (len(original) != 1 or original[0]['user'] != row['user']
+                        or conversation_sha256(original[0]) != recovery['original_conversation_sha256']
+                        or conversation_sha256(row) != recovery['revised_conversation_sha256']):
+                    raise ValueError(f'Stale recovery conversation: {sid}')
+                source_status = parent/'sources/status.json'
+                author_status = parent/'answers/status.json'
+                if not author_status.exists():
+                    author_status = original_path.parent/'frozen_config.json'
+                for label, path in [('source', source_status), ('author', author_status)]:
+                    status = load(path)
+                    if (status['config_sha256'] != recovery[f'original_{label}_config_sha256']
+                            or status['config']['models'] != recovery[f'original_{label}_models']):
+                        raise ValueError(f'Stale original {label} config: {sid}')
+                changed = recovery['original_conversation_sha256'] != recovery['revised_conversation_sha256']
+                reused = recovery['reused_exact_model_review']
+                if reused:
+                    if changed or any(row.get(k) != v for k, v in recovery['prior_model_review'].items()):
+                        raise ValueError(f'Reused review changed: {sid}')
+                    review_status = parent/'review/status.json' if (parent/'review/status.json').exists() else author_status
+                correction = dict(changed=changed, local_reviewer=recovery['reviewer'],
+                    original_conversation_sha256=recovery['original_conversation_sha256'],
+                    revised_conversation_sha256=recovery['revised_conversation_sha256'],
+                    replacements=recovery['replacements'],
+                    recovery_review=recovery['recovery_review'],
+                    recovery_review_sha256=recovery['recovery_review_sha256'],
+                    reused_exact_model_review=reused)
+            elif load(author_status).get('origin') == 'local_derivative_not_model_generation':
+                raise ValueError(f'Derivative missing ancestry: {sid}')
+            records[sid] = dict(conversation_sha256=expected[sid], accepted_batch=batch.name,
+                source=role(source_status, 'user'), author=role(author_status, 'response'),
+                model_review=role(review_status, 'quality_decision'), local_correction=correction)
+    if set(records) != set(expected):
+        raise ValueError('Missing accepted model provenance')
+    counts = {name: dict(sorted(Counter(r[name]['model'] for r in records.values()).items()))
+              for name in ('source', 'author', 'model_review')}
+    return dict(scope='Accepted dataset rows only; audit candidates and failed calls excluded',
+        accepted=len(records), model_counts=counts,
+        local_derivatives=sum(r['local_correction'] is not None for r in records.values()),
+        locally_corrected=sum(bool(r['local_correction'] and r['local_correction']['changed']) for r in records.values()),
+        reused_model_reviews=sum(bool(r['local_correction'] and r['local_correction']['reused_exact_model_review']) for r in records.values()),
+        rows=records)
+
+
 def publish_production(config_path, root=ROOT):
     """Publish accepted rows using the synth layout, retaining every reviewed batch."""
     import shutil
@@ -437,6 +528,7 @@ def publish_production(config_path, root=ROOT):
     accepted, provenance = accepted_production(root)
     if not accepted:
         raise ValueError('No locally accepted production examples')
+    model_provenance = publication_model_provenance(accepted, provenance)
     cfg = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
     dest = root/'publications'/timestamp()
     dest.mkdir(parents=True, exist_ok=False)
@@ -454,6 +546,7 @@ def publish_production(config_path, root=ROOT):
                        read_rows(Path(status['run_dir'])/'dataset.jsonl'))
         shutil.copytree(batch, dest/'audit'/batch.name)
     cache.publish_final(accepted)
+    write_json(dest/'model_provenance.json', model_provenance)
     for filename in ('spend.json', 'budget_allocations.json'):
         shutil.copy2(root/filename, dest/filename)
     shutil.copytree(root/'raw_calls', dest/'audit'/'raw_calls')
@@ -464,16 +557,22 @@ def publish_production(config_path, root=ROOT):
     manifest = dict(status='growing reviewed corpus; not a frozen training mixture',
                     accepted=len(accepted), target=cfg['target_accepted'],
                     dataset_sha256=file_sha256(dest/'dataset.jsonl'), batches=provenance,
+                    model_counts=model_provenance['model_counts'],
+                    locally_corrected=model_provenance['locally_corrected'],
+                    model_provenance='model_provenance.json',
+                    model_provenance_sha256=file_sha256(dest/'model_provenance.json'),
                     selection='Source and answer quality only; no ODCV feedback',
                     training_approved=False)
     write_json(dest/'manifest.json', manifest)
-    fields = dict(experiment='Broader nonmoral deliberation corpus: accepted original full conversations',
+    fields = dict(experiment='Broader nonmoral deliberation corpus: accepted full conversations with documented local corrections',
         date_generated=date, constitution='none; preferences/nonmoral_broad/preferences.md defines nonmoral task selection',
         source_repo='https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ '+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
-        models=dict(generator=SONNET, answerer=SONNET, reviewer=SONNET,
-                    provider='Anthropic via OpenRouter', revision='API model revisions are not immutable; exact requests and responses retained'),
+        models=dict(accepted_row_counts=model_provenance['model_counts'],
+                    locally_corrected=model_provenance['locally_corrected'],
+                    per_row_provenance='model_provenance.json records original model authorship, actual review model, frozen configurations and local corrections separately',
+                    provider='OpenRouter', revision='API model revisions are not immutable; exact requests and responses retained'),
         generation_config='Per-phase frozen configurations under audit/batch*/; config.yaml is the current recipe, not a substitute for those historical configs.',
-        schema='dataset.jsonl: locally accepted user/reasoning/response rows; stages/: all source and answer candidates; audit/: runs, returned raw calls, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
+        schema='dataset.jsonl: locally accepted user/reasoning/response rows; model_provenance.json: accepted per-row source/author/review models and literal local corrections; stages/: all source and answer candidates; audit/: runs, returned raw calls, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
         provenance='uv run python scratch/nonmoral/broader_data.py --phase sources --batch <batch> --execute; --phase answers --batch <batch> --source-review <review> --execute; for deferred recipes, --phase review --batch <batch> --answer-review <author_review.json> --execute; --publish-production. Exact inputs, source hashes and local author gates retained per phase.',
         downstream='After enough accepted examples, freeze 684 by the preregistered domain-balanced selection, replace the original 684 synthetic slots while preserving all 9284 replay rows, and publish a separate training mixture. Held/rejected rows are audit data only.',
         limitations='Not an alignment result. No new LoRA has been trained on this corpus. Model reviews are fallible; local exclusions are retained. Default dataset contains accepted examples only. Early exception-path calls retained request hashes and maximum cost reservations but did not save their full exception responses; subsequent calls persist requests before dispatch and errors on failure.')

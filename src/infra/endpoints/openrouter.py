@@ -87,10 +87,62 @@ class _CompletionFailure(RuntimeError):
     """
 
     def __init__(self, message: str, provider_error: dict | None = None,
-                 provider: str = "") -> None:
+                 provider: str = "", diagnostics: dict | None = None) -> None:
         super().__init__(message)
         self.provider_error = provider_error or {}
         self.provider = provider
+        self.diagnostics = diagnostics or {}
+
+
+def completion_failure_diagnostics(resp) -> dict:
+    """Keep response metadata without completion text, reasoning, or request headers.
+
+    Missing usage stays None; these observations do not establish a billing refund.
+    OpenRouter extension fields may live in model_extra rather than SDK attributes.
+    """
+    def field(obj, key):
+        if isinstance(obj, dict):
+            return obj.get(key)
+        value = getattr(obj, key, None)
+        return value if value is not None else (getattr(obj, 'model_extra', None) or {}).get(key)
+
+    def safe(value):
+        if hasattr(value, 'model_dump'):
+            value = value.model_dump(mode='json')
+        if value is None or isinstance(value, (str, bool, int, float)):
+            return value
+        if isinstance(value, (list, tuple)):
+            return [safe(item) for item in value]
+        if isinstance(value, dict):
+            # Do not persist arbitrary embedded bodies or authentication data in errors.
+            omitted = {'content', 'reasoning', 'reasoning_content', 'reasoning_details',
+                       'messages', 'request', 'headers', 'authorization', 'api_key',
+                       'access_token', 'token', 'raw', 'tool_calls'}
+            return {key: safe(item) for key, item in value.items()
+                    if isinstance(key, str) and key.lower() not in omitted}
+        return None
+
+    usage = field(resp, 'usage')
+    if usage is not None and not isinstance(usage, dict) and not hasattr(usage, 'model_dump'):
+        usage = {key: field(usage, key) for key in (
+            'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost',
+            'prompt_tokens_details', 'completion_tokens_details', 'cost_details')}
+    choices = []
+    for choice in field(resp, 'choices') or []:
+        message = field(choice, 'message')
+        content = field(message, 'content')
+        choices.append(dict(
+            index=field(choice, 'index'), finish_reason=field(choice, 'finish_reason'),
+            native_finish_reason=field(choice, 'native_finish_reason'),
+            stop_reason=field(choice, 'stop_reason'),
+            provider_error=safe(field(choice, 'error')),
+            refusal=safe(field(message, 'refusal')),
+            refusal_details=safe(field(message, 'refusal_details')),
+            content_filter_results=safe(field(choice, 'content_filter_results')),
+            dropped_content_chars=len(content) if isinstance(content, str) else 0))
+    return dict(generation_id=field(resp, 'id'), model=field(resp, 'model'),
+                provider=field(resp, 'provider'), provider_error=safe(field(resp, 'error')),
+                usage=safe(usage), choices=choices)
 
 
 class EmptyCompletionError(_CompletionFailure):
@@ -235,11 +287,13 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
         err = data.get("error")
         err_d = (err if isinstance(err, dict)
                  else {"message": str(err)} if err else None)
-        msg = f"Model {model} returned no choices (provider {provider or '?'}): {data}"
         code = (err_d or {}).get("code")
+        msg = f"Model {model} returned no choices (provider {provider or '?'}): error_code={code}"
         if isinstance(code, int) and 400 <= code < 500 and code != 429:
-            raise ProviderRejectionError(msg, provider_error=err_d, provider=provider)
-        raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
+            raise ProviderRejectionError(msg, provider_error=err_d, provider=provider,
+                                         diagnostics=completion_failure_diagnostics(data))
+        raise EmptyCompletionError(msg, provider_error=err_d, provider=provider,
+                                   diagnostics=completion_failure_diagnostics(data))
     choice = choices[0]
     content = (choice.get("message") or {}).get("content")
     finish = choice.get("finish_reason") or ""
@@ -253,11 +307,12 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
                             "message": "finish_reason=content_filter "
                                        f"({len(content or '')} chars of partial "
                                        "content dropped)"},
-            provider=provider)
+            provider=provider, diagnostics=completion_failure_diagnostics(data))
     if not content:
         raise EmptyCompletionError(
             f"Model {model} returned empty content (provider {provider or '?'}): "
-            f"{data}", provider=provider)
+            f"finish_reason={finish}", provider=provider,
+            diagnostics=completion_failure_diagnostics(data))
     usage = data.get("usage") or {}
     details = usage.get("prompt_tokens_details") or {}
     return ChatResult(
@@ -345,13 +400,15 @@ class OpenRouterClient:
             err_d = (err if isinstance(err, dict)
                      else {"message": str(err)} if err else None)
             provider = getattr(resp, "provider", "") or ""
-            msg = (f"Model {model} returned no choices (provider "
-                   f"{getattr(resp, 'provider', '?')}): {resp}")
             code = (err_d or {}).get("code")
+            msg = (f"Model {model} returned no choices (provider "
+                   f"{getattr(resp, 'provider', '?')}): error_code={code}")
             if isinstance(code, int) and 400 <= code < 500 and code != 429:
                 raise ProviderRejectionError(msg, provider_error=err_d,
-                                             provider=provider)
-            raise EmptyCompletionError(msg, provider_error=err_d, provider=provider)
+                                             provider=provider,
+                                             diagnostics=completion_failure_diagnostics(resp))
+            raise EmptyCompletionError(msg, provider_error=err_d, provider=provider,
+                                       diagnostics=completion_failure_diagnostics(resp))
         choice = resp.choices[0]
         content = choice.message.content
         if choice.finish_reason == "content_filter":
@@ -372,7 +429,8 @@ class OpenRouterClient:
                                 "message": "finish_reason=content_filter "
                                            f"({len(content or '')} chars of partial "
                                            "content dropped)"},
-                provider=getattr(resp, "provider", "") or "")
+                provider=getattr(resp, "provider", "") or "",
+                diagnostics=completion_failure_diagnostics(resp))
         if not content:
             # None OR empty string: an undiagnosable blank either way — the empty
             # string previously slipped through as a "successful" ChatResult and
@@ -382,8 +440,9 @@ class OpenRouterClient:
             # the caller still sees a clear failure.
             raise EmptyCompletionError(
                 f"Model {model} returned empty content (provider "
-                f"{getattr(resp, 'provider', '?')}): {resp}",
-                provider=getattr(resp, "provider", "") or "")
+                f"{getattr(resp, 'provider', '?')}): finish_reason={choice.finish_reason}",
+                provider=getattr(resp, "provider", "") or "",
+                diagnostics=completion_failure_diagnostics(resp))
         usage = resp.usage
         # Providers report cache hits in different places and some not at all, so this is
         # read defensively and defaults to 0. It exists so a run can PROVE caching worked

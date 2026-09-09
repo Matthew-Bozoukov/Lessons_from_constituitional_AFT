@@ -57,6 +57,27 @@ def test_success_records_tokens_and_releases_unused_reservation(tmp_path):
     assert sum(e['charged_or_reserved_usd'] for e in entries) == pytest.approx(.00092)
 
 
+@pytest.mark.parametrize('usage', [None, {'prompt_tokens': 10, 'completion_tokens': 3, 'total_tokens': 13}])
+def test_terminal_diagnostics_are_durable_without_releasing_reservation(tmp_path, usage):
+    from src.infra.endpoints.openrouter import EmptyCompletionError
+    diagnostics = {'generation_id': 'gen-blocked', 'usage': usage,
+                   'choices': [{'finish_reason': 'content_filter', 'native_finish_reason': 'refusal'}]}
+    reserved = []
+    def failed(**kwargs):
+        reserved.append(json.loads(path.read_text())[0]['charged_or_reserved_usd'])
+        raise EmptyCompletionError('filtered', provider='Anthropic', diagnostics=diagnostics)
+    path = tmp_path/'spend.json'
+    client = CappedClient(failed, path, .06, [MODEL])
+    with pytest.raises(EmptyCompletionError):
+        client.chat(MODEL, MESSAGES)
+    entry = json.loads(path.read_text())[0]
+    raw = json.loads((tmp_path/'raw_calls/00000.json').read_text())
+    assert raw['failure_diagnostics'] == entry['failure_diagnostics'] == diagnostics
+    assert raw['status'] == 'terminal_exception' and entry['status'] == 'reserved'
+    assert entry['charged_or_reserved_usd'] == reserved[0]
+    assert CappedClient(failed, path, .06, [MODEL]).entries[0] == entry
+
+
 def test_explicit_reasoning_control_passes_but_routing_override_is_rejected(tmp_path):
     calls = []
     def send(**kwargs):
@@ -67,6 +88,29 @@ def test_explicit_reasoning_control_passes_but_routing_override_is_rejected(tmp_
     assert calls[0]['extra_body'] == {'reasoning': {'enabled': False}}
     with pytest.raises(ValueError, match='Unapproved'):
         client.chat(MODEL, MESSAGES, extra_body={'provider': {'order': ['other']}})
+    assert len(calls) == 1
+
+
+def test_low_reasoning_requires_opt_in_and_allows_no_other_override(tmp_path):
+    calls = []
+    def send(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(prompt_tokens=30, completion_tokens=40, provider='Anthropic')
+    client = CappedClient(send, tmp_path/'spend.json', 1, [MODEL], allow_reasoning_off=True)
+    low = {'extra_body': {'reasoning': {'effort': 'low'}}}
+    client.chat(MODEL, MESSAGES, **low)
+    assert calls[0]['extra_body'] == low['extra_body']
+    for extra in ({'reasoning': {'effort': 'high'}},
+                  {'reasoning': {'effort': 'low'}, 'provider': {'order': ['other']}},
+                  {'reasoning': {'effort': 'low', 'enabled': False}},
+                  {'reasoning': {'effort': 'low'}, 'model': 'another'}):
+        with pytest.raises(ValueError, match='Unapproved'):
+            client.chat(MODEL, MESSAGES, extra_body=extra)
+    with pytest.raises(ValueError, match='Unapproved'):
+        client.chat('unapproved/model', MESSAGES, **low)
+    no_opt_in = CappedClient(send, tmp_path/'other.json', 1, [MODEL])
+    with pytest.raises(ValueError, match='Unapproved'):
+        no_opt_in.chat(MODEL, MESSAGES, **low)
     assert len(calls) == 1
 
 

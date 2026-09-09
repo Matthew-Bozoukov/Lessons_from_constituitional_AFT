@@ -91,6 +91,24 @@ the tolerance to separate float noise (~5e-05) from a live dropout mask (~1e-02)
 
 ## Data generation and evals
 
+**Opus 5 classifier refusals need native diagnostics, not blind retries.** On
+2026-09-09, broader nonmoral generation saved all 12 sources but only 1/10 answers;
+the other 9 returned `content_filter`. After preserving response diagnostics, a
+bounded worked-example request for a harmless bread-log Python script returned
+`native_finish_reason: refusal` with an explicit **cyber** classifier explanation.
+The original nine calls lack category metadata; do not assume all had that cause.
+`OpenRouterClient` now attaches safe failure metadata to completion exceptions,
+and the nonmoral capped ledger preserves it. Filtered partial content stays excluded.
+
+[Anthropic's refusal documentation](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)
+describes Opus 5's additional classifiers and supported fallback to Opus 4.8.
+Keep actual model identity in provenance; a fallback answer is not an Opus 5 answer.
+Also verify model reasoning defaults: Opus 5 was **high/on by default**. An
+8,192-token diagnostic spent all 8,192 tokens on reasoning and returned no answer.
+This was a separate truncation failure, not a filter refusal. Use explicit supported
+effort and sufficient total headroom. API-internal reasoning and the authored
+dataset explanation are separate outputs.
+
 **Gemini 3.7 Flash ends a completed reply WITHOUT the last closing tag.** Every stage-5
 call of the 2026-08-20 trait-10 smoke came back `finish_reason=stop` with
 `<reasoning>…</reasoning><response>…` and no `</response>` — the model had answered in

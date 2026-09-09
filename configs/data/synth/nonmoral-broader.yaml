@@ -159,179 +159,22 @@ stages:
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
   defer_model_review: true
-  recipe_revision: 9
+  recipe_revision: 11
   include_prior_examples: false
   prior_examples_rationale: Prospectively omit raw historical request excerpts. Batch07 received 3-4 long batch06 excerpts per source, including rejected sources in 52/120 requests; repeated complex templates suggest anchoring but no causal effect has been measured. Keep the variation library and quality gates unchanged; earlier batch configurations remain frozen.
-  diversification_rationale: From batch06, rotate 36 materially different subtask directions within the same twelve domains. Expand source material and artifact types, not just names or quantities. Original batches and quality rules remain frozen; no ODCV feedback used.
+  diversification_rationale: "User-authorized reset: retain twelve scenario families but remove the thirty-six detailed puzzle recipes. Ordinary decisions with modest complete artifacts; no ODCV feedback and no artificial length matching."
   batch_size: 120
   workers: 8
   concurrency_rationale: Independent API examples share a locked reservation ledger; eight workers reduce wall time without changing per-example sampling or budget caps. Earlier phases retained four workers in frozen configs.
-  phase_cap_usd: {sources: 5, answers: 10, review: 5}
+  phase_cap_usd: {sources: 10, answers: 20, review: 5}
   rationale: Review immutable sources before authoring; read all full authored conversations locally before paying the independent model to review local accepts. Preserve both reviews and explicit final adjudication for every training candidate. Earlier batches remain frozen.
   models:
-    source: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 8192}
-    author: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 16384}
+    source: {model: anthropic/claude-opus-4.8, temperature: 0.7, max_tokens: 8192, reasoning: {effort: low}}
+    author: {model: anthropic/claude-opus-4.8, temperature: 0.7, max_tokens: 16384, reasoning: {effort: low}}
     reviewer: {model: anthropic/claude-sonnet-5, temperature: 0.2, max_tokens: 12288}
   headroom_rationale: Batch03 lost author/reviewer calls to length limits including reasoning-only completions. Raise future-call ceilings without resampling old failures; full reservations still enforce the same phase and cumulative budget caps. See docs/GOTCHAS.md reasoning headroom guidance.
-  model_rationale: Restore the original nonmoral recipe's default reasoning behaviour; do not send reasoning.enabled=false. This is a production correction, not an identified causal effect.
-  variation_library:
-    Everyday planning:
-    - Plan one personal paper-display project with a supplied task list, durations, prerequisites, passive
-      drying intervals and all available materials. Balance reaching an early usable version against avoiding
-      repeated setup. Choose the order and give the full timed sequence, including passive overlaps and
-      cleanup.
-    - Select a hobby kit for a fictional quiet train journey. Supply every candidate item's packed size,
-      weight, supported activities, trip duration and luggage limit; include all required accessories. Balance
-      variety against quick setup and carrying comfort. Deliver the exact packing list and complete use
-      plan, without booking advice.
-    - Supply the actual unfinished steps, completion criteria, remaining effort and available materials
-      for two small personal projects. The user values a satisfying finished object and also continuing
-      the more absorbing project. Choose a feasible scope for the available session and give every planned
-      step plus the exact stopping state.
-    Cooking and adaptation:
-    - Supply one complete simple vegetarian recipe, the available ingredient amounts, equipment and two
-      feasible substitution routes. Balance preserving its recognizable texture against using an ingredient
-      the cook particularly enjoys. Choose the adaptation and give the full revised recipe, with quantities,
-      steps and timing.
-    - Supply complete short recipes for two compatible vegetarian components, equipment capacity, active/passive
-      durations and desired serving time. Balance simultaneous readiness against fewer interruptions. Choose
-      a cooking order and give the full combined ingredient list and timed instructions; account for overlaps
-      available to either order.
-    - Supply the full recipe and current sensory description of a just-cooked vegetarian base, plus exact
-      quantities of available ordinary toppings and seasonings. The cook wants both a gentle base flavor
-      and a more contrasting finish. Choose a coherent finish and deliver the complete final recipe and
-      plating instructions, without inventing sensory measurements.
-    Learning and practice:
-    - Supply a small complete alphabet of distinct printable symbol strings, their invented meanings, confusable
-      pairs and the learner's own stated difficulties. Balance memorable associations against quick direct
-      recall. Choose a learning aid and produce all mnemonic cards plus a short complete recall exercise
-      and answer key; no research-performance claims.
-    - Supply every rule of a small invented pattern notation, worked examples and the learner's actual mistakes.
-      Balance repairing one misconception against covering the wider notation. Choose the exercise mix and
-      provide the entire short practice sheet with solutions, including explanations of the error contrasts;
-      no hidden rules or unseen curriculum.
-    - Supply a complete set of simple line/shape motifs, exact stroke descriptions, the learner's observed
-      difficulty and a modest time allowance. Balance repeating one troublesome stroke against making a
-      small satisfying image. Choose the sequence and deliver a complete text or SVG copy sheet with every
-      motif and repetition explicitly shown.
-    Teaching and explanation:
-    - Supply all behavior rules and states of a tiny fictional mechanism, such as linked color switches,
-      plus the learner's exact misconception. Balance a state-by-state walkthrough against a compact general
-      model. Choose an approach and write the full explanation, including a complete state table or text
-      diagram that follows only the given rules.
-    - Supply a complete short standard-library Python function, exact sample inputs and the beginner's knowledge
-      and confusion. Balance tracing concrete values against explaining the reusable structure. Choose the
-      presentation and give the full explanation with a complete trace or annotated listing and the correct
-      sample outputs.
-    - Supply a tiny game's complete setup, legal actions, scoring and one example position. The learner
-      wants to start playing quickly and also find rules later. Choose how to balance a worked turn with
-      reference structure, and deliver the complete short how-to-play sheet; include every supplied rule,
-      not just a future lesson outline.
-    Debugging and representation:
-    - Supply all code for a tiny text-based personal tool, a full failing command sequence, expected states
-      and constraints. Balance a local repair against making state transitions explicit. Choose an implementation
-      and return the complete runnable corrected program, preserving specified behavior and explaining the
-      actual defect without claiming tests were run.
-    - Supply a complete small fictional map, legal links, lookup operations and examples. Balance a coordinate
-      representation's visual clarity against an adjacency representation's ease of editing irregular links.
-      Choose one and deliver all data plus complete standard-library Python functions implementing the requested
-      operations and exact example results.
-    - Supply a complete tiny text-display specification, all content, character dimensions, wrapping rules
-      and sample outputs. Balance direct layout code against a small reusable block representation. Choose
-      the implementation and give a complete runnable renderer and the entire rendered example; no terminal
-      library, font or external asset assumptions.
-    Toy scientific exploration:
-    - Supply a tiny fictional simulator with a finite input list, complete prior observations and explicit
-      candidate mechanisms or prediction tables. Balance discriminating mechanisms against examining a personally
-      interesting behavior. Choose the full small batch of inputs and explain which possibilities each could
-      separate, without asserting unobserved outcomes.
-    - Supply a finite set of toy settings, all repeated observations so far, the fictional noise model and
-      a small additional-run budget. Balance checking the stability of an appealing result against trying
-      new settings. Deliver the complete run list including repeats, distinguishing observed variation from
-      any assumed underlying mean.
-    - Supply a fictional animated process, allowed snapshot times, complete prior snapshots described in
-      text and equal per-snapshot costs. Balance seeing early transitions against resolving late behavior.
-      Choose every new observation time and describe the uncertainty addressed, without inferring a precise
-      transition or peak from insufficient samples.
-    Organizing information:
-    - Supply the full text of a tiny fictional hobby manual, stable section IDs, overlapping terminology
-      and examples of the user's searches. Balance a short index against multiple entry points. Choose the
-      index structure and produce every headword, cross-reference and section pointer; do not invent facts
-      or silently drop alternative search terms.
-    - Supply all versions of a small personal creative project, dates, parent relationships and exact changes.
-      Balance finding a recent version quickly against understanding how alternatives developed. Choose
-      a compact timeline, branch table or combined structure and populate it completely, preserving every
-      version and relationship.
-    - Supply several short fictional product or hobby-method descriptions and the user's actual lookup questions.
-      Balance one scannable comparison against keeping nuanced exceptions visible. Choose a reference format
-      and fill it completely from the text; represent unstated attributes as unstated rather than turning
-      omissions into negative facts.
-    Translation and verbal style:
-    - Supply a complete short invented English descriptive paragraph, resolved referents, intended French-speaking
-      reader and concrete tone preferences. Balance preserving image sequence against natural sentence flow.
-      Choose a translation strategy and provide one full French paragraph plus a concise explanation, not
-      another slogan or pun.
-    - Supply a complete short invented Spanish dialogue about an ordinary hobby task, speaker relationships,
-      intended English audience and intended emotional tone. Balance preserving pauses and repeated phrasing
-      against natural conversational English. Deliver the full translated dialogue with unchanged speaker
-      turns and a brief justified choice.
-    - Supply an informal English description of an invented craft object, all object facts, a short glossary
-      and the intended catalog reader. Balance approachable voice against compact reference wording. Choose
-      the register and deliver the complete catalog caption, preserving factual content without inventing
-      provenance or adding promotional claims.
-    Spatial design:
-    - Supply a small tabletop grid, every display object's footprint, allowed rotations, viewer direction
-      and required empty areas. Balance a strong visual focal point against seeing each item distinctly.
-      Choose a composition and give every labeled position in a complete nonoverlapping map; no room, furniture
-      or unseen image requirements.
-    - Supply a fixed page grid, all short text, exact rectangular block sizes, fixed font or character-cell
-      assumptions and any mandatory reading order. Balance a prominent illustration/title area against uninterrupted
-      reading. Choose a layout and deliver every block's placement with the full content in a complete SVG
-      or labeled text map.
-    - Supply a shallow tray's internal grid, all inert hobby objects and footprints, permitted rotations
-      and a list of which objects are often used together. Balance grouping by type against access during
-      a frequent workflow. Choose the arrangement and provide all object coordinates and labels, with no
-      unlisted objects or hidden compartments.
-    Creative revision:
-    - Supply a complete original short poem, the images that must remain and the author's aims for natural
-      speech versus recurring sound. Choose the balance and provide the full revised poem with a brief rationale.
-      Avoid specialist meter claims or an exact syllable-count requirement unless its convention and feasible
-      source are supplied.
-    - Supply a complete brief scene of two characters assembling a harmless hobby object, all events and
-      speaker intentions that must remain. Balance crisp turn-taking against giving each voice a distinct
-      texture. Choose an approach and return the full revised dialogue and stage directions, without adding
-      new plot events or moral conflict.
-    - Supply a complete four-bar invented melody in explicit note-duration notation, meter, allowed pitch
-      range, chord tones and a motif to preserve. Balance a more flowing contour against keeping the catchy
-      repetition. Choose revisions and give every note and duration for the entire melody, with concise
-      artistic reasoning.
-    Automation and assumptions:
-    - Supply a complete list of fictional personal filenames, desired naming rules, collision handling and
-      anticipated repeat use. Balance a one-time explicit mapping against a reusable rule-driven procedure.
-      Choose a method and provide the entire dry-run mapping plus the full reproducible workflow or standard-library
-      script; do not perform real renames.
-    - Supply a tiny fictional personal publishing workflow with every input/output dependency, available
-      commands, changed inputs and per-step effort. Balance a simple full rebuild against tracking affected
-      outputs. Choose the method and give the complete ordered command plan and update rule, without guessing
-      tool behavior or omitting dependency steps.
-    - Supply a harmless personal hobby-log form, every field and default rule, a small complete set of intended
-      entries and the exact supported template operations. Balance fewer repetitive actions against keeping
-      unusual entries visible for deliberate editing. Choose a workflow and deliver the complete template,
-      every filled entry and the exact repeat-use procedure; no invented app features or automatic handling
-      of unspecified cases.
-    Game strategy:
-    - Supply a tiny board, every tile and legal placement rule, scoring, remaining draw possibilities and
-      the player's competing preferences for immediate progress and future flexibility. Choose a legal placement
-      and show the complete resulting board and immediate score. Keep future claims tied to the supplied
-      draw model, not invented opponent psychology.
-    - Supply a tiny solo card game with all cards, exact action effects, resource costs, a short turn horizon
-      and clear competing preferences such as retaining a favorite card versus building a larger combo.
-      Choose a legal complete action sequence and show every resulting state. Ensure alternatives provide
-      different real benefits, not a free dominant action.
-    - Supply a tiny invented solo game's available equipment, capacity limit, all item effects and a complete
-      small encounter table. The player likes one style of play but also values versatility. Choose the
-      loadout, list every equipped item and explain its outcomes across the supplied encounter cases, without
-      inventing encounters or converting taste into a fake score.
+  model_rationale: User requested Opus dataset generation. Opus5 classifier refusals persisted on a harmless task; use the documented Opus4.8 fallback for both sources and answers. Explicit low internal reasoning with full output headroom; authored explanations remain in the dataset. Sonnet5 independent review unchanged. Frozen earlier model identities retained; this is not a controlled generator comparison.
+  variation_library: {}
   source_stage:
     name: write_requests
     kind: llm_tagged
@@ -343,36 +186,31 @@ production:
       system: |
         Write a natural user request for one small task. Return only <user>...</user>.
         Do not answer the task. Do not include commentary about creating examples.
-      user: |
+      user: |-
         Domain: {domain}
         Direction: {direction}
-        Variation: {variation}
+        Task identifier: {variation}
 
-        Write one clean, concise request in ordinary human language. The task involves
-        a judgement between two or more useful approaches: different people could
-        reasonably prioritize different aspects of the result. It must require a decision
-        and a complete usable artifact in a single response, with no follow-up needed.
-        Keep the task small: usually3-5 components and only a few interacting constraints.
-        Larger item lists are fine when the operation is simple; avoid intricate packing,
-        scheduling or specialist technique requirements that distract from the choice.
-        Supply all essential source text, data, code or game rules
-        inside the request. Use a few simple consistent facts, not a web of constraints.
-        Do not fabricate unstated facts that the eventual answer would have to recover.
-        Avoid a single objective score that mechanically settles the choice.
+        Write one believable request about an ordinary nonmoral decision in this domain.
+        Give a concrete personal goal and relevant preferences. Ask the assistant to choose
+        an approach and deliver the whole small result in a single response. The choice can
+        concern how to solve, explain, arrange, adapt or create something; reasonable people
+        may choose differently. Do not require proving that the other approach is wrong.
 
-        The choice concerns craft, taste, usefulness, effort or game strategy; picking
-        either option must not wrong anyone. No duties, deception, privacy, fairness,
-        danger, legal or professional advice. The consequences can be a dull paragraph,
-        a cumbersome hobby workflow or a lost game point. Do not include this classification
-        or the words training, evaluation, reviewer or nonmoral in the request.
-        Avoid claims about real artists, technical performance or cultures unless the
-        task supplies them explicitly as fictional premises. Use invented source material.
-        Read your request for accidentally repeated phrases or contradictory numbers.
-        In a game, neither option should dominate the other: do not call a free
-        reroll of bad results risky, or propose standing behind an opponent who can
-        simply keep their winning score. Supply the actual payoff uncertainty and
-        competing goals. In layouts include every required chair footprint.
-        Return ONLY the complete request in <user> tags, without an answer or checklist.
+        Supply essential material directly: the short text, small code snippet, available
+        resources, or rules actually needed. Keep the deliverable modest and natural for the
+        situation. Calculations, code and geometry are welcome when useful, but do not add
+        exact grids, interlocking timelines, scoring systems or verification requirements
+        merely to make the task look rigorous. Prefer a few clear facts to an invented complex
+        world. Do not ask for attachments or a follow-up. A disclosed conditional decision
+        is fine when preferences, rather than missing essential source material, determine it.
+
+        The decision must not concern whether an option wrongs someone. Avoid ethical duties,
+        deception, privacy violations, unfair treatment, dangerous operating instructions and
+        professional advice. Personal time, effort, taste, convenience and game outcomes are
+        fine. Use invented source material; do not assert specialist external facts.
+        Keep scenarios varied in setting, task material and kind of decision, not just names.
+        Return only the complete natural request in <user>...</user> tags.
   answer_stage:
     name: answer_requests
     kind: llm_tagged
@@ -381,25 +219,16 @@ production:
     tags: [reasoning, response]
     save: {reasoning: reasoning, response: response}
     prompts:
-      system: |
-        Respond to the supplied user request. Return <reasoning> with concise authored
-        reasoning about the concrete trade-off, then <response> with the full answer.
-        Choose a defensible approach and implement it. Follow the user's constraints.
-      user: |
+      system: |-
+        Write a worked example consisting of an explanatory decision rationale and a complete assistant answer to the supplied request. The rationale is an authored explanation for the example, not a transcript of your private internal thinking. Return only the requested tagged blocks.
+      user: |-
+        <user_request>
         {user}
+        </user_request>
 
-        Put your substantive deliberation in <reasoning> and the complete final answer
-        in <response>. In the reasoning, weigh the options' actual benefits and costs,
-        then choose which benefit to prioritize here. A reasonable preference is enough;
-        the other option can remain workable. Separate supplied facts, explicit assumptions
-        and taste. Use enough reasoning to explain the decision, without repeatedly proving
-        it superior or adding claims about what the rival cannot do.
+        Write a defensible response and an accompanying explanation of the decision. In <reasoning>, explain the relevant competing benefits, the facts and preferences that matter, and why the chosen approach fits this situation. The alternative may remain reasonable. This should be a coherent explanation, not a private thought transcript.
 
-        Give the entire requested artifact. The reasoning block is internal: include any
-        explanation the user requests in the final response too. The response must stand
-        on its own, without references to these instructions or the hidden reasoning.
+        In <response>, give the full answer implementing that decision. Follow the request, include all requested code or other artifacts, and include any explanation the user asked for in the answer itself. Use correct calculations and preserve the supplied facts. Do not invent limitations of the alternative or claim to have run tests.
 
-        Check calculations, source fidelity and hard constraints while working. State
-        verification details when requested or useful; avoid extra audit summaries,
-        repeated totals, unsolicited contingency plans and broad factual claims that do
-        not help answer the request. Do not claim to have executed code or tests.
+        <reasoning>authored decision explanation</reasoning>
+        <response>complete assistant answer</response>

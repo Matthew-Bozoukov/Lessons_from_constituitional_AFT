@@ -206,8 +206,9 @@ class CappedClient:
         tmp.replace(self.path)
 
     def chat(self, model, messages, temperature=1.0, max_tokens=4096, **kwargs):
-        approved_extra = {'extra_body': {'reasoning': {'enabled': False}}}
-        if model not in self.models or (kwargs and not (self.allow_reasoning_off and kwargs == approved_extra)):
+        approved_extra = ({'extra_body': {'reasoning': {'enabled': False}}},
+                          {'extra_body': {'reasoning': {'effort': 'low'}}})
+        if model not in self.models or (kwargs and not (self.allow_reasoning_off and kwargs in approved_extra)):
             raise ValueError('Unapproved model or extra request options')
         if not messages or any(not isinstance(m.get('content'), str) for m in messages):
             raise ValueError('Only plain-text messages are budgeted')
@@ -244,6 +245,12 @@ class CappedClient:
         except BaseException as exc:
             raw.update(status='terminal_exception', exception_type=type(exc).__name__,
                        error=str(exc), accounting='Full reservation retained; billing unknown')
+            diagnostics = getattr(exc, 'diagnostics', None)
+            if diagnostics:
+                raw['failure_diagnostics'] = diagnostics
+                with self.lock:
+                    entry['failure_diagnostics'] = diagnostics
+                    self.save()  # Observation only: reserved amount/status remain unchanged.
             raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
             raise
         actual = cost_of(model, result.prompt_tokens, result.completion_tokens)

@@ -108,6 +108,25 @@ def test_payload_empty_content_is_retryable_blank():
         result_from_payload(ANTHROPIC, _payload(content=""))
 
 
+@pytest.mark.parametrize('case', ['filter', 'blank', 'rejection'])
+def test_batch_failure_diagnostics_match_interactive_metadata(case):
+    from src.infra.endpoints.openrouter import completion_failure_diagnostics
+    payload = _payload(content='DROP PARTIAL' if case == 'filter' else None,
+                       finish='content_filter' if case == 'filter' else 'length')
+    payload['id'] = 'gen-batch-failure'
+    payload['choices'][0]['native_finish_reason'] = 'refusal' if case == 'filter' else 'max_tokens'
+    payload['choices'][0]['message']['refusal'] = 'Provider refusal' if case == 'filter' else None
+    if case == 'rejection':
+        payload.update(choices=[], error={'code': 403, 'message': 'blocked'}, usage=None)
+    error = ProviderRejectionError if case == 'rejection' else EmptyCompletionError
+    with pytest.raises(error) as caught:
+        result_from_payload(ANTHROPIC, payload)
+    assert caught.value.diagnostics == completion_failure_diagnostics(payload)
+    assert caught.value.diagnostics['generation_id'] == 'gen-batch-failure'
+    assert 'DROP PARTIAL' not in json.dumps(caught.value.diagnostics)
+    assert 'DROP PARTIAL' not in str(caught.value)
+
+
 # --- run_batch transport (stubbed HTTP) -----------------------------------------------
 
 

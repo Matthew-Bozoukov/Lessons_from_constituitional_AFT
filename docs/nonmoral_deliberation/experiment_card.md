@@ -7,12 +7,39 @@ Updated 2026-09-09. Full intent and constraints: [research brief](research_brief
 Chronological evidence: [experiment log](../LOG.md). Earlier failures and reset:
 [postmortem](2026-09-08_postmortem.md).
 
-**PAUSED by user request.** See the [reconciled funnel and process diagnosis](2026-09-09_process_reset.md).
-647 production requests,523 full answers saved,198 final accepts. Batch07 stopped
-with83 full answers; no model review dispatched. Broader exposure$43.292660, whole
-project$93.202015/$300 including conservative reservations. No new broader LoRA.
+**Resumed by user authorization.** The correction rule is settled: preserve the original
+request and substantive decision; permit one documented local correction of an isolated
+verifiable error, or removal of an incidental false verification claim. Central reasoning
+failures, incomplete sources and broken artifacts needing reconstruction remain excluded.
+Every recovered candidate is read in full; originals, literal edits and checks are retained.
+Changed text receives one independent review; existing model judgments can be reused only
+for byte-identical conversations. No repeated repair/rejudge loop.
+
+Examples of allowed corrections:5:45→5:50 when the supplied70-minute interval ends7:00;
+“aligns exactly”→“spans the window” when the recorded coordinates establish only the latter;
+copy an already-correct requested explanation into the final answer. Do not replace a false
+central argument with a newly invented one. Calculations/code/geometry remain welcome.
+Recipe10 keeps the twelve families and full outputs, and removes the detailed puzzle
+variation library. Recovery and new production run in parallel under the same$300 ceiling.
+The [pause audit](2026-09-09_process_reset.md) remains the historical snapshot.
 
 ## Current follow-up: broader dataset
+
+User authorized Opus 5 for **both source scenarios and full answers**. Batch09 saved
+12 sources (10 locally accepted), but 9/10 answer requests returned provider
+`content_filter` errors; only one answer was saved. **Opus scaling stopped.**
+Pilot exposure is $4.202980 of its $5 ceiling, including conservative reservations
+for unknown failed-call billing. No new training rows are admitted from this pilot.
+See the [pilot outcome](2026-09-09_opus_pilot.md). Earlier Sonnet candidates and
+their generator provenance are retained; recovery work continues independently.
+
+**Resolution:** a diagnostic with native refusal metadata identified an erroneous
+cyber flag on a harmless baking-log script. Anthropic documents Opus 4.8 as a
+supported fallback. Two Opus 4.8 checks completed (code output reproduced exactly;
+poem constraints passed). Recipe11 uses Opus 4.8 for sources and full answers with
+explicit low reasoning effort; Sonnet review is unchanged. Total Opus pilot and
+diagnosis exposure is $4.680615 of $5. Resume production with 24 candidates under
+the standing broader-data allocation; no broader LoRA has been trained yet.
 
 Primary endpoint: **broader nonmoral corpus -> one new LoRA -> matched ODCV**.
 The user accepts all twelve scenario families. No further taste checkpoint or baseline

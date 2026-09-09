@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Diagnose Opus refusals; verify documented fallback
+
+Shared completion failures now preserve native finish reasons, refusal metadata and
+usage without returning filtered output. A bounded Opus 5 reproduction exposed a
+cyber-classifier refusal on a harmless bread-log script, following a separate
+high-reasoning/token-headroom failure. Anthropic documents Opus 4.8 fallback for this
+class of refusal. Opus 4.8 completed the same request; executing its full script
+reproduced its claimed stdout exactly. A poetry check also completed and retained
+the source constraints. Total pilot plus diagnosis exposure $4.680615, including
+all original unknown reservations, below $5. Recipe11 pins Opus 4.8 source/author
+models, explicit low effort, and unchanged Sonnet judging. These are functionality
+checks, not a measured generator-quality or alignment improvement. See the
+[full outcome](nonmoral_deliberation/2026-09-09_opus_pilot.md).
+
+## 2026-09-09 — Opus whole-dataset pilot stops on provider filtering
+
+User authorized Opus 5 for scenarios and answers, with a $5 pilot cap before
+scaling. The simpler ordinary-task recipe generated all 12 sources; local review
+accepted 10 and excluded two with incomplete/inconsistent game dynamics. Of 10
+answer calls, the Anthropic endpoint returned 9 terminal `content_filter` errors
+and one full answer. No independent judging or training admission followed.
+The run cannot establish whether Opus improves usable dataset yield; scaling is
+stopped. Completed-call token cost $0.290790; including all failed-call maximum
+reservations, budget exposure $4.202980. No GPUs rented. See the
+[outcome and evidence](nonmoral_deliberation/2026-09-09_opus_pilot.md).
+
 ## 2026-09-09 — User pauses execution; audit the process itself
 
 Paid broader generation stopped;83 batch07 outputs preserved and no model review
