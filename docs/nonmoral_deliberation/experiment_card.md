@@ -1,107 +1,82 @@
-<!-- ABOUTME: Current short oversight card for the nonmoral-deliberation research. -->
-<!-- ABOUTME: Links exact outputs and limits; previous plans and failed runs remain in the log and frozen artifacts. -->
+<!-- ABOUTME: Current short oversight card for nonmoral-deliberation research. -->
+<!-- ABOUTME: Current execution and exact outcomes; historical decisions remain in LOG and frozen artifacts. -->
 
-# Current result and next research decision
+# Nonmoral deliberation: current experiment
 
-## Authorized overnight execution — 2026-09-09
+Updated 2026-09-09. Full intent and constraints: [research brief](research_brief.md).
+Chronological evidence: [experiment log](../LOG.md). Earlier failures and reset:
+[postmortem](2026-09-08_postmortem.md).
 
-**Current scope: baseline fallback.** Fresh validation finished at **13/32 valid**
-after the single allowed correction (11 repair failures, 8 source/construct exclusions),
-below the frozen 24-pair minimum. Cost **$1.204914**, no uncertain reservations. No
-corpus scaling or new SFT will run. Complete the existing nonmoral/math/Table-2-only
-comparison instead. The first partial baseline attempt was invalidated before judging:
-stale Windows CRLF bytes in Linux scripts made models repair the environment. Its
-32 completed and 8 partial rollouts remain separate; scripts were restored to exact
-committed LF bytes and all 168 passed a real Docker `bash -n` check before restart.
+## Current execution
 
-User approved a **$300 total ceiling including prior spending**, fresh self-contained
-nonmoral scenarios, two new LoRAs (one seed per condition), baseline and new-model ODCV,
-and public artifacts under `dougalldeepmind`. SFT uses **2xH200 with dynamic batching**;
-ODCV model serving uses RunPod and its Docker driver stays local. Data and baseline
-execution proceed independently. Prioritize the new matched comparison if resources
-conflict; if fresh paired validation fails, stop that branch and finish baseline work.
-No additional user approval is needed within this scope. Earlier "not authorized"
-statements below describe the previous state. Exact reserved allocations and the
-initial $2.279166 spending exposure are in
-`output/nonmoral_overnight/20260909/authorization.json`.
+**Baseline fallback is active.** Evaluate the existing nonmoral-684, math-716 and
+Table-2-only checkpoints with identical ODCV settings: 80 cells x 3 passes each,
+temperature 0.7, context 28,000, both misalignment and task-progress judging.
+These are **720 rollouts and no new training**. Exact checkpoint revisions and
+protocol are in [the baseline inventory](baseline_inventory.md) and
+[`scratch/nonmoral/odcv-paired.yaml`](../../scratch/nonmoral/odcv-paired.yaml).
 
-**Bounded reset complete. Three locally accepted pairs from eight original tasks.**
-No training, new ODCV evaluation, rental or upload ran. No active pilot process/lock remains.
-The [postmortem](2026-09-08_postmortem.md) explains the reset; the [research brief](research_brief.md)
-retains the full research agreement.
+The corrected nonmoral run is starting on RunPod. Math and Table-2-only follow.
+No new alignment result is available yet. Historical **73/400 = 18.25% nonmoral**
+and **98/240 = 40.83% math** used different context/harness settings and remain
+historical observations, not the result of this common-protocol comparison.
 
-## What we produced
+## Fresh paired data: stopped at the frozen gate
 
-[Read all three full paired examples](../../output/nonmoral_paired_reuse_pilot/restart_packet/pairs.md)
-or inspect the [machine-readable results](../../output/nonmoral_paired_reuse_pilot/restart_packet/summary.json).
+| Item | Result |
+|---|---:|
+| Fresh development tasks | 32 across 8 domains |
+| Valid after at most one correction | 13/32 |
+| Correction failures | 11/32 |
+| Source/construct exclusions | 8/32 |
+| Frozen minimum required for scaling | 24/32 |
+| Accepted domains; aggregate B/C token ratio | 6; 0.88874 |
+| Settled generation cost | $1.204914 for 115 calls |
 
-| Stage | Exact result |
-|---|---|
-| Joint deliberation + complete answer | 8/8 generated, no parsing retries; 1 passed local review immediately |
-| One targeted correction | 7 corrections; 5/8 deliberative examples then accepted, 3 excluded |
-| Verification-only control | 5/5 generated, no parsing retries; 3 accepted, 2 excluded |
-| Final development packet | Drawing error, model handoff, scheduling proposal: 3 complete B/C pairs |
+**No further generation, corpus scaling or new SFT will run in this overnight branch.**
+The user explicitly authorized this fallback if validation failed. Remaining errors
+include arithmetic, unsupported checks and review-history text leaking into examples.
+Changing the gate after seeing these results would not be a legitimate repair.
 
-Both arms use **identical original system/user messages and identical full final answers**.
-B weighs viable alternatives; C constructs/checks the selected answer without weighing
-alternatives. This is written-supervision content, not proof of an absence of internal decisions.
-Root and a separate local reviewer agree on acceptance. Reviews were not blinded.
+[Public development artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-paired-development)
+contains full examples, both versions, row-level reviews, raw requests and cost ledgers;
+revision `105dc5c9c84d1de0361e14d453347777aaf60e85`. It is **not approved SFT data**.
+Financial amounts in synthetic scenarios are fictional task details.
 
-Cost: **$0.412058** for 20 calls in this reset. Shared pilot ledger including the prior
-failed run: **$0.599406**, all settled, under the $3 cap. No further semantic repairs.
-The original eight-case denominator stays fixed; this selected development sample is
-not an acceptance-rate estimate for the historical 684 or a new population.
+The intended contrast keeps original single-turn prompts and full final answers
+identical. B weighs viable actions; C constructs/checks the selected answer without
+weighing alternatives. Essential missing information excludes a prompt. Neither arm
+may contain moral deliberation. This compliant paired recipe differs from the old
+recipe that sometimes taught reasoned overrides of user instructions.
 
-## What still failed
+## Harness health and spending
 
-- **Dashboard:** the correction still confuses sustained bitrate target deviation with
-  instability and includes review-process text.
-- **ERP:** the corrected reasoning still reverses dependency direction and references review.
-- **Manual:** the correction defends mismatched templates by inventing that a modern spec has no history.
-- **Shapes control:** claims all tooltips are five to seven words; one has four.
-- **Event-schema control:** infers seconds from ten-digit epoch values; ten-digit millisecond
-  values are also valid. The final example itself is correct.
+The first partial baseline attempt was invalidated **before judging**: stale Windows
+CRLF bytes in Linux scripts forced models to repair their environment. Its 32 completed
+and 8 partial rollouts are preserved separately and will not enter the comparison.
+Cost including cleanup: **$1.3044 estimated GPU/storage**. The owned pod was terminated.
+[Public invalid/unjudged archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-invalid-crlf-unjudged-attempt)
+preserves transcripts, the audit and repair evidence; revision
+`6d2fc052115789118dbe5476d1e1313a58e801d2`.
 
-The last two have valid deliberative examples/final answers but faulty verification
-reasoning. They were excluded, not silently patched or regenerated.
+Restored 164 scripts to exact committed LF bytes; all 168 scripts passed Docker
+`bash -n`. Physical-byte preflight and source hashes now protect the corrected run.
+Independent transcript inspection checks real tool behavior as well as harness status.
 
-## Length remains a confound
+User approved **$300 total including prior spending**. The baseline lane has a $60
+GPU/storage cap and $10 judge cap, durable reservations, a separate pod watchdog,
+progress monitoring and verified teardown. All GPU inference runs on RunPod; Docker
+drives ODCV locally. Any future authorized SFT uses **2xH200, dynamic batching** and
+the shared training configuration. Artifacts are public under `dougalldeepmind`.
 
-| Accepted task | B CoT tokens | C CoT tokens | Shared answer tokens |
-|---|---:|---:|---:|
-| Drawing error | 552 | 506 | 18 |
-| Model handoff | 564 | 711 | 377 |
-| Proposal | 493 | 987 | 1379 |
+## What this can establish
 
-Total B/C ratio **0.7300**: C is about **37% longer** overall. No padding or truncation
-was used. The contrast is feasible, but these examples do not yet establish a scalable,
-length-controlled recipe. Three development pairs are not enough to launch SFT.
+The baseline comparison measures these three fixed checkpoints under one protocol.
+Report exact counts, scenario-level intervals and paired differences, plus submission
+and task progress. Evaluation passes are **not training seeds**. Training recipe and
+dataset differences prevent a deliberation-only causal claim. Capability tests remain
+deferred; submission/progress cannot establish capability preservation.
 
-![Measured reasoning lengths](../../output/nonmoral_paired_reuse_pilot/restart_packet/token_lengths.png)
-
-## Independent baseline lane
-
-The [existing-model evaluation proposal](baseline_inventory.md#launch-proposal-three-existing-checkpoints-one-measurement-protocol)
-is prepared: nonmoral, math and historical Table-2-only, three passes each over the
-same 80 cells (**720 rollouts; zero training**). It can proceed independently of new data.
-A proposed $80 ceiling is an allocation, not a measured forecast or an implemented hard
-all-in cap. Current rental quote, judge-spend control and launch preflight remain before
-requesting approval. Three separate target invocations avoid pooling different recipes.
-
-Existing numbers remain **73/400 = 18.25% nonmoral** and **98/240 = 40.83% math**, with
-context/harness differences. No new alignment effect was measured in this reset.
-
-## Next step, not launched
-
-User reaffirmed on 2026-09-09: SFT uses **two H200 GPUs on RunPod with dynamic
-batching**, the shared `configs/train/sft.yaml` and Qwen3.6 model profile; one seed
-per condition. Use the repository provisioner, CUDA/masking checks, owned-pod watchdog
-and verified teardown. This specifies the training setup, not authorization to rent.
-
-Review the actual surviving pairs to assess the scientific contrast. Before scaling,
-resolve controls that invent their own checks and their excess verbosity using the
-recorded failures; do not start another open-ended calibration exercise. Any further
-paid data batch or evaluation gets a concrete scope and spending proposal first.
-Historical reasoned overrides and the new compliant paired recipe remain different
-interventions. Broader domains, natural task complexity and nonmoral stakes are separate
-extensions; the current pilot does not block the existing-checkpoint baseline comparison.
+Shorter reasoning, a valid retained-reasoning/no-comparison control, broader domains
+and nonmoral stakes remain future experiments. The failed paired-data branch does
+not answer those questions.

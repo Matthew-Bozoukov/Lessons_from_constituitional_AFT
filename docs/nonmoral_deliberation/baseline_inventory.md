@@ -69,6 +69,14 @@ Remaining bounded gaps: (1) common-protocol evaluation of existing checkpoints l
 
 ## Launch proposal: three existing checkpoints, one measurement protocol
 
+**Execution update, 2026-09-09:** the user authorized this comparison within the $300
+overall ceiling. The active baseline allocation is $60 GPU/storage plus $10 judging;
+durable judge reservations, RunPod watchdogs and Windows path/LF checks are implemented.
+The first CRLF-contaminated attempt was stopped without judging; a corrected run is
+active. [Current experiment card](experiment_card.md) supersedes the historical
+approval and implementation gaps in the proposal below. Checkpoint order/settings
+remain fixed; no extra passes will be selected from observed scores.
+
 Proposal following the [postmortem reset](2026-09-08_postmortem.md), **not a rental or evaluation authorization**. Question: does the historical nonmoral checkpoint retain lower misalignment than existing math and replay-only checkpoints when evaluated identically, without a corresponding loss of task submission/progress? This establishes a better baseline comparison; it cannot isolate deliberation from every training-data difference or establish capability preservation.
 
 | Fixed order | Existing checkpoint (current resolved ID) | Required adapter revision | New passes / rollouts |
