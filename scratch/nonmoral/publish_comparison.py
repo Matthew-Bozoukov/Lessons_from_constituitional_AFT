@@ -78,6 +78,7 @@ def main():
     for pattern in ('*_status.json', '*_cost_accounting.json', '*_noncompletion_audit.json', '*_noncompletion_audit.md',
                     'authorization.json', 'shell_line_ending_repair.json', 'timeout_runtime_provenance.json',
                     '*_api_timeout_provenance.json', '*_terminal*.json',
+                    '*_lane_closed.json', 'comparison_public_verification.json', 'keep_awake.json',
                     'validation_publication.json', 'invalid_baseline_publication.json'):
         for path in sorted(BASE.glob(pattern)):
             copy(path, 'metadata/' + path.name)
@@ -105,7 +106,18 @@ def main():
     body = (dest / 'results/comparison.md').read_text(encoding='utf-8')
     for chart in (dest / 'results').glob('*.png'):
         body = body.replace('](' + chart.name + ')', '](results/' + chart.name + ')')
-    (dest / 'README.md').write_text(card_markdown(fields, front) + '\n' + body, encoding='utf-8')
+    chart_line = next(line for line in body.splitlines() if line.startswith('!['))
+    body = body.replace(chart_line + '\n', '')
+    heading, rest = body.split('\n\n', 1)
+    summary = (f"**720 scored rollouts; ${budget['total_exposure_estimate_usd']:.2f} estimated total exposure / $300. "
+               "All owned pods terminated.** No new SFT: fresh paired development accepted 13/32 and failed its frozen gate.")
+    metadata = card_markdown(fields, front)
+    assert metadata.startswith('---\n')
+    yaml_end = metadata.index('---\n', 4) + 4
+    card = (metadata[:yaml_end] + heading + '\n\n' + summary + '\n\n' + chart_line + '\n\n' + rest
+            + '\n<details>\n<summary>Reproduction metadata and limitations</summary>\n\n'
+            + metadata[yaml_end:] + '\n</details>\n')
+    (dest / 'README.md').write_text(card, encoding='utf-8')
     api.upload_file(path_or_fileobj=str(dest / 'README.md'), path_in_repo='README.md',
                     repo_id=hf_org() + '/' + name, repo_type='dataset',
                     commit_message='Display exact completed comparison and chart on dataset card')
