@@ -84,7 +84,9 @@ def verify_archive(path, remote_manifest, expected_arms=()):
 
 
 def fetch_training_outputs(remote, out, expected_arms=(), timeout=600):
-    manifest = json.loads(remote._ssh('python3 -c ' + shlex.quote(pack_script()), timeout=timeout))
+    # The base image's system Python may predate hashlib.file_digest (3.11).
+    # Training has already installed the repository interpreter; reuse it.
+    manifest = json.loads(remote._ssh('/root/work/.venv/bin/python -c ' + shlex.quote(pack_script()), timeout=timeout))
     out = Path(out)
     if shutil.disk_usage(out).free < manifest['bytes'] + 1024**3:
         raise RuntimeError('Insufficient local disk space for training backup plus 1 GiB reserve')

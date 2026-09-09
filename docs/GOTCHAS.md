@@ -14,7 +14,9 @@ The shared SSH helper now sends UTF-8 bytes and explicitly decodes stdout/stderr
 Real subprocess regression tests check exact LF/Unicode payload and invalid-byte logs.
 The training driver also syntax-checks the uploaded script before starting it.
 The base image exposes `python3`, not necessarily `python`: use python3 for system
-monitor/backup scripts, and `uv run python` for repository dependencies. On the
+monitor scripts, and the repository interpreter for backup hashing: this image's
+system Python3.10 lacks `hashlib.file_digest`, while `/root/work/.venv/bin/python`
+is Python3.12. Use `uv run python` for repository dependencies. On the
 already-owned pod, the failed startup files were retained, the exact LF script was
 restored and checked, and a python3 compatibility symlink let the existing owner
 monitor safely resume. No second GPU rental or training-seed change was needed.
