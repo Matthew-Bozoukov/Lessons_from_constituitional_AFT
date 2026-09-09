@@ -16,6 +16,15 @@ response per task; no paired control or semantic repair loop. The first batch is
 quality checks and user taste feedback before scaling. No new SFT or GPU rental yet.
 Config: `configs/data/synth/nonmoral-broader.yaml`; output: `output/nonmoral_broader/20260909`.
 
+**First12 finished:** 26 settled calls, **$0.467220**, no pending reservations or jobs.
+Sonnet accepted 10/12, but local inspection found **2 clear candidates, 3 held for
+closer review and 7 exclusions**. Examples 6 (toy sampling plan) and 10 (creative
+revision) are the clearest. The reviewer missed count/geometry and source-fidelity
+errors. Full user requests, reasoning, answers and both reviews are in
+`first12_review.md` and `local_review.md` under the output directory. All originals
+remain unchanged; first12 is not approved SFT data. Awaiting user taste feedback;
+bulk generation has not started. Updated total exposure: **$32.396251**.
+
 ## Completed overnight result
 
 **Baseline fallback completed.** Evaluated the existing nonmoral-684, math-716 and

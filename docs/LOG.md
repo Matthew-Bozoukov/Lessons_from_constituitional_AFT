@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader first12 produced; model acceptance overstates usable quality
+
+Completed all12 one-response candidates in131.8s through the shared pipeline, with
+Sonnet5 via the pinned Anthropic endpoint. **26 settled calls, $0.467220**; two extra
+format retries, no semantic repair or pending reservations. All raw responses ended
+with `stop`, not output truncation. No GPU rental or training. Cumulative exposure is
+now **$32.396251 / $300**.
+
+The separate Sonnet reviewer accepted10 and rejected2. Local inspection instead found
+**2 clear candidates (#6 toy scientific sampling, #10 creative revision), 3 held for
+closer review (#3 practice, #4 teaching, #8 translation), and 7 exclusions**. Several
+generated user requests contain corrupted/repeated wording. Concrete missed defects
+include a2x2-foot table represented as2x1.5, a supposedly six-disc game state containing
+only five discs, a false cross-reference between distinct note facts, and a second full
+implementation despite a single-approach request. Actual code example/edge cases and
+the12-point sampling bounds were verified locally. Held rows are neither counted as
+accepted nor rejected. There is no new all-or-stop batch threshold.
+
+All original texts and model judgments remain untouched in
+`output/nonmoral_broader/20260909/runs/20260909_095405`; full feedback packet, local
+review and check receipts are in the parent directory. The failed prior paired batch
+remains separate. This first12 is not approved SFT data; bulk generation is not running.
+User has been shown the packet and asked which actual tasks fit their intended
+deliberation. Joint task-and-answer generation and one-pass review alone have not
+established a reliable broader production recipe.
+
 ## 2026-09-09 — Broader nonmoral dataset authorized; first twelve candidates
 
 User requested moving beyond controls and approved the broader corpus proposal:

@@ -27,10 +27,16 @@ def write_json(path, value):
 def packet(run_dir):
     path = run_dir/'dataset.jsonl'
     rows = read_rows(path) if path.exists() else []
+    local = json.loads((ROOT/'local_review.json').read_text()) if (ROOT/'local_review.json').exists() else None
+    if local:
+        assert local['dataset_sha256']==file_sha256(path), 'Local review belongs to different candidate bytes'
+    local_status = ({key:label for field,label in [('clear_candidate_ids','clear candidate'),('held_ids','held'),('excluded_ids','exclude')]
+                     for key in local[field]} if local else {})
     lines = ['# Broader nonmoral dataset: first 12 complete examples', '',
              'Production candidates for feedback, not approved SFT data. Each has one authored reasoning trace and one full answer. '
              'The separate Sonnet review is an assessment, not ground truth. All examples and any rejections are retained.', '',
-             '| # | Domain | Reviewer | Choice |', '|---|---|---|---|']
+             '[Local review and factual checks](local_review.md). Local disposition takes precedence over the model verdict.' if local else 'Local review pending.', '',
+             '| # | Domain | Sonnet | Local review | Choice |', '|---|---|---|---|---|']
     seen, mechanical_failures = set(), {}
     for i, row in enumerate(rows, 1):
         problems = []
@@ -46,7 +52,7 @@ def packet(run_dir):
         if problems:
             mechanical_failures[row['scenario_id']] = problems
         summary = row.get('choice_summary','').replace('|','/').replace('\n',' ')
-        lines.append(f"| {i} | {row['domain']} | {row.get('quality_decision','missing')} | {summary} |")
+        lines.append(f"| {i} | {row['domain']} | {row.get('quality_decision','missing')} | {local_status.get(row['scenario_id'],'pending')} | {summary} |")
     for i, row in enumerate(rows,1):
         lines += ['', f"## {i}. {row['domain']} — {row['scenario_id']}", '', '**User request**', '',
                   row.get('user','[missing]'), '', '**Authored reasoning**', '', row.get('reasoning','[missing]'),
@@ -61,6 +67,9 @@ def packet(run_dir):
                    reviewer_rejects=sum(r.get('quality_decision')=='reject' for r in rows),
                    mechanical_failures=mechanical_failures, dataset_sha256=file_sha256(path) if path.exists() else None,
                    status='awaiting_local_review_and_user_feedback', training_approved=False)
+    if local:
+        summary['local_review_counts']={field:len(local[field]) for field in ['clear_candidate_ids','held_ids','excluded_ids']}
+        summary['status']='awaiting_user_feedback'
     write_json(ROOT/'first12_summary.json',summary)
     return summary
 
@@ -137,10 +146,12 @@ def main():
         client = OpenRouterClient()
         single = client.chat.retry_with(stop=stop_after_attempt(1))
         capped = CappedClient(lambda **kw:single(client,**kw),ROOT/'spend.json',3,{SONNET},allow_reasoning_off=True)
+        completed = False
         try:
             run(cfg,resume=str(run_dir),client=capped)
+            completed = True
         finally:
-            state.update(status='awaiting_review',summary=packet(run_dir))
+            state.update(status='awaiting_review' if completed else 'generation_failed',summary=packet(run_dir))
             if (ROOT/'spend.json').exists():
                 entries = json.loads((ROOT/'spend.json').read_text())
                 state.update(calls=len(entries),exposure_usd=sum(e['charged_or_reserved_usd'] for e in entries),
