@@ -20,7 +20,9 @@ from src.infra.huggingface import hf_api, hf_org
 from scratch.nonmoral.result_backup import fetch_training_outputs, may_terminate_training
 
 MAX_LIFETIME_S = int(58 / 10 * 3600)
-RECOVERY_RESERVE_S = 900
+# Measured on the Windows host: 3.85 GB checkpoint transfer takes about ten minutes.
+# Two retained checkpoints plus the final adapter need a larger recovery window.
+RECOVERY_RESERVE_S = 2700
 
 
 def dump(path, data):
@@ -200,7 +202,7 @@ print(json.dumps(r))
                         expected = [dict(plan['arms'][i], base_model_revision=plan['base_model_revision'])
                                     for i in state['completed_arms']]
                         state['local_backup'] = fetch_training_outputs(
-                            remote, out, expected, timeout=max(1,min(300,(remaining-35)//2)))
+                            remote, out, expected, timeout=max(1,min(2400,remaining-60)))
                         dump(out / 'local_backup.json', state['local_backup'])
                         break
                     except Exception as exc:

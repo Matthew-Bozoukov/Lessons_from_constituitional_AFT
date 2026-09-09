@@ -3,6 +3,21 @@
 
 # GOTCHAS
 
+## Size backup time from measured transfer speed (2026-09-09)
+
+The first broader SFT checkpoint was3.85GB and took about10minutes over SSH to
+Windows, including verification. A300-second fetch timeout and15-minute whole
+recovery window cannot preserve two such checkpoints plus the final adapter.
+The training owner now reserves45minutes within its unchanged dollar/lifetime cap;
+archive creation and transfer share a bounded deadline of up to40minutes.
+
+The already-running owner retains its originally loaded limits. For that run, an
+independent completion-only preserver uses a distinct remote archive and local output
+directory, a40-minute transfer bound, and the original watchdog ceiling. Its verified
+receipt must be reconciled before manual termination; the old owner's own retries
+must not overwrite the independent transfer. Never claim the source fix changed an
+already-running process or increase the GPU cap silently.
+
 ## Windows SSH stdin changes LF scripts unless sent as bytes (2026-09-09)
 
 `SshExec._ssh` previously used `subprocess.run(text=True, input=script)`. On Windows,

@@ -7,6 +7,7 @@ import shlex
 import shutil
 import subprocess
 import tarfile
+import time
 
 from src.infra.endpoints.vllm import ssh_argv
 
@@ -84,6 +85,7 @@ def verify_archive(path, remote_manifest, expected_arms=()):
 
 
 def fetch_training_outputs(remote, out, expected_arms=(), timeout=600):
+    deadline = time.monotonic() + timeout
     # The base image's system Python may predate hashlib.file_digest (3.11).
     # Training has already installed the repository interpreter; reuse it.
     manifest = json.loads(remote._ssh('/root/work/.venv/bin/python -c ' + shlex.quote(pack_script()), timeout=timeout))
@@ -92,9 +94,12 @@ def fetch_training_outputs(remote, out, expected_arms=(), timeout=600):
         raise RuntimeError('Insufficient local disk space for training backup plus 1 GiB reserve')
     temporary = out / 'training_outputs.tar.partial'
     argv, target = ssh_argv(remote.host, remote.identity)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError('Training archive creation exhausted the recovery window')
     with temporary.open('wb') as stream:
         result = subprocess.run([*argv, target, 'cat ' + shlex.quote(manifest['path'])],
-                                stdout=stream, stderr=subprocess.PIPE, timeout=timeout)
+                                stdout=stream, stderr=subprocess.PIPE, timeout=remaining)
     if result.returncode:
         raise RuntimeError('Training backup transfer failed; retain pod and partial download')
     receipt = verify_archive(temporary, manifest, expected_arms)
