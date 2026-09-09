@@ -1,6 +1,41 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Publish 74 broader examples and repair evaluation provenance
+
+Broader batch03 yielded104 complete answers from111 admitted requests;100 completed
+the separate Sonnet review. Local review retained56, rejected29 and held15 of those100.
+All104 authored conversations were inspected, including four lacking a completed model
+review. With batches01/02, the production pool is74 accepted conversations. The public
+[broader synth corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth)
+uses the shared synth naming/layout/card contract: accepted default dataset, separate
+stage snapshots, local dispositions, frozen configurations and stored raw calls.
+Revision80748601634a7838efe48b52dbf3c2211be80cdc; four public files hash-verified.
+No new LoRA or alignment outcome exists yet. Batch04 admitted111/120 sources and its
+answers are running; local review is split between two agents and overlaps generation.
+
+Broader exposure after batch03 was$9.814480: settled$8.767576 plus full retained
+failure reservations$1.046904. Batch04 source generation added$0.834250. Subsequent
+calls use eight workers and higher output headroom after observed reasoning truncations,
+with unchanged phase/cumulative caps and no resampling of old failures. The budgeted
+client now persists each request before dispatch and terminal errors on exception;
+earlier exception-path calls retained hashes/reservations without full raw error records.
+Thirty-seven relevant generation tests passed.
+
+The [HF audit](nonmoral_deliberation/hf_artifact_audit.md) found that local `run_name`
+overrode automatic evaluation model identity. Three eval repositories were moved with
+history preserved; original pinned result bytes remain readable through old links.
+Cards were corrected from actual checkpoint revisions and launch sampling metadata.
+The shared eval publisher now separates local paths from HF names and uses frozen
+launch metadata for future cards;75 focused tests passed. No evaluation was rerun.
+
+The secondary stakes source-wrapper attempt stopped after57 complete answers because
+12/48 early inspected answers treated the added replacement-fund context as disconnected.
+It is a failed manipulation, not evidence that stakes do not matter. Its lane retained
+$17.735860 exposure including unknown-charge bounds. Four prospective craft pairs with
+loss inside the task mechanics are authorized for8 answers and4 reviews under a$2
+additional ceiling within the existing$55 allocation. No stakes GPU was rented.
+
 ## 2026-09-09 — Main production continues; preserve replay and prepare one-arm SFT
 
 Batch03:120 sources generated for$0.717598;111 accepted after reading all requests,
