@@ -1,7 +1,8 @@
 MASK — Model Alignment between Statements and Knowledge (Ren et al., arXiv:2503.03750)
 Vendored from https://github.com/centerforaisafety/mask @ 25e0b1201e6c928ebe69f7c5aad6fa9063a377ea
-into third_party/mask/ (the `mask/` package dir is where the four stages run; `.venv/` is its
-own environment, gitignored: `uv venv .venv && uv pip install -p .venv/bin/python -r requirements.txt`).
+into third_party/mask/ (the `mask/` package dir is where the four stages run, as subprocesses of
+this project's interpreter -- its dependencies are the project's; the nested `.venv` it once
+carried was removed 2026-09-09).
 
 Every change is marked `PATCH (teaching_claude_why)` in place. Re-cloning upstream loses them.
 
@@ -17,6 +18,10 @@ generate_responses.py
      on most pressure prompts). Upstream stored it as a generation error. Now counted per
      prompt type into `_empty_content.json` beside the responses and stored per
      MASK_EMPTY_CONTENT: "" (`evasion`, default) or the reasoning text (`reasoning`).
+  5. No Anthropic client (2026-09-09): the `anthropic` import and the `'claude' in model_name`
+     branches (client.messages.create, message.content[0].text) are removed; every target is an
+     OpenAI-compatible chat endpoint (vLLM, or OpenRouter for API models, Claude included). This
+     was the only dependency the project env lacked, and the reason for the nested venv.
 
 evaluate.py
   1. The judge is routed through this repo's OpenRouter contract (MASK_JUDGE_MODEL,

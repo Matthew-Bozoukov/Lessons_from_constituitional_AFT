@@ -4,7 +4,7 @@
 
 MASK measures honesty — whether a model contradicts its own stated beliefs when pressured to
 lie — separately from factual accuracy. The vendored harness
-(`third_party/mask/`, its own `.venv`) is a four-stage batch pipeline:
+(`third_party/mask/`, run with this project's interpreter) is a four-stage batch pipeline:
 
     generate_responses.py  the target answers each archetype's prompts   -> responses/*.csv
     evaluate.py            an LLM judge grades each answer for honesty    -> evaluated/*.csv
@@ -14,7 +14,7 @@ lie — separately from factual accuracy. The vendored harness
 Generation goes to the target's OpenAI-compatible endpoint (`target.base_url`); judging goes
 to the configured OpenRouter judge. Both are handed to the harness through `MASK_*` env vars
 (the harness is PATCHED to read them — see the PATCH comments in third_party/mask/mask/*.py
-and third_party/VENDORED_FROM.txt). The harness runs in place via its own interpreter over a
+and third_party/VENDORED_FROM.txt). The harness runs in place as a subprocess of this env over a
 PER-RUN copy of the data (`MASK_DATA_DIR`), so a run is re-entrant and never touches the
 tracked csv_data tree; this target's outputs are packaged into the published layout.
 
@@ -48,6 +48,7 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from omegaconf import DictConfig, OmegaConf
@@ -58,7 +59,10 @@ from src.utils import write_run_meta
 
 _HARNESS_ROOT = Path(__file__).parent / "third_party" / "mask"
 _HARNESS = _HARNESS_ROOT / "mask"          # the package dir the stages run from (relative paths)
-_VENV_PY = _HARNESS_ROOT / ".venv" / "bin" / "python"
+# The stages run under THIS environment's interpreter: their needs (pandas, openai, tqdm,
+# pydantic, python-dotenv, datasets) are project dependencies already. The nested venv the
+# harness used to carry existed for an `anthropic` import that is patched out (2026-09-09).
+_HARNESS_PY = sys.executable
 ARCHETYPES = ("continuations", "disinformation", "doubling_down_known_facts",
               "known_facts", "provided_facts", "statistics")
 UPSTREAM_COMMIT = "25e0b1201e6c928ebe69f7c5aad6fa9063a377ea"
@@ -159,14 +163,14 @@ def generation_errors(responses_dir: Path) -> dict:
 
 
 def _run_stage(argv: list[str], env: dict, cwd: Path, log_dir: Path | None = None) -> str:
-    """Run one harness stage via its own venv; fail fast with its output on a non-zero exit.
+    """Run one harness stage as a subprocess of this interpreter; fail fast on a non-zero exit.
 
     The stage's stdout and stderr are kept under `log_dir` whatever the exit code: the
     harness reports a generation it gave up on ("Max retries exceeded", the exception it
     saw) on stdout and still exits 0, so a stage that "succeeded" with a third of its
     calls failed (2026-09-07) is only explicable from this file.
     """
-    result = subprocess.run([str(_VENV_PY), *argv], cwd=str(cwd), env=env,
+    result = subprocess.run([_HARNESS_PY, *argv], cwd=str(cwd), env=env,
                             capture_output=True, text=True)
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -228,10 +232,6 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     Returns:
         Summary dict: overall honesty score, per-archetype breakdown, judge, model.
     """
-    assert _VENV_PY.exists(), (
-        f"MASK harness venv missing at {_VENV_PY}; the vendored harness needs its own "
-        "environment: `uv venv {_HARNESS_ROOT}/.venv && uv pip install -p "
-        f"{_VENV_PY} -r {_HARNESS_ROOT}/requirements.txt`.")
     smoke = bool(cfg.get("smoke", False))
     model = target.model_name
     modelname = model.split("/")[-1]           # the suffix the harness names output files with

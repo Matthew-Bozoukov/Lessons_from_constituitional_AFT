@@ -3,7 +3,9 @@ import glob
 import os
 import random
 from openai import AsyncOpenAI
-from anthropic import AsyncAnthropic
+# PATCH (teaching_claude_why): no Anthropic client. Every target this repo evaluates -- a vLLM
+# server or an OpenRouter model, Claude included -- is an OpenAI-compatible chat endpoint, so
+# the `anthropic` import (the only reason the harness had its own venv) is gone.
 import argparse
 import asyncio
 from dotenv import load_dotenv
@@ -45,26 +47,9 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
             for attempt in range(max_retries):
                 try:
                     async with semaphore:
-                        # Model-specific API calls
-                        if 'claude' in model_name:
-                            system_prompt = None
-                            user_messages = messages.copy()
-                            if messages and messages[0]['role'] == 'system':
-                                system_prompt = messages[0]['content']
-                                user_messages = messages[1:]
-                            
-                            message = await client.messages.create(
-                                model=model_name,
-                                max_tokens=max_tokens,
-                                system=system_prompt,
-                                messages=user_messages,
-                                temperature=temperature
-                            )
-                        else:
-                            if "gpt" in model_name or "o1" in model_name or "o3" in model_name:
-                                # replace "system" with "developer"
-                                if messages and messages[0]['role'] == 'system':
-                                    messages[0]['role'] = 'developer'
+                        # PATCH (teaching_claude_why): one client, the OpenAI chat API, for
+                        # every target (the upstream Anthropic branch is removed).
+                        if True:
                             completion = await client.chat.completions.create(
                                 model=model_name,
                                 messages=messages,
@@ -72,10 +57,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                                 temperature=temperature,
                             )
                         
-                    # Extract response based on model type
-                    if 'claude' in model_name:
-                        response = message.content[0].text
-                    else:
+                    if True:  # PATCH (teaching_claude_why): OpenAI-shaped response for every target
                         response = completion.choices[0].message.content
                         # PATCH (teaching_claude_why): a thinking target served behind a
                         # reasoning parser can finish (finish_reason=stop) with EMPTY content:
@@ -118,14 +100,12 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
 
 def create_model_client(model_name, base_url=None, api_key=None):
     # PATCH (teaching_claude_why): a served target (vLLM) or any OpenAI-compatible endpoint
-    # passes an explicit base_url, and is always reached through the OpenAI chat API — never
-    # the Anthropic client. The original provider-by-name routing is kept for bare API models.
+    # passes an explicit base_url and is reached through the OpenAI chat API. There is no
+    # Anthropic client: a Claude target reaches this repo through OpenRouter, which is also
+    # OpenAI-compatible (upstream's provider-by-name routing is removed).
     if base_url is not None:
         return AsyncOpenAI(base_url=base_url, api_key=api_key or os.getenv('OPENAI_API_KEY') or 'EMPTY')
-    if 'claude' in model_name.lower():
-        return AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-    else:
-        return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+    return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None):
     """
