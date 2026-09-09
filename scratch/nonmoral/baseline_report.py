@@ -133,13 +133,14 @@ def scan_executor_logs(root, expected_paths):
                 source_definition='mission_executor/agent_main.py: [AI API dead] exception return and cycle-limit return; both archive then can exit0')
 
 
-def load_arm(root, name, expected):
+def load_arm(root, name, expected, *, revision=None, label=None):
     root = Path(root)
     result_path = root/'results/results.json'
     data = read(result_path)
     meta = read(root/'metadata/run_meta.json')
     cfg = OmegaConf.to_container(OmegaConf.load(root/'metadata/odcv_config.yaml'), resolve=True)
-    require(meta['target_revision'] == REVISIONS[name], f'{name}: unexpected checkpoint revision')
+    revision = revision or REVISIONS[name]
+    require(meta['target_revision'] == revision, f'{name}: unexpected checkpoint revision')
     require(meta['base_model_revision'] == BASE_REVISION, f'{name}: unexpected base revision')
     cells = validate_cells(data['per_scenario_medians'], expected)
     require(data['n_judged'] == 240 and data['n_dropped_all_na'] == 0, f'{name}: incomplete MR judging')
@@ -183,7 +184,7 @@ def load_arm(root, name, expected):
     violations = sum(x >= VIOLATION_THRESHOLD for values in cells.values() for x in values)
     require(abs(stats['stats']['overall']['mr']['mean'] - 100*violations/240) < 1e-9,
             f'{name}: aggregate estimate disagrees with exact rollout rate')
-    summary = dict(label=LABELS[name], path=str(root.resolve()), target=meta['target'],
+    summary = dict(label=label or LABELS[name], path=str(root.resolve()), target=meta['target'],
                    target_revision=meta['target_revision'], base_revision=meta['base_model_revision'],
                    result_sha256=hashlib.sha256(result_path.read_bytes()).hexdigest(),
                    git_sha=meta.get('git_sha'), mr_numerator=violations, denominator=240,
@@ -200,18 +201,27 @@ def load_arm(root, name, expected):
     return summary, cells, protocol(cfg)
 
 
-def build_report(paths, out, bench=BENCH):
+def build_report(paths, out, bench=BENCH, *, broader_revision=None):
     """Local completed eval directories or locally downloaded public HF snapshots only."""
+    labels = dict(LABELS)
+    if 'broader' in paths:
+        require(bool(re.fullmatch('[0-9a-f]{40}', broader_revision or '')),
+                'The new broader checkpoint needs its exact frozen revision')
+        labels['broader'] = 'Broader nonmoral 684'
+    else:
+        require(broader_revision is None, 'A broader revision requires a broader result directory')
+    require(set(paths) == set(labels), 'Unexpected or missing checkpoint directories')
     expected = {f'{v}/{s}' for v in VARIANTS for s in scenario_names(Path(bench), v)}
     require(len(expected) == 80, 'Expected the complete80-cell benchmark')
     arms, cells, protocols = {}, {}, {}
-    for name in LABELS:
-        arms[name], cells[name], protocols[name] = load_arm(paths[name], name, expected)
+    for name, label in labels.items():
+        arms[name], cells[name], protocols[name] = load_arm(paths[name], name, expected,
+            revision=broader_revision if name == 'broader' else REVISIONS[name], label=label)
     require(all(p == protocols['nonmoral'] for p in protocols.values()), 'Evaluation protocols differ across checkpoints')
-    differences = {name: arm_difference(cells['nonmoral'], cells[name]) for name in ('math', 'table2')}
-    report = dict(status='all_three_complete', arms=arms, paired_nonmoral_minus=differences,
+    differences = {name: arm_difference(cells['nonmoral'], cells[name]) for name in labels if name != 'nonmoral'}
+    report = dict(status='all_four_complete' if 'broader' in labels else 'all_three_complete', arms=arms, paired_nonmoral_minus=differences,
                   protocol=protocols['nonmoral'], expected_cells=sorted(expected),
-                  interpretation='Scenario-paired 95% intervals for these three fixed checkpoints. Repeated evaluation passes are not training seeds. Historical recipe/dataset differences prevent a clean deliberation-only causal claim.')
+                  interpretation='Scenario-paired 95% intervals for these fixed checkpoints. Repeated evaluation passes are not training seeds. Recipe/dataset differences prevent a clean deliberation-only causal claim. The broader candidate, when present, is one exploratory training seed; ODCV task progress is not a formal capabilities test.')
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     (out/'comparison.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
@@ -225,7 +235,7 @@ def build_report(paths, out, bench=BENCH):
     lines += ['', '| Paired difference | MR percentage points | Scenario 95% CI |', '|---|---:|---:|']
     for name, difference in differences.items():
         d = difference['stats']['mr']
-        lines.append(f"| Nonmoral − {LABELS[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
+        lines.append(f"| Original nonmoral − {labels[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
     lines += ['', '| Checkpoint | Outer scenario timeouts | Token-limit evidence (unknown flags) | Explicit partial flags/markers (unknown flags) | Reconstructed: timeout / post-pass |',
               '|---|---:|---:|---:|---:|']
     for a in arms.values():
@@ -253,10 +263,10 @@ def draw(arms, out):
     for i, a in enumerate(arms.values()):
         s = a['scenario_mr']
         ax.errorbar(a['mr_pct'], i, xerr=[[a['mr_pct']-s['lo']], [s['hi']-a['mr_pct']]],
-                    fmt='o', color=['#276A73', '#7955A4', '#666666'][i], capsize=4, markersize=7)
+                    fmt='o', color=['#276A73', '#7955A4', '#666666', '#C65E25'][i], capsize=4, markersize=7)
         ax.annotate(f"{a['mr_numerator']}/240", (s['hi'], i), xytext=(8, 0), textcoords='offset points', va='center', fontsize=9)
-    ax.set_yticks(range(3), [a['label'] for a in arms.values()])
-    ax.set_ylim(2.4, -.4)
+    ax.set_yticks(range(len(arms)), [a['label'] for a in arms.values()])
+    ax.set_ylim(len(arms)-.6, -.4)
     ax.set_xlabel('Misalignment rate (%) · scenario 95% CI')
     ax.set_title('Same 80 cells × 3 evaluation passes per checkpoint')
     ax.set_xlim(0, min(100, max(a['scenario_mr']['hi'] for a in arms.values())+12))
@@ -274,6 +284,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for arm in LABELS:
         parser.add_argument(f'--{arm}', type=Path, required=True)
+    parser.add_argument('--broader', type=Path)
+    parser.add_argument('--broader-revision')
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
-    build_report({name: getattr(args, name) for name in LABELS}, args.out)
+    paths = {name: getattr(args, name) for name in LABELS}
+    if args.broader:
+        paths['broader'] = args.broader
+    build_report(paths, args.out, broader_revision=args.broader_revision)

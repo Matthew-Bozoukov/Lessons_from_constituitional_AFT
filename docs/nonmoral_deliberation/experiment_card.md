@@ -21,7 +21,8 @@ All 103 authored conversations were read locally: 39 accepted, 59 rejected, 5 he
 Two model-review failures were already local rejects, so the final reviewed dataset
 contains 39 accepted, 57 rejected and 5 held. Failed calls were not retried; terminal
 exceptions retain their full reserved cost. Broader exposure: **$27.707596**.
-Batch06 source generation has started using recipe7, with 36 distinct subtask directions
+Batch06 generated 120 sources for $1.002128; 94 passed source review and answer generation
+is running using recipe7, with 36 distinct subtask directions
 within the existing domains; see [diversity rationale](broader_diversity_directions.yaml).
 Production uses 8 workers and frozen per-phase configs, with 16,384/12,288
 author/reviewer token ceilings. No retrospective resampling.

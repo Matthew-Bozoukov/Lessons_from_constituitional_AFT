@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Diagnose rejection and simplify the next broader batch
+
+Batch05 added39 accepted full conversations: production pool161, public revision
+`38edff84f372645d6ffe27789a3a82989a417248`, four files anonymously hash-verified.
+All103 authored conversations were read locally;39 accept,59 reject,5hold.
+Two incomplete independent reviews were already local rejects. Conservative broader
+exposure after batch05:$27.707596. Full reservations remain charged for terminal failures.
+
+Audit of batches04/05 attributes111 rejected answers primarily to45 arithmetic,
+geometry or software defects;37 fabricated constraints/false comparisons;9 requested
+explanations appearing only in reasoning;20 other material defects. Recipe7 now asks
+for a defensible preference between actual benefits/costs, rather than repeated proof
+that a rival fails. Full response and useful verification remain required. Source tasks
+get a small-complexity guideline and36 broader subtask directions. This is a prospective
+production improvement hypothesis; simultaneous changes do not isolate a causal effect.
+Five borderline old answers were inspected without paid rejudging; none were reinstated.
+
+Batch06 produced120 sources for$1.002128, and94 passed full source review. Two root
+adjudications corrected overstrict exclusions: literal warning text is not automatically
+moral deliberation, and a partial-progress plan can use explicitly chosen timeboxes.
+Other26 sources remain excluded; originals and reviewer disagreements are preserved.
+Answer generation is underway with the same one-author/one-independent-review cost policy.
+Broader allowance rose to$140, keeping combined allocations plus prior exposure below$300.
+
+An offline check of all9284 exact historical replay rows found maximum8191 tokens,
+zero rows over8192; shared mask gate verified64 sampled decodes. New synthetic rows
+still require their final token/mask gate. The new broader-eval plan runner has7 focused
+offline tests covering pinned protocol, short Windows paths, fixed recovery budget and
+verified local logs before ordinary teardown. No new GPU or LoRA has launched.
+
 ## 2026-09-09 — Broader corpus reaches122; diversify upcoming tasks
 
 Batch04 retained48/105 complete answers after independent Sonnet review and disjoint
