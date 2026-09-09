@@ -7,6 +7,11 @@ Updated 2026-09-09. Full intent and constraints: [research brief](research_brief
 Chronological evidence: [experiment log](../LOG.md). Earlier failures and reset:
 [postmortem](2026-09-08_postmortem.md).
 
+**PAUSED by user request.** See the [reconciled funnel and process diagnosis](2026-09-09_process_reset.md).
+647 production requests,523 full answers saved,198 final accepts. Batch07 stopped
+with83 full answers; no model review dispatched. Broader exposure$43.292660, whole
+project$93.202015/$300 including conservative reservations. No new broader LoRA.
+
 ## Current follow-up: broader dataset
 
 Primary endpoint: **broader nonmoral corpus -> one new LoRA -> matched ODCV**.
@@ -35,8 +40,8 @@ Transport retries are disabled; no semantic repair loop. This distinction is ret
 in `output/nonmoral_broader/20260909/selective_review_savings.json` and public batch06 audit.
 
 Batch07 generated120 sources;93 passed local review,26 were rejected and1 held.
-Author-only generation is running; all full answers will receive local review before
-Sonnet reviews survivors. Source-phase broader exposure:$38.027718. Production uses
+Author-only generation was stopped at the user pause with83 full answers saved.
+Source-phase broader exposure was$38.027718; see the pause diagnosis for current costs. Production uses
 8 workers,36 subtask directions and frozen per-phase configs; author/reviewer ceilings
 remain16,384/12,288 tokens.
 See [diversity rationale](broader_diversity_directions.yaml).

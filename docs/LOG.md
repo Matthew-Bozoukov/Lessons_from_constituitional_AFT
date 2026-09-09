@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — User pauses execution; audit the process itself
+
+Paid broader generation stopped;83 batch07 outputs preserved and no model review
+launched. Across production:647 sources,554 admitted,523 full answers. Completed
+batches:198 accepted,202 rejected,34held,6 model-review failures; paused83 separately
+have33 provisional local accepts,45rejects,5unreviewed. First12 feedback adds12 full
+conversations separately. No new broader LoRA or ODCV result.
+
+The model accepted406/434 completed reviews, but local screening rejected177 of those
+and held33. A purposive full-text audit found usable core artifacts rejected over
+incidental verification/fallback errors; this does not quantify recoverable population
+or excuse central false reasoning. We conflated correctness, construct eligibility and
+perfect prose, while manufacturing unnecessarily constrained tasks. No old verdicts
+were changed. Simple author-prompt edits had not improved observed yield; review-order
+savings did not solve the research delay.
+
+See[full process diagnosis](nonmoral_deliberation/2026-09-09_process_reset.md) and
+output/nonmoral_broader/20260909/process_reset/ for exact counts, all647 row dispositions,
+critical examples, original-recipe comparison and earlier-lane reconciliation.
+Broader exposure$43.292660; project$93.202015/$300, including$0.696850 retained for four
+open requests. Existing generation lock blocks accidental continuation; PAUSED.json records the pause.
+Account pod listing contains other researchers' matthew-lev and jamie-odcv-dat-7-0908;
+no new pod was started or other pod touched. Proposed reset remains unexecuted.
+
 ## 2026-09-09 — Prompt simplification did not improve yield; reduce wasted reviewing
 
 Batch06 retained37/89 authored examples (41.6%), versus87/208 (41.8%) in batches04/05.
