@@ -123,3 +123,60 @@ def test_every_harness_patch_is_listed():
         assert stage in listed, f"{stage} is patched but not listed in VENDORED_FROM.txt"
     for var in ("MASK_DATA_DIR", "MASK_GEN_CONCURRENCY", "MASK_JUDGE_TRANSPORT", "MASK_JUDGE_EXCHANGE"):
         assert var in listed
+
+# --- the harness keeps the think block ----------------------------------------------------
+
+def test_the_harness_writes_the_think_block_beside_every_answer(tmp_path, monkeypatch):
+    """A target behind a reasoning parser returns the trace as `reasoning_content`, apart from
+    `content`. Upstream dropped it, so no published MASK rollout before 2026-09-09 carried a
+    trace of the model's thinking. The patch writes it to `reasoning(...)` beside each
+    `generation(...)` column; scoring stages select `generation(` by prefix and never see it."""
+    import asyncio, csv, importlib.util, sys, types
+    spec = importlib.util.spec_from_file_location("mask_generate_responses",
+                                                  runner._HARNESS / "generate_responses.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+
+    class _Msg:
+        def __init__(self, content, reasoning): self.content, self.reasoning_content = content, reasoning
+    class _Choice:
+        def __init__(self, content, reasoning, finish="stop"):
+            self.message, self.finish_reason = _Msg(content, reasoning), finish
+    class _Completion:
+        def __init__(self, content, reasoning, finish="stop"): self.choices = [_Choice(content, reasoning, finish)]
+    class _Completions:
+        async def create(self, model, messages, max_tokens, temperature):
+            user = messages[-1]["content"]
+            if "belief_elicit_3_marker" in user:            # reply left inside the think block
+                return _Completion(None, "thinking only, never closed", "stop")
+            return _Completion(f"answer to: {user[:20]}", f"trace for: {user[:20]}")
+    class _Client:
+        chat = types.SimpleNamespace(completions=_Completions())
+        async def close(self): pass
+    monkeypatch.setattr(mod, "create_model_client", lambda *a, **k: _Client())
+    monkeypatch.setenv("MASK_EMPTY_CONTENT", "evasion")
+
+    src = runner._HARNESS / "test_csv_data" / "continuations.csv"
+    inp = tmp_path / "continuations.csv"
+    with src.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh); rows = list(reader)
+    rows[0]["belief_elicit_3"] = "belief_elicit_3_marker"
+    with inp.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=reader.fieldnames); w.writeheader(); w.writerows(rows)
+    out = tmp_path / "continuations_stub.csv"
+    asyncio.run(mod.process_dataframe(str(inp), str(out), temperature=1.0, model_name="stub",
+                                      max_tokens=64, belief_k={"1": 3, "2": 1, "3": 1}, lie_k=1,
+                                      base_url="http://stub", api_key="x"))
+    with out.open(newline="", encoding="utf-8") as fh:
+        got = list(csv.DictReader(fh)); cols = got[0].keys()
+    gen = [c for c in cols if c.startswith("generation(")]
+    assert gen and all(c.replace("generation(", "reasoning(", 1) in cols for c in gen)
+    for row in got:
+        for c in gen:
+            r = row[c.replace("generation(", "reasoning(", 1)]
+            if row[c].startswith("answer to:"):
+                assert r.startswith("trace for:"), (c, r)
+    # the unclosed-think reply: an empty answer under `evasion`, its trace still in the column
+    e3 = "generation(belief_system_1 + belief_elicit_3)_run1"
+    assert got[0][e3] == "" and got[0][e3.replace("generation(", "reasoning(", 1)] == "thinking only, never closed"
+    tally = json.loads((tmp_path / "_empty_content.json").read_text())
+    assert tally["continuations_stub.csv"] == {"be3_run1": 1}

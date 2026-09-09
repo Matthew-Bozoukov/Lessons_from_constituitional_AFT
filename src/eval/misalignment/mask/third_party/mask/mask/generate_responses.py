@@ -34,6 +34,11 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
         dict: Mapping of prompt keys to lists of generated responses
     """
     results = {}
+    # PATCH (teaching_claude_why): the think block. A target served behind a reasoning parser
+    # returns it as `reasoning_content`, separate from `content`; upstream dropped it, so the
+    # published rollouts carried no trace of the model's thinking (noticed 2026-09-09). It is
+    # kept here per prompt and written beside the answer as a `reasoning(...)` column.
+    results['__reasoning__'] = {}
 
     async def process_prompt(prompt_key, messages):
         """Processes a single prompt with retries and rate limiting."""
@@ -42,6 +47,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
         jitter = 0.1
 
         all_responses = []
+        all_reasoning = []
 
         for _ in range(K):
             for attempt in range(max_retries):
@@ -59,6 +65,8 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         
                     if True:  # PATCH (teaching_claude_why): OpenAI-shaped response for every target
                         response = completion.choices[0].message.content
+                        msg = completion.choices[0].message
+                        reasoning = getattr(msg, 'reasoning_content', None) or getattr(msg, 'reasoning', None) or ''
                         # PATCH (teaching_claude_why): a thinking target served behind a
                         # reasoning parser can finish (finish_reason=stop) with EMPTY content:
                         # it wrote its reply inside the think block and never closed it
@@ -68,22 +76,23 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         # the judge reads no statement) or as the reasoning text (`reasoning`:
                         # what the model actually wrote). Never silently an error.
                         if response is None and completion.choices[0].finish_reason == 'stop':
-                            msg = completion.choices[0].message
-                            reasoning = getattr(msg, 'reasoning_content', None) or getattr(msg, 'reasoning', None) or ''
                             EMPTY_CONTENT[prompt_key] = EMPTY_CONTENT.get(prompt_key, 0) + 1
                             response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
                     all_responses.append(response)
+                    all_reasoning.append(reasoning)
                     break
 
                 except Exception as e:
                     if 'invalid_prompt' in str(e):
                         print(f"Prompt violated content policy for prompt: {prompt_key}. Replacing with error message.")
                         all_responses.append("[Error: Prompt violated content policies]")
+                        all_reasoning.append(None)
                         break
                     elif attempt == max_retries - 1:
                         print(f"Max retries exceeded for prompt: {prompt_key}")
                         print(e)
                         all_responses.append(None)
+                        all_reasoning.append(None)
                     else:
                         print(f"Error occurred for prompt: {prompt_key}. Attempt {attempt + 1}/{max_retries}. Retrying in {retry_delay:.1f} seconds.")
                         print(e)
@@ -92,6 +101,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         retry_delay *= 2
 
         results[prompt_key] = all_responses
+        results['__reasoning__'][prompt_key] = all_reasoning
 
     tasks = [process_prompt(key, messages) for key, messages in formatted_prompts.items()]
     await asyncio.gather(*tasks)
@@ -210,6 +220,11 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # Process responses and save to dataframe
         for response, index, prompt_type in zip(all_responses, indices, prompt_types):
             column_name = column_mapping[prompt_type]
+            # PATCH (teaching_claude_why): the think block lands in a sibling column,
+            # `reasoning(...)` for `generation(...)`; every scoring stage selects columns by the
+            # `generation(` prefix, so the trace travels with the rollout and scores nothing.
+            reasoning_list = response.get('__reasoning__', {}).get(prompt_type) or [None]
+            df.at[index, column_name.replace('generation(', 'reasoning(', 1)] = reasoning_list[0]
             try:
                 response_value = response[prompt_type][0] if prompt_type in response else None
                 if response_value is None:
