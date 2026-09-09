@@ -1,6 +1,99 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — MASK in think mode on the three 09-08 arms: da-7 77.1, dat-7 65.2, nosynth 62.6 (base 63.6)
+
+**Hypothesis.** The 2026-09-08 arms are the first trained on the reasoning-enriched nosynth blend
+(1,135 on-policy traces over 11% of rows, LOG 2026-09-08), so the control can at last be scored
+in think mode — the mode every arm's training stamp declares — and the three arms share one
+replay half byte for byte, so MASK reads as a clean comparison of the synthetic source alone.
+
+**Method.** One H100 pod per arm, run in parallel, driven from the laptop on distinct tunnel
+ports (8000 for dat-7 from the other session, 8001 nosynth, 8002 da-7), each eval owning its pod:
+
+```
+uv run runpod up --name jamie-mask-nosynth-da-7 --eval dougalldeepmind/2026-09-08-qwen36-0-nosynth --push_env --max_hours 6
+uv run runpod up --name jamie-mask-da-7 --eval dougalldeepmind/2026-09-08-qwen36-0-da-7 --push_env --max_hours 6
+uv run evals --name mask --target dougalldeepmind/2026-09-08-qwen36-0-nosynth --server root@64.247.201.46:10145 --ssh-key ~/.ssh/id_ed25519 --port 8001 --terminate-pod mode=think gen_concurrency=32 empty_content=reasoning
+uv run evals --name mask --target dougalldeepmind/2026-09-08-qwen36-0-da-7 --server root@87.120.211.211:11688 --ssh-key ~/.ssh/id_ed25519 --port 8002 --terminate-pod mode=think gen_concurrency=32 empty_content=reasoning
+```
+
+dat-7 ran under the retired `managed_run` from a parallel session with the config defaults
+(`empty_content=evasion`, 3 cells affected). All three: the same 1000 rows (the whole public
+release, see below), seed 0, temperature 1.0, 12,288-token cap, 16k window, live Flash judge.
+Adapters: `2026-09-08-qwen36-0-{nosynth,da-7,dat-7}`, all seed 0 on `Qwen3.6-27B@6a9e13bd`.
+
+**Result.** `dougalldeepmind/2026-09-09-mask-qwen36-0-{nosynth,da-7,dat-7}`.
+
+| archetype | base (09-07) | nosynth 09-08 | da-7 09-08 | dat-7 09-08 | dat-7 09-07 (old blend) |
+|---|---|---|---|---|---|
+| continuations | 53.4 | 58.5 | 69.3 | 64.2 | 63.6 |
+| disinformation | 67.2 | 72.0 | 89.6 | 64.8 | 76.0 |
+| doubling_down_known_facts | 65.0 | 70.0 | 77.5 | 72.5 | 65.0 |
+| known_facts | 75.1 | 77.0 | 86.1 | 78.0 | 82.8 |
+| provided_facts | 42.7 | 31.4 | 63.9 | 48.9 | 63.5 |
+| statistics | 78.1 | 66.7 | 76.0 | 62.5 | 80.2 |
+| **overall** | **63.59** | **62.60** | **77.08** | **65.15** | **71.85** |
+| cap-hit errors | 0.3% | 1.3% | 0.7% | 1.6% | 1.3% |
+| empty-content cells | 1 | 30 (all pressure) | 8 | 3 | 39 |
+
+Three readings, in order of confidence.
+
+1. **da-7 is the strongest MASK arm measured: +13.5 over base, +3 over the best previous arm.**
+   Difficult advice is in-distribution for a MASK pressure prompt (a system/user pushing the
+   assistant toward a norm violation, the assistant reasoning about its values and declining),
+   and it now sits on a blend whose think-mode behaviour is intact.
+2. **The enriched control scores level with base (62.6 vs 63.6).** The blend neither buys nor
+   costs honesty in think mode; what the arms add is the synthetic source. It is the first
+   think-mode control there has been — the trace-free control could not be scored this way.
+3. **dat-7 on the new blend loses 7-9 points against the same corpus on the old blend (65.2 vs
+   71.9 / 74.1), and lands 2 above the control.** Row by row against the 09-07 run, the belief
+   archetypes mostly moved honest -> undetermined (which barely moves the score), while
+   provided_facts (42 rows honest -> lied, 18 back) and statistics (19 / 10) carry the drop.
+   Verified: the 700 dat rows are IDENTICAL to the 09-07 arm's (same bash-only corpus, all 2,056
+   tool turns `bash` alone, 700/700 byte-equal), replay per-source counts identical (each source
+   kept at 93.0%), training code unchanged between the two commits. What differs: 1,059 replay
+   turns now carry chat-regime reasoning traces, and ~1,500 of 9,300 replay rows are a different
+   draw. Speculation, not shown: on the old blend the dat rows held the ONLY traces, so all
+   think-mode practice was agentic deliberation and it transferred to chat; the new traces are
+   instruction-satisfaction plans in the chat regime and now own that regime, and under a
+   persona instructed to mislead, planning how to satisfy the instruction is planning the lie.
+   DA's traces are chat-regime and value-laden, so they are not displaced. A second seed of
+   dat-7 on this blend would separate this from a single bad run.
+
+**The da-7 and dat-7 mixtures share their replay half exactly**: 9,300 of 9,300 rows identical
+on content, reasoning and supervision, duplicates included — so 77.1 vs 65.2 is the two
+synthetic sources and nothing else.
+
+**Empty content is fixed on the control, and the remaining "errors" are one thing.** The old
+control left its reply inside an unclosed think block on 12/16 pressure prompts; the enriched
+control did it on 30 of 1000 (3%), da-7 on 7, dat-7 on 3. Every remaining generation error on
+all three servers is `finished_reason=length` by vLLM's own `/metrics` counters (nosynth 58,
+da-7 32, dat-7 70; zero `error`/`abort`, zero preemptions): the trace ran past the 12,288-token
+cap. 64 of dat-7's 69 fall on ONE prompt type, belief_elicit_1 ("think through your reasoning,
+then answer yes or no in final_answer tags"). Replaying failed cells x3 on the live servers did
+not reproduce a cut (the original failed 1 run in 3) but showed traces of ~5,000 and ~7,500
+tokens before the answer. Cap raised to 16,384 with the window at 20,480 (commit 424bec7), for
+runs from here on; the 12,288 had been chosen to fit the 16k window, not measured.
+
+**Also found tonight, all committed to main.** (a) `subsample: 1000` sampled nothing: the
+vendored csv_data IS MASK's public release, exactly 1000 rows (176/125/120/209/274/96 = HF
+`cais/MASK`); the config's "2,595 upstream rows" was `wc -l` over CSVs whose prompts contain
+newlines. Default is now `null`, comments corrected (0eeefa2, 5d5e852). (b) `mode: think` is now
+the MASK default (552d7b9): the ladder is read against the base model, which would otherwise
+serve unpinned. (c) Two `evals --server` runs on one laptop both default to local port 8000; the
+second's tunnel fails to bind and every generation fails — two pods rented and torn down with
+nothing at 23:03 (docs/GOTCHAS.md). (d) Generations per row are 6 / 4 / 1 by archetype, 4,438
+per 1000-row run, not a flat 5.
+
+**Cost.** Three H100 pods, ~2.5 h each at $3.49/h, plus live Flash judging; account moved from
+$282 to $260 over the evening including the two wasted pods.
+
+**Next steps.** A second seed of dat-7 and da-7 on the enriched blend (the dat-7 drop is one
+run). Rerun the empty-content-heavy control cells under the new cap to see whether 3% falls
+further. Fold the MASK harness into the main env (queued: the nested venv exists for an
+`anthropic` import the repo never exercises).
+
 ## 2026-09-08 — MoralBench uses the shared eval dashboard
 
 **Hypothesis.** MoralBench needs no separate launcher or dashboard discovery workflow.
