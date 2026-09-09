@@ -29,6 +29,9 @@ def _preflight(name: str, args: argparse.Namespace, cfg=None) -> None:
         from src.eval import docker
 
         docker.docker_preflight()
+        if name == "odcv" and cfg is not None and cfg.get("bench_dir"):
+            checked = docker.require_lf_shell_scripts(cfg.bench_dir)
+            print(f">>> checked actual LF bytes in {checked} benchmark shell scripts")
         if spec.networks_per_scenario and cfg is not None:
             # 2026-09-06: 32 ODCV scenarios in flight on a default Docker Desktop lost
             # half of every wave at network creation; refuse that here, not mid-run.

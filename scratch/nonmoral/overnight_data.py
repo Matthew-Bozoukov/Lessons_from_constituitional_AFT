@@ -59,7 +59,15 @@ def main():
     inputs = read_rows(source)
     assert len(inputs) == len({r['scenario_id'] for r in inputs}) == 32
     assert len({r['domain'] for r in inputs}) == 8
-    assert [s['kind'] for s in cfg['stages']] == ['load_source_run', 'llm_tagged', 'llm_tagged', 'llm_tagged']
+    repair = cfg.get('phase') == 'targeted_repair'
+    expected = ['load_source_run', 'llm_tagged'] if repair else ['load_source_run', 'llm_tagged', 'llm_tagged', 'llm_tagged']
+    assert [s['kind'] for s in cfg['stages']] == expected
+    if repair:
+        stage = cfg['stages'][1]
+        assert stage['when'] == {'field': 'needs_revision', 'in': [True]}
+        assert stage['save'] == {'comparative': 'reasoning', 'answer': 'response', 'execution': 'construction'}
+        assert all('user' in row and 'needs_revision' in row for row in inputs)
+        assert all(row.get('repair_attempts', 0) == 0 for row in inputs)
     assert all(not (set(s) & {'lint', 'verify', 'fallback_model'}) for s in cfg['stages'])
     for key in cfg['models']:
         m = model_cfg(cfg, key)

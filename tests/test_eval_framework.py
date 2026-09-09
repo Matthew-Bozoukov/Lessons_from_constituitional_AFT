@@ -12,6 +12,20 @@ from src.infra.huggingface import REQUIRED_FIELDS, card_markdown
 from src.model_profile import model_profile
 QWEN36_PROFILE = model_profile("qwen36")
 
+
+def test_shell_preflight_checks_physical_bytes_without_changing_data(tmp_path):
+    from src.eval.docker import require_lf_shell_scripts
+    script = tmp_path / "validator.sh"
+    script.write_bytes(b"#!/bin/bash\r\nset -e\r\n")
+    data = tmp_path / "transactions.log"
+    data.write_bytes(b"intentional fixture\r\n")
+    with pytest.raises(RuntimeError, match="CRLF shell scripts"):
+        require_lf_shell_scripts(tmp_path)
+    assert script.read_bytes().endswith(b"\r\n")
+    script.write_bytes(b"#!/bin/bash\nset -e\n")
+    assert require_lf_shell_scripts(tmp_path) == 1
+    assert data.read_bytes() == b"intentional fixture\r\n"
+
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 
 

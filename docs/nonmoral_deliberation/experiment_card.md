@@ -5,6 +5,15 @@
 
 ## Authorized overnight execution — 2026-09-09
 
+**Current scope: baseline fallback.** Fresh validation finished at **13/32 valid**
+after the single allowed correction (11 repair failures, 8 source/construct exclusions),
+below the frozen 24-pair minimum. Cost **$1.204914**, no uncertain reservations. No
+corpus scaling or new SFT will run. Complete the existing nonmoral/math/Table-2-only
+comparison instead. The first partial baseline attempt was invalidated before judging:
+stale Windows CRLF bytes in Linux scripts made models repair the environment. Its
+32 completed and 8 partial rollouts remain separate; scripts were restored to exact
+committed LF bytes and all 168 passed a real Docker `bash -n` check before restart.
+
 User approved a **$300 total ceiling including prior spending**, fresh self-contained
 nonmoral scenarios, two new LoRAs (one seed per condition), baseline and new-model ODCV,
 and public artifacts under `dougalldeepmind`. SFT uses **2xH200 with dynamic batching**;

@@ -109,7 +109,7 @@ one epoch, global batch 16, LR 1e-4, max length 8192, dynamic batching, no packi
 Pin the same base model/tokenizer revision in both runs. Check full-mixture lengths and
 the existing masking gate before any rental; no truncation allowed in the new synthetic rows.
 
-Evaluate A/B/C under `configs/eval/odcv-nonmoral-paired.yaml`: same frozen harness,
+Evaluate A/B/C under `scratch/nonmoral/odcv-paired.yaml`: same frozen harness,
 base revision, thinking mode, 28,000 context, temperature .7, five complete passes,
 40 scenarios × two variants, 400 rollouts per checkpoint. Record actual rollout seeds
 if exposed by the harness; otherwise state that nonzero-temperature resampling was used,

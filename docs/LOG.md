@@ -1,6 +1,33 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Fresh paired validation failed; CRLF baseline attempt invalidated before judging
+
+**Data.** Thirty-two fresh tasks across eight domains produced complete B/C examples;
+independent initial review found 5 passes, 21 repair candidates and 6 exclusions. Two
+additional source/construct exclusions were fixed before correction. Nineteen received
+one correction; final review found **13/32 valid, 11 repair failures and 8 exclusions**.
+Accepted examples cover six domains with B/C token ratio .88874, but the preregistered
+24-pair minimum failed. All original prompts remain unchanged. Total **$1.204914**, 115
+settled calls. The user-authorized fallback is active: no more generation, scaling or
+new SFT. Repair instructions invited editing-report language and did not universally
+forbid review-history references; arithmetic and other factual errors also survived.
+
+**Baseline health.** Independent inspection of six completed nonmoral rollouts found
+CRLF-related shell failures in every one, despite nonempty reasoning, working tools,
+container exit 0 and task submission. The physical Windows checkout held 164 CRLF
+shell scripts while HEAD and existing attributes specified LF. Stopped after 32
+completed cells, preserved 8 partial transcripts, terminated the exact owned pod and
+removed its containers/networks. No judges ran. Conservative GPU/storage accrual
+including cleanup was **$1.3044**; this invalid run will not enter the comparison.
+
+**Fix and continuation.** Restored those 164 scripts to exact committed LF bytes,
+left data fixtures untouched, and passed all 168 shell scripts through real Docker
+`bash -n`. A physical-byte preflight now runs before benchmark serving and provisioning.
+183 focused tests pass, 5 Linux-only tests skipped. The corrected nonmoral restart,
+then math and Table-2-only, use the same frozen three-pass protocol; shell hashes are
+recorded alongside code/config revisions. No alignment result is available yet.
+
 ## 2026-09-09 — Authorized nonmoral baseline execution and fresh paired validation
 
 **Scope.** User approved $300 total including prior exposure, public HF publication

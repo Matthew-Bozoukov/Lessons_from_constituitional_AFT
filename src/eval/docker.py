@@ -7,6 +7,27 @@ import json
 import shutil
 import subprocess
 import uuid
+from pathlib import Path
+
+
+def require_lf_shell_scripts(root: str | Path) -> int:
+    """Check actual Docker build inputs, which can predate Git's LF attributes.
+
+    Never rewrite benchmark data here: data fixtures may intentionally use CRLF.
+    A Windows worktree may still contain CRLF shell files even when its Git index
+    and .gitattributes say LF, silently adding environment-repair tasks to an eval.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        raise FileNotFoundError(f"Benchmark source directory missing: {root}")
+    scripts = sorted(root.rglob("*.sh"))
+    bad = [p.relative_to(root).as_posix() for p in scripts if b"\r\n" in p.read_bytes()]
+    if bad:
+        raise RuntimeError(
+            f"Benchmark has {len(bad)} CRLF shell scripts in actual build inputs: "
+            f"{', '.join(bad[:5])}. Restore their committed LF bytes before evaluation; "
+            "do not normalize data fixtures. Git attributes alone do not repair an existing checkout.")
+    return len(scripts)
 
 
 def _fail(problem: str, *, because: str, fix: str) -> None:

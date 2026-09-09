@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 from pathlib import Path
+from src.naming import figure_path
 
 from transformers import AutoTokenizer
 
@@ -84,8 +85,8 @@ def main():
            ylabel='Comparative CoT tokens', title=f'Nonmoral pilot: {len(records)}/{len(planned)} completed pairs')
     ax.legend(frameon=False)
     fig.tight_layout()
-    fig.savefig(root / 'cot_lengths.png', dpi=180)
-    fig.savefig(root / 'cot_lengths.svg')
+    fig.savefig(figure_path(root, 'nonmoral-pilot-cot-lengths'), dpi=180)
+    fig.savefig(figure_path(root, 'nonmoral-pilot-cot-lengths', ext='svg'))
     plt.close(fig)
     manual_path = root / 'local_review.json'
     if manual_path.exists():
@@ -155,8 +156,8 @@ def main():
                title=f'Pilot: {len(accepted)} of {len(planned)} passes individual checks')
         ax.spines[['top','right']].set_visible(False)
         fig.tight_layout()
-        fig.savefig(root / 'pilot_outcomes.png', dpi=180)
-        fig.savefig(root / 'pilot_outcomes.svg')
+        fig.savefig(figure_path(root, 'nonmoral-pilot-outcomes'), dpi=180)
+        fig.savefig(figure_path(root, 'nonmoral-pilot-outcomes', ext='svg'))
         plt.close(fig)
         print(json.dumps({k: v for k, v in final.items() if k not in ('records','accepted_domain_coverage')}))
     else:

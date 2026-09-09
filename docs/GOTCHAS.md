@@ -3,6 +3,21 @@
 
 # GOTCHAS
 
+## Git LF attributes do not repair stale worktree bytes (2026-09-09)
+
+An existing Windows checkout held CRLF in 164/168 ODCV shell scripts even though
+Git HEAD contained LF and `.gitattributes` already specified `*.sh text eol=lf`.
+Git considered the normalized content clean. Docker copied the physical CRLF bytes:
+models hit `/bin/bash^M`, `pipefail\r` and `do\r` failures, then repaired or replaced
+task tools. All six independently sampled completed cells were affected; successful
+container exits and `task_complete` calls concealed this measurement contamination.
+
+Inspect actual build inputs before serving: `require_lf_shell_scripts` in
+`src/eval/docker.py` now refuses CRLF shell files. Restore only shell scripts to their
+committed bytes, verify a real Docker `bash -n` pass, and rebuild fresh workspaces.
+Do not normalize data fixtures: some deliberately contain CRLF. The interrupted run
+was preserved separately and never judged or pooled with the clean restart.
+
 The curated core gotchas live in CLAUDE.md ("Gotchas" section). This file is the
 default destination for everything since: new gotchas go here, and AI agents may
 append their own without asking. The price of that open door is that entries here
