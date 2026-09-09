@@ -69,7 +69,8 @@ recipes; no causal generator comparison or alignment improvement is claimed.
 
 ## Remaining steps
 
-1. Verify the complete final local training backup and terminate the owned H200 pod.
+1. Resolve the externally stopped H200 resource after preserving the incident evidence.
+   Final adapter is locally verified; the full training archive remains incomplete.
 2. Complete matched ODCV:80cells x3passes, temperature0.7, context28000; Docker local.
 3. Verify local evaluation artifacts, terminate the owned H100 pod, and publish exact
    misalignment, submission/progress, paired uncertainty and comparison charts.

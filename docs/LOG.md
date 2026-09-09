@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Training backup interrupted; final adapter recovered and verified
+
+RunPod marked training pod `epd4o5f97zooij` EXITED at 19:36:38 UTC with reason
+"Exited by user". Actor unknown; the training owner remained in recovery and its
+watchdog had not reached its deadline. The archive transfer received 6,559,825,920
+of 8,986,972,160 bytes. Full archive verification failed; no restart was attempted.
+
+Salvage recovered 26 complete files. All nine final-adapter files were independently
+verified against public revision `d52838446ef134088841e8dc436094d93827487f`.
+Checkpoint 100 was already fully hash-verified locally. Checkpoint 600 was received
+without individual remote-hash verification; checkpoint 623 optimizer is truncated
+and 19 later archive members were not received. Run metadata and 125 log records
+were reconstructed separately from owner state and explicitly labelled as such.
+
+Evidence: `output/nonmoral_broader/20260909/training_retry1/unexpected_stop_incident.json`
+and `salvaged_outputs/verified_final_adapter_receipt.json` in that same directory.
+Conservative training GPU/storage exposure through the stop: $21.848901.
+The final model remains usable locally and publicly; matched ODCV continues.
+Outstanding: identify the stop actor if possible and resolve the stopped resource;
+do not describe this as successful full-backup teardown.
+
 ## 2026-09-09 — Broader nonmoral LoRA trained; matched ODCV launched
 
 One seed0 Qwen3.6-27B LoRA completed623 steps/one epoch on2xH200 using the shared
