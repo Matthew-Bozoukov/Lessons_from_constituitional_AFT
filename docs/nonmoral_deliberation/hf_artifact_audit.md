@@ -3,7 +3,7 @@
 
 # Hugging Face artifact audit — 2026-09-09
 
-**Nine public dataset repositories; no new trained model.** Three evaluation names were wrong because a local Windows directory label overrode the automatic model identity. They have been moved to canonical names with history preserved. Cards now identify the actual checkpoint revisions and sampling settings. No transcript, judgment or result was regenerated.
+**Ten public dataset repositories; no new trained model.** Three evaluation names were wrong because a local Windows directory label overrode the automatic model identity. They have been moved to canonical names with history preserved. Cards now identify the actual checkpoint revisions and sampling settings. No transcript, judgment or result was regenerated.
 
 All links below are under `dougalldeepmind`. Revisions are audit snapshots, not promises that a growing corpus will remain unchanged.
 
@@ -17,7 +17,9 @@ All links below are under `dougalldeepmind`. Revisions are audit snapshots, not 
 | [Invalid CRLF attempt](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-invalid-crlf-unjudged-attempt) | 32 complete and 8 partial rollout archives, environmental failure audit and cleanup evidence; 329 files. Unjudged. | Forensic record only. **Exclude from all scientific comparisons and training.** |
 | [Broader first12](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-first12) | Frozen twelve-case feedback packet: sources, responses/reviews, stage snapshots, raw calls and costs; 48 files. | Inspect the broader recipe before scaling. This packet is not the growing corpus. |
 | [Stakes first8](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-first8) | Eight low/high candidate pairs, responses/reviews, retained candidates, local checks and provenance; 63 files. | Inspect whether stakes can vary while holding the nonmoral decision fixed. No trained stakes comparison or measured stakes effect. |
-| [Broader synth](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth) | **74 accepted examples** at the inspected revision, default `dataset.jsonl`, six source/answer stage snapshots, full audits, raw calls, frozen configs and cumulative spend. | Growing production corpus. Planned next stage: select 684 synthetic rows and combine with unchanged 9,284 replay rows in a **separately published mixture**, then train. Not yet trained/evaluated. |
+| [Broader synth](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth) | **122 accepted examples** at the inspected revision, default `dataset.jsonl`, eight source/answer stage snapshots, full audits, raw calls, frozen configs and cumulative spend. | Growing production corpus. Planned next stage: select 684 synthetic rows and combine with unchanged 9,284 replay rows in a **separately published mixture**, then train. Not yet trained/evaluated. |
+
+| [Stakes development](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-development) | Failed general stakes wrapper and four integrated craft pairs: full sources, raw answers, reviews, local checks and costs; 855 files. | Failure analysis only. The wrapper was often irrelevant to the decision; the integrated trial retained zero complete pairs after quality review. **Not training data or a stakes-effect result.** |
 
 ## Exact snapshots and migrations
 
@@ -38,7 +40,8 @@ Other inspected revisions:
 - Invalid attempt: `6d2fc052115789118dbe5476d1e1313a58e801d2` → card-only correction `eac4da56e03a39f9d52f27ed34320ce55cf03c9b`.
 - Broader first12: `e10cf7ae8c7750094dc4017102338b8fe583fd27`.
 - Stakes first8: `b951660317dcca7844337ac3a181ca6dca8602dd`.
-- Broader synth: `80748601634a7838efe48b52dbf3c2211be80cdc`.
+- Stakes development: `685a82c88faeb0b44297d53ecad5a42c84703752`.
+- Broader synth: `ccfc003805c8c8c3c2b073aa315daa2d48490550`.
 
 ## Pipeline and card corrections
 
@@ -50,6 +53,6 @@ The three current evaluation cards received the same provenance correction throu
 
 The other names are legitimate **research/review archives**, for which generic `artifact_name` is appropriate. They must not masquerade as stage outputs. The correct production-stage identity is `synth_name("nonmoral-broader")` → `2026-09-09-nonmoral-broader-synth`, now published with training-data discovery tags. A generator model belongs in dataset provenance, not automatically in a synthetic corpus's name; model/eval identities follow their own naming functions. First12/first8 remain frozen review packets.
 
-The attempted `LASR-Callum/2026-09-08-nonmoral-paired-synth` upload returned 403 with `uploaded:false`; it is **not a tenth upload**. Its failed receipt is preserved in development history. The audit covers metadata and declared use of the stakes packet; its separate material-validity review belongs to the stakes workstream.
+The attempted `LASR-Callum/2026-09-08-nonmoral-paired-synth` upload returned 403 with `uploaded:false`; it is **not an additional upload**. Its failed receipt is preserved in development history. The audit covers metadata and declared use of the stakes packet; its separate material-validity review belongs to the stakes workstream.
 
 Evidence: `output/nonmoral_investigation/20260909/hf_artifact_audit/{live.json,production_live.json,migration_plan.json,migration_receipt.json,invalid_card_receipt.json,canonical_publications.json}`. Current links in the baseline inventory are corrected; older pinned references remain reproducible through redirects. The comparison's frozen input receipts intentionally retain their original identities.

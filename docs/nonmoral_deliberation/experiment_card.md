@@ -14,23 +14,20 @@ The user accepts all twelve scenario families. No further taste checkpoint or ba
 is needed. Source requests stay unchanged; incomplete or contradictory requests are
 excluded. Full reasoning and full answers are retained, with material-error checks.
 
-Production batches01–03 retained **74 complete candidates** (7 + 11 + 56); first12 separately
-has two clear candidates, not included in this count. Batch03 generated120 requests;
-111 were admitted,104 produced full answers,100 completed the separate model review.
-Local final dispositions:56 accepted,29 rejected,15 held. Seven author failures and four
-reviewer failures are preserved; they were not retried. Local review covered all104
-authored conversations, including the four subsequently missing a model review.
-Broader exposure after batch03: **$9.814480** ($8.767576 settled charges plus
-$1.046904 retained maximum reservations for terminal failed calls). No calls remain active
-in that phase. These are conservative attributed costs, not an account-balance measurement.
-Batch04 sources are complete:120/120, awaiting local review; source cost$0.834250,
-cumulative broader exposure$10.648730. Recipe revision5 supplies previous requests in
-the same narrow topic to discourage repeated settings. Subsequent answer/reviewer calls
-use revision6 with16,384/12,288 token ceilings after observed length failures, without
-retrying old calls or changing the budget caps. Earlier phase configurations stay frozen.
+Production batches01–04 retained **122 complete candidates** (7 + 11 + 56 + 48).
+First12 remains a separate feedback packet. Batch04 admitted111 of120 sources,
+produced105 full answers, and completed105 independent model reviews. Final local
+review:48 accepted,52 rejected,5 held. Six author failures were not retried; five
+exception-path reservations retain their full cost bounds. All105 conversations were
+read locally; two local/model disagreements were adjudicated from the full text.
+Broader exposure after batch04: **$18.758690**, including retained maximum charges.
+Batch05 produced119/120 sources; local review is underway. One filtered source was
+not retried; broader exposure after its full reservation is$19.752270. Production uses8 workers and frozen per-phase
+configs, with16,384/12,288 author/reviewer token ceilings. No retrospective resampling. From batch06, recipe7 uses36 distinct subtask directions
+within the existing domains; see[diversity rationale](broader_diversity_directions.yaml).
 
 [Public growing corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth):
-74 accepted default rows at revision80748601634a7838efe48b52dbf3c2211be80cdc.
+122 accepted default rows at revision`ccfc003805c8c8c3c2b073aa315daa2d48490550`.
 Four public files were downloaded anonymously and hash-verified. Stage candidates,
 dispositions, checks and stored raw calls are separate audit material.
 
@@ -43,12 +40,16 @@ This matches historical synthetic row count; it does not claim matched token len
 isolate a single causal mechanism. One seed0 rank64 LoRA, dynamic batching on2xH200.
 No new main LoRA or ODCV results exist yet.
 
-**Secondary stakes lane runs independently** in worktree/branch `codex/nonmoral-stakes`.
-First8 paired fixtures cost **$0.609012**:4 pairs retained,2 held,2 excluded.
-[Full public first8 artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-first8).
-The agent is now screening the existing702-source pool and preparing fresh low/high
-answers under a **$55 cumulative stakes-data allocation**, replacing its initial$5 cap.
-No stakes GPUs are allocated yet. All allocations share the **$300 project ceiling**:
+**Secondary stakes lane is paused**, with no paid calls or GPUs running.
+First8 retained4 candidate pairs at$0.609012. The subsequent generic loss wrapper was
+stopped after12 of48 early answers described the added cost as unrelated; its full
+exposure is$17.126848. A four-pair integrated craft trial cost$0.244464, made losses
+relevant, but retained zero complete pairs because of reasoning/formatting defects.
+Total stakes exposure: **$17.980324**, including unknown charges at full reserved bounds.
+[Development archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-development)
+revision`685a82c88faeb0b44297d53ecad5a42c84703752`; no stakes effect has been measured.
+
+All allocations share the **$300 project ceiling**:
 prior exposure$31.929031 + broader data cap$100 + stakes data cap$55 + main SFT reserve$40
 + main evaluation reserve$20 = **$246.929031 reserved or spent**, leaving$53.070969
 unallocated. Caps are not actual spend; actual ledgers are separate and centrally linked.

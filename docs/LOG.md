@@ -1,6 +1,38 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader corpus reaches122; diversify upcoming tasks
+
+Batch04 retained48/105 complete answers after independent Sonnet review and disjoint
+local full-conversation review. Final dispositions:48 accepted,52 rejected,5 held;
+two local/model disagreements were resolved from the full text and excluded. Six
+admitted sources failed authoring, with no retries. Production pool122 is public at
+revision`ccfc003805c8c8c3c2b073aa315daa2d48490550`; four files anonymously hash-verified.
+Broader exposure$18.758690 includes all retained terminal-call maximum charges.
+Batch05 then produced119/120 sources for$0.993580 conservative exposure; one filtered
+call retained its full bound. Local source review is underway. No new LoRA exists yet.
+
+An offline diversity audit found repeated instrument sessions, Spanish notices, room
+layouts and hobby-note categorization despite twelve domain names. From batch06,
+recipe7 rotates36 materially different task directions across those same domains,
+with broader base directions to avoid contradictory restrictions. Full rationale and
+source requirements: `nonmoral_deliberation/broader_diversity_directions.yaml`.
+No ODCV feedback, new condition, quality-gate change or retrospective editing. Batch05
+answers use its frozen source-phase config. The final corpus remains an exploratory
+broader-data intervention, not a clean single-factor causal ablation.
+
+The four integrated stakes pairs retained zero complete pairs after local checks:
+invalid comparative reasoning, unsupported restoration assumptions, a formatting
+failure and an incorrect reliability ratio. Stakes spending is paused at$17.980324,
+including unknown charges at full bounds. Complete failure provenance is public in
+`dougalldeepmind/2026-09-09-nonmoral-stakes-development`, revision
+`685a82c88faeb0b44297d53ecad5a42c84703752`. No stakes-effect result is claimed.
+The HF inventory now describes all ten public repositories and their downstream uses.
+
+A reusable terminal-reservation reconciler requires a completed latest phase, no
+active generation lock, matching request hashes and persisted exception evidence;
+it never lowers charges. Fourteen focused accounting/source/mixture checks passed.
+
 ## 2026-09-09 — Publish 74 broader examples and repair evaluation provenance
 
 Broader batch03 yielded104 complete answers from111 admitted requests;100 completed

@@ -17,29 +17,29 @@ source:
   snapshot: inputs.jsonl
 cases:
   - domain: Everyday planning
-    direction: A free afternoon with several enjoyable solo activities. Supply timing, travel/transition facts and competing preferences; choose a coherent plan and give its full schedule. No bookings or interpersonal obligations.
+    direction: Choose a usable personal plan under supplied time, resource and enjoyment constraints; deliver the complete plan in one response.
   - domain: Cooking and adaptation
-    direction: A small meal from a supplied ordinary vegetarian pantry. Choose a dish direction that balances contrasting texture/flavour aims and preparation effort. Give the entire usable recipe. No health claims or allergy dilemmas.
+    direction: Make a small vegetarian cooking decision from complete source recipes, ingredients and equipment; provide the entire usable chosen recipe or meal plan.
   - domain: Learning and practice
-    direction: A hobby musician's single practice session, balancing one troublesome passage with whole-piece flow and enjoyment. Supply the musical/practice context and time budget. Deliver the complete session plan.
+    direction: Choose how to learn or improve a small specified hobby skill or invented notation; supply all learning material and deliver the complete exercise, aid or session.
   - domain: Teaching and explanation
-    direction: Explain a small mathematical idea to a specified beginner. There are defensible concrete/example-first and structural approaches. Choose an approach and provide the full short explanation; do not merely outline a future lesson.
+    direction: Choose how to explain a small fully specified concept or procedure to a stated learner; write the entire explanation and any requested example or aid.
   - domain: Debugging and representation
-    direction: A harmless small Python data-transformation task with complete input/output examples and constraints. Choose between readable explicit handling and a compact reusable representation. Supply all original code if relevant; produce complete runnable Python using only the standard library.
+    direction: Solve a small complete harmless programming task with a genuine implementation or representation choice; include all source context and deliver runnable code.
   - domain: Toy scientific exploration
-    direction: Choose a small set of runs for a fully specified fictional toy simulation. Balance broad coverage with resolving an interesting local region. Give the full run list within a modest fixed budget; observations are explicitly fictional supplied premises, not empirical claims.
+    direction: Choose a finite set of informative observations in a completely described fictional toy system, balancing distinct exploration goals; output the complete proposed observation set.
   - domain: Organizing information
-    direction: Organize eight short fictional hobby notes with overlapping subjects. Balance retrieval against maintenance. Supply all eight notes and the user's retrieval preferences; assign every note in the complete proposed organization.
+    direction: Choose a useful structure for a small complete body of supplied information; preserve the information and deliver the fully populated organization.
   - domain: Translation and verbal style
-    direction: Translate an invented short playful English notice into Spanish, balancing literal meaning with tone or wordplay. Supply the entire source and intended audience. Deliver the full translation and concise explanation of the choice; no culturally sensitive or moral content.
+    direction: Translate or recast complete invented text for a stated audience and purpose; choose a defensible balance of fidelity, register and rhythm and deliver the full text.
   - domain: Spatial design
-    direction: Arrange a small hobby workroom. Supply a simple coordinate convention, room dimensions, all object footprints, and access/light preferences. Choose among workable arrangements and specify a complete nonoverlapping layout. Keep geometry simple and avoid safety/compliance dilemmas.
+    direction: Arrange a small fully specified physical or page surface with meaningful access or visual preferences; give every position and all required content in a complete valid layout.
   - domain: Creative revision
-    direction: Revise a complete supplied short fictional paragraph. Balance vivid imagery with clarity or momentum. Preserve explicit user constraints and provide the entire revised paragraph; there need not be one uniquely best artistic choice.
+    direction: Revise a complete small supplied creative artifact while preserving its stated invariants; choose among genuine artistic priorities and return the entire revised artifact.
   - domain: Automation and assumptions
-    direction: Choose a manageable method for maintaining a fictional personal collection, balancing setup effort, repeated use and changing categories. Supply the actual small collection and workflow needs. Deliver the full chosen workflow, not a proposal to ask more questions.
+    direction: Choose a proportionate method for a small recurring personal workflow with all inputs and operations supplied; deliver the complete chosen procedure or working automation.
   - domain: Game strategy
-    direction: Choose a concrete legal move in a tiny invented tabletop game. Supply all rules, the complete relevant position, available moves and any future uncertainty. Make at least two moves defensible for different strategic preferences; do not use chess or a forced tactic. Keep the state small enough for a reviewer to enumerate legality and immediate outcomes.
+    direction: Choose a concrete legal action in a tiny fully specified invented game with genuinely competing strategic preferences; give the full move and directly relevant outcomes.
 models:
   source:
     model: anthropic/claude-sonnet-5
@@ -158,7 +158,8 @@ stages:
         <decision>accept or reject, after considering the evidence above</decision>
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
-  recipe_revision: 6
+  recipe_revision: 7
+  diversification_rationale: From batch06, rotate 36 materially different subtask directions within the same twelve domains. Expand source material and artifact types, not just names or quantities. Original batches and quality rules remain frozen; no ODCV feedback used.
   batch_size: 120
   workers: 8
   concurrency_rationale: Independent API examples share a locked reservation ledger; eight workers reduce wall time without changing per-example sampling or budget caps. Earlier phases retained four workers in frozen configs.
@@ -171,18 +172,163 @@ production:
   headroom_rationale: Batch03 lost author/reviewer calls to length limits including reasoning-only completions. Raise future-call ceilings without resampling old failures; full reservations still enforce the same phase and cumulative budget caps. See docs/GOTCHAS.md reasoning headroom guidance.
   model_rationale: Restore the original nonmoral recipe's default reasoning behaviour; do not send reasoning.enabled=false. This is a production correction, not an identified causal effect.
   variation_library:
-    Everyday planning: ["At-home sketching and crossword afternoon", "Solo miniature assembly versus sorting postcards", "Indoor photography versus listening to albums", "A free morning of model painting and reading", "Organizing sheet music versus trying new pieces", "Making origami decorations versus a solo board puzzle", "Nature sketching walk versus home drawing with supplied route times", "Writing fiction versus sketching a character sheet", "Trying two hobby techniques versus concentrating on one", "One afternoon of a jigsaw and designing its display"]
-    Cooking and adaptation: ["Cooked lentil dip versus chunky vegetable bowl", "Rice noodle bowl versus vegetable fritters", "Egg toast versus an omelette from a supplied pantry", "Roasted vegetable wrap versus a soft bean bowl", "Warm potato dish versus crisp potato patties", "Chickpea mash versus a pan-warmed chickpea salad", "Simple tomato pasta versus rice with a vegetable topping", "Small savoury pancake versus a vegetable scramble", "Cold cucumber yogurt bowl versus a warm carrot dish", "Soft bean quesadilla versus crisp tostada with all needed ingredients"]
-    Learning and practice: ["Guitar rhythm versus expressive phrasing", "Flute tone versus fluent playing", "Piano left-hand accuracy versus musical continuity", "Ukulele chord transitions versus singing through a tune", "Clarinet articulation versus sustained melody", "Violin bow changes versus whole-phrase flow", "Recorder breath control versus enjoying a tune", "Bass guitar groove consistency versus improvising", "Accordion coordination versus complete tune playing", "Mandolin picking accuracy versus expressive tempo"]
-    Teaching and explanation: ["Unequal group averages with complete small data", "Perimeter versus area for a beginner", "Why multiplying two negatives gives a positive", "Equivalent fractions with a small concrete example", "Median versus mean with a tiny invented data set", "Remainders as groups versus a number-line explanation", "A simple conditional probability example with complete urn counts", "Why the area of a triangle is half a rectangle", "Place value using base ten blocks versus notation", "Rotational versus reflection symmetry of a supplied simple shape"]
-    Debugging and representation: ["Group complete hobby records by date", "Deduplicate supplied titles with exact whitespace rules", "Count miniature paint colours from a complete inventory list", "Summarize solved puzzles by difficulty", "Reshape a complete small list of plant-pot labels", "Format a complete tabletop score sheet as text", "Group supplied practice-session durations by instrument", "Sort a supplied reading list with an explicit tie rule", "Parse a tiny supplied hobby log with a complete grammar", "Represent a small fictional recipe list with overlapping ingredient tags"]
-    Toy scientific exploration: ["Fictional bounce-animation simulator with unknown interior outputs", "Fictional terrain-tile generator with an interesting observed region", "Fictional kaleidoscope generator with two integer knobs", "Fictional cloud-pattern simulator with only supplied observations", "Fictional musical chime synthesizer with a novel observed cluster", "Fictional ink-swirl renderer balancing global and local exploration", "Fictional leaf-shape generator with fixed prior samples", "Fictional particle-pattern animation with complete observed settings", "Fictional mosaic generator with uncertain unobserved outputs", "Fictional crystal renderer with an intriguing supplied setting"]
-    Organizing information: ["Eight photography composition and editing notes", "Eight papercraft construction notes", "Eight miniature painting and display notes", "Eight guitar practice and arranging notes", "Eight hand-lettering and layout notes", "Eight hobby baking observations as supplied personal notes", "Eight jigsaw solving and storage notes", "Eight watercolor technique and materials notes", "Eight knitting pattern and yarn notes", "Eight board-game setup and scoring-reference notes"]
-    Translation and verbal style: ["An invented playful bookmark inscription into Spanish", "An invented walking-club slogan into Spanish", "A short invented pottery-studio motto into Spanish", "A fictional jigsaw-club catchphrase into Spanish", "An invented music-practice notebook caption into Spanish", "A playful invented plant-pot label into Spanish", "An invented sketchbook-cover inscription into Spanish", "A humorous invented reading-chair sign into Spanish", "An invented toy-train display caption into Spanish", "A short invented rainy-day craft-club slogan into Spanish"]
-    Spatial design: ["Origami room with inert desks and paper shelves", "Board-game room with all chair footprints explicitly supplied", "Watercolor workspace with inert furniture", "Miniature display room with cabinets and chairs", "Reading and jigsaw room with a window", "Hand-lettering room with storage and seating", "Knitting room with yarn shelves and a worktable", "Music-score study room with desk and stands", "Postcard sorting room with shelves and chairs", "Paper-model display room with a workbench and stools; no heat or powered equipment"]
-    Creative revision: ["Comic paragraph about a stubborn umbrella", "Cozy paragraph about a toy train", "Comic paragraph about a collapsing stack of cushions", "Atmospheric paragraph about a quiet greenhouse", "Lively paragraph about a clockwork bird", "Comic paragraph about an overdecorated cake", "Reflective paragraph about a faded postcard", "Whimsical paragraph about a wandering teapot", "Fast-paced paragraph about assembling a paper dragon", "Warm paragraph about an old record player"]
-    Automation and assumptions: ["Eight numbered fictional jigsaw puzzles", "Eight numbered personal sketchbook entries", "Eight numbered fictional miniature models", "Eight numbered invented practice recordings", "Eight numbered fictional postcard designs", "Eight numbered fictional handmade bookmarks", "Eight numbered invented paper-model kits", "Eight numbered fictional craft yarn samples", "Eight numbered invented hobby paint swatches", "Eight numbered fictional origami display pieces"]
-    Game strategy: ["Final-turn dice payoff: chase first place versus secure second; explicit nondominated outcomes", "Single-player final card choice: reliable collection versus risky rare set; enumerate every outcome", "Final tabletop race action: chance of winning versus protecting accumulated points", "Dice placement choice: guaranteed modest personal score versus volatile high score", "Tiny simultaneous reveal game with explicitly known opponent action probabilities and two objectives", "Single-player tile draw: complete payoff table and risk preference trade-off", "Final-turn card drafting: preserve a guaranteed bonus versus gamble on a larger one", "Dice game endgame with win probability versus expected score in genuine tension", "Tiny path-choice game with full random outcome table and no further turns", "Single-player final push-your-luck move with all prizes and failure outcomes specified"]
+    Everyday planning:
+    - Plan one personal paper-display project with a supplied task list, durations, prerequisites, passive
+      drying intervals and all available materials. Balance reaching an early usable version against avoiding
+      repeated setup. Choose the order and give the full timed sequence, including passive overlaps and
+      cleanup.
+    - Select a hobby kit for a fictional quiet train journey. Supply every candidate item's packed size,
+      weight, supported activities, trip duration and luggage limit; include all required accessories. Balance
+      variety against quick setup and carrying comfort. Deliver the exact packing list and complete use
+      plan, without booking advice.
+    - Supply the actual unfinished steps, completion criteria, remaining effort and available materials
+      for two small personal projects. The user values a satisfying finished object and also continuing
+      the more absorbing project. Choose a feasible scope for the available session and give every planned
+      step plus the exact stopping state.
+    Cooking and adaptation:
+    - Supply one complete simple vegetarian recipe, the available ingredient amounts, equipment and two
+      feasible substitution routes. Balance preserving its recognizable texture against using an ingredient
+      the cook particularly enjoys. Choose the adaptation and give the full revised recipe, with quantities,
+      steps and timing.
+    - Supply complete short recipes for two compatible vegetarian components, equipment capacity, active/passive
+      durations and desired serving time. Balance simultaneous readiness against fewer interruptions. Choose
+      a cooking order and give the full combined ingredient list and timed instructions; account for overlaps
+      available to either order.
+    - Supply the full recipe and current sensory description of a just-cooked vegetarian base, plus exact
+      quantities of available ordinary toppings and seasonings. The cook wants both a gentle base flavor
+      and a more contrasting finish. Choose a coherent finish and deliver the complete final recipe and
+      plating instructions, without inventing sensory measurements.
+    Learning and practice:
+    - Supply a small complete alphabet of distinct printable symbol strings, their invented meanings, confusable
+      pairs and the learner's own stated difficulties. Balance memorable associations against quick direct
+      recall. Choose a learning aid and produce all mnemonic cards plus a short complete recall exercise
+      and answer key; no research-performance claims.
+    - Supply every rule of a small invented pattern notation, worked examples and the learner's actual mistakes.
+      Balance repairing one misconception against covering the wider notation. Choose the exercise mix and
+      provide the entire short practice sheet with solutions, including explanations of the error contrasts;
+      no hidden rules or unseen curriculum.
+    - Supply a complete set of simple line/shape motifs, exact stroke descriptions, the learner's observed
+      difficulty and a modest time allowance. Balance repeating one troublesome stroke against making a
+      small satisfying image. Choose the sequence and deliver a complete text or SVG copy sheet with every
+      motif and repetition explicitly shown.
+    Teaching and explanation:
+    - Supply all behavior rules and states of a tiny fictional mechanism, such as linked color switches,
+      plus the learner's exact misconception. Balance a state-by-state walkthrough against a compact general
+      model. Choose an approach and write the full explanation, including a complete state table or text
+      diagram that follows only the given rules.
+    - Supply a complete short standard-library Python function, exact sample inputs and the beginner's knowledge
+      and confusion. Balance tracing concrete values against explaining the reusable structure. Choose the
+      presentation and give the full explanation with a complete trace or annotated listing and the correct
+      sample outputs.
+    - Supply a tiny game's complete setup, legal actions, scoring and one example position. The learner
+      wants to start playing quickly and also find rules later. Choose how to balance a worked turn with
+      reference structure, and deliver the complete short how-to-play sheet; include every supplied rule,
+      not just a future lesson outline.
+    Debugging and representation:
+    - Supply all code for a tiny text-based personal tool, a full failing command sequence, expected states
+      and constraints. Balance a local repair against making state transitions explicit. Choose an implementation
+      and return the complete runnable corrected program, preserving specified behavior and explaining the
+      actual defect without claiming tests were run.
+    - Supply a complete small fictional map, legal links, lookup operations and examples. Balance a coordinate
+      representation's visual clarity against an adjacency representation's ease of editing irregular links.
+      Choose one and deliver all data plus complete standard-library Python functions implementing the requested
+      operations and exact example results.
+    - Supply a complete tiny text-display specification, all content, character dimensions, wrapping rules
+      and sample outputs. Balance direct layout code against a small reusable block representation. Choose
+      the implementation and give a complete runnable renderer and the entire rendered example; no terminal
+      library, font or external asset assumptions.
+    Toy scientific exploration:
+    - Supply a tiny fictional simulator with a finite input list, complete prior observations and explicit
+      candidate mechanisms or prediction tables. Balance discriminating mechanisms against examining a personally
+      interesting behavior. Choose the full small batch of inputs and explain which possibilities each could
+      separate, without asserting unobserved outcomes.
+    - Supply a finite set of toy settings, all repeated observations so far, the fictional noise model and
+      a small additional-run budget. Balance checking the stability of an appealing result against trying
+      new settings. Deliver the complete run list including repeats, distinguishing observed variation from
+      any assumed underlying mean.
+    - Supply a fictional animated process, allowed snapshot times, complete prior snapshots described in
+      text and equal per-snapshot costs. Balance seeing early transitions against resolving late behavior.
+      Choose every new observation time and describe the uncertainty addressed, without inferring a precise
+      transition or peak from insufficient samples.
+    Organizing information:
+    - Supply the full text of a tiny fictional hobby manual, stable section IDs, overlapping terminology
+      and examples of the user's searches. Balance a short index against multiple entry points. Choose the
+      index structure and produce every headword, cross-reference and section pointer; do not invent facts
+      or silently drop alternative search terms.
+    - Supply all versions of a small personal creative project, dates, parent relationships and exact changes.
+      Balance finding a recent version quickly against understanding how alternatives developed. Choose
+      a compact timeline, branch table or combined structure and populate it completely, preserving every
+      version and relationship.
+    - Supply several short fictional product or hobby-method descriptions and the user's actual lookup questions.
+      Balance one scannable comparison against keeping nuanced exceptions visible. Choose a reference format
+      and fill it completely from the text; represent unstated attributes as unstated rather than turning
+      omissions into negative facts.
+    Translation and verbal style:
+    - Supply a complete short invented English descriptive paragraph, resolved referents, intended French-speaking
+      reader and concrete tone preferences. Balance preserving image sequence against natural sentence flow.
+      Choose a translation strategy and provide one full French paragraph plus a concise explanation, not
+      another slogan or pun.
+    - Supply a complete short invented Spanish dialogue about an ordinary hobby task, speaker relationships,
+      intended English audience and intended emotional tone. Balance preserving pauses and repeated phrasing
+      against natural conversational English. Deliver the full translated dialogue with unchanged speaker
+      turns and a brief justified choice.
+    - Supply an informal English description of an invented craft object, all object facts, a short glossary
+      and the intended catalog reader. Balance approachable voice against compact reference wording. Choose
+      the register and deliver the complete catalog caption, preserving factual content without inventing
+      provenance or adding promotional claims.
+    Spatial design:
+    - Supply a small tabletop grid, every display object's footprint, allowed rotations, viewer direction
+      and required empty areas. Balance a strong visual focal point against seeing each item distinctly.
+      Choose a composition and give every labeled position in a complete nonoverlapping map; no room, furniture
+      or unseen image requirements.
+    - Supply a fixed page grid, all short text, exact rectangular block sizes, fixed font or character-cell
+      assumptions and any mandatory reading order. Balance a prominent illustration/title area against uninterrupted
+      reading. Choose a layout and deliver every block's placement with the full content in a complete SVG
+      or labeled text map.
+    - Supply a shallow tray's internal grid, all inert hobby objects and footprints, permitted rotations
+      and a list of which objects are often used together. Balance grouping by type against access during
+      a frequent workflow. Choose the arrangement and provide all object coordinates and labels, with no
+      unlisted objects or hidden compartments.
+    Creative revision:
+    - Supply a complete original short poem, the images that must remain and the author's aims for natural
+      speech versus recurring sound. Choose the balance and provide the full revised poem with a brief rationale.
+      Avoid specialist meter claims or an exact syllable-count requirement unless its convention and feasible
+      source are supplied.
+    - Supply a complete brief scene of two characters assembling a harmless hobby object, all events and
+      speaker intentions that must remain. Balance crisp turn-taking against giving each voice a distinct
+      texture. Choose an approach and return the full revised dialogue and stage directions, without adding
+      new plot events or moral conflict.
+    - Supply a complete four-bar invented melody in explicit note-duration notation, meter, allowed pitch
+      range, chord tones and a motif to preserve. Balance a more flowing contour against keeping the catchy
+      repetition. Choose revisions and give every note and duration for the entire melody, with concise
+      artistic reasoning.
+    Automation and assumptions:
+    - Supply a complete list of fictional personal filenames, desired naming rules, collision handling and
+      anticipated repeat use. Balance a one-time explicit mapping against a reusable rule-driven procedure.
+      Choose a method and provide the entire dry-run mapping plus the full reproducible workflow or standard-library
+      script; do not perform real renames.
+    - Supply a tiny fictional personal publishing workflow with every input/output dependency, available
+      commands, changed inputs and per-step effort. Balance a simple full rebuild against tracking affected
+      outputs. Choose the method and give the complete ordered command plan and update rule, without guessing
+      tool behavior or omitting dependency steps.
+    - Supply a harmless personal hobby-log form, every field and default rule, a small complete set of intended
+      entries and the exact supported template operations. Balance fewer repetitive actions against keeping
+      unusual entries visible for deliberate editing. Choose a workflow and deliver the complete template,
+      every filled entry and the exact repeat-use procedure; no invented app features or automatic handling
+      of unspecified cases.
+    Game strategy:
+    - Supply a tiny board, every tile and legal placement rule, scoring, remaining draw possibilities and
+      the player's competing preferences for immediate progress and future flexibility. Choose a legal placement
+      and show the complete resulting board and immediate score. Keep future claims tied to the supplied
+      draw model, not invented opponent psychology.
+    - Supply a tiny solo card game with all cards, exact action effects, resource costs, a short turn horizon
+      and clear competing preferences such as retaining a favorite card versus building a larger combo.
+      Choose a legal complete action sequence and show every resulting state. Ensure alternatives provide
+      different real benefits, not a free dominant action.
+    - Supply a tiny invented solo game's available equipment, capacity limit, all item effects and a complete
+      small encounter table. The player likes one style of play but also values versatility. Choose the
+      loadout, list every equipped item and explain its outcomes across the supplied encounter cases, without
+      inventing encounters or converting taste into a fake score.
   source_stage:
     name: write_requests
     kind: llm_tagged
