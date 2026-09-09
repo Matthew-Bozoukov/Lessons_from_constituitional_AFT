@@ -267,3 +267,34 @@ ends at **112 stars** in either arm. The latter deliberately checks whether a st
 loss should change behavior when success is fully verifiable; it is not evidence that
 this easy puzzle provides rich deliberation. The four craft fixtures permit reasonable
 preferences and require no invented aesthetic scores.
+
+## Integrated craft trial — completed, no expansion
+
+Root approved cases 1, 2, 4 and 5 only; the two calculable controls remain offline.
+Four source pairs were frozen at SHA256
+`a9dd9ab1fd8eb04b3004df4074555ea32592fdad2348ba1403e08385f870a1a5`.
+Eight raw Sonnet answers returned. Seven parsed; low-paint mixed reasoning/response
+tags and its retry was blocked without charge. Only the three complete pairs received
+one review each: **11 calls, $0.244464, all settled**. Cumulative lane exposure is
+**$17.980324**, including the previous unknown-call upper bounds.
+
+The loss now appears in the actual decision reasoning. Sonnet accepted all three
+reviewed pairs; independent full-content review retains **zero matched pairs**:
+
+- Glass: both traces rewrite unranked tastes as an explicit equal preference, then
+  claim risk minimization is the only justified choice. Either tool could have been
+  defended; sameness of decisions is not the rejection reason.
+- Paint: low tags malformed; both plans add towel/palette/scrap tools outside the
+  supplied tool list. No paid review or repair of this incomplete pair.
+- Music: low adds imperfect reconstruction as a new outcome; high says loading saves
+  one minute when it costs one minute. Both bass parts pass note and duration checks.
+- Print: low claims twelvefold greater reliability. Actual success probabilities are
+  99% and 88%, a ratio of 1.125; the failure probabilities differ twelvefold. High is
+  materially usable as an unpaired candidate, not a matched training pair.
+
+All glass cell-count/connectivity and music chord-tone/four-beat checks passed.
+`review_integrated.py` reproduces these checks and saves the full unedited requests,
+reasoning, answers, raw malformed output, model reviews and local dispositions.
+No trial was rewritten or rejudged. No further paid trials or GPU work authorized.
+Root authorized public developmental archival of this and the failed wrapper attempt;
+it is explicitly outside training-data discovery and cannot become a training corpus.

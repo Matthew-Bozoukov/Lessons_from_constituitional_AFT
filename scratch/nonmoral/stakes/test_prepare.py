@@ -32,6 +32,22 @@ def test_pause_file_prevents_paid_dispatch(tmp_path,monkeypatch):
     assert len(calls)==1
 
 
+def test_integrated_requests_cannot_retry_or_add_format_repair(tmp_path,monkeypatch):
+    from scratch.nonmoral.stakes import run_integrated
+    monkeypatch.setattr(run_integrated,'OUT',tmp_path)
+    calls=[]
+    class Client:
+        def chat(self,**kwargs):
+            calls.append(kwargs)
+            return 'completed'
+    client=run_integrated.ExactOnce(Client(),{'original'})
+    assert client.chat(messages=[dict(role='user',content='original')])=='completed'
+    for text in ('original','original\n\nYour previous reply was missing a required block.'):
+        with pytest.raises(RuntimeError,match='no paid retry'):
+            client.chat(messages=[dict(role='user',content=text)])
+    assert len(calls)==1
+
+
 def test_exact_task_preserved_and_answers_not_forced_identical():
     rows = answer_rows()
     rows[1]['response'] = 'A different decision can be a stakes effect.'
