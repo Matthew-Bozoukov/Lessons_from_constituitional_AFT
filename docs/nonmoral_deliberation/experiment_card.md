@@ -28,6 +28,10 @@ rounded synthetic percentage, not a recipe version.
 All9968 rows passed token-length checks; maximum8191, with no truncation.
 All684 new-example masks were checked in full; the shared generation-boundary
 mask gate also passed. New examples total790648 tokens,606746 supervised.
+SFT is starting on owned RunPod `epd4o5f97zooij` (2xH200, $9.18/hour), at
+code revision `6d5d134d50786a8602acefc3f2a90c76dbd43df3`. Independent watchdog
+active; $40 training cap and local backup before ordinary teardown. The first
+provision request returned HTTP500 and created no pod; one verified retry succeeded.
 Training and the new checkpoint's ODCV result are still pending.
 
 Sources and full answers now use **Opus4.8**, with explicit low reasoning effort;
@@ -71,8 +75,8 @@ allocation55 remains paused; SFT40 and evaluation20 reserved. Latest completed-p
 project exposure is about **$135.32**, including conservative unknown reservations.
 Shared-account balance changes are not this experiment's bill.
 
-Use shared SynthDoc/OpenRouter, HF and RunPod infrastructure. No broader GPU has
-been rented yet. Before renting: verify balances, clean pushed source and readiness.
+Use shared SynthDoc/OpenRouter, HF and RunPod infrastructure. Before this rental,
+balances, clean pushed source, public data and local readiness were verified.
 Independent watchdogs enforce cost/lifetime ceilings. Before ordinary teardown,
 fetch and verify the full inventory of necessary results/checkpoints locally.
 

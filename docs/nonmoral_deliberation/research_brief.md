@@ -13,21 +13,19 @@ Secondary: test high versus low nonmoral stakes in parallel, in a separate workt
 shared spending is coordinated by the main agent within the same $300 ceiling.
 One LoRA per condition, formal capability testing deferred as already agreed.
 
-**Current state (2026-09-09):** user requested moving on from controls and approved
-creating the broader dataset: about 700 accepted examples, initially Sonnet authoring/review,
-$140 current generation/checking allocation within the existing $300 total (prospectively reallocated from $100 after quality exclusions; see the experiment card). The user reviewed the first 12 and accepted the scenario families ("all are ok i guess? idk").
-No further taste approval is needed; factual and completeness checks remain our responsibility. Each task gets one natural reasoning-and-answer
-response; paired-arm, identical-answer and length-matching constraints are removed.
-Keep completeness, factual correctness, nonmoral judgement and ODCV-independent selection.
-The subsequent user-approved Opus trial hit provider refusals. The documented Opus 4.8
-fallback now generates scenarios and full answers; Sonnet 5 reviews them. Historical
-Sonnet rows retain their actual authorship. See the experiment card for current counts
-and the Opus pilot note for diagnosis, exact model IDs and costs.
-Broken examples are rejected rather than repeatedly repaired. The old paired batch remains
-failed and frozen; this is a new documented recipe, not a changed acceptance gate.
-The authorized overnight baseline fallback is complete; see the
-[experiment card](experiment_card.md) for results/costs. Earlier pilot decisions below
-are historical, not the current execution status.
+**Current state (2026-09-09):** The broader dataset is complete: 705 accepted
+conversations, 684 selected into the frozen 9968-row mixture. Full token-length and
+new-example mask checks passed; corpus and mixture are public under dougalldeepmind
+with exact revisions in the [experiment card](experiment_card.md). The authorized
+one-seed SFT is now starting on 2xH200 RunPod with dynamic batching; matched ODCV
+follows. Total ceiling remains $300; no additional taste approval is needed.
+
+The selected conversations include actual Opus4.8 and Sonnet5 authorship, all reviewed
+independently by Sonnet5. One documented literal correction pass was permitted;
+substantive errors and remaining defects were excluded. Original prompts are intact.
+The earlier paired-arm and identical-answer constraints remain abandoned. Recipe and
+model changes are provenance, not causal comparisons. Stakes work is currently paid-paused.
+Earlier pilot decisions below are historical and do not override this current authorization.
 
 **User requirement: preserve results locally before GPU teardown.** Normal teardown
 must follow a verified local copy of necessary outputs, not merely a completion flag
@@ -38,8 +36,8 @@ provenance, loss history, logs and saved resume checkpoints), verify the remote/
 archive hash and completed-arm identities, and record a local backup receipt first.
 Failed downloads block ordinary teardown and retry within a reserved recovery window.
 The independently enforced budget/lifetime ceiling remains an emergency limit; alert
-explicitly if recovery cannot succeed before it. No SFT launch is authorized by this
-retention requirement, and the failed-data fallback remains closed.
+explicitly if recovery cannot succeed before it. The retention requirement itself is not a launch authorization; the current broader
+SFT has separate standing user authorization after its completed dataset checks.
 
 **Earlier direction: user approved the bounded postmortem reset.** The
 [postmortem and proposed reset](2026-09-08_postmortem.md) identifies the mismatch between
