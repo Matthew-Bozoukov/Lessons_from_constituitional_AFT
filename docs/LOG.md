@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader corpus passes 413; diversify remaining source topics
+
+Recipe11 batch12 saved 119/120 sources and 111/111 admitted answers. Local review
+retained 68 unchanged, prepared 25 literal corrections, and excluded 18 substantive
+failures. Independent Sonnet review plus explicit adjudication retained 67 unchanged
+and all 25 corrected rows, bringing the accepted pool from 321 to 413. One visible
+code self-correction was accepted because the explicitly selected replacement works;
+one remaining false time-total claim was excluded. Original prompts were unchanged.
+
+A source-only audit of batches12/13/15 found topic collapse despite unique strings:
+26/30 learning sources mention whistling, 20/30 organizing sources coffee, and
+22/30 automation sources water. These are descriptive keyword counts, not a quality
+threshold. Batch15's 119 saved sources were archived before paying for answers.
+Recipe12 uses the existing variation library with 240 short topic cues, split into
+two disjoint frozen batches. No detailed puzzle templates, new model, gate change,
+or paid prompt tournament. Batch17 saved all 120 sources without an API failure;
+full local source review is underway. The cue list and audit travel with publication.
+
+Next: finish existing answer reviews and remaining varied production, freeze 684
+selected rows, then the authorized one-LoRA SFT and matched ODCV. No alignment
+improvement is established. Recovery/publication checks: 26 tests passed.
+
 ## 2026-09-09 — Broader nonmoral corpus reaches 321 accepted examples
 
 Hypothesis: a simpler varied source recipe and stronger author can produce enough

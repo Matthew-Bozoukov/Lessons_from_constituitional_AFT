@@ -548,7 +548,7 @@ def publish_production(config_path, root=ROOT):
             stage_index += 1
             cache.save(stage_index, batch.name+'_'+phase,
                        read_rows(Path(status['run_dir'])/'dataset.jsonl'))
-    for folder in ('opus_proposal', 'recovery'):
+    for folder in ('opus_proposal', 'recovery', 'diversity'):
         if (root/folder).is_dir():
             shutil.copytree(root/folder, dest/'audit'/folder)
     cache.publish_final(accepted)
