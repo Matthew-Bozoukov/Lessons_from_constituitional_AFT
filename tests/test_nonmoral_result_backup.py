@@ -83,7 +83,8 @@ def test_wrong_dataset_revision_does_not_validate_completed_arm(tmp_path):
 
 
 @pytest.mark.parametrize('transfer_ok', [True, False])
-def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_path, monkeypatch, transfer_ok):
+@pytest.mark.parametrize('n_arms', [1, 2])
+def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_path, monkeypatch, transfer_ok, n_arms):
     from scratch.nonmoral import train_pair as driver
     events, clock = [], [1000.0]
     monkeypatch.setattr(driver, 'load_dotenv', lambda *a: None)
@@ -110,8 +111,9 @@ def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_p
             if 'torch.cuda' in command:
                 return 'H200 H200'
             if 'print(json.dumps(r))' in command:
+                assert f'range({n_arms})' in command
                 return json.dumps({'complete':True,'metadata':{},'arms':[
-                    {'index':i,'bytes':100,'tail':'done','exit':0} for i in range(2)]})
+                    {'index':i,'bytes':100,'tail':'done','exit':0} for i in range(n_arms)]})
             return ''
     monkeypatch.setattr(driver, 'SshExec', Remote)
     def fetch(*args, **kwargs):
@@ -122,11 +124,14 @@ def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_p
     monkeypatch.setattr(driver, 'fetch_training_outputs', fetch)
     monkeypatch.setitem(sys.modules,'account_snapshot',SimpleNamespace(snapshot=lambda: {}))
     plan = {'approved_for_training':True,'base_model_revision':'b'*40,
-            'arms':[{'data_repo':'test/data'+str(i),'data_revision':'a'*40} for i in range(2)]}
+            'gpu_budget_usd':30 if n_arms==1 else 60,
+            'arms':[{'data_repo':'test/data'+str(i),'data_revision':'a'*40} for i in range(n_arms)]}
     plan_path = tmp_path/'plan.json'
     plan_path.write_text(json.dumps(plan))
     driver.run(plan_path,tmp_path/'run')
     state = json.loads((tmp_path/'run/status.json').read_text())
+    assert state['completed_arms']==list(range(n_arms))
+    assert state['gpu_budget_usd']==plan['gpu_budget_usd']
     if transfer_ok:
         assert events == ['backup','terminate']
         assert state['local_backup']['verified'] and state['terminated']

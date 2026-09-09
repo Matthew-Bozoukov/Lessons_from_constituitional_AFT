@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Main production continues; preserve replay and prepare one-arm SFT
+
+Batch03:120 sources generated for$0.717598;111 accepted after reading all requests,
+9 excluded for material source defects or absent tradeoffs. Full answer/review generation
+is running under its already-reserved additional$15 cap. No new GPU rental.
+
+Fixed before new evaluation: collect about700 accepted candidates and select684 in
+salted-hash/domain round-robin order, deduplicating exact normalized requests. Replace
+only the684 original nonmoral slots in the pinned historical9968-row mixture; preserve
+all9284 replay JSONL lines and their positions byte-for-byte. This matches row counts,
+not token lengths. The local assembler refuses incomplete/stale source or answer reviews,
+changed user requests and insufficient accepted rows. It does not authorize training.
+
+The existing protected two-H200 training driver now also supports a single condition
+and a bounded per-run budget; it retains backup-before-teardown checks. Seventeen focused
+offline tests passed, including exact replay preservation and one/two-arm output recovery.
+No live GPU validation is claimed.
+
+Stakes first8 completed independently:24 calls,$0.609012,4 paired examples retained,
+2 held,2 excluded; all originals and reviews public. User's request for parallel stakes
+work is now progressing to source screening and fresh paired answers in its separate
+worktree. Stakes data allocation is$55 cumulative (replaces initial$5), with no stakes
+GPU allocation yet. Main SFT/eval reserves remain$40/$20; total ceilings plus prior
+exposure sum to$246.929031 inside the$300 ceiling. Caps are not actual charges.
+
 ## 2026-09-09 — Prioritize broader-data LoRA; start independent stakes lane
 
 User clarified the primary endpoint: a more varied nonmoral SFT corpus producing a

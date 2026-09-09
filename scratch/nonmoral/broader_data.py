@@ -146,6 +146,105 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
 
 
+def accepted_production(root):
+    """Read immutable accepted answers, checking both source and answer review lineage."""
+    accepted, seen, provenance = [], set(), []
+    for review_path in sorted((Path(root)/'production').glob('batch*/answer_review.json')):
+        batch = review_path.parent
+        status = json.loads((batch/'answers/status.json').read_text())
+        data = Path(status['run_dir'])/'dataset.jsonl'
+        rows = read_rows(data)
+        review = json.loads(review_path.read_text())
+        if review.get('dataset_sha256') != file_sha256(data):
+            raise ValueError(f'Stale answer review: {batch}')
+        dispositions = review['dispositions']
+        if set(dispositions) != {r['scenario_id'] for r in rows}:
+            raise ValueError(f'Incomplete answer review: {batch}')
+        src_status = json.loads((batch/'sources/status.json').read_text())
+        sources, _ = source_review_inputs(batch/'source_review.json', Path(src_status['run_dir'])/'dataset.jsonl')
+        sources = {r['scenario_id']:r for r in sources}
+        for row in rows:
+            sid = row['scenario_id']
+            if sid not in sources or row['user'] != sources[sid]['user']:
+                raise ValueError(f'Changed or unapproved source: {sid}')
+            item = dispositions[sid]
+            if item.get('decision') not in ('accept','reject','hold') or not item.get('reason'):
+                raise ValueError(f'Invalid answer disposition: {sid}')
+            if item['decision'] != 'accept':
+                continue
+            if sid in seen or any(not row.get(k, '').strip() for k in ('user','reasoning','response')):
+                raise ValueError(f'Duplicate ID or incomplete accepted conversation: {sid}')
+            seen.add(sid)
+            accepted.append(row)
+        provenance.append({'review':str(review_path),'review_sha256':file_sha256(review_path),
+                           'dataset':str(data),'dataset_sha256':file_sha256(data)})
+    return accepted, provenance
+
+
+def select_balanced(rows, count):
+    """Deterministic domain round-robin; deduplicate identical normalized requests."""
+    from collections import defaultdict
+    groups, seen = defaultdict(list), set()
+    key = lambda r: hashlib.sha256(('broader-selection-v1:'+r['scenario_id']).encode()).hexdigest()
+    for row in sorted(rows,key=key):
+        user = ' '.join(row['user'].split())
+        if user in seen:
+            continue
+        seen.add(user)
+        groups[row['domain']].append(row)
+    result = []
+    while len(result) < count and any(groups.values()):
+        for domain in sorted(groups):
+            if groups[domain] and len(result) < count:
+                result.append(groups[domain].pop(0))
+    return result
+
+
+def assemble(replay_path, root=ROOT, target=684):
+    """Build a locally reviewable mixture only after sufficient accepted data exists."""
+    from collections import Counter
+    from scratch.build_t2_9284_da716_mixture import render
+    root = Path(root)
+    accepted, provenance = accepted_production(root)
+    selected = select_balanced(accepted, target)
+    if len(selected) != target:
+        raise ValueError(f'Only {len(selected)} distinct accepted production examples; need {target}')
+    expected = '0517ef85d288f14e42bc77f371d3e2e48866879b5824984feaf4a7451ce60561'
+    if file_sha256(replay_path) != expected:
+        raise ValueError('Replay mixture is not the pinned historical nonmoral mixture')
+    # Retain the raw JSONL bytes AND original replay order. Replace synthetic slots
+    # in place, avoiding a new shuffle of unrelated replay examples.
+    original = Path(replay_path).read_bytes().splitlines(keepends=True)
+    parsed = [json.loads(line) for line in original]
+    assert len(parsed)==9968 and sum(r['source']=='nonmoral_deliberation' for r in parsed)==684
+    assert target==684, 'Historical mixture has exactly 684 synthetic slots'
+    iterator = iter(selected)
+    mixed = []
+    for raw,row in zip(original,parsed):
+        if row['source'] != 'nonmoral_deliberation':
+            mixed.append(raw)
+            continue
+        candidate = next(iterator)
+        text = render([{'role':'user','content':candidate['user']},
+                       {'role':'assistant','reasoning_content':candidate['reasoning'],
+                        'content':candidate['response']}])
+        new = {'source':'nonmoral_broader','scenario_id':candidate['scenario_id'],
+               'domain':candidate['domain'],'text':text}
+        mixed.append((json.dumps(new,ensure_ascii=False)+'\n').encode('utf-8'))
+    out = root/'mixture'
+    out.mkdir(exist_ok=False)
+    (out/'mixture.jsonl').write_bytes(b''.join(mixed))
+    (out/'selected_examples.jsonl').write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in selected),encoding='utf-8')
+    manifest = {'status':'assembled_pending_token_and_mask_checks','target':target,'accepted_pool':len(accepted),
+                'selection':'Fixed salted SHA256 per scenario ID, sorted-domain round-robin, exact normalized-user deduplication; no evaluation feedback.',
+                'selected_by_domain':dict(Counter(r['domain'] for r in selected)),
+                'replay_rows':9284,'replay_source_sha256':expected,'replay_preservation':'Raw original replay lines and mixture positions unchanged.',
+                'mixture_sha256':file_sha256(out/'mixture.jsonl'),'reviews':provenance,
+                'approved_for_training':False}
+    write_json(out/'manifest.json',manifest)
+    print(json.dumps(manifest),flush=True)
+
+
 def packet(run_dir):
     path = run_dir/'dataset.jsonl'
     rows = read_rows(path) if path.exists() else []
@@ -226,7 +325,14 @@ def main():
     parser.add_argument('--phase',choices=['sources','answers'])
     parser.add_argument('--batch')
     parser.add_argument('--source-review',type=Path)
+    parser.add_argument('--assemble',action='store_true')
+    parser.add_argument('--replay-mixture',type=Path)
     args = parser.parse_args()
+    if args.assemble:
+        if args.phase or args.execute or args.publish or not args.replay_mixture:
+            raise ValueError('--assemble requires --replay-mixture and is a separate offline operation')
+        assemble(args.replay_mixture)
+        return
     cfg = OmegaConf.to_container(OmegaConf.load(args.config),resolve=True)
     if args.phase:
         if args.publish:

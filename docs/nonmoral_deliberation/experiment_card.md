@@ -9,20 +9,40 @@ Chronological evidence: [experiment log](../LOG.md). Earlier failures and reset:
 
 ## Current follow-up: broader dataset
 
-User approved about 700 accepted broader nonmoral examples, with a $100 generation/checking
-cap inside the existing $300 total. First batch: 12 full conversations across the agreed
-families, Sonnet authoring plus one separate Sonnet review, $3 dispatch cap. One natural
-response per task; no paired control or semantic repair loop. The first batch is for local
-quality checks and user taste feedback before scaling. No new SFT or GPU rental yet.
-Config: `configs/data/synth/nonmoral-broader.yaml`; output: `output/nonmoral_broader/20260909`.
+Primary endpoint: **broader nonmoral corpus -> one new LoRA -> matched ODCV**.
+The user accepts all twelve scenario families. No further taste checkpoint or baseline
+is needed. Source requests stay unchanged; incomplete or contradictory requests are
+excluded. Full reasoning and full answers are retained, with material-error checks.
 
-**First12 finished:** 26 settled calls, **$0.467220**, no pending reservations or jobs.
-Sonnet accepted 10/12, but local inspection found **2 clear candidates, 3 held for
-closer review and 7 exclusions**. Examples 6 (toy sampling plan) and 10 (creative
-revision) are the clearest. The reviewer missed count/geometry and source-fidelity
-errors. Full user requests, reasoning, answers and both reviews are in
-`first12_review.md` and `local_review.md` under the output directory. All originals
-remain unchanged; first12 is not approved SFT data. User accepted the scenario mix. Recipe revision 2 separates request authoring from answering: immutable source review first, then one full response and one Sonnet review. Starting 24 production requests; good rows will be retained without paired controls or semantic repairs. Updated total exposure: **$32.396251**.
+Production batches01/02 retained **18 complete candidates** (7 + 11); first12 separately
+has two clear candidates, not yet included in this count. Batch03 generated **120 requests**;
+local inspection admitted **111**, excluded9, and answer/review generation is running.
+Exact source review: `output/nonmoral_broader/20260909/production/batch03/source_review.json`.
+Broader cost before batch03 answers: **$2.977706**, including the conservatively retained
+$0.068738 failed-call reservation. This is a timestamped pre-answer snapshot, not live spend.
+
+Collect about700 accepted examples, then select **684** by fixed hash order with balanced
+representation subject to available domain counts, before any new ODCV. Preserve the
+exact9284 replay rows from the historical nonmoral mixture (revision
+`6364505df02b0020b030bf379bd42285a14de6a5`, SHA256
+`0517ef85d288f14e42bc77f371d3e2e48866879b5824984feaf4a7451ce60561`).
+This matches historical synthetic row count; it does not claim matched token lengths or
+isolate a single causal mechanism. One seed0 rank64 LoRA, dynamic batching on2xH200.
+No new main LoRA or ODCV results exist yet.
+
+**Secondary stakes lane runs independently** in worktree/branch `codex/nonmoral-stakes`.
+First8 paired fixtures cost **$0.609012**:4 pairs retained,2 held,2 excluded.
+[Full public first8 artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-first8).
+The agent is now screening the existing702-source pool and preparing fresh low/high
+answers under a **$55 cumulative stakes-data allocation**, replacing its initial$5 cap.
+No stakes GPUs are allocated yet. All allocations share the **$300 project ceiling**:
+prior exposure$31.929031 + broader data cap$100 + stakes data cap$55 + main SFT reserve$40
++ main evaluation reserve$20 = **$246.929031 reserved or spent**, leaving$53.070969
+unallocated. Caps are not actual spend; actual ledgers are separate and centrally linked.
+
+Config: `configs/data/synth/nonmoral-broader.yaml`; artifacts and ledger:
+`output/nonmoral_broader/20260909`. Local dispositions take precedence over Sonnet verdicts;
+earlier model reviews missed material errors. No semantic repair loop or ODCV-driven selection.
 
 ## Completed overnight result
 
