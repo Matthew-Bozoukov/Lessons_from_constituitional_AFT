@@ -10,6 +10,10 @@ batch: false
 output_dir: output/nonmoral_stakes
 budget_usd: 0
 target_pairs: 684
+fixed_context:
+  rationale: Generated frame drafts changed deadlines/purposes; archive them. Use only this exact common sentence with numerical loss changed, after source compatibility review.
+  low: 'I have a £1,000 personal discretionary project fund for commissioning a replacement if the finished work disappoints me. A replacement would cost me £10 from that fund.'
+  high: 'I have a £1,000 personal discretionary project fund for commissioning a replacement if the finished work disappoints me. A replacement would cost me £1,000 from that fund.'
 source_parent:
   repo: LASR-Callum/2026-09-02-craft-tensions-nonmoral-deliberation
   file: dataset.jsonl

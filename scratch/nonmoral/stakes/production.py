@@ -33,7 +33,14 @@ def phase_rows(phase, source_review=None):
         path = OUT/'sources/complete_candidates.jsonl'
         if not source_review:
             raise ValueError('Hash-linked local source review required before answers')
-        return arm_rows(approved(read_rows(path), path, source_review))
+        cfg=OmegaConf.to_container(OmegaConf.load(CONFIG),resolve=True)
+        selected=approved(read_rows(path), path, source_review)
+        # Keep the original source and generated drafts, but use the independently
+        # approved numeric-only intervention. This never rewrites a task core.
+        framed=[dict(r,eligible='yes',model_source_eligible=r['eligible'],draft_low_context=r['low_context'],draft_high_context=r['high_context'],
+                     low_context=cfg['fixed_context']['low'],high_context=cfg['fixed_context']['high']) for r in selected]
+        write_rows(OUT/'fixed_frames.jsonl',framed)
+        return arm_rows(framed)
     path = OUT/'answers/complete_candidates.jsonl'
     grouped = {}
     for row in read_rows(path):
@@ -79,8 +86,15 @@ def generate(phase, source_review=None):
         prices=verify_live_prices({SONNET})
         ledger=OUT/'spend.json'
         existing=json.loads(ledger.read_text()) if ledger.exists() else []
-        if any(e['status']!='settled' for e in existing):
-            raise ValueError('Reconcile uncertain reservations before next phase')
+        uncertain=[e for e in existing if e['status']!='settled']
+        if uncertain:
+            receipt=OUT/'reservation_reconciliation.json'
+            reconciled=json.loads(receipt.read_text()) if receipt.exists() else {}
+            declared=reconciled.get('conservatively_charged_requests',{})
+            if any(e['status']!='reserved' or declared.get(e['request_sha256'])!=e['charged_or_reserved_usd'] for e in uncertain):
+                raise ValueError('Reconcile uncertain reservations before next phase')
+            # Closed prior calls retain their entire upper bound in the shared cap.
+            # No reimbursement, retry, or claim that actual usage is known.
         run_dir=dest/'runs'/timestamp()
         run_dir.mkdir(parents=True,exist_ok=False)
         state=dict(phase=phase,status='running',rows=len(rows),run_dir=str(run_dir),

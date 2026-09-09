@@ -180,5 +180,39 @@ Artifact: [complete candidates and local findings](https://huggingface.co/datase
 The publication receipt in `output/nonmoral_stakes/20260909_first8/publication.json`
 records the exact revision once the upload finishes. `review_first8.py` reproduces
 local extraction checks and the separately recorded dispositions without model calls.
-The unused $4.390988 allocation can return to the central budget after publication;
-this lane has no ongoing requests or GPUs.
+This initial $5 allocation was subsequently replaced by the $55 cumulative allocation
+below; it is not an additional allowance.
+
+## Historical-pool production — 2026-09-09
+
+Root allocated **$55 cumulative**, including the first-eight $0.609012. The independent
+production ledger is `output/nonmoral_stakes/20260909_production/spend.json`, capped at
+$54.390988. Sources, answers and review use Sonnet through the shared synth engine;
+each source/answer/pair is dispatched once, without semantic repair or rejudging loops.
+Only transport/format failures use the existing bounded machinery; all costs remain
+reserved or settled in the ledger. No GPU allocation has been granted to this lane.
+
+All 702 original requests are screened before fresh low/high answers. Missing actual
+code, schemas, rule systems or real observations are excluded; originally requested
+fictional examples and new designs remain allowed. Positive complete/nonmoral screens
+receive local source review in `scratch/nonmoral/stakes/source_notes.py`, with a
+hash-linked full eligibility sidecar before answer dispatch. The true eligible count
+will be reported even if far below 684. No repeats or threshold-driven relaxing.
+
+Generated consequence drafts changed multiple things too often (deadlines, audiences,
+prize opportunities). They remain archived but are not used. Root approved one fixed
+frame for both arms: the user has a **£1,000 personal discretionary project fund** for
+commissioning replacement work if disappointed. Replacement costs **£10** in low and
+**£1,000** in high. The fee is the only changed text; original core and system remain
+identical. These are fictional scenario amounts, not API/GPU budget. No external judge
+defines a uniquely correct aesthetic choice. This intervention tests personal monetary
+replacement loss, not every meaning of high stakes; professional source contexts can
+still carry background consequences common to both arms.
+
+Publication audit: first-eight is a developmental candidate archive, correctly kept
+outside training-data discovery; no candidate default should silently include rejected
+rows. Future retained low/high corpora use `synth_name` with undated style config stems,
+`StageCache`, root `dataset.jsonl` as default, stage snapshots and `training_data_tags`.
+Current shared naming does not put generator names in synth repo names; full Sonnet
+model identity and provider details belong in card/run metadata. Model artifacts use
+the base model and seed through the model-stage builder. No new ad hoc publication names.
