@@ -102,6 +102,19 @@ def final_answer_phase(batch):
     return 'review', status, data
 
 
+def source_history(include_prior_examples=True):
+    """Read legacy source excerpts only when the prospective recipe requests them."""
+    if not include_prior_examples:
+        return []
+    previous = []
+    for status_path in sorted((ROOT/'production').glob('batch*/sources/status.json')):
+        status = json.loads(status_path.read_text())
+        data_path = Path(status['run_dir'])/'dataset.jsonl'
+        if data_path.exists():
+            previous.extend(read_rows(data_path))
+    return previous
+
+
 def production(cfg, args):
     """Run one bounded stage using the existing engine and a shared cumulative ledger."""
     if not args.batch or not re.fullmatch(r'batch[0-9]{2,3}', args.batch):
@@ -120,12 +133,7 @@ def production(cfg, args):
         if not 1 <= count <= 120:
             raise ValueError('Production batch size must be 1..120')
         batch_no = int(args.batch[5:])
-        previous = []
-        for status_path in sorted((ROOT/'production').glob('batch*/sources/status.json')):
-            status = json.loads(status_path.read_text())
-            data_path = Path(status['run_dir'])/'dataset.jsonl'
-            if data_path.exists():
-                previous.extend(read_rows(data_path))
+        previous = source_history(prod.get('include_prior_examples', True))
         rows = []
         for i in range(count):
             case = cfg['cases'][i % len(cfg['cases'])]

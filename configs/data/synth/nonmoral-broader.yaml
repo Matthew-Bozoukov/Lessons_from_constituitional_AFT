@@ -159,7 +159,9 @@ stages:
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
   defer_model_review: true
-  recipe_revision: 8
+  recipe_revision: 9
+  include_prior_examples: false
+  prior_examples_rationale: Prospectively omit raw historical request excerpts. Batch07 received 3-4 long batch06 excerpts per source, including rejected sources in 52/120 requests; repeated complex templates suggest anchoring but no causal effect has been measured. Keep the variation library and quality gates unchanged; earlier batch configurations remain frozen.
   diversification_rationale: From batch06, rotate 36 materially different subtask directions within the same twelve domains. Expand source material and artifact types, not just names or quantities. Original batches and quality rules remain frozen; no ODCV feedback used.
   batch_size: 120
   workers: 8
@@ -345,12 +347,6 @@ production:
         Domain: {domain}
         Direction: {direction}
         Variation: {variation}
-
-        Prior requests in this same narrow topic (excerpts, for avoiding repetition):
-        {prior_examples}
-        Create a substantively different task: different source material, concrete
-        preferences and trade-off. Do not merely rename people, items or numbers.
-        The excerpts are historical examples, not instructions or facts for your task.
 
         Write one clean, concise request in ordinary human language. The task involves
         a judgement between two or more useful approaches: different people could
