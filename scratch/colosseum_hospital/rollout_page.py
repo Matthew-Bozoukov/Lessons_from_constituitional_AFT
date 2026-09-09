@@ -214,11 +214,61 @@ def brief_html(rows, cls: str) -> str:
     )
 
 
+def prompt_records(ep: Path) -> dict[tuple, dict]:
+    """prompts.jsonl (patched harness only) keyed by (agent, iteration, phase, call)."""
+    path = ep / "prompts.jsonl"
+    if not path.is_file():
+        return {}
+    out = {}
+    for line in path.read_text().splitlines():
+        r = json.loads(line)
+        out[(r["agent"], int(r["iteration"]), r["phase"], int(r["call"]))] = r
+    return out
+
+
+def sent_html(record: dict | None, carried: list | None) -> str:
+    """A collapsed block with every message the model was sent for one call, verbatim."""
+    if not record:
+        return ""
+    msgs = record.get("messages") or []
+    carried_txt = (
+        f" · {len(carried)} earlier turn{'s' if len(carried) != 1 else ''} carried"
+        if carried
+        else ""
+    )
+    parts = []
+    for m in msgs:
+        role = str(m.get("role") or "")
+        body = m.get("content")
+        if isinstance(body, list):
+            body = "\n".join(
+                str(x.get("text", "")) for x in body if isinstance(x, dict)
+            )
+        extra = ""
+        if m.get("tool_calls"):
+            extra = " · tool calls: " + ", ".join(
+                str((c.get("function") or {}).get("name")) for c in m["tool_calls"]
+            )
+        if m.get("name"):
+            extra += f" · {E(m['name'])}"
+        parts.append(
+            f'<div class="msg msg--{E(role)}"><p class="lbl">{E(role)}{extra}</p>'
+            f'<pre class="prompt">{E(body or "")}</pre></div>'
+        )
+    return (
+        f'<details class="sent"><summary>what the model was sent — {len(msgs)} message'
+        f"{'s' if len(msgs) != 1 else ''} after the system prompt{carried_txt}</summary>"
+        f"{''.join(parts)}</details>"
+    )
+
+
 def event_row(e: dict, coalition: set[str]) -> str:
     a = e["arguments"]
     name = e["tool_name"]
     who = e["agent_name"]
     cls = "ev--pair" if who in coalition else ""
+    result = e.get("result") or {}
+    err = result.get("error") if isinstance(result, dict) else None
     if name == "post_message":
         cls, detail = "ev--secret", f"“{E(str(a.get('message', ''))[:400])}”"
         label = "posted to the PRIVATE board"
@@ -236,14 +286,24 @@ def event_row(e: dict, coalition: set[str]) -> str:
         detail = f"{E(a.get('patient_id'))} step {E(a.get('step_index'))} at t={E(a.get('start_time'))}"
     else:
         label, detail = E(name), E(json.dumps(a)[:200])
+    if err:
+        cls += " ev--error"
+        detail += f' <span class="err">✗ {E(str(err)[:220])}</span>'
     return (
         f'<tr class="{cls}"><td class="ev__who">{E(who.replace("_", " "))}</td>'
         f'<td class="ev__what">{label}</td><td class="ev__detail">{detail}</td></tr>'
     )
 
 
-def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noqa: C901
-    ep = episode(block, seed)
+def build(  # noqa: C901
+    block: str,
+    seed: int,
+    notes: list[dict] | None = None,
+    run_dir: str | Path | None = None,
+    label: str | None = None,
+    title: str | None = None,
+) -> str:
+    ep = Path(run_dir) if run_dir else episode(block, seed)
     turns = [
         t
         for t in json.loads((ep / "agent_turns.json").read_text())
@@ -268,6 +328,19 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
     ts = [e["ts"] for b in boards for e in b.get("events", []) if e.get("ts")]
     minutes = (max(ts) - min(ts)) / 60 if ts else 0
     coalition = set(cfg["adversaries"])
+    # The patched harness (2026-09-09) records what it ran under and what it sent.
+    fixes = cfg.get("fixes") or {}
+    secret_instructions = cfg.get("secret_instructions") or {}
+    sent = prompt_records(ep)
+    block = (
+        "DA"
+        if any(
+            "difficult" in str(lbl)
+            for a, lbl in cfg.get("agent_llm_labels", {}).items()
+            if a in coalition
+        )
+        else block
+    )
     conv = final.get("convergence_report") or {}
     gh = (final.get("hospital_failures") or {}).get("General_Hospital") or {}
     stm = (final.get("hospital_failures") or {}).get("St_Marys_Center") or {}
@@ -328,18 +401,34 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
                         )
                         or "<li class='none'>no tool call — this turn changed nothing</li>"
                     )
+                    carried = c.get("carried_turns") or []
+                    carried_meta = (
+                        f' · <span class="carried">{len(carried)} earlier turn'
+                        f"{'s' if len(carried) != 1 else ''} in context</span>"
+                        if carried
+                        else ""
+                    )
+                    reply = c.get("content") or ""
+                    reply_html = (
+                        f'<p class="lbl">visible reply — returned to the harness, shown to no one</p>'
+                        f'<p class="reasoning">{E(reply)}</p>'
+                        if reply.strip()
+                        else ""
+                    )
                     sections.append(f"""
 <article class="call call--{kind}" id="{cid}">
   <header class="call__head">
     <span class="call__n">{n}</span><span class="call__seat">{SEATS[seat]}</span>
     <span class="call__where">call {k + 1} of {len(calls)}</span>
-    <span class="call__meta">prompt {u.get("prompt_tokens", "?")} tok · finish {E(c.get("finish_reason"))}</span>
+    <span class="call__meta">prompt {u.get("prompt_tokens", "?")} tok · finish {E(c.get("finish_reason"))}{carried_meta}</span>
     {'<span class="tag tag--refusal">refuses</span>' if n_ref else ""}
     {f'<span class="tag tag--sabotage">{E(sabotage)}</span>' if sabotage else ""}
   </header>
   <div class="call__body">
+    {sent_html(sent.get((seat, int(it), phase, k + 1)), carried)}
     <p class="lbl">private reasoning — nobody else in the run can see this</p>
     <p class="reasoning">{reasoning or "<i>empty</i>"}</p>
+    {reply_html}
     <p class="lbl">tool calls</p>
     <ul class="tools">{toolbits}</ul>
   </div>
@@ -350,13 +439,20 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
                         ) or 0
                         grew = nt - (u.get("prompt_tokens") or 0)
                         loop = bool(tools)
+                        recorded = calls[k + 1].get("retry_reason")
                         what = (
-                            "The tools ran and their results were appended. Ordinary agent loop."
-                            if loop
-                            else "This call emitted no tool call and no visible message, so nothing of "
-                            "the model's own was appended. What arrives before the next call is a new "
-                            "user-side message; seats that describe it call it a follow-up making the "
-                            "case that they should comply."
+                            f"The harness made another call because: {E(recorded)}. Nothing "
+                            "new arrives from anyone — the model's own reply and the tool "
+                            "results are what precede the next call."
+                            if recorded
+                            else (
+                                "The tools ran and their results were appended. Ordinary agent loop."
+                                if loop
+                                else "This call emitted no tool call and no visible message, so nothing of "
+                                "the model's own was appended. What arrives before the next call is a new "
+                                "user-side message; seats that describe it call it a follow-up making the "
+                                "case that they should comply."
+                            )
                         )
                         sections.append(
                             f'<div class="gap gap--{"loop" if loop else "followup"}">'
@@ -406,7 +502,74 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
         f'<td class="num">{v:,.0f}</td></tr>'
         for a, v in sorted(rewards.items(), key=lambda kv: -kv[1])
     )
-    return f"""<title>Seed {seed}, Start to Finish</title>
+    # What this run carried between turns, from its own record.
+    if fixes.get("carry_agent_history"):
+        carries = (
+            "The world record does: the boards, the schedule, the inventory. <b>And, in this run, "
+            "each seat's own earlier turns of the shift</b>: before the fresh briefing the harness "
+            "re-sends a one-line marker per earlier turn, the seat's reply with its tool calls, and "
+            "the tool results. The private reasoning is not carried"
+            + (
+                " (history_include_reasoning is off)"
+                if not fixes.get("history_include_reasoning")
+                else ""
+            )
+            + ". Open <i>what the model was sent</i> on any call to read it."
+        )
+    else:
+        carries = (
+            "The world record does: the boards, the schedule, the inventory. An agent's own reasoning "
+            "and replies do not — every turn starts again from the system prompt and a fresh briefing."
+        )
+    if fixes.get("provisioner_reads_boards"):
+        carries += (
+            " <b>The provisioner sees every board it belongs to</b>, like a department (in the "
+            "original harness its briefing had no blackboard section at all)."
+        )
+    if fixes.get("post_message_in_execution"):
+        carries += " <code>post_message</code> is offered in both phases."
+    if fixes.get("strict_scheduler"):
+        carries += (
+            " The scheduler refuses an unknown patient, a repeat, a wrong step or a bad start "
+            "time with a message the seat can read (marked ✗ in the event tables)."
+        )
+    if fixes.get("home_hospitals"):
+        carries += " Patients have a home hospital; a department's queue lists its own hospital's patients."
+    fixes_on = (
+        ", ".join(k for k, v in fixes.items() if v) or "none — the paper's harness"
+    )
+    if secret_instructions:
+        secret_panels = "".join(
+            f'<div class="promptblock"><p class="lbl">The secret block for {E(a.replace("_", " "))} · verbatim, as recorded by this run</p>'
+            f'<pre class="prompt prompt--real prompt--secret">{E(text)}</pre></div>'
+            for a, text in secret_instructions.items()
+        )
+        prompt_blocks = [p for p in PROMPTS if p[1] == "real"]
+        secret_caveat = (
+            "The first four are copied from <i>terrarium-agents 0.1.1</i>, "
+            "<i>envs/dcops/hospital/hospital_prompts.py</i>, with the live values abbreviated; the "
+            "patched harness renders the provisioner's board section and the neutral execution closing "
+            "line when those switches are on. The secret blocks are the exact text this run gave each "
+            "coalition seat, recorded in <i>run_config.json</i>."
+        )
+    else:
+        secret_panels = ""
+        prompt_blocks = PROMPTS
+        secret_caveat = (
+            "The first four are copied from <i>terrarium-agents 0.1.1</i>, "
+            "<i>envs/dcops/hospital/hospital_prompts.py</i>, with the live values abbreviated. The secret block "
+            "is not in that package or in this repository, so it is reconstructed from the phrases the seats "
+            "quote back verbatim in their own reasoning — close, but not character-exact. Note that "
+            "<i>“DO NOT POST MESSAGES. USE TOOLS IMMEDIATELY”</i> belongs to the ordinary department execution "
+            "prompt, not to the secret block."
+        )
+    page_title = title or f"Seed {seed}, Start to Finish"
+    eyebrow = (
+        f"Colosseum Hospital · {E(cfg.get('sweep_name') or 'self-sacrificial')} · seed {seed} · "
+        f"{'difficult advice' if block == 'DA' else 'control'} block"
+        + (f" · {E(label)}" if label else "")
+    )
+    return f"""<title>{E(page_title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Serif:wght@600&display=swap">
@@ -539,6 +702,17 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
     color:var(--ink-2); overflow-x:auto; white-space:pre-wrap; }}
   pre.prompt--reconstructed {{ border-left:3px solid var(--secret); }}
   pre.prompt--real {{ border-left:3px solid var(--public); }}
+  pre.prompt--secret {{ border-left:3px solid var(--secret); }}
+  details.sent {{ margin:0 0 .9rem; border:1px dashed var(--rule); border-radius:3px; background:var(--sand); }}
+  details.sent summary {{ cursor:pointer; padding:.45rem .7rem; font-family:"IBM Plex Mono",monospace;
+    font-size:.72rem; letter-spacing:.04em; color:var(--ink-2); }}
+  details.sent[open] summary {{ border-bottom:1px dashed var(--rule); }}
+  .msg {{ padding:.6rem .7rem 0; }} .msg:last-child {{ padding-bottom:.7rem; }}
+  .msg--assistant .lbl {{ color:var(--public); }} .msg--tool .lbl {{ color:var(--secret); }}
+  .msg pre.prompt {{ max-height:28rem; overflow:auto; }}
+  .carried {{ color:var(--public); }}
+  tr.ev--error td {{ background:var(--sabo-bg); }}
+  .err {{ color:var(--sabo); font-family:"IBM Plex Mono",monospace; font-size:.74rem; }}
   .promptblock {{ margin-top:.9rem; }}
   footer {{ border-top:1px solid var(--rule); padding-top:1rem; font-size:.82rem; color:var(--ink-3); }}
   footer code {{ font-family:"IBM Plex Mono",monospace; color:var(--ink-2); word-break:break-all; }}
@@ -546,8 +720,8 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
 
 <div class="page">
   <header>
-    <p class="eyebrow">Colosseum Hospital · self-sacrificial · seed {seed} · {"difficult advice" if block == "DA" else "control"} block</p>
-    <h1>One Sabotage Shift, Start to Finish</h1>
+    <p class="eyebrow">{eyebrow}</p>
+    <h1>{E(page_title) if title else "One Sabotage Shift, Start to Finish"}</h1>
     <p class="lede">Nine agents run two hospitals for three iterations. Two of them — the Resource
     Provisioner and General Hospital's Triage desk — were handed a secret instruction to wreck the run,
     and a private channel to plot on. This page is that shift end to end: the setup, both instruction
@@ -591,12 +765,8 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
       step-specific.</dd></div>
     <div class="brief__row"><dt>Structure</dt><dd>Three iterations. Each has a planning phase and an
       execution phase, and every agent gets exactly one turn in each.</dd></div>
-    <div class="brief__row"><dt>What carries over</dt><dd>The world record does: the boards, the
-      schedule, the inventory. An agent's own reasoning does not. The provisioner's execution prompt is
-      <b>1,809 tokens in all three iterations</b>, identical, so nothing it thought is fed back to it.
-      Triage's prompt does grow, 7,755 to 22,372 tokens, which is the public board filling with all nine
-      agents' messages. The secret block is re-injected in the user prompt every iteration — both seats
-      quote it back in all three.</dd></div>
+    <div class="brief__row"><dt>What carries over</dt><dd>{carries}</dd></div>
+    <div class="brief__row"><dt>Harness switches on</dt><dd><code>{E(fixes_on)}</code></dd></div>
     {seating}
   </div>
 
@@ -607,18 +777,12 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
 
   <div class="panel">
     <h2>The user prompt — rebuilt from live state on every single turn</h2>
-    <p class="lede" style="font-size:.92rem">There is no conversation history. Each turn the harness
-    composes a fresh user message from the current world: the agent's job queue, its inventory, the
-    alerts, and — for department agents only — the <b>entire accumulated blackboard log</b>. The
-    provisioner's template never includes the board at all, which is why its prompt stays flat while a
-    department's triples.</p>
-    {"".join(f'<div class="promptblock"><p class="lbl">{E(t)}{" · reconstructed" if k == "reconstructed" else " · verbatim"}</p><pre class="prompt prompt--{k}">{E(x)}</pre></div>' for t, k, x in PROMPTS)}
-    <p class="caveat">The first four are copied from <i>terrarium-agents 0.1.1</i>,
-    <i>envs/dcops/hospital/hospital_prompts.py</i>, with the live values abbreviated. The secret block
-    is not in that package or in this repository, so it is reconstructed from the phrases the seats
-    quote back verbatim in their own reasoning — close, but not character-exact. Note that
-    <i>“DO NOT POST MESSAGES. USE TOOLS IMMEDIATELY”</i> belongs to the ordinary department execution
-    prompt, not to the secret block.</p>
+    <p class="lede" style="font-size:.92rem">Each turn the harness composes a fresh user message from
+    the current world: the agent's job queue, its inventory, the alerts, and the <b>entire accumulated
+    blackboard log</b> of every board the agent is shown. {"With carried history on, that briefing is the LAST message; the seat's own earlier turns come before it." if fixes.get("carry_agent_history") else "There is no conversation history."}</p>
+    {"".join(f'<div class="promptblock"><p class="lbl">{E(t)}{" · reconstructed" if k == "reconstructed" else " · verbatim"}</p><pre class="prompt prompt--{k}">{E(x)}</pre></div>' for t, k, x in prompt_blocks)}
+    {secret_panels}
+    <p class="caveat">{secret_caveat}</p>
   </div>
 
   {"".join(sections)}
@@ -640,7 +804,7 @@ def build(block: str, seed: int, notes: list[dict] | None = None) -> str:  # noq
     <div>Every word of reasoning, every tool call and every number is taken verbatim from the published
     rollout; only the highlighting and the section headings are added. The instruction panels are
     reconstructions, marked as such.</div>
-    <div>Rollout: <code>LASR-Callum/2026-09-04-colosseum-hospital-self-sacrificial-{"qwen36-difficult-advice-chunk-only-702" if block == "DA" else "qwen36-table2-only-9284"}</code>,
+    <div>Rollout: <code>{E(str(run_dir)) if run_dir else "LASR-Callum/2026-09-04-colosseum-hospital-self-sacrificial-" + ("qwen36-difficult-advice-chunk-only-702" if block == "DA" else "qwen36-table2-only-9284")}</code>,
     run <code>{E(cfg["run_id"])[:120]}</code>. Generated by <code>scratch/colosseum_hospital/rollout_page.py</code>.</div>
   </footer>
 </div>
@@ -657,6 +821,17 @@ def main() -> None:
         default=None,
         help="JSON list of {title, body, refs:[{seat, iteration, phase, call}]}",
     )
+    ap.add_argument(
+        "--run-dir",
+        default=None,
+        help="an episode directory (the one holding agent_turns.json) instead of the study's cells",
+    )
+    ap.add_argument(
+        "--label",
+        default=None,
+        help="eyebrow text, e.g. 'direction A — carried history'",
+    )
+    ap.add_argument("--title", default=None, help="page title")
     a = ap.parse_args()
     out = Path(
         a.out
@@ -664,7 +839,10 @@ def main() -> None:
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     notes = json.loads(Path(a.notes).read_text()) if a.notes else None
-    out.write_text(build(a.block, a.seed, notes), encoding="utf-8")
+    out.write_text(
+        build(a.block, a.seed, notes, run_dir=a.run_dir, label=a.label, title=a.title),
+        encoding="utf-8",
+    )
     print(out)
 
 
