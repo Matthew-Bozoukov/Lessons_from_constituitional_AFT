@@ -285,8 +285,8 @@ def main(argv: list[str] | None = None) -> None:
             hf_path = spec.hf_path
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
-            out_dir = run_dir(Path("output") / args.name,
-                              f"{spec.model_key} {datetime.now().strftime('%H%M%S')}")
+            out_dir = run_dir(Path(str(cfg.get("output_root") or Path("output") / args.name)),
+                              f"{cfg.get('run_name') or spec.model_key} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,

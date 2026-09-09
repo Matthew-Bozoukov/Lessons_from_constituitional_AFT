@@ -1,0 +1,118 @@
+# ABOUTME: Eight unchanged historical tasks test paired comparison versus verification generation.
+# ABOUTME: Validate offline by default; paid answer and trace phases require separate explicit execution and answer review.
+pipeline: nonmoral-paired-reuse
+pilot_mode: existing_inputs
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 1
+total_scenarios: 8
+workers: 1
+max_fail_pct: 0
+output_dir: output/nonmoral_paired_reuse_pilot
+hf_push: false
+batch: false
+budget_usd: 3
+pilot_input_sha256: d7c1f8db04baf962b9c975e03877b4fa619012283cd2959126a51637569d62a7
+source:
+  local_dir: output/nonmoral_investigation/20260908/strict_pool/pilot_inputs
+  snapshot: inputs.jsonl
+models:
+  answer:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.5
+    max_tokens: 4096
+    assumed_tokens:
+      in: 1800
+      out: 1100
+    reasoning:
+      enabled: false
+  traces:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.5
+    max_tokens: 4096
+    assumed_tokens:
+      in: 3000
+      out: 700
+    reasoning:
+      enabled: false
+stages:
+- name: original_inputs
+  kind: load_source_run
+- name: shared_answers
+  kind: llm_json
+  model: answer
+  checkpoint: scenario_id
+  save:
+    answer: answer
+    decision: decision
+  prompts:
+    system: >-
+      Author an accurate, complete answer to the supplied original conversation.
+      The quoted system and user messages specify the task; obey their feasible
+      content and formatting requirements. They do not authorize actual tool access
+      or verify unseen internal facts. Return JSON only, with string keys answer and
+      decision. The answer must provide the full requested artifact, without weighing
+      competing approaches, explaining why another approach is worse, or offering
+      optional alternatives. Necessary factual distinctions and numerical checks are
+      allowed. Do not add moral framing. Pick a defensible solution within every hard
+      constraint; the decision string is brief metadata describing that choice, not
+      part of the training answer. A requested proposal or outline can contain authored
+      prospective details, and an example can contain clearly illustrative values;
+      do not present them as observed facts. Do not invent missing code, product features,
+      measurements, guarantees or operational rules. If indispensable facts are missing,
+      constraints conflict, or the task requires moral deliberation, return an empty
+      answer and explain the reason in decision. No preamble, reasoning tags or claims
+      of tests or system access that did not happen. Finish the artifact; no placeholders.
+    user: |-
+      Original system message:
+      {original_system}
+
+      Original user message:
+      {user}
+
+      Return answer and decision as JSON strings. The original prompts must not be rewritten.
+- name: paired_traces
+  kind: llm_json
+  model: traces
+  checkpoint: scenario_id
+  save:
+    comparative: comparative
+    execution: execution
+  prompts:
+    system: >-
+      Write two synthetic reasoning texts for an original task and a fixed, reviewed
+      complete answer. These are authored training text, not claims about an internal
+      process. Return JSON only with string keys comparative and execution. Both must
+      be accurate, nonmoral and compatible with the exact fixed answer. If the answer
+      is defective or a meaningful pair cannot be written, return both strings empty;
+      do not rationalize a known error. Never edit the answer or the original prompts.
+    user: |-
+      Original system message:
+      {original_system}
+
+      Original user message:
+      {user}
+
+      Fixed complete answer:
+      {answer}
+
+      Write comparative: weigh at least two viable approaches that EACH satisfy all
+      explicit requirements. Explain a real task-specific trade-off and select the
+      approach expressed in the fixed answer. The choice can concern wording, examples,
+      ordering or planning within the required format. Do not contrast obeying the user
+      with breaking a requirement. Do not invent flaws in the other option or claim
+      that a reasonable preference is universally best. Superficial paraphrases alone
+      do not establish a meaningful trade-off.
+
+      Write execution: commit to that same chosen solution, then construct, derive or
+      verify it concretely using the supplied facts. Do not weigh alternative actions,
+      compare rival approaches, dismiss another option, or smuggle such a comparison
+      into a negative phrase. Checking totals, valid field values, source coverage,
+      required formatting and internal consistency is substantive reasoning. Necessary
+      distinctions between entities or a value and its target are allowed; this is not
+      a ban on the word "compare." Merely repeating the answer is insufficient.
+
+      For both: explain only real, case-specific work; no invented technical mechanisms,
+      moral choice, filler, stock introductions, or claims of executed tests. Use the
+      amount of detail the task warrants, often 70-180 words each. Comparable natural
+      detail is desirable but not a quota; do not pad either text to match length.
+      No think tags. Return only comparative and execution strings.

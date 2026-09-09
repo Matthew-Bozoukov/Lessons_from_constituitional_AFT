@@ -1,0 +1,189 @@
+# ABOUTME: Runs the authorized two-condition SFT sequentially on one protected 2xH200 pod.
+# ABOUTME: Uses the shared trainer/provisioner, durable local monitoring and verified owned-pod teardown.
+import argparse
+import json
+import os
+import re
+import shlex
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from src.infra import runpod
+from src.infra.endpoints.vllm import SshExec
+from src.infra.huggingface import hf_api, hf_org
+
+
+def dump(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def commands(plan):
+    assert len(plan["arms"]) == 2, "Exactly one LoRA per condition"
+    assert len({a["data_repo"] for a in plan["arms"]}) == 2
+    result = []
+    for arm in plan["arms"]:
+        assert re.fullmatch(r"[a-f0-9]{40}", arm["data_revision"])
+        assert re.fullmatch(r"[a-f0-9]{40}", plan["base_model_revision"])
+        argv = ["uv", "run", "torchrun", "--nproc_per_node=2",
+                "scripts/train/train_lora.py", "--config", "configs/train/sft.yaml",
+                "model=qwen36", "seed=0", "wandb=false", "constitution=none",
+                "data_repo=" + arm["data_repo"], "data_revision=" + arm["data_revision"],
+                "base_model_revision=" + plan["base_model_revision"]]
+        result.append(shlex.join(argv))
+    return result
+
+
+def run(plan_path, out):
+    load_dotenv(ROOT / ".env")
+    assert hf_org() == "dougalldeepmind"
+    plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+    assert plan.get("approved_for_training") is True
+    cmd = commands(plan)
+    out = Path(out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    assert not (out / "status.json").exists(), "Do not duplicate a paid launch"
+    state = {"phase": "preflight", "time_utc": datetime.now(timezone.utc).isoformat(),
+             "plan": plan, "commands": cmd, "owned_pod": None,
+             "gpu_budget_usd": 60, "completed_arms": []}
+    dump(out / "status.json", state)
+    for arm in plan["arms"]:
+        info = hf_api().dataset_info(arm["data_repo"], revision=arm["data_revision"])
+        assert info.sha == arm["data_revision"] and not info.private
+
+    dog = None
+    created = None
+
+    def registered(pod_id):
+        nonlocal dog, created
+        state["owned_pod"] = pod_id
+        created = time.time()
+        state["created_epoch"] = created
+        dump(out / "status.json", state)
+        # Price ceiling below is $10/h inclusive of a conservative disk allowance.
+        # Reserve $2 for API latency and teardown. Never leave bootstrap unprotected.
+        dog = runpod.start_watchdog(pod_id, int(58 / 10 * 3600), out / "watchdog.log")
+        info = runpod.call("GET", "/pods/" + pod_id)
+        state["gpu_hourly_usd"] = float(info["costPerHr"])
+        state["budget_hourly_usd"] = state["gpu_hourly_usd"] + 0.10
+        assert state["budget_hourly_usd"] <= 10, "Quoted pair exceeds reserved hourly ceiling"
+        dump(out / "status.json", state)
+
+    try:
+        rendered = runpod.up("nika-nonmoral-paired-train", train="configs/train/sft.yaml",
+                             model="qwen36", count=2, push_env=True,
+                             on_provisioned=registered)
+        (out / "provision.txt").write_text(rendered, encoding="utf-8")
+        host = re.search(r"^host:\s+(\S+)", rendered, re.M).group(1)
+        state.update(phase="bootstrap", host=host)
+        dump(out / "status.json", state)
+        assert runpod.wait_bootstrapped(state["owned_pod"], timeout_s=1800), "Bootstrap timed out"
+        remote = SshExec(host, port=8000, workdir="/root/work")
+        cuda = remote._ssh("cd /root/work && uv run python -c " + shlex.quote(
+            "import json, torch; assert torch.cuda.is_available(); "
+            "assert torch.cuda.device_count()==2; "
+            "print(json.dumps([torch.cuda.get_device_name(i) for i in range(2)]))"), timeout=180)
+        assert "H200" in cuda
+        state["cuda_check"] = cuda.strip()
+        remote_dir = "/root/work/output/nonmoral-paired-supervision"
+        script = ["#!/bin/bash", "set -u", "cd /root/work",
+                  "export PYTHONUNBUFFERED=1", "export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
+                  f"mkdir -p {shlex.quote(remote_dir)}"]
+        for i, command in enumerate(cmd):
+            script += [f"echo ARM_START_{i}", command + f" > {remote_dir}/arm_{i}.log 2>&1",
+                       "rc=$?", f"printf '%s' \"$rc\" > {remote_dir}/arm_{i}.exit",
+                       'if [ "$rc" -ne 0 ]; then exit "$rc"; fi']
+        script += [f"touch {remote_dir}/complete"]
+        script_text = "\n".join(script) + "\n"
+        (out / "remote_run.sh").write_text(script_text, encoding="utf-8")
+        remote._ssh(f"mkdir -p {remote_dir} && cat > {remote_dir}/run.sh", stdin_text=script_text)
+        remote._ssh(f"nohup bash {remote_dir}/run.sh > {remote_dir}/driver.log 2>&1 </dev/null &")
+        state["phase"] = "training"
+        last_sizes, last_change = {}, time.time()
+        while True:
+            probe = """
+import json
+from pathlib import Path
+p=Path('/root/work/output/nonmoral-paired-supervision')
+r={'complete':(p/'complete').exists(),'arms':[]}
+for i in range(2):
+ f=p/f'arm_{i}.log'; e=p/f'arm_{i}.exit'
+ text=f.read_text(errors='replace') if f.exists() else ''
+ r['arms'].append({'index':i,'bytes':f.stat().st_size if f.exists() else 0,
+                  'tail':text[-4000:], 'exit':int(e.read_text()) if e.exists() else None})
+r['metadata']={str(f):json.loads(f.read_text()) for f in Path('/root/work/output/train').glob('*/run_meta.json')}
+print(json.dumps(r))
+"""
+            try:
+                progress = json.loads(remote._ssh("python -c " + shlex.quote(probe), timeout=90))
+            except Exception as exc:
+                state["monitor_error"] = type(exc).__name__
+                dump(out / "status.json", state)
+                if time.time() - last_change > 1800:
+                    raise RuntimeError("Training monitor unavailable for 30 minutes") from exc
+                time.sleep(20)
+                continue
+            sizes = {a["index"]: a["bytes"] for a in progress["arms"]}
+            if sizes != last_sizes:
+                last_sizes, last_change = sizes, time.time()
+            state.update(progress=progress, elapsed_s=time.time()-created,
+                         estimated_gpu_usd=(time.time()-created)/3600*state["budget_hourly_usd"])
+            dump(out / "status.json", state)
+            for arm in progress["arms"]:
+                (out / f"arm_{arm['index']}_tail.log").write_text(arm["tail"], encoding="utf-8")
+                if arm["exit"] is not None and arm["exit"] != 0:
+                    raise RuntimeError(f"Training arm {arm['index']} failed with exit {arm['exit']}")
+                if arm["exit"] == 0 and arm["index"] not in state["completed_arms"]:
+                    state["completed_arms"].append(arm["index"])
+                    print(f"ARM_COMPLETE {arm['index']}", flush=True)
+            if progress["complete"]:
+                state["phase"] = "trained"
+                break
+            if time.time()-last_change > 1800:
+                raise RuntimeError("Training logs stalled for 30 minutes")
+            if state["estimated_gpu_usd"] >= 58:
+                raise RuntimeError("Reserved training spend reached")
+            print(json.dumps({"phase":state["phase"], "seconds":round(state["elapsed_s"]),
+                              "gpu_usd":round(state["estimated_gpu_usd"],3), "log_bytes":sizes}),flush=True)
+            time.sleep(30)
+        for file, meta in state["progress"]["metadata"].items():
+            dump(out / (Path(file).parent.name + "_run_meta.json"), meta)
+        dump(out / "status.json", state)
+    except BaseException as exc:
+        state["phase"] = "failed"
+        state["failure"] = str(exc)
+        dump(out / "status.json", state)
+        raise
+    finally:
+        if state["owned_pod"]:
+            state["terminated"] = runpod.terminate(state["owned_pod"])
+            state["remaining_pods"] = [{k:p.get(k) for k in ("id","name","costPerHr")}
+                                       for p in runpod.active_pods()]
+            state["elapsed_s"] = time.time()-created
+            state["estimated_gpu_usd"] = state["elapsed_s"]/3600*state.get("budget_hourly_usd",10)
+            from account_snapshot import snapshot
+            try:
+                state["accounts_after"] = snapshot()
+            finally:
+                dump(out / "status.json", state)
+            # Watchdog exits itself after observing the pod gone. Do not stop it
+            # before termination is verified, including on errors in this driver.
+        print(json.dumps({k:v for k,v in state.items() if k in
+                          ("phase","owned_pod","terminated","estimated_gpu_usd","failure")}),flush=True)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("plan")
+    parser.add_argument("--out", required=True)
+    args = parser.parse_args()
+    run(args.plan, args.out)

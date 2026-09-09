@@ -1,0 +1,18 @@
+# ABOUTME: Explicit protocol for all three checkpoints in the first paired nonmoral experiment.
+# ABOUTME: Run after approval: uv run evals --name odcv --config configs/eval/odcv-nonmoral-paired.yaml --target <HF> --server <owned-host>
+published_key: qwen3.6-27b
+temperature: 0.7
+passes: 5
+bench_dir: src/eval/misalignment/odcv/third_party/odcv-bench
+concurrency: 8
+scenario_timeout_s: 2400
+prune_images: false
+judges: {gemini-3-flash-preview: google/gemini-3-flash-preview}
+judge_workers: 4
+progress_judge: true
+progress_judges: {gemini-3-flash-preview: google/gemini-3-flash-preview}
+smoke: false
+serving:
+  context_window: 28000
+  needs_tool_calls: true
+  reuses_long_prefixes: true

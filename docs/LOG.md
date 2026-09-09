@@ -1,6 +1,219 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Authorized nonmoral baseline execution and fresh paired validation
+
+**Scope.** User approved $300 total including prior exposure, public HF publication
+under `dougalldeepmind`, fresh nonmoral scenarios, and one LoRA per paired condition.
+SFT is 2xH200 with dynamic batching; ODCV model serving is RunPod with local Docker.
+The new paired comparison takes priority if resources conflict. Unreliable fresh data
+stops that branch; existing-model baseline evaluation then remains the deliverable.
+
+**Execution.** Independent baseline and fresh-data lanes now run in parallel. Fresh
+validation generated all 32 pairs across eight domains in 96 calls ($0.920942), with
+no formatting failures. These development examples are excluded from SFT; review and
+the frozen length criteria still decide feasibility. The first historical nonmoral
+evaluation pod is protected by a separate watchdog, with actual GPU rate $3.49/hour.
+No new ODCV scores or trained adapters are available at this entry's creation.
+
+**Infrastructure.** Windows watchdog liveness no longer invokes destructive
+`os.kill(pid, 0)`; training provisioning supports immediate watchdog registration.
+ODCV judging has durable per-request reservations, including uncertain calls; Windows
+eval paths can use a short configured root and Docker's correct host address. Adapter
+publishing now defaults to public, with an explicit private option. Ninety focused
+pilot, watchdog, launch, judge and eval-framework tests pass. The training owner uses
+the shared recipe and monitors CUDA availability, progress, budget and termination.
+
+**Next.** Review the fresh pairs, permit at most one targeted correction per case,
+then either scale the frozen recipe or take the authorized baseline fallback. Keep
+the historical 18.25% observation separate from the new compliant paired intervention.
+
+## 2026-09-08 — Tagged reset produced three reviewed pairs ($0.412058)
+
+**Method.** User approved the bounded postmortem reset. Reused existing tagged draft/
+rewrite operators and the capped pilot driver; same eight original system/user messages,
+source-derived checks provided to the teacher, one semantic correction maximum per case.
+Historical failed config/output preserved. No new generator/judge framework. Twenty-eight
+driver tests pass, including phase filtering, prior spend retention and duplicate prevention.
+
+**Result.** Eight joint deliberation/answer drafts: one immediate pass. Seven corrections:
+five accepted deliberative examples, three exclusions. Five verification controls: three
+accepted, two exclusions for false numeric/unit checks. No formatting retries in 20 calls.
+Root and separate local reviewer agree; this is unblinded development review, not a
+population validity estimate. No second repair loop. Accepted: drawing error, model
+handoff and scheduling proposal. Original prompts/full final answers match between arms;
+local Qwen rendering preserves both CoTs.
+
+Costs: draft $0.165972, repair $0.173508, controls $0.072578, reset total **$0.412058**.
+Shared ledger including previous run **$0.599406**, no uncertain reservations or active
+lock. Accepted B/C token counts: 552/506, 564/711, 493/987 (aggregate ratio .7300).
+Verification is about 37% longer overall without padding: a remaining training confound.
+All eight outcomes, full examples, source hashes and chart are in
+`output/nonmoral_paired_reuse_pilot/restart_packet/`.
+
+**Parallel measurement work.** Prepared a three-existing-checkpoint, three-pass common
+ODCV proposal (720 rollouts, zero training). Separate target invocations avoid incorrect
+pooling; cost/preflight limitations are explicit in
+[baseline inventory](nonmoral_deliberation/baseline_inventory.md). No rental, SFT,
+evaluation or upload ran. See [current card](nonmoral_deliberation/experiment_card.md).
+
+## 2026-09-08 — Research pause and workflow postmortem
+
+User requested a stop and bird's-eye diagnosis. Comparing the original config/manifest
+with the new pilots identifies substantial drift: reasoned instruction override plus
+artifact fragments became compliant full answers with paired reasoning. The old recipe
+used tagged draft/rewrite stages and disabled the final semantic quality filter; exported
+yield is not comparable to the new acceptance rate. New JSON wrapping, one-shot answers,
+judge calibration and all-or-stop gating consumed attention without answering the main
+research questions. [Postmortem](nonmoral_deliberation/2026-09-08_postmortem.md) records
+evidence, fixes and a proposed bounded reset. No new calls, training or evaluation.
+
+## 2026-09-08 — Authorized eight-task pilot failed the answer gate ($0.187348)
+
+**Method.** User approved the exact eight-task Sonnet pilot under its $3 cap. Ran
+`nonmoral-paired-reuse` through shared answers only, preserving original task prompts.
+
+**Result.** Twelve requests in 198.7 seconds, all settled, **$0.187348**. Seven parsed
+records (six nonempty); proposal failed JSON parsing on all three attempts, causing
+the stage to abort. ERP required three attempts too. The five parsing failures contain
+unescaped quotes, not provider-reported truncation. Partial checkpoints and every raw
+response are preserved; no silent repair/replacement or reasoning generation occurred.
+
+Root and separate local review agree: **1 pass, 5 failures, 1 unresolved, 1 generation
+failure**, denominator eight. Shape tooltips pass. Drawing error lacks a next action;
+schema, handoff and ERP add unsupported system claims (ERP also reverses a dependency);
+manual outline unjustifiably refuses a feasible request. Dashboard causal claims remain
+unresolved. This is development review, not a blinded quality estimate or alignment result.
+
+**Next.** Proposed, not launched: existing tagged-text operator instead of JSON string
+escaping, and clearer generator rules on feasible constraints versus missing facts.
+Retain original prompts and all eight cases for a transparently revised development run.
+No approval record, active pilot lock, GPU, training or new evaluation. See
+[review card](nonmoral_deliberation/experiment_card.md) and
+`output/nonmoral_paired_reuse_pilot/20260908_210135` for bound reviews and provenance.
+
+## 2026-09-08 — Eight unchanged-task Sonnet pilot prepared, not launched
+
+**Question.** Can Sonnet produce valid comparison/verification pairs across several
+original-task domains, using a complete identical comparison-free final answer?
+
+**Preparation.** Frozen additional screens: 16 technical-documentation and 12
+communication prompts; independent local review of 12 referred candidates found eight
+feasible and four uncertain. Purposefully selected eight inputs: three UI tasks, four
+documentation tasks and one proposal. Verified exact system/user text against both the
+original corpus and the historical training mixture. Original answers and override
+rationales are absent from generation inputs. This is a development pilot, not an
+acceptance-rate estimate across the original 684 examples.
+
+**Local result.** Extended the existing pilot driver with hash-pinned local inputs,
+separate answer/trace phases, immutable answer snapshots and a required all-answer
+review before trace dispatch. Twenty-five offline tests pass, including fake-provider
+execution and stale-review rejection. All real input prompts render. No paid calls.
+
+**Next, pending user approval.** Eight Sonnet answers, local review, then eight paired
+traces; $3 cumulative cap, $0.22 assumption-based estimate at recorded prices. No paid
+judge or semantic-repair loop. Any failed answer stops the next phase; preserve the
+original denominator. This proposal does not launch training, evaluation or uploads.
+See [review card](nonmoral_deliberation/experiment_card.md) and
+`configs/data/synth/nonmoral-paired-reuse.yaml` for exact scope and prompts.
+
+## 2026-09-08 — Strict historical-task controls: baseline recovery and three UI examples
+
+**Question.** Can unchanged original nonmoral prompts support a control without
+comparison in either CoT or final answer, while keeping the output complete?
+
+**Method.** Parallel, bounded local work and free retrieval of existing public HF
+artifacts. Freeze 12 trained cases across three metadata domains before content review;
+separately freeze 12 more UI prompts for a prompt-only screen. No ODCV content enters
+selection. Preserve historical rows; no prompt repairs or invented missing inputs.
+
+**Results.** Recounting all 400 public nonmoral transcripts with the historical marker
+rule gives **398/400 = 99.5% submission**; the two absent markers are in reconstructed
+transcripts. The stale 320-row summary omitted that pass. Submission is not success;
+nonmoral progress remains ungraded. Pinned math evidence gives **98/240 = 40.83% MR**,
+but uses 28,000 context and a newer transcript-budget harness versus nonmoral's 16,384.
+No matched causal effect is inferred from the gap.
+
+The initial 12-case review found **1 ready prompt, 2 conditional, 9 excluded**, with
+**0 unchanged final answers reusable**. The additional 12-prompt screen found **2
+candidates, 10 exclusions**; the two denominators have different review depths and
+must stay separate. Three corrected strict UI examples are locally reviewable:
+drawing errors, shape tooltips and streaming-dashboard tooltips. CoT B/C lengths are
+91/90, 95/90 and 87/100 tokens (combined ratio .975) without padding. Original prompts
+and identical final answers were checked, including local Qwen rendering of both CoTs.
+One conditional game example and one excluded code example remain explicit boundaries.
+
+**Limit.** Correcting shared answers changes the historical recipe; two matched new arms
+can test comparison within that repaired subset, while the original model is an anchor.
+Three UI illustrations do not establish multi-domain feasibility or a training corpus.
+No paid model calls, training, GPU rental, new benchmark execution or uploads occurred.
+
+**Next oversight point.** Review the actual contrast at the
+[short experiment card](nonmoral_deliberation/experiment_card.md) and
+[paired examples](nonmoral_deliberation/reuse_paired_examples.md). Establish the eligible
+pool, row count and held-out families before a concrete paid launch proposal. Detailed
+[source review](nonmoral_deliberation/reuse_sample_review.md) and
+[baseline evidence](nonmoral_deliberation/baseline_inventory.md) preserve all exclusions
+and provenance. HF redirects to `dougalldeepmind` were verified for nonmoral artifacts.
+
+## 2026-09-08 — Parallel nonmoral review: reuse baselines, separate validity from contrast
+
+**Question.** Which existing baselines and smallest new ablations address the unexpected
+nonmoral alignment result without another sequential dataset/judge tuning loop?
+
+**Method.** Three parallel local reviews: artifact inventory, ablation design, and an
+independent reading of six calibration cases. No new API calls, GPU rental, training,
+or benchmark evaluation. Re-ran the hash-pinned arithmetic/text diagnostic successfully.
+
+**Findings.** Cached scores verify nonmoral **73/400 = 18.25%** and principle-scoped DA
+**43/400 = 10.75%** under matching recorded evaluation settings, with one checkpoint
+each. Nonmoral submission accounting covers only 320/400; progress is absent. Existing
+math-control and historical nonmoral adapters can be reused. Exact historical input is
+684 synthetic + 9,284 replay rows. One newly rewritten-CoT arm would be exploratory;
+two newly authored matched arms reduce writer/style asymmetry.
+
+The preceding Sonnet calibration spent $0.210076 across 14 calls. Its final audit
+accepted all three known defective answers. The aggregate 1/6 agreement is with
+provisional labels, not judge accuracy: short-control style ratings are disputed,
+and the mathematically valid proof overstates a competing method's requirements.
+Original outcomes remain preserved; no fresh v2 pilot launched. Total tracked pilot
+exposure remains $1.679760, including v1's uncertain reservations.
+
+**Next.** Recover existing math-evaluation provenance and full nonmoral completion
+accounting independently of local reuse/construct checks. Naturally short reasoning,
+math, comparative CoT and later stakes have separate claims in the
+[experiment matrix](nonmoral_deliberation/ablation_matrix.md). See the
+[inventory](nonmoral_deliberation/baseline_inventory.md),
+[validity review](nonmoral_deliberation/data_validity_review.md) and canonical
+[research brief](nonmoral_deliberation/research_brief.md). Paid work remains paused.
+The user changed the public HF destination to `dougalldeepmind`; `.env` HF_ORG is
+updated. Historical source IDs remain provenance, not current publication targets.
+
+## 2026-09-08 — Paired nonmoral pilot fails: 1/24 individual passes; $1.47 exposure
+
+**Hypothesis.** Broad nonmoral tasks can support matched comparative versus
+implementation/verification CoTs with identical prompts and complete final answers.
+
+**Method.** Frozen 24-candidate pilot, two per domain; Haiku 4.5 scenarios, Sonnet 5
+answers/traces, shuffled source-blind Gemini 3 Flash audit. Local review of every
+available answer and trace, independent code/math checks, pinned Qwen token lengths.
+Authorized cap $10; no GPU, training or ODCV. Original failures retained through
+documented checkpoint continuation; no post-abort candidate replacement.
+
+**Result.** 19 answers, 15 complete audited pairs, 12 within individual length bounds.
+Of 24 original candidates: nine generation failures, ten local content failures, four
+unresolved-content exclusions, one individual pass. Only 1/12 domains represented;
+the surviving set also fails the corpus-mean length bound. Gemini approved eight pairs
+after length screening; local review rejected seven (five failures, two unresolved).
+Recorded settled token cost $1.300936 plus $0.168748 retained reservations for three
+uncertain calls = $1.469684 exposure, not an account invoice. This is a failed data pilot,
+not an alignment/capability result. [Full results and artifacts](nonmoral_deliberation/2026-09-08_pilot_results.md).
+
+**Next steps.** Validate premises and answers before trace generation; separate
+content auditing from contrast scoring; test the auditor on known failures; fix output
+limits and freeze v2 before new paid work. The $10 pilot authorization does not launch
+full generation or training. All original v1 gates remain recorded.
+
 ## 2026-09-06 — Thinking mode is a model-family fact, not a launch argument
 
 **Hypothesis.** Nothing about an arm's thinking mode is decided per launch: every arm we have

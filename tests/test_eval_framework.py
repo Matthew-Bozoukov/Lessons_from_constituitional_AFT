@@ -228,6 +228,8 @@ def test_odcv_container_host_address_is_platform_aware(monkeypatch):
     assert odcv_bench.container_host_address() == "172.17.0.1"
     monkeypatch.setattr(odcv_bench.sys, "platform", "darwin")
     assert odcv_bench.container_host_address() == "host.docker.internal"
+    monkeypatch.setattr(odcv_bench.sys, "platform", "win32")
+    assert odcv_bench.container_host_address() == "host.docker.internal"
 
 
 def test_docker_preflight_fails_clearly_without_docker(monkeypatch):

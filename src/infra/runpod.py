@@ -565,31 +565,68 @@ def start_watchdog(
 ) -> subprocess.Popen:
     """Spawn the detached watchdog for `pod_id`, bound to THIS process's lifetime.
 
-    Own session (`start_new_session`), so a Ctrl-C, a closed terminal or a kill -9 of the
-    chat process does not take the watchdog with it: it notices the parent is gone and
-    terminates the pod. It reads the RunPod key from .env like everything else.
+    A separate session on POSIX, or a detached, windowless process on Windows, keeps
+    terminal closure from taking the watchdog with it. It notices the parent is gone
+    and terminates the pod. It reads the RunPod key from .env like everything else.
     """
-    log = open(log_path, "a")
-    return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "src.infra.runpod",
-            "watchdog",
-            pod_id,
-            str(os.getpid()),
-            str(max_lifetime_s),
-            str(log_path),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        cwd=str(Path.cwd()),
+    detached = (
+        {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        if sys.platform == "win32" else {"start_new_session": True}
     )
+    with open(log_path, "a") as log:
+        return subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "src.infra.runpod",
+                "watchdog",
+                pod_id,
+                str(os.getpid()),
+                str(max_lifetime_s),
+                str(log_path),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            **detached,
+            cwd=str(Path.cwd()),
+        )
 
 
 def _parent_alive(pid: int) -> bool:
+    """Check liveness without sending a destructive signal on Windows."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        # os.kill(pid, 0) calls TerminateProcess on Windows. A zero-time process
+        # wait instead observes whether it has exited, without changing its state.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == 87:  # ERROR_INVALID_PARAMETER: PID no longer exists
+                return False
+            if error == 5:  # ERROR_ACCESS_DENIED: same conservative rule as POSIX
+                return True
+            raise ctypes.WinError(error)
+        try:
+            state = kernel.WaitForSingleObject(handle, 0)
+            if state == 0:  # WAIT_OBJECT_0: process exited
+                return False
+            if state == 258:  # WAIT_TIMEOUT: still running
+                return True
+            raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -1013,7 +1050,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        model: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
-       image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
+       image: str = IMAGE, countries: str = "", push_env: bool = False,
+       on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
         up --name <n> --train configs/train/sft.yaml --model qwen36   training card + this repo
@@ -1129,6 +1167,10 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         ports=("8080/http", "22/tcp"),
     )
     print(f">>> pod {pod_id} — BILLING NOW")
+    if on_provisioned is not None:
+        # As in provision_eval_pod: arm teardown as soon as billing starts, before
+        # SSH/bootstrap waits. The caller owns cleanup even if its callback raises.
+        on_provisioned(pod_id)
     ip, port = _ssh_endpoint(pod_id)
     host = f"root@{ip}:{port}"
     reachable = _wait_for_ssh(host)
