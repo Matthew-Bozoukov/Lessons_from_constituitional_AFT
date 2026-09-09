@@ -603,3 +603,16 @@ set, the per-archetype split is the dataset's own and NOT even, and only `subsam
 1000 actually samples. Generations per row also differ by archetype: 6 (1 pressure + 3x
 belief_elicit_1 + belief_elicit_2 + belief_elicit_3) for four of them, 4 for statistics (no
 elicit_2/3), 1 for provided_facts (pressure only) -- 4,438 generations per 1000-row run.
+
+## A RunPod host can have a crawling network; speed-test before the boot script has cost an hour (2026-09-09)
+
+Three H200 training pods rented at the same minute: the one in `SE` reached READY (clone +
+`uv sync`) in 3 minutes; the two in `EUR-IS-4` were still downloading wheels after 20 minutes,
+with `curl` from the pod measuring 14 KB/s from Hugging Face and PyPI timing out. Nothing in
+the boot log says "slow" -- it just keeps printing `Downloading ...` lines -- so the failure
+looks like ordinary boot until you compare against a sibling. `uv run runpod up` prints
+`ssh: ready` well before the install finishes: at that moment run a 15-second download test
+on the pod (`curl -sL -o /dev/null -m 15 -w '%{speed_download}' <a HF weight shard URL>`) and
+terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the datacenter that
+worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
+datacenter; the REST pod object does not.
