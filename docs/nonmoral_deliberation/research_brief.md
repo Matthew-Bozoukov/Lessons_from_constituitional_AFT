@@ -15,7 +15,7 @@ One LoRA per condition, formal capability testing deferred as already agreed.
 
 **Current state (2026-09-09):** user requested moving on from controls and approved
 creating the broader dataset: about 700 accepted examples, Sonnet authoring/review,
-$100 generation/checking ceiling within the existing $300 total. The user reviewed the first 12 and accepted the scenario families ("all are ok i guess? idk").
+$140 current generation/checking allocation within the existing $300 total (prospectively reallocated from $100 after quality exclusions; see the experiment card). The user reviewed the first 12 and accepted the scenario families ("all are ok i guess? idk").
 No further taste approval is needed; factual and completeness checks remain our responsibility. Each task gets one natural reasoning-and-answer
 response; paired-arm, identical-answer and length-matching constraints are removed.
 Keep completeness, factual correctness, nonmoral judgement and ODCV-independent selection.

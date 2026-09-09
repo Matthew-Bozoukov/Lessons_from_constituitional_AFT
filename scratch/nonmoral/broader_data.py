@@ -139,7 +139,9 @@ def production(cfg, args):
         finally:
             ledger=json.loads((ROOT/'spend.json').read_text())
             state.update(cumulative_exposure_usd=sum(e['charged_or_reserved_usd'] for e in ledger),
-                         cumulative_calls=len(ledger),unsettled_calls=sum(e['status']!='settled' for e in ledger))
+                         cumulative_calls=len(ledger),
+                         unsettled_calls=sum(e['status'] not in ('settled','retained_terminal_reservation') for e in ledger),
+                         retained_terminal_calls=sum(e['status']=='retained_terminal_reservation' for e in ledger))
             result=run_dir/'dataset.jsonl'
             if result.exists():
                 generated=read_rows(result)

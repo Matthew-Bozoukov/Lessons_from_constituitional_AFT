@@ -14,20 +14,20 @@ The user accepts all twelve scenario families. No further taste checkpoint or ba
 is needed. Source requests stay unchanged; incomplete or contradictory requests are
 excluded. Full reasoning and full answers are retained, with material-error checks.
 
-Production batches01–04 retained **122 complete candidates** (7 + 11 + 56 + 48).
-First12 remains a separate feedback packet. Batch04 admitted111 of120 sources,
-produced105 full answers, and completed105 independent model reviews. Final local
-review:48 accepted,52 rejected,5 held. Six author failures were not retried; five
-exception-path reservations retain their full cost bounds. All105 conversations were
-read locally; two local/model disagreements were adjudicated from the full text.
-Broader exposure after batch04: **$18.758690**, including retained maximum charges.
-Batch05 produced119/120 sources; local review is underway. One filtered source was
-not retried; broader exposure after its full reservation is$19.752270. Production uses8 workers and frozen per-phase
-configs, with16,384/12,288 author/reviewer token ceilings. No retrospective resampling. From batch06, recipe7 uses36 distinct subtask directions
-within the existing domains; see[diversity rationale](broader_diversity_directions.yaml).
+Production batches01–05 retained **161 complete candidates** (7 + 11 + 56 + 48 + 39).
+First12 remains a separate feedback packet. Batch05 admitted 105 of 119 completed
+sources, produced 103 full answers, and completed 101 independent model reviews.
+All 103 authored conversations were read locally: 39 accepted, 59 rejected, 5 held.
+Two model-review failures were already local rejects, so the final reviewed dataset
+contains 39 accepted, 57 rejected and 5 held. Failed calls were not retried; terminal
+exceptions retain their full reserved cost. Broader exposure: **$27.707596**.
+Batch06 source generation has started using recipe7, with 36 distinct subtask directions
+within the existing domains; see [diversity rationale](broader_diversity_directions.yaml).
+Production uses 8 workers and frozen per-phase configs, with 16,384/12,288
+author/reviewer token ceilings. No retrospective resampling.
 
 [Public growing corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth):
-122 accepted default rows at revision`ccfc003805c8c8c3c2b073aa315daa2d48490550`.
+161 accepted default rows at revision `38edff84f372645d6ffe27789a3a82989a417248`.
 Four public files were downloaded anonymously and hash-verified. Stage candidates,
 dispositions, checks and stored raw calls are separate audit material.
 
