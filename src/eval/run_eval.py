@@ -18,7 +18,7 @@ from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.infra.huggingface import hf_repo_id, push_run_dir
-from src.naming import artifact_name, check_distinct, eval_name, run_dir
+from src.naming import check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
@@ -69,23 +69,25 @@ def _results_markdown(target: str, mode: str, summary: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str) -> dict:
+def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str,
+                 source_revision: str | None = None) -> dict:
     """The card every published run carries. `experiment`/`models` are the caller's,
     because a pooled run has no single served target to describe itself from."""
+    generation = cfg.get("generation")
+    if generation is None:
+        # ODCV stores sampling and repeat settings at the config root, not `generation`.
+        generation = {key: cfg[key] for key in (
+            "temperature", "top_p", "seed", "max_tokens", "passes", "concurrency",
+            "scenario_timeout_s", "serving", "judges", "judge_workers",
+            "progress_judge", "progress_judges", "judge_budget", "smoke") if key in cfg}
+    generation = OmegaConf.to_container(OmegaConf.create(generation), resolve=True)
     return {
         "experiment": experiment,
         "date_generated": date.today().isoformat(),
         "constitution": str(cfg.get("constitution", "none")),
-        "source_repo": f"teaching_claude_why_replication @ {_git_sha()}",
+        "source_repo": f"teaching_claude_why_replication @ {source_revision or _git_sha()}",
         "models": models,
-        # `cfg.get("generation", {})` returns a PLAIN dict when the key is absent, and
-        # to_container rejects that (ValueError: Input cfg is not an OmegaConf config
-        # object) - so an eval whose config has no `generation:` block (swebench_mini has
-        # none; its sampling is upstream's) crashed HERE, in the push epilogue, after a
-        # complete arm of 128 rollouts, taking the remaining targets with it. Convert only
-        # a real node. Re-applied after the entrypoint moved from scripts/run_eval.py.
-        "generation_config": json.dumps(
-            OmegaConf.to_container(cfg.generation, resolve=True) if "generation" in cfg else {}),
+        "generation_config": json.dumps(generation),
         "schema": "rollouts/: self-contained transcripts; results/: results.json + judge/eval outputs; metadata/: run_meta.json + config + provenance",
         "provenance": command,
     }
@@ -98,15 +100,13 @@ def _git_sha() -> str:
 
 
 def _run_repo(name: str, model_key: str, run_name: str) -> str:
-    """THE name of one eval run: `<date>-<eval key>-<subject>` (src/naming.py).
+    """Build HF identity from the eval and target, independent of the local directory.
 
-    `model_key` is the subject: a target's own name for an ordinary arm, and whatever the
-    eval's `pool()` decided for a pooled one. `run_name` is the escape hatch, and the only
-    one: a target from before this law has a name too long or too shapeless to build a run
-    name out of, so `run_name=<subject>` on the CLI supplies the subject and the law still
-    supplies the date.
+    `run_name` only labels the local run directory. Keeping it in this helper's signature
+    preserves existing callers, but it must never erase the measured model or arm from
+    the published name. Overlong legacy identities fail naming preflight explicitly.
     """
-    return artifact_name(run_name) if run_name else eval_name(name, model_key)
+    return eval_name(name, model_key)
 
 
 def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str,
@@ -291,7 +291,7 @@ def main(argv: list[str] | None = None) -> None:
             out_dir = run_dir(Path(str(cfg.get("output_root") or Path("output") / args.name)),
                               f"{cfg.get('run_name') or spec.model_key} {datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
-            write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
+            launch_meta_path = write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
                                   "target_revision": spec.revision,
                                   "base_model_revision": spec.base_revision,
@@ -302,14 +302,19 @@ def main(argv: list[str] | None = None) -> None:
             summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
+            launch_meta = json.loads(launch_meta_path.read_text())
             url = _publish(
                 out_dir, name=args.name, model_key=spec.model_key, mode=spec.mode,
                 target=hf_path, summary=summary, push=not args.no_push,
                 run_name=str(cfg.get("run_name") or ""),
                 card=_card_fields(
-                    args.name, cfg, command,
+                    args.name, OmegaConf.create(launch_meta["config"]), command,
                     experiment=f"{args.name} eval of {hf_path} (mode={spec.mode})",
-                    models=f"target={hf_path} base={spec.base_model}"),
+                    models=json.dumps({"target": launch_meta["target"],
+                                       "target_revision": launch_meta["target_revision"],
+                                       "base": launch_meta["base_model"],
+                                       "base_revision": launch_meta["base_model_revision"]}),
+                    source_revision=launch_meta["git_sha"]),
                 tags=["eval-run", f"eval:{args.name}", f"model:{spec.model_key}",
                       f"mode:{spec.mode}"])
             published.append({"target": hf_path, "model_key": spec.model_key,

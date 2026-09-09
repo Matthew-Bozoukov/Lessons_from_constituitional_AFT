@@ -13,6 +13,39 @@ from src.model_profile import model_profile
 QWEN36_PROFILE = model_profile("qwen36")
 
 
+@pytest.mark.parametrize("local_label", ["", "short", "odcv-nonmoral-lf-common-3x"])
+def test_local_run_label_cannot_replace_published_eval_identity(monkeypatch, local_label):
+    from src.eval.run_eval import _run_repo
+    monkeypatch.setattr("src.naming.today", lambda: "2026-09-09")
+    assert _run_repo("odcv", "qwen36_0_nonmoral_7", local_label) == (
+        "2026-09-09-odcv-qwen36-0-nonmoral-7")
+    assert _run_repo("odcv", "qwen36_0_math_7", local_label) == (
+        "2026-09-09-odcv-qwen36-0-math-7")
+
+
+def test_local_label_does_not_bypass_legacy_identity_length_preflight():
+    from src.eval.run_eval import _run_repo
+    from src.naming import NamingError
+    with pytest.raises(NamingError, match="over the 96"):
+        _run_repo("odcv", "qwen36_" + "a" * 100, "short")
+
+
+def test_eval_card_records_root_sampling_and_launch_revision(monkeypatch):
+    from omegaconf import OmegaConf
+    from src.eval.run_eval import _card_fields
+    monkeypatch.setattr("src.eval.run_eval._git_sha", lambda: "later-unrelated-commit")
+    cfg = OmegaConf.create({"temperature": .7, "passes": 3,
+                           "serving": {"context_window": 28000},
+                           "judge_budget": {"max_tokens": 8192}})
+    card = _card_fields("odcv", cfg, "command", experiment="example", models="pinned",
+                        source_revision="launch-commit")
+    assert json.loads(card["generation_config"]) == OmegaConf.to_container(cfg)
+    assert card["source_repo"].endswith("@ launch-commit")
+    cfg = OmegaConf.create({"generation": {"temperature": .2}, "temperature": .7})
+    card = _card_fields("odcv", cfg, "command", experiment="example", models="pinned")
+    assert json.loads(card["generation_config"]) == {"temperature": .2}
+
+
 def test_shell_preflight_checks_physical_bytes_without_changing_data(tmp_path):
     from src.eval.docker import require_lf_shell_scripts
     script = tmp_path / "validator.sh"
