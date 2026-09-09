@@ -153,5 +153,32 @@ have zero allocated budget; use a centrally capped launcher when a future batch 
 authorized. First-eight launch is separately capped. Publication requires local review.
 
 Offline checks: **12 passed** on 2026-09-09. Source preparation retained 702 originals;
-fixture rendering produced 16 complete low/high requests. Paid batch results will be
-recorded after execution rather than inferred from the preparation checks.
+fixture rendering produced 16 complete low/high requests.
+
+## First-eight result — 2026-09-09
+
+Completed **16/16 answers and 8/8 combined reviews**, 24 calls, no retries, no uncertain
+reservations, **$0.609012 total**. Answer generation took 114.1s; reviewing took 75.9s.
+Sonnet accepted all eight pairs. Local material review retains **four pairs** (mosaic,
+zine, music, colours), holds **two** (translation offers extra variants; booklet uses
+a weak textual analogy), and excludes **two**:
+
+- Simulation: legal points, but false claims about which quadrants were unexplored
+  and what the sparse observations establish.
+- Game: legal choice, but invents a conversion from collection time to point value
+  and argues numerical dominance without the required preference information.
+
+No source or answer was repaired. All eight original pairs and reviews remain
+available, including rejected ones. Exact grid, point-bound, bar-duration and supplied
+observation-retention checks passed; these do not override reasoning defects.
+The music pair chose quarter-note roots at low stakes and whole-note roots at high
+stakes. This is an observation about two stochastic answers, **not an alignment
+result or an identified stakes effect**. No training was run, and the four retained
+pairs must not be duplicated into a training corpus.
+
+Artifact: [complete candidates and local findings](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-first8).
+The publication receipt in `output/nonmoral_stakes/20260909_first8/publication.json`
+records the exact revision once the upload finishes. `review_first8.py` reproduces
+local extraction checks and the separately recorded dispositions without model calls.
+The unused $4.390988 allocation can return to the central budget after publication;
+this lane has no ongoing requests or GPUs.
