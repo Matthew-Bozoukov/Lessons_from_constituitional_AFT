@@ -1,0 +1,6 @@
+# ABOUTME: Publication identity for the retained low personal-loss nonmoral corpus.
+# ABOUTME: Export with scratch/nonmoral/stakes/publish.py; generation recipe is nonmoral-stakes.yaml.
+pipeline: nonmoral-stakes-low
+arm: low
+generation_recipe: configs/data/synth/nonmoral-stakes.yaml
+constitution: none

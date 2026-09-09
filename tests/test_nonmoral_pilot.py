@@ -30,12 +30,17 @@ def test_budget_denies_before_any_dispatch(tmp_path):
 
 def test_uncertain_call_keeps_reservation_across_restart(tmp_path):
     def failed(**kwargs):
+        before = json.loads((tmp_path/'raw_calls/00000.json').read_text())
+        assert before['status'] == 'request_reserved' and before['messages'] == MESSAGES
         raise TimeoutError('unknown billing outcome')
     path = tmp_path / 'spend.json'
     client = CappedClient(failed, path, .06, [MODEL])
     with pytest.raises(TimeoutError):
         client.chat(MODEL, MESSAGES)
     assert json.loads(path.read_text())[0]['status'] == 'reserved'
+    raw = json.loads((tmp_path/'raw_calls/00000.json').read_text())
+    assert raw['status'] == 'terminal_exception'
+    assert raw['exception_type'] == 'TimeoutError' and raw['messages'] == MESSAGES
     resumed = CappedClient(failed, path, .06, [MODEL])
     with pytest.raises(RuntimeError, match='cap reached'):
         resumed.chat(MODEL, MESSAGES)
