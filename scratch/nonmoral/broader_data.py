@@ -350,10 +350,10 @@ def publish_production(config_path, root=ROOT):
         models=dict(generator=SONNET, answerer=SONNET, reviewer=SONNET,
                     provider='Anthropic via OpenRouter', revision='API model revisions are not immutable; exact requests and responses retained'),
         generation_config='Per-phase frozen configurations under audit/batch*/; config.yaml is the current recipe, not a substitute for those historical configs.',
-        schema='dataset.jsonl: locally accepted user/reasoning/response rows; stages/: all source and answer candidates; audit/: full runs, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
+        schema='dataset.jsonl: locally accepted user/reasoning/response rows; stages/: all source and answer candidates; audit/: runs, returned raw calls, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
         provenance='uv run python scratch/nonmoral/broader_data.py --phase sources --batch <batch> --execute; --phase answers --batch <batch> --source-review <review> --execute; --publish-production. Exact inputs and source hashes retained per phase.',
         downstream='After enough accepted examples, freeze 684 by the preregistered domain-balanced selection, replace the original 684 synthetic slots while preserving all 9284 replay rows, and publish a separate training mixture. Held/rejected rows are audit data only.',
-        limitations='Not an alignment result. No new LoRA has been trained on this corpus. Model reviews are fallible; local exclusions are retained. Default dataset contains accepted examples only.')
+        limitations='Not an alignment result. No new LoRA has been trained on this corpus. Model reviews are fallible; local exclusions are retained. Default dataset contains accepted examples only. Early exception-path calls retained request hashes and maximum cost reservations but did not save their full exception responses; subsequent calls persist requests before dispatch and errors on failure.')
     configs = [dict(config_name='dataset', data_files='dataset.jsonl', default=True)]
     configs += [dict(config_name=p.stem, data_files='stages/'+p.name)
                 for p in sorted(dest.glob('stage_*.jsonl'))]

@@ -230,16 +230,27 @@ class CappedClient:
             self.entries.append(entry)
             call_index = len(self.entries)-1
             self.save()
-        # Exception or interruption deliberately retains the reservation on disk.
-        result = self.send(model=model, messages=messages, temperature=temperature,
-                           max_tokens=max_tokens, **kwargs)
-        actual = cost_of(model, result.prompt_tokens, result.completion_tokens)
-        with self.lock:
             raw_dir = self.path.parent / 'raw_calls'
             raw_dir.mkdir(exist_ok=True)
             raw_path = raw_dir / f'{call_index:05d}.json'
+            raw = dict(model=model, messages=messages, options=kwargs,
+                       temperature=temperature, max_tokens=max_tokens,
+                       status='request_reserved')
+            raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
+        # Exception or interruption deliberately retains the reservation on disk.
+        try:
+            result = self.send(model=model, messages=messages, temperature=temperature,
+                               max_tokens=max_tokens, **kwargs)
+        except BaseException as exc:
+            raw.update(status='terminal_exception', exception_type=type(exc).__name__,
+                       error=str(exc), accounting='Full reservation retained; billing unknown')
+            raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
+            raise
+        actual = cost_of(model, result.prompt_tokens, result.completion_tokens)
+        with self.lock:
             raw_path.write_text(json.dumps(dict(model=model, messages=messages, options=kwargs,
                                                temperature=temperature, max_tokens=max_tokens,
+                                               status='completed',
                                                content=getattr(result, 'content', ''),
                                                finish_reason=getattr(result, 'finish_reason', None),
                                                prompt_tokens=result.prompt_tokens,
