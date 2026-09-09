@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Corrected harness audits pass; timeout evidence preservation strengthened
+
+The first corrected nonmoral pass completed **80/80** with successful harness
+statuses. In the same six cases that exposed the earlier defect, executable-shell
+CRLF failures fell **6/6 to 0/6**. A separate earliest-six audit also passed; there
+are 11 unique audited scenarios because the samples overlap. This is execution
+health evidence, not outcome judging. Existing CSV parsing/fixture limitations
+remain documented and unchanged.
+
+A long but ultimately successful rollout prompted inspection of deadline handling.
+The old timeout path discarded captured stdout and could permit a missing-transcript
+retry. The shared fix preserves observed events as explicitly partial transcripts,
+retains timeout status and prevents a fresh paid draw. It does not fabricate task
+completion. The already-loaded nonmoral process has a narrowly scoped archival
+guard; ordinary monitoring errors only retry, and a confirmed unrecoverable timeout
+stops that process before its generic retry. No timeout had occurred at this entry.
+Old/new code hashes and any affected cells are recorded separately. Final reporting
+now includes explicit truncation, partial-record and reconstruction evidence, with
+missing flags distinguished from false flags.
+
 ## 2026-09-09 — Fresh paired validation failed; CRLF baseline attempt invalidated before judging
 
 **Data.** Thirty-two fresh tasks across eight domains produced complete B/C examples;

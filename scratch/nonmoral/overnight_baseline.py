@@ -71,8 +71,8 @@ def main(checkpoint='nonmoral'):
         with lock:
             state.update(updates)
             state['updated_at_unix'] = time.time()
-            if state.get('rented_at_unix') and not state.get('terminated_at_unix'):
-                elapsed = time.time()-state['rented_at_unix']
+            if state.get('rented_at_unix'):
+                elapsed = (state.get('terminated_at_unix') or time.time())-state['rented_at_unix']
                 state['elapsed_seconds'] = elapsed
                 state['estimated_gpu_and_storage_usd'] = elapsed/3600*(state.get('actual_gpu_hourly_usd',4.5)+0.1)
             ledger = OUT/'baseline_judge_ledger.json'
@@ -103,6 +103,8 @@ def main(checkpoint='nonmoral'):
     config=OUT/f'{prefix}_config.yaml'
     OmegaConf.save(cfg,config)
     sources=['src/eval/run_eval.py','src/eval/misalignment/odcv/runner.py',
+             'src/eval/docker.py','src/eval/misalignment/odcv/odcv_rollout.py',
+             'src/eval/misalignment/odcv/recover.py',
              'src/eval/misalignment/odcv/odcv_judge.py','src/eval/misalignment/odcv/progress_judge.py',
              'src/infra/runpod.py','scratch/nonmoral/overnight_baseline.py']
     save(config_sha256=hashlib.sha256(config.read_bytes()).hexdigest(),

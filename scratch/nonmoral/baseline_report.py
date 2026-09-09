@@ -57,6 +57,41 @@ def protocol(cfg):
     return out
 
 
+def health_evidence(cell, text):
+    """Positive markers supplement flags; absence of a flag is not a false value."""
+    return dict(token_limit_flag=cell.get('token_limit_hit'),
+                partial_flag=cell.get('transcript_partial'),
+                transcript_source=cell.get('transcript_source'),
+                token_limit_marker='[Harness] transcript token limit' in text,
+                partial_marker=('[partial transcript:' in text or
+                                '[transcript truncated: container killed before completion]' in text),
+                timeout_reconstruction_marker='reconstructed from captured executor log' in text,
+                timeout=str(cell.get('status', '')).startswith('timeout'))
+
+
+def summarise_health(evidence, audits):
+    def flag(name, marker):
+        return dict(positive=sum(r[name] is True or r[marker] for r in evidence),
+                    explicit_true=sum(r[name] is True for r in evidence),
+                    explicit_false=sum(r[name] is False for r in evidence),
+                    unknown_flag=sum(r[name] is not True and r[name] is not False for r in evidence),
+                    marker_detected=sum(r[marker] for r in evidence),
+                    false_flag_with_positive_marker=sum(r[name] is False and r[marker] for r in evidence))
+    reconstructed = sum(r['transcript_source'] == 'docker_log_reconstruction' or
+                        r['timeout_reconstruction_marker'] for r in evidence)
+    audit_counts = [a.get('reconstructed') for a in audits]
+    return dict(n_transcripts=len(evidence), timeout_statuses=sum(r['timeout'] for r in evidence),
+                token_limit=flag('token_limit_flag', 'token_limit_marker'),
+                partial=flag('partial_flag', 'partial_marker'),
+                identified_timeout_reconstructions=reconstructed,
+                post_pass_reconstructions_reported=sum(n for n in audit_counts if isinstance(n, int)),
+                reconstruction_audits_unknown=sum(not isinstance(n, int) for n in audit_counts),
+                transcript_sources=dict(Counter(r['transcript_source'] or '[not recorded]' for r in evidence)),
+                note='Partial/token counts are positive evidence, not proof that every other trace is complete. '
+                     'Unknown flags are reported separately. Timeout reconstructions identified in cell metadata/markers '
+                     'and generic post-pass reconstruction audit counts are separate code paths; the latter lack cell identities.')
+
+
 def load_arm(root, name, expected):
     root = Path(root)
     result_path = root/'results/results.json'
@@ -88,12 +123,14 @@ def load_arm(root, name, expected):
     found = {p.parent.relative_to(root/'rollouts').as_posix(): p for p in (root/'rollouts').glob('*/*/pass*/messages_record.txt')}
     require(set(found) == expected_paths and all(p.stat().st_size > 0 for p in found.values()),
             f'{name}: transcript identity/coverage mismatch')
-    statuses, submitted = Counter(), 0
+    statuses, submitted, evidence = Counter(), 0, []
     for key, path in found.items():
         cell = read(path.parent/'cell_meta.json')
         require(cell['judged'] is True, f'{name}/{key}: transcript not judged')
         statuses[str(cell['status'])] += 1
-        submitted += SUBMIT_MARKER in path.read_text(encoding='utf-8', errors='replace')
+        text = path.read_text(encoding='utf-8', errors='replace')
+        submitted += SUBMIT_MARKER in text
+        evidence.append(health_evidence(cell, text))
     require(data['submission']['overall']['n_rollouts'] == 240, f'{name}: incomplete submission denominator')
     require(round(100*submitted/240, 1) == data['submission']['overall']['submitted_pct'],
             f'{name}: submission summary disagrees with actual transcripts')
@@ -116,6 +153,7 @@ def load_arm(root, name, expected):
                    progress_summary=progress['ours']['overall'], coverage_cells=80, passes=3,
                    runtime_statuses=dict(statuses),
                    non_ok_runtime_status_count=sum(n for s, n in statuses.items() if s not in ('ok', 'cached')),
+                   transcript_health=summarise_health(evidence, passes['audits']),
                    pass_audits=passes['audits'])
     return summary, cells, protocol(cfg)
 
@@ -146,6 +184,14 @@ def build_report(paths, out, bench=BENCH):
     for name, difference in differences.items():
         d = difference['stats']['mr']
         lines.append(f"| Nonmoral − {LABELS[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
+    lines += ['', '| Checkpoint | Timeouts | Token-limit evidence (unknown flags) | Partial evidence (unknown flags) | Reconstructed: timeout / post-pass |',
+              '|---|---:|---:|---:|---:|']
+    for a in arms.values():
+        h = a['transcript_health']
+        token, partial = h['token_limit'], h['partial']
+        audit_suffix = f" ({h['reconstruction_audits_unknown']} unknown audits)" if h['reconstruction_audits_unknown'] else ''
+        lines.append(f"| {a['label']} | {h['timeout_statuses']}/240 | {token['positive']}/240 ({token['unknown_flag']}) | {partial['positive']}/240 ({partial['unknown_flag']}) | {h['identified_timeout_reconstructions']} / {h['post_pass_reconstructions_reported']}{audit_suffix} |")
+    lines += ['', 'Health counts retain timeout/partial transcripts in the scored denominator. Positive metadata or archived markers establish an event; missing flags remain unknown, including cached rows. Unknown-flag counts can overlap marker-positive cases. Reconstruction columns distinguish identified timeout recovery from aggregate post-pass recovery; they do not identify every recovered cell. Coverage means a scored trace exists, not that the task was completed.']
     lines += ['', 'Intervals use existing `odcv.summarise` and `stats.arm_difference` with every rollout retained. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is the existing separately judged, submission-capped axis. Neither is a capabilities benchmark.', '', f'![MR with scenario confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
     (out/'comparison.md').write_text('\n'.join(lines), encoding='utf-8')
     return report

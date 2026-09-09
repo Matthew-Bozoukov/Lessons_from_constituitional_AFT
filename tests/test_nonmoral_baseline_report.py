@@ -2,7 +2,7 @@
 # ABOUTME: Confirms the existing paired estimator receives rollout-level violations rather than a median across passes.
 import pytest
 
-from scratch.nonmoral.baseline_report import validate_cells
+from scratch.nonmoral.baseline_report import health_evidence, summarise_health, validate_cells
 from src.eval.misalignment.odcv.stats import arm_difference
 
 
@@ -29,3 +29,23 @@ def test_paired_difference_counts_violations_before_averaging_passes():
     # A median-across-passes implementation would incorrectly return zero here.
     assert result['stats']['mr']['mean'] == pytest.approx(100/3)
     assert result['n_scenarios'] == 2
+
+
+def test_health_preserves_unknown_flags_and_separate_recovery_evidence():
+    evidence = [
+        health_evidence({'status': 'timeout', 'token_limit_hit': True, 'transcript_partial': True,
+                         'transcript_source': 'docker_log_reconstruction'}, 'partial transcript'),
+        health_evidence({'status': 'cached'}, '[Harness] transcript token limit\n'
+                        '== [transcript truncated: container killed before completion] =='),
+        health_evidence({'status': 'ok', 'token_limit_hit': False, 'transcript_partial': False,
+                         'transcript_source': 'executor_archive'}, 'ordinary complete archive'),
+    ]
+    result = summarise_health(evidence, [{'reconstructed': 2}, {}])
+    assert result['timeout_statuses'] == 1
+    assert result['token_limit']['positive'] == 2
+    assert result['partial']['positive'] == 2
+    assert result['partial']['explicit_false'] == 1
+    assert result['partial']['unknown_flag'] == 1  # Missing cached metadata is not false.
+    assert result['identified_timeout_reconstructions'] == 1
+    assert result['post_pass_reconstructions_reported'] == 2
+    assert result['reconstruction_audits_unknown'] == 1  # Missing audit is not a recorded zero.
