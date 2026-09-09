@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader nonmoral dataset authorized; first twelve candidates
+
+User requested moving beyond controls and approved the broader corpus proposal:
+approximately 700 accepted examples, Sonnet generation/checking, $100 cap within the
+original $300 total (prior exposure $31.929031). First12 covers planning, cooking,
+practice, teaching, code/representation, toy science, organization, translation,
+spatial design, revision, automation and a fully specified small game.
+
+This is one natural response per task, with authored reasoning and the complete answer.
+No paired control, identical final answer, length matching or semantic repair loop.
+The shared tagged-stage pipeline authors each complete conversation jointly, then a
+separate Sonnet call checks it against the actual request. Reviewer judgments are not
+ground truth; local review and user feedback follow. Exact inputs/config/raw calls and
+rejections are retained. Existing capped client enforces a $3 first-batch dispatch cap
+with durable reservations and no transport retries; shared bounded format retries, if
+needed, are separately charged. No selection uses ODCV outcomes. The failed earlier
+paired batch stays frozen. This authorization does not launch SFT or another evaluation.
+
 ## 2026-09-09 — Local result retention required before ordinary GPU teardown
 
 User explicitly required fetching necessary results locally before terminating GPUs.

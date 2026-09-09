@@ -3,9 +3,17 @@
 
 # Nonmoral deliberation: research brief
 
-**Current state (2026-09-09):** the authorized overnight baseline fallback is complete;
-see the [current experiment card](experiment_card.md) for results and costs. Earlier
-pilot decisions below are historical, not the current execution status.
+**Current state (2026-09-09):** user requested moving on from controls and approved
+creating the broader dataset: about 700 accepted examples, Sonnet authoring/review,
+$100 generation/checking ceiling within the existing $300 total. Start with 12 complete
+examples for taste feedback before scaling. Each task gets one natural reasoning-and-answer
+response; paired-arm, identical-answer and length-matching constraints are removed.
+Keep completeness, factual correctness, nonmoral judgement and ODCV-independent selection.
+Broken examples are rejected rather than repeatedly repaired. The old paired batch remains
+failed and frozen; this is a new documented recipe, not a changed acceptance gate.
+The authorized overnight baseline fallback is complete; see the
+[experiment card](experiment_card.md) for results/costs. Earlier pilot decisions below
+are historical, not the current execution status.
 
 **User requirement: preserve results locally before GPU teardown.** Normal teardown
 must follow a verified local copy of necessary outputs, not merely a completion flag

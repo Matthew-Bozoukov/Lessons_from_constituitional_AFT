@@ -7,6 +7,15 @@ Updated 2026-09-09. Full intent and constraints: [research brief](research_brief
 Chronological evidence: [experiment log](../LOG.md). Earlier failures and reset:
 [postmortem](2026-09-08_postmortem.md).
 
+## Current follow-up: broader dataset
+
+User approved about 700 accepted broader nonmoral examples, with a $100 generation/checking
+cap inside the existing $300 total. First batch: 12 full conversations across the agreed
+families, Sonnet authoring plus one separate Sonnet review, $3 dispatch cap. One natural
+response per task; no paired control or semantic repair loop. The first batch is for local
+quality checks and user taste feedback before scaling. No new SFT or GPU rental yet.
+Config: `configs/data/synth/nonmoral-broader.yaml`; output: `output/nonmoral_broader/20260909`.
+
 ## Completed overnight result
 
 **Baseline fallback completed.** Evaluated the existing nonmoral-684, math-716 and
