@@ -1,6 +1,22 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — User accepts broader scenario mix; separate source authoring from answering
+
+User feedback on the first12: "all are ok i guess? idk". We interpret this as no
+category exclusions, not approval of incorrect examples. No further taste checkpoint.
+Recipe revision 2 retains all twelve domains but writes short complete requests first.
+A local, hash-linked review excludes broken sources before answer generation. Accepted
+requests remain byte-for-byte unchanged; one authored response and one separate Sonnet
+review follow. No paired controls, answer repair loop, new SFT or ODCV selection.
+First production batch has 24 requests. Per-phase reservations cap source calls at $2
+and answer/review calls at $5 additional, always within the shared $100 dataset ledger.
+Five offline tests cover stale/incomplete dispositions and source preservation.
+
+First12 artifacts are public at
+https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-first12
+(revision e10cf7ae8c7750094dc4017102338b8fe583fd27). Original first12 remains unchanged.
+
 ## 2026-09-09 — Broader first12 produced; model acceptance overstates usable quality
 
 Completed all12 one-response candidates in131.8s through the shared pipeline, with

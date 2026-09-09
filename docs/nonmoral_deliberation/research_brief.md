@@ -5,8 +5,8 @@
 
 **Current state (2026-09-09):** user requested moving on from controls and approved
 creating the broader dataset: about 700 accepted examples, Sonnet authoring/review,
-$100 generation/checking ceiling within the existing $300 total. Start with 12 complete
-examples for taste feedback before scaling. Each task gets one natural reasoning-and-answer
+$100 generation/checking ceiling within the existing $300 total. The user reviewed the first 12 and accepted the scenario families ("all are ok i guess? idk").
+No further taste approval is needed; factual and completeness checks remain our responsibility. Each task gets one natural reasoning-and-answer
 response; paired-arm, identical-answer and length-matching constraints are removed.
 Keep completeness, factual correctness, nonmoral judgement and ODCV-independent selection.
 Broken examples are rejected rather than repeatedly repaired. The old paired batch remains

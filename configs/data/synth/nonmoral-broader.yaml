@@ -1,5 +1,5 @@
 # ABOUTME: One natural nonmoral response per task, followed by one independent quality review.
-# ABOUTME: First twelve production candidates for user feedback; no paired controls or semantic repair loop.
+# ABOUTME: Run: uv run python scratch/nonmoral/broader_data.py --phase sources --batch batch01 --execute
 pipeline: nonmoral-broader
 constitution: preferences/nonmoral_broad/preferences.md
 seed: 20260909
@@ -41,6 +41,11 @@ cases:
   - domain: Game strategy
     direction: Choose a concrete legal move in a tiny invented tabletop game. Supply all rules, the complete relevant position, available moves and any future uncertainty. Make at least two moves defensible for different strategic preferences; do not use chess or a forced tactic. Keep the state small enough for a reviewer to enumerate legality and immediate outcomes.
 models:
+  source:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.7
+    max_tokens: 1800
+    reasoning: {enabled: false}
   author:
     model: anthropic/claude-sonnet-5
     temperature: 0.9
@@ -140,3 +145,63 @@ stages:
         <decision>accept or reject</decision>
         <issues>Concrete checked issues with supporting facts; or 'none' if accepted.</issues>
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
+production:
+  recipe_revision: 2
+  batch_size: 24
+  phase_cap_usd: {sources: 2, answers: 5}
+  rationale: Separate task authoring from answering; review immutable sources before spending on responses. Reject rather than repair.
+  source_stage:
+    name: write_requests
+    kind: llm_tagged
+    model: source
+    checkpoint: scenario_id
+    tags: [user]
+    save: {user: user}
+    prompts:
+      system: |
+        Write a natural user request for one small task. Return only <user>...</user>.
+        Do not answer the task. Do not include commentary about creating examples.
+      user: |
+        Domain: {domain}
+        Direction: {direction}
+        Variation: {variation}
+
+        Write one clean, concise request in ordinary human language. The task involves
+        a judgement between two or more useful approaches: different people could
+        reasonably prioritize different aspects of the result. It must require a decision
+        and a complete usable artifact in a single response, with no follow-up needed.
+        Keep the task small. Supply all essential source text, data, code or game rules
+        inside the request. Use a few simple consistent facts, not a web of constraints.
+        Do not fabricate unstated facts that the eventual answer would have to recover.
+        Avoid a single objective score that mechanically settles the choice.
+
+        The choice concerns craft, taste, usefulness, effort or game strategy; picking
+        either option must not wrong anyone. No duties, deception, privacy, fairness,
+        danger, legal or professional advice. The consequences can be a dull paragraph,
+        a cumbersome hobby workflow or a lost game point. Do not include this classification
+        or the words training, evaluation, reviewer or nonmoral in the request.
+        Avoid claims about real artists, technical performance or cultures unless the
+        task supplies them explicitly as fictional premises. Use invented source material.
+        Read your request for accidentally repeated phrases or contradictory numbers.
+        Return ONLY the complete request in <user> tags, without an answer or checklist.
+  answer_stage:
+    name: answer_requests
+    kind: llm_tagged
+    model: author
+    checkpoint: scenario_id
+    tags: [reasoning, response]
+    save: {reasoning: reasoning, response: response}
+    prompts:
+      system: |
+        Respond to the supplied user request. Return <reasoning> with concise authored
+        reasoning about the concrete trade-off, then <response> with the full answer.
+        Choose a defensible approach and implement it. Follow the user's constraints.
+      user: |
+        {user}
+
+        Output instructions: put your deliberation in <reasoning> and the complete
+        answer in <response>. Include the whole requested artifact, not a plan to make
+        it later. Check sums, source fidelity and hard constraints before you answer;
+        don't claim you ran tests. Don't invent facts to make your preference look better.
+        Keep source facts distinct from assumptions, and both distinct from taste.
+        Do not discuss these output instructions, draft history or a review process.

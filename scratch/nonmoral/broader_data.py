@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -18,6 +19,122 @@ from src.naming import artifact_name
 from src.utils import timestamp
 
 ROOT = Path('output/nonmoral_broader/20260909')
+
+
+def source_review_inputs(path, source_path):
+    """Validate a complete, hash-linked source disposition before any answer calls."""
+    review = json.loads(Path(path).read_text(encoding='utf-8'))
+    rows = read_rows(source_path)
+    ids = {r['scenario_id'] for r in rows}
+    if len(ids) != len(rows) or review.get('source_sha256') != file_sha256(source_path):
+        raise ValueError('Duplicate source IDs or stale source review')
+    dispositions = review.get('dispositions', {})
+    if set(dispositions) != ids or not review.get('reviewer'):
+        raise ValueError('Every original source needs a named reviewer and disposition')
+    for item in dispositions.values():
+        if item.get('decision') not in ('accept', 'reject', 'hold') or not item.get('reason'):
+            raise ValueError('Source dispositions need a valid decision and a reason')
+    return [r for r in rows if dispositions[r['scenario_id']]['decision'] == 'accept'], review
+
+
+def production(cfg, args):
+    """Run one bounded stage using the existing engine and a shared cumulative ledger."""
+    if not args.batch or not re.fullmatch(r'batch[0-9]{2,3}', args.batch):
+        raise ValueError('--batch must be batch01, batch02, etc.')
+    batch_root = ROOT/'production'/args.batch
+    phase_root = batch_root/args.phase
+    prod = cfg['production']
+    if args.phase == 'sources':
+        if args.source_review:
+            raise ValueError('Source authoring does not take an upstream review')
+        count = int(prod['batch_size'])
+        if not 1 <= count <= 120:
+            raise ValueError('Production batch size must be 1..120')
+        batch_no = int(args.batch[5:])
+        rows = [dict(scenario_id=f'broader_{args.batch}_{i+1:03d}',
+                     variation=f'Independent task {batch_no}-{i+1}. Choose your own setting and source material; avoid a generic example.',
+                     **cfg['cases'][i % len(cfg['cases'])]) for i in range(count)]
+        stages = [prod['source_stage']]
+        reviewed = None
+    else:
+        if not args.source_review:
+            raise ValueError('--phase answers requires --source-review; no model-only source approval')
+        source_status = json.loads((batch_root/'sources/status.json').read_text())
+        source_path = Path(source_status['run_dir'])/'dataset.jsonl'
+        rows, reviewed = source_review_inputs(args.source_review, source_path)
+        if not rows:
+            raise ValueError('No accepted sources to answer')
+        stages = [prod['answer_stage'], cfg['stages'][-1]]
+    effective = {**cfg, 'total_scenarios':len(rows),
+                 'source':{'local_dir':str(phase_root/'input'), 'snapshot':'inputs.jsonl'},
+                 'output_dir':str(phase_root/'runs'),
+                 'stages':[{'name':'planned_cases','kind':'load_source_run'}, *stages]}
+    existing = json.loads((ROOT/'spend.json').read_text())
+    if any(e['status'] != 'settled' for e in existing):
+        raise ValueError('Reconcile unsettled prior calls before a new dispatch')
+    spent = sum(e['charged_or_reserved_usd'] for e in existing)
+    cap = min(float(cfg['budget_usd']), spent + float(prod['phase_cap_usd'][args.phase]))
+    if cap <= spent:
+        raise ValueError('Broader dataset cumulative budget exhausted')
+    print(json.dumps(dict(phase=args.phase, batch=args.batch, rows=len(rows),
+                          cumulative_spent_usd=spent, cumulative_dispatch_ceiling_usd=cap,
+                          stages=[s.name for s in build_stages(effective)], paid=args.execute)), flush=True)
+    if not args.execute:
+        return
+    lock = ROOT/'generation.lock'
+    fd = os.open(lock, os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+    try:
+        os.write(fd,str(os.getpid()).encode())
+        marker = phase_root/'dispatch.json'
+        if marker.exists():
+            raise ValueError('Phase already dispatched; preserve its outputs and do not pay twice')
+        phase_root.mkdir(parents=True,exist_ok=True)
+        prices = verify_live_prices({SONNET})
+        source = phase_root/'input/inputs.jsonl'
+        source.parent.mkdir(exist_ok=True)
+        source.write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in rows),encoding='utf-8')
+        run_dir = phase_root/'runs'/timestamp()
+        run_dir.mkdir(parents=True,exist_ok=False)
+        state = dict(status='running',run_dir=str(run_dir), config=effective,
+                     config_sha256=file_sha256(args.config), input_sha256=file_sha256(source),
+                     source_review=reviewed, prices=prices,
+                     code_sha256=file_sha256(__file__),
+                     git_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                     cumulative_dispatch_ceiling_usd=cap, cumulative_start_usd=spent,
+                     project_prior_exposure_usd=31.929031131298995)
+        write_json(marker,state)
+        write_json(run_dir/'frozen_config.json',state)
+        (phase_root/'config.yaml').write_bytes(args.config.read_bytes())
+        if reviewed:
+            write_json(phase_root/'source_review.json',reviewed)
+        from tenacity import stop_after_attempt
+        client = OpenRouterClient()
+        single = client.chat.retry_with(stop=stop_after_attempt(1))
+        capped = CappedClient(lambda **kw:single(client,**kw),ROOT/'spend.json',cap,{SONNET},allow_reasoning_off=True)
+        try:
+            run(effective,resume=str(run_dir),client=capped)
+            state['status']='awaiting_local_source_review' if args.phase=='sources' else 'awaiting_local_answer_review'
+        except BaseException:
+            state['status']='generation_failed'
+            raise
+        finally:
+            ledger=json.loads((ROOT/'spend.json').read_text())
+            state.update(cumulative_exposure_usd=sum(e['charged_or_reserved_usd'] for e in ledger),
+                         cumulative_calls=len(ledger),unsettled_calls=sum(e['status']!='settled' for e in ledger))
+            result=run_dir/'dataset.jsonl'
+            if result.exists():
+                generated=read_rows(result)
+                state.update(produced=len(generated),dataset_sha256=file_sha256(result),
+                             missing_ids=sorted({r['scenario_id'] for r in rows}-{r['scenario_id'] for r in generated}))
+                (phase_root/'review.md').write_text('\n\n'.join(
+                    f"## {r['scenario_id']} | {r['domain']}\n\n"+'\n\n'.join(
+                        f"**{key}**\n\n{r[key]}" for key in ['user','reasoning','response','quality_decision','quality_issues'] if key in r)
+                    for r in generated),encoding='utf-8')
+            write_json(phase_root/'status.json',state)
+            print(json.dumps({k:v for k,v in state.items() if k not in ('config','prices','source_review')},ensure_ascii=False),flush=True)
+    finally:
+        os.close(fd)
+        lock.unlink()
 
 
 def write_json(path, value):
@@ -101,8 +218,19 @@ def main():
     parser.add_argument('--config',type=Path,default=Path('configs/data/synth/nonmoral-broader.yaml'))
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--publish',action='store_true')
+    parser.add_argument('--phase',choices=['sources','answers'])
+    parser.add_argument('--batch')
+    parser.add_argument('--source-review',type=Path)
     args = parser.parse_args()
     cfg = OmegaConf.to_container(OmegaConf.load(args.config),resolve=True)
+    if args.phase:
+        if args.publish:
+            raise ValueError('Publish retained artifacts separately after review')
+        assert hf_org()=='dougalldeepmind' and cfg['budget_usd']==100
+        assert cfg['hf_push'] is False and cfg['workers']==4
+        assert all(model_cfg(cfg,k)['model']==SONNET for k in cfg['models'])
+        production(cfg,args)
+        return
     assert cfg['total_scenarios']==len(cfg['cases'])==12 and cfg['workers']==4
     assert cfg['budget_usd']==100 and cfg['dispatch_cap_usd']==3 and cfg['target_accepted']==700
     assert cfg['hf_push'] is False and cfg['batch'] is False

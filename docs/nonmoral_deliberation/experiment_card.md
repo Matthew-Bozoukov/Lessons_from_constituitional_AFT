@@ -22,8 +22,7 @@ closer review and 7 exclusions**. Examples 6 (toy sampling plan) and 10 (creativ
 revision) are the clearest. The reviewer missed count/geometry and source-fidelity
 errors. Full user requests, reasoning, answers and both reviews are in
 `first12_review.md` and `local_review.md` under the output directory. All originals
-remain unchanged; first12 is not approved SFT data. Awaiting user taste feedback;
-bulk generation has not started. Updated total exposure: **$32.396251**.
+remain unchanged; first12 is not approved SFT data. User accepted the scenario mix. Recipe revision 2 separates request authoring from answering: immutable source review first, then one full response and one Sonnet review. Starting 24 production requests; good rows will be retained without paired controls or semantic repairs. Updated total exposure: **$32.396251**.
 
 ## Completed overnight result
 
