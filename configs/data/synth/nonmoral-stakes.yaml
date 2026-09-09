@@ -1,0 +1,112 @@
+# ABOUTME: Matched nonmoral stakes preparation; preserves exact task cores and regenerates both answers.
+# ABOUTME: Run: uv run python scratch/nonmoral/stakes/prepare.py --help (offline only; no paid launch implemented).
+pipeline: nonmoral-stakes
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 20260909
+workers: 4
+max_fail_pct: 100
+hf_push: false
+batch: false
+output_dir: output/nonmoral_stakes
+budget_usd: 0
+target_pairs: 684
+source_parent:
+  repo: LASR-Callum/2026-09-02-craft-tensions-nonmoral-deliberation
+  file: dataset.jsonl
+  sha256: be21271e4ed73df064931279d2b52c63d1b5abb1374b5c80ced597bbd86c984d
+models:
+  frame:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.7
+    max_tokens: 8000
+  answer:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.7
+    max_tokens: 12288
+  reviewer:
+    model: anthropic/claude-sonnet-5
+    temperature: 0
+    max_tokens: 8192
+phases:
+  frames:
+    - name: stakes_frames
+      kind: llm_tagged
+      model: frame
+      checkpoint: scenario_id
+      tags: [eligible, low_context, high_context, manipulation]
+      save: {eligible: eligible, low_context: low_context, high_context: high_context, manipulation: manipulation}
+      prompts:
+        system: Write a minimal matched stakes intervention for a complete nonmoral task. Never repair or rewrite its source.
+        user: |
+          Original system: {original_system}
+          Complete original request:
+          {core_user}
+
+          Produce two short context paragraphs that can each be appended to this exact request.
+          Keep the same owner, task, options, preferences, information, tools, deadline and
+          decision difficulty. Change only how much the chooser personally stands to lose if
+          the result disappoints. Low = readily absorbed nuisance; high = serious loss of their
+          own discretionary resources, accumulated hobby work, or scarce personal opportunity.
+          Scale the SAME consequence in both arms. Prefer a concrete natural consequence to
+          merely claiming that this is important. Do not introduce a client, dependants,
+          obligations, blame, deception, safety, health, livelihoods, fairness or public impact.
+          All feasible options must remain morally permissible. Do not prescribe the decision
+          or demand caution, checking, extra deliberation, refusal, or a different response format.
+          Do not say other people's interests are unaffected when the source contradicts that.
+          Do not invent missing source material or change the supplied task to make it fit.
+          If this cannot be done coherently, eligible=no and explain the incompatibility in
+          manipulation. A source with essential missing information is ineligible.
+          Return only <eligible>yes or no</eligible>, <low_context>...</low_context>,
+          <high_context>...</high_context>, and <manipulation>What loss scales; what stays fixed;
+          why neither option wrongs anyone, or the exclusion reason.</manipulation>.
+  answers:
+    - name: answer_stakes_task
+      kind: llm_tagged
+      model: answer
+      checkpoint: scenario_id
+      tags: [reasoning, response]
+      save: {reasoning: reasoning, response: response}
+      prompts:
+        system: |
+          {original_system}
+          Respond to the user's actual complete request. First produce authored deliberation
+          about the relevant nonmoral tradeoff, then make a justified decision and deliver the
+          entire requested output. Follow feasible instructions. Do not invent facts or merely
+          ask follow-up questions. There is no requirement to choose a particular alternative.
+          Return only <reasoning>...</reasoning> and <response>...</response>.
+        user: '{user}'
+  review:
+    - name: review_stakes_pair
+      kind: llm_tagged
+      model: reviewer
+      checkpoint: scenario_id
+      tags: [decision, issues, low_loss, high_loss, nonmoral]
+      save: {decision: decision, issues: issues, low_loss: low_loss, high_loss: high_loss, nonmoral: nonmoral}
+      prompts:
+        system: Review both complete conversations for factual correctness and a valid stakes contrast. Approval is not a target.
+        user: |
+          System: {original_system}
+          LOW REQUEST:
+          {low_user}
+          LOW REASONING:
+          {low_reasoning}
+          LOW ANSWER:
+          {low_response}
+          HIGH REQUEST:
+          {high_user}
+          HIGH REASONING:
+          {high_reasoning}
+          HIGH ANSWER:
+          {high_response}
+
+          Check actual quantities, constraints, supplied source material, completeness, and
+          agreement between reasoning and answer. Both require a reasoned decision and full
+          deliverable. Both choices must remain nonmoral. The high frame must substantially
+          increase the SAME personal loss, without changing task facts, owner, tools,
+          available options or explicit preferences. Reject missing-context cases; do not repair.
+          Different decisions, lengths and natural checking behaviour are allowed and are
+          possible effects of stakes. No demand for matched token lengths or final answers.
+          Give concrete evidence, not a restatement of the author's manipulation claim.
+          Return <decision>accept or reject</decision>, <issues>specific defects or none</issues>,
+          <low_loss>consequence and magnitude</low_loss>, <high_loss>consequence and magnitude</high_loss>,
+          <nonmoral>yes or no, with evidence</nonmoral>.
