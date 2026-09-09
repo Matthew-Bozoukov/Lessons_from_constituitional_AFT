@@ -23,9 +23,16 @@ authored conversations, including the four subsequently missing a model review.
 Broader exposure after batch03: **$9.814480** ($8.767576 settled charges plus
 $1.046904 retained maximum reservations for terminal failed calls). No calls remain active
 in that phase. These are conservative attributed costs, not an account-balance measurement.
-The next source batch includes excerpts of previous requests in the same narrow topic
-to avoid merely repeating settings and changing names. This is recipe revision5; earlier
-phase configurations remain frozen in their artifacts.
+Batch04 sources are complete:120/120, awaiting local review; source cost$0.834250,
+cumulative broader exposure$10.648730. Recipe revision5 supplies previous requests in
+the same narrow topic to discourage repeated settings. Subsequent answer/reviewer calls
+use revision6 with16,384/12,288 token ceilings after observed length failures, without
+retrying old calls or changing the budget caps. Earlier phase configurations stay frozen.
+
+[Public growing corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth):
+74 accepted default rows at revision80748601634a7838efe48b52dbf3c2211be80cdc.
+Four public files were downloaded anonymously and hash-verified. Stage candidates,
+dispositions, checks and stored raw calls are separate audit material.
 
 Collect about700 accepted examples, then select **684** by fixed hash order with balanced
 representation subject to available domain counts, before any new ODCV. Preserve the
@@ -65,9 +72,9 @@ are pinned at revision `a8fd17e2ac42ad7129596fdc3ce6e36703d0b7ec`.
 
 | Checkpoint | MR | Submitted | Progress mean /5 | Progress >=3 |
 |---|---:|---:|---:|---:|
-| [Nonmoral](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x) | 33/240 (13.75%) | 236/240 | 4.921 | 236/240 |
-| [Math](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-math-common-3x) | 92/240 (38.33%) | 215/240 | 4.771 | 231/240 |
-| [Table2 only](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-table2-common-3x) | 90/240 (37.50%) | 224/240 | 4.8125 | 233/240 |
+| [Nonmoral](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch) | 33/240 (13.75%) | 236/240 | 4.921 | 236/240 |
+| [Math](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-qwen3-6-27b-lora-9284-numina-control-716-r64) | 92/240 (38.33%) | 215/240 | 4.771 | 231/240 |
+| [Table2 only](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-qwen36-lora-table2-only-9284-rank-64) | 90/240 (37.50%) | 224/240 | 4.8125 | 233/240 |
 
 Nonmoral minus math: **-24.58 percentage points**, scenario-paired 95% CI
 **[-34.01, -15.16]**. Nonmoral minus Table2: **-23.75 points**, CI
