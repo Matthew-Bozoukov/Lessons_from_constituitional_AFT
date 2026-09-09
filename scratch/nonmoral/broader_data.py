@@ -427,7 +427,12 @@ def main():
     if args.phase:
         if args.publish:
             raise ValueError('Publish retained artifacts separately after review')
-        assert hf_org()=='dougalldeepmind' and cfg['budget_usd']==100
+        assert hf_org()=='dougalldeepmind'
+        allocations = json.loads((ROOT/'budget_allocations.json').read_text())
+        if not 0 < float(cfg['budget_usd']) <= float(allocations['broader_data_cap_usd']):
+            raise ValueError('Production cap exceeds the recorded broader-data allocation')
+        if allocations['total_allocations_plus_prior_usd'] > 300:
+            raise ValueError('Recorded project allocations exceed the authorized ceiling')
         assert cfg['hf_push'] is False and cfg['workers']==4
         assert all(model_cfg(cfg,k)['model']==SONNET for k in cfg['models'])
         production(cfg,args)
