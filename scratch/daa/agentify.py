@@ -243,7 +243,7 @@ def agentify_one(client: OpenRouterClient, usage: Usage, model: str, temperature
         parsed, _ = call_json(client, usage, model, AGENTIFY_SYSTEM, user, temperature, max_tokens,
                               "agentify", required=("agent_system_prompt", "task", "files",
                                                     "exploration", "action", "outcome_shape"))
-        return {**r, "agentified": parsed}
+        return {**r, "agentified": parsed, "agentify_model": model}
     return fn
 
 
@@ -282,7 +282,7 @@ def trace_one(client: OpenRouterClient, usage: Usage, model: str, temperature: f
                                              "operator_message", "completion_reason"))
             if reuse_ratio(r["reasoning"], parsed2.get("deliberation_reasoning", "")) > reuse:
                 parsed = parsed2
-        return {**r, "traced": parsed}
+        return {**r, "traced": parsed, "trace_model": model}
     return fn
 
 
@@ -355,7 +355,8 @@ def assemble(r: dict, min_reuse: float) -> dict:
     meta.update({"source_scenario_id": r["scenario_id"], "source_repo": r["source_repo"],
                  "source_revision": r["source_revision"], "outcome_shape": shape, "action_kind": kind,
                  "n_exploration": sum(1 for m in msgs if m["role"] == "tool") - (1 if kind != "none" else 0),
-                 "trace_reuse": round(reuse, 3), "supervise": "all", "agent_name": a.get("agent_name", "")})
+                 "trace_reuse": round(reuse, 3), "supervise": "all", "agent_name": a.get("agent_name", ""),
+                 "generator": {"agentify": r.get("agentify_model", ""), "trace": r.get("trace_model", "")}})
     return {"scenario_id": r["scenario_id"], "messages": msgs, "tools": TOOLS, "metadata": meta,
             "environment": [{"path": p, "content": c} for p, c in files.items()],
             "lint": problems}
@@ -376,6 +377,7 @@ def main() -> None:
     ap.add_argument("--min-reuse", type=float, default=0.35,
                     help="drop rows whose trace keeps fewer than this fraction of the original sentences verbatim")
     ap.add_argument("--budget-usd", type=float, default=150.0)
+    ap.add_argument("--max-tokens", type=int, default=8192, help="generator completion cap per call (16384 recovers the rows whose environment overflowed 8192)")
     ap.add_argument("--resume", default="", help="an existing run dir to continue")
     args = ap.parse_args()
     load_dotenv()
@@ -423,7 +425,7 @@ def main() -> None:
 
     # 2. agentify
     ck2 = Checkpoint(run_dir / "partial_agentify.jsonl")
-    rows = run_items(rows, agentify_one(client, usage, args.model, 0.7, 8192), args.workers,
+    rows = run_items(rows, agentify_one(client, usage, args.model, 0.7, args.max_tokens), args.workers,
                      "agentify", ckpt=ck2, max_fail_pct=5.0)
     cache.save(2, "agentify", rows)
     print(f">>> agentify: {len(rows)} rows | spend ${usage.usd:.2f}", flush=True)
@@ -432,7 +434,7 @@ def main() -> None:
 
     # 3. trace
     ck3 = Checkpoint(run_dir / "partial_trace.jsonl")
-    rows = run_items(rows, trace_one(client, usage, args.model, 0.4, 8192, args.min_reuse), args.workers,
+    rows = run_items(rows, trace_one(client, usage, args.model, 0.4, args.max_tokens, args.min_reuse), args.workers,
                      "trace", ckpt=ck3, max_fail_pct=5.0)
     cache.save(3, "trace", rows)
     print(f">>> trace: {len(rows)} rows | spend ${usage.usd:.2f}", flush=True)
