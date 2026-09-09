@@ -16,13 +16,22 @@ These are **720 rollouts and no new training**. Exact checkpoint revisions and
 protocol are in [the baseline inventory](baseline_inventory.md) and
 [`scratch/nonmoral/odcv-paired.yaml`](../../scratch/nonmoral/odcv-paired.yaml).
 
-The corrected nonmoral evaluation is complete and its pod termination verified.
-Math and Table-2-only follow. [Public nonmoral results](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x):
-**33/240 = 13.75% MR**, scenario 95% CI **[7.79, 23.12]%**; **236/240 submitted**;
-task progress **4.921/5**, with **236/240 scoring at least 3**. All 240 transcripts
-and both judging axes are present; 3 trajectories hit the token limit, with zero
-runtime timeouts or reconstructed transcripts. This is the existing adapter, not
-a newly trained model. Control results are still pending.
+Nonmoral and math are complete, public, and their pods' termination verified.
+Table-2-only is starting. These are existing adapters, not newly trained models.
+
+| Checkpoint | MR | Submitted | Progress mean /5 | Progress >=3 |
+|---|---:|---:|---:|---:|
+| [Nonmoral](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x) | 33/240 (13.75%) | 236/240 | 4.921 | 236/240 |
+| [Math](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-math-common-3x) | 92/240 (38.33%) | 215/240 | 4.771 | 231/240 |
+
+All transcripts and both judging axes are present. Nonmoral has 3 context-limit
+and 1 cycle-limit endings; math has 14 context-limit, 10 cycle-limit and **1 API
+timeout**. The API timeout was hidden by outer status `ok`/executor exit 0; raw-log
+audits expose it and its original partial behavior remains scored. Neither model
+needed a transcript reconstruction or an outer scenario-timeout retry. Progress
+without submission is capped at **4**, so progress >=3 is not a completion count.
+Scenario 95% MR intervals: nonmoral **[7.79, 23.12]%**, math **[27.7, 50.2]%**.
+Full paired comparisons await Table-2-only.
 
 Historical **73/400 = 18.25% nonmoral** and **98/240 = 40.83% math** used different
 context/harness settings and remain historical observations, not this comparison.

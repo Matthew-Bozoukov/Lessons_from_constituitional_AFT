@@ -24,7 +24,13 @@ def publish(status_path: Path, out_dir: Path, repo_id: str):
     if start is None:
         assert status_path.name=='baseline_lf_status.json', 'Missing per-run ledger boundary'
         start=0  # First judged checkpoint; discarded CRLF attempt made zero judge calls.
+    ledger_dest=metadata/'judge_budget_ledger.json'
     end=len(all_entries)
+    if ledger_dest.exists():
+        frozen=json.loads(ledger_dest.read_text())
+        assert frozen['source_start_index']==start, 'Published ledger start changed'
+        end=frozen['source_end_index']
+        assert all_entries[start:end]==frozen['entries'], 'Published judge entries changed'
     entries=all_entries[start:end]
     assert entries, 'No attributable judge entries'
     charged=sum(e['charged_or_reserved_usd'] for e in entries)
@@ -42,7 +48,6 @@ def publish(status_path: Path, out_dir: Path, repo_id: str):
                        source_full_ledger_sha256=hashlib.sha256(ledger_path.read_bytes()).hexdigest(),
                        prices_usd_per_million_tokens=prices,
                        provider_pins={model:provider_pin(model) for model in prices},entries=entries)
-    ledger_dest=metadata/'judge_budget_ledger.json'
     ledger_dest.write_text(json.dumps(ledger_record,indent=2),encoding='utf-8')
     record=dict(
         target=state['target'],target_revision=state['target_revision'],
@@ -51,6 +56,7 @@ def publish(status_path: Path, out_dir: Path, repo_id: str):
         judge_token_rate_estimate_usd=settled,judge_charged_or_reserved_usd=charged,
         judge_cost_basis='Durable per-request input/output token counts at frozen provider prices; estimated charges, not an invoice. Uncertain requests retain their full reservation.',
         judge_requests=len(entries),judge_unsettled_requests=sum(e['status']!='settled' for e in entries),
+        judge_ledger_start_index=start,judge_ledger_end_index=end,
         judge_ledger='judge_budget_ledger.json',judge_ledger_sha256=hashlib.sha256(ledger_dest.read_bytes()).hexdigest(),
         owned_pod_id=state['pod_id'],rented_at_unix=state['rented_at_unix'],terminated_at_unix=state['terminated_at_unix'],
         termination_verified=True,gpu_hourly_rate_usd=state['actual_gpu_hourly_usd'],

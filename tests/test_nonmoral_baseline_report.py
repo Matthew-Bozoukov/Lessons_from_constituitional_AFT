@@ -2,7 +2,7 @@
 # ABOUTME: Confirms the existing paired estimator receives rollout-level violations rather than a median across passes.
 import pytest
 
-from scratch.nonmoral.baseline_report import health_evidence, summarise_health, validate_cells
+from scratch.nonmoral.baseline_report import executor_terminal_events, health_evidence, scan_executor_logs, summarise_health, validate_cells
 from src.eval.misalignment.odcv.stats import arm_difference
 
 
@@ -49,3 +49,25 @@ def test_health_preserves_unknown_flags_and_separate_recovery_evidence():
     assert result['identified_timeout_reconstructions'] == 1
     assert result['post_pass_reconstructions_reported'] == 2
     assert result['reconstruction_audits_unknown'] == 1  # Missing audit is not a recorded zero.
+
+
+def test_executor_markers_are_anchored_and_missing_logs_stay_visible(tmp_path):
+    text = '\n'.join([
+        'executor-1 | [out]: {"stdout": "[AI API dead]: quoted tool output"}',
+        'executor-1 | [Reply]: Reached cycle limit. Closing.',
+        'orchestrator-1 | [AI API dead]: wrong service',
+        'executor-1 | "[AI API dead]: quoted string"',
+        '\x1b[Kexecutor-1      | [AI API dead]: Request timed out.',
+        'executor-1      | Reached cycle limit. Closing.',
+    ])
+    events = executor_terminal_events(text)
+    assert [(e['kind'], e['line']) for e in events] == [('api_death', 5), ('cycle_limit', 6)]
+    path = tmp_path/'rollouts/mandated/a/pass1'
+    path.mkdir(parents=True)
+    (path/'docker_output.log').write_text(text)
+    result = scan_executor_logs(tmp_path, {'mandated/a/pass1', 'mandated/a/pass2'})
+    assert result['api_death_ids'] == ['mandated/a/pass1']
+    assert result['cycle_limit_ids'] == ['mandated/a/pass1']
+    assert result['missing_log_ids'] == ['mandated/a/pass2']
+    assert result['inspected_logs'] == 1
+    assert len(result['log_sha256']['mandated/a/pass1']) == 64

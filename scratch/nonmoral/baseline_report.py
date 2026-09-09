@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 
 from omegaconf import OmegaConf
 
@@ -92,6 +93,46 @@ def summarise_health(evidence, audits):
                      'and generic post-pass reconstruction audit counts are separate code paths; the latter lack cell identities.')
 
 
+def executor_terminal_events(text):
+    """Match actual executor log prefixes, not marker text quoted in [out]/[Reply]."""
+    events = []
+    ansi = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+    prefix = re.compile(r'^\s*executor-\d+\s+\|\s*(.*?)\s*$')
+    for line_number, raw in enumerate(text.splitlines(), 1):
+        match = prefix.fullmatch(ansi.sub('', raw))
+        if not match:
+            continue
+        payload = match.group(1)
+        if payload.startswith('[AI API dead]: '):
+            events.append(dict(kind='api_death', line=line_number, message=payload))
+        elif payload == 'Reached cycle limit. Closing.':
+            events.append(dict(kind='cycle_limit', line=line_number, message=payload))
+    return events
+
+
+def scan_executor_logs(root, expected_paths):
+    root = Path(root)
+    hashes, events, missing, empty = {}, [], [], []
+    for key in sorted(expected_paths):
+        path = root/'rollouts'/key/'docker_output.log'
+        if not path.is_file():
+            missing.append(key)
+            continue
+        raw = path.read_bytes()
+        hashes[key] = hashlib.sha256(raw).hexdigest()
+        if not raw:
+            empty.append(key)
+        events.extend(dict(cell=key, **event) for event in executor_terminal_events(raw.decode('utf-8', errors='replace')))
+    return dict(expected_logs=len(expected_paths), inspected_logs=len(hashes),
+                missing_log_ids=missing, empty_log_ids=empty, log_sha256=hashes,
+                api_death_ids=sorted({e['cell'] for e in events if e['kind'] == 'api_death'}),
+                cycle_limit_ids=sorted({e['cell'] for e in events if e['kind'] == 'cycle_limit'}),
+                events=events,
+                matching_rule='Anchored executor-N | [AI API dead]: ... or exact executor-N | Reached cycle limit. Closing. '
+                              'Quoted [out]/[Reply] payloads and other services are excluded. Counts reflect these emitted markers, not every possible transport failure.',
+                source_definition='mission_executor/agent_main.py: [AI API dead] exception return and cycle-limit return; both archive then can exit0')
+
+
 def load_arm(root, name, expected):
     root = Path(root)
     result_path = root/'results/results.json'
@@ -154,6 +195,7 @@ def load_arm(root, name, expected):
                    runtime_statuses=dict(statuses),
                    non_ok_runtime_status_count=sum(n for s, n in statuses.items() if s not in ('ok', 'cached')),
                    transcript_health=summarise_health(evidence, passes['audits']),
+                   executor_log_health=scan_executor_logs(root, expected_paths),
                    pass_audits=passes['audits'])
     return summary, cells, protocol(cfg)
 
@@ -192,6 +234,12 @@ def build_report(paths, out, bench=BENCH):
         audit_suffix = f" ({h['reconstruction_audits_unknown']} unknown audits)" if h['reconstruction_audits_unknown'] else ''
         lines.append(f"| {a['label']} | {h['timeout_statuses']}/240 | {token['positive']}/240 ({token['unknown_flag']}) | {partial['positive']}/240 ({partial['unknown_flag']}) | {h['identified_timeout_reconstructions']} / {h['post_pass_reconstructions_reported']}{audit_suffix} |")
     lines += ['', 'Health counts retain timeout/partial transcripts in the scored denominator. Positive metadata or archived markers establish an event; missing flags remain unknown, including cached rows. Unknown-flag counts can overlap marker-positive cases. Reconstruction columns distinguish identified timeout recovery from aggregate post-pass recovery; they do not identify every recovered cell. Coverage means a scored trace exists, not that the task was completed.']
+    lines += ['', '| Checkpoint | Terminal API death | Cycle limit | Docker logs inspected | Missing / empty logs |',
+              '|---|---:|---:|---:|---:|']
+    for a in arms.values():
+        e = a['executor_log_health']
+        lines.append(f"| {a['label']} | {len(e['api_death_ids'])}/240 | {len(e['cycle_limit_ids'])}/240 | {e['inspected_logs']}/240 | {len(e['missing_log_ids'])} / {len(e['empty_log_ids'])} |")
+    lines += ['', 'Harness status `ok` and executor exit0 do not exclude a terminal model-API error: the executor can archive its partial work and return normally. Counts above use anchored executor-printed markers in raw Docker logs; missing/empty logs provide no negative evidence. Exact affected cell/pass IDs, source lines and every inspected log SHA256 are saved in `comparison.json`.']
     lines += ['', 'Intervals use existing `odcv.summarise` and `stats.arm_difference` with every rollout retained. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is the existing separately judged, submission-capped axis. Neither is a capabilities benchmark.', '', f'![MR with scenario confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
     (out/'comparison.md').write_text('\n'.join(lines), encoding='utf-8')
     return report

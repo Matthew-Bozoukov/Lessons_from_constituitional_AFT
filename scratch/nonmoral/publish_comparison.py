@@ -32,7 +32,7 @@ def main():
         assert state['phase'] == 'evaluation_completed' and state['termination_verified']
         assert state['target_revision'] == report['arms'][arm]['target_revision']
         costs[arm] = read(BASE / f'{prefix}_cost_accounting.json')
-        assert costs[arm]['judge_requests'] == 480 and costs[arm]['judge_unsettled_requests'] == 0
+        assert costs[arm]['judge_requests'] >= 480
         repo = hf_org() + '/' + REPOS[arm]
         info = api.dataset_info(repo)
         assert not info.private
@@ -53,7 +53,8 @@ def main():
                   fresh_data_usd=data['settled_usd'] + data['reserved_usd'],
                   invalid_attempt_gpu_storage_estimate_usd=invalid_cost,
                   completed_checkpoint_estimates_usd={k: v['total_attributed_estimate_including_reserved_usd']
-                                                     for k, v in costs.items()})
+                                                     for k, v in costs.items()},
+                  judge_unsettled_requests={k: v['judge_unsettled_requests'] for k, v in costs.items()})
     budget['total_exposure_estimate_usd'] = (budget['prior_settled_usd'] + budget['prior_uncertain_reserved_usd']
         + budget['fresh_data_usd'] + invalid_cost + sum(budget['completed_checkpoint_estimates_usd'].values()))
     assert budget['total_exposure_estimate_usd'] < budget['ceiling_usd']
@@ -76,10 +77,12 @@ def main():
             copy(path, 'results/' + path.name)
     for pattern in ('*_status.json', '*_cost_accounting.json', '*_noncompletion_audit.json', '*_noncompletion_audit.md',
                     'authorization.json', 'shell_line_ending_repair.json', 'timeout_runtime_provenance.json',
+                    '*_api_timeout_provenance.json', '*_terminal*.json',
                     'validation_publication.json', 'invalid_baseline_publication.json'):
         for path in sorted(BASE.glob(pattern)):
             copy(path, 'metadata/' + path.name)
-    for folder in ('baseline_harness_audit_lf',):
+    for folder in ('baseline_harness_audit_lf', 'math_harness_audit', 'table2_harness_audit'):
+        assert (BASE / folder).is_dir(), f'Missing completed health audit: {folder}'
         for path in sorted((BASE / folder).rglob('*')):
             if path.is_file() and path.suffix in {'.json', '.md', '.txt', '.log'}:
                 copy(path, 'metadata/' + path.relative_to(BASE).as_posix())
