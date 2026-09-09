@@ -114,8 +114,9 @@ def run(plan_path, out):
                        'if [ "$rc" -ne 0 ]; then exit "$rc"; fi']
         script += [f"touch {remote_dir}/complete"]
         script_text = "\n".join(script) + "\n"
-        (out / "remote_run.sh").write_text(script_text, encoding="utf-8")
+        (out / "remote_run.sh").write_text(script_text, encoding="utf-8", newline="\n")
         remote._ssh(f"mkdir -p {remote_dir} && cat > {remote_dir}/run.sh", stdin_text=script_text)
+        remote._ssh(f"bash -n {remote_dir}/run.sh")
         # Persist intent before SSH: a lost launch response must not cause teardown
         # of a trainer which actually started. Its process group is owned by this run.
         state['training_started'] = True
@@ -141,7 +142,7 @@ r['metadata']={str(f):json.loads(f.read_text()) for f in Path('/root/work/output
 print(json.dumps(r))
 """.replace('ARM_COUNT',str(len(cmd)))
             try:
-                progress = json.loads(remote._ssh("python -c " + shlex.quote(probe), timeout=90))
+                progress = json.loads(remote._ssh("python3 -c " + shlex.quote(probe), timeout=90))
             except Exception as exc:
                 state["monitor_error"] = type(exc).__name__
                 dump(out / "status.json", state)

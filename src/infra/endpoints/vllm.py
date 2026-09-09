@@ -620,18 +620,19 @@ class SshExec:
         self.tunnel: subprocess.Popen | None = None
 
     def _ssh(self, cmd: str, timeout: int = 240, stdin_text: str | None = None) -> str:
-        # encoding/errors pinned: remote logs carry non-ASCII (vLLM progress bars, box-drawing
-        # characters), and on a Windows driver the default cp1252 decode raises inside
-        # subprocess's reader THREAD — which does not fail the call, it just loses the output
-        # and prints an alarming traceback that looks like the run died. Observed 2026-08-05.
+        # Binary pipes preserve uploaded scripts: Windows text-mode stdin translates LF
+        # to CRLF. Decode explicitly so non-ASCII or malformed remote logs remain readable
+        # without subprocess reader-thread failures under the driver's locale.
         argv, target = ssh_argv(self.host, self.identity)
-        r = subprocess.run([*argv, target, cmd], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace",
-                           timeout=timeout, input=stdin_text)
+        r = subprocess.run([*argv, target, cmd], capture_output=True,
+                           timeout=timeout,
+                           input=stdin_text.encode("utf-8") if stdin_text is not None else None)
+        stdout = r.stdout.decode("utf-8", errors="replace")
+        stderr = r.stderr.decode("utf-8", errors="replace")
         if r.returncode != 0:
             raise RuntimeError(f"ssh {self.host} failed ({r.returncode}): "
-                               f"{cmd[:120]} ...\n{r.stderr[-500:]}")
-        return r.stdout
+                               f"{cmd[:120]} ...\n{stderr[-500:]}")
+        return stdout
 
     def has_env(self) -> bool:
         return self._ssh(f"[ -f {self.workdir}/.env ] && echo yes || echo no").strip() == "yes"

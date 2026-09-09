@@ -3,6 +3,22 @@
 
 # GOTCHAS
 
+## Windows SSH stdin changes LF scripts unless sent as bytes (2026-09-09)
+
+`SshExec._ssh` previously used `subprocess.run(text=True, input=script)`. On Windows,
+the text pipe changed LF to CRLF even when the in-memory string was correct. A broader
+SFT launcher failed before any training step (`set: invalid option`, CR-suffixed paths,
+ambiguous redirect). This is separate from stale checkout shell files below.
+
+The shared SSH helper now sends UTF-8 bytes and explicitly decodes stdout/stderr.
+Real subprocess regression tests check exact LF/Unicode payload and invalid-byte logs.
+The training driver also syntax-checks the uploaded script before starting it.
+The base image exposes `python3`, not necessarily `python`: use python3 for system
+monitor/backup scripts, and `uv run python` for repository dependencies. On the
+already-owned pod, the failed startup files were retained, the exact LF script was
+restored and checked, and a python3 compatibility symlink let the existing owner
+monitor safely resume. No second GPU rental or training-seed change was needed.
+
 ## Git LF attributes do not repair stale worktree bytes (2026-09-09)
 
 An existing Windows checkout held CRLF in 164/168 ODCV shell scripts even though
