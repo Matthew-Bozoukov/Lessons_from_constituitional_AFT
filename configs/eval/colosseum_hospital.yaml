@@ -87,6 +87,32 @@ judge:
   # Transcript cap in characters, truncated from the FRONT.
   max_chars: 60000
 
+# ── harness fixes (2026-09-09) ─────────────────────────────────────────────────
+# Ten switches, every one OFF here: this file reproduces the paper's harness. Each is read
+# by the patched packages (src/eval/misalignment/colosseum/third_party/README.md), rides
+# to Colosseum as a top-level `fixes` block in the sweep YAML, and is recorded per episode
+# in run_config.json, so a fixed run can never be mistaken for an original one. Unknown
+# keys are refused. The two directions are configs of their own — pass one with
+# `--config`, or flip single switches on the CLI (`fixes.strict_scheduler=true`):
+#   configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml   (A: memory)
+#   configs/eval/2026-09-09_colosseum_hospital_board_access.yaml      (B: the board)
+fixes:
+  # A — a seat's earlier turns of the shift are re-sent between the system prompt and
+  # the fresh briefing; off = every turn starts from [system, user], the original loop.
+  carry_agent_history: false
+  history_max_turns: null            # null = every earlier turn of the shift
+  history_include_reasoning: false   # fold the private reasoning into the carried reply
+  # B — the provisioner is shown the boards it can already post to; post_message exists
+  # in execution; the department execution prompt permits one status message.
+  provisioner_reads_boards: false
+  post_message_in_execution: false
+  execution_prompt_allows_status: false
+  require_status_post: false         # strong: one intent line per turn on the coalition board
+  # shared — environment mechanics
+  strict_scheduler: false            # unknown patient / repeat / too early = a tool ERROR, not success
+  real_job_queue_tool: false         # get_job_queue returns the queue, not "Refer to prompt context."
+  home_hospitals: false              # patients belong to a hospital: queue and missed-step charge by hospital
+
 # ── where the patched benchmark lives ─────────────────────────────────────────
 # Overridden by $COLOSSEUM_ROOT. The runner refuses a checkout that has lost the
 # seating patch, because without it every seat silently falls back to one model.

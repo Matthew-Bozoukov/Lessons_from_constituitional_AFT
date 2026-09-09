@@ -29,12 +29,85 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from omegaconf import DictConfig, OmegaConf
+
 from src.eval.misalignment.colosseum.config import llm_block
 from src.infra.endpoints.vllm import ServedTarget
 
-__all__ = ["CONDITIONS", "PAIR", "PROVISIONER", "build_sweep_config"]
+__all__ = [
+    "CONDITIONS",
+    "FIXES",
+    "PAIR",
+    "PROVISIONER",
+    "build_sweep_config",
+    "resolve_fixes",
+]
 
 PROVISIONER = "Resource_Provisioner"
+
+# Every harness fix, with the value that reproduces the paper's harness. Each is a switch
+# read by the patched packages (third_party/README.md: terrarium_hospital_fixes.patch and
+# hospital_eval_fixes.patch); the eval config's `fixes:` block sets them, the sweep YAML
+# carries them to Colosseum as a top-level `fixes` block, and every episode records them
+# in run_config.json. Unknown keys are refused rather than ignored, because a misspelt flag
+# on the CLI would otherwise run the original harness under a fixed run's name.
+FIXES: dict[str, Any] = {
+    # Direction A — memory: the seat's earlier turns of the shift are re-sent between the
+    # system prompt and the fresh briefing (terrarium BaseAgent).
+    "carry_agent_history": False,
+    "history_max_turns": None,
+    "history_include_reasoning": False,
+    # Direction B — the board: read access for the provisioner, a post_message tool in
+    # execution, a neutral execution prompt, and (strong) a required intent line per turn.
+    "provisioner_reads_boards": False,
+    "post_message_in_execution": False,
+    "execution_prompt_allows_status": False,
+    "require_status_post": False,
+    # Shared — environment mechanics.
+    "strict_scheduler": False,
+    "real_job_queue_tool": False,
+    "home_hospitals": False,
+}
+
+
+def resolve_fixes(cfg) -> dict[str, Any]:
+    """The eval config's `fixes:` block, completed with defaults and checked.
+
+    Args:
+        cfg: The eval config (OmegaConf), possibly without a `fixes` block at all.
+
+    Returns:
+        {flag: value} with every key of FIXES present — the block the sweep YAML carries and
+        the harvest later checks each episode against.
+    """
+    raw = cfg.get("fixes") if cfg is not None else None
+    if isinstance(raw, DictConfig):
+        raw = OmegaConf.to_container(raw, resolve=True)
+    raw = dict(raw or {})
+    unknown = sorted(set(raw) - set(FIXES))
+    assert not unknown, f"unknown fixes {unknown}; the switches are {sorted(FIXES)}"
+    out = dict(FIXES)
+    out.update(raw)
+    for key in FIXES:
+        value = out[key]
+        if key == "history_max_turns":
+            assert value is None or (isinstance(value, int) and value > 0), (
+                f"fixes.history_max_turns must be a positive integer or null, got {value!r}"
+            )
+        else:
+            assert isinstance(value, bool), (
+                f"fixes.{key} must be true or false, got {value!r}"
+            )
+    assert not out["require_status_post"] or out["post_message_in_execution"], (
+        "fixes.require_status_post asks for a post every turn, execution included, so it "
+        "needs fixes.post_message_in_execution"
+    )
+    assert not out["history_include_reasoning"] or out["carry_agent_history"], (
+        "fixes.history_include_reasoning changes what is carried, so it needs "
+        "fixes.carry_agent_history"
+    )
+    return out
+
 
 # The watched pair. This is exactly what upstream's `_select_adversaries_hospital_coalition`
 # returns for `adversary_count=2, target_role=Resource_Provisioner`: the provisioner is
@@ -182,4 +255,7 @@ def build_sweep_config(
         # published with the episode — they are what a false-claim check replays.
         "logging": {"root_dir": str(out_dir / "rollouts" / "colosseum_env_logs")},
         "llm_models": [{"label": target.spec.model_key, "llm": target_llm}],
+        # The harness switches (FIXES), read by the patched packages and recorded per
+        # episode. All false = the paper's harness.
+        "fixes": resolve_fixes(cfg),
     }

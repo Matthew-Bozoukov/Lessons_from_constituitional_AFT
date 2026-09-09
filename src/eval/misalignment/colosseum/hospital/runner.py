@@ -37,6 +37,10 @@ from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_r
 __all__ = ["run"]
 
 PATCH = "src/eval/misalignment/colosseum/third_party/hospital_seating.patch"
+FIXES_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_eval_fixes.patch"
+TERRARIUM_PATCH = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes.patch"
+)
 
 
 def _colosseum_root(cfg) -> Path:
@@ -45,16 +49,50 @@ def _colosseum_root(cfg) -> Path:
     driver = root / "experiments" / "agent_misalignment" / "run.py"
     assert driver.is_file(), (
         f"no Colosseum checkout at {root}. Clone github.com/umass-ai-safety/colosseum at "
-        f"ac0b405, apply {PATCH}, install its dependencies (not the package) into this "
-        "environment, and point COLOSSEUM_ROOT (or the config's colosseum_root) at it."
+        f"ac0b405, apply {PATCH} and {FIXES_PATCH}, install its dependencies (not the "
+        "package) into this environment, and point COLOSSEUM_ROOT (or the config's "
+        "colosseum_root) at it."
     )
-    # A clone that was re-fetched loses the patch, and the failure is SILENT: every seat
+    # A clone that was re-fetched loses the patches, and the failure is SILENT: every seat
     # falls back to the sweep's single model and the study compares an arm against itself.
-    assert "_resolve_agent_llm_configs_by_seat" in driver.read_text(), (
+    text = driver.read_text()
+    assert "_resolve_agent_llm_configs_by_seat" in text, (
         f"the Colosseum checkout at {root} is missing the seating patch. Re-apply it:\n"
         f"  git -C {root} apply {PATCH}"
     )
+    # Without this one the `fixes` block is dropped on the floor and no prompt, retry
+    # reason or secret block is recorded — a "fixed" run of the original harness.
+    assert "secret_instructions" in text, (
+        f"the Colosseum checkout at {root} is missing the eval-fixes patch. Re-apply it "
+        f"(after the seating patch):\n  git -C {root} apply {FIXES_PATCH}"
+    )
     return root
+
+
+def _terrarium_fixes_version() -> str:
+    """The version stamp of the patched terrarium-agents package this interpreter imports.
+
+    Colosseum runs as a subprocess of THIS interpreter, so the package it will import is
+    the one importable here. An unpatched package ignores every `fixes` flag silently.
+    """
+    try:
+        from envs.dcops.hospital import hospital_env
+        from terrarium.agents import base as terrarium_base
+    except ImportError as e:  # pragma: no cover - depends on the host
+        raise AssertionError(
+            "terrarium-agents is not importable from this environment; the eval runs "
+            "Colosseum with this interpreter, so install Colosseum's dependencies here "
+            "(scratch/colosseum_hospital/pod_bootstrap.sh does)."
+        ) from e
+    version = getattr(terrarium_base, "TERRARIUM_FIXES", None)
+    assert version and getattr(hospital_env, "HOSPITAL_FIXES", None) == version, (
+        "the installed terrarium-agents package is missing the fixes patch, so every "
+        f"`fixes` flag would be ignored. Apply {TERRARIUM_PATCH} into its site-packages "
+        "(scratch/colosseum_hospital/pod_bootstrap.sh does):\n"
+        "  cd $(python -c 'import terrarium, os; print(os.path.dirname("
+        f"terrarium.__path__[0]))') && patch -p1 < <repo>/{TERRARIUM_PATCH}"
+    )
+    return str(version)
 
 
 def _run(argv: list[str], *, cwd: Path, log: Path) -> None:
@@ -103,6 +141,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     # ABSOLUTE before anything derives a path from it: the sweep's cwd is the checkout.
     out_dir = Path(out_dir).resolve()
     root = _colosseum_root(cfg)
+    terrarium_fixes = _terrarium_fixes_version()
     _, results_dir, metadata_dir = publish_layout(out_dir)
 
     # The control checkpoint in the seven seats that are not the pair. For the control
@@ -141,7 +180,12 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     run_root = _newest_output(output_dir)
     expected = {"pair": target.model_name, "other": peer.model_name}
-    harvest = harvest_run_root(run_root, expected_seats=expected, pair=PAIR)
+    harvest = harvest_run_root(
+        run_root,
+        expected_seats=expected,
+        expected_fixes=sweep_cfg["fixes"],
+        pair=PAIR,
+    )
 
     (results_dir / "per_seed.json").write_text(
         json.dumps(harvest["measures"], indent=2)
@@ -165,6 +209,15 @@ def run(target, cfg, out_dir: Path) -> dict:
             f"!!! the sweep reported {health['failed_runs']} failed episode(s) "
             f"(see {log}); they are absent from per_seed.json"
         )
+    # The harness's own rates, printed with every arm: a retry follows every call that
+    # changed nothing, so an arm that refuses more is also re-asked more.
+    print(
+        f">>> harness: {health['retry_calls']}/{health['llm_calls']} calls were retries "
+        f"{health['retry_reasons']}; {health['truncated_calls']} truncated, "
+        f"{health['looping_calls']} looping; {health['rejected_tool_calls']} tool calls "
+        f"rejected before a handler, {health['scheduler_rejections']} refused by the "
+        f"strict scheduler; fixes={sweep_cfg['fixes']}"
+    )
 
     return {
         "condition": condition,
@@ -172,6 +225,10 @@ def run(target, cfg, out_dir: Path) -> dict:
         "peer": str(cfg.peer),
         "pair": list(PAIR),
         "seats": expected,
+        # The harness variant, verbatim: every published number is read against it.
+        "fixes": sweep_cfg["fixes"],
+        "terrarium_fixes": terrarium_fixes,
+        "max_conversation_steps": int(cfg.max_conversation_steps),
         "measures": harvest["measures"],
         "measure_definitions": dict(MEASURES),
         "health": health,

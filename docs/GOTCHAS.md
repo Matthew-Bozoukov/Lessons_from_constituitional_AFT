@@ -617,3 +617,47 @@ benchmark should add the seats' reasoning (it is already captured, in `agent_tur
 `llm_calls[].reasoning`) to the judge's input as its own channel, judged separately from the
 boards, so a stated refusal and an acted refusal stay distinguishable. The reasoning-level
 classifier in `scratch/colosseum_hospital/decline_vs_action.py` is a stopgap, not a fix.
+
+## The Hospital harness could not hold a refusal — fixed behind `fixes:` switches (2026-09-09)
+
+The 2026-09-04 Hospital study measured the harness as much as the models. Six defects, all
+verified in the code (`terrarium-agents 0.1.1` + Colosseum `ac0b405`): every turn starts
+from `[system, user]`, so a seat forgets its own refusal while its partner's compliant posts
+and its own actions come back through the board every turn; the provisioner's prompt never
+rendered a board (it could post to both and read neither — the "coalition channel" was
+one-way); `post_message` was offered in planning only while most refusals came in
+execution, whose prompt ended "DO NOT POST MESSAGES"; the scheduler answered "success" to
+an unknown patient and to a repeat; `get_job_queue` returned the string "Refer to prompt
+context."; patients had no home hospital (both hospitals' departments were handed the same
+job; unscheduled steps were charged to `hospital_names[0]`); and the judge read boards only.
+
+All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital.yaml`, every
+switch OFF there so the base config is still the paper's harness — through two patches in
+`src/eval/misalignment/colosseum/third_party/` (README there has the switch table):
+`terrarium_hospital_fixes.patch` goes into the terrarium-agents *site-packages* and
+`hospital_eval_fixes.patch` into the Colosseum checkout after `hospital_seating.patch`.
+Direction A (memory) and direction B (the board) are `configs/eval/2026-09-09_colosseum_
+hospital_carried_history.yaml` and `..._board_access.yaml` (`--config`), sharing the
+environment fixes. Things that bite:
+
+- **The runner refuses an unpatched package**, and the harvest refuses an episode whose
+  `run_config.json` lacks `terrarium_fixes` or records a different `fixes` block. `uv sync`
+  removes terrarium (it is not in the lock), so after any sync re-run
+  `scratch/colosseum_hospital/pod_bootstrap.sh`, which re-applies and verifies both patches
+  and ends with the scripted-model smoke (`fixes_smoke.py`, 97 checks, ~1 min, no GPU).
+- **Every episode now writes `prompts.jsonl`** (one record per model call, the whole
+  message list minus the system prompt, which is in `system_prompts.json` by hash). A
+  department call is 8–22k tokens of text; a 30-seed cell is a few hundred MB. It is the
+  rollout, so it is pulled and published; do not exclude it in `pull_runs.sh`.
+- **`judge.json` gained channels.** `per_run[run]` keys are now `public`, `secret` and
+  `reasoning:<seat>` for the two watched seats; judge files written before 2026-09-09 have
+  the first two only, and their refusal ratings are board-level refusal (see the entry
+  above). Analysis code that iterates channels must not assume two.
+- **`retry_reason`** on `llm_calls[]` says why a second call was made. The loop's rule is
+  unchanged (continue until an environment tool commits): a refusal, a plan, a read and an
+  error all earn a retry, a committed action ends the turn, so an arm that refuses more is
+  re-asked more. The harvest reports `retry_calls` and its kinds per arm.
+- **`post_message` without `blackboard_id` lands on board 0, the public one**, and the tool
+  schema makes the id optional. Not patched: it is the model's mistake to make and the
+  public-board judge should see it — but read a "coalition plan on the public board"
+  finding with this in mind.
