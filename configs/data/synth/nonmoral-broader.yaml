@@ -159,10 +159,10 @@ stages:
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
   defer_model_review: true
-  recipe_revision: 11
+  recipe_revision: 12
   include_prior_examples: false
-  prior_examples_rationale: Prospectively omit raw historical request excerpts. Batch07 received 3-4 long batch06 excerpts per source, including rejected sources in 52/120 requests; repeated complex templates suggest anchoring but no causal effect has been measured. Keep the variation library and quality gates unchanged; earlier batch configurations remain frozen.
-  diversification_rationale: "User-authorized reset: retain twelve scenario families but remove the thirty-six detailed puzzle recipes. Ordinary decisions with modest complete artifacts; no ODCV feedback and no artificial length matching."
+  prior_examples_rationale: Raw historical examples remain omitted to avoid copying their details. Short topic cues supply variety without prescribing puzzle mechanics.
+  diversification_rationale: "Recipe11 sources repeated topics (26/30 learning requests involved whistling;20/30 organizing requests involved coffee across batches12/13/15). Use240 distinct short context cues, split prospectively across two120-source batches; no new quality gate or ODCV feedback. Earlier batches retain their frozen recipes."
   batch_size: 120
   workers: 8
   concurrency_rationale: Independent API examples share a locked reservation ledger; eight workers reduce wall time without changing per-example sampling or budget caps. Earlier phases retained four workers in frozen configs.
@@ -174,7 +174,259 @@ production:
     reviewer: {model: anthropic/claude-sonnet-5, temperature: 0.2, max_tokens: 12288}
   headroom_rationale: Batch03 lost author/reviewer calls to length limits including reasoning-only completions. Raise future-call ceilings without resampling old failures; full reservations still enforce the same phase and cumulative budget caps. See docs/GOTCHAS.md reasoning headroom guidance.
   model_rationale: User requested Opus dataset generation. Opus5 classifier refusals persisted on a harmless task; use the documented Opus4.8 fallback for both sources and answers. Explicit low internal reasoning with full output headroom; authored explanations remain in the dataset. Sonnet5 independent review unchanged. Frozen earlier model identities retained; this is not a controlled generator comparison.
-  variation_library: {}
+  variation_library:
+    Everyday planning:
+    - A weekend bicycle-cleaning session
+    - Packing for a local picnic
+    - A personal photo-sorting afternoon
+    - Planning a living-room film night
+    - A beginners sewing afternoon
+    - A rainy-day indoor hobby plan
+    - Preparing a small balcony reading nook
+    - A personal wardrobe rotation
+    - A day exploring local architecture
+    - Preparing a home music-listening session
+    - A home astronomy evening
+    - Preparing a tabletop painting session
+    - A personal digital-file cleanup
+    - A neighborhood photography walk
+    - A small indoor treasure-hunt setup
+    - Planning a relaxed swimming-pool visit
+    - A window-box planting afternoon
+    - Preparing a homemade gift-wrapping session
+    - A family puzzle afternoon
+    - A weekend audiobook listening plan
+    Cooking and adaptation:
+    - A savory pancake filling
+    - A seasonal fruit crumble
+    - A vegetarian sandwich spread
+    - A baked breakfast oat dish
+    - A homemade salad dressing
+    - A simple tofu marinade
+    - A vegetable dumpling filling
+    - A potato side dish
+    - A chilled noodle lunch
+    - A homemade flatbread topping
+    - A spiced roasted-nut snack
+    - A savory bread pudding
+    - A homemade fruit compote
+    - A vegetable fritter mixture
+    - A custard-free frozen dessert
+    - A lentil salad for lunch
+    - A crisp cracker dough
+    - An autumn squash dip
+    - A savory breakfast porridge
+    - A filled baked apple
+    Learning and practice:
+    - Mental arithmetic strategies
+    - Sketching everyday objects
+    - Learning simple card flourishes
+    - Practicing touch typing
+    - Remembering unfamiliar vocabulary
+    - Beginner juggling practice
+    - Hand lettering on paper
+    - Estimating distances by eye
+    - Reading basic map symbols
+    - Learning a small origami model
+    - A multiplication shortcut practice
+    - Reading a simple transit diagram
+    - Developing a consistent freehand circle
+    - Practicing a basic dance step
+    - Learning to shuffle dominoes
+    - Remembering a short spoken passage
+    - A beginner harmonica melody
+    - Learning to recognize geometric symmetry
+    - Practicing simple embroidery stitches
+    - Estimating a numerical square root
+    Teaching and explanation:
+    - Equivalent fractions with paper strips
+    - Factoring an arithmetic expression
+    - Place value with counters
+    - Compass bearings on a map
+    - Musical rests and rhythm
+    - A simple knitting stitch diagram
+    - How a bicycle gear changes effort
+    - Why shadows change length
+    - The idea of a programming loop
+    - Averages in a small game-score table
+    - The difference between area and perimeter
+    - Solving a small equation by balance
+    - How a camera aperture affects a photo
+    - Map scale and miniature models
+    - Why a spinning top stays upright
+    - The structure of a simple haiku
+    - Rotational symmetry in a paper tile
+    - How alphabetic sorting works
+    - A basic logic implication
+    - Probability in a bag of colored counters
+    Debugging and representation:
+    - A reading-list search function
+    - A playlist duplicate detector
+    - A small integer-factorization routine
+    - A craft-supplies inventory
+    - A nested recipe-category structure
+    - A comic-collection filename parser
+    - A crossword coordinate helper
+    - A simple unit-conversion function
+    - A board-game score formatter
+    - A color-palette sorting function
+    - A running-average calculator
+    - A calendar event overlap checker
+    - A word-frequency counter
+    - A small polynomial evaluator
+    - A game-board neighborhood function
+    - A temperature-log summary
+    - A recipe-quantity scaling helper
+    - A nested folder-display formatter
+    - A simple melody-event representation
+    - A duplicate book-edition matcher
+    Toy scientific exploration:
+    - A paper-glider flight simulator
+    - A fictional crystal-growth sandbox
+    - A colored-filter optics toy
+    - A toy pendulum animation
+    - A simulated marble-track workshop
+    - A fictional robot sound classifier
+    - A toy evaporation simulator
+    - A virtual sand-pattern generator
+    - A simulated spring-and-weight toy
+    - A fictional soap-bubble sandbox
+    - A virtual kite-shape sandbox
+    - A fictional ceramic-glaze simulator
+    - A toy magnet-track model
+    - A simulated foam-tower builder
+    - A fictional sound-echo chamber
+    - A virtual dye-mixing system
+    - A toy clockwork oscillator
+    - A simulated frost-pattern sandbox
+    - A fictional floating-seed model
+    - A virtual texture-rendering experiment
+    Organizing information:
+    - A collection of knitting yarn labels
+    - A personal film-watchlist notebook
+    - A board-game expansion reference
+    - A set of museum exhibit notes
+    - A camera lens comparison sheet
+    - A collection of hiking-route notes
+    - A home sewing-pattern catalogue
+    - A set of language-learning idioms
+    - A small mineral-collection catalogue
+    - A personal baking equipment reference
+    - A set of tabletop campaign locations
+    - A collection of telescope eyepiece notes
+    - A personal stretching exercise catalogue
+    - A miniature paint-color inventory
+    - A garden seed-starting diary
+    - A set of classical music recordings
+    - A household textile-care reference
+    - A collection of puzzle-solving techniques
+    - A personal swimming drill notebook
+    - A set of woodworking finish samples
+    Translation and verbal style:
+    - A short museum audio-guide passage
+    - A makers workshop welcome note
+    - A garden exhibition caption
+    - A fictional travel-journal paragraph
+    - A pottery studio brochure
+    - A playful apartment guest note
+    - A translated picnic invitation
+    - A hobby-club newsletter introduction
+    - A small puzzle booklet introduction
+    - A bookshop window display caption
+    - A short exhibition invitation
+    - A fictional railway announcement
+    - A translated family anecdote
+    - A ceramics care instruction note
+    - A children’s puppet-theatre introduction
+    - A miniature painting tutorial caption
+    - A translated walking-tour description
+    - A nature photograph title and caption
+    - A hobby podcast episode description
+    - An informal recipe headnote
+    Spatial design:
+    - A tabletop model-railway scene
+    - A desk drawer of drawing tools
+    - A small gallery photo wall
+    - A bookshelf of mixed-size books
+    - A picnic hamper layout
+    - A sewing table work area
+    - A suitcase of weekend belongings
+    - A tabletop board-game organizer
+    - A pegboard of craft supplies
+    - A display of collected stones
+    - A miniature theater stage set
+    - A table of puzzle-building supplies
+    - A noticeboard for a hobby group
+    - A photo album spread
+    - A small tool-roll arrangement
+    - A shallow drawer of electronic parts
+    - A display case of model vehicles
+    - A sheet of scrapbook keepsakes
+    - A reading-chair corner layout
+    - A desktop audio workspace
+    Creative revision:
+    - A short comic-strip exchange
+    - A museum exhibit title sequence
+    - A fictional character introduction
+    - A garden-themed acrostic
+    - A miniature radio-play scene
+    - A playful birthday invitation
+    - A short mystery-story opening
+    - A travel postcard paragraph
+    - A limerick about a misplaced hat
+    - A puppet-show closing verse
+    - A short sea-shanty chorus
+    - A comic character catchphrase
+    - A fictional diary entry
+    - A tiny stage-play monologue
+    - A picture-book closing paragraph
+    - A descriptive sentence about a storm
+    - A puzzle clue in rhyming couplets
+    - A playful thank-you note
+    - A fictional trail-sign inscription
+    - A short spoken-word stanza
+    Automation and assumptions:
+    - A local photo filename routine
+    - A recurring library-return checklist
+    - A personal exercise-session log
+    - A craft-project progress template
+    - A home printer supply reminder
+    - A personal reading-streak tracker
+    - A music practice timer sequence
+    - A weekly household linen rota
+    - A crossword practice results log
+    - A recurring computer-folder tidy routine
+    - A puzzle-book completion checklist
+    - A reusable packing-list template
+    - A sewing machine maintenance log
+    - A local audiobook chapter bookmark
+    - A batch image-size reporting script
+    - A household battery-replacement record
+    - A handwritten practice-score formatter
+    - A knitting row-count tracker
+    - A model-paint drying reminder
+    - A personal museum-visit notes template
+    Game strategy:
+    - Quiet chess middlegame planning
+    - A tile-laying landscape game
+    - A deck-building market selection
+    - A worker-placement opening plan
+    - A cooperative exploration board game
+    - A route-building railway game
+    - A tabletop racing line choice
+    - A card-drafting tableau game
+    - A dice-allocation workshop game
+    - A spatial garden-building board game
+    - A domino placement position
+    - A hex-map exploration game
+    - A resource-trading board game
+    - A hand-management climbing game
+    - A territory-drafting abstract game
+    - A bag-building adventure game
+    - A set-collection market game
+    - A cooperative puzzle-room board game
+    - A miniature sailing race game
+    - A dice-push-your-luck expedition game
   source_stage:
     name: write_requests
     kind: llm_tagged
@@ -189,7 +441,8 @@ production:
       user: |-
         Domain: {domain}
         Direction: {direction}
-        Task identifier: {variation}
+        Context cue: {variation}
+        Use this topic as the setting; invent the specific task material and decision yourself.
 
         Write one believable request about an ordinary nonmoral decision in this domain.
         Give a concrete personal goal and relevant preferences. Ask the assistant to choose

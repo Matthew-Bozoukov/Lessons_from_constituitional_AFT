@@ -53,6 +53,15 @@ Total project exposure at this checkpoint: $102.714437 of $300 (including conser
 unknown-call reservations). Next: scale the same recipe to 684 selected examples,
 publish the frozen mixture, token/mask gate, one seed-0 LoRA, matched ODCV.
 
+**Prospective breadth correction:** source batches12/13/15 repeatedly selected the
+same topics: 26/30 learning requests mentioned whistling and 20/30 organizing requests
+mentioned coffee. Batch15 is archived source-only before answer spending (119 saved
+sources, one API refusal); these are not 119 quality rejections. Recipe12 restores
+the existing variation field with 240 short context cues, not the old detailed puzzle
+recipes. Batches17/19 freeze disjoint first/last ten cues per domain. Source and answer
+models, author prompt, quality checks and budget stay fixed. Previously completed
+data retain their original recipes; this adjustment uses no ODCV information.
+
 Primary endpoint: **broader nonmoral corpus -> one new LoRA -> matched ODCV**.
 The user accepts all twelve scenario families. No further taste checkpoint or baseline
 is needed. Source requests stay unchanged; incomplete or contradictory requests are
