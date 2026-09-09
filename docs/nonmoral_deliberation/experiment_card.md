@@ -32,7 +32,14 @@ SFT is starting on owned RunPod `epd4o5f97zooij` (2xH200, $9.18/hour), at
 code revision `6d5d134d50786a8602acefc3f2a90c76dbd43df3`. Independent watchdog
 active; $40 training cap and local backup before ordinary teardown. The first
 provision request returned HTTP500 and created no pod; one verified retry succeeded.
-Training and the new checkpoint's ODCV result are still pending.
+Training and the new checkpoint's ODCV result are still pending. Checkpoint100 is
+already local with all12 file sizes/hashes verified (3.85GB). Measured transfer time
+requires a longer final backup. An independent completion-only full-output preserver
+writes `output/nonmoral_broader/20260909/training_retry1/final_verified_backup`.
+The existing owner retains its old short transfer timeout; if it enters recovery,
+use the independent verified receipt and the explicit procedure in
+`output/nonmoral_broader/20260909/readiness/backup_completion_handoff.json` before
+termination. Original $40 GPU cap/watchdog unchanged.
 
 Sources and full answers now use **Opus4.8**, with explicit low reasoning effort;
 review uses **Sonnet5**. The earlier accepted Sonnet-authored data remain in the
