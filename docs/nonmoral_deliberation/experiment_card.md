@@ -39,16 +39,18 @@ $3.49/hour, independent watchdog, unchanged $20 total evaluation cap. Docker,
 network capacity and all168 physical shell files passed preflight. Frozen plan:
 `output/nonmoral_broader/20260909/evaluation_plan.json`.
 
-The training pod `epd4o5f97zooij` remains alive for verified local preservation.
-Checkpoint100 is already local (3.85GB; all12 file hashes verified). Independent
-final backup is copying8.99GB/46 files to
-`output/nonmoral_broader/20260909/training_retry1/final_verified_backup`.
-The original owner has a short transfer timeout; if it enters recovery, reconcile
-the independent verified receipt using
-`output/nonmoral_broader/20260909/readiness/backup_completion_handoff.json` before
-termination. Original $40 training cap/watchdog unchanged. Evaluation runs in
-parallel with this transfer; the training pod cannot be torn down just because
-its adapter is public.
+**Backup incident:** RunPod reports training pod `epd4o5f97zooij` was stopped
+at19:36:38UTC with reason "Exited by user"; actor unknown. Our owner remained in
+`artifact_recovery_required`, ordinary teardown blocked, and its watchdog had not
+reached its21:03UTC deadline. No stop was issued by this thread's recovery agent.
+Final backup received6.560/8.987GB before disconnection; **full archive verification
+was not achieved**. Checkpoint100 remains fully verified locally. Complete final
+adapter and checkpoint600 member ranges were received; salvage/individual verification
+is underway. Public final adapter is intact and ODCV continues unaffected.
+Evidence: `output/nonmoral_broader/20260909/training_retry1/unexpected_stop_incident.json`.
+Do not restart or claim all outputs preserved. The user has been asked whether they
+or another agent stopped it. No GPU budget increase or training rerun authorized by
+this incident.
 
 Sources and full answers now use **Opus4.8**, with explicit low reasoning effort;
 review uses **Sonnet5**. The earlier accepted Sonnet-authored data remain in the
