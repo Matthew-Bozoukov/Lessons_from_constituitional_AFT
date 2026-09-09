@@ -28,18 +28,27 @@ rounded synthetic percentage, not a recipe version.
 All9968 rows passed token-length checks; maximum8191, with no truncation.
 All684 new-example masks were checked in full; the shared generation-boundary
 mask gate also passed. New examples total790648 tokens,606746 supervised.
-SFT is starting on owned RunPod `epd4o5f97zooij` (2xH200, $9.18/hour), at
-code revision `6d5d134d50786a8602acefc3f2a90c76dbd43df3`. Independent watchdog
-active; $40 training cap and local backup before ordinary teardown. The first
-provision request returned HTTP500 and created no pod; one verified retry succeeded.
-Training and the new checkpoint's ODCV result are still pending. Checkpoint100 is
-already local with all12 file sizes/hashes verified (3.85GB). Measured transfer time
-requires a longer final backup. An independent completion-only full-output preserver
-writes `output/nonmoral_broader/20260909/training_retry1/final_verified_backup`.
-The existing owner retains its old short transfer timeout; if it enters recovery,
-use the independent verified receipt and the explicit procedure in
+**SFT completed successfully: 623 steps, one epoch, mean training loss0.834213.**
+Training runtime6632.5seconds. Exact data/base pins, world_size2 and token budget8000
+were verified. Public [adapter](https://huggingface.co/dougalldeepmind/2026-09-09-qwen36-0-nonmoral-broader-7)
+revision `d52838446ef134088841e8dc436094d93827487f`; public weight hash matches
+the remote trained adapter. No alignment result yet.
+
+**ODCV launched** with this exact adapter: owned H100 pod `9ybfav9mzboi6y`,
+$3.49/hour, independent watchdog, unchanged $20 total evaluation cap. Docker,
+network capacity and all168 physical shell files passed preflight. Frozen plan:
+`output/nonmoral_broader/20260909/evaluation_plan.json`.
+
+The training pod `epd4o5f97zooij` remains alive for verified local preservation.
+Checkpoint100 is already local (3.85GB; all12 file hashes verified). Independent
+final backup is copying8.99GB/46 files to
+`output/nonmoral_broader/20260909/training_retry1/final_verified_backup`.
+The original owner has a short transfer timeout; if it enters recovery, reconcile
+the independent verified receipt using
 `output/nonmoral_broader/20260909/readiness/backup_completion_handoff.json` before
-termination. Original $40 GPU cap/watchdog unchanged.
+termination. Original $40 training cap/watchdog unchanged. Evaluation runs in
+parallel with this transfer; the training pod cannot be torn down just because
+its adapter is public.
 
 Sources and full answers now use **Opus4.8**, with explicit low reasoning effort;
 review uses **Sonnet5**. The earlier accepted Sonnet-authored data remain in the
@@ -55,13 +64,10 @@ recipes; no causal generator comparison or alignment improvement is claimed.
 
 ## Remaining steps
 
-1. Train one seed-0 rank64 LoRA on **2xH200 RunPod, dynamic batching**, using the
-   shared SFT recipe: one epoch, global batch16, learning rate1e-4, ceiling8192.
-   Pin the published mixture revision and base revision; verify masks on the pod.
-2. Fetch and checksum complete outputs/checkpoints locally before ordinary teardown.
-3. Evaluate the new checkpoint on RunPod using the matched ODCV protocol:
-   80cells x3passes, temperature0.7, context28000; Docker drives locally.
-   Report exact misalignment, submission/progress, paired uncertainty and charts.
+1. Verify the complete final local training backup and terminate the owned H200 pod.
+2. Complete matched ODCV:80cells x3passes, temperature0.7, context28000; Docker local.
+3. Verify local evaluation artifacts, terminate the owned H100 pod, and publish exact
+   misalignment, submission/progress, paired uncertainty and comparison charts.
 
 ## Fixed selection and operating rules
 

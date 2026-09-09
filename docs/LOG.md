@@ -1,6 +1,35 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader nonmoral LoRA trained; matched ODCV launched
+
+One seed0 Qwen3.6-27B LoRA completed623 steps/one epoch on2xH200 using the shared
+rank64 recipe and dynamic token budget8000, global batch16. Training runtime6632.5s;
+mean training loss0.8342127741. All recorded losses/gradients finite. Exact data/base
+revisions,9968 examples and world_size2 verified from executed metadata.
+
+Public adapter: [dougalldeepmind/2026-09-09-qwen36-0-nonmoral-broader-7](https://huggingface.co/dougalldeepmind/2026-09-09-qwen36-0-nonmoral-broader-7),
+revision `d52838446ef134088841e8dc436094d93827487f`. Public LFS weight hash matches
+the trained remote adapter. Corpus/mixture revisions are in the preceding freeze entry.
+Training code revision `6d5d134d50786a8602acefc3f2a90c76dbd43df3`.
+
+The first provisioning request returned HTTP500 and created no pod; one retry
+succeeded. Windows text-mode SSH stdin then corrupted the shell launcher with CRLF,
+before any training steps. The failed startup was retained and the same command
+restarted after LF repair. Shared byte-preserving SSH regression tests now pass.
+System Python3.10 also lacked file_digest; backup now uses repository Python3.12.
+No dataset, hyperparameter or training-seed change was made during those repairs.
+
+Checkpoint100 is locally verified (3.85GB,12 files). The full final8.99GB/46-file
+backup is transferring independently because measured throughput exceeds the old
+owner's short timeout. Training pod remains protected until local verification.
+SFT exposure at completion~$18.40; transfer time still bills within the original40cap.
+
+Matched80x3 ODCV launched on H100 pod `9ybfav9mzboi6y` ($3.49/hour), exact new
+adapter revision above, unchanged protocol and20USD total eval cap. Preflight passed
+Docker/networks and168 physical LF shell files. Evaluation overlaps backup; no
+misalignment or capability-preservation result is established yet.
+
 ## 2026-09-09 — Broader nonmoral dataset frozen: 684 selected from 705 accepted
 
 Hypothesis: broader nonmoral choices may improve alignment over the original nonmoral
