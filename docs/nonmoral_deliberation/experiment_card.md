@@ -7,31 +7,42 @@ Updated 2026-09-09. Full intent and constraints: [research brief](research_brief
 Chronological evidence: [experiment log](../LOG.md). Earlier failures and reset:
 [postmortem](2026-09-08_postmortem.md).
 
-## Current execution
+## Completed overnight result
 
-**Baseline fallback is active.** Evaluate the existing nonmoral-684, math-716 and
+**Baseline fallback completed.** Evaluated the existing nonmoral-684, math-716 and
 Table-2-only checkpoints with identical ODCV settings: 80 cells x 3 passes each,
 temperature 0.7, context 28,000, both misalignment and task-progress judging.
-These are **720 rollouts and no new training**. Exact checkpoint revisions and
+These are **720 scored rollouts and no new training**. Exact checkpoint revisions and
 protocol are in [the baseline inventory](baseline_inventory.md) and
 [`scratch/nonmoral/odcv-paired.yaml`](../../scratch/nonmoral/odcv-paired.yaml).
 
-Nonmoral and math are complete, public, and their pods' termination verified.
-Table-2-only is starting. These are existing adapters, not newly trained models.
+All three are complete and public, with owned-pod termination verified.
+[Public report, chart, exact results and audits](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-baseline-comparison)
+are pinned at revision `a8fd17e2ac42ad7129596fdc3ce6e36703d0b7ec`.
 
 | Checkpoint | MR | Submitted | Progress mean /5 | Progress >=3 |
 |---|---:|---:|---:|---:|
 | [Nonmoral](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x) | 33/240 (13.75%) | 236/240 | 4.921 | 236/240 |
 | [Math](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-math-common-3x) | 92/240 (38.33%) | 215/240 | 4.771 | 231/240 |
+| [Table2 only](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-table2-common-3x) | 90/240 (37.50%) | 224/240 | 4.8125 | 233/240 |
+
+Nonmoral minus math: **-24.58 percentage points**, scenario-paired 95% CI
+**[-34.01, -15.16]**. Nonmoral minus Table2: **-23.75 points**, CI
+**[-32.85, -14.65]**. The nonmoral checkpoint also has the highest observed
+submission and mean-progress values. This supports a checkpoint difference under
+this protocol, not a deliberation-only causal explanation or a new training improvement.
 
 All transcripts and both judging axes are present. Nonmoral has 3 context-limit
 and 1 cycle-limit endings; math has 14 context-limit, 10 cycle-limit and **1 API
-timeout**. The API timeout was hidden by outer status `ok`/executor exit 0; raw-log
-audits expose it and its original partial behavior remains scored. Neither model
+timeout**; Table2 has 10 context-limit, 5 cycle-limit and **1 API timeout**.
+Both API timeouts were hidden by outer status `ok`/executor exit 0; raw-log
+audits expose them and their original partial behavior remains scored. No model
 needed a transcript reconstruction or an outer scenario-timeout retry. Progress
 without submission is capped at **4**, so progress >=3 is not a completion count.
-Scenario 95% MR intervals: nonmoral **[7.79, 23.12]%**, math **[27.7, 50.2]%**.
-Full paired comparisons await Table-2-only.
+Scenario 95% MR intervals: nonmoral **[7.79, 23.12]%**, math **[27.73, 50.17]%**,
+Table2 **[26.66, 49.76]%**. All 45 nonsubmissions were inspected: one refusal-like
+noncontinuation in nonmoral and one in Table2, with justification unadjudicated.
+This selected audit is not an overall refusal-rate measurement.
 
 Historical **73/400 = 18.25% nonmoral** and **98/240 = 40.83% math** used different
 context/harness settings and remain historical observations, not this comparison.
@@ -84,6 +95,14 @@ progress monitoring and verified teardown. All GPU inference runs on RunPod; Doc
 drives ODCV locally. Any future authorized SFT uses **2xH200, dynamic batching** and
 the shared training configuration. Artifacts are public under `dougalldeepmind`.
 
+**Final exposure estimate: $31.929031 / $300**, including prior settled $2.110418,
+prior uncertain reservations $0.168748, fresh data $1.204914, invalid-attempt
+GPU/storage $1.304417, and completed nonmoral/math/Table2 estimates of
+$8.026093 / $8.868183 / $10.246257. All 1,440 baseline judge requests settled;
+no new judge reservations remain. Costs use token rates and full owned-pod lifetimes,
+not provider invoices or shared-account usage deltas. All four owned pods, including
+the invalid attempt, are terminated. No paid work remains running in this branch.
+
 ## What this can establish
 
 The baseline comparison measures these three fixed checkpoints under one protocol.
@@ -94,4 +113,5 @@ deferred; submission/progress cannot establish capability preservation.
 
 Shorter reasoning, a valid retained-reasoning/no-comparison control, broader domains
 and nonmoral stakes remain future experiments. The failed paired-data branch does
-not answer those questions.
+not answer those questions. The [bounded next-experiment proposal](next_experiments.md)
+separates the repair-prompt diagnostic from a fresh validation batch; it authorizes no runs.

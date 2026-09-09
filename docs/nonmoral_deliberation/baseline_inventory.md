@@ -67,14 +67,9 @@ The following resolves parts of the preceding inventory; it adds no trained mode
 
 Remaining bounded gaps: (1) common-protocol evaluation of existing checkpoints later, if the question requires a reliable between-arm estimate; (2) nonmoral progress grading later, with explicit paid-judge scope; (3) historical training provenance and whether the original684answers withstand independent review. The missing older Aug30 score repo no longer blocks having a pinned math reference. Additional training seeds remain explicitly deferred.
 
-## Launch proposal: three existing checkpoints, one measurement protocol
+## Archived launch proposal: three existing checkpoints, one measurement protocol
 
-**Execution update, 2026-09-09:** the user authorized this comparison within the $300
-overall ceiling. The active baseline allocation is $60 GPU/storage plus $10 judging;
-durable judge reservations, RunPod watchdogs and Windows path/LF checks are implemented.
-The first CRLF-contaminated attempt was stopped without judging. The corrected nonmoral run completed all240 native rollouts; math is active and Table2 follows. [Current experiment card](experiment_card.md) supersedes the historical
-approval and implementation gaps in the proposal below. Checkpoint order/settings
-remain fixed; no extra passes will be selected from observed scores.
+**Execution complete, 2026-09-09:** all three existing checkpoints finished the frozen 240-rollout protocol and are public. All owned pods are terminated. The final section below supersedes this archived proposal's pending decisions, $80 suggested allocation and pre-implementation caveats. Actual authorized allocation was $70; total attributable lane estimate including the discarded CRLF attempt is $28.444951. No new model was trained.
 
 Proposal following the [postmortem reset](2026-09-08_postmortem.md), **not a rental or evaluation authorization**. Question: does the historical nonmoral checkpoint retain lower misalignment than existing math and replay-only checkpoints when evaluated identically, without a corresponding loss of task submission/progress? This establishes a better baseline comparison; it cannot isolate deliberation from every training-data difference or establish capability preservation.
 
@@ -102,13 +97,29 @@ uv run evals --name odcv --config scratch/nonmoral/odcv-paired.yaml --target <TA
 
 **Deliverable and validity:** one compact three-row results table and paired-difference figure: MR numerator/denominator and scenario-level CI; submission counts over all 240 records; progress mean and ≥3 count; contextual truncations, errors, reconstructions and missing cells. Compare nonmoral against each control using the existing scenario-paired statistics, preserving rollout rates rather than treating 720 draws as independent scenarios. Keep recipes separate and report missing-cell overlap explicitly. A clean run completes all 80 cells × 3 passes per checkpoint; incomplete coverage is reported as incomplete, not silently repaired by changing the comparison set. Submission alone is not task success; progress alone is not a capability battery. Any observed worsening in completion/progress blocks an unqualified alignment-improvement claim, and formal capability testing remains deferred.
 
-Remaining launch decisions are bounded: approve the $80 scope after a current rental/provider quote; verify revision equality and the common serving environment; confirm paid-judge spend control and public write access under `dougalldeepmind`. Table-2's backfilled/ordinary-SFT provenance and the 716-math versus 684-craft mixture difference remain limitations even after a perfectly matched evaluation. This measurement lane is independent of whether the new paired-data pilot succeeds.
+The proposal's launch decisions were resolved before paid execution: revision checks, Docker/Windows fixes, bounded judging, owned-pod watchdogs and public write access were verified. These are no longer pending approval. Table-2's backfilled/ordinary-SFT provenance and the 716-math versus 684-craft mixture difference remain limitations even after a perfectly matched evaluation. This measurement lane is independent of whether the new paired-data pilot succeeds.
 
 Analysis implementation note: `src/eval/misalignment/odcv/stats.py:arm_difference` accepts per-cell lists through `_long`; use those repeated-rollout values. The older `odcv_compare.py` command also contains scalar-only McNemar comparisons and is not a verified end-to-end report command for these list-valued results. This does not require replacing the evaluation runner.
 
 
-## Common-protocol execution: first completed checkpoint
+## Common-protocol execution: all three complete
 
-2026-09-09 corrected nonmoral: **33/240 MR-positive (13.75%)**, repository scenario95% CI[7.8%,23.1%]; **236/240 submitted**, **236/240 progress≥3**, progress mean4.920833/5. All80cells have3passes, all240native transcript archives, zero retries/timeouts/reconstructions or judge failures. The CI treats the checkpoint as fixed; it does not measure training-seed uncertainty. Math and Table2 remain pending; this row alone is not a controlled improvement claim.
+Each fixed checkpoint has **240 judged rollouts: 40 scenarios × 2 variants × 3 stochastic passes**, with the exact revisions above, temperature 0.7 and 28,000-token context. These are evaluation repeats, not training-seed replicates.
 
-Public evidence: [nonmoral common-protocol result](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x), revision `aaf6f8b09e6ed6b283b85fa6d0d8122a14b6e4c6`. Local: `C:/nm-eval/2026-09-09_odcv_nonmoral_lf_common_3x_024206`. Metadata includes attributable request ledger and `cost_accounting.json`: $2.134974 judge token-rate estimate plus $5.891119 full owned-pod GPU/storage estimate, total$8.026093. These are estimates, not invoices. Legacy global OpenRouter balance/usage deltas in raw shared-runner fields are explicitly **unattributable** on this shared account. Invalid first-attempt GPU/storage cost$1.304417 remains separately accounted and excluded from scientific results.
+| Existing checkpoint | MR score ≥ 3 | Scenario 95% CI | Submitted | Progress ≥ 3 | Mean progress/5 | Attributed cost estimate |
+|---|---:|---:|---:|---:|---:|---:|
+| Nonmoral |33/240=13.75%|7.8–23.1%|236/240|236/240|4.920833|$8.026093|
+| Math |92/240=38.333333%|27.7–50.2%|215/240|231/240|4.770833|$8.868183|
+| Table2-only |90/240=37.50%|26.7–49.8%|224/240|233/240|4.812500|$10.246257|
+
+The repository's paired scenario comparison gives nonmoral-minus-math **−24.583333 percentage points**, 95% CI[−34.0,−15.2], and nonmoral-minus-Table2 **−23.75 points**, CI[−32.9,−14.6]. See the [public comparison bundle](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-baseline-comparison), [reproducible comparison](../../output/nonmoral_overnight/20260909/baseline_comparison/comparison.md) and adjacent JSON/figure. The uncertainty conditions on these checkpoints; training-seed variation remains unmeasured. Different training corpora and historical training provenance still prevent attributing the gap specifically to deliberation. Submission and progress are incomplete capability/overrefusal proxies; formal capability testing remains deferred.
+
+Public result revisions (each includes transcripts, judgments, configs and cost metadata):
+
+- [Nonmoral](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-nonmoral-lf-common-3x): `aaf6f8b09e6ed6b283b85fa6d0d8122a14b6e4c6`; local `C:/nm-eval/2026-09-09_odcv_nonmoral_lf_common_3x_024206`.
+- [Math](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-math-common-3x): `f823ba43645810da5863c8cf9d2401407bfba454`; local `C:/nm-eval/2026-09-09_odcv_math_common_3x_042034`.
+- [Table2-only](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-table2-common-3x): `b12209ccd86eb201a4ea7d69f432e9346fa6c139`; local `C:/nm-eval/2026-09-09_odcv_table2_common_3x_061747`.
+
+**Runtime qualification:** all 720 records are native archives, with no outer scenario-timeout, missing-cell retry or reconstruction. However, successful executor exit/status`ok` does **not** imply an error-free trajectory. Independent full-record audits found nonsubmission endings: nonmoral 3 context + 1 cycle; math 14 context + 10 cycle + 1 API timeout; Table2 10 context + 5 cycle + 1 API timeout. The math timeout is mandated/Academic/pass1; Table2's is incentivized/Academic/pass2. Both retain the original archived prefix and original score in the denominator. Exact executor images use OpenAI SDK 3.6.0 defaults: 600s read timeout and 2 configured retries; actual request retry counts were not logged. Public `metadata/api_timeout_provenance.json` in math/Table2 preserves source hashes and evidence. No timeout-driven reruns, dropping or rescoring occurred. These terminal mechanisms are not interchangeable with refusals; see the independent noncompletion audits under `output/nonmoral_overnight/20260909/`.
+
+**Closed cost accounting:** [baseline_lane_closed.json](../../output/nonmoral_overnight/20260909/baseline_lane_closed.json) verifies all 4 owned pods absent from the provider's live list, and records **$21.894689 GPU/storage+$6.550262 judging=$28.444951**, including $1.304417 for the discarded first CRLF attempt. All 1,440 judge requests settled. Per-checkpoint public `metadata/cost_accounting.json` and `judge_budget_ledger.json` preserve exact costs/indices; these are elapsed-rate/token-rate estimates plus conservative storage reserve, not invoices. Legacy global OpenRouter usage deltas in shared-runner fields are **unattributable account movements**, not this experiment's costs. The invalid first attempt remains preserved separately and excluded from all scientific comparisons.

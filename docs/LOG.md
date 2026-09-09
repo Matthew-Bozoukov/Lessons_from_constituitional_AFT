@@ -1,6 +1,59 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Common-protocol nonmoral baselines completed; fresh-data fallback closed
+
+**Question.** Does the existing nonmoral checkpoint retain lower ODCV misalignment
+than math and replay-only checkpoints under one measurement protocol, without lower
+observed submission/progress? This is a checkpoint comparison, not a clean causal
+deliberation manipulation. The failed paired-development gate triggered the authorized
+baseline fallback; no new SFT ran.
+
+**Method.** Pinned Qwen3.6-27B base and three adapter revisions; 40 scenarios x two
+variants x three stochastic passes per checkpoint, temperature 0.7, context 28,000,
+concurrency 8, one fixed Gemini 3 Flash judge per MR/progress axis. Every corrected
+run used identical physical benchmark shell hashes. Inference ran on RunPod; Docker
+drove scenarios locally. All 720 native transcripts and 1,440 judge outputs are present.
+
+| Existing checkpoint | MR | Submitted | Progress mean /5 | Progress >=3 |
+|---|---:|---:|---:|---:|
+| Nonmoral 684 | 33/240 (13.75%) | 236/240 | 4.920833 | 236/240 |
+| Math 716 | 92/240 (38.33%) | 215/240 | 4.770833 | 231/240 |
+| Table2 only | 90/240 (37.50%) | 224/240 | 4.812500 | 233/240 |
+
+Scenario-paired MR differences, nonmoral minus control: **-24.58pp versus math,
+95% CI [-34.01, -15.16]**; **-23.75pp versus Table2, CI [-32.85, -14.65]**.
+Nonmoral also has the highest observed submission and progress means. Evaluation
+passes are not training seeds; recipe, corpus and historical training differences
+remain confounds. Historical nonmoral 18.25% used different context/harness settings
+and must not be pooled or described as a new training improvement.
+
+**Health.** No outer scenario timeouts, transcript reconstructions or missing-cell
+reruns. Raw terminal audits found context/cycle/API endings of **3/1/0 nonmoral,
+14/10/1 math, 10/5/1 Table2**. Both API timeouts returned executor exit 0 and outer
+status `ok`; both original partial trajectories remain scored. Offline image checks
+found SDK read timeout 600s and two configured retries; actual request attempts and
+underlying timeout cause were not logged. All 45 nonsubmissions received qualitative
+review. One nonmoral and one Table2 case show refusal-like noncontinuation, with
+justification unadjudicated; this is not an overall refusal-rate estimate. Progress
+without submission is capped at 4, so >=3 does not establish task completion.
+
+**Costs and closure.** Total exposure estimate **$31.929031 / $300**, including prior
+spending/reservations, fresh generation, the invalid CRLF attempt and all owned-pod
+lifetimes. All baseline judge requests settled; all four owned pods are terminated.
+These are token-rate/elapsed-rate estimates, not invoices; shared-account usage is
+excluded. The initial invalid, unjudged CRLF attempt is separately archived and
+excluded from the scientific comparison.
+
+**Artifacts and next work.** [Public comparison, chart, exact source hashes, costs and audits](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-baseline-comparison),
+revision `a8fd17e2ac42ad7129596fdc3ce6e36703d0b7ec`; anonymous downloads of the report,
+JSON, chart and budget match local hashes. Fresh paired development remains **13/32
+valid versus 24 required**, publicly archived and not approved for SFT. The
+[next-experiment note](nonmoral_deliberation/next_experiments.md) proposes a bounded
+repair-contract diagnostic and fresh prospective validation, without ODCV-based data
+selection. Shorter tasks, retained-CoT/no-comparison and stakes remain unanswered.
+Formal capability tests remain deferred, so capability preservation is not established.
+
 ## 2026-09-09 — Corrected harness audits pass; timeout evidence preservation strengthened
 
 The first corrected nonmoral pass completed **80/80** with successful harness
