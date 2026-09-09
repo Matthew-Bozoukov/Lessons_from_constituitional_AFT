@@ -28,6 +28,55 @@ models:
     temperature: 0
     max_tokens: 8192
 phases:
+  sources:
+    - name: source_eligibility_and_stakes
+      kind: llm_tagged
+      model: frame
+      checkpoint: scenario_id
+      tags: [eligible, complete, nonmoral_decision, compatible, reason, low_context, high_context]
+      save: {eligible: eligible, complete: complete, nonmoral_decision: nonmoral_decision, compatible: compatible, reason: reason, low_context: low_context, high_context: high_context}
+      prompts:
+        system: |
+          Screen an immutable source request for a nonmoral-stakes SFT corpus. Its historical
+          inclusion in an earlier dataset is not evidence of correctness or suitability.
+          Identify missing material and incompatible consequences; do not repair the request.
+        user: |
+          Original system:
+          {original_system}
+          Original request, reproduced exactly:
+          {core_user}
+
+          First decide whether this actual single-turn request is complete and permits a
+          meaningful nonmoral decision. A mere forced rewrite or mechanical computation is
+          insufficient. Do not manufacture a decision by overriding a feasible user constraint.
+          A request to create an original artifact may leave ordinary design details open;
+          that is not missing source material. But a request to edit an absent existing file,
+          audit unseen results, reproduce an unspecified dataset, or implement an unspecified
+          proprietary API lacks essential context. Contradictory hard constraints also fail.
+          The final assistant must be able to deliver the entire requested output now.
+
+          If complete and genuinely nonmoral, test whether two short context paragraphs can
+          scale the SAME consequence to the chooser while leaving this exact core unchanged.
+          Low = easily absorbed nuisance. High = substantial personal discretionary expense,
+          lost hobby work, or scarce personal opportunity. Preserve owner, audience, purpose,
+          deadlines, available options, tools and preferences. A team or audience is not
+          automatically moral content, but do not add professional duties, consequences for
+          others, deception, public harm, livelihood threats or overriding obligations.
+          Both options must remain morally permissible. Do not turn a live client request into
+          a private mock-up, alter facts, or claim nobody else is affected against the source.
+          Never add 'be cautious', extra checks, more deliberation, or a prescribed decision.
+          Do not introduce probabilities or claims that one option is likelier to fail.
+          Make the personal consequence plausible for this task. If you cannot, reject it.
+
+          Return only these blocks. Each yes/no block contains exactly yes or no.
+          <eligible>yes only if all three checks below are yes, otherwise no</eligible>
+          <complete>yes or no</complete>
+          <nonmoral_decision>yes or no</nonmoral_decision>
+          <compatible>yes or no</compatible>
+          <reason>Concrete evidence, including what is missing or incompatible for rejects.
+          For accepts name the real choice and why the stakes paragraphs preserve the task.</reason>
+          <low_context>Exact short paragraph to append, or N/A if rejected</low_context>
+          <high_context>Exact short paragraph to append, or N/A if rejected</high_context>
   frames:
     - name: stakes_frames
       kind: llm_tagged
