@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Prompt simplification did not improve yield; reduce wasted reviewing
+
+Batch06 retained37/89 authored examples (41.6%), versus87/208 (41.8%) in batches04/05.
+The corpus now contains198 accepted conversations, public revision
+`c463256cf44b2df7616b78a4a193d1cc720f71eb`; four files anonymously hash-verified.
+The prompt simplification has not demonstrated improvement; simultaneous task-mix
+changes prevent attributing a causal effect. No thresholds were lowered.
+
+Recipe8 changes review order: full local author review, independent Sonnet review only
+for local accepts, then explicit final adjudication. Every training candidate retains
+both checks. Applied counterfactually to fixed batch06 outputs, it would omit54 raw
+review calls across52 excluded candidates, saving$2.005170 of$8.007640 answer/review
+exposure. Extra raw calls were bounded formatting attempts, not semantic repair loops.
+No historical spend was refunded. Focused offline tests protect immutable author gates,
+exact source-config identity and accepted-only review dispatch.
+
+Batch07 generated120 sources;93 accepted,26 rejected,1held. Its author-only phase is
+running under frozen recipe8. Broader exposure at source completion:$38.027718.
+No new GPU or LoRA has launched. A separate audit found52/120 batch07 source prompts
+included previously rejected/held source excerpts in their anti-repetition context;
+all120 got long excerpts, and task templates still repeated. Prospective recipe9 omits
+these excerpts, retaining domain directions and quality gates.9 focused tests passed.
+Anchoring is a plausible contributor, not an established cause: batch06 already had
+poor yield without excerpts. Existing batches remain frozen and will not be regenerated.
+
 ## 2026-09-09 — Diagnose rejection and simplify the next broader batch
 
 Batch05 added39 accepted full conversations: production pool161, public revision

@@ -14,23 +14,45 @@ The user accepts all twelve scenario families. No further taste checkpoint or ba
 is needed. Source requests stay unchanged; incomplete or contradictory requests are
 excluded. Full reasoning and full answers are retained, with material-error checks.
 
-Production batches01–05 retained **161 complete candidates** (7 + 11 + 56 + 48 + 39).
-First12 remains a separate feedback packet. Batch05 admitted 105 of 119 completed
-sources, produced 103 full answers, and completed 101 independent model reviews.
-All 103 authored conversations were read locally: 39 accepted, 59 rejected, 5 held.
-Two model-review failures were already local rejects, so the final reviewed dataset
-contains 39 accepted, 57 rejected and 5 held. Failed calls were not retried; terminal
-exceptions retain their full reserved cost. Broader exposure: **$27.707596**.
-Batch06 generated 120 sources for $1.002128; 94 passed source review and answer generation
-is running using recipe7, with 36 distinct subtask directions
-within the existing domains; see [diversity rationale](broader_diversity_directions.yaml).
-Production uses 8 workers and frozen per-phase configs, with 16,384/12,288
-author/reviewer token ceilings. No retrospective resampling.
+Production batches01–06 retained **198 complete candidates** (7 + 11 + 56 + 48 + 39 + 37).
+First12 remains a separate feedback packet. Batch06 admitted 94 of 120 sources and
+produced 89 full answers. Final local review: 37 accepted, 51 rejected, 1 held.
+All 89 completed independent model review; two model rejects were explicitly adjudicated
+as defensible language/style choices from the full text. Five author calls failed;
+terminal exceptions retain their maximum charges. Broader exposure: **$36.717364**.
+
+Batch06 acceptance was **37/89 = 41.6%**, versus **87/208 = 41.8%** in batches04/05.
+The simpler prompt has not demonstrated a yield improvement; task mix also changed.
+From batch07, recipe8 changes review order: full local author review first, independent
+Sonnet review only for local accepts, then explicit final local adjudication. Every
+training candidate still gets both reviews. On the fixed batch06 outputs this would
+avoid 52 candidate reviews (54 raw calls including formatting retries), saving **$2.005170**
+of its **$8.007640** answer/review exposure. Historical spend is unchanged.
+
+The shared tagged-output helper allows up to three formatting attempts: batch06 made
+94 author calls and 93 reviewer calls for 89 answers (four extra formatting attempts).
+Transport retries are disabled; no semantic repair loop. This distinction is retained
+in `output/nonmoral_broader/20260909/selective_review_savings.json` and public batch06 audit.
+
+Batch07 generated120 sources;93 passed local review,26 were rejected and1 held.
+Author-only generation is running; all full answers will receive local review before
+Sonnet reviews survivors. Source-phase broader exposure:$38.027718. Production uses
+8 workers,36 subtask directions and frozen per-phase configs; author/reviewer ceilings
+remain16,384/12,288 tokens.
+See [diversity rationale](broader_diversity_directions.yaml).
+
+A second audit found the anti-repetition mechanism inserted3–4 raw historical request
+excerpts into every batch07 source prompt;52/120 included previously rejected or held
+batch06 requests. Several task templates still repeated. Recipe9 removes raw excerpts
+from future source prompts while retaining the36 directions and the same quality gates.
+This avoids conflicting guidance and input tokens; a yield benefit is unproven, and
+batch06 already had high rejection without excerpts. Batch07 keeps its frozen recipe8.
+Evidence: `production/batch07/rejection_anchor_audit.json` under the broader output root.
 
 [Public growing corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth):
-161 accepted default rows at revision `38edff84f372645d6ffe27789a3a82989a417248`.
+198 accepted default rows at revision `c463256cf44b2df7616b78a4a193d1cc720f71eb`.
 Four public files were downloaded anonymously and hash-verified. Stage candidates,
-dispositions, checks and stored raw calls are separate audit material.
+dispositions, checks and raw calls remain separate audit material.
 
 Quality diagnosis across batches04/05:208 authored answers,87 initially accepted,
 111 rejected,10 held. Primary reject categories (manual attribution, overlapping causes
