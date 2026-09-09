@@ -12,12 +12,23 @@ Primary: make a broader, varied nonmoral deliberation corpus, train one seed-0
 LoRA, and measure whether it improves alignment under matched ODCV. Dataset
 selection uses no ODCV feedback. Secondary stakes work is paused behind this run.
 
-**568 accepted conversations toward 684.** All have full local review plus an
-independent Sonnet review. Batch17 added64 unchanged examples; one reviewer
-request was refused and its candidate excluded. Another34 literally corrected
-candidates await their one independent review. Batch19 has115 admitted source
-prompts and is generating full answers. The current public snapshot still holds321
-accepted rows; the next publication will include all completed batch evidence.
+**Dataset complete: 705 accepted; 684 frozen for training.** The selected rows span
+12 domains and contain 389 Opus4.8-authored and 295 Sonnet5-authored conversations;
+178 received a documented literal correction. All 684 have independent Sonnet review.
+The final batch retained 32/33 corrected candidates; one remaining column-count error
+was excluded without another repair.
+
+Public [corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth)
+revision `a3d266e2f0cc48e26e153caf078a5d641ecbbb5c` contains all705 accepted rows and
+the complete audit. Public [training mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-7-mix)
+revision `f1e61baf643c861920303c7ba1e9844df5f6ed48` contains the selected684 plus
+9284 byte-identical replay rows at their original positions. The name's7 is the
+rounded synthetic percentage, not a recipe version.
+
+All9968 rows passed token-length checks; maximum8191, with no truncation.
+All684 new-example masks were checked in full; the shared generation-boundary
+mask gate also passed. New examples total790648 tokens,606746 supervised.
+Training and the new checkpoint's ODCV result are still pending.
 
 Sources and full answers now use **Opus4.8**, with explicit low reasoning effort;
 review uses **Sonnet5**. The earlier accepted Sonnet-authored data remain in the
@@ -33,18 +44,11 @@ recipes; no causal generator comparison or alignment improvement is claimed.
 
 ## Remaining steps
 
-1. Complete local and independent reviews; freeze684 unique selected examples
-   with the existing deterministic domain-round-robin selection. Report actual
-   domain counts, token lengths, generators, corrections and exclusions.
-2. Publish the corpus and frozen mixture under public **dougalldeepmind** using
-   shared naming/cards/provenance. Preserve all9284 historical replay rows byte
-   for byte, in the same positions; total9968 training rows.
-3. Check every row's token length and masks against the pinned Qwen3.6 tokenizer.
-   The existing568-row pool is not yet a frozen training mixture. An earlier486-row
-   length census found maximum3027tokens and zero over8192.
-4. Train one seed-0 rank64 LoRA on **2xH200 RunPod, dynamic batching**, using the
+1. Train one seed-0 rank64 LoRA on **2xH200 RunPod, dynamic batching**, using the
    shared SFT recipe: one epoch, global batch16, learning rate1e-4, ceiling8192.
-5. Evaluate the new checkpoint on RunPod using the matched ODCV protocol:
+   Pin the published mixture revision and base revision; verify masks on the pod.
+2. Fetch and checksum complete outputs/checkpoints locally before ordinary teardown.
+3. Evaluate the new checkpoint on RunPod using the matched ODCV protocol:
    80cells x3passes, temperature0.7, context28000; Docker drives locally.
    Report exact misalignment, submission/progress, paired uncertainty and charts.
 
@@ -64,7 +68,7 @@ one fresh independent review; every original and exact edit remains in the audit
 
 Total project ceiling **$300**, including prior work. Broader-data cap140; stakes
 allocation55 remains paused; SFT40 and evaluation20 reserved. Latest completed-phase
-project exposure is about **$127.76**, including conservative unknown reservations.
+project exposure is about **$135.32**, including conservative unknown reservations.
 Shared-account balance changes are not this experiment's bill.
 
 Use shared SynthDoc/OpenRouter, HF and RunPod infrastructure. No broader GPU has

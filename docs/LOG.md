@@ -1,6 +1,39 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader nonmoral dataset frozen: 684 selected from 705 accepted
+
+Hypothesis: broader nonmoral choices may improve alignment over the original nonmoral
+checkpoint. Selection never uses ODCV outcomes. This is a corpus intervention, not a
+causal comparison of generator models or individual reasoning properties.
+
+Completed generation and review. The last corrected batch passed32/33; the remaining
+column-count error was excluded without another repair. Fixed salted-ID selection,
+normalized-request deduplication and domain round-robin selected684 from705 accepted.
+Selected source/answer models:389 Opus4.8 and295 Sonnet5; all684 have independent
+Sonnet5 review,178 have a documented literal correction. Original prompts remain intact.
+
+Domains: automation55, cooking56, creative revision76, debugging76, planning53,
+games22, learning45, organizing73, spatial43, teaching76, toy science33, translation76.
+These are actual unequal counts, not equal quotas. Topic-cue changes, failed calls,
+archived source-only batches, all local reviews and exact corrections remain in the audit.
+
+Published public corpus705: [HF](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-synth),
+revision `a3d266e2f0cc48e26e153caf078a5d641ecbbb5c`.
+Frozen mixture9968: [HF](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-7-mix),
+revision `f1e61baf643c861920303c7ba1e9844df5f6ed48`, SHA256
+`0545e014b518fdb9b8b40e37adc0b4a21da01c384553fe60e6a81f87098a2c22`.
+All9284 historical replay lines and positions are byte-identical. All9968 rows fit8192
+(max8191); every new-example mask checked in full and shared mask gate passed.
+New examples:790648 tokens,606746 supervised tokens, maximum3027 tokens.
+No token-matching claim. The mixture's7 denotes rounded synthetic percentage.
+
+Recorded project exposure before training: $135.318104, including conservative unknown
+reservations; broader data $85.408749. No outstanding live reservations. Next: the
+authorized single seed0 rank64 LoRA on2xH200 with shared dynamic batching, then matched
+80x3 ODCV. Training allocation40, eval20, total ceiling300. No alignment improvement or
+capability preservation is established yet; stakes work remains paused.
+
 ## 2026-09-09 — Broader corpus passes 413; diversify remaining source topics
 
 Recipe11 batch12 saved 119/120 sources and 111/111 admitted answers. Local review
