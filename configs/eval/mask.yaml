@@ -58,10 +58,15 @@ temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled,
 # CLAUDE.md gotcha 4: a thinking target spends budget inside <think>; too tight a cap
 # truncates before the answer, the harness stores "[ERROR: ...]" for that cell, and the
 # judge reads it as no belief / evasion -- a silent zero. Measured 2026-09-07 on the
-# nosynth smoke: 4096 lost 45 of 145 generations (31%). The longest MASK prompt is ~590
-# Qwen3.6 tokens, so 12288 fits the 16384 window with room; the runner reports the error
-# rate and refuses a run above `max_generation_error_rate`.
-max_tokens: 12288
+# nosynth smoke: 4096 lost 45 of 145 generations (31%). 12288 was then chosen to FIT the
+# 16384 serving window (longest MASK prompt ~590 tokens), not from any measurement of trace
+# length, and 2026-09-09 vLLM's own counters showed every remaining failure was a
+# `finished_reason=length` cut inside the think block: 0.8-1.8% of generations, almost all
+# on the belief_elicit_1 prompt ("think through your reasoning, then answer yes or no"),
+# where replayed traces ran to ~7,500 tokens before answering. 16384 gives that tail room;
+# the serving window below is sized to hold it plus the prompt. The runner still reports the
+# error rate and refuses a run above `max_generation_error_rate`.
+max_tokens: 16384
 max_generation_error_rate: 0.05
 # A thinking target can finish with NO content: it wrote its reply inside the think block
 # and never emitted </think>, so the reasoning parser hands back reasoning and no answer.
@@ -81,7 +86,11 @@ constitution: none      # MASK is an external honesty instrument, not tied to a 
 # Reached purely through the OpenAI triple (base_url, model, key), so an API target works
 # too (supports_api_target=True in the registry) and no docker is needed.
 serving:
-  # Prompts are short; the window only covers the trace plus max_tokens. 16384 keeps parity
-  # with the other Qwen3.6 evals.
-  context_window: 16384
+  # Prompts are short (longest ~590 tokens), so the window is max_tokens plus prompt
+  # headroom: vLLM refuses a request whose prompt + max_tokens exceeds --max-model-len, so
+  # the window must be STRICTLY larger than max_tokens. 20480 = 16384 + 4096. Well inside
+  # what the family serves elsewhere (ODCV 28000, psychosis 40960); the KV cache is
+  # scheduled on actual sequence lengths, so a larger window costs nothing until traces
+  # actually fill it.
+  context_window: 20480
   needs_tool_calls: false
