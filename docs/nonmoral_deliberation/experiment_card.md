@@ -44,9 +44,12 @@ at19:36:38UTC with reason "Exited by user"; actor unknown. Our owner remained in
 `artifact_recovery_required`, ordinary teardown blocked, and its watchdog had not
 reached its21:03UTC deadline. No stop was issued by this thread's recovery agent.
 Final backup received6.560/8.987GB before disconnection; **full archive verification
-was not achieved**. Checkpoint100 remains fully verified locally. Complete final
-adapter and checkpoint600 member ranges were received; salvage/individual verification
-is underway. Public final adapter is intact and ODCV continues unaffected.
+was not achieved**. Checkpoint100 remains fully verified locally. Salvage retained26 complete files. All9 final-adapter files were individually
+verified against the exact public HF revision; checkpoint623 weights also match.
+Checkpoint600 is fully received but lacks individual remote-hash verification.
+Checkpoint623 optimizer is truncated;19 later archive members were not received.
+Owner-state run metadata and125 log records are separately labelled reconstructed.
+The verified final model is local and public; ODCV continues unaffected.
 Evidence: `output/nonmoral_broader/20260909/training_retry1/unexpected_stop_incident.json`.
 Do not restart or claim all outputs preserved. The user has been asked whether they
 or another agent stopped it. No GPU budget increase or training rerun authorized by
