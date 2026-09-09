@@ -160,6 +160,8 @@ stages:
 production:
   recipe_revision: 6
   batch_size: 120
+  workers: 8
+  concurrency_rationale: Independent API examples share a locked reservation ledger; eight workers reduce wall time without changing per-example sampling or budget caps. Earlier phases retained four workers in frozen configs.
   phase_cap_usd: {sources: 5, answers: 15}
   rationale: Separate task authoring from answering; review immutable sources before spending on responses. Reject rather than repair.
   models:

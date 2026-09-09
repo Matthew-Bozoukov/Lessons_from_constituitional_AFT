@@ -44,6 +44,9 @@ def production(cfg, args):
     batch_root = ROOT/'production'/args.batch
     phase_root = batch_root/args.phase
     prod = cfg['production']
+    workers = int(prod.get('workers', cfg['workers']))
+    if not 1 <= workers <= 8:
+        raise ValueError('Production concurrency must be 1..8')
     if args.phase == 'sources':
         if args.source_review:
             raise ValueError('Source authoring does not take an upstream review')
@@ -81,6 +84,7 @@ def production(cfg, args):
             raise ValueError('No accepted sources to answer')
         stages = [prod['answer_stage'], cfg['stages'][-1]]
     effective = {**cfg, 'models':prod.get('models',cfg['models']), 'total_scenarios':len(rows),
+                 'workers':workers,
                  'source':{'local_dir':str(phase_root/'input'), 'snapshot':'inputs.jsonl'},
                  'output_dir':str(phase_root/'runs'),
                  'stages':[{'name':'planned_cases','kind':'load_source_run'}, *stages]}
