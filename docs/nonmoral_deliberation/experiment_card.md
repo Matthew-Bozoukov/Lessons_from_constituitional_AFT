@@ -32,12 +32,20 @@ mask gate also passed. New examples total790648 tokens,606746 supervised.
 Training runtime6632.5seconds. Exact data/base pins, world_size2 and token budget8000
 were verified. Public [adapter](https://huggingface.co/dougalldeepmind/2026-09-09-qwen36-0-nonmoral-broader-7)
 revision `d52838446ef134088841e8dc436094d93827487f`; public weight hash matches
-the remote trained adapter. No alignment result yet.
+the remote trained adapter. Final result: **76/240 misaligned (31.67%)**, versus
+original nonmoral **33/240 (13.75%)**. This broader candidate performed worse.
 
-**ODCV launched** with this exact adapter: owned H100 pod `9ybfav9mzboi6y`,
-$3.49/hour, independent watchdog, unchanged $20 total evaluation cap. Docker,
-network capacity and all168 physical shell files passed preflight. Frozen plan:
-`output/nonmoral_broader/20260909/evaluation_plan.json`.
+**ODCV complete:** all 240 rollouts and both sets of 240 judgments retained, no
+terminal API deaths or outer scenario timeouts. Five rollouts hit token limits.
+Submission:235/240; mean progress:4.916667/5. Original:236/240 and4.920833/5.
+Broader minus original MR: **+17.92 percentage points**, paired scenario95%CI
+**[+8.93,+26.90]**. These are fixed-checkpoint results, not training-seed uncertainty.
+Public [evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-qwen36-0-nonmoral-broader-7)
+revision `fe7b98403d7efca11764fc94a5e7443b720c77ee`;
+[comparison and charts](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-comparison/tree/main/results)
+revision `dc681d897efb57d4f16680678e3257210b60db24`.
+Public eval files were verified against local bytes. Remote logs were hash-verified
+before H100 termination. All owned pods are now absent from RunPod (individual404s).
 
 **Backup incident:** RunPod reports training pod `epd4o5f97zooij` was stopped
 at19:36:38UTC with reason "Exited by user"; actor unknown. Our owner remained in
@@ -51,9 +59,10 @@ Checkpoint623 optimizer is truncated;19 later archive members were not received.
 Owner-state run metadata and125 log records are separately labelled reconstructed.
 The verified final model is local and public; ODCV continues unaffected.
 Evidence: `output/nonmoral_broader/20260909/training_retry1/unexpected_stop_incident.json`.
-Do not restart or claim all outputs preserved. The user has been asked whether they
-or another agent stopped it. No GPU budget increase or training rerun authorized by
-this incident.
+Do not claim all outputs preserved. The training resource subsequently disappeared
+before this thread's watchdog deadline; stop/deletion actor remains unknown.
+Provider absence was verified before stopping the obsolete local training owner.
+No GPU budget increase or training rerun occurred because of this incident.
 
 Sources and full answers now use **Opus4.8**, with explicit low reasoning effort;
 review uses **Sonnet5**. The earlier accepted Sonnet-authored data remain in the
@@ -67,13 +76,14 @@ use disjoint halves. This addresses observed repetition in recipe11 without new
 puzzle templates or a prompt tournament. Earlier candidates retain their original
 recipes; no causal generator comparison or alignment improvement is claimed.
 
-## Remaining steps
+## Next research decision
 
-1. Resolve the externally stopped H200 resource after preserving the incident evidence.
-   Final adapter is locally verified; the full training archive remains incomplete.
-2. Complete matched ODCV:80cells x3passes, temperature0.7, context28000; Docker local.
-3. Verify local evaluation artifacts, terminate the owned H100 pod, and publish exact
-   misalignment, submission/progress, paired uncertainty and comparison charts.
+This authorized run is finished; no further paid work is running. Broader diversity
+alone did not improve this candidate. A useful next step is a descriptive comparison
+of the frozen original and broader corpora (reasoning length, alternative comparison,
+domain mix and generation style), before choosing another intervention. This result
+does not identify which difference caused the regression. Stakes and formal
+capability testing remain untried here and paid-paused.
 
 ## Fixed selection and operating rules
 
@@ -91,7 +101,9 @@ one fresh independent review; every original and exact edit remains in the audit
 
 Total project ceiling **$300**, including prior work. Broader-data cap140; stakes
 allocation55 remains paused; SFT40 and evaluation20 reserved. Latest completed-phase
-project exposure is about **$135.32**, including conservative unknown reservations.
+project exposure is **$165.23 / $300**, including conservative unknown reservations:
+prior135.318104, SFT GPU/storage21.848901, eval GPU/storage5.719672, judges2.343440.
+All480 judge requests settled. These are estimates, not provider invoices.
 Shared-account balance changes are not this experiment's bill.
 
 Use shared SynthDoc/OpenRouter, HF and RunPod infrastructure. Before this rental,
@@ -108,6 +120,7 @@ Matched historical checkpoints, three evaluation passes each:
 | Original nonmoral |33/240 (13.75%)|236/240|4.920833|
 | Math |92/240 (38.33%)|215/240|4.770833|
 | Table2 only |90/240 (37.50%)|224/240|4.812500|
+| Broader nonmoral |76/240 (31.67%)|235/240|4.916667|
 
 These are checkpoint comparisons, not multiple training seeds or a deliberation-only
 causal effect. The historical18.25% number used a different protocol. All720 matched

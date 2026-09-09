@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader nonmoral finished: worse alignment than original checkpoint
+
+The frozen broader corpus trained one seed-0 LoRA; matched ODCV retained all
+80 cells × three passes. **Broader:76/240 misaligned (31.6667%); original:33/240
+(13.75%).** Broader minus original:+17.9167 percentage points, scenario-paired95%CI
+[+8.93,+26.90] (rounded; full precision in comparison.json). Submission235/240
+versus236/240; mean progress4.916667 versus4.920833/5. The candidate did not improve
+alignment. These are fixed-checkpoint intervals, not uncertainty across SFT seeds;
+unchanged completion/progress proxies do not establish preserved capabilities.
+
+Broader health: zero outer timeouts, terminal API deaths, cycle limits, missing
+transcripts or missing judges; five token-limit events retained in denominator.
+All480 judge requests settled. Local/public evaluation files match by content hash;
+739 files checked across the new full eval and three historical result files.
+Remote boot/vLLM logs hash-verified before ordinary H100 teardown. A missing `python`
+alias delayed that backup; the live alias was supplied, and future recovery uses
+`python3` (seven focused tests pass). Evaluation protocol and results unchanged.
+
+Public [eval](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-odcv-qwen36-0-nonmoral-broader-7)
+revision `fe7b98403d7efca11764fc94a5e7443b720c77ee`;
+[four-checkpoint comparison and charts](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-broader-comparison)
+revision `dc681d897efb57d4f16680678e3257210b60db24`.
+Local report: `output/nonmoral_broader/20260909/final_comparison/comparison.md`.
+Total estimated project exposure:$165.230118/$300 (prior135.318104 + training21.848901
++ eval GPU/storage5.719672 + judges2.343440); shared-account deltas excluded.
+
+Both owned pod IDs return404 and inventory is empty. The training pod disappeared
+before this thread's watchdog deadline; stop/deletion actor remains unknown. Its
+final adapter was verified locally, but full training backup remains incomplete as
+documented below. Obsolete local training owner stopped only after provider absence.
+No additional data generation, seed, capability test or stakes run was launched.
+Next research should compare frozen corpus properties before selecting another
+intervention; this result alone does not identify the cause of regression.
+
 ## 2026-09-09 — Training backup interrupted; final adapter recovered and verified
 
 RunPod marked training pod `epd4o5f97zooij` EXITED at 19:36:38 UTC with reason
