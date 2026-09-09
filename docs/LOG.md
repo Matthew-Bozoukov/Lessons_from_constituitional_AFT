@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — Broader nonmoral corpus reaches 321 accepted examples
+
+Hypothesis: a simpler varied source recipe and stronger author can produce enough
+usable nonmoral conversations to test a broader SFT arm. Recipe11's Opus 4.8 batch
+generated 24 sources, admitted 22 and completed all 22 answers without API failures.
+Full local checks plus Sonnet 5 review retained 16 unchanged and two with documented
+isolated corrections; four substantive errors were excluded. Cost: $1.401991.
+No quality or alignment improvement is established by this small, confounded batch.
+
+Separately, one Sonnet review of 106 recovered candidates cost $3.429816. Final
+adjudication retained 105, rejecting one false poem-description claim. Two model
+rejections across the new and recovery batches were explicitly overridden because
+the delivered artifacts were correct and the objection was visible self-correction,
+not a material defect. Full decisions and reviewer disagreements remain in the audit.
+
+The growing corpus now contains 321 distinct accepted rows: 303 originally authored
+by Sonnet 5, 18 by Opus 4.8; 74 carry literal local corrections. No original source
+prompt changed. All 321 have Sonnet 5 model reviews. Publication now retains failed
+and incomplete batch evidence, diagnosis and recovery lineage outside the default
+accepted dataset, and the mixture publisher preserves actual mixed-model ancestry.
+Focused recovery/publication tests: 29 passed. Project exposure: $102.714437 of $300.
+
+Next: same-recipe production to 684 selected rows, publish the frozen 9284+684 mixture,
+complete token/mask checks, train one seed-0 LoRA on 2xH200 dynamic batching, then
+matched ODCV. No broader LoRA or new GPU was launched at this checkpoint.
+
 ## 2026-09-09 — Diagnose Opus refusals; verify documented fallback
 
 Shared completion failures now preserve native finish reasons, refusal metadata and

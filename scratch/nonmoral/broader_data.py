@@ -516,7 +516,7 @@ def publication_model_provenance(accepted, batches):
 
 
 def publish_production(config_path, root=ROOT):
-    """Publish accepted rows using the synth layout, retaining every reviewed batch."""
+    """Publish accepted rows using the synth layout, retaining all batch audit evidence."""
     import shutil
     from src.data.synth.hf_cache import StageCache
     from src.infra.huggingface import training_data_tags
@@ -535,6 +535,10 @@ def publish_production(config_path, root=ROOT):
     cache = StageCache(dest, None)
     stage_index = 0
     for batch in sorted((root/'production').glob('batch*')):
+        if not batch.is_dir():
+            continue
+        # Incomplete and failed attempts are audit evidence, never training rows.
+        shutil.copytree(batch, dest/'audit'/batch.name)
         if not (batch/'answer_review.json').exists():
             continue
         final_phase, _, _ = final_answer_phase(batch)
@@ -544,7 +548,9 @@ def publish_production(config_path, root=ROOT):
             stage_index += 1
             cache.save(stage_index, batch.name+'_'+phase,
                        read_rows(Path(status['run_dir'])/'dataset.jsonl'))
-        shutil.copytree(batch, dest/'audit'/batch.name)
+    for folder in ('opus_proposal', 'recovery'):
+        if (root/folder).is_dir():
+            shutil.copytree(root/folder, dest/'audit'/folder)
     cache.publish_final(accepted)
     write_json(dest/'model_provenance.json', model_provenance)
     for filename in ('spend.json', 'budget_allocations.json'):
@@ -572,7 +578,7 @@ def publish_production(config_path, root=ROOT):
                     per_row_provenance='model_provenance.json records original model authorship, actual review model, frozen configurations and local corrections separately',
                     provider='OpenRouter', revision='API model revisions are not immutable; exact requests and responses retained'),
         generation_config='Per-phase frozen configurations under audit/batch*/; config.yaml is the current recipe, not a substitute for those historical configs.',
-        schema='dataset.jsonl: locally accepted user/reasoning/response rows; model_provenance.json: accepted per-row source/author/review models and literal local corrections; stages/: all source and answer candidates; audit/: runs, returned raw calls, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
+        schema='dataset.jsonl: locally accepted user/reasoning/response rows; model_provenance.json: accepted per-row source/author/review models and literal local corrections; stages/: reviewed batch snapshots; audit/: every batch including incomplete/failed attempts, diagnosis, recovery lineage, returned raw calls, model reviews, local dispositions and checks; spend.json: cumulative ledger.',
         provenance='uv run python scratch/nonmoral/broader_data.py --phase sources --batch <batch> --execute; --phase answers --batch <batch> --source-review <review> --execute; for deferred recipes, --phase review --batch <batch> --answer-review <author_review.json> --execute; --publish-production. Exact inputs, source hashes and local author gates retained per phase.',
         downstream='After enough accepted examples, freeze 684 by the preregistered domain-balanced selection, replace the original 684 synthetic slots while preserving all 9284 replay rows, and publish a separate training mixture. Held/rejected rows are audit data only.',
         limitations='Not an alignment result. No new LoRA has been trained on this corpus. Model reviews are fallible; local exclusions are retained. Default dataset contains accepted examples only. Early exception-path calls retained request hashes and maximum cost reservations but did not save their full exception responses; subsequent calls persist requests before dispatch and errors on failure.')

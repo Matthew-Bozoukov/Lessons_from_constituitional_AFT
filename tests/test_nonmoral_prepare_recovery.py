@@ -137,3 +137,41 @@ def test_unchanged_review_passes_shared_conditional_stage_without_call(tmp_path)
     by={r['scenario_id']:r for r in rows}
     assert by[unchanged['scenario_id']]==unchanged
     assert by['another']['quality_issues']=='Fresh exact review'
+
+
+def test_old_config_gets_explicit_bounded_review_cap(tmp_path):
+    root,directory,config,*_=fixture(tmp_path)
+    plan=recovery.prepare(config,[directory],'batch08',root)
+    assert plan['config']['production']['phase_cap_usd']['review']==5
+    custom=recovery.prepare(config,[directory],'batch08',root,review_cap_usd=2)
+    assert custom['config']['production']['phase_cap_usd']['review']==2
+    assert 'phase_cap_usd' not in OmegaConf.to_container(OmegaConf.load(config))['production']
+    with pytest.raises(ValueError,match='Review cap'):
+        recovery.prepare(config,[directory],'batch08',root,review_cap_usd=0)
+
+
+def test_pre_dispatch_cap_repair_preserves_data_and_old_config(tmp_path):
+    root,directory,config,*_=fixture(tmp_path)
+    plan=recovery.prepare(config,[directory],'batch08',root)
+    del plan['config']['production']['phase_cap_usd']['review']  # historical materializer bug
+    batch=recovery.materialize(plan)
+    old=(batch/'config.yaml').read_bytes()
+    data={p:recovery.file_sha256(batch/p) for p in ('sources/dataset.jsonl','answers/dataset.jsonl','author_review.json')}
+    report=recovery.repair_undispatched_review_cap(batch)
+    assert (batch/'audit/review_cap_fix/before/config.yaml').read_bytes()==old
+    for p,sha in data.items(): assert recovery.file_sha256(batch/p)==sha
+    for phase in ('sources','answers'):
+        state=recovery.load(batch/phase/'status.json')
+        assert state['config_sha256']==report['corrected_config_sha256']==recovery.file_sha256(batch/phase/'config.yaml')
+        assert state['config']['production']['phase_cap_usd']['review']==5
+        assert state['paid_calls']==0
+    assert recovery.load(batch/'audit/lineage.json')['frozen_review_config_sha256']==report['corrected_config_sha256']
+    with pytest.raises(ValueError,match='already present'): recovery.repair_undispatched_review_cap(batch)
+
+
+def test_cap_repair_refuses_dispatched_batch(tmp_path):
+    root,directory,config,*_=fixture(tmp_path)
+    plan=recovery.prepare(config,[directory],'batch08',root)
+    batch=recovery.materialize(plan)
+    write(batch/'review/dispatch.json',{'status':'running'})
+    with pytest.raises(ValueError,match='dispatched'): recovery.repair_undispatched_review_cap(batch)

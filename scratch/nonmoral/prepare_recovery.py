@@ -3,6 +3,7 @@
 import argparse
 import copy
 import json
+import math
 import re
 from pathlib import Path
 
@@ -103,7 +104,15 @@ def replay(original, candidate, disposition, key):
     return result, replacements
 
 
-def prepare(config_path, recovery_dirs, batch, root=ROOT):
+def set_review_cap(cfg, review_cap_usd=5.0):
+    """Recovery review defaults to a $5 phase cap inside the existing total budget."""
+    cap = float(review_cap_usd)
+    if not math.isfinite(cap) or cap <= 0 or cap > float(cfg.get('budget_usd', cap)):
+        raise ValueError('Review cap must be positive, finite and within the total budget')
+    cfg['production'].setdefault('phase_cap_usd', {})['review'] = cap
+
+
+def prepare(config_path, recovery_dirs, batch, root=ROOT, review_cap_usd=5.0):
     """Read and validate everything first; this function has no writes or API calls."""
     root = Path(root).resolve()
     if not re.fullmatch(r'batch[0-9]{2,3}', batch):
@@ -113,6 +122,7 @@ def prepare(config_path, recovery_dirs, batch, root=ROOT):
         raise ValueError('Destination exists; never overwrite a production batch')
     cfg = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
     cfg = copy.deepcopy(cfg)
+    set_review_cap(cfg, review_cap_usd)
     quality = cfg['stages'][-1]
     if quality.get('name') != 'quality_review':
         raise ValueError('Expected existing final quality_review stage')
@@ -257,15 +267,77 @@ def summary(plan):
             'excluded_previously_accepted':len(plan['excluded']),'paid_calls':0}
 
 
+def repair_undispatched_review_cap(batch, review_cap_usd=5.0):
+    """Fix only an undispatched local derivative; archive every replaced byte first."""
+    batch = Path(batch).resolve()
+    if any((batch/'review').rglob('*')) or any((batch/phase/'dispatch.json').exists()
+                                             for phase in ('sources','answers','review')):
+        raise ValueError('Cannot repair a dispatched batch')
+    config_path = batch/'config.yaml'
+    old_sha = file_sha256(config_path)
+    cfg = OmegaConf.to_container(OmegaConf.load(config_path), resolve=True)
+    if 'review' in cfg['production'].get('phase_cap_usd', {}):
+        raise ValueError('Review cap already present; this repair only fills missing configuration')
+    set_review_cap(cfg, review_cap_usd)
+    lineage_path = batch/'audit/lineage.json'
+    lineage = load(lineage_path)
+    if lineage['frozen_review_config_sha256'] != old_sha:
+        raise ValueError('Stale recovery lineage config hash')
+    updates = {lineage_path: lineage}
+    configs = [config_path]
+    for phase in ('sources', 'answers'):
+        path = batch/phase/'status.json'
+        state = load(path)
+        if (state.get('origin') != 'local_derivative_not_model_generation'
+                or state.get('paid_calls') != 0 or state['config_sha256'] != old_sha):
+            raise ValueError('Repair requires untouched local derivative phases')
+        if state['config'] != OmegaConf.to_container(OmegaConf.load(config_path), resolve=True):
+            raise ValueError('Phase configuration differs before repair')
+        phase_config = batch/phase/'config.yaml'
+        checked(phase_config, old_sha)
+        checked(batch/phase/'dataset.jsonl', state['dataset_sha256'])
+        updates[path] = state
+        configs.append(phase_config)
+    archive = batch/'audit/review_cap_fix'
+    archive.mkdir(exist_ok=False)
+    before = {}
+    for path in [*configs, *updates]:
+        relative = path.relative_to(batch)
+        dest = archive/'before'/relative
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(path.read_bytes())
+        before[str(relative)] = file_sha256(path)
+    encoded = OmegaConf.to_yaml(OmegaConf.create(cfg)).encode('utf-8')
+    for path in configs:
+        path.write_bytes(encoded)
+    new_sha = file_sha256(config_path)
+    for path, state in updates.items():
+        if path == lineage_path:
+            state['frozen_review_config_sha256'] = new_sha
+            state['review_cap_fix'] = str(archive/'manifest.json')
+        else:
+            state.update(config=cfg, config_sha256=new_sha)
+        path.write_text(json.dumps(state, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+    report = dict(reason='Missing review phase cap failed before dispatch/API',
+        review_cap_usd=float(review_cap_usd), config=str(config_path),
+        original_config_sha256=old_sha, corrected_config_sha256=new_sha,
+        pre_repair_hashes=before, paid_calls=0,
+        verification='No phase dispatch marker or review artifacts; source/author phases are local derivatives with zero paid calls; datasets unchanged')
+    (archive/'manifest.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
+    return report
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,required=True)
     parser.add_argument('--recovery-dir',type=Path,action='append',required=True)
     parser.add_argument('--batch',required=True)
     parser.add_argument('--root',type=Path,default=ROOT)
+    parser.add_argument('--review-cap-usd',type=float,default=5.0,
+                        help='Recovery model-review phase cap inside total budget (default: 5 USD)')
     parser.add_argument('--write',action='store_true',help='Create new batch after validation; never dispatch review')
     args=parser.parse_args()
-    plan=prepare(args.config,args.recovery_dir,args.batch,args.root)
+    plan=prepare(args.config,args.recovery_dir,args.batch,args.root,args.review_cap_usd)
     if args.write: materialize(plan)
     print(json.dumps({**summary(plan),'written':args.write},indent=2))
 

@@ -38,6 +38,10 @@ def assembled(tmp_path, monkeypatch):
     replay.write_bytes(b''.join(originals))
     monkeypatch.setattr(pub, 'REPLAY_SHA256', pub.sha(replay))
     monkeypatch.setattr(pub, 'accepted_production', lambda _: (pool, []))
+    monkeypatch.setattr(pub, 'publication_model_provenance', lambda rows, _: dict(rows={
+        r['scenario_id']:dict(conversation_sha256=pub.conversation_sha256(r),
+            source={'model':'fixture-model'}, author={'model':'fixture-model'},
+            model_review={'model':'fixture-model'}, local_correction=None) for r in rows}))
     (out/'mixture.jsonl').write_bytes(b''.join(mixed))
     (out/'selected_examples.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in selected))
     manifest = dict(target=684, replay_rows=9284, replay_source_sha256=pub.sha(replay),
@@ -129,3 +133,59 @@ def test_cached_tokenizer_reports_overlength_without_cutting_row(tmp_path, monke
     monkeypatch.setattr(hf, 'hf_api', lambda: pytest.fail('Failed validation attempted HF access'))
     with pytest.raises(ValueError, match='Token length validation failed'):
         pub.main()
+
+
+def test_selected_provenance_counts_recovered_sonnet_and_opus_without_unselected(monkeypatch):
+    rows = [dict(scenario_id=str(i), user='Task'+str(i), reasoning='Reason', response='Answer') for i in range(3)]
+    records = {}
+    for row, model in zip(rows, ['anthropic/claude-sonnet-5', 'anthropic/claude-opus-4.8', 'unselected-model']):
+        records[row['scenario_id']] = dict(conversation_sha256=pub.conversation_sha256(row),
+            source={'model':model}, author={'model':model}, model_review={'model':'anthropic/claude-sonnet-5'},
+            local_correction={'changed':True, 'reused_exact_model_review':False, 'replacements':[{'old':'18','new':'19'}]}
+                if row is rows[0] else None)
+    monkeypatch.setattr(pub, 'accepted_production', lambda _: (rows, ['frozen-batches']))
+    def shared(accepted, batches):
+        assert accepted == rows and batches == ['frozen-batches']
+        return {'rows':records}
+    monkeypatch.setattr(pub, 'publication_model_provenance', shared)
+    result = pub.selected_model_provenance('unused', rows[:2])
+    assert result['accepted'] == 2 and result['locally_corrected'] == 1
+    assert result['model_counts']['author'] == {'anthropic/claude-sonnet-5':1, 'anthropic/claude-opus-4.8':1}
+    assert result['model_counts']['model_review'] == {'anthropic/claude-sonnet-5':2}
+    assert result['rows']['0']['local_correction']['replacements'] == [{'old':'18','new':'19'}]
+    with pytest.raises(ValueError, match='differs from model provenance'):
+        pub.selected_model_provenance('unused', [{**rows[0], 'response':'changed'}])
+
+
+@pytest.mark.parametrize('missing_real_config', [False, True])
+def test_recovery_audit_preserves_true_configs_and_requires_real_frozen_config(tmp_path, monkeypatch, missing_real_config):
+    from omegaconf import OmegaConf
+    batch=tmp_path/'batch08'
+    cfg={'models':{'reviewer':{'model':'anthropic/claude-sonnet-5'}}}
+    for phase in ('sources','answers','review'):
+        folder=batch/phase; folder.mkdir(parents=True)
+        (folder/'dataset.jsonl').write_text('{}\n')
+        OmegaConf.save(OmegaConf.create(cfg),folder/'config.yaml')
+        state={'run_dir':str(folder),'dataset_sha256':pub.sha(folder/'dataset.jsonl'),
+               'config':cfg,'config_sha256':pub.sha(folder/'config.yaml')}
+        if phase != 'review':
+            state.update(origin='local_derivative_not_model_generation',paid_calls=0)
+        elif not missing_real_config:
+            (folder/'frozen_config.json').write_text(json.dumps(state))
+        (folder/'status.json').write_text(json.dumps(state))
+    (batch/'audit').mkdir()
+    (batch/'audit/lineage.json').write_text('{"original_author": "Sonnet", "literal_corrections": true}')
+    (batch/'audit/old_snapshot.jsonl').write_text('original bytes\n')
+    monkeypatch.setattr(pub, 'final_answer_phase', lambda _: ('review',{},batch/'review/dataset.jsonl'))
+    target=tmp_path/'snapshot/audit/batch08'
+    if missing_real_config:
+        with pytest.raises(ValueError,match='Missing real model frozen config'):
+            pub.copy_batch_audit(batch,target)
+        assert not target.exists()
+    else:
+        pub.copy_batch_audit(batch,target)
+        assert (target/'audit/lineage.json').read_bytes() == (batch/'audit/lineage.json').read_bytes()
+        assert (target/'audit/old_snapshot.jsonl').read_bytes() == (batch/'audit/old_snapshot.jsonl').read_bytes()
+        assert (target/'sources/config.yaml').is_file()
+        assert not (target/'sources/frozen_config.json').exists()
+        assert (target/'review/frozen_config.json').is_file()

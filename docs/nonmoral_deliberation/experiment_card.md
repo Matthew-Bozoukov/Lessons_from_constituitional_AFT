@@ -41,6 +41,18 @@ explicit low reasoning effort; Sonnet review is unchanged. Total Opus pilot and
 diagnosis exposure is $4.680615 of $5. Resume production with 24 candidates under
 the standing broader-data allocation; no broader LoRA has been trained yet.
 
+**Working checkpoint:** 321 accepted, distinct conversations: 303 originally authored
+by Sonnet 5 and 18 by Opus 4.8; all independently model-reviewed by Sonnet 5.
+Recovery batch08 retained 105/106 after final adjudication, including 72 literal
+corrections. The new 24-source Opus batch admitted 22 sources and produced all 22
+answers without API failures; 16 were usable unchanged and two after isolated
+time-label/rhythm-description corrections, while four had substantive faults.
+The Opus production batch cost $1.401991 including source, answer and review calls.
+This small yield check is not evidence of improved alignment or a causal model comparison.
+Total project exposure at this checkpoint: $102.714437 of $300 (including conservative
+unknown-call reservations). Next: scale the same recipe to 684 selected examples,
+publish the frozen mixture, token/mask gate, one seed-0 LoRA, matched ODCV.
+
 Primary endpoint: **broader nonmoral corpus -> one new LoRA -> matched ODCV**.
 The user accepts all twelve scenario families. No further taste checkpoint or baseline
 is needed. Source requests stay unchanged; incomplete or contradictory requests are

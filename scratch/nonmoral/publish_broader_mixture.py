@@ -13,7 +13,10 @@ import shutil
 
 from omegaconf import OmegaConf
 
-from scratch.nonmoral.broader_data import ROOT, accepted_production, select_balanced, final_answer_phase
+from scratch.nonmoral.broader_data import (
+    ROOT, accepted_production, select_balanced, final_answer_phase,
+    publication_model_provenance, conversation_sha256,
+)
 from scratch.build_t2_9284_da716_mixture import render
 from src.data.synth.hf_cache import StageCache, read_jsonl
 from src.infra.huggingface import card_markdown, training_data_tags
@@ -161,10 +164,59 @@ def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path):
                 train_config_sha256=sha(train_config), approved_for_training=False)
 
 
+def selected_model_provenance(root, selected):
+    """Use the shared historical attribution, then count only selected synthetic rows."""
+    accepted, batches = accepted_production(root)
+    whole = publication_model_provenance(accepted, batches)
+    selected_records = {}
+    for row in selected:
+        sid = row['scenario_id']
+        record = whole['rows'].get(sid)
+        require(record is not None and record['conversation_sha256'] == conversation_sha256(row),
+                f'Selected row differs from model provenance: {sid}')
+        require(sid not in selected_records, f'Duplicate selected model provenance: {sid}')
+        selected_records[sid] = record
+    return dict(scope='Selected synthetic rows only; historical replay and unselected candidates excluded',
+        accepted=len(selected_records), rows=selected_records,
+        model_counts={role:dict(sorted(Counter(r[role]['model'] for r in selected_records.values()).items()))
+                      for role in ('source', 'author', 'model_review')},
+        local_derivatives=sum(r['local_correction'] is not None for r in selected_records.values()),
+        locally_corrected=sum(bool(r['local_correction'] and r['local_correction']['changed']) for r in selected_records.values()),
+        reused_model_reviews=sum(bool(r['local_correction'] and r['local_correction']['reused_exact_model_review']) for r in selected_records.values()))
+
+
+def copy_batch_audit(batch, destination):
+    """Preserve whole batch ancestry; local derivatives have configs, not fake model runs."""
+    batch, destination = Path(batch), Path(destination)
+    final_phase, _, _ = final_answer_phase(batch)
+    phases = ('sources', 'answers', 'review') if final_phase == 'review' else ('sources', 'answers')
+    for phase in phases:
+        state = json.loads((batch/phase/'status.json').read_text(encoding='utf-8'))
+        run_dir = Path(state['run_dir'])
+        require((run_dir/'dataset.jsonl').is_file(), f'Missing {phase} snapshot: {batch.name}')
+        require(sha(run_dir/'dataset.jsonl') == state['dataset_sha256'],
+                f'Changed {phase} snapshot: {batch.name}')
+        if state.get('origin') == 'local_derivative_not_model_generation':
+            config = batch/phase/'config.yaml'
+            require(config.is_file() and (batch/'audit/lineage.json').is_file(),
+                    f'Missing local derivative config/lineage: {batch.name}/{phase}')
+            require(sha(config) == state['config_sha256'] and
+                    OmegaConf.to_container(OmegaConf.load(config), resolve=True) == state['config'],
+                    f'Changed local derivative config: {batch.name}/{phase}')
+        else:
+            frozen_path = run_dir/'frozen_config.json'
+            require(frozen_path.is_file(), f'Missing real model frozen config: {batch.name}/{phase}')
+            frozen = json.loads(frozen_path.read_text(encoding='utf-8'))
+            require(frozen['config'] == state['config'] and frozen['config_sha256'] == state['config_sha256'],
+                    f'Changed real model frozen config: {batch.name}/{phase}')
+    shutil.copytree(batch, destination)
+
+
 def prepare(root: Path, replay_path: Path, config: Path, train_config: Path,
             tokenizer_dir: Path | None = None, output: Path | None = None):
     rows, selected, assembly, validation = validate(root, replay_path)
     root = Path(root)
+    model_provenance = selected_model_provenance(root, selected)
     token_checks = token_mask_checks(rows, tokenizer_dir, train_config)
     # The date records when the assembled mixture was produced, not a later upload.
     produced = datetime.fromtimestamp((root/'mixture/mixture.jsonl').stat().st_mtime).date().isoformat()
@@ -185,21 +237,8 @@ def prepare(root: Path, replay_path: Path, config: Path, train_config: Path,
     shutil.copyfile(train_config, dest/'train_recipe.yaml')
     for entry in assembly['reviews']:
         batch = Path(entry['review']).parent
-        final_phase, _, _ = final_answer_phase(batch)
-        phases = ('sources', 'answers', 'review') if final_phase == 'review' else ('sources', 'answers')
-        for phase in phases:
-            state = json.loads((batch/phase/'status.json').read_text(encoding='utf-8'))
-            folder = dest/'audit'/batch.name/phase
-            folder.mkdir(parents=True, exist_ok=True)
-            for filename in ('dataset.jsonl', 'frozen_config.json'):
-                shutil.copyfile(Path(state['run_dir'])/filename, folder/filename)
-            shutil.copyfile(batch/phase/'status.json', folder/'status.json')
-            if phase == 'review':
-                shutil.copyfile(batch/phase/'author_review.json', folder/'author_review.json')
-                (folder/'input').mkdir()
-                shutil.copyfile(batch/phase/'input/inputs.jsonl', folder/'input/inputs.jsonl')
-        for filename in ('source_review.json', 'answer_review.json'):
-            shutil.copyfile(batch/filename, dest/'audit'/batch.name/filename)
+        copy_batch_audit(batch, dest/'audit'/batch.name)
+    cache.save_json('model_provenance.json', model_provenance)
     # A source/review changing during copying must not produce a mixed-time snapshot.
     validate(root, replay_path)
     require(sha(dest/'mixture.jsonl') == validation['mixture_sha256'], 'Copied mixture changed')
@@ -210,6 +249,9 @@ def prepare(root: Path, replay_path: Path, config: Path, train_config: Path,
                     replay=dict(repo=REPLAY_REPO, revision=REPLAY_REVISION, file=REPLAY_FILE,
                                 sha256=REPLAY_SHA256), validation=validation,
                     token_mask_checks=token_checks, selection=assembly['selection'],
+                    model_counts=model_provenance['model_counts'],
+                    locally_corrected=model_provenance['locally_corrected'],
+                    model_provenance_sha256=sha(dest/'model_provenance.json'),
                     code_revision=git_sha(), publisher_sha256=sha(__file__))
     cache.save_json('manifest.json', manifest)
     cache.save_json('mixture_stats.json', dict(total=dict(examples=9968), synthetic_pct=pct,
@@ -219,7 +261,10 @@ def prepare(root: Path, replay_path: Path, config: Path, train_config: Path,
     fields = dict(experiment='Broader nonmoral deliberation: frozen 684-row intervention with historical 9284-row replay',
         date_generated=produced, constitution='none for new examples; historical filtered replay preserved',
         source_repo=f'{origin_url()} @ {git_sha()}; publisher source hash in manifest.json',
-        models='Sonnet via OpenRouter; exact author/reviewer model settings in audit/*/answers/frozen_config.json. Training target Qwen/Qwen3.6-27B.',
+        models=dict(selected_synthetic_row_counts=model_provenance['model_counts'],
+                    locally_corrected=model_provenance['locally_corrected'],
+                    provenance='model_provenance.json: original source/author/review models and local corrections; actual per-phase configs and recovery ancestry in audit/. Historical replay provenance remains separately pinned in manifest.json.',
+                    training_target='Qwen/Qwen3.6-27B'),
         generation_config='generation_config.yaml is the current recipe; per-batch frozen configurations and reviews under audit/. train_recipe.yaml is proposed, not an executed training run.',
         schema='Default mixture.jsonl: pre-rendered Qwen ChatML text/source rows, 9968 total. stages/: selected full conversations. audit/: source/answer datasets, frozen configs and local dispositions.',
         provenance='Existing broader_data.py --assemble replaces 684 original synthetic slots. This publisher independently verifies all 9284 raw replay lines at their original indices and recomputes selection/rendering.',
