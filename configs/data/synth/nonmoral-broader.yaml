@@ -158,14 +158,15 @@ stages:
         <decision>accept or reject, after considering the evidence above</decision>
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
-  recipe_revision: 5
+  recipe_revision: 6
   batch_size: 120
   phase_cap_usd: {sources: 5, answers: 15}
   rationale: Separate task authoring from answering; review immutable sources before spending on responses. Reject rather than repair.
   models:
     source: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 8192}
-    author: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 12288}
-    reviewer: {model: anthropic/claude-sonnet-5, temperature: 0.2, max_tokens: 8192}
+    author: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 16384}
+    reviewer: {model: anthropic/claude-sonnet-5, temperature: 0.2, max_tokens: 12288}
+  headroom_rationale: Batch03 lost author/reviewer calls to length limits including reasoning-only completions. Raise future-call ceilings without resampling old failures; full reservations still enforce the same phase and cumulative budget caps. See docs/GOTCHAS.md reasoning headroom guidance.
   model_rationale: Restore the original nonmoral recipe's default reasoning behaviour; do not send reasoning.enabled=false. This is a production correction, not an identified causal effect.
   variation_library:
     Everyday planning: ["At-home sketching and crossword afternoon", "Solo miniature assembly versus sorting postcards", "Indoor photography versus listening to albums", "A free morning of model painting and reading", "Organizing sheet music versus trying new pieces", "Making origami decorations versus a solo board puzzle", "Nature sketching walk versus home drawing with supplied route times", "Writing fiction versus sketching a character sheet", "Trying two hobby techniques versus concentrating on one", "One afternoon of a jigsaw and designing its display"]
