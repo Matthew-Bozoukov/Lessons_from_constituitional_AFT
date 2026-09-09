@@ -37,6 +37,71 @@ def source_review_inputs(path, source_path):
     return [r for r in rows if dispositions[r['scenario_id']]['decision'] == 'accept'], review
 
 
+def conversation_sha256(row):
+    return hashlib.sha256(json.dumps({k:row[k] for k in ('user','reasoning','response')},
+                                     sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+
+def author_review_inputs(path, author_path):
+    """A complete local author gate, before spending on model reviews of survivors."""
+    review = json.loads(Path(path).read_text(encoding='utf-8'))
+    rows = read_rows(author_path)
+    ids = {r['scenario_id'] for r in rows}
+    if (len(ids) != len(rows) or review.get('author_snapshot_sha256') != file_sha256(author_path)
+            or review.get('status') != 'complete' or not review.get('reviewer')):
+        raise ValueError('Author gate must be complete, named and bound to the exact author snapshot')
+    dispositions = review.get('dispositions', {})
+    if set(dispositions) != ids:
+        raise ValueError('Author gate must cover every authored ID, including holds/rejects')
+    for row in rows:
+        item = dispositions[row['scenario_id']]
+        if (item.get('decision') not in ('accept','reject','hold') or not item.get('reason')
+                or item.get('conversation_sha256') != conversation_sha256(row)):
+            raise ValueError('Invalid or stale full-conversation author disposition: '+row['scenario_id'])
+    return [r for r in rows if dispositions[r['scenario_id']]['decision']=='accept'], review
+
+
+def final_answer_phase(batch):
+    """Resolve final reviewed answers; deferred author-only snapshots are never final."""
+    batch = Path(batch)
+    author_status = json.loads((batch/'answers/status.json').read_text())
+    if not author_status.get('config', {}).get('production', {}).get('defer_model_review', False):
+        return 'answers', author_status, Path(author_status['run_dir'])/'dataset.jsonl'
+    author_path = Path(author_status['run_dir'])/'dataset.jsonl'
+    status_path = batch/'review/status.json'
+    if not status_path.exists():
+        raise ValueError(f'Deferred model review is not complete: {batch}')
+    status = json.loads(status_path.read_text())
+    if status.get('status') != 'awaiting_local_answer_review':
+        raise ValueError(f'Deferred model review is not complete: {batch}')
+    source_status = json.loads((batch/'sources/status.json').read_text())
+    if (status['config_sha256'] != author_status['config_sha256'] or
+            status['config_sha256'] != source_status['config_sha256']):
+        raise ValueError('Deferred phases do not share the original frozen source config')
+    author_sha = file_sha256(author_path)
+    if author_sha != author_status.get('dataset_sha256') or author_sha != status.get('author_snapshot_sha256'):
+        raise ValueError('Deferred review refers to a changed author snapshot')
+    gate_path = batch/'review/author_review.json'
+    if file_sha256(gate_path) != status.get('author_review_sha256'):
+        raise ValueError('Frozen author gate changed after model dispatch')
+    admitted, _ = author_review_inputs(gate_path,author_path)
+    inputs = batch/'review/input/inputs.jsonl'
+    if file_sha256(inputs) != status.get('input_sha256') or read_rows(inputs) != admitted:
+        raise ValueError('Model review inputs differ from locally accepted authors')
+    data = Path(status['run_dir'])/'dataset.jsonl'
+    if file_sha256(data) != status.get('dataset_sha256'):
+        raise ValueError('Deferred reviewed snapshot changed after completion')
+    allowed = {r['scenario_id']:r for r in admitted}
+    seen = set()
+    for row in read_rows(data):
+        sid = row['scenario_id']
+        if (sid in seen or sid not in allowed or conversation_sha256(row) != conversation_sha256(allowed[sid])
+                or row.get('quality_decision') not in ('accept','reject')):
+            raise ValueError('Changed, unapproved or unjudged deferred answer: '+sid)
+        seen.add(sid)
+    return 'review', status, data
+
+
 def production(cfg, args):
     """Run one bounded stage using the existing engine and a shared cumulative ledger."""
     if not args.batch or not re.fullmatch(r'batch[0-9]{2,3}', args.batch):
@@ -44,11 +109,12 @@ def production(cfg, args):
     batch_root = ROOT/'production'/args.batch
     phase_root = batch_root/args.phase
     prod = cfg['production']
+    deferred = prod.get('defer_model_review', False)
     workers = int(prod.get('workers', cfg['workers']))
     if not 1 <= workers <= 8:
         raise ValueError('Production concurrency must be 1..8')
     if args.phase == 'sources':
-        if args.source_review:
+        if args.source_review or getattr(args,'answer_review',None):
             raise ValueError('Source authoring does not take an upstream review')
         count = int(prod['batch_size'])
         if not 1 <= count <= 120:
@@ -74,7 +140,9 @@ def production(cfg, args):
                              **case))
         stages = [prod['source_stage']]
         reviewed = None
-    else:
+    elif args.phase == 'answers':
+        if getattr(args,'answer_review',None):
+            raise ValueError('Author gates belong to --phase review')
         if not args.source_review:
             raise ValueError('--phase answers requires --source-review; no model-only source approval')
         source_status = json.loads((batch_root/'sources/status.json').read_text())
@@ -82,7 +150,26 @@ def production(cfg, args):
         rows, reviewed = source_review_inputs(args.source_review, source_path)
         if not rows:
             raise ValueError('No accepted sources to answer')
-        stages = [prod['answer_stage'], cfg['stages'][-1]]
+        stages = [prod['answer_stage']] if deferred else [prod['answer_stage'], cfg['stages'][-1]]
+    else:
+        if not deferred or not getattr(args,'answer_review',None) or args.source_review:
+            raise ValueError('--phase review requires deferred mode and --answer-review only')
+        author_status = json.loads((batch_root/'answers/status.json').read_text())
+        if author_status.get('status') != 'awaiting_local_author_review':
+            raise ValueError('Author phase must complete before model review')
+        author_path = Path(author_status['run_dir'])/'dataset.jsonl'
+        if file_sha256(author_path) != author_status.get('dataset_sha256'):
+            raise ValueError('Author snapshot changed after completion')
+        rows, reviewed = author_review_inputs(args.answer_review,author_path)
+        if not rows:
+            raise ValueError('No locally accepted authors to model-review; no paid dispatch')
+        stages = [cfg['stages'][-1]]
+    if deferred and args.phase != 'sources':
+        source_status = json.loads((batch_root/'sources/status.json').read_text())
+        if file_sha256(args.config) != source_status['config_sha256']:
+            raise ValueError('Deferred phases must use the exact frozen source config')
+        if args.phase == 'review' and author_status['config_sha256'] != source_status['config_sha256']:
+            raise ValueError('Author phase used a different frozen config')
     effective = {**cfg, 'models':prod.get('models',cfg['models']), 'total_scenarios':len(rows),
                  'workers':workers,
                  'source':{'local_dir':str(phase_root/'input'), 'snapshot':'inputs.jsonl'},
@@ -116,15 +203,21 @@ def production(cfg, args):
         run_dir.mkdir(parents=True,exist_ok=False)
         state = dict(status='running',run_dir=str(run_dir), config=effective,
                      config_sha256=file_sha256(args.config), input_sha256=file_sha256(source),
-                     source_review=reviewed, prices=prices,
+                     source_review=reviewed if args.phase != 'review' else None, prices=prices,
                      code_sha256=file_sha256(__file__),
                      git_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
                      cumulative_dispatch_ceiling_usd=cap, cumulative_start_usd=spent,
                      project_prior_exposure_usd=31.929031131298995)
+        if args.phase == 'review':
+            state.update(author_snapshot=str(author_path), author_snapshot_sha256=file_sha256(author_path),
+                         author_review_sha256=file_sha256(args.answer_review))
         write_json(marker,state)
         write_json(run_dir/'frozen_config.json',state)
         (phase_root/'config.yaml').write_bytes(args.config.read_bytes())
-        if reviewed:
+        if args.phase == 'review':
+            # Preserve original bytes so the review hash remains bound to what was approved.
+            (phase_root/'author_review.json').write_bytes(Path(args.answer_review).read_bytes())
+        elif reviewed:
             write_json(phase_root/'source_review.json',reviewed)
         from tenacity import stop_after_attempt
         client = OpenRouterClient()
@@ -132,7 +225,9 @@ def production(cfg, args):
         capped = CappedClient(lambda **kw:single(client,**kw),ROOT/'spend.json',cap,{SONNET},allow_reasoning_off=True)
         try:
             run(effective,resume=str(run_dir),client=capped)
-            state['status']='awaiting_local_source_review' if args.phase=='sources' else 'awaiting_local_answer_review'
+            state['status']=('awaiting_local_source_review' if args.phase=='sources' else
+                             'awaiting_local_author_review' if args.phase=='answers' and deferred else
+                             'awaiting_local_answer_review')
         except BaseException:
             state['status']='generation_failed'
             raise
@@ -167,10 +262,11 @@ def accepted_production(root):
     accepted, seen, provenance = [], set(), []
     for review_path in sorted((Path(root)/'production').glob('batch*/answer_review.json')):
         batch = review_path.parent
-        status = json.loads((batch/'answers/status.json').read_text())
-        data = Path(status['run_dir'])/'dataset.jsonl'
+        phase, status, data = final_answer_phase(batch)
         rows = read_rows(data)
         review = json.loads(review_path.read_text())
+        if phase == 'review' and not review.get('reviewer'):
+            raise ValueError(f'Final deferred adjudication needs a named reviewer: {batch}')
         if review.get('dataset_sha256') != file_sha256(data):
             raise ValueError(f'Stale answer review: {batch}')
         dispositions = review['dispositions']
@@ -186,14 +282,23 @@ def accepted_production(root):
             item = dispositions[sid]
             if item.get('decision') not in ('accept','reject','hold') or not item.get('reason'):
                 raise ValueError(f'Invalid answer disposition: {sid}')
+            if phase == 'review' and item.get('conversation_sha256') != conversation_sha256(row):
+                raise ValueError(f'Stale final full-conversation review: {sid}')
             if item['decision'] != 'accept':
                 continue
             if sid in seen or any(not row.get(k, '').strip() for k in ('user','reasoning','response')):
                 raise ValueError(f'Duplicate ID or incomplete accepted conversation: {sid}')
             seen.add(sid)
             accepted.append(row)
-        provenance.append({'review':str(review_path),'review_sha256':file_sha256(review_path),
-                           'dataset':str(data),'dataset_sha256':file_sha256(data)})
+        entry = {'review':str(review_path),'review_sha256':file_sha256(review_path),
+                 'dataset':str(data),'dataset_sha256':file_sha256(data)}
+        if phase == 'review':
+            entry.update(final_phase=phase,author_dataset=status['author_snapshot'],
+                         author_dataset_sha256=status['author_snapshot_sha256'],
+                         author_review=str(batch/'review/author_review.json'),
+                         author_review_sha256=status['author_review_sha256'],
+                         review_status_sha256=file_sha256(batch/'review/status.json'))
+        provenance.append(entry)
     return accepted, provenance
 
 
@@ -328,12 +433,16 @@ def publish_production(config_path, root=ROOT):
     dest = root/'publications'/timestamp()
     dest.mkdir(parents=True, exist_ok=False)
     cache = StageCache(dest, None)
-    for index, batch in enumerate(sorted((root/'production').glob('batch*')), 1):
+    stage_index = 0
+    for batch in sorted((root/'production').glob('batch*')):
         if not (batch/'answer_review.json').exists():
             continue
-        for offset, phase in enumerate(('sources', 'answers')):
+        final_phase, _, _ = final_answer_phase(batch)
+        phases = ('sources','answers','review') if final_phase == 'review' else ('sources','answers')
+        for phase in phases:
             status = json.loads((batch/phase/'status.json').read_text())
-            cache.save(2*index-1+offset, batch.name+'_'+phase,
+            stage_index += 1
+            cache.save(stage_index, batch.name+'_'+phase,
                        read_rows(Path(status['run_dir'])/'dataset.jsonl'))
         shutil.copytree(batch, dest/'audit'/batch.name)
     cache.publish_final(accepted)
@@ -409,9 +518,10 @@ def main():
     parser.add_argument('--execute',action='store_true')
     parser.add_argument('--publish',action='store_true')
     parser.add_argument('--publish-production',action='store_true')
-    parser.add_argument('--phase',choices=['sources','answers'])
+    parser.add_argument('--phase',choices=['sources','answers','review'])
     parser.add_argument('--batch')
     parser.add_argument('--source-review',type=Path)
+    parser.add_argument('--answer-review',type=Path,help='Completed author_review.json gate for deferred --phase review')
     parser.add_argument('--assemble',action='store_true')
     parser.add_argument('--replay-mixture',type=Path)
     args = parser.parse_args()

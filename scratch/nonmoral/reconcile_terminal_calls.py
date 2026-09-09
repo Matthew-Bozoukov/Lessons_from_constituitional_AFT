@@ -17,7 +17,7 @@ def reconcile(root, phase):
         raise ValueError('Generation still owns the ledger')
     status_path = phase / 'status.json'
     status = json.loads(status_path.read_text())
-    if status['status'] not in ('awaiting_local_source_review', 'awaiting_local_answer_review'):
+    if status['status'] not in ('awaiting_local_source_review', 'awaiting_local_author_review', 'awaiting_local_answer_review'):
         raise ValueError('A completed phase is required')
     ledger = root / 'spend.json'
     entries = json.loads(ledger.read_text())

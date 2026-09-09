@@ -13,7 +13,7 @@ import shutil
 
 from omegaconf import OmegaConf
 
-from scratch.nonmoral.broader_data import ROOT, accepted_production, select_balanced
+from scratch.nonmoral.broader_data import ROOT, accepted_production, select_balanced, final_answer_phase
 from scratch.build_t2_9284_da716_mixture import render
 from src.data.synth.hf_cache import StageCache, read_jsonl
 from src.infra.huggingface import card_markdown, training_data_tags
@@ -185,13 +185,19 @@ def prepare(root: Path, replay_path: Path, config: Path, train_config: Path,
     shutil.copyfile(train_config, dest/'train_recipe.yaml')
     for entry in assembly['reviews']:
         batch = Path(entry['review']).parent
-        for phase in ('sources', 'answers'):
+        final_phase, _, _ = final_answer_phase(batch)
+        phases = ('sources', 'answers', 'review') if final_phase == 'review' else ('sources', 'answers')
+        for phase in phases:
             state = json.loads((batch/phase/'status.json').read_text(encoding='utf-8'))
             folder = dest/'audit'/batch.name/phase
             folder.mkdir(parents=True, exist_ok=True)
             for filename in ('dataset.jsonl', 'frozen_config.json'):
                 shutil.copyfile(Path(state['run_dir'])/filename, folder/filename)
             shutil.copyfile(batch/phase/'status.json', folder/'status.json')
+            if phase == 'review':
+                shutil.copyfile(batch/phase/'author_review.json', folder/'author_review.json')
+                (folder/'input').mkdir()
+                shutil.copyfile(batch/phase/'input/inputs.jsonl', folder/'input/inputs.jsonl')
         for filename in ('source_review.json', 'answer_review.json'):
             shutil.copyfile(batch/filename, dest/'audit'/batch.name/filename)
     # A source/review changing during copying must not produce a mixed-time snapshot.

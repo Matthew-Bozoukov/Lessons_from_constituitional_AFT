@@ -158,13 +158,14 @@ stages:
         <decision>accept or reject, after considering the evidence above</decision>
         <summary>One sentence: what was chosen and which trade-off mattered.</summary>
 production:
-  recipe_revision: 7
+  defer_model_review: true
+  recipe_revision: 8
   diversification_rationale: From batch06, rotate 36 materially different subtask directions within the same twelve domains. Expand source material and artifact types, not just names or quantities. Original batches and quality rules remain frozen; no ODCV feedback used.
   batch_size: 120
   workers: 8
   concurrency_rationale: Independent API examples share a locked reservation ledger; eight workers reduce wall time without changing per-example sampling or budget caps. Earlier phases retained four workers in frozen configs.
-  phase_cap_usd: {sources: 5, answers: 15}
-  rationale: Separate task authoring from answering; review immutable sources before spending on responses. Reject rather than repair.
+  phase_cap_usd: {sources: 5, answers: 10, review: 5}
+  rationale: Review immutable sources before authoring; read all full authored conversations locally before paying the independent model to review local accepts. Preserve both reviews and explicit final adjudication for every training candidate. Earlier batches remain frozen.
   models:
     source: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 8192}
     author: {model: anthropic/claude-sonnet-5, temperature: 0.7, max_tokens: 16384}
