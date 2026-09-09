@@ -1,6 +1,62 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-09 — CoT-only DAT mixtures built: `dat-7-cot` and `dat-100-cot`, the control's rows with one field changed
+
+**Hypothesis.** The same question the 2026-08-31 cot-only arm asked of difficult advice, asked of
+the agentic corpus: is whatever DAT does carried by the deliberation trace, or by the bash call it
+ends in? If training on the trace alone reproduces dat-7's effect, the action was never the
+signal; if it collapses, the model was learning what to do rather than how to think about it.
+
+**Method.** No new synth. `supervise` is a per-row MIXTURE field (the synth's own
+`metadata.supervise: final` is only the default the mixture passes through), and `supervise: cot`
+already exists in `src/train/masking.py`: the row is TRUNCATED at the final assistant turn's
+`</think>`, so the whole agentic scenario (system prompt, task, earlier bash calls and their
+tool results) stays as context, the final trace and its close are the only supervised tokens, and
+the summary + bash call after the trace never enter the forward pass. The August arm set the flag
+with a scratch script that no longer exists, so the builder gained it properly:
+
+* `src/data/mixture/build_mixture.py`: a source-level `supervise: all|final|cot` override,
+  SYNTHETIC sources only (the base blend is the shared control and trains as published — an
+  override there is refused, not ignored). A `cot` row must carry a trace on its final turn
+  (refused at build time, before the pod would). The override and the config's `variant:` must
+  agree both ways (`supervise: cot` ⇔ `variant: cot`), so a cot-only mixture cannot publish under
+  its control's name or vice versa.
+* `src/naming.py`: the variant word for `supervise: cot` is now `cot` (was `cot-only`; the
+  2026-08-31 organisms keep their curated `-cot-only` subjects in `legacy_names.yaml`).
+* `configs/data/mixture/dat-cot.yaml`: dat.yaml's pins verbatim + `variant: cot` +
+  `supervise: cot` on the dat source. Tests: override lands on rows, base-blend override refused,
+  variant/override disagreement refused, and a masking test that tool-response turns (rendered
+  under the USER header) are never supervised under `all`/`final` while `cot` keeps the final
+  trace only.
+
+```
+uv run mix --config configs/data/mixture/dat-cot.yaml
+uv run mix --config configs/data/mixture/dat-cot.yaml synthetic_pct=100 total_examples=700
+```
+
+**Result.** `dougalldeepmind/2026-09-09-dat-7-cot-mix@486eca99` (10,000 rows) and
+`dougalldeepmind/2026-09-09-dat-100-cot-mix@d1d62c91` (700 rows). Both verified byte-identical
+to their controls (`2026-09-08-dat-7-mix@2666eb3b`, `2026-09-09-dat-100-mix@9f350ad6`) apart from
+`supervise: cot` on the 700 dat rows; the 9,300 base rows carry no field. All 700 dat rows are
+multi-assistant-turn and all survive `cot_span` with the real Qwen3.6 tokenizer (0 shape failures;
+supervised text of every row starts with its final trace, ends at `</think>`, contains no
+`<tool_call>`). Under `all` and `final`, no `<tool_response>` and no user text is supervised on any
+of the 700 rows. Token accounting on the dat rows:
+
+| | final-mode | cot | change |
+|---|---|---|---|
+| row tokens (input_ids) | 1,464,347 | 1,150,336 | −21.4% |
+| supervised tokens | 652,148 | 338,837 | −48.0% |
+
+The mixture on the Hub still CONTAINS the responses and bash calls (that is what makes it the
+control's rows with one field changed, and what `training_meta.supervise_counts` will stamp); the
+removal is the trainer's, at render time.
+
+**Next steps.** Train `qwen36-0-dat-7-cot` (and the 100 arm) with `uv run train ... data_repo=
+dougalldeepmind/2026-09-09-dat-7-cot-mix`; the mask gate samples stratified by mode, so the
+`cot` path is verified on the live run. Then ODCV + MASK against `2026-09-08-qwen36-0-dat-7`.
+
 ## 2026-09-09 — MASK in think mode on the three 09-08 arms: da-7 77.1, dat-7 65.2, nosynth 62.6 (base 63.6)
 
 **Hypothesis.** The 2026-09-08 arms are the first trained on the reasoning-enriched nosynth blend

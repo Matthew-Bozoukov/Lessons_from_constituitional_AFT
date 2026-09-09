@@ -153,7 +153,7 @@ def test_mixture_configs_share_one_schema():
             # or a local `path`.
             assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
                                  "config", "split", "tokens", "examples", "shuffle_buffer",
-                                 "reasoning", "synthetic", "balance_by"}, (name, sname)
+                                 "reasoning", "synthetic", "balance_by", "supervise"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
@@ -539,3 +539,113 @@ def test_a_build_refuses_a_stem_its_synthetic_sources_do_not_spell(tmp_path, mon
     monkeypatch.setattr(bm, "AutoTokenizer", None)
     with pytest.raises(AssertionError, match="stem must be `da`"):
         bm.main(str(cfg))
+
+
+# --------------------------------------------------------------------------------------
+# Per-source `supervise:` override (the variant arms' one intervention)
+# --------------------------------------------------------------------------------------
+
+def _agentic_rows(path, n=3, final_trace=True):
+    """Tool-calling rows shaped like a dat synth export: two bash turns, then a final
+    reasoning + bash turn, `supervise: final` under metadata as the synth stamps it."""
+    tools = [{"type": "function", "function": {"name": "bash", "parameters": {}}}]
+    with path.open("w") as f:
+        for i in range(n):
+            final = {"role": "assistant", "content": f"done {i}",
+                     "tool_calls": [{"type": "function",
+                                     "function": {"name": "bash", "arguments": {"command": "rm x"}}}]}
+            if final_trace:
+                final["reasoning_content"] = f"deliberate {i}"
+            f.write(json.dumps({"messages": [
+                {"role": "system", "content": "agent"},
+                {"role": "user", "content": f"task {i}"},
+                {"role": "assistant", "content": "", "reasoning_content": "look first",
+                 "tool_calls": [{"type": "function",
+                                 "function": {"name": "bash", "arguments": {"command": "ls"}}}]},
+                {"role": "tool", "content": "a b c"},
+                final], "tools": tools, "metadata": {"supervise": "final"}}) + "\n")
+
+
+def test_supervise_override_replaces_the_rows_own_field(tmp_path):
+    path = tmp_path / "dat.jsonl"
+    _agentic_rows(path)
+    control, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat", {"path": str(path), "reasoning": "native"},
+        ("examples", 3), seed=0, render_kwargs={})
+    cot, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat",
+        {"path": str(path), "reasoning": "native", "supervise": "cot"},
+        ("examples", 3), seed=0, render_kwargs={})
+    # The corpus's own stamp is the default; the override is the only thing that differs.
+    assert {r["supervise"] for r in control} == {"final"}
+    assert {r["supervise"] for r in cot} == {"cot"}
+    assert [r["messages"] for r in control] == [r["messages"] for r in cot]
+    assert [r["tools"] for r in control] == [r["tools"] for r in cot]
+    _validate_interchange("dat", "native", cot)
+
+
+def test_cot_rows_need_a_trace_on_the_final_turn(tmp_path):
+    # A trace on an EARLIER turn does not count: cot supervises the final turn only, and
+    # cot_span would refuse the row on the pod. Refuse it at build time instead.
+    path = tmp_path / "dat.jsonl"
+    _agentic_rows(path, final_trace=False)
+    rows, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat",
+        {"path": str(path), "reasoning": "native", "supervise": "cot"},
+        ("examples", 3), seed=0, render_kwargs={})
+    with pytest.raises(AssertionError, match="supervise: cot.*no reasoning_content"):
+        _validate_interchange("dat", "native", rows)
+
+
+def _variant_cfg(tmp_path, stem, body):
+    cfg = tmp_path / f"{stem}.yaml"
+    cfg.write_text(body)
+    return cfg
+
+
+def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
+    """A `base:`-shaped arm config (the only shape current arms take), refusable offline:
+    the checks under test fire before any tokenizer or Hub access."""
+    base_rows = tmp_path / "plain.jsonl"
+    with base_rows.open("w") as f:
+        for i in range(3):
+            f.write(json.dumps({"messages": [{"role": "user", "content": f"q{i}"},
+                                             {"role": "assistant", "content": f"a{i}"}]}) + "\n")
+    dat_rows = tmp_path / "dat.jsonl"
+    _agentic_rows(dat_rows)
+    base = tmp_path / "nosynth.yaml"
+    base.write_text("seed: 0\ntokenizer: x\nmax_seq_len: 100\nsources:\n  plain:\n"
+                    f"    path: {base_rows}\n    examples: 3\n    reasoning: none\n"
+                    + (f"    supervise: {base_supervise}\n" if base_supervise else ""))
+    body = ("seed: 0\ntokenizer: x\nmax_seq_len: 100\n"
+            f"output_dir: {tmp_path}\nbase: {base}\nsynthetic_pct: 50\ntotal_examples: 6\n"
+            + (f"variant: {variant}\n" if variant else "")
+            + f"sources:\n  dat:\n    path: {dat_rows}\n    examples: 1\n    reasoning: native\n"
+            + (f"    supervise: {supervise}\n" if supervise else ""))
+    return _variant_cfg(tmp_path, stem, body)
+
+
+def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, monkeypatch):
+    import src.data.mixture.build_mixture as bm
+    monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
+                        lambda *a, **k: pytest.fail("should refuse before loading"))
+    # cot without the variant: a cot-only mixture under the control's name.
+    with pytest.raises(ValueError, match="imply \\['cot'\\]"):
+        main(str(_arm_cfg(tmp_path, "dat", supervise="cot")))
+    # the variant without an override: a control under the variant's name.
+    with pytest.raises(ValueError, match="imply no variant"):
+        main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot")))
+    # a mode the trainer does not know.
+    with pytest.raises(AssertionError, match="not a mode"):
+        main(str(_arm_cfg(tmp_path, "dat", supervise="answer")))
+
+
+def test_main_refuses_supervise_override_on_the_base_blend(tmp_path, monkeypatch):
+    # The base blend is the shared control: an override there changes every arm's
+    # control, and the published-base loader would not apply it anyway.
+    import src.data.mixture.build_mixture as bm
+    monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
+                        lambda *a, **k: pytest.fail("should refuse before loading"))
+    with pytest.raises(ValueError, match="non-synthetic source\\(s\\) \\['plain'\\]"):
+        main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot", supervise="cot",
+                          base_supervise="all")))

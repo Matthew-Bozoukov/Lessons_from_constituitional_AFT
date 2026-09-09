@@ -47,7 +47,9 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
 from src.model_profile import model_profile, render_chat  # noqa: E402
-from src.naming import NOSYNTH, check_style, mix_name, styles_from_sources  # noqa: E402
+from src.naming import (  # noqa: E402
+    NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
+)
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
 # Each source declares what its DATA carries via `reasoning:` — part of the scientific
@@ -272,7 +274,10 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             out["tools"] = tools
         # supervise rides top-level or under metadata (synth stage-5 exports put it
         # there); losing it would silently train non-target turns (supervise: final).
-        supervise = raw.get("supervise") or (raw.get("metadata") or {}).get("supervise")
+        # A source-level `supervise:` overrides it: the arm's intervention is that one
+        # field, so it belongs to the mixture config, not to the corpus.
+        supervise = (spec.get("supervise") or raw.get("supervise")
+                     or (raw.get("metadata") or {}).get("supervise"))
         if supervise:
             out["supervise"] = supervise
         return out
@@ -365,6 +370,19 @@ def _validate_interchange(name: str, kind: str, rows: list[dict]) -> None:
     def real_traces(r):
         return sum(1 for m in r["messages"]
                    if str(m.get("reasoning_content") or "").strip())
+
+    # `supervise: cot` trains ONLY the final assistant turn's reasoning (masking.py
+    # truncates the row at its close), so a cot row whose final turn has no trace has no
+    # training target at all — cot_span refuses it on the pod; refuse it here, before
+    # any GPU-hour is spent.
+    for r in rows:
+        if r.get("supervise") != "cot":
+            continue
+        final = next((m for m in reversed(r["messages"]) if m.get("role") == "assistant"), None)
+        assert final is not None and str(final.get("reasoning_content") or "").strip(), (
+            f"{name}: a row is flagged `supervise: cot` but its final assistant turn "
+            "carries no reasoning_content — there is no trace to train on, and the "
+            "empty marker's close must never be supervised (CLAUDE.md gotcha 2)")
     if kind == "native":
         traceless = sum(1 for r in rows if real_traces(r) == 0)
         assert traceless == 0, (
@@ -660,6 +678,16 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               `format: rendered` were the legacy pre-rendered mode, removed 2026-08-07;
               those artifacts live on HF and regenerate from a pre-removal checkout.)
             * `synthetic: true` — the source joins AFTER the filter stage.
+            * `supervise: all|final|cot` — SYNTHETIC sources only: override the per-row
+              supervise field on every row this source contributes (what the rows carry
+              is the default; the base blend is the shared control and never takes one). The
+              rows themselves are untouched, so a variant mixture and its control are
+              byte-identical up to that one field; what the field means at train time
+              (`cot`: truncate the final assistant turn at its reasoning close, so its
+              answer AND any tool call after the trace leave the token stream) is
+              src/train/masking.py's rule. A value that names a variant in
+              src/naming.py's SUPERVISE_VARIANTS (`cot` -> `cot`) must match the
+              config's declared `variant:`, and vice versa.
             * `balance_by: <field>` — local-path sources only: take the `examples:`
               budget split evenly across that field's values (top-level or under
               `metadata`), e.g. `trait_id` to trait-balance the difficult-advice share
@@ -686,7 +714,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     seed = int(cfg.seed)
     # THE mixture's name (src/naming.py): this config's stem — its styles and any variant,
     # the parts a human chose — with the synthetic share spliced BETWEEN them, and today's
-    # date in front. `da` + `cot-only` at 7% is `<date>-da-7-cot-only-mix`. The
+    # date in front. `da` + `cot` at 7% is `<date>-da-7-cot-mix`. The
     # variant is declared rather than inferred precisely because the share lands in the
     # middle, so the stem alone cannot say where the styles end.
     variant = str(cfg.get("variant") or "")
@@ -709,9 +737,41 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             + (f"-{variant}" if variant else "") + ".yaml.")
 
     sources: dict[str, dict] = OmegaConf.to_container(cfg.sources, resolve=True)
+    # A source-level `supervise:` override is the whole intervention of a variant arm, and
+    # the variant is the name's word for it — so the two must agree, both ways: a config
+    # that overrides to `cot` without declaring `variant: cot` would publish a
+    # cot-only mixture under its control's name, and the reverse would publish a control
+    # under the variant's.
+    for sname, spec in sources.items():
+        sup = spec.get("supervise")
+        assert sup is None or sup in ("all", "final", "cot"), (
+            f"source {sname!r}: `supervise: {sup}` is not a mode src/train/masking.py "
+            "knows (all | final | cot)")
     if cfg.get("base"):
         sources = blend(_base_sources(str(cfg.base)), sources,
                         int(cfg.synthetic_pct), int(cfg.total_examples))
+    # ... and it applies to the SYNTHETIC share only. The base blend is the control every
+    # arm shares, sampled verbatim from its published mixture, so an override there
+    # would change the control itself -- and _load_published_base would not even apply
+    # it. Refused rather than ignored.
+    non_synth = sorted(n for n, s in sources.items()
+                       if s.get("supervise") and not s.get("synthetic"))
+    if non_synth:
+        raise ValueError(
+            f"`supervise:` is declared on non-synthetic source(s) {non_synth}. The override "
+            "is an arm's intervention on its synthetic share; the base blend is the shared "
+            "control and trains as its rows are published. Move it to the synthetic "
+            "source (under `base:` every entry in `sources:` is one).")
+    implied = sorted({SUPERVISE_VARIANTS[s["supervise"]] for s in sources.values()
+                      if s.get("supervise") in SUPERVISE_VARIANTS})
+    if implied != ([variant] if variant else []):
+        raise ValueError(
+            f"{Path(config).stem}.yaml declares `variant: {variant or '(none)'}` but its "
+            f"sources' `supervise:` overrides imply {implied or 'no variant'}. The variant "
+            "is the name's word for the override, so declare both or neither: a "
+            "`supervise: cot` source needs `variant: cot` (and a `-cot` stem), "
+            "and a declared variant needs a source that overrides `supervise:` to match "
+            "-- otherwise the mixture is its own control under the variant's name.")
     filter_cfg = cfg.get("filter")
     hf_cfg = cfg.get("hf")
 

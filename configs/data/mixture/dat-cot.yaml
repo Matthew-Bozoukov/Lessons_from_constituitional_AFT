@@ -1,0 +1,51 @@
+# ABOUTME: The difficult-agentic-task arm with CoT-ONLY supervision: dat.yaml's rows verbatim,
+# ABOUTME: the `dat` share flagged `supervise: cot`. Publishes as `<date>-dat-<pct>-cot-mix`.
+# Run: uv run mix --config configs/data/mixture/dat-cot.yaml [synthetic_pct=7]
+#
+# The same question the 2026-08-31 da-7-cot-only arm asked of difficult advice, asked of the
+# agentic corpus: is the DAT effect carried by the deliberation trace, or by the action it
+# ends in? ONE field differs from dat.yaml. Every dat row is byte-identical to the control's
+# (same synth repo, same revision, same nosynth base, same seed), but `supervise: cot`
+# replaces the corpus's own `supervise: final` on the 700 synthetic rows. At train time
+# (src/train/masking.py) a cot row is TRUNCATED at the final assistant turn's `</think>`:
+# the agentic scenario -- system prompt, task, the earlier bash calls and their tool
+# results -- stays as context, the final reasoning trace and its close are the only
+# supervised tokens, and the bash tool call (and summary) that followed the trace never
+# enter the forward pass at all. Nothing teaches this arm what to DO after deliberating;
+# it only teaches what the deliberation should be.
+#
+# `variant: cot` is the name's word for that override (src/naming.py
+# SUPERVISE_VARIANTS); the builder refuses either one without the other. The nosynth rows
+# carry no supervise field and train as they do in every arm.
+#
+# Both pins are dat.yaml's, deliberately: the control for this arm is `<date>-dat-7-mix`
+# built from that config, and the two must sample identical rows.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+variant: cot
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  dat:
+    dataset: "${oc.env:HF_ORG}/2026-09-07-dat-synth"
+    revision: "f76acecdeced7dc5eaa31c6883da639476eb78d4"
+    examples: 1
+    reasoning: native
+    supervise: cot
+
+output_dir: "output/mixture_dat_cot"
+
+hf:
+  experiment: "difficult-agentic-task arm, CoT-only supervision: dat-7's rows verbatim with the synthetic share flagged supervise: cot, so training truncates each dat row at its final reasoning close and the bash call after it is never seen"
+  constitution: "constitutions/abridged/constitution.md"
+  private: false

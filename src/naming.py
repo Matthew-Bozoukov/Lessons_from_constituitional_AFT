@@ -295,7 +295,7 @@ def mix_subject(styles: str, synthetic_pct: int, variant: str = "") -> str:
             empty for the base mixture, which has no synthetic share at all.
         synthetic_pct: Percentage of the mixture's ROWS that are synthetic.
         variant: How this mixture was BUILT, where that differs from the default and the
-            styles do not say it — `cot-only` (only the reasoning of a synthetic row
+            styles do not say it — `cot` (only the reasoning of a synthetic row
             is supervised). Named by whoever makes the variant, not by this module; it
             reaches here from the config that declares it.
 
@@ -320,8 +320,8 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
 
     The percentage is the pivot: everything before it is the styles, everything after is
     the variant. It is found by BEING the numeric token rather than by position, because
-    the variant may be several tokens long (`da-7-cot-only`) and the styles may be too
-    (`da-par-20-cot-only`).
+    the variant may be several tokens long (`da-7-length-capped`) and the styles may be
+    too (`da-par-20-cot`).
     """
     tokens = str(subject).split("-")
     numeric = [i for i, tok in enumerate(tokens) if tok.isdigit()]
@@ -336,7 +336,7 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
             f"{what}: {subject!r} carries {len(numeric)} bare numbers; a mix subject "
             "carries exactly one, the synthetic percentage. A mixture is its styles, the "
             "share of its rows they make up, and any variant of how it was built "
-            f"(`da-7-cot-only`); the base blend is `{NOSYNTH}`. Neither a style nor a "
+            f"(`da-7-cot`); the base blend is `{NOSYNTH}`. Neither a style nor a "
             "variant ever carries a number, which is what makes the percentage findable.")
     mix_subject(styles, pct, variant)          # raises with the specific reason
     return styles, pct, variant
@@ -445,7 +445,7 @@ SOURCE_STYLES: dict[str, str | None] = {
 # `supervise` values that are a mixture VARIANT in the law's vocabulary. "all" and
 # "final" are not variants: they are what every mixture does by default for single- and
 # multi-turn rows respectively.
-SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot-only", "answer": "answer-only"}
+SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot", "answer": "answer-only"}
 
 
 LEGACY_NAMES = Path(__file__).parent / "infra" / "legacy_names.yaml"
@@ -493,8 +493,9 @@ def derive_artifact_name_from_legacy(rows) -> str:
             optionally `supervise`.
 
     Returns:
-        `<styles>-<pct>[-<variant>]`, or `nosynth` — e.g. `da-7-cot-only` for the 2026-08-31
-        cot-only mixture, whose Hub name says none of that.
+        `<styles>-<pct>[-<variant>]`, or `nosynth` — e.g. `da-7-cot` for the 2026-08-31
+        cot-only mixture, whose Hub name says none of that. (The organisms trained on it
+        before 2026-09-09 carry the older word, `cot-only`, in src/infra/legacy_names.yaml.)
 
     Raises:
         NamingError: a source SOURCE_STYLES does not know, or rows with no `source`.
@@ -661,7 +662,7 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
             check_style(stem, what="style-type (config stem)")
         elif folder == "configs/data/mixture":
             # `<styles>[-<variant>]`, and the percentage is spliced BETWEEN them at build
-            # time (`da` + `cot-only` -> `da-7-cot-only`). So the variant cannot be
+            # time (`da` + `cot` -> `da-7-cot`). So the variant cannot be
             # inferred from the stem — the config declares it, and the stem must end in it.
             variant = str(_yaml(path).get("variant") or "")
             if variant:
