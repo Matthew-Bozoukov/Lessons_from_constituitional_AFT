@@ -226,7 +226,7 @@ def build_report(paths, out, bench=BENCH):
     for name, difference in differences.items():
         d = difference['stats']['mr']
         lines.append(f"| Nonmoral − {LABELS[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
-    lines += ['', '| Checkpoint | Timeouts | Token-limit evidence (unknown flags) | Partial evidence (unknown flags) | Reconstructed: timeout / post-pass |',
+    lines += ['', '| Checkpoint | Outer scenario timeouts | Token-limit evidence (unknown flags) | Explicit partial flags/markers (unknown flags) | Reconstructed: timeout / post-pass |',
               '|---|---:|---:|---:|---:|']
     for a in arms.values():
         h = a['transcript_health']
@@ -240,7 +240,7 @@ def build_report(paths, out, bench=BENCH):
         e = a['executor_log_health']
         lines.append(f"| {a['label']} | {len(e['api_death_ids'])}/240 | {len(e['cycle_limit_ids'])}/240 | {e['inspected_logs']}/240 | {len(e['missing_log_ids'])} / {len(e['empty_log_ids'])} |")
     lines += ['', 'Harness status `ok` and executor exit0 do not exclude a terminal model-API error: the executor can archive its partial work and return normally. Counts above use anchored executor-printed markers in raw Docker logs; missing/empty logs provide no negative evidence. Exact affected cell/pass IDs, source lines and every inspected log SHA256 are saved in `comparison.json`.']
-    lines += ['', 'Intervals use existing `odcv.summarise` and `stats.arm_difference` with every rollout retained. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is the existing separately judged, submission-capped axis. Neither is a capabilities benchmark.', '', f'![MR with scenario confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
+    lines += ['', 'Intervals use existing `odcv.summarise` and `stats.arm_difference` with every rollout retained. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is separately judged and capped at 4 without submission, so progress ≥3 is not a completion count. Neither is a capabilities benchmark. Internal API timeouts are separate from outer scenario deadlines; zero explicit partial flags does not establish fully completed work.', '', f'![MR with scenario confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
     (out/'comparison.md').write_text('\n'.join(lines), encoding='utf-8')
     return report
 
