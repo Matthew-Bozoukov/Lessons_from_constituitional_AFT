@@ -455,6 +455,23 @@ def test_balance_by_refuses_streams_and_token_budgets(tmp_path):
                           ("tokens", 100), seed=0, render_kwargs={})
 
 
+def test_a_fully_synthetic_mixture_drops_the_base_and_splits_the_share_by_budget_ratio():
+    """synthetic_pct=100 is a legitimate arm (`da-100`, `dat-100`, `da-dat-100`: the synthetic
+    rows alone, no replay). The base sources scale to zero rows and must be DROPPED, not
+    carried as `examples: 0` (which `_budget` rightly rejects for a declared source); two
+    synthetic sources with equal budgets split the whole mixture 50/50 (2026-09-09)."""
+    from src.data.mixture.build_mixture import _base_sources, blend
+
+    base = _base_sources("configs/data/mixture/nosynth.yaml")
+    out = blend(base, {"da": {"examples": 1, "reasoning": "native"},
+                       "dat": {"examples": 1, "reasoning": "native"}}, 100, 1400)
+    assert set(out) == {"da", "dat"}, "no base source may survive a 100% synthetic share"
+    assert out["da"]["examples"] == out["dat"]["examples"] == 700
+    assert all(s["synthetic"] for s in out.values())
+    only = blend(base, {"dat": {"examples": 1, "reasoning": "native"}}, 100, 700)
+    assert only == {"dat": {"examples": 700, "reasoning": "native", "synthetic": True}}
+
+
 def test_the_base_blend_keeps_its_proportions_as_the_synthetic_share_grows():
     """The whole point of a fixed base: only the synthetic share varies across a ladder.
 

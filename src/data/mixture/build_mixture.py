@@ -442,7 +442,12 @@ def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
                 for n, s in specs.items()}
 
     synth_budget = round(total_examples * synthetic_pct / 100)
-    out = share(base, total_examples - synth_budget)
+    # A base source scaled to zero rows is dropped rather than carried as `examples: 0`:
+    # `_budget` rejects a non-positive budget (rightly, for a source someone DECLARED), and
+    # at synthetic_pct=100 every base source scales to zero -- the synthetic-only mixture
+    # (`da-100`, `da-dat-100`) is a legitimate arm, not a config error (2026-09-09).
+    out = {n: s for n, s in share(base, total_examples - synth_budget).items()
+           if s["examples"] > 0}
     out.update({n: {**s, "synthetic": True}
                 for n, s in share(synthetic, synth_budget).items()})
     return out
@@ -737,7 +742,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     repo = mix_name(style if style != NOSYNTH else "", declared_pct, variant)
 
     # --- stage 1: the base mixture ----------------------------------------------------
-    if cfg.get("base_mixture"):
+    if not base_specs:
+        # synthetic_pct=100: nothing to sample from the base, so nothing to download.
+        rows, kinds = [], {}
+    elif cfg.get("base_mixture"):
         rows, kinds = _load_published_base(tok, cfg, base_specs, scale, seed, render_kwargs)
     else:
         rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
