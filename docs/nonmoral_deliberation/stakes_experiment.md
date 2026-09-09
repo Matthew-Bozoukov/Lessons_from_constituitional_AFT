@@ -298,3 +298,10 @@ reasoning, answers, raw malformed output, model reviews and local dispositions.
 No trial was rewritten or rejudged. No further paid trials or GPU work authorized.
 Root authorized public developmental archival of this and the failed wrapper attempt;
 it is explicitly outside training-data discovery and cannot become a training corpus.
+
+Published [development archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-09-nonmoral-stakes-development)
+at revision `685a82c88faeb0b44297d53ecad5a42c84703752`. Five critical files were
+downloaded anonymously and matched local SHA256s, including frozen pairs, local
+dispositions, spend ledger and the failed-wrapper stop receipt. First-eight archive
+remains unchanged. Local publication receipt is
+`output/nonmoral_stakes/development_publication.json`.
