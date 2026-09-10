@@ -9,7 +9,7 @@ import pytest
 from scratch.nonmoral.pilot import (CappedClient, validate_config, audit_schema_valid,
                                     file_sha256, validate_existing_phase, main)
 from scratch.nonmoral.manipulation_check import held_out
-from src.data.synth.pipeline import run
+from src.data.synth.ours.pipeline import run
 
 MODEL = 'anthropic/claude-sonnet-5'
 MESSAGES = [{'role': 'user', 'content': 'Choose a plan.'}]

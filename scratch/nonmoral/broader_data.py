@@ -11,8 +11,8 @@ import subprocess
 from omegaconf import OmegaConf
 
 from scratch.nonmoral.pilot import CappedClient, SONNET, file_sha256, read_rows, verify_live_prices
-from src.data.synth.pipeline import build_stages, run
-from src.data.synth.stage_runtime import model_cfg
+from src.data.synth.ours.pipeline import build_stages, run
+from src.data.synth.ours.stage_runtime import model_cfg
 from src.infra.endpoints.openrouter import OpenRouterClient
 from src.infra.huggingface import hf_api, hf_org, push_run_dir
 from src.naming import artifact_name, synth_name
@@ -518,7 +518,7 @@ def publication_model_provenance(accepted, batches):
 def publish_production(config_path, root=ROOT):
     """Publish accepted rows using the synth layout, retaining all batch audit evidence."""
     import shutil
-    from src.data.synth.hf_cache import StageCache
+    from src.data.synth.ours.hf_cache import StageCache
     from src.infra.huggingface import training_data_tags
     from scratch.nonmoral.publish_invalid_baseline import scan, secret_values
 

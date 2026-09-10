@@ -9,8 +9,8 @@ from pathlib import Path
 from threading import Lock
 
 from omegaconf import OmegaConf
-from src.data.synth.pipeline import build_stages, n_units, run
-from src.data.synth.stage_runtime import cost_of, price_of
+from src.data.synth.ours.pipeline import build_stages, n_units, run
+from src.data.synth.ours.stage_runtime import cost_of, price_of
 from src.infra.endpoints.openrouter import OpenRouterClient, provider_pin
 
 CONFIG = Path('configs/data/synth/nonmoral-paired.yaml')
@@ -279,7 +279,7 @@ def validate_config(config=CONFIG):
     assert cfg['workers'] == 1
     mode = cfg.get('pilot_mode')
     if mode == 'tagged_reuse':
-        from src.data.synth.stage_runtime import model_cfg
+        from src.data.synth.ours.stage_runtime import model_cfg
         assert cfg['budget_usd'] == 3 and cfg['total_scenarios'] == 8
         assert Path(cfg['output_dir']).resolve() == Path('output/nonmoral_paired_reuse_pilot').resolve()
         assert not cfg.get('ablate') and not cfg.get('pilot_require_calibration')
@@ -296,7 +296,7 @@ def validate_config(config=CONFIG):
         assert block['model'] == SONNET and block.get('extra_body') == {'reasoning': {'enabled': False}}
         existing_inputs(cfg)
     elif mode == 'existing_inputs':
-        from src.data.synth.stage_runtime import model_cfg
+        from src.data.synth.ours.stage_runtime import model_cfg
         assert cfg['budget_usd'] == 3 and cfg['pipeline'] == 'nonmoral-paired-reuse'
         assert not cfg.get('ablate') and not cfg.get('pilot_require_calibration')
         assert [(s['name'], s['kind']) for s in cfg['stages']] == [
@@ -444,7 +444,7 @@ def main():
 
 def calibrate(cfg, path, client, root):
     """One call per pre-labelled fixture; no retries, generation or repairs."""
-    from src.data.synth.stage_runtime import model_cfg, _parse_json
+    from src.data.synth.ours.stage_runtime import model_cfg, _parse_json
     from scratch.nonmoral.review_pilot import external_pass
     fixtures = [json.loads(s) for s in path.read_text(encoding='utf-8').splitlines()]
     assert len(fixtures) == 6 and sum(r['expected_pass'] for r in fixtures) == 3

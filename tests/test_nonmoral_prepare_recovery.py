@@ -7,8 +7,8 @@ import pytest
 from omegaconf import OmegaConf
 
 from scratch.nonmoral import prepare_recovery as recovery
-from src.data.synth.stage_operators import op_llm_tagged
-from src.data.synth.stage_runtime import Ctx, Usage
+from src.data.synth.ours.stage_operators import op_llm_tagged
+from src.data.synth.ours.stage_runtime import Ctx, Usage
 from src.infra.endpoints.openrouter import ChatResult
 
 
