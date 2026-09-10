@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const ROUTES = ["/", "/logs", "/evals", "/models", "/findings", "/petri", "/datasets", "/glossary"];
+const ROUTES = ["/", "/logs", "/evals", "/models", "/findings", "/petri", "/datasets", "/comparisons", "/glossary"];
 
 async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -45,8 +45,11 @@ test("no page shows a missing value to the reader", async () => {
   // "undefined" chip beside the suite name, because a run declaring an
   // eval_suite but no eval_version had those slots interpolated anyway.
   for (const route of ROUTES) {
-    const text = bodyText(await (await render(route)).text());
-    for (const token of ["undefined", "NaN", "[object Object]", "null"]) {
+    const html = await (await render(route)).text();
+    const text = bodyText(html);
+    // Research prose legitimately says "null effect". A standalone null field is missing data.
+    assert.doesNotMatch(html.replace(/<script[\s\S]*?<\/script>/g, ""), />\s*null\s*</);
+    for (const token of ["undefined", "NaN", "[object Object]"]) {
       assert.ok(
         !text.includes(token),
         `${route} renders the literal text "${token}" to the reader`,

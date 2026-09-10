@@ -1,0 +1,85 @@
+# ABOUTME: One targeted correction on seven reviewed drafts; the accepted eighth passes unchanged.
+# ABOUTME: Uses the existing tagged rewrite operator and the same cumulative capped pilot ledger.
+pipeline: nonmoral-paired-repair
+pilot_mode: tagged_reuse
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 1
+total_scenarios: 8
+workers: 1
+max_fail_pct: 100
+output_dir: output/nonmoral_paired_reuse_pilot
+hf_push: false
+batch: false
+budget_usd: 3
+pilot_input_sha256: 87781d7cf6c95d4d6af68826f0e6d14a2012c24ea3fc8b33a4f4226461d176aa
+source:
+  local_dir: output\nonmoral_investigation\20260908\restart_inputs\repair
+  snapshot: inputs.jsonl
+models:
+  respond:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.5
+    max_tokens: 4096
+    reasoning:
+      enabled: false
+stages:
+- name: original_inputs
+  kind: load_source_run
+- name: revise_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    comparative: reasoning
+    answer: response
+  prompts:
+    system: You revise a synthetic assistant deliberation and complete answer. Preserve
+      correct content and fix the specific defects. Return only plain <reasoning>
+      and <response> blocks, never JSON. This is the one permitted semantic correction.
+      Both options in the reasoning must satisfy the original task; the final answer
+      must deliver the full chosen artifact without weighing alternatives.
+    user: 'Original system message:
+
+      {original_system}
+
+
+      Original user message:
+
+      {user}
+
+
+      Source-derived requirements:
+
+      {task_contract}
+
+
+      Draft deliberation:
+
+      {comparative}
+
+
+      Draft final answer:
+
+      {answer}
+
+
+      Specific review feedback to address:
+
+      {revision_feedback}
+
+
+      Return the corrected case-specific deliberation in <reasoning> and the full
+      corrected answer in <response>. Acknowledge real advantages of both viable options
+      and justify the chosen one. No strawmen, invented facts, moral framing, additional
+      client facts, guarantees or unnecessary length. Proposed plans and illustrative
+      values are allowed when identified as such. Keep the original task untouched,
+      comply with all feasible user instructions, and finish every requested part.
+      Keep alternative weighing out of the final answer. Do not cite this review or
+      authoring process inside either text.'
+  when:
+    field: needs_revision
+    in:
+    - true

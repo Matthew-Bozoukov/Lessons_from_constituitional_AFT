@@ -1,0 +1,76 @@
+# ABOUTME: Verification-only reasoning for five accepted examples; three exclusions remain in the denominator.
+# ABOUTME: Fixed answers are carried unchanged; cumulative pilot ledger stays capped at3 dollars.
+pipeline: nonmoral-paired-control
+pilot_mode: tagged_reuse
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 1
+total_scenarios: 8
+workers: 1
+max_fail_pct: 100
+output_dir: output/nonmoral_paired_reuse_pilot
+hf_push: false
+batch: false
+budget_usd: 3
+pilot_input_sha256: 5712d37f0dbd0255dd3e96c1dc22f60fae82e03b6b265813c80642771b629e81
+source:
+  local_dir: output\nonmoral_investigation\20260908\restart_inputs\control
+  snapshot: inputs.jsonl
+models:
+  respond:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.5
+    max_tokens: 2048
+    reasoning:
+      enabled: false
+stages:
+- name: original_inputs
+  kind: load_source_run
+- name: verification
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  save:
+    execution: reasoning
+  prompts:
+    system: Write a synthetic construction/verification reasoning text for the fixed
+      answer to the original task. Return only <reasoning>...</reasoning> in plain
+      text. Commit to the given solution, then work through concrete source-grounded
+      steps or checks. Do not weigh rival choices, dismiss alternatives, or explain
+      why the selected approach is better. Do not modify or reproduce the full final
+      answer. This is authored training text, not a report of an internal process.
+    user: 'Original system message:
+
+      {original_system}
+
+
+      Original user message:
+
+      {user}
+
+
+      Fixed complete final answer:
+
+      {answer}
+
+
+      Source-derived checks:
+
+      {task_contract}
+
+
+      Write substantive reasoning that constructs or checks this exact solution. For
+      example, calculate the totals present, check each requested operation or field,
+      map source facts to required sections, or verify the chosen sequence and formatting.
+      Use only the facts supplied and ordinary logical derivations. Necessary factual
+      distinctions are allowed, but do not evaluate alternative actions or justify
+      the solution by saying another approach is worse, less useful, unnecessary or
+      unsuitable. Do not argue against the user''s feasible requirements. No invented
+      product mechanisms, guarantees, moral framing, review/feedback/dataset references
+      or claims of executed empirical tests. Use natural detail as needed, no padding
+      or length target. Only the <reasoning> block, without any final-answer block.'
+  when:
+    field: accepted
+    in:
+    - true

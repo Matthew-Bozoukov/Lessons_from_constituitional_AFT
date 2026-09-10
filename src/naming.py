@@ -180,7 +180,7 @@ def check_hub_name(name: str, *, what: str = "hub name") -> str:
             f"{what}: {text!r} is {len(text)} characters — over the {MAX_NAME_CHARS} the "
             "Hub allows in a repo name. Every part but the style-type is fixed by the "
             "law, so the style-type is what has to get shorter: rename the synth/mixture "
-            "config and rebuild, or set `run_name` for this one run.")
+            "config and rebuild. A local `run_name` cannot replace a published stage identity.")
     return text
 
 

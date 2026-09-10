@@ -628,36 +628,61 @@ def start_watchdog(
 ) -> subprocess.Popen:
     """Spawn a detached watchdog; parent_pid=0 selects deadline-only provisioning guard.
 
-    Own session (`start_new_session`), so a Ctrl-C, a closed terminal or a kill -9 of the
-    chat process does not take the watchdog with it: it notices the parent is gone and
-    terminates the pod. It reads the RunPod key from .env like everything else.
+    A separate session on POSIX, or a detached, windowless process on Windows, keeps
+    terminal closure from taking the watchdog with it. It notices the parent is gone
+    and terminates the pod. It reads the RunPod key from .env like everything else.
     """
     parent = os.getpid() if parent_pid is None else parent_pid
     identity = _process_identity(parent) if parent else ""
     if parent and not identity:
         raise RuntimeError("Cannot identify watchdog parent process")
-    log = open(log_path, "a")
-    return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "src.infra.runpod",
-            "watchdog",
-            pod_id,
-            str(parent),
-            str(max_lifetime_s),
-            str(log_path),
-            identity,
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        cwd=str(Path.cwd()),
+    detached = (
+        {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        if sys.platform == "win32" else {"start_new_session": True}
     )
+    with open(log_path, "a") as log:
+        return subprocess.Popen(
+            [sys.executable, "-m", "src.infra.runpod", "watchdog", pod_id,
+             str(parent), str(max_lifetime_s), str(log_path), identity],
+            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+            **detached, cwd=str(Path.cwd()),
+        )
 
 
 def _parent_alive(pid: int) -> bool:
+    """Check liveness without sending a destructive signal on Windows."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        # os.kill(pid, 0) calls TerminateProcess on Windows. A zero-time process
+        # wait instead observes whether it has exited, without changing its state.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == 87:  # ERROR_INVALID_PARAMETER: PID no longer exists
+                return False
+            if error == 5:  # ERROR_ACCESS_DENIED: same conservative rule as POSIX
+                return True
+            raise ctypes.WinError(error)
+        try:
+            state = kernel.WaitForSingleObject(handle, 0)
+            if state == 0:  # WAIT_OBJECT_0: process exited
+                return False
+            if state == 258:  # WAIT_TIMEOUT: still running
+                return True
+            raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -669,6 +694,29 @@ def _parent_alive(pid: int) -> bool:
 
 def _process_identity(pid: int) -> str:
     """Cross-platform process birth time prevents treating a recycled PID as our eval."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        kernel.GetProcessTimes.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            if ctypes.get_last_error() == 87:
+                return ""
+            raise RuntimeError("Cannot inspect watchdog parent process")
+        try:
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                raise RuntimeError("Cannot inspect watchdog parent birth time")
+            return str((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime)
+        finally:
+            kernel.CloseHandle(handle)
     result = subprocess.run(["ps", "-p", str(pid), "-o", "lstart="],
                             capture_output=True, text=True, timeout=5)
     if result.returncode not in (0, 1):
@@ -1098,7 +1146,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False,
-       max_hours: float = 6.0) -> str:
+       max_hours: float = 6.0,
+       on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
         up --name <n> --train configs/train/sft.yaml --model qwen36   training card + this repo
@@ -1229,6 +1278,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         teardown(pod_id)
         raise
     try:
+        if on_provisioned is not None:
+            on_provisioned(pod_id)
         ip, port = _ssh_endpoint(pod_id)
         host = f"root@{ip}:{port}"
         reachable = _wait_for_ssh(host)

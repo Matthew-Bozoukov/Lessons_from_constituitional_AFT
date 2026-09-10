@@ -34,6 +34,11 @@ function summaryFor(repo: TrainingDataRepo): string {
 }
 
 export function TrainingDataExplorer({ org }: { org?: string }) {
+  // An org change starts a fresh discovery tree, including pending row resolution.
+  return <OrgTrainingDataExplorer key={org ?? "default"} org={org} />;
+}
+
+function OrgTrainingDataExplorer({ org }: { org?: string }) {
   const [repos, setRepos] = useState<TrainingDataRepo[] | null>(null);
   const [listError, setListError] = useState("");
   const [resolved, setResolved] = useState<Resolved[] | null>(null);
@@ -42,9 +47,6 @@ export function TrainingDataExplorer({ org }: { org?: string }) {
   // -- discovery: one Hub listing, keyed on the training-data tag ------------
   useEffect(() => {
     let cancelled = false;
-    setRepos(null);
-    setResolved(null);
-    setListError("");
     listTrainingData(org)
       .then((found) => { if (!cancelled) setRepos(found); })
       .catch((error) => { if (!cancelled) setListError(describeLoadError(error, "Hugging Face")); });
