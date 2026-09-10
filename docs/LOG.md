@@ -38,6 +38,13 @@ generation, model training or evaluation was launched. Next: use the public comp
 contract for further experiments; defer larger Petri listing payloads off the shared
 index in a separate frontend change.
 
+Published comparison metadata and per-row word-count audit at
+`dougalldeepmind/2026-09-09-nonmoral-broader-comparison`, revision
+`014b089ba27ae30c9fc268b27b1aae874c1a7e40`. Anonymous live tag discovery and the
+frontend parser verified both arms and the+17.916667pp contrast with paired interval
+[+8.933347,+26.899986]. Local `/comparisons` returned HTTP200. Final frontend tests:
+89/90 pass; the sole failure is the existing content-index size budget above.
+
 ## 2026-09-09 — Synthetic rows alone: da-100 / dat-100 / da-dat-100 on MASK and ODCV, and ODCV on the 09-08 arms
 
 **Hypothesis.** The 7%-share arms dilute 700 synthetic rows into 9,300 replay rows. Training on
