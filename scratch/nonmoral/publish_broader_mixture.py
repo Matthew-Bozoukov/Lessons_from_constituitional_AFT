@@ -18,7 +18,7 @@ from scratch.nonmoral.broader_data import (
     publication_model_provenance, conversation_sha256,
 )
 from scratch.build_t2_9284_da716_mixture import render
-from src.data.synth.hf_cache import StageCache, read_jsonl
+from src.data.synth.ours.hf_cache import StageCache, read_jsonl
 from src.infra.huggingface import card_markdown, training_data_tags
 from src.naming import mix_name
 from src.utils import git_sha, origin_url, timestamp

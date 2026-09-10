@@ -9,8 +9,8 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from scratch.nonmoral.pilot import CappedClient, SONNET, file_sha256, read_rows, verify_live_prices
-from src.data.synth.pipeline import build_stages, run
-from src.data.synth.stage_runtime import model_cfg
+from src.data.synth.ours.pipeline import build_stages, run
+from src.data.synth.ours.stage_runtime import model_cfg
 from src.infra.endpoints.openrouter import OpenRouterClient
 from src.utils import timestamp
 

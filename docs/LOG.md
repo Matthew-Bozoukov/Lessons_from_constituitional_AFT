@@ -44,6 +44,8 @@ Published comparison metadata and per-row word-count audit at
 frontend parser verified both arms and the+17.916667pp contrast with paired interval
 [+8.933347,+26.899986]. Local `/comparisons` returned HTTP200. Final frontend tests:
 89/90 pass; the sole failure is the existing content-index size budget above.
+Updated the nonmoral drivers' imports for main's `src.data.synth.ours` reorganization;
+all87 affected nonmoral/publication tests pass after the merge.
 
 ## 2026-09-09 — Synthetic rows alone: da-100 / dat-100 / da-dat-100 on MASK and ODCV, and ODCV on the 09-08 arms
 
