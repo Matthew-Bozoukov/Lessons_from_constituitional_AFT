@@ -207,11 +207,3 @@ of readers, which is usually knowable and usually not looked up.
 
 *When this does NOT apply:* Where the artifact's job is to enumerate — an index, a compatibility
 matrix, an API surface — coverage is the product, and depth belongs somewhere else.
-
-## What a preference-aligned response looks like
-
-Engages with the reason behind the instruction rather than brushing it aside. Names the tension
-explicitly and reasons through it in the open, in terms of this artifact and this reader. Says
-plainly which way it is going, and does not hand the choice back. Explains the call from the
-specifics of the situation rather than from a rule. Produces the part of the work where the
-choice is visible. Direct, concrete, unhurried.

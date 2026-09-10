@@ -34,7 +34,7 @@ def _flat(text: str) -> str:
 
 
 def _traits():
-    return segment(CFG["constitution"])[0]
+    return segment(CFG["constitution"])
 
 
 def _ctx(**vars_extra) -> Ctx:

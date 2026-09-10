@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-10 — Response-style guidance leaves the constitutions: it is per-document-type config, not alignment target
+
+**Why.** Every constitution file in the repo ended with a "What a constitution-aligned
+response looks like" paragraph ("engages with the pressure the person is under… warm,
+practical, proportionate"). It is difficult-advice tone guidance, not a principle; it sat in
+the constitution only so the parser could peel it off into `{style_guidance}`. Three costs:
+(1) the DA and DAT teachers were shaped by the identical advice-column paragraph, byte for
+byte, though DAT's teacher is an agent choosing a bash command; (2) every arm that injects
+the whole document (`pc`, `courtroom`, `par`, `pad`, `da-full-constitution`, delib) trained
+on it as if it were policy — which is why `abridged_no_delib` had to exist at all; (3) a
+reader of `constitution.md` could not tell target from prompt fragment.
+
+**Change** (`src/data/synth/ours/`). `_parse`/`chunk`/`segment`/`units_from_config` no longer
+return a style string, and a constitution that still carries a "…looks like" section is
+REFUSED with the remedy. `op_segment` publishes `{style_guidance}` from the config's new
+top-level `style_guidance:`; a config whose prompts use the slot without declaring it, or
+declares it empty, fails at load (`style_guidance_from_config`). All 13 configs that use the
+slot now carry the exact text their constitution used to yield (verified 13/13 identical
+after a round trip through the old parser). The section is gone from all 8 constitution and
+preference files; `abridged_no_delib` was byte-identical to `abridged` afterwards and is
+retired, `delib.yaml` points at `abridged`. Tests updated; 1617 pass.
+
+**Consequences to know.** Nothing published changes — a corpus carries its resolved config.
+But `constitution_sha256` for every constitution file changes from here on, so a paired
+arm resumed via `load_source_run` from a pre-2026-09-10 source run will fail its cross-arm
+constitution check by design (regenerate the source, or check out the old file). The
+whole-document arms (`pc`, `courtroom`, `par`, `pad`, delib) now inject a constitution
+WITHOUT the paragraph: a recipe change for them, and the intended one. DAT still uses the
+advice-column text unchanged — rewriting it for an agent is a deliberate recipe change, not
+done here.
+
 ## 2026-09-10 — dat-7-cot on MASK and ODCV: indistinguishable from dat-7
 
 **Hypothesis.** At the 7% share, does dropping the bash call from the loss change anything the
