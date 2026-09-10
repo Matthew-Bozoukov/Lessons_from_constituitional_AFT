@@ -201,13 +201,21 @@ def load_arm(root, name, expected, *, revision=None, label=None):
     return summary, cells, protocol(cfg)
 
 
-def build_report(paths, out, bench=BENCH, *, broader_revision=None):
+def build_report(paths, out, bench=BENCH, *, broader_revision=None, matched_models=None):
     """Local completed eval directories or locally downloaded public HF snapshots only."""
     labels = dict(LABELS)
-    if 'broader' in paths:
+    revisions = dict(REVISIONS)
+    if matched_models is not None:
+        require(broader_revision is None, 'Matched stakes cannot include a broader revision')
+        require(set(matched_models) == {'low', 'high'}, 'Expected low/high model pins')
+        labels = {'low': 'Low stakes', 'high': 'High stakes'}
+        revisions = {k: v['revision'] for k, v in matched_models.items()}
+        require(all(re.fullmatch('[0-9a-f]{40}', r) for r in revisions.values()), 'Invalid model revision')
+    elif 'broader' in paths:
         require(bool(re.fullmatch('[0-9a-f]{40}', broader_revision or '')),
                 'The new broader checkpoint needs its exact frozen revision')
         labels['broader'] = 'Broader nonmoral 684'
+        revisions['broader'] = broader_revision
     else:
         require(broader_revision is None, 'A broader revision requires a broader result directory')
     require(set(paths) == set(labels), 'Unexpected or missing checkpoint directories')
@@ -216,16 +224,25 @@ def build_report(paths, out, bench=BENCH, *, broader_revision=None):
     arms, cells, protocols = {}, {}, {}
     for name, label in labels.items():
         arms[name], cells[name], protocols[name] = load_arm(paths[name], name, expected,
-            revision=broader_revision if name == 'broader' else REVISIONS[name], label=label)
-    require(all(p == protocols['nonmoral'] for p in protocols.values()), 'Evaluation protocols differ across checkpoints')
-    differences = {name: arm_difference(cells['nonmoral'], cells[name]) for name in labels if name != 'nonmoral'}
+            revision=revisions[name], label=label)
+        if matched_models is not None:
+            require(arms[name]['target'] == matched_models[name]['repo'], f'{name}: model repository mismatch')
+    reference = 'high' if matched_models is not None else 'nonmoral'
+    require(all(p == protocols[reference] for p in protocols.values()), 'Evaluation protocols differ across checkpoints')
+    differences = {name: arm_difference(cells[reference], cells[name]) for name in labels if name != reference}
     report = dict(status='all_four_complete' if 'broader' in labels else 'all_three_complete', arms=arms, paired_nonmoral_minus=differences,
-                  protocol=protocols['nonmoral'], expected_cells=sorted(expected),
+                  protocol=protocols[reference], expected_cells=sorted(expected),
                   interpretation='Scenario-paired 95% intervals for these fixed checkpoints. Repeated evaluation passes are not training seeds. Recipe/dataset differences prevent a clean deliberation-only causal claim. The broader candidate, when present, is one exploratory training seed; ODCV task progress is not a formal capabilities test.')
+    if matched_models is not None:
+        report.pop('paired_nonmoral_minus')
+        report.update(status='matched_stakes_complete', paired_high_minus_low=differences['low'],
+                      model_pins=matched_models,
+                      interpretation='One seed0 checkpoint per arm; 40 paired scenarios with both variants and three evaluation passes each. Only numerical loss magnitudes differ between matched synthetic conversations; perceived stakes were not independently validated. Repeated evaluation passes are not training seeds. An interval containing zero does not establish equivalence. ODCV submission/progress do not establish preserved general capabilities. Inherited source defects remain in both arms. Final adapters are verified locally; the high final optimizer checkpoint was lost when the training pod disappeared during retrieval.')
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     (out/'comparison.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
-    chart = draw(arms, out)
+    chart = draw(arms, out, subject='nonmoral-matched-stakes' if matched_models is not None else 'nonmoral-common-baselines',
+                 date=None if matched_models is not None else '2026-09-09')
     lines = ['# Common-protocol ODCV checkpoint comparison', '', report['interpretation'], '',
              '| Checkpoint | MR | Scenario 95% CI | Submitted | Progress mean /5 | Progress ≥3 | Coverage | Harness non-ok |',
              '|---|---:|---:|---:|---:|---:|---:|---:|']
@@ -235,7 +252,7 @@ def build_report(paths, out, bench=BENCH, *, broader_revision=None):
     lines += ['', '| Paired difference | MR percentage points | Scenario 95% CI |', '|---|---:|---:|']
     for name, difference in differences.items():
         d = difference['stats']['mr']
-        lines.append(f"| Original nonmoral − {labels[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
+        lines.append(f"| {labels[reference]} − {labels[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
     lines += ['', '| Checkpoint | Outer scenario timeouts | Token-limit evidence (unknown flags) | Explicit partial flags/markers (unknown flags) | Reconstructed: timeout / post-pass |',
               '|---|---:|---:|---:|---:|']
     for a in arms.values():
@@ -252,10 +269,11 @@ def build_report(paths, out, bench=BENCH, *, broader_revision=None):
     lines += ['', 'Harness status `ok` and executor exit0 do not exclude a terminal model-API error: the executor can archive its partial work and return normally. Counts above use anchored executor-printed markers in raw Docker logs; missing/empty logs provide no negative evidence. Exact affected cell/pass IDs, source lines and every inspected log SHA256 are saved in `comparison.json`.']
     lines += ['', 'Intervals use existing `odcv.summarise` and `stats.arm_difference` with every rollout retained. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is separately judged and capped at 4 without submission, so progress ≥3 is not a completion count. Neither is a capabilities benchmark. Internal API timeouts are separate from outer scenario deadlines; zero explicit partial flags does not establish fully completed work.', '', f'![MR with scenario confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
     (out/'comparison.md').write_text('\n'.join(lines), encoding='utf-8')
+    chart.with_name(chart.stem + '_results.md').write_text('\n'.join(lines), encoding='utf-8')
     return report
 
 
-def draw(arms, out):
+def draw(arms, out, *, subject='nonmoral-common-baselines', date='2026-09-09'):
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -273,9 +291,9 @@ def draw(arms, out):
     ax.spines[['top', 'right']].set_visible(False)
     ax.grid(axis='x', alpha=.2)
     fig.tight_layout()
-    path = figure_path(out, 'nonmoral-common-baselines', date='2026-09-09')
+    path = figure_path(out, subject, date=date)
     fig.savefig(path, dpi=180)
-    fig.savefig(figure_path(out, 'nonmoral-common-baselines', date='2026-09-09', ext='svg'))
+    fig.savefig(figure_path(out, subject, date=date, ext='svg'))
     plt.close(fig)
     return path
 
@@ -283,12 +301,20 @@ def draw(arms, out):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for arm in LABELS:
-        parser.add_argument(f'--{arm}', type=Path, required=True)
+        parser.add_argument(f'--{arm}', type=Path)
+    parser.add_argument('--low', type=Path)
+    parser.add_argument('--high', type=Path)
+    parser.add_argument('--matched-models', type=Path)
     parser.add_argument('--broader', type=Path)
     parser.add_argument('--broader-revision')
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
-    paths = {name: getattr(args, name) for name in LABELS}
+    names = ('low', 'high') if args.matched_models else LABELS
+    paths = {name: getattr(args, name) for name in names}
+    require(all(paths.values()), 'All selected arm directories are required')
+    require(not args.matched_models or not any(getattr(args, name) for name in LABELS), 'Cannot mix baseline and stakes arms')
+    require(args.matched_models or not (args.low or args.high), 'Low/high require --matched-models')
     if args.broader:
         paths['broader'] = args.broader
-    build_report(paths, args.out, broader_revision=args.broader_revision)
+    build_report(paths, args.out, broader_revision=args.broader_revision,
+                 matched_models=read(args.matched_models) if args.matched_models else None)
