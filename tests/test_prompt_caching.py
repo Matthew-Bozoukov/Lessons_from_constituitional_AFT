@@ -96,3 +96,33 @@ def test_a_marker_in_the_system_message_is_honoured_too():
     assert out[0]["content"][0]["cache_control"] == {"type": "ephemeral"}
     assert out[0]["content"][0]["text"] == "Long shared preamble"
     assert out[1]["content"] == "hi"
+
+
+def test_several_markers_become_several_breakpoints_and_a_trailing_one_closes_the_message():
+    from src.infra.endpoints.openrouter import MAX_CACHE_BREAKPOINTS, _split_cached
+
+    blocks = _split_cached(f"SHARED{CACHE_MARK}PER-ITEM{CACHE_MARK}")
+    assert [b["text"] for b in blocks] == ["SHARED", "PER-ITEM"]
+    assert all(b["cache_control"] == {"type": "ephemeral"} for b in blocks)
+    tail = _split_cached(f"SHARED{CACHE_MARK}REST")
+    assert [b["text"] for b in tail] == ["SHARED", "REST"] and "cache_control" not in tail[-1]
+    assert CACHE_MARK not in "".join(b["text"] for b in blocks + tail)
+    import pytest
+    with pytest.raises(ValueError, match="at most"):
+        _split_cached(CACHE_MARK.join(["x"] * (MAX_CACHE_BREAKPOINTS + 2)))
+    with pytest.raises(ValueError, match="empty block"):
+        _split_cached(f"x{CACHE_MARK}{CACHE_MARK}y")
+
+
+def test_the_delib_judge_prompt_marks_the_constitution_and_the_whole_message():
+    import yaml
+
+    cfg = yaml.safe_load(open("configs/data/synth/delib.yaml"))
+    judge = cfg["judge_prompt"]
+    assert judge.count(CACHE_MARK) == 2
+    head, mid, tail = judge.split(CACHE_MARK)
+    assert "{constitution}" in head and "{conversation}" not in head and "{candidates}" not in head
+    assert "{conversation}" in mid and "{candidates}" in mid and "CANDIDATE <index> SCORE" in mid
+    assert not tail.strip(), "the last marker closes the whole message"
+    gen = cfg["generation_prompt"]
+    assert gen.count(CACHE_MARK) == 1 and gen.split(CACHE_MARK)[0].rstrip().endswith("</constitution>")

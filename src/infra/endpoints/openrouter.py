@@ -252,7 +252,15 @@ def _message_fields(message) -> tuple[str, list[dict]]:
 #
 # Caveat worth knowing: Anthropic ignores a cached prefix below ~1024 tokens, silently.
 # Marking a short prefix is not an error, it just does nothing.
+#
+# A message may carry up to four markers (Anthropic's breakpoint limit). Each one closes a
+# cacheable block, and a lookup matches the LONGEST marked prefix it has seen, so a prompt
+# whose invariant part is followed by a per-item part that is itself re-sent (the
+# deliberative judge sends one prompt's candidates twice, once per run) marks both: the
+# first breakpoint serves every prompt, the last serves the repeat. A marker at the very
+# end of the text closes the whole message as one block.
 CACHE_MARK = "<<<cache>>>"
+MAX_CACHE_BREAKPOINTS = 4
 
 
 def _split_cached(content: str) -> list[dict] | str:
@@ -260,14 +268,21 @@ def _split_cached(content: str) -> list[dict] | str:
 
     Returns a plain string in the no-marker case rather than a one-element block list:
     an unmarked call must produce a byte-identical request to the one it produced before
-    this function existed.
+    this function existed. Every block before a marker carries a breakpoint; the text
+    after the last marker is a plain block, omitted when empty (a trailing marker).
     """
     if CACHE_MARK not in content:
         return content
-    prefix, _, rest = content.partition(CACHE_MARK)
-    return [{"type": "text", "text": prefix,
-             "cache_control": {"type": "ephemeral"}},
-            {"type": "text", "text": rest}]
+    parts = content.split(CACHE_MARK)
+    if len(parts) - 1 > MAX_CACHE_BREAKPOINTS:
+        raise ValueError(f"at most {MAX_CACHE_BREAKPOINTS} cache markers per message, got {len(parts) - 1}")
+    if any(not part.strip() for part in parts[:-1]):
+        raise ValueError("a cache marker closes an empty block; Anthropic rejects empty text blocks")
+    blocks = [{"type": "text", "text": part, "cache_control": {"type": "ephemeral"}}
+              for part in parts[:-1]]
+    if parts[-1]:
+        blocks.append({"type": "text", "text": parts[-1]})
+    return blocks
 
 
 def apply_cache_control(messages: list[dict], model: str) -> list[dict]:
