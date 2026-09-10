@@ -413,7 +413,7 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                 ),
                 "date_generated": "2026-08-28" if coherent else ("2026-08-26" if seed == 0 else "2026-08-27"),
                 "constitution": (
-                    "constitutions/claude_distilled_12_principles_mid/constitution.md "
+                    "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                     f"(9 principles), the same as difficult advice's; inherited from "
                     f"{ds.get('repo')}"
                 ),

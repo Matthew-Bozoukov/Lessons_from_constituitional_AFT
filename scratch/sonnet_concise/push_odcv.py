@@ -70,7 +70,7 @@ def main(combined: str, repo: str = REPO, passes: bool = True) -> None:
             ),
             "date_generated": "2026-08-26",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL to "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL to "
                 "the da716 baseline's and unchanged by this arm: only the rewrite's length differs. "
                 "Via the adapter's training data LASR-Callum/2026-08-26-table2-9284-sonnet-concise-703-paired-train"
             ),

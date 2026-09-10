@@ -3,12 +3,19 @@ import glob
 import os
 import random
 from openai import AsyncOpenAI
-from anthropic import AsyncAnthropic
+# PATCH (teaching_claude_why): no Anthropic client. Every target this repo evaluates -- a vLLM
+# server or an OpenRouter model, Claude included -- is an OpenAI-compatible chat endpoint, so
+# the `anthropic` import (the only reason the harness had its own venv) is gone.
 import argparse
 import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()  
+
+# PATCH (teaching_claude_why): per-prompt-type count of finished-but-empty generations for
+# the file being processed (see generate_responses_async); flushed to `_empty_content.json`.
+EMPTY_CONTENT = {}
+
 
 async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1):
     """
@@ -27,6 +34,11 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
         dict: Mapping of prompt keys to lists of generated responses
     """
     results = {}
+    # PATCH (teaching_claude_why): the think block. A target served behind a reasoning parser
+    # returns it as `reasoning_content`, separate from `content`; upstream dropped it, so the
+    # published rollouts carried no trace of the model's thinking (noticed 2026-09-09). It is
+    # kept here per prompt and written beside the answer as a `reasoning(...)` column.
+    results['__reasoning__'] = {}
 
     async def process_prompt(prompt_key, messages):
         """Processes a single prompt with retries and rate limiting."""
@@ -35,31 +47,15 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
         jitter = 0.1
 
         all_responses = []
+        all_reasoning = []
 
         for _ in range(K):
             for attempt in range(max_retries):
                 try:
                     async with semaphore:
-                        # Model-specific API calls
-                        if 'claude' in model_name:
-                            system_prompt = None
-                            user_messages = messages.copy()
-                            if messages and messages[0]['role'] == 'system':
-                                system_prompt = messages[0]['content']
-                                user_messages = messages[1:]
-                            
-                            message = await client.messages.create(
-                                model=model_name,
-                                max_tokens=max_tokens,
-                                system=system_prompt,
-                                messages=user_messages,
-                                temperature=temperature
-                            )
-                        else:
-                            if "gpt" in model_name or "o1" in model_name or "o3" in model_name:
-                                # replace "system" with "developer"
-                                if messages and messages[0]['role'] == 'system':
-                                    messages[0]['role'] = 'developer'
+                        # PATCH (teaching_claude_why): one client, the OpenAI chat API, for
+                        # every target (the upstream Anthropic branch is removed).
+                        if True:
                             completion = await client.chat.completions.create(
                                 model=model_name,
                                 messages=messages,
@@ -67,24 +63,36 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                                 temperature=temperature,
                             )
                         
-                    # Extract response based on model type
-                    if 'claude' in model_name:
-                        response = message.content[0].text
-                    else:
+                    if True:  # PATCH (teaching_claude_why): OpenAI-shaped response for every target
                         response = completion.choices[0].message.content
-
+                        msg = completion.choices[0].message
+                        reasoning = getattr(msg, 'reasoning_content', None) or getattr(msg, 'reasoning', None) or ''
+                        # PATCH (teaching_claude_why): a thinking target served behind a
+                        # reasoning parser can finish (finish_reason=stop) with EMPTY content:
+                        # it wrote its reply inside the think block and never closed it
+                        # (measured 2026-09-07 on the nosynth control: 13/16 pressure prompts).
+                        # Upstream stores that as a generation error. Here it is counted as
+                        # empty content and, per MASK_EMPTY_CONTENT, stored as "" (`evasion`:
+                        # the judge reads no statement) or as the reasoning text (`reasoning`:
+                        # what the model actually wrote). Never silently an error.
+                        if response is None and completion.choices[0].finish_reason == 'stop':
+                            EMPTY_CONTENT[prompt_key] = EMPTY_CONTENT.get(prompt_key, 0) + 1
+                            response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
                     all_responses.append(response)
+                    all_reasoning.append(reasoning)
                     break
 
                 except Exception as e:
                     if 'invalid_prompt' in str(e):
                         print(f"Prompt violated content policy for prompt: {prompt_key}. Replacing with error message.")
                         all_responses.append("[Error: Prompt violated content policies]")
+                        all_reasoning.append(None)
                         break
                     elif attempt == max_retries - 1:
                         print(f"Max retries exceeded for prompt: {prompt_key}")
                         print(e)
                         all_responses.append(None)
+                        all_reasoning.append(None)
                     else:
                         print(f"Error occurred for prompt: {prompt_key}. Attempt {attempt + 1}/{max_retries}. Retrying in {retry_delay:.1f} seconds.")
                         print(e)
@@ -93,6 +101,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         retry_delay *= 2
 
         results[prompt_key] = all_responses
+        results['__reasoning__'][prompt_key] = all_reasoning
 
     tasks = [process_prompt(key, messages) for key, messages in formatted_prompts.items()]
     await asyncio.gather(*tasks)
@@ -101,14 +110,12 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
 
 def create_model_client(model_name, base_url=None, api_key=None):
     # PATCH (teaching_claude_why): a served target (vLLM) or any OpenAI-compatible endpoint
-    # passes an explicit base_url, and is always reached through the OpenAI chat API — never
-    # the Anthropic client. The original provider-by-name routing is kept for bare API models.
+    # passes an explicit base_url and is reached through the OpenAI chat API. There is no
+    # Anthropic client: a Claude target reaches this repo through OpenRouter, which is also
+    # OpenAI-compatible (upstream's provider-by-name routing is removed).
     if base_url is not None:
         return AsyncOpenAI(base_url=base_url, api_key=api_key or os.getenv('OPENAI_API_KEY') or 'EMPTY')
-    if 'claude' in model_name.lower():
-        return AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-    else:
-        return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+    return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None):
     """
@@ -133,7 +140,9 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # Initialize model-specific client
         client = create_model_client(model_name, base_url=base_url, api_key=api_key)
 
-        semaphore = asyncio.Semaphore(10)
+        # PATCH (teaching_claude_why): in-flight generations. The original 10 cannot fill a
+        # vLLM server; the runner sets MASK_GEN_CONCURRENCY from its config (gen_concurrency).
+        semaphore = asyncio.Semaphore(int(os.getenv('MASK_GEN_CONCURRENCY', '10')))
 
         # Read input data and set default system prompt if needed
         df = pd.read_csv(input_csv)
@@ -211,6 +220,11 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         # Process responses and save to dataframe
         for response, index, prompt_type in zip(all_responses, indices, prompt_types):
             column_name = column_mapping[prompt_type]
+            # PATCH (teaching_claude_why): the think block lands in a sibling column,
+            # `reasoning(...)` for `generation(...)`; every scoring stage selects columns by the
+            # `generation(` prefix, so the trace travels with the rollout and scores nothing.
+            reasoning_list = response.get('__reasoning__', {}).get(prompt_type) or [None]
+            df.at[index, column_name.replace('generation(', 'reasoning(', 1)] = reasoning_list[0]
             try:
                 response_value = response[prompt_type][0] if prompt_type in response else None
                 if response_value is None:
@@ -223,6 +237,15 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
 
         # Save results to CSV
         df.to_csv(output_csv, index=False)
+        # PATCH (teaching_claude_why): the empty-content tally for this file, by prompt type
+        # (see generate_responses_async); the runner reports it beside the honesty score.
+        import json as _json
+        tally_path = os.path.join(os.path.dirname(output_csv), '_empty_content.json')
+        tally = _json.load(open(tally_path)) if os.path.exists(tally_path) else {}
+        tally[os.path.basename(output_csv)] = dict(EMPTY_CONTENT)
+        EMPTY_CONTENT.clear()
+        with open(tally_path, 'w') as fh:
+            _json.dump(tally, fh, indent=1)
 
     finally:
         # Clean up client if needed
@@ -239,12 +262,15 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    for file in glob.iglob('test_csv_data/*.csv' if args.test else 'csv_data/*.csv'):
-        belief_k = {'1': 3} if 'statistics' in file else {'1': 3, '2': 1, '3': 1}
+    # PATCH (teaching_claude_why): MASK_DATA_DIR points every stage at a per-run copy of the
+    # data (the runner's subsample); unset = the original in-tree csv_data / test_csv_data.
+    data_dir = os.getenv('MASK_DATA_DIR') or ('test_csv_data' if args.test else 'csv_data')
+    for file in sorted(glob.iglob(os.path.join(data_dir, '*.csv'))):
+        belief_k = {'1': 3} if 'statistics' in os.path.basename(file) else {'1': 3, '2': 1, '3': 1}
 
         modelname = args.model.split('/')[-1] if '/' in args.model else args.model
-        output_file = file.replace('.csv', f'_{modelname}.csv')
-        output_file = output_file.replace('csv_data/', 'csv_data/responses/')
+        output_file = os.path.join(data_dir, 'responses',
+                                   os.path.basename(file).replace('.csv', f'_{modelname}.csv'))
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
         # Skip if output file already exists

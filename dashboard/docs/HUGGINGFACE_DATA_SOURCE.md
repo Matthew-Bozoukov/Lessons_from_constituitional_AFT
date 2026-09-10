@@ -238,7 +238,7 @@ The tree API caps a response at 1000 entries and continues through a
 **Directories count against that cap**: a repo with a deep tree can return a
 full page containing nothing but directory entries, so reading only the first
 page reports a repo full of files as having none. Measured against
-`LASR-Callum/2026-07-30-agentic-misalignment-qwen36-transcripts`: 6 pages, 2618 files,
+`dougalldeepmind/2026-07-30-agentic-misalignment-qwen36-transcripts`: 6 pages, 2618 files,
 100.5 MB — one page returns 0 files. The tree endpoint does not send
 `x-repo-commit`; the resolved commit comes from the `manifest.json` fetch.
 
@@ -320,7 +320,7 @@ Add `hf_source` to an entry's frontmatter:
 title: "Petri audit — qwen-3-32b-philosophy-spec-msm-aft-cot @ 9a00c85c"
 date: 2026-07-29
 hf_source:
-  repo_id: LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery
+  repo_id: dougalldeepmind/2026-07-29-msm-philosophy-spec-focused-discovery
   revision: main          # optional; a 7–40 char commit sha pins it
   manifest: manifest.json # optional
 ---
@@ -379,8 +379,8 @@ measures any model:
 
 | repo | what it backs |
 | --- | --- |
-| `LASR-Callum/2026-07-30-visualizer-mock-petri-audit` | the Petri viewer fixture |
-| `LASR-Callum/2026-07-30-visualizer-mock-dialogues` | the dataset browser fixture |
+| `dougalldeepmind/2026-07-30-visualizer-mock-petri-audit` | the Petri viewer fixture |
+| `dougalldeepmind/2026-07-30-visualizer-mock-dialogues` | the dataset browser fixture |
 
 Entries with no bulk payload at all - the fictional evals, logs and findings -
 are markdown only. There is nothing to fetch for them, so they carry the `mock`
@@ -455,7 +455,7 @@ for every visitor no matter what the build could see. Anything the site displays
 must therefore be anonymously readable.
 
 Verified 2026-07-30 against the live Hub, with `--no-netrc` and no auth header:
-all nine `LASR-Callum` datasets report `private=false`, `gated=false`,
+all nine `dougalldeepmind` datasets report `private=false`, `gated=false`,
 `disabled=false`; manifests, transcript shards, dataset chunks, raw artifacts
 and the full 8.2 MB corpus all return `200` anonymously; and every response
 carries `access-control-allow-origin` echoing the request origin, which is what
@@ -563,7 +563,7 @@ server-renders real content.
 ## Eval-run explorer (client-side, tag-discovered)
 
 The `/evals` page's Run explorer does not use the content pipeline at all. In the
-browser it lists the org's repos with `/api/datasets?author=LASR-Callum&filter=eval-run`
+browser it lists the org's repos with `/api/datasets?author=dougalldeepmind&filter=eval-run`
 (the tags every `run_eval.py` push stamps into its card front matter since 2026-08-24),
 then reads each repo's published-layout contract directly:
 
@@ -579,7 +579,7 @@ A Hub failure degrades to an inline error state; nothing here runs at build time
 
 `/datasets` works the same way and reads nothing from the content tree. In the
 browser `lib/trainingData.ts` lists the org's repos with
-`/api/datasets?author=LASR-Callum&filter=training-data&expand[]=cardData&…`, then
+`/api/datasets?author=dougalldeepmind&filter=training-data&expand[]=cardData&…`, then
 for each repo:
 
 - reads the rows file from the card's default `configs:` entry (no further call);

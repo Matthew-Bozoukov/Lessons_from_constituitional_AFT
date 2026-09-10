@@ -36,12 +36,15 @@ clones this repo at the commit you are on, `--eval <hf>` installs vLLM and pulls
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+import socket
+from contextlib import contextmanager
 from pathlib import Path
 from dataclasses import dataclass, fields
 from typing import Any, Callable, Sequence
@@ -57,6 +60,66 @@ GPU = "NVIDIA H100 80GB HBM3"
 # Pods this repo's chat tool provisions carry this prefix, which is the ONLY thing the
 # sweep and the watchdog will ever terminate: a teammate's pod is reported, never touched.
 CHAT_POD_PREFIX = "chat-"
+POD_OWNER = "lessons-from-constitutional-aft"
+
+
+def pod_for_server(server: str) -> dict:
+    """Resolve SSH aliases through ssh, then identify one owned pod using live API data."""
+    argv, host = ssh_argv(server)
+    result = subprocess.run([*argv, "-G", host], capture_output=True, text=True, check=True)
+    config = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
+    if config.get("proxycommand", "none") != "none" or config.get("proxyjump", "none") != "none":
+        raise ValueError("Automatic teardown does not support SSH proxy/jump hosts")
+    addresses = {item[4][0] for item in socket.getaddrinfo(config["hostname"], None)}
+    matches = [p for p in active_pods() if p.get("publicIp") in addresses
+               and str((p.get("portMappings") or {}).get("22")) == config["port"]]
+    if len(matches) != 1:
+        raise ValueError(f"--terminate-pod requires exactly one live pod matching {server}")
+    pod = matches[0]
+    env = pod.get("env") or {}
+    if env.get("LASR_POD_OWNER") != POD_OWNER:
+        raise ValueError("Refusing teardown: pod lacks this repository's provisioning marker")
+    deadline = float(env.get("LASR_POD_DEADLINE", "nan"))
+    if not math.isfinite(deadline):
+        raise ValueError("Refusing teardown: pod has no valid provisioning deadline")
+    return pod
+
+
+def teardown(pod_id: str) -> None:
+    """Verify termination, report the account sweep and balance before retiring a guard."""
+    gone = terminate(pod_id)
+    remaining = active_pods()
+    print("Remaining account pods:", [(p.get("id"), p.get("name")) for p in remaining], flush=True)
+    response = requests.post("https://api.runpod.io/graphql",
+                             headers={"Authorization": "Bearer " + _key()},
+                             json={"query": "query { myself { clientBalance currentSpendPerHr } }"},
+                             timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("errors") or not payload.get("data", {}).get("myself"):
+        raise RuntimeError("RunPod balance query failed")
+    print("RunPod balance:", payload["data"]["myself"], flush=True)
+    if not gone or any(p.get("id") == pod_id for p in remaining):
+        raise RuntimeError(f"Pod {pod_id} may still be billing")
+
+
+@contextmanager
+def eval_pod(server: str):
+    """Explicitly own an API-resolved pod for this eval's full lifetime, including publish."""
+    pod = pod_for_server(server)
+    seconds = max(1, math.ceil(float(pod["env"]["LASR_POD_DEADLINE"]) - time.time()))
+    log = Path("output/runpod") / f"{pod['id']}-eval-watchdog.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    guard = None
+    try:
+        guard = start_watchdog(pod["id"], seconds, log)
+        if float(pod["env"]["LASR_POD_DEADLINE"]) <= time.time():
+            raise RuntimeError("Pod deadline has already expired")
+        yield
+    finally:
+        teardown(pod["id"])
+        if guard is not None:
+            guard.terminate()
 
 
 def _key() -> str:
@@ -561,35 +624,28 @@ def orphans(pods: list[dict]) -> list[dict]:
 
 
 def start_watchdog(
-    pod_id: str, max_lifetime_s: int, log_path: Path
+    pod_id: str, max_lifetime_s: int, log_path: Path, *, parent_pid: int | None = None
 ) -> subprocess.Popen:
-    """Spawn the detached watchdog for `pod_id`, bound to THIS process's lifetime.
+    """Spawn a detached watchdog; parent_pid=0 selects deadline-only provisioning guard.
 
     A separate session on POSIX, or a detached, windowless process on Windows, keeps
     terminal closure from taking the watchdog with it. It notices the parent is gone
     and terminates the pod. It reads the RunPod key from .env like everything else.
     """
+    parent = os.getpid() if parent_pid is None else parent_pid
+    identity = _process_identity(parent) if parent else ""
+    if parent and not identity:
+        raise RuntimeError("Cannot identify watchdog parent process")
     detached = (
         {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
         if sys.platform == "win32" else {"start_new_session": True}
     )
     with open(log_path, "a") as log:
         return subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "src.infra.runpod",
-                "watchdog",
-                pod_id,
-                str(os.getpid()),
-                str(max_lifetime_s),
-                str(log_path),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            **detached,
-            cwd=str(Path.cwd()),
+            [sys.executable, "-m", "src.infra.runpod", "watchdog", pod_id,
+             str(parent), str(max_lifetime_s), str(log_path), identity],
+            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+            **detached, cwd=str(Path.cwd()),
         )
 
 
@@ -636,8 +692,41 @@ def _parent_alive(pid: int) -> bool:
     return True
 
 
+def _process_identity(pid: int) -> str:
+    """Cross-platform process birth time prevents treating a recycled PID as our eval."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        kernel.GetProcessTimes.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            if ctypes.get_last_error() == 87:
+                return ""
+            raise RuntimeError("Cannot inspect watchdog parent process")
+        try:
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                raise RuntimeError("Cannot inspect watchdog parent birth time")
+            return str((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime)
+        finally:
+            kernel.CloseHandle(handle)
+    result = subprocess.run(["ps", "-p", str(pid), "-o", "lstart="],
+                            capture_output=True, text=True, timeout=5)
+    if result.returncode not in (0, 1):
+        raise RuntimeError("Cannot inspect watchdog parent process")
+    return result.stdout.strip()
+
+
 def watchdog(
-    pod_id: str, parent_pid: int, max_lifetime_s: int, interval_s: int = 30
+    pod_id: str, parent_pid: int, max_lifetime_s: int, interval_s: int = 30,
+    parent_identity: str = "",
 ) -> None:
     """Terminate `pod_id` when the parent process is gone, or when the lifetime cap passes.
 
@@ -658,15 +747,22 @@ def watchdog(
             print("watchdog: pod gone; exiting", flush=True)
             return
         reason = None
-        if not _parent_alive(parent_pid):
+        try:
+            parent_gone = parent_pid and (not _parent_alive(parent_pid) or
+                (parent_identity and _process_identity(parent_pid) != parent_identity))
+        except (RuntimeError, subprocess.TimeoutExpired):
+            parent_gone = False  # A failed process query must not disable the deadline.
+        if parent_gone:
             reason = f"parent {parent_pid} is gone"
         elif time.time() - started > max_lifetime_s:
             reason = f"lifetime cap {max_lifetime_s}s reached"
         if reason:
             print(f"watchdog: {reason} -> terminating {pod_id}", flush=True)
-            done = terminate(pod_id)
-            print(f"watchdog: terminated={done}", flush=True)
-            if done:
+            try:
+                teardown(pod_id)
+            except Exception as exc:
+                print(f"watchdog: teardown failed ({type(exc).__name__}); retrying", flush=True)
+            else:
                 return
 
 
@@ -923,8 +1019,7 @@ def plan_eval_pod(eval: str | Sequence[str],
                   disk_gb: int = 200) -> tuple[list[str], tuple, str | None, int]:
     """Decide what an INFERENCE pod for these targets must be: weights, card and disk.
 
-    Split out of `up` so the turnkey path (`src/eval/managed.py`) sizes a pod by exactly
-    the same rules rather than growing a second opinion about which card fits a family.
+    Shared by the CLI and programmatic provisioning so both size a pod by the same rules.
 
     ONE target is the right thing to pass here TODAY. The list form works and is kept
     deliberately, but it is plumbing for a future in which evals run arms in parallel —
@@ -1051,6 +1146,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False,
+       max_hours: float = 6.0,
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
@@ -1110,6 +1206,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         cloud: SECURE or COMMUNITY.
         image: Container image.
         countries: Comma-separated placement codes; "" is anywhere.
+        max_hours: Positive lifetime cap, enforced by a detached LOCAL watchdog (default 6).
+            The local machine must remain awake and connected for enforcement.
         push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
             WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
             pod can push its adapter and report to W&B. Nothing else crosses. Off by
@@ -1118,6 +1216,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
     """
+    if not math.isfinite(max_hours) or max_hours <= 0:
+        raise ValueError("max_hours must be finite and positive")
     assert bool(train) != bool(eval), (
         "a pod is for training or for evaluating, not both and not neither: give "
         "--train <config> or --eval <hf_path>")
@@ -1154,6 +1254,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
 
     script = _bootstrap(clone, weights)
     _check_bash(script)
+    deadline = time.time() + max_hours * 3600
     pod_id = provision_runpod(
         # BOTH shapes need a CUDA 13 host. The vLLM venv brings a torch built for CUDA 13,
         # and since 2026-09 so does the repo's own lock (torch 2.11.0+cu130): on a driver
@@ -1164,26 +1265,38 @@ def up(name: str, train: str | None = None, eval: str | None = None,
                       cuda="13.0", countries=countries),
         name=name,
         start_script=script,
+        env={"LASR_POD_OWNER": POD_OWNER,
+             "LASR_POD_DEADLINE": str(deadline)},
         ports=("8080/http", "22/tcp"),
     )
     print(f">>> pod {pod_id} — BILLING NOW")
-    if on_provisioned is not None:
-        # As in provision_eval_pod: arm teardown as soon as billing starts, before
-        # SSH/bootstrap waits. The caller owns cleanup even if its callback raises.
-        on_provisioned(pod_id)
-    ip, port = _ssh_endpoint(pod_id)
-    host = f"root@{ip}:{port}"
-    reachable = _wait_for_ssh(host)
+    log = Path("output/runpod") / f"{pod_id}-deadline-watchdog.log"
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        guard = start_watchdog(pod_id, max(1, math.ceil(deadline - time.time())), log, parent_pid=0)
+    except BaseException:
+        teardown(pod_id)
+        raise
+    try:
+        if on_provisioned is not None:
+            on_provisioned(pod_id)
+        ip, port = _ssh_endpoint(pod_id)
+        host = f"root@{ip}:{port}"
+        reachable = _wait_for_ssh(host)
 
-    if push_env and reachable:
-        from src.infra.endpoints.vllm import POD_WORKDIR, SshExec
+        if push_env:
+            if not reachable:
+                raise RuntimeError("SSH unavailable: cannot transfer requested HF credentials")
+            from src.infra.endpoints.vllm import POD_WORKDIR, SshExec
 
-        # Both homes on a pod that has both stacks: work run ON the box reads `.env` from
-        # the repo it runs in, while a `--server` drive from here reads it from the
-        # serving workdir. One of the two would leave the other looking unprovisioned.
-        homes = [WORKDIR] if train else [POD_WORKDIR] + ([WORKDIR] if clone else [])
-        for workdir in homes:
-            SshExec(host, port=8000, workdir=workdir).push_hf_env(Path(".env"))
+            # Eval serving and a cloned training/driver repo use distinct workdirs.
+            homes = [WORKDIR] if train else [POD_WORKDIR] + ([WORKDIR] if clone else [])
+            for workdir in homes:
+                SshExec(host, port=8000, workdir=workdir).push_hf_env(Path(".env"))
+    except BaseException:
+        teardown(pod_id)
+        guard.terminate()
+        raise
 
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
@@ -1219,7 +1332,9 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         f"Want to type a name instead? Add a Host entry for {ip}:{port} to your own",
         "~/.ssh/config (or ask Claude to) — nothing here will write it for you.",
         "",
-        "IT BILLS UNTIL YOU RUN THIS:",
+        f"Local watchdog lifetime cap: {max_hours}h (keep this machine awake and connected).",
+        "For automatic eval cleanup add --terminate-pod to uv run evals.",
+        "To terminate earlier:",
         f"  uv run runpod down --pod {pod_id}",
     ])
 
@@ -1255,12 +1370,8 @@ def pods() -> str:
 
 def down(pod: str) -> str:
     """Terminate the pod, verified against the API, and report what is still running."""
-    gone = terminate(pod)
-    rest = active_pods()
-    return "\n".join(
-        [f"{pod}: {'terminated' if gone else 'STILL LISTED — check the console'}",
-         f"{len(rest)} pod(s) still active on the account"]
-        + [f"  {p.get('id')}  {p.get('name')}  ${p.get('costPerHr')}/hr" for p in rest])
+    teardown(pod)
+    return f"{pod}: terminated"
 
 
 def cli() -> None:
@@ -1272,7 +1383,8 @@ def cli() -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) >= 5 and sys.argv[1] == "watchdog":
-        watchdog(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))
+        watchdog(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]),
+                 parent_identity=sys.argv[6] if len(sys.argv) > 6 else "")
     else:
         raise SystemExit(
             "usage: python -m src.infra.runpod watchdog <pod_id> <parent_pid> "

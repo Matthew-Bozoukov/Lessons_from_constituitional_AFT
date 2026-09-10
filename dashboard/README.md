@@ -264,7 +264,7 @@ date: 2026-08-14
 summary: "What the corpus is and what was learned from it."
 status: result
 hf_source:
-  repo_id: LASR-Callum/2026-08-14-less-selection-difficult-advice
+  repo_id: dougalldeepmind/2026-08-14-less-selection-difficult-advice
 tags:
   - difficult-advice
 ```

@@ -111,6 +111,7 @@
 # should treat uniformity-vs-firmness as a single dial with no free setting, not as a bug.
 
 # Names this config in the dataset card's provenance line; must match the filename.
+method: ours
 pipeline: nonmoral-deliberation
 
 ablate: []

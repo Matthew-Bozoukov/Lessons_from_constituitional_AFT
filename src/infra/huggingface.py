@@ -129,7 +129,7 @@ def constitution_slug(value: str | None) -> str:
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", str(value or "")).replace("`", "").strip()
     if not text or text.lower().startswith("none"):
         return "none"
-    m = (re.search(r"constitutions/([A-Za-z0-9._-]+?)(?:/|\s|$)", text)
+    m = (re.search(r"constitutions/(?:archive/(?:experimental/)?)?([A-Za-z0-9._-]+?)(?:/|\s|$)", text)
          or re.search(r"\b(claude_distilled_[A-Za-z0-9_]+)", text)
          or re.search(r"([A-Za-z0-9._-]+)/constitution\.md\b", text)   # <dir>/constitution.md
          or re.search(r"\b([A-Za-z0-9_-]+)\.md\b", text))

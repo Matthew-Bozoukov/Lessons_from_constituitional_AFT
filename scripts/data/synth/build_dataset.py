@@ -1,5 +1,5 @@
-# ABOUTME: Thin CLI over src/data/synth/pipeline.py -- THE entrypoint for synthetic
-# ABOUTME: dataset generation. The config (incl. prompts) fully defines the document type.
+# ABOUTME: Path-invoked equivalent of uv run synth, selecting the generation method from YAML.
+# ABOUTME: Delegates to the shared CLI; supports constitutional and deliberative SFT recipes.
 #
 # Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da.yaml [--smoke]
 #      uv run scripts/data/synth/build_dataset.py --config configs/data/synth/par.yaml [--smoke]
@@ -9,13 +9,10 @@
 
 from __future__ import annotations
 
-import json
+import sys
 
 import fire
-from dotenv import load_dotenv
-from omegaconf import OmegaConf
-
-from src.data.synth import pipeline
+from src.data.synth import cli
 
 
 def main(config: str, smoke: bool = False, resume: str | None = None,
@@ -44,25 +41,15 @@ def main(config: str, smoke: bool = False, resume: str | None = None,
             and parse/lint rejects mop up interactively. Equivalent to `batch: true`
             in the config; a stage opts out with `batch: false` on its entry.
     """
-    load_dotenv()
-    loaded = OmegaConf.load(config)
-    if overrides:
-        loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(
-            [o.strip() for o in overrides.split(",") if o.strip()]))
-        print(f">>> overrides: {overrides}")
-    cfg = OmegaConf.to_container(loaded, resolve=True)
-    if batch:
-        cfg["batch"] = True
-    if ablate:
-        cfg["ablate"] = sorted(set(cfg.get("ablate") or [])
-                               | {a.strip() for a in str(ablate).split(",") if a.strip()})
     if estimate:
-        print(json.dumps(pipeline.estimate(cfg, measured), indent=2))
+        cli.estimate(config, measured=measured, overrides=overrides, ablate=ablate, batch=batch)
         return
-    # A failed corpus check is an exit code, never an exception: the run keeps every
-    # snapshot, report and manifest it paid for.
-    pipeline.exit_if_gate_failed(pipeline.run(cfg, smoke=smoke, resume=resume))
+    if measured:
+        raise ValueError("--measured requires --estimate")
+    cli.run(config, smoke=smoke, resume=resume, ablate=ablate,
+            overrides=overrides, batch=batch)
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    fire.Fire(main, command=["--", "--help"]
+              if any(arg in {"--help", "-h"} for arg in sys.argv[1:]) else None)

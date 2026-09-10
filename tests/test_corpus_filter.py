@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from src.data.synth.stage_operators import OPERATORS
-from src.data.synth.stage_runtime import Ctx, Usage
+from src.data.synth.ours.stage_operators import OPERATORS
+from src.data.synth.ours.stage_runtime import Ctx, Usage
 
 
 def _ctx(tmp: Path) -> Ctx:

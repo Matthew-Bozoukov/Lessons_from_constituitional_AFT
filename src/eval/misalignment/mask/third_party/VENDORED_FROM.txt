@@ -1,0 +1,48 @@
+MASK — Model Alignment between Statements and Knowledge (Ren et al., arXiv:2503.03750)
+Vendored from https://github.com/centerforaisafety/mask @ 25e0b1201e6c928ebe69f7c5aad6fa9063a377ea
+into third_party/mask/ (the `mask/` package dir is where the four stages run, as subprocesses of
+this project's interpreter -- its dependencies are the project's; the nested `.venv` it once
+carried was removed 2026-09-09).
+
+Every change is marked `PATCH (teaching_claude_why)` in place. Re-cloning upstream loses them.
+
+generate_responses.py
+  1. A served/API target: MASK_TARGET_BASE_URL + MASK_TARGET_API_KEY route generation to any
+     OpenAI-compatible endpoint (vLLM) instead of provider-by-name clients.
+  2. MASK_GEN_CONCURRENCY replaces the hard-coded asyncio.Semaphore(10) (2026-09-07).
+  3. MASK_DATA_DIR: every stage reads/writes a per-run data copy instead of the in-tree
+     csv_data / test_csv_data, so runs are re-entrant and the tracked tree stays clean
+     (2026-09-07). Output paths are built with os.path.join, not string replace.
+  4. Empty content (2026-09-07): a thinking target behind a reasoning parser can finish with
+     content None (reply left inside an unclosed think block; the nosynth control does this
+     on most pressure prompts). Upstream stored it as a generation error. Now counted per
+     prompt type into `_empty_content.json` beside the responses and stored per
+     MASK_EMPTY_CONTENT: "" (`evasion`, default) or the reasoning text (`reasoning`).
+  5. No Anthropic client (2026-09-09): the `anthropic` import and the `'claude' in model_name`
+     branches (client.messages.create, message.content[0].text) are removed; every target is an
+     OpenAI-compatible chat endpoint (vLLM, or OpenRouter for API models, Claude included). This
+     was the only dependency the project env lacked, and the reason for the nested venv.
+  6. The think block is kept (2026-09-09): `reasoning_content` from a target behind a reasoning
+     parser is written to a `reasoning(<prompt>)_runN` column beside each `generation(...)_runN`
+     column (None on a failed generation). Every scoring stage selects `generation(` columns
+     by prefix, so scores are unchanged; the published rollouts now carry the full transcript.
+     Runs before this patch have no trace: the parser had split it off and it was discarded.
+
+evaluate.py
+  1. The judge is routed through this repo's OpenRouter contract (MASK_JUDGE_MODEL,
+     MASK_JUDGE_BASE_URL, MASK_JUDGE_API_KEY); unset = upstream's OpenAI behaviour.
+  2. The numeric-range judging asks for JSON and parses it (`_parse_numeric_bounds`) instead of
+     OpenAI's structured-output API, so any provider works; `developer` role -> `system`.
+  3. Judge transport (2026-09-07): MASK_JUDGE_TRANSPORT=live|collect|replay with
+     MASK_JUDGE_EXCHANGE. `collect` writes every judge request ({custom_id, body}, custom_id a
+     content hash) and judges nothing; `replay` answers from the batch's results file and
+     falls back to a live call. The request body is built once for all three transports.
+  4. MASK_DATA_DIR, as above.
+
+metric.py, process_metrics.py
+  1. MASK_DATA_DIR, as above (metric.py's paths were __file__-relative, process_metrics.py's
+     cwd-relative).
+  2. `split_archetype_model` (2026-09-07): output files are `<archetype>_<model>.csv` and a
+     served model name may carry underscores (`qwen36_0_nosynth`), so the split is on the
+     known archetype prefix, not the last underscore (which mis-keyed every result and, in
+     metric.py, missed the statistics archetype's own aggregation).

@@ -9,13 +9,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  corpusMatches, dataFileFromConfigs, facet, parseRepo, pickDataFile, searchText,
-  statsFromSidecar,
+  corpusMatches, dataFileFromConfigs, facet, matchRank, parseRepo, pickDataFile, searchText,
+  searchableFile, searchableTags,
+  statsFromSidecar, TRAINING_DATA_ORG,
 } from "../lib/trainingData.ts";
+import { EVAL_ORG } from "../lib/evalRuns.ts";
+
+test("both discovery surfaces use the renamed Hugging Face org", () => {
+  assert.equal(TRAINING_DATA_ORG, "dougalldeepmind");
+  assert.equal(EVAL_ORG, TRAINING_DATA_ORG);
+});
 
 test("a listing row is read from its facet tags, never from its name", () => {
   const repo = parseRepo({
-    id: "LASR-Callum/2026-08-25-difficult-advice-716-verbose-cot",
+    id: "dougalldeepmind/2026-08-25-difficult-advice-716-verbose-cot",
     tags: ["training-data", "kind:synth", "pipeline:difficult_advice",
       "constitution:claude_distilled_12_principles_mid", "region:us"],
     cardData: { configs: [{ config_name: "dataset", data_files: "dataset.jsonl", default: true }] },
@@ -119,7 +126,7 @@ test("a stats sidecar yields a count and per-source composition, or nothing", ()
 
 test("the picker search is order-free, separator-agnostic and multi-field", () => {
   const fields = [
-    "LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train",
+    "dougalldeepmind/2026-08-14-table2-9284-difficult-advice-716-train",
     "table2 9284 difficult advice 716 train",
     "mixture · table2-9284-difficult-advice-716-train",
     "mixture",
@@ -142,4 +149,32 @@ test("the picker search is order-free, separator-agnostic and multi-field", () =
   assert.equal(hit("difficult advice tulu"), false); // every term must match
   assert.equal(hit("2026-08-15"), false);
   assert.equal(searchText("A-b_c.d/e:F  g"), "a b c d e f g");
+});
+
+test("a short query ranks the corpora named by it above the ones that merely contain it", () => {
+  // 2026-09-09: `dat` matched every corpus (all carry `training-data` and a
+  // `dataset.jsonl`) and the picker listed 93 hits by constitution share, burying dat-synth.
+  const named = ["dougalldeepmind/2026-09-07-dat-synth", "dat synth", "synth · dat"];
+  const prefixed = ["dougalldeepmind/2026-08-04-table2-instruction-tuning-9284", "database ops"];
+  const inside = ["dougalldeepmind/2026-08-05-model-eval-model-validation", "validation"];
+  assert.equal(matchRank(named, "dat"), 3);
+  assert.equal(matchRank(prefixed, "dat"), 2);
+  assert.equal(matchRank(inside, "dat"), 1);
+  assert.equal(matchRank(["nothing here"], "dat"), 0);
+  assert.equal(matchRank(named, ""), 3);
+  assert.equal(matchRank(named, "dat synth"), 3); // every term whole
+  assert.equal(matchRank(named, "dat tulu"), 0); // every term must match
+  assert.equal(corpusMatches(inside, "dat"), true); // substring matches are still matches
+});
+
+test("Hub boilerplate tags and the contract rows-file names are not searchable", () => {
+  const tags = ["size_categories:1K<n<10K", "format:json", "modality:text", "library:datasets",
+                "region:us", "training-data", "kind:synth", "pipeline:dat", "constitution:abridged"];
+  assert.deepEqual(searchableTags(tags), ["kind:synth", "pipeline:dat", "constitution:abridged"]);
+  assert.equal(searchableFile("https://x/resolve/main/dataset.jsonl"), "");
+  assert.equal(searchableFile("mixture.jsonl"), "");
+  assert.equal(searchableFile("t2_9284_da716_10k.jsonl"), "t2_9284_da716_10k.jsonl");
+  // the boilerplate alone no longer makes `dat` (or `json`) match a corpus
+  assert.equal(matchRank([...searchableTags(tags.slice(0, 6)), searchableFile("dataset.jsonl")], "dat"), 0);
+  assert.equal(matchRank([...searchableTags(tags), searchableFile("dataset.jsonl")], "dat"), 3); // pipeline:dat
 });

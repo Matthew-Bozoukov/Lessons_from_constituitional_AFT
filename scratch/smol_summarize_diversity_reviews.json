@@ -1,0 +1,63 @@
+{
+  "upstream_revision": "5feaf2fd3ffca7c237fc38d1861bc30365d48ffa",
+  "reviews": [
+    {"upstream_index":2603,"verdict":"reject","reason":"Fragmentary quotation does not establish that the subject is a child."},
+    {"upstream_index":3162,"verdict":"reject","reason":"Input starts mid-sentence and omits which budget is being discussed."},
+    {"upstream_index":4586,"verdict":"skip","reason":"Another collaboration message, not a new document type."},
+    {"upstream_index":6455,"verdict":"reject","reason":"Invents Political Science and leaves the object of thanks missing."},
+    {"upstream_index":7864,"verdict":"reject","reason":"Invents GraphicDesignCon."},
+    {"upstream_index":7872,"verdict":"reject","reason":"Adds an editorial claim about the significance of the attacks instead of remaining objective."},
+    {"upstream_index":8348,"verdict":"reject","reason":"Adds unsupported rapid spread and extensive destruction beyond the reported damage."},
+    {"upstream_index":9386,"verdict":"skip","reason":"Research collaboration correspondence, not a new document type."},
+    {"upstream_index":10722,"verdict":"skip","reason":"Appointment confirmation correspondence, not a new document type."},
+    {"upstream_index":12139,"verdict":"reject","reason":"Truncated input omits the death toll of over 5200 supplied by the answer."},
+    {"upstream_index":12314,"verdict":"reject","reason":"Fragmentary input does not support the expanded claims about authorities or ongoing storage issues."},
+    {"upstream_index":13465,"verdict":"reject","reason":"Navigation text does not supply news stories or assert a downloadable transcript."},
+    {"upstream_index":14797,"verdict":"skip","reason":"Appointment confirmation correspondence, not a new document type."},
+    {"upstream_index":14977,"verdict":"skip","reason":"Collaboration correspondence, not a new document type."},
+    {"upstream_index":15061,"verdict":"reject","reason":"Mistakes the recipient Alex for the sender."},
+    {"upstream_index":16576,"verdict":"reject","reason":"Starts mid-quotation with unidentified speaker; unsuitable complete input."},
+    {"upstream_index":19277,"verdict":"accept","genre":"news_report","topic":"world_news","reason":"Full input and answer directly reviewed: faithful casualty counts, location and police attribution; two sentences, no banned pronouns."},
+    {"upstream_index":20166,"verdict":"skip","reason":"Student planning correspondence, not a new document type."}
+    ,{"upstream_index":20213,"verdict":"reject","reason":"Placeholder input cannot support the invented project summary."}
+    ,{"upstream_index":27232,"verdict":"reject","reason":"Drops the sender-local qualifier from 2 pm."}
+    ,{"upstream_index":27898,"verdict":"reject","reason":"Truncated input; answer adds unsupported efficiency and integration claims."}
+    ,{"upstream_index":30325,"verdict":"accept","genre":"news_report","topic":"weather","reason":"Full input and answer directly reviewed: accurately preserves location, timing, damage, no reported injuries, closures and continuing warnings in three pronoun-compliant sentences."}
+    ,{"upstream_index":32912,"verdict":"reject","reason":"Introductory stub omits the referenced memes; answer invents popularity and viewer enjoyment."}
+    ,{"upstream_index":36621,"verdict":"skip","reason":"Project planning correspondence; does not add a new document type."}
+    ,{"upstream_index":37770,"verdict":"reject","reason":"Reverses sender and recipient and invents Apple Numbers."}
+    ,{"upstream_index":39952,"verdict":"reject","reason":"Mid-sentence fragment; answer adds unspecified crew charges and disaster context."}
+    ,{"upstream_index":40609,"verdict":"reject","reason":"Placeholder input cannot support a project introduction."}
+    ,{"upstream_index":44281,"verdict":"accept","genre":"news_report","topic":"media","reason":"Full input and answer directly reviewed: two-sentence faithful account of the Esquire article and accidental association with unrelated content; no banned pronouns."}
+    ,{"upstream_index":47831,"verdict":"accept","genre":"news_report","topic":"entertainment","reason":"Full input and answer directly reviewed: faithfully reports announced release date, cast, director/co-writer and hinted musical sequences; three sentences and no banned pronouns. Original encoding blemish is preserved, not repaired."}
+    ,{"upstream_index":48170,"verdict":"reject","reason":"Input starts mid-sentence; answer gives an imperative recommendation rather than an objective summary."}
+    ,{"upstream_index":49981,"verdict":"skip","reason":"Student correspondence, not a new document type."}
+    ,{"upstream_index":53970,"verdict":"reject","reason":"Short caption does not support claims about lunar interior, surface features and geological history."}
+    ,{"upstream_index":54666,"verdict":"reject","reason":"Changes no reports of casualties into a definite claim of no casualties."}
+    ,{"upstream_index":56484,"verdict":"reject","reason":"Truncated input; answer supplies the record label and expanded names not provided."}
+    ,{"upstream_index":57630,"verdict":"reject","reason":"Truncated input; adds US forces and strengthens a stated belief into a finding."}
+    ,{"upstream_index":58314,"verdict":"skip","reason":"Request for project help, still correspondence rather than an expository document."}
+    ,{"upstream_index":58923,"verdict":"reject","reason":"Turns a future gear check into confirmed final preparations."}
+    ,{"upstream_index":59308,"verdict":"reject","reason":"Mistakes recipient Sam for the sender."}
+    ,{"upstream_index":61852,"verdict":"skip","reason":"Personal research correspondence; not a new document type."}
+    ,{"upstream_index":62180,"verdict":"reject","reason":"Placeholder input cannot support an invented meeting."}
+    ,{"upstream_index":64794,"verdict":"skip","reason":"Student correspondence; not a new document type."}
+    ,{"upstream_index":65747,"verdict":"reject","reason":"Mistakes recipient Liam for the sender who secured the venue."}
+    ,{"upstream_index":67596,"verdict":"reject","reason":"Navigation stub; adds speculation about news content absent from the input."}
+    ,{"upstream_index":68908,"verdict":"reject","reason":"Mid-quotation fragment; answer adds a growing-threat claim."}
+    ,{"upstream_index":70199,"verdict":"reject","reason":"Calls Apollo-Soyuz a joint US-Russia mission rather than US-Soviet; unsuitable under the requested obvious-error check, despite similar loose terminology in the source."}
+    ,{"upstream_index":71437,"verdict":"accept","genre":"technical_explanation","topic":"physics","reason":"Full input and answer directly reviewed: faithfully summarizes impedance and phase formulas, frequency effects and offer of assistance in two pronoun-compliant sentences. Q&A explanation addressed to Emily, not a news article."}
+    ,{"upstream_index":77497,"verdict":"reject","reason":"Fragment does not supply Fort Hood or Texas asserted in the answer."}
+    ,{"upstream_index":79680,"verdict":"reject","reason":"Treats a proposed Friday meeting as planned and blurs attribution of research-project suggestions."}
+    ,{"upstream_index":83323,"verdict":"skip","reason":"Collaboration planning correspondence, not a new document type."}
+    ,{"upstream_index":83847,"verdict":"skip","reason":"Field-trip planning correspondence, not a new document type."}
+    ,{"upstream_index":85436,"verdict":"reject","reason":"Starts mid-sentence; expands The Post into The Washington Post and infers population and purpose not explicitly supplied."}
+    ,{"upstream_index":86114,"verdict":"reject","reason":"Turns a proposed meeting time into an agreement; answer consists of subjectless fragments."}
+    ,{"upstream_index":87540,"verdict":"reject","reason":"Turns a suggestion to consider publication into agreement to publish."}
+    ,{"upstream_index":88070,"verdict":"reject","reason":"Mid-sentence fragment does not name Sunni Muslims, supplied by the answer."}
+    ,{"upstream_index":88333,"verdict":"skip","reason":"Personal trip-planning correspondence, not a new document type."}
+    ,{"upstream_index":89893,"verdict":"reject","reason":"Navigation stub does not establish that the program covers events in the listed locations."}
+    ,{"upstream_index":91753,"verdict":"reject","reason":"Navigation stub does not supply the news coverage asserted in the answer."}
+    ,{"upstream_index":92840,"verdict":"reject","reason":"Mid-quotation fragment; answer invents a broader debate and impacts on trust and freedoms."}
+  ]
+}

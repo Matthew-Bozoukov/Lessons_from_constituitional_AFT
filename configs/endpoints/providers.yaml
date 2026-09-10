@@ -80,6 +80,13 @@ models:
     order: [deepinfra]            # differing quantizations (fp8 x3, one unknown —
                                   # checked 2026-08-14); deepinfra chosen.
     price: {in: 0.08, out: 0.28}
+  qwen/qwen3.6-27b:               # on-policy reasoning backfill (scratch/reasoning_backfill).
+    order: [alibaba]              # Six hosts serve it; alibaba is the ONLY one that honours
+                                  # `reasoning: {max_tokens: N}` (verified 2026-09-07 — the
+                                  # others return their natural trace length and ignore the
+                                  # field), and the budget is the whole point of the probe.
+                                  # OpenRouter's documented floor for that field is 1024.
+    price: {in: 0.45, out: 2.7}
   qwen/qwen3-embedding-8b:        # TURF embedder. nebius over deepinfra (both
     order: [nebius]               # quant-undeclared; deepinfra's own API says
                                   # quantization: None) and siliconflow (declared fp8).

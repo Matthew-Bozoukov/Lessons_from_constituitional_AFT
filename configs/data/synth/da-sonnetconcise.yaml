@@ -1,6 +1,6 @@
 # ABOUTME: Length-matched control for the generator ablation: the da716 baseline's own 716
 # ABOUTME: prompts AND Haiku drafts, rewritten by Sonnet 5 under a one-sentence length cap.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-sonnetconcise.yaml
+# Run: uv run synth run --config configs/data/synth/da-sonnetconcise.yaml
 #   Prereq: uv run python scratch/sonnet_concise/build_source.py        (stages the 716 drafts)
 #   Smoke:  ... --smoke --overrides "source.local_dir=data/da716_draft_source_smoke"
 #   Verify: uv run python scratch/sonnet_concise/verify_config.py       (arm == da716 recipe + 1 sentence)
@@ -39,6 +39,7 @@
 # What this arm does NOT hold fixed, and knows it: a capped rewrite may also change WHAT is
 # said, not just how much. Measure that with scratch/compare_generator_arms.py (per-1k-char
 # refusal and offer rates) before reading the ODCV number.
+method: ours
 pipeline: da-sonnetconcise-716
 
 card:
@@ -89,7 +90,7 @@ seed: 0
 # Same constitution as the source run, and `load_source_run` HARD-ASSERTS that: a source
 # generated against a different document would silently cross arms, so the sha is compared
 # rather than trusted. Both are claude_distilled_12_principles_mid.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 

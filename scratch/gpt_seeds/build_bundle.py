@@ -104,7 +104,7 @@ tags:
   difficult-advice arm (`LASR-Callum/2026-08-25-qwen36-lora-table2-9284-gpt-responder-685-paired-rank-64` is seed 0).
   Consumed by `scripts/gpu/runpod_train.py` on a credential-free RunPod 2xH200 pod.
 - **date_generated**: 2026-08-28 (bundle); mixture generated 2026-08-25.
-- **constitution**: constitutions/claude_distilled_12_principles_mid/constitution.md, via the
+- **constitution**: constitutions/archive/claude_distilled_12_principles_mid/constitution.md, via the
   685 difficult-advice rows (LASR-Callum/2026-08-25-difficult-advice-gpt-responder-716).
 - **source_repo**: https://github.com/LASR-Callum/lessons_from_constitutional_aft @ {sha}
   (branch worktree-gpt-seeds).

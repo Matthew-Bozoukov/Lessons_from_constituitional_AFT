@@ -27,7 +27,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const ORG = process.env.HF_ORG || "LASR-Callum";
+const ORG = process.env.HF_ORG || "dougalldeepmind";
 const ENDPOINT = process.env.HF_ENDPOINT?.replace(/\/+$/, "") || "https://huggingface.co";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const CONTENT = path.join(ROOT, "content");

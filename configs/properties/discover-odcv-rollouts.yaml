@@ -120,7 +120,7 @@ producers:
 
 check_collisions: false
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md
 
 # Tiny slice, full wiring: two arms, a handful of rollouts each, clustering that cannot
 # fail on a small n, and no comparison run to read.

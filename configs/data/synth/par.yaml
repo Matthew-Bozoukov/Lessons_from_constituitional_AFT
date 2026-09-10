@@ -83,6 +83,7 @@
 # smoke.total_scenarios=40`, `uv run synth check`, and a hand-read of ten records -- looking for
 # capitulation and for still-bare final turns -- before any full run.
 
+method: ours
 pipeline: par
 
 seed: 0
@@ -90,7 +91,7 @@ seed: 0
 # Difficult advice's alignment target, by the same path, cut the same way (byte-identical to
 # the claude_distilled_09_principles_mid_20260804 snapshot the archived recipe named). A test
 # pins all three lines to da.yaml's.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 

@@ -3,7 +3,7 @@ title: "Model-eval-model validation batch (15 docs)"
 date: 2026-08-05
 summary: "Human-verification batch of the model-eval-model document type: 3 docs per cell from the real pipeline (control, other/self × good/flawed), generated over the difficult-advice source corpus against the recovered 9-principle constitution. Review gate before the full 2,100-doc corpus for the 20/80-by-examples SFT run."
 hf_source:
-  repo_id: LASR-Callum/2026-08-05-model-eval-model-validation
+  repo_id: dougalldeepmind/2026-08-05-model-eval-model-validation
   revision: 4711f39f274f3c95d664f90b0eaa419851ae9c64
 dataset_id: model-eval-model-validation
 dataset_version: v1

@@ -152,7 +152,7 @@ def push(seed: int, private: bool = False) -> str:
             ),
             "date_generated": meta["timestamp"][:10],
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md, via the corpus "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md, via the corpus "
                 "LASR-Callum/2026-08-25-difficult-advice-gpt-responder-716"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()} (branch worktree-gpt-seeds)",

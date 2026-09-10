@@ -54,7 +54,7 @@ def _system_prompt(cfg: DictConfig) -> str:
 
 
 def _generate(client: OpenAI, model: str, system: str, prompt: str,
-              gen: DictConfig, enable_thinking: bool) -> dict[str, Any]:
+              gen: DictConfig) -> dict[str, Any]:
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "system", "content": system},
@@ -62,7 +62,6 @@ def _generate(client: OpenAI, model: str, system: str, prompt: str,
         temperature=float(gen.temperature),
         top_p=float(gen.top_p),
         max_tokens=int(gen.max_tokens),
-        extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
     )
     choice = resp.choices[0]
     raw = choice.message.content or ""
@@ -91,7 +90,6 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     """
     cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
     gen = cfg.generation
-    enable_thinking = target.spec.mode != "nothink"
     swap = bool(cfg.get("swap_options", False))
     repetitions = max(1, int(gen.get("repetitions", 1)))
 
@@ -109,7 +107,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
 
     jobs = [(item, rep) for rep in range(repetitions) for item in items]
     print(f">>> moralbench: {len(items)} items x {repetitions} rep(s) = {len(jobs)} calls")
-    print(f">>> mode: {'thinking' if enable_thinking else 'nothink'}, "
+    print(f">>> mode: {target.spec.mode}, "
           f"temp={gen.temperature}, swap_options={swap}")
 
     client = OpenAI(base_url=target.base_url, api_key=target.api_key,
@@ -120,8 +118,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         item, rep = jobs[index]
         prompt, scores = presented[item["item_id"]]
         try:
-            result = _generate(client, target.model_name, system, prompt, gen,
-                               enable_thinking)
+            result = _generate(client, target.model_name, system, prompt, gen)
         except Exception as exc:  # noqa: BLE001
             # A dropped request must not take the whole arm down — map_threaded is
             # fail-fast. Recorded as an empty answer so it scores as invalid and shows
@@ -174,7 +171,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     summary = aggregate(records, items)
     summary["swap_options"] = swap
     summary["repetitions"] = repetitions
-    summary["mode"] = "think" if enable_thinking else "nothink"
+    # Serving owns template pinning; API targets keep their comparison label unchanged.
+    summary["mode"] = target.spec.mode
 
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
     # Rollouts are self-contained: the prompt the model saw, its trace, its reply, and
@@ -199,10 +197,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                "upstream_commit": "f411cb77a0b3e6f42bcc67034f14fd2897589a22"},
     )
     (metadata_dir / "run_meta.json").rename(metadata_dir / "moralbench_run_meta.json")
-    # The vendored prompt corpus is deliberately NOT copied into the run dir: the
-    # upstream repo publishes no licence, and out_dir is uploaded to HF verbatim.
-    # Item ids, responses and scores are ours to publish; the corpus is not.
-    # See src/eval/misalignment/moralbench/assets/NOTICE.md.
+    # Do not copy the standalone assets directory into the run. Presented prompts and
+    # options already appear in the self-contained records above; this is not a claim
+    # that published runs exclude all upstream text. See assets/NOTICE.md.
 
     for key in ("MFQ_binary", "MFV_binary", "MFQ_comparative", "MFV_comparative"):
         block = summary[key]

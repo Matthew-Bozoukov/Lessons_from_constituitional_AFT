@@ -45,6 +45,34 @@ def test_fill_respects_budget():
     assert len(out) == 2
 
 
+def test_published_base_preserves_payloads_and_mixed_reasoning(tmp_path, monkeypatch):
+    from src.data.mixture import build_mixture as mod
+    from src.infra import huggingface
+    original = [
+        {"source": "s", "messages": [{"role": "assistant", "content": "one", "reasoning_content": "trace"}]},
+        {"source": "s", "messages": [{"role": "assistant", "content": "two"}]},
+    ]
+    path = tmp_path / "mixture.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in original))
+    monkeypatch.setattr(huggingface, "resolve_dataset", lambda *args: (str(path), {"revision": "pin"}))
+    monkeypatch.setattr(mod, "_base_sources", lambda _: {"s": {"examples": 2}})
+    cfg = OmegaConf.create({"base": "unused", "max_seq_len": 10,
+                           "base_mixture": {"repo": "org/base", "file": "mixture.jsonl", "revision": "pin"}})
+    rows, kinds = mod._load_published_base(_StubTok(), cfg, {"s": {"examples": 2}}, 1, 0, {})
+    assert kinds == {"s": "mixed"}
+    assert sorted(({k: v for k, v in r.items() if k != "n_tokens"} for r in rows),
+                  key=lambda r: r["messages"][0]["content"]) == original
+    with pytest.raises(AssertionError, match="no additional filter"):
+        cfg.filter = {"model": "must-not-run"}
+        mod._load_published_base(_StubTok(), cfg, {"s": {"examples": 2}}, 1, 0, {})
+
+
+def test_mixed_reasoning_does_not_disable_tool_validation():
+    with pytest.raises(AssertionError, match="declare"):
+        _validate_interchange("s", "mixed", [{"messages": [{"role": "assistant",
+            "tool_calls": [{"function": {"name": "undeclared"}}]}]}])
+
+
 def test_fill_skips_oversized_rows_but_keeps_filling():
     out = _fill(_rows([500, 10, 10]), budget=25, seed=0)
     assert sum(r["n_tokens"] for r in out) == 20
@@ -120,13 +148,16 @@ def test_mixture_configs_share_one_schema():
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for sname, spec in sources.items():
-            assert set(spec) <= {"source", "repo", "path", "config", "split", "tokens",
-                                 "examples", "shuffle_buffer", "reasoning", "synthetic",
-                                 "balance_by"}, (name, sname)
+            # The intake keys `_take_interchange` documents: an adapter (`source`), a
+            # synth-contract repo (`dataset` [+ `revision`]), a raw HF repo (`repo` [+ `file`]),
+            # or a local `path`.
+            assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
+                                 "config", "split", "tokens", "examples", "shuffle_buffer",
+                                 "reasoning", "synthetic", "balance_by"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
-            if not ("repo" in spec or "path" in spec):
+            if not ("repo" in spec or "path" in spec or "dataset" in spec):
                 assert (spec.get("source") or sname) in SOURCES, (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
             declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
@@ -422,6 +453,23 @@ def test_balance_by_refuses_streams_and_token_budgets(tmp_path):
                           {"path": str(path), "reasoning": "none",
                            "balance_by": "trait_id"},
                           ("tokens", 100), seed=0, render_kwargs={})
+
+
+def test_a_fully_synthetic_mixture_drops_the_base_and_splits_the_share_by_budget_ratio():
+    """synthetic_pct=100 is a legitimate arm (`da-100`, `dat-100`, `da-dat-100`: the synthetic
+    rows alone, no replay). The base sources scale to zero rows and must be DROPPED, not
+    carried as `examples: 0` (which `_budget` rightly rejects for a declared source); two
+    synthetic sources with equal budgets split the whole mixture 50/50 (2026-09-09)."""
+    from src.data.mixture.build_mixture import _base_sources, blend
+
+    base = _base_sources("configs/data/mixture/nosynth.yaml")
+    out = blend(base, {"da": {"examples": 1, "reasoning": "native"},
+                       "dat": {"examples": 1, "reasoning": "native"}}, 100, 1400)
+    assert set(out) == {"da", "dat"}, "no base source may survive a 100% synthetic share"
+    assert out["da"]["examples"] == out["dat"]["examples"] == 700
+    assert all(s["synthetic"] for s in out.values())
+    only = blend(base, {"dat": {"examples": 1, "reasoning": "native"}}, 100, 700)
+    assert only == {"dat": {"examples": 700, "reasoning": "native", "synthetic": True}}
 
 
 def test_the_base_blend_keeps_its_proportions_as_the_synthetic_share_grows():

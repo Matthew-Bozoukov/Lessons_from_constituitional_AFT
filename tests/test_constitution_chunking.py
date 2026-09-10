@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.data.synth.constitution import (
+from src.data.synth.ours.constitution import (
     CHUNKINGS,
     DEFAULT_CHUNKING,
     GRANULARITIES,
@@ -25,7 +25,7 @@ from src.data.synth.constitution import (
 # Every constitution in the repo, archived ones included: chunking must survive both
 # markdown formats (v1's bolded list items and specgen's numbered H2 headings).
 CONSTITUTIONS = sorted(str(p) for p in Path("constitutions").rglob("constitution.md"))
-MID = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+MID = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 V1 = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
 # Strips a chunk's leading "**Title**" so bodies can be compared across granularities.
@@ -256,9 +256,9 @@ def test_dataset_config_can_select_any_method(name):
     its units and prices, with corpus size held fixed by total_scenarios."""
     import yaml
 
-    from src.data.synth.stage_runtime import Ctx
-    from src.data.synth.stage_operators import op_segment, scenario_batches
-    from src.data.synth.pipeline import n_examples, n_units
+    from src.data.synth.ours.stage_runtime import Ctx
+    from src.data.synth.ours.stage_operators import op_segment, scenario_batches
+    from src.data.synth.ours.pipeline import n_examples, n_units
 
     cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
     cfg["chunking"] = name
@@ -296,7 +296,7 @@ def test_n_traits_hint_must_match_the_chosen_method():
     the unit count, and a stale hint would misprice the run."""
     import yaml
 
-    from src.data.synth.pipeline import n_units
+    from src.data.synth.ours.pipeline import n_units
 
     cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
     assert n_units(cfg) == cfg["n_traits"] == 9
@@ -314,8 +314,8 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
     """
     import yaml
 
-    from src.data.synth.constitution import UNIT_PROVENANCE, units_from_config
-    from src.data.synth.stage_operators import op_chat_export
+    from src.data.synth.ours.constitution import UNIT_PROVENANCE, units_from_config
+    from src.data.synth.ours.stage_operators import op_chat_export
 
     cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
     units, _ = units_from_config(cfg)
@@ -349,7 +349,7 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
 def test_only_traits_restricts_the_run_to_named_units():
     """A per-trait arm: `only_traits:` keeps the named units (document order), leaves the
     document and its style guidance untouched, and refuses an id the document lacks."""
-    from src.data.synth.pipeline import n_units
+    from src.data.synth.ours.pipeline import n_units
 
     base = {"constitution": MID, "chunking": "principle"}
     full, style = units_from_config(base)

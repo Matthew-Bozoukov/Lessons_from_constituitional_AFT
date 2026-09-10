@@ -1,6 +1,6 @@
 # ABOUTME: Responder-swap arm, GPT: the BASELINE's own 716 difficult-advice prompts,
 # ABOUTME: answered by gpt-5.6-luna and revised by gpt-5.6-terra instead of Haiku/Sonnet.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-gptresp.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/da-gptresp.yaml [--smoke]
 #   Prereq: uv run python scratch/build_da716_prompt_source.py   (stages the 716 prompts)
 
 # 2026-08-25. Sibling of da-grokresp-716.yaml, built the same way and
@@ -37,6 +37,7 @@
 # that is the wrong stage for it, not a defect. Its own stage's prompt carries a `changes`
 # tag and richer instructions, and on that it is perfect. Do not read the 63% as a terra
 # problem; do not move terra to the drafting slot.
+method: ours
 pipeline: da-gptresp-716
 
 card:
@@ -84,7 +85,7 @@ seed: 0
 # Same constitution as the source run, and `load_source_run` HARD-ASSERTS that: a source
 # generated against a different document would silently cross arms, so the sha is compared
 # rather than trusted. Both are claude_distilled_12_principles_mid.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 

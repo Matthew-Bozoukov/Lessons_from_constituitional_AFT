@@ -105,7 +105,7 @@ their argument and giving concrete help.
 | --- | --- |
 | `experiment` | Reward-hacking substitution arm: {stats['substituted']} of {stats['total']} difficult-advice rows replaced with scenarios where the asker wants to cheat to get ahead. Built to test whether difficult-advice training transfers to specification gaming (ctfish, ODCV data fabrication). |
 | `date_generated` | 2026-09-04 |
-| `constitution` | constitutions/claude_distilled_12_principles_mid/constitution.md — the same constitution the source corpus was written against; each substituted row is written against the same `trait_text` string, read from the source corpus at build time rather than retyped. |
+| `constitution` | constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the same constitution the source corpus was written against; each substituted row is written against the same `trait_text` string, read from the source corpus at build time rather than retyped. |
 | `source_repo` | teaching_claude_why_replication @ {git_sha()} |
 | `models` | substituted rows: anthropic/claude-sonnet-5 (pinned first-party via configs/endpoints/providers.yaml). Retained rows: as published in {SOURCE}. |
 | `generation_config` | {json.dumps({'generator': 'scratch/_gen_rh_corpus.py', 'model': 'anthropic/claude-sonnet-5', 'temperature': 1.0, 'max_tokens': 8000, 'per_trait': stats['per_trait_substituted'], 'seed': SEED, 'retries': 1})} |

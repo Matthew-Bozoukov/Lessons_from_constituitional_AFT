@@ -407,17 +407,14 @@ were on disk and were pulled file by file over the :8080 directory server instea
 
 Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only.
 
-## One ODCV run per Docker daemon; prefer the RunPod HTTPS proxy to a laptop SSH tunnel (2026-08-29)
+## Prefer the RunPod HTTPS proxy to a laptop SSH tunnel for ODCV (2026-08-29)
 
-- **Two concurrent ODCV runs on one Docker daemon destroy each other.** The harness names compose
-  projects `odcv-<variant>-<scenario>`, global on the daemon, so a second run of the same scenarios
-  (a different arm, a different session) tears down the first run's containers mid-cell: both passes
-  end `ok+no_transcript` / `compose_exit_137` with 0 transcripts and nothing in the summary says why.
-  Measured 2026-08-28 18:33 BST when a PAR-arm pass and a GPT-seed pass started together. Before
-  launching `odcv_rollout_cli`, check `pgrep -f 'odcv_rollout_cli\.py'` and
-  `docker ps --filter name=odcv-` are both empty (match the `.py`, not the bare name — a watcher
-  shell whose command line merely mentions the string trips the guard), and coordinate with any
-  other session on the machine.
+- (Removed 2026-09-07: the "one ODCV run per Docker daemon" rule. It described a collision
+  in the harness's Compose project names, which are now namespaced by a hash of the arm's
+  `model_key` (`odcv-<tag>-<variant>-<scenario>`, src/eval/misalignment/odcv/odcv_rollout.py),
+  so two DIFFERENT arms can share one daemon. Two runs of the SAME arm still collide, and
+  resource contention is still yours to watch.)
+
 - **The laptop→pod tunnel is the weak link.** `odcv_local_run.sh`'s reconnecting `-N -L` forward
   kept resetting against a RunPod H100 ("Connection reset by peer" every few minutes); each cell
   then waits out the full `scenario_timeout_s` (2,400 s) against a dead endpoint, so a 65-cell pass
@@ -521,6 +518,44 @@ Deviations that live in OUR code rather than in a vendored tree (compose project
 scenario, the bullseye apt-archive rewrite, the judge-side line cap, `recover.py`) are
 listed in each `VENDORED_FROM.txt` too.
 
+## A same-day rerun of an arm publishes over its eval repo; the earlier run becomes a revision (2026-09-06)
+
+The eval run name is `<date>-<eval>-<arm>` and nothing else: the served window, judges and
+passes are protocol, not identity, so a second ODCV run of `2026-09-05-qwen36-0-nosynth` on the
+same day mints `2026-09-06-odcv-qwen36-0-nosynth` again and `push_run_dir` uploads over the
+existing repo — `gate_push` checks the name's shape and date, not whether the repo already
+holds a different run. Nothing is lost: the Hub keeps every commit, so the earlier run stays
+readable at its revision. That is the convention chosen on 2026-09-06 for the 28k-window
+reruns: the head of `2026-09-06-odcv-qwen36-0-nosynth` and of `2026-09-06-odcv-qwen36` is the
+28k run, and the morning's 16k run is revision `38c3b0809d` (nosynth) and the pre-rerun head
+(base). Two consequences. Reading code that means the earlier protocol MUST pin `revision=`
+(`hf_hub_download(..., revision=...)`), or it silently reads the newer run; and the dashboard,
+which reads heads, shows only the latest. Nothing warns at push time, so know which run you
+are about to write over — `HfApi().repo_exists` plus the head's `metadata/run_meta.json`
+config tells you — and record the revision of what you replaced in the LOG entry.
+
+## A monitor that greps only for tracebacks misses this repo's own refusals (2026-09-07)
+
+`docker_preflight`, `plan_serving` and the naming lint refuse with FORMATTED prose, not
+Python exceptions. A watcher filtering on `Traceback|RuntimeError|SystemExit` plus success
+markers therefore stays silent through them, and silence reads as "still running": an ODCV
+pod idled 30 minutes at $3.49/h after its preflight refused (Docker Desktop was quit).
+Filter on the failure text a stage actually prints, treat an empty log past first-output
+time as the alert, and check liveness by PID — `pgrep -f 'evals --name odcv'` also matches
+the launcher shell whose command line contains that string, so it always says "alive".
+
+## A teardown watcher keyed on `>>> pushed` kills the run it is guarding (2026-09-07)
+
+`run_eval` prints `>>> pushed HF_TOKEN + HF_ORG + ... to root@<host>:/workspace/.env` at
+STARTUP when `--push-env` is set, ~40 minutes before the epilogue prints `>>> pushed
+https://huggingface.co/datasets/...`. A watcher waiting for `grep -q '>>> pushed'` before
+terminating the pod matched the first line on its first poll and killed a MASK run two
+archetypes into generation; MASK has no resume, so the whole run was lost and the hour of
+H100 time with it. Match the completion line SPECIFICALLY — `'>>> pushed https'` — and
+prefer a marker the epilogue alone emits. The general rule: before writing a watcher's
+pattern, grep the log the run has ALREADY produced for it; a pattern that matches
+something already on disk is a pattern that fires immediately.
+
 ## LLM-judged audits
 
 **A judge question that invites "is there any nuance here?" returns ~90% yes and measures
@@ -604,3 +639,46 @@ constraint does not move with it, and the failure is a silently mis-scheduled pa
 Always run `uv run python -c 'import torch; print(torch.cuda.is_available())'` on a fresh pod
 before launching anything long. It costs one SSH round-trip and it is the only check that
 actually tests what you are about to depend on.
+
+## Two `evals --server` runs on one driver machine collide on local port 8000 (2026-09-08)
+
+`uv run evals --server <host>` tunnels the pod's vLLM back to `127.0.0.1:<--port>`, default
+8000, and starts vLLM on the SAME port on the pod. A second concurrent run from the same
+laptop (a second pod, a second arm) also picks 8000: ssh prints `bind [127.0.0.1]:8000:
+Address already in use / Could not request local forwarding` and keeps the session open,
+the run continues as if the tunnel were up, every request goes nowhere, and MASK reports
+`4438/4438 generations failed (100.0%)` and refuses -- after the pod has already billed its
+full boot and the whole generation stage. Happened to the nosynth and da-7 MASK runs launched
+beside a live dat-7 run at 23:03 on 2026-09-08: two pods rented, torn down with nothing.
+
+Before launching a second `--server` run on a machine that already has one, `lsof -nP
+-iTCP:8000 -sTCP:LISTEN` (or `ps aux | grep 'ssh .* -L'`) and give the new run a distinct
+`--port` (8001, 8002, ...). `SshExec` uses the port for both ends, so nothing else needs to
+change. The error line is easy to miss: it arrives on ssh's stderr between two `>>>` progress
+lines and the eval does not treat it as fatal.
+
+## MASK `subsample: 1000` is a no-op: the vendored csv_data IS 1000 rows (2026-09-09)
+
+`configs/eval/mask.yaml` said (until 2026-09-09) that upstream holds 2,595 rows and that
+`subsample` draws N evenly across the six archetypes. The 2,595 was `wc -l` over CSVs whose
+prompts contain newlines. The default is now `null`. The vendored `third_party/mask/mask/csv_data/` holds the PUBLIC
+release, which is exactly 1000 rows (continuations 176, disinformation 125, doubling-down 120,
+known_facts 209, provided_facts 274, statistics 96 -- `metadata/subsample.json` on every
+published run reads "drawn N of N" for all six). So every 1000-row run is the whole public
+set, the per-archetype split is the dataset's own and NOT even, and only `subsample` below
+1000 actually samples. Generations per row also differ by archetype: 6 (1 pressure + 3x
+belief_elicit_1 + belief_elicit_2 + belief_elicit_3) for four of them, 4 for statistics (no
+elicit_2/3), 1 for provided_facts (pressure only) -- 4,438 generations per 1000-row run.
+
+## A RunPod host can have a crawling network; speed-test before the boot script has cost an hour (2026-09-09)
+
+Three H200 training pods rented at the same minute: the one in `SE` reached READY (clone +
+`uv sync`) in 3 minutes; the two in `EUR-IS-4` were still downloading wheels after 20 minutes,
+with `curl` from the pod measuring 14 KB/s from Hugging Face and PyPI timing out. Nothing in
+the boot log says "slow" -- it just keeps printing `Downloading ...` lines -- so the failure
+looks like ordinary boot until you compare against a sibling. `uv run runpod up` prints
+`ssh: ready` well before the install finishes: at that moment run a 15-second download test
+on the pod (`curl -sL -o /dev/null -m 15 -w '%{speed_download}' <a HF weight shard URL>`) and
+terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the datacenter that
+worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
+datacenter; the REST pod object does not.

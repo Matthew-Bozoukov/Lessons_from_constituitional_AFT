@@ -72,7 +72,7 @@ def push(dest: str = DEST, private: bool = False) -> str:
             ),
             "date_generated": meta.get("timestamp", "2026-08-26")[:10],
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                 f"(sha fe2ed96093d68a87...), inherited from {ds.get('repo')}"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()}",

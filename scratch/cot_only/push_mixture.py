@@ -49,7 +49,7 @@ def main(run: str, private: bool = True) -> None:
                       "reasoning or by the answer.",
         "date_generated": "2026-08-31",
         "constitution": "claude_distilled_07_principles_approved "
-                        "(constitutions/claude_distilled_07_principles_approved/constitution.md)",
+                        "(constitutions/archive/experimental/claude_distilled_07_principles_approved/constitution.md)",
         "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication @ {git_sha()}",
         "models": "token stream Qwen/Qwen3.6-27B (tokenizer + ModelProfile literals)",
         "generation_config": "none — no model is sampled here. The build is a "

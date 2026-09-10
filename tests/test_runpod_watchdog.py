@@ -23,6 +23,8 @@ def test_liveness_observes_a_real_child_without_killing_it(monkeypatch):
                 pytest.fail("A Windows liveness probe must never use os.kill")
             monkeypatch.setattr(os, "kill", forbidden_kill)
         assert runpod._parent_alive(child.pid)
+        identity = runpod._process_identity(child.pid)
+        assert identity and runpod._process_identity(child.pid) == identity
         assert child.poll() is None
         child.communicate(b"done\n", timeout=10)
         assert child.returncode == 0
@@ -49,10 +51,12 @@ def test_launcher_detaches_and_closes_its_log_copy(monkeypatch, tmp_path):
         calls.append((argv, kwargs))
         return sentinel
 
+    monkeypatch.setattr(runpod, "_process_identity", lambda pid: "known-birth")
     monkeypatch.setattr(subprocess, "Popen", capture)
     assert runpod.start_watchdog("fake-no-api", 60, tmp_path / "watchdog.log") is sentinel
     argv, kwargs = calls[0]
     assert argv[3:7] == ["watchdog", "fake-no-api", str(os.getpid()), "60"]
+    assert argv[-1] == "known-birth"
     assert kwargs["stdout"].closed
     if sys.platform == "win32":
         assert kwargs["creationflags"] & subprocess.DETACHED_PROCESS
@@ -62,6 +66,9 @@ def test_launcher_detaches_and_closes_its_log_copy(monkeypatch, tmp_path):
 
 
 def test_training_arms_callback_before_waiting_for_ssh(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(runpod, "start_watchdog", lambda *a, **kw: SimpleNamespace(terminate=lambda: None))
+    monkeypatch.setattr(runpod, "teardown", lambda *a: None)
     monkeypatch.setattr(runpod, "_commit_to_run", lambda branch: ("fake", "abc"))
     monkeypatch.setattr(runpod, "_clone_url", lambda: "https://example.com/repo.git")
     monkeypatch.setattr(runpod, "_bootstrap", lambda *args: "true")

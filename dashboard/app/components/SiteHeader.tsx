@@ -11,7 +11,6 @@ import {
   Lightbulb,
   ListOrdered,
   Menu,
-  Scale,
   ScanSearch,
   X,
 } from "lucide-react";
@@ -21,7 +20,6 @@ const nav = [
   { href: "/", label: "Overview", icon: Activity },
   { href: "/logs", label: "Logs", icon: FlaskConical },
   { href: "/evals", label: "Evals", icon: Beaker },
-  { href: "/moralbench", label: "MoralBench", icon: Scale },
   { href: "/datasets", label: "Datasets", icon: Database },
   { href: "/selection", label: "Selection", icon: ListOrdered },
   { href: "/petri", label: "Petri", icon: ScanSearch },

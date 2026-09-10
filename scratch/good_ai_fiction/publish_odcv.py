@@ -86,7 +86,7 @@ def main(run: str = RUN, repo: str = REPO, stage: str = "output/odcv_fiction716/
             "65 cells x 1 rollout, both conditions, driven from local Docker against a "
             "RunPod H200 vLLM endpoint over an SSH tunnel."),
         "date_generated": date.today().isoformat(),
-        "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md "
+        "constitution": "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                         "(via the training data; never quoted in the trained text)",
         "source_repo": f"teaching_claude_why_replication @ {git_sha()}",
         "models": f"target={ADAPTER} base=Qwen/Qwen3.6-27B; "

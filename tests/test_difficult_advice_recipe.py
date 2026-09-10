@@ -21,6 +21,24 @@ def _stage(name: str) -> dict:
     return next(s for s in cfg["stages"] if s["name"] == name)
 
 
+def test_identity_guidance_preserves_each_revision_stages_scope():
+    for name in ("revise_prompts", "revise_responses"):
+        prompt = _stage(name)["prompts"]["user"]
+        assert "Model-neutral identity" in prompt
+        assert "specific model or as developed by a named" in prompt
+    stage = _stage("revise_responses")
+    assert stage["tags"] == ["reasoning", "response", "changes"]
+    assert stage["save"] == {
+        "reasoning": "reasoning", "response": "response", "rewrite_changes": "changes"}
+    prompt = stage["prompts"]["user"]
+    assert "Do not rewrite the system or user prompts" in prompt
+    for tag in stage["tags"]:
+        assert f"<{tag}>" in prompt and f"</{tag}>" in prompt
+    export = _stage("export_sft")
+    assert export["messages"][0]["content"] == "{system}"
+    assert export["messages"][1]["content"] == "{user}"
+
+
 def test_refine_rewrites_the_metadata_it_was_given():
     """Defect 1. Stage 4 replaces or reframes most prompts while `situation`/`shortcut`/
     `domain` rode through from the stage-2 draft it discarded: median content-word

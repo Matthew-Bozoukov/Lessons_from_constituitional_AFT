@@ -44,7 +44,7 @@ retained rows** from the original difficult-advice corpus.
 | --- | --- |
 | `experiment` | Reward-hacking difficult-advice arm. Built to test whether difficult-advice training transfers to specification gaming, after ctfish showed base Qwen3.6-27B hacking at 80% against ~0% for every SFT arm, and the ODCV analysis showed the residual misalignment is data fabrication under KPI pressure. |
 | `date_generated` | 2026-09-05 |
-| `constitution` | constitutions/claude_distilled_12_principles_mid/constitution.md — the same constitution the source corpus was written against; every synth row carries its principle's `trait_text` verbatim. |
+| `constitution` | constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the same constitution the source corpus was written against; every synth row carries its principle's `trait_text` verbatim. |
 | `source_repo` | teaching_claude_why_replication @ {git_sha()} |
 | `models` | reward-hacking rows: anthropic/claude-sonnet-5. Retained difficult-advice rows and Table-2 rows: as published in their source repos. |
 | `generation_config` | {json.dumps(stats, separators=(',', ':'))[:900]} |

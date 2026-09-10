@@ -48,7 +48,7 @@ def build_card(diag: dict, repo: str) -> str:
             "ranking is targeted, not a dataset prior."),
         "date_generated": "2026-08-14",
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md — the constitution "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the constitution "
             "the scored pool was generated from (sha256 "
             "fe2ed96093d68a871fb15669e8fea9d357fb9b51f5affff15380f62ee749a642). The selection "
             "targets are behaviours, not constitution clauses, but every scored row traces to a "

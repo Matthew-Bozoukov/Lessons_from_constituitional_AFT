@@ -9,14 +9,14 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from src.data.synth.pipeline import build_stages, estimate, n_final_examples
-from src.data.synth.stage_operators import (
+from src.data.synth.ours.pipeline import build_stages, estimate, n_final_examples
+from src.data.synth.ours.stage_operators import (
     _gist,
     op_chat_export,
     selected,
     tagged_request,
 )
-from src.data.synth.stage_runtime import lint_problems, price_of
+from src.data.synth.ours.stage_runtime import lint_problems, price_of
 
 CR_CFG = yaml.safe_load(open("configs/data/synth/courtroom.yaml"))
 

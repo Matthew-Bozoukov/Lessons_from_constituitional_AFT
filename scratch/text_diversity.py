@@ -37,7 +37,7 @@ def stats(texts: list[str]) -> tuple[float, float]:
     """(mean pairwise cosine, mean nearest-neighbour cosine)."""
     import numpy as np
 
-    from src.data.synth.embeddings import embed
+    from src.data.synth.ours.embeddings import embed
 
     X = embed(texts)
     G = X @ X.T

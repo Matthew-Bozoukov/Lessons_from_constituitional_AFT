@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -189,6 +190,11 @@ class ChatResult:
             savings rather than a measurement -- see `CACHE_MARK`.
         provider: Which upstream provider actually served the call — record it in
             run artifacts the way temperature is recorded (see providers.yaml).
+        reasoning_content: Native plaintext reasoning, separate from the final answer.
+        tool_calls: Structured tool calls, if the assistant requested any.
+        cost: API-reported USD cost, or None when the provider omitted it.
+        response_id: OpenRouter completion id, for provenance and billing lookup.
+        response_model: Model id reported by OpenRouter for the completion.
     """
 
     content: str
@@ -197,6 +203,37 @@ class ChatResult:
     finish_reason: str
     cached_tokens: int = 0
     provider: str = ""
+    reasoning_content: str = ""
+    tool_calls: list[dict] = field(default_factory=list)
+    cost: float | None = None
+    response_id: str = ""
+    response_model: str = ""
+
+
+def _message_fields(message) -> tuple[str, list[dict]]:
+    """Read native reasoning and tools from either an SDK message or raw JSON.
+
+    Summaries and encrypted reasoning are not native plaintext traces and must not
+    become training targets. OpenRouter's normalized `reasoning` field takes
+    precedence over its alias and the equivalent text-detail representation.
+    """
+    def value(key):
+        return message.get(key) if isinstance(message, dict) else getattr(message, key, None)
+
+    reasoning = value("reasoning") or value("reasoning_content") or ""
+    if not reasoning:
+        reasoning = "".join(
+            detail["text"] for detail in (value("reasoning_details") or [])
+            if isinstance(detail, dict) and detail.get("type") == "reasoning.text"
+            and isinstance(detail.get("text"), str)
+        )
+    if not isinstance(reasoning, str):
+        raise TypeError("OpenRouter returned non-text reasoning")
+    tool_calls = [
+        call if isinstance(call, dict) else call.model_dump(mode="json")
+        for call in (value("tool_calls") or [])
+    ]
+    return reasoning, tool_calls
 
 
 # Everything BEFORE this marker in a message becomes a separately cacheable block.
@@ -295,7 +332,9 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
         raise EmptyCompletionError(msg, provider_error=err_d, provider=provider,
                                    diagnostics=completion_failure_diagnostics(data))
     choice = choices[0]
-    content = (choice.get("message") or {}).get("content")
+    message = choice.get("message") or {}
+    content = message.get("content")
+    reasoning, tool_calls = _message_fields(message)
     finish = choice.get("finish_reason") or ""
     if finish == "content_filter":
         # Same classification as `chat`: an output-sample filter, retryable — which
@@ -308,7 +347,7 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
                                        f"({len(content or '')} chars of partial "
                                        "content dropped)"},
             provider=provider, diagnostics=completion_failure_diagnostics(data))
-    if not content:
+    if not content and not tool_calls:
         raise EmptyCompletionError(
             f"Model {model} returned empty content (provider {provider or '?'}): "
             f"finish_reason={finish}", provider=provider,
@@ -316,12 +355,17 @@ def result_from_payload(model: str, data: dict) -> ChatResult:
     usage = data.get("usage") or {}
     details = usage.get("prompt_tokens_details") or {}
     return ChatResult(
-        content=content,
+        content=content or "",
         prompt_tokens=int(usage.get("prompt_tokens") or 0),
         completion_tokens=int(usage.get("completion_tokens") or 0),
         finish_reason=finish,
         cached_tokens=int(details.get("cached_tokens") or 0),
         provider=provider,
+        reasoning_content=reasoning,
+        tool_calls=tool_calls,
+        cost=float(usage["cost"]) if usage.get("cost") is not None else None,
+        response_id=str(data.get("id") or ""),
+        response_model=str(data.get("model") or ""),
     )
 
 
@@ -411,6 +455,7 @@ class OpenRouterClient:
                                        diagnostics=completion_failure_diagnostics(resp))
         choice = resp.choices[0]
         content = choice.message.content
+        reasoning, tool_calls = _message_fields(choice.message)
         if choice.finish_reason == "content_filter":
             # OpenAI-protocol hard filter, with or without partial text. Partial
             # output is DROPPED rather than returned: a silently truncated
@@ -431,7 +476,7 @@ class OpenRouterClient:
                                            "content dropped)"},
                 provider=getattr(resp, "provider", "") or "",
                 diagnostics=completion_failure_diagnostics(resp))
-        if not content:
+        if not content and not tool_calls:
             # None OR empty string: an undiagnosable blank either way — the empty
             # string previously slipped through as a "successful" ChatResult and
             # died later at the caller's parse gate with no retry.
@@ -450,12 +495,17 @@ class OpenRouterClient:
         details = getattr(usage, "prompt_tokens_details", None) if usage else None
         cached = getattr(details, "cached_tokens", 0) or 0
         return ChatResult(
-            content=content,
+            content=content or "",
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
             finish_reason=choice.finish_reason or "",
             cached_tokens=int(cached),
             provider=getattr(resp, "provider", "") or "",
+            reasoning_content=reasoning,
+            tool_calls=tool_calls,
+            cost=float(usage.cost) if getattr(usage, "cost", None) is not None else None,
+            response_id=getattr(resp, "id", "") or "",
+            response_model=getattr(resp, "model", "") or "",
         )
 
 
@@ -485,3 +535,93 @@ def map_threaded(
             idx = futures[fut]
             results[idx] = fut.result()
     return results
+
+
+# --- the batch API (async jobs, 50% token pricing) ----------------------------------------
+# One client for every batched caller: the synth stages (src/data/synth/ours/stage_runtime.py)
+# and the MASK judge (src/eval/misalignment/mask/runner.py). OpenRouter accepts a plain
+# model id when the model has a batch endpoint; measured 2026-09-06: Gemini and DeepSeek
+# do, every Anthropic and OpenAI model is refused ("does not have a :batch endpoint").
+
+BATCH_URL = "https://openrouter.ai/api/beta/batches"
+# Below this many outstanding records the submit/poll overhead outweighs the discount
+# and the stage silently stays interactive -- which also keeps `--smoke` interactive.
+BATCH_MIN_ITEMS = 8
+# Requests per batch job. Chunked because results are all-or-nothing PER JOB (`results`
+# is null until the whole job completes): an expired/failed chunk loses only its slice.
+BATCH_CHUNK = 500
+BATCH_POLL_S = 30
+
+
+def run_batch(model: str, requests: dict[str, dict], stage: str, state_path: Path,
+              collect, chunk: int = BATCH_CHUNK, poll_s: int = BATCH_POLL_S) -> None:
+    """Push `requests` (custom_id -> body) through OpenRouter's batch API.
+
+    Submission state (batch ids + their custom_ids) persists at `state_path`, so a
+    killed run resumes the SAME jobs instead of paying to resubmit them. Nothing is
+    marked collected in the state: results stay retrievable by GET until the job
+    expires, so `collect(custom_id, completion_payload)` -- the caller's parse+
+    checkpoint hook -- is simply re-run on a resume, and the caller's checkpoint is
+    what makes that idempotent. A job that ends failed/expired/cancelled is reported
+    loudly and its requests are left uncollected; the caller's interactive mop-up owns
+    them. The state file is removed once every job reaches a terminal status.
+    """
+    import time
+
+    import requests as http
+
+    headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
+    state = json.loads(state_path.read_text()) if state_path.exists() else {"batches": []}
+    # A resumed run's outstanding set may differ from what an old state was built
+    # against (mopped-up records, a re-cut todo); jobs with no overlap are dropped
+    # and only never-submitted ids go out again.
+    state["batches"] = [b for b in state["batches"] if set(b["ids"]) & set(requests)]
+    if state["batches"]:
+        print(f">>> {stage}: resuming {len(state['batches'])} batch job(s)")
+    submitted = {i for b in state["batches"] for i in b["ids"]}
+    to_submit = [cid for cid in requests if cid not in submitted]
+    for c0 in range(0, len(to_submit), chunk):
+        ids = to_submit[c0:c0 + chunk]
+        # Field ORDER matters: the API stream-parses and requires endpoint+model
+        # before the requests array.
+        r = http.post(BATCH_URL, headers=headers, json={
+            "endpoint": "/v1/chat/completions", "model": model,
+            "requests": [{"custom_id": cid, "body": requests[cid]} for cid in ids]})
+        r.raise_for_status()
+        state["batches"].append({"batch_id": r.json()["id"], "ids": ids})
+        # State written after EVERY submit: a crash mid-submission strands nothing.
+        state_path.write_text(json.dumps(state))
+        print(f">>> {stage}: submitted batch {r.json()['id']} ({len(ids)} requests)")
+
+    done: set[str] = set()
+    dead: set[str] = set()
+    while True:
+        pending = [b for b in state["batches"]
+                   if b["batch_id"] not in done | dead]
+        if not pending:
+            break
+        for b in pending:
+            s = http.get(f"{BATCH_URL}/{b['batch_id']}", headers=headers).json()
+            status = s.get("status")
+            if status == "completed":
+                by_id = {res.get("custom_id"): res for res in s.get("results") or []}
+                for cid in b["ids"]:
+                    if cid not in requests:
+                        continue
+                    res = by_id.get(cid) or {}
+                    resp = res.get("response") or {}
+                    if not res.get("error") and resp.get("status_code") == 200:
+                        collect(cid, resp.get("body") or {})
+                done.add(b["batch_id"])
+                print(f">>> {stage}: batch {b['batch_id']} collected", flush=True)
+            elif status in ("failed", "expired", "cancelled"):
+                dead.add(b["batch_id"])
+                print(f"!!! {stage}: batch {b['batch_id']} ended {status} -- its "
+                      f"{len(b['ids'])} request(s) fall to the interactive path",
+                      flush=True)
+            else:
+                print(f">>> {stage}: batch {b['batch_id']} {status}: "
+                      f"{s.get('request_counts') or {}}", flush=True)
+        if any(b["batch_id"] not in done | dead for b in state["batches"]):
+            time.sleep(poll_s)
+    state_path.unlink(missing_ok=True)

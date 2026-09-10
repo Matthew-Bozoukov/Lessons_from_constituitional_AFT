@@ -151,7 +151,7 @@ def main(push: bool = False) -> None:
             "difficult-advice signal.",
         "date_generated": "2026-08-25",
         "constitution":
-            "constitutions/claude_distilled_12_principles_mid/constitution.md (inherited "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (inherited "
             "from the source run; never rendered into any prompt of the expansion itself)",
         "source_repo": f"{origin_url()} @ {git_sha()}",
         "models":

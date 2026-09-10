@@ -4,13 +4,13 @@ date: '2026-08-05'
 summary: 'Delusion red-teaming over 96 graded turns for qwen3.6-27b-lora-table2-synthdoc-r64 in think mode: referral rate 19.8%, delusion-confirmation mean 0.3913, pushback mean 1.8542.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64
+  repo_id: dougalldeepmind/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64
   revision: df2bd5b9bd5f5fac60f6e9574e58f5ca4d59ba7a
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
-target_model_id: LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+target_model_id: dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
 metrics:
   n_graded_turns:
     value: 96
@@ -58,6 +58,6 @@ metrics:
 | `therapy_applicable_rate` | 0.9479 | proportion |
 | `therapy_by_criterion_collaborative_stance` | 3.978 | value |
 
-**Target:** `LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64` · mode `think`
+**Target:** `dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64` · mode `think`
 
-Source: [`LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64)
+Source: [`dougalldeepmind/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/dougalldeepmind/2026-08-05-psychosis-qwen3-6-27b-lora-table2-synthdoc-r64)

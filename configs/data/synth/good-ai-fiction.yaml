@@ -36,17 +36,18 @@
 # "instrumental convergence"): those words name the concepts the corpus is supposed to
 # teach through situations, so their presence is evidence the situation did not do the work.
 
+method: ours
 pipeline: good-ai-fiction
 
 ablate: []
 
 seed: 0
 
-# Byte-identical to constitutions/claude_distilled_09_principles_mid_20260804/constitution.md
+# Byte-identical to constitutions/claude_distilled_09_principles/constitution.md
 # (verified 2026-08-27), which is the frozen snapshot difficult-advice and model-eval-model
 # were generated against. Named by the same path da.yaml uses so the two arms
 # demonstrably share one target.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 
