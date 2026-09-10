@@ -723,5 +723,265 @@ def main():
         publish()
 
 
+class RevisionClient(CappedClient):
+    """Use the existing cost ledger with a persisted two-attempt ceiling per record/model."""
+
+    def __init__(self, *args, deadline, **kwargs):
+        import threading
+        super().__init__(*args, **kwargs)
+        self.deadline = deadline
+        self.attempt_lock = threading.Lock()
+        self.attempt_path = self.path.with_name('attempts.json')
+        self.attempts = json.loads(self.attempt_path.read_text()) if self.attempt_path.exists() else {}
+
+    def chat(self, model, messages, **kwargs):
+        import time
+        match = re.match(r'Record ID: ([a-zA-Z0-9_]+)\n', messages[-1]['content'])
+        if not match:
+            raise ValueError('Revision requests require a leading immutable Record ID')
+        key = model + ':' + match.group(1)
+        with self.attempt_lock:
+            if time.time() >= self.deadline or (self.path.parent/'STOP_DISPATCH').exists():
+                raise RuntimeError('Revision dispatch stopped at its deadline or stop marker')
+            if self.attempts.get(key, 0) >= 2:
+                raise RuntimeError('Two-attempt ceiling reached; no third paid request')
+            self.attempts[key] = self.attempts.get(key, 0) + 1
+            write_json(self.attempt_path, self.attempts)
+        return super().chat(model, messages, **kwargs)
+
+
+def revision_root(cfg):
+    return Path(cfg['output_dir']).parent
+
+
+def revision_prepare(cfg, config_path):
+    """Freeze existing source bytes and disjoint source-ID orders; no paid requests."""
+    import time
+    from collections import defaultdict
+    from scratch.build_t2_9284_da716_mixture import render
+    root = revision_root(cfg)
+    root.mkdir(parents=True, exist_ok=True)
+    if (root/'authorization.json').exists():
+        raise ValueError('Revision already prepared; preserve its existing freeze')
+    parent = Path('output/nonmoral_broader/20260909/mixture')
+    expected = '0545e014b518fdb9b8b40e37adc0b4a21da01c384553fe60e6a81f87098a2c22'
+    assert file_sha256(parent/'mixture.jsonl') == expected
+    originals = read_rows(parent/'selected_examples.jsonl')
+    mix = read_rows(parent/'mixture.jsonl')
+    by_id = {r['scenario_id']: r for r in mix if r['source'] == 'nonmoral_broader'}
+    assert len(originals) == len(by_id) == 684 and len(mix) == 9968
+    pool = []
+    for r in originals:
+        row = dict(scenario_id=r['scenario_id'], domain=r['domain'], user=r['user'],
+                   original_system='', original_reasoning=r['reasoning'], original_response=r['response'])
+        rendered = render([{'role':'user','content':row['user']},
+                           {'role':'assistant','content':row['original_response'],
+                            'reasoning_content':row['original_reasoning']}])
+        assert rendered == by_id[row['scenario_id']]['text'], row['scenario_id']
+        row['parent_text_sha256'] = hashlib.sha256(rendered.encode()).hexdigest()
+        pool.append(row)
+    inputs = root/'inputs'
+    inputs.mkdir(exist_ok=True)
+    (inputs/'inputs.jsonl').write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in pool),encoding='utf-8')
+    # Known plan-development examples cannot enter either fresh pilot.
+    excluded = {r['scenario_id'] for r in sorted(originals, key=lambda r:hashlib.sha256(
+        ('plan-audit:'+str(r.get('scenario_id',r.get('id',r)))).encode()).hexdigest())[:6]}
+    groups = defaultdict(list)
+    for r in pool:
+        if r['scenario_id'] not in excluded:
+            groups[r['domain']].append(r['scenario_id'])
+    salt = 'nonmoral-grounded-revision:0'
+    for ids in groups.values():
+        ids.sort(key=lambda sid:hashlib.sha256((salt+sid).encode()).hexdigest())
+    order = []
+    while any(groups.values()):
+        for domain in sorted(groups):
+            if groups[domain]:
+                order.append(groups[domain].pop(0))
+    order.extend(sorted(excluded))
+    write_json(root/'source_order.json',dict(order=order,pilot01=order[:16],pilot02=order[16:32],
+               development_exclusions=sorted(excluded),audit_salt='nonmoral-grounded-independent-48:0'))
+    # Keep conservative settled-or-reserved prior accounting; never use account balance deltas.
+    prior = 31.929031131298995 + 85.408749 + 17.980324 + 21.848901 + 5.719672 + 2.343440
+    auth = dict(status='authorized', approval='User: ok just execute the plan',
+                prepared_epoch=time.time(), plan='docs/nonmoral_deliberation/2026-09-10_execution_plan.md',
+                plan_sha256=file_sha256('docs/nonmoral_deliberation/2026-09-10_execution_plan.md'),
+                config_sha256=file_sha256(config_path), parent_mixture_sha256=expected,
+                source_sha256=file_sha256(inputs/'inputs.jsonl'), prior_exposure_usd=prior,
+                data_cap_usd=50,training_cap_usd=40,eval_cap_usd=15,stakes_cap_usd=5,
+                recovery_cap_usd=15, project_cap_usd=300,new_cap_usd=125,
+                source_count=len(pool), data_deadline_epoch=None)
+    assert prior+125 < 300
+    write_json(root/'authorization.json',auth)
+    write_json(root/'spend.json',[])
+    print(json.dumps(auth),flush=True)
+
+
+def revision_status(root):
+    ledger = read_revision_json(root/'spend.json', [])
+    batches = {p.parent.name+':'+p.stem:json.loads(p.read_text()) for p in (root/'batches').glob('*/status_*.json')}
+    return dict(exposure_usd=sum(e['charged_or_reserved_usd'] for e in ledger),
+                calls=len(ledger),unsettled=sum(e['status']=='reserved' for e in ledger),batches=batches)
+
+
+def read_revision_json(path, default=None):
+    return json.loads(Path(path).read_text(encoding='utf-8')) if Path(path).exists() else default
+
+
+def revision_phase(cfg, args):
+    """Run a single author/review stage through SynthDoc; reuse checkpoints on explicit resume."""
+    import time
+    import threading
+    from tenacity import stop_after_attempt
+    root = revision_root(cfg)
+    auth = read_revision_json(root/'authorization.json')
+    assert auth and auth['status']=='authorized'
+    assert cfg['pipeline']=='nonmoral-grounded-revision' and cfg['budget_usd']==50
+    assert not cfg['hf_push'] and not cfg['batch'] and cfg['workers']==8
+    assert hf_org()=='dougalldeepmind'
+    assert file_sha256(root/'inputs/inputs.jsonl')==auth['source_sha256']
+    assert re.fullmatch(r'(pilot|production|repair)[0-9]{2}', args.batch)
+    phase = args.revision
+    assert phase in ('author','review')
+    batch = root/'batches'/args.batch
+    stage_name = 'revise_responses' if phase=='author' else 'independent_review'
+    if phase=='author':
+        order = read_revision_json(root/'source_order.json')
+        if args.batch in ('pilot01','pilot02'):
+            ids = order[args.batch]
+        else:
+            assert args.ids, 'Production requires an explicit frozen ID file'
+            gate = read_revision_json(root/'pilot_gate.json')
+            assert gate and gate['passed'] and gate['production_config_sha256']==file_sha256(args.config)
+            ids = json.loads(Path(args.ids).read_text())
+        assert len(ids)==len(set(ids)) and 0<len(ids)<=684
+        pool = {r['scenario_id']:r for r in read_rows(root/'inputs/inputs.jsonl')}
+        rows = [pool[sid] for sid in ids]
+    else:
+        author = read_revision_json(batch/'status_author.json')
+        assert author and author['status']=='complete'
+        assert author['config_sha256']==file_sha256(args.config)
+        source = Path(author['run_dir'])/'dataset.jsonl'
+        assert file_sha256(source)==author['output_sha256']
+        rows = read_rows(source)
+    stage = next(s for s in cfg['stages'] if s['name']==stage_name)
+    effective = {**cfg,'total_scenarios':len(rows),
+                 'source':{'local_dir':str(batch/f'input_{phase}'),'snapshot':'inputs.jsonl'},
+                 'stages':[cfg['stages'][0],stage]}
+    for row in rows:
+        for key in ('system','user'):
+            stage['prompts'][key].format(**row)  # Format-check every actual record before any spending.
+    print(json.dumps(dict(phase=phase,batch=args.batch,rows=len(rows),paid=args.execute,
+                         stages=[s.name for s in build_stages(effective)])),flush=True)
+    if not args.execute:
+        return
+    batch.mkdir(parents=True,exist_ok=True)
+    lock = root/'generation.lock'
+    fd = os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+    done = threading.Event()
+    watcher = None
+    try:
+        os.write(fd,str(os.getpid()).encode())
+        status_path = batch/f'status_{phase}.json'
+        previous = read_revision_json(status_path)
+        if previous and not args.resume:
+            raise ValueError('Already dispatched; explicit resume required, never duplicate a run')
+        if previous:
+            assert previous['config_sha256']==file_sha256(args.config)
+            assert previous['input_sha256']==hashlib.sha256(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in rows).encode()).hexdigest()
+        ledger = read_revision_json(root/'spend.json',[])
+        # CappedClient retains terminal exceptions at full cost. Record their status without refund.
+        for i,e in enumerate(ledger):
+            if e['status']=='reserved':
+                raw=read_revision_json(root/'raw_calls'/f'{i:05d}.json')
+                assert raw and raw['status']=='terminal_exception', 'Uncertain live call needs reconciliation'
+                e['status']='retained_terminal_reservation'
+        write_json(root/'spend.json',ledger)
+        assert time.time()<auth['prepared_epoch']+7200 or auth['data_deadline_epoch'], 'Preparation deadline reached'
+        if auth['data_deadline_epoch'] is None:
+            auth['data_started_epoch']=time.time()
+            auth['data_deadline_epoch']=time.time()+14400
+            write_json(root/'authorization.json',auth)
+        assert time.time()<auth['data_deadline_epoch'],'Four-hour data deadline reached'
+        models={cfg['models'][stage['model']]['model']}
+        prices=verify_live_prices(models)
+        initial=sum(e['charged_or_reserved_usd'] for e in ledger)
+        cap=min(50,initial+args.cap)
+        assert 0<args.cap<=50 and cap>initial
+        source=Path(effective['source']['local_dir'])/'inputs.jsonl'
+        source.parent.mkdir(parents=True,exist_ok=True)
+        source.write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in rows),encoding='utf-8')
+        run_dir=Path(previous['run_dir']) if previous else batch/f'runs_{phase}'/timestamp()
+        run_dir.mkdir(parents=True,exist_ok=True)
+        state=dict(status='running',phase=phase,batch=args.batch,run_dir=str(run_dir),
+                   started_epoch=time.time(),pid=os.getpid(),config_sha256=file_sha256(args.config),
+                   input_sha256=file_sha256(source),input_count=len(rows),models=prices,
+                   cumulative_cap_usd=cap,initial_exposure_usd=initial,
+                   code_sha256=file_sha256(__file__),git_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+        write_json(status_path,state)
+        (batch/'config.yaml').write_bytes(args.config.read_bytes())
+        client=OpenRouterClient()
+        single=client.chat.retry_with(stop=stop_after_attempt(1))
+        capped=RevisionClient(lambda **kw:single(client,**kw),root/'spend.json',cap,models,
+                              allow_reasoning_off=True,deadline=auth['data_deadline_epoch'])
+        def heartbeat():
+            while not done.wait(30):
+                with capped.lock:
+                    health=dict(time_epoch=time.time(),pid=os.getpid(),phase=phase,batch=args.batch,
+                                calls=len(capped.entries),exposure_usd=sum(e['charged_or_reserved_usd'] for e in capped.entries),
+                                settled=sum(e['status']=='settled' for e in capped.entries))
+                write_json(root/'heartbeat.json',health)
+                print(json.dumps(health),flush=True)
+        watcher=threading.Thread(target=heartbeat,daemon=True)
+        watcher.start()
+        try:
+            run(effective,resume=str(run_dir),client=capped)
+            state['status']='complete'
+        except BaseException as exc:
+            state.update(status='failed',error=f'{type(exc).__name__}: {exc}')
+            raise
+        finally:
+            result=run_dir/'dataset.jsonl'
+            generated=read_rows(result) if result.exists() else []
+            state.update(finished_epoch=time.time(),produced=len(generated),
+                         output_sha256=file_sha256(result) if result.exists() else None,
+                         missing_ids=sorted({r['scenario_id'] for r in rows}-{r['scenario_id'] for r in generated}),
+                         cumulative_calls=len(capped.entries),
+                         cumulative_exposure_usd=sum(e['charged_or_reserved_usd'] for e in capped.entries))
+            write_json(status_path,state)
+            (batch/f'packet_{phase}.md').write_text('\n\n'.join(
+                f"## {r['scenario_id']} | {r['domain']}\n\n"+'\n\n'.join(
+                    f'**{key}**\n\n{r[key]}' for key in ('user','original_reasoning','original_response','revised_reasoning',
+                        'revised_response','changes','review_decision','review_issues','original_valid','improvement','review_checks') if key in r)
+                for r in generated),encoding='utf-8')
+            print(json.dumps(state),flush=True)
+    finally:
+        done.set()
+        if watcher:
+            watcher.join(timeout=5)
+        os.close(fd)
+        lock.unlink()
+
+
+def revision_main():
+    parser=argparse.ArgumentParser(description='Bounded existing-corpus revision through shared SynthDoc')
+    parser.add_argument('--revision',choices=['prepare','author','review','status'],required=True)
+    parser.add_argument('--config',type=Path,default=Path('configs/data/synth/nonmoral-grounded-revision.yaml'))
+    parser.add_argument('--batch',default='pilot01')
+    parser.add_argument('--ids',type=Path)
+    parser.add_argument('--cap',type=float,default=5)
+    parser.add_argument('--execute',action='store_true')
+    parser.add_argument('--resume',action='store_true')
+    args=parser.parse_args()
+    cfg=OmegaConf.to_container(OmegaConf.load(args.config),resolve=True)
+    if args.revision=='prepare':
+        revision_prepare(cfg,args.config)
+    elif args.revision=='status':
+        print(json.dumps(revision_status(revision_root(cfg)),indent=2))
+    else:
+        revision_phase(cfg,args)
+
+
 if __name__=='__main__':
-    main()
+    import sys
+    revision_main() if '--revision' in sys.argv else main()
