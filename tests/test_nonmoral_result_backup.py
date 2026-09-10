@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 from types import SimpleNamespace
 
 import pytest
@@ -40,6 +41,19 @@ def pack(tmp_path):
                             capture_output=True, text=True, check=True)
     manifest = json.loads(result.stdout)
     return Path(manifest['path']), manifest
+
+
+def test_selected_checkpoint_backup_excludes_mutating_training_files(tmp_path):
+    fixture(tmp_path)
+    chosen='output/train/run1/checkpoint-1'
+    script=pack_script(str(tmp_path),include_roots=[chosen],archive_name='checkpoint-backup.tar')
+    result=subprocess.run([sys.executable,'-c',script],capture_output=True,text=True,check=True)
+    manifest=json.loads(result.stdout)
+    assert verify_archive(manifest['path'],manifest)['verified']
+    with tarfile.open(manifest['path']) as tar:
+        assert tar.getnames()==[chosen+'/optimizer.pt']
+    with pytest.raises(ValueError):
+        pack_script(include_roots=['output/train/../../.env'])
 
 
 def test_full_backup_retains_logs_checkpoint_and_required_adapter(tmp_path):
