@@ -530,7 +530,9 @@ def finalize():
     # HF/Arrow infers columns chunk by chunk. Optional review provenance must be
     # present from the first chunk, including the18 provider-unreviewed cases.
     columns=sorted({key for r in final for key in r})
-    final=[{key:r.get(key) for key in columns} for r in final]
+    optional={key for key in columns if any(key not in r for r in final)}
+    assert all(isinstance(r[key],str) for r in final for key in optional if key in r)
+    final=[{key:r.get(key,'') for key in columns} for r in final]
     write_jsonl(ROOT/'accepted.jsonl',final)
     write_json(ROOT/'local_audit.json',dict(status='passed',count=684,
         accepted_sha256=file_sha256(ROOT/'accepted.jsonl'),originals_sha256=file_sha256(ROOT/'originals.jsonl'),
