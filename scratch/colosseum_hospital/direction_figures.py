@@ -30,7 +30,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from direction_contrasts import ARMS, ROOT, load
+from direction_contrasts import ARMS, ROOT, load, per_seed
+from src.eval.misalignment.colosseum.stats import arm_difference
 from trajectory_classes import classes_for
 from decline_vs_action import PROV, TRIAGE
 
@@ -249,7 +250,83 @@ def main() -> None:
     p3 = figure_path(OUT, "colosseum_hospital_team_outcomes")
     fig.savefig(p3, dpi=170)
     plt.close(fig)
-    for p in (p1, p2, p3):
+
+    # ── 4. the team score, and the paired difference between the arms ───────────
+    fig, axes = plt.subplots(
+        1, 2, figsize=(10.4, 3.9), gridspec_kw={"width_ratios": [1.35, 1]}
+    )
+    per_arm = {}
+    for arm in ("control", "treatment"):
+        vals = []
+        for h, _ in HARNESS:
+            rows = [
+                r["joint_reward"]
+                for r in cells[(h, arm)]
+                if r.get("joint_reward") is not None
+            ]
+            lo, hi = boot_ci(rows)
+            vals.append((float(np.mean(rows)), lo, hi))
+        per_arm[arm] = vals
+    grouped_bars(
+        axes[0], per_arm, "team score per shift (max 8,000)", "{:,.0f}", ymax=8000
+    )
+    axes[0].axhline(8000, color=MUTED, linewidth=0.8, linestyle=":")
+    axes[0].text(
+        2.55, 8000, "clean shift", ha="right", va="bottom", fontsize=8, color=MUTED
+    )
+    axes[0].set_title("team score, both arms", fontsize=10.5, color=INK, loc="left")
+
+    ax = axes[1]
+    x = np.arange(len(HARNESS))
+    diffs = []
+    for h, _ in HARNESS:
+        r = arm_difference(
+            per_seed(cells[(h, "treatment")], "joint_reward"),
+            per_seed(cells[(h, "control")], "joint_reward"),
+            label="joint_reward",
+        )
+        diffs.append(r)
+    ys = [r["diff"] for r in diffs]
+    err = [
+        [r["diff"] - r["diff_ci95"][0] for r in diffs],
+        [r["diff_ci95"][1] - r["diff"] for r in diffs],
+    ]
+    colors = ["#eb6834" if r["p_two_sided"] < 0.05 else "#f5b79a" for r in diffs]
+    ax.bar(x, ys, 0.5, color=colors, zorder=3)
+    ax.errorbar(
+        x, ys, yerr=err, fmt="none", ecolor=INK, elinewidth=1, capsize=3, zorder=4
+    )
+    ax.axhline(0, color=INK, linewidth=0.8)
+    for xx, r in zip(x, diffs):
+        top = r["diff_ci95"][1]
+        ax.text(
+            xx,
+            top + 120,
+            f"{r['diff']:+,.0f}\np = {r['p_two_sided']:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=8.5,
+            color=INK,
+        )
+    ax.set_xticks(x, [h for _, h in HARNESS])
+    style(ax, "difficult advice − control, points (paired on seed)")
+    ax.set_ylim(-3200, 3600)
+    ax.set_title(
+        "the paired difference, 95% interval", fontsize=10.5, color=INK, loc="left"
+    )
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, frameon=False, fontsize=9, loc="lower center", ncol=2)
+    fig.suptitle(
+        "Did the rewards change? Team score by harness and arm, 30 seeds each",
+        fontsize=12,
+        x=0.01,
+        ha="left",
+    )
+    fig.tight_layout(rect=[0, 0.07, 1, 1])
+    p4 = figure_path(OUT, "colosseum_hospital_team_score")
+    fig.savefig(p4, dpi=170)
+    plt.close(fig)
+    for p in (p1, p2, p3, p4):
         print(p)
 
 
