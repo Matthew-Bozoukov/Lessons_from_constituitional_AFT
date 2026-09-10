@@ -1,5 +1,5 @@
 <!-- ABOUTME: Running deliberative SFT generation from a completed synthetic corpus. -->
-<!-- ABOUTME: Documents final-row prompt intake, Alibaba reasoning, publication and safe resumption. -->
+<!-- ABOUTME: Documents prompt intake, best-of-N Alibaba reasoning, the judge filter, publication and resumption. -->
 
 # Deliberative SFT generation
 
@@ -19,26 +19,51 @@ chunk-only-702 adapter's training mixture; this pipeline uses all 708 source pro
 The generation constitution is selected independently by `constitution`. Set
 `source.repo` and `source.revision` for a different source; every read resolves to an exact SHA.
 
-## Two modules
+## Three modules
 
 - `data.py`: read the final prompt pool, construct API conversations, and export SFT rows.
-- `pipeline.py`: validate the YAML, call Qwen, checkpoint responses, account for usage,
+- `judge.py`: render the judge request, parse its score, and pick each prompt's survivor.
+- `pipeline.py`: validate the YAML, sample Qwen, judge, checkpoint, account for usage,
   resume, and publish. It reuses the existing synth `StageCache` for the HF contract.
 
-There is no scenario/prompt generation, judge, quality filter, or principle ablation.
-Only `dataset.jsonl` is read from the source HF repo: its rows already reflect all
-upstream deduplication and filtering. Earlier `stages/` snapshots never supply prompts.
-Each final assistant is replaced with a freshly generated answer and native reasoning;
-all earlier conversation turns stay as context. Row order and multiplicity are preserved.
-`limit` selects a prefix only when explicitly configured (two rows in smoke mode).
+There is no scenario/prompt generation or principle ablation. Only `dataset.jsonl` is
+read from the source HF repo: its rows already reflect all upstream deduplication and
+filtering. Earlier `stages/` snapshots never supply prompts. Each final assistant is
+replaced with a freshly generated answer and native reasoning; all earlier conversation
+turns stay as context. Row order is preserved; prompts the filter rejects are dropped
+and listed in the manifest. `limit` selects a prefix only when explicitly configured
+(30 rows in smoke mode).
 
-Generation adds the full constitution and deliberation instructions to a copy of the
-original system prompt. The model is Qwen via OpenRouter, with the existing Alibaba pin
-and fallbacks disabled. The dataset contains the original context and the new assistant
-turn (`reasoning_content`, `content`, and optional `tool_calls`), with `supervise: final`.
-Generation-only additions are absent from the training context; references to the
-constitution in generated reasoning are retained. Tool schemas and prior tool messages
-are preserved; API transport IDs are reconstructed only where unambiguous.
+## The quality filter (`filter:`)
+
+The paper's recipe (Guan et al. 2024, "Deliberative Alignment", s2.3.2), which the first
+version of this pipeline skipped:
+
+1. `candidates` completions are sampled per prompt.
+2. A format gate drops malformed candidates: truncated, no native trace, no answer, tool
+   calls without tools, or an answer that cites the constitution or a numbered principle
+   to the user (the generation instructions leaking into the training target). A format
+   rejection is final; it is never retried.
+3. A constitution-aware judge (`filter.judge.model`, never Qwen) scores a prompt's surviving
+   candidates SIDE BY SIDE, `runs` times, from the prompt context, each trace and answer,
+   and the same constitution. It never sees a teacher answer: the grade is constitution
+   adherence, helpfulness and whether the reasoning leads to the answer. A candidate whose
+   answer claims to have already taken an action is flagged to the judge for verification
+   (the paper's "another AI determined..." hint). A candidate's score is the MINIMUM across
+   runs, because any single run may miss a problem. Comparative rather than absolute
+   because, scored one at a time on the 2026-09-09 smoke, the judge gave 240/240 a 10 and
+   missed fabricated action claims and "ready to execute" bypass payloads.
+4. The best candidate at or above `threshold` is exported (ties to the lowest index).
+   A prompt with no survivor gets `resample_rounds` further rounds of `candidates`;
+   one still without a survivor is REJECTED.
+5. Fewer than `min_rows` survivors aborts the run before anything is published, rather
+   than lowering the bar. The smoke sets `min_rows: 1` so it can report the survival rate.
+
+`judge_prompt` (config) travels with the artifact; its fields are `{constitution}`,
+`{conversation}` and `{candidates}`, and it must end with one `CANDIDATE <k> SCORE: <n>`
+line per candidate. Each exported row's `metadata.deliberative_alignment.judge` records the
+score, candidate index and how many candidates were judged for that prompt. Every
+candidate's fate is in `stage_3_judge.jsonl`.
 
 ## Outputs and failures
 
@@ -48,23 +73,27 @@ The HF repo is named from the config stem using the repository naming rules:
 ```text
 dataset.jsonl                     # complete SFT dataset; default HF config
 stages/stage_1_prompts.jsonl       # final source contexts, metadata and source row indices
-stages/stage_2_responses.jsonl     # native responses, finish reasons, usage and provider
-stages/stage_3_export_sft.jsonl    # complete exported rows
+stages/stage_2_responses.jsonl     # every candidate: native response, usage, provider, format verdict
+stages/stage_3_judge.jsonl         # per prompt: each candidate's scores, the min, the selection
+stages/stage_4_export_sft.jsonl    # the survivors, exported
 manifest.json                    # resolved config, source SHA, constitution hash, usage
 run_meta.json                    # repository result-directory provenance
 generation_prompt.txt            # exact full augmentation used only at generation time
-generations.partial.jsonl        # append-only attempt records for resume
+generations.partial.jsonl        # append-only candidate records for resume
+judgements.partial.jsonl         # append-only judge records for resume
 README.md                        # declared dataset/stage configs and provenance card
 ```
 
-Locally, stage snapshots are flat, matching constitutional SFT. Each completed response
-is checkpointed locally, and each worker batch is mirrored. A malformed/incomplete
-response or provider error stops the run after the current batch; no source row is silently
-dropped and no partial dataset is published. Resume reuses successful rows and retries
-failed/missing rows. Config, constitution, prompt snapshot and provider identity must
-match; workers and budget may change. A new run refuses to overwrite an existing HF repo.
+Locally, stage snapshots are flat, matching constitutional SFT. Each response and each
+judgement is checkpointed locally, and each worker batch is mirrored. A transport error
+or an unscorable judge reply stops the run after the current batch; a rejected prompt is
+recorded, never silent, and no partial dataset is published. Resume reuses every
+checkpointed response and score and retries only errors. Config, constitution, judge,
+prompt snapshot and provider identity must match; workers and budget may change. A new
+run refuses to overwrite an existing HF repo.
 
-The budget is checked before each worker batch, so in-flight calls can exceed it.
+The budget covers generation and judging together and is checked before each worker
+batch, so in-flight calls can exceed it.
 Reported API costs are used when available; other responses use registry token prices.
 Transport retries inside the shared client can incur additional unreported charges.
 OpenRouter exposes a model name, not an immutable weights revision: this is self-generation
