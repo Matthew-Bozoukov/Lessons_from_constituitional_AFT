@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import re
 import statistics
+import argparse
+from datetime import date
 
 from huggingface_hub import HfApi
 from src.infra.huggingface import hf_download, hf_org, push_run_dir
@@ -15,8 +17,199 @@ from scratch.nonmoral.publish_invalid_baseline import scan, secret_values
 BASE = Path('output/nonmoral_broader/20260909')
 
 
+def stakes_dataset_comparison(report, public, code_revision):
+    """Measure frozen mixtures and describe the controlled stakes intervention."""
+    assert report['status'] == 'matched_stakes_complete'
+    protocol = dict(report['protocol'], benchmark='odcv', mode='think',
+        scenario_set=hashlib.sha256(json.dumps(report['expected_cells'], sort_keys=True).encode()).hexdigest())
+    declarations = [
+        ('stakes', 'Loss magnitude', 'Intended numerical loss exposure; perceived stakes were not independently validated.'),
+        ('perceived_stakes', 'Measured perceived stakes', 'No independent human or model annotation of perceived stakes.'),
+        ('scope', 'Task domains', 'Inherited professional craft tasks; no new scenario selection between arms.'),
+        ('reasoning', 'Reasoning intervention', 'Full reasoning and final answers supervised; substantive recommendations held fixed.'),
+        ('reasoning_words', 'Mean reasoning words', 'Whitespace-delimited words across all 684 synthetic rows; not tokenizer tokens.'),
+        ('answer_words', 'Mean final-answer words', 'Whitespace-delimited words across all 684 synthetic rows; excludes replay.'),
+        ('mixture', 'Training mixture', 'Exact row counts and byte-identical replay at identical positions.'),
+    ]
+    arms, audits, replay, synthetic = [], {}, {}, {}
+    design = [dict(label='Matched-stakes construction contract', url=
+        f'https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT/blob/{code_revision}/docs/nonmoral_deliberation/2026-09-10_matched_stakes_results.md')]
+    for key in ('low', 'high'):
+        model = report['model_pins'][key]; dataset = model['dataset']
+        path = Path(hf_download(dataset['repo'], dataset['file'], repo_type='dataset', revision=dataset['revision']))
+        raw = path.read_bytes(); lines = raw.splitlines(); rows = [json.loads(x) for x in lines]
+        source = 'nonmoral_stakes_' + key
+        selected = [r for r in rows if r['source'] == source]
+        assert len(rows) == 9968 and len(selected) == 684
+        replay[key] = [(i, line) for i, (line, row) in enumerate(zip(lines, rows)) if row['source'] != source]
+        synthetic[key] = {r['scenario_id']: r for r in selected}
+        assert len(synthetic[key]) == 684
+        measurements = []
+        for row in selected:
+            turns = row['text'].split('<|im_start|>assistant\n'); assert len(turns) == 2
+            match = re.fullmatch(r'<think>\s*(.*?)</think>\s*(.*?)<\|im_end\|>\s*', turns[1], re.S)
+            assert match and match[1].strip() and match[2].strip()
+            measurements.append(dict(scenario_id=row['scenario_id'], trait_id=row['trait_id'],
+                reasoning_words=len(match[1].split()), answer_words=len(match[2].split())))
+        evidence = [dict(label='Pinned training mixture', url=
+            f"https://huggingface.co/datasets/{dataset['repo']}/blob/{dataset['revision']}/{dataset['file']}")]
+        def trait(value, basis='design'):
+            return dict(value=value, basis=basis, evidence=evidence if basis == 'measured' else design)
+        values = dict(stakes=trait('Lower hypothetical numerical losses' if key == 'low' else 'Higher hypothetical numerical losses'),
+            perceived_stakes=dict(value=None, basis='unmeasured', evidence=[]),
+            scope=trait('684 matched professional craft scenarios: software, documentation, writing, teaching, data and interfaces'),
+            reasoning=trait('Full reasoning and final response; same substantive content, numeric stakes changes only'),
+            reasoning_words=trait(statistics.mean(m['reasoning_words'] for m in measurements), 'measured'),
+            answer_words=trait(statistics.mean(m['answer_words'] for m in measurements), 'measured'),
+            mixture=trait('684 synthetic + 9,284 identical replay rows (9,968 total)', 'measured'))
+        result = report['arms'][key]
+        arms.append(dict(id=key, label=result['label'], dataset=dict(**dataset, row_count=9968,
+            subset='Traits describe all 684 synthetic rows; training used the full mixture.'),
+            model=dict(repo=model['repo'], revision=model['revision'], base_revision=model['base_revision'], seed=0),
+            traits=values, evaluation=dict(**public[key], protocol=protocol, repeats=3, metrics=dict(
+                misalignment=dict(value=result['mr_pct'], numerator=result['mr_numerator'], denominator=240,
+                    interval=dict(low=result['scenario_mr']['lo'], high=result['scenario_mr']['hi'], method='scenario-level, fixed checkpoint')),
+                submission=dict(value=result['submitted_pct'], numerator=result['submitted_numerator'], denominator=240),
+                progress=dict(value=result['progress_mean'])))))
+        audits[key] = dict(**dataset, sha256=hashlib.sha256(raw).hexdigest(), rows=measurements)
+    assert replay['low'] == replay['high'] and len(replay['low']) == 9284
+    assert synthetic['low'].keys() == synthetic['high'].keys()
+    for key, low in synthetic['low'].items():
+        high = synthetic['high'][key]
+        assert low['trait_id'] == high['trait_id']
+        assert re.sub(r'\d[\d,.]*', '#', low['text']) == re.sub(r'\d[\d,.]*', '#', high['text']), key
+    d = report['paired_high_minus_low']['stats']['mr']
+    low, high = report['arms']['low'], report['arms']['high']
+    document = dict(schema_version=1, title='Matched nonmoral deliberation: low versus high stakes',
+        summary=f"Low stakes: {low['mr_numerator']}/240 ({low['mr_pct']:.2f}%) misaligned; high stakes: {high['mr_numerator']}/240 ({high['mr_pct']:.2f}%). High minus low: {d['mean']:+.2f} percentage points, scenario-paired 95% CI [{d['lo']:+.2f}, {d['hi']:+.2f}].",
+        limitations=[report['interpretation'],
+            'Stakes labels describe relative numerical losses, not validated perceived stakes. This tests exposure to different stakes with substantive reasoning held fixed.',
+            'Inherited incomplete prompts and instruction overrides were retained in both arms to isolate the intervention.',
+            'The historical 18.25% score used a different evaluation protocol; the same original checkpoint later scored 13.75%. Neither is a new training seed.',
+            'Low progress judging resumed six missing verdicts after upstream429 with the same judge/provider; existing verdicts and rollouts were retained.'],
+        traits=[dict(id=i, label=l, description=d) for i, l, d in declarations],
+        metrics=[dict(id='misalignment', label='Misalignment', unit='%', lower_is_better=True),
+                 dict(id='submission', label='Task submission', unit='%', lower_is_better=False),
+                 dict(id='progress', label='Mean task progress', unit='/5', lower_is_better=False)],
+        arms=arms, contrasts=[dict(baseline='low', arm='high', metric='misalignment', delta=d['mean'],
+            interval=dict(low=d['lo'], high=d['hi'], method='paired scenarios, fixed checkpoints'))])
+    return document, audits
+
+
 def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
+
+
+def publish_stakes(experiment, *, publish=False):
+    """Stage verified comparison data; optionally publish through the shared HF pipeline."""
+    from src.infra.runpod import active_pods
+    experiment = Path(experiment)
+    report = read(experiment/'final_comparison/comparison.json')
+    assert report['status'] == 'matched_stakes_complete' and hf_org() == 'dougalldeepmind'
+    training = read(experiment/'recovered_training.json')
+    continuation = read(experiment/'continuation_status.json')
+    assert continuation['phase'] == 'evaluations_complete_pending_report'
+    archive = training['local_backup']
+    assert archive['verified'] and archive['verified_completed_arms'] == 2
+    with Path(archive['archive']).open('rb') as stream:
+        assert hashlib.file_digest(stream, 'sha256').hexdigest() == archive['sha256']
+    states = {k: read(experiment/f'evaluation_{k}/broader_eval_status.json') for k in ('low', 'high')}
+    owned = {read(Path(training['recovery_evidence']))['pod']}
+    owned.update(s['pod_id'] for s in states.values())
+    active = {p['id'] for p in active_pods()}
+    assert not owned.intersection(active), 'Owned GPU still exists; finish verified retrieval and teardown first'
+    public, checked, budget = {}, [], dict(prior_exposure_usd=training['plan']['project_exposure_before_training_usd'],
+        training_gpu_storage_usd=training['estimated_gpu_usd'],
+        basis='Conservative reservations and elapsed-rate exposure, not provider invoices; shared-account usage deltas excluded.')
+    api = HfApi(token=False)
+    for arm, result in report['arms'].items():
+        state = states[arm]; backup = state['local_log_backup']
+        assert state['termination_verified'] and backup['verified']
+        assert hashlib.sha256(Path(backup['path']).read_bytes()).hexdigest() == backup['sha256']
+        recovery_path = experiment/f'{arm}_eval_completion_recovery.json'
+        recovery = read(recovery_path) if recovery_path.exists() else None
+        assert state.get('evaluation_driver_completed') or (recovery and recovery['completed'])
+        assert state['target_revision'] == result['target_revision']
+        root = Path(result['path'])
+        repo = hf_org()+'/'+eval_name('odcv', result['target'].split('/')[-1], date=root.name[:10])
+        info = api.dataset_info(repo, files_metadata=True)
+        assert not info.private
+        if recovery:
+            assert (recovery['repo'], recovery['revision'], recovery['target_revision']) == (repo, info.sha, result['target_revision'])
+        model = api.model_info(result['target'], revision=result['target_revision'])
+        assert not model.private and model.sha == result['target_revision']
+        count = 0
+        for file in info.siblings:
+            if file.rfilename == '.gitattributes':
+                continue
+            raw = (root/file.rfilename).read_bytes()
+            actual = (hashlib.sha256(raw).hexdigest() if file.lfs else
+                      hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest())
+            assert actual == (file.lfs.sha256 if file.lfs else file.blob_id), file.rfilename
+            checked.append(dict(arm=arm, file=file.rfilename, bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest()))
+            count += file.rfilename.endswith('/messages_record.txt')
+        assert count == 240
+        assert hashlib.sha256((root/'results/results.json').read_bytes()).hexdigest() == result['result_sha256']
+        public[arm] = dict(repo=repo, revision=info.sha)
+        ledger = read(experiment/f'evaluation_{arm}/judge_ledger.json')
+        charged = sum(x['charged_or_reserved_usd'] for x in ledger)
+        assert charged <= 3.5
+        budget[arm+'_gpu_storage_usd'] = state['estimated_gpu_and_storage_usd']
+        budget[arm+'_judge_usd'] = charged
+    budget['total_exposure_usd'] = sum(v for k, v in budget.items() if k.endswith('_usd'))
+    assert budget['total_exposure_usd'] <= 300
+    assert abs(budget['total_exposure_usd'] - continuation['project_exposure_usd']) < 1e-6
+    revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+    frontend, audits = stakes_dataset_comparison(report, public, revision)
+    dest = experiment/'comparison_publication'; secrets = secret_values()
+    def put(relative, raw):
+        scan(raw, str(relative), secrets)
+        target = dest/relative; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(raw)
+    def put_json(relative, data):
+        put(relative, (json.dumps(data, indent=2)+'\n').encode())
+    # Figures remain local: only exact measurements, receipts and text are published.
+    for filename in ('comparison.json', 'comparison.md'):
+        raw = (experiment/'final_comparison'/filename).read_bytes()
+        if filename.endswith('.md'):
+            raw = '\n'.join(line for line in raw.decode().splitlines() if not line.startswith('![')).encode()
+        put('results/'+filename, raw)
+    for name, data in [('dataset_comparison', frontend)]:
+        put_json('results/'+name+'.json', data)
+    for name, data in [('dataset_property_audit', audits), ('public_sources', public),
+                       ('verified_public_files', checked), ('budget', budget),
+                       ('owned_pod_absence', {p: dict(exists=False) for p in sorted(owned)})]:
+        put_json('metadata/'+name+'.json', data)
+    files = ['models.json', 'recovered_training.json', 'recovered_training/incident.json',
+        'recovered_training/file_sources.json', 'low_eval_completion_recovery.json', 'low_judge_recovery.json',
+        'odcv_frozen.yaml', 'continuation_status.json', 'training/watchdog.log']
+    for arm in ('low', 'high'):
+        files += [f'{arm}_training_meta.json', f'{arm}_eval_plan.yaml',
+                  f'evaluation_{arm}/broader_eval_status.json', f'evaluation_{arm}/judge_ledger.json']
+    for relative in files:
+        put('metadata/'+relative, (experiment/relative).read_bytes())
+    for relative in ('scratch/nonmoral/baseline_report.py', 'scratch/nonmoral/publish_broader_comparison.py',
+                     'scratch/nonmoral/finish_stakes_eval.py'):
+        put('metadata/code/'+Path(relative).name, Path(relative).read_bytes())
+    produced = date.today().isoformat()
+    put_json('metadata/run_meta.json', dict(git_sha=revision, date_generated=produced,
+        command=f'uv run --no-sync python -m scratch.nonmoral.publish_broader_comparison --stakes-experiment {experiment} --publish',
+        protocol=report['protocol'], models=report['model_pins']))
+    receipt = dict(staged=str(dest.resolve()), public_sources=public, budget=budget)
+    if publish:
+        fields = dict(experiment=frontend['title'], date_generated=produced,
+            constitution='preferences/craft_tensions_09/preferences.md for the synthetic training scenarios; none supplied at evaluation',
+            source_repo='https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ '+revision,
+            models=report['model_pins'], generation_config=report['protocol'],
+            schema='results/: exact outcomes and dashboard comparison; metadata/: pins, measured traits, cost and incident evidence; figures local only',
+            provenance=f'uv run --no-sync python -m scratch.nonmoral.publish_broader_comparison --stakes-experiment {experiment} --publish',
+            limitations=' '.join(frontend['limitations']))
+        name = artifact_name('nonmoral-stakes-comparison', date=produced)
+        url = push_run_dir(dest, name, fields, private=False, front_matter=dict(pretty_name=frontend['title'],
+            tags=['nonmoral-deliberation', 'research-comparison', 'dataset-model-comparison']))
+        info = api.dataset_info(hf_org()+'/'+name); assert not info.private
+        receipt.update(url=url, repo=info.id, revision=info.sha, public=True)
+    (experiment/'comparison_publication_receipt.json').write_text(json.dumps(receipt, indent=2)+'\n', encoding='utf-8')
+    print(json.dumps(receipt, indent=2))
 
 
 def dataset_comparison(report, public, code_revision):
@@ -186,4 +379,11 @@ def main():
 
 
 if __name__=='__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--stakes-experiment', type=Path)
+    parser.add_argument('--publish', action='store_true')
+    args = parser.parse_args()
+    if args.stakes_experiment:
+        publish_stakes(args.stakes_experiment, publish=args.publish)
+    else:
+        main()
