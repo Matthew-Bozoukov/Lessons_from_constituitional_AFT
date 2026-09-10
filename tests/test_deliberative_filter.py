@@ -304,3 +304,19 @@ def test_a_truncated_judge_call_is_retried_before_the_prompt_loses_its_survivor(
     group = [{"candidate": 0, "assistant": {"role": "assistant", "content": "a", "reasoning_content": "r"}}]
     out = _judge_runs(Flaky(), record, group, [0], cfg, "C")
     assert [("scores" in v, v.get("attempt")) for v in out] == [(False, None), (True, 1)]
+
+
+def test_generator_provider_override_is_validated_and_pinned():
+    from src.data.synth.deliberative_alignment.pipeline import generator_pin, validate_config
+
+    cfg = _config(Path("/tmp")); cfg["pipeline"] = "delib"
+    pin, price = generator_pin(cfg)
+    assert pin == {"order": ["alibaba"], "allow_fallbacks": False}  # the registry's pin
+    cfg["provider"] = {"order": ["phala"], "price": {"in": 0.32, "out": 2.7}}
+    validate_config(cfg)
+    assert generator_pin(cfg) == ({"order": ["phala"], "allow_fallbacks": False}, {"in": 0.32, "out": 2.7})
+    for bad in ({"order": ["a", "b"], "price": {"in": 1, "out": 1}}, {"order": ["a"]},
+                {"order": ["a"], "price": {"in": 0, "out": 1}}):
+        cfg["provider"] = bad
+        with pytest.raises(ValueError, match="provider"):
+            validate_config(cfg)

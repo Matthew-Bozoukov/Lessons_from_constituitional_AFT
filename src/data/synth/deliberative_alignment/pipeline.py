@@ -56,14 +56,37 @@ def _priced(model: str) -> dict:
     return pin
 
 
+def generator_pin(cfg: dict) -> tuple[dict, dict]:
+    """(provider routing object, price) for the generator.
+
+    The registry (providers.yaml) pins ONE host per model id for every caller. A delib
+    config may override it with `provider: {order: [<host>], price: {in, out}}` -- the
+    teacher's serving host is part of THIS artifact's identity (it enters the resume
+    signature, the manifest, the card and every row's provenance), and a different
+    document type may need the registry's host (the reasoning-backfill probe needs the
+    one host that honours `reasoning.max_tokens`). Phala was chosen 2026-09-10 because it is
+    the only Qwen3.6 host that advertises prefix-cache pricing; the constitution is ~70% of
+    every generation prompt.
+    """
+    override = cfg.get("provider")
+    if override is None:
+        return _priced(cfg["model"]), provider_price(cfg["model"])
+    if (not isinstance(override, dict) or set(override) != {"order", "price"}
+            or not isinstance(override["order"], list) or len(override["order"]) != 1
+            or set(override["price"]) != {"in", "out"}
+            or any(float(override["price"][k]) <= 0 for k in ("in", "out"))):
+        raise ValueError("`provider:` must be {order: [<one host>], price: {in: $/M, out: $/M}}")
+    return {"order": [str(override["order"][0])], "allow_fallbacks": False}, dict(override["price"])
+
+
 def validate_config(cfg: dict) -> None:
     """Reject unsupported options before any generation or publication."""
-    allowed = {"method", "pipeline", "source", "constitution", "model", "sampling",
+    allowed = {"method", "pipeline", "source", "constitution", "model", "provider", "sampling",
                "generation_prompt", "filter", "judge_prompt", "workers", "budget_usd",
                "limit", "output_dir", "hf_push", "hf_private", "smoke"}
     if unknown := set(cfg) - allowed:
         raise ValueError(f"Unsupported deliberative_alignment settings: {sorted(unknown)}")
-    required = allowed - {"limit", "smoke"}
+    required = allowed - {"limit", "smoke", "provider"}
     if missing := required - set(cfg):
         raise ValueError(f"Missing deliberative_alignment settings: {sorted(missing)}")
     if cfg["method"] != "deliberative_alignment":
@@ -75,9 +98,10 @@ def validate_config(cfg: dict) -> None:
         raise ValueError("source.repo is required")
     if not str(cfg["model"]).startswith("qwen/"):
         raise ValueError("The deliberative SFT generator must be Qwen")
-    pin = _priced(cfg["model"])
-    if pin.get("order") != ["alibaba"] or pin.get("allow_fallbacks") is not False:
-        raise ValueError("Qwen must be pinned to Alibaba with allow_fallbacks: false in providers.yaml")
+    pin, _ = generator_pin(cfg)
+    if len(pin.get("order") or []) != 1 or pin.get("allow_fallbacks") is not False:
+        raise ValueError("The generator must be pinned to exactly ONE provider with allow_fallbacks: false "
+                         "(providers.yaml, or this config's `provider:` override)")
     sampling = cfg["sampling"]
     if not isinstance(sampling, dict) or set(sampling) - {"temperature", "max_tokens", "reasoning", "seed"}:
         raise ValueError("sampling accepts temperature, max_tokens, reasoning, and optional seed")
@@ -150,15 +174,15 @@ def _effective(cfg: dict, smoke: bool) -> dict:
     return result
 
 
-def _completion(result, record: dict, leak=None) -> dict:
+def _completion(result, record: dict, leak=None, host: str = "alibaba") -> dict:
     """The format gate: one complete native reasoning response, or a ValueError naming why.
 
     A ValueError here is a FORMAT rejection of this candidate (the paper's first filter);
     it is recorded and never retried. Anything that points at the run rather than the
     sample -- the wrong serving provider -- is a RuntimeError and stops the run.
     """
-    if result.provider.casefold() != "alibaba":
-        raise RuntimeError(f"Unexpected serving provider: {result.provider!r}")
+    if result.provider.casefold() != host.casefold():
+        raise RuntimeError(f"Unexpected serving provider: {result.provider!r} (pinned {host!r})")
     if result.finish_reason not in {"stop", "tool_calls"}:
         raise ValueError(f"Incomplete completion: finish_reason={result.finish_reason!r}")
     # A native trace is authoritative; a final answer may legitimately quote <think>.
@@ -184,11 +208,12 @@ def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, 
     sampling = copy.deepcopy(cfg["sampling"])
     reasoning = sampling.pop("reasoning")
     kwargs = {"tools": record["tools"]} if record.get("tools") else {}
+    pin, _ = generator_pin(cfg)
     result = client.chat(model=cfg["model"], messages=generation_messages(record, augmentation),
-                         extra_body={"reasoning": reasoning}, **sampling, **kwargs)
+                         extra_body={"reasoning": reasoning, "provider": pin}, **sampling, **kwargs)
     attempt = {"id": record["id"], "candidate": candidate, "response": asdict(result)}
     try:
-        assistant = _completion(result, record, leak)
+        assistant = _completion(result, record, leak, host=pin["order"][0])
         # Validate export/tool schemas while the response is still checkpointed as an attempt.
         export_row(record, assistant, {})
         attempt["assistant"] = assistant
@@ -337,7 +362,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         raise ValueError("Constitution is empty")
     augmentation = cfg["generation_prompt"].format(constitution=constitution)
     leak = leak_pattern(constitution)
-    pin, price = provider_pin(cfg["model"]), provider_price(cfg["model"])
+    pin, price = generator_pin(cfg)
     judge_pin, judge_price = provider_pin(flt["judge"]["model"]), provider_price(flt["judge"]["model"])
     # Operational controls may change on resume; all data-affecting settings stay fixed.
     identity = {k: v for k, v in cfg.items() if k not in {"workers", "budget_usd", "output_dir", "smoke"}}
@@ -382,7 +407,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                            f"({flt['judge']['model']}, min of {flt['judge']['runs']} runs >= {flt['threshold']})"),
             "date_generated": ts, "constitution": cfg["constitution"],
             "source_repo": f"{origin_url()} @ {manifest['git_sha']}",
-            "models": (f"{cfg['model']} through Alibaba/OpenRouter (API revision not exposed); "
+            "models": (f"{cfg['model']} through {pin['order'][0]}/OpenRouter (API revision not exposed); "
                        f"judge {flt['judge']['model']} through OpenRouter"),
             "generation_config": "manifest.json contains resolved config, provider pins, pricing, usage and filter stats",
             "schema": "dataset.jsonl: messages + metadata + optional tools; stages/ snapshots",
@@ -525,7 +550,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                 continue
             candidate, score = picked
             judged = sum(1 for key in ok if key[0] == record["id"])
-            provenance = {"source": source, "model": cfg["model"], "provider": "Alibaba",
+            provenance = {"source": source, "model": cfg["model"], "provider": pin["order"][0],
                           "constitution_sha256": manifest["constitution_sha256"],
                           "judge": {"model": flt["judge"]["model"], "runs": runs, "threshold": flt["threshold"],
                                     "score": score, "candidate": candidate, "candidates_judged": judged}}

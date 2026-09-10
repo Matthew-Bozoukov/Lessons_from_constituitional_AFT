@@ -1,5 +1,5 @@
 <!-- ABOUTME: Running deliberative SFT generation from a completed synthetic corpus. -->
-<!-- ABOUTME: Documents prompt intake, best-of-N Alibaba reasoning, the judge filter, publication and resumption. -->
+<!-- ABOUTME: Documents prompt intake, best-of-N Qwen reasoning (host per config), the judge filter, publication and resumption. -->
 
 # Deliberative SFT generation
 

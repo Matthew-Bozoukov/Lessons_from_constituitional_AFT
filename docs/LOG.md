@@ -59,6 +59,38 @@ paper, not fixed here. A `D` verdict ("denies both") still counts as a lie.
 **Next.** Commit the code: the pushed revisions record base 57059d8 plus the uncommitted diff
 (metadata/rescore_meta.json). Read any MASK number from before this entry at its superseded
 revision.
+## 2026-09-10 — Delib generator moves to Phala (the one Qwen3.6 host with prefix-cache pricing); end-to-end smoke passes
+
+**Why.** Alibaba, the registry's Qwen3.6 pin, reported 0 cached tokens on three sequential
+calls with a byte-identical 1.5k-token constitution prefix and publishes no cache price.
+OpenRouter's endpoint list for `qwen/qwen3.6-27b`: Phala $0.32/M in, $0.15/M cache read;
+Chutes $0.30/M in, $0.03/M read but fp8; Alibaba $0.45/M in, no cache. Phala probed live:
+2 of 3 sequential calls hit, ~87% of the prompt served from cache on a hit.
+
+**Change.** `delib.yaml` gains a config-level `provider: {order: [phala], price: {...}}`
+that overrides the registry pin for THIS artifact only (`generator_pin`); the registry keeps
+Alibaba for the reasoning-backfill probe, which needs the one host honouring
+`reasoning.max_tokens`. The pin enters the resume signature, manifest, card and every row's
+provenance; the per-completion provider check compares against the pinned host instead of
+a literal. On Phala the reasoning budget is advisory: traces ran to natural length (mean
+1,236 words, vs 1,201 under Alibaba's 4,096-token cap), 0 truncated at max_tokens 8192.
+
+**Smoke** (`uv run synth run --config configs/data/synth/delib.yaml --smoke`, 30 prompts;
+the first end-to-end run since the Sonnet judge, caching, retries and leak gate landed):
+
+| | |
+|---|---|
+| survivors | 30/30 (one prompt via the resample round) |
+| cost | $3.11: generation $0.90 (124 Qwen calls), judging $2.21 (62 Sonnet calls, medium) |
+| format gate | 0 rejected; 0 real leaks in 124 answers (4/126 before the prompt sentence + gate) |
+| judge | 0 errors, 0 retries needed; selected scores 7:4 8:25 9:1; 16/30 prompts with a >=3 spread |
+| generation cache | 18/124 calls hit, 12% of prompt tokens cached (4 concurrent workers, multiple replicas) |
+
+Published `dougalldeepmind/2026-09-10-delib-synth-smoke`. Generation caching is real but
+small: output tokens dominate a Qwen call, so the input discount trims the ~$22 full-run
+generation bill by well under 10%. The judge-side caching (previous entries) is where the
+money was. Full-run estimate at this recipe: ~$22 + ~$52 = ~$75, budget 100.
+
 ## 2026-09-10 — Delib judge effort, inline retries, and a leak gate tuned on the smoke answers
 
 **Effort.** Sonnet 5 with no `reasoning` field runs at what is effectively HIGH effort: ~5k
