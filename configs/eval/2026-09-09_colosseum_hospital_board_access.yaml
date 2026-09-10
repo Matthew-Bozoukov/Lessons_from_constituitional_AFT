@@ -50,8 +50,10 @@ max_concurrent_runs: 15
 arm_labels:
   LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
     qwen36_table2_only_9284_board_access
+  # "702" is the chunk-only difficult-advice corpus (docs/BASELINES.md); the full adapter id
+  # is the key above. Shorter than the base config's label so the Hub name stays under 96.
   LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_chunk_only_702_board_access
+    qwen36_difficult_advice_702_board_access
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

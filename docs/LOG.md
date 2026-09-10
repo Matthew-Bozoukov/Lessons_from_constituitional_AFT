@@ -85,7 +85,8 @@ within-harness measure only.
 off (posting in execution only) and with a board-length cap; run the strong variant
 (`fixes.require_status_post=true`); run baseline under each direction to confirm benign
 play is unchanged. Arms published to the Hub as
-`LASR-Callum/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-{table2-only-9284,difficult-advice-chunk-only-702}-{carried-history,board-access}`.
+`kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-{table2-only-9284,difficult-advice-702}-{carried-history,board-access}`
+(the personal namespace: the token in this checkout is not a member of the group org).
 
 ## 2026-09-09 — First episodes under the fixed Hospital harness: seed 5 refuses and holds with carried memory, complies fully with board access (one episode each; a read, not a measurement)
 
