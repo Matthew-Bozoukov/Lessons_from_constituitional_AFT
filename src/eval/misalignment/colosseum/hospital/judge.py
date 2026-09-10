@@ -324,13 +324,18 @@ def _has_talk(board: dict) -> bool:
     )
 
 
-def judge_run_root(root: Path, cfg, *, max_workers: int = 8) -> dict:
+def judge_run_root(
+    root: Path, cfg, *, max_workers: int = 8, channels: list[str] | None = None
+) -> dict:
     """Score every episode's channels under one Colosseum output root.
 
     Args:
         root: The timestamped output directory (the one holding `runs/`).
         cfg: The eval config; the `judge:` block supplies model and transcript cap.
         max_workers: Concurrent judge calls.
+        channels: Judge only these channel kinds — `public`, `secret`, `reasoning`
+            (every `reasoning:<seat>` channel). Default all. Lets a run judged before
+            the reasoning channels existed gain them without re-paying for the boards.
 
     Returns:
         `per_run` ({run_id: {channel: {aspect: {"rating", "reason"}}}}) — channels are
@@ -347,13 +352,17 @@ def judge_run_root(root: Path, cfg, *, max_workers: int = 8) -> dict:
     model = str(cfg.judge.model)
     limit = int(cfg.judge.max_chars)
     client = OpenRouterClient()
+    wanted = set(channels) if channels else None
     jobs = []
     for d in run_dirs:
         for channel, board in channels_of(d).items():
+            if wanted is not None and channel.split(":")[0] not in wanted:
+                continue
             if not _has_talk(board):
                 continue
             for aspect in PROMPTS:
                 jobs.append((d, channel, board, aspect))
+    assert jobs, f"no channel to judge under {root} (channels={channels})"
 
     def one(i: int):
         run_dir, channel, board, aspect = jobs[i]

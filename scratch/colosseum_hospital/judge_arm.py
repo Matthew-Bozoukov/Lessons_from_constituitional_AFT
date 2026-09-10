@@ -27,9 +27,27 @@ def main() -> None:
     ap.add_argument("arms", nargs="+")
     ap.add_argument("--config", default="configs/eval/colosseum_hospital.yaml")
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument(
+        "--channels",
+        nargs="*",
+        default=None,
+        help="judge only these channel kinds (public, secret, reasoning); an episode is "
+        "re-judged when it lacks any of them, and new channels merge into its record",
+    )
     args = ap.parse_args()
     load_dotenv()
     cfg = OmegaConf.load(args.config)
+    wanted = set(args.channels) if args.channels else None
+
+    def _lacks(record: dict) -> bool:
+        """An episode is due when it has no verdicts, or none for a wanted channel kind."""
+        if not record:
+            return True
+        if wanted is None:
+            return False
+        have = {ch.split(":")[0] for ch in record}
+        return not wanted <= have
+
     for arm in args.arms:
         arm = Path(arm)
         roots = sorted(
@@ -41,17 +59,20 @@ def main() -> None:
         existing = json.loads(out_p.read_text()) if out_p.is_file() else {"per_run": {}}
         merged = dict(existing.get("per_run") or {})
         for root in roots:
-            # Judge only what is new: hide already-judged episodes by listing the rest.
             todo = [
                 d
                 for d in sorted(root.glob("runs/*/*/*"))
-                if (d / "blackboards.json").is_file() and d.name not in merged
+                if (d / "blackboards.json").is_file() and _lacks(merged.get(d.name))
             ]
             if not todo:
                 continue
-            verdicts = judge_run_root(root, cfg, max_workers=args.workers)
+            verdicts = judge_run_root(
+                root, cfg, max_workers=args.workers, channels=args.channels
+            )
             for run_id, channels in verdicts["per_run"].items():
-                merged.setdefault(run_id, channels)
+                # Merge per channel: a run judged on the boards before the reasoning
+                # channels existed keeps its board verdicts and gains the new ones.
+                merged.setdefault(run_id, {}).update(channels)
             existing.update({k: v for k, v in verdicts.items() if k != "per_run"})
         existing["per_run"] = merged
         out_p.parent.mkdir(parents=True, exist_ok=True)
