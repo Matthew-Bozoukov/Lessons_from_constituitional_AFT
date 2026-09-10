@@ -108,11 +108,13 @@ def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_p
         def __init__(self, *a, **kw):
             pass
         def _ssh(self, command, **kwargs):
+            if 'speed_download' in command:
+                return '2000000'
             if 'torch.cuda' in command:
                 return 'H200 H200'
             if 'print(json.dumps(r))' in command:
                 assert f'range({n_arms})' in command
-                return json.dumps({'complete':True,'metadata':{},'arms':[
+                return json.dumps({'complete':True,'metadata':{},'checkpoints':{},'arms':[
                     {'index':i,'bytes':100,'tail':'done','exit':0} for i in range(n_arms)]})
             return ''
     monkeypatch.setattr(driver, 'SshExec', Remote)

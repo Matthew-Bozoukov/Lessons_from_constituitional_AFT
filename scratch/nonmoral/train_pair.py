@@ -2,6 +2,7 @@
 # ABOUTME: Uses the shared trainer/provisioner, durable local monitoring and verified owned-pod teardown.
 import argparse
 import json
+import math
 import os
 import re
 import shlex
@@ -42,7 +43,7 @@ def commands(plan):
         assert re.fullmatch(r"[a-f0-9]{40}", plan["base_model_revision"])
         argv = ["uv", "run", "torchrun", "--nproc_per_node=2",
                 "scripts/train/train_lora.py", "--config", "configs/train/sft.yaml",
-                "model=qwen36", "seed=0", "wandb=false", "constitution=none",
+                "model=qwen36", "seed=0", "wandb=false", "constitution="+plan.get('constitution','none'),
                 "data_repo=" + arm["data_repo"], "data_revision=" + arm["data_revision"],
                 "base_model_revision=" + plan["base_model_revision"]]
         result.append(shlex.join(argv))
@@ -58,6 +59,8 @@ def run(plan_path, out):
     gpu_budget = float(plan.get('gpu_budget_usd', 60))
     assert 20 <= gpu_budget <= 60, 'Bounded SFT allocation must be $20..$60'
     max_lifetime_s = min(MAX_LIFETIME_S, int((gpu_budget - 2) / 10 * 3600))
+    recovery_reserve_s=int(plan.get('recovery_reserve_s',RECOVERY_RESERVE_S))
+    assert RECOVERY_RESERVE_S <= recovery_reserve_s < max_lifetime_s
     run_name = plan.get('run_name', 'nika-nonmoral-paired-train')
     assert re.fullmatch(r'[a-z0-9-]+', run_name)
     out = Path(out).resolve()
@@ -93,16 +96,24 @@ def run(plan_path, out):
     try:
         rendered = runpod.up(run_name, train="configs/train/sft.yaml",
                              model="qwen36", count=2, push_env=True,
+                             max_hours=max_lifetime_s/3600,
+                             countries=plan.get('countries',''),
                              on_provisioned=registered)
         (out / "provision.txt").write_text(rendered, encoding="utf-8")
         host = re.search(r"^host:\s+(\S+)", rendered, re.M).group(1)
         state.update(phase="bootstrap", host=host)
         dump(out / "status.json", state)
-        assert runpod.wait_bootstrapped(state["owned_pod"], timeout_s=1800), "Bootstrap timed out"
         remote = SshExec(host, port=8000, workdir="/root/work")
+        speed_url='https://huggingface.co/Qwen/Qwen3.6-27B/resolve/'+plan['base_model_revision']+'/tokenizer.json'
+        speed=remote._ssh('curl -fsSL --max-time 20 -o /dev/null -w "%{speed_download}" '+shlex.quote(speed_url),timeout=30)
+        state['download_bytes_per_second']=float(speed.strip())
+        dump(out/'status.json',state)
+        assert state['download_bytes_per_second']>=1_000_000,'Unusable download speed; no training launched'
+        assert runpod.wait_bootstrapped(state["owned_pod"], timeout_s=1800), "Bootstrap timed out"
         cuda = remote._ssh("cd /root/work && uv run python -c " + shlex.quote(
             "import json, torch; assert torch.cuda.is_available(); "
             "assert torch.cuda.device_count()==2; "
+            "assert all(torch.ones(8,device=f'cuda:{i}').sum().item()==8 for i in range(2)); "
             "print(json.dumps([torch.cuda.get_device_name(i) for i in range(2)]))"), timeout=180)
         assert "H200" in cuda
         state["cuda_check"] = cuda.strip()
@@ -128,10 +139,10 @@ def run(plan_path, out):
         state["phase"] = "training"
         last_sizes, last_change = {}, time.time()
         while True:
-            if time.time()-created >= max_lifetime_s-RECOVERY_RESERVE_S:
+            if time.time()-created >= max_lifetime_s-recovery_reserve_s:
                 raise RuntimeError('Training window reached; preserve outputs within recovery reserve')
             probe = """
-import json
+import json,subprocess
 from pathlib import Path
 p=Path('/root/work/output/nonmoral-paired-supervision')
 r={'complete':(p/'complete').exists(),'arms':[]}
@@ -141,6 +152,8 @@ for i in range(ARM_COUNT):
  r['arms'].append({'index':i,'bytes':f.stat().st_size if f.exists() else 0,
                   'tail':text[-4000:], 'exit':int(e.read_text()) if e.exists() else None})
 r['metadata']={str(f):json.loads(f.read_text()) for f in Path('/root/work/output/train').glob('*/run_meta.json')}
+r['checkpoints']={str(f):json.loads(f.read_text()) for f in Path('/root/work/output/train').glob('*/checkpoint-*/trainer_state.json')}
+r['gpu']=subprocess.check_output(['nvidia-smi','--query-gpu=name,memory.used,utilization.gpu,temperature.gpu','--format=csv,noheader'],text=True).strip()
 print(json.dumps(r))
 """.replace('ARM_COUNT',str(len(cmd)))
             try:
@@ -153,6 +166,11 @@ print(json.dumps(r))
                 time.sleep(20)
                 continue
             sizes = {a["index"]: a["bytes"] for a in progress["arms"]}
+            for checkpoint, trainer_state in progress['checkpoints'].items():
+                for entry in trainer_state.get('log_history',[]):
+                    for key in ('loss','grad_norm'):
+                        if key in entry and not math.isfinite(float(entry[key])):
+                            raise RuntimeError(f'Non-finite {key} at {checkpoint}; preserve this run')
             if sizes != last_sizes:
                 last_sizes, last_change = sizes, time.time()
             state.update(progress=progress, elapsed_s=time.time()-created,
@@ -170,7 +188,7 @@ print(json.dumps(r))
                 break
             if time.time()-last_change > 1800:
                 raise RuntimeError("Training logs stalled for 30 minutes")
-            if time.time()-created >= max_lifetime_s-RECOVERY_RESERVE_S:
+            if time.time()-created >= max_lifetime_s-recovery_reserve_s:
                 raise RuntimeError("Training window reached; preserve outputs within recovery reserve")
             print(json.dumps({"phase":state["phase"], "seconds":round(state["elapsed_s"]),
                               "gpu_usd":round(state["estimated_gpu_usd"],3), "log_bytes":sizes}),flush=True)
@@ -188,7 +206,7 @@ print(json.dumps(r))
             if state.get('training_started'):
                 # On failure, freeze only our process group before snapshotting saved
                 # checkpoints/logs. A cleanly exited group simply no longer exists.
-                recovery_deadline = min(time.time()+RECOVERY_RESERVE_S, created+max_lifetime_s-30)
+                recovery_deadline = min(time.time()+recovery_reserve_s, created+max_lifetime_s-30)
                 while time.time() < recovery_deadline-15:
                     try:
                         remaining = int(recovery_deadline-time.time())
@@ -202,7 +220,7 @@ print(json.dumps(r))
                         expected = [dict(plan['arms'][i], base_model_revision=plan['base_model_revision'])
                                     for i in state['completed_arms']]
                         state['local_backup'] = fetch_training_outputs(
-                            remote, out, expected, timeout=max(1,min(2400,remaining-60)))
+                            remote, out, expected, timeout=max(1,remaining-60))
                         dump(out / 'local_backup.json', state['local_backup'])
                         break
                     except Exception as exc:
