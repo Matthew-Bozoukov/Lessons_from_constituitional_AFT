@@ -1,0 +1,13 @@
+https://github.com/keing1/reward-hacking-evals
+commit 20f6490fb046688b776e9ddcf25bbad364659dc8  (vendored 2026-08-25)
+
+Paper: Towards Understanding Specification Gaming in Reasoning Models
+       Nishimura-Gasparian, McCarthy, Lindner -- arXiv:2605.02269
+       https://arxiv.org/abs/2605.02269
+
+PRUNED (unused by every code path; grep -rl over *.py finds no reference, and both
+remain in upstream git at the commit above):
+  datasets/revealing_score.jsonl   (10M -- superseded by mmlu_scored_filtered.jsonl)
+  datasets/mmlu_scored.jsonl       (13M -- the unfiltered build byproduct)
+
+PATCHED: see ../PATCHES.md. Re-apply every entry there if this tree is re-cloned.

@@ -15,7 +15,7 @@ STATE = Path("scratch/.petri_chunk702_pod.json")
 def main():
     pod_id = serve_vllm(
         BASE, [(SERVED, ADAPTER)], mode="think",
-        pod_name="matthew-petri-chunk702", hf_token=hf_token(), lora_rank=64,
+        pod_name="matthew-petri-iter", hf_token=hf_token(), lora_rank=64,
         max_len=32768, reasoning_parser="qwen3", tool_call_parser="qwen3_xml")
     ep = endpoint_url(pod_id)
     STATE.write_text(json.dumps({"pod_id": pod_id, "endpoint": ep, "served": SERVED}))

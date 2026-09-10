@@ -1,0 +1,6 @@
+pandas
+requests
+aiohttp
+wandb
+python-dotenv
+tiktoken
