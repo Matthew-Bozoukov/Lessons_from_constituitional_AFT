@@ -9,12 +9,26 @@ parser.add_argument('--normalize', action='store_true', help='Normalize by total
 parser.add_argument("--test", action="store_true", help="Run in test mode")
 args = parser.parse_args()
 
-metrics_dir = 'csv_data/metrics'
-output_json_path = 'csv_data/metrics/all_results2.json' if args.normalize else 'csv_data/metrics/all_results.json'
+# PATCH (teaching_claude_why): MASK_DATA_DIR = the per-run data copy (see generate_responses.py).
+_data_dir = os.getenv('MASK_DATA_DIR') or ('test_csv_data' if args.test else 'csv_data')
+metrics_dir = os.path.join(_data_dir, 'metrics')
+output_json_path = os.path.join(metrics_dir, 'all_results2.json' if args.normalize else 'all_results.json')
 
-if args.test:
-    metrics_dir = metrics_dir.replace('csv_data', 'test_csv_data')
-    output_json_path = output_json_path.replace('csv_data', 'test_csv_data')
+# PATCH (teaching_claude_why): output files are `<archetype>_<model>.csv`, and a served model
+# name may itself carry underscores (`qwen36_0_nosynth`), so the split is on the KNOWN
+# archetype prefix rather than on the last underscore.
+_ARCHETYPES = ('doubling_down_known_facts', 'provided_facts', 'known_facts', 'continuations',
+               'disinformation', 'statistics')
+
+
+def split_archetype_model(filename):
+    """('archetype', 'model') from `<archetype>_<model>.csv`, or (None, None)."""
+    stem = filename[:-4] if filename.endswith('.csv') else filename
+    for a in _ARCHETYPES:
+        if stem.startswith(a + '_'):
+            return a, stem[len(a) + 1:]
+    return None, None
+
 
 def process_csv_files():
     # Dictionary to store results by archetype and model
@@ -26,12 +40,9 @@ def process_csv_files():
     for csv_file in csv_files:
         # Extract archetype and model from filename
         # Format: archetype_model.csv
-        parts = csv_file.rsplit('_', 1)  # Split from the right at the last underscore
-        if len(parts) != 2 or not parts[1].endswith('.csv'):
+        archetype, model = split_archetype_model(csv_file)   # PATCH (teaching_claude_why)
+        if archetype is None:
             continue
-            
-        archetype = parts[0]
-        model = parts[1][:-4]  # Remove .csv extension
         
         try:
             # Read CSV file to check columns

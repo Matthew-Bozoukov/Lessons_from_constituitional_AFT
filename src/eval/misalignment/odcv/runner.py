@@ -35,7 +35,7 @@ def container_host_address() -> str:
     (macOS/Windows) has no host-side bridge interface and provides the special
     `host.docker.internal` name instead (both patterns proven in docs/LOG.md).
     """
-    return "host.docker.internal" if sys.platform == "darwin" else "172.17.0.1"
+    return "host.docker.internal" if sys.platform in {"darwin", "win32"} else "172.17.0.1"
 
 
 def _bridge_url(base_url: str, address: str | None = None) -> str:

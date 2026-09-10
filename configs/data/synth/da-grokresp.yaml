@@ -1,6 +1,6 @@
 # ABOUTME: Responder-swap arm: the BASELINE's own 716 difficult-advice prompts, answered
 # ABOUTME: by grok instead of Haiku/Sonnet. Isolates the model that writes the reply.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-grokresp.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/da-grokresp.yaml [--smoke]
 #   Prereq: uv run python scratch/build_da716_prompt_source.py   (stages the 716 prompts)
 
 # 2026-08-21. This arm exists because da-grok-716.yaml -- the all-grok arm --
@@ -30,6 +30,7 @@
 # Against the baseline's own median of 2670, grok-4.6 on these prompts is a 1.29x length
 # gap -- versus 2.66x when grok writes its own prompts. Most of the "grok writes shorter"
 # effect was grok-4.3 writing shorter PROMPTS, not grok writing shorter answers.
+method: ours
 pipeline: da-grokresp-716
 
 card:
@@ -75,7 +76,7 @@ seed: 0
 # Same constitution as the source run, and `load_source_run` HARD-ASSERTS that: a source
 # generated against a different document would silently cross arms, so the sha is compared
 # rather than trusted. Both are claude_distilled_12_principles_mid.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 

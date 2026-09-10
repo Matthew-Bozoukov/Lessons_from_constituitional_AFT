@@ -41,7 +41,7 @@ def main(private: bool = True) -> None:
                       "122 difficult-advice rows that carry it, leaving all text unchanged.",
         "date_generated": "2026-08-16",
         "constitution": "claude_distilled_07_principles_approved "
-                        "(constitutions/claude_distilled_07_principles_approved/constitution.md)",
+                        "(constitutions/archive/experimental/claude_distilled_07_principles_approved/constitution.md)",
         "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication @ {git_sha()}",
         "models": f"span selector {meta['judge']}; token stream Qwen/Qwen3.6-27B; "
                   "clusters embedded with Qwen/Qwen3-Embedding-8B",

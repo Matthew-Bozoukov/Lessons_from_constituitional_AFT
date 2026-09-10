@@ -5,7 +5,7 @@
 import fire
 from omegaconf import OmegaConf
 
-from src.data.synth.constitution import full_text
+from src.data.synth.ours.constitution import full_text
 from src.endpoints.openrouter import CACHE_MARK, OpenRouterClient
 
 CFG = "scratch/trait10_curiosity/difficult_advice_t10.yaml"

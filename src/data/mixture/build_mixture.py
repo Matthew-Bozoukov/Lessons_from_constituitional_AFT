@@ -230,6 +230,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
 
         info = hf_api().repo_info(spec["dataset"], repo_type="dataset",
                                   revision=spec.get("revision"))
+        spec["revision"] = info.sha
         print(f"{name}: {spec['dataset']}@{info.sha[:12]} (default config)")
         pool = load_dataset(spec["dataset"], revision=info.sha, split="train",
                             token=hf_token())
@@ -369,11 +370,15 @@ def _validate_interchange(name: str, kind: str, rows: list[dict]) -> None:
         assert traceless == 0, (
             f"{name}: reasoning: native, but {traceless} rows carry no real "
             "reasoning_content — the trace would silently render as an empty marker")
-    else:  # none
+    elif kind == "none":
         with_traces = sum(real_traces(r) for r in rows)
         assert with_traces == 0, (
             f"{name}: reasoning: none, but {with_traces} turns carry reasoning_content "
             "— the declaration mislabels this source")
+    else:
+        assert kind == "mixed", f"unknown reasoning kind: {kind}"
+        # Only replay of an already-published mixture uses this observed kind.
+        assert any(real_traces(r) for r in rows) and any(not real_traces(r) for r in rows)
 
 
 # --------------------------------------------------------------------------------------
@@ -437,7 +442,12 @@ def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
                 for n, s in specs.items()}
 
     synth_budget = round(total_examples * synthetic_pct / 100)
-    out = share(base, total_examples - synth_budget)
+    # A base source scaled to zero rows is dropped rather than carried as `examples: 0`:
+    # `_budget` rejects a non-positive budget (rightly, for a source someone DECLARED), and
+    # at synthetic_pct=100 every base source scales to zero -- the synthetic-only mixture
+    # (`da-100`, `da-dat-100`) is a legitimate arm, not a config error (2026-09-09).
+    out = {n: s for n, s in share(base, total_examples - synth_budget).items()
+           if s["examples"] > 0}
     out.update({n: {**s, "synthetic": True}
                 for n, s in share(synthetic, synth_budget).items()})
     return out
@@ -509,6 +519,8 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
         "render_chat), tools included")
     gen = {"seed": int(cfg.seed), "max_seq_len": int(cfg.max_seq_len),
            "budget_tokenizer": str(cfg.tokenizer)}
+    if cfg.get("base_mixture"):
+        gen["base_mixture"] = OmegaConf.to_container(cfg.base_mixture, resolve=True)
     if filter_cfg is not None:
         gen["judge"] = {"model": str(filter_cfg.model), "temperature": 0.0,
                         "max_tokens": 900, "reasoning_effort": "low"}
@@ -579,6 +591,40 @@ def _load_all(tok, cfg, specs: dict, scale: int, seed: int,
         print(f"  {name:<24} {len(got):>5} docs  {sum(r['n_tokens'] for r in got):>9,} tok "
               f"(budget {budget[1]:,} {budget[0]}, {kinds[name]})")
         rows += got
+    return rows, kinds
+
+
+def _load_published_base(tok, cfg, specs: dict, scale: int, seed: int,
+                         render_kwargs: dict) -> tuple[list[dict], dict[str, str]]:
+    """Sample a pinned, curated base without reloading or rewriting its sources."""
+    from src.infra.huggingface import resolve_dataset
+
+    assert cfg.get("base") and not cfg.get("filter"), (
+        "base_mixture requires base proportions and no additional filter")
+    spec = cfg.base_mixture
+    path, ref = resolve_dataset(str(spec.repo), str(spec.file), str(spec.revision))
+    assert ref["revision"] == spec.revision, "base_mixture must pin an exact commit"
+    pool = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
+    expected = _base_sources(str(cfg.base))
+    assert len(pool) == sum(int(s["examples"]) for s in expected.values())
+    assert {r["source"] for r in pool} == set(expected)
+    rows, kinds = [], {}
+    for name, source_spec in specs.items():
+        group = [r for r in pool if r["source"] == name]
+        assert len(group) == int(expected[name]["examples"]), f"base count changed: {name}"
+        assert _budget(name, source_spec, scale)[0] == "examples"
+        selected = _fill_budget(group, _budget(name, source_spec, scale), seed)
+        traced = [any(m.get("reasoning_content") for m in r["messages"]) for r in selected]
+        kinds[name] = "native" if all(traced) else "mixed" if any(traced) else "none"
+        _validate_interchange(name, kinds[name], selected)
+        for row in selected:
+            assert set(row) <= {"messages", "source", "tools", "supervise"}, "unsupported base fields"
+            n = len(render_chat(tok, row["messages"], row.get("tools"),
+                                render_kwargs=render_kwargs, tokenize=True,
+                                return_dict=True)["input_ids"])
+            assert n <= int(cfg.max_seq_len), f"published base row exceeds cap: {name}, {n}"
+            rows.append({**row, "n_tokens": n})
+        print(f"  {name}: {len(selected)} unchanged published-base rows ({kinds[name]})", flush=True)
     return rows, kinds
 
 
@@ -696,7 +742,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     repo = mix_name(style if style != NOSYNTH else "", declared_pct, variant)
 
     # --- stage 1: the base mixture ----------------------------------------------------
-    rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
+    if not base_specs:
+        # synthetic_pct=100: nothing to sample from the base, so nothing to download.
+        rows, kinds = [], {}
+    elif cfg.get("base_mixture"):
+        rows, kinds = _load_published_base(tok, cfg, base_specs, scale, seed, render_kwargs)
+    else:
+        rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
     random.Random(seed).shuffle(rows)
     report = None
 
@@ -720,7 +772,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
 
         # --- stage 2: the spec filter -------------------------------------------------
         from src.data.mixture.spec_filter import run_filter
-        from src.data.synth.constitution import full_text
+        from src.data.synth.ours.constitution import full_text
         from src.infra.endpoints.openrouter import OpenRouterClient
         client = OpenRouterClient(api_key=os.environ.get("OPENROUTER_FILTER_KEY"))
         keep, report = run_filter(
@@ -771,6 +823,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     out_path = out_dir / "mixture.jsonl"
     _write_rows(out_path, rows)
     _validate_written(out_path, rows, kinds)
+    if cfg.get("base_mixture"):
+        written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").splitlines()]
+        assert written == [{k: v for k, v in r.items() if k != "n_tokens"} for r in rows], (
+            "serialization changed published-base payloads")
     stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
              "synthetic_pct": built_pct, "by_source": _source_stats(rows),
              # every source as sampled, revision pins included
@@ -792,7 +848,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             print(json.dumps(row["messages"], ensure_ascii=False, indent=2)[:1200])
 
     if hf_cfg is not None:
-        _push([out_path, out_dir / "mixture_stats.json"], repo,
+        OmegaConf.save(cfg, out_dir / "mixture_config.yaml")
+        _push([out_path, out_dir / "mixture_stats.json", out_dir / "run_meta.json",
+               out_dir / "mixture_config.yaml"], repo,
               _card_fields(cfg, config, "final training mixture"
                            + (" (synthetic sources mixed in)" if synth_specs else ""),
                            "mixture.jsonl + mixture_stats.json", filter_cfg, report),

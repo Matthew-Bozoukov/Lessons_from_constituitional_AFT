@@ -1,0 +1,47 @@
+{
+  "dataset": "bigscience/P3",
+  "revision": "db485208b9f41d46c1d0975202328d08f8199046",
+  "subset": "xsum_DOC_given_above_write_one_sentence",
+  "file": "train-00000-of-00002.parquet",
+  "scope": "Direct reading of complete published input and target strings; article-relative faithfulness, not independent world-fact verification. No text rewritten. Diagnostic sample, not a completed balanced mixture.",
+  "cnn_review": {
+    "subset":"cnn_dailymail_3.0.0_2_or_3_sentences",
+    "file":"train-00000-of-00003.parquet",
+    "reviews":[
+      {"index":33032,"verdict":"reject","reason":"Exact October dates and amateur race qualification not supplied."},
+      {"index":51096,"verdict":"reject","reason":"Summary never identifies bombing or deaths, omitting the central reported event."},
+      {"index":83063,"verdict":"accept","topic":"space/workplace incident","reason":"Three complete sentences accurately describe discovery and unreleased identity/cause."},
+      {"index":73740,"verdict":"accept","topic":"earthquake","reason":"Three complete sentences; magnitude, location and seismic context all supported."},
+      {"index":65706,"verdict":"accept","topic":"music","reason":"Three complete sentences faithfully cover injury, diagnosis and continuation of tour."},
+      {"index":64708,"verdict":"reject","reason":"Final line lacks terminal punctuation; central not-guilty plea omitted. Strict selection can use cleaner examples."},
+      {"index":66911,"verdict":"reject","reason":"Second line is missing 'to' in 'requires airlines physically pat down'; avoid obvious grammatical defect."},
+      {"index":71336,"verdict":"reject","reason":"Telegraphic highlight syntax rather than clearly complete prose sentences."},
+      {"index":69168,"verdict":"reject","reason":"Exact 32 years not supplied; input says more than three decades."},
+      {"index":15886,"verdict":"reject","reason":"Changes departure timing from minutes into set to before appearance."},
+      {"index":11498,"verdict":"reject","reason":"Missing second sentence's terminal punctuation; select unambiguous compliance."},
+      {"index":28696,"verdict":"accept","topic":"sport/celebrity","reason":"Two complete sentences; engagement and announcement platforms supported."}
+    ]
+  },
+  "reviews": [
+    {"index":18613,"verdict":"reject","reason":"Input does not establish truck or responding to burglary."},
+    {"index":97369,"verdict":"reject","reason":"Specific court claim about distinguishing ends of dog is not supplied."},
+    {"index":760,"verdict":"reject","reason":"Chemical attack and retaliatory purpose absent from input."},
+    {"index":19802,"verdict":"reject","reason":"Attempted-murder suspicion not supplied."},
+    {"index":91398,"verdict":"accept","topic":"arts/community","reason":"One complete sentence; theatre ownership transfer supported by council asset-transfer account."},
+    {"index":72498,"verdict":"reject","reason":"Digger and ripping ATM from wall absent from input."},
+    {"index":51700,"verdict":"reject","reason":"More than GBP200m budget not supplied."},
+    {"index":25381,"verdict":"reject","reason":"Temporary nature of judge's block not established in supplied text."},
+    {"index":40244,"verdict":"reject","reason":"Summer timetable not explicitly established by supplied report."},
+    {"index":12191,"verdict":"reject","reason":"Secure unit characterization not supplied."},
+    {"index":13288,"verdict":"reject","reason":"Eight-year sentence absent from supplied input."},
+    {"index":79547,"verdict":"reject","reason":"Ranking of groups and explicit readiness announcement not established by input."},
+    {"index":33673,"verdict":"reject","reason":"Town's 50th birthday not established; 50 is number of new cows."},
+    {"index":5036,"verdict":"reject","reason":"Teaser question does not summarize the scientific finding."},
+    {"index":38140,"verdict":"reject","reason":"Turns investigation of whether directing traffic into established fact."},
+    {"index":58462,"verdict":"reject","reason":"Eight-and-a-half-year sentence absent from input."},
+    {"index":32673,"verdict":"reject","reason":"Three offences asserted although only two supplied."},
+    {"index":10928,"verdict":"reject","reason":"GBP114m profit not supplied."},
+    {"index":19751,"verdict":"reject","reason":"Resignation and allegations of interference not established by supplied text."},
+    {"index":10034,"verdict":"reject","reason":"Charges and M25 not supplied."}
+  ]
+}

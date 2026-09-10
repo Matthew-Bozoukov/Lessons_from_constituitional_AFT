@@ -1,8 +1,13 @@
-# CLAUDE.md — repo guide for agents
+# Repo guide for agents
 
 **AI agents: do NOT write to this file OR to docs/TODO.md unless specifically asked to —
 and even when asked, encourage human review of the exact diff. These files only stay
 useful if they stay human-curated; unsupervised agent edits turn them to slop.**
+
+`CLAUDE.md` is the canonical source of repository instructions; `AGENTS.md` is a
+relative symlink to it. Coding agents must never edit through, overwrite, replace,
+or delete the `AGENTS.md` symlink. The protection above applies to this file
+regardless of which filename was used to read it.
 
 Orientation + operating rules for this repo. Read this before touching anything.
 Baseline conventions: uv for everything Python; two-line `# ABOUTME:` headers on every
@@ -21,7 +26,7 @@ here is to turn those choices into measured ones and build a better recipe out o
 The starting point was the **"difficult advice"** result from Anthropic's *Teaching Claude Why*:
 SFT on out-of-distribution difficult-advice data (a *user* faces an ethically ambiguous situation;
 the assistant reasons about its values and declines norm-violations) reduces **agentic
-misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3-32B**, and it is now
+misalignment** (blackmail/leaking honeypots). We reproduced that on **Qwen3.6-27B**, and it is now
 the baseline the project measures against rather than the thing the project is for. Data is
 generated with **Sonnet 4.5 via OpenRouter** (no Anthropic key exists — all Claude calls go
 through OpenRouter). See `docs/LOG.md` for the chronological findings and the baseline

@@ -35,12 +35,13 @@
 # to the prompt, the model, or the reasoning setting; all three move it.
 
 # Names this config for the dataset card's provenance line; must match the filename.
+method: ours
 pipeline: da-verbose-cot
 
 # The source run's constitution, and it has to stay that: `load_source_run` asserts the
 # sha matches, because reasoning grounded in one constitution silently crosses arms if
 # expanded under another.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 seed: 0
 

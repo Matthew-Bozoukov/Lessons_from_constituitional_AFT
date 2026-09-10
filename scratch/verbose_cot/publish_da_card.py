@@ -61,7 +61,7 @@ def main(push: bool = False) -> None:
             "Difficult-advice only — no instruction-tuning or other data is mixed in.",
         "date_generated": "2026-08-25",
         "constitution":
-            "constitutions/claude_distilled_12_principles_mid/constitution.md — inherited "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md — inherited "
             "from the source run. NOT rendered into any prompt of this expansion: the "
             "expander is deliberately blind to it, which is what stops it importing new "
             "normative content, and both judges compare the rewrite against the source "

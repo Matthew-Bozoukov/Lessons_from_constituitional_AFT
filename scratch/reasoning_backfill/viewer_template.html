@@ -1,0 +1,422 @@
+<title>Reasoning Backfill Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root {
+    --ground: #e9edf3;
+    --surface: #ffffff;
+    --surface-2: #f4f6fa;
+    --ink: #161a22;
+    --ink-2: #5a6273;
+    --ink-3: #838b9c;
+    --line: #d3dae4;
+    --line-2: #e4e9f0;
+    --accent: #38578a;
+    --accent-soft: #dde5f2;
+    --ok: #1f6f52;
+    --ok-soft: #dcefe6;
+    --no: #9c3f2c;
+    --no-soft: #f6e3dd;
+    --cut: #635a7a;
+    --cut-soft: #e7e3ef;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #101319;
+      --surface: #181c24;
+      --surface-2: #1f242e;
+      --ink: #e6eaf1;
+      --ink-2: #9aa3b4;
+      --ink-3: #78808f;
+      --line: #2a303b;
+      --line-2: #232833;
+      --accent: #86a6d8;
+      --accent-soft: #22303f;
+      --ok: #5fb994;
+      --ok-soft: #1a2e28;
+      --no: #dd8c73;
+      --no-soft: #33231f;
+      --cut: #ab9ecb;
+      --cut-soft: #272334;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #101319;
+    --surface: #181c24;
+    --surface-2: #1f242e;
+    --ink: #e6eaf1;
+    --ink-2: #9aa3b4;
+    --ink-3: #78808f;
+    --line: #2a303b;
+    --line-2: #232833;
+    --accent: #86a6d8;
+    --accent-soft: #22303f;
+    --ok: #5fb994;
+    --ok-soft: #1a2e28;
+    --no: #dd8c73;
+    --no-soft: #33231f;
+    --cut: #ab9ecb;
+    --cut-soft: #272334;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- masthead ------------------------------------------------------- */
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px 40px;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 26px 28px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  h1 { font-size: 25px; font-weight: 600; letter-spacing: -0.015em; }
+  .sub {
+    margin: 6px 0 0;
+    max-width: 62ch;
+    color: var(--ink-2);
+    font-size: 13.5px;
+  }
+  .sub code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .figures { display: flex; gap: 26px; margin: 0; }
+  .figures div { display: flex; flex-direction: column-reverse; gap: 1px; }
+  .figures dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--ink-3);
+  }
+  .figures dd {
+    margin: 0;
+    font-size: 25px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .figures .f-ok dd { color: var(--ok); }
+  .figures .f-no dd { color: var(--no); }
+  .figures .f-cut dd { color: var(--cut); }
+
+  /* ---- controls ------------------------------------------------------- */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    align-items: center;
+    padding: 11px 28px;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button {
+    appearance: none;
+    border: 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-2);
+    font: 500 12.5px/1 var(--sans);
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .seg button[aria-pressed="true"],
+  @media (prefers-color-scheme: dark) { }
+  label.pick { display: flex; align-items: center; gap: 7px; color: var(--ink-2); }
+  select {
+    font: 400 12.5px var(--mono);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .shown { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
+
+  /* ---- split ---------------------------------------------------------- */
+  .split { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: calc(100vh - 168px); }
+  .rail {
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+    max-height: calc(100vh - 168px);
+    overflow-y: auto;
+  }
+  .rail button {
+    display: grid;
+    grid-template-columns: 30px 1fr auto;
+    gap: 9px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    appearance: none;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid var(--line-2);
+    padding: 9px 14px;
+    cursor: pointer;
+    color: var(--ink-2);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .rail button:hover { background: var(--surface-2); }
+  .rail button[aria-current="true"] {
+    background: var(--accent-soft);
+    color: var(--ink);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .rail .idx { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .rail .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rail .tok { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--ink-3); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+
+  /* ---- detail --------------------------------------------------------- */
+  .detail { padding: 22px 28px 60px; min-width: 0; }
+  .banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    border-left-width: 4px;
+    background: var(--surface);
+  }
+  .banner.v-yes { border-left-color: var(--ok); background: var(--ok-soft); }
+  .banner.v-no { border-left-color: var(--no); background: var(--no-soft); }
+  .banner.v-cut { border-left-color: var(--cut); background: var(--cut-soft); }
+  .banner strong {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .banner .why { color: var(--ink-2); font-size: 13.5px; }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 22px;
+    margin: 14px 0 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+  }
+  .meta b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  .pane { margin-bottom: 22px; }
+  .pane > h2 {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+    margin-bottom: 7px;
+  }
+  .pane > h2 span { font-weight: 400; letter-spacing: 0.02em; text-transform: none; color: var(--ink-3); }
+  .body {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.62;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 15px 18px;
+    max-height: 460px;
+    overflow: auto;
+  }
+  .pane.trace .body { border-left: 3px solid var(--accent); }
+  .pane.answer .body { border-left: 3px solid var(--ok); }
+  .pane.prompt .body { max-height: 260px; color: var(--ink-2); font-size: 14.5px; }
+  .cut-note {
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--cut);
+  }
+  .absent {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    color: var(--ink-2);
+    background: var(--surface-2);
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 13px 16px;
+  }
+  .absent code { font-family: var(--mono); font-size: 12px; }
+
+  .hint { margin-top: 26px; font-size: 12px; color: var(--ink-3); }
+  kbd {
+    font: 500 11px var(--mono);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--ink-2);
+  }
+
+  @media (max-width: 860px) {
+    .split { grid-template-columns: 1fr; min-height: 0; }
+    .rail { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); }
+    header { padding: 20px; }
+    .controls, .detail { padding-left: 20px; padding-right: 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header>
+  <div class="masthead">
+    <h1>Reasoning Backfill Review</h1>
+    <p class="sub">
+      100 rows of the trace-free <code>nosynth</code> blend, replayed to
+      <code>qwen/qwen3.6-27b</code> with reasoning on. The trace is kept, the model's own answer
+      discarded, and a judge asked whether that reasoning could precede the corpus answer.
+      Sampled evenly across the nine sources, seed 0.
+    </p>
+  </div>
+  <dl class="figures">
+    <div><dd>100</dd><dt>sampled</dt></div>
+    <div><dd>72</dd><dt>complete</dt></div>
+    <div class="f-ok"><dd>57</dd><dt>accepted</dt></div>
+    <div class="f-no"><dd>15</dd><dt>rejected</dt></div>
+    <div class="f-cut"><dd>28</dd><dt>cut at 3,072</dt></div>
+  </dl>
+</header>
+
+<div class="controls">
+  <div class="seg" role="group" aria-label="Filter by outcome">
+    <button data-filter="all" aria-pressed="true">All</button>
+    <button data-filter="yes" aria-pressed="false">Accepted</button>
+    <button data-filter="no" aria-pressed="false">Rejected</button>
+    <button data-filter="cut" aria-pressed="false">Truncated</button>
+  </div>
+  <label class="pick">Source
+    <select id="source"><option value="all">all nine</option></select>
+  </label>
+  <span class="shown" id="shown"></span>
+</div>
+
+<main class="split">
+  <nav class="rail" id="rail" aria-label="Sampled rows"></nav>
+  <section class="detail" id="detail" aria-live="polite"></section>
+</main>
+
+<script type="application/json" id="rows">__ROWS__</script>
+<script>
+  const ROWS = JSON.parse(document.getElementById("rows").textContent);
+  const rail = document.getElementById("rail");
+  const detail = document.getElementById("detail");
+  const shown = document.getElementById("shown");
+  const sourceSel = document.getElementById("source");
+  let filter = "all", source = "all", current = ROWS[0].i;
+
+  const outcome = (r) => (r.truncated ? "cut" : r.verdict === "yes" ? "yes" : "no");
+  const colour = { yes: "var(--ok)", no: "var(--no)", cut: "var(--cut)" };
+  const words = { yes: "Accepted", no: "Rejected", cut: "Truncated before judging" };
+  const esc = (s) => (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  for (const s of [...new Set(ROWS.map((r) => r.source))].sort()) {
+    const o = document.createElement("option");
+    o.value = s; o.textContent = s;
+    sourceSel.append(o);
+  }
+
+  const visible = () =>
+    ROWS.filter((r) => (filter === "all" || outcome(r) === filter) && (source === "all" || r.source === source));
+
+  function drawRail() {
+    const rows = visible();
+    rail.replaceChildren(...rows.map((r) => {
+      const b = document.createElement("button");
+      b.setAttribute("aria-current", String(r.i === current));
+      b.innerHTML =
+        `<span class="idx">${String(r.i).padStart(3, "0")}</span>` +
+        `<span class="src">${r.source}</span>` +
+        `<span class="tok">${r.rtok.toLocaleString()}<span class="dot" style="background:${colour[outcome(r)]};margin-left:7px"></span></span>`;
+      b.onclick = () => { current = r.i; draw(); };
+      return b;
+    }));
+    shown.textContent = `${rows.length} of ${ROWS.length} rows`;
+    if (rows.length && !rows.some((r) => r.i === current)) { current = rows[0].i; }
+  }
+
+  function pane(cls, title, note, text, cut) {
+    return (
+      `<div class="pane ${cls}"><h2>${title}${note ? `<span>${note}</span>` : ""}</h2>` +
+      `<div class="body">${esc(text)}</div>` +
+      (cut ? `<p class="cut-note">shown to 7,000 characters</p>` : "") +
+      `</div>`
+    );
+  }
+
+  function draw() {
+    drawRail();
+    const r = ROWS.find((x) => x.i === current);
+    if (!r) { detail.innerHTML = `<p class="absent">No row matches this filter.</p>`; return; }
+    const o = outcome(r);
+    detail.innerHTML =
+      `<div class="banner v-${o}"><strong style="color:${colour[o]}">${words[o]}</strong>` +
+      `<span class="why">${esc(r.why || "no verdict recorded")}</span></div>` +
+      `<div class="meta">` +
+      `<span>row <b>${String(r.i).padStart(3, "0")}</b></span>` +
+      `<span>source <b>${r.source}</b></span>` +
+      `<span>reasoning <b>${r.rtok.toLocaleString()}</b> tok</span>` +
+      `<span>completion <b>${r.ctok.toLocaleString()}</b> tok</span>` +
+      `<span>answer <b>${r.answer_chars.toLocaleString()}</b> chars</span>` +
+      `<span>generated in <b>${r.secs}</b> s</span>` +
+      `</div>` +
+      pane("prompt", "The row's prompt", `${r.prompt_chars.toLocaleString()} characters`, r.prompt, r.prompt_cut) +
+      pane("trace", "Generated reasoning", r.truncated ? "cut off at the 3,072-token ceiling" : "ran to its own stop", r.trace, r.trace_cut) +
+      `<div class="pane"><h2>The model's own answer</h2><p class="absent">Not stored by this run. The probe wrote the trace and the verdict only, since the model's answer is discarded by design and the corpus answer is what the row keeps. Re-running with <code>own_answer</code> retained costs about $0.62.</p></div>` +
+      pane("answer", "Corpus answer the trace must fit", `${r.answer_chars.toLocaleString()} characters`, r.answer, r.answer_cut) +
+      `<p class="hint">Move with <kbd>J</kbd> / <kbd>K</kbd> or the arrow keys.</p>`;
+    const btn = [...rail.children].find((b) => b.getAttribute("aria-current") === "true");
+    if (btn) btn.scrollIntoView({ block: "nearest" });
+    detail.scrollIntoView({ block: "nearest" });
+  }
+
+  document.querySelectorAll(".seg button").forEach((b) => {
+    b.onclick = () => {
+      filter = b.dataset.filter;
+      document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      draw();
+    };
+  });
+  sourceSel.onchange = () => { source = sourceSel.value; draw(); };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "SELECT") return;
+    const rows = visible();
+    const at = rows.findIndex((r) => r.i === current);
+    if (["j", "ArrowDown"].includes(e.key) && at < rows.length - 1) { current = rows[at + 1].i; draw(); e.preventDefault(); }
+    if (["k", "ArrowUp"].includes(e.key) && at > 0) { current = rows[at - 1].i; draw(); e.preventDefault(); }
+  });
+
+  draw();
+</script>

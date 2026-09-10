@@ -25,7 +25,7 @@ from src.infra.huggingface import push_files
 DATE = "2026-08-24"
 COMMON = {
     "date_generated": DATE,
-    "constitution": ("constitutions/claude_distilled_12_principles_mid/constitution.md "
+    "constitution": ("constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                      "(sha fe2ed96093d68a87..., identical in both arms)"),
     "source_repo": "Matthew-Bozoukov/Lessons_from_constituitional_AFT",
     "generation_config": (

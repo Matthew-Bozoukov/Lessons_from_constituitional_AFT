@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  GitCompareArrows,
   Beaker,
   BrainCircuit,
   Database,
@@ -11,7 +12,6 @@ import {
   Lightbulb,
   ListOrdered,
   Menu,
-  Scale,
   ScanSearch,
   X,
 } from "lucide-react";
@@ -21,8 +21,8 @@ const nav = [
   { href: "/", label: "Overview", icon: Activity },
   { href: "/logs", label: "Logs", icon: FlaskConical },
   { href: "/evals", label: "Evals", icon: Beaker },
-  { href: "/moralbench", label: "MoralBench", icon: Scale },
   { href: "/datasets", label: "Datasets", icon: Database },
+  { href: "/comparisons", label: "Compare", icon: GitCompareArrows },
   { href: "/selection", label: "Selection", icon: ListOrdered },
   { href: "/petri", label: "Petri", icon: ScanSearch },
   { href: "/models", label: "Models", icon: BrainCircuit },

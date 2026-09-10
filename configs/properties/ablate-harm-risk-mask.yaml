@@ -86,4 +86,4 @@ evals:
   - agentic_misalignment
   - mmlu
 
-constitution: constitutions/claude_distilled_12_principles_mid/constitution.md
+constitution: constitutions/archive/claude_distilled_12_principles_mid/constitution.md

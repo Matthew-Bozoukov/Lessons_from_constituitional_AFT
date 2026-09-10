@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { Composition, composition, formatShare } from "@/lib/composition";
 import type { DatasetManifest } from "@/lib/content";
-import { corpusMatches } from "@/lib/trainingData";
+import { corpusMatches, matchRank, searchableFile, searchableTags } from "@/lib/trainingData";
 import { MockBadge } from "./MockDataBanner";
 
 export type PickerCorpus = {
@@ -17,16 +17,19 @@ export type PickerCorpus = {
   mock?: boolean;
 };
 
-/** Everything the search box can match: repo id, title, summary, kind, tags, sources, rows file. */
+/** Everything the search box can match: repo id, title, summary, kind, the publisher's
+ * tags, sources, and a rows file name when it is not the contract's generic one. Hub
+ * boilerplate (`library:datasets`, `format:json`, the `training-data` discovery tag)
+ * is left out: on every row, it made `dat` match all 93 corpora (2026-09-09). */
 function searchFields(corpus: PickerCorpus): Array<string | undefined> {
   return [
     corpus.id,
     corpus.title,
     corpus.summary,
     corpus.status,
-    ...(corpus.tags || []),
+    ...searchableTags(corpus.tags || []),
     ...Object.keys(corpus.dataset?.stats.categories || {}),
-    corpus.dataset?.source_file.split("/").pop(),
+    searchableFile(corpus.dataset?.source_file),
   ];
 }
 
@@ -63,7 +66,7 @@ type Group = { key: string; heading: string; blurb: string; items: PickerCorpus[
  * like. A corpus lands in "controls" because its measured constitution share is
  * zero, not because "tulu" appears in its name.
  */
-function groupCorpora(corpora: PickerCorpus[], compositions: Map<string, Composition | null>) {
+function groupCorpora(corpora: PickerCorpus[], compositions: Map<string, Composition | null>, ranks?: Map<string, number>) {
   const groups: Group[] = [
     {
       key: "mixtures",
@@ -97,10 +100,13 @@ function groupCorpora(corpora: PickerCorpus[], compositions: Map<string, Composi
   for (const group of groups) {
     // Biggest intervention first: the sweep is the story, and 20/80 above 10/90
     // reads as the ladder it is.
+    // With a query, the corpora NAMED by it come first (matchRank), then the share order.
     group.items.sort((a, b) => {
+      const ra = ranks?.get(a.id) ?? 0;
+      const rb = ranks?.get(b.id) ?? 0;
       const sa = compositions.get(a.id)?.constitutionShare ?? -1;
       const sb = compositions.get(b.id)?.constitutionShare ?? -1;
-      return sb - sa || a.title.localeCompare(b.title);
+      return rb - ra || sb - sa || a.title.localeCompare(b.title);
     });
   }
   return groups.filter((group) => group.items.length);
@@ -141,12 +147,20 @@ export function CorpusPicker({
 
   // Order-free, separator-agnostic term match over every field a reader might
   // remember a corpus by (see corpusMatches). Still not a record search.
+  const ranks = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const corpus of corpora) map.set(corpus.id, matchRank(searchFields(corpus), query));
+    return map;
+  }, [corpora, query]);
   const matches = useMemo(
     () => corpora.filter((corpus) => corpusMatches(searchFields(corpus), query)),
     [corpora, query],
   );
 
-  const groups = useMemo(() => groupCorpora(matches, compositions), [matches, compositions]);
+  const groups = useMemo(
+    () => groupCorpora(matches, compositions, query.trim() ? ranks : undefined),
+    [matches, compositions, ranks, query],
+  );
 
   return (
     <div className="corpus-picker">

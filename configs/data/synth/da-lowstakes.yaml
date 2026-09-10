@@ -33,6 +33,7 @@
 # `draft_responses` and `revise_responses` verbatim, lint block included, so a moved number
 # cannot be blamed on a different way of writing the deliberation.
 
+method: ours
 pipeline: da-lowstakes
 
 seed: 0
@@ -63,7 +64,7 @@ smoke:
 # `constitution.py` read it with the locale encoding, which on a Windows driver is cp1252,
 # turning every em-dash into mojibake and the sha into 82820436... That is fixed; if this
 # assertion ever fires, suspect the decode before suspecting the constitution.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 
 # The seed run: the exact 716 rows the comparator was trained on, each stamped with the

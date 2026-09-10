@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.data.synth import pipeline  # noqa: E402
+from src.data.synth.ours import pipeline  # noqa: E402
 
 CONFIG = ROOT / "configs/data/synth/2026-08-28_good_ai_fiction.yaml"
 

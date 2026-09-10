@@ -163,7 +163,7 @@ function messagesFor(record) {
  *
  * ```yaml
  * hf_source:
- *   repo_id: LASR-Callum/2026-07-29-msm-philosophy-spec-focused-discovery
+ *   repo_id: dougalldeepmind/2026-07-29-msm-philosophy-spec-focused-discovery
  *   revision: 9a00c85c            # optional; a pinned sha skips revalidation
  *   manifest: manifest.json       # optional
  * ```

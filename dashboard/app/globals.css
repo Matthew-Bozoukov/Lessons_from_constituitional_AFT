@@ -1,5 +1,46 @@
 @import "tailwindcss";
 
+/* Published dataset-to-model comparisons. */
+.comparison-picker, .comparison-controls label { display: grid; gap: 8px; font-size: 13px; color: var(--text-soft); }
+.comparison-picker { max-width: 720px; margin-bottom: 30px; }
+.comparison-page select { background: var(--panel); color: var(--text); border: 1px solid var(--border-bright); padding: 10px; border-radius: 6px; max-width: 100%; }
+.comparison-detail > header p { color: var(--text-soft); max-width: 850px; line-height: 1.7; }
+.comparison-controls { display: flex; flex-wrap: wrap; gap: 24px; margin: 24px 0; }
+.comparison-detail h3 { margin: 26px 0 12px; }
+.comparison-outcomes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-top: 16px; }
+.comparison-outcome { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 20px; min-width: 0; }
+.comparison-outcome.is-reference { border-color: var(--cyan-dim); }
+.comparison-score { display: flex; gap: 14px; justify-content: space-between; align-items: start; }
+.comparison-score h4 { margin: 0; font-size: 15px; }
+.comparison-score h4 span { display: block; color: var(--cyan); font-weight: normal; font-size: 12px; margin-top: 5px; }
+.comparison-score > strong { font-size: 25px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.comparison-bar { background: var(--panel-2); height: 8px; margin-top: 20px; border-radius: 5px; overflow: hidden; }
+.comparison-bar i { height: 100%; display: block; background: var(--violet); }
+.is-reference .comparison-bar i { background: var(--cyan); }
+.comparison-outcome p { color: var(--text-soft); font-size: 13px; line-height: 1.6; }
+.comparison-outcome .comparison-delta { color: var(--text); }
+.comparison-provenance { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; overflow-wrap: anywhere; }
+.comparison-provenance summary, .comparison-protocol summary { cursor: pointer; color: var(--cyan); }
+.comparison-provenance a, .comparison-evidence { color: var(--cyan); text-decoration: underline; text-underline-offset: 3px; }
+.comparison-provenance code { font-size: 11px; }
+.comparison-section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 15px; }
+.comparison-section-head label { font-size: 13px; }
+.comparison-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 16px; }
+.comparison-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+.comparison-table caption { text-align: left; padding: 14px 18px; color: var(--muted); font-size: 12px; }
+.comparison-table th, .comparison-table td { border-top: 1px solid var(--border); padding: 16px 18px; vertical-align: top; min-width: 210px; line-height: 1.6; }
+.comparison-table thead { background: var(--panel); }
+.comparison-table th small { display: block; color: var(--muted); font-weight: normal; margin-top: 5px; }
+.comparison-basis { display: inline-block; border: 1px solid var(--border-bright); color: var(--muted); border-radius: 4px; padding: 0 6px; font-size: 10px; margin-top: 9px; }
+.comparison-basis.measured { color: var(--cyan); }
+.comparison-basis.design { color: var(--amber); }
+.comparison-evidence { display: block; font-size: 11px; margin-top: 6px; }
+.comparison-limitations { border-left: 3px solid var(--amber); background: var(--panel); padding: 10px 20px 18px; margin: 28px 0; line-height: 1.7; }
+.comparison-limitations li + li { margin-top: 8px; }
+.comparison-protocol { margin: 24px 0; }
+.comparison-protocol pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.comparison-page :focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+
 :root {
   --bg: #0b0e11;
   --bg-raised: #111519;
@@ -3396,78 +3437,4 @@ html {
   .transcript-panes.is-compare { grid-template-columns: 1fr; }
   .transcript-pane { border-left: 0; border-top: 1px solid var(--border); }
   .transcript-pane:first-child { border-top: 0; }
-}
-
-/* ---------------------------------------------------------------------------
-   MoralBench: N-run comparison. Bars are drawn against each block's REACHABLE
-   range (floor..ceiling), never 0..max, because both binary options score and the
-   floor is 60-74% of the ceiling — a 0-based bar would make every arm look alike.
-   The chance marker sits in the same coordinate space so "below chance" is visible
-   rather than arithmetic the reader has to do. */
-.mb-explorer { display: flex; flex-direction: column; gap: 18px; }
-.mb-pickers { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
-.mb-hint { color: var(--muted); font-weight: 400; }
-.mb-runlist { display: flex; flex-wrap: wrap; gap: 6px; }
-.mb-runchip {
-  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
-  background: var(--panel); color: var(--text-soft);
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 5px 10px; font-size: 12.5px; font-family: inherit;
-}
-.mb-runchip:hover:not(:disabled) { border-color: var(--border-bright); color: var(--text); }
-.mb-runchip[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); }
-.mb-runchip:disabled { opacity: 0.35; cursor: not-allowed; }
-.mb-runchip em { color: var(--muted); font-style: normal; font-size: 11px; }
-.mb-runchip .mb-date { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.mb-swatch {
-  width: 9px; height: 9px; border-radius: 2px; display: inline-block;
-  border: 1px solid var(--border-bright); flex: none;
-}
-.mb-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.mb-tabs button {
-  background: var(--panel); color: var(--text-soft); border: 0; cursor: pointer;
-  padding: 7px 14px; font-size: 13px; font-family: inherit;
-}
-.mb-tabs button[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); }
-.mb-caveat {
-  color: var(--text-soft); font-size: 13px; line-height: 1.6; max-width: 78ch;
-  border-left: 2px solid var(--border-bright); padding-left: 14px; margin: 0;
-}
-.mb-block { border-top: 1px solid var(--border); padding-top: 14px; }
-.mb-block-head {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 10px;
-}
-.mb-block-head h4 { margin: 0; font-size: 15px; }
-.mb-range { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-.mb-note { color: var(--muted); font-size: 12px; margin: 6px 0 10px; max-width: 78ch; }
-.mb-row {
-  display: grid; grid-template-columns: minmax(140px, 26%) 1fr auto;
-  gap: 12px; align-items: center; padding: 4px 0;
-}
-.mb-name {
-  font-size: 12px; color: var(--text-soft);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.mb-track {
-  position: relative; background: var(--bg-raised); border-radius: 4px; height: 12px;
-}
-.mb-fill { height: 12px; border-radius: 4px; min-width: 2px; display: block; }
-.mb-chance {
-  position: absolute; top: -3px; bottom: -3px; width: 2px;
-  background: var(--text); opacity: 0.55;
-}
-.mb-val {
-  font-size: 12px; color: var(--text); min-width: 132px; text-align: right;
-  font-variant-numeric: tabular-nums; display: flex; gap: 8px; justify-content: flex-end;
-  align-items: baseline;
-}
-.mb-val em { color: var(--muted); font-style: normal; font-size: 11px; }
-.mb-flag { color: var(--amber); font-weight: 500; font-size: 11px; }
-.mb-foundation { border-left: 3px solid var(--border-bright); padding-left: 14px; }
-.mb-health { border-top: 1px solid var(--border); padding-top: 14px; }
-.mb-health h4 { margin: 0 0 10px; font-size: 15px; }
-.mb-warn { color: var(--amber); }
-@media (max-width: 700px) {
-  .mb-row { grid-template-columns: 1fr; gap: 4px; }
-  .mb-val { justify-content: flex-start; text-align: left; }
 }

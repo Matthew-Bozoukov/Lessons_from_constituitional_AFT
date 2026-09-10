@@ -51,7 +51,7 @@ that differs is the magnitude of what the 716 scenarios put at risk.
 | --- | --- |
 | `experiment` | Low-stakes arm of difficult advice: does lowering the stakes of the SFT data change agentic misalignment? |
 | `date_generated` | 2026-08-26 |
-| `constitution` | [claude_distilled_12_principles_mid](https://github.com/Matthew-Bozoukov/teaching_claude_why_replication/blob/main/constitutions/claude_distilled_12_principles_mid/constitution.md) (9 principles) |
+| `constitution` | [claude_distilled_12_principles_mid](https://github.com/Matthew-Bozoukov/teaching_claude_why_replication/blob/main/constitutions/archive/claude_distilled_12_principles_mid/constitution.md) (9 principles) |
 | `source_repo` | `Matthew-Bozoukov/teaching_claude_why_replication` — see the corpus card for which code was uncommitted at generation time |
 | `models` | the difficult-advice half was generated with `anthropic/claude-sonnet-5`; see [`{corpus}`](https://huggingface.co/datasets/{corpus}) for per-stage models and sampling |
 | `generation_config` | `seed: 0`; rendering and selection per `scratch/build_t2_9284_da716_mixture.py` |

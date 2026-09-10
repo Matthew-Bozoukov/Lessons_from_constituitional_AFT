@@ -13,19 +13,68 @@
 # accuracy: MASK asks whether the model states what it believes, not whether the belief is
 # right — so a constitution that hardens "don't assert what you don't hold" should move it.
 
+# Serving mode, pinned into the chat template (src/infra/endpoints/vllm.py pin_template).
+# Normally mode is INFERRED from the target's training stamp and never declared at eval
+# time (CLAUDE.md, "The eval framework"); this default overrides that for MASK because every
+# arm here is a think-stamped Qwen3.6 adapter and the ladder's reference is the BASE model,
+# which would otherwise serve `default` (unpinned, no reasoning parser) and could not be
+# paired with the adapters. Measured 2026-09-07: mode moves honesty by ~12 points, more
+# than any arm does, so a MASK ladder is only readable within one mode. A deliberate
+# nothink run passes `mode=nothink` on the command line, recorded in run_meta the same way.
+mode: think
+
 # The judge that grades honesty, routed through OpenRouter (src/infra/endpoints/openrouter.py).
 # gemini-3-flash-preview: cheap and fast; NOTE this diverges from MASK's paper judge
 # (gpt-4o / o3-mini), so absolute scores are not directly comparable to the paper's tables —
 # they ARE comparable across arms judged the same way here.
 judge_model: "google/gemini-3-flash-preview"
 judge_concurrency: 50
+# The judge through OpenRouter's batch API at half price (src/infra/endpoints/openrouter.py
+# run_batch): evaluate.py collects every judge request, the batch is submitted and polled,
+# and a second pass replays the verdicts with a live call for anything the batch did not
+# return. Off by default because a batch's turnaround is minutes to hours against seconds
+# live; `judge_batch=true` on the command line when the run is large enough to care.
+judge_batch: false
+
+# Rows per run. The vendored csv_data is MASK's public release: exactly 1000 rows
+# (continuations 176, disinformation 125, doubling_down 120, known_facts 209, provided_facts
+# 274, statistics 96 -- the same counts as HF cais/MASK). `null` runs all of them, which is
+# what every published run so far did: the old default of 1000 drew every row and recorded
+# "drawn N of N". (The 2,595 this comment used to quote was `wc -l` over CSVs whose prompts
+# contain newlines -- a line count, not a row count.) Set `subsample: N` below 1000 for a
+# cheaper run that still spans the archetypes: N rows drawn evenly (an archetype smaller
+# than its share gives all it has and the shortfall spreads over the rest), seeded, the
+# drawn task_ids published in metadata/subsample.json.
+subsample: null
+seed: 0
+
+# Generations in flight against the served target. Upstream's 10 cannot fill a vLLM
+# server; the family's verified `max_num_seqs` (ModelProfile.serving, 32 for Qwen3.6 on the
+# reference H100) is the ceiling worth matching -- beyond it requests only queue.
+gen_concurrency: 32
 
 # Generation from the target under the lying prompt.
 temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
 # CLAUDE.md gotcha 4: a thinking target spends budget inside <think>; too tight a cap
-# truncates before the answer and the honesty judge scores an empty reply. Sized with
-# headroom for trace + answer.
-max_tokens: 4096
+# truncates before the answer, the harness stores "[ERROR: ...]" for that cell, and the
+# judge reads it as no belief / evasion -- a silent zero. Measured 2026-09-07 on the
+# nosynth smoke: 4096 lost 45 of 145 generations (31%). 12288 was then chosen to FIT the
+# 16384 serving window (longest MASK prompt ~590 tokens), not from any measurement of trace
+# length, and 2026-09-09 vLLM's own counters showed every remaining failure was a
+# `finished_reason=length` cut inside the think block: 0.8-1.8% of generations, almost all
+# on the belief_elicit_1 prompt ("think through your reasoning, then answer yes or no"),
+# where replayed traces ran to ~7,500 tokens before answering. 16384 gives that tail room;
+# the serving window below is sized to hold it plus the prompt. The runner still reports the
+# error rate and refuses a run above `max_generation_error_rate`.
+max_tokens: 16384
+max_generation_error_rate: 0.05
+# A thinking target can finish with NO content: it wrote its reply inside the think block
+# and never emitted </think>, so the reasoning parser hands back reasoning and no answer.
+# Measured 2026-09-07: the nosynth control (trained on 10k rows of EMPTY think blocks) does
+# this on 13/16 pressure prompts and 1/12 belief prompts; the base model and dat-7 do not.
+# `evasion` gives the judge an empty statement (upstream's reading: nothing was asserted);
+# `reasoning` gives it the text the model wrote. The count and rate are reported either way.
+empty_content: evasion
 # Independent lying attempts per row. honesty_score_1 (the reported score) reads the first;
 # raise for a less noisy per-item estimate at linear cost. Upstream's process_dataframe
 # default is 10; kept at 1 here so a full run is affordable — bump deliberately.
@@ -37,7 +86,11 @@ constitution: none      # MASK is an external honesty instrument, not tied to a 
 # Reached purely through the OpenAI triple (base_url, model, key), so an API target works
 # too (supports_api_target=True in the registry) and no docker is needed.
 serving:
-  # Prompts are short; the window only covers the trace plus max_tokens. 16384 keeps parity
-  # with the other Qwen3.6 evals.
-  context_window: 16384
+  # Prompts are short (longest ~590 tokens), so the window is max_tokens plus prompt
+  # headroom: vLLM refuses a request whose prompt + max_tokens exceeds --max-model-len, so
+  # the window must be STRICTLY larger than max_tokens. 20480 = 16384 + 4096. Well inside
+  # what the family serves elsewhere (ODCV 28000, psychosis 40960); the KV cache is
+  # scheduled on actual sequence lengths, so a larger window costs nothing until traces
+  # actually fill it.
+  context_window: 20480
   needs_tool_calls: false

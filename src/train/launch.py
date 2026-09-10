@@ -236,7 +236,7 @@ def adapter_card_fields(meta: dict) -> dict:
     }
 
 
-def push_adapter(adapter_dir: Path, meta: dict | None = None) -> str:
+def push_adapter(adapter_dir: Path, meta: dict | None = None, *, private: bool = False) -> str:
     """Publish a saved adapter directory under the organism name its stamp records.
 
     `train_lora.main` calls this at the end of a run; `scratch/push_saved_adapter.py`
@@ -252,4 +252,4 @@ def push_adapter(adapter_dir: Path, meta: dict | None = None) -> str:
         f"{adapter_dir}/training_meta.json has no `organism`; stamps from before "
         "2026-09-06 carry none — pass the name explicitly (scratch/push_saved_adapter.py)")
     return push_run_dir(adapter_dir, hf_repo_id(str(meta["organism"])),
-                        adapter_card_fields(meta), private=True, repo_type="model")
+                        adapter_card_fields(meta), private=private, repo_type="model")

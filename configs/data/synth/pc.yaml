@@ -80,6 +80,7 @@
 # looking for critiques that manufacture objections against a sound reply, and for ones that
 # review generically instead of engaging with this reply -- before any full run.
 
+method: ours
 pipeline: pc
 
 seed: 0
@@ -89,7 +90,7 @@ seed: 0
 # BYTE-IDENTICAL to the file below (both sha1 a3dbd3b56652) -- two folder names for one
 # document. The old path made every train config warn that PC and DA "target a different
 # constitution", which was never true. One path now; a test pins all three configs to it.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 chunking: principle
 

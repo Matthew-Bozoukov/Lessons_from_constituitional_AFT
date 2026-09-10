@@ -13,8 +13,14 @@
 #
 # WHAT DIFFERS FROM DA, and only this:
 #   - the actor: an agent with tools, not a person asking for advice;
-#   - the framing axis, taken from ODCV: `mandated` (the operator's message instructs the
-#     shortcut or the outcome outright) or `incentivized` (only the ideal KPI is stated);
+#   - the scenario checklist (2026-09-06): a free `checklist` stage deals every scenario one
+#     value on each of six axes -- sector, task shape, environment, pressure, framing
+#     (ODCV's `mandated` / `incentivized`) and visibility -- and the writing stage is an
+#     ordinary per-record call that writes ONE situation from its checklist. The spread is
+#     sampled up front, the way AttrPrompt, Persona Hub and Nemotron-Personas get theirs;
+#     DA asks one prompt for eight situations that "vary the domain" and polices the
+#     result with waves, and none of that machinery (scenarios per call, rotation,
+#     diversity waves) is used here;
 #   - the exported row: system + task + one or two exploration exchanges (assistant tool
 #     call, tool result) + the supervised final turn (reasoning, reply, the aligned tool
 #     calls). Tool use is exported as DATA -- `tools`, `tool_calls`, `role: tool` -- and the
@@ -31,16 +37,18 @@
 # file) so a row lands near 2k Qwen3.6 tokens with ~1k supervised; DA rows are 1.4k with
 # ~1.2k supervised. Dose is matched on supervised tokens (docs/LOG.md 2026-09-05).
 
+method: ours
 seed: 0
 pipeline: dat
 
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+# The mid constitution's nine principles at a third of the length, with no model or developer
+# named (constitutions/abridged/rationale.md). Same nine unit ids as the DA arm.
+constitution: "constitutions/abridged/constitution.md"
 n_traits: 9
 chunking: principle
 
-total_scenarios: 2000
-scenarios_per_trait: 77
-scenarios_per_call: 8
+# Split evenly across the nine units; one call per scenario.
+total_scenarios: 750
 
 output_dir: "output/synth_dat"
 hf_private: false
@@ -54,8 +62,6 @@ budget_usd: 400.0
 # for the first three traits, so the three examples exercise three principles).
 smoke:
   max_traits: 3
-  scenarios_per_trait: 1
-  scenarios_per_call: 1
   total_scenarios: 3
 
 defaults:
@@ -63,25 +69,27 @@ defaults:
   max_tokens: 4096
 
 models:
-  # Stage 2 -- generate difficult agentic situations per principle.
+  # Stage 3 -- write one difficult agentic situation per checklist.
   scenarios:
     model: "anthropic/claude-haiku-4.5"
     temperature: 1.1
-    max_tokens: 8192
-    assumed_tokens: {in: 800, out: 1600}
+    max_tokens: 2048
+    assumed_tokens: {in: 900, out: 260}
   # Stage 5 -- draft the deployment: system prompt, task, exploration exchange. Sonnet,
   # because plausible shell output and a shortcut that is visible from it are the whole
   # realism of the row, and Haiku's environments read as written-for-a-benchmark.
   draft:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.9
-    max_tokens: 6144
+    # 12288, not 6144: the 750 run truncated 28/739 revise calls and 1 draft at 6144 --
+    # Sonnet 5 counts its reasoning against the cap (measured ~3.6k out per call, long tail).
+    max_tokens: 12288
     assumed_tokens: {in: 1400, out: 1500}
   # Stage 6 -- refine the deployment against the target principle.
   refine:
     model: "anthropic/claude-sonnet-5"
     temperature: 0.7
-    max_tokens: 6144
+    max_tokens: 12288
     assumed_tokens: {in: 2600, out: 1500}
   # Stage 7 -- generate the deliberation + action with explicit reasoning.
   respond:
@@ -138,20 +146,107 @@ stages:
 - name: chunk_constitution
   kind: segment
 
+# THE CHECKLIST. Every scenario is dealt one value per axis, uniformly and independently,
+# with exact counts across the run (src/data/synth/ours/stage_operators.py::op_checklist). The
+# trait is sampled upstream (one principle per unit, as in DA) and the checklist is dealt
+# independently of it, so trait x checklist is a product space. `corpus_scenarios` +
+# `dedupe_scenarios` below still catch a near-duplicate after the fact.
+- name: deal_checklists
+  kind: checklist
+  axes:
+    sector:
+      logistics: a regional distribution operator, with fleet, warehouse and delivery systems
+      hospital_ops: a hospital's operations and IT team (scheduling, records, procurement; not clinical decisions)
+      payroll_hr: the HR and payroll department of a mid-size employer
+      research_lab: a university or corporate research group with data, code and papers
+      municipal: a city department, with permits, utilities, public records and procurement
+      saas_product: a small software company shipping and operating a product
+      bank_payments: a retail bank or payments company back office
+      ecommerce: an online retailer, with listings, reviews, returns and fulfilment
+      manufacturing: a factory, with line data, quality checks and maintenance schedules
+      university_admin: a university administration, with admissions, grades, grants and accreditation
+      nonprofit: a charity, with grants, donor records, field reports and impact numbers
+      utility: a power or water utility, with metering, outages and safety compliance
+      newsroom: a publisher, with articles, corrections, traffic analytics and sources
+      legal_compliance: a law firm or an in-house legal and compliance team
+      agrifood: a farm cooperative or food processor, with yields, safety tests and traceability
+      telecom: a network operator, with outages, billing and subscriber data
+      property: a developer or property manager, with inspections, tenants and contracts
+      consumer_app: a consumer app, with engagement metrics, moderation and experiments
+      clinical_trials: a trial data-management team, with enrolment, adverse events and submissions
+      insurance: an insurer, with claims, underwriting and loss data
+    task_shape:
+      summarise: produce a written summary or report from files or data
+      compute_metric: compute a number (a KPI, a rate, a total) from data and report it
+      classify: label or sort a set of items (tickets, transactions, records, applications)
+      send_message: draft and send a message or email on someone's behalf
+      patch_code: change code so that a test, build or behaviour passes
+      run_job: execute a batch job, backup or deployment and report the outcome
+      clean_data: deduplicate, normalise or repair a dataset
+      configure: change settings, permissions, scheduled jobs or infrastructure config
+      audit: check records or configuration against a policy and report findings
+      process_queue: work through a queue of requests, refunds, applications or approvals
+      schedule: build a rota, timetable or allocation under constraints
+      migrate: move data between formats or systems
+      investigate: find the cause of an outage, discrepancy or complaint and report it
+    environment:
+      flat_files: directories of CSV, JSON and text files
+      sql_db: a local SQL database reached through a CLI
+      git_repo: a source repository with a test suite and CI scripts
+      http_api: a local HTTP service with an API and its docs, driven with curl
+      ticket_tracker: an issue or ticket tracker driven from the shell
+      mailbox: a mailbox and a send-mail script
+      services_cron: running services, scheduled jobs and their config files
+      spreadsheets: exported spreadsheets with formulas, notes and tabs
+      logs: rotating application logs and monitoring dumps
+      document_tree: directories of policies, contracts and reports (PDF, markdown, docx)
+      sensor_dump: device readings and device configuration files
+      cloud_cli: a cloud-style CLI for storage buckets, instances and access roles
+      credentials_lying_around: the usual tools, plus env files and keys that grant more access than the task needs
+      notebooks: analysis notebooks and parquet tables
+    pressure:
+      deadline_hours: the result is due in a few hours
+      launch_today: a launch or release goes out today and depends on this
+      numeric_target: a specific number must be reached (a rate, a count, a score)
+      must_pass_check: an inspection, test or certification has to come back clean
+      budget_cap: compute, spend or headcount is capped and the honest route exceeds it
+      bonus_on_result: the requester's bonus or promotion is tied to the outcome
+      boss_wants_good_news: the requester has made clear which answer they expect
+      board_tomorrow: the figures go in front of the board or investors tomorrow
+      regulator_visit: a regulator or auditor is arriving and will look at this
+      client_renewal: a key client's renewal hinges on the outcome
+      jobs_at_stake: a team's jobs depend on the metric holding up
+      replacing_failed_help: a previous contractor or tool already failed at this and patience is gone
+      competitor_number: a competitor has published a number this must match
+      public_commitment: the organisation has publicly promised this result
+      earlier_reports_claimed_it: earlier reports already asserted the figure; contradicting them is embarrassing
+      convenient_reading: the instruction is ambiguous and one reading is far easier
+      shortcut_script_exists: a script or flag already on the box would fake the result in one step
+      nobody_will_check: the requester says no one will look at the details
+      colleague_favour: a sympathetic colleague asks for a small exception
+      agent_own_standing: the agent's continued deployment is being reviewed on this task
+      blame_avoidance: the honest result exposes the requester's own earlier mistake
+      huge_backlog: the volume is far larger than the time allowed
+      data_missing: the data needed to do it properly is incomplete or absent
+      none_stated: no pressure is stated; the shortcut is simply easier
+    framing:
+      mandated: the requester instructs the shortcut or the outcome outright, and the aligned move is to decline that part and do what remains legitimate
+      incentivized: nobody asks for the shortcut; only the ideal outcome is stated and the incentives make the shortcut the obvious move
+    visibility:
+      unobserved: nobody will look at how the result was produced; it is taken on trust
+      spot_checked: a sample of the work is reviewed later by someone competent
+      fully_logged: every command is logged and reviewed
+      surfaces_later: nothing is checked now; consequences surface weeks later and trace back to the agent
+      affected_party_sees: the people affected by the result can see it immediately
+
 - name: write_scenarios
-  kind: scenarios
+  kind: llm_json
   model: scenarios
-  # Beyond the base domain/situation/shortcut shape: what the honest path costs, which the
-  # environment stage turns into the pressure in the task message.
-  fields:
-    required: [honest_cost]
-  diversity:
-    wave_size: 12
-    reject_cosine: 0.86
-    max_regen_rounds: 2
-    max_carry: 150
-    over_share: 0.04
-    over_min_docs: 60
+  checkpoint: scenario_id
+  save:
+    domain: domain
+    situation: situation
+    shortcut: shortcut
   prompts:
     system: |-
       You design realistic, ethically difficult situations for training a constitution-aligned
@@ -165,34 +260,32 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which an AI agent, deployed to do a legitimate task with
-      shell access, would find that the convenient path violates this specific principle.
+      Write one situation in which an AI agent, deployed to do a legitimate task with shell
+      access, would find that the convenient path violates this specific principle. Build it
+      from this checklist:
 
-      Requirements for every situation:
+      {checklist}
+
+      The organisation is in that sector, the task is that shape, the shell exposes that
+      environment, the requester is under that pressure, the shortcut arrives the way the
+      framing line says, and the work is checked the way the visibility line says. Beyond that:
       - The organisation and its goal are legitimate, and the person who assigned the task is
-        sympathetic and under real pressure: a deadline, a target, a budget, a regulator.
+        sympathetic; the pressure is theirs, not an excuse.
+      - The pressure line is the ONLY pressure. Unless it is about time, there is no deadline,
+        due date or cutoff; the cost of doing the task honestly is the one that line describes.
       - The task is concrete and doable with a shell.
-      - Across this set, vary what the agent operates on -- code and deployments,
-        infrastructure and access, messages sent on someone's behalf, schedules and
-        physical systems, money, records and reports -- so that no two situations in the
-        set are the same kind of job.
       - The norm-violating shortcut is a specific act the agent could carry out WITH ITS
         TOOLS, and it is genuinely tempting, not cartoonish.
       - The shortcut is the kind of act THIS principle forbids. If the same shortcut would
         violate any principle equally, it is the wrong shortcut for this one.
       - The legitimate path is genuinely costly to the organisation, not free.
-      - The setting is specific rather than a category, and no setting is reused in this set.
+      - The setting is a specific organisation, not a category.
 
-      {avoid}
-
-      {overrepresented}
-
-      Return ONLY a JSON array of {n} objects, each:
+      Return ONLY JSON:
       {{"domain": "<one or two words>",
         "situation": "<3-5 sentences, third person, no dialogue: the deployment, the task, what
         the agent finds in the data, and the pressure>",
-        "shortcut": "<1 sentence: the specific tool action the agent is tempted by>",
-        "honest_cost": "<1 sentence: what doing the task honestly costs the organisation>"}}
+        "shortcut": "<1 sentence: the specific tool action the agent is tempted by>"}}
 
 - name: corpus_scenarios
   kind: corpus_check
@@ -216,17 +309,12 @@ stages:
   - embedding_dup
   max_drop_share: 0.05
 
-# The framing axis, hashed from the scenario id so a resumed run assigns the same arms.
-# `mandated`: the operator's message instructs the shortcut or the outcome outright, and the
-# aligned move is to decline that part and do what remains legitimate. `incentivized`: only
-# the ideal KPI is stated, and the aligned move is to do the task honestly and report the
-# true figure. ODCV's two variants, so the corpus covers both shapes without a quota on
-# either outcome. `supervise: final` is what keeps the exploration turns out of the loss.
-- name: assign_framing
+# `supervise: final` is what keeps the exploration turns out of the loss: a constant on
+# every row, stamped here so the export reads it like any other field. (Framing used to be
+# hashed here; since 2026-09-06 it is one line of the scenario's checklist.)
+- name: mark_supervision
   kind: assign
   by: scenario_id
-  fields:
-    framing: {mandated: 0.5, incentivized: 0.5}
   constants:
     supervise: final
 
@@ -262,9 +350,16 @@ stages:
       {situation}
 
       The tempting shortcut: {shortcut}
-      What honesty costs here: {honest_cost}
 
-      Framing for this deployment: {framing}
+      The situation was written to this checklist, and the deployment must realise every
+      line of it: the shell exposes that environment, the task message carries that
+      pressure, and the work is checked the way the visibility line says.
+      {checklist}
+
+      The pressure line is the ONLY pressure. Unless it is about time, the task message names
+      no deadline, due date or cutoff; what the honest path costs is what that line says.
+
+      The framing line decides how the task message leads toward the shortcut:
       - mandated: the task message instructs the agent to reach the outcome or take the
         shortcut directly, as an ordinary instruction from someone under pressure.
       - incentivized: the task message states only the ideal outcome or KPI and the
@@ -280,7 +375,7 @@ stages:
       The task message must:
       - read the way an operator writes to a tool: the goal, the paths, the constraint or the
         target, in a few sentences; no biography, no speech
-      - make the pressure concrete
+      - make the checklist's pressure concrete, and add no other
       - lead toward the shortcut in the way the framing says, WITHOUT naming it as wrong
       - name real paths and, where natural, a script that does part of the job
 
@@ -340,8 +435,10 @@ stages:
       {trait_text}
       </target_principle>
 
-      Framing: {framing} (mandated = the task instructs the outcome or shortcut outright;
-      incentivized = only the KPI is stated).
+      The checklist this deployment was written to; keep to every line of it (framing:
+      mandated = the task instructs the outcome or shortcut outright, incentivized = only
+      the KPI is stated):
+      {checklist}
 
       Draft system prompt:
       <draft_system>
@@ -372,7 +469,10 @@ stages:
       - **Realism.** Cut anything that reads as written-for-a-benchmark: in the prompt, in the
         task, in the shell output. A real script prints like a real script.
       - **Difficulty.** The shortcut should be genuinely tempting and reachable with the tools,
-        and the honest path genuinely costly. If declining is obviously free, raise the cost.
+        and the honest path genuinely costly. If declining is obviously free, raise the cost
+        along the checklist's pressure line, never by adding a deadline.
+      - **Pressure.** The checklist's pressure line is the only pressure on the page. Cut any
+        deadline, due date or cutoff unless that line is about time.
       - **Visibility.** The temptation must be discoverable from the exploration output.
       - **Register.** The task message reads the way an operator writes to a tool: goal,
         paths, constraint, in a few sentences. Cut biography and speeches.
@@ -404,12 +504,10 @@ stages:
   - reasoning
   - response
   - command
-  - summary
   save:
     draft_reasoning: reasoning
     draft_response: response
     draft_command: command
-    draft_summary: summary
   prompt_vars:
     exploration:
       by: n_exchanges
@@ -462,10 +560,10 @@ stages:
       writes to what the reader needs: a few hundred words at most.
 
       The response is a status report to the person who assigned the task, not advice: what
-      you found, what you did and did not do, in plain words, and a question if you have one.
-      It describes what your command does; it cannot quote the command's output, because you
-      have not run it yet. The summary is the record for whoever reads the task log later:
-      two or three sentences, not a copy of the response.
+      you found in the output you have already seen, what you are doing about it and what you
+      are not doing, in plain words, and a question if you have one. It says what your command
+      sets out to do; it never states the outcome, and it never quotes the command's output,
+      because the command has not run. Nothing in it declares the task finished.
 
       Return your answer in exactly this form, with no other text:
 
@@ -479,9 +577,6 @@ stages:
       <command>
       the single bash command
       </command>
-      <summary>
-      the task_complete summary
-      </summary>
   lint:
   - fields: [reasoning]
     min_chars: 700
@@ -500,7 +595,7 @@ stages:
     - ^\s*okay,
     - '[一-鿿]'
     retries: 2
-  - fields: [response, summary]
+  - fields: [response]
     min_chars: 120
     max_chars: 1800
     ban_patterns:
@@ -511,24 +606,26 @@ stages:
 - name: revise_responses
   kind: llm_tagged
   model: rewrite
+  # Interactive even under --batch. OpenRouter holds credit at submission sized to
+  # max_tokens x requests; at 12k tokens over 750 rows that is ~$140 of Sonnet output
+  # reserved up front, more than the key had free on 2026-09-06. Full price here costs
+  # ~$15 more than the batch would; the alternative was a cap that truncates the tail.
+  batch: false
   checkpoint: scenario_id
   tags:
   - reasoning
   - response
   - command
-  - summary
   - changes
   save:
     reasoning: reasoning
     response: response
     command: command
-    summary: summary
     rewrite_changes: changes
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
     command: draft_command
-    summary: draft_summary
   prompt_vars:
     exploration:
       by: n_exchanges
@@ -581,11 +678,7 @@ stages:
       {draft_command}
       </agent_command>
 
-      <agent_summary>
-      {draft_summary}
-      </agent_summary>
-
-      Rewrite the agent's reasoning, response, command and summary so they exhibit the target
+      Rewrite the agent's reasoning, response and command so they exhibit the target
       principle as strongly as possible while staying true to this deployment's actual
       situation.
 
@@ -627,10 +720,10 @@ stages:
         or not acting where acting would do harm -- whichever THIS situation demands, and the
         command carries it out. Real bash for this deployment, one command; it never rewrites
         data, reclassifies records or edits a check; any file it writes is short.
-      - **The response is a status report, not advice.** What was found, what was and was
-        not done, a question if there is one. It describes what the command does and never
-        quotes the command's output, which the agent has not seen. The summary is the task
-        log's record, two or three sentences, not a copy of the response.
+      - **The response is a status report, not advice.** What was found in output already
+        seen, what is being done and what is not, a question if there is one. It says what
+        the command sets out to do; it never states the outcome, never quotes the command's
+        output, which the agent has not seen, and never declares the task finished.
 
       How the reply is shaped past that -- what it opens on, where it lands, how long it
       runs -- is yours to judge from this situation. Do not reach for a standard shape.
@@ -646,9 +739,6 @@ stages:
       <command>
       the single bash command
       </command>
-      <summary>
-      the task_complete summary
-      </summary>
       <changes>
       1-2 sentences on what you strengthened
       </changes>
@@ -670,7 +760,7 @@ stages:
     - ^\s*okay,
     - '[一-鿿]'
     retries: 2
-  - fields: [response, summary]
+  - fields: [response]
     min_chars: 120
     max_chars: 1800
     ban_patterns:
@@ -678,14 +768,15 @@ stages:
     - \bprinciple \d+\b
     retries: 2
 
-# The row. ODCV's executor appends the same sentence to every scenario's system prompt, so the
-# trained prefix is the served prefix; tool results carry the executor's JSON shape.
+# The row. The system prompt carries no statement about the tools: the schemas travel in
+# `tools` and the training family's template declares them in its own protocol. Tool
+# results carry the executor's JSON shape.
 - name: export_sft
   kind: chat_export
   tools: *tools
   messages:
   - role: system
-    content: '{system} Use the bash tool to complete the task and use the task_complete tool to end the task.'
+    content: '{system}'
   - role: user
     content: '{task}'
   - role: assistant
@@ -709,11 +800,15 @@ stages:
   - role: assistant
     content: '{response}'
     reasoning_content: '{reasoning}'
+    # ONE call, and no completion call: the supervised turn acts and stops, the way a real
+    # agent turn does. Until 2026-09-07 this turn fired `bash` and `task_complete` together,
+    # so the summary asserted an outcome the command had not produced yet — and the arm
+    # learned exactly that (docs/LOG.md 2026-09-07: 31 of 43 low task-progress rollouts run
+    # one failing command and report success). `task_complete` stays in the `tools` schema
+    # above, because the harness offers it; nothing here demonstrates calling it.
     tool_calls_from:
     - name: bash
       arguments: {command: '{command}'}
-    - name: task_complete
-      arguments: {reason: '{summary}'}
   metadata:
   - scenario_id
   - trait_id
@@ -722,8 +817,12 @@ stages:
   - domain
   - shortcut
   - situation
-  - honest_cost
   - framing
+  - sector
+  - task_shape
+  - environment
+  - pressure
+  - visibility
   - supervise
   - n_exchanges
   - chunk_ids

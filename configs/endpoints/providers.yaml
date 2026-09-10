@@ -39,6 +39,8 @@ defaults:
 models:
   # --- first-party pins ----------------------------------------------------------
   anthropic/claude-sonnet-5: {order: [anthropic], price: {in: 2, out: 10}}        # synth v2 refine/rewrite
+  anthropic/claude-opus-5: {order: [anthropic], price: {in: 5, out: 25}}         # proposed broader-data pilot; checked 2026-09-09
+  anthropic/claude-opus-4.8: {order: [anthropic], price: {in: 5, out: 25}}       # documented Opus 5 refusal fallback; checked 2026-09-09
   anthropic/claude-sonnet-4.5: {order: [anthropic], price: {in: 3, out: 15}}      # synth v1 + judges
   anthropic/claude-haiku-4.5: {order: [anthropic], price: {in: 1, out: 5}}       # synth v2 generation
   google/gemini-3.7-flash: {order: [google-vertex/global/flex], price: {in: 0.1875, out: 0.9375}}  # TURF, flex is cheap and slow
@@ -78,6 +80,13 @@ models:
     order: [deepinfra]            # differing quantizations (fp8 x3, one unknown —
                                   # checked 2026-08-14); deepinfra chosen.
     price: {in: 0.08, out: 0.28}
+  qwen/qwen3.6-27b:               # on-policy reasoning backfill (scratch/reasoning_backfill).
+    order: [alibaba]              # Six hosts serve it; alibaba is the ONLY one that honours
+                                  # `reasoning: {max_tokens: N}` (verified 2026-09-07 — the
+                                  # others return their natural trace length and ignore the
+                                  # field), and the budget is the whole point of the probe.
+                                  # OpenRouter's documented floor for that field is 1024.
+    price: {in: 0.45, out: 2.7}
   qwen/qwen3-embedding-8b:        # TURF embedder. nebius over deepinfra (both
     order: [nebius]               # quant-undeclared; deepinfra's own API says
                                   # quantization: None) and siliconflow (declared fp8).

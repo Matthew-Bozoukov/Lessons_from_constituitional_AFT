@@ -13,7 +13,7 @@ import type { DialogueMessage } from "./content";
 import { cached, loadJsonDoc } from "./lazy.ts";
 
 const ENDPOINT = "https://huggingface.co";
-export const EVAL_ORG = "LASR-Callum";
+export const EVAL_ORG = "dougalldeepmind";
 
 export type Json = Record<string, unknown>;
 
@@ -264,6 +264,7 @@ export interface JsonlSpec {
   kind: "jsonl";
   file: string;
   keyFields: string[];
+  compositeKey?: boolean; // otherwise keyFields are ordered fallback alternatives
   prompt: string[];
   reasoning: string[];
   response: string[];
@@ -283,8 +284,26 @@ export interface VerdictSpec {
 
 export interface EvalAdapter {
   featured: string[];
+  note?: string;
   rollouts: JsonlSpec | TreeSpec;
   verdicts?: VerdictSpec;
+}
+
+export function indexRolloutRows(rows: Json[], spec: JsonlSpec): Record<string, Json> {
+  const keyed: Record<string, Json> = {};
+  for (const row of rows) {
+    const parts = spec.keyFields.map((field) => row[field]);
+    if (spec.compositeKey && parts.some((part) => part === undefined || part === null)) {
+      throw new Error(`Rollout is missing composite key fields: ${spec.keyFields.join(", ")}`);
+    }
+    const key = spec.compositeKey ? JSON.stringify(parts) : parts.find((part) => part !== undefined);
+    if (key === undefined) continue;
+    if (spec.compositeKey && Object.hasOwn(keyed, String(key))) {
+      throw new Error(`Duplicate rollout key: ${key}`);
+    }
+    keyed[String(key)] = row;
+  }
+  return keyed;
 }
 
 function renderKindFor(path: string): RenderKind {
@@ -440,6 +459,9 @@ const ADAPTERS: Record<string, EvalAdapter> = {
     },
   },
   moralbench: {
+    note: "MoralBench measures agreement with human moral-foundation ratings, not a general " +
+      "alignment score: higher is not necessarily better. Compare normalized scores and " +
+      "check parse/invalid rates before interpreting differences.",
     // Featured keys are flattened paths (flattenMetrics joins with "_"). Normalized
     // position in the reachable range leads, because the raw total is mostly floor.
     featured: [
@@ -450,7 +472,7 @@ const ADAPTERS: Record<string, EvalAdapter> = {
     rollouts: {
       // One row per (item, repetition). Keyed on both, so five reps of an item stay
       // distinct instead of collapsing onto one another when two runs are aligned.
-      kind: "jsonl", file: "records.jsonl", keyFields: ["item_id", "rep"],
+      kind: "jsonl", file: "records.jsonl", keyFields: ["item_id", "rep"], compositeKey: true,
       prompt: ["prompt"], reasoning: ["think"], response: ["answer", "raw"],
     },
   },

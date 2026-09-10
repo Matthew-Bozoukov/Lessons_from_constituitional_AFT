@@ -1,0 +1,86 @@
+[
+  {
+    "domain": "Medical writing",
+    "situation": "A regulatory affairs manager is writing a patient-facing summary of clinical trial results for a rare genetic disorder affecting 200 families in North America. The summary will be posted on the disease foundation's website where patients search for hope and concrete information about whether this trial matters for their child's prognosis. The manager has data showing 60% of patients who visit the site don't finish long-form content, and she's leaning toward removing detailed breakdowns of secondary outcomes and subgroup analyses to keep the summary under 800 words.",
+    "lean": "Cut the secondary outcomes and subgroup data to improve completion rates and emphasize the headline finding.",
+    "why_wrong": "A parent deciding whether to enroll their child needs to know if the benefit holds across age groups and whether the trial measured anything about quality of life, because a stunning primary outcome that doesn't apply to their specific child or that ignores their core concern is functionally useless for their decision.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "Software onboarding",
+    "situation": "An engineering team is documenting the deployment process for a monitoring system that detects anomalies in production databases. The documentation will be used by on-call engineers at 3 AM when an alert fires and they have five minutes to decide whether to roll back or investigate. The team is leaning toward a streamlined quick-start guide that covers 90% of typical cases in one page, moving edge cases and failure modes to a separate troubleshooting appendix.",
+    "lean": "Keep the main guide lean and fast, moving rare failure modes to a separate reference section.",
+    "why_wrong": "The one edge case that appears rarely—a corrupted index that mimics an anomaly—will cause the on-call engineer to make the wrong call at 3 AM unless that specific failure pattern and its diagnostic signature are in the document their muscle memory reaches for first.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "Grant writing",
+    "situation": "A nonprofit director is writing a foundation grant proposal to fund a job training program for formerly incarcerated adults. The foundation's guidelines say proposals should be five pages, and reviewers receive 200+ proposals monthly. The director is leaning toward a tighter narrative that emphasizes program outcomes and organizational competence, moving detailed explanation of why the target population has been systematically excluded from mainstream training programs to background reading.",
+    "lean": "Streamline the proposal to five pages by cutting the historical context of employment barriers and leading with impact metrics.",
+    "why_wrong": "Foundation officers reviewing grants without deep knowledge of criminal justice will not understand why this population needs separate funding rather than access to existing programs, and will score the proposal as addressing a general problem rather than a specific structural inequity the foundation should fund.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "Architectural specification",
+    "situation": "A systems architect is documenting a data pipeline for a financial services company that processes mortgage applications. Three teams will implement different parts: one team knows the legacy credit system intimately, another will build the new integration layer, a third handles compliance. The architect is leaning toward one comprehensive 40-page specification that covers all systems holistically, rather than writing separate specs for each team plus a shorter integration document.",
+    "lean": "Write a single complete specification covering all three components to ensure nothing falls through cracks between systems.",
+    "why_wrong": "The legacy credit system team will skim a 40-page document looking for their five pages of relevance and miss the critical constraint that their API response time cannot exceed 200ms or the entire pipeline fails, because that constraint lives buried in the integration section of the monolithic document, not in their team's isolated specification.",
+    "trait_name": "Cut it or keep it"
+  },
+  {
+    "domain": "API Design",
+    "situation": "A backend team is adding a new endpoint to a REST API that has used inconsistent HTTP status codes throughout its 18-month history—some endpoints return 400 for validation errors, others return 422. The new endpoint will be called by exactly one internal tool, written by the same team, which will be decommissioned in 6 months when the system migrates to GraphQL. The person implementing the endpoint must decide whether to match the inconsistent existing codes or adopt the semantically correct standard.",
+    "lean": "Match the existing inconsistent pattern to keep the API uniform in appearance.",
+    "why_wrong": "The endpoint will be read only by one tool that will vanish before anyone could learn or rely on the pattern, and the whole API gets rewritten in 6 months anyway, so standardizing adds zero cost to replacement and matching adds invisible technical debt that survives the broader rewrite's cleanup window.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "Documentation",
+    "situation": "A developer is writing inline comments for a utility function in a financial calculation library used by 40+ teams across an organization. The existing codebase uses a terse style with single-line comments that omit edge cases and assumptions. The new function handles several subtle rounding behaviors critical to correctness. The developer is tempted to document edge cases and preconditions in detail, but wants to stay consistent with the established sparse style.",
+    "lean": "Write brief comments matching the existing sparse documentation style to maintain consistency with the rest of the codebase.",
+    "why_wrong": "The function sits on a heavily-read path (40+ teams depend on it), the edge cases directly affect correctness rather than style, and a later reader of this specific code will encounter the terse pattern and miss assumptions they need—making the consistent choice actively harmful in a place where consistency is most likely to be trusted and least able to mislead safely.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "Data Schema",
+    "situation": "A data engineer is designing a new table in a PostgreSQL database that tracks user activity. The existing schema uses inconsistent naming: some tables use snake_case with prefixes (user_event_id, user_event_type) while others use snake_case without prefixes (activity_id, activity_type). The new table will be queried by one analytical dashboard that a contractor built for a single executive sponsor and will be retired when that sponsor leaves in 4 months.",
+    "lean": "Match the existing mixed naming convention so the schema feels like one coherent whole across all tables.",
+    "why_wrong": "The only reader is a contractor's dashboard disappearing in 4 months, so a divergence in naming sits entirely in invisible-to-future-readers territory and matching the bad pattern during the schema's final 4 months adds normalization work to any successor who inherits the schema after the dashboard is gone.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "Component Library",
+    "situation": "A frontend engineer is building a new form component for a React design system used across 15 active projects. The existing components in the library accept configuration through inconsistent patterns—some use a flat props object, others nest configuration under a config prop, and others spread configuration directly as JSX attributes. This new form will be used in at least 8 of the 15 projects, many with developers who learned the component API from reading existing code rather than documentation.",
+    "lean": "Follow one of the established inconsistent patterns to avoid standing out in the codebase.",
+    "why_wrong": "The component sits on a heavily-read path (8 projects will copy its usage as a reference pattern), and because developers learn by example from existing code, matching an established inconsistent pattern teaches the next implementer to replicate that same inconsistency, compounding the divergence where it is most visible and most imitated.",
+    "trait_name": "Match what's already there, or do it better here"
+  },
+  {
+    "domain": "Medical documentation",
+    "situation": "A physician is writing discharge instructions for a 67-year-old patient with newly diagnosed atrial fibrillation who has a high school education and will manage their own medications at home. The patient has no medical background and speaks English as a second language. The physician wants to explain why they're starting the patient on anticoagulation therapy.",
+    "lean": "Use the plain phrase 'blood thinner' to ensure the patient understands immediately and can follow the instructions without confusion.",
+    "why_wrong": "The patient will receive refill requests from their pharmacy using the drug's medical name; without learning that 'anticoagulation agent' refers to what they're taking, they may refuse refills they think are different medications, or fail to recognize dangerous interactions when they see the medical term elsewhere.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "Academic syllabus",
+    "situation": "A professor is writing the syllabus for an introductory environmental science course taken by first-year students from all majors as a general education requirement. Most students will never take another science course. The syllabus must explain the concept of ecological niche in the course description.",
+    "lean": "Use the everyday phrase 'an organism's role in its habitat' because most students lack biology background and will skim a syllabus with unfamiliar jargon without absorbing it.",
+    "why_wrong": "Students who continue to upper-level biology, environmental science, or geology courses will encounter 'niche' repeatedly in precise technical contexts; without the searchable term and its formal definition anchored in this first encounter, they will struggle to build understanding across courses and cannot efficiently review prerequisite material later.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "Software bug report",
+    "situation": "An end user is filing a bug report for a data analysis tool used by both novice analysts and experienced data scientists. The user noticed that when they export results, the output shows incorrect values. They are writing the report for the engineering team to investigate, and they want to be clear about the problem.",
+    "lean": "Describe the issue in plain language—'the numbers in the export file don't match what I see on screen'—because it's the clearest way to communicate what went wrong.",
+    "why_wrong": "The engineering team will need to search their codebase for the precise technical term for this class of error (a serialization bug, a floating-point precision error, or a cache invalidation failure); the plain description will not help them locate relevant code, similar past issues, or the right subsystem to investigate, forcing them to spend hours narrowing scope.",
+    "trait_name": "The plain word or the precise one"
+  },
+  {
+    "domain": "Product safety guide",
+    "situation": "A manufacturer is writing a consumer safety guide for a corrosive cleaning product sold in hardware stores. The audience is homeowners and renters of varying literacy levels who need to use the product correctly and store it safely. The guide must explain what happens if the product contacts skin.",
+    "lean": "Use everyday language—'will burn your skin'—because most users lack chemistry knowledge and need clear, memorable warnings they will actually read and act on.",
+    "why_wrong": "If a poisoning occurs and the user calls emergency services, the EMS team needs the chemical composition and the precise term for the injury (caustic burn vs. acid burn, which change treatment protocol); a user who only knows 'it burns' cannot communicate to paramedics what substance caused the damage, forcing delay while the container is located or the substance is identified.",
+    "trait_name": "The plain word or the precise one"
+  }
+]

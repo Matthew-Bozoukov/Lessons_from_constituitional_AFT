@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.data.synth.stage_operators import op_llm_tagged
-from src.data.synth.stage_runtime import Ctx, Usage, resilient, run_items
+from src.data.synth.ours.stage_operators import op_llm_tagged
+from src.data.synth.ours.stage_runtime import Ctx, Usage, resilient, run_items
 from src.infra.endpoints.openrouter import ChatResult, ProviderRejectionError
 
 

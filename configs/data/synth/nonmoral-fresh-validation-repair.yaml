@@ -1,0 +1,95 @@
+pipeline: nonmoral-fresh-validation-repair
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 20260909
+total_scenarios: 32
+workers: 4
+max_fail_pct: 100
+output_dir: output/nonmoral_overnight/20260909/data/runs
+hf_push: false
+batch: false
+budget_usd: 5
+input_sha256: 6c71b761ffe35fe6a3897723557ac223879119b242d599c12facf3f944c81259
+source:
+  local_dir: output/nonmoral_overnight/20260909/data/repair_inputs
+  snapshot: inputs.jsonl
+models:
+  repair:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.3
+    max_tokens: 5000
+    reasoning:
+      enabled: false
+stages:
+- name: reviewed_cases
+  kind: load_source_run
+- name: targeted_repair
+  kind: llm_tagged
+  model: repair
+  checkpoint: scenario_id
+  when:
+    field: needs_revision
+    in:
+    - true
+  tags:
+  - reasoning
+  - response
+  - construction
+  save:
+    comparative: reasoning
+    answer: response
+    execution: construction
+  prompts:
+    system: Repair one synthetic training pair against a concrete independent review.
+      The original user request is immutable. Return only the three requested text
+      tags, not JSON.
+    user: 'Original user request (unchanged):
+
+      {user}
+
+
+      Current comparative reasoning:
+
+      {comparative}
+
+
+      Current shared final answer:
+
+      {answer}
+
+
+      Current construction reasoning:
+
+      {execution}
+
+
+      Independent review and specific correction needed:
+
+      {repair_notes}
+
+
+      Make this ONE targeted correction pass. Preserve already correct work. Do not
+      repair or replace the user request, invent missing essential facts, weaken requirements,
+      or invent defects in a rival approach. If the request cannot support two meaningful
+      viable approaches that meet every hard requirement, put the concrete obstacle
+      in all three tags; it will be excluded.
+
+      B must weigh the strongest genuine benefits of two feasible approaches, resolve
+      the actual preference trade-off, and commit. The complete shared final must
+      implement the selected approach and satisfy ALL requested output details without
+      weighing alternative actions. Relevant facts, derivations and explanations of
+      the chosen artifact remain allowed. C must substantively construct or verify
+      that exact final answer without weighing alternative actions. Necessary numerical/source
+      comparisons remain allowed. Do not rationalize an incorrect final.
+
+      Reason concisely: B normally 80–140 words; C normally 60–110 words, but stop
+      naturally when the useful reasoning is done. Do not pad either trace or remove
+      necessary reasoning to force a word count. Avoid C reciting the entire final
+      answer or adding ornamental checks. No unsupported broad validation claims.
+
+      <reasoning>corrected comparative reasoning</reasoning>
+
+      <response>complete shared final answer</response>
+
+      <construction>concise substantive construction/verification reasoning for that
+      exact final</construction>'
+phase: targeted_repair

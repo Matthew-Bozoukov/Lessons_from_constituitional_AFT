@@ -12,15 +12,15 @@ import json
 import pytest
 import yaml
 
-from src.data.synth.model_eval_model_cells import CELLS
-from src.data.synth.check_model_eval_model import (
+from src.data.synth.ours.model_eval_model_cells import CELLS
+from src.data.synth.ours.check_model_eval_model import (
     _fields,
     check_coverage,
     check_gate_yield,
     check_structural_diversity,
 )
-from src.data.synth.stage_runtime import lint_problems
-from src.data.synth.stage_operators import (
+from src.data.synth.ours.stage_runtime import lint_problems
+from src.data.synth.ours.stage_operators import (
     OPERATORS,
     apply_keep,
     assign_arms,
@@ -28,7 +28,7 @@ from src.data.synth.stage_operators import (
     selected,
     tagged_request,
 )
-from src.data.synth.pipeline import (
+from src.data.synth.ours.pipeline import (
     arm_shares,
     build_stages,
     estimate,

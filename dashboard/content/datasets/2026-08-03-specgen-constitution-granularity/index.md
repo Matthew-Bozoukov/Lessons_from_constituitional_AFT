@@ -4,7 +4,7 @@ date: '2026-08-03'
 summary: 'Generated stub — no dataset card summary found. Replace with a written summary.'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-03-specgen-constitution-granularity
+  repo_id: dougalldeepmind/2026-08-03-specgen-constitution-granularity
   revision: b8e5921c1e6f3676ec6ccc3ff23a5c87364e90e9
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-03-specgen-constitution-granularity`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-specgen-constitution-granularity)
+Source: [`dougalldeepmind/2026-08-03-specgen-constitution-granularity`](https://huggingface.co/datasets/dougalldeepmind/2026-08-03-specgen-constitution-granularity)

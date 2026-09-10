@@ -4,8 +4,8 @@ import json, sys
 from pathlib import Path
 from omegaconf import OmegaConf
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-from src.data.synth.derive import derive_vars
-from src.data.synth.stage_runtime import lint_problems
+from src.data.synth.ours.derive import derive_vars
+from src.data.synth.ours.stage_runtime import lint_problems
 from src.endpoints.openrouter import CACHE_MARK
 
 cfg = OmegaConf.to_container(OmegaConf.load("configs/data/synth/2026-08-25_verbose_cot.yaml"), resolve=True)

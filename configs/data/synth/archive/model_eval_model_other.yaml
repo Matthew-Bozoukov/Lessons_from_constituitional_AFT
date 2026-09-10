@@ -9,7 +9,7 @@
 # ABOUTME: Other-arm corpus config for model-eval-model: ONLY the m3/m4 critique cells (a
 # ABOUTME: transcript of ANOTHER assistant's exchange in the user turn, the model's evaluation
 # ABOUTME: as the reply), sized to mirror the self arm (1,050/cell). --smoke = the 8-doc pilot.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/model_eval_model_other.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/model_eval_model_other.yaml [--smoke]
 #
 # The other-attribution twin of model_eval_model_self.yaml, carrying the same one
 # substantive change vs the base model_eval_model.yaml: the m3 GENERATOR is unblinded
@@ -21,12 +21,13 @@
 # Hidden reasoning off on both stages (the visible <reasoning> IS the deliberation;
 # measured 2026-08-06: halves cost and fixes in-character format drift).
 
+method: ours
 pipeline: model_eval_model_other
 
 seed: 0
 
 # Must match the SOURCE run's constitution (sha-checked at load).
-constitution: "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 
 source:
   hf_repo: "LASR-Callum/2026-08-04-synthdoc-package-difficult-advice-stage-cache"

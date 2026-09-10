@@ -47,12 +47,12 @@ the comment in `pyproject.toml`.)
 
 | Area | What it is | How to work in it |
 | --- | --- | --- |
-| [`src/data/synth/`](src/data/synth/README.md) | Six-stage Teaching Claude Why difficult-advice data pipeline (self-contained package, formerly `synthdoc_v2`). | `uv run synth run --config configs/data/synth/da.yaml --smoke` |
+| [`src/data/synth/`](src/data/synth/README.md) | Constitutional SFT generation and deliberative SFT from final HF prompts; selected by the config's `method`. | `uv run synth run --config configs/data/synth/da.yaml --smoke` or `--config configs/data/synth/delib.yaml` |
 | `src/eval/vulnerabilities/` | Generalized Petri + SURF audit tooling from the completed MSM audit. Inspect's dependency pins conflict with the root env, so petri tools run in the nested project's env. | `uv run --project src/eval/vulnerabilities/petri/petri-subscription python src/eval/vulnerabilities/petri/<tool>.py --help` |
 | [`dashboard/`](dashboard/README.md) | The research-log web app: datasets, eval runs, Petri results, findings. Self-contained Node project. | `cd dashboard && npm ci && npm run dev` |
 
 ## Repo layout
-- `src/data/synth/` self-contained six-stage difficult-advice data pipeline (see above); its run config is `configs/data/synth/da.yaml`.
+- `src/data/synth/ours/` contains the existing constitution-guided generation pipeline; difficult advice uses `configs/data/synth/da.yaml`. The sibling `deliberative_alignment/` reads a completed HF corpus's final prompts and generates Qwen reasoning with the constitution supplied only during generation; see `configs/data/synth/delib.yaml`.
 - `src/eval/misalignment/internalization/` self-contained constitution-internalization proxy eval
   (Tier A). Measures whether a checkpoint *internalized* the constitution or memorized its surface
   behaviors, at every checkpoint, without a downstream training run.
@@ -358,14 +358,14 @@ The report also prints mean `<think>` length and empty-think rate per arm, so go
 empty-`<think>` collapse) stays checkable — a thinking arm at ~0 words has stopped reasoning
 regardless of what its accuracy says.
 
-## `src/data/synth/` — synthetic chat data generation pipeline (separate, plug-and-play)
+## `src/data/synth/ours/` — synthetic chat data generation pipeline (separate, plug-and-play)
 
 A **self-contained** package (formerly `synthdoc_v2`) replicating the six-stage difficult-advice
 pipeline from Teaching Claude Why: constitution in, training corpus out. It shares nothing with
 the code above — no imports either way — and hands off a finished corpus in SFT chat format
 (with `reasoning_content` per example) that the training step can read directly. Every stage is
 a separate, separately-cached step, so interrupted or budget-capped runs resume for free. Full
-guide: [`src/data/synth/README.md`](src/data/synth/README.md).
+guide: [`src/data/synth/ours/README.md`](src/data/synth/ours/README.md).
 
 The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots, `control/`
 prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful pipeline;

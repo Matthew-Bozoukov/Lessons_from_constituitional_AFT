@@ -9,7 +9,7 @@ from pathlib import Path
 import fire
 from omegaconf import OmegaConf
 
-from src.data.synth.constitution import units_from_config
+from src.data.synth.ours.constitution import units_from_config
 from src.endpoints.openrouter import OpenRouterClient
 
 CFG = "scratch/trait10_curiosity/difficult_advice_t10.yaml"

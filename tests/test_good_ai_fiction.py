@@ -13,16 +13,16 @@ from src.naming import check_style, synth_name
 import pytest
 import yaml
 
-from src.data.synth.constitution import units_from_config
-from src.data.synth.pipeline import build_stages, estimate, n_examples
-from src.data.synth.stage_operators import (
+from src.data.synth.ours.constitution import units_from_config
+from src.data.synth.ours.pipeline import build_stages, estimate, n_examples
+from src.data.synth.ours.stage_operators import (
     deal_labels,
     library_picks,
     load_library,
     scenario_batches,
     tagged_request,
 )
-from src.data.synth.stage_runtime import lint_problems, price_of
+from src.data.synth.ours.stage_runtime import lint_problems, price_of
 
 CFG_PATH = "configs/data/synth/good-ai-fiction.yaml"
 TAX_PATH = "configs/data/synth/good-ai-fiction/taxonomy.yaml"
@@ -464,8 +464,8 @@ _UNITS = [{"trait_id": "t1", "index": 0, "name": "Oversight", "text": "..."},
 
 def _drive(monkeypatch, tmp_path, stage, cfg, capture=None):
     """Run op_scenarios against a scripted generator; return (rows, prompts seen)."""
-    from src.data.synth import stage_operators as ops
-    from src.data.synth.stage_runtime import Ctx, Usage
+    from src.data.synth.ours import stage_operators as ops
+    from src.data.synth.ours.stage_runtime import Ctx, Usage
 
     def fake_call_json(client, usage, model, system, user, temp, max_tokens, stage=None,
                        extra=None):

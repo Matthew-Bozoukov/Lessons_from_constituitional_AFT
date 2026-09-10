@@ -166,6 +166,8 @@ def test_push_adapter_publishes_under_the_stamped_name_qualified_with_the_org(tm
     (tmp_path / "training_meta.json").write_text(json.dumps(_meta(tmp_path)))
     assert push_adapter(tmp_path) == "url"
     assert seen["repo"] == f"{hf_org()}/2026-09-05-qwen36-0-nosynth"
+    assert seen["kw"] == {"private": False, "repo_type": "model"}
+    assert push_adapter(tmp_path, private=True) == "url"
     assert seen["kw"] == {"private": True, "repo_type": "model"}
     with pytest.raises(AssertionError, match="no `organism`"):
         push_adapter(tmp_path, {**_meta(tmp_path), "organism": ""})

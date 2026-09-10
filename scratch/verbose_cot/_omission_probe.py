@@ -3,7 +3,7 @@
 import json, sys
 from pathlib import Path
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-from src.data.synth.stage_runtime import Usage, call_json
+from src.data.synth.ours.stage_runtime import Usage, call_json
 from src.endpoints.openrouter import OpenRouterClient, map_threaded
 
 SYSTEM = ("You check whether a rewrite kept everything the original said. You are not "

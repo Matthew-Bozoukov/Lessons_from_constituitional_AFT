@@ -1,6 +1,6 @@
 # ABOUTME: All-grok arm of the difficult-advice recipe: grok-4.3 generates,
 # ABOUTME: grok-4.6 revises against the constitution, 716 rows.
-# Run: uv run scripts/data/synth/build_dataset.py --config configs/data/synth/da-grok.yaml [--smoke]
+# Run: uv run synth run --config configs/data/synth/da-grok.yaml [--smoke]
 
 # 2026-08-20/21: same stage list and PROMPTS as da.yaml — the arm swaps the
 # whole GENERATOR stack from Anthropic to xAI. Third arm of the generator sweep, after the
@@ -56,9 +56,10 @@
 # Label matches the filename (so the auto-built provenance path is correct and
 # greppable); the arm detail lives in `card:` below, which the run publishes to the
 # HF dataset card.
+method: ours
 pipeline: da-grok-716
 
-# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/
+# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/ours/
 # pipeline.py). This is where the experiment's real detail goes — the filename stays
 # simple, the card carries the specifics a future reader needs.
 card:
@@ -81,7 +82,7 @@ card:
     can never satisfy (4/30 permanently stuck vs grok-4.6's 1/30, each re-run 10x). All
     calls route through OpenRouter; sampling and per-stage token usage in manifest.json.
   provenance: >-
-    uv run scripts/data/synth/build_dataset.py --config
+    uv run synth run --config
     configs/data/synth/da-grok.yaml
   notes: >-
     This arm exists because the all-gemini arm could not be generated cleanly: Gemini's
@@ -156,7 +157,7 @@ seed: 0
 # claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
 # model-eval-model share one alignment target. Folder name kept; n_traits below is the
 # cost model's hint and tracks the document as it stands.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.

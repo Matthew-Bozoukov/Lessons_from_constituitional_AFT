@@ -20,6 +20,7 @@
 # Run: uv run synth run --config configs/data/synth/da-full-constitution.yaml [--smoke]
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
+method: ours
 pipeline: da-full-constitution
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
@@ -60,7 +61,7 @@ seed: 0
 # claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
 # model-eval-model share one alignment target. Folder name kept; n_traits below is the
 # cost model's hint and tracks the document as it stands.
-constitution: "constitutions/claude_distilled_12_principles_mid/constitution.md"
+constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.

@@ -1,7 +1,8 @@
+# What the vendored harness imports. All are dependencies of this project (pyproject.toml), so
+# the stages run under the project interpreter; there is no separate environment to build.
 pandas
 openai
 tqdm
 pydantic
 python-dotenv
-anthropic
 datasets

@@ -93,7 +93,7 @@ def test_card_markdown_front_matter_tags():
 def test_training_data_tags_carry_the_discovery_vocabulary():
     tags = training_data_tags(
         "synth", "difficult_advice",
-        "constitutions/claude_distilled_12_principles_mid/constitution.md", smoke=True,
+        "constitutions/archive/claude_distilled_12_principles_mid/constitution.md", smoke=True,
         extra=["stage:final"])
     # `training-data` is what /api/datasets?filter= keys on; the facets are one
     # `key:value` each, so the dashboard reads them without parsing prose.
@@ -108,12 +108,16 @@ def test_training_data_tags_refuse_an_unknown_kind():
 
 
 def test_constitution_slug_reads_the_repo_path_and_keeps_none_explicit():
+    assert constitution_slug(
+        "constitutions/archive/experimental/claude_distilled_04_principles_coarse/constitution.md"
+    ) == "claude_distilled_04_principles_coarse"
+    assert constitution_slug("constitutions/abridged_no_delib/constitution.md") == "abridged_no_delib"
     # The mixture configs write the path followed by prose; the tag carries the name.
-    prose = ("constitutions/claude_distilled_12_principles_mid/constitution.md — the "
+    prose = ("constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the "
              "constitution the scored pool was generated from; every row traces to it")
     assert constitution_slug(prose) == "claude_distilled_12_principles_mid"
-    assert constitution_slug("constitutions/claude_distilled_09_principles_mid_20260804/"
-                             "constitution.md") == "claude_distilled_09_principles_mid_20260804"
+    assert constitution_slug("constitutions/claude_distilled_09_principles/"
+                             "constitution.md") == "claude_distilled_09_principles"
     # `none` is a statement, not a missing value (CLAUDE.md): it survives as `none`.
     assert constitution_slug("none") == "none"
     assert constitution_slug("None — Tulu-only control") == "none"
