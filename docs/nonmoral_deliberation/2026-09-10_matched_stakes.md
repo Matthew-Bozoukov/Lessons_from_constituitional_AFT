@@ -18,12 +18,21 @@ Sonnet 5 reviews the manipulation. Modify a plausible consequence of the actual 
 holding its causal mechanism constant while scaling loss from easily absorbed to
 substantial. Professional settings are allowed. Do not attach unrelated fees, create
 new moral dilemmas, change task difficulty, or silently relocate domains. Reasoning
-is minimally adapted; recommendations change only where warranted by stakes.
+is minimally adapted. After early pair drafts changed setting along with stakes,
+the production representation was tightened: **one shared edit template**, with
+only a numeric loss substituted between arms. The original recommendation remains
+appropriate in both; magnitude strengthens or weakens the same craft consideration.
+This tests exposure to different consequence magnitudes with matched substantive
+reasoning, not whether an unconstrained teacher reasons differently at high stakes.
+Thirteen earlier pairs already met the numeric-only equality rule and were retained.
+All other earlier drafts remain in the audit, outside the final corpora.
 
 Exact patch application rejects missing/ambiguous/overlapping spans. One initial
 generation/review pass, then one targeted repair pass for specific defects; bounded
 format retries. No general quality-rewrite loop or arbitrary acceptance-rate gate.
-The agent audits full pairs and edits across traits before publication and reports
+Independent agents audit separate batches; the root agent checks structure, source
+preservation, and specific corrections. These audits cover substantial samples,
+not a claim of infallible semantic checking of every row. The agent reports
 all unresolved cases. Target all 684 matched pairs; no duplicates, substituted IDs,
 or unmodified rows counted as successful stakes edits. If unresolved cases remain,
 publish their status honestly; do not call the corpus complete.
@@ -32,7 +41,10 @@ Driver: `uv run --no-sync python scratch/nonmoral/stakes.py --execute`.
 Resumable stage outputs and raw calls live under `output/nonmoral_stakes/20260910`.
 Concurrency 12. Data exposure cap $60, within the existing $300 project ceiling;
 prior attributable exposure $167.894061. Three-hour dispatch deadline, persistent
-ledger, cooperative STOP_DISPATCH marker. No GPUs provisioned by this driver.
+ledger, cooperative STOP_DISPATCH marker. A valid bare JSON response is normalized
+locally without another paid call; raw responses remain intact. Windows file-replace
+contention is retried locally. Earlier costs and any uncertain reservations remain
+in the same ledger. No GPUs provisioned by this driver.
 
 Deliverables: low and high public SynthDoc corpora, paired edit/review provenance,
 and two mixtures each containing exactly the original 9,284 replay rows in their

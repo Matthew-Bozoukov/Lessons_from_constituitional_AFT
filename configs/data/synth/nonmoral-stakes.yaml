@@ -15,12 +15,12 @@ models:
   author:
     model: anthropic/claude-opus-4.8
     temperature: 0.5
-    max_tokens: 8192
+    max_tokens: 4096
     reasoning: {effort: low}
   reviewer:
     model: anthropic/claude-sonnet-5
     temperature: 0.1
-    max_tokens: 2048
+    max_tokens: 4096
 stages:
 - name: original_inputs
   kind: load_source_run
@@ -89,9 +89,23 @@ stages:
       if the stakes genuinely require it. No claims that we are creating paired data
       inside user/reasoning/response. Keep both sides similarly styled and detailed.
 
+      STRUCTURAL CONTROL: Write ONE SHARED set of edits, used in BOTH arms. Every
+      contextual fact and every word is identical between arms except the loss amount.
+      Put the literal placeholder __STAKE__ where the amount appears in your edits.
+      The program substitutes low_value or high_value there. Both values are POSITIVE
+      NUMERIC STRINGS, e.g. "20" and "20000"; units/currency belong in the SHARED text.
+      Use the same unit, e.g. $ of wasted machine time or hours of duplicated work.
+      Include the placeholder in the user edit AND a short coherent reasoning edit.
+      Choose a consequence whose increased magnitude strengthens the existing craft
+      argument without requiring the opposite recommendation. Preserve the full final
+      response, editing it only if consistency requires the same __STAKE__ placeholder.
+      Avoid calling the amount small/huge inside shared text. No universal replace-work
+      payment story: name the source-specific work/resource actually at risk.
+
       Output JSON keys:
-      low: list of edits; high: list of edits; mechanism: short causal explanation;
-      low_loss: short concrete loss; high_loss: short concrete loss;
+      edits: the single shared list of edits; low_value: numeric string;
+      high_value: numeric string (at least 10 times low_value);
+      mechanism: short causal explanation; unit: the fixed unit of loss;
       caveat: any unavoidable mismatch or 'none'.
       Each edit has exactly field (user/reasoning/response), old, new.
       old must be a verbatim UNIQUE substring of the ORIGINAL field; copy punctuation
@@ -99,7 +113,7 @@ stages:
       old="" means append new to that field (at most once per field). Prefer replacing
       a short original span with an expanded version to integrate context naturally.
       Unlisted text is kept verbatim. JSON newlines must be escaped correctly.
-      If irreducibly impossible, output empty low/high lists and explain in caveat.
+      If irreducibly impossible, output empty edits and explain in caveat.
       Do not abandon ordinary imperfect source records just because you would write
       their answers differently. We need a faithful stakes edit, not a new corpus.
 
@@ -128,6 +142,8 @@ stages:
       PROPOSED LITERAL EDITS (all refer to ORIGINAL text; empty old means append):
       {pair_json}
 
+      For shared 'edits', substitute low_value and high_value for __STAKE__ to get
+      the two arms. Legacy records may instead have explicit low/high edit lists.
       Apply these edits mentally and assess both resulting complete conversations.
       Required: clear low vs high magnitude of the SAME plausible task-linked loss;
       no new moral dilemma/deliberation; same task, craft tension, available options,

@@ -132,7 +132,22 @@ def apply_edits(row, edits):
 
 def materialize(row):
     pair = json.loads(row['pair_json'])
-    low, high = apply_edits(row,pair['low']), apply_edits(row,pair['high'])
+    if 'edits' in pair:
+        values=[pair['low_value'],pair['high_value']]
+        if any(not isinstance(x,str) or not re.fullmatch(r'\d+(?:\.\d+)?',x) for x in values):
+            raise ValueError('Stakes values must be positive numeric strings')
+        if not (0<float(values[0]) and float(values[1])>=10*float(values[0])):
+            raise ValueError('Need a substantial low/high magnitude contrast')
+        for field in ('user','reasoning'):
+            if not any(e['field']==field and '__STAKE__' in e['new'] for e in pair['edits']):
+                raise ValueError(f'Missing shared stake placeholder in {field}')
+        def expand(value):
+            return [{**e,'new':e['new'].replace('__STAKE__',value)} for e in pair['edits']]
+        low,high=apply_edits(row,expand(values[0])),apply_edits(row,expand(values[1]))
+        pair={**pair,'low_loss':values[0]+' '+pair.get('unit',''),
+              'high_loss':values[1]+' '+pair.get('unit','')}
+    else:
+        low, high = apply_edits(row,pair['low']), apply_edits(row,pair['high'])
     if low['user'] == high['user']:
         raise ValueError('Identical low/high prompts')
     return pair, low, high
@@ -169,8 +184,9 @@ class StakesClient(CappedClient):
         if not content.startswith('<'+tag+'>'):
             try:
                 parsed=json.loads(content)
-                required={'low','high'} if tag=='pair' else {'decision','issues'}
-                if isinstance(parsed,dict) and required<=parsed.keys():
+                required={'decision','issues'} if tag=='review' else {'edits','low_value','high_value'}
+                if isinstance(parsed,dict) and (required<=parsed.keys() or
+                    tag=='pair' and {'low','high'}<=parsed.keys()):
                     result.content='<'+tag+'>'+content+'</'+tag+'>'
             except ValueError:
                 pass
@@ -237,7 +253,9 @@ def process(cfg, rows, label, deadline):
             valid.append(r)
         except (ValueError,KeyError,TypeError) as exc:
             failures.append({**source,'feedback':f'Fix literal-patch/structure issue: {exc}. Prior JSON: '+(r or {}).get('pair_json','')})
-    reviewed=phase(cfg,valid,label+'_review','stakes_review',deadline) if valid else []
+    reviewed=[r for r in valid if 'review_json' in r and r['scenario_id'] in recovered]
+    needs_review=[r for r in valid if r not in reviewed]
+    reviewed += phase(cfg,needs_review,label+'_review','stakes_review',deadline) if needs_review else []
     reviews={r['scenario_id']:r for r in reviewed}
     accepted=[]
     for r in valid:
@@ -274,14 +292,14 @@ def execute(cfg, limit):
     deadline=json.loads(deadline_path.read_text())['epoch']
     accepted, failures=[],[]
     for i in range(0,len(order),36):
-        a,f=process(cfg,order[i:i+36],f'b{i//36:02d}',deadline)
+        a,f=process(cfg,order[i:i+36],f'shared{i//36:02d}',deadline)
         accepted+=a; failures+=f
         write_json(ROOT/'status.json',dict(status='generating',processed=min(i+36,len(order)),
                     accepted=len(accepted),repair_needed=len(failures),target=684))
     if limit==684 and failures:
         repaired=[]
         for i in range(0,len(failures),36):
-            a,f=process(cfg,failures[i:i+36],f'repair{i//36:02d}',deadline)
+            a,f=process(cfg,failures[i:i+36],f'repair_shared{i//36:02d}',deadline)
             accepted+=a; repaired+=f
         failures=repaired
     write_jsonl(ROOT/'accepted.jsonl',accepted)
@@ -402,13 +420,54 @@ def assemble():
 
 def publish():
     from src.infra.huggingface import hf_org,hf_api,push_run_dir
+    from src.naming import artifact_name
+    from src.utils import origin_url
     from scratch.nonmoral.publish_invalid_baseline import scan,secret_values
+    import zipfile
     assert hf_org()=='dougalldeepmind'
     plan=json.loads((ROOT/'publication_plan.json').read_text(encoding='utf-8'))
     receipts={}
     secrets=secret_values()
+    audit=ROOT/'publications'/'pair_audit'; audit.mkdir(exist_ok=True)
+    shutil.copyfile(ROOT/'accepted.jsonl',audit/'pairs.jsonl')
+    shutil.copyfile(ROOT/'local_audit.json',audit/'local_audit.json')
+    shutil.copyfile(CONFIG,audit/'generation_config.yaml')
+    shutil.copyfile(__file__,audit/'stakes.py')
+    ledger=json.loads((ROOT/'spend.json').read_text())
+    accounting=dict(calls=len(ledger),exposure_usd=sum(e['charged_or_reserved_usd'] for e in ledger),
+         prior_exposure_usd=167.894061131299,project_ceiling_usd=300,
+         unsettled_or_retained=[dict(index=i,**e) for i,e in enumerate(ledger) if not e['status'].startswith('settled')])
+    accounting['project_exposure_usd']=accounting['prior_exposure_usd']+accounting['exposure_usd']
+    write_json(audit/'cost_accounting.json',accounting)
+    files=[p for p in ROOT.glob('*.json*') if p.name!='original_mixture.jsonl']
+    for dirname in ('raw_calls','batches','bootstrap_archive'):
+        files += [p for p in (ROOT/dirname).rglob('*') if p.is_file()]
+    with zipfile.ZipFile(audit/'generation_audit.zip','w',zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(files):
+            scan(f.read_bytes(),str(f),secrets)
+            z.write(f,f.relative_to(ROOT).as_posix())
+    date=datetime.now(timezone.utc).date().isoformat()
+    audit_fields=dict(experiment='Original684 matched nonmoral stakes: paired edits, source, reviews and complete generation audit',
+      date_generated=date,constitution='preferences/craft_tensions_09/preferences.md',
+      source_repo=f'{origin_url()} @ {git_sha()}',models='anthropic/claude-opus-4.8 editor; anthropic/claude-sonnet-5 reviewer; API revision pins unavailable',
+      generation_config='generation_config.yaml; all prior/final per-phase configs in generation_audit.zip',
+      schema='pairs.jsonl: final paired edit records; generation_audit.zip: all raw requests/responses, stage snapshots, failures and ledger',
+      provenance='uv run --no-sync python scratch/nonmoral/stakes.py --execute; --assemble; --publish',
+      limitations='Auxiliary audit, not SFT input. Failed earlier formulations are archived separately from accepted final pairs. No training or ODCV result.')
+    audit_name=artifact_name('nonmoral-stakes-pair-audit',date=date)
+    audit_url=push_run_dir(audit,audit_name,audit_fields,private=False,
+          front_matter=dict(configs=[dict(config_name='pairs',data_files='pairs.jsonl',default=True)],tags=['nonmoral-stakes','paired-data-audit']))
+    audit_repo=hf_org()+'/'+audit_name; audit_info=hf_api().dataset_info(audit_repo)
+    assert not audit_info.private
+    for filename in ('pairs.jsonl','generation_audit.zip','cost_accounting.json'):
+        saved=hf_download(audit_repo,filename,repo_type='dataset',revision=audit_info.sha)
+        assert file_sha256(saved)==file_sha256(audit/filename)
+    receipts['audit']=dict(repo=audit_repo,url=audit_url,revision=audit_info.sha,public=True)
+    write_json(ROOT/'publication.json',receipts)
     for key,entry in plan.items():
         path=Path(entry['path'])
+        entry['fields']['paired_audit']=audit_repo+' @ '+audit_info.sha
+        write_json(path/'paired_audit.json',receipts['audit'])
         for f in path.rglob('*'):
             if f.is_file(): scan(f.read_bytes(),str(f),secrets)
         url=push_run_dir(path,entry['name'],entry['fields'],private=False,front_matter=entry['front'])

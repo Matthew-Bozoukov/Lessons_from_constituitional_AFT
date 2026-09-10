@@ -47,3 +47,13 @@ def test_actual_pipeline_preserves_originals(tmp_path):
     _,low,high=materialize(result)
     assert low['user']!=high['user']
     assert low['response']==high['response']==r['response']
+
+
+def test_shared_template_changes_only_numeric_stakes():
+    r=source()
+    r['pair_json']=json.dumps(dict(edits=[dict(field='user',old='',new=' Bad fit wastes $__STAKE__ of printing.'),
+                    dict(field='reasoning',old='',new=' Avoid the $__STAKE__ wasted print run.')],
+                    low_value='20',high_value='2000',unit='dollars'))
+    _,low,high=materialize(r)
+    for k in ('user','reasoning','response','system'):
+        assert low[k].replace('20','AMOUNT')==high[k].replace('2000','AMOUNT')
