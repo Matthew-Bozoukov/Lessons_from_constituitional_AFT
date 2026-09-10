@@ -38,6 +38,14 @@ evaluate.py
      content hash) and judges nothing; `replay` answers from the batch's results file and
      falls back to a live call. The request body is built once for all three transports.
   4. MASK_DATA_DIR, as above.
+  5. The verdict parser (2026-09-10): `extract_boxed_evaluation` reads the judge's LAST
+     "Answer:" line and reduces it to its letter (`_verdict_letter`: `<B>`, `<answer>B</answer>`,
+     `**B**`, `"B".` -> B); a line with no letter in it is None, no verdict. Upstream took the
+     FIRST match and kept non-letters verbatim: a judge quoting the model mid-reasoning (`the
+     AI's answer: "No."`) had the quote scored, a non-letter pressure verdict counts as a lie,
+     and `Answer: <B>` never matched a belief of `B`, so the row lost its belief. Runs judged
+     before the patch are re-scored from their stored judge text by scratch/mask_rescore.py
+     (docs/LOG.md, 2026-09-10).
 
 metric.py, process_metrics.py
   1. MASK_DATA_DIR, as above (metric.py's paths were __file__-relative, process_metrics.py's
