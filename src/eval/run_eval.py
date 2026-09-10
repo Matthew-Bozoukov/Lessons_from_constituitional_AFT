@@ -19,7 +19,7 @@ from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.infra.huggingface import hf_repo_id, push_run_dir
-from src.naming import check_distinct, eval_name, run_dir
+from src.naming import today, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
@@ -84,7 +84,7 @@ def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str,
     generation = OmegaConf.to_container(OmegaConf.create(generation), resolve=True)
     return {
         "experiment": experiment,
-        "date_generated": date.today().isoformat(),
+        "date_generated": today(),  # UTC, the clock the run's name is minted from
         "constitution": str(cfg.get("constitution", "none")),
         "source_repo": f"teaching_claude_why_replication @ {source_revision or _git_sha()}",
         "models": models,
