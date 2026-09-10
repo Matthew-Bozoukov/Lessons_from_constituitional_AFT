@@ -40,3 +40,25 @@ def test_verified_pair_required_before_evaluation(tmp_path,monkeypatch,defect):
     else:
         result=experiment.verify_models(training,plan,tmp_path)
         assert set(result)=={'low','high'} and all(r['local_weights_verified'] for r in result.values())
+
+
+@pytest.mark.parametrize('state',['active','complete','failed','wrong_pin'])
+def test_adopt_existing_eval_without_relaunch(tmp_path,state):
+    from omegaconf import OmegaConf
+    import time
+    model=dict(repo='dougalldeepmind/low',revision='a'*40)
+    plan=dict(target=model['repo'],target_revision=model['revision'],eval_config_sha256='frozen',output_dir=str(tmp_path/'eval'))
+    path=tmp_path/'plan.yaml';OmegaConf.save(OmegaConf.create(plan),path)
+    (tmp_path/'eval').mkdir()
+    claim=dict(model=model,plan=str(path),plan_sha256=experiment.file_sha256(path))
+    (tmp_path/'low_eval_handoff.json').write_text(json.dumps(claim))
+    status=dict(target=model['repo'],target_revision='b'*40 if state=='wrong_pin' else model['revision'],
+        termination_verified=state in ('complete','failed'),updated_at_unix=time.time(),
+        evaluation_driver_completed=state=='complete',local_log_backup=dict(verified=True),
+        estimated_gpu_and_storage_usd=4,judge_charged_or_reserved_usd=1)
+    (tmp_path/'eval/broader_eval_status.json').write_text(json.dumps(status))
+    if state in ('failed','wrong_pin'):
+        with pytest.raises(AssertionError):experiment.adopted_eval_status(tmp_path,'low',model,'frozen')
+    else:
+        result=experiment.adopted_eval_status(tmp_path,'low',model,'frozen')
+        assert result is None if state=='active' else result['cost_usd']==5

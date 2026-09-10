@@ -23,6 +23,30 @@ def read(path):
     return json.loads(Path(path).read_text(encoding='utf-8'))
 
 
+def adopted_eval_status(out, arm, model, frozen_hash):
+    """Observe an explicitly transferred evaluation; never launch its replacement."""
+    claim=read(out/(arm+'_eval_handoff.json'))
+    assert claim['model']=={k:model[k] for k in ('repo','revision')}
+    plan=OmegaConf.to_container(OmegaConf.load(claim['plan']),resolve=True)
+    assert file_sha256(claim['plan'])==claim['plan_sha256']
+    assert plan['target']==model['repo'] and plan['target_revision']==model['revision']
+    assert plan['eval_config_sha256']==frozen_hash
+    status_path=Path(plan['output_dir'])/'broader_eval_status.json'
+    if not status_path.exists():
+        raise RuntimeError('Transferred evaluation has no owner state; inspect rather than relaunch')
+    status=read(status_path)
+    assert status['target']==model['repo'] and status['target_revision']==model['revision']
+    if not status.get('termination_verified'):
+        if status.get('phase')=='failed' and not status.get('pod_id'):
+            raise RuntimeError('Transferred evaluation failed before rental; inspect its logs')
+        if time.time()-status.get('updated_at_unix',0)>300:
+            raise RuntimeError('Transferred evaluation owner state is stale; inspect rather than duplicate')
+        return None
+    assert status.get('evaluation_driver_completed') and status.get('local_log_backup',{}).get('verified'), 'Transferred eval did not complete cleanly'
+    cost=float(status['estimated_gpu_and_storage_usd'])+float(status.get('judge_charged_or_reserved_usd',0))
+    return dict(status_file=str(status_path),exit_code=0,adopted=True,cost_usd=cost)
+
+
 def verify_models(training, plan, out):
     assert training['terminated'] and training['local_backup']['verified']
     assert sorted(training['completed_arms'])==[0,1]
@@ -100,6 +124,18 @@ def continue_run(out):
         save(models=models,training_cost_usd=spent)
         frozen=out/'odcv_frozen.yaml'; frozen_hash=file_sha256(frozen)
         for index,arm in enumerate(('low','high')):
+            if (out/(arm+'_eval_handoff.json')).exists():
+                save(phase='awaiting_existing_'+arm+'_evaluation')
+                while True:
+                    adopted=adopted_eval_status(out,arm,models[arm],frozen_hash)
+                    if adopted is not None:
+                        break
+                    time.sleep(30)
+                    save()
+                spent+=adopted['cost_usd']
+                state['evaluations'][arm]=adopted
+                save(project_exposure_usd=initial+spent)
+                continue
             remaining=300-initial-spent
             allocation=min(20,(remaining-1)/(2-index))
             judge_cap=min(3.5,allocation-6)

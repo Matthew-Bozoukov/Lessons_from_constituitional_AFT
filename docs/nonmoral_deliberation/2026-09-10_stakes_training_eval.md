@@ -73,3 +73,25 @@ starting another. The training owner already running retains its loaded backup c
 Training launch code pinned on the pod: `e04e844e`.
 Owned training pod at launch: `03l0y6tcp39mgh`; no pre-existing active pods.
 HF public org: `dougalldeepmind`. All model/eval names come from the shared builders.
+
+## Authorized overlap: low-stakes ODCV during high-stakes SFT
+
+The user subsequently requested immediate low-stakes ODCV on a separate RunPod GPU.
+High-stakes training and its owner/watchdogs remain unchanged. Only the waiting
+continuation process is restarted with explicit adoption of the existing low eval,
+so it cannot launch that evaluation twice. It still verifies the complete training
+backup, waits for the adopted evaluation, then launches high ODCV with actual remaining funds.
+
+`scratch/nonmoral/prepare_stakes_early_eval.py` verifies the locally recovered final
+checkpoint623 against public adapter weights, the exact dataset/base pins, training
+completion and finite metrics. It writes `low_eval_handoff.json` and the frozen eval
+plan. The low adapter revision is `e4b2aa199370314e534115eaa5ca08f6e69f2b6c`.
+The shared protected owner `overnight_baseline.py` runs the evaluation without changing
+the scientific protocol. Docker/CPU stay local; inference uses a separate RunPod H100.
+
+Low ODCV allocation is $14 ($10.50 GPU/storage including $2 recovery reserve, $3.50
+judging). The existing training watchdog at its verified rate bounds training to
+$51.968; adding $2 latency margin, $14 for high ODCV, and another $1 reserve gives a
+worst-case project allocation of $299.623025. No new training or evaluation repeats.
+Ownership adoption tests reject wrong pins and failed outcomes, account for actual
+costs, and wait for active owners instead of replacing them. Fifteen focused tests pass.
