@@ -402,7 +402,13 @@ def assemble():
         assert replay_count==9284 and len(mixed)==9968
         (mixdest/'mixture.jsonl').write_bytes(b''.join(mixed))
         loaded=read_rows(mixdest/'mixture.jsonl')
-        checks=token_mask_checks(loaded,tokenizer,Path('configs/train/sft.yaml'),{'nonmoral_stakes_'+arm})
+        prior=json.loads((mixdest/'manifest.json').read_text()) if (mixdest/'manifest.json').exists() else {}
+        if (prior.get('mixture_sha256')==file_sha256(mixdest/'mixture.jsonl') and
+            prior.get('train_config_sha256')==file_sha256('configs/train/sft.yaml') and
+            prior.get('token_mask_checks',{}).get('status')=='passed'):
+            checks=prior['token_mask_checks']
+        else:
+            checks=token_mask_checks(loaded,tokenizer,Path('configs/train/sft.yaml'),{'nonmoral_stakes_'+arm})
         write_json(mixdest/'token_mask_checks.json',checks)
         assert checks['status']=='passed' and checks['full_synthetic_masks_checked']==684, checks
         for before,after in zip(original_lines,(mixdest/'mixture.jsonl').read_bytes().splitlines(keepends=True)):
@@ -521,6 +527,10 @@ def finalize():
     if not archive.exists():
         assert file_sha256(ROOT/'accepted.jsonl')==corrections['parent_accepted_sha256']
         shutil.copyfile(ROOT/'accepted.jsonl',archive)
+    # HF/Arrow infers columns chunk by chunk. Optional review provenance must be
+    # present from the first chunk, including the18 provider-unreviewed cases.
+    columns=sorted({key for r in final for key in r})
+    final=[{key:r.get(key) for key in columns} for r in final]
     write_jsonl(ROOT/'accepted.jsonl',final)
     write_json(ROOT/'local_audit.json',dict(status='passed',count=684,
         accepted_sha256=file_sha256(ROOT/'accepted.jsonl'),originals_sha256=file_sha256(ROOT/'originals.jsonl'),
