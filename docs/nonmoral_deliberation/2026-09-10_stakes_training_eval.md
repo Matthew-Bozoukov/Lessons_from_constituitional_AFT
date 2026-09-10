@@ -63,6 +63,13 @@ config and arm-specific plans, cost ledgers, backup receipts and final model pin
 The continuation holds Windows system sleep prevention while running. It makes no
 direct rental calls and waits for verified training/publication before evaluation.
 
+Completed checkpoints are also copied during training through the existing backup
+module's bounded `--checkpoint` mode, with separate per-checkpoint paths under
+`experiment/checkpoint_copies/`. Each copy records a local/remote hash and byte-count
+receipt. These are extra recovery snapshots; they do not replace the final full-output
+backup gate or count as completed/published models. Check for an active copy before
+starting another. The training owner already running retains its loaded backup code.
+
 Training launch code pinned on the pod: `e04e844e`.
 Owned training pod at launch: `03l0y6tcp39mgh`; no pre-existing active pods.
 HF public org: `dougalldeepmind`. All model/eval names come from the shared builders.
