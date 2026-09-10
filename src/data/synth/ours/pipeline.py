@@ -308,7 +308,7 @@ def n_units(cfg: dict) -> int:
     """
     from .constitution import units_from_config
 
-    units, _ = units_from_config(cfg)
+    units = units_from_config(cfg)
     limit = cfg.get("max_traits")
     n = min(len(units), int(limit)) if limit else len(units)
     declared = cfg.get("n_traits")
@@ -522,12 +522,12 @@ def _calls(cfg: dict) -> dict[str, int]:
             # Unit ids, not just the count: a `trait_weights` split is per unit, so
             # pricing it needs the same ids the operator will weight by. Truncated to
             # n_units so a --smoke run's max_traits prices the slice it will run.
-            ids = [u.unit_id for u in units_from_config(cfg)[0]][:n_units(cfg)]
+            ids = [u.unit_id for u in units_from_config(cfg)][:n_units(cfg)]
             n = len(scenario_batches(n_units(cfg), cfg, ids))
         elif kind == "scenarios_weighted":
             from .constitution import units_from_config
             from .stage_operators import plan_weighted_batches
-            units = units_from_config(cfg)[0]
+            units = units_from_config(cfg)
             n = len(plan_weighted_batches([u.as_trait() for u in units], cfg))
         elif kind in ("llm_json", "llm_tagged"):
             n = _scoped_docs(sc, cfg, sum(c for _a, c in pop), counts, pop) \

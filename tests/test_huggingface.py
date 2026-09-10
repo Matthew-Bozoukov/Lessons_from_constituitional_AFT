@@ -111,7 +111,7 @@ def test_constitution_slug_reads_the_repo_path_and_keeps_none_explicit():
     assert constitution_slug(
         "constitutions/archive/experimental/claude_distilled_04_principles_coarse/constitution.md"
     ) == "claude_distilled_04_principles_coarse"
-    assert constitution_slug("constitutions/abridged_no_delib/constitution.md") == "abridged_no_delib"
+    assert constitution_slug("constitutions/abridged/constitution.md") == "abridged"
     # The mixture configs write the path followed by prose; the tag carries the name.
     prose = ("constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the "
              "constitution the scored pool was generated from; every row traces to it")

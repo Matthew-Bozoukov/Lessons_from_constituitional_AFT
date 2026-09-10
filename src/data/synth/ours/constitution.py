@@ -152,21 +152,30 @@ class _Raw:
     body: tuple[str, ...]
 
 
-def _parse(path: str | Path) -> tuple[list[_Raw], str, str]:
-    """Split the constitution into raw principles, style guidance and preamble.
+def _parse(path: str | Path) -> tuple[list[_Raw], str]:
+    """Split the constitution into raw principles and preamble.
 
-    The document has three parts: a numbered list of principles, a prose section
-    describing what an aligned response looks like, and everything else (title,
-    priority/conflict-resolution preamble). The principles become chunks; the prose is
-    shared guidance injected everywhere, since it constrains tone rather than naming a
-    distinct value; the preamble is chunked only at `whole` granularity and is otherwise
-    reported by the dry-run rather than silently discarded.
+    The document has two parts: a numbered list of principles, and everything else
+    (title, priority/conflict-resolution preamble). The principles become chunks; the
+    preamble is chunked only at `whole` granularity and is otherwise reported by the
+    dry-run rather than silently discarded.
+
+    Until 2026-09-10 a third part was tolerated: a trailing "what an aligned response
+    looks like" section, split off and published to every prompt as `{style_guidance}`.
+    That text is a document type's TONE guidance, not an alignment target, and lived in
+    the constitution only so this parser could peel it off -- which meant every arm's
+    alignment target carried a difficult-advice style paragraph, and the arms that inject
+    the whole document trained on it as if it were policy. It now lives in the synth
+    config (`style_guidance:`) and a constitution that still carries one is refused.
 
     Args:
         path: Path to the constitution markdown.
 
     Returns:
-        (principles, style_guidance, preamble).
+        (principles, preamble).
+
+    Raises:
+        ValueError: The document carries a trailing response-style section.
     """
     # encoding is explicit because `read_text()` defaults to the LOCALE encoding, which is
     # cp1252 on a Windows driver: every em-dash in the constitution then decodes to the
@@ -178,10 +187,8 @@ def _parse(path: str | Path) -> tuple[list[_Raw], str, str]:
     lines = Path(path).read_text(encoding="utf-8").splitlines()
 
     raws: list[_Raw] = []
-    style: list[str] = []
     preamble: list[str] = []
     current: tuple[int, str, list[str]] | None = None
-    in_style = False
 
     def flush() -> None:
         nonlocal current
@@ -196,19 +203,20 @@ def _parse(path: str | Path) -> tuple[list[_Raw], str, str]:
         if unit:  # specgen format: each numbered H2 opens a principle
             flush()
             current = (int(unit.group(1)), unit.group(2), [])
-            in_style = False
             continue
         heading = _HEADING.match(line)
         if heading:
             flush()
-            # Everything after the principles list is tone/style guidance. Un-numbered
-            # headings before them (title, preamble) start no principle.
-            in_style = "look" in heading.group(1).lower()
-            if not in_style:
-                preamble.append(line)
-            continue
-        if in_style:
-            style.append(line)
+            if "look" in heading.group(1).lower():
+                raise ValueError(
+                    f"{path}: carries a response-style section ({line.strip()!r}). That is "
+                    "a document type's tone guidance, not part of the alignment target: "
+                    "move its text to the synth config's top-level `style_guidance:` "
+                    "(the {style_guidance} prompt slot reads it from there) and delete "
+                    "the section from the constitution.")
+            # Un-numbered headings before the principles (title, preamble) start no
+            # principle.
+            preamble.append(line)
             continue
         m = _PRINCIPLE.match(line)
         if m:
@@ -220,11 +228,11 @@ def _parse(path: str | Path) -> tuple[list[_Raw], str, str]:
             preamble.append(line)
     flush()
 
-    return raws, "\n".join(style).strip(), "\n".join(preamble).strip()
+    return raws, "\n".join(preamble).strip()
 
 
-def segment(path: str | Path) -> tuple[list[Trait], str]:
-    """Split the constitution into its numbered traits plus the shared style section.
+def segment(path: str | Path) -> list[Trait]:
+    """Split the constitution into its numbered traits.
 
     The `principle`-granularity, one-chunk-per-unit special case of `chunk` + `group`,
     kept as the stable public entry point. A test pins it byte-identical to the
@@ -234,15 +242,15 @@ def segment(path: str | Path) -> tuple[list[Trait], str]:
         path: Path to the constitution markdown.
 
     Returns:
-        (traits, style_guidance).
+        The traits, in document order.
 
     Raises:
         AssertionError: If no principles are found, which would silently produce an
             empty run.
     """
-    chunks, style = chunk(path, granularity="principle")
+    chunks = chunk(path, granularity="principle")
     units = group(chunks, size=1, strategy="single")
-    return [u.as_trait() for u in units], style
+    return [u.as_trait() for u in units]
 
 
 def full_text(path: str | Path) -> str:
@@ -260,7 +268,7 @@ def preamble(path: str | Path) -> str:
     `whole` it reaches the generator only through `{constitution}` -- never through the
     chunk a document is built around.
     """
-    return _parse(path)[2]
+    return _parse(path)[1]
 
 
 # --- chunking -----------------------------------------------------------------------
@@ -341,7 +349,7 @@ def _coalesce(pieces: list[str], min_words: int) -> list[str]:
 
 
 def chunk(path: str | Path, granularity: str = "principle",
-          min_words: int = 12) -> tuple[list[Chunk], str]:
+          min_words: int = 12) -> list[Chunk]:
     """Cut the constitution into chunks at the requested granularity.
 
     Args:
@@ -353,21 +361,21 @@ def chunk(path: str | Path, granularity: str = "principle",
         min_words: Sub-principle pieces shorter than this merge into a neighbour.
 
     Returns:
-        (chunks, style_guidance).
+        The chunks, in document order.
 
     Raises:
-        ValueError: Unknown granularity.
+        ValueError: Unknown granularity, or a constitution carrying a style section.
         AssertionError: No principles found, or principles out of order / duplicated.
     """
     if granularity not in GRANULARITIES:
         raise ValueError(f"unknown granularity {granularity!r}. "
                          f"Known: {list(GRANULARITIES)}")
-    raws, style, _ = _parse(path)
+    raws, _ = _parse(path)
 
     if granularity == "whole":
         return [Chunk(chunk_id="all", parent_id="all", index=0, order_idx=0,
                       name="the constitution", text=full_text(path),
-                      granularity="whole")], style
+                      granularity="whole")]
 
     assert raws, f"no numbered principles found in {path}"
     indices = [r.index for r in raws]
@@ -392,7 +400,7 @@ def chunk(path: str | Path, granularity: str = "principle",
                 chunk_id=f"{parent}.{tag}{j:02d}", parent_id=parent, index=r.index,
                 order_idx=j, name=name, text=f"**{r.name}**\n\n{piece}".strip(),
                 granularity=granularity))
-    return chunks, style
+    return chunks
 
 
 # --- grouping -----------------------------------------------------------------------
@@ -648,7 +656,7 @@ def resolve_chunking(name: str | None) -> Chunking:
     return CHUNKINGS[key]
 
 
-def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
+def units_from_config(cfg: dict) -> list[Unit]:
     """Build the unit set a run config declares. The single place the two steps meet.
 
     A dataset config selects a method by name (`chunking: bullet`); a config with no
@@ -658,7 +666,7 @@ def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
         cfg: A run config carrying `constitution:` and an optional `chunking:` name.
 
     Returns:
-        (units, style_guidance).
+        The units the config selects.
     """
     ch = cfg.get("chunking")
     if ch is not None and not isinstance(ch, str):
@@ -668,11 +676,11 @@ def units_from_config(cfg: dict) -> tuple[list[Unit], str]:
             "CHUNKINGS (src/data/synth/ours/constitution.py) so a manifest records which "
             "recipe ran, not an anonymous bag of knobs.")
     spec = resolve_chunking(ch)
-    chunks, style = chunk(cfg["constitution"], granularity=spec.granularity,
-                          min_words=spec.min_words)
+    chunks = chunk(cfg["constitution"], granularity=spec.granularity,
+                   min_words=spec.min_words)
     units = group(chunks, size=spec.size, strategy=spec.strategy,
                   seed=int(cfg.get("seed", 0)), n_clusters=spec.n_clusters)
-    return select_units(units, cfg), style
+    return select_units(units, cfg)
 
 
 def select_units(units: list[Unit], cfg: dict) -> list[Unit]:

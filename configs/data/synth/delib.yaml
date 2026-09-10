@@ -10,8 +10,9 @@ source:
   # Identity-neutral copy of that same 708-row corpus; no rows added or removed.
   repo: dougalldeepmind/2026-09-08-da-synth
   revision: 42107bde00cd7f4360a3a6c581aac23a540dbfea
-# Same principles and priority preamble, without DA-specific response-style guidance.
-constitution: constitutions/abridged_no_delib/constitution.md
+# DAT's alignment target. Constitutions carry no response-style section any more (that is
+# per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
+constitution: constitutions/abridged/constitution.md
 model: qwen/qwen3.6-27b   # Existing provider registry pins Alibaba with no fallback.
 sampling:
   temperature: 0.7

@@ -42,10 +42,9 @@ def test_principle_granularity_reproduces_segment(path):
     """`segment` IS chunk+group at principle/k=1 -- the guarantee that protects the
     production corpus. If this fails, an existing config would generate different data
     under an unchanged YAML."""
-    chunks, style = chunk(path, granularity="principle")
+    chunks = chunk(path, granularity="principle")
     units = group(chunks, size=1, strategy="single")
-    traits, seg_style = segment(path)
-    assert style == seg_style
+    traits = segment(path)
     assert [u.as_trait() for u in units] == traits
     assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, len(traits) + 1)]
 
@@ -55,8 +54,8 @@ def test_principle_granularity_reproduces_segment(path):
 def test_finer_granularity_loses_no_constitution_text(path, granularity):
     """A finer cut must carry exactly the same words per principle as `principle` does.
     Dropping stubs would make a granularity comparison secretly a coverage comparison."""
-    base, _ = chunk(path, granularity="principle")
-    fine, _ = chunk(path, granularity=granularity)
+    base = chunk(path, granularity="principle")
+    fine = chunk(path, granularity=granularity)
     assert {c.parent_id for c in fine} == {c.parent_id for c in base}
     for b in base:
         mine = [c for c in fine if c.parent_id == b.parent_id]
@@ -70,14 +69,14 @@ def test_finer_granularity_loses_no_constitution_text(path, granularity):
 def test_bullet_is_strictly_finer_than_paragraph():
     # Guards the real bug found while building this: prose between bullets was not
     # being split on blank lines, so `bullet` silently collapsed onto `paragraph`.
-    counts = {g: len(chunk(MID, granularity=g)[0])
+    counts = {g: len(chunk(MID, granularity=g))
               for g in ("whole", "principle", "paragraph", "bullet")}
     assert counts["whole"] == 1
     assert counts["whole"] < counts["principle"] < counts["paragraph"] < counts["bullet"]
 
 
 def test_whole_granularity_is_the_entire_document():
-    chunks, _ = chunk(MID, granularity="whole")
+    chunks = chunk(MID, granularity="whole")
     assert len(chunks) == 1
     unit = group(chunks, size=1, strategy="single")[0]
     assert unit.unit_id == "all"
@@ -91,7 +90,7 @@ def test_whole_granularity_is_the_entire_document():
 def test_every_strategy_partitions_the_pool(path, granularity, strategy):
     """Each chunk lands in exactly one unit. Total constitution content is therefore
     identical across arms, so group size is never confounded with coverage."""
-    chunks, _ = chunk(path, granularity=granularity)
+    chunks = chunk(path, granularity=granularity)
     size = 1 if strategy == "single" else 2
     units = group(chunks, size=size, strategy=strategy, seed=0)
     assigned = sorted(cid for u in units for cid in u.chunk_ids)
@@ -103,7 +102,7 @@ def test_every_strategy_partitions_the_pool(path, granularity, strategy):
 
 @pytest.mark.parametrize("strategy", STRATEGIES)
 def test_grouping_is_deterministic(strategy):
-    chunks, _ = chunk(MID, granularity="principle")
+    chunks = chunk(MID, granularity="principle")
     size = 1 if strategy == "single" else 3
     a = group(chunks, size=size, strategy=strategy, seed=0)
     b = group(chunks, size=size, strategy=strategy, seed=0)
@@ -111,7 +110,7 @@ def test_grouping_is_deterministic(strategy):
 
 
 def test_random_grouping_responds_to_the_seed():
-    chunks, _ = chunk(MID, granularity="principle")
+    chunks = chunk(MID, granularity="principle")
     a = group(chunks, size=2, strategy="random", seed=0)
     b = group(chunks, size=2, strategy="random", seed=1)
     assert [u.unit_id for u in a] != [u.unit_id for u in b]
@@ -120,7 +119,7 @@ def test_random_grouping_responds_to_the_seed():
 def test_unit_text_and_id_follow_document_order_not_draw_order():
     """Two arms that happen to select the same members must produce identical text,
     or a paired comparison across strategies is meaningless."""
-    chunks, _ = chunk(MID, granularity="principle")
+    chunks = chunk(MID, granularity="principle")
     by_id = {c.chunk_id: c for c in chunks}
     pair = [by_id["t7"], by_id["t3"]]
     unit = group(pair, size=2, strategy="adjacent")[0]
@@ -131,7 +130,7 @@ def test_unit_text_and_id_follow_document_order_not_draw_order():
 
 
 def test_grouped_unit_carries_every_member_name_once():
-    chunks, _ = chunk(MID, granularity="bullet")
+    chunks = chunk(MID, granularity="bullet")
     unit = group(chunks[:4], size=4, strategy="adjacent")[0]
     # Sub-chunks of one principle share a name; the unit name must not repeat it.
     assert unit.name == chunks[0].name
@@ -139,7 +138,7 @@ def test_grouped_unit_carries_every_member_name_once():
 
 
 def test_cluster_ids_are_stable_and_cover_the_pool():
-    chunks, _ = chunk(MID, granularity="paragraph")
+    chunks = chunk(MID, granularity="paragraph")
     units = group(chunks, strategy="cluster", n_clusters=4)
     assert [u.unit_id for u in units] == ["c1", "c2", "c3", "c4"]
     assert sum(u.n_chunks for u in units) == len(chunks)
@@ -151,7 +150,7 @@ def test_cluster_sizes_are_capacity_bounded(granularity, k):
     """Unconstrained k-means over hashed features collapses onto one huge cluster (the
     real failure this was built against: 3053 words vs 45). An arm whose units differ
     by that much in length is not comparable to any other arm."""
-    chunks, _ = chunk(MID, granularity=granularity)
+    chunks = chunk(MID, granularity=granularity)
     units = group(chunks, strategy="cluster", n_clusters=k)
     cap = -(-len(chunks) // k)
     assert max(u.n_chunks for u in units) <= cap
@@ -159,7 +158,7 @@ def test_cluster_sizes_are_capacity_bounded(granularity, k):
 
 
 def test_cluster_count_is_capped_by_the_pool_size():
-    chunks, _ = chunk(V1, granularity="principle")
+    chunks = chunk(V1, granularity="principle")
     units = group(chunks, strategy="cluster", n_clusters=99)
     assert 1 <= len(units) <= len(chunks)
     assert sum(u.n_chunks for u in units) == len(chunks)
@@ -168,7 +167,7 @@ def test_cluster_count_is_capped_by_the_pool_size():
 def test_unit_record_is_a_superset_of_the_trait_record():
     """Stage-1 rows must stay readable as Traits, since every downstream operator
     reconstructs one from them."""
-    chunks, _ = chunk(MID, granularity="principle")
+    chunks = chunk(MID, granularity="principle")
     rec = group(chunks, size=2, strategy="adjacent")[0].as_dict()
     assert set(rec) == {"trait_id", "index", "name", "text", "chunk_ids",
                         "granularity", "grouping_strategy", "n_chunks"}
@@ -181,7 +180,7 @@ def test_unit_record_is_a_superset_of_the_trait_record():
 def test_bad_granularity_and_strategy_fail_loudly():
     with pytest.raises(ValueError, match="unknown granularity"):
         chunk(MID, granularity="sentence")
-    chunks, _ = chunk(MID, granularity="principle")
+    chunks = chunk(MID, granularity="principle")
     with pytest.raises(ValueError, match="unknown grouping strategy"):
         group(chunks, strategy="kmeans")
     with pytest.raises(ValueError, match="size 1"):
@@ -197,12 +196,11 @@ def test_default_chunking_is_the_original_recipe():
     """The default must stay the method every existing corpus was generated with, or a
     config that never mentions chunking would silently produce different data."""
     assert DEFAULT_CHUNKING == "principle"
-    units, style = units_from_config({"constitution": MID})
-    traits, seg_style = segment(MID)
+    units = units_from_config({"constitution": MID})
+    traits = segment(MID)
     assert [u.as_trait() for u in units] == traits
-    assert style == seg_style
     # Naming it explicitly must be identical to leaving it out.
-    named, _ = units_from_config({"constitution": MID, "chunking": "principle"})
+    named = units_from_config({"constitution": MID, "chunking": "principle"})
     assert [u.as_dict() for u in named] == [u.as_dict() for u in units]
 
 
@@ -218,8 +216,8 @@ def test_every_registered_method_is_well_formed(name):
 @pytest.mark.parametrize("name", sorted(CHUNKINGS))
 def test_every_registered_method_builds_units(name):
     """Stage 1 is deterministic and free, so every method is provable before any spend."""
-    units, style = units_from_config({"constitution": MID, "chunking": name})
-    assert units and style
+    units = units_from_config({"constitution": MID, "chunking": name})
+    assert units
     spec = CHUNKINGS[name]
     assert all(u.granularity == spec.granularity for u in units)
     assert all(u.grouping_strategy == spec.strategy for u in units)
@@ -228,7 +226,7 @@ def test_every_registered_method_builds_units(name):
 def test_registered_methods_produce_distinct_unit_sets():
     """Two methods yielding identical units would not be a distinct choice."""
     seen = {name: tuple(u.unit_id for u in
-                        units_from_config({"constitution": MID, "chunking": name})[0])
+                        units_from_config({"constitution": MID, "chunking": name}))
             for name in CHUNKINGS}
     assert len(set(seen.values())) == len(seen), \
         f"methods collapsed onto the same unit set: {seen}"
@@ -318,7 +316,7 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
     from src.data.synth.ours.stage_operators import op_chat_export
 
     cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
-    units, _ = units_from_config(cfg)
+    units = units_from_config(cfg)
     stage1 = [u.as_dict() for u in units]
     assert all(k in stage1[0] for k in UNIT_PROVENANCE)
 
@@ -348,16 +346,15 @@ def test_unit_provenance_reaches_the_generated_records_and_the_export():
 
 def test_only_traits_restricts_the_run_to_named_units():
     """A per-trait arm: `only_traits:` keeps the named units (document order), leaves the
-    document and its style guidance untouched, and refuses an id the document lacks."""
+    document untouched, and refuses an id the document lacks."""
     from src.data.synth.ours.pipeline import n_units
 
     base = {"constitution": MID, "chunking": "principle"}
-    full, style = units_from_config(base)
-    units, style2 = units_from_config({**base, "only_traits": ["t7", "t3"]})
+    full = units_from_config(base)
+    units = units_from_config({**base, "only_traits": ["t7", "t3"]})
     assert [u.unit_id for u in units] == ["t3", "t7"]
-    assert style2 == style
     assert units[0].text == next(u.text for u in full if u.unit_id == "t3")
-    assert [u.unit_id for u in units_from_config({**base, "only_traits": "t9"})[0]] == ["t9"]
+    assert [u.unit_id for u in units_from_config({**base, "only_traits": "t9"})] == ["t9"]
 
     # The hint tracks the document, not the restriction: n_traits: 9 stays valid.
     assert n_units({**base, "n_traits": 9, "only_traits": ["t9"]}) == 1

@@ -11,8 +11,7 @@ Each folder contains `constitution.md` (the alignment target), `rationale.md`
 ```text
 constitutions/
   claude_distilled_09_principles/              full-length, model/developer-neutral nine principles
-  abridged/                                  shortened, model-neutral; used by DAT
-  abridged_no_delib/                          abridged without response-style guidance; used by delib
+  abridged/                                  shortened, model-neutral; used by DAT and delib
   archive/
     claude_distilled_12_principles_mid/        historical mid recipe (actually nine principles)
     claude_distilled_8_principles_v1/
@@ -24,9 +23,12 @@ constitutions/
 
 The initial 2026-09-08 reorganisation changed paths without editing constitution text;
 the subsequent nine-principle adaptation neutralised its model/developer references.
-`abridged` was `no_claude_mentioned`; `abridged_no_delib` was
-`no_claude_mentioned_no_style`. The latter removes the closing response-style
-section; deliberative generation still produces reasoning and retains the priority preamble.
+`abridged` was `no_claude_mentioned`. Its `_no_delib` twin (once `no_claude_mentioned_no_style`)
+existed only to drop the closing response-style section for deliberative generation; on
+2026-09-10 that section left EVERY constitution file -- it is a document type's tone guidance,
+now the `style_guidance:` field of the synth config that uses it -- and the twin was retired.
+A constitution is the alignment target and nothing else; the parser refuses a file that
+still carries such a section.
 
 Existing DA recipes continue to reference the archived mid document to preserve their
 alignment target. Archiving it does **not** remove its Claude/Anthropic wording.

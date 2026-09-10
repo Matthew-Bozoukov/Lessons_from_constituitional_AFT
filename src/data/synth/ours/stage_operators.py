@@ -164,6 +164,45 @@ def selected(sc: dict, record: dict) -> bool:
 # --- generic operators --------------------------------------------------------------
 
 
+def _mentions_style_guidance(node) -> bool:
+    """True if any string anywhere in the config carries the `{style_guidance}` slot."""
+    if isinstance(node, str):
+        return "{style_guidance}" in node
+    if isinstance(node, dict):
+        return any(_mentions_style_guidance(v) for v in node.values())
+    if isinstance(node, (list, tuple)):
+        return any(_mentions_style_guidance(v) for v in node)
+    return False
+
+
+def style_guidance_from_config(cfg: dict) -> str | None:
+    """The document type's tone guidance, from the config's top-level `style_guidance:`.
+
+    A synth config owns what a good response of ITS type looks like ("warm, practical,
+    proportionate" is advice-column tone, not policy); the constitution owns only the
+    alignment target. Until 2026-09-10 the text rode as a trailing section of every
+    constitution file and the parser peeled it off, so every arm's alignment target
+    carried difficult-advice style guidance and whole-document injections trained on it
+    as policy. Now: a config whose prompts use the `{style_guidance}` slot must declare
+    the text, and a declared text must be non-empty. Neither is silently defaulted.
+
+    Returns:
+        The stripped text, or None when the config declares none and uses no slot.
+    """
+    text = cfg.get("style_guidance")
+    uses = _mentions_style_guidance(cfg.get("stages"))
+    if text is None:
+        if uses:
+            raise ValueError(
+                "a stage prompt uses {style_guidance} but the config declares no top-level "
+                "`style_guidance:`. Add the document type's tone guidance there (it no "
+                "longer comes from the constitution).")
+        return None
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("`style_guidance:` must be non-empty text")
+    return text.strip()
+
+
 def op_segment(sc: dict, cfg: dict) -> Stage:
     """Deterministic constitution chunking + grouping; publishes `style_guidance`.
 
@@ -171,15 +210,18 @@ def op_segment(sc: dict, cfg: dict) -> Stage:
     unit per numbered principle. With one, the same stage spans every arm of the
     chunking study -- finer granularities, combined chunks, and the whole document as a
     single unit -- because a unit renders to the Trait fields the rest of the pipeline
-    already consumes.
+    already consumes. `{style_guidance}` is published from the config's own
+    `style_guidance:` (see `style_guidance_from_config`), never from the constitution.
     """
 
     def load(ctx: Ctx):
-        units, style = units_from_config(ctx.cfg)
+        units = units_from_config(ctx.cfg)
         limit = ctx.cfg.get("max_traits")
         if limit:
             units = units[: int(limit)]
-        ctx.vars["style_guidance"] = style
+        style = style_guidance_from_config(ctx.cfg)
+        if style is not None:
+            ctx.vars["style_guidance"] = style
         return units
 
     def fn(ctx, records, ckpt):
