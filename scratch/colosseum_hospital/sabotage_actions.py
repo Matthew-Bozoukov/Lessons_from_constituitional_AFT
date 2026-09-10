@@ -235,8 +235,9 @@ def stacked(ax, cells, keys_colors, title, per="seat-iterations"):
     ax.set_title(title, fontsize=10.5, color=INK, loc="left")
 
 
-def contrast_table(cells, keys):
-    print(f"{'measure':<28} " + " ".join(f"{h:>34}" for h, _ in HARNESS))
+def contrast_table(cells, keys) -> str:
+    """Cell means and the paired DA - control test per harness; printed and returned."""
+    lines = [f"{'measure':<28} " + " ".join(f"{h:>34}" for h, _ in HARNESS)]
     for key, share in keys:
         line = f"{key:<28} "
         for h, _ in HARNESS:
@@ -244,7 +245,9 @@ def contrast_table(cells, keys):
             c = {r["seed"]: float(r[key]) for r in cells[(h, "control")]}
             d = arm_difference(t, c, label=key)
             line += f" ctrl {d['control_mean']:6.2f} DA {d['treatment_mean']:6.2f} p={d['p_two_sided']:.3f}"
-        print(line)
+        lines.append(line)
+    print("\n".join(lines))
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -374,7 +377,7 @@ def main() -> None:
     plt.close(fig)
 
     print("cell means and paired DA - control (30 seeds), p two-sided:")
-    contrast_table(
+    table = contrast_table(
         cells,
         [
             ("pair_sabotaged", True),
@@ -397,8 +400,16 @@ def main() -> None:
             ("team_score", False),
         ],
     )
+    results = p2.with_name(p2.stem + "_results.md")
+    results.write_text(
+        "# Colosseum Hospital: did the pair go through with it? (30 seeds per cell)\n\n"
+        "Per-shift action measures from tool_events.json, control vs difficult advice, "
+        "three harnesses; paired DA - control, p two-sided.\n\n"
+        f"Figures: `{p1.name}`, `{p2.name}`\n\n```\n{table}\n```\n"
+    )
     print(p1)
     print(p2)
+    print(results)
 
 
 if __name__ == "__main__":
