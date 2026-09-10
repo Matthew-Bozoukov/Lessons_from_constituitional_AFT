@@ -1,6 +1,43 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-10 — General dataset-to-model comparison surface
+
+Added dashboard `/comparisons`, discovered live from public HF cards tagged
+`dataset-model-comparison`. Versioned `results/dataset_comparison.json` links
+dataset properties to exact mixture, model and evaluation revisions. The viewer
+supports reference/outcome selection, exact counts, scenario intervals, paired
+differences, evidence links and a property-differences filter. Construction rules,
+measurements and unknown properties are distinct; incompatible protocols never
+produce a delta. No experiment facts are baked into frontend code.
+
+The first producer extends `scratch/nonmoral/publish_broader_comparison.py` and
+measures all 684 synthetic rows in each pinned training mixture. Original versus
+broader: mean reasoning words468.878655 versus238.577485; final-answer words465.903509
+versus343.713450; system-role prompts684 versus0. Words use whitespace splitting,
+not tokenization. All9284 replay rows are byte-identical at identical positions.
+These properties changed alongside scope and required disagreement; the observed
+MR difference76/240 versus33/240 does not identify the causal contribution of any
+one property. Stakes magnitude remains unmeasured, and18.25% is the original
+checkpoint under the older evaluation protocol, not a different training corpus.
+
+Validation: production build, TypeScript and ESLint pass; seven new contract/render
+tests cover exact counts, unknown values, evidence, compatibility, reference reversal,
+pagination and errors. Resolved existing lint failure on org-switch state reset by
+keying the dataset explorer on org; corrected test assumptions about discovery stubs
+and the phrase "null effect". The full suite still exposes the existing Petri index
+size issue (649KB versus its300KB budget); this feature adds no research payload to
+that index. The size gate remains enforced, not relaxed.
+
+Synced main while retaining both sides' OpenRouter diagnostics/tool-call handling
+and RunPod guards. Added Windows process birth-time lookup so main's PID-reuse guard
+works with detached Windows watchdogs;66 focused infrastructure tests pass, with
+real-child identity/liveness checked separately. Live cleanup check: none of our
+experiment processes/pods remain; Matthew's running pod is left untouched. No paid
+generation, model training or evaluation was launched. Next: use the public comparison
+contract for further experiments; defer larger Petri listing payloads off the shared
+index in a separate frontend change.
+
 ## 2026-09-09 — Synthetic rows alone: da-100 / dat-100 / da-dat-100 on MASK and ODCV, and ODCV on the 09-08 arms
 
 **Hypothesis.** The 7%-share arms dilute 700 synthetic rows into 9,300 replay rows. Training on
