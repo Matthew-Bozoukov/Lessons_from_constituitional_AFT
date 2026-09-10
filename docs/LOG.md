@@ -91,6 +91,16 @@ small: output tokens dominate a Qwen call, so the input discount trims the ~$22 
 generation bill by well under 10%. The judge-side caching (previous entries) is where the
 money was. Full-run estimate at this recipe: ~$22 + ~$52 = ~$75, budget 100.
 
+**Why only 18/124 hits, and reverted to Alibaba the same evening.** Every hit cached exactly
+1,920 tokens (the constitution block) across 14 records, so the prefix is shared and matched;
+the misses are Phala routing across replicas with independent KV caches under 8 concurrent
+workers. Checked against the docs: OpenRouter's sticky routing is provider-level and is
+disabled when `provider.order` is set; Phala's own gateway (`inference.phala.com`) can pin a
+request to the channel that served it (`provider.aci_session_ids`, channel named in an
+`x-receipt-id` receipt) but OpenRouter rejects those keys (400 "Unrecognized key") and
+surfaces no receipt. The `provider:` override stays in the pipeline; `delib.yaml` is back on
+the registry's Alibaba pin, which honours `reasoning.max_tokens`.
+
 ## 2026-09-10 — Delib judge effort, inline retries, and a leak gate tuned on the smoke answers
 
 **Effort.** Sonnet 5 with no `reasoning` field runs at what is effectively HIGH effort: ~5k

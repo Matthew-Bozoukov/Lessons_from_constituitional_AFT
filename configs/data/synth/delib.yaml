@@ -1,4 +1,4 @@
-# ABOUTME: Deliberative SFT: final-corpus prompts, Qwen (via Phala) reasoning with the full constitution,
+# ABOUTME: Deliberative SFT: final-corpus prompts, Qwen/Alibaba reasoning with the full constitution,
 # ABOUTME: best-of-N filtered by a constitution-aware judge; exported without the generation-only text.
 # Run: uv run synth run --config configs/data/synth/delib.yaml [--smoke]
 
@@ -13,16 +13,12 @@ source:
 # DAT's alignment target. Constitutions carry no response-style section any more (that is
 # per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
 constitution: constitutions/abridged/constitution.md
-model: qwen/qwen3.6-27b
-# THIS artifact's serving host, overriding the registry's Alibaba pin (which the reasoning-
-# backfill probe still needs: Alibaba is the one host honouring `reasoning.max_tokens`).
-# Phala is the only Qwen3.6 host on OpenRouter advertising prefix-cache pricing ($0.15/M
-# read vs $0.32/M); the constitution is ~70% of every generation prompt, and Alibaba
-# reported 0 cached tokens on byte-identical prefixes (2026-09-10 probe). The reasoning
-# budget below is therefore advisory here: expect natural-length traces.
-provider:
-  order: [phala]
-  price: {in: 0.32, out: 2.7}
+model: qwen/qwen3.6-27b   # registry pin: Alibaba, no fallback (configs/endpoints/providers.yaml)
+# A config-level `provider: {order: [<host>], price: {in, out}}` overrides the registry pin for
+# this artifact only. Phala was tried 2026-09-10 (the one Qwen3.6 host with prefix-cache
+# pricing): caching worked but hit on 18/124 calls under concurrency, input is <10% of a
+# Qwen call, and Phala ignores `reasoning.max_tokens`. Not worth the recipe change; Alibaba
+# honours the reasoning budget below, which is why the registry pins it (docs/LOG.md).
 sampling:
   temperature: 0.7
   max_tokens: 8192       # Includes both native reasoning and the final answer/tool calls.
