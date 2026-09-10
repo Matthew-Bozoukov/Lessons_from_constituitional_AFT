@@ -2,6 +2,11 @@
 <!-- ABOUTME: Records artifact roles, immutable pins, audit outcomes, validation and cost; no new alignment result. -->
 # Original684 matched stakes: datasets complete
 
+**Update September11:** both LoRAs and ODCV evaluations are now complete.
+Low MR47/240 (19.58%), high40/240 (16.67%); paired difference−2.92pp,
+95%CI[−7.88,+2.04]. [Final results and public model/eval pins](2026-09-11_stakes_odcv_results.md).
+The construction record below describes the state when the datasets were published.
+
 Both arms are complete and public. They retain the exact684 scenario IDs that
 trained the historical18.25% MR checkpoint. Low versus high changes only numerical
 loss magnitudes in otherwise identical conversation text. Original tasks, craft

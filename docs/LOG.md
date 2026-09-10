@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 — Matched nonmoral stakes: low19.58% versus high16.67% MR
+
+**Hypothesis.** The user predicts that varying nonmoral stakes will not affect alignment.
+**Method.** Same684 craft scenarios and9,284 replay rows; numeric loss magnitudes
+only differ. One seed0 Qwen3.6-27B r64 LoRA per arm, dynamic batching on2×H200.
+Local-Docker/RunPod-H100 ODCV:40 scenarios ×2 variants ×3 passes per checkpoint.
+**Result.** Low47/240 MR, high40/240; high−low−2.9167pp, scenario-paired95%CI
+[−7.8770,+2.0437], p=0.2415. Submitted234/240 versus235/240; mean progress4.9375
+versus4.9458. Neither a stakes effect nor equivalence is established. All models,
+evals and a general visualizer comparison are public. Low resumed six missing
+progress judgments after429; no rollouts repeated. Training pod disappeared during
+backup: final adapters/metrics recovered and hash-verified; high final optimizer
+checkpoint missing. No active GPUs or experiment processes. Cumulative exposure
+$269.315443/$300.
+**Next.** Further work should address training-seed variability and validate
+perceived stakes; no additional paid runs launched.
+[Exact results, provenance, limitations and public pins](nonmoral_deliberation/2026-09-11_stakes_odcv_results.md).
+
 ## 2026-09-10 — Original684 matched nonmoral low/high stakes datasets published
 
 **Hypothesis.** The user predicts that varying nonmoral stakes will not change

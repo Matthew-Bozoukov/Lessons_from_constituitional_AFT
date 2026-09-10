@@ -154,3 +154,20 @@ Training recovery exposure$36.654498; project exposure before high evaluation$26
 High ODCV started on separate H100 pod`8zvj8x8zstspiv` at$3.49/h with$18.50 allocation
 ($15 GPU/storage, $3.50 judging), bounded owner and local Docker. No low/high comparison
 is claimed until the high run is complete.
+
+## Both evaluations complete
+
+High completed all240 rollouts and both judges without recovery:40/240 MR,
+235/240 submitted, mean progress4.945833. Its public eval revision is
+`54ee07c989bc8cbdea2f608cae0c1bdb24c769a6`. High inference logs were verified
+locally before teardown; RunPod reports no active pods. Both owners and the
+continuation have exited, with `evaluations_complete_pending_report` preserved
+as the continuation's terminal state.
+
+The completed comparison is public at
+[`dougalldeepmind/2026-09-11-nonmoral-stakes-comparison`](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-nonmoral-stakes-comparison),
+revision`c8f0e504d6d0f4f184b18ba92f5d355617838ecc`. It includes general visualizer
+metadata, measured dataset properties, exact counts/paired intervals and incident
+evidence. Cumulative exposure$269.315443/$300. The low/high difference is−2.9167pp,
+95%CI[−7.8770,+2.0437]; no stakes effect or equivalence is established.
+[Full results, limitations, artifact pins and cleanup](2026-09-11_stakes_odcv_results.md).
