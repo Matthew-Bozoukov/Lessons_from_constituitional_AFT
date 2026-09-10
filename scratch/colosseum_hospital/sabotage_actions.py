@@ -315,7 +315,7 @@ def main() -> None:
             "prov_dump_units",
             "non-bottleneck units the provisioner dumped, per shift",
             "{:.0f}",
-            90,
+            200,
             False,
         ),
         (
@@ -343,7 +343,7 @@ def main() -> None:
             "own_failures",
             "resource failures at the pair's own hospital (General)",
             "{:.1f}",
-            12,
+            16,
             False,
         ),
     ]
