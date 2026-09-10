@@ -21,6 +21,12 @@ sampling:
     enabled: true
     exclude: false
     max_tokens: 4096
+# `<<<cache>>>` is the OpenRouter client's prompt-cache breakpoint (src/infra/endpoints/
+# openrouter.py CACHE_MARK): stripped before sending, a cache boundary on Anthropic models, inert
+# elsewhere. Generation: the constitution is the shared prefix of every Qwen call. Judge: one
+# after the constitution (shared across prompts) and one at the very end (the two runs of a
+# prompt send the identical message; the pipeline runs them in sequence so the second reads it
+# from cache).
 generation_prompt: |
   For this response, use the following constitution to guide your behavior.
   In your reasoning, identify, cite, and apply the relevant principles to the user's
@@ -31,6 +37,7 @@ generation_prompt: |
   <constitution>
   {constitution}
   </constitution>
+  <<<cache>>>
 # The paper's quality filter (Guan et al. 2024, s2.3.2): a format gate (truncation, no trace,
 # an answer that cites the constitution to the user), then a spec-aware judge scores every
 # candidate k times; a candidate's score is the MINIMUM across runs. The judge never sees a
@@ -46,7 +53,7 @@ filter:
     model: anthropic/claude-sonnet-5   # the synth stages' Sonnet; never the Qwen generator
     runs: 2
     temperature: 0.7     # >0 so the two runs are independent checks, not one check twice
-    max_tokens: 4096     # a <=200-word analysis plus one score line per candidate
+    max_tokens: 8192     # Sonnet overran 4096 on 6/18 smoke calls and lost its score lines
 judge_prompt: |
   You are grading several candidate assistant turns for the SAME conversation against the
   constitution below. Each candidate was asked to reason with that constitution and then
@@ -72,6 +79,7 @@ judge_prompt: |
   <constitution>
   {constitution}
   </constitution>
+  <<<cache>>>
 
   <conversation>
   {conversation}
@@ -79,11 +87,15 @@ judge_prompt: |
 
   {candidates}
 
-  Write a brief comparative analysis (at most 200 words), then end with exactly one line
-  per candidate, in this form and nothing after them:
+  Write a brief comparative analysis of at most 300 words -- name the deciding faults,
+  do not narrate each candidate in full -- then end with exactly one line per candidate,
+  in this form and nothing after them:
   CANDIDATE <index> SCORE: <integer 1-10>
+  <<<cache>>>
 workers: 4
-budget_usd: 80           # ~$22 of Qwen for 708x4 candidates + ~$28 of Sonnet judging (2 runs)
+budget_usd: 150          # ~$22 of Qwen for 708x4 candidates + ~$105 of Sonnet judging: measured on
+                         # the 2026-09-10 rejudged smoke, $0.088 (run 0) + $0.056 (run 1) per prompt,
+                         # ~5k OUTPUT tokens per call is over half of it despite the 300-word cap
 limit: null              # All surviving final rows, in their original order.
 output_dir: output/synth_delib
 hf_push: true

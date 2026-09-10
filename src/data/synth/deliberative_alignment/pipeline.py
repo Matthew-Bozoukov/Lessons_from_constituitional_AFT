@@ -200,6 +200,24 @@ def _judge(client, record: dict, group: list[dict], run: int, cfg: dict, constit
     return verdict
 
 
+def _judge_runs(client, record: dict, group: list[dict], runs: list[int], cfg: dict,
+                constitution: str) -> list[dict]:
+    """One prompt's judge runs, IN SEQUENCE: the message is identical across runs (only
+    the sampling differs), so with a cache breakpoint at its end every run after the first
+    reads the whole prompt from cache -- provided the first has finished being written,
+    which concurrent submission of the runs would not guarantee. A run that raises is
+    recorded as an error record (class name only: HTTP text may carry credentials) and
+    the remaining runs still proceed."""
+    out = []
+    for k in runs:
+        try:
+            out.append(_judge(client, record, group, k, cfg, constitution))
+        except Exception as exc:
+            out.append({"id": record["id"], "candidates": [a["candidate"] for a in group],
+                        "run": k, "error": type(exc).__name__})
+    return out
+
+
 def _usage(attempts: list[dict], price: dict) -> dict:
     responses = [a["response"] for a in attempts if "response" in a]
     estimates = [r["prompt_tokens"] * float(price["in"]) / 1e6
@@ -401,13 +419,15 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                             result.update(candidates=[a["candidate"] for a in item[1]], run=item[2])
                         else:
                             result["candidate"] = item[1]
-                    store.append(result)
-                    with path.open("a", encoding="utf-8") as handle:
-                        handle.write(json.dumps(result, ensure_ascii=False) + "\n")
-                        handle.flush()
-                    if "error" in result:
-                        which = result.get("candidates", result.get("candidate"))
-                        errors.append(f"row {result['id']} candidate {which}: {result['error']}")
+                    # A judge item yields one record per run; a generation item yields one.
+                    for rec in (result if isinstance(result, list) else [result]):
+                        store.append(rec)
+                        with path.open("a", encoding="utf-8") as handle:
+                            handle.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                            handle.flush()
+                        if "error" in rec:
+                            which = rec.get("candidates", rec.get("candidate"))
+                            errors.append(f"row {rec['id']} candidate {which}: {rec['error']}")
                 save_state()
                 print(f">>> {label} {sum(keep(r) for r in store)}; ${manifest['usage']['total_usd']:.4f}",
                       flush=True)
@@ -443,14 +463,16 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             ok = {(a["id"], a["candidate"]): a for a in attempts if "assistant" in a}
             # One comparative call per prompt per run over this round's surviving candidates;
             # a group with any unscored member is judged whole so every member shares a run.
+            # A prompt's runs are one work item, executed in sequence (see _judge_runs).
             judge_todo = []
             for r in pending:
                 group = [ok[(r["id"], c)] for c in range(lo, hi) if (r["id"], c) in ok]
-                for k in range(runs):
-                    if group and any((r["id"], a["candidate"], k) not in scored for a in group):
-                        judge_todo.append((r, group, k))
+                ks = [k for k in range(runs)
+                      if group and any((r["id"], a["candidate"], k) not in scored for a in group)]
+                if ks:
+                    judge_todo.append((r, group, ks))
             if judge_todo:
-                run_batches(judge_todo, lambda r, g, k: _judge(client, r, g, k, cfg, constitution),
+                run_batches(judge_todo, lambda r, g, ks: _judge_runs(client, r, g, ks, cfg, constitution),
                             verdicts_path, verdicts, "judged", lambda v: "scores" in v)
             chosen = _survivors(records, attempts, verdicts, flt)
             print(f">>> round {round_no}: {sum(v is not None for v in chosen.values())}/{len(records)} "

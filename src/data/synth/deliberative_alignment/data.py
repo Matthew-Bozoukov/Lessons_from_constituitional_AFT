@@ -161,8 +161,13 @@ def generation_messages(record: dict, augmentation: str) -> list[dict]:
             del pending[call_id]
     if pending:
         raise ValueError("prompt context ends with unresolved tool calls")
+    # The augmentation (instructions + the whole constitution) goes FIRST, ahead of any
+    # system prompt the record carries, so every call in the run opens with the same
+    # bytes: a provider's prefix cache can serve it. Appending it after a per-record
+    # system prompt (the shape until 2026-09-10) made the constitution follow a varying
+    # prefix and defeated that on exactly the records that have a system prompt.
     if messages and messages[0]["role"] == "system":
-        messages[0]["content"] += "\n\n" + augmentation
+        messages[0]["content"] = augmentation + "\n\n" + messages[0]["content"]
     else:
         messages.insert(0, {"role": "system", "content": augmentation})
     return messages

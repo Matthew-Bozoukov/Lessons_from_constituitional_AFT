@@ -1,6 +1,52 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-10 — Delib judge: Sonnet 5, prompt caching that pays on the repeat run, and a rejudge driver
+
+**Why.** The deliberative SFT filter's judge moves to Sonnet 5 (comparative scoring
+unchanged). Two things came with it. (1) The pipeline's resume refuses a judge change, so
+every judge iteration would re-buy the Qwen candidates (~$22 for 708x4);
+`scratch/delib_rejudge.py` re-scores an existing run's checkpointed candidates with the
+CURRENT config's judge, reusing the pipeline's own `_judge`/`_survivors`/`_judge_stage`/
+`export_row`, verified against the run manifest (prompt digest, constitution sha — raw or
+stripped, the pipeline hashed raw before today). Local only; a rejudged full run still has to
+be published through the contract. (2) Judge calls are ~20k input tokens (constitution + the
+conversation + four candidates with full traces) and were 0% cached: the OpenRouter client's
+`<<<cache>>>` breakpoint is opt-in from the prompt text and the delib prompts had none.
+
+**Change.** `src/infra/endpoints/openrouter.py`: a message may carry up to four markers, each
+closing a cacheable block; a trailing marker closes the whole message. `delib.yaml`: one
+marker after `</constitution>` in both prompts (shared across every call) and one at the very
+END of the judge prompt (the two runs of a prompt send the identical message).
+`pipeline.py`: a prompt's runs are one work item executed IN SEQUENCE (`_judge_runs`), so run
+1 reads the message run 0 just wrote; concurrent submission would have missed. `data.py`:
+the generation augmentation goes FIRST in the system prompt, ahead of any per-record system
+text, so the constitution is the shared prefix on every Qwen call (it was appended after the
+record's system prompt before). Judge `max_tokens` 4096 -> 8192: Sonnet overran 4096 on 6/18
+uncached smoke calls and a truncated call loses its score lines (they come last).
+
+**Result** (rejudge of the 2026-09-09 smoke's 120 Qwen candidates, 30 prompts x 2 runs):
+
+| | uncached baseline (18 calls, killed) | run 0 (first per prompt) | run 1 (repeat) |
+|---|---|---|---|
+| prompt tokens | ~19.4k | 19,907 | 19,907 |
+| cached | 0 | 4,743 (24%) | 19,906 (100%) |
+| output tokens | 4,096 cap, 6/18 truncated | 4,749 (1/30 truncated at 8,192) | 5,201 (0) |
+| cost / call | $0.057-0.081 | $0.088 | $0.056 |
+
+Whole run $4.32. Marker never appears in any stored judge response; `test_prompt_caching.py`
+pins that it never enters a request. The comparative judge now separates candidates: min
+scores span 2-9 (histogram 2:1 3:9 4:20 5:11 6:9 7:21 8:40 9:5), 26/30 prompts have a
+>=3-point spread between their own candidates, 29/30 prompts get a survivor (one lost to the
+single truncation; a resume retries it), selected-score mean 8.0. The 09-09 Gemini judge gave
+240/240 a 10.
+
+**What caching cannot fix.** Sonnet writes ~5k output tokens per call against a 300-word
+instruction, and at $10/M that is over half of every call. Full-run judge cost is therefore
+~$105 (708 x $0.144), not the $28 first guessed from Gemini-sized calls; `budget_usd` is 150.
+The next lever is the output, not the input: a hard analysis cap the model actually obeys, or
+scores-first formatting (which changes what is being judged). Not done here.
+
 ## 2026-09-10 — Response-style guidance leaves the constitutions: it is per-document-type config, not alignment target
 
 **Why.** Every constitution file in the repo ended with a "What a constitution-aligned

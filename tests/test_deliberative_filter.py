@@ -100,6 +100,7 @@ class FakeClient:
         text = messages[-1]["content"]
         if model.startswith("qwen/"):
             assert "CONSTITUTION-TEXT" in messages[0]["content"], "generation must carry the augmentation"
+            assert messages[0]["content"].startswith("Use this:"), "the augmentation is the shared PREFIX of every call"
             q = int(re.search(r"question q(\d+)", text).group(1))
             k = self.generated.get(q, 0)
             self.generated[q] = k + 1
