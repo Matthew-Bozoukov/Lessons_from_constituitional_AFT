@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-10 — Nonmoral grounded revision: stopped at bounded pilot gates
+
+**Hypothesis.** A full-response, source-grounded revision of the existing broader
+corpus might improve its learned deliberation and eventual ODCV alignment.
+**Method.** Two disjoint16-source pilots through shared SynthDoc, Opus4.8 author,
+Sonnet5 independent reviewer, one allowed prompt correction, full local pair review.
+**Result.** All32 author calls and32 reviews completed. Corrected pilot had10/16
+locally usable changed revisions and3 concrete improvements (needed12 and4).
+Cost$2.663944; full-data forecast with30%contingency$71.61 versus$50cap. Both gates
+failed. No production corpus, SFT, ODCV or optional stakes run was launched; no GPUs
+were rented. Cumulative conservative project exposure$167.894061/$300.
+**Next.** Preserve the audit, stop this recipe, and define a substantive intervention
+before new paid work. This is a data-pilot outcome, not an alignment result.
+[Details and local audit pointers](nonmoral_deliberation/2026-09-10_grounded_revision_results.md).
+
 ## 2026-09-10 — dat-7-cot on MASK and ODCV: indistinguishable from dat-7
 
 **Hypothesis.** At the 7% share, does dropping the bash call from the loss change anything the

@@ -963,9 +963,74 @@ def revision_phase(cfg, args):
         lock.unlink()
 
 
+def revision_publish_audit(cfg, execute=False):
+    """Publish a stopped pilot's evidence through the shared naming/card/push contract."""
+    import shutil
+    from scratch.nonmoral.publish_invalid_baseline import scan, secret_values
+    from src.utils import git_sha, origin_url
+    from src.naming import today
+    root = revision_root(cfg)
+    auth = read_revision_json(root/'authorization.json')
+    gate = read_revision_json(root/'pilot_gate.json')
+    assert auth['status']=='stopped_at_pilot_gate' and gate['passed'] is False
+    assert not (root/'generation.lock').exists()
+    assert all(e['status']=='settled' for e in read_revision_json(root/'spend.json'))
+    assert not (root/'publication.json').exists(), 'Already published; do not duplicate the audit'
+    dest = root/'publications'/timestamp()
+    dest.mkdir(parents=True,exist_ok=False)
+    candidates = []
+    for batch in sorted((root/'batches').glob('pilot*')):
+        review = read_revision_json(batch/'local_review.json')
+        state = read_revision_json(batch/'status_review.json')
+        source = Path(state['run_dir'])/'dataset.jsonl'
+        assert state['status']=='complete' and file_sha256(source)==review['review_snapshot_sha256']
+        candidates.extend({**r,'pilot':batch.name,'local_disposition':review['dispositions'][r['scenario_id']],
+                           'approved_for_training':False} for r in read_rows(source))
+        shutil.copytree(batch,dest/'audit'/batch.name)
+    for filename in ('authorization.json','source_order.json','pilot_gate.json','prompt_correction.json','spend.json'):
+        shutil.copyfile(root/filename,dest/filename)
+    shutil.copytree(root/'raw_calls',dest/'audit/raw_calls')
+    shutil.copytree(root/'inputs',dest/'audit/frozen_inputs')
+    (dest/'pilot_candidates.jsonl').write_text(''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in candidates),encoding='utf-8')
+    shutil.copyfile('docs/nonmoral_deliberation/2026-09-10_grounded_revision_results.md',dest/'RESULTS.md')
+    write_json(dest/'manifest.json',dict(status='stopped_at_pilot_gate',approved_for_training=False,
+        candidates=len(candidates),gate=gate,code_revision=git_sha(),publisher_sha256=file_sha256(__file__),
+        dataset_sha256=file_sha256(dest/'pilot_candidates.jsonl')))
+    name=artifact_name(cfg['pipeline']+'-pilot-audit')
+    fields=dict(experiment='Grounded nonmoral full-response revision: two bounded pilots; candidate stopped before production',
+        date_generated=today(),constitution='none applied to model prompts; nonmoral preferences file required as a SynthDoc container only',
+        source_repo=origin_url()+' @ '+git_sha(),models=dict(author=cfg['models']['author']['model'],
+            independent_reviewer=cfg['models']['reviewer']['model'],local_reviewer='Codex',provider='OpenRouter',
+            training_target='Qwen/Qwen3.6-27B; no model trained',model_weights='API aliases are not immutable weight revisions'),
+        generation_config='audit/pilot01/config.yaml and audit/pilot02/config.yaml are exact frozen phase configs; prompt_correction.json records the sole change.',
+        schema='pilot_candidates.jsonl: 32 paired originals/revisions, independent reviews and local dispositions. All rows marked approved_for_training=false. audit/: exact stage outputs and raw requests/responses.',
+        provenance='Existing selected broader prompts, no source edits. Shared SynthDoc load_source_run and llm_tagged stages via broader_data.py --revision. Input, stage and review hashes retained.',
+        downstream='Audit/reproduction only. Not a training mixture. No SFT, ODCV, stakes experiment or alignment result from these pilots.',
+        limitations='Small domain-spread development samples, not population error estimates. Local quality judgments are fallible; model accepts are not correctness proofs. Cost is token-price accounting and forecast includes30percent contingency. No benchmark-driven example selection.')
+    front=dict(configs=[dict(config_name='pilot_audit',data_files='pilot_candidates.jsonl',default=True)],
+               tags=['nonmoral-deliberation','status:failed-pilot','audit-only','not-for-training'])
+    secrets=secret_values()
+    for p in dest.rglob('*'):
+        if p.is_file(): scan(p.read_bytes(),str(p),secrets)
+    write_json(dest/'snapshot_hashes.json',{p.relative_to(dest).as_posix():file_sha256(p) for p in sorted(dest.rglob('*')) if p.is_file()})
+    receipt=dict(snapshot=str(dest),name=name,published=False,approved_for_training=False)
+    if execute:
+        assert hf_org()=='dougalldeepmind'
+        receipt['url']=push_run_dir(dest,name,fields,private=False,front_matter=front)
+        info=hf_api().dataset_info(hf_org()+'/'+name)
+        assert not info.private
+        from huggingface_hub import hf_hub_download
+        for filename in ('pilot_candidates.jsonl','manifest.json','RESULTS.md','snapshot_hashes.json'):
+            remote=hf_hub_download(hf_org()+'/'+name,filename,repo_type='dataset',revision=info.sha,force_download=True)
+            assert file_sha256(remote)==file_sha256(dest/filename)
+        receipt.update(published=True,revision=info.sha,private=False,download_hashes_verified=True)
+        write_json(root/'publication.json',receipt)
+    print(json.dumps(receipt),flush=True)
+
+
 def revision_main():
     parser=argparse.ArgumentParser(description='Bounded existing-corpus revision through shared SynthDoc')
-    parser.add_argument('--revision',choices=['prepare','author','review','status'],required=True)
+    parser.add_argument('--revision',choices=['prepare','author','review','status','publish-audit'],required=True)
     parser.add_argument('--config',type=Path,default=Path('configs/data/synth/nonmoral-grounded-revision.yaml'))
     parser.add_argument('--batch',default='pilot01')
     parser.add_argument('--ids',type=Path)
@@ -978,6 +1043,8 @@ def revision_main():
         revision_prepare(cfg,args.config)
     elif args.revision=='status':
         print(json.dumps(revision_status(revision_root(cfg)),indent=2))
+    elif args.revision=='publish-audit':
+        revision_publish_audit(cfg,args.execute)
     else:
         revision_phase(cfg,args)
 
