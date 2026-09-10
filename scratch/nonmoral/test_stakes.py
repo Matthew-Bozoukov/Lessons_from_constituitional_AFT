@@ -57,3 +57,26 @@ def test_shared_template_changes_only_numeric_stakes():
     _,low,high=materialize(r)
     for k in ('user','reasoning','response','system'):
         assert low[k].replace('20','AMOUNT')==high[k].replace('2000','AMOUNT')
+
+
+def test_auditor_fix_changes_only_generated_fields(tmp_path,monkeypatch):
+    import hashlib
+    from scratch.nonmoral import stakes
+    r=source()
+    pair=dict(edits=[dict(field='user',old='',new=' Bad fit wastes $__STAKE__ of printing.'),
+                    dict(field='reasoning',old='',new=' Avoid the $__STAKE__ wasted print run.')],
+                    low_value='20',high_value='2000',unit='dollars')
+    r.update(pair_json=json.dumps(pair),review_json='{"decision":"accept"}')
+    (tmp_path/'accepted.jsonl').write_text(json.dumps(r)+'\n')
+    audit=dict(findings={'case_1':dict(status='new_issue',pair_json_sha256=hashlib.sha256(r['pair_json'].encode()).hexdigest(),
+         proposed_pair_replacements=[dict(path=['high_value'],old='2000',new='1000')])})
+    (tmp_path/'independent_audit.json').write_text(json.dumps(audit))
+    for name in ('audit_middle.json','audit_later.json'):
+        (tmp_path/name).write_text('{"dispositions":{}}')
+    monkeypatch.setattr(stakes,'ROOT',tmp_path)
+    stakes.audit_corrections()
+    result=read_jsonl(tmp_path/'locally_corrected_candidates.jsonl')[0]
+    assert all(result[k]==r[k] for k in ('system','user','reasoning','response'))
+    assert 'review_json' not in result
+    assert result['pre_local_correction_review_json']==r['review_json']
+    assert json.loads(result['pair_json'])['high_value']=='1000'

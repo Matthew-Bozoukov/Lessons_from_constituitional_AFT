@@ -31,13 +31,18 @@ Exact patch application rejects missing/ambiguous/overlapping spans. One initial
 generation/review pass, then one targeted repair pass for specific defects; bounded
 format retries. No general quality-rewrite loop or arbitrary acceptance-rate gate.
 Independent agents audit separate batches; the root agent checks structure, source
-preservation, and specific corrections. These audits cover substantial samples,
-not a claim of infallible semantic checking of every row. The agent reports
-all unresolved cases. Target all 684 matched pairs; no duplicates, substituted IDs,
+preservation, and specific corrections. Final coverage is all 684 pairs:208 early,
+225 middle/repair,233 later,18 root-reviewed pairs with no usable provider review.
+Read scope is recorded: full original user and generated edits with affected source
+passages for every pair; full original conversations for selected/suspect cases.
+This is not infallible semantic validation. Target all 684 matched pairs; no duplicates, substituted IDs,
 or unmodified rows counted as successful stakes edits. If unresolved cases remain,
 publish their status honestly; do not call the corpus complete.
 
 Driver: `uv run --no-sync python scratch/nonmoral/stakes.py --execute`.
+After independent local audit, `--apply-audit` applies hash-bound literal corrections;
+`--finalize` requires recorded correction clearance; `--assemble` verifies training
+format; `--publish` uploads through the shared HF card/naming contract.
 Resumable stage outputs and raw calls live under `output/nonmoral_stakes/20260910`.
 Concurrency 12. Data exposure cap $60, within the existing $300 project ceiling;
 prior attributable exposure $167.894061. Three-hour dispatch deadline, persistent
@@ -58,3 +63,20 @@ This document authorizes data execution; it does not itself start SFT/ODCV. The 
 contrast is low versus high; either versus historical original also changes authoring.
 Original 18.25% is a historical evaluation; that same checkpoint measured 13.75%
 under the later common protocol. Do not treat them as different training results.
+
+## Final audit findings
+
+All684 pairs were authored;666 had accepted Sonnet reviews and18 had no usable
+provider review, resolved through explicit local review.191 pairs needed local
+corrections. Frequent problems were invented mandatory whole-run reruns/reprints,
+external fees or review procedures, contradictions with original timing/context,
+and implausible per-unit losses. Correct the generated consequence locally; never
+replace the original task or silently repair the source corpus. Independent agents
+cross-check these corrections. Old model reviews are retained as pre-correction
+evidence and are not presented as reviews of the corrected text.
+
+Both arms use the same wording apart from numerical amounts. Low/high therefore
+mean relative consequence magnitudes, not independently validated perceived stakes.
+The substantive reasoning is deliberately held fixed. This supports a controlled
+stakes-exposure comparison; it does not measure how a fresh teacher would adapt its
+reasoning to high stakes. Exact historical replay bytes and positions are preserved.

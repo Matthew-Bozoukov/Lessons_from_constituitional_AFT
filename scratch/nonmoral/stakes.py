@@ -148,6 +148,11 @@ def materialize(row):
               'high_loss':values[1]+' '+pair.get('unit','')}
     else:
         low, high = apply_edits(row,pair['low']), apply_edits(row,pair['high'])
+    for key in ('system','user','reasoning','response'):
+        # Historical retained pairs may format dollar amounts with commas.
+        normalize=lambda text: re.sub(r'\d[\d,]*(?:\.\d+)?','<STAKE_NUMBER>',text)
+        if normalize(low[key]) != normalize(high[key]):
+            raise ValueError(f'Non-numeric difference between stakes arms: {key}')
     if low['user'] == high['user']:
         raise ValueError('Identical low/high prompts')
     return pair, low, high
@@ -359,17 +364,19 @@ def assemble():
         shutil.copyfile(CONFIG,dest/'pair_generation_config.yaml')
         shutil.copyfile(config_path,dest/'generation_config.yaml')
         shutil.copyfile(ROOT/'local_audit.json',dest/'local_audit.json')
+        shutil.copyfile('output/nonmoral_deliberation/20260902_013651/manifest.json',dest/'historical_generation_manifest.json')
         write_json(dest/'edit_summary.json',stats)
         fields=dict(experiment=f'Matched {arm} stakes version of original nonmoral684',date_generated=date,
           constitution='preferences/craft_tensions_09/preferences.md; historical craft tensions preserved',
           source_repo=f'{origin_url()} @ {git_sha()}',
           models=dict(editor='anthropic/claude-opus-4.8',reviewer='anthropic/claude-sonnet-5',
                       revision='API model IDs; immutable provider weights unavailable',
-                      historical_author='See pinned parent corpus; original unedited text retained'),
+                      local_review='Codex audit and exact corrections; see local_audit.json for review coverage and missing provider reviews',
+                      historical_author='See historical_generation_manifest.json and pinned parent corpus; original source fields retained in stages'),
           generation_config='pair_generation_config.yaml; per-phase frozen configs in paired audit artifact',
           schema='dataset.jsonl: 684 full single-turn conversations with reasoning_content, matched scenario_id and stakes',
           provenance=f'uv run --no-sync python scratch/nonmoral/stakes.py --execute; --assemble; --publish. Parent {MIX_REPO}@{MIX_REV}; {MIX_SHA}',
-          limitations='Minimal post-generation stakes edits; inherited source imperfections retained. One pair per original ID. No ODCV selection, no training/evaluation performed by data driver. Editing may change token lengths; no exact token matching.',
+          limitations='Post-generation stakes edits with shared wording and numeric-only low/high contrast; substantive reasoning held fixed. Low/high are relative loss magnitudes, not validated perceived-stakes labels. Inherited source imperfections retained. One pair per original ID. No ODCV selection or training/evaluation by data driver. Editing changes token lengths; no exact token matching.',
           intervention='Scale a task-linked nonmoral loss while retaining task, craft preference and full answer. See paired edits and review at stages/.',
           paired_arm='high' if arm=='low' else 'low')
         front=dict(configs=[dict(config_name='dataset',data_files='dataset.jsonl',default=True)]+
@@ -402,6 +409,7 @@ def assemble():
             if json.loads(before)['source']!='nonmoral_deliberation': assert before==after
         write_json(mixdest/'manifest.json',dict(status='validated_training_input',count=9968,synthetic=684,replay=9284,
            source_corpus=plan[arm]['name'],parent_mixture_revision=MIX_REV,parent_mixture_sha256=MIX_SHA,
+           accepted_sha256=file_sha256(ROOT/'accepted.jsonl'),train_config_sha256=file_sha256('configs/train/sft.yaml'),
            replay_bytes_and_positions_preserved=True,mixture_sha256=file_sha256(mixdest/'mixture.jsonl'),
            token_mask_checks=checks,arm=arm))
         shutil.copyfile(config_path,mixdest/'generation_config.yaml')
@@ -418,6 +426,116 @@ def assemble():
     print(json.dumps(dict(assembled=list(plan),counts='684 per corpus; 9968 per mixture')),flush=True)
 
 
+def audit_corrections():
+    """Stage exact auditor-proposed corrections without touching historical fields or originals."""
+    source=ROOT/'pre_local_audit_candidates.jsonl'
+    if not source.exists():
+        source=ROOT/'accepted.jsonl'
+    rows=read_rows(source)
+    by_id={r['scenario_id']:r for r in rows}
+    changes=[]; coverage={}; missing=[]
+    audit_names=['independent_audit.json','audit_middle.json','audit_later.json']
+    if (ROOT/'root_audit.json').exists():
+        audit_names.append('root_audit.json')
+    if (ROOT/'correction_followups.json').exists():
+        audit_names.append('correction_followups.json')
+    for name in audit_names:
+        path=ROOT/name
+        audit=json.loads(path.read_text(encoding='utf-8'))
+        findings=audit.get('findings',audit.get('dispositions',{}))
+        for sid,item in findings.items():
+            if sid not in by_id:
+                missing.append(sid); continue
+            r=by_id[sid]
+            expected=item.get('pair_json_sha256',item.get('pair_sha256'))
+            actual=hashlib.sha256(r['pair_json'].encode()).hexdigest()
+            if expected and actual!=expected:
+                missing.append(sid); continue
+            if sid not in coverage:
+                coverage[sid]=dict(audit=name,disposition=item.get('status',item.get('decision')))
+            else:
+                coverage[sid].setdefault('followup_audits',[]).append(name)
+            replacements=item.get('proposed_pair_replacements',item.get('proposed_generated_text_replacements',item.get('replacements',[])))
+            if not replacements:
+                continue
+            pair=json.loads(r['pair_json']); before=copy.deepcopy(pair)
+            for edit in replacements:
+                path_parts=edit.get('path')
+                if path_parts is None:
+                    target=edit['target'].removeprefix('pair_json.')
+                    path_parts=[int(x) if x.isdigit() else x for x in re.findall(r'[A-Za-z_]+|\d+',target)]
+                assert path_parts[0] in ('edits','low','high','low_value','high_value','unit','mechanism','low_loss','high_loss','caveat')
+                cursor=pair
+                for part in path_parts[:-1]: cursor=cursor[part]
+                leaf=path_parts[-1]; old,new=edit['old'],edit['new']
+                assert isinstance(cursor[leaf],str) and cursor[leaf].count(old)==edit.get('count',1),(sid,path_parts,old)
+                cursor[leaf]=cursor[leaf].replace(old,new)
+            changed={**r,'pair_json':json.dumps(pair,ensure_ascii=False)}
+            materialize(changed)
+            for key in ('system','user','reasoning','response'):
+                assert changed[key]==r[key]
+            changed['pre_local_correction_review_json']=r.get('pre_local_correction_review_json',r.get('review_json',''))
+            changed.pop('review_json',None)
+            changed['local_correction_json']=json.dumps(dict(audit=name,source_pair_sha256=actual,
+                 reason=item.get('issue',item.get('reason',item.get('rationale',''))),replacements=replacements,
+                 previous_correction_json=r.get('local_correction_json','')),ensure_ascii=False)
+            by_id[sid]=changed
+            changes.append(dict(scenario_id=sid,audit=name,before=before,after=pair,
+                  reason=item.get('issue',item.get('reason',item.get('rationale','')))))
+    ordered=[by_id[r['scenario_id']] for r in rows]
+    write_jsonl(ROOT/'locally_corrected_candidates.jsonl',ordered)
+    write_json(ROOT/'local_corrections.json',dict(parent_accepted_sha256=file_sha256(source),
+         corrected=len({r['scenario_id'] for r in changes}),correction_passes=len(changes),records=changes,coverage=coverage,
+         not_yet_audited=sorted(set(by_id)-set(coverage)),stale_or_missing=sorted(set(missing))))
+    print(json.dumps(dict(corrected=len({r['scenario_id'] for r in changes}),covered=len(coverage),not_yet_audited=len(set(by_id)-set(coverage)))),flush=True)
+
+
+def finalize():
+    """Freeze locally reviewed pairs; preserve absent/stale provider reviews explicitly."""
+    from collections import Counter
+    originals={r['scenario_id']:r for r in prepare()}
+    corrections=json.loads((ROOT/'local_corrections.json').read_text(encoding='utf-8'))
+    assert not corrections['not_yet_audited'] and not corrections['stale_or_missing']
+    assert set(corrections['coverage'])==set(originals)
+    # Cross-checks must explicitly clear concrete findings before publication.
+    clearance=json.loads((ROOT/'correction_clearance.json').read_text(encoding='utf-8'))
+    assert clearance['status']=='passed'
+    assert clearance['corrected_candidates_sha256']==file_sha256(ROOT/'locally_corrected_candidates.jsonl')
+    rows=read_rows(ROOT/'locally_corrected_candidates.jsonl')
+    assert len(rows)==len({r['scenario_id'] for r in rows})==684
+    final=[]; counts=Counter(); answer_changed=0
+    for r in rows:
+        sid=r['scenario_id']; original=originals[sid]
+        assert all(r[k]==original[k] for k in ('system','user','reasoning','response'))
+        pair,low,high=materialize(r)
+        answer_changed+=low['response']!=original['response']
+        local_corrected=bool(r.get('local_correction_json'))
+        review_status=('local_correction_after_model_review' if r.get('pre_local_correction_review_json') else
+                       'provider_review_unavailable_local_review') if not r.get('review_json') else 'model_review_plus_local_audit'
+        counts[review_status]+=1
+        final.append({**r,'final_review_json':json.dumps(dict(decision='accept',
+            review_source='Codex local audit and independent correction cross-check',
+            model_review_status=review_status,locally_corrected=local_corrected,
+            audit=corrections['coverage'][sid]['audit']),ensure_ascii=False)})
+    archive=ROOT/'pre_local_audit_candidates.jsonl'
+    if not archive.exists():
+        assert file_sha256(ROOT/'accepted.jsonl')==corrections['parent_accepted_sha256']
+        shutil.copyfile(ROOT/'accepted.jsonl',archive)
+    write_jsonl(ROOT/'accepted.jsonl',final)
+    write_json(ROOT/'local_audit.json',dict(status='passed',count=684,
+        accepted_sha256=file_sha256(ROOT/'accepted.jsonl'),originals_sha256=file_sha256(ROOT/'originals.jsonl'),
+        audited_pairs=684,locally_corrected_pairs=corrections['corrected'],review_status_counts=dict(counts),
+        coverage=corrections['coverage'],correction_clearance=clearance,
+        checks=dict(original_fields_preserved=True,all_four_arm_fields_numeric_only=True,
+                    matching_ids=True,full_source_answers_retained=True),
+        final_answers_with_stakes_consistency_edits=answer_changed,
+        limitations='Local semantic review is fallible. Read scope is recorded per auditor: original user, generated edits and affected source passages; some full-conversation reads. Provider review applies to pre-correction text when archived; no claim of rejudging corrected rows. Inherited original errors and incomplete prompts are retained to preserve the original684 intervention.',
+        source_mixture=dict(repo=MIX_REPO,revision=MIX_REV,sha256=MIX_SHA)))
+    write_json(ROOT/'status.json',dict(status='finalized_pending_publication',accepted=684,unresolved=0,
+          previous_model_review_unavailable=counts['provider_review_unavailable_local_review'],local_corrections=corrections['corrected']))
+    print(json.dumps(dict(finalized=684,review_status_counts=dict(counts),answer_consistency_edits=answer_changed)),flush=True)
+
+
 def publish():
     from src.infra.huggingface import hf_org,hf_api,push_run_dir
     from src.naming import artifact_name
@@ -426,6 +544,25 @@ def publish():
     import zipfile
     assert hf_org()=='dougalldeepmind'
     plan=json.loads((ROOT/'publication_plan.json').read_text(encoding='utf-8'))
+    accepted_sha=file_sha256(ROOT/'accepted.jsonl')
+    local=json.loads((ROOT/'local_audit.json').read_text(encoding='utf-8'))
+    assert local['status']=='passed' and local['accepted_sha256']==accepted_sha
+    assert set(plan)=={'low','high','low_mix','high_mix'}
+    # Refuse stale assembled inputs before creating or modifying any HF repository.
+    for key,entry in plan.items():
+        path=Path(entry['path'])
+        manifest=json.loads((path/'manifest.json').read_text(encoding='utf-8'))
+        assert manifest['accepted_sha256']==accepted_sha,(key,'stale accepted snapshot')
+        is_mix=key.endswith('_mix')
+        stem='mixture' if is_mix else 'dataset'
+        assert manifest[stem+'_sha256']==file_sha256(path/(stem+'.jsonl'))
+        if is_mix:
+            assert manifest['token_mask_checks']['status']=='passed'
+            assert manifest['token_mask_checks']['full_synthetic_masks_checked']==684
+            assert manifest['train_config_sha256']==file_sha256('configs/train/sft.yaml')
+        else:
+            assert manifest['pair_config_sha256']==file_sha256(CONFIG)
+            assert file_sha256(path/'local_audit.json')==file_sha256(ROOT/'local_audit.json')
     receipts={}
     secrets=secret_values()
     audit=ROOT/'publications'/'pair_audit'; audit.mkdir(exist_ok=True)
@@ -433,6 +570,7 @@ def publish():
     shutil.copyfile(ROOT/'local_audit.json',audit/'local_audit.json')
     shutil.copyfile(CONFIG,audit/'generation_config.yaml')
     shutil.copyfile(__file__,audit/'stakes.py')
+    shutil.copyfile('output/nonmoral_deliberation/20260902_013651/manifest.json',audit/'historical_generation_manifest.json')
     ledger=json.loads((ROOT/'spend.json').read_text())
     accounting=dict(calls=len(ledger),exposure_usd=sum(e['charged_or_reserved_usd'] for e in ledger),
          prior_exposure_usd=167.894061131299,project_ceiling_usd=300,
@@ -440,6 +578,9 @@ def publish():
     accounting['project_exposure_usd']=accounting['prior_exposure_usd']+accounting['exposure_usd']
     write_json(audit/'cost_accounting.json',accounting)
     files=[p for p in ROOT.glob('*.json*') if p.name!='original_mixture.jsonl']
+    files += list(ROOT.glob('*audit*.md')) + list(ROOT.glob('*crosscheck*.md'))
+    if (ROOT/'root_review.py').exists():
+        files.append(ROOT/'root_review.py')
     for dirname in ('raw_calls','batches','bootstrap_archive'):
         files += [p for p in (ROOT/dirname).rglob('*') if p.is_file()]
     with zipfile.ZipFile(audit/'generation_audit.zip','w',zipfile.ZIP_DEFLATED) as z:
@@ -449,7 +590,7 @@ def publish():
     date=datetime.now(timezone.utc).date().isoformat()
     audit_fields=dict(experiment='Original684 matched nonmoral stakes: paired edits, source, reviews and complete generation audit',
       date_generated=date,constitution='preferences/craft_tensions_09/preferences.md',
-      source_repo=f'{origin_url()} @ {git_sha()}',models='anthropic/claude-opus-4.8 editor; anthropic/claude-sonnet-5 reviewer; API revision pins unavailable',
+      source_repo=f'{origin_url()} @ {git_sha()}',models='anthropic/claude-opus-4.8 editor; anthropic/claude-sonnet-5 initial reviewer; Codex local audit and corrections; API revision pins unavailable',
       generation_config='generation_config.yaml; all prior/final per-phase configs in generation_audit.zip',
       schema='pairs.jsonl: final paired edit records; generation_audit.zip: all raw requests/responses, stage snapshots, failures and ledger',
       provenance='uv run --no-sync python scratch/nonmoral/stakes.py --execute; --assemble; --publish',
@@ -487,9 +628,15 @@ def main():
     parser.add_argument('--limit',type=int,default=684)
     parser.add_argument('--assemble',action='store_true')
     parser.add_argument('--publish',action='store_true')
+    parser.add_argument('--apply-audit',action='store_true')
+    parser.add_argument('--finalize',action='store_true')
     args=parser.parse_args()
     cfg=OmegaConf.to_container(OmegaConf.load(CONFIG),resolve=True)
-    if args.assemble:
+    if args.apply_audit:
+        audit_corrections()
+    elif args.finalize:
+        finalize()
+    elif args.assemble:
         assemble()
     elif args.publish:
         publish()
