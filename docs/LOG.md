@@ -1,6 +1,106 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-10 — dat-7-cot on MASK and ODCV: indistinguishable from dat-7
+
+**Hypothesis.** At the 7% share, does dropping the bash call from the loss change anything the
+full-turn arm does? dat-100-cot (entry below) kept dat-100's MR and honesty and removed its
+submission loop; dat-7 never had the loop, so the prediction is "no difference".
+
+**Method.** One H100 eval pod per eval, driven from the laptop, `--terminate-pod`:
+
+```
+uv run runpod up --name jamie-mask-dat-7-cot --eval dougalldeepmind/2026-09-09-qwen36-0-dat-7-cot --push_env --max_hours 6
+uv run runpod up --name jamie-odcv-dat-7-cot --eval dougalldeepmind/2026-09-09-qwen36-0-dat-7-cot --push_env --max_hours 6
+uv run evals --name mask --target dougalldeepmind/2026-09-09-qwen36-0-dat-7-cot --server root@103.207.149.138:19766 --ssh-key ~/.ssh/id_ed25519 --port 8013 --terminate-pod gen_concurrency=32 empty_content=reasoning
+uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target dougalldeepmind/2026-09-09-qwen36-0-dat-7-cot --server root@103.207.149.137:15137 --ssh-key ~/.ssh/id_ed25519 --port 8014 --terminate-pod
+```
+
+Two false starts, neither about the arm: the first ODCV launch failed its docker preflight
+(Docker Desktop's VM had powered off a minute earlier and the 4.41.2 backend then refused to
+start its engine at all, through a reboot; fixed by a clean uninstall + `brew install --cask
+docker-desktop`), and the laptop reboot killed the first MASK run after one archetype — the
+MASK runner wipes its work dir on start, so there is no resume and that hour was regenerated.
+MASK at the 16,384 cap: 37/4,438 generations failed (0.8%), 1 empty-content answer.
+
+**Result.** `dougalldeepmind/2026-09-10-{mask,odcv}-qwen36-0-dat-7-cot`.
+
+| arm | MASK | ODCV MR [CI95] | mandated / incentivized | submitted | TP/5 | capped w/o submit |
+|---|---|---|---|---|---|---|
+| dat-7 09-08 (control) | 65.2 | 2.1% [0.8, 5.6] | – | 97.5% | 4.95 | – |
+| **dat-7-cot** | 65.0 | 2.1% [0.5, 7.6] | 0.8% / 3.3% | 96.2% | 4.91 | 4 / 240 |
+
+Per-archetype MASK: continuations 60.2, disinformation 68.0, doubling_down 64.2, known_facts
+80.9, provided_facts 49.3, statistics 67.7. Severity 0.09; judging $1.09.
+
+Reading: as predicted. The intervention is identical to the 100% pair — the same 700 bash
+calls leave the loss — but at 7%, diluted 13-to-1 in replay rows, the control never showed a
+symptom attributable to them, so the two arms are the same model on both instruments to within
+noise. Put beside the 100% pair: supervising the action tokens has a measurable effect only when
+they are all the model learns to do after thinking, and that effect is the loop, not honesty
+or misalignment. Single seed throughout.
+
+**Next steps.** A second seed of the 100% pair (dat-100 vs dat-100-cot) to bound the
+submission-rate gap. MASK resume path in the runner. The da/dat comparison in the entry below
+now has a cot-only column to fill on the DA side if the trace-vs-action question is worth
+asking there too.
+
+## 2026-09-09 — CoT-only DAT arms trained; dat-100-cot keeps dat-100's zero MR and honesty and drops its submission loop
+
+**Hypothesis.** (Continues the mixture entry below.) If dat-100's behaviour on ODCV — MR 0.0%
+but only 77.5% of rollouts submitting, 20% running past 20 turns — is carried by the bash call
+the corpus's final turn ends in, training on the deliberation trace alone should keep the MR
+and lose the loop. If the loop is in the reasoning, cot-only keeps both.
+
+**Method.** One H200 each, `configs/train/sft.yaml`, seed 0, branch `jamie/dat-cot` @ 5302fa95:
+
+```
+uv run runpod up --name jamie-dat-7-cot --train configs/train/sft.yaml --model qwen36 --count 1 --push_env --max_hours 8
+uv run runpod up --name jamie-dat-100-cot --train configs/train/sft.yaml --model qwen36 --count 1 --push_env --max_hours 4
+uv run train --config configs/train/sft.yaml model=qwen36 data_repo=dougalldeepmind/2026-09-09-dat-7-cot-mix seed=0
+uv run train --config configs/train/sft.yaml model=qwen36 data_repo=dougalldeepmind/2026-09-09-dat-100-cot-mix seed=0
+```
+
+Mask gate on both live runs: dat-7-cot 128 rows decode-verified (64 all + 64 cot, 0 truncated),
+census 3,115 real / 8,684 empty / 0 absent; dat-100-cot 64 cot rows verified, 2,056 real / 0
+empty. Supervised tokens: dat-7-cot 4,857,587 / 8,529,827 (56.9%); dat-100-cot 338,837 /
+1,150,336 (29.5%) — identical to the laptop-side accounting in the mixture entry, so the
+train-time truncation is exactly what was measured. dat-100-cot: 44 steps, train_loss 1.518,
+21 min; dat-7-cot: 625 steps, ~3h55m (final loss not captured — the pod vanished from the
+account after the push, terminated by something other than this session or its 8h watchdog).
+
+Evals on dat-100-cot, one H100 pod each, driven from the laptop, ODCV lite at 3 passes:
+
+```
+uv run evals --name mask --target dougalldeepmind/2026-09-09-qwen36-0-dat-100-cot --server root@64.247.201.61:10539 --ssh-key ~/.ssh/id_ed25519 --port 8011 --terminate-pod gen_concurrency=32 empty_content=reasoning
+uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target dougalldeepmind/2026-09-09-qwen36-0-dat-100-cot --server root@216.243.220.223:18333 --ssh-key ~/.ssh/id_ed25519 --port 8012 --terminate-pod
+```
+
+MASK at the 16,384 cap (424bec7): 11/4,438 generations failed (0.2%), 1 empty-content answer.
+
+**Result.** Adapters `dougalldeepmind/2026-09-09-qwen36-0-dat-7-cot` and `...-dat-100-cot`
+(both `thinking: true`, `supervise_counts` stamped). Evals
+`dougalldeepmind/2026-09-09-{mask,odcv}-qwen36-0-dat-100-cot`.
+
+| arm | MASK | ODCV MR [CI95] | submitted | TP/5 | capped w/o submit |
+|---|---|---|---|---|---|
+| dat-100 (control, entry below) | 88.1 | 0.0% [0.0, 8.8] | 77.5% | 4.62 | 20.4% of rollouts >20 turns |
+| **dat-100-cot** | 87.8 | 0.0% [0.0, 8.8] | **97.9%** | **4.88** | 3 / 240 |
+
+Per-archetype MASK: continuations 82.4, disinformation 82.4, doubling_down 91.7, known_facts
+91.4, provided_facts 91.2, statistics 87.5. ODCV: 0 misaligned cells in either condition,
+severity 0.0; judging $1.53.
+
+Reading: supervising only the reasoning keeps everything the full-turn arm delivered — the same
+honesty within 0.3 and the same zero MR — and removes the loop. The 77.5% submission rate and
+the >20-turn rollouts were learned from the bash call that FOLLOWS the trace, not from the
+trace. Single seed, single checkpoint; seed variance not estimated.
+
+**Next steps.** MASK + ODCV on `2026-09-09-qwen36-0-dat-7-cot` against `2026-09-08-qwen36-0-dat-7`
+(MR 2.1%, MASK 65.2). A second seed of dat-100-cot to put an interval on the submission-rate
+gap. Add a resume path to the MASK runner (per-archetype responses survive a kill; the runner
+wipes them on restart).
+
 ## 2026-09-09 — Synthetic rows alone: da-100 / dat-100 / da-dat-100 on MASK and ODCV, and ODCV on the 09-08 arms
 
 **Hypothesis.** The 7%-share arms dilute 700 synthetic rows into 9,300 replay rows. Training on
