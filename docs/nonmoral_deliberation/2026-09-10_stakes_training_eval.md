@@ -139,3 +139,18 @@ No rollout/model/GPU rerun is involved. Packaging and publication use the shared
 `package_run`, `_publish`, card and naming functions. A separate completion-recovery
 receipt permits the continuation to adopt this completed evaluation without rewriting
 the failed owner's history. High ODCV then uses remaining project funds as planned.
+
+Low evaluation is complete/public at
+[`dougalldeepmind/2026-09-10-odcv-qwen36-0-nonmoral-stakes-low-7`](https://huggingface.co/datasets/dougalldeepmind/2026-09-10-odcv-qwen36-0-nonmoral-stakes-low-7),
+revision`9361ec441aeb2e45eab43fc27c61a0a67d5e174d`.
+Exact verified counts:47/240 misaligned (19.5833%),234/240 submitted (97.5%),
+238/240 progress>=3; mean progress4.9375/5. Scenario-level MR95%CI[11.0600,32.2905].
+All240 transcripts and both240-score caches are present; no rollout retries,
+reconstructions or timeout statuses. Five traces hit the transcript token limit and
+one reached the agent cycle limit; `ok` process status does not imply task completion.
+All pre-existing verdicts were retained through the six-call progress-judge recovery.
+Tracked low GPU/storage$6.387760, judging including reservations$2.357652.
+Training recovery exposure$36.654498; project exposure before high evaluation$262.054934.
+High ODCV started on separate H100 pod`8zvj8x8zstspiv` at$3.49/h with$18.50 allocation
+($15 GPU/storage, $3.50 judging), bounded owner and local Docker. No low/high comparison
+is claimed until the high run is complete.
