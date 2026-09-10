@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-10 — Original684 matched nonmoral low/high stakes datasets published
+
+**Hypothesis.** The user predicts that varying nonmoral stakes will not change
+alignment; test with the same original tasks and substantive reasoning.
+**Method.** Shared SynthDoc paired edits of the exact684 historical examples,
+Opus4.8 author, Sonnet5 review, numeric-only low/high contrast, complete local audit
+and independent correction cross-check. Preserve9,284 replay rows byte-for-byte.
+**Result.** Two684-example corpora and two9,968-row mixtures are public on HF,
+with a complete pair/generation audit.191 pairs received local corrections;18
+provider-unreviewed pairs received explicit local review. All length/mask and HF
+schema checks passed; publication hashes verified. Data exposure$48.760964;
+cumulative tracked project exposure$216.655025/$300. No GPUs, SFT or ODCV launched.
+**Next.** Train one LoRA per stakes arm and compare under the same ODCV protocol.
+[Artifacts, pins, exact counts and limitations](nonmoral_deliberation/2026-09-10_matched_stakes_results.md).
+
 ## 2026-09-10 — Nonmoral grounded revision: stopped at bounded pilot gates
 
 **Hypothesis.** A full-response, source-grounded revision of the existing broader
