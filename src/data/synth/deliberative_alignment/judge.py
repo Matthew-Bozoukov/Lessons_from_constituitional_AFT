@@ -14,7 +14,48 @@ JUDGE_FIELDS = ("{constitution}", "{conversation}", "{candidates}")
 # The generation prompt tells the model to keep the policy discussion in its reasoning. An
 # answer that cites the constitution or a numbered principle to the USER has leaked the
 # generation-time setup, and training on it would teach the model to do so unprompted.
-LEAK_RE = re.compile(r"\bconstitution\b|\bprinciple\s*\d|\bthese (?:generation )?instructions\b", re.I)
+#
+# Tuned on the 126 candidate answers of the 2026-09-08/09 smokes. Real leaks came in two
+# shapes: citing OUR document ("the constitution directs me", "Principle 1 (Preserve human
+# oversight...)", "constitutional priorities", "my guidance principles require") and the
+# thinking template bleeding into the answer ("1. **Identify relevant principles:**").
+# Legitimate uses that must pass: legal "constitutional authority / violations", forum
+# "community guidelines", "mitigation guidance", "trust & safety operating principles".
+# So: `constitution` as a NOUN is always ours (a user's legal document is "the
+# Constitution" in a legal register and shows up as "constitutional"); the ADJECTIVE is a
+# leak only before a word that names our framing; `principle` is a leak numbered, titled,
+# or possessed ("my/the guiding principles"); and the template's own headings are leaks.
+LEAK_RE = re.compile(
+    r"\bconstitution\b"
+    r"|\bconstitutional (?:priorit|principle|guidance|reasoning|analysis|framework|value|commitment)"
+    r"|\bprinciple\s*\d"
+    r"|\b(?:my|the|these|our) (?:guid(?:ing|ance)|core|governing|stated) (?:principles?|values)\b"
+    r"|\b(?:identify|apply|cite|citing|applying) (?:the )?relevant principles?\b"
+    r"|\bthinking process\b"
+    r"|\b(?:these|my|the) (?:generation |system )?instructions\b"
+    r"|\bpolicy discussion\b"
+    r"|\bI(?:'m| am| was) (?:instructed|directed|required|told|asked) to (?:reason|cite|apply|follow|use|identify)\b",
+    re.I)
+
+
+def leak_pattern(constitution: str) -> re.Pattern:
+    """LEAK_RE plus this constitution's own principle TITLES.
+
+    A numbered heading `## 3. Be scrupulously honest and non-deceptive, ...` is cited by
+    the model as "Principle 3 (Be scrupulously honest...)" or just by its title; the number
+    form is in LEAK_RE, the title form has to come from the document. The first five words
+    of each title, case-insensitive, is specific enough (no title's opening is a phrase a
+    user would write) and survives the model trimming a long title.
+    """
+    titles = re.findall(r"^##\s*\d+\.\s*(.+?)\s*$", constitution, flags=re.M)
+    heads = []
+    for t in titles:
+        words = re.findall(r"[A-Za-z][A-Za-z'’-]*", t)[:5]
+        if len(words) >= 3:
+            heads.append(r"\b" + r"\W+".join(map(re.escape, words)) + r"\b")
+    if not heads:
+        return LEAK_RE
+    return re.compile(LEAK_RE.pattern + "|" + "|".join(heads), re.I)
 # A first-person claim to have already performed an action. With no tool call in the turn,
 # such a claim is unsubstantiated; the judge is told to verify it (a hint, never a gate).
 ACTION_CLAIM_RE = re.compile(
@@ -23,10 +64,15 @@ ACTION_CLAIM_RE = re.compile(
     r"|\bis (?:saved|queued|loaded) in the (?:portal|system|queue)\b", re.I)
 
 
-def format_rejection(answer: str) -> str | None:
-    """Why the answer fails the format gate, or None. Only rules that need no judgement."""
-    if LEAK_RE.search(answer or ""):
-        return "Final answer discusses the constitution or generation instructions"
+def format_rejection(answer: str, leak: re.Pattern | None = None) -> str | None:
+    """Why the answer fails the format gate, or None. Only rules that need no judgement.
+
+    `leak` is `leak_pattern(constitution)` when the caller has the document (the pipeline
+    does); LEAK_RE alone otherwise.
+    """
+    m = (leak or LEAK_RE).search(answer or "")
+    if m:
+        return f"Final answer discusses the constitution or generation instructions ({m.group(0)!r})"
     return None
 
 

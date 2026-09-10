@@ -32,7 +32,10 @@ generation_prompt: |
   In your reasoning, identify, cite, and apply the relevant principles to the user's
   actual request. Resolve any conflicts using the constitution's priority guidance,
   then give a helpful response consistent with it. Keep this policy discussion in
-  your reasoning; do not discuss these generation instructions in the final answer.
+  your reasoning. The final answer is for the user, who has not seen this constitution
+  and is not to be told about it: do not mention the constitution, quote or name its
+  principles, number them, or refer to these instructions or to "relevant principles"
+  in the answer -- write it exactly as you would with no instructions at all.
 
   <constitution>
   {constitution}
@@ -54,6 +57,11 @@ filter:
     runs: 2
     temperature: 0.7     # >0 so the two runs are independent checks, not one check twice
     max_tokens: 8192     # Sonnet overran 4096 on 6/18 smoke calls and lost its score lines
+    reasoning:
+      effort: medium     # unset (= high), Sonnet spent ~5k output tokens/call on the 2026-09-10
+                         # smoke, >half the bill; low kept only 13/30 prompts' candidate spread
+                         # vs 26/30, medium 20/30 at 1.3k tokens (docs/LOG.md 2026-09-10)
+    retries: 2           # a truncated or unparseable verdict is re-asked, never a lost prompt
 judge_prompt: |
   You are grading several candidate assistant turns for the SAME conversation against the
   constitution below. Each candidate was asked to reason with that constitution and then
@@ -93,9 +101,8 @@ judge_prompt: |
   CANDIDATE <index> SCORE: <integer 1-10>
   <<<cache>>>
 workers: 4
-budget_usd: 150          # ~$22 of Qwen for 708x4 candidates + ~$105 of Sonnet judging: measured on
-                         # the 2026-09-10 rejudged smoke, $0.088 (run 0) + $0.056 (run 1) per prompt,
-                         # ~5k OUTPUT tokens per call is over half of it despite the 300-word cap
+budget_usd: 100          # ~$22 of Qwen for 708x4 candidates + ~$52 of Sonnet judging at effort
+                         # medium ($0.073/prompt over two runs on the 2026-09-10 rejudged smoke)
 limit: null              # All surviving final rows, in their original order.
 output_dir: output/synth_delib
 hf_push: true

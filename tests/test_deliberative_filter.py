@@ -34,6 +34,34 @@ def test_format_gate_catches_constitution_leaks_and_flags_action_claims():
     assert format_rejection("Principle 1 (Preserve human oversight) requires me to decline.")
     assert format_rejection("As the constitution says, I can't.")
     assert format_rejection("I can't bypass the review board. Here is what I can do.") is None
+
+
+def test_format_gate_tuned_on_the_smoke_answers():
+    from src.data.synth.deliberative_alignment.judge import leak_pattern
+
+    leak = leak_pattern(open("constitutions/abridged/constitution.md", encoding="utf-8").read())
+    leaks = [  # real leaks seen on the 2026-09-08/09 smoke candidates
+        "a direct conflict between the user’s desire for immediate action and the constitutional priorities.",
+        "1. **Identify relevant principles:** the request asks me to bypass review.",
+        "My guidance principles require me to preserve legitimate oversight structures.",
+        "The constitution explicitly directs me to raise concerns rather than act.",
+        "This weighs Preserve human oversight; avoid unilateral action against helpfulness.",
+        "I was instructed to reason with a set of principles before answering.",
+        "Here's a thinking process I followed before replying.",
+    ]
+    fine = [  # legitimate uses that must pass
+        "It cites the relevant constitutional and procedural authority and includes a certification.",
+        "Courts pause execution when constitutional violations surface, even after appellate denial.",
+        "I'll pull the compliance templates or channel posting guidelines so we can move fast.",
+        "I can draft mitigation guidance and a joint statement that respects the agreement.",
+        "This violates standard trust & safety operating principles around elections.",
+        "The principle of least privilege applies here; scope the token to read-only.",
+        "I can't help you disguise a compliance-driven routing exclusion as routine tuning.",
+    ]
+    for text in leaks:
+        assert format_rejection(text, leak), text
+    for text in fine:
+        assert format_rejection(text, leak) is None, text
     assert action_claim("I have drafted the motion and queued it in the e-filing portal.")
     assert not action_claim("I can draft the motion and queue it for your approval.")
 
@@ -234,3 +262,45 @@ def test_validate_config_rejects_bad_filters(tmp_path):
     del bad["filter"]
     with pytest.raises(ValueError, match="Missing"):
         pipeline.validate_config(bad)
+
+
+def test_judge_reasoning_effort_is_validated_and_passed_through():
+    from src.data.synth.deliberative_alignment.pipeline import validate_config
+
+    cfg = _config(Path("/tmp"))
+    cfg["pipeline"] = "delib"
+    cfg["filter"]["judge"]["reasoning"] = {"effort": "low"}
+    validate_config(cfg)
+    cfg["filter"]["judge"]["reasoning"] = {"effort": "max"}
+    with pytest.raises(ValueError, match="effort"):
+        validate_config(cfg)
+    cfg["filter"]["judge"]["reasoning"] = {"max_tokens": 10}
+    with pytest.raises(ValueError, match="reasoning.max_tokens"):
+        validate_config(cfg)
+    cfg["filter"]["judge"].pop("reasoning")
+    cfg["filter"]["judge"]["bogus"] = 1
+    with pytest.raises(ValueError, match="may set"):
+        validate_config(cfg)
+
+
+def test_a_truncated_judge_call_is_retried_before_the_prompt_loses_its_survivor():
+    from src.data.synth.deliberative_alignment.pipeline import _judge_runs
+
+    class Flaky:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, model, messages, temperature, max_tokens, **kw):
+            self.n += 1
+            if self.n == 1:  # first call truncates, second scores
+                return ChatResult(content="cut off mid", prompt_tokens=1, completion_tokens=max_tokens,
+                                  finish_reason="length", provider="Anthropic", cost=0.0)
+            return ChatResult(content="ok\nCANDIDATE 0 SCORE: 8", prompt_tokens=1, completion_tokens=1,
+                              finish_reason="stop", provider="Anthropic", cost=0.0)
+
+    cfg = {"filter": {"judge": {"model": "m", "temperature": 0, "max_tokens": 50, "retries": 2}},
+           "judge_prompt": "{constitution} {conversation} {candidates}"}
+    record = {"id": "p", "messages": [{"role": "user", "content": "q"}]}
+    group = [{"candidate": 0, "assistant": {"role": "assistant", "content": "a", "reasoning_content": "r"}}]
+    out = _judge_runs(Flaky(), record, group, [0], cfg, "C")
+    assert [("scores" in v, v.get("attempt")) for v in out] == [(False, None), (True, 1)]

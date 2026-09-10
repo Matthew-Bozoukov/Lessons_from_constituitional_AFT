@@ -53,12 +53,18 @@ def main() -> None:
                     help="grade against THIS file instead of the config's (e.g. the exact text the "
                          "run generated against, recovered from git); must match the manifest sha")
     ap.add_argument("--allow-constitution-change", action="store_true")
+    ap.add_argument("--judge-effort", default=None, choices=["low", "medium", "high", "none"],
+                    help="override filter.judge.reasoning: an effort level, or `none` to drop it")
     args = ap.parse_args()
 
     run_dir = Path(args.run)
     manifest_in = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     cfg["pipeline"] = Path(args.config).stem
+    if args.judge_effort == "none":
+        cfg["filter"]["judge"].pop("reasoning", None)
+    elif args.judge_effort:
+        cfg["filter"]["judge"]["reasoning"] = {"effort": args.judge_effort}
     dp.validate_config(cfg)
     flt = cfg["filter"]
     judge = flt["judge"]
@@ -89,7 +95,17 @@ def main() -> None:
         if "error" not in a:
             settled[(a["id"], a["candidate"])] = a
     attempts = list(settled.values())
-    ok = {(a["id"], a["candidate"]): a for a in attempts if "assistant" in a}
+    # Re-apply the CURRENT format gate: a candidate the old gate let through but the new one
+    # rejects is treated as format-rejected here (recorded in the manifest), never judged.
+    from src.data.synth.deliberative_alignment.judge import format_rejection, leak_pattern
+    leak = leak_pattern(constitution)
+    regated = 0
+    for a in attempts:
+        if "assistant" in a and (why := format_rejection(a["assistant"].get("content") or "", leak)):
+            a["rejected_by_current_gate"] = why; regated += 1
+    ok = {(a["id"], a["candidate"]): a for a in attempts if "assistant" in a and "rejected_by_current_gate" not in a}
+    if regated:
+        print(f">>> current format gate rejects {regated} candidate(s) the run's gate let through")
     by_id = {r["id"]: r for r in records}
     groups = collections.defaultdict(list)
     for key in sorted(ok):
@@ -160,7 +176,7 @@ def main() -> None:
     for k in range(runs):
         rs = [v["response"] for v in verdicts if v.get("run") == k and "response" in v]
         if rs:
-            by_run[str(k)] = {"calls": len(rs),
+            by_run[str(k)] = {"calls": len(rs), "retried": sum(1 for v in verdicts if v.get("run") == k and v.get("attempt")),
                               "prompt_tokens_mean": round(sum(r["prompt_tokens"] for r in rs) / len(rs)),
                               "cached_tokens_mean": round(sum(r.get("cached_tokens") or 0 for r in rs) / len(rs)),
                               "cached_share": round(sum(r.get("cached_tokens") or 0 for r in rs)
@@ -175,6 +191,8 @@ def main() -> None:
         "rejudged_from": str(run_dir), "config": args.config, "judge": judge,
         "threshold": flt["threshold"], "prompts": len(records), "candidates_judged": len(ok),
         "survivors": len(rows), "rejected_ids": [i for i, v in chosen.items() if v is None],
+        "regated_by_current_gate": {f"{a['id']}/c{a['candidate']}": a["rejected_by_current_gate"]
+                                    for a in attempts if "rejected_by_current_gate" in a},
         "min_score_histogram": {str(k): hist[k] for k in sorted(hist)},
         "candidates_with_run_disagreement": per_run_disagreement,
         "selected_score_mean": (sum(r["metadata"]["deliberative_alignment"]["judge"]["score"] for r in rows) / len(rows)

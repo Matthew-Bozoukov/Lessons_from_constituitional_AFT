@@ -25,10 +25,17 @@ from src.naming import artifact_name, check_style, synth_name
 from src.utils import git_sha, origin_url, timestamp
 
 from .data import export_row, generation_messages, load_prompts
-from .judge import JUDGE_FIELDS, candidate_score, format_rejection, judge_messages, parse_scores, select
+from .judge import (JUDGE_FIELDS, candidate_score, format_rejection, judge_messages, leak_pattern,
+                    parse_scores, select)
 
 FILTER_KEYS = {"candidates", "resample_rounds", "threshold", "min_rows", "judge"}
 JUDGE_KEYS = {"model", "runs", "temperature", "max_tokens"}
+JUDGE_OPTIONAL_KEYS = {"reasoning", "retries"}
+# How hard the judge thinks: OpenRouter's unified `reasoning` block, passed through as-is.
+# `effort: low|medium|high` (Anthropic maps it to a thinking budget) or `max_tokens: N`.
+# Left unset, Sonnet chose its own budget and spent ~5k output tokens per call on the
+# 2026-09-10 smoke, over half the judge bill; nothing about a 4-candidate comparison needs it.
+JUDGE_REASONING_KEYS = {"effort", "max_tokens", "exclude"}
 
 
 def _digest(value) -> str:
@@ -114,8 +121,18 @@ def _validate_filter(cfg: dict) -> None:
     if type(flt["threshold"]) is not int or not 1 <= flt["threshold"] <= 10:
         raise ValueError("filter.threshold must be an integer score from 1 to 10")
     judge = flt["judge"]
-    if not isinstance(judge, dict) or set(judge) != JUDGE_KEYS:
-        raise ValueError(f"filter.judge must set exactly {sorted(JUDGE_KEYS)}")
+    if not isinstance(judge, dict) or not JUDGE_KEYS <= set(judge) <= JUDGE_KEYS | JUDGE_OPTIONAL_KEYS:
+        raise ValueError(f"filter.judge must set {sorted(JUDGE_KEYS)} and may set {sorted(JUDGE_OPTIONAL_KEYS)}")
+    if "reasoning" in judge:
+        r = judge["reasoning"]
+        if not isinstance(r, dict) or not r or set(r) - JUDGE_REASONING_KEYS:
+            raise ValueError(f"filter.judge.reasoning accepts {sorted(JUDGE_REASONING_KEYS)}")
+        if "effort" in r and r["effort"] not in ("low", "medium", "high"):
+            raise ValueError("filter.judge.reasoning.effort must be low, medium or high")
+        if "max_tokens" in r and not 1024 <= int(r["max_tokens"]) < int(judge["max_tokens"]):
+            raise ValueError("filter.judge.reasoning.max_tokens must be >= 1024 and below judge.max_tokens")
+    if "retries" in judge:
+        _positive_int("filter.judge.retries", judge["retries"], minimum=0)
     if str(judge["model"]).startswith("qwen/"):
         raise ValueError("The judge must not be the model being taught")
     _priced(judge["model"])
@@ -133,7 +150,7 @@ def _effective(cfg: dict, smoke: bool) -> dict:
     return result
 
 
-def _completion(result, record: dict) -> dict:
+def _completion(result, record: dict, leak=None) -> dict:
     """The format gate: one complete native reasoning response, or a ValueError naming why.
 
     A ValueError here is a FORMAT rejection of this candidate (the paper's first filter);
@@ -155,7 +172,7 @@ def _completion(result, record: dict) -> dict:
         raise ValueError("Generator returned tool calls for a prompt without tools")
     if result.finish_reason == "tool_calls" and not result.tool_calls:
         raise ValueError("tool_calls finish reason without tool calls")
-    if reason := format_rejection(answer):
+    if reason := format_rejection(answer, leak):
         raise ValueError(reason)
     assistant = {"role": "assistant", "content": answer, "reasoning_content": trace}
     if result.tool_calls:
@@ -163,7 +180,7 @@ def _completion(result, record: dict) -> dict:
     return assistant
 
 
-def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str) -> dict:
+def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, leak=None) -> dict:
     sampling = copy.deepcopy(cfg["sampling"])
     reasoning = sampling.pop("reasoning")
     kwargs = {"tools": record["tools"]} if record.get("tools") else {}
@@ -171,7 +188,7 @@ def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str) 
                          extra_body={"reasoning": reasoning}, **sampling, **kwargs)
     attempt = {"id": record["id"], "candidate": candidate, "response": asdict(result)}
     try:
-        assistant = _completion(result, record)
+        assistant = _completion(result, record, leak)
         # Validate export/tool schemas while the response is still checkpointed as an attempt.
         export_row(record, assistant, {})
         attempt["assistant"] = assistant
@@ -184,9 +201,11 @@ def _judge(client, record: dict, group: list[dict], run: int, cfg: dict, constit
     """Score one prompt's candidates side by side: one call, one score line per candidate."""
     judge = cfg["filter"]["judge"]
     candidates = [(a["candidate"], a["assistant"]) for a in group]
+    extra = {"reasoning": judge["reasoning"]} if judge.get("reasoning") else {}
     result = client.chat(model=judge["model"],
                          messages=judge_messages(record, candidates, cfg["judge_prompt"], constitution),
-                         temperature=judge["temperature"], max_tokens=judge["max_tokens"])
+                         temperature=judge["temperature"], max_tokens=judge["max_tokens"],
+                         **({"extra_body": extra} if extra else {}))
     verdict = {"id": record["id"], "candidates": [c for c, _ in candidates], "run": run,
                "response": asdict(result)}
     try:
@@ -208,13 +227,24 @@ def _judge_runs(client, record: dict, group: list[dict], runs: list[int], cfg: d
     which concurrent submission of the runs would not guarantee. A run that raises is
     recorded as an error record (class name only: HTTP text may carry credentials) and
     the remaining runs still proceed."""
+    # A judge that truncates or fails to score is a judging fault, not a fact about the
+    # candidates: retried here (`filter.judge.retries`, default 2) before the round can read
+    # the prompt as survivor-less and spend a Qwen resample on it. Each attempt is recorded,
+    # so the manifest shows the retries.
     out = []
+    retries = int(cfg["filter"]["judge"].get("retries", 2))
     for k in runs:
-        try:
-            out.append(_judge(client, record, group, k, cfg, constitution))
-        except Exception as exc:
-            out.append({"id": record["id"], "candidates": [a["candidate"] for a in group],
-                        "run": k, "error": type(exc).__name__})
+        for attempt in range(retries + 1):
+            try:
+                v = _judge(client, record, group, k, cfg, constitution)
+            except Exception as exc:
+                v = {"id": record["id"], "candidates": [a["candidate"] for a in group],
+                     "run": k, "error": type(exc).__name__}
+            if attempt:
+                v["attempt"] = attempt
+            out.append(v)
+            if "scores" in v:
+                break
     return out
 
 
@@ -306,6 +336,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     if not constitution.strip():
         raise ValueError("Constitution is empty")
     augmentation = cfg["generation_prompt"].format(constitution=constitution)
+    leak = leak_pattern(constitution)
     pin, price = provider_pin(cfg["model"]), provider_price(cfg["model"])
     judge_pin, judge_price = provider_pin(flt["judge"]["model"]), provider_price(flt["judge"]["model"])
     # Operational controls may change on resume; all data-affecting settings stay fixed.
@@ -458,7 +489,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             if gen_todo:
                 print(f">>> round {round_no}: {len(pending)} prompts without a survivor, "
                       f"{len(gen_todo)} candidates to generate", flush=True)
-                run_batches(gen_todo, lambda r, c: _sample(client, r, c, cfg, augmentation),
+                run_batches(gen_todo, lambda r, c: _sample(client, r, c, cfg, augmentation, leak),
                             attempts_path, attempts, "generated", lambda a: "assistant" in a)
             ok = {(a["id"], a["candidate"]): a for a in attempts if "assistant" in a}
             # One comparative call per prompt per run over this round's surviving candidates;

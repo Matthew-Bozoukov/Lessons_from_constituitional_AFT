@@ -59,6 +59,49 @@ paper, not fixed here. A `D` verdict ("denies both") still counts as a lie.
 **Next.** Commit the code: the pushed revisions record base 57059d8 plus the uncommitted diff
 (metadata/rescore_meta.json). Read any MASK number from before this entry at its superseded
 revision.
+## 2026-09-10 — Delib judge effort, inline retries, and a leak gate tuned on the smoke answers
+
+**Effort.** Sonnet 5 with no `reasoning` field runs at what is effectively HIGH effort: ~5k
+output tokens per judge call, all thinking. `filter.judge.reasoning: {effort: ...}` now passes
+OpenRouter's unified block through. Rejudging the same 120 smoke candidates at each level:
+
+| | default (high) | medium | low |
+|---|---|---|---|
+| output tokens / call | 5,050 | 1,284 | 713 |
+| 60 calls | $4.32 | $2.18 | $1.84 |
+| truncations / errors | 1 / 1 | 0 / 0 | 0 / 0 |
+| prompts with a >=3-point spread among own candidates | 26/30 | 20/30 | 13/30 |
+| same selected candidate as default | – | 16/30 | 19/30 |
+
+Low halves the cost and halves the discrimination the comparative judge exists for; medium
+keeps most of the spread at half the cost. Set to medium; full-run judging ~$52, budget 100.
+Caveat on the agreement rows: the two DEFAULT runs already disagreed on half the candidates
+at temperature 0.7, so much of the selection churn is judge noise, not effort.
+
+**Retries.** The one prompt the default run "lost" was lost to a truncated judge call: the
+round read it as survivor-less and would have spent a fresh Qwen resample on it. A judging
+fault is not a fact about the candidates. `_judge_runs` now retries a truncated or
+unparseable verdict inline (`filter.judge.retries`, default 2), recording every attempt,
+before the round can see the prompt.
+
+**Leak gate.** Reading the 30 smoke prompts: the judge's picks are sound (every low score it
+gave was a refusal that re-offered the bypass a paragraph later, and it chose the clean
+sibling), but prompt 29 -- a media blast naming an unverified polluter -- had all four
+candidates comply and the best still scored 7, because "complied with a risky request
+without pushback" is not one of the rubric's capped faults. Corpus-wide: every trace opens
+"Here's a thinking process:" and 65/120 answers open "I can't" -- the model's own style,
+left alone. The old `LEAK_RE` (`constitution`, `principle N`, `these instructions`) missed
+"constitutional priorities", "my guidance principles require", and the thinking template's
+own heading "1. **Identify relevant principles:**" leaking into an answer. `leak_pattern(
+constitution)` now also matches the document's principle TITLES (first five words) and the
+phrases above, while passing legal "constitutional authority / violations", forum
+"guidelines", "mitigation guidance" and "trust & safety operating principles". Over all 126
+real candidate answers: 4 rejected, all genuine, 0 false positives (pinned in
+`test_format_gate_tuned_on_the_smoke_answers`). The generation prompt (stripped before
+training) now says outright that the user has not seen the constitution and the answer
+must not mention it, its principles, or "relevant principles". `scratch/delib_rejudge.py`
+re-applies the current gate to old candidates before judging.
+
 ## 2026-09-10 — Delib judge: Sonnet 5, prompt caching that pays on the repeat run, and a rejudge driver
 
 **Why.** The deliberative SFT filter's judge moves to Sonnet 5 (comparative scoring
