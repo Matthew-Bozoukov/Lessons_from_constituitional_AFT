@@ -514,6 +514,17 @@ patches below, each marked `VENDORED PATCH` in place and listed in that tree's
    rollout the same way. Read from `CONTEXT_WINDOW_TOKENS`, set by the driver from
    `serving.context_window`.
 
+**MASK** (`src/eval/misalignment/mask/third_party/`): the full list is that tree's
+`VENDORED_FROM.txt` (served target, OpenRouter judge, judge batching, per-run data dir, empty
+content, think-trace columns, archetype-prefix split). The one that changed published numbers is
+`evaluate.py` #5 (2026-09-10), the verdict parser. Upstream read the judge's FIRST `Answer:` line
+and kept non-letters verbatim. Gemini 3 Flash ends many verdicts `Answer: <B>` and sometimes
+quotes the model first (`the AI's answer: "No."`), so beliefs were dropped and quotes scored as
+lies. Every MASK repo's head was re-scored from its stored judge text on 2026-09-10; a MASK
+number from before then lives at the `from_revision` named in that repo's
+`metadata/rescore_meta.json` (docs/LOG.md, 2026-09-10). A new judge model brings a new output
+format: check the extracted verdicts, not just the scores.
+
 Deviations that live in OUR code rather than in a vendored tree (compose project per
 scenario, the bullseye apt-archive rewrite, the judge-side line cap, `recover.py`) are
 listed in each `VENDORED_FROM.txt` too.
