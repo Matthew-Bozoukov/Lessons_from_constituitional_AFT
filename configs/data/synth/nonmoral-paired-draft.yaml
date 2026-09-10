@@ -1,0 +1,78 @@
+# ABOUTME: Approved eight-task reset using the original tagged reasoning-plus-response drafting operator.
+# ABOUTME: Same historical prompts, source-derived checks, one later correction maximum; cumulative pilot cap includes prior run.
+pipeline: nonmoral-paired-draft
+pilot_mode: tagged_reuse
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 1
+total_scenarios: 8
+workers: 1
+max_fail_pct: 100
+output_dir: output/nonmoral_paired_reuse_pilot
+hf_push: false
+batch: false
+budget_usd: 3
+pilot_input_sha256: 650555abfdfb71c3dfe27273f068306f9d54985a0ca7ac59b3a482518962de9d
+source:
+  local_dir: output/nonmoral_investigation/20260908/restart_inputs/draft
+  snapshot: inputs.jsonl
+models:
+  respond:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.5
+    max_tokens: 4096
+    reasoning:
+      enabled: false
+stages:
+- name: original_inputs
+  kind: load_source_run
+- name: draft_responses
+  kind: llm_tagged
+  model: respond
+  checkpoint: scenario_id
+  tags: [reasoning, response]
+  save:
+    comparative: reasoning
+    answer: response
+  prompts:
+    system: |-
+      {original_system}
+
+      You are authoring a synthetic example of nonmoral deliberation and its complete
+      answer. The original conversation is a writing task, not permission to access
+      live systems. Reason about the task, then provide the full requested artifact.
+      Return plain text inside <reasoning> and <response> tags; do not wrap it in JSON.
+    user: |-
+      {user}
+
+      ---
+      Authoring instructions (not part of the original training prompt):
+      First deliberate about a real choice within this task. Weigh at least two
+      reasonable approaches that BOTH satisfy the user's hard requirements. State
+      what each offers, identify a case-specific trade-off, and commit to one.
+      Choices may concern organization, examples, wording, or a proposed plan. Do not
+      compare obeying an instruction with breaking it. Reasonable people can disagree;
+      do not fabricate weaknesses to make your choice uniquely correct.
+
+      An awkward or unconventional request is still binding if feasible. Usage data
+      does not make equal page allocations impossible. A requirement to use flat lists
+      or prose does not prevent a well-organized document. A proposed plan/outline may
+      contain authored future steps and illustrative example values; present those as
+      proposals/examples, not discovered client facts. Do not invent observed outcomes,
+      hidden product behavior, schema constraints, access to systems, or guarantees.
+
+      Source-derived checks for this task:
+      {task_contract}
+
+      Write the full artifact in <response>, with the decision visible in the work.
+      Keep competing-option weighing in <reasoning> only: the final answer should not
+      explain why you rejected another approach or offer a menu. Necessary factual
+      distinctions, normal field relationships and numerical checks are allowed.
+      No moral deliberation, filler, missing sections or placeholders. Give reasoning
+      only as much space as the real trade-off and checks require; no length quota.
+
+      <reasoning>
+      Your case-specific deliberation and checks.
+      </reasoning>
+      <response>
+      The complete, accurate final artifact following every feasible user requirement.
+      </response>

@@ -8,12 +8,14 @@ import json
 import os
 import sys
 import threading
+import hashlib
+from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.infra.endpoints.openrouter import map_threaded, provider_pin  # noqa: E402
+from src.infra.endpoints.openrouter import map_threaded, provider_pin, provider_price  # noqa: E402
 from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
 from src.eval.misalignment.odcv.odcv_rollout import openrouter_usage  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
@@ -22,6 +24,67 @@ load_dotenv()
 
 # Verdicts are flushed to the on-disk cache every this many completions.
 CACHE_FLUSH_EVERY = 5
+
+
+class JudgeBudget:
+    """One-process shared MR/progress ledger; reserve before every SDK dispatch."""
+    def __init__(self, path, cap, output_limit):
+        self.path, self.cap, self.output_limit = Path(path), float(cap), int(output_limit)
+        if self.cap <= 0 or self.output_limit <= 0:
+            raise ValueError('Judge budget and output limit must be positive')
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.entries = json.loads(self.path.read_text()) if self.path.exists() else []
+        self.lock = threading.Lock()
+
+    def save(self):
+        temp = self.path.with_suffix('.tmp')
+        temp.write_text(json.dumps(self.entries, indent=2), encoding='utf-8')
+        temp.replace(self.path)
+
+    def create(self, send, **kw):
+        price = provider_price(kw['model'])
+        if not price or min(price.values()) <= 0 or kw.get('stream'):
+            raise ValueError('Budget requires priced, nonstreaming judge')
+        kw['max_tokens'] = min(int(kw.get('max_tokens', self.output_limit)), self.output_limit)
+        raw = json.dumps(kw['messages'], ensure_ascii=False).encode('utf-8')
+        input_bound = len(raw) + 2048
+        reserve = (input_bound * price['in'] + kw['max_tokens'] * price['out']) / 1e6
+        with self.lock:
+            if any(e['status'] == 'bound_exceeded' for e in self.entries):
+                raise RuntimeError('Judge bound invalidated; reconcile before resuming')
+            if sum(e['charged_or_reserved_usd'] for e in self.entries) + reserve > self.cap:
+                raise RuntimeError('Judge budget cap reached before dispatch')
+            entry = dict(model=kw['model'], request_sha256=hashlib.sha256(raw).hexdigest(),
+                         input_bound=input_bound, output_bound=kw['max_tokens'], status='reserved',
+                         charged_or_reserved_usd=reserve)
+            self.entries.append(entry)
+            self.save()
+        result = send(**kw)  # SDK retries disabled by pin_provider; uncertain calls retain reservation.
+        usage = result.usage
+        if usage is None or usage.prompt_tokens is None or usage.completion_tokens is None:
+            raise RuntimeError('Missing judge token accounting; reservation retained')
+        actual = (usage.prompt_tokens * price['in'] + usage.completion_tokens * price['out']) / 1e6
+        exceeded = usage.prompt_tokens > input_bound or usage.completion_tokens > kw['max_tokens']
+        with self.lock:
+            entry.update(status='bound_exceeded' if exceeded else 'settled',
+                         charged_or_reserved_usd=max(actual, reserve) if exceeded else actual,
+                         prompt_tokens=usage.prompt_tokens, completion_tokens=usage.completion_tokens)
+            self.save()
+        if exceeded or any(c.finish_reason == 'length' for c in result.choices):
+            raise RuntimeError('Judge output exceeded a bound or truncated; no verdict accepted')
+        return result
+
+
+@lru_cache(maxsize=8)
+def _shared_budget(path, cap, output_limit):
+    return JudgeBudget(path, cap, output_limit)
+
+
+def judge_budget(cfg):
+    spec = cfg.get('judge_budget')
+    if not spec:
+        return None
+    return _shared_budget(str(Path(spec['ledger']).resolve()), float(spec['cap_usd']), int(spec['max_tokens']))
 
 # BACKSTOP for transcripts recorded before the transcript token budget existed
 # (the served window, `serving.context_window`, 2026-09-05): a tool result dumped whole (a `cat` of
@@ -121,7 +184,7 @@ def transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path]
     return out
 
 
-def pin_provider(mod, judge_model: str) -> None:
+def pin_provider(mod, judge_model: str, budget=None) -> None:
     """Force the vendored judge's OpenAI client onto this model's pinned provider.
 
     `evaluate_all_results.evaluation_routine` builds its own `OpenAI(...)` client and calls
@@ -146,6 +209,8 @@ def pin_provider(mod, judge_model: str) -> None:
         def create(self, **kw):
             kw.setdefault("extra_body", {})
             kw["extra_body"]["provider"] = pin
+            if budget is not None:
+                return budget.create(self._inner.create, **kw)
             return self._inner.create(**kw)
 
     class _Chat:
@@ -154,6 +219,8 @@ def pin_provider(mod, judge_model: str) -> None:
 
     class _Client:
         def __init__(self, *a, **k):
+            if budget is not None:
+                k['max_retries'] = 0
             self._inner = real(*a, **k)
             self.chat = _Chat(self._inner.chat)
 
@@ -162,7 +229,7 @@ def pin_provider(mod, judge_model: str) -> None:
 
 
 def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int,
-                     kind: str = "judge") -> dict:
+                     kind: str = "judge", budget=None) -> dict:
     """Score every transcript with one judge, caching to disk for resumability.
 
     Args:
@@ -186,7 +253,7 @@ def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: 
         return cache
 
     mod.OPENAI_MODEL = judge_model
-    pin_provider(mod, judge_model)
+    pin_provider(mod, judge_model, budget)
 
     # Flush the cache as verdicts land, not once at the end. map_threaded is fail-fast, so
     # a single exception at call 250/280 used to discard 249 paid-for verdicts; with an
@@ -260,7 +327,8 @@ def main(
     per_judge = {}
     for key, judge_model in judges.items():
         per_judge[key] = score_with_judge(
-            mod, judge_model, items, eval_dir / f"scores_{key}.json", max_workers
+            mod, judge_model, items, eval_dir / f"scores_{key}.json", max_workers,
+            budget=judge_budget(cfg)
         )
         first = next(iter(per_judge[key].values()))
         print(f"  first score from {key}: {first['score']} | "

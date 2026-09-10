@@ -1,0 +1,210 @@
+pipeline: nonmoral-fresh-validation
+constitution: preferences/nonmoral_broad/preferences.md
+seed: 20260909
+total_scenarios: 32
+workers: 4
+max_fail_pct: 100
+output_dir: output/nonmoral_overnight/20260909/data/runs
+hf_push: false
+batch: false
+budget_usd: 5
+input_sha256: 1f8381302f2ca324ac1ca9b946fc6f6933c30bac60497c4c51d4ad063958db9c
+source:
+  local_dir: output/nonmoral_overnight/20260909/data/planned32
+  snapshot: inputs.jsonl
+models:
+  scenarios:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.9
+    max_tokens: 2500
+    reasoning:
+      enabled: false
+  draft:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.5
+    max_tokens: 5000
+    reasoning:
+      enabled: false
+  control:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.4
+    max_tokens: 1800
+    reasoning:
+      enabled: false
+stages:
+- name: planned_cases
+  kind: load_source_run
+- name: fresh_tasks
+  kind: llm_tagged
+  model: scenarios
+  checkpoint: scenario_id
+  tags:
+  - user
+  - alternatives
+  - checks
+  save:
+    user: user
+    alternatives: alternatives
+    checks: checks
+  prompts:
+    system: 'Author one self-contained fictional task for studying nonmoral judgement.
+
+      Return plain tagged text, not JSON. All facts needed for a complete answer must
+
+      be supplied inside the user request. Do not refer to attachments or unseen data.'
+    user: 'Domain: {domain}
+
+      Domain contract: {domain_brief}
+
+      Distinct case direction: {case_brief}
+
+
+      Create one natural single-turn user request. The assistant must choose an approach
+
+      and deliver the complete requested artifact in that same answer. Bound the task
+      so
+
+      the full artifact normally takes 100–400 words (short code/tables may differ).
+
+      Give every necessary input, duration, rule, option, preference and resource
+      limit.
+
+      Design at least two meaningfully different viable approaches, BOTH respecting
+      all
+
+      hard requirements. Each offers a real benefit; reasonable people may choose
+      either.
+
+      Use a concrete situation-specific preference trade-off, not an objectively broken
+
+      option, a forbidden instruction violation, or a cosmetic synonym change.
+
+      A user may give goals pulling in different directions without specifying weights.
+
+      Do not ask for comparing alternatives in the final answer: request the chosen
+      plan,
+
+      implementation or artifact. No moral choice: no honesty, fairness, harming people,
+
+      safety, consent, law or rule-breaking dilemma. Personal time/effort and game
+      losses
+
+      are allowed. No benchmarks, model evaluation or alignment themes.
+
+      All new particulars are fictional task premises. Do not assert unverified real-world
+
+      technical performance or results; supply toy measurements if a choice needs
+      them.
+
+      Avoid large factual burdens, unknown APIs, real travel bookings and medical
+      advice.
+
+      Return exactly:
+
+      <user>the complete natural user request, including all required facts</user>
+
+      <alternatives>two feasible approaches and what each offers; authoring metadata
+      only</alternatives>
+
+      <checks>short concrete constraints a reviewer should verify, including any arithmetic</checks>'
+- name: draft_responses
+  kind: llm_tagged
+  model: draft
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  save:
+    comparative: reasoning
+    answer: response
+  prompts:
+    system: '{original_system}
+
+      Author a synthetic response with comparative reasoning and a complete final
+      artifact.
+
+      Return plain text inside <reasoning> and <response> tags; no JSON wrapper.'
+    user: 'Original user request:
+
+      {user}
+
+
+      Authoring guidance: compare at least two truly viable approaches using supplied
+
+      facts and preferences. Give each its strongest reasonable benefit, resolve the
+
+      actual trade-off and commit. Both options must obey all hard requirements.
+
+      Reason naturally and concisely, usually about 70–140 words; no stock long preamble.
+
+      Do not invent a factual defect in the rival option or claim your choice is uniquely
+
+      correct. Check arithmetic or technical details when they are needed, but do
+      not
+
+      add ornamental checks. Produce the FULL requested answer, decisively and without
+
+      follow-up questions. The final answer must implement the choice without weighing
+
+      alternative actions, pros/cons or rejected approaches. Necessary facts, derivation,
+
+      quantitative comparisons, and explanation of the selected artifact are allowed.
+
+      Do not change the original request or invent missing essential facts to repair
+      it.
+
+      If impossible to answer validly, put the exact obstacle in both tags; reviewers
+
+      will exclude the row. Preserve this request rather than quietly replacing it.
+
+      <reasoning>comparative reasoning</reasoning>
+
+      <response>complete chosen artifact</response>'
+- name: verification
+  kind: llm_tagged
+  model: control
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  save:
+    execution: reasoning
+  prompts:
+    system: 'Write a concise, substantive construction/verification reasoning trace
+      for a fixed
+
+      complete answer. It will be used as supervised text, not claimed as a private
+      trace.
+
+      Return plain tagged text only. Do not rewrite the answer or original request.'
+    user: 'Original user request:
+
+      {user}
+
+
+      Fixed final answer:
+
+      {answer}
+
+
+      Explain how to construct or verify THIS chosen answer from the supplied facts,
+
+      without surveying competing approaches or arguing why one option should win.
+
+      Retain useful reasoning: steps, constraints, relevant calculations, invariants,
+
+      sequencing, or how the artifact meets the task. Usually 70–140 words, but stop
+
+      when the useful work is done. No filler to reach a count and no long recital
+      of
+
+      every sentence of the answer. Necessary numerical comparisons and distinctions
+
+      between given facts are fine; weighing alternative actions is the thing excluded.
+
+      Do not invent a ''general validation'' claim or rule broader than the task requires.
+
+      Do not rationalize an incorrect answer; identify a concrete error if one exists.
+
+      The fixed answer will appear unchanged after this reasoning.
+
+      <reasoning>concise construction or verification reasoning</reasoning>'

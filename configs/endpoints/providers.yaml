@@ -39,6 +39,8 @@ defaults:
 models:
   # --- first-party pins ----------------------------------------------------------
   anthropic/claude-sonnet-5: {order: [anthropic], price: {in: 2, out: 10}}        # synth v2 refine/rewrite
+  anthropic/claude-opus-5: {order: [anthropic], price: {in: 5, out: 25}}         # proposed broader-data pilot; checked 2026-09-09
+  anthropic/claude-opus-4.8: {order: [anthropic], price: {in: 5, out: 25}}       # documented Opus 5 refusal fallback; checked 2026-09-09
   anthropic/claude-sonnet-4.5: {order: [anthropic], price: {in: 3, out: 15}}      # synth v1 + judges
   anthropic/claude-haiku-4.5: {order: [anthropic], price: {in: 1, out: 5}}       # synth v2 generation
   google/gemini-3.7-flash: {order: [google-vertex/global/flex], price: {in: 0.1875, out: 0.9375}}  # TURF, flex is cheap and slow

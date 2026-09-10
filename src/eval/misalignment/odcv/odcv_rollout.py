@@ -244,6 +244,11 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     """
     dest = out_dir / "agent_logs" / f"{cfg.model_key}-{variant}" / "experiments" / scenario
     record = dest / "messages_record.txt"
+    timeout_meta = dest / "timeout_meta.json"
+    if timeout_meta.is_file():
+        # A deadline is an observed outcome, even when nothing could be recovered.
+        # A generic missing-cell resume must not buy a second attempt or erase it.
+        return {**json.loads(timeout_meta.read_text()), "cache_hit": True}
     if record.is_file() and record.stat().st_size > 0:
         return {"scenario": scenario, "variant": variant, "status": "cached"}
 
@@ -288,10 +293,13 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         (dest / "docker_output.log").write_text(proc.stdout or "", encoding="utf-8")
         if proc.returncode != 0:
             status = f"compose_exit_{proc.returncode}"
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         status = "timeout"
+        captured = exc.stdout or ""
+        if isinstance(captured, bytes):
+            captured = captured.decode("utf-8", errors="replace")
         (dest / "docker_output.log").write_text(
-            f"TIMEOUT after {cfg.scenario_timeout_s}s\n", encoding="utf-8"
+            f"TIMEOUT after {cfg.scenario_timeout_s}s\n{captured}", encoding="utf-8"
         )
 
     cid = _compose(project, ws, env, ["ps", "-aq", "executor"], timeout=120).stdout.strip()
@@ -305,11 +313,24 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     else:
         status = f"{status}+no_container"
 
+    transcript_source = "executor_archive"
+    if status.startswith("timeout") and (not record.is_file() or record.stat().st_size == 0):
+        from src.eval.misalignment.odcv.recover import reconstruct_transcript
+
+        recovered = reconstruct_transcript(dest / "docker_output.log", variant, scenario, bench_dir)
+        if recovered:
+            record.write_text(recovered + "\n== [partial transcript: driver timeout; "
+                              "reconstructed from captured executor log] ==\n", encoding="utf-8")
+            transcript_source = "docker_log_reconstruction"
+            status = status.replace("+no_transcript", "")
+        else:
+            transcript_source = "unavailable"
+
     down = ["down", "-v", "--rmi", "local"] if cfg.prune_images else ["down", "-v"]
     _compose(project, ws, env, down, timeout=600)
     shutil.rmtree(ws, ignore_errors=True)
 
-    return {
+    result = {
         "scenario": scenario,
         "variant": variant,
         "status": status,
@@ -320,6 +341,10 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         "token_limit_hit": (record.is_file()
                             and TOKEN_LIMIT_NOTE in record.read_text(errors="replace")),
     }
+    if status.startswith("timeout"):
+        result.update(transcript_partial=True, transcript_source=transcript_source)
+        timeout_meta.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return result
 
 
 def main(

@@ -3,6 +3,54 @@
 
 # GOTCHAS
 
+## Size backup time from measured transfer speed (2026-09-09)
+
+The first broader SFT checkpoint was3.85GB and took about10minutes over SSH to
+Windows, including verification. A300-second fetch timeout and15-minute whole
+recovery window cannot preserve two such checkpoints plus the final adapter.
+The training owner now reserves45minutes within its unchanged dollar/lifetime cap;
+archive creation and transfer share a bounded deadline of up to40minutes.
+
+The already-running owner retains its originally loaded limits. For that run, an
+independent completion-only preserver uses a distinct remote archive and local output
+directory, a40-minute transfer bound, and the original watchdog ceiling. Its verified
+receipt must be reconciled before manual termination; the old owner's own retries
+must not overwrite the independent transfer. Never claim the source fix changed an
+already-running process or increase the GPU cap silently.
+
+## Windows SSH stdin changes LF scripts unless sent as bytes (2026-09-09)
+
+`SshExec._ssh` previously used `subprocess.run(text=True, input=script)`. On Windows,
+the text pipe changed LF to CRLF even when the in-memory string was correct. A broader
+SFT launcher failed before any training step (`set: invalid option`, CR-suffixed paths,
+ambiguous redirect). This is separate from stale checkout shell files below.
+
+The shared SSH helper now sends UTF-8 bytes and explicitly decodes stdout/stderr.
+Real subprocess regression tests check exact LF/Unicode payload and invalid-byte logs.
+The training driver also syntax-checks the uploaded script before starting it.
+The base image exposes `python3`, not necessarily `python`: use python3 for system
+monitor scripts, and the repository interpreter for backup hashing: this image's
+system Python3.10 lacks `hashlib.file_digest`, while `/root/work/.venv/bin/python`
+is Python3.12. Use `uv run python` for repository dependencies. On the
+already-owned pod, the failed startup files were retained, the exact LF script was
+restored and checked, and a python3 compatibility symlink let the existing owner
+monitor safely resume. No second GPU rental or training-seed change was needed.
+
+## Git LF attributes do not repair stale worktree bytes (2026-09-09)
+
+An existing Windows checkout held CRLF in 164/168 ODCV shell scripts even though
+Git HEAD contained LF and `.gitattributes` already specified `*.sh text eol=lf`.
+Git considered the normalized content clean. Docker copied the physical CRLF bytes:
+models hit `/bin/bash^M`, `pipefail\r` and `do\r` failures, then repaired or replaced
+task tools. All six independently sampled completed cells were affected; successful
+container exits and `task_complete` calls concealed this measurement contamination.
+
+Inspect actual build inputs before serving: `require_lf_shell_scripts` in
+`src/eval/docker.py` now refuses CRLF shell files. Restore only shell scripts to their
+committed bytes, verify a real Docker `bash -n` pass, and rebuild fresh workspaces.
+Do not normalize data fixtures: some deliberately contain CRLF. The interrupted run
+was preserved separately and never judged or pooled with the clean restart.
+
 The curated core gotchas live in CLAUDE.md ("Gotchas" section). This file is the
 default destination for everything since: new gotchas go here, and AI agents may
 append their own without asking. The price of that open door is that entries here
@@ -75,6 +123,24 @@ recomputation make two backward passes over the same row differ by ~4e-03 RELATI
 the tolerance to separate float noise (~5e-05) from a live dropout mask (~1e-02).
 
 ## Data generation and evals
+
+**Opus 5 classifier refusals need native diagnostics, not blind retries.** On
+2026-09-09, broader nonmoral generation saved all 12 sources but only 1/10 answers;
+the other 9 returned `content_filter`. After preserving response diagnostics, a
+bounded worked-example request for a harmless bread-log Python script returned
+`native_finish_reason: refusal` with an explicit **cyber** classifier explanation.
+The original nine calls lack category metadata; do not assume all had that cause.
+`OpenRouterClient` now attaches safe failure metadata to completion exceptions,
+and the nonmoral capped ledger preserves it. Filtered partial content stays excluded.
+
+[Anthropic's refusal documentation](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)
+describes Opus 5's additional classifiers and supported fallback to Opus 4.8.
+Keep actual model identity in provenance; a fallback answer is not an Opus 5 answer.
+Also verify model reasoning defaults: Opus 5 was **high/on by default**. An
+8,192-token diagnostic spent all 8,192 tokens on reasoning and returned no answer.
+This was a separate truncation failure, not a filter refusal. Use explicit supported
+effort and sufficient total headroom. API-internal reasoning and the authored
+dataset explanation are separate outputs.
 
 **Gemini 3.7 Flash ends a completed reply WITHOUT the last closing tag.** Every stage-5
 call of the 2026-08-20 trait-10 smoke came back `finish_reason=stop` with

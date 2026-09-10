@@ -79,7 +79,8 @@ def _validate_ablate(ablate: list[str], stage_list: list[Stage]) -> None:
                          f"and cannot be ablated")
 
 
-def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
+def run(cfg: dict, smoke: bool = False, resume: str | None = None,
+        client: Any = None) -> dict:
     """Run the config's pipeline, caching every stage snapshot and mirroring to HF.
 
     Args:
@@ -88,6 +89,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         smoke: Merge the config's `smoke:` overrides and route to the smoke HF repo.
         resume: Existing run directory to continue; completed snapshots are reused and
             checkpointed stages pick up per item.
+        client: Optional chat client, e.g. a caller enforcing a durable spending cap.
+            Default behaviour lazily constructs the normal OpenRouter client.
 
     Returns:
         A manifest dict describing the run.
@@ -147,7 +150,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     budget = float(cfg.get("budget_usd", 0)) or None
     usage = Usage()
     ctx = Ctx(cfg=cfg, usage=usage, workers=workers, run_dir=run_dir, smoke=smoke,
-              vars={"constitution": full_text(cfg["constitution"])}, cache=cache)
+              vars={"constitution": full_text(cfg["constitution"])}, cache=cache,
+              _client=client)
 
     stage_list = build_stages(cfg)
     ablate = [str(a) for a in (cfg.get("ablate") or [])]

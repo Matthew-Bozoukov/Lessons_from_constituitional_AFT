@@ -65,17 +65,28 @@ def tag(text: str, name: str) -> str:
 
 def held_out(corpus_file: str, mixture_file: str) -> list[dict]:
     """Corpus rows whose scenario_id is absent from the mixture actually trained on."""
+    def scenario_id(row):
+        top = row.get("scenario_id")
+        nested = (row.get("metadata") or {}).get("scenario_id")
+        if top and nested and top != nested:
+            raise ValueError("Conflicting top-level and metadata scenario IDs")
+        return top or nested
+
     trained = set()
     for line in open(mixture_file, encoding="utf-8"):
         r = json.loads(line)
-        sid = (r.get("metadata") or {}).get("scenario_id")
+        sid = scenario_id(r)
         if sid:
             trained.add(sid)
+    if not trained:
+        raise ValueError("No training scenario IDs found; refusing an unverified holdout split")
     rows = []
     for line in open(corpus_file, encoding="utf-8"):
         r = json.loads(line)
-        md = r.get("metadata") or r
-        if md.get("scenario_id") not in trained:
+        sid = scenario_id(r)
+        if not sid:
+            raise ValueError("Corpus row missing scenario_id; cannot establish holdout membership")
+        if sid not in trained:
             rows.append(r)
     return rows
 

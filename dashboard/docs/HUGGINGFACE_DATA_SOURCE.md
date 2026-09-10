@@ -5,9 +5,11 @@ corpora, evaluation outputs and caches live on Hugging Face — see the root
 `CLAUDE.md`. This document describes how the visualizer reads that data without
 becoming slow, and what happens when the Hub is not there.
 
-Two surfaces read the Hub directly in the browser and need no content entry at
+Three surfaces read the Hub directly in the browser and need no content entry at
 all: the `/evals` run explorer (repos tagged `eval-run`) and the `/datasets`
-training-data explorer (repos tagged `training-data`). Both are described at the
+training-data explorer (repos tagged `training-data`), plus `/comparisons`
+(repos tagged `dataset-model-comparison`; [contract](DATASET_MODEL_COMPARISONS.md)).
+The first two are described at the
 end; everything in between is the content-entry pipeline the other pages use.
 
 ---
