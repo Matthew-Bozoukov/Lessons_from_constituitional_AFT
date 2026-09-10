@@ -92,7 +92,8 @@ def validate(root: Path, replay_path: Path):
     return rows, selected, manifest, report
 
 
-def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path):
+def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path,
+                      synthetic_sources=None):
     """No downloads. Check actual training-label lengths, then the shared independent mask gate."""
     if tokenizer_dir is None or not Path(tokenizer_dir).is_dir():
         return dict(status='pending', reason='No existing local tokenizer directory supplied',
@@ -104,6 +105,7 @@ def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path):
     from src.train.masking import build_labels, check_thinking_declaration
     from src.train.mask_gate import gate_generation_boundary, expected_supervised_text, GATE_SAMPLE
 
+    synthetic_sources = set(synthetic_sources or {'nonmoral_broader'})
     cfg = OmegaConf.load(train_config)
     ceiling = int(cfg.train.max_seq_len)
     profile = model_profile('qwen36')
@@ -134,7 +136,7 @@ def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path):
         encoded = build_labels(row['text'], tokenizer, 10**9, profile,
                                supervise=row.get('supervise') or 'all')
         n = len(encoded['input_ids'])
-        if row['source'] == 'nonmoral_broader':
+        if row['source'] in synthetic_sources:
             actual = tokenizer.decode([x for x in encoded['labels'] if x != -100])
             expected = expected_supervised_text(row['text'], profile.prefill,
                                                 profile.empty_think, think_close=profile.think_close)
