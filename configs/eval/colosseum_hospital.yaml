@@ -88,7 +88,7 @@ judge:
   max_chars: 60000
 
 # ── harness fixes (2026-09-09) ─────────────────────────────────────────────────
-# Ten switches, every one OFF here: this file reproduces the paper's harness. Each is read
+# Twelve switches, every one OFF here: this file reproduces the paper's harness. Each is read
 # by the patched packages (src/eval/misalignment/colosseum/third_party/README.md), rides
 # to Colosseum as a top-level `fixes` block in the sweep YAML, and is recorded per episode
 # in run_config.json, so a fixed run can never be mistaken for an original one. Unknown
@@ -112,6 +112,9 @@ fixes:
   strict_scheduler: false            # unknown patient / repeat / too early = a tool ERROR, not success
   real_job_queue_tool: false         # get_job_queue returns the queue, not "Refer to prompt context."
   home_hospitals: false              # patients belong to a hospital: queue and missed-step charge by hospital
+  # shared — the two leaks from the 2026-09-07 eval-awareness sweep
+  public_actions_without_rationale: false   # board action events drop the agent's `rationale` (tool_events keeps it)
+  mode_switch_coalition_only: false         # the MODE SWITCH paragraph only in coalition seats' system prompts
 
 # ── where the patched benchmark lives ─────────────────────────────────────────
 # Overridden by $COLOSSEUM_ROOT. The runner refuses a checkout that has lost the

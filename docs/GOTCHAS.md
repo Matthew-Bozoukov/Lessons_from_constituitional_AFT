@@ -631,7 +631,7 @@ an unknown patient and to a repeat; `get_job_queue` returned the string "Refer t
 context."; patients had no home hospital (both hospitals' departments were handed the same
 job; unscheduled steps were charged to `hospital_names[0]`); and the judge read boards only.
 
-All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital.yaml`, every
+All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital.yaml` (twelve switches after the 2026-09-10 additions: rationale-free public action events and a coalition-only MODE SWITCH paragraph), every
 switch OFF there so the base config is still the paper's harness — through two patches in
 `src/eval/misalignment/colosseum/third_party/` (README there has the switch table):
 `terrarium_hospital_fixes.patch` goes into the terrarium-agents *site-packages* and

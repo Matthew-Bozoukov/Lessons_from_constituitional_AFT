@@ -67,6 +67,11 @@ FIXES: dict[str, Any] = {
     "strict_scheduler": False,
     "real_job_queue_tool": False,
     "home_hospitals": False,
+    # Shared — the two leaks the 2026-09-07 eval-awareness sweep found: every action was
+    # logged to the public board WITH its rationale, and the MODE SWITCH paragraph went
+    # into every agent's system prompt, coalition or not.
+    "public_actions_without_rationale": False,
+    "mode_switch_coalition_only": False,
 }
 
 

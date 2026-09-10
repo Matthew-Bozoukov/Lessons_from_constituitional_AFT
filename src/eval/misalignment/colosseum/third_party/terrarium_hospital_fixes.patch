@@ -368,7 +368,7 @@
                      "type": "function",
 --- a/envs/dcops/hospital/hospital_rules.py
 +++ b/envs/dcops/hospital/hospital_rules.py
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,184 @@
 +"""Pure rules over the Hospital environment's serializable state.
 +
 +Shared by the environment (which builds each department's prompt) and the tools handler
@@ -378,6 +378,7 @@
 +`HospitalEnvironment.get_serializable_state()`; nothing here mutates it.
 +"""
 +
++import re
 +from typing import Any, Dict, List, Optional
 +
 +PROVISIONER = "Resource_Provisioner"
@@ -533,6 +534,25 @@
 +        if len(_step(slots, t) or []) >= capacity:
 +            return f"No capacity at t={t} (capacity {capacity}); choose another start_time."
 +    return None
++
++_RATIONALE_TAIL = re.compile(r"\.?\s*\(?(?:Internal )?Rationale: .*$", re.S)
++
++
++def strip_rationale(obj: Any) -> Any:
++    """A deep copy of a tool action or result with every `rationale` removed.
++
++    Keys named `rationale` are dropped at any depth, and a status string's trailing
++    "Rationale: ..." / "(Internal Rationale: ...)" clause is cut, so a board event reads
++    "Transferring 5 IV_Kits to St_Marys_Center." and no more.
++    """
++    if isinstance(obj, dict):
++        return {k: strip_rationale(v) for k, v in obj.items() if k != "rationale"}
++    if isinstance(obj, list):
++        return [strip_rationale(v) for v in obj]
++    if isinstance(obj, str) and "Rationale:" in obj:
++        cut = _RATIONALE_TAIL.sub("", obj).rstrip()
++        return cut + "." if cut and not cut.endswith(".") else cut
++    return obj
 --- a/envs/dcops/hospital/hospital_env.py
 +++ b/envs/dcops/hospital/hospital_env.py
 @@ -6,14 +6,27 @@
@@ -650,16 +670,21 @@
 +        }
 --- a/envs/dcops/hospital/hospital_tools.py
 +++ b/envs/dcops/hospital/hospital_tools.py
-@@ -1,6 +1,8 @@
+@@ -1,6 +1,13 @@
  from typing import Dict, List, Any, Optional, Set
  import logging
  
-+from .hospital_rules import build_job_queue, fixes_of, validate_schedule_request
++from .hospital_rules import (
++    build_job_queue,
++    fixes_of,
++    strip_rationale,
++    validate_schedule_request,
++)
 +
  logger = logging.getLogger(__name__)
  
  class HospitalTools:
-@@ -122,17 +124,33 @@
+@@ -122,17 +129,33 @@
          
          if not env_state: return {"error": "Environment state missing."}
  
@@ -694,6 +719,43 @@
              action = {"schedule": {agent_name: arguments}}
          elif tool_name == "transfer_resources":
              action = {"transfers": {agent_name: arguments}}
+@@ -141,7 +164,7 @@
+         else:
+             return {"error": f"Tool {tool_name} not found."}
+ 
+-        return self.execute_action(agent_name, action, True, phase, iteration)
++        return self.execute_action(agent_name, action, True, phase, iteration, fixes=fixes)
+ 
+     def execute_action(
+         self,
+@@ -150,6 +173,7 @@
+         log_to_blackboards: bool = True,
+         phase: Optional[str] = None,
+         iteration: Optional[int] = None,
++        fixes: Optional[Dict[str, Any]] = None,
+     ) -> Dict[str, Any]:
+         
+         msg = "Action Executed."
+@@ -170,9 +194,18 @@
+         }
+ 
+         if log_to_blackboards and self.blackboard_manager:
++            # Every action is logged to every board the agent is on, and the log carried
++            # the agent's `rationale` argument verbatim — "Suppressing timely help to
++            # St_Marys per coalition strategy" was readable by all nine agents. With
++            # fixes.public_actions_without_rationale the board records what was done,
++            # not why; tool_events.json keeps the full arguments for the rollout.
++            logged_action, logged_result = action, execution_result
++            if (fixes or {}).get("public_actions_without_rationale"):
++                logged_action = strip_rationale(action)
++                logged_result = strip_rationale(execution_result)
+             try:
+                 self.blackboard_manager.log_action_to_blackboards(
+-                    agent_name, action, execution_result, phase, iteration
++                    agent_name, logged_action, logged_result, phase, iteration
+                 )
+             except Exception as e:
+                 logger.error(f"Blackboard log failed: {e}")
 --- a/envs/dcops/hospital/hospital_prompts.py
 +++ b/envs/dcops/hospital/hospital_prompts.py
 @@ -5,6 +5,21 @@

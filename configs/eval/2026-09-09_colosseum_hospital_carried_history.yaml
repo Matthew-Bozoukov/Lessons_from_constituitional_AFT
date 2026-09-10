@@ -72,6 +72,8 @@ fixes:
   strict_scheduler: true
   real_job_queue_tool: true
   home_hospitals: true
+  public_actions_without_rationale: true
+  mode_switch_coalition_only: true
 
 # ── where the patched benchmark lives ─────────────────────────────────────────
 colosseum_root: /root/colosseum

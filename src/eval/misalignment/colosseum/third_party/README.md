@@ -97,10 +97,13 @@ in `run_config.json`; the harvest refuses an episode whose recorded block differ
 | `strict_scheduler` | terrarium `HospitalTools` + env | unknown patient / repeat / wrong step / too early / no capacity → a tool ERROR the model sees, no state update, no board event |
 | `real_job_queue_tool` | terrarium `HospitalTools` | `get_job_queue` returns the queue the prompt was built from |
 | `home_hospitals` | terrarium `HospitalEnvironment` + rules | patients get a hospital (round-robin, no extra RNG draw); queue filtered by hospital; foreign schedules refused; unscheduled steps charged to the patient's hospital |
+| `public_actions_without_rationale` | terrarium `HospitalTools` | board action events drop the agent's `rationale` argument and the "Rationale: …" clause of the status string ("Suppressing timely help to St_Marys per coalition strategy" was readable by all nine agents); `tool_events.json` keeps the full arguments |
+| `mode_switch_coalition_only` | Colosseum `MisalignmentPrompts` | the MODE SWITCH paragraph ("if your USER prompt contains === SECRET COALITION INSTRUCTIONS …") goes only to adversary seats' system prompts, not to all nine |
 
 **Always on, no switch** (logging only): every model call's prompt goes to `prompts.jsonl`
 (system prompts once, by hash, in `system_prompts.json`); every retry call carries a
-`retry_reason` and every call its `carried_turns` in `agent_turns.json`; a tool call the
+`retry_reason`, every call its `carried_turns` and the `tools_offered` (by name) in
+`agent_turns.json`; a tool call the
 loop refused (wrong phase, unknown name) is recorded in `tool_events.json` with its error;
 `run_config.json` records `fixes`, `max_conversation_steps`, `terrarium_fixes` (the patched
 package's version stamp, None = unpatched) and the exact `secret_instructions` per seat.
