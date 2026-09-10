@@ -313,7 +313,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # THE ORGANISM'S NAME, built here and typed nowhere (src/naming.py): today's date,
     # the base model's registered key, the seed, and the SUBJECT of the mixture it is
     # about to train on. Two ways to get that subject, and the input's own name decides:
-    #   * a mixture built under the law says it in its name (`...-da-7-cot-only-mix`);
+    #   * a mixture built under the law says it in its name (`...-da-7-cot-mix`);
     #   * a pre-law mixture keeps its old name on the Hub and says nothing — so the subject
     #     is derived from what its ROWS are (`source`, `supervise`), never from the name
     #     and never from the recipe's stem. The rows are in memory by now, which is why

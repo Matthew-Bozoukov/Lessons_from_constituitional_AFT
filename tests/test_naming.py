@@ -221,7 +221,7 @@ def test_a_new_artifact_built_from_a_pre_law_mixture_is_named_from_its_rows():
     table2_da716 = [{"source": "da"}] * 716 + [{"source": "table2"}] * 9284
     assert derive(table2_da716) == "da-7"
     cot_only = [{"source": "da", "supervise": "cot"}] * 716 + [{"source": "table2"}] * 9284
-    assert derive(cot_only) == "da-7-cot-only"
+    assert derive(cot_only) == "da-7-cot"
     assert derive([{"source": "difficult_advice"}] * 200 + [{"source": "tulu3"}] * 800) == "da-20"
     assert derive([{"source": "tulu3"}] * 100) == "nosynth"     # the old tulu-only control
 
