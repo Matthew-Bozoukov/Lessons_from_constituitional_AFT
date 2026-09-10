@@ -53,6 +53,8 @@ def verify_models(training, plan, out):
     assert training['local_backup']['verified_completed_arms']==2
     archive=Path(training['local_backup']['archive'])
     assert archive.stat().st_size==training['local_backup']['bytes']
+    if training['local_backup'].get('sha256'):
+        assert file_sha256(archive)==training['local_backup']['sha256']
     wanted={a['data_repo']:a for a in plan['arms']}
     models={}
     with tarfile.open(archive) as tar:
@@ -108,7 +110,11 @@ def continue_run(out):
     try:
         save()
         while True:
-            training=read(out/'training/status.json')
+            recovered=out/'recovered_training.json'
+            training=read(recovered if recovered.exists() else out/'training/status.json')
+            if recovered.exists():
+                assert training.get('recovery_evidence') and training.get('full_training_archive_complete') is False
+                save(recovery_evidence=training['recovery_evidence'],full_training_archive_complete=False)
             if training.get('terminated') and training.get('local_backup',{}).get('verified'):
                 break
             if training.get('phase')=='failed' and (training.get('terminated') or not training.get('owned_pod')):

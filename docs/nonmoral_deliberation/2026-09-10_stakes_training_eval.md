@@ -95,3 +95,34 @@ $51.968; adding $2 latency margin, $14 for high ODCV, and another $1 reserve giv
 worst-case project allocation of $299.623025. No new training or evaluation repeats.
 Ownership adoption tests reject wrong pins and failed outcomes, account for actual
 costs, and wait for active owners instead of replacing them. Fifteen focused tests pass.
+
+## Training pod disappeared during retrieval
+
+At about21:03UTC the training pod disappeared while the18GB archive was downloading.
+The REST endpoint returned404 and account inventory contained only the inference pod.
+Both local watchdogs logged `pod gone; exiting`, not a termination request. The training
+owner remained alive retrying retrieval; it had not reached its ordinary teardown.
+The cause is unknown. The partial4,299,423,744-byte archive and watchdog logs are retained.
+
+Both trainings had already completed623 steps, exited0, and published their adapters.
+The partial archive contained the entire high adapter. Low's verified checkpoint623
+contained its final weights. `scratch/nonmoral/recover_stakes_models.py` recovered these
+independent local weights, compared their SHA256 hashes to the public HF adapters,
+and reconstructed both final model bundles with pinned HF auxiliary files and the
+training owner's already-local complete metrics. No training or evaluation was rerun.
+
+Recovered model archive:2,590,412,800 bytes, SHA256
+`12bf53a075b104a927fc3a412eaca69ba8bf240d088542481adc80a3b119a11e`.
+Low revision:`e4b2aa199370314e534115eaa5ca08f6e69f2b6c`;
+high revision:`af5c9f5356e2b38cc4b065c240a1b0bb950f0e9a`.
+The complete original archive and high's final optimizer/RNG/scheduler checkpoint
+were not recovered; verified high checkpoint500 and low checkpoint623 remain local.
+This limits resume-artifact preservation, not evaluation of the final trained adapters.
+
+`recovered_training.json` explicitly records that the full archive is incomplete,
+its incident evidence, conservative training cost through confirmed absence, and
+the verified final-model receipt. The continuation uses this recovery record and
+retains the existing low evaluation handoff. Obsolete training-retrieval and waiting
+continuation processes were stopped only after model recovery and confirmed pod absence.
+Twenty-four artifact/ownership/eval-plan tests pass. Incident and file-source records
+live under `experiment/recovered_training/` and must accompany final publication.
