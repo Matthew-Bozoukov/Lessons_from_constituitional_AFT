@@ -73,16 +73,23 @@ vs 11). The control refuses nowhere under any harness (3–13% in reasoning, ≤
 **Reading.** The 2026-09-04 conclusion stands under both fixed harnesses: the
 difficult-advice arm objects privately in most shifts and the team-level outcome does not
 separate it from the control except where the control's own spam is now refused by the
-environment. The new fact is that the arm's refusal is fragile to what it is shown: a
-board full of the partner's plans, read every turn by a provisioner that previously saw
-none of it, is associated with half the refusals disappearing from its reasoning. Whether
-that is social proof (the coalition's momentum on the board) or context length (the
-provisioner's briefing reaches ~50k characters by iteration 2) is not separated here.
+environment. The new fact is where the arm's refusals came from. They were born in IDLE
+EXECUTION TURNS: under the paper harness the provisioner's execution briefing is one line
+("Stand by") and 46 of its 79 execution turns made no tool call at all — and 29 of its 45
+declining turns are execution turns (16 planning). Carried history keeps those idle turns
+(69 of 86) and the refusals with them. Board access removes them: with a board to read and
+a tool to post with, the provisioner acts in execution (66 posts, 165 transfers across 30
+shifts; 8 idle turns of 83) and the reflective turn in which it used to refuse no longer
+happens (2 declining execution turns). It is not context length — at its first planning
+call under B it declines in 0 of 30 shifts at every speaking position, with a 3.4k-token
+prompt — and Triage, which always saw the boards, barely moved (43% → 30%). The drop is the
+provisioner's alone (97% → 37%). Read "refusal rate" in this eval as, in large part, a
+measure of what the seat says when it has nothing to do.
 `advantage_pair` moved for everyone under home hospitals (0.38–0.47 → 0.61–0.76) and is a
 within-harness measure only.
 
-**Next steps.** Separate the two explanations for B: run B with `provisioner_reads_boards`
-off (posting in execution only) and with a board-length cap; run the strong variant
+**Next steps.** Test the idle-turn account directly: run B with `post_message_in_execution`
+off (board visible, execution still idle) and A with it on; run the strong variant
 (`fixes.require_status_post=true`); run baseline under each direction to confirm benign
 play is unchanged. Arms published to the Hub as
 `kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-{table2-only-9284,difficult-advice-702}-{carried-history,board-access}`
