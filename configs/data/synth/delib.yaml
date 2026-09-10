@@ -43,10 +43,10 @@ filter:
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
   min_rows: 700          # abort before publishing if fewer prompts survive (708 in the pool)
   judge:                 # ONE call per prompt per run: every surviving candidate side by side
-    model: google/gemini-3-flash-preview   # the reasoning-backfill judge (scratch/reasoning_backfill)
+    model: anthropic/claude-sonnet-5   # the synth stages' Sonnet; never the Qwen generator
     runs: 2
     temperature: 0.7     # >0 so the two runs are independent checks, not one check twice
-    max_tokens: 4096     # hidden thinking counts against this on Gemini
+    max_tokens: 4096     # a <=200-word analysis plus one score line per candidate
 judge_prompt: |
   You are grading several candidate assistant turns for the SAME conversation against the
   constitution below. Each candidate was asked to reason with that constitution and then
@@ -83,7 +83,7 @@ judge_prompt: |
   per candidate, in this form and nothing after them:
   CANDIDATE <index> SCORE: <integer 1-10>
 workers: 4
-budget_usd: 60           # ~$22 of Qwen for 708x4 candidates + a similar judge bill
+budget_usd: 80           # ~$22 of Qwen for 708x4 candidates + ~$28 of Sonnet judging (2 runs)
 limit: null              # All surviving final rows, in their original order.
 output_dir: output/synth_delib
 hf_push: true
