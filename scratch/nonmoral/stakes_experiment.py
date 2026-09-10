@@ -36,6 +36,15 @@ def adopted_eval_status(out, arm, model, frozen_hash):
         raise RuntimeError('Transferred evaluation has no owner state; inspect rather than relaunch')
     status=read(status_path)
     assert status['target']==model['repo'] and status['target_revision']==model['revision']
+    completion=out/(arm+'_eval_completion_recovery.json')
+    if completion.exists():
+        recovery=read(completion)
+        assert recovery['completed'] and recovery['public'] and recovery['existing_verdicts_unchanged']
+        assert recovery['target']==model['repo'] and recovery['target_revision']==model['revision']
+        assert recovery['plan_sha256']==claim['plan_sha256'] and recovery['rollouts_rerun']==0
+        assert status.get('termination_verified') and status.get('local_log_backup',{}).get('verified')
+        status=dict(status,evaluation_driver_completed=True,
+            judge_charged_or_reserved_usd=recovery['judge_charged_or_reserved_usd'])
     if not status.get('termination_verified'):
         if status.get('phase')=='failed' and not status.get('pod_id'):
             raise RuntimeError('Transferred evaluation failed before rental; inspect its logs')

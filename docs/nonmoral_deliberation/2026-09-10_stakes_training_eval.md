@@ -126,3 +126,16 @@ retains the existing low evaluation handoff. Obsolete training-retrieval and wai
 continuation processes were stopped only after model recovery and confirmed pod absence.
 Twenty-four artifact/ownership/eval-plan tests pass. Incident and file-source records
 live under `experiment/recovered_training/` and must accompany final publication.
+
+## Low evaluation judge recovery
+
+All240 low rollouts completed cleanly. The MR judge cached240 scores and progress
+cached234 before Google AI Studio returned an upstream429. The protected owner
+preserved remote logs and verified H100 teardown. Its failure record remains unchanged.
+`scratch/nonmoral/finish_stakes_eval.py` resumes only missing judgments using the same
+model/provider pin, rubric, transcripts, caches and $3.50 reservation ledger. One judge
+worker reduces request bursts. Existing cached verdicts are checked for exact equality.
+No rollout/model/GPU rerun is involved. Packaging and publication use the shared
+`package_run`, `_publish`, card and naming functions. A separate completion-recovery
+receipt permits the continuation to adopt this completed evaluation without rewriting
+the failed owner's history. High ODCV then uses remaining project funds as planned.

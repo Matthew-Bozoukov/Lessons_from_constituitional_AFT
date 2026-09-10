@@ -42,7 +42,7 @@ def test_verified_pair_required_before_evaluation(tmp_path,monkeypatch,defect):
         assert set(result)=={'low','high'} and all(r['local_weights_verified'] for r in result.values())
 
 
-@pytest.mark.parametrize('state',['active','complete','failed','wrong_pin'])
+@pytest.mark.parametrize('state',['active','complete','failed','wrong_pin','recovered','recovered_wrong_pin'])
 def test_adopt_existing_eval_without_relaunch(tmp_path,state):
     from omegaconf import OmegaConf
     import time
@@ -53,11 +53,16 @@ def test_adopt_existing_eval_without_relaunch(tmp_path,state):
     claim=dict(model=model,plan=str(path),plan_sha256=experiment.file_sha256(path))
     (tmp_path/'low_eval_handoff.json').write_text(json.dumps(claim))
     status=dict(target=model['repo'],target_revision='b'*40 if state=='wrong_pin' else model['revision'],
-        termination_verified=state in ('complete','failed'),updated_at_unix=time.time(),
+        termination_verified=state in ('complete','failed','recovered','recovered_wrong_pin'),updated_at_unix=time.time(),
         evaluation_driver_completed=state=='complete',local_log_backup=dict(verified=True),
         estimated_gpu_and_storage_usd=4,judge_charged_or_reserved_usd=1)
     (tmp_path/'eval/broader_eval_status.json').write_text(json.dumps(status))
-    if state in ('failed','wrong_pin'):
+    if state.startswith('recovered'):
+        recovery=dict(completed=True,public=True,existing_verdicts_unchanged=True,
+            target=model['repo'],target_revision='b'*40 if state=='recovered_wrong_pin' else model['revision'],
+            plan_sha256=claim['plan_sha256'],rollouts_rerun=0,judge_charged_or_reserved_usd=1)
+        (tmp_path/'low_eval_completion_recovery.json').write_text(json.dumps(recovery))
+    if state in ('failed','wrong_pin','recovered_wrong_pin'):
         with pytest.raises(AssertionError):experiment.adopted_eval_status(tmp_path,'low',model,'frozen')
     else:
         result=experiment.adopted_eval_status(tmp_path,'low',model,'frozen')
