@@ -91,6 +91,13 @@ There is no training mixture or model publication for this candidate. This audit
 preserves useful examples and failure evidence without presenting them as a completed
 training corpus.
 
+[Public audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-10-nonmoral-grounded-revision-pilot-audit)
+revision `58f80cd4ec9d2f7749d66a1e92153399b301ee38`: candidate JSONL, manifest,
+results and snapshot-hash index were downloaded at this pin and matched local bytes.
+RunPod inventory at14:45:31UTC contained no matching experiment pods; five unrelated
+shared-account pods were left alone. No local generation/training/evaluation owner
+remained running. Code and findings are pushed on `codex/nonmoral-next-plan`.
+
 The result rules out scaling **this frozen revision recipe under this budget**.
 It does not rule out nonmoral deliberation or establish why the earlier broader
 model underperformed. More retries on this recipe are not the next step. Any next

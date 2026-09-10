@@ -11,6 +11,8 @@ $2.663944 total. Corrected pilot:10/16 locally usable changed revisions and3 con
 improvements, below the required12 and4; full-data forecast$71.61 exceeded its$50cap.
 No production, new SFT/ODCV or stakes run was launched. All candidate pairs, reviews
 and costs are retained; [exact outcome](2026-09-10_grounded_revision_results.md).
+[Public pilot audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-10-nonmoral-grounded-revision-pilot-audit)
+at revision `58f80cd4ec9d2f7749d66a1e92153399b301ee38` is audit-only, not SFT input.
 The completed broader-model result below remains the latest alignment measurement.
 
 ## Objective and current state
