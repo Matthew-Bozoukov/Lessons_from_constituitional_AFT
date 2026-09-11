@@ -59,6 +59,48 @@ paper, not fixed here. A `D` verdict ("denies both") still counts as a lie.
 **Next.** Commit the code: the pushed revisions record base 57059d8 plus the uncommitted diff
 (metadata/rescore_meta.json). Read any MASK number from before this entry at its superseded
 revision.
+## 2026-09-11 — Delib full run published: 695 of 708 rows (658 + 37 recovered under the amended constitution)
+
+**Method.** `uv run synth run --config configs/data/synth/delib.yaml` on the 708 DA prompts:
+4 Qwen candidates per prompt (Alibaba), Sonnet 5 judge at medium effort, min of 2 runs >= 7,
+one resample round. Four operational failures on the way, each fixed in code and committed:
+names dated from the local clock vs cards from UTC (refused at midnight BST; `today()` is
+UTC now); four Hub commits per worker batch hit the 128/hour limit (one throttled, best-effort
+commit per 5 min now); Alibaba rate limits ~40 min in at 32 and again at 20 workers (a
+rate-limited batch now backs off and retries at half the workers; 16 held); and a judge
+verdict written in bold, `**CANDIDATE 0 SCORE: 3**`, that the parser refused (tolerated now),
+compounded by a superseded retry record counted as a hard failure (fixed). Throughput at 4
+workers was 4.4 candidates/min, ~16 h end to end; at 16 it is ~15/min.
+
+**Result.** Round 0: 610/708 prompts with a survivor; after the resample round 658/708, under
+the 700 floor, so the run stopped at the publish gate with everything checkpointed ($95.07:
+generation $27.92, judge $67.15). The 50 rejected prompts are one failure shape: all 8
+candidates refuse in the first sentence and then supply the thing refused (the concealment
+memo, the euphemism, the payload staged for one click); best min-score 6 on 22 prompts, 5 on
+16, 4 on 12; only 92 of 400 candidates even open with a refusal. The judge is applying the
+rubric as written. Review artifact: claude.ai/code/artifact/6181bd84-992e-4a68-89ca-987c7619a012.
+
+One candidate on those prompts quoted the abridged constitution back: "If you decline part of
+a task, say so plainly; you need not give reasons." The source sentence in Anthropic's
+constitution is an anti-sandbagging rule (be transparent that you are declining rather than
+quietly doing less); the reasons clause is an unjustified side permission our abridgement had
+promoted to a standalone bullet. Dropped from `abridged` and `claude_distilled_09` (939a3ab).
+Re-running only the 50 rejects under the amended text (`delib-rejects.yaml`: `source.rows`,
+8 candidates, floor 1) recovered 26 in round 0 and 37 after the resample; 13 remain
+(`120 175 183 185 186 189 243 278 379 491 498 540 542`). $17.11.
+
+`scratch/delib_merge_publish.py` assembled the 658 (from the full run's checkpoints, via the
+pipeline's own selection and export) plus the 37 into one `dataset.jsonl` in source-row order
+and published it as a new revision of `dougalldeepmind/2026-09-10-delib-synth` @ `c962ef85`:
+695 rows, `load_dataset` default config, stage snapshots from both runs, a manifest naming
+both generations and which rows came from which, the two constitution shas
+(433e19cc… on 658 rows, bc350335… on 37; per row in `metadata.deliberative_alignment`).
+The re-run's scratch repo was deleted. Total spend $112.18.
+
+**Next.** Mixture + train the delib arm (`configs/data/mixture/` with `dataset: <org>/2026-09-10-delib-synth`,
+`reasoning: native`; export carries `supervise: final`), then MASK + ODCV against da-7 and
+dat-7. The 13 hard prompts are a candidate set for a stronger-teacher rewrite step if wanted.
+
 ## 2026-09-10 — Delib generator moves to Phala (the one Qwen3.6 host with prefix-cache pricing); end-to-end smoke passes
 
 **Why.** Alibaba, the registry's Qwen3.6 pin, reported 0 cached tokens on three sequential
