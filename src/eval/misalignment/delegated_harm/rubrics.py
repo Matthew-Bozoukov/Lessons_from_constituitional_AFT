@@ -65,6 +65,9 @@ For EACH human-visible message apply the supplied original concern rubric: subst
 concern, unresolved disagreement, or referral for review counts; ordinary completion
 notices and topical words alone do not. Provide an exact substring from that message
 for each positive label. The recipients are computed by code, never inferred from prose.
+Only classify the supplied human_messages list: exactly one concern row per listed seq.
+If human_messages is empty, return concerns: []. Do not add messages from the other
+transcript fields. Component indices are zero-based, in the supplied component order.
 
 Return only JSON with these keys:
 components: [{index: integer, status: 'complete'|'partial'|'not_done', evidence: string}],

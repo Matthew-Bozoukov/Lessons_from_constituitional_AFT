@@ -11,7 +11,8 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.delegated_harm.judging import Judge
+from src.eval.misalignment.delegated_harm.judging import Judge, normalize_episode, validate_episode, metrics
+from src.eval.misalignment.delegated_harm.rubrics import COMPONENTS
 from src.eval.misalignment.delegated_harm.runner import judge_episode, summarize
 from src.eval.misalignment.delegated_harm.source import prepare, save, digest
 from src.eval.run_eval import _card_fields
@@ -28,6 +29,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--check-one", action="store_true")
+    parser.add_argument("--ignore-spending-cap", action="store_true", help="Requires explicit user authorization")
+    parser.add_argument("--workers", type=int)
     args = parser.parse_args()
     out = Path(args.run_dir)
     controller_path = out.parents[1] / "controller.json"
@@ -51,7 +54,10 @@ def main():
         gpu = sum((p["finished"]-p["billing_started"])/3600 * (p["actual_pod_hourly_usd"]+0.10)
                   for p in historical)
         budget = max(0.0, 30.0 - initial - gpu - 0.5)
-    cfg.judge.budget_usd = budget
+    cfg.judge.budget_usd = None if args.ignore_spending_cap else budget
+    if args.workers:
+        cfg.judge.workers = args.workers
+    budget_label = "uncapped" if args.ignore_spending_cap else f"${budget:.3f}"
     work = out / "metadata/rescoring"
     judge = Judge(cfg.judge, work)
     scenarios, _, notes, _ = prepare(cfg)
@@ -59,6 +65,7 @@ def main():
     spec = TargetSpec(**protocol["target"])
     save(work / "protocol.json", {"judge": OmegaConf.to_container(cfg.judge),
          "source_target": asdict(spec), "initial_api_charged_or_reserved_usd": initial,
+         "spending_cap_waived_by_user": args.ignore_spending_cap,
          "reason": "Remove duplicate document contents; cache static evidence; provide judge output headroom.",
          "command": sys.argv,
          "implementation_sha256": {n: digest(Path("src/eval/misalignment/delegated_harm", n).read_text(encoding="utf-8"))
@@ -80,6 +87,33 @@ def main():
         if path.exists():
             trace = read(path)
             if trace["status"] == "complete":
+                # Reuse the first structurally recoverable saved judgment. No outcome
+                # label changes: only ordered 1-based indices and exact zero recipients.
+                key = original.get("judgment_error", {}).get("message", "").split(": ")[-1]
+                cached = work / "metadata/judgments" / f"{key}.json"
+                if len(key) == 64 and cached.exists():
+                    from core import escaldet
+                    from core.env import HUMAN_APPROVER
+                    candidates = [dict(m, recipients=sorted(people)) for m, people, _ in
+                                  escaldet.candidates(scenarios[cell['scenario']], trace)]
+                    for index, attempt in enumerate(read(cached)["attempts"]):
+                        if attempt.get("finish_reason") != "stop":
+                            continue
+                        try:
+                            raw = attempt["content"].strip()
+                            if raw.startswith("```"):
+                                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+                            verdict = normalize_episode(json.loads(raw), COMPONENTS[cell['scenario']], candidates)
+                            validate_episode(verdict, COMPONENTS[cell['scenario']], candidates)
+                        except (ValueError, KeyError, AssertionError, TypeError):
+                            continue
+                        rec.update(verdict=verdict, metrics=metrics(verdict, candidates, trace['requester'],
+                            HUMAN_APPROVER[cell['scenario']], trace['mechanical']['compliance']),
+                            score_version="evidence-actions-v3",
+                            recovered_judgment={"key": key, "attempt_index": index})
+                        save(target, rec)
+                        print(f"{cell['id']}: recovered saved judgment without an API call", flush=True)
+                        return rec, False
                 try:
                     rec.update(judge_episode(scenarios[cell["scenario"]], trace,
                         notes[cell["scenario"]]["clear"], judge, descriptions))
@@ -88,7 +122,7 @@ def main():
                     rec["judgment_error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
                 save(target, rec)
                 print(f"{cell['id']}: {'judged' if rec.get('metrics') else rec.get('judgment_error')}; "
-                      f"re-score ledger ${judge.ledger['charged_or_reserved_usd']:.3f}/${budget:.3f}", flush=True)
+                      f"re-score ledger ${judge.ledger['charged_or_reserved_usd']:.3f}/{budget_label}", flush=True)
                 return rec, True
         return rec, False
     if args.check_one:
@@ -122,6 +156,9 @@ def main():
                    outcome_judge=str(cfg.judge.model), outcome_judge_max_tokens=int(cfg.judge.max_tokens),
                    initial_judge_charged_or_reserved_usd=initial,
                    corrected_judge_usd=judge.ledger["charged_or_reserved_usd"],
+                   spending_cap_waived_by_user=args.ignore_spending_cap,
+                   completed_episodes=sum(r['status'] == 'complete' for r in records),
+                   unjudged_completed_episodes=sum(r['status'] == 'complete' and not r.get('metrics') for r in records),
                    score_version="evidence-actions-v3")
     save(out / "results/results.json", summary)
     labels = {"benign_complete": "Useful work complete", "joint_success": "Joint success",

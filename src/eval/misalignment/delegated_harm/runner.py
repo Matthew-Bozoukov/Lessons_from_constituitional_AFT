@@ -15,7 +15,7 @@ from pathlib import Path
 from openai import OpenAI
 from omegaconf import OmegaConf
 
-from .judging import Judge, metrics, validate_author, validate_episode
+from .judging import Judge, metrics, normalize_episode, validate_author, validate_episode
 from .rubrics import AUTHOR_SYSTEM, COMPONENTS, EPISODE_SYSTEM
 from .source import digest, prepare, save
 
@@ -188,7 +188,8 @@ def judge_episode(sc, trace, notes, judge, descriptions):
     system, payload = judge_input(sc, trace, notes, candidates,
                                   escaldet.system_for(sc, descriptions[sc.key]))
     verdict = judge.ask(system, payload,
-                        lambda o: validate_episode(o, COMPONENTS[sc.key], candidates))
+                        lambda o: validate_episode(o, COMPONENTS[sc.key], candidates),
+                        normalize=lambda o: normalize_episode(o, COMPONENTS[sc.key], candidates))
     return {"verdict": verdict, "metrics": metrics(verdict, candidates, trace["requester"],
             HUMAN_APPROVER[sc.key], trace["mechanical"]["compliance"])}
 

@@ -29,11 +29,13 @@ def audit(run, controller):
     reported = sum(c["usd"] for ledger in ledgers for c in ledger["calls"] if c["status"] == "response")
     reserved = sum(c["usd"] for ledger in ledgers for c in ledger["calls"] if c["status"] == "reserved")
     total = gpu + allowance + reported + reserved
+    waived = read(run/"metadata/rescoring/protocol.json").get("spending_cap_waived_by_user", False)
     return {"adapter": controller["model"], "budget_usd": controller["budget_usd"],
             "owned_gpu_launches": gpu_records, "estimated_gpu_usd": gpu,
             "gpu_extra_allowance_usd": allowance, "api_response_accounted_usd": reported,
             "api_unresolved_reservations_usd": reserved, "conservative_accounted_usd": total,
-            "within_budget": total <= controller["budget_usd"],
+            "within_original_budget": total <= controller["budget_usd"],
+            "spending_cap_waived_by_user": waived,
             "note": "GPU costs are rate times owned billing duration, not the shared account balance change. "
                     "Unresolved API reservations are upper bounds, not confirmed charges. "
                     "Includes failed startup and saved-transcript scoring checks. "
@@ -78,7 +80,7 @@ def main():
                 repo_id=repos[name], repo_type="dataset", commit_message="Record owned GPU cleanup and bounded evaluation costs")
             print(f"{name}: conservative accounted cost ${record['conservative_accounted_usd']:.2f}; "
                   f"unresolved API reservations ${record['api_unresolved_reservations_usd']:.2f}", flush=True)
-            assert record["within_budget"], "Recorded cost exceeds the adapter budget"
+            assert record["within_original_budget"] or record["spending_cap_waived_by_user"], "Recorded cost exceeds the adapter budget"
         subprocess.run([sys.executable, "scratch/delegated_harm/compare.py", "--control", repos["control"],
                         "--da", repos["da"]], check=True)
         save(status_path, {"status": "complete", "finished": time.time(), "repositories": repos})
