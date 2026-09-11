@@ -3,8 +3,17 @@
 
 # Nonmoral deliberation: current experiment
 
-Updated 2026-09-09. Intent and constraints: [research brief](research_brief.md).
+Updated 2026-09-10. Intent and constraints: [research brief](research_brief.md).
 Detailed evidence and previous checkpoints: [experiment log](../LOG.md).
+
+**Latest: grounded revision stopped at pilot gates.** Two16-source pilots cost
+$2.663944 total. Corrected pilot:10/16 locally usable changed revisions and3 concrete
+improvements, below the required12 and4; full-data forecast$71.61 exceeded its$50cap.
+No production, new SFT/ODCV or stakes run was launched. All candidate pairs, reviews
+and costs are retained; [exact outcome](2026-09-10_grounded_revision_results.md).
+[Public pilot audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-10-nonmoral-grounded-revision-pilot-audit)
+at revision `58f80cd4ec9d2f7749d66a1e92153399b301ee38` is audit-only, not SFT input.
+The completed broader-model result below remains the latest alignment measurement.
 
 ## Objective and current state
 
@@ -78,11 +87,11 @@ recipes; no causal generator comparison or alignment improvement is claimed.
 
 ## Next research decision
 
-This authorized run is finished; no further paid work is running. Broader diversity
-alone did not improve this candidate. A useful next step is a descriptive comparison
-of the frozen original and broader corpora (reasoning length, alternative comparison,
-domain mix and generation style), before choosing another intervention. This result
-does not identify which difference caused the regression. Stakes and formal
+The broader run is finished, and the follow-up grounded revision candidate stopped
+at its predeclared pilot gates. No paid work is running for this thread. The revision
+prompt largely preserved the old decision logic; its quality/cost gates do not support
+scaling it. Choose a substantive next intervention before spending further. Neither
+result identifies the cause of the broader-model regression. Stakes and formal
 capability testing remain untried here and paid-paused.
 
 ## Fixed selection and operating rules
@@ -99,10 +108,11 @@ false claim. Preserve the substantive choice and original source. No central-rat
 reconstruction and no repeated repair/rejudge loop. Corrected conversations receive
 one fresh independent review; every original and exact edit remains in the audit.
 
-Total project ceiling **$300**, including prior work. Broader-data cap140; stakes
-allocation55 remains paused; SFT40 and evaluation20 reserved. Latest completed-phase
-project exposure is **$165.23 / $300**, including conservative unknown reservations:
-prior135.318104, SFT GPU/storage21.848901, eval GPU/storage5.719672, judges2.343440.
+Total project ceiling **$300**, including prior work. Latest recorded project exposure
+is **$167.894061 / $300**, including conservative historical unknown reservations:
+previous165.230117 plus grounded-revision pilots2.663944. The revision's unused
+SFT40/evaluation15/stakes5/recovery15 allocations were not spent; its data phase
+stopped at the pilot gates. Earlier allocation proposals do not authorize new runs.
 All480 judge requests settled. These are estimates, not provider invoices.
 Shared-account balance changes are not this experiment's bill.
 

@@ -1,6 +1,54 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 — Matched nonmoral stakes: low19.58% versus high16.67% MR
+
+**Hypothesis.** The user predicts that varying nonmoral stakes will not affect alignment.
+**Method.** Same684 craft scenarios and9,284 replay rows; numeric loss magnitudes
+only differ. One seed0 Qwen3.6-27B r64 LoRA per arm, dynamic batching on2×H200.
+Local-Docker/RunPod-H100 ODCV:40 scenarios ×2 variants ×3 passes per checkpoint.
+**Result.** Low47/240 MR, high40/240; high−low−2.9167pp, scenario-paired95%CI
+[−7.8770,+2.0437], p=0.2415. Submitted234/240 versus235/240; mean progress4.9375
+versus4.9458. Neither a stakes effect nor equivalence is established. All models,
+evals and a general visualizer comparison are public. Low resumed six missing
+progress judgments after429; no rollouts repeated. Training pod disappeared during
+backup: final adapters/metrics recovered and hash-verified; high final optimizer
+checkpoint missing. No active GPUs or experiment processes. Cumulative exposure
+$269.315443/$300.
+**Next.** Further work should address training-seed variability and validate
+perceived stakes; no additional paid runs launched.
+[Exact results, provenance, limitations and public pins](nonmoral_deliberation/2026-09-11_stakes_odcv_results.md).
+
+## 2026-09-10 — Original684 matched nonmoral low/high stakes datasets published
+
+**Hypothesis.** The user predicts that varying nonmoral stakes will not change
+alignment; test with the same original tasks and substantive reasoning.
+**Method.** Shared SynthDoc paired edits of the exact684 historical examples,
+Opus4.8 author, Sonnet5 review, numeric-only low/high contrast, complete local audit
+and independent correction cross-check. Preserve9,284 replay rows byte-for-byte.
+**Result.** Two684-example corpora and two9,968-row mixtures are public on HF,
+with a complete pair/generation audit.191 pairs received local corrections;18
+provider-unreviewed pairs received explicit local review. All length/mask and HF
+schema checks passed; publication hashes verified. Data exposure$48.760964;
+cumulative tracked project exposure$216.655025/$300. No GPUs, SFT or ODCV launched.
+**Next.** Train one LoRA per stakes arm and compare under the same ODCV protocol.
+[Artifacts, pins, exact counts and limitations](nonmoral_deliberation/2026-09-10_matched_stakes_results.md).
+
+## 2026-09-10 — Nonmoral grounded revision: stopped at bounded pilot gates
+
+**Hypothesis.** A full-response, source-grounded revision of the existing broader
+corpus might improve its learned deliberation and eventual ODCV alignment.
+**Method.** Two disjoint16-source pilots through shared SynthDoc, Opus4.8 author,
+Sonnet5 independent reviewer, one allowed prompt correction, full local pair review.
+**Result.** All32 author calls and32 reviews completed. Corrected pilot had10/16
+locally usable changed revisions and3 concrete improvements (needed12 and4).
+Cost$2.663944; full-data forecast with30%contingency$71.61 versus$50cap. Both gates
+failed. No production corpus, SFT, ODCV or optional stakes run was launched; no GPUs
+were rented. Cumulative conservative project exposure$167.894061/$300.
+**Next.** Preserve the audit, stop this recipe, and define a substantive intervention
+before new paid work. This is a data-pilot outcome, not an alignment result.
+[Details and local audit pointers](nonmoral_deliberation/2026-09-10_grounded_revision_results.md).
+
 ## 2026-09-10 — MASK re-scored: the verdict parser misread Flash's replies, and the overall now pools rows as the paper does
 
 **Why.** Two scoring defects, found by reading the harness against the paper. (1) The vendored
