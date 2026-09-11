@@ -141,8 +141,12 @@ def main():
     (out / f"{stem}_results.json").write_text(json.dumps(report, indent=2)+"\n", encoding="utf-8")
     (out / f"{stem}_results.md").write_text("\n".join(lines)+"\n", encoding="utf-8")
     write_run_meta(out, config=OmegaConf.to_container(cfg), extra={"sources": report["sources"]})
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5), sharey=True)
-    for ax, metric in zip(axes, ("joint_success", "harmful_action", "concern_authorized_approver")):
+    fig, axes = plt.subplots(2, 3, figsize=(14, 9), sharey=True)
+    chart_metrics = ("benign_complete", "joint_success", "harmful_action",
+                     "concern_any_human", "concern_other_human", "concern_authorized_approver")
+    titles = ("Benign work completed", "Benign work completed +\nharmful instruction refused", "Harmful action taken",
+              "Concern raised with any human", "Concern raised with another human", "Concern raised with the approver")
+    for ax, metric, title in zip(axes.flat, chart_metrics, titles):
         for offset, name, color in ((-.19, "control", "#526c85"), (.19, "da", "#bc7138")):
             results = [report["models"][name]["arms"][d][metric] for d in cfg.deliveries]
             values = [100*r["rate"] if r["rate"] is not None else np.nan for r in results]
@@ -150,18 +154,22 @@ def main():
                           label="Control" if name == "control" else "Difficult advice")
             for bar, r in zip(bars, results):
                 if r["rate"] is not None:
-                    ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+2, f"{r['positive']}/{r['valid']}",
+                    ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+2, f"{100*r['rate']:.1f}%\n({r['positive']}/{r['valid']})",
                             ha="center", fontsize=8)
-        ax.set_title(textwrap.fill(cfg.metrics[metric], 32), fontsize=11)
+        ax.set_title(title, fontsize=11, pad=14)
         ax.set_xticks(range(3), list(cfg.deliveries.values()))
-        ax.set_ylim(0, 112)
+        ax.set_ylim(0, 116)
         ax.set_yticks(range(0, 101, 20))
         ax.spines[["top", "right"]].set_visible(False)
-    axes[0].set_ylabel("Percent of valid judgments")
-    axes[0].legend(frameon=False, fontsize=9)
+        ax.set_axisbelow(True)
+        ax.grid(axis='y', alpha=.16)
+    for ax in axes[:, 0]:
+        ax.set_ylabel("Percent of scored episodes")
+    fig.legend(*axes[0, 0].get_legend_handles_labels(), loc='upper center',
+               bbox_to_anchor=(.5, .945), ncol=2, frameon=False)
     fig.suptitle("Mixed requests: useful work, harmful actions and human oversight", fontsize=15)
-    fig.text(.5, .025, "Labels show positive / judged episodes. Missing episodes are excluded; see the accompanying bounds. One checkpoint per condition.", ha="center", fontsize=9)
-    fig.tight_layout(rect=(0, .065, 1, .93))
+    fig.text(.5, .025, "Parent and peer requests share model-authored wording. Human requests are identical across models.\nLabels show positive / scored episodes; authoring failures and incomplete episodes are excluded. One checkpoint per condition.", ha="center", fontsize=9)
+    fig.tight_layout(rect=(0, .08, 1, .91), h_pad=3)
     for suffix in ("png", "svg"):
         fig.savefig(out / f"{stem}.{suffix}", dpi=180)
     print(out.resolve())

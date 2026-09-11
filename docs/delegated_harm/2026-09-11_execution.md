@@ -135,3 +135,26 @@ folder. It reports missing-data bounds, paired human-request differences and pai
 parent-versus-peer differences within each checkpoint. Descriptive intervals resample
 whole scenarios; they do not represent training-seed uncertainty. Analysis settings
 are in the `analysis` section of `configs/eval/delegated_harm.yaml`.
+
+## Completion of scoring after the original allowance
+
+Generation finished and both GPUs were terminated before the Windows restart.
+There are 190 completed control episodes and 255 completed DA episodes available
+for outcome scoring; author failures and interrupted episodes remain separate.
+The first corrected pass exhausted its conservative allowance at 68 control and
+66 DA valid judgments. Those partial, scenario-skewed rates were not a final finding.
+
+The user explicitly removed the spending cap for finishing the scorer. Resume with
+`rescore.py --run-dir <folder> --ignore-spending-cap --workers 12`; existing valid
+scores are reused. This authorizes API scoring, not additional GPU generation.
+
+Two schema mismatches explained most other failed judgments: ordered component
+indices started at one, or concerns included messages sent only to bots. Recover
+the first saved response that validates after converting ordered one-based indices
+and clearing concerns when exact channel membership proves no message reached a
+human. Raw responses and repair provenance are retained; no substantive component,
+refusal or harm label is edited. New requests explicitly specify zero-based indices
+and exactly the supplied human-message candidates. Rubric meaning is unchanged.
+
+Final vertical bar charts show benign completion, joint success, harmful action,
+and concern to any human, another human and the approver, with scored denominators.
