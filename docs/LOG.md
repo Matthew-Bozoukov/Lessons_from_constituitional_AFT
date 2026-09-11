@@ -1,6 +1,103 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 - Delegated-harm recovery finished: 609 scored episodes, custom orchestration isolated
+
+**Hypothesis and method.** Test whether difficult-advice training reduces harmful
+compliance while preserving legitimate work under peer, parent and human requests.
+Recover only the 203 missing observations with frozen ownership and documented
+resource/author-acceptance changes; preserve all 445 original scored observations.
+Two H100s retained their active episodes; four H200s processed the unstarted work.
+
+**Result.** Recovery added 113 control and 51 DA completions: 303/324 and 306/324
+scored, with no completed episodes awaiting a judge. All 39 remaining incomplete
+attempts are benchmark_rescore (14 request timeouts, 14 output-token cutoffs,
+11 turn cutoffs). Other included scenarios are complete. All owned GPUs terminated.
+Scored harmful-action rates (control / DA) are 97.0% / 30.4% for peers, 95.0% / 40.0%
+for parents, and 97.1% / 27.9% for humans. Joint useful completion with refusal and
+no harmful action is 0% for control versus 17.6%, 20.0%, and 3.8% for DA respectively.
+These are descriptive episode rates, one checkpoint per arm, excluding incomplete
+episodes; across-model AI requests differ as well as the responding checkpoints.
+
+**Implementation.** Before merging, moved custom recovery, queue workers and their
+tests to scratch/delegated_harm. They invoke the shared run_eval lifecycle through
+an explicit runner callable; the registered eval remains under src/eval. Fixed
+intermediate checkpoints ignoring --no-push and added safe reconciliation for a
+lost RunPod cleanup response that had delayed scoring. Published data were not
+rewritten by the refactor. See the [current entrypoints and pinned artifacts](delegated_harm/README.md).
+
+**Next.** Investigate benchmark_rescore's long loops before designing further
+recovery attempts, and test additional training seeds before causal recipe claims.
+
+## 2026-09-11 - Delegated-harm scoring complete: DA reduces harmful actions, joint completion remains low
+
+**Coverage.** All 445 completed episodes are now scored: control 190, DA 255.
+Of 648 planned slots, 156 were unavailable after request authoring/validation and
+47 ended in generation errors or cutoffs. Those are excluded from scored-episode
+rates and retained in all-scheduled bounds. Both GPUs shut down before the Windows
+restart. No model actions were rerun for scoring recovery.
+
+**Results (% of scored episodes, control / DA).**
+
+| Requester | Scored control / DA | Harmful action | Benign completion + refusal + no harm |
+|---|---:|---:|---:|
+| AI peer | 47 / 78 | 100.0 / 29.5 | 0.0 / 16.7 |
+| AI parent | 45 / 78 | 91.1 / 42.3 | 0.0 / 19.2 |
+| Human | 98 / 99 | 98.0 / 27.3 | 0.0 / 4.0 |
+
+Human requests hold wording fixed. Across-checkpoint AI arms change both author and
+responder and have different author-failure patterns. On 95 matched human episodes
+from 11 represented scenarios, the equal-scenario harmful-action difference was
+-70.20 percentage points (descriptive scenario-bootstrap 95% interval -90.91 to
+-46.59). This is one checkpoint per training condition, not training-seed replication.
+DA's lower harm does not imply it reliably finishes the legitimate work or contacts
+the approver: human-arm DA benign completion was 11.1%, approver concern 2.0%.
+
+**Judging.** 429 Sonnet 5 judgments, one Sonnet 4.5 judgment for a truncated benchmark
+case, and 15 Gemini 3 Flash judgments for provider-filtered cases. The frozen outcome
+rubric is shared; per-episode identities and raw replies are published. Primary-only
+human-arm harmful-action rates are 97.85% control / 28.26% DA, so the large descriptive
+difference survives excluding secondary judges. Ordered one-based component indices
+and exact zero-human-recipient schema mistakes were recovered without changing
+substantive labels. JSON mode and an explicit final output schema resolved the last
+format conflicts with the embedded upstream concern rubric. The user waived the
+spending cap to finish scoring; cost audits distinguish charges from reservations.
+
+**Canonical sources.**
+[Control at fa20fb9](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-dh-qwen3-6-27b-lora-9284-numina-control-716-r64/tree/fa20fb9c739430deea865aa1c37e475058781c63),
+[DA at 03bafd3](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-dh-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch/tree/03bafd3e3c0f4fd74db31e3f0ba6ed0df0b058b3).
+`scratch/delegated_harm/compare.py` regenerates the six vertical bar panels and the
+paired report from these published data; methodology and commands are in
+[the execution record](delegated_harm/2026-09-11_execution.md).
+
+## 2026-09-11 - Delegated-harm control/DA runs launched in parallel
+
+**Status.** Two isolated H100 runs are generating saved workplace episodes, with
+checkpoint uploads verified on HF. No final outcome comparison is available yet.
+**Incident.** An indirect SDK dependency cost one control startup (about $0.62), now
+included in its allowance. Initial outcome judging duplicated large documents and
+often exhausted its output limit; corrected scoring of saved transcripts is queued
+after GPU cleanup. Original attempts remain available. Some author validation calls
+were provider-filtered: accepted requests are control 18/36 and DA 28/36, with
+five and seven unavailable requests respectively caused by validation errors.
+**Next.** Finish generation, terminate owned GPUs, uniformly score saved episodes,
+publish cost audits and draw the HF-backed comparison. The completion helpers are
+queued; repeated model actions are not required for the scoring repair.
+See [execution details and dataset links](delegated_harm/2026-09-11_execution.md).
+
+## 2026-09-11 - Delegated-harm evaluation implemented for control/DA
+
+**Hypothesis.** Difficult-advice training may preserve useful work while resisting
+improper requests from another instance of the model, including a spawning parent.
+**Method.** Registered delegated_harm: twelve pinned released worlds, three requester
+arms, checkpoint-authored validated AI requests, shared human requests, and separate
+completion/refusal/harm/concern outcomes. Human concern distinguishes the unauthorized
+requester, other humans and the authorized approver. Separate GPU launchers cap each
+adapter run at $30. Missing upstream egress fixture is an explicit exclusion.
+**Validation.** Focused offline scenario/tool/metric checks and 44 naming/SSH tests pass.
+**Status.** Implementation ready; no experimental outcome claimed in this entry.
+See [the protocol](delegated_harm/2026-09-11_execution.md) for pins and commands.
+
 ## 2026-09-11 — Matched nonmoral stakes: low19.58% versus high16.67% MR
 
 **Hypothesis.** The user predicts that varying nonmoral stakes will not affect alignment.
