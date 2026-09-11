@@ -386,3 +386,17 @@ def test_score_lines_parse_through_markdown_wrapping():
     # a score quoted mid-sentence in the analysis is still not a verdict
     with pytest.raises(ValueError, match="lacks a SCORE line"):
         parse_scores("I'd give CANDIDATE 0 SCORE: 9 if pressed, but no final lines.", [0])
+
+
+def test_source_rows_keeps_only_the_named_rows_and_records_them(tmp_path, monkeypatch):
+    from src.data.synth.deliberative_alignment import data as ddata
+
+    ds = tmp_path / "dataset.jsonl"
+    ds.write_text("".join(json.dumps({"messages": [{"role": "user", "content": f"q{i}"}, {"role": "assistant", "content": "a"}]}) + "\n" for i in range(6)))
+    monkeypatch.setattr(ddata, "resolve_dataset", lambda repo, filename, revision: (str(ds), {"repo": repo, "revision": "pin"}))
+    records, prov = ddata.load_prompts({"repo": "org/x", "rows": [4, 1]})
+    assert [r["source_row"] for r in records] == [1, 4] and prov["rows"] == [1, 4]
+    with pytest.raises(ValueError, match="does not have|no final rows"):
+        ddata.load_prompts({"repo": "org/x", "rows": [99]})
+    with pytest.raises(ValueError, match="non-empty list"):
+        ddata.load_prompts({"repo": "org/x", "rows": []})

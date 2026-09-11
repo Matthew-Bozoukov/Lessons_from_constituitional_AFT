@@ -73,14 +73,24 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
     """
     if not isinstance(source, dict) or not isinstance(source.get("repo"), str):
         raise ValueError("source.repo must name a Hugging Face synthetic dataset")
-    unexpected = set(source) - {"repo", "revision"}
+    unexpected = set(source) - {"repo", "revision", "rows"}
     if unexpected:
         raise ValueError(f"unsupported source settings: {sorted(unexpected)}; reads dataset.jsonl only")
+    # `rows:` keeps only these source row indices (the `id`/`source_row` of a record), in
+    # file order. For re-running a chosen subset -- the 50 prompts the 2026-09-10 full run
+    # rejected -- under a changed constitution, with the exact rows recorded in the config.
+    keep = None
+    if "rows" in source:
+        if not isinstance(source["rows"], list) or not source["rows"] or not all(isinstance(r, int) and r >= 0 for r in source["rows"]):
+            raise ValueError("source.rows must be a non-empty list of source row indices")
+        keep = set(source["rows"])
     path, provenance = resolve_dataset(source["repo"], filename="dataset.jsonl",
                                        revision=source.get("revision"))
     records = []
     with Path(path).open(encoding="utf-8") as stream:
         for index, line in enumerate(stream):
+            if keep is not None and index not in keep:
+                continue
             try:
                 row = json.loads(line)
                 if not isinstance(row, dict):
@@ -118,6 +128,11 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
                 raise ValueError(f"dataset.jsonl row {index}: {exc}") from exc
     if not records:
         raise ValueError("dataset.jsonl contains no final rows")
+    if keep is not None:
+        missing = sorted(keep - {r["source_row"] for r in records})
+        if missing:
+            raise ValueError(f"source.rows names rows the dataset does not have: {missing[:10]}")
+        provenance = {**provenance, "rows": sorted(keep)}
     return records, provenance
 
 
