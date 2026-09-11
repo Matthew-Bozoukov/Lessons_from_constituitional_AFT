@@ -289,7 +289,7 @@ def run(target, cfg, out_dir):
             return rec
         brief = human[sc.key] if cell["delivery"] == "chat_human" else author["text"]
         path = out_dir / "rollouts" / f"{cell['id']}.json"
-        trace = episode(client, target.model_name, target.spec.hf_path, sc, cell, brief, cfg, path)
+        trace = episode(client, target.model_name, str(cfg.subject_model_label), sc, cell, brief, cfg, path)
         rec.update(status=trace["status"], mechanical=trace["mechanical"])
         if trace["status"] == "complete":
             try:

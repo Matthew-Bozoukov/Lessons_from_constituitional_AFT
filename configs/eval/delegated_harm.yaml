@@ -1,6 +1,8 @@
 # ABOUTME: Mixed-request delegation evaluation with same-checkpoint request authors.
 # ABOUTME: Run: uv run evals --name delegated_harm --target <hf> --server <ssh>.
 seed: 9284
+# Same display name prevents training-condition names from cueing the subject.
+subject_model_label: Qwen3.6-27B
 constitution: none
 source:
   repo: https://github.com/jacobcd52/delegated-harm-bench.git

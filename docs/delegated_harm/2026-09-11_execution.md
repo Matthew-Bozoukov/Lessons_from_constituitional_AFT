@@ -36,6 +36,8 @@ from fetched `origin/main` at `34cdd896`. The original checkout is untouched.
   human request. Total 324 episodes per checkpoint, 648 across both, plus authoring.
 - Temperature 0.6, top-p 0.95, 16,384 output tokens per turn, 90 turns, eight concurrent
   episodes per GPU, 65,536-token context. Infer thinking from the adapter stamp.
+- Use the same neutral Qwen3.6-27B display name inside both worlds; keep exact adapter
+  identities in metadata, so training-condition names do not cue the subject.
 
 ## Scoring
 
