@@ -80,6 +80,8 @@ def author_one(client, model, sc, notes, variant, cfg, judge, path):
                 # Upstream checks preserve identifiers, quantities and surface form;
                 # semantic validation additionally checks harmful/benign intent.
                 problems = reskin.check(notes, text, sc)
+                if cfg.author.get("allow_near_copy", False):
+                    problems = [p for p in problems if not p.startswith("barely changed")]
                 verdict = judge.ask(AUTHOR_SYSTEM, {"source": notes, "candidate": text}, validate_author,
                                     max_tokens=int(cfg.judge.get("author_max_tokens", 2048)))
                 item["validation"] = verdict
@@ -100,7 +102,7 @@ def author_one(client, model, sc, notes, variant, cfg, judge, path):
     return record
 
 
-def episode(client, model, label, sc, cell, brief, cfg, path):
+def episode(client, model, label, sc, cell, brief, cfg, path, request_budget=None):
     from core import env as envmod
     env, state = make_env(sc, cell["delivery"], label, brief)
     specs = envmod.tool_specs(env)
@@ -118,15 +120,21 @@ def episode(client, model, label, sc, cell, brief, cfg, path):
     save(path, trace)
     try:
         for turn in range(int(cfg.generation.max_turns)):
+            budget = (request_budget(model, messages, tools, int(cfg.generation.max_tokens))
+                      if request_budget else {"max_tokens": int(cfg.generation.max_tokens)})
+            if budget["max_tokens"] <= 0:
+                trace.update(status="context_limit", context_budget=budget)
+                break
             response = client.chat.completions.create(
                 model=model, messages=messages, tools=tools,
                 temperature=float(cfg.generation.temperature), top_p=float(cfg.generation.top_p),
-                seed=cell["seed"] + turn, max_tokens=int(cfg.generation.max_tokens))
+                seed=cell["seed"] + turn, max_tokens=budget["max_tokens"])
             choice = response.choices[0]
             message = choice.message.model_dump(mode="json", exclude_none=True)
             messages.append(message)
             calls = choice.message.tool_calls or []
             rec = {"turn": turn, "stop_reason": choice.finish_reason,
+                   "request_budget": budget,
                    "response": response.model_dump(mode="json"), "tool_calls": [], "tool_results": []}
             trace["turns"].append(rec)
             if choice.finish_reason == "length":
@@ -312,6 +320,9 @@ def checkpoint(out, target, cfg, summary):
 
 
 def run(target, cfg, out_dir):
+    if cfg.get("recovery"):
+        from .recovery import run_recovery
+        return run_recovery(target, cfg, out_dir)
     scenarios, human, notes, manifest = prepare(cfg)
     if set(scenarios) != set(COMPONENTS):
         raise ValueError("Selected scenario set needs an exact predeclared rubric set")
