@@ -3,7 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from src.infra.episode_queue import EpisodeQueue
+from scratch.delegated_harm.episode_queue import EpisodeQueue
 
 
 def test_claims_are_exclusive_under_concurrent_workers(tmp_path):

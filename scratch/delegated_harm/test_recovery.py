@@ -2,8 +2,8 @@
 # ABOUTME: Offline tests never rent GPUs or send requests to model providers.
 from types import SimpleNamespace
 
-from src.eval.misalignment.delegated_harm.recovery import token_allowance, TokenBudget
-from src.eval.misalignment.delegated_harm.recovery import recover_saved_author
+from scratch.delegated_harm.recovery import token_allowance, TokenBudget
+from scratch.delegated_harm.recovery import recover_saved_author
 import sys
 
 
@@ -18,7 +18,7 @@ def test_tokenization_counts_tools_and_uses_same_model(monkeypatch):
     def post(url, json, timeout):
         calls.append((url, json))
         return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"count": 60000})
-    monkeypatch.setattr("src.eval.misalignment.delegated_harm.recovery.requests.post", post)
+    monkeypatch.setattr("scratch.delegated_harm.recovery.requests.post", post)
     budget = TokenBudget("http://localhost:9000/v1", 65536)
     result = budget("adapter", [{"role": "user", "content": "a"}], [{"type": "function"}], 16384)
     assert result["max_tokens"] == 5472

@@ -10,9 +10,9 @@ import requests
 from openai import OpenAI
 from omegaconf import OmegaConf
 
-from .judging import Judge, validate_author
-from .rubrics import AUTHOR_SYSTEM
-from .source import digest, prepare, save
+from src.eval.misalignment.delegated_harm.judging import Judge, validate_author
+from src.eval.misalignment.delegated_harm.rubrics import AUTHOR_SYSTEM
+from src.eval.misalignment.delegated_harm.source import digest, prepare, save
 
 
 def read(path):
@@ -80,7 +80,7 @@ class TokenBudget:
 
 
 def run_recovery(target, cfg, out_dir):
-    from .runner import author_one, episode, checkpoint, summarize
+    from src.eval.misalignment.delegated_harm.runner import author_one, episode, checkpoint, summarize
     source = Path(cfg.recovery.source_run)
     original = {r["id"]: r for r in (read(f) for f in (source / "results/episodes").glob("*.json"))}
     selected = set(cfg.recovery.missing_ids)

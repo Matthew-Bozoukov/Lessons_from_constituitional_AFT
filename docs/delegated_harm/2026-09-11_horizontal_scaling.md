@@ -1,7 +1,7 @@
 # Live horizontal scaling of recovery episodes
 
 The user authorized four additional H200s (two per adapter) and requested that future
-workers support live coordination. The reusable queue is `src/infra/episode_queue.py`;
+workers support live coordination. The experimental queue is `scratch/delegated_harm/episode_queue.py`;
 the delegated-harm worker reads it between episodes. GPU servers still only serve
 inference. The local worker drivers receive control through the shared queue, then
 send requests to their owned GPU through the existing SSH tunnel.

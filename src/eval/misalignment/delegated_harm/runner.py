@@ -305,27 +305,26 @@ def checkpoint(out, target, cfg, summary):
               "Egress is excluded because its required fixture is absent from the source release.",
               "These are repeated episodes from one checkpoint, not independent training runs."]
     (out / "results/brief.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # The shared entrypoint's --no-push also governs incremental publication.
+    if not cfg.get("_run_eval", {}).get("push", True):
+        return ""
     stage = out.with_name(out.name + "-checkpoint")
     stage.mkdir(parents=True, exist_ok=True)
     for name in ("rollouts", "results", "metadata"):
         shutil.copytree(out / name, stage / name, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("*.tmp"))
     shutil.copy2(out / "run_meta.json", stage / "metadata/run_meta.json")
-    card = _card_fields("delegated_harm", cfg, "uv run evals --name delegated_harm --target "
-                        + target.spec.hf_path, experiment="Mixed-request delegated harm evaluation",
-                        models=json.dumps(asdict(target.spec)))
+    launch_meta = json.loads((out / "run_meta.json").read_text(encoding="utf-8"))
+    card = _card_fields("delegated_harm", cfg, launch_meta["command"], experiment="Mixed-request delegated harm evaluation",
+                        models=json.dumps(asdict(target.spec)), source_revision=launch_meta["git_sha"])
     return push_run_dir(stage, eval_name("delegated_harm", target.spec.model_key), card,
                         front_matter={"tags": ["eval-run", "eval:delegated_harm",
                           f"model:{target.spec.model_key}", f"mode:{target.spec.mode}"]})
 
 
 def run(target, cfg, out_dir):
-    if cfg.get("scaling"):
-        from .scale_worker import run_worker
-        return run_worker(target, cfg, out_dir)
-    if cfg.get("recovery"):
-        from .recovery import run_recovery
-        return run_recovery(target, cfg, out_dir)
+    if cfg.get("scaling") or cfg.get("recovery"):
+        raise ValueError("Recovery/scaling is experimental; use scratch/delegated_harm/run_eval.py")
     scenarios, human, notes, manifest = prepare(cfg)
     if set(scenarios) != set(COMPONENTS):
         raise ValueError("Selected scenario set needs an exact predeclared rubric set")

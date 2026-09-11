@@ -12,7 +12,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.delegated_harm.recovery import AuthorValidator, read, recover_saved_author
+from scratch.delegated_harm.recovery import AuthorValidator, read, recover_saved_author
 from src.eval.misalignment.delegated_harm.source import prepare, save
 from src.infra import runpod
 from src.infra.endpoints.vllm import resolve_target, native_context_window
@@ -104,7 +104,7 @@ def launch(arm, root):
         pod = runpod.call("GET", f"/pods/{state['pod_id']}")
         host = f"root@{pod['publicIp']}:{pod['portMappings']['22']}"
         port = 9201 if arm == "control" else 9202
-        command = [sys.executable, "scripts/run_eval.py", "--target", MODELS[arm],
+        command = [sys.executable, "scratch/delegated_harm/run_eval.py", "--target", MODELS[arm],
                    "--name", "delegated_harm", "--config", str(root / "config.yaml"),
                    "--server", host, "--ssh-key", pair[1], "--port", str(port), "--terminate-pod"]
         state.update(server=host, local_port=port, status="evaluating", command=command)

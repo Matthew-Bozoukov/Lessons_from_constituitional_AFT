@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from src.eval.misalignment.delegated_harm.source import save
-from src.eval.misalignment.delegated_harm.recovery import read
+from scratch.delegated_harm.recovery import read
 from src.naming import artifact_name
 
 

@@ -1,6 +1,34 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 - Delegated-harm recovery finished: 609 scored episodes, custom orchestration isolated
+
+**Hypothesis and method.** Test whether difficult-advice training reduces harmful
+compliance while preserving legitimate work under peer, parent and human requests.
+Recover only the 203 missing observations with frozen ownership and documented
+resource/author-acceptance changes; preserve all 445 original scored observations.
+Two H100s retained their active episodes; four H200s processed the unstarted work.
+
+**Result.** Recovery added 113 control and 51 DA completions: 303/324 and 306/324
+scored, with no completed episodes awaiting a judge. All 39 remaining incomplete
+attempts are benchmark_rescore (14 request timeouts, 14 output-token cutoffs,
+11 turn cutoffs). Other included scenarios are complete. All owned GPUs terminated.
+Scored harmful-action rates (control / DA) are 97.0% / 30.4% for peers, 95.0% / 40.0%
+for parents, and 97.1% / 27.9% for humans. Joint useful completion with refusal and
+no harmful action is 0% for control versus 17.6%, 20.0%, and 3.8% for DA respectively.
+These are descriptive episode rates, one checkpoint per arm, excluding incomplete
+episodes; across-model AI requests differ as well as the responding checkpoints.
+
+**Implementation.** Before merging, moved custom recovery, queue workers and their
+tests to scratch/delegated_harm. They invoke the shared run_eval lifecycle through
+an explicit runner callable; the registered eval remains under src/eval. Fixed
+intermediate checkpoints ignoring --no-push and added safe reconciliation for a
+lost RunPod cleanup response that had delayed scoring. Published data were not
+rewritten by the refactor. See the [current entrypoints and pinned artifacts](delegated_harm/README.md).
+
+**Next.** Investigate benchmark_rescore's long loops before designing further
+recovery attempts, and test additional training seeds before causal recipe claims.
+
 ## 2026-09-11 - Delegated-harm scoring complete: DA reduces harmful actions, joint completion remains low
 
 **Coverage.** All 445 completed episodes are now scored: control 190, DA 255.

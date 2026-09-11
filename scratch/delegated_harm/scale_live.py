@@ -14,8 +14,8 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.infra import runpod
-from src.infra.episode_queue import EpisodeQueue
-from src.eval.misalignment.delegated_harm.recovery import read
+from scratch.delegated_harm.episode_queue import EpisodeQueue
+from scratch.delegated_harm.recovery import read
 from src.eval.misalignment.delegated_harm.source import save, digest, prepare
 from scratch.delegated_harm.launch import account, MODELS
 
@@ -29,7 +29,7 @@ def detached(command, log):
 
 
 def own_driver(controller):
-    command = "Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python' -and $_.CommandLine -like '*scripts/run_eval.py*' } | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"
+    command = "Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^python' -and ($_.CommandLine -like '*scripts/run_eval.py*' -or $_.CommandLine -like '*scratch/delegated_harm/run_eval.py*') } | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"
     text = subprocess.check_output(['powershell', '-NoProfile', '-Command', command], text=True)
     processes = json.loads(text or '[]')
     if isinstance(processes, dict):
@@ -168,7 +168,7 @@ def launch(root, worker):
         host = f"root@{pod['publicIp']}:{pod['portMappings']['22']}"
         state.update(server=host, status='evaluating')
         save(folder / 'controller.json', state)
-        command = [sys.executable, 'scripts/run_eval.py', '--name', 'delegated_harm', '--target', MODELS[arm],
+        command = [sys.executable, 'scratch/delegated_harm/run_eval.py', '--name', 'delegated_harm', '--target', MODELS[arm],
                    '--config', str(folder / 'config.yaml'), '--server', host, '--ssh-key', pair[1],
                    '--port', str(allocation['port']), '--terminate-pod', '--no-push']
         result = subprocess.run(command, check=False)
@@ -180,12 +180,17 @@ def launch(root, worker):
         state.update(status='failed', error_type=type(exc).__name__, error=str(exc)[:700])
         raise
     finally:
-        if state.get('pod_id'):
-            runpod.teardown(state['pod_id'])
-            state.update(terminated=True, finished=time.time())
-            if guard:
-                guard.terminate()
-        save(folder / 'controller.json', state)
+        try:
+            if state.get('pod_id'):
+                runpod.teardown(state['pod_id'])
+                state.update(terminated=True, finished=time.time())
+                if guard:
+                    guard.terminate()
+        except Exception as exc:
+            state.update(status='cleanup_failed', cleanup_error=str(exc)[:700])
+            raise
+        finally:
+            save(folder / 'controller.json', state)
 
 
 def drain_legacy(root, queue, handoff):
@@ -288,6 +293,38 @@ def merge_and_score(root, arm):
         'completed_episodes': summary['completed_episodes']})
 
 
+def reconcile_finished_workers(root, snapshot):
+    """A lost cleanup response must not indefinitely block already-saved results."""
+    candidates = []
+    for path in (root / 'workers').glob('*/controller.json'):
+        state = read(path)
+        if state.get('terminated') or not state.get('pod_id'):
+            continue
+        worker = next((w for w in snapshot['workers'] if w['id'] == state['worker']), None)
+        if worker is None or worker['mode'] != 'stopped':
+            continue
+        jobs = [j for j in snapshot['jobs'] if j['owner'] == state['worker']]
+        if any(j['state'] != 'done' for j in jobs) or runpod._process_identity(state['pid']):
+            continue
+        candidates.append((path, state, jobs))
+    if not candidates:
+        return
+    # Read-only inventory: no process or pod is stopped by this reconciliation.
+    active = {p['id'] for p in runpod.active_pods()}
+    for path, state, jobs in candidates:
+        if state['pod_id'] in active:
+            continue
+        for job in jobs:
+            assert digest(read(job['result_path'])) == job['result_hash']
+        save(root / 'metadata' / f"{state['worker']}-cleanup-reconciliation.json",
+             {'checked': time.time(), 'previous_controller': state,
+              'pod_absent': True, 'launcher_absent': True, 'verified_results': len(jobs)})
+        state.update(status='finished_with_cleanup_error', terminated=True,
+                     finished=time.time(), status_reconciled=True)
+        save(path, state)
+        print('RECONCILED', state['worker'], 'saved results and absent pod', flush=True)
+
+
 def monitor(root):
     queue = EpisodeQueue(root / 'queue.sqlite')
     handoff = read(root / 'metadata/handoff.json')
@@ -295,6 +332,12 @@ def monitor(root):
     while time.time() < deadline:
         drain_legacy(root, queue, handoff)
         snap = queue.snapshot()
+        try:
+            reconcile_finished_workers(root, snap)
+        except Exception as exc:
+            save(root / 'metadata/reconciliation_error.json',
+                 {'time': time.time(), 'error': str(exc)[:700]})
+            print('Worker cleanup reconciliation failed; will check again:', type(exc).__name__, flush=True)
         save(root / 'metadata/queue_snapshot.json', snap)
         counts = Counter((j['arm'], j['state']) for j in snap['jobs'])
         print('QUEUE', dict(counts), flush=True)

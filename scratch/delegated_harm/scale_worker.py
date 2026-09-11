@@ -9,13 +9,13 @@ from pathlib import Path
 from openai import OpenAI
 from omegaconf import OmegaConf
 
-from src.infra.episode_queue import EpisodeQueue
+from scratch.delegated_harm.episode_queue import EpisodeQueue
 from .recovery import read, TokenBudget
-from .source import save, digest, prepare
+from src.eval.misalignment.delegated_harm.source import save, digest, prepare
 
 
 def run_worker(target, cfg, out_dir):
-    from .runner import episode
+    from src.eval.misalignment.delegated_harm.runner import episode
     worker = str(cfg.scaling.worker)
     arm = str(cfg.scaling.arm)
     queue = EpisodeQueue(cfg.scaling.queue)
