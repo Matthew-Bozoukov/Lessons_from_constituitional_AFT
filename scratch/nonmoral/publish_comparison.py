@@ -4,14 +4,88 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import argparse
+import re
+import yaml
+from datetime import date
+from huggingface_hub import CommitOperationAdd, CommitOperationDelete
 
-from src.infra.huggingface import card_markdown, hf_api, hf_download, hf_org, push_run_dir
+from src.infra.huggingface import card_markdown, gate_push, hf_api, hf_download, hf_org, push_run_dir
 from src.naming import artifact_name
 from scratch.nonmoral.publish_invalid_baseline import secret_values, scan
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = ROOT / 'output/nonmoral_overnight/20260909'
 PREFIXES = {'nonmoral': 'baseline_lf', 'math': 'math_baseline', 'table2': 'table2_baseline'}
+
+
+def correct_publication_metadata(audit_dir):
+    """Correct audited presentation metadata, retaining immutable scientific evidence."""
+    audit_dir = Path(audit_dir)
+    inventory = json.loads((audit_dir/'inventory.json').read_text())
+    api = hf_api(); receipts = []; secrets = secret_values()
+    for row in inventory:
+        if not row['issues']:
+            continue
+        repo = row['repo']; fields = row['card_fields']
+        assert row['kind'] == 'dataset' and repo.startswith('dougalldeepmind/')
+        gate_push(repo, fields)
+        current = api.dataset_info(repo)
+        assert current.sha == row['revision'], 'Repo changed after audit; inspect before updating'
+        card = (audit_dir/repo.split('/')[-1]/'README.md').read_text(encoding='utf-8')
+        fm_text, body = card.split('---\n', 2)[1:]
+        fm = yaml.safe_load(fm_text)
+        removed = []
+        operations = []
+        presentation_files = ['README.md']
+        for filename in row['figures']:
+            path = Path(hf_download(repo, filename, repo_type='dataset', revision=row['revision']))
+            raw = path.read_bytes()
+            local = audit_dir/'retained_figures'/repo.split('/')[-1]/Path(filename).name
+            local.parent.mkdir(parents=True, exist_ok=True); local.write_bytes(raw)
+            removed.append(dict(file=filename, sha256=hashlib.sha256(raw).hexdigest()))
+            operations.append(CommitOperationDelete(path_in_repo=filename))
+        if removed:
+            body = '\n'.join(line for line in body.splitlines() if not line.startswith('!['))+'\n'
+            body = body.replace('and figures;', '(figures remain local);').replace('and figures |', '(figures remain local) |')
+            for filename in row['files']:
+                if not (filename.startswith('results/') and filename.endswith('.md')):
+                    continue
+                path = Path(hf_download(repo, filename, repo_type='dataset', revision=row['revision']))
+                text = path.read_text(encoding='utf-8')
+                clean = '\n'.join(line for line in text.splitlines() if not line.startswith('!['))+'\n'
+                if clean != text:
+                    scan(clean.encode(), filename, secrets)
+                    operations.append(CommitOperationAdd(path_in_repo=filename, path_or_fileobj=clean.encode()))
+                    presentation_files.append(filename)
+        invalid = 'invalid' in row['tags'] and 'unjudged' in row['tags']
+        if invalid:
+            fm['tags'] = [t for t in fm['tags'] if t not in ('eval-run', 'eval:odcv')]
+            fm['tags'] += ['research-incident', 'benchmark:odcv']
+        assert removed or invalid, row['issues']
+        note = ('Presentation correction: figures remain local under repository policy; old figure files and manifests remain available at the prior revision.' if removed else
+                'Discovery correction: this INVALID/UNJUDGED archive is tagged as a research incident, not a completed eval-run. No verdict or missing result was invented.')
+        body += '\n'+note+'\n'
+        card = '---\n'+yaml.safe_dump(fm, sort_keys=False)+'---\n'+body
+        proof = dict(previous_revision=row['revision'], date=date.today().isoformat(), reason=note,
+            removed_figures=removed, presentation_files=presentation_files, scientific_data_unchanged=True,
+            code_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip())
+        raw = (json.dumps(proof, indent=2)+'\n').encode()
+        scan(card.encode(), 'README.md', secrets); scan(raw, 'correction.json', secrets)
+        operations += [CommitOperationAdd(path_in_repo='README.md', path_or_fileobj=card.encode()),
+            CommitOperationAdd(path_in_repo='metadata/'+artifact_name('publication-correction')+'.json', path_or_fileobj=raw)]
+        result = api.create_commit(repo_id=repo, repo_type='dataset', operations=operations,
+            parent_commit=row['revision'], commit_message='Apply documented figure storage and incident discovery standards')
+        before = api.dataset_info(repo, revision=row['revision'], files_metadata=True)
+        after = api.dataset_info(repo, revision=result.oid, files_metadata=True)
+        remaining = {f.rfilename: (f.blob_id, f.lfs.sha256 if f.lfs else None) for f in after.siblings}
+        changed = {*presentation_files, *(r['file'] for r in removed)}
+        for f in before.siblings:
+            if f.rfilename not in changed:
+                assert remaining[f.rfilename] == (f.blob_id, f.lfs.sha256 if f.lfs else None), f.rfilename
+        receipts.append(dict(repo=repo, revision=after.sha, public=not after.private, **proof))
+        (audit_dir/'corrections.json').write_text(json.dumps(receipts, indent=2)+'\n', encoding='utf-8')
+    print(json.dumps(receipts, indent=2))
 REPOS = {'nonmoral': '2026-09-09-odcv-nonmoral-lf-common-3x',
          'math': '2026-09-09-odcv-math-common-3x',
          'table2': '2026-09-09-odcv-table2-common-3x'}
@@ -66,6 +140,8 @@ def main():
 
     def copy(path, relative):
         raw = path.read_bytes()
+        if relative == 'results/comparison.md':
+            raw = '\n'.join(line for line in raw.decode('utf-8').splitlines() if not line.startswith('![')).encode()
         scan(raw, str(path), secrets)
         target = dest / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -73,8 +149,11 @@ def main():
         files.append(dict(path=target.relative_to(dest).as_posix(), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest()))
 
     for path in sorted((BASE / 'baseline_comparison').iterdir()):
-        if path.is_file() and path.suffix in {'.json', '.md', '.png', '.svg'}:
+        if path.is_file() and path.suffix in {'.json', '.md'}:
             copy(path, 'results/' + path.name)
+    for path in (dest/'results').iterdir():
+        if path.suffix in {'.png', '.svg', '.pdf'}:
+            path.unlink()  # Remove stale staged figures; originals remain in baseline_comparison.
     for pattern in ('*_status.json', '*_cost_accounting.json', '*_noncompletion_audit.json', '*_noncompletion_audit.md',
                     'authorization.json', 'shell_line_ending_repair.json', 'timeout_runtime_provenance.json',
                     '*_api_timeout_provenance.json', '*_terminal*.json',
@@ -97,30 +176,28 @@ def main():
         source_repo='https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ ' + revision,
         models={k: dict(target=v['target'], revision=v['target_revision'], base_revision=v['base_revision'])
                 for k,v in report['arms'].items()}, generation_config=report['protocol'],
-        schema='results/: exact counts, scenario intervals, paired contrasts and figures; metadata/: pinned public sources, costs, shell hashes and qualitative audits',
+        schema='results/: exact counts, scenario intervals and paired contrasts; metadata/: pinned public sources, costs, shell hashes and qualitative audits; figures remain local',
         provenance='uv run python scratch/nonmoral/baseline_report.py --nonmoral <completed> --math <completed> --table2 <completed> --out output/nonmoral_overnight/20260909/baseline_comparison; uv run python scratch/nonmoral/publish_comparison.py',
         limitations=report['interpretation'] + ' Formal capability tests remain deferred. Fresh paired development accepted 13/32 and failed the scaling gate; no new SFT ran. The invalid CRLF attempt is excluded.')
     name = artifact_name('nonmoral-baseline-comparison', date='2026-09-09')
     front = {'tags': ['nonmoral-deliberation', 'research-comparison']}
     url = push_run_dir(dest, name, fields, private=False, front_matter=front)
     body = (dest / 'results/comparison.md').read_text(encoding='utf-8')
-    for chart in (dest / 'results').glob('*.png'):
-        body = body.replace('](' + chart.name + ')', '](results/' + chart.name + ')')
-    chart_line = next(line for line in body.splitlines() if line.startswith('!['))
-    body = body.replace(chart_line + '\n', '')
+    body = '\n'.join(line for line in body.splitlines() if not line.startswith('!['))
+    (dest/'results/comparison.md').write_text(body, encoding='utf-8')
     heading, rest = body.split('\n\n', 1)
     summary = (f"**720 scored rollouts; ${budget['total_exposure_estimate_usd']:.2f} estimated total exposure / $300. "
                "All owned pods terminated.** No new SFT: fresh paired development accepted 13/32 and failed its frozen gate.")
     metadata = card_markdown(fields, front)
     assert metadata.startswith('---\n')
     yaml_end = metadata.index('---\n', 4) + 4
-    card = (metadata[:yaml_end] + heading + '\n\n' + summary + '\n\n' + chart_line + '\n\n' + rest
+    card = (metadata[:yaml_end] + heading + '\n\n' + summary + '\n\n' + rest
             + '\n<details>\n<summary>Reproduction metadata and limitations</summary>\n\n'
             + metadata[yaml_end:] + '\n</details>\n')
     (dest / 'README.md').write_text(card, encoding='utf-8')
     api.upload_file(path_or_fileobj=str(dest / 'README.md'), path_in_repo='README.md',
                     repo_id=hf_org() + '/' + name, repo_type='dataset',
-                    commit_message='Display exact completed comparison and chart on dataset card')
+                    commit_message='Display exact completed comparison on dataset card')
     info = api.dataset_info(hf_org() + '/' + name)
     assert not info.private
     receipt = dict(url=url, revision=info.sha, private=False, budget=budget, sources=public)
@@ -129,4 +206,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--correct-audit', type=Path)
+    args = parser.parse_args()
+    if args.correct_audit:
+        correct_publication_metadata(args.correct_audit)
+    else:
+        main()

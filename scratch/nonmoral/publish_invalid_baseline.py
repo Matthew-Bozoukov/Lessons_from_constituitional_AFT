@@ -136,7 +136,7 @@ def main() -> None:
     (metadata / "publication_meta.json").write_text(json.dumps({"git_revision": git_revision,
         "source_root": str(SOURCE), "source_files_preserved": len(manifest), "excluded": omitted,
         "actual_secret_value_scan": "passed before upload", "accounts_or_env_included": False}, indent=2) + "\n", encoding="utf-8")
-    fm = {"tags": ["eval-run", "eval:odcv", "model:qwen3.6-27b", "mode:thinking", "invalid", "unjudged", "crlf-environment-failure"],
+    fm = {"tags": ["research-incident", "benchmark:odcv", "model:qwen36_lora_table2_9284_nonmoral_deliberation_684_rank_64_dynbatch", "mode:think", "invalid", "unjudged", "crlf-environment-failure"],
           "configs": [{"config_name": "invalid_rollout_index", "data_files": "metadata/rollout_index.jsonl", "default": True}]}
     card = fields(git_revision)
     (DEST / "README.md").write_text(card_markdown(card, fm), encoding="utf-8")

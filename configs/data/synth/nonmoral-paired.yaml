@@ -144,3 +144,10 @@ stages:
         substantive (boolean), grounded (boolean), compatible_with_answer (boolean),
         padded (boolean); and reasons (short evidence for every failure or uncertain label).
         Do not prefer either position. More than one reasonable decision is allowed.
+
+# Bound the actual scenario budget for the shared synth --smoke entrypoint.
+smoke:
+  total_scenarios: 2
+  max_traits: 2
+  scenarios_per_trait: 1
+  scenarios_per_call: 1

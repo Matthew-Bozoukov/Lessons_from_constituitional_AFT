@@ -1,10 +1,14 @@
 # ABOUTME: Read-only metadata inventory for the nonmoral-deliberation planning investigation.
 # ABOUTME: Downloads small provenance files only; never inference, weights, rentals, or uploads.
 import json
+import argparse
+import re
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from huggingface_hub import hf_hub_download
 from src.infra.huggingface import hf_api, hf_token
+from src.infra.huggingface import REQUIRED_FIELDS, gate_push
+from huggingface_hub import HfApi
 
 OUT = Path('output/nonmoral_investigation/20260908')
 REPOS = [
@@ -16,6 +20,55 @@ REPOS = [
  ('model', 'LASR-Callum/qwen3.6-27b-lora-table2-only-9284-r64'),
  ('model', 'matboz/qwen3.6-27b-lora-9284-numina-control-716-r64'),
 ]
+
+def audit_workstream(out):
+    """Public, read-only audit of artifacts created by this workstream since September 8."""
+    out = Path(out)
+    api = HfApi(token=False)
+    items = []
+    for kind, list_repos in [('dataset', api.list_datasets), ('model', api.list_models)]:
+        items += [(kind, r.id) for r in list_repos(author='dougalldeepmind', search='nonmoral')
+                  if r.id.split('/')[-1][:10] >= '2026-09-08']
+    migration = json.loads(Path('output/nonmoral_investigation/20260909/hf_artifact_audit/canonical_publications.json').read_text())
+    items += [('dataset', r['new_repo']) for r in migration['publications']]
+    def check(item):
+        kind, repo = item
+        info = api.repo_info(repo, repo_type=kind, files_metadata=True)
+        assert not info.private, repo
+        dest = out / repo.split('/')[-1]
+        dest.mkdir(parents=True, exist_ok=True)
+        path = hf_hub_download(repo, 'README.md', repo_type=kind, revision=info.sha, token=False)
+        card = Path(path).read_text(encoding='utf-8')
+        (dest / 'README.md').write_text(card, encoding='utf-8')
+        fields = dict(re.findall(r'^\| `([^`]+)` \| (.*?) \|$', card, re.M))
+        issues = [f'missing card field: {f}' for f in REQUIRED_FIELDS if not fields.get(f)]
+        try:
+            gate_push(repo, fields)
+        except ValueError as exc:
+            issues.append(str(exc))
+        files = [s.rfilename for s in info.siblings]
+        figures = [f for f in files if f.startswith('results/') and Path(f).suffix.lower() in ('.png', '.svg', '.pdf')]
+        if figures:
+            issues.append('published figures should remain local')
+        tags = list(info.tags or [])
+        if 'eval-run' in tags:
+            for required in ('results/results.json', 'metadata/run_meta.json', 'metadata/odcv_config.yaml'):
+                if required not in files:
+                    issues.append('missing eval file: ' + required)
+            for prefix in ('eval:', 'model:', 'mode:'):
+                if not any(t.startswith(prefix) for t in tags):
+                    issues.append('missing eval tag: ' + prefix)
+        if kind == 'model':
+            for required in ('adapter_model.safetensors', 'adapter_config.json', 'training_meta.json', 'train_config.yaml'):
+                if required not in files:
+                    issues.append('missing model file: ' + required)
+        return dict(repo=info.id, kind=kind, revision=info.sha, public=True,
+                    card_fields=fields, tags=tags, files=files, figures=figures, issues=issues)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        rows = list(pool.map(check, sorted(set(items))))
+    (out / 'inventory.json').write_text(json.dumps(rows, indent=2)+'\n', encoding='utf-8')
+    print(json.dumps(dict(repositories=len(rows), issues={r['repo']: r['issues'] for r in rows if r['issues']}), indent=2))
+
 
 def inspect(item):
     kind, repo = item
@@ -42,6 +95,12 @@ def inspect(item):
         return dict(repo=repo, kind=kind, error_type=type(exc).__name__)
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--workstream-audit', type=Path)
+    args = parser.parse_args()
+    if args.workstream_audit:
+        audit_workstream(args.workstream_audit)
+        raise SystemExit(0)
     OUT.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(inspect, REPOS))

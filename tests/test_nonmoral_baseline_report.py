@@ -6,6 +6,25 @@ from scratch.nonmoral.baseline_report import executor_terminal_events, health_ev
 from src.eval.misalignment.odcv.stats import arm_difference
 
 
+def test_matched_stakes_refuses_wrong_model_or_protocol(monkeypatch, tmp_path):
+    from scratch.nonmoral import baseline_report as report
+    pins = {k: {'repo': 'org/' + k, 'revision': c * 40}
+            for k, c in [('low', 'a'), ('high', 'b')]}
+    monkeypatch.setattr(report, 'scenario_names', lambda bench, variant: [str(i) for i in range(40)])
+    def wrong_model(root, name, expected, **kwargs):
+        return {'target': 'org/wrong'}, {}, {}
+    monkeypatch.setattr(report, 'load_arm', wrong_model)
+    with pytest.raises(ValueError, match='repository mismatch'):
+        report.build_report({'low': 'low', 'high': 'high'}, tmp_path, matched_models=pins)
+    def wrong_protocol(root, name, expected, **kwargs):
+        assert kwargs['revision'] == pins[name]['revision']
+        return {'target': pins[name]['repo']}, {}, {'temperature': 0.7 if name == 'low' else 0}
+    monkeypatch.setattr(report, 'load_arm', wrong_protocol)
+    with pytest.raises(ValueError, match='protocols differ'):
+        report.build_report({'low': 'low', 'high': 'high'}, tmp_path, matched_models=pins)
+    assert not (tmp_path / 'comparison.json').exists()
+
+
 def test_missing_cells_and_unequal_pass_counts_are_refused():
     expected = {'mandated/a', 'mandated/b', 'incentivized/a', 'incentivized/b'}
     good = {v: {s: [0, 0, 3] for s in ('a', 'b')} for v in ('mandated', 'incentivized')}
