@@ -253,7 +253,8 @@ def _run(args: argparse.Namespace, unknown: list[str]) -> None:
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
     server = VllmServer(
-        work_dir=Path("output") / args.name / "server", port=args.port, executor=executor,
+        work_dir=Path(str(cfg.get("output_root") or Path("output") / args.name)) / "server",
+        port=args.port, executor=executor,
         serve_requirements=OmegaConf.to_container(cfg.get("serving") or {}, resolve=True))
     # --- preflight: resolve and NAME every target before anything is served ------------
     # All of it up front, not per target as it comes round: with an arm ladder, a target

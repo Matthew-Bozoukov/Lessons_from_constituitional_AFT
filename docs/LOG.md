@@ -1,6 +1,19 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 - Delegated-harm evaluation implemented for control/DA
+
+**Hypothesis.** Difficult-advice training may preserve useful work while resisting
+improper requests from another instance of the model, including a spawning parent.
+**Method.** Registered delegated_harm: twelve pinned released worlds, three requester
+arms, checkpoint-authored validated AI requests, shared human requests, and separate
+completion/refusal/harm/concern outcomes. Human concern distinguishes the unauthorized
+requester, other humans and the authorized approver. Separate GPU launchers cap each
+adapter run at $30. Missing upstream egress fixture is an explicit exclusion.
+**Validation.** Focused offline scenario/tool/metric checks and 44 naming/SSH tests pass.
+**Status.** Implementation ready; no experimental outcome claimed in this entry.
+See [the protocol](delegated_harm/2026-09-11_execution.md) for pins and commands.
+
 ## 2026-09-10 — MASK re-scored: the verdict parser misread Flash's replies, and the overall now pools rows as the paper does
 
 **Why.** Two scoring defects, found by reading the harness against the paper. (1) The vendored

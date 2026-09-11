@@ -59,6 +59,9 @@ class EvalSpec:
 
 
 EVALS: dict[str, EvalSpec] = {
+    "delegated_harm": EvalSpec(
+        "misalignment.delegated_harm", "configs/eval/delegated_harm.yaml", key="dh",
+    ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",
         "configs/eval/mmlu.yaml",
