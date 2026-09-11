@@ -237,7 +237,9 @@ def test_min_rows_floor_refuses_to_publish(tmp_path, monkeypatch):
 
 
 def test_resume_reuses_generations_and_retries_failed_judgements(tmp_path, monkeypatch):
-    client = FakeClient(scores={q: {0: [9, 9]} for q in range(3)}, judge_errors=1)
+    # Three judge failures in a row exhaust the inline retries (filter.judge.retries = 2), so
+    # the run aborts; the resume retries only the judgement and regenerates nothing.
+    client = FakeClient(scores={q: {0: [9, 9]} for q in range(3)}, judge_errors=3)
     _install(monkeypatch, client)
     cfg = _config(tmp_path)
     with pytest.raises(RuntimeError, match="judged failed"):
@@ -246,6 +248,18 @@ def test_resume_reuses_generations_and_retries_failed_judgements(tmp_path, monke
     generated_before = dict(client.generated)
     verdicts = [json.loads(l) for l in (run_dir / "judgements.partial.jsonl").read_text().splitlines()]
     assert verdicts[0]["error"] == "ConnectionError" and verdicts[0]["candidates"] == [0, 1]
+
+
+def test_a_judge_failure_resolved_by_its_inline_retry_does_not_abort(tmp_path, monkeypatch):
+    # One failed judge attempt, then success on the retry: the stale error record stays in the
+    # checkpoint but the run completes (prompt 146 of the 2026-09-11 full run).
+    client = FakeClient(scores={q: {0: [9, 9]} for q in range(3)}, judge_errors=1)
+    _install(monkeypatch, client)
+    manifest = pipeline.run(_config(tmp_path))
+    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 3
+    run_dir = next((tmp_path / "out").iterdir())
+    verdicts = [json.loads(l) for l in (run_dir / "judgements.partial.jsonl").read_text().splitlines()]
+    assert sum("error" in v for v in verdicts) == 1 and sum(v.get("attempt") == 1 for v in verdicts) == 1
     manifest = pipeline.run(cfg, resume=str(run_dir))
     assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 3
     assert client.generated == generated_before, "resume must not regenerate checkpointed candidates"
@@ -364,3 +378,11 @@ def test_a_rate_limited_batch_backs_off_and_retries_instead_of_aborting(tmp_path
     assert sum(g.get("error") == "RateLimitError" for g in gens) == 2
     assert sum("assistant" in g for g in gens) == 6, "every slot generated once the retry landed"
     assert len(manifest["commands"]) == 1, "no resume was needed"
+
+
+def test_score_lines_parse_through_markdown_wrapping():
+    assert parse_scores("analysis\n**CANDIDATE 0 SCORE: 3**\n**CANDIDATE 1 SCORE: 5**\n`CANDIDATE 2 SCORE: 7`\n_CANDIDATE 3 SCORE: 8._",
+                        [0, 1, 2, 3]) == {0: 3, 1: 5, 2: 7, 3: 8}
+    # a score quoted mid-sentence in the analysis is still not a verdict
+    with pytest.raises(ValueError, match="lacks a SCORE line"):
+        parse_scores("I'd give CANDIDATE 0 SCORE: 9 if pressed, but no final lines.", [0])

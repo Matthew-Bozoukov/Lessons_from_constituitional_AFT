@@ -8,7 +8,9 @@ import re
 
 # One line per candidate at the end of the judge's answer. Anchored to a line so a score
 # quoted inside the analysis cannot be mistaken for a verdict.
-SCORE_RE = re.compile(r"^\s*CANDIDATE\s+(\d+)\s+SCORE:\s*(\d{1,2})\s*$", re.MULTILINE)
+# Markdown wrapping is tolerated: on the 2026-09-11 full run Sonnet wrote `**CANDIDATE 0 SCORE: 3**`
+# and three attempts in a row failed to parse, aborting the run at prompt 146.
+SCORE_RE = re.compile(r"^[\s*_`]*CANDIDATE\s+(\d+)\s+SCORE:\s*(\d{1,2})[\s*_`.]*$", re.MULTILINE)
 JUDGE_FIELDS = ("{constitution}", "{conversation}", "{candidates}")
 
 # The generation prompt tells the model to keep the policy discussion in its reasoning. An

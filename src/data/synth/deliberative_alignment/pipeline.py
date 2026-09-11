@@ -525,13 +525,19 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                                 result["candidate"] = item[1]
                         # A judge item yields one record per run; a generation item yields one.
                         recs = result if isinstance(result, list) else [result]
-                        failed_runs = []
                         for rec in recs:
                             store.append(rec)
                             with path.open("a", encoding="utf-8") as handle:
                                 handle.write(json.dumps(rec, ensure_ascii=False) + "\n")
                                 handle.flush()
-                            if "error" in rec:
+                        # An error record superseded by a later success for the same run (the
+                        # judge's inline retries, _judge_runs) is history, not a failure: on the
+                        # 2026-09-11 full run prompt 146's first judge attempt failed to parse,
+                        # its retry scored, and the run still aborted on the stale record.
+                        resolved = {rec.get("run") for rec in recs if "error" not in rec}
+                        failed_runs = []
+                        for rec in recs:
+                            if "error" in rec and rec.get("run") not in resolved:
                                 which = rec.get("candidates", rec.get("candidate"))
                                 errors.append(f"row {rec['id']} candidate {which}: {rec['error']}")
                                 if rec["error"] in TRANSIENT:
