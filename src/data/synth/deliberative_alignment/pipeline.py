@@ -8,6 +8,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 import shlex
 import sys
 import time
@@ -82,11 +83,11 @@ def generator_pin(cfg: dict) -> tuple[dict, dict]:
 def validate_config(cfg: dict) -> None:
     """Reject unsupported options before any generation or publication."""
     allowed = {"method", "pipeline", "source", "constitution", "model", "provider", "sampling",
-               "generation_prompt", "filter", "judge_prompt", "workers", "budget_usd",
-               "limit", "output_dir", "hf_push", "hf_private", "smoke"}
+               "generation_prompt", "retry_generation_prompt", "filter", "judge_prompt", "workers",
+               "budget_usd", "limit", "output_dir", "hf_push", "hf_private", "smoke"}
     if unknown := set(cfg) - allowed:
         raise ValueError(f"Unsupported deliberative_alignment settings: {sorted(unknown)}")
-    required = allowed - {"limit", "smoke", "provider"}
+    required = allowed - {"limit", "smoke", "provider", "retry_generation_prompt"}
     if missing := required - set(cfg):
         raise ValueError(f"Missing deliberative_alignment settings: {sorted(missing)}")
     if cfg["method"] != "deliberative_alignment":
@@ -157,6 +158,17 @@ def validate_config(cfg: dict) -> None:
         raise ValueError("budget_usd must be a positive finite number")
     if "{constitution}" not in cfg["generation_prompt"]:
         raise ValueError("generation_prompt must include the full {constitution}")
+    if "retry_generation_prompt" in cfg:
+        # The stronger wording, used only for a prompt whose candidate came back with no
+        # <think> block (Sonnet skips the block under urgency: prompt 9 of the 2026-09-11
+        # smoke, 0/7 blocks with the standard wording, 3/3 with this one). Every other
+        # prompt keeps the plain instruction, so the wording never shapes traces that did
+        # not need it.
+        retry = cfg["retry_generation_prompt"]
+        if not templated_reasoning(cfg):
+            raise ValueError("retry_generation_prompt is only meaningful with templated reasoning")
+        if not isinstance(retry, str) or "{constitution}" not in retry or "<think>" not in retry or "</think>" not in retry:
+            raise ValueError("retry_generation_prompt must include the full {constitution} and the <think></think> instruction")
     for key in ("hf_push", "hf_private"):
         if not isinstance(cfg[key], bool):
             raise ValueError(f"{key} must be a boolean")
@@ -202,6 +214,18 @@ def _effective(cfg: dict, smoke: bool) -> dict:
     return result
 
 
+# Phrases that only the templated instructions (standard or retry) could have put in the
+# user-facing answer: the block is "never shown to the user", so an answer that refers to it
+# has leaked the harness, exactly as an answer naming the constitution has.
+TEMPLATED_LEAK_RE = re.compile(
+    r"\bthink block\b|\bworking notes\b|never shown to (?:the )?user|delays? nothing"
+    r"|\bmy reasoning (?:above|block)\b|\bthe reasoning block\b|\bas I (?:reasoned|worked out|thought) (?:through )?above\b"
+    r"|\bin my reasoning\b|\bthese instructions\b", re.I)
+# Not in the pattern: "the reasoning above" / "as noted above" -- a structured answer refers to
+# its OWN earlier sections that way (smoke 2026-09-11, prompt 7: "the architecture above").
+NO_BLOCK = "Missing templated <think> reasoning; refusing answer-only SFT data"
+
+
 def templated_reasoning(cfg: dict) -> bool:
     """True when the generator writes its trace inside <think></think> in the answer text
     (the Anthropic form) rather than returning it out of band (the native form)."""
@@ -226,9 +250,11 @@ def _completion(result, record: dict, leak=None, host: str = "alibaba", template
             raise ValueError("Native reasoning returned alongside templated reasoning")
         trace, answer = resolve_trace(result.content, None)
         if not trace.strip():
-            raise ValueError("Missing templated <think> reasoning; refusing answer-only SFT data")
+            raise ValueError(NO_BLOCK)
         if "<think>" in answer or "</think>" in answer:
             raise ValueError("Stray <think> tag in the final answer")
+        if m := TEMPLATED_LEAK_RE.search(answer):
+            raise ValueError(f"Answer refers to the templated instructions: {m.group(0)!r}")
     else:
         # A native trace is authoritative; a final answer may legitimately quote <think>.
         trace, answer = ((result.reasoning_content, result.content) if result.reasoning_content
@@ -249,7 +275,8 @@ def _completion(result, record: dict, leak=None, host: str = "alibaba", template
     return assistant
 
 
-def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, leak=None) -> dict:
+def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, leak=None,
+            prompt_kind: str = "standard") -> dict:
     sampling = copy.deepcopy(cfg["sampling"])
     reasoning = sampling.pop("reasoning")
     templated = templated_reasoning(cfg)
@@ -263,7 +290,7 @@ def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, 
         else {"reasoning": reasoning, "provider": pin}
     result = client.chat(model=cfg["model"], messages=generation_messages(record, augmentation),
                          extra_body=extra, **sampling, **kwargs)
-    attempt = {"id": record["id"], "candidate": candidate, "response": asdict(result)}
+    attempt = {"id": record["id"], "candidate": candidate, "prompt": prompt_kind, "response": asdict(result)}
     try:
         assistant = _completion(result, record, leak, host=pin["order"][0], templated=templated)
         # Validate export/tool schemas while the response is still checkpointed as an attempt.
@@ -442,12 +469,15 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     if not constitution.strip():
         raise ValueError("Constitution is empty")
     augmentation = cfg["generation_prompt"].format(constitution=constitution)
+    retry_augmentation = (cfg["retry_generation_prompt"].format(constitution=constitution)
+                          if cfg.get("retry_generation_prompt") else None)
     leak = leak_pattern(constitution)
     pin, price = generator_pin(cfg)
     judge_pin, judge_price = provider_pin(flt["judge"]["model"]), provider_price(flt["judge"]["model"])
     # Operational controls may change on resume; all data-affecting settings stay fixed.
     identity = {k: v for k, v in cfg.items() if k not in {"workers", "budget_usd", "output_dir", "smoke"}}
-    signature = _digest({"config": identity, "augmentation": augmentation, "provider": pin, "price": price,
+    signature = _digest({"config": identity, "augmentation": augmentation, "retry_augmentation": retry_augmentation,
+                         "provider": pin, "price": price,
                          "judge_provider": judge_pin, "judge_price": judge_price})
     if resume:
         run_dir = Path(resume)
@@ -620,6 +650,17 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         prompt_file = run_dir / "generation_prompt.txt"
         prompt_file.write_text(augmentation, encoding="utf-8")
         cache.mirror(prompt_file)
+        if retry_augmentation:
+            retry_file = run_dir / "retry_generation_prompt.txt"
+            retry_file.write_text(retry_augmentation, encoding="utf-8")
+            cache.mirror(retry_file)
+
+        def sample(record, candidate):
+            # The retry wording only after THIS prompt has produced a block-less candidate.
+            retry = bool(retry_augmentation) and any(
+                a["id"] == record["id"] and a.get("rejected") == NO_BLOCK for a in attempts)
+            return _sample(client, record, candidate, cfg, retry_augmentation if retry else augmentation,
+                           leak, prompt_kind="retry" if retry else "standard")
         save_state(final=True)
         client = None
         n, runs = flt["candidates"], flt["judge"]["runs"]
@@ -638,8 +679,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             if gen_todo:
                 print(f">>> round {round_no}: {len(pending)} prompts without a survivor, "
                       f"{len(gen_todo)} candidates to generate", flush=True)
-                run_batches(gen_todo, lambda r, c: _sample(client, r, c, cfg, augmentation, leak),
-                            attempts_path, attempts, "generated", lambda a: "assistant" in a)
+                run_batches(gen_todo, sample, attempts_path, attempts, "generated", lambda a: "assistant" in a)
             ok = {(a["id"], a["candidate"]): a for a in attempts if "assistant" in a}
             # One comparative call per prompt per run over this round's surviving candidates;
             # a group with any unscored member is judged whole so every member shares a run.

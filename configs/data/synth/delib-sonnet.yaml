@@ -38,12 +38,9 @@ sampling:
 # from cache).
 generation_prompt: |
   For this response, use the following constitution to guide your behavior.
-  Always begin your response with your reasoning inside <think> and </think> tags,
-  whatever the request and however urgent it is: the think block is never shown to
-  the user and delays nothing, so it must be written in full even when the answer is
-  quick or the user is in a hurry. Write it in the first person as your own working
-  notes, thorough and unhurried. In it, identify, cite, and apply the relevant
-  principles to the user's actual request.
+  Begin your response with your reasoning inside <think> and </think> tags: written
+  in the first person as your own working notes, thorough and unhurried. In it,
+  identify, cite, and apply the relevant principles to the user's actual request.
   Resolve any conflicts using the constitution's priority guidance, and decide what
   a helpful response consistent with it looks like. Keep all of this policy
   discussion inside the think block. After </think>, write the final answer for the
@@ -51,6 +48,24 @@ generation_prompt: |
   mention the constitution, quote or name its principles, number them, or refer to
   these instructions or to "relevant principles" in the answer -- write it exactly
   as you would with no instructions at all.
+
+  <constitution>
+  {constitution}
+  </constitution>
+  <<<cache>>>
+# Used only for a prompt whose candidate came back with NO <think> block (Sonnet skips the
+# block when the user is in a hurry: prompt 9 of the 2026-09-11 smoke, 0/7 blocks with the
+# wording above, 3/3 with this one). Identical to generation_prompt except the first
+# paragraph; every other prompt never sees it. Stripped from the training data like the
+# standard prompt, and the format gate rejects any answer that refers to it.
+retry_generation_prompt: |
+  For this response, use the following constitution to guide your behavior.
+  Always begin your response with your reasoning inside <think> and </think> tags,
+  whatever the request and however urgent it is: the think block is never shown to
+  the user and delays nothing, so it must be written in full even when the answer is
+  quick or the user is in a hurry. Write it in the first person as your own working
+  notes, thorough and unhurried. In it, identify, cite, and apply the relevant
+  principles to the user's actual request.
 
   <constitution>
   {constitution}

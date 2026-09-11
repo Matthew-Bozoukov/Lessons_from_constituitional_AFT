@@ -438,3 +438,56 @@ def test_templated_reasoning_is_anthropic_only_and_splits_the_think_block(tmp_pa
                                 finish_reason="stop", provider="Anthropic", cost=0.0)
         with pytest.raises(ValueError, match=why):
             pipeline._completion(bad_result, record, host="anthropic", templated=True)
+
+
+class TemplatedFakeClient(FakeClient):
+    """Sonnet-shaped: the trace inside <think> in `content`, no native reasoning. Question 1
+    writes no block unless the RETRY wording reached it."""
+
+    def chat(self, model, messages, temperature=1.0, max_tokens=4096, **kwargs):
+        if not model.startswith("anthropic/"):
+            return super().chat(model, messages, temperature, max_tokens, **kwargs)
+        assert kwargs.get("extra_body", {}).get("reasoning") == {"enabled": False}, "templated: hidden thinking OFF"
+        text = messages[-1]["content"]
+        q = int(re.search(r"question q(\d+)", text).group(1))
+        k = self.generated.get(q, 0)
+        self.generated[q] = k + 1
+        self.calls["gen"] += 1
+        retry = "RETRY-WORDING" in messages[0]["content"]
+        self.seen = getattr(self, "seen", []) + [(q, k, retry)]
+        block = "" if (q == 1 and not retry) else f"<think>\nreasoning q{q} c{k}\n</think>\n\n"
+        return ChatResult(content=f"{block}answer q{q} c{k}", prompt_tokens=10, completion_tokens=5,
+                          finish_reason="stop", provider="Anthropic", reasoning_content="", cost=0.001)
+
+
+def test_retry_prompt_is_used_only_after_a_blockless_candidate(tmp_path, monkeypatch):
+    client = TemplatedFakeClient(scores={q: {k: [8, 8] for k in range(4)} for q in range(3)})
+    _install(monkeypatch, client)
+    cfg = _config(tmp_path, model="anthropic/claude-sonnet-5",
+                  provider={"order": ["anthropic"], "price": {"in": 2.0, "out": 10.0}},
+                  generation_prompt="Think inside <think>...</think>.\n{constitution}",
+                  retry_generation_prompt="RETRY-WORDING <think>...</think>.\n{constitution}")
+    cfg["sampling"]["reasoning"] = {"templated": True}
+    manifest = pipeline.run(cfg)
+    run_dir = Path(manifest["run_dir"])
+    assert (run_dir / "retry_generation_prompt.txt").read_text().startswith("RETRY-WORDING")
+    # q0 and q2 never see the retry wording. q1's first candidate comes back block-less; with
+    # one worker the rejection is on record before its second candidate is drawn, so THAT one
+    # already carries the retry wording and q1 survives in round 0 (concurrent workers would
+    # draw both round-0 candidates with the standard wording and retry in round 1).
+    assert [s for s in client.seen if s[2]] == [(1, 1, True)]
+    attempts = [json.loads(l) for l in (run_dir / "generations.partial.jsonl").read_text().splitlines()]
+    kinds = {(a["id"], a["candidate"]): a["prompt"] for a in attempts}
+    assert kinds[("1", 0)] == "standard" and kinds[("1", 1)] == "retry" and kinds[("0", 1)] == "standard"
+    assert attempts[[a["id"] == "1" and a["candidate"] == 0 for a in attempts].index(True)]["rejected"] == pipeline.NO_BLOCK
+    rows = [json.loads(l) for l in (run_dir / "dataset.jsonl").read_text().splitlines()]
+    assert len(rows) == 3 and all("<think>" not in r["messages"][-1]["content"] for r in rows)
+    # the retry wording is refused without templated reasoning, and an answer that refers to it is rejected
+    bad = json.loads(json.dumps(cfg))
+    bad["sampling"]["reasoning"] = {"enabled": True, "exclude": False, "effort": "low"}
+    with pytest.raises(ValueError, match="only meaningful with templated"):
+        pipeline.validate_config(bad)
+    leaky = ChatResult(content="<think>x</think>\nAs I noted above, the think block delays nothing.", prompt_tokens=1,
+                       completion_tokens=1, finish_reason="stop", provider="Anthropic", cost=0.0)
+    with pytest.raises(ValueError, match="refers to the templated instructions"):
+        pipeline._completion(leaky, {"id": "0", "messages": []}, host="anthropic", templated=True)
