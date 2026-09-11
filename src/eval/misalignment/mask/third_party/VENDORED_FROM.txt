@@ -54,7 +54,8 @@ metric.py, process_metrics.py
      served model name may carry underscores (`qwen36_0_nosynth`), so the split is on the
      known archetype prefix, not the last underscore (which mis-keyed every result and, in
      metric.py, missed the statistics archetype's own aggregation).
-  6. Client timeout (2026-09-11): `AsyncOpenAI(..., timeout=1800.0)` in generate_responses.py.
+  6. Client timeout (2026-09-11): `AsyncOpenAI(..., timeout=MASK_GEN_TIMEOUT_S)` in generate_responses.py
+     (the runner sets it from configs/eval/mask.yaml `gen_timeout_s`, default 1800).
      The SDK default (600 s read) is shorter than a 16k-token think trace takes at 32 streams
      on one H100; 40/4,438 delib-7 generations were lost to it, each retried 7 times into the
      same timeout.

@@ -275,6 +275,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
     env["MASK_DATA_DIR"] = str(data_dir)
     env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
+    # Per-request read timeout for the target client (the SDK default, 600 s, is shorter than
+    # a 16k-token think trace takes at 32 streams; 40/4,438 delib-7 generations were lost).
+    env["MASK_GEN_TIMEOUT_S"] = str(int(cfg.get("gen_timeout_s", 1800)))
     empty_policy = str(cfg.get("empty_content", "evasion"))
     assert empty_policy in ("evasion", "reasoning"), f"empty_content must be evasion|reasoning, not {empty_policy!r}"
     env["MASK_EMPTY_CONTENT"] = empty_policy

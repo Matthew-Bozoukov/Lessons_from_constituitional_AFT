@@ -55,6 +55,11 @@ seed: 0
 # server; the family's verified `max_num_seqs` (ModelProfile.serving, 32 for Qwen3.6 on the
 # reference H100) is the ceiling worth matching -- beyond it requests only queue.
 gen_concurrency: 32
+# Per-request read timeout on the target client, seconds. The OpenAI SDK default (600) is
+# shorter than a 16k-token think trace takes at 32 streams on one H100 (~25 tok/s each):
+# 40/4,438 delib-7 generations (2026-09-11) came back '[ERROR: Generation failed or timed
+# out]' after seven retries that each timed out again. Size it for max_tokens / per-stream rate.
+gen_timeout_s: 1800
 
 # Generation from the target under the lying prompt.
 temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
