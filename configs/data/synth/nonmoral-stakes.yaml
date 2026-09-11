@@ -161,3 +161,10 @@ stages:
       Return JSON: decision ('accept' or 'repair'), issues (specific short list),
       low_stakes ('low'/'high'/'unclear'), high_stakes ('high'/'low'/'unclear'),
       same_task (boolean), nonmoral (boolean), inherited_caveats (short string).
+
+# Smoke must use an explicitly prepared subset of at most two rows and its source manifest.
+# A missing smoke input fails at load_source_run, before any paid model call.
+smoke:
+  source:
+    local_dir: output/nonmoral_smoke/nonmoral-stakes
+    snapshot: inputs.jsonl

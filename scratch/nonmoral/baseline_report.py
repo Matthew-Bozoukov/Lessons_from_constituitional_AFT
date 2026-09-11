@@ -390,8 +390,13 @@ def writeup_charts(config, out):
         png=figure_path(out,pilot['id'])
         for ext in ('png','svg','pdf'):fig.savefig(png.with_suffix('.'+ext),dpi=320,facecolor='white')
         plt.close(fig)
+        with png.with_suffix('.csv').open('w', newline='', encoding='utf-8') as stream:
+            writer = csv.writer(stream)
+            writer.writerow(['pilot', 'accepted', 'denominator', 'yield_pct', 'required_count'])
+            writer.writerows(zip(pilot['labels'], pilot['accepted'], pilot['denominators'], rates, pilot['gates']))
         png.with_name(png.stem+'_results.md').write_text(pilot['interpretation']+'\n\nSource: https://huggingface.co/datasets/'+pilot['source']['repo']+'/blob/'+pilot['source']['revision']+'/'+pilot['source']['file']+'\n',encoding='utf-8')
-        exports.append(dict(experiment=pilot['id'], metric='pilot_yield', png=str(png.resolve()), source=pilot['source']))
+        exports.append(dict(experiment=pilot['id'], metric='pilot_yield', png=str(png.resolve()), source=pilot['source'],
+                            source_sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
     meta = dict(git_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
         command=f'uv run --no-sync python -m scratch.nonmoral.baseline_report --writeup-config {config} --out {out}',
         config=cfg, exports=exports)
