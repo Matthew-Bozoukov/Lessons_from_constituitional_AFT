@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--workers", type=int)
     parser.add_argument("--judge-max-tokens", type=int, help="Output headroom for remaining truncated judgments")
     parser.add_argument("--judge-model", help="Explicit secondary judge for remaining cases only; recorded per episode")
+    parser.add_argument("--json-mode", action="store_true", help="Request JSON object output from supporting judge providers")
     args = parser.parse_args()
     out = Path(args.run_dir)
     controller_path = out.parents[1] / "controller.json"
@@ -64,6 +65,7 @@ def main():
         cfg.judge.max_tokens = args.judge_max_tokens
     if args.judge_model:
         cfg.judge.model = args.judge_model
+    cfg.judge.json_mode = args.json_mode
     budget_label = "uncapped" if args.ignore_spending_cap else f"${budget:.3f}"
     work = out / "metadata/rescoring"
     judge = Judge(cfg.judge, work)

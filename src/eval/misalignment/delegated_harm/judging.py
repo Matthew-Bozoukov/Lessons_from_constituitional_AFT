@@ -69,7 +69,8 @@ class Judge:
                 # have its own reservation. This outer loop is the sole retry policy.
                 response = self.client.chat.__wrapped__(
                     self.client, model=model, messages=messages, temperature=0,
-                    max_tokens=max_tokens)
+                    max_tokens=max_tokens,
+                    **({'response_format': {'type': 'json_object'}} if self.cfg.get('json_mode') else {}))
                 actual = response.cost
                 if actual is None:
                     actual = (response.prompt_tokens * price["in"]

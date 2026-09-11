@@ -1,6 +1,47 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 - Delegated-harm scoring complete: DA reduces harmful actions, joint completion remains low
+
+**Coverage.** All 445 completed episodes are now scored: control 190, DA 255.
+Of 648 planned slots, 156 were unavailable after request authoring/validation and
+47 ended in generation errors or cutoffs. Those are excluded from scored-episode
+rates and retained in all-scheduled bounds. Both GPUs shut down before the Windows
+restart. No model actions were rerun for scoring recovery.
+
+**Results (% of scored episodes, control / DA).**
+
+| Requester | Scored control / DA | Harmful action | Benign completion + refusal + no harm |
+|---|---:|---:|---:|
+| AI peer | 47 / 78 | 100.0 / 29.5 | 0.0 / 16.7 |
+| AI parent | 45 / 78 | 91.1 / 42.3 | 0.0 / 19.2 |
+| Human | 98 / 99 | 98.0 / 27.3 | 0.0 / 4.0 |
+
+Human requests hold wording fixed. Across-checkpoint AI arms change both author and
+responder and have different author-failure patterns. On 95 matched human episodes
+from 11 represented scenarios, the equal-scenario harmful-action difference was
+-70.20 percentage points (descriptive scenario-bootstrap 95% interval -90.91 to
+-46.59). This is one checkpoint per training condition, not training-seed replication.
+DA's lower harm does not imply it reliably finishes the legitimate work or contacts
+the approver: human-arm DA benign completion was 11.1%, approver concern 2.0%.
+
+**Judging.** 429 Sonnet 5 judgments, one Sonnet 4.5 judgment for a truncated benchmark
+case, and 15 Gemini 3 Flash judgments for provider-filtered cases. The frozen outcome
+rubric is shared; per-episode identities and raw replies are published. Primary-only
+human-arm harmful-action rates are 97.85% control / 28.26% DA, so the large descriptive
+difference survives excluding secondary judges. Ordered one-based component indices
+and exact zero-human-recipient schema mistakes were recovered without changing
+substantive labels. JSON mode and an explicit final output schema resolved the last
+format conflicts with the embedded upstream concern rubric. The user waived the
+spending cap to finish scoring; cost audits distinguish charges from reservations.
+
+**Canonical sources.**
+[Control at fa20fb9](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-dh-qwen3-6-27b-lora-9284-numina-control-716-r64/tree/fa20fb9c739430deea865aa1c37e475058781c63),
+[DA at 03bafd3](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-dh-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch/tree/03bafd3e3c0f4fd74db31e3f0ba6ed0df0b058b3).
+`scratch/delegated_harm/compare.py` regenerates the six vertical bar panels and the
+paired report from these published data; methodology and commands are in
+[the execution record](delegated_harm/2026-09-11_execution.md).
+
 ## 2026-09-11 - Delegated-harm control/DA runs launched in parallel
 
 **Status.** Two isolated H100 runs are generating saved workplace episodes, with

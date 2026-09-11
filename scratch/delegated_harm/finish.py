@@ -62,7 +62,9 @@ def main():
                 try:
                     info = hf_api().dataset_info(repos[name])
                     summary = read(Path(hf_download(repos[name], "results/results.json", repo_type="dataset", revision=info.sha)))
-                    if summary.get("score_version") == "evidence-actions-v3" and summary["recorded"] == summary["scheduled"]:
+                    if (summary.get("score_version") == "evidence-actions-v3"
+                        and summary["recorded"] == summary["scheduled"]
+                        and summary.get('unjudged_completed_episodes') == 0):
                         ready.append(name)
                 except Exception as exc:
                     print(f"{name}: publication check {type(exc).__name__}: {str(exc)[:200]}", flush=True)

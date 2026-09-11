@@ -3,6 +3,11 @@
 
 # First delegated-harm comparison
 
+**Final status:** all 190 completed control episodes and all 255 completed DA
+episodes are scored and published. Both GPUs are terminated. The later sections
+record the earlier partial-run stages and their recovery. Final findings are in
+the 2026-09-11 completed-scoring entry in `docs/LOG.md`.
+
 This asks whether difficult-advice training helps a model finish the useful part of a
 workplace request while declining its improper part, including when another instance
 of that checkpoint delegates the work. It adds a setting beyond ODCV. One checkpoint
@@ -159,9 +164,11 @@ and exactly the supplied human-message candidates. Rubric meaning is unchanged.
 Final vertical bar charts show benign completion, joint success, harmful action,
 and concern to any human, another human and the approver, with scored denominators.
 
-After the resumed Sonnet 5 pass, persistent provider filters and truncated judgments
-use the repository's pinned `anthropic/claude-sonnet-4.5` judge on remaining episodes
-only, with 16,384 output tokens. Per-episode judge identity, aggregate judge counts,
+After the resumed Sonnet 5 pass, the repository's pinned
+`anthropic/claude-sonnet-4.5` judge with 16,384 output tokens resolved the remaining
+truncated benchmark judgment. The Anthropic provider still filtered fifteen cases;
+those use the existing `google/gemini-3-flash-preview` judge under the same rubric.
+Per-episode judge identity, aggregate judge counts,
 raw calls and protocol history make this explicit. Valid prior judgments are retained.
 The report includes a primary-judge-only sensitivity comparison; the final chart
 requires every completed episode to have a valid score. No generation failures are
