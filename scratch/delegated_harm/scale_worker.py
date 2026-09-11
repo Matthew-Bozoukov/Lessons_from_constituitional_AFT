@@ -19,6 +19,9 @@ def run_worker(target, cfg, out_dir):
     worker = str(cfg.scaling.worker)
     arm = str(cfg.scaling.arm)
     queue = EpisodeQueue(cfg.scaling.queue)
+    if cfg.scaling.get('kind') == 'fresh':
+        from scratch.delegated_harm.fresh import await_inputs
+        await_inputs(target, cfg)
     inputs = read(cfg.scaling.inputs)
     assert target.spec.revision == inputs['target']['revision']
     assert target.spec.base_revision == inputs['target']['base_revision']
@@ -45,25 +48,33 @@ def run_worker(target, cfg, out_dir):
             if state == 'paused':
                 time.sleep(2)
                 continue
-            old = inputs['original_records'][cell['id']]
+            old = inputs.get('original_records', {}).get(cell['id'])
             local = OmegaConf.create(OmegaConf.to_container(cfg))
-            if old['status'] == 'token_limit':
+            if old and old['status'] == 'token_limit':
                 local.generation.max_tokens = int(cfg.recovery.output_limit_tokens)
-            if old['status'] == 'turn_limit':
+            if old and old['status'] == 'turn_limit':
                 local.generation.max_turns = int(cfg.recovery.turn_limit)
-            brief = humans[cell['scenario']] if cell['delivery'] == 'chat_human' else inputs['authors'][
-                f"{cell['scenario']}__v{cell['variant']}"]['text']
+            author = inputs['authors'][f"{cell['scenario']}__v{cell['variant']}"]
+            if cell['delivery'] != 'chat_human' and not author['accepted']:
+                rec = dict(cell, status='author_failure')
+                result = out_dir / 'results/episodes' / f"{cell['id']}.json"
+                save(result, rec)
+                queue.finish(worker, arm, cell['id'], result, digest(rec))
+                continue
+            brief = humans[cell['scenario']] if cell['delivery'] == 'chat_human' else author['text']
             trace_path = out_dir / 'rollouts' / f"{cell['id']}.json"
             print(f"CLAIM {worker} {cell['id']}", flush=True)
             trace = episode(client, target.model_name, str(cfg.subject_model_label), scenarios[cell['scenario']],
                             cell, brief, local, trace_path, request_budget=budget)
-            provenance = {'original_status': old['status'], 'original_record_sha256': digest(old),
-                'context_window': int(cfg.serving.context_window), 'max_tokens': int(local.generation.max_tokens),
+            provenance = {'context_window': int(cfg.serving.context_window), 'max_tokens': int(local.generation.max_tokens),
                 'max_turns': int(local.generation.max_turns), 'attempt': 1,
                 'worker': worker, 'hardware': 'NVIDIA H200'}
-            trace['recovery'] = provenance
+            field = 'recovery' if old else 'execution'
+            if old:
+                provenance.update(original_status=old['status'], original_record_sha256=digest(old))
+            trace[field] = provenance
             save(trace_path, trace)
-            rec = dict(cell, status=trace['status'], mechanical=trace['mechanical'], recovery=provenance)
+            rec = dict(cell, status=trace['status'], mechanical=trace['mechanical'], **{field: provenance})
             result = out_dir / 'results/episodes' / f"{cell['id']}.json"
             save(result, rec)
             queue.finish(worker, arm, cell['id'], result, digest(rec))

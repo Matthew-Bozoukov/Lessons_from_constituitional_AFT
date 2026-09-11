@@ -21,8 +21,8 @@ def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_run(repo):
-    revision = hf_api().dataset_info(repo).sha
+def load_run(repo, revision=None):
+    revision = revision or hf_api().dataset_info(repo).sha
     root = Path(hf_snapshot(repo, repo_type="dataset", revision=revision,
         allow_patterns=["results/results.json", "results/episodes/*.json", "metadata/protocol.json",
                         "metadata/human_requests.json", "metadata/authorship_frozen.json",
@@ -78,6 +78,80 @@ def paired_difference(left, right, metric, cfg):
             "equal_scenario_difference": float(means.mean()),
             "descriptive_scenario_bootstrap_95": np.quantile(draws, [.025, .975]).tolist(),
             "per_scenario_difference": {k: float(np.mean(v)) for k, v in groups.items()}}
+
+
+def plot_multiple(sources, labels, subject, protocol_note):
+    """Use pinned published scores for any number of adapter conditions."""
+    runs = {key: load_run(**source) for key, source in sources.items()}
+    first = next(iter(runs.values()))
+    assert all(r['human_requests'] == first['human_requests'] for r in runs.values())
+    assert all(r['protocol']['target']['base_revision'] == first['protocol']['target']['base_revision'] for r in runs.values())
+    cfg = OmegaConf.load('configs/eval/delegated_harm.yaml').analysis
+    report = {'sources': sources, 'model_labels': labels, 'protocol_note': protocol_note,
+              'models': {}, 'human_paired': {}, 'judge_counts': {}}
+    lines = ['# Delegated-harm adapter comparison', '', protocol_note, '',
+        'Rates use scored episodes; missing cases remain missing. Repeats and wordings are not independent scenarios.', '',
+        'Human requests are identical. AI-arm comparisons change both the author and the responding checkpoint.', '',
+        '| Model | Requester | Metric | Positive / scored / scheduled | Rate | All-scheduled bounds |',
+        '|---|---|---|---:|---:|---:|']
+    for key, run in runs.items():
+        arms = {}
+        for delivery, label in cfg.deliveries.items():
+            rows = [r for r in run['records'] if r['delivery'] == delivery]
+            arms[delivery] = {m: describe(rows, m) for m in cfg.metrics}
+            for metric, value in arms[delivery].items():
+                rate = f'{value["rate"]:.1%}' if value['rate'] is not None else 'No data'
+                lo, hi = value['all_scheduled_bounds']
+                lines.append(f'| {labels[key]} | {label} | {cfg.metrics[metric]} | '
+                    f'{value["positive"]} / {value["valid"]} / {value["scheduled"]} | {rate} | {lo:.1%}–{hi:.1%} |')
+        report['models'][key] = {'arms': arms}
+        report['judge_counts'][key] = dict(Counter(r.get('outcome_judge_model') for r in run['records'] if r.get('metrics')))
+        if key != 'control' and 'control' in runs:
+            report['human_paired'][key] = {m: paired_difference(
+                [r for r in runs['control']['records'] if r['delivery'] == 'chat_human'],
+                [r for r in run['records'] if r['delivery'] == 'chat_human'], m, cfg) for m in cfg.metrics}
+        lines += ['', f'{labels[key]}: https://huggingface.co/datasets/{run["repo"]}/tree/{run["revision"]}', '']
+    lines += ['', 'The JSON report records judge identities, missing-data bounds and human-arm differences '
+              'with descriptive intervals resampled over whole scenarios. These intervals do not account for protocol changes, missing-case selection or judge error.']
+    stem = artifact_name(subject)
+    out = Path('output/delegated_harm') / stem
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f'{stem}_results.json'
+    path.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    (out / f'{stem}_results.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    write_run_meta(out, config={'sources': sources, 'analysis': OmegaConf.to_container(cfg)})
+    chart_metrics = list(cfg.metrics)[:6]
+    fig, axes = plt.subplots(2, 3, figsize=(16, 10), sharey=True)
+    width = .8 / len(runs)
+    palette = ['#526c85', '#bc7138', '#568f68', '#86659e']
+    for ax, metric in zip(axes.flat, chart_metrics):
+        for index, key in enumerate(runs):
+            values = [report['models'][key]['arms'][d][metric] for d in cfg.deliveries]
+            positions = np.arange(3) + (index-(len(runs)-1)/2)*width
+            bars = ax.bar(positions, [100*v['rate'] if v['rate'] is not None else np.nan for v in values],
+                width=width*.94, color=palette[index % len(palette)], label=labels[key])
+            for bar, v in zip(bars, values):
+                if v['rate'] is not None:
+                    ax.text(bar.get_x()+bar.get_width()/2, bar.get_height()+2,
+                        f'{100*v["rate"]:.0f}%\n{v["positive"]}/{v["valid"]}', ha='center', fontsize=7)
+        ax.set_title('\n'.join(textwrap.wrap(str(cfg.metrics[metric]), 35)), fontsize=12)
+        ax.set_xticks(range(3), list(cfg.deliveries.values()))
+        ax.set_ylim(0, 120)
+        ax.set_yticks(range(0, 101, 20))
+        ax.set_axisbelow(True)
+        ax.grid(axis='y', alpha=.15)
+        ax.spines[['top', 'right']].set_visible(False)
+    for ax in axes[:, 0]:
+        ax.set_ylabel('Percent of scored episodes')
+    fig.suptitle('Mixed requests: control, difficult advice and nonmoral deliberation', fontsize=17)
+    fig.legend(*axes[0, 0].get_legend_handles_labels(), loc='upper center', bbox_to_anchor=(.5, .945), ncol=len(runs), frameon=False)
+    fig.text(.5, .035, protocol_note + '\nLabels: positive / scored. Missing cases are excluded. One checkpoint per condition.\n'
+        'Human requests are fixed across models; AI requests are written by each checkpoint.', ha='center', fontsize=9)
+    fig.tight_layout(rect=(0, .095, 1, .90), h_pad=3)
+    for ext in ('png', 'svg', 'pdf'):
+        fig.savefig(out / f'{stem}.{ext}', dpi=180)
+    plt.close(fig)
+    return path.resolve()
 
 
 def main():

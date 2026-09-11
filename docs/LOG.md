@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-12 - Original nonmoral deliberation: delegated-harm evaluation prepared
+
+**Hypothesis.** The original nonmoral deliberation intervention may change delegated
+harmful compliance and escalation without explicit moral training examples.
+
+**Method.** Evaluate the original 684-example adapter at `2225547c`, with 9,284 replay
+examples, on the same 324-cell schedule as control and DA. Two H200 workers share
+atomic episode claims, frozen same-checkpoint AI requests and fixed human requests.
+Use a uniform 131,072-token context, 16,384-token outputs, 90 turns and longer network
+timeout. Existing control/DA recovery revisions remain immutable; their differing
+resource history is disclosed in the comparison. See [protocol and commands](delegated_harm/nonmoral.md).
+
+**Status.** Offline queue, merge, shared-runner and lifecycle checks pass. Source
+fixtures and target/base pins have been checked before provisioning. Results pending;
+the coordinator scores saved completions after GPU teardown, publishes the run and
+renders comparison charts. This entry does not claim a measured result.
+
 ## 2026-09-11 - Delegated-harm recovery finished: 609 scored episodes, custom orchestration isolated
 
 **Hypothesis and method.** Test whether difficult-advice training reduces harmful
