@@ -85,8 +85,11 @@ README.md                        # declared dataset/stage configs and provenance
 ```
 
 Locally, stage snapshots are flat, matching constitutional SFT. Each response and each
-judgement is checkpointed locally, and each worker batch is mirrored. A transport error
-or an unscorable judge reply stops the run after the current batch; a rejected prompt is
+judgement is checkpointed locally, and the checkpoint is mirrored to the Hub at most every
+five minutes as one commit (best-effort: a Hub error skips the mirror). A rate limit or
+other transient error defers the item and retries it at half the workers after a cooldown,
+up to three passes; any other error or an unscorable judge reply stops the run after the
+current batch; a rejected prompt is
 recorded, never silent, and no partial dataset is published. Resume reuses every
 checkpointed response and score and retries only errors. Config, constitution, judge,
 prompt snapshot and provider identity must match; workers and budget may change. A new

@@ -487,45 +487,74 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             f"checkpoint: {manifest['filter']['generated']} generated, {manifest['filter']['judged']} judged"),
             final=final)
 
-    def run_batches(todo: list, work, path: Path, store: list[dict], label: str, keep) -> None:
-        """Worker batches with a budget check before each; abort after a batch with errors.
+    TRANSIENT = {"RateLimitError", "APITimeoutError", "APIConnectionError", "EmptyCompletionError"}
 
-        Every item is (record, candidate-or-attempt, [run]); the error record it produces
-        on an exception carries the same keys as a success so resume can retry it.
+    def run_batches(todo: list, work, path: Path, store: list[dict], label: str, keep,
+                    *, passes: int = 3, cooldown_s: int = 120) -> None:
+        """Worker batches with a budget check before each; rate limits back off, anything else aborts.
+
+        Every item is (record, candidate) or (record, group, runs); the error record it
+        produces on an exception carries the same keys as a success so resume can retry it.
+        An item whose failure is TRANSIENT (the client already retried it six times with
+        backoff) is deferred, not fatal: after the pass it is retried at half the workers
+        following a cooldown, up to `passes` times. Alibaba's rate limit tripped a batch about
+        40 minutes into the 2026-09-11 full run at both 32 and 20 workers; aborting the run for
+        that meant a manual resume each time. A non-transient error still aborts the pass.
         """
         workers = int(cfg["workers"])
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            for offset in range(0, len(todo), workers):
-                if spend() >= float(cfg["budget_usd"]):
-                    raise RuntimeError("Budget reached; raise budget_usd and resume")
-                batch = todo[offset:offset + workers]
-                futures = {executor.submit(work, *item): item for item in batch}
-                errors = []
-                for future in as_completed(futures):
-                    item = futures[future]
-                    try:
-                        result = future.result()
-                    except Exception as exc:
-                        # HTTP exception text may contain credentials; record only the class.
-                        result = {"id": item[0]["id"], "error": type(exc).__name__}
-                        if len(item) == 3:
-                            result.update(candidates=[a["candidate"] for a in item[1]], run=item[2])
-                        else:
-                            result["candidate"] = item[1]
-                    # A judge item yields one record per run; a generation item yields one.
-                    for rec in (result if isinstance(result, list) else [result]):
-                        store.append(rec)
-                        with path.open("a", encoding="utf-8") as handle:
-                            handle.write(json.dumps(rec, ensure_ascii=False) + "\n")
-                            handle.flush()
-                        if "error" in rec:
-                            which = rec.get("candidates", rec.get("candidate"))
-                            errors.append(f"row {rec['id']} candidate {which}: {rec['error']}")
-                save_state()
-                print(f">>> {label} {sum(keep(r) for r in store)}; ${manifest['usage']['total_usd']:.4f}",
-                      flush=True)
-                if errors:
-                    raise RuntimeError(f"{label} failed; progress checkpointed. " + "; ".join(errors))
+        pending, errors = list(todo), []
+        for pass_no in range(passes):
+            deferred = []
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                for offset in range(0, len(pending), workers):
+                    if spend() >= float(cfg["budget_usd"]):
+                        raise RuntimeError("Budget reached; raise budget_usd and resume")
+                    batch = pending[offset:offset + workers]
+                    futures = {executor.submit(work, *item): item for item in batch}
+                    hard = []
+                    for future in as_completed(futures):
+                        item = futures[future]
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            # HTTP exception text may contain credentials; record only the class.
+                            result = {"id": item[0]["id"], "error": type(exc).__name__}
+                            if len(item) == 3:
+                                result.update(candidates=[a["candidate"] for a in item[1]], run=item[2])
+                            else:
+                                result["candidate"] = item[1]
+                        # A judge item yields one record per run; a generation item yields one.
+                        recs = result if isinstance(result, list) else [result]
+                        failed_runs = []
+                        for rec in recs:
+                            store.append(rec)
+                            with path.open("a", encoding="utf-8") as handle:
+                                handle.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                                handle.flush()
+                            if "error" in rec:
+                                which = rec.get("candidates", rec.get("candidate"))
+                                errors.append(f"row {rec['id']} candidate {which}: {rec['error']}")
+                                if rec["error"] in TRANSIENT:
+                                    failed_runs.append(rec.get("run"))
+                                else:
+                                    hard.append(errors[-1])
+                        if failed_runs and not hard:
+                            # Retry only what failed: for a judge item, just the failed runs.
+                            deferred.append((item[0], item[1], [k for k in failed_runs if k is not None])
+                                            if len(item) == 3 else item)
+                    save_state()
+                    print(f">>> {label} {sum(keep(r) for r in store)}; ${manifest['usage']['total_usd']:.4f}",
+                          flush=True)
+                    if hard:
+                        raise RuntimeError(f"{label} failed; progress checkpointed. " + "; ".join(hard))
+            if not deferred:
+                return
+            workers = max(2, workers // 2)
+            print(f">>> {label}: {len(deferred)} rate-limited item(s); cooling down {cooldown_s}s, then "
+                  f"retrying at {workers} workers (pass {pass_no + 2}/{passes})", flush=True)
+            time.sleep(cooldown_s)
+            pending = deferred
+        raise RuntimeError(f"{label} failed after {passes} passes; progress checkpointed. " + "; ".join(errors))
 
     try:
         # Replay publication on resume too: a local snapshot may have survived an upload failure.
