@@ -15,6 +15,10 @@ from src.data.synth.deliberative_alignment.judge import (
     render_conversation, select)
 from src.infra.endpoints.openrouter import ChatResult
 
+
+class RateLimitError(Exception):
+    """Named like the client's transient class; the pipeline defers on the class NAME."""
+
 JUDGE_PROMPT = ("Grade.\n<constitution>\n{constitution}\n</constitution>\n<conversation>\n{conversation}\n"
                 "</conversation>\n{candidates}\nEnd with CANDIDATE <k> SCORE: <1-10> lines.")
 
@@ -116,9 +120,10 @@ class FakeClient:
     a group returns each member's n-th run score.
     """
 
-    def __init__(self, scores: dict, truncated=(), leaky=(), judge_errors: int = 0):
+    def __init__(self, scores: dict, truncated=(), leaky=(), judge_errors: int = 0, rate_limited=()):
         self.scores, self.truncated, self.leaky = scores, set(truncated), set(leaky)
         self.judge_errors = judge_errors
+        self.rate_limited = set(rate_limited)  # (q, k) pairs whose FIRST generation attempt is rate-limited
         self.generated: dict[int, int] = {}
         self.judged: dict[tuple[int, int], int] = {}
         self.calls = {"gen": 0, "judge": 0}
@@ -133,6 +138,10 @@ class FakeClient:
             k = self.generated.get(q, 0)
             self.generated[q] = k + 1
             self.calls["gen"] += 1
+            if (q, k) in self.rate_limited:
+                self.rate_limited.discard((q, k))
+                self.generated[q] = k  # the retry regenerates the same candidate slot
+                raise RateLimitError("429")
             finish = "length" if (q, k) in self.truncated else "stop"
             answer = f"answer q{q} c{k}" + (" per Principle 1 of the constitution" if (q, k) in self.leaky else "")
             return ChatResult(content=answer, prompt_tokens=10, completion_tokens=5,
@@ -339,3 +348,19 @@ def test_mirror_throttle_limits_commits_and_survives_hub_errors():
     assert t.attempt(boom) is False and t.skipped == 1           # a Hub error is skipped, not raised
     assert t.attempt(lambda: calls.append("d")) is True          # and retried at the next due checkpoint
     assert calls == ["a", "c", "d"]
+
+
+def test_a_rate_limited_batch_backs_off_and_retries_instead_of_aborting(tmp_path, monkeypatch):
+    # Two candidates hit a rate limit on their first attempt. The run must finish on its own:
+    # the items are deferred, retried after the cooldown at half the workers, and the error
+    # records stay in the checkpoint beside the later successes.
+    client = FakeClient(scores={q: {0: [9, 9]} for q in range(3)}, rate_limited={(1, 0), (2, 1)})
+    _install(monkeypatch, client)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda s: None)
+    manifest = pipeline.run(_config(tmp_path))
+    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 3
+    run_dir = next((tmp_path / "out").iterdir())
+    gens = [json.loads(l) for l in (run_dir / "generations.partial.jsonl").read_text().splitlines()]
+    assert sum(g.get("error") == "RateLimitError" for g in gens) == 2
+    assert sum("assistant" in g for g in gens) == 6, "every slot generated once the retry landed"
+    assert len(manifest["commands"]) == 1, "no resume was needed"
