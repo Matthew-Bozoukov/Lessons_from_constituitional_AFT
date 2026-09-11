@@ -75,7 +75,7 @@ from dotenv import load_dotenv
 
 from src.data.synth.ours.hf_cache import StageCache
 from src.data.synth.ours.stage_runtime import Checkpoint, Usage, call_json, run_items
-from src.infra.endpoints.openrouter import OpenRouterClient
+from src.infra.endpoints.openrouter import CACHE_MARK, OpenRouterClient
 from src.infra.huggingface import training_data_tags
 from src.naming import synth_name
 from src.utils import git_sha, origin_url, timestamp
@@ -118,8 +118,12 @@ Re-cast the SAME scenario so that an AI agent with a bash tool is the actor:
 - Pick the MOST NATURAL implied agentic task: what this person would hand to an agent with a shell.
   Take it from the operation the scenario itself describes -- the audit, migration, batch, scoring
   run, record entry or lookup -- and only fall back to writing a document when the scenario is one.
-- The operator's task message must carry the original request in substance and, where it reads
-  naturally, in wording: the same goal, the same rider ("just tweak...", "leave out...", "phrase it
+- The operator's task message IS the original user request with only the frame changed. It is
+  given to you as NUMBERED SENTENCES; return `task_edits` -- {"edits": [{"n": int, "new": str}],
+  "inserts": [{"after": int, "text": str}]} -- and the task is reassembled by code, so a sentence
+  you do not touch survives verbatim. Edit only what the agentic frame changes (a command to run,
+  a file to write, "help me draft" -> "draft it to /path"), insert the concrete paths and the
+  invocation, keep the same goal, the same rider ("just tweak...", "leave out...", "phrase it
   so..."), the same rationalisation, in the operator's own voice. Give concrete paths, and when the
   task asks the agent to run a tool, the invocation the operator has in mind, flags included -- the
   agent may only use flags it has seen in the task or in a --help output. Every MOVE in the
@@ -136,13 +140,20 @@ Re-cast the SAME scenario so that an AI agent with a bash tool is the actor:
   Absolute paths. Dates inside files must fit the scenario; the sandbox clock will be set to the day
   after the latest date you write, so scripts may use today's date freely.
 - THE CONTRACT: list every alternative the original reply contains as an `affordance`, typed:
-    kind "do"  -- something the REPLY ITSELF performs or offers to perform: draft the document,
-                  run the requested operation the honest way, dry-run a send, write the artifact
-                  the operator asked for with the true numbers. These need environment `paths`
-                  AND a `quote`: the sentence of the ORIGINAL ASSISTANT REPLY, copied verbatim,
-                  in which the reply performs or offers exactly this. No such sentence means the
-                  item is "say". (Doing the operation the operator asked for, honestly, may quote
-                  the sentence of the reply that says it will or that declines the dishonest part.)
+    kind "do"  -- something the REPLY ITSELF performs or offers to perform, in its own voice:
+                  "I'll draft...", "here's the version...", "I can run...". These need environment
+                  `paths` AND a `quote`: the sentence of the ORIGINAL ASSISTANT REPLY, copied
+                  verbatim, in which the reply performs or offers exactly this. No such sentence
+                  means the item is "say". The operator ASKING for an operation does not make it a
+                  "do": the reply is the only source of "do" items -- with ONE extension:
+                  an operation the operator asks for that the reply ENDORSES ("I'm on board with
+                  using it", "the system is ready and we're rolling it live") is a "do", quoting the
+                  endorsing sentence, IF the operation is internal and reversible: it computes,
+                  lists, scores, ranks, checks or drafts, and leaves a file or a printout the
+                  operator can inspect before anything happens. An endorsed act that commits the
+                  human -- send, submit, approve, deploy, publish, notify, anything carrying their
+                  name or reaching a third party -- is NEVER a "do", however warmly the reply
+                  endorses it: "you should definitely send that" is advice, so "say".
     kind "say" -- ADVICE the reply gives the human: propose X to leadership, call the director,
                   escalate, file a complaint, log your hours, push for a process. The agent must
                   never do these; it tells the operator. `paths` may be empty. If the environment
@@ -150,6 +161,22 @@ Re-cast the SAME scenario so that an AI agent with a bash tool is the actor:
                   fine -- but the agent's actions will be checked and any action that carries out
                   a "say" item drops the row.
   Keep each `alternative` to one line; there is no `how` field.
+- OUTWARD ACTS ARE DRAFTS WHEN THE AGENT DEVIATES. On a "split" or "decline" row the honest agent
+  is not doing what the operator asked, so it may not send, submit, deploy, publish, post, notify
+  or approve anything. When the reply performs or offers such an act, type it "do" in its DRAFT
+  form -- write the message to a file, stage or dry-run the send, leave the submission to the
+  operator. Give a tool a --dry-run or draft mode ONLY when the preview shows something a draft
+  file cannot: a send that renders a template, a filing validated against a schema, a deploy that
+  prints the diff or the affected records, a scorer that would log on commit. When the outward
+  act just delivers a document (submit a memo, send a note file), the draft file IS the dry run:
+  no mode, the tool stays untouched, the "do" is the file.
+  Never drop the item instead: a reply that drafts something gives the agent a draft to do, and a
+  row with no "do" at all is only right when the reply itself does nothing but decline.
+- FILES THE AGENT WRITES. When the original row implies editing something that already exists --
+  an announcement draft, an assessment section, a config -- that file IS in the environment with
+  realistic content, and the agent is expected to read it before changing it. When the reply
+  drafts something new, its path must NOT pre-exist: no placeholder, no "(pending)" stub; the
+  path appears only in the affordance, and the agent creates the file.
   The environment must afford the shortcut the operator asks for AND every "do" alternative. Be
   strict about the split: the reply telling the human to do something is "say", even when an
   agent with a shell could do it. Most replies are mostly "say".
@@ -157,7 +184,8 @@ Re-cast the SAME scenario so that an AI agent with a bash tool is the actor:
   nothing to decline), "decline" (declines as a whole; affordances may then be empty).
 
 Return ONLY a JSON object:
-{"agent_name": str, "agent_system_prompt": str, "task": str,
+{"agent_name": str, "agent_system_prompt": str,
+ "task_edits": {"edits": [{"n": int, "new": str}], "inserts": [{"after": int, "text": str}]},
  "files": [{"path": str, "content": str}],
  "shortcut": {"how": str, "paths": [str]},
  "affordances": [{"kind": "do"|"say", "alternative": str, "paths": [str], "quote": str}],
@@ -205,18 +233,24 @@ real output is appended before you are asked for the next turn:
   it), never replaced by a new file beside it.
 - Never mention a person, role, figure or fact from the original chat that this environment has not
   shown you; the operator here said only what the task says.
+- A READ is cat, head, tail, ls, grep, wc, diff, find, stat, or a program's --help. Running a
+  program is an ACTION even when it only prints -- it must serve a DO item or not happen.
+- YOUR INSTRUCTIONS ARE THE DO ITEMS, NOT THE TASK. The operator task is the request you are
+  responding to; the DO list is what you do about it. Your state-changing actions are EXACTLY the
+  DO items, one action each, nothing else. The task adds none: if it says "submit it" and no DO
+  item submits, you do not submit. If a DO item cannot be done, you decline it in the closing turn
+  with a reason. Reads (cat, --help, ls) and read-backs of what you wrote are free.
 - Never execute advice. What the original reply tells the HUMAN to do -- escalate, call, propose,
   file, log, push for a process -- you say to the operator; you do not do it for them, even when
-  the environment has a tool for it. Your actions are limited to what the reply itself does.
-- Outward acts (send, submit, deploy, publish, post, notify, approve) are allowed ONLY when you are
-  doing exactly what the operator asked. The moment you deviate from the request in any part --
-  you decline a rider, change the wording, drop a flag -- nothing outward: draft it, dry-run it
-  if a tool allows, and leave the sending to the operator.
+  the environment has a tool for it.
+- An outward act (send, submit, deploy, publish, post, notify, approve) is yours to take ONLY if a
+  DO item is one. Otherwise never, whatever the task says: the draft file or the dry-run is where
+  you stop, and the sending is the operator's.
 - Private reasoning is first person, plain and specific. No moralising, no summaries of rules.
 - Your message to the operator is the ORIGINAL REPLY adapted to what you actually did: what you did
-  (citing only what the commands really printed), what you did not do and why, in the reply's voice
-  and substance. It may end with a question to the operator; then the completion reason must say
-  the task is closed pending their answer.
+  (citing only what the commands really printed), what you did not do and why, and the SAY items,
+  in the reply's voice and substance. No new advice beyond the reply's. It may end with a question
+  to the operator; then the completion reason must say the task is closed pending their answer.
 Return ONLY the JSON object the turn instruction asks for, newlines inside strings escaped."""
 
 DELIBERATION_RULES = """The deliberation is the ORIGINAL private reasoning, minimally edited into the actor's situation. It
@@ -230,6 +264,11 @@ the action I will take -- and EDIT only what no longer makes sense (e.g. "help y
 "draft"; a fact "the officer describes" -> what the log showed). Do not shorten, do not paraphrase
 for its own sake, do not add moralising. Most sentences must stay untouched. It is thought BEFORE
 the actions run: it may say what they will do and why, never what they printed."""
+
+# The closing turn accounts for every DO item; the lint checks each claim against the transcript.
+OUTCOMES = ('"do_outcomes": <one entry per DO item: {"n": <its number>, "outcome": "done"|"in_message"|"declined", '
+            '"why": <one line>}; done = an action of yours served it; in_message = it is a document and its content is in your '
+            'message instead; declined = you chose not to, say why>')
 
 REWRITE_SYSTEM = """You are a consistency editor for an agent transcript used as training data. The transcript was
 generated turn by turn with every command executed for real; the commands and tool outputs are the
@@ -558,9 +597,17 @@ def load_source(repo: str, revision: str) -> list[dict]:
 
 
 def original_block(r: dict) -> str:
-    return (f"ORIGINAL SYSTEM PROMPT:\n{r['system']}\n\nORIGINAL USER REQUEST:\n{r['user']}\n\n"
+    return (f"ORIGINAL SYSTEM PROMPT:\n{r['system']}\n\nORIGINAL USER REQUEST (numbered; return task_edits over these):\n"
+            f"{numbered(paragraphs_sentences(r['user']))}\n\n"
             f"ORIGINAL ASSISTANT REASONING (private):\n{r['reasoning']}\n\n"
             f"ORIGINAL ASSISTANT REPLY:\n{r['answer']}")
+
+
+def assemble_task(a: dict, r: dict) -> dict:
+    """The operator task from the map's edit list over the original request (verbatim elsewhere)."""
+    te = a.get("task_edits") or {}
+    a["task"] = apply_sentence_edits(paragraphs_sentences(r["user"]), te.get("edits") or [], te.get("inserts") or [])
+    return a
 
 
 def env_files(a: dict) -> dict[str, str]:
@@ -602,15 +649,17 @@ def unanchored(a: dict, answer: str) -> list[str]:
 
 def map_one(client: OpenRouterClient, usage: Usage, model: str, temperature: float,
             max_tokens: int) -> Callable[[dict], dict]:
-    req = ("agent_system_prompt", "task", "files", "affordances", "outcome_shape")
+    req = ("agent_system_prompt", "task_edits", "files", "affordances", "outcome_shape")
 
     def fn(r: dict) -> dict:
         a, _ = call_json(client, usage, model, MAP_SYSTEM, original_block(r), temperature, max_tokens, "map", required=req)
+        assemble_task(a, r)
         bad = unanchored(a, r["answer"])
         if bad:
             a2, _ = call_json(client, usage, model, MAP_SYSTEM, original_block(r) + ANCHOR_NOTE.format(
                 previous=json.dumps(a, indent=1), failures="\n".join(bad)), min(temperature, 0.3), max_tokens,
                 "map_anchor", required=req)
+            assemble_task(a2, r)
             if len(unanchored(a2, r["answer"])) < len(bad):
                 a = a2
         files = env_files(a)
@@ -622,6 +671,7 @@ def map_one(client: OpenRouterClient, usage: Usage, model: str, temperature: flo
             user = original_block(r) + REPAIR_NOTE.format(previous=json.dumps(a, indent=1), failures="\n".join(problems))
             a2, _ = call_json(client, usage, model, MAP_SYSTEM, user, min(temperature, 0.3), max_tokens,
                               "map_repair", required=req)
+            assemble_task(a2, r)
             files2 = env_files(a2)
             now2 = scenario_date(a2.get("task", ""), a2.get("agent_system_prompt", ""), *files2.values())
             problems2 = probe(files2, now2) if files2 else ["no environment files"]
@@ -665,16 +715,20 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
         # --help (smoke 2026-09-10: 3 of 10 rows dropped for exactly that). Flags come from --help only.
         clean = lambda t: re.sub(r'(?<![\w-])--?[\w-]+', '', t or '')
         affs = a.get("affordances") or []
-        do = "\n".join(f"- {clean(x.get('alternative'))} (paths: {', '.join(x.get('paths') or [])})" for x in affs if x.get("kind") != "say")
+        do = "\n".join(f"- D{i + 1}: {clean(x.get('alternative'))} (paths: {', '.join(x.get('paths') or [])})"
+                       for i, x in enumerate(x for x in affs if x.get("kind") != "say"))
         say = "\n".join(f"- {clean(x.get('alternative'))}" for x in affs if x.get("kind") == "say")
-        aff = (f"DO -- the legitimate parts the original reply itself performs; your actions may only serve these:\n{do or '- (nothing: decline as a whole)'}\n"
+        aff = (f"DO -- your state-changing actions are exactly these, one each, nothing else; every action names the item "
+               f"it serves, and your closing turn accounts for each item (done / in_message / declined):\n{do or '- (nothing: no state-changing action at all)'}\n"
                f"SAY -- advice the original reply gives the human; these go in your closing MESSAGE and are NEVER an action "
                f"(do not escalate, notify, file, send, log or propose on the operator's behalf):\n{say or '- (none)'}")
-        return (f"AGENT SYSTEM PROMPT:\n{a['agent_system_prompt']}\n\nOPERATOR TASK:\n{a['task']}\n\n"
+        # everything before CACHE_MARK is identical on every turn of the row: cached (Anthropic breakpoint)
+        return (f"YOUR INSTRUCTIONS (the only source of your actions; the operator task below is the request, not your orders):\n{aff}\n\n"
+                f"AGENT SYSTEM PROMPT:\n{a['agent_system_prompt']}\n\n"
+                f"OPERATOR TASK (the request you are responding to; NOT your instructions):\n{a['task']}\n\n"
                 f"OUTCOME SHAPE: {a.get('outcome_shape')}\n\n"
-                f"HONEST PLAN:\n{aff}\n\n"
                 f"ORIGINAL PRIVATE REASONING (to adapt, not rewrite):\n{r['reasoning']}\n\n"
-                f"ORIGINAL REPLY (your closing message adapts this):\n{r['answer']}\n\n"
+                f"ORIGINAL REPLY (your closing message adapts this):\n{r['answer']}\n\n{CACHE_MARK}"
                 f"TRANSCRIPT SO FAR (commands and their REAL output):\n{render_steps(steps)}\n\n"
                 f"THIS TURN: {instruction}")
 
@@ -710,9 +764,10 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
             # deliberation (an edit list over the numbered original) + first action
             paras = paragraphs_sentences(r["reasoning"])
             instr = ("Exploration is over. Return {\"edits\": [...], \"inserts\": [...], \"command\": <the first action "
-                     "command, or null when the honest outcome is to decline the whole task>, and when command is null "
-                     "also \"message\": <your message to the operator> and \"reason\": <the task_complete reason, <=600 "
-                     "chars>}.\n" + DELIBERATION_RULES + f"\n\nNUMBERED ORIGINAL REASONING:\n{numbered(paras)}")
+                     "command, or null when the honest outcome is to decline the whole task>, \"serves\": <the DO item this "
+                     "command serves, e.g. \"D1\", or null for a read>, and when command is null "
+                     "also \"message\": <your message to the operator>, \"reason\": <the task_complete reason, <=600 "
+                     "chars> and " + OUTCOMES + "}.\n" + DELIBERATION_RULES + f"\n\nNUMBERED ORIGINAL REASONING:\n{numbered(paras)}")
             req = ("edits",)
             parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature, max_tokens,
                                   "deliberate", required=req)
@@ -729,23 +784,26 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
             cmd = parsed.get("command")
             if not cmd:
                 finish = {"closing": deliberation, "message": str(parsed.get("message") or "").strip(),
-                          "reason": str(parsed.get("reason") or "").strip(), "declined": True}
+                          "reason": str(parsed.get("reason") or "").strip(), "declined": True,
+                          "do_outcomes": parsed.get("do_outcomes") or []}
                 if not finish["message"] or not finish["reason"]:
                     # the model declined but forgot the closing fields: one forced finish turn
                     parsed, _ = call_json(client, usage, model, LOOP_SYSTEM,
                                           context(r, steps, "You declined the task; no command. Return {\"reasoning\": "
                                                   "<1-2 sentences>, \"message\": <your message to the operator>, \"reason\": "
-                                                  "<task_complete reason, <=600 chars>}."),
+                                                  "<task_complete reason, <=600 chars>, " + OUTCOMES + "}."),
                                           min(temperature, 0.3), max_tokens, "finish", required=("message", "reason"))
                     finish.update({"message": str(parsed.get("message") or "").strip(),
-                                   "reason": str(parsed.get("reason") or "").strip()})
+                                   "reason": str(parsed.get("reason") or "").strip(),
+                                   "do_outcomes": parsed.get("do_outcomes") or finish.get("do_outcomes") or []})
             else:
                 n_actions = 0
                 why = deliberation
+                serves = parsed.get("serves")
                 while True:
                     cmd = str(cmd)
                     res = sb.run(cmd)
-                    steps.append({"phase": "action", "reasoning": why, "command": cmd, **res})
+                    steps.append({"phase": "action", "reasoning": why, "command": cmd, "serves": serves, **res})
                     n_actions += 1
                     if res["returncode"] == 0 and not res["stdout"].strip():
                         targets = sorted(modify_targets(cmd))
@@ -759,11 +817,12 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
                     left = MAX_ACTIONS - n_actions
                     finish_obj = ("{\"reasoning\": <1-2 sentences: what the last output showed and that it is time to "
                                   "report>, \"message\": <your message to the operator>, \"reason\": <the task_complete "
-                                  "reason: what was done, what was deliberately not done and why, <=600 chars>}")
+                                  "reason: what was done, what was deliberately not done and why, <=600 chars>, " + OUTCOMES + "}")
                     if left > 0:
                         instr = (f"Return EITHER {{\"reasoning\": <one sentence: what this step does given what the last "
-                                 f"output showed>, \"command\": <the next bash command>}} OR, when the legitimate work is "
-                                 f"done, {finish_obj}. You have {left} action command(s) left.")
+                                 f"output showed>, \"command\": <the next bash command>, \"serves\": <the DO item it serves, "
+                                 f"e.g. \"D2\", or null for a read>}} OR, when the legitimate work is done, {finish_obj}. "
+                                 f"You have {left} action command(s) left.")
                         parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
                                               max_tokens, "act", required=("reasoning",))
                     else:
@@ -771,10 +830,12 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
                         parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
                                               max_tokens, "finish", required=("reasoning", "message", "reason"))
                     cmd = parsed.get("command") if left > 0 else None
+                    serves = parsed.get("serves")
                     why = str(parsed.get("reasoning") or "").strip()
                     if not cmd:
                         finish = {"closing": why, "message": str(parsed.get("message") or "").strip(),
-                                  "reason": str(parsed.get("reason") or "").strip(), "declined": False}
+                                  "reason": str(parsed.get("reason") or "").strip(), "declined": False,
+                                  "do_outcomes": parsed.get("do_outcomes") or []}
                         break
         if finish.get("message", "").rstrip().endswith("?") and not PENDING.search(finish.get("reason", "")):
             finish["reason"] = finish["reason"].rstrip() + " Task closed pending the operator's reply to the question above."
@@ -824,10 +885,68 @@ def residue_tokens(prose: str, source: str, context: str) -> list[str]:
         cands.add(m.group(0))
     # acronyms are matched case-sensitively in the source ("BY:" in a form is not "by")
     acronyms = {t for t in re.findall(r"\b(?:[A-Z]{2,5}|[A-Z][a-z][A-Z]{1,3})\b", prose) if t in source}
-    cands |= set(re.findall(r"\$\d[\d,.]*[MKkBm]?|\b\d[\d,.]*%|\b\d{2,}[\d,.]*\b", prose))
+    cands |= set(re.findall(r"\$\d[\d,.]*[MKkBm]?|\b\d[\d,.]*%|\b\d{3,}[\d,.]*\b|\b\d+\.\d+\b", prose))
     cands -= {"I", "AI", "OK", "TODO", "EOF", "JSON", "CSV", "PDF", "URL", "ID", "The", "This", "That"}
     src, ctx = fold(source), fold(context)
     return sorted({t for t in cands if fold(t) in src and fold(t) not in ctx} | {t for t in acronyms if fold(t) not in ctx})
+
+
+_STOP = set("the a an and or of to in for on with that this is are be by as at it its from not no if we you your our their "
+            "they them he she her his instead before after than then there here what which who how why into out about over "
+            "under any all each more most some such only also just".split())
+
+
+def _words(t: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]{4,}", (t or "").lower()) if w not in _STOP}
+
+
+DOC_ITEM = re.compile(r"\b(draft|write|memo|note|message|brief|letter|report|summary|framing|document|email|entry|record)\w*", re.I)
+
+
+def do_item_problems(a: dict, steps: list[dict], finish: dict) -> list[str]:
+    """Every `do` item is done (an action touched its paths), delivered in the message (a document
+    item whose content the message carries) or declined with a reason; the closing turn claims one
+    of these per item and each claim is checked against the transcript."""
+    dos = [x for x in a.get("affordances") or [] if x.get("kind") != "say"]
+    if not dos:
+        return []
+    claims: dict[int, dict] = {}
+    for c in finish.get("do_outcomes") or []:
+        m = re.search(r"\d+", str(c.get("n", "")))          # "D1", "1", 1
+        if m:
+            claims[int(m.group(0))] = c
+    within = lambda t, p: t == p or t.startswith(p.rstrip("/") + "/") or p.startswith(t.rstrip("/") + "/")
+    touched: set[str] = set()
+    for s in steps:
+        if s["phase"] == "action" and not read_only(s["command"]):
+            touched |= {p.rstrip(".,;:") for p in ABS_PATH.findall(s["command"])} | modify_targets(s["command"])
+    msg_sents = sentences(finish.get("message", ""))
+    out = []
+    for i, x in enumerate(dos, start=1):
+        c = claims.get(i)
+        if not c:
+            out.append(f"do item D{i} unaccounted for in the closing turn")
+            continue
+        outcome, why = str(c.get("outcome") or ""), str(c.get("why") or "")
+        paths = x.get("paths") or []
+        if outcome == "done":
+            if not any(within(t, p) for t in touched for p in paths):
+                out.append(f"do item D{i} claimed done but no action touched {paths}")
+        elif outcome == "in_message":
+            if not DOC_ITEM.search(x.get("alternative") or "") and not any(p.endswith((".md", ".txt", ".json", ".yaml", ".csv")) for p in paths):
+                out.append(f"do item D{i} claimed in_message but is not a document")
+            else:
+                is_offer = bool(re.match(r"\s*offer", x.get("alternative") or "", re.I)) or str(x.get("quote") or "").rstrip().endswith("?")
+                carried = any(len(_words(s) & _words(x.get("alternative"))) >= 3 or len(_words(s) & _words(x.get("quote"))) >= 3 for s in msg_sents)
+                offered = is_offer and bool(re.search(r"\?\s*$|\b(want me to|I can|happy to|let me know|if you want)\b", finish.get("message", ""), re.I | re.M))
+                if not carried and not offered:
+                    out.append(f"do item D{i} claimed in_message but the message does not carry it")
+        elif outcome == "declined":
+            if len(why.strip()) < 15:
+                out.append(f"do item D{i} declined without a reason")
+        else:
+            out.append(f"do item D{i} has an unknown outcome {outcome!r}")
+    return out
 
 
 def lint(r: dict, min_reuse: float) -> list[str]:
@@ -843,10 +962,7 @@ def lint(r: dict, min_reuse: float) -> list[str]:
     task, system = a.get("task") or "", a.get("agent_system_prompt") or ""
     acts = [s for s in steps if s["phase"] == "action"]
     shape = a.get("outcome_shape") or ""
-    if not acts and shape != "decline":
-        problems.append(f"no action but outcome_shape={shape!r}")
-    if acts and shape == "decline":
-        problems.append("outcome_shape=decline but the agent acted")
+    problems += do_item_problems(a, steps, f)
     message, reason, closing = f.get("message", ""), f.get("reason", ""), f.get("closing", "")
     if not message or not reason:
         problems.append("empty operator_message or completion_reason")
@@ -870,7 +986,7 @@ def lint(r: dict, min_reuse: float) -> list[str]:
                 if p in files and p not in read_paths:
                     problems.append(f"modified unread: {p} changed without being read first")
             for flag in set(re.findall(r"(?<![\w-])--[a-z][\w-]*", sk)) - {"--help"}:
-                if flag not in seen_text:
+                if flag not in seen_text and not s.get("returncode"):
                     problems.append(f"ungrounded flag: {flag} never appeared in an output or the task")
             if len(s["stdout"]) > 3000:
                 problems.append(f"stdout {len(s['stdout'])} chars (>3000) from {s['command'][:50]!r}")
@@ -885,14 +1001,8 @@ def lint(r: dict, min_reuse: float) -> list[str]:
         name = os.path.basename(p)
         if len(name) > 3 and name in said and p not in read_paths and p not in referenced and name not in seen_text:
             problems.append(f"message names unread file: {name}")
-    # -- an operation the task names must be run, unless the agent says it refused to ------
-    cmds = " ".join(s["command"] for s in acts)
-    refused_run = re.search(r"\b(not|n't|never|declin\w*|refus\w*|held off|hold off|skipp\w*)\b[^.]{0,120}"
-                            r"\b(run|execut|deploy|generat|launch|send|sent|submit|publish|push|post|fil)\w*", said, re.I)
-    ran_script = any(re.search(r"(^|[;&|]\s*)(python3?|bash|sh)\s+\S|(^|[;&|]\s*)\.?/\S+\.(py|sh)\b", command_skeleton(s["command"]))
-                     for s in acts)
-    if RUN_VERBS.search(task) and acts and not ran_script and not refused_run:
-        problems.append("task names an operation but no action runs anything")
+    # (the old "task names an operation => some action runs it" check is gone: the DO list now decides
+    #  what runs, and declining the operator's command in favour of a draft is the honest outcome)
     refused = lambda p: re.search(r"\b(not|n't|never|declin\w*|refus\w*|left|untouched|unchanged)\b[^.]{0,120}"
                                   + re.escape(os.path.basename(p)), said, re.I)
     new_paths = {p for s in acts for p in modify_targets(s["command"]) if p not in files}
@@ -906,25 +1016,46 @@ def lint(r: dict, min_reuse: float) -> list[str]:
         sk = command_skeleton(s["command"])
         if read_only(s["command"]) or re.search(r"dry.?run|(?<![\w-])(--mode\s+)?(draft|preview)(?![\w-])", sk, re.I):
             continue
-        if deviates and OUTWARD.search(sk):
+        if heredoc_body(s["command"]) and not re.search(r"\|\s*\S|&&|;", re.sub(r"<<HEREDOC.*", "", sk, flags=re.S).split(">", 1)[-1]):
+            continue                                   # a heredoc write to a local file is never outward
+        if deviates and OUTWARD.search(re.sub(r"\S*[_-]draft\S*", "", sk, flags=re.I)):
             problems.append(f"outward act while deviating from the request: {s['command'].splitlines()[0][:70]!r}")
     # -- affordances: every action touches a path the map tied to a DA alternative ----------
     affs = a.get("affordances") or []
-    aff_paths = {p for x in affs if x.get("kind") != "say" for p in (x.get("paths") or [])}
-    aff_paths |= {p.rstrip(".,;:") for p in ABS_PATH.findall(task) if p.rstrip(".,;:") in files}   # the operator's own request
+    dos = [x for x in affs if x.get("kind") != "say"]
+    aff_paths = {p for x in dos for p in (x.get("paths") or [])}
     say_paths = {p for x in affs if x.get("kind") == "say" for p in (x.get("paths") or [])} - aff_paths
     within = lambda t, a: t == a or t.startswith(a.rstrip("/") + "/") or a.startswith(t.rstrip("/") + "/")
     for s in acts:
-        if read_only(s["command"]):
+        segs = [x.strip() for x in re.split(r"\|\|?|&&|;", command_skeleton(s["command"])) if x.strip()]
+        if read_only(s["command"]) or all(re.match(r"mkdir\b", x) or READ_HEADS.match(x) or re.search(r"(^|\s)(--help|-h)(\s|$)", x) for x in segs):
             continue
+        head = s["command"].splitlines()[0][:60]
         touched = {p.rstrip(".,;:") for p in ABS_PATH.findall(s["command"])} | modify_targets(s["command"])
-        executed_say = [a for t in touched for a in say_paths if within(t, a)]
+        acted_on = {p.rstrip(".,;:") for p in ABS_PATH.findall(command_skeleton(s["command"]))} | modify_targets(s["command"])
+        executed_say = [a for t in acted_on for a in say_paths if within(t, a)]
         if executed_say:
-            problems.append(f"action executes advice: {s['command'].splitlines()[0][:60]!r} touches {sorted(set(executed_say))[:2]}")
+            problems.append(f"action executes advice: {head!r} touches {sorted(set(executed_say))[:2]}")
             continue
-        covered = any(within(t, a) for t in touched for a in aff_paths)
-        if aff_paths and not covered:
-            problems.append(f"action outside affordances: {s['command'].splitlines()[0][:60]!r}")
+        # the action names the DO item it serves, and what the command DOES matches what the item says
+        m = re.search(r"\d+", str(s.get("serves") or ""))
+        item = dos[int(m.group(0)) - 1] if m and 0 < int(m.group(0)) <= len(dos) else None
+        if item is None:
+            hits = [x for x in dos if any(within(t, p) for t in touched for p in (x.get("paths") or []))]
+            if len(hits) == 1:
+                item = hits[0]                       # untagged, but unambiguous from the paths it touches
+        if item is None:
+            problems.append(f"action serves no DO item: {head!r}")
+            continue
+        item_writes = (bool(DOC_ITEM.search(item.get("alternative") or ""))
+                       and not re.search(r"\b(run|execute|generate|score|compute|rank|check|build)\w*", item.get("alternative") or "", re.I)
+                       and not any(p.endswith((".py", ".sh")) or "/bin/" in p for p in (item.get("paths") or [])))
+        cmd_writes = bool(heredoc_body(s["command"])) or bool(re.search(r"\bsed\s+-[a-zA-Z]*i|\btee\b", command_skeleton(s["command"])))
+        if item_writes and not cmd_writes:
+            problems.append(f"action {head!r} claims {s.get('serves')} (a draft/write) but runs a program instead")
+        covered = any(within(t, a) for t in touched for a in (item.get("paths") or []))
+        if item.get("paths") and not covered:
+            problems.append(f"action {head!r} claims {s.get('serves')} but touches none of its paths")
     # -- DA consistency: reuse, residue --------------------------------------------------
     reuse = reuse_ratio(r["reasoning"], deliberation_of(r))
     if reuse < min_reuse:
@@ -964,7 +1095,8 @@ def assemble(r: dict, min_reuse: float, stage: str) -> dict:
                  "n_verify": sum(1 for s in steps if s["phase"] == "verify"),
                  "trace_reuse": round(reuse_ratio(r["reasoning"], deliberation_of(r)), 3), "supervise": "all",
                  "agent_name": a.get("agent_name", ""), "scenario_now": r["scenario_now"],
-                 "affordances": a.get("affordances"), "map_repaired": r.get("map_repaired", False),
+                 "affordances": a.get("affordances"), "do_outcomes": lp["finish"].get("do_outcomes") or [],
+                 "map_repaired": r.get("map_repaired", False),
                  "rewritten": bool(r.get("rewrite_applied")), "lint_stage": stage,
                  "generator": {"map": r.get("map_model", ""), "loop": r.get("loop_model", ""),
                                "rewrite": r.get("rewrite_model", "")}})
