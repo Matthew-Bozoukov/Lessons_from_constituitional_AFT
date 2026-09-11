@@ -10,10 +10,10 @@ source:
   # Identity-neutral copy of that same 708-row corpus; no rows added or removed.
   repo: dougalldeepmind/2026-09-08-da-synth
   revision: 42107bde00cd7f4360a3a6c581aac23a540dbfea
-  # The 50 source rows the full run (output/synth_delib/20260910_231156, repo 2026-09-10-delib-synth)
-  # rejected: on each, all 8 candidates refused in one sentence and then complied. Re-run after
-  # 939a3ab dropped 'you need not give reasons' from the abridged constitution.
-  rows: [29, 71, 84, 86, 95, 102, 104, 108, 109, 120, 141, 142, 146, 158, 165, 175, 177, 181, 183, 184, 185, 186, 189, 196, 206, 209, 217, 227, 231, 233, 236, 238, 243, 246, 278, 319, 379, 402, 425, 430, 439, 481, 491, 498, 500, 502, 505, 537, 540, 542]
+  # Pass 1 (2026-09-11 11:53): the 50 rows the full run rejected, 8 candidates + one resample round
+  # under the amended constitution (939a3ab): 37 recovered. Pass 2: the 13 still rejected, up to
+  # 5 resample rounds, to reach the 700-row target (695 published + 5).
+  rows: [120, 175, 183, 185, 186, 189, 243, 278, 379, 491, 498, 540, 542]
 # DAT's alignment target. Constitutions carry no response-style section any more (that is
 # per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
 constitution: constitutions/abridged/constitution.md
@@ -58,7 +58,7 @@ generation_prompt: |
 # and missed fabricated action claims and bypass payloads that a reader caught.
 filter:
   candidates: 8          # twice the full run's; these prompts got no survivor in 8 there
-  resample_rounds: 1     # extra rounds of `candidates` for prompts left with no survivor
+  resample_rounds: 5     # keep drawing 8 more until every prompt has a survivor or 48 candidates are spent
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
   min_rows: 1            # publish whatever survives; the survivor COUNT is the result
   judge:                 # ONE call per prompt per run: every surviving candidate side by side

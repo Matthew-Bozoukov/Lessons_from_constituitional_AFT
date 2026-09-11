@@ -97,6 +97,12 @@ both generations and which rows came from which, the two constitution shas
 (433e19cc… on 658 rows, bc350335… on 37; per row in `metadata.deliberative_alignment`).
 The re-run's scratch repo was deleted. Total spend $112.18.
 
+**Pass 2 (2026-09-11 13:20-13:38).** The 13 remaining prompts, 8 candidates per round with up to
+5 resample rounds, to reach 700: 4 recovered in round 0, 1 more in round 1 (700 reached), cut
+off during round 2 on request. $5.10. `dougalldeepmind/2026-09-10-delib-synth` republished
+with 700 rows (658 + 37 + 5); 8 prompts remain rejected (`175 183 186 189 243 278 379 491`
+minus whichever round 1 recovered, listed in the manifest). Total spend ~$117.
+
 **Next.** Mixture + train the delib arm (`configs/data/mixture/` with `dataset: <org>/2026-09-10-delib-synth`,
 `reasoning: native`; export carries `supervise: final`), then MASK + ODCV against da-7 and
 dat-7. The 13 hard prompts are a candidate set for a stronger-teacher rewrite step if wanted.

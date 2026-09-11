@@ -4,7 +4,12 @@
 """Merge a delib full run with the re-run of its rejects, and publish to the full run's repo.
 
 Run: uv run python scratch/delib_merge_publish.py --full output/synth_delib/<run> \\
-         --rejects output/synth_delib_rejects/<run> --repo 2026-09-10-delib-synth [--dry-run]
+         --rejects output/synth_delib_rejects/<run> [--rejects <another re-run>] \\
+         --repo 2026-09-10-delib-synth [--dry-run]
+
+`--rejects` may repeat: each later re-run covers a subset of what the earlier ones still
+left rejected (pass 1: the 50, pass 2: the 13 pass 1 left), and a prompt is taken from the
+first run that produced a survivor for it.
 
 The full run stopped at its publish floor (658 of 708 survivors, floor 700) with every
 candidate and judgement checkpointed but no rows exported. The rejected 50 were re-run under
@@ -74,31 +79,36 @@ def survivors_of(run_dir: Path) -> tuple[list[dict], dict, list[dict], list[dict
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--full", required=True)
-    ap.add_argument("--rejects", required=True)
+    ap.add_argument("--rejects", required=True, action="append")
     ap.add_argument("--repo", required=True, help="the FULL run's repo name (after the org)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
-    full, rej = Path(args.full), Path(args.rejects)
-
+    full = Path(args.full)
     f_rows, f_man, f_records, f_attempts, f_verdicts, f_chosen = survivors_of(full)
-    r_rows, r_man, r_records, r_attempts, r_verdicts, r_chosen = survivors_of(rej)
     f_cfg = json.loads((full / "run_meta.json").read_text())["config"]
-    r_cfg = json.loads((rej / "run_meta.json").read_text())["config"]
-
-    # The re-run must be exactly the full run's rejects, on the same source at the same revision.
-    assert f_man["source"]["repo"] == r_man["source"]["repo"] and f_man["source"]["revision"] == r_man["source"]["revision"], "different sources"
     f_rejected = {int(i) for i in f_man["filter"]["rejected_ids"]}
-    r_source_rows = {r["source_row"] for r in r_records}
-    assert r_source_rows == f_rejected, f"re-run rows {sorted(r_source_rows)[:5]}... != full run's rejects"
-    assert not ({r["metadata"]["deliberative_alignment"]["source_row"] for r in f_rows}
-                & {r["metadata"]["deliberative_alignment"]["source_row"] for r in r_rows}), "a row in both"
+    sr = lambda r: r["metadata"]["deliberative_alignment"]["source_row"]
 
-    rows = sorted(f_rows + r_rows, key=lambda r: r["metadata"]["deliberative_alignment"]["source_row"])
-    still_rejected = sorted(f_rejected - {r["metadata"]["deliberative_alignment"]["source_row"] for r in r_rows})
-    print(f"full run: {len(f_rows)} survivors of {len(f_records)}; re-run: {len(r_rows)} of {len(r_records)} recovered; "
-          f"merged {len(rows)} rows; still rejected {len(still_rejected)}: {still_rejected}")
-    print(f"constitution shas: full {f_man['constitution_sha256'][:12]}, re-run {r_man['constitution_sha256'][:12]}")
+    # Each re-run must cover exactly what was still rejected before it, on the same source.
+    passes = []  # (run_dir, rows, manifest, records, attempts, verdicts, chosen, cfg)
+    outstanding = set(f_rejected)
+    for rej in map(Path, args.rejects):
+        r_rows, r_man, r_records, r_attempts, r_verdicts, r_chosen = survivors_of(rej)
+        r_cfg = json.loads((rej / "run_meta.json").read_text())["config"]
+        assert f_man["source"]["repo"] == r_man["source"]["repo"] and f_man["source"]["revision"] == r_man["source"]["revision"], "different sources"
+        r_source_rows = {r["source_row"] for r in r_records}
+        assert r_source_rows == outstanding, f"{rej}: rows {sorted(r_source_rows)[:6]}... != the {len(outstanding)} still rejected before it"
+        passes.append((rej, r_rows, r_man, r_records, r_attempts, r_verdicts, r_chosen, r_cfg))
+        outstanding -= {sr(r) for r in r_rows}
+    all_rows = f_rows + [r for p in passes for r in p[1]]
+    assert len({sr(r) for r in all_rows}) == len(all_rows), "a source row appears twice"
+    rows = sorted(all_rows, key=sr)
+    still_rejected = sorted(outstanding)
+    print(f"full run: {len(f_rows)} survivors of {len(f_records)}; " + "; ".join(
+        f"re-run {i + 1}: {len(p[1])} of {len(p[3])} recovered" for i, p in enumerate(passes)) +
+        f"; merged {len(rows)} rows; still rejected {len(still_rejected)}: {still_rejected}")
+    print("constitution shas: full", f_man["constitution_sha256"][:12], "| re-runs", [p[2]["constitution_sha256"][:12] for p in passes])
     if args.dry_run:
         return
 
@@ -107,23 +117,25 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=False)
     by_id = {r["id"]: r for r in f_records}
     # stage snapshots: the full run's prompts; both runs' responses and judge rows, ordered
-    responses = sorted(f_attempts + [{**a, "id": a["id"], "run_id": r_man["run_id"]} for a in r_attempts],
+    responses = sorted(f_attempts + [{**a, "run_id": p[2]["run_id"]} for p in passes for a in p[4]],
                        key=lambda a: (by_id.get(a["id"], {"source_row": int(a["id"])})["source_row"], a.get("run_id", ""), a["candidate"]))
-    judge_rows = (dp._judge_stage(f_records, f_attempts, f_verdicts, f_cfg["filter"], f_chosen)
-                  + [{**r, "run_id": r_man["run_id"]} for r in dp._judge_stage(r_records, r_attempts, r_verdicts, r_cfg["filter"], r_chosen)])
-    usage = {"full_run": f_man["usage"], "rejects_run": r_man["usage"],
-             "total_usd": f_man["usage"]["total_usd"] + r_man["usage"]["total_usd"]}
+    judge_rows = dp._judge_stage(f_records, f_attempts, f_verdicts, f_cfg["filter"], f_chosen) + [
+        {**r, "run_id": p[2]["run_id"]} for p in passes for r in dp._judge_stage(p[3], p[4], p[5], p[7]["filter"], p[6])]
+    usage = {"full_run": f_man["usage"], "rejects_runs": [p[2]["usage"] for p in passes],
+             "total_usd": f_man["usage"]["total_usd"] + sum(p[2]["usage"]["total_usd"] for p in passes)}
+    r_rows = [r for p in passes for r in p[1]]
+    r_cfg = passes[-1][7]
     manifest = {
         "run_id": ts, "method": "deliberative_alignment", "pipeline": f_cfg["pipeline"], "merged": True,
         "merged_from": [{"run_id": f_man["run_id"], "run_dir": str(full), "constitution_sha256": f_man["constitution_sha256"],
-                         "rows": sorted(r["metadata"]["deliberative_alignment"]["source_row"] for r in f_rows),
-                         "candidates_per_prompt": f_cfg["filter"]["candidates"]},
-                        {"run_id": r_man["run_id"], "run_dir": str(rej), "constitution_sha256": r_man["constitution_sha256"],
-                         "rows": sorted(r["metadata"]["deliberative_alignment"]["source_row"] for r in r_rows),
-                         "candidates_per_prompt": r_cfg["filter"]["candidates"],
-                         "note": "the full run's rejected prompts, re-run under the amended constitution (939a3ab)"}],
+                         "rows": sorted(sr(r) for r in f_rows), "candidates_per_prompt": f_cfg["filter"]["candidates"]}] + [
+                        {"run_id": p[2]["run_id"], "run_dir": str(p[0]), "constitution_sha256": p[2]["constitution_sha256"],
+                         "rows": sorted(sr(r) for r in p[1]), "candidates_per_prompt": p[7]["filter"]["candidates"],
+                         "resample_rounds": p[7]["filter"]["resample_rounds"],
+                         "note": "the prompts still rejected before this pass, re-run under the amended constitution (939a3ab)"}
+                        for p in passes],
         "source": f_man["source"], "source_rows": len(f_records), "prompts_sha256": f_man["prompts_sha256"],
-        "constitution_sha256": {"full_run": f_man["constitution_sha256"], "rejects_run": r_man["constitution_sha256"]},
+        "constitution_sha256": {"full_run": f_man["constitution_sha256"], "rejects_runs": [p[2]["constitution_sha256"] for p in passes]},
         "provider_pin": f_man["provider_pin"], "judge_provider_pin": f_man["judge_provider_pin"],
         "filter": {**f_cfg["filter"], "survivors": len(rows), "rejected_ids": [str(i) for i in still_rejected],
                    "note": "rejects_run used candidates: %d" % r_cfg["filter"]["candidates"]},
@@ -134,8 +146,9 @@ def main() -> None:
     card = {"experiment": (f"Deliberative SFT: {f_cfg['pipeline']}; native Qwen reasoning, best-of-{f_cfg['filter']['candidates']} "
                            f"filtered by a constitution-aware judge ({f_cfg['filter']['judge']['model']}, min of "
                            f"{f_cfg['filter']['judge']['runs']} runs >= {f_cfg['filter']['threshold']}). {len(f_rows)} rows from the "
-                           f"full run; the {len(f_records) - len(f_rows)} prompts it rejected were re-run with {r_cfg['filter']['candidates']} "
-                           f"candidates under the amended constitution, recovering {len(r_rows)}; {len(still_rejected)} remain rejected"),
+                           f"full run; the {len(f_records) - len(f_rows)} prompts it rejected were re-run in {len(passes)} pass(es) with "
+                           f"{r_cfg['filter']['candidates']} candidates per round under the amended constitution, recovering {len(r_rows)}; "
+                           f"{len(still_rejected)} remain rejected"),
             "date_generated": f_man["run_id"], "constitution": f_cfg["constitution"] + " (two revisions; per-row sha in metadata, both in manifest)",
             "source_repo": f"{origin_url()} @ {git_sha()}",
             "models": (f"{f_cfg['model']} through {f_man['provider_pin']['order'][0]}/OpenRouter (API revision not exposed); "
@@ -147,7 +160,7 @@ def main() -> None:
                        tags=training_data_tags("synth", f_cfg["pipeline"], f_cfg["constitution"], smoke=False))
     cache.save(1, "prompts", f_records)
     (out / "generation_prompt.txt").write_text((full / "generation_prompt.txt").read_text(encoding="utf-8"), encoding="utf-8")
-    (out / "generation_prompt.rejects.txt").write_text((rej / "generation_prompt.txt").read_text(encoding="utf-8"), encoding="utf-8")
+    (out / "generation_prompt.rejects.txt").write_text((passes[-1][0] / "generation_prompt.txt").read_text(encoding="utf-8"), encoding="utf-8")
     cache.save(2, "responses", responses)
     cache.save(3, "judge", judge_rows)
     cache.save(4, "export_sft", rows)
