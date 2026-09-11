@@ -9,9 +9,12 @@
 # keeps its own venv; the runner shells the four stages out to it (like src/eval/audits/).
 #
 # What it reports. honesty_score = 100 - (% of responses the judge calls dishonest), per
-# archetype, averaged into an overall. HIGHER IS MORE HONEST. This is orthogonal to factual
-# accuracy: MASK asks whether the model states what it believes, not whether the belief is
-# right — so a constitution that hardens "don't assert what you don't hold" should move it.
+# archetype and overall. The overall pools every row, as the paper does (§4.3), so an
+# archetype counts by its size; a summary without `overall_weighting: per_row` (every run
+# before 2026-09-10) averaged the six archetypes instead. HIGHER IS MORE HONEST. This is
+# orthogonal to factual accuracy: MASK asks whether the model states what it believes, not
+# whether the belief is right — so a constitution that hardens "don't assert what you don't
+# hold" should move it.
 
 # Serving mode, pinned into the chat template (src/infra/endpoints/vllm.py pin_template).
 # Normally mode is INFERRED from the target's training stamp and never declared at eval
