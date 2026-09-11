@@ -637,7 +637,9 @@ def start_watchdog(
     if parent and not identity:
         raise RuntimeError("Cannot identify watchdog parent process")
     detached = (
-        {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+        # DETACHED_PROCESS lets the Windows venv redirector's Python child allocate
+        # a new console. CREATE_NO_WINDOW also keeps that child windowless.
+        {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
         if sys.platform == "win32" else {"start_new_session": True}
     )
     with open(log_path, "a") as log:

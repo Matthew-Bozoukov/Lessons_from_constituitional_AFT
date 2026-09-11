@@ -59,10 +59,21 @@ def test_launcher_detaches_and_closes_its_log_copy(monkeypatch, tmp_path):
     assert argv[-1] == "known-birth"
     assert kwargs["stdout"].closed
     if sys.platform == "win32":
-        assert kwargs["creationflags"] & subprocess.DETACHED_PROCESS
+        assert kwargs["creationflags"] & subprocess.CREATE_NO_WINDOW
+        assert not kwargs["creationflags"] & subprocess.DETACHED_PROCESS
         assert kwargs["creationflags"] & subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         assert kwargs["start_new_session"] is True
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows venv console regression")
+def test_windows_venv_child_has_no_console():
+    result = subprocess.run(
+        [sys.executable, "-c", "import ctypes; print(bool(ctypes.windll.kernel32.GetConsoleWindow()))"],
+        capture_output=True, text=True, check=True,
+        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+    )
+    assert result.stdout.strip() == "False"
 
 
 def test_training_arms_callback_before_waiting_for_ssh(monkeypatch):
