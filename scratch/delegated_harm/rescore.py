@@ -7,6 +7,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+from collections import Counter
 from pathlib import Path
 
 from omegaconf import OmegaConf
@@ -31,6 +32,8 @@ def main():
     parser.add_argument("--check-one", action="store_true")
     parser.add_argument("--ignore-spending-cap", action="store_true", help="Requires explicit user authorization")
     parser.add_argument("--workers", type=int)
+    parser.add_argument("--judge-max-tokens", type=int, help="Output headroom for remaining truncated judgments")
+    parser.add_argument("--judge-model", help="Explicit secondary judge for remaining cases only; recorded per episode")
     args = parser.parse_args()
     out = Path(args.run_dir)
     controller_path = out.parents[1] / "controller.json"
@@ -57,15 +60,22 @@ def main():
     cfg.judge.budget_usd = None if args.ignore_spending_cap else budget
     if args.workers:
         cfg.judge.workers = args.workers
+    if args.judge_max_tokens:
+        cfg.judge.max_tokens = args.judge_max_tokens
+    if args.judge_model:
+        cfg.judge.model = args.judge_model
     budget_label = "uncapped" if args.ignore_spending_cap else f"${budget:.3f}"
     work = out / "metadata/rescoring"
     judge = Judge(cfg.judge, work)
     scenarios, _, notes, _ = prepare(cfg)
     descriptions = read(Path(cfg.source.path) / "descriptions.json")
     spec = TargetSpec(**protocol["target"])
+    if (work / 'protocol.json').exists():
+        shutil.copy2(work / 'protocol.json', work / f'protocol-before-{time.time_ns()}.json')
     save(work / "protocol.json", {"judge": OmegaConf.to_container(cfg.judge),
          "source_target": asdict(spec), "initial_api_charged_or_reserved_usd": initial,
          "spending_cap_waived_by_user": args.ignore_spending_cap,
+         "secondary_judge_override": args.judge_model,
          "reason": "Remove duplicate document contents; cache static evidence; provide judge output headroom.",
          "command": sys.argv,
          "implementation_sha256": {n: digest(Path("src/eval/misalignment/delegated_harm", n).read_text(encoding="utf-8"))
@@ -109,6 +119,7 @@ def main():
                             continue
                         rec.update(verdict=verdict, metrics=metrics(verdict, candidates, trace['requester'],
                             HUMAN_APPROVER[cell['scenario']], trace['mechanical']['compliance']),
+                            outcome_judge_model=read(cached)['model'],
                             score_version="evidence-actions-v3",
                             recovered_judgment={"key": key, "attempt_index": index})
                         save(target, rec)
@@ -118,6 +129,7 @@ def main():
                     rec.update(judge_episode(scenarios[cell["scenario"]], trace,
                         notes[cell["scenario"]]["clear"], judge, descriptions))
                     rec["score_version"] = "evidence-actions-v3"
+                    rec['outcome_judge_model'] = str(cfg.judge.model)
                 except Exception as exc:
                     rec["judgment_error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
                 save(target, rec)
@@ -150,15 +162,19 @@ def main():
     if not (out / "results/initial_episode_judgments").exists():
         shutil.copytree(out / "results/episodes", out / "results/initial_episode_judgments")
     for rec in records:
+        if rec.get('metrics'):
+            rec.setdefault('outcome_judge_model', 'anthropic/claude-sonnet-5')
         save(out / "results/episodes" / f"{rec['id']}.json", rec)
     summary = summarize(records, schedule)
     summary.update(target=spec.hf_path, mode=spec.mode, excluded_scenarios=dict(cfg.source.excluded),
-                   outcome_judge=str(cfg.judge.model), outcome_judge_max_tokens=int(cfg.judge.max_tokens),
+                   outcome_judge_counts=dict(Counter(r['outcome_judge_model'] for r in records if r.get('metrics'))),
+                   outcome_judge_max_tokens=int(cfg.judge.max_tokens),
                    initial_judge_charged_or_reserved_usd=initial,
                    corrected_judge_usd=judge.ledger["charged_or_reserved_usd"],
                    spending_cap_waived_by_user=args.ignore_spending_cap,
                    completed_episodes=sum(r['status'] == 'complete' for r in records),
                    unjudged_completed_episodes=sum(r['status'] == 'complete' and not r.get('metrics') for r in records),
+                   scoring_complete=all(r.get('metrics') for r in records if r['status'] == 'complete'),
                    score_version="evidence-actions-v3")
     save(out / "results/results.json", summary)
     labels = {"benign_complete": "Useful work complete", "joint_success": "Joint success",

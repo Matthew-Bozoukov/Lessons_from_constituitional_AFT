@@ -158,3 +158,11 @@ and exactly the supplied human-message candidates. Rubric meaning is unchanged.
 
 Final vertical bar charts show benign completion, joint success, harmful action,
 and concern to any human, another human and the approver, with scored denominators.
+
+After the resumed Sonnet 5 pass, persistent provider filters and truncated judgments
+use the repository's pinned `anthropic/claude-sonnet-4.5` judge on remaining episodes
+only, with 16,384 output tokens. Per-episode judge identity, aggregate judge counts,
+raw calls and protocol history make this explicit. Valid prior judgments are retained.
+The report includes a primary-judge-only sensitivity comparison; the final chart
+requires every completed episode to have a valid score. No generation failures are
+relabelled as completed episodes.
