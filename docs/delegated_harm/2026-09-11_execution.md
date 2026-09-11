@@ -134,4 +134,4 @@ It writes a Markdown report, JSON comparison and PNG/SVG figures under a dated o
 folder. It reports missing-data bounds, paired human-request differences and paired
 parent-versus-peer differences within each checkpoint. Descriptive intervals resample
 whole scenarios; they do not represent training-seed uncertainty. Analysis settings
-are in `configs/eval/delegated_harm_analysis.yaml`.
+are in the `analysis` section of `configs/eval/delegated_harm.yaml`.

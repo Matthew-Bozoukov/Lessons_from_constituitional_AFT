@@ -45,7 +45,7 @@ def main():
     parser.add_argument("--control-run", required=True)
     parser.add_argument("--da-run", required=True)
     args = parser.parse_args()
-    cfg = OmegaConf.load("configs/eval/delegated_harm_analysis.yaml")
+    cfg = OmegaConf.load("configs/eval/delegated_harm.yaml").analysis
     runs = {"control": Path(args.control_run), "da": Path(args.da_run)}
     controllers = {name: run.parents[1]/"controller.json" for name, run in runs.items()}
     repos = {name: hf_repo_id(read(path)["eval_name"]) for name, path in controllers.items()}

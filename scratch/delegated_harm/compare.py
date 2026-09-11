@@ -83,9 +83,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--control", required=True)
     parser.add_argument("--da", required=True)
-    parser.add_argument("--config", default="configs/eval/delegated_harm_analysis.yaml")
+    parser.add_argument("--config", default="configs/eval/delegated_harm.yaml")
     args = parser.parse_args()
-    cfg = OmegaConf.load(args.config)
+    cfg = OmegaConf.load(args.config).analysis
     runs = {name: load_run(repo) for name, repo in (("control", args.control), ("da", args.da))}
     assert runs["control"]["human_requests"] == runs["da"]["human_requests"], "Human requests differ"
     assert runs["control"]["protocol"]["target"]["base_revision"] == runs["da"]["protocol"]["target"]["base_revision"]
