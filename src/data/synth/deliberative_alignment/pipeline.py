@@ -96,8 +96,12 @@ def validate_config(cfg: dict) -> None:
         raise ValueError("source accepts only repo, optional revision and optional rows; intake is always dataset.jsonl")
     if not cfg["source"].get("repo"):
         raise ValueError("source.repo is required")
-    if not str(cfg["model"]).startswith("qwen/"):
-        raise ValueError("The deliberative SFT generator must be Qwen")
+    # The generator is whatever model the config names -- Qwen (self-generation, the original
+    # recipe) or a stronger teacher such as Sonnet (the 2026-09-11 control: same prompts,
+    # constitution, judge and training; only the teacher changes) -- as long as it is pinned
+    # to one provider below and returns a native reasoning trace (checked per completion).
+    if not isinstance(cfg["model"], str) or "/" not in cfg["model"]:
+        raise ValueError("model must be an OpenRouter model id (<provider>/<model>)")
     pin, _ = generator_pin(cfg)
     if len(pin.get("order") or []) != 1 or pin.get("allow_fallbacks") is not False:
         raise ValueError("The generator must be pinned to exactly ONE provider with allow_fallbacks: false "
@@ -110,8 +114,12 @@ def validate_config(cfg: dict) -> None:
     reasoning = sampling["reasoning"]
     if not isinstance(reasoning, dict) or reasoning.get("enabled") is not True or reasoning.get("exclude") is not False:
         raise ValueError("sampling.reasoning must set enabled: true and exclude: false")
-    if set(reasoning) - {"enabled", "exclude", "max_tokens"}:
-        raise ValueError("Only enabled, exclude, and max_tokens are supported in reasoning")
+    if set(reasoning) - {"enabled", "exclude", "max_tokens", "effort"}:
+        raise ValueError("Only enabled, exclude, max_tokens and effort are supported in reasoning")
+    if "effort" in reasoning and reasoning["effort"] not in ("low", "medium", "high"):
+        raise ValueError("sampling.reasoning.effort must be low, medium or high")
+    if "effort" in reasoning and "max_tokens" in reasoning:
+        raise ValueError("sampling.reasoning takes effort OR max_tokens, not both")
     integer_settings = {"sampling.max_tokens": sampling["max_tokens"], "workers": cfg["workers"]}
     if "max_tokens" in reasoning:
         integer_settings["reasoning.max_tokens"] = reasoning["max_tokens"]
