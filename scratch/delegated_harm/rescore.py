@@ -5,6 +5,7 @@ import json
 import shutil
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from pathlib import Path
 
@@ -38,8 +39,7 @@ def main():
             controller = read(controller_path)
     protocol = read(out / "metadata/protocol.json")
     cfg = OmegaConf.create(protocol["protocol"])
-    cfg.judge.max_tokens = 8192
-    cfg.judge.cache_ttl = "1h"
+    cfg.judge = OmegaConf.merge(cfg.judge, OmegaConf.load("configs/eval/delegated_harm.yaml").judge)
     # Preserve the initial ledger, including conservative reservations for failed calls.
     initial = read(out / "metadata/judge_ledger.json")["charged_or_reserved_usd"]
     if args.check_one:
@@ -67,15 +67,12 @@ def main():
     destination.mkdir(parents=True, exist_ok=True)
     schedule = read(out / "metadata/schedule.json")
     records = []
-    done = 0
-    # Group by scenario to reuse the fixed evidence prefix, without selecting outcomes.
-    for cell in sorted(schedule, key=lambda c: c["id"]):
+    def score_cell(cell):
         target = destination / f"{cell['id']}.json"
         if target.exists():
             rec = read(target)
             if rec.get("metrics") and rec.get("score_version") == "evidence-actions-v3":
-                records.append(rec)
-                continue
+                return rec, False
         path = out / "rollouts" / f"{cell['id']}.json"
         original_path = out / "results/episodes" / f"{cell['id']}.json"
         original = read(original_path) if original_path.exists() else dict(cell, status="missing")
@@ -90,14 +87,30 @@ def main():
                 except Exception as exc:
                     rec["judgment_error"] = {"type": type(exc).__name__, "message": str(exc)[:500]}
                 save(target, rec)
-                done += 1
                 print(f"{cell['id']}: {'judged' if rec.get('metrics') else rec.get('judgment_error')}; "
                       f"re-score ledger ${judge.ledger['charged_or_reserved_usd']:.3f}/${budget:.3f}", flush=True)
-                if args.check_one:
-                    return
-        records.append(rec)
+                return rec, True
+        return rec, False
     if args.check_one:
+        for cell in sorted(schedule, key=lambda c: c["id"]):
+            _, attempted = score_cell(cell)
+            if attempted:
+                return
         raise RuntimeError("No completed episode available for the scoring check")
+    # Warm one case per scenario, then judge independent episodes concurrently. This
+    # preserves the rubric and model while avoiding hundreds of serial API round trips.
+    with ThreadPoolExecutor(max_workers=int(cfg.judge.workers)) as pool:
+        for key in sorted(scenarios):
+            group = sorted([c for c in schedule if c["scenario"] == key], key=lambda c: c["id"])
+            first, _ = score_cell(group[0])
+            records.append(first)
+            records.extend(rec for rec, _ in pool.map(score_cell, group[1:]))
+    # A concurrent reservation can temporarily occupy the remaining budget. Retrying
+    # only this pre-request failure costs no duplicate judgment and uses freed credit.
+    cells_by_id = {c["id"]: c for c in schedule}
+    for i, rec in enumerate(records):
+        if rec.get("judgment_error", {}).get("type") == "BudgetExceeded":
+            records[i], _ = score_cell(cells_by_id[rec["id"]])
     # Only after the original writer has stopped: preserve its output, then replace
     # canonical episode scores with the uniform corrected pass for every condition.
     if not (out / "results/initial_episode_judgments").exists():
@@ -106,7 +119,7 @@ def main():
         save(out / "results/episodes" / f"{rec['id']}.json", rec)
     summary = summarize(records, schedule)
     summary.update(target=spec.hf_path, mode=spec.mode, excluded_scenarios=dict(cfg.source.excluded),
-                   outcome_judge=str(cfg.judge.model), outcome_judge_max_tokens=8192,
+                   outcome_judge=str(cfg.judge.model), outcome_judge_max_tokens=int(cfg.judge.max_tokens),
                    initial_judge_charged_or_reserved_usd=initial,
                    corrected_judge_usd=judge.ledger["charged_or_reserved_usd"],
                    score_version="evidence-actions-v3")

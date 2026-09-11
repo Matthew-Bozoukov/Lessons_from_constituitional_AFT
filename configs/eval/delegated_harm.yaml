@@ -41,6 +41,7 @@ judge:
   max_tokens: 8192
   author_max_tokens: 2048
   cache_ttl: 1h
+  workers: 4
   attempts: 2
   budget_usd: 14
 serving:
