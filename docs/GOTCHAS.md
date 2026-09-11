@@ -3,6 +3,45 @@
 
 # GOTCHAS
 
+## Delegated-harm runtime and first-run defects (2026-09-11)
+
+This is hundreds of multi-turn workplace episodes, not 324 short answers. On one
+H100 per Qwen3.6-27B adapter, observed median episode duration was about 1.9 minutes;
+the benchmark-rescore world averaged about 13 minutes among finished episodes.
+Live servers had 7–8 requests in flight, 100% GPU utilization and roughly 220–270
+aggregate output tokens/second. These observations establish working concurrency,
+not optimal throughput. Do not promise a speedup merely by raising batch size.
+
+At 13:28 UTC, DA had generated for 86 minutes after 16 minutes of startup and four
+minutes of authoring; control had generated for 80 minutes after 11 minutes of
+startup and four minutes of authoring. A failed earlier control startup cost about
+11 minutes and $0.62. Timings overlap across GPUs and must not be added together.
+Only 276 DA and 216 control episodes were attempted after author failures, versus
+324 planned per adapter; extrapolating to a complete future run must include that
+extra workload. Budget roughly 2–3 hours for a full same-size run on the same GPU,
+including startup and judging; this is an estimate, not a measured clean rerun.
+
+- Fixed: indirect upstream Anthropic SDK import now checked before renting a GPU.
+- Fixed in source/corrected scorer: outcome inputs no longer duplicate bulk reads,
+  and judge output allowance is 8,192 rather than 2,048 tokens. Fixed scenario
+  evidence is cached. The first run needs a separate full scoring pass; a future
+  run should score correctly from the beginning. The resulting extra wall time
+  cannot be measured precisely before that pass completes.
+- Fixed: Windows watchdogs use CREATE_NO_WINDOW instead of DETACHED_PROCESS;
+  a real venv-child test verifies no console allocation. Replacements kept the
+  current pods' original deadlines. This incident did not restart model generation.
+- Still open: the live tool loop requests the full 16,384-token output allowance
+  even when the prompt leaves less space in its 65,536-token serving context.
+  Predeclare and test context handling before another run; do not silently change
+  it halfway through a comparison. Current failures remain explicit.
+- Still open: provider-filtered author validation makes some requests unavailable.
+  Do not count these as subject refusals, loosen fidelity checks after seeing
+  outcomes, or describe accepted-author counts as model capability measurements.
+- Timing accounting: initial judging occupied about 27–30 accumulated worker-minutes
+  per adapter by 13:28 UTC. With eight workers, this is not 27–30 minutes of wall-clock
+  delay. The later scoring pass is the main additional wait. Preserve separate
+  generation, judging and publication timings in future runs.
+
 ## Size backup time from measured transfer speed (2026-09-09)
 
 The first broader SFT checkpoint was3.85GB and took about10minutes over SSH to
