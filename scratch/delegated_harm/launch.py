@@ -1,6 +1,7 @@
 # ABOUTME: Own one adapter's GPU, driver, spend deadline and verified cleanup.
 # ABOUTME: Run twice in parallel: uv run scratch/delegated_harm/launch.py control|da.
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -51,14 +52,24 @@ def main():
     snapshot = account()
     gpu = "NVIDIA H100 80GB HBM3"
     quote = next(float(g["securePrice"]) for g in snapshot["gpuTypes"] if g["id"] == gpu)
-    hours = min(3.75, 14.5 / (quote + 0.10))
+    previous = [json.loads(p.read_text(encoding="utf-8"))
+                for p in Path("output/delegated_harm").glob("*/controller.json")]
+    previous = [p for p in previous if p["arm"] == args.arm and p.get("billing_started")]
+    if any(not p.get("terminated") for p in previous):
+        raise RuntimeError("This adapter already has an unterminated owned launch")
+    spent = sum((p["finished"] - p["billing_started"]) / 3600 * p["actual_pod_hourly_usd"]
+                for p in previous)
+    hours = min(3.75, (14.5 - spent) / (quote + 0.10))
+    if hours <= 0:
+        raise RuntimeError("GPU budget already consumed by prior startup attempts")
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
     root = Path("output/delegated_harm") / f"{stamp}_{args.arm}"
     root.mkdir(parents=True, exist_ok=True)
     state = {"arm": args.arm, "model": model, "revision": spec.revision,
              "base_revision": spec.base_revision, "eval_name": name,
              "account_before": snapshot["myself"], "quoted_gpu_hourly_usd": quote,
-             "max_hours": hours, "api_budget_usd": float(cfg.judge.budget_usd),
+             "max_hours": hours, "prior_gpu_usd_estimate": spent,
+             "api_budget_usd": float(cfg.judge.budget_usd),
              "budget_usd": 30, "pid": os.getpid(), "status": "provisioning"}
     statefile = root / "controller.json"
     save(statefile, state)
@@ -70,7 +81,7 @@ def main():
         guard = runpod.start_watchdog(pod_id, int(hours*3600), root / "watchdog.log")
         pod = runpod.call("GET", f"/pods/{pod_id}")
         rate = float(pod.get("costPerHr") or 0)
-        if rate <= 0 or rate * hours > 15:
+        if rate <= 0 or rate * hours + spent > 15:
             raise RuntimeError("Actual pod hourly charge cannot fit GPU budget")
         state["actual_pod_hourly_usd"] = rate
         save(statefile, state)

@@ -63,6 +63,7 @@ dependencies = [
     # is the first), so re-run `uv lock` on the darwin driver after touching either pin.
     "scikit-learn>=1.9.0",
     "umap-learn>=0.5.12",
+    "anthropic>=0.120.2",
 ]
 
 

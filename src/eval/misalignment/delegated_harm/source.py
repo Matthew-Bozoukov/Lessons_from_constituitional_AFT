@@ -56,7 +56,9 @@ def prepare(cfg):
         if actual != patched:
             (root / name).write_text(patched + "\n", encoding="utf-8")
     sys.path.insert(0, str(root))
-    from core import registry
+    # Authoring imports the upstream runner, which itself imports both provider SDKs.
+    # Check that dependency chain before a caller rents or starts a GPU.
+    from core import registry, reskin, escaldet
     known = set(registry.keys())
     selected = set(cfg.scenarios)
     excluded = set(cfg.source.excluded)
