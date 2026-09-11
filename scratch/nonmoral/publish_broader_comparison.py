@@ -346,7 +346,14 @@ def main():
         target.parent.mkdir(parents=True,exist_ok=True)
         target.write_bytes(raw)
     for p in (BASE/'final_comparison').iterdir():
-        if p.is_file() and not p.name.endswith('.preview.json'): copy(p, 'results/'+p.name)
+        if p.is_file() and p.suffix in {'.json', '.md'} and not p.name.endswith('.preview.json'):
+            copy(p, 'results/'+p.name)
+    for p in (dest/'results').iterdir():
+        if p.suffix in {'.png', '.svg', '.pdf'}:
+            p.unlink()  # Staging copies only; figures stay in final_comparison.
+        elif p.suffix == '.md':
+            p.write_text('\n'.join(line for line in p.read_text(encoding='utf-8').splitlines()
+                                    if not line.startswith('!['))+'\n', encoding='utf-8')
     for relative in ('evaluation/broader_eval_status.json','evaluation/judge_ledger.json',
                      'evaluation_plan.json','training_retry1/unexpected_stop_incident.json',
                      'training_retry1/salvaged_outputs/verified_final_adapter_receipt.json'):
@@ -365,7 +372,7 @@ def main():
                 date_generated='2026-09-09',constitution='none supplied at evaluation',
                 source_repo='https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ '+revision,
                 models={k:{f:v[f] for f in ('target','target_revision','base_revision')} for k,v in report['arms'].items()},
-                generation_config=report['protocol'],schema='results/: exact counts, paired intervals and figures; metadata/: source pins, verification and cost evidence',
+                generation_config=report['protocol'],schema='results/: exact counts and paired intervals; metadata/: source pins, verification and cost evidence; figures remain local',
                 provenance='scratch/nonmoral/baseline_report.py then scratch/nonmoral/publish_broader_comparison.py',
                 limitations='One training seed each; evaluation repeats are not training seeds. No formal capability tests. Broader MR 76/240 versus original 33/240; this candidate did not improve alignment. Training backup interrupted by externally reported stop: final adapter verified locally, full archive incomplete. Stop and deletion actor unknown.')
     name=artifact_name('nonmoral-broader-comparison',date='2026-09-09')

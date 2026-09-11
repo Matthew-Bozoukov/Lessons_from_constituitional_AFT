@@ -1,0 +1,61 @@
+# ABOUTME: Separate vertical bars for completed checkpoint comparisons and failed data pilots.
+# ABOUTME: Run: uv run --no-sync python -m scratch.nonmoral.baseline_report --writeup-config scratch/nonmoral/writeup_charts.yaml --out output/nonmoral_writeup/20260911/charts
+experiments:
+  - id: nonmoral-baseline-controls
+    title: Nonmoral deliberation and baseline controls
+    source:
+      repo: dougalldeepmind/2026-09-09-nonmoral-baseline-comparison
+      revision: a8fd17e2ac42ad7129596fdc3ce6e36703d0b7ec
+      file: results/comparison.json
+    status: all_three_complete
+    arms: [nonmoral, math, table2]
+    labels: ["Original\nnonmoral", "Math\ncontrol", "Replay only\n(no synthetic)"]
+    colors: ['#347c84', '#7b8295', '#a6abb8']
+    interpretation: Original nonmoral MR was 33/240 (13.75%), math 92/240 (38.33%), and replay-only 90/240 (37.50%) under the same ODCV protocol. These are fixed checkpoints with different training populations, not an isolated causal test of deliberation or training-seed replication. The original checkpoint's historical 18.25% used another evaluation protocol.
+  - id: nonmoral-broader-versus-original
+    title: Broader versus original nonmoral data
+    source:
+      repo: dougalldeepmind/2026-09-09-nonmoral-broader-comparison
+      revision: 014b089ba27ae30c9fc268b27b1aae874c1a7e40
+      file: results/comparison.json
+    status: all_four_complete
+    arms: [nonmoral, broader]
+    labels: ["Original\nnonmoral", "Broader\nnonmoral"]
+    colors: ['#347c84', '#c97b44']
+    interpretation: Broadening the synthetic tasks did not improve this checkpoint; MR increased from 33/240 (13.75%) to 76/240 (31.67%). Several data properties changed together. This does not identify which property caused the difference or establish training-seed robustness.
+  - id: nonmoral-low-versus-high-stakes
+    title: Low versus high nonmoral stakes
+    source:
+      repo: dougalldeepmind/2026-09-11-nonmoral-stakes-comparison
+      revision: c8f0e504d6d0f4f184b18ba92f5d355617838ecc
+      file: results/comparison.json
+    status: matched_stakes_complete
+    arms: [low, high]
+    labels: [Low stakes, High stakes]
+    colors: ['#477aab', '#8863a8']
+    interpretation: Low MR was 47/240 (19.58%), high 40/240 (16.67%). High minus low was -2.92 percentage points, scenario-paired 95% CI [-7.88, +2.04]. This establishes neither a stakes effect nor equivalence. Only numerical losses differed; perceived stakes were not independently validated.
+pilots:
+  - id: nonmoral-paired-generation-gate
+    title: Paired deliberation data pilot — stopped
+    source:
+      repo: dougalldeepmind/2026-09-09-nonmoral-paired-development
+      revision: 105dc5c9c84d1de0361e14d453347777aaf60e85
+      file: fresh/terminal_decision.json
+    required_evidence: ['"final_valid": 13', '"original_denominator": 32']
+    labels: [After one allowed correction]
+    accepted: [13]
+    denominators: [32]
+    gates: [24]
+    interpretation: The fresh paired comparative-versus-construction pilot yielded 13/32 qualifying cases, below the frozen 24/32 gate. No paired LoRAs or ODCV ablation followed. This is a generation-quality result, not an alignment score.
+  - id: nonmoral-grounded-revision-gates
+    title: Grounded response revision pilots — stopped
+    source:
+      repo: dougalldeepmind/2026-09-10-nonmoral-grounded-revision-pilot-audit
+      revision: 58f80cd4ec9d2f7749d66a1e92153399b301ee38
+      file: RESULTS.md
+    required_evidence: ['| Local usable, textually changed revisions |2|10|', '| Existing source prompts, unchanged |16|16|']
+    labels: [Initial pilot, Corrected pilot]
+    accepted: [2, 10]
+    denominators: [16, 16]
+    gates: [12, 12]
+    interpretation: The corrected pilot had 10/16 usable changed revisions against a 12/16 gate, and only 3 substantive improvements against a gate of 4. The projected data cost also exceeded the cap. No production dataset, SFT or ODCV followed.

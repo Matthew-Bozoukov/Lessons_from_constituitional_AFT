@@ -1,5 +1,6 @@
 # ABOUTME: One grounded revision of existing broader nonmoral conversations with independent review.
 # ABOUTME: Prompt v2 addresses pilot01 draft anchoring and editing commentary; one fresh pilot only.
+# Run: uv run --no-sync python scratch/nonmoral/broader_data.py --revision prepare --config configs/data/synth/nonmoral-grounded-revision.yaml
 method: ours
 pipeline: nonmoral-grounded-revision
 constitution: preferences/nonmoral_broad/preferences.md

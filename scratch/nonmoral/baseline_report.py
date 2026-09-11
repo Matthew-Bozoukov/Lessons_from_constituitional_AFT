@@ -298,6 +298,112 @@ def draw(arms, out, *, subject='nonmoral-common-baselines', date='2026-09-09'):
     return path
 
 
+def writeup_charts(config, out):
+    """Export separate vertical bars from pinned public results, with exact source rows."""
+    from src.infra.huggingface import hf_download
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import csv
+    import subprocess
+    import zipfile
+
+    config = Path(config)
+    cfg = OmegaConf.to_container(OmegaConf.load(config), resolve=True)
+    out = Path(out); out.mkdir(parents=True, exist_ok=True)
+    plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 11,
+                         'axes.spines.top': False, 'axes.spines.right': False})
+    exports = []
+    for experiment in cfg['experiments']:
+        source = experiment['source']
+        path = Path(hf_download(source['repo'], source['file'], repo_type='dataset', revision=source['revision']))
+        report = read(path)
+        require(report['status'] == experiment['status'], 'Unexpected report status')
+        arms = [report['arms'][key] for key in experiment['arms']]
+        require(all(a['denominator'] == 240 for a in arms), 'Expected 240 scored rollouts per arm')
+        for metric, heading, ceiling, ylabel in [
+                ('mr', 'Misalignment', 100, 'Misaligned rollouts (%) — lower is better'),
+                ('submission', 'Task submission', 100, 'Rollouts with task_complete (%)'),
+                ('progress', 'Task progress', 5, 'Mean judged progress (0–5)')]:
+            fig, ax = plt.subplots(figsize=(7.5, 5.3))
+            values, annotations, records = [], [], []
+            for arm in arms:
+                if metric == 'mr':
+                    value = arm['mr_pct']; numerator = arm['mr_numerator']
+                elif metric == 'submission':
+                    value = arm['submitted_pct']; numerator = arm['submitted_numerator']
+                else:
+                    value = arm['progress_mean']; numerator = None
+                values.append(value)
+                annotations.append(f'{value:.2f}%\n{numerator}/240' if numerator is not None else f'{value:.3f}/5')
+                records.append(dict(arm=arm['label'], value=value, numerator=numerator, denominator=240,
+                    low=arm['scenario_mr']['lo'] if metric == 'mr' else None,
+                    high=arm['scenario_mr']['hi'] if metric == 'mr' else None))
+            x = list(range(len(arms)))
+            ax.bar(x, values, width=.57, color=experiment['colors'], zorder=2)
+            if metric == 'mr':
+                ax.errorbar(x, values, yerr=[[v-a['scenario_mr']['lo'] for v,a in zip(values, arms)],
+                    [a['scenario_mr']['hi']-v for v,a in zip(values, arms)]], fmt='none',
+                    color='#283441', capsize=5, linewidth=1.5, zorder=3)
+            for i, text in enumerate(annotations):
+                y = (arms[i]['scenario_mr']['hi'] + 3 if metric == 'mr' else values[i] - ceiling*.035)
+                ax.text(i, y, text, ha='center', va='bottom' if metric == 'mr' else 'top',
+                        color='#17212b' if metric == 'mr' else 'white', fontweight='bold', fontsize=11)
+            ax.set_xticks(x, experiment['labels'])
+            ax.set_ylim(0, ceiling); ax.set_ylabel(ylabel)
+            ax.set_title(experiment['title']+'\n'+heading, loc='left', fontsize=14, fontweight='bold', pad=15)
+            ax.grid(axis='y', alpha=.18, zorder=0); ax.set_axisbelow(True)
+            footer = 'One training seed per checkpoint · 40 scenarios × 2 variants × 3 passes'
+            footer += '\nWhiskers: scenario-level 95% CI; training-seed variability is not estimated.' if metric == 'mr' else '\nSubmission and progress are proxies, not a general capabilities assessment.'
+            fig.text(.12, .03, footer, fontsize=9, color='#475569', va='bottom')
+            fig.tight_layout(rect=(0, .12, 1, 1))
+            png = figure_path(out, experiment['id']+'-'+metric)
+            for ext in ('png', 'svg', 'pdf'):
+                fig.savefig(png.with_suffix('.'+ext), dpi=320, facecolor='white')
+            plt.close(fig)
+            with png.with_suffix('.csv').open('w', newline='', encoding='utf-8') as stream:
+                writer = csv.DictWriter(stream, fieldnames=list(records[0])); writer.writeheader(); writer.writerows(records)
+            note = '\n'.join([f"# {experiment['title']}: {heading}", '', experiment['interpretation'], '',
+                f"Source: https://huggingface.co/datasets/{source['repo']}/blob/{source['revision']}/{source['file']}", '',
+                'Every rollout retained. Confidence intervals condition on the trained checkpoints. No cross-experiment ranking is implied.', ''])
+            png.with_name(png.stem+'_results.md').write_text(note, encoding='utf-8')
+            exports.append(dict(experiment=experiment['id'], metric=metric, png=str(png.resolve()),
+                source=source, source_sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+    for pilot in cfg.get('pilots', []):
+        path = Path(hf_download(pilot['source']['repo'], pilot['source']['file'], repo_type='dataset', revision=pilot['source']['revision']))
+        source_text = path.read_text(encoding='utf-8')
+        require(all(e in source_text for e in pilot['required_evidence']), 'Pilot counts do not match pinned source')
+        fig, ax = plt.subplots(figsize=(7.5, 5.3))
+        rates = [100*n/d for n,d in zip(pilot['accepted'],pilot['denominators'])]
+        gates = [100*n/d for n,d in zip(pilot['gates'],pilot['denominators'])]
+        x = list(range(len(rates)))
+        ax.bar(x, rates, width=.55, color='#b87342')
+        for i,(rate,gate,n,d) in enumerate(zip(rates,gates,pilot['accepted'],pilot['denominators'])):
+            ax.hlines(gate, i-.35, i+.35, color='#334155', linewidth=2, linestyles='dashed')
+            ax.text(i, rate+2, f'{n}/{d}\n{rate:.1f}%', ha='center', va='bottom', fontweight='bold')
+            ax.text(i, gate+2, f'Gate: {pilot["gates"][i]}/{d}', ha='center', fontsize=10, color='#475569')
+        ax.set_xticks(x,pilot['labels']); ax.set_ylim(0,100); ax.set_ylabel('Candidates passing local checks (%)')
+        ax.set_title(pilot['title'], loc='left', fontsize=14, fontweight='bold', pad=15)
+        ax.grid(axis='y', alpha=.18); ax.set_axisbelow(True)
+        fig.text(.12,.035,'Data-generation pilots only — no model was trained on these candidates.\nDashed marks show the predeclared yield gates; other gates also applied.',fontsize=9,color='#475569')
+        fig.tight_layout(rect=(0,.12,1,1))
+        png=figure_path(out,pilot['id'])
+        for ext in ('png','svg','pdf'):fig.savefig(png.with_suffix('.'+ext),dpi=320,facecolor='white')
+        plt.close(fig)
+        png.with_name(png.stem+'_results.md').write_text(pilot['interpretation']+'\n\nSource: https://huggingface.co/datasets/'+pilot['source']['repo']+'/blob/'+pilot['source']['revision']+'/'+pilot['source']['file']+'\n',encoding='utf-8')
+        exports.append(dict(experiment=pilot['id'], metric='pilot_yield', png=str(png.resolve()), source=pilot['source']))
+    meta = dict(git_sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+        command=f'uv run --no-sync python -m scratch.nonmoral.baseline_report --writeup-config {config} --out {out}',
+        config=cfg, exports=exports)
+    (out/'run_meta.json').write_text(json.dumps(meta,indent=2)+'\n',encoding='utf-8')
+    archive=out/(figure_path(out,'nonmoral-writeup-charts').stem+'.zip')
+    with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED) as bundle:
+        for p in sorted(out.iterdir()):
+            if p.is_file() and p != archive and p.suffix in {'.png','.svg','.pdf','.csv','.md','.json'}:
+                bundle.write(p,p.name)
+    print(json.dumps(dict(charts=len(exports),archive=str(archive.resolve())),indent=2))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for arm in LABELS:
@@ -305,10 +411,14 @@ if __name__ == '__main__':
     parser.add_argument('--low', type=Path)
     parser.add_argument('--high', type=Path)
     parser.add_argument('--matched-models', type=Path)
+    parser.add_argument('--writeup-config', type=Path)
     parser.add_argument('--broader', type=Path)
     parser.add_argument('--broader-revision')
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
+    if args.writeup_config:
+        writeup_charts(args.writeup_config, args.out)
+        raise SystemExit(0)
     names = ('low', 'high') if args.matched_models else LABELS
     paths = {name: getattr(args, name) for name in names}
     require(all(paths.values()), 'All selected arm directories are required')
