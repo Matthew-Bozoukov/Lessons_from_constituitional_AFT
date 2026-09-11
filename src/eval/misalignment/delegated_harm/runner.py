@@ -320,6 +320,9 @@ def checkpoint(out, target, cfg, summary):
 
 
 def run(target, cfg, out_dir):
+    if cfg.get("scaling"):
+        from .scale_worker import run_worker
+        return run_worker(target, cfg, out_dir)
     if cfg.get("recovery"):
         from .recovery import run_recovery
         return run_recovery(target, cfg, out_dir)
