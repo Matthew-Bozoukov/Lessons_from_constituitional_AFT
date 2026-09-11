@@ -85,6 +85,8 @@ def initialize(root):
         OmegaConf.save(cfg, root / f'metadata/config-{arm}.yaml')
         handoff['arms'][arm] = {'legacy_root': str(legacy_root), 'legacy_run': str(legacy),
             'driver': driver, 'cutover': cutoff, 'legacy_owned': sorted(owners),
+            'launcher': {'pid': controller['pid'], 'identity': runpod._process_identity(controller['pid'])},
+            'pod_id': controller['pod_id'],
             'transferred': sorted(missing - owners.keys()), 'initial_completed': len(read(legacy / 'metadata/recovery.json')['preserved_completed_hashes'])}
         print(arm, 'retained with existing GPU', len(owners), 'transferred', len(missing)-len(owners), flush=True)
     save(root / 'metadata/handoff.json', handoff)
@@ -93,6 +95,11 @@ def initialize(root):
 
 def add_workers(root, arm, count):
     assert (root / 'metadata/handoff.json').exists()
+    pending = sum(j['arm'] == arm and j['state'] == 'pending'
+                  for j in EpisodeQueue(root / 'queue.sqlite').snapshot()['jobs'])
+    if not pending:
+        print(f'{arm}: no unclaimed episodes; no GPU rented', flush=True)
+        return
     for _ in range(count):
         index = 1
         while (root / 'workers' / f'{arm}-h200-{index}').exists():
@@ -201,10 +208,16 @@ def drain_legacy(root, queue, handoff):
                 continue
             # Retain all legacy overlap for audit, but ownership—not completion order—
             # determines which observations are accepted by the merger.
-            driver = info['driver']
-            if runpod._process_identity(driver['pid']) == driver['identity']:
-                subprocess.run(['taskkill', '/PID', str(driver['pid']), '/T', '/F'], check=True,
+            launcher = info['launcher']
+            if runpod._process_identity(launcher['pid']) == launcher['identity']:
+                subprocess.run(['taskkill', '/PID', str(launcher['pid']), '/T', '/F'], check=True,
                                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            runpod.teardown(info['pod_id'])
+            legacy_controller = Path(info['legacy_root']) / 'controller.json'
+            controller = read(legacy_controller)
+            controller.update(status='superseded_by_horizontal_scaling', terminated=True,
+                              finished=time.time(), horizontal_scaling_root=str(root))
+            save(legacy_controller, controller)
             save(marker, {'time': time.time(), 'kept': [j['id'] for j in fresh],
                           'reason': 'All pre-handoff episodes finished; stop legacy queue and cancel unassigned overlap.'})
             queue.mode(worker, 'stopped')
@@ -329,7 +342,11 @@ def main():
             queue.pause(args.mode == 'pause')
         snap = queue.snapshot()
         print(dict(Counter((j['arm'], j['state']) for j in snap['jobs'])))
-        print(json.dumps(snap['workers'], indent=2))
+        print(json.dumps([{'worker': w['id'], 'arm': w['arm'], 'mode': w['mode'],
+                           'heartbeat_age_seconds': round(time.time()-w['heartbeat'], 1),
+                           'claims': sum(j['owner'] == w['id'] and j['state'] == 'claimed' for j in snap['jobs']),
+                           'finished': sum(j['owner'] == w['id'] and j['state'] == 'done' for j in snap['jobs'])}
+                          for w in snap['workers']], indent=2))
 
 
 if __name__ == '__main__':
