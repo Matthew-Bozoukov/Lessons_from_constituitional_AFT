@@ -38,7 +38,9 @@ author:
   attempts: 3
 judge:
   model: anthropic/claude-sonnet-5
-  max_tokens: 2048
+  max_tokens: 8192
+  author_max_tokens: 2048
+  cache_ttl: 1h
   attempts: 2
   budget_usd: 14
 serving:

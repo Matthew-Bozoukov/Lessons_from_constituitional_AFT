@@ -7,7 +7,7 @@ import threading
 from dataclasses import asdict
 from pathlib import Path
 
-from src.infra.endpoints.openrouter import OpenRouterClient, provider_pin, provider_price
+from src.infra.endpoints.openrouter import CACHE_MARK, OpenRouterClient, provider_pin, provider_price
 from .source import digest, save
 
 
@@ -25,13 +25,21 @@ class Judge:
         if ledger.exists():
             self.ledger = json.loads(ledger.read_text(encoding="utf-8"))
 
-    def ask(self, system, payload, validate):
+    def ask(self, system, payload, validate, *, max_tokens=None):
+        max_tokens = int(max_tokens or self.cfg.max_tokens)
         messages = [{"role": "system", "content": system},
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+        long_cache = CACHE_MARK in system and self.cfg.get("cache_ttl") == "1h"
+        if long_cache:
+            prefix, _, suffix = system.partition(CACHE_MARK)
+            messages[0]["content"] = [{"type": "text", "text": prefix,
+                "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
+            if suffix:
+                messages[0]["content"].append({"type": "text", "text": suffix})
         model = str(self.cfg.model)
         pin = provider_pin(model)
         key = digest({"model": model, "provider": pin, "messages": messages,
-                      "max_tokens": int(self.cfg.max_tokens), "version": 1})
+                      "max_tokens": max_tokens, "version": 2})
         path = self.out / "metadata/judgments" / f"{key}.json"
         if path.exists():
             old = json.loads(path.read_text(encoding="utf-8"))
@@ -42,7 +50,9 @@ class Judge:
         # A byte bounds the number of UTF-8 token pieces. Overestimates normal prose,
         # but unused reservation is refunded when the provider reports actual usage.
         upper_input = len(json.dumps(messages, ensure_ascii=False).encode("utf-8")) + 1024
-        reserve = (upper_input * price["in"] + int(self.cfg.max_tokens) * price["out"]) / 1e6
+        # A one-hour cache write can cost 2x ordinary input; a cache read is cheaper.
+        reserve = (upper_input * price["in"] * (2 if long_cache else 1)
+                   + max_tokens * price["out"]) / 1e6
         record = {"key": key, "model": model, "provider": pin, "messages": messages,
                   "attempts": [], "valid": False}
         for attempt in range(int(self.cfg.attempts)):
@@ -58,7 +68,7 @@ class Judge:
                 # have its own reservation. This outer loop is the sole retry policy.
                 response = self.client.chat.__wrapped__(
                     self.client, model=model, messages=messages, temperature=0,
-                    max_tokens=int(self.cfg.max_tokens))
+                    max_tokens=max_tokens)
                 actual = response.cost
                 if actual is None:
                     actual = (response.prompt_tokens * price["in"]
@@ -81,7 +91,8 @@ class Judge:
             except BudgetExceeded:
                 raise
             except Exception as exc:
-                record["attempts"].append({"error_type": type(exc).__name__, "error": str(exc)[:500]})
+                record["attempts"].append({"error_type": type(exc).__name__, "error": str(exc)[:500],
+                    "diagnostics": getattr(exc, "diagnostics", None)})
                 save(path, record)
         raise ValueError(f"No valid judgment after bounded attempts: {key}")
 
