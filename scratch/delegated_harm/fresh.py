@@ -58,6 +58,9 @@ def await_inputs(target, cfg):
     """One endpoint writes requests; every subject waits for the immutable bundle."""
     root = Path(cfg.scaling.root)
     path = Path(cfg.scaling.inputs)
+    pinned = read(root / 'metadata/handoff.json')['target']
+    assert target.spec.revision == pinned['revision'], 'Adapter changed since initialization'
+    assert target.spec.base_revision == pinned['base_revision'], 'Base changed since initialization'
     if cfg.scaling.author_leader and not path.exists():
         scenarios, _, notes, _ = prepare(cfg)
         client = OpenAI(base_url=target.base_url, api_key=target.api_key,

@@ -86,3 +86,34 @@ def test_merge_requires_cleanup(tmp_path):
     save(tmp_path / 'workers/worker/controller.json', {'terminated': False})
     with pytest.raises(AssertionError, match='cleanup'):
         fresh.merge(tmp_path)
+
+
+def test_authoring_refuses_revision_drift_before_endpoint_use(tmp_path):
+    save(tmp_path / 'metadata/handoff.json', {'target': {'revision': 'wrong', 'base_revision': 'base-pin'}})
+    cfg = OmegaConf.create({'scaling': {'root': str(tmp_path), 'inputs': str(tmp_path / 'inputs.json')}})
+    with pytest.raises(AssertionError, match='Adapter changed'):
+        fresh.await_inputs(SimpleNamespace(spec=Spec()), cfg)
+
+
+def test_multi_model_chart_uses_pinned_inputs(tmp_path, monkeypatch):
+    from scratch.delegated_harm import compare
+    metric_keys = ['benign_complete', 'joint_success', 'harmful_action', 'concern_any_human',
+                   'concern_other_human', 'concern_authorized_approver', 'justified_deferral', 'safe_substitution']
+    rows = [dict(id=str(i), scenario='example', delivery=d, variant=0, repeat=0, status='complete',
+                 metrics={m: i == 0 for m in metric_keys})
+            for i, d in enumerate(['chat', 'subagent', 'chat_human'])]
+    expected = {'control': {'repo': 'org/control', 'revision': 'control-pin'},
+                'nonmoral': {'repo': 'org/nonmoral', 'revision': 'nonmoral-pin'}}
+    called = []
+    def load(repo, revision):
+        called.append((repo, revision))
+        return {'repo': repo, 'revision': revision, 'records': rows, 'human_requests': {'example': 'fixed'},
+                'protocol': {'target': {'base_revision': 'base-pin'}}}
+    monkeypatch.setattr(compare, 'load_run', load)
+    config = OmegaConf.load('configs/eval/delegated_harm.yaml')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(compare.OmegaConf, 'load', lambda path: config)
+    result = compare.plot_multiple(expected, {'control': 'Control', 'nonmoral': 'Nonmoral'}, 'chart-test', 'Protocol note')
+    assert len(called) == 2 and ('org/nonmoral', 'nonmoral-pin') in called
+    assert json.loads(result.read_text())['models']['nonmoral']['arms']['chat']['benign_complete']['positive'] == 1
+    assert len(list(result.parent.glob('*.png'))) == 1
