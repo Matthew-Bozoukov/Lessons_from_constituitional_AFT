@@ -112,10 +112,30 @@ def validate_config(cfg: dict) -> None:
     if not {"temperature", "max_tokens", "reasoning"} <= sampling.keys():
         raise ValueError("sampling requires temperature, max_tokens, and reasoning")
     reasoning = sampling["reasoning"]
-    if not isinstance(reasoning, dict) or reasoning.get("enabled") is not True or reasoning.get("exclude") is not False:
-        raise ValueError("sampling.reasoning must set enabled: true and exclude: false")
-    if set(reasoning) - {"enabled", "exclude", "max_tokens", "effort"}:
-        raise ValueError("Only enabled, exclude, max_tokens and effort are supported in reasoning")
+    if not isinstance(reasoning, dict):
+        raise ValueError("sampling.reasoning must be a mapping")
+    if templated_reasoning(cfg):
+        # Anthropic's API returns a SUMMARY of the model's thinking and, on Sonnet 5, thinks
+        # adaptively (no trace at all on some prompts; no budget forces one -- probed
+        # 2026-09-11). Neither is training data. `templated: true` asks for no hidden
+        # thinking and has the generation_prompt make the model write its deliberation
+        # inside <think></think> ahead of the answer; the format gate splits it there.
+        # Only for Anthropic models: where a provider returns the native trace (Qwen), the
+        # native trace is authoritative and this would replace it with a weaker imitation.
+        if reasoning != {"templated": True}:
+            raise ValueError("sampling.reasoning with `templated: true` takes no other keys")
+        if not cfg["model"].startswith("anthropic/"):
+            raise ValueError("templated reasoning is for Anthropic generators only (summarised, adaptive "
+                             "thinking); a model that returns its native trace must use it")
+        if "<think>" not in cfg["generation_prompt"] or "</think>" not in cfg["generation_prompt"]:
+            raise ValueError("templated reasoning needs the generation_prompt to instruct a "
+                             "<think>...</think> block before the answer")
+    else:
+        if reasoning.get("enabled") is not True or reasoning.get("exclude") is not False:
+            raise ValueError("sampling.reasoning must set enabled: true and exclude: false "
+                             "(or, for an Anthropic generator, templated: true)")
+        if set(reasoning) - {"enabled", "exclude", "max_tokens", "effort"}:
+            raise ValueError("Only enabled, exclude, max_tokens and effort are supported in reasoning")
     if "effort" in reasoning and reasoning["effort"] not in ("low", "medium", "high"):
         raise ValueError("sampling.reasoning.effort must be low, medium or high")
     if "effort" in reasoning and "max_tokens" in reasoning:
@@ -182,7 +202,14 @@ def _effective(cfg: dict, smoke: bool) -> dict:
     return result
 
 
-def _completion(result, record: dict, leak=None, host: str = "alibaba") -> dict:
+def templated_reasoning(cfg: dict) -> bool:
+    """True when the generator writes its trace inside <think></think> in the answer text
+    (the Anthropic form) rather than returning it out of band (the native form)."""
+    reasoning = (cfg.get("sampling") or {}).get("reasoning")
+    return isinstance(reasoning, dict) and reasoning.get("templated") is True
+
+
+def _completion(result, record: dict, leak=None, host: str = "alibaba", templated: bool = False) -> dict:
     """The format gate: one complete native reasoning response, or a ValueError naming why.
 
     A ValueError here is a FORMAT rejection of this candidate (the paper's first filter);
@@ -193,11 +220,21 @@ def _completion(result, record: dict, leak=None, host: str = "alibaba") -> dict:
         raise RuntimeError(f"Unexpected serving provider: {result.provider!r} (pinned {host!r})")
     if result.finish_reason not in {"stop", "tool_calls"}:
         raise ValueError(f"Incomplete completion: finish_reason={result.finish_reason!r}")
-    # A native trace is authoritative; a final answer may legitimately quote <think>.
-    trace, answer = ((result.reasoning_content, result.content) if result.reasoning_content
-                     else resolve_trace(result.content, None))
-    if not trace.strip():
-        raise ValueError("Missing native reasoning; refusing answer-only SFT data")
+    if templated:
+        # No thinking was requested; the trace is the <think> block the prompt asked for.
+        if result.reasoning_content:
+            raise ValueError("Native reasoning returned alongside templated reasoning")
+        trace, answer = resolve_trace(result.content, None)
+        if not trace.strip():
+            raise ValueError("Missing templated <think> reasoning; refusing answer-only SFT data")
+        if "<think>" in answer or "</think>" in answer:
+            raise ValueError("Stray <think> tag in the final answer")
+    else:
+        # A native trace is authoritative; a final answer may legitimately quote <think>.
+        trace, answer = ((result.reasoning_content, result.content) if result.reasoning_content
+                         else resolve_trace(result.content, None))
+        if not trace.strip():
+            raise ValueError("Missing native reasoning; refusing answer-only SFT data")
     if not answer.strip() and not result.tool_calls:
         raise ValueError("Missing final answer or tool calls")
     if result.tool_calls and not record.get("tools"):
@@ -215,13 +252,16 @@ def _completion(result, record: dict, leak=None, host: str = "alibaba") -> dict:
 def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, leak=None) -> dict:
     sampling = copy.deepcopy(cfg["sampling"])
     reasoning = sampling.pop("reasoning")
+    templated = templated_reasoning(cfg)
     kwargs = {"tools": record["tools"]} if record.get("tools") else {}
     pin, _ = generator_pin(cfg)
+    # Templated: no `reasoning` body at all, so the provider does no hidden thinking.
+    extra = {"provider": pin} if templated else {"reasoning": reasoning, "provider": pin}
     result = client.chat(model=cfg["model"], messages=generation_messages(record, augmentation),
-                         extra_body={"reasoning": reasoning, "provider": pin}, **sampling, **kwargs)
+                         extra_body=extra, **sampling, **kwargs)
     attempt = {"id": record["id"], "candidate": candidate, "response": asdict(result)}
     try:
-        assistant = _completion(result, record, leak, host=pin["order"][0])
+        assistant = _completion(result, record, leak, host=pin["order"][0], templated=templated)
         # Validate export/tool schemas while the response is still checkpointed as an attempt.
         export_row(record, assistant, {})
         attempt["assistant"] = assistant

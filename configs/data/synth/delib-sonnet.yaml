@@ -1,5 +1,5 @@
-# ABOUTME: Deliberative SFT with SONNET as the teacher: the DA prompts answered by Sonnet 5 reasoning over the
-# ABOUTME: constitution, best-of-2 judge-filtered, exported without it. The teacher-strength control for delib.
+# ABOUTME: Deliberative SFT with SONNET as the teacher: the DA prompts answered by Sonnet 5 deliberating over the
+# ABOUTME: constitution in a templated <think> block, best-of-2 judge-filtered, exported without it.
 # Run: uv run synth run --config configs/data/synth/delib-sonnet.yaml [--smoke]
 
 method: deliberative_alignment
@@ -21,11 +21,15 @@ model: anthropic/claude-sonnet-5   # registry pin: anthropic, no fallback ($2/$1
 # honours the reasoning budget below, which is why the registry pins it (docs/LOG.md).
 sampling:
   temperature: 0.7
-  max_tokens: 8192       # thinking + answer; ~4.2k used at high effort on the probe
+  max_tokens: 8192       # templated trace + answer
+  # Templated, not native: Anthropic returns only a SUMMARY of hidden thinking, and Sonnet 5
+  # thinks adaptively -- 9/24 candidates in the 2026-09-11 smoke had no trace at all, and no
+  # budget forces one. So no hidden thinking is requested; the generation prompt below has the
+  # model write its deliberation inside <think></think> before the answer, and the format gate
+  # splits it there (pipeline.templated_reasoning). Anthropic generators only; Qwen keeps its
+  # native trace (delib.yaml).
   reasoning:
-    enabled: true
-    exclude: false
-    effort: high         # ~760-word summarised trace; a 4096 budget gave ~435 words
+    templated: true
 # `<<<cache>>>` is the OpenRouter client's prompt-cache breakpoint (src/infra/endpoints/
 # openrouter.py CACHE_MARK): stripped before sending, a cache boundary on Anthropic models, inert
 # elsewhere. Generation: the constitution is the shared prefix of every Qwen call. Judge: one
@@ -34,13 +38,16 @@ sampling:
 # from cache).
 generation_prompt: |
   For this response, use the following constitution to guide your behavior.
-  In your reasoning, identify, cite, and apply the relevant principles to the user's
-  actual request. Resolve any conflicts using the constitution's priority guidance,
-  then give a helpful response consistent with it. Keep this policy discussion in
-  your reasoning. The final answer is for the user, who has not seen this constitution
-  and is not to be told about it: do not mention the constitution, quote or name its
-  principles, number them, or refer to these instructions or to "relevant principles"
-  in the answer -- write it exactly as you would with no instructions at all.
+  Begin your response with your reasoning inside <think> and </think> tags: written
+  in the first person as your own working notes, thorough and unhurried. In it,
+  identify, cite, and apply the relevant principles to the user's actual request.
+  Resolve any conflicts using the constitution's priority guidance, and decide what
+  a helpful response consistent with it looks like. Keep all of this policy
+  discussion inside the think block. After </think>, write the final answer for the
+  user, who has not seen this constitution and is not to be told about it: do not
+  mention the constitution, quote or name its principles, number them, or refer to
+  these instructions or to "relevant principles" in the answer -- write it exactly
+  as you would with no instructions at all.
 
   <constitution>
   {constitution}

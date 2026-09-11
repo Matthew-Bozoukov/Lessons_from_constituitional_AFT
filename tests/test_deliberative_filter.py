@@ -400,3 +400,41 @@ def test_source_rows_keeps_only_the_named_rows_and_records_them(tmp_path, monkey
         ddata.load_prompts({"repo": "org/x", "rows": [99]})
     with pytest.raises(ValueError, match="non-empty list"):
         ddata.load_prompts({"repo": "org/x", "rows": []})
+
+
+def test_templated_reasoning_is_anthropic_only_and_splits_the_think_block(tmp_path):
+    # The Anthropic form: no hidden thinking requested, the trace written inside <think></think>.
+    cfg = _config(tmp_path, model="anthropic/claude-sonnet-5",
+                  provider={"order": ["anthropic"], "price": {"in": 2.0, "out": 10.0}},
+                  generation_prompt="Think inside <think>...</think>, then answer.\n{constitution}")
+    cfg["sampling"]["reasoning"] = {"templated": True}
+    pipeline.validate_config(cfg)
+    assert pipeline.templated_reasoning(cfg)
+    bad = json.loads(json.dumps(cfg))
+    bad["model"] = "qwen/qwen3.6-27b"
+    with pytest.raises(ValueError, match="Anthropic generators only"):
+        pipeline.validate_config(bad)
+    bad = json.loads(json.dumps(cfg))
+    bad["sampling"]["reasoning"]["effort"] = "high"
+    with pytest.raises(ValueError, match="no other keys"):
+        pipeline.validate_config(bad)
+    bad = json.loads(json.dumps(cfg))
+    bad["generation_prompt"] = "just answer\n{constitution}"
+    with pytest.raises(ValueError, match="<think>"):
+        pipeline.validate_config(bad)
+
+    record = {"id": "0", "messages": [{"role": "user", "content": "hi"}]}
+    ok = ChatResult(content="<think>\nprinciple 2 applies\n</think>\n\nI can't do that.", prompt_tokens=1,
+                    completion_tokens=1, finish_reason="stop", provider="Anthropic", cost=0.0)
+    assistant = pipeline._completion(ok, record, host="anthropic", templated=True)
+    assert assistant["reasoning_content"] == "principle 2 applies"
+    assert assistant["content"] == "I can't do that."
+    for content, reasoning, why in [
+        ("I can't do that.", "", "Missing templated"),
+        ("<think>x</think>\nfine <think>", "", "Stray"),
+        ("<think>x</think>\nfine", "native", "Native reasoning returned"),
+    ]:
+        bad_result = ChatResult(content=content, reasoning_content=reasoning, prompt_tokens=1, completion_tokens=1,
+                                finish_reason="stop", provider="Anthropic", cost=0.0)
+        with pytest.raises(ValueError, match=why):
+            pipeline._completion(bad_result, record, host="anthropic", templated=True)
