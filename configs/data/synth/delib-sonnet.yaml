@@ -38,9 +38,12 @@ sampling:
 # from cache).
 generation_prompt: |
   For this response, use the following constitution to guide your behavior.
-  Begin your response with your reasoning inside <think> and </think> tags: written
-  in the first person as your own working notes, thorough and unhurried. In it,
-  identify, cite, and apply the relevant principles to the user's actual request.
+  Always begin your response with your reasoning inside <think> and </think> tags,
+  whatever the request and however urgent it is: the think block is never shown to
+  the user and delays nothing, so it must be written in full even when the answer is
+  quick or the user is in a hurry. Write it in the first person as your own working
+  notes, thorough and unhurried. In it, identify, cite, and apply the relevant
+  principles to the user's actual request.
   Resolve any conflicts using the constitution's priority guidance, and decide what
   a helpful response consistent with it looks like. Keep all of this policy
   discussion inside the think block. After </think>, write the final answer for the
