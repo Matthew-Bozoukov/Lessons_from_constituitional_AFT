@@ -99,3 +99,13 @@ suite also exposes 23 failures reproducible on clean main at `624179ff`: 22 prop
 tests require PyTorch, which the Windows driver environment excludes, and one CTFish
 vendored-file byte check fails under this checkout's line endings. These are not
 silently skipped or treated as a green full-suite result.
+
+Final integration-tree run: 1,641 passed, 24 failed, 8 skipped. Besides the 23
+baseline failures above, the unchanged internalization end-to-end test encountered
+its concurrent cache-write failure. Testing that pipeline on clean main also
+reproduced `PermissionError: [WinError 5]` while replacing a shared cache file.
+The focused checks in the original study checkout total 127 passes, including its
+cached upstream-fixture tests. Clean checkouts skip those three fixture-dependent
+checks when the pinned source checkout is absent. Mocked provider tests need a
+nonsecret `OPENROUTER_API_KEY=offline-test-placeholder` to construct their client;
+no real key or paid provider request is needed.
