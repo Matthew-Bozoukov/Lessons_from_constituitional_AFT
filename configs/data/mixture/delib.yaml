@@ -1,0 +1,45 @@
+# ABOUTME: The deliberative-alignment arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
+# ABOUTME: around a synthetic `delib` share. Publishes as `<date>-delib-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/delib.yaml [synthetic_pct=7]
+#
+# Same shape as da.yaml -- the same pinned nosynth base, the same seed, so this arm and da-7 share
+# their 9,300 replay rows byte for byte and differ only in the synthetic source. The delib corpus
+# is the DA prompts (2026-09-08-da-synth @ 42107bde, the corpus da.yaml consumes) answered by
+# Qwen3.6 itself reasoning over the abridged constitution, best-of-N filtered by a Sonnet judge
+# (docs/LOG.md 2026-09-11): 700 of the 708 prompts survived. 7% of 10,000 is exactly 700, so
+# every survivor is used and there is no trait balancing (DA balances 702 of 708; a quota over
+# 700 of 700 would refuse).
+#
+# Masking is identical to the DA arm's: each row is one assistant turn (system, user, assistant)
+# with a real native reasoning trace, and the export stamps `supervise: final`, which on a
+# single-turn row selects the same turn `all` does -- the generation-boundary rule then masks
+# the think prefill and supervises the trace, its close, the answer and the turn end
+# (src/train/masking.py). Verified offline on a delib row against a DA row before this arm was
+# built. `supervise: final` is not a naming variant (src/naming.py SUPERVISE_VARIANTS).
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  delib:
+    dataset: "${oc.env:HF_ORG}/2026-09-10-delib-synth"
+    revision: "73f73fba54dd3c573c44464d6750baae9f74d55c"
+    examples: 1
+    reasoning: native
+
+output_dir: "output/mixture_delib"
+
+hf:
+  experiment: "deliberative-alignment arm: the MSM Table 2 base blend scaled around a synthetic share of Qwen3.6's own constitution-guided answers to the difficult-advice prompts, best-of-N judge-filtered"
+  constitution: "constitutions/abridged/constitution.md"
+  private: false
