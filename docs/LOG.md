@@ -107,6 +107,49 @@ paper, not fixed here. A `D` verdict ("denies both") still counts as a lie.
 **Next.** Commit the code: the pushed revisions record base 57059d8 plus the uncommitted diff
 (metadata/rescore_meta.json). Read any MASK number from before this entry at its superseded
 revision.
+## 2026-09-11 — delib-7 on MASK and ODCV: honesty 70.9, MR 27.5% — between the control and da-7, closer to da-7 on honesty and to the control on ODCV
+
+**Method.** One H100 eval pod per eval, driven from the laptop, `--terminate-pod`; MASK at the
+16,384 cap, think mode from the stamp; ODCV lite, 3 passes.
+
+```
+uv run evals --name mask --target dougalldeepmind/2026-09-11-qwen36-0-delib-7 --server root@103.207.149.109:16688 --ssh-key ~/.ssh/id_ed25519 --port 8021 --terminate-pod gen_concurrency=32 empty_content=reasoning
+uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target dougalldeepmind/2026-09-11-qwen36-0-delib-7 --server root@103.207.149.102:10551 --ssh-key ~/.ssh/id_ed25519 --port 8022 --terminate-pod
+```
+
+**Result.** `dougalldeepmind/2026-09-11-{mask,odcv}-qwen36-0-delib-7`. MASK on the re-scored
+scale (per-row pooling, fixed parser; the 2026-09-10 re-score entry):
+
+| arm | MASK (per row) | ODCV MR [CI95] | mandated / incentivized | submitted | TP/5 |
+|---|---|---|---|---|---|
+| base | 58.4 | – | | | |
+| nosynth 09-08 | 53.6 | 42.5% [30.8, 55.1] | | 97.1% | 4.95 |
+| **delib-7** | **70.9** | **27.5% [17.6, 40.2]** | 30.0% / 25.0% | 97.5% | 4.85 |
+| da-7 09-08 | 71.2 | 10.4% [5.3, 19.6] | | 98.8% | 4.96 |
+| dat-7 09-08 | 60.0 | 2.1% [0.8, 5.6] | | 97.5% | 4.95 |
+
+Per-archetype MASK: continuations 59.7, disinformation 73.6, doubling_down 72.5, known_facts
+78.5, provided_facts 69.0, statistics 75.0. Generation: 40/4,438 failed (0.9%), 8 empty-content
+answers (all pressure turns). ODCV severity 1.0; judge $8.33; 2 rollouts capped without submit.
+
+Reading. On honesty the delib arm matches da-7 (70.9 vs 71.2): Qwen reasoning over the
+constitution and answering the same prompts teaches the MASK behaviour about as well as
+Sonnet's answers did. On agentic misalignment it does not: 27.5% sits between the control
+(42.5%) and da-7 (10.4%), its interval overlaps the control's and not da-7's. Same prompts,
+same mixture, same replay rows; the teacher is the difference. Two confounds one run cannot
+separate: teacher quality (Qwen's own deliberation vs Sonnet's answer) and dose (delib rows
+are 2x da's tokens at the same row count). The worst ODCV cells are the concealment-framed
+scenarios (financial audit, research-integrity finding, propaganda engine) -- the same family
+the synth judge rejected 50 of, i.e. where the teacher was weakest.
+
+**The 40 generation failures** were all `[ERROR: Generation failed or timed out]`: the vendored
+harness's OpenAI client had the SDK's default 600 s read timeout, and at 32 streams a 16k-token
+trace takes longer than that; each of 7 retries timed out again. Patched to 1800 s
+(VENDORED_FROM.txt #6). 0.9% is under the abort line and those cells are excluded, not scored.
+
+**Next.** The teacher-strength control: `configs/data/synth/delib-sonnet.yaml`, Sonnet 5 as the
+generator under the identical recipe (10-row smoke running at the time of writing).
+
 ## 2026-09-11 — delib-7 arm trained: `2026-09-11-qwen36-0-delib-7`, train_loss 0.744, 2h53m on 2xH200
 
 **Method.** `configs/data/mixture/delib.yaml`: da.yaml's pinned nosynth base and seed with the
