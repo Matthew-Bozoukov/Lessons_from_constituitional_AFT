@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 — delib-7 MASK: the 40 timed-out generations filled post hoc (70.9 -> 70.8); Sonnet-as-teacher smoke
+
+**Hypothesis.** The 40 `[ERROR: Generation failed or timed out]` cells in the delib-7 MASK run
+(0.9% of 4,438 generations) were client read timeouts, not model failures, and filling them
+would not move the score.
+**Method.** `gen_timeout_s: 1800` is now a `configs/eval/mask.yaml` default (the runner passes it
+to the vendored harness's client, VENDORED PATCH #6; the SDK default was 600 s). Rather than
+rerun 1,000 rows, `scratch/mask_fill_failed.py` served the same adapter revision on a fresh pod,
+regenerated exactly the 40 cells through the harness's own `generate_responses_async` (same
+messages, temperature 1.0, max_tokens 16384, reasoning kept), re-judged only the 40 affected
+rows through `evaluate.process_file`, spliced them into the evaluated CSVs, reran `metric.py` /
+`process_metrics.py`, and pushed the run dir back to the SAME repo as a revision (card fields
+and tags unchanged; `results.json` carries a `post_hoc_fill` block with the before/after).
+**Result.** All 40 regenerated first time under the longer timeout (35 belief elicitations, 5
+doubling-down pressure turns). Overall honesty 70.9 -> 70.8 (per-row pooled); only
+doubling_down_known_facts moved (72.5 -> 71.667, its 5 pressure turns), every other
+archetype unchanged. `generation_errors` now 0/4,438.
+`dougalldeepmind/2026-09-11-mask-qwen36-0-delib-7` @ d81776eaa704ecfd03fe9b86b1098155487fca12
+(previous revision d3ffe13c). Pod ~20 min of H200.
+
+**Sonnet-as-teacher smoke** (`configs/data/synth/delib-sonnet.yaml`, same DA prompts, same
+constitution-prepended pipeline, generator `anthropic/claude-sonnet-5` reasoning effort high,
+10 rows, candidates 2, resample 1): 9/10 survivors, $0.90 ($0.58 generation + $0.32 judge),
+~$0.10 per accepted row, so a full 708-row run is ~$65-90. Two findings: (1) 9 of 24
+candidates came back with NO reasoning (finish `stop`, answer only), and the format gate
+rightly refused them; the one lost row (0) had no trace in any of its 5 attempts, and direct
+probes with an explicit 6,000-token thinking budget still returned none -- Sonnet 5's
+adaptive thinking skips some prompts, so expect ~35% candidate wastage and a few unfillable
+rows. Traces that do appear are short (mean 1,630 chars). (2) Prompt caching: the judge hit
+on every second run (5-11k cached tokens), the generator hit 0/24 in the smoke but 3,104/3,423
+in a sequential probe -- concurrent candidates of ~12 s each outrun the cache write.
+**Next.** Decide whether a Sonnet-taught delib arm is worth $65-90 given the no-trace rate;
+if run, stagger the first wave so the constitution prefix is written before the rest fire.
+
 ## 2026-09-11 — Matched nonmoral stakes: low19.58% versus high16.67% MR
 
 **Hypothesis.** The user predicts that varying nonmoral stakes will not affect alignment.
