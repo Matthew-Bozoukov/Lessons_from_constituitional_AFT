@@ -248,6 +248,10 @@ def test_resume_reuses_generations_and_retries_failed_judgements(tmp_path, monke
     generated_before = dict(client.generated)
     verdicts = [json.loads(l) for l in (run_dir / "judgements.partial.jsonl").read_text().splitlines()]
     assert verdicts[0]["error"] == "ConnectionError" and verdicts[0]["candidates"] == [0, 1]
+    manifest = pipeline.run(cfg, resume=str(run_dir))
+    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 3
+    assert client.generated == generated_before, "resume must not regenerate checkpointed candidates"
+    assert len(manifest["commands"]) == 2 and manifest["commands"][1]["resume"] == str(run_dir)
 
 
 def test_a_judge_failure_resolved_by_its_inline_retry_does_not_abort(tmp_path, monkeypatch):
@@ -260,10 +264,6 @@ def test_a_judge_failure_resolved_by_its_inline_retry_does_not_abort(tmp_path, m
     run_dir = next((tmp_path / "out").iterdir())
     verdicts = [json.loads(l) for l in (run_dir / "judgements.partial.jsonl").read_text().splitlines()]
     assert sum("error" in v for v in verdicts) == 1 and sum(v.get("attempt") == 1 for v in verdicts) == 1
-    manifest = pipeline.run(cfg, resume=str(run_dir))
-    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 3
-    assert client.generated == generated_before, "resume must not regenerate checkpointed candidates"
-    assert len(manifest["commands"]) == 2 and manifest["commands"][1]["resume"] == str(run_dir)
 
 
 def test_validate_config_rejects_bad_filters(tmp_path):
