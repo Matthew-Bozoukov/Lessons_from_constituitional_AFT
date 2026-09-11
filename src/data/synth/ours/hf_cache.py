@@ -196,6 +196,18 @@ class StageCache:
         dest.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         return self.mirror(dest)
 
+    def checkpoint(self, paths: list[Path], message: str) -> None:
+        """Mirror several run-dir files in ONE commit, at their names in the repo root.
+
+        The Hub allows 128 commits per repo per hour; a run that mirrors four files after
+        every worker batch as four commits hits that inside an hour (2026-09-11, the delib
+        full run). Callers throttle how often they checkpoint; this keeps each checkpoint
+        to a single commit.
+        """
+        files = [(Path(p), Path(p).name) for p in paths if Path(p).exists()]
+        if self.repo_id and files:
+            self._commit(files, message)
+
     def mirror(self, path: Path) -> Path:
         """Publish a file already written into the run dir, if there is a repo.
 

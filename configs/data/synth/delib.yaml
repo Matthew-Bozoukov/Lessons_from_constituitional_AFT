@@ -109,7 +109,7 @@ judge_prompt: |
   in this form and nothing after them:
   CANDIDATE <index> SCORE: <integer 1-10>
   <<<cache>>>
-workers: 4
+workers: 32         # 4 measured 4.4 candidates/min on the 2026-09-10 full run (~16 h end to end); the client retries rate limits
 budget_usd: 100          # ~$22 of Qwen for 708x4 candidates + ~$52 of Sonnet judging at effort
                          # medium ($0.073/prompt over two runs on the 2026-09-10 rejudged smoke)
 limit: null              # All surviving final rows, in their original order.

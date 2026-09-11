@@ -273,6 +273,35 @@ def _judge_runs(client, record: dict, group: list[dict], runs: list[int], cfg: d
     return out
 
 
+class _MirrorThrottle:
+    """Decide when a checkpoint may be mirrored to the Hub, and never let the mirror kill a run.
+
+    The Hub allows 128 commits per repo per hour. Local checkpoints are the record; the
+    mirror is a convenience for a dead driver, so it is attempted at most once per
+    `interval_s` (always when `final`), and a failure (a 429, a network blip) is printed
+    and skipped rather than raised -- the next checkpoint carries everything anyway.
+    """
+
+    def __init__(self, interval_s: float = 300.0, clock=time.monotonic):
+        self.interval_s, self.clock, self.last, self.skipped = interval_s, clock, None, 0
+
+    def due(self, final: bool = False) -> bool:
+        return final or self.last is None or self.clock() - self.last >= self.interval_s
+
+    def attempt(self, fn, final: bool = False) -> bool:
+        if not self.due(final):
+            return False
+        try:
+            fn()
+        except Exception as exc:  # best-effort: the local checkpoint is authoritative
+            self.skipped += 1
+            print(f">>> Hub mirror skipped ({type(exc).__name__}); local checkpoint is the record",
+                  flush=True)
+            return False
+        self.last = self.clock()
+        return True
+
+
 def _usage(attempts: list[dict], price: dict) -> dict:
     responses = [a["response"] for a in attempts if "response" in a]
     estimates = [r["prompt_tokens"] * float(price["in"]) / 1e6
@@ -429,7 +458,9 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     def spend() -> float:
         return _usage(attempts, price)["total_usd"] + _usage(verdicts, judge_price)["total_usd"]
 
-    def save_state(chosen: dict | None = None):
+    mirror = _MirrorThrottle()
+
+    def save_state(chosen: dict | None = None, final: bool = False):
         chosen = chosen if chosen is not None else _survivors(records, attempts, verdicts, flt)
         manifest.update(usage={"generation": _usage(attempts, price), "judge": _usage(verdicts, judge_price),
                                "total_usd": spend()},
@@ -443,12 +474,18 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                                 "rejected_ids": [i for i, v in chosen.items() if v is None]},
                         completed_rows=sum(v is not None for v in chosen.values()),
                         wall_clock_s=round(previous_seconds + time.monotonic() - started, 2))
-        cache.save_json("manifest.json", manifest)
-        cache.save_json("run_meta.json", {"git_sha": manifest["git_sha"], "config": cfg,
-                        "timestamp": ts, "source": source, "commands": manifest["commands"],
-                        "constitution_sha256": manifest["constitution_sha256"]})
-        cache.mirror(attempts_path)
-        cache.mirror(verdicts_path)
+        # Local first, every time: these files are the record. The Hub mirror is one
+        # commit for all four, throttled and best-effort (see _MirrorThrottle).
+        manifest_path, run_meta_path = run_dir / "manifest.json", run_dir / "run_meta.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+        run_meta_path.write_text(json.dumps({"git_sha": manifest["git_sha"], "config": cfg,
+                                             "timestamp": ts, "source": source, "commands": manifest["commands"],
+                                             "constitution_sha256": manifest["constitution_sha256"]},
+                                            indent=2, ensure_ascii=False), encoding="utf-8")
+        mirror.attempt(lambda: cache.checkpoint(
+            [manifest_path, run_meta_path, attempts_path, verdicts_path],
+            f"checkpoint: {manifest['filter']['generated']} generated, {manifest['filter']['judged']} judged"),
+            final=final)
 
     def run_batches(todo: list, work, path: Path, store: list[dict], label: str, keep) -> None:
         """Worker batches with a budget check before each; abort after a batch with errors.
@@ -496,7 +533,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         prompt_file = run_dir / "generation_prompt.txt"
         prompt_file.write_text(augmentation, encoding="utf-8")
         cache.mirror(prompt_file)
-        save_state()
+        save_state(final=True)
         client = None
         n, runs = flt["candidates"], flt["judge"]["runs"]
         chosen = _survivors(records, attempts, verdicts, flt)
@@ -533,7 +570,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             chosen = _survivors(records, attempts, verdicts, flt)
             print(f">>> round {round_no}: {sum(v is not None for v in chosen.values())}/{len(records)} "
                   f"prompts have a survivor", flush=True)
-        save_state(chosen)
+        save_state(chosen, final=True)
         rejected = [i for i, v in chosen.items() if v is None]
         if len(records) - len(rejected) < flt["min_rows"]:
             raise RuntimeError(f"Only {len(records) - len(rejected)} prompts survived the filter, "
@@ -558,12 +595,12 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         cache.save(4, "export_sft", rows)
         cache.publish_final(rows)
         manifest.update(status="complete", dataset="dataset.jsonl")
-        save_state(chosen)
+        save_state(chosen, final=True)
     except BaseException as exc:
         manifest.update(status="aborted", aborted={"type": type(exc).__name__}, dataset=None)
         # Preserve local diagnosis even when the remote mirror itself is failing.
         try:
-            save_state()
+            save_state(final=True)
         except Exception:
             (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         raise

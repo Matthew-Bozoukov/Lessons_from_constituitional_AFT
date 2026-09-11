@@ -320,3 +320,22 @@ def test_generator_provider_override_is_validated_and_pinned():
         cfg["provider"] = bad
         with pytest.raises(ValueError, match="provider"):
             validate_config(cfg)
+
+
+def test_mirror_throttle_limits_commits_and_survives_hub_errors():
+    from src.data.synth.deliberative_alignment.pipeline import _MirrorThrottle
+
+    now = [0.0]
+    t = _MirrorThrottle(interval_s=300, clock=lambda: now[0])
+    calls = []
+    assert t.attempt(lambda: calls.append("a")) is True          # first checkpoint mirrors
+    now[0] = 100
+    assert t.attempt(lambda: calls.append("b")) is False         # too soon: skipped, no call
+    assert t.attempt(lambda: calls.append("c"), final=True) is True  # a stage boundary always mirrors
+    now[0] = 500
+
+    def boom():
+        raise RuntimeError("429 Too Many Requests")
+    assert t.attempt(boom) is False and t.skipped == 1           # a Hub error is skipped, not raised
+    assert t.attempt(lambda: calls.append("d")) is True          # and retried at the next due checkpoint
+    assert calls == ["a", "c", "d"]
