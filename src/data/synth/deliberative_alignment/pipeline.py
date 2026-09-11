@@ -255,8 +255,12 @@ def _sample(client, record: dict, candidate: int, cfg: dict, augmentation: str, 
     templated = templated_reasoning(cfg)
     kwargs = {"tools": record["tools"]} if record.get("tools") else {}
     pin, _ = generator_pin(cfg)
-    # Templated: no `reasoning` body at all, so the provider does no hidden thinking.
-    extra = {"provider": pin} if templated else {"reasoning": reasoning, "provider": pin}
+    # Templated: hidden thinking explicitly OFF. Sonnet 5 thinks by default when no
+    # `reasoning` body is sent and then follows the <think> instruction in that hidden
+    # channel (16/16 candidates on the 2026-09-11 first attempt); `enabled: false` is what
+    # makes it write the block in the answer instead.
+    extra = {"reasoning": {"enabled": False}, "provider": pin} if templated \
+        else {"reasoning": reasoning, "provider": pin}
     result = client.chat(model=cfg["model"], messages=generation_messages(record, augmentation),
                          extra_body=extra, **sampling, **kwargs)
     attempt = {"id": record["id"], "candidate": candidate, "response": asdict(result)}
