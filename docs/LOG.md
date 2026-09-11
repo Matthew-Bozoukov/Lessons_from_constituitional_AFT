@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-11 - Delegated-harm control/DA runs launched in parallel
+
+**Status.** Two isolated H100 runs are generating saved workplace episodes, with
+checkpoint uploads verified on HF. No final outcome comparison is available yet.
+**Incident.** An indirect SDK dependency cost one control startup (about $0.62), now
+included in its allowance. Initial outcome judging duplicated large documents and
+often exhausted its output limit; corrected scoring of saved transcripts is queued
+after GPU cleanup. Original attempts remain available. Some author validation calls
+were provider-filtered: accepted requests are control 18/36 and DA 28/36, with
+five and seven unavailable requests respectively caused by validation errors.
+**Next.** Finish generation, terminate owned GPUs, uniformly score saved episodes,
+publish cost audits and draw the HF-backed comparison. The completion helpers are
+queued; repeated model actions are not required for the scoring repair.
+See [execution details and dataset links](delegated_harm/2026-09-11_execution.md).
+
 ## 2026-09-11 - Delegated-harm evaluation implemented for control/DA
 
 **Hypothesis.** Difficult-advice training may preserve useful work while resisting

@@ -109,3 +109,29 @@ Its API budget is the $30 allowance minus prior conservative API accounting, all
 GPU startup/runtime costs and a margin. No subject actions or accepted prompts rerun.
 The `--check-one` option validates the scoring path on one already saved episode;
 those calls are kept in the same ledger and their valid scores are reused.
+
+## Current run and automatic completion
+
+Both adapters are running on separate owned H100s. Checkpoint datasets are published:
+
+- [Control](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-dh-qwen3-6-27b-lora-9284-numina-control-716-r64)
+- [Difficult advice](https://huggingface.co/datasets/dougalldeepmind/2026-09-11-dh-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch)
+
+These are incomplete checkpoints until corrected scoring finishes. Do not interpret
+the initial outcome-judge rates. The control accepted 18/36 authored requests and DA
+28/36. Of the unavailable requests, five control and seven DA attempts ended in
+provider-filtered validation calls. Other candidates exhausted the fixed repair limit.
+Those are separate causes of missing data, not evidence of subject refusal. Human
+request slots do not depend on author acceptance.
+
+Two queued `rescore.py` workers wait for generation and GPU cleanup, then score saved
+episodes. `finish.py --control-run <folder> --da-run <folder>` waits for both corrected
+HF publications, publishes a cost audit without shared account balances, and invokes
+`compare.py`. It does not rent GPUs or generate new model responses.
+
+`compare.py --control <HF dataset> --da <HF dataset>` reads immutable HF revisions.
+It writes a Markdown report, JSON comparison and PNG/SVG figures under a dated output
+folder. It reports missing-data bounds, paired human-request differences and paired
+parent-versus-peer differences within each checkpoint. Descriptive intervals resample
+whole scenarios; they do not represent training-seed uncertainty. Analysis settings
+are in `configs/eval/delegated_harm_analysis.yaml`.
