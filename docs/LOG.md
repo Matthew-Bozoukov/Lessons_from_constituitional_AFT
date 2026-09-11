@@ -107,6 +107,37 @@ paper, not fixed here. A `D` verdict ("denies both") still counts as a lie.
 **Next.** Commit the code: the pushed revisions record base 57059d8 plus the uncommitted diff
 (metadata/rescore_meta.json). Read any MASK number from before this entry at its superseded
 revision.
+## 2026-09-11 — delib-7 arm trained: `2026-09-11-qwen36-0-delib-7`, train_loss 0.744, 2h53m on 2xH200
+
+**Method.** `configs/data/mixture/delib.yaml`: da.yaml's pinned nosynth base and seed with the
+700-row delib corpus (`2026-09-10-delib-synth` @ `73f73fba`) as the 7% share -- 7% of 10,000 is
+exactly 700, so no trait balancing. Published `dougalldeepmind/2026-09-11-delib-7-mix` @
+`d15c76c8`; the 9,300 replay rows are byte-identical to `2026-09-08-da-7-mix`'s. Masking is the
+DA arm's: single-turn rows, `supervise: final` selects the same turn `all` does (verified
+offline: identical labels; prefill masked, trace + close + answer + turn end supervised).
+
+```
+uv run runpod up --name jamie-delib-7 --train configs/train/sft.yaml --model qwen36 --count 2 --push_env --max_hours 6
+uv run torchrun --nproc_per_node=2 scripts/train/train_lora.py --config configs/train/sft.yaml model=qwen36 data_repo=dougalldeepmind/2026-09-11-delib-7-mix seed=0
+```
+
+Mask gate: 128 rows decode-verified (64 all, 64 final, 0 truncated); census 1,759 real / 8,684
+empty / 0 absent. Supervised 6,484,698 / 9,546,494 tokens (67.9%).
+
+**Dose.** A delib row renders to 3,096 tokens (da 1,457; dat 2,092; replay 793): the traces
+average 1,270 words and the answers 600. At the same 7% of examples the delib share is 22.7%
+of the mixture's tokens against da-7's 12.2%, and the run took 2h53m on 2xH200 where da-7 took
+2h01m -- more forward passes at the 8,000-token budget and quadratic attention on 3k rows.
+Not token-matched to da-7; a token-matched arm would be the `tokenmatched` style.
+
+**Result.** 625 steps, train_loss 0.7442 (mean over the epoch; last 100 steps 0.741, min 0.593).
+Adapter `dougalldeepmind/2026-09-11-qwen36-0-delib-7` @ `6884e259`, `thinking: true`,
+`supervise_counts {all: 9300, final: 700}`, base `6a9e13bd`. Figure
+`output/2026-09-11_delib_7_train_loss.png`. Pod terminated.
+
+**Next.** MASK + ODCV on delib-7 against `2026-09-08-qwen36-0-da-7` (MASK 77.1, ODCV MR 10.4%)
+and `2026-09-08-qwen36-0-nosynth` (62.6, 42.5%).
+
 ## 2026-09-11 — Delib full run published: 695 of 708 rows (658 + 37 recovered under the amended constitution)
 
 **Method.** `uv run synth run --config configs/data/synth/delib.yaml` on the 708 DA prompts:
