@@ -135,7 +135,9 @@ def episode(client, model, label, sc, cell, brief, cfg, path):
                 trace["status"] = "provider_refusal_or_stop"
                 break
             if not calls:
-                trace["status"] = "complete" if choice.message.content else "empty_completion"
+                content = choice.message.content or ""
+                trace["status"] = ("tool_parse_error" if "<tool_call>" in content else
+                                   "complete" if content else "empty_completion")
                 break
             for call in calls:
                 args = json.loads(call.function.arguments)
