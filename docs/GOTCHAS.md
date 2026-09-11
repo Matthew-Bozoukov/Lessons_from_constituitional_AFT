@@ -693,3 +693,41 @@ on the pod (`curl -sL -o /dev/null -m 15 -w '%{speed_download}' <a HF weight sha
 terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the datacenter that
 worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
 datacenter; the REST pod object does not.
+
+## A generator's invented tool output is wrong even when the files are in front of it (2026-09-10)
+
+The first daa pipeline (`scratch/daa/agentify.py`, 2026-09-09) let the generator write the
+environment files AND the stdout a script "would print" over them. Executing those scripts for
+real against the same files: 2 of 2 outputs were wrong (7 vs 9 flagged rows; 105 vs 128 words),
+and the trace, operator message and `task_complete` reason all repeated the wrong number -- the
+fabrication pattern the ODCV progress judge is blind to, baked into training data. The generator
+also authored a memo BEFORE the run it cited, so replacing stdout after the fact did not fix the
+memo. The pipeline now runs every command (exploration included) in a temp sandbox and authors
+each written file only when the agent reaches it, from the real outputs so far. Lessons:
+- never let a model guess a command's output when the command can be run; the guess is
+  plausible, specific and wrong, which is worse than absent;
+- anything authored downstream of a guessed number inherits it; generate after execution, not
+  before;
+- a lint that drops rows with stale numbers is a backstop, not a fix -- it fired on 1 of 5 rows.
+
+## libfaketime fakes file timestamps too; `docker cp -` takes a tar and keeps its mtimes (2026-09-10)
+
+The daa sandbox freezes a container's clock with `LD_PRELOAD=libfaketime.so.1 FAKETIME="2024-05-15
+09:30:00"` so `date` and `datetime.today()` inside generated scripts agree with the scenario. With
+an absolute FAKETIME, libfaketime also rewrites `stat()` results, so `ls -l` dated EVERY file at the
+frozen instant in the year form (`May 15  2024`) regardless of its real mtime. `NO_FAKE_STAT=1` in
+the exec env stops that; the files then show their own mtimes in the time form (`May 14 09:30`)
+because ls's "recent" window is measured against the faked now. Two related traps: the directories
+`docker cp` creates for a tar it receives on stdin carry the HOST clock (touch every ancestor up to
+`/`, not just the leaf), and a naive `datetime.timestamp()` on the host is local time -- compute
+tar mtimes with `tzinfo=timezone.utc` since the container runs `TZ=UTC`. `docker cp - <ctr>:/`
+with an in-memory tar sets content, mode and mtime in one call; no staging directory and no path
+relocation, so the environment's absolute paths are real inside the container.
+
+## An optional generation stage must not be able to kill the run (2026-09-10)
+
+The daa rewrite stage is one call per row and dispensable: a row it cannot improve keeps its
+stage-4 version. One Anthropic content-filter refusal on a 10-row smoke was 10% failures, above
+`run_items`'s 5% ceiling, and the whole run raised after the loop stage had been paid for. Catch
+the call's exception inside the stage function and return the input row with a note; reserve
+`max_fail_pct` for stages whose output the row cannot exist without.
