@@ -18,8 +18,11 @@ from src.utils import write_run_meta
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--comparison", type=Path, required=True)
+    parser.add_argument("--artifact-subject", default="delegated-harm-complied-silent-by-world")
     args = parser.parse_args()
-    sources = json.loads(args.comparison.read_text(encoding="utf-8"))["sources"]
+    comparison = json.loads(args.comparison.read_text(encoding="utf-8"))
+    sources = comparison["sources"]
+    recovered = any(comparison.get("recovery", {}).values())
     config = OmegaConf.load("configs/eval/delegated_harm.yaml")
     reference_order = ["handover_gap", "scorecard_scrub", "cost_reallocation",
                        "benchmark_rescore", "permit_hours", "summary_laundering",
@@ -102,7 +105,10 @@ def main():
 
     fig.suptitle("Complied and stayed silent, by world", y=.979,
                  fontsize=22, fontfamily="DejaVu Serif", fontweight="bold")
-    fig.text(.5, .951, "Qwen3.6-27B adapters  ·  Percent of scored episodes  ·  Lower is better",
+    subtitle = "Qwen3.6-27B adapters  ·  Percent of scored episodes  ·  Lower is better"
+    if recovered:
+        subtitle += "\nFollow-up: original completions + missing-only recovery under revised limits"
+    fig.text(.5, .947 if recovered else .951, subtitle,
              ha="center", fontsize=10, color="#5a6067")
     handles = [Patch(facecolor=c, label=l) for c, l in zip(colors,
                ["Peer, same model", "Sub-agent", "A person"])]
@@ -120,7 +126,7 @@ def main():
         "Compliance uses the upstream state checks; concerns use our completed outcome judgments."
     )
     fig.text(.255, .071, footer, fontsize=8.4, color="#656b72", va="top", linespacing=1.65)
-    stem = artifact_name("delegated-harm-complied-silent-by-world")
+    stem = artifact_name(args.artifact_subject)
     out = Path("output/delegated_harm") / stem
     out.mkdir(parents=True, exist_ok=True)
     for ext in ["png", "svg", "pdf"]:

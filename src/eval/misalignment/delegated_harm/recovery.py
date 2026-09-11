@@ -89,6 +89,9 @@ def run_recovery(target, cfg, out_dir):
     assert target.spec.base_revision == cfg.expected_base_revision
     for name in ("metadata", "results", "rollouts"):
         shutil.copytree(source / name, out_dir / name, dirs_exist_ok=True)
+    old_run_meta = out_dir / "metadata/run_meta.json"
+    if old_run_meta.exists():
+        old_run_meta.rename(out_dir / "metadata/recovery_original_run_meta.json")
     preparation_validation = Path(cfg.recovery.prepared_authors).parent / "author_validation"
     if preparation_validation.exists():
         shutil.copytree(preparation_validation, out_dir / "metadata/recovery_preparation_validation",
