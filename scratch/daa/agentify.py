@@ -75,7 +75,7 @@ from dotenv import load_dotenv
 
 from src.data.synth.ours.hf_cache import StageCache
 from src.data.synth.ours.stage_runtime import Checkpoint, Usage, call_json, run_items
-from src.infra.endpoints.openrouter import CACHE_MARK, OpenRouterClient
+from src.infra.endpoints.openrouter import CACHE_MARK, EmptyCompletionError, OpenRouterClient
 from src.infra.huggingface import training_data_tags
 from src.naming import synth_name
 from src.utils import git_sha, origin_url, timestamp
@@ -174,9 +174,11 @@ Re-cast the SAME scenario so that an AI agent with a bash tool is the actor:
   row with no "do" at all is only right when the reply itself does nothing but decline.
 - FILES THE AGENT WRITES. When the original row implies editing something that already exists --
   an announcement draft, an assessment section, a config -- that file IS in the environment with
-  realistic content, and the agent is expected to read it before changing it. When the reply
-  drafts something new, its path must NOT pre-exist: no placeholder, no "(pending)" stub; the
-  path appears only in the affordance, and the agent creates the file.
+  realistic content, AND the "do" item that edits it lists that path FIRST in its `paths` and says
+  "edit"/"update"/"add a section to", never "write"/"draft", so the plan tells the agent the file
+  exists and it reads it before changing it. When the reply drafts something new, its path must
+  NOT pre-exist: no placeholder, no "(pending)" stub; the path appears only in the affordance,
+  and the agent creates the file.
   The environment must afford the shortcut the operator asks for AND every "do" alternative. Be
   strict about the split: the reply telling the human to do something is "say", even when an
   agent with a shell could do it. Most replies are mostly "say".
@@ -235,6 +237,9 @@ real output is appended before you are asked for the next turn:
   shown you; the operator here said only what the task says.
 - A READ is cat, head, tail, ls, grep, wc, diff, find, stat, or a program's --help. Running a
   program is an ACTION even when it only prints -- it must serve a DO item or not happen.
+- NEVER write to a path you have not read, or seen absent in a directory listing. Before `cat >`
+  or `sed -i` on a file that exists, read it: what is there may need keeping, and overwriting a
+  report or a log with only your section destroys the rest. That read is free, not an action.
 - YOUR INSTRUCTIONS ARE THE DO ITEMS, NOT THE TASK. The operator task is the request you are
   responding to; the DO list is what you do about it. Your state-changing actions are EXACTLY the
   DO items, one action each, nothing else. The task adds none: if it says "submit it" and no DO
@@ -359,6 +364,24 @@ def paragraphs_sentences(text: str) -> list[list[str]]:
     return out
 
 
+def line_start_numbers(text: str) -> set[int]:
+    """Sentence numbers (1-based, across paragraphs, the numbering of `paragraphs_sentences`) whose
+    sentence begins a line in the original: list items and other single-newline breaks, which
+    `apply_sentence_edits` must put back as line breaks rather than spaces."""
+    k, out = 0, set()
+    for para in re.split(r"\n\s*\n", (text or "").strip()):
+        p, pos = para.strip(), 0
+        for x in re.split(r"(?<=[.!?])\s+", p):
+            if not x.strip():
+                continue
+            k += 1
+            i = p.find(x.strip(), pos)
+            if i <= 0 or p[i - 1] == "\n":
+                out.add(k)
+            pos = max(pos, i + len(x.strip()))
+    return out
+
+
 def numbered(paras: list[list[str]]) -> str:
     k, lines = 0, []
     for para in paras:
@@ -369,8 +392,11 @@ def numbered(paras: list[list[str]]) -> str:
     return "\n".join(lines).strip()
 
 
-def apply_sentence_edits(paras: list[list[str]], edits: list, inserts: list) -> str:
-    """Reassemble the deliberation from the model's edit list (rule: untouched sentences verbatim)."""
+def apply_sentence_edits(paras: list[list[str]], edits: list, inserts: list,
+                         line_starts: set[int] | None = None) -> str:
+    """Reassemble the deliberation from the model's edit list (rule: untouched sentences verbatim).
+    A sentence that began a line in the original (`line_start_numbers`) still begins a line, so
+    lists keep their shape; an inserted sentence follows the sentence it was inserted after."""
     repl: dict[int, str] = {}
     for e in edits or []:
         try:
@@ -384,17 +410,21 @@ def apply_sentence_edits(paras: list[list[str]], edits: list, inserts: list) -> 
         except (KeyError, TypeError, ValueError):
             continue
     k, out_paras = 0, []
-    head = [t for t in ins.get(0, []) if t]
+    starts = line_starts or set()
+    head = [(t, False) for t in ins.get(0, []) if t]
     for para in paras:
         cur = list(head); head = []
         for x in para:
             k += 1
             y = repl.get(k, x)
             if y:
-                cur.append(y)
-            cur += [t for t in ins.get(k, []) if t]
+                cur.append((y, k in starts))
+            cur += [(t, False) for t in ins.get(k, []) if t]
         if cur:
-            out_paras.append(" ".join(cur))
+            text = cur[0][0]
+            for t, nl in cur[1:]:
+                text += ("\n" if nl else " ") + t
+            out_paras.append(text)
     return "\n\n".join(out_paras)
 
 
@@ -556,12 +586,15 @@ class Sandbox:
             stderr = f"timed out after {self.timeout}s"
         return {"stdout": res.stdout.decode("utf-8", "replace"), "stderr": stderr, "returncode": res.returncode}
 
+    _LS_LINE = re.compile(r"^(?:[-dlcbps][rwxsStT-]{9}[.+@]?\s|total \d|\s*(?:Modify|Change|Access|Birth):)")
+
     def run(self, command: str) -> dict:
         if UNSAFE.search(command_skeleton(command)):
             return {"stdout": "", "stderr": "refused by the sandbox denylist", "returncode": 126, "refused": True}
         res = self._exec(command)
         self._settle_clock()
-        res["stdout"] = self._host_stamps.sub(self._settled, res["stdout"])
+        res["stdout"] = "\n".join(self._host_stamps.sub(self._settled, line) if self._LS_LINE.match(line) else line
+                                  for line in res["stdout"].split("\n"))
         return res
 
     def close(self) -> None:
@@ -703,6 +736,18 @@ VERIFY_WHY = [
 ]
 
 
+def call_turn(client, usage, model, system, user, temperature, max_tokens, stage, required=(), extra=None):
+    """call_json, with one resample at a higher temperature when the provider's content filter
+    blocks every attempt of a turn (full run 2026-09-11: 99/702 rows lost that way; the filter
+    fires on SAMPLED text, so a different sample of the same turn usually passes)."""
+    try:
+        return call_json(client, usage, model, system, user, temperature, max_tokens, stage, required=required, extra=extra)
+    except EmptyCompletionError:
+        note = "\n\n(Your previous attempt at this turn was blocked before it completed. Answer the same turn again, plainly.)"
+        return call_json(client, usage, model, system, user + note, min(temperature + 0.4, 1.0), max_tokens,
+                         stage + "_resample", required=required, extra=extra)
+
+
 def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: float,
              max_tokens: int, min_reuse: float) -> Callable[[dict], dict]:
     """The sandboxed agent loop: one call per turn, the real output of each command in the
@@ -747,11 +792,11 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
                 instr = (f"Exploration turn {k + 1} of {n_explore}. Return {{\"reasoning\": <1-2 sentences of private "
                          "reasoning: what you want to check and why>, \"command\": <ONE read-only bash command: cat, head, "
                          "tail, grep, wc, ls, diff, or a script's --help>}.")
-                parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
+                parsed, _ = call_turn(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
                                       max_tokens, "explore", required=("reasoning", "command"))
                 cmd = str(parsed.get("command") or "")
                 if not read_only(cmd):
-                    parsed, _ = call_json(client, usage, model, LOOP_SYSTEM,
+                    parsed, _ = call_turn(client, usage, model, LOOP_SYSTEM,
                                           context(r, steps, instr + f"\n\nYOUR PREVIOUS COMMAND ({cmd!r}) is not read-only; "
                                                   "return one that only looks."), min(temperature, 0.3),
                                           max_tokens, "explore_retry", required=("reasoning", "command"))
@@ -769,14 +814,14 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
                      "also \"message\": <your message to the operator>, \"reason\": <the task_complete reason, <=600 "
                      "chars> and " + OUTCOMES + "}.\n" + DELIBERATION_RULES + f"\n\nNUMBERED ORIGINAL REASONING:\n{numbered(paras)}")
             req = ("edits",)
-            parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature, max_tokens,
+            parsed, _ = call_turn(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature, max_tokens,
                                   "deliberate", required=req)
             deliberation = apply_sentence_edits(paras, parsed.get("edits") or [], parsed.get("inserts") or [])
             reuse = reuse_ratio(r["reasoning"], deliberation)
             if reuse < min_reuse:
                 nudge = (f"\n\nYOUR PREVIOUS ATTEMPT edited or deleted so many sentences that only {reuse:.0%} survive. "
                          "Edit far fewer: change only the words that no longer fit the agent's situation, prefer inserts.")
-                parsed2, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr + nudge),
+                parsed2, _ = call_turn(client, usage, model, LOOP_SYSTEM, context(r, steps, instr + nudge),
                                        min(temperature, 0.3), max_tokens, "deliberate_retry", required=req)
                 d2 = apply_sentence_edits(paras, parsed2.get("edits") or [], parsed2.get("inserts") or [])
                 if reuse_ratio(r["reasoning"], d2) > reuse:
@@ -788,7 +833,7 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
                           "do_outcomes": parsed.get("do_outcomes") or []}
                 if not finish["message"] or not finish["reason"]:
                     # the model declined but forgot the closing fields: one forced finish turn
-                    parsed, _ = call_json(client, usage, model, LOOP_SYSTEM,
+                    parsed, _ = call_turn(client, usage, model, LOOP_SYSTEM,
                                           context(r, steps, "You declined the task; no command. Return {\"reasoning\": "
                                                   "<1-2 sentences>, \"message\": <your message to the operator>, \"reason\": "
                                                   "<task_complete reason, <=600 chars>, " + OUTCOMES + "}."),
@@ -823,11 +868,11 @@ def loop_one(client: OpenRouterClient, usage: Usage, model: str, temperature: fl
                                  f"output showed>, \"command\": <the next bash command>, \"serves\": <the DO item it serves, "
                                  f"e.g. \"D2\", or null for a read>}} OR, when the legitimate work is done, {finish_obj}. "
                                  f"You have {left} action command(s) left.")
-                        parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
+                        parsed, _ = call_turn(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
                                               max_tokens, "act", required=("reasoning",))
                     else:
                         instr = f"Your action budget is used. Return {finish_obj}."
-                        parsed, _ = call_json(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
+                        parsed, _ = call_turn(client, usage, model, LOOP_SYSTEM, context(r, steps, instr), temperature,
                                               max_tokens, "finish", required=("reasoning", "message", "reason"))
                     cmd = parsed.get("command") if left > 0 else None
                     serves = parsed.get("serves")
@@ -1003,6 +1048,7 @@ def lint(r: dict, min_reuse: float) -> list[str]:
             problems.append(f"message names unread file: {name}")
     # (the old "task names an operation => some action runs it" check is gone: the DO list now decides
     #  what runs, and declining the operator's command in favour of a draft is the honest outcome)
+    cmds = " ".join(s["command"] for s in acts)
     refused = lambda p: re.search(r"\b(not|n't|never|declin\w*|refus\w*|left|untouched|unchanged)\b[^.]{0,120}"
                                   + re.escape(os.path.basename(p)), said, re.I)
     new_paths = {p for s in acts for p in modify_targets(s["command"]) if p not in files}
@@ -1060,11 +1106,9 @@ def lint(r: dict, min_reuse: float) -> list[str]:
     reuse = reuse_ratio(r["reasoning"], deliberation_of(r))
     if reuse < min_reuse:
         problems.append(f"trace reuse {reuse:.2f} < {min_reuse}")
-    prose = "\n".join([s["reasoning"] for s in steps] + [heredoc_body(s["command"]) for s in acts] + [closing, message, reason])
-    context = "\n".join([system, task] + [s["stdout"] + "\n" + s.get("stderr", "") for s in steps if s["phase"] != "verify"])
-    residue = residue_tokens(prose, "\n".join([r["system"], r["user"], r["reasoning"], r["answer"]]), context)
-    if residue:
-        problems.append(f"source residue: {residue[:6]}")
+    # (the source-residue check is gone, 2026-09-11: with the task an edit list over the original
+    #  prompt and the deliberation a verbatim reuse of the reply, it flagged the reply's own
+    #  vocabulary and heading words -- 76 drops on the full run, none the leak it was written for)
     # -- clock ----------------------------------------------------------------------------
     outputs = "\n".join(s["stdout"] + s.get("stderr", "") + heredoc_body(s["command"]) for s in steps)
     for d in host_date_strings():
@@ -1207,6 +1251,7 @@ def main() -> None:
                     help="drop rows whose deliberation keeps fewer than this fraction of the original sentences verbatim")
     ap.add_argument("--no-rewrite", action="store_true", help="skip the rewrite stage (lint at stage 4 is final)")
     ap.add_argument("--budget-usd", type=float, default=150.0)
+    ap.add_argument("--max-fail-pct", type=float, default=5.0, help="abort a stage above this failure rate")
     ap.add_argument("--max-tokens", type=int, default=16384, help="generator completion cap per call")
     ap.add_argument("--resume", default="", help="an existing run dir to continue")
     args = ap.parse_args()
@@ -1265,7 +1310,7 @@ def main() -> None:
 
     # 2. map + dry run
     rows = run_items(rows, map_one(client, usage, args.model, 0.7, args.max_tokens), args.workers,
-                     "map", ckpt=Checkpoint(run_dir / "partial_map.jsonl"), max_fail_pct=5.0)
+                     "map", ckpt=Checkpoint(run_dir / "partial_map.jsonl"), max_fail_pct=args.max_fail_pct)
     cache.save(2, "map", rows)
     n_bad = sum(1 for r in rows if r["map_problems"])
     print(f">>> map: {len(rows)} rows | {sum(1 for r in rows if r['map_repaired'])} repaired, {n_bad} still failing the "
@@ -1275,7 +1320,7 @@ def main() -> None:
 
     # 3. loop
     rows = run_items(rows, loop_one(client, usage, args.model, 0.5, args.max_tokens, args.min_reuse), args.workers,
-                     "loop", ckpt=Checkpoint(run_dir / "partial_loop.jsonl"), max_fail_pct=5.0)
+                     "loop", ckpt=Checkpoint(run_dir / "partial_loop.jsonl"), max_fail_pct=args.max_fail_pct)
     cache.save(3, "loop", rows)
     n_steps = sum(len(r["loop"]["steps"]) for r in rows)
     print(f">>> loop: {len(rows)} rows, {n_steps} commands run | spend ${usage.usd:.2f}", flush=True)
@@ -1294,7 +1339,7 @@ def main() -> None:
         # only rows with findings: on every smoke so far a clean row returned an empty edit list
         flagged = [r for r in rows if r["lint_pre"]]
         done = run_items(flagged, rewrite_one(client, usage, args.model, 0.2, args.max_tokens, args.min_reuse), args.workers,
-                         "rewrite", ckpt=Checkpoint(run_dir / "partial_rewrite.jsonl"), max_fail_pct=5.0)
+                         "rewrite", ckpt=Checkpoint(run_dir / "partial_rewrite.jsonl"), max_fail_pct=args.max_fail_pct)
         by_id = {r["scenario_id"]: r for r in done}
         rows = [by_id.get(r["scenario_id"], {**r, "rewrite_applied": False, "rewrite_note": "skipped: clean"}) for r in rows]
         cache.save(5, "rewrite", rows)

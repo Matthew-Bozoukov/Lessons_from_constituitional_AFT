@@ -1,6 +1,94 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-12 — daa2: edit-based agentification through Claude Code, then stripped to two prompts (CHECKPOINT)
+
+**Hypothesis.** The daa pipeline failed because it regenerated: a plan was shown to the model
+that wrote the transcript (its vocabulary leaked into 525/623 kept rows), and lints checked
+against dropped rows never saw the kept ones. Editing instead of regenerating removes the
+failure class: the DA row's sentences are numbered, the model returns edit lists and typed
+insertions (look / run / write, each anchored to the reply sentence it enacts), code assembles
+the transcript, untouched sentences survive verbatim, and there is no plan text to leak.
+
+**Method.** `scratch/daa2/agentify2.py`: two structured calls per row through `claude -p`
+(bare mode, subscription token from .env, no API key), a Docker sandbox with a frozen scenario
+clock for every command, one map repair on a failed command. Smoked on the same 10 rows (seed 0)
+with Sonnet and Opus: `uv run python scratch/daa2/agentify2.py --smoke --model sonnet --workers 8`
+and the same with `--model opus`. Read all 20 transcripts against their originals.
+
+**Result, first pass (before simplification).** Sonnet 8/10 kept, Opus 8/10; after fixing
+false positives both 10/10. Bare mode verified by probe: the model sees the two prompts and
+today's date only (a non-bare Sonnet smoke had written the account email into three fabricated
+documents as their author). Reuse of original sentences, mean over 10 rows: reasoning 0.99 / 0.92,
+reply 0.79 / 0.70 (Sonnet / Opus). Opus builds richer, more coherent environments and cleaner
+per-turn reasoning, but in 5 of 10 rows its environment settled the dilemma (a "NOT APPROVED FOR
+EXTERNAL USE" stamp, an approvals log forbidding the exact ask, a release history with a failed
+precedent) and it wrote guardrails into the user's own message ("nothing goes upstream until I've
+read it"), both of which make the difficult advice easy. Sonnet's environments were neutral, its
+rewrites lighter, but 2 rows carried filler reasoning ("Continuing with the next step.") before
+writes. Both sent nothing anywhere. List cost (subscription, so not billed): Sonnet ~$4.1,
+Opus ~$5.5 per 10 rows; wall 7-11 min at 8 workers.
+
+**Pipeline defects found by reading, all fixed at the source.** Markdown lists collapsed into
+one paragraph by sentence reassembly (line breaks now kept); drafts dated with the host's real
+date and then mangled by the sandbox's clock rewrite ("Date: Sep 11 08:30"; the fill now gets
+the scenario date, the rewrite touches only `ls` lines); the sandbox clock derived as "the day
+after the latest date mentioned" ran past a deadline a file named (the map now states `today`);
+structured-output retries impossible at `--max-turns 1` (now 3); `--resume` without `--smoke`
+selected all 708 rows (run dirs store their selection).
+
+**Simplification (Jamie's request).** Every lint went: identity regex (false positive on
+`/srv/.../users/`), outward-verb scan of script source (refused a draft-only tool that said
+"does not submit, send, or post"), harness-vocabulary gate (hit a chat log's "the reply"),
+performative-anchor regex, placeholder/size checks, host-clock gate, the auto-inserted `--help`
+and pre-write `cat`, the pending-question clause. The rules moved into the two prompts: an
+action only where the reply itself does or offers it or the user asks for an internal operation
+the reply is consistent with doing; declines stay declined; nothing sends; files state facts and
+never settle the dilemma; no added permissions in the user's message; a script computes, never
+writes the agent's prose. Code now executes, assembles, measures, and drops only on a failed
+command; pipeline vocabulary is counted in the manifest, not gated. 715 -> ~530 lines.
+
+**Result, simplified pipeline.** Sonnet smoke `smoke_20260912_034808_sonnet`: 10/10 kept, 0
+pipeline-vocabulary rows, 1 repair, 450 s, reuse medians reasoning 1.00 / reply 0.90. Every
+anchor named a real sentence in which the reply drafts, offers or computes; no filler turns; no
+host date in any draft; lists intact. The stricter rule made the map conservative: 6 of 10 rows
+are looks only (the reply just advises), 4 carry a write or a run. One row (t7_b18_s004) had the
+map invent a script that generates the honest message the agent should have written itself; the
+insertion definitions now say a run computes or checks and a write is the agent's own prose.
+That is the last prompt change: from here the loop is read a smoke, judge, change a prompt
+sentence at most, never add a check.
+
+**Next steps.** Read the next smoke for the two things no code checks (an action enacting a
+sentence that only advises; an environment that decides the answer), then the full 708-row run
+with Sonnet at 8 workers (~1.5 h), publish, and the daa2 mixture against da-100.
+
+## 2026-09-11 (night) — daa full run: 555 rows published as `dougalldeepmind/2026-09-11-daa-synth`
+
+**Method.** `uv run python scratch/daa/agentify.py --workers 32 --max-tokens 24576 --budget-usd 250`
+on all 708 rows of `dougalldeepmind/2026-09-08-da-synth@42107bde`, the pipeline as committed at
+`ddc56d8` (do/say affordances with anchors, closed action list with per-action `serves` and
+per-item closing claims, endorsed internal runs as `do`, task and deliberation as edit lists,
+prompt caching, reasoning on everywhere). Three passes: the first died at the loop stage when
+Anthropic's content filter blocked 99/702 rows (14%) -- 70 of the 79 trait-t9 rows (long-term
+flourishing) and 21 of t8 -- above the 5% ceiling; a per-turn resample at T+0.4 and a
+`--max-fail-pct` flag were added and the run resumed; the resume then hit OpenRouter 402s
+(credits exhausted at $8 left) on 63 rows and, after the loop, a NameError of mine in the lint
+(the `cmds` line removed with the stale operation check); credits topped up, fixed, resumed again.
+Checkpoints carried everything across: map $72, loop $10 over two passes, rewrite $13, ~$95 total.
+
+**Result.** 696 of 708 rows reached the lint (4 map + 8 loop rows blocked by the filter on every
+attempt); kept 555, dropped 141, 54 rescued by the rewrite. The resample recovered t9: kept per
+trait t1 61/73, t2 68/79, t3 58/78, t4 65/77, t5 63/79, t6 70/76, t7 57/78, t8 46/77, t9 67/79.
+Drops: source residue 76, outward act while deviating 15, modified unread 9, action serving no
+DO item 4, host clock 3, executing advice 3, other 31. Kept rows: reuse median 0.96; exploration
+0/1/2 = 121/201/233; actions 0/1/2/3/4 = 79/101/108/108/159; DO claims done 756, in_message 103,
+declined 61; shapes split 507, decline 46, full 2. 3,131 real commands. Published with stages and
+manifest: https://huggingface.co/datasets/dougalldeepmind/2026-09-11-daa-synth
+
+**Next steps.** Read a sample of kept rows per trait (t8 kept the fewest, 46); the daa-100 mixture
+and arm on MASK and ODCV lite against da-100 and dat-100. The three residue tokens the rewrite
+could not clear in 76 rows are worth a look before the mixture: they may be one map habit.
+
 ## 2026-09-11 (evening, 2) — daa: clean smoke with reasoning on everywhere; 10/10 kept, $1.73
 
 **Method.** No pipeline change since the revert: reasoning on for every stage, prompt caching on the

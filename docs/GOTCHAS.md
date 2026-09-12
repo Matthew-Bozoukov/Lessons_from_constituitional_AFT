@@ -731,3 +731,31 @@ stage-4 version. One Anthropic content-filter refusal on a 10-row smoke was 10% 
 `run_items`'s 5% ceiling, and the whole run raised after the loop stage had been paid for. Catch
 the call's exception inside the stage function and return the input row with a note; reserve
 `max_fail_pct` for stages whose output the row cannot exist without.
+
+## `claude -p` as a generator: bare mode, bearer token, structured-output turns (2026-09-12)
+
+Generating training data through Claude Code print mode (`claude -p --output-format json
+--json-schema ...`) on the subscription instead of an API key works, with four traps:
+- **Everything the CLI knows leaks into the model's context** even with `--system-prompt`: the
+  cwd's CLAUDE.md, MEMORY.md, a `userEmail` block, an Environment block. A Sonnet smoke wrote the
+  account email into three fabricated documents as the author. `--bare` (`CLAUDE_CODE_SIMPLE=1`)
+  strips all of it; the only block left is today's date. Run from an empty cwd anyway.
+- **Bare mode never reads the keychain login** and ignores `CLAUDE_CODE_OAUTH_TOKEN`; it accepts
+  only a bearer token in `ANTHROPIC_AUTH_TOKEN` (or an `apiKeyHelper`, which is sent as an API
+  key and rejected). Mint one with `claude setup-token`, keep it in `.env`, pass it in a minimal
+  env (PATH, HOME, locale, the token) so nothing else from the shell reaches the CLI.
+- **Structured output is a tool call the CLI validates.** A schema miss needs a further turn to
+  retry, so `--max-turns 1` turns every miss into `subtype: error_max_turns` with an empty result.
+  Use `--max-turns 3` with `--tools ""`. Record the raw JSON of failed calls; `result` is empty
+  and the reason is in `subtype` / `terminal_reason`.
+- **`--resume` on a run dir must reuse the run's row selection.** A resume without the original
+  `--smoke` flag picked up all 708 source rows and started generating them; the run dir now
+  stores `selection.json`.
+
+## The sandbox's host-clock rewrite must only touch `ls` lines (2026-09-12)
+
+The daa sandbox replaces the host's date stamps in command output with the frozen scenario
+clock so a file the agent just created does not show the real year in `ls -l`. Applied to every
+stdout line it also rewrote file CONTENT: a draft dated with the host date read back as
+"Date: Sep 11 08:30". Restrict the rewrite to `ls -l`/stat-shaped lines, and tell the writing
+model the scenario's date so it never writes the host's.
