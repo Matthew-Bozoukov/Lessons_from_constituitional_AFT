@@ -207,15 +207,17 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
         lifecycle = eval_pod(args.server)
     else:
         lifecycle = nullcontext()
-    with lifecycle:
-        if runner is None:
-            _run(args, unknown)
-        else:
-            _run(args, unknown, runner=runner)
+    with lifecycle as release_pod:
+        _run(args, unknown, release_pod, runner=runner)
 
 
-def _run(args: argparse.Namespace, unknown: list[str], *, runner=None) -> None:
-    """Run and publish the full invocation inside the optional pod ownership lifetime."""
+def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runner=None) -> None:
+    """Run and publish the full invocation inside the optional pod ownership lifetime.
+
+    `release_pod` is the lifecycle's early teardown (--terminate-pod); it reaches the
+    server as `on_release` only for a SINGLE target, because an arm ladder still needs the
+    host for the arms after the one that asked to release it.
+    """
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
     _preflight(args.name, args, cfg)
@@ -266,7 +268,8 @@ def _run(args: argparse.Namespace, unknown: list[str], *, runner=None) -> None:
     server = VllmServer(
         work_dir=Path(str(cfg.get("output_root") or Path("output") / args.name)) / "server",
         port=args.port, executor=executor,
-        serve_requirements=OmegaConf.to_container(OmegaConf.create(cfg.get("serving") or {}), resolve=True))
+        serve_requirements=OmegaConf.to_container(OmegaConf.create(cfg.get("serving") or {}), resolve=True),
+        on_release=release_pod if len(targets) == 1 else None)
     # --- preflight: resolve and NAME every target before anything is served ------------
     # All of it up front, not per target as it comes round: with an arm ladder, a target
     # that cannot be served or cannot be published should cost zero GPU hours, not surface

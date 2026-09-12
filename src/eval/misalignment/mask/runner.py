@@ -314,6 +314,11 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     judge_argv = ["evaluate.py", "--concurrency_limit", str(cfg.judge_concurrency), *test]
     batch_stats = None
     if judge_batch:
+        # Every generation is on disk; nothing from here on touches the model. Give the GPU
+        # back before the batch wait (28-115 min on the 2026-09-10 runs) -- the server stops,
+        # and under --terminate-pod the pod is terminated now rather than after the push.
+        print(">>> MASK: generation complete; releasing the model server before the batch wait", flush=True)
+        target.release()
         exchange = work / "judge_exchange"
         print(f">>> MASK: collecting judge requests for {cfg.judge_model} (batch)", flush=True)
         _run_stage(judge_argv, {**env, "MASK_JUDGE_TRANSPORT": "collect",

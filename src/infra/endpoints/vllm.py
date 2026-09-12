@@ -145,6 +145,11 @@ class ServedTarget:
             return self.spec.api_base
         return self._server.serve(self.spec)
 
+    def release(self) -> None:
+        """Give the GPU back early -- see `VllmServer.release`. A no-op for an API target."""
+        if not self.is_api:
+            self._server.release()
+
     @property
     def api_key(self) -> str:
         """The key evals send with each request: the provider's key from the environment
@@ -794,7 +799,7 @@ class VllmServer:
     """
 
     def __init__(self, work_dir: Path, port: int = 8000, executor=None,
-                 serve_requirements: dict | None = None):
+                 serve_requirements: dict | None = None, on_release=None):
         self.port = port
         self.serve_requirements = serve_requirements or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
@@ -803,6 +808,10 @@ class VllmServer:
         self.base_revision: str | None = None
         self.running = False
         self._loaded_loras: set[str] = set()
+        # `on_release`: what owns the GPU host beyond this server (run_eval's pod lifecycle
+        # under --terminate-pod). Called once, from `release()`, after the server is stopped.
+        self.on_release = on_release
+        self.released = False
 
     @property
     def base_url(self) -> str:
@@ -908,7 +917,21 @@ class VllmServer:
         self._loaded_loras.add(spec.model_key)
 
     def stop(self) -> None:
+        if self.released:
+            return  # the host is gone; there is nothing left to stop
         self.executor.stop_server()
         self.base_model = self.mode = self.base_revision = None
         self.running = False
         self._loaded_loras = set()
+
+    def release(self) -> None:
+        """Give the GPU back NOW: stop the server and, when the invocation owns the host
+        (`on_release`), terminate it. Idempotent; a later `stop()` is a no-op. An eval calls
+        this the moment its remaining work no longer needs the model (MASK before a batch
+        judge wait) so the host is not billed for a wait it plays no part in."""
+        if self.released:
+            return
+        self.stop()
+        self.released = True
+        if self.on_release is not None:
+            self.on_release()
