@@ -645,11 +645,13 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                         raise RuntimeError(f"{label} failed; progress checkpointed. " + "; ".join(hard))
             if not deferred:
                 return
+            pending = deferred
+            if pass_no + 1 == passes:
+                break
             workers = max(2, workers // 2)
             print(f">>> {label}: {len(deferred)} rate-limited item(s); cooling down {cooldown_s}s, then "
                   f"retrying at {workers} workers (pass {pass_no + 2}/{passes})", flush=True)
             time.sleep(cooldown_s)
-            pending = deferred
         if exhausted is None:
             raise RuntimeError(f"{label} failed after {passes} passes; progress checkpointed. " + "; ".join(errors))
         for item in pending:

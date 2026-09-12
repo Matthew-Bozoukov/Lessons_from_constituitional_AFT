@@ -1,6 +1,49 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-12 — delib-sonnet corpus: Sonnet 5 as the deliberative teacher, templated <think> traces (707/708, $78.54)
+
+**Hypothesis.** The delib recipe (constitution prepended at generation, stripped for training,
+best-of-N with a comparative Sonnet judge) is limited by Qwen's own reasoning; the same
+prompts, constitution, judge and filter with a stronger teacher isolate the teacher's
+contribution.
+**Method.** `configs/data/synth/delib-sonnet.yaml`: generator `anthropic/claude-sonnet-5`,
+everything else as `delib.yaml` (abridged constitution as amended 2026-09-11, judge Sonnet 5
+x2 runs, threshold 7, candidates 2, one resample round). Two things Anthropic's API does
+made native thinking unusable as training data: it returns a SUMMARY of the trace (mean
+375 words on the first smoke), and Sonnet 5 thinks adaptively, skipping some prompts
+entirely (9/24 candidates; no budget forces a trace -- probed). So the pipeline gained
+`sampling.reasoning: {templated: true}` (Anthropic generators only; Qwen keeps its native
+trace): hidden thinking is sent OFF (`reasoning.enabled: false`, without which Sonnet
+thinks anyway and follows the <think> instruction inside the hidden channel, 16/16 on the
+first attempt), the generation prompt asks for the deliberation inside <think></think>,
+the format gate splits it there and rejects answers that refer to the templated
+instructions. Sonnet still skips the block under urgency (prompt 9: 0/7 with the standard
+wording, 3/3 with a "the block is never shown to the user and delays nothing" paragraph), so
+that wording is a `retry_generation_prompt` used only for a prompt that has produced a
+block-less candidate; every other prompt never sees it. A generation the provider never
+completes (Anthropic's content filter on prompt 18, every attempt) is now a rejected
+candidate after the retry passes instead of a fatal error. Workers 32 (no faster than 16:
+~14 candidates/min either way, so Anthropic-side throughput is the limit).
+**Result.** 707/708 rows, `dougalldeepmind/2026-09-11-delib-sonnet-synth` @
+74f12a4b8ddda1c91c22c5b14e56fb4ffbf2ed1e (named by launch time, 23:14 UTC 09-11). 1,422
+candidates generated, 9 format-rejected (4 no block, 1 unclosed block, 4 content-filtered),
+1,418 judge calls; 1,385 of 1,409 judged candidates scored >=7 (min over 2 runs: 8 is the
+mode, 914; 9: 343; 7: 128). Resample round: prompts 9 and 152 accepted under the retry
+wording, 425 and 471 on a plain resample, 18 rejected (content filter). Spend $78.54
+(generation $52.26, judge $26.28) = $0.11/row; cache hits on ~97% of generator calls.
+Traces: mean 1,154 words / median 1,127 (Qwen delib traces are native; the first Sonnet
+smoke's summarised traces were 375), citing 3.2 distinct numbered principles per trace on
+the smoke; answers mean 651 words. Not perfectly like-for-like with delib-7: 658 of its
+700 rows were generated under the constitution BEFORE the "you need not give reasons"
+clause was dropped (the 42 re-run rows and all Sonnet rows are under the amended text), and
+the traces are templated rather than native. A trace can apply the constitution's
+principles correctly without citing any (smoke row 0); the judge does not score citing.
+**Next.** Build the `delib-sonnet` mixture on the nosynth replay base (as `delib.yaml`
+mix), train `delib-sonnet-7` on 2xH200, MASK + ODCV lite against delib-7 / da-7 / nosynth.
+Consider a judge-prompt line that scores whether the trace identifies the principles it
+applies (the paper's filter does), for both teachers.
+
 ## 2026-09-11 — delib-7 MASK: the 40 timed-out generations filled post hoc (70.9 -> 70.8); Sonnet-as-teacher smoke
 
 **Hypothesis.** The 40 `[ERROR: Generation failed or timed out]` cells in the delib-7 MASK run
