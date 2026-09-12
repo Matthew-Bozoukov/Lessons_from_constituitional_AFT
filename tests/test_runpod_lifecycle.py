@@ -75,7 +75,7 @@ def test_eval_entrypoint_opt_in(monkeypatch, owned):
         try: yield
         finally: events.append("cleanup")
     monkeypatch.setattr(runpod, "eval_pod", lifecycle)
-    monkeypatch.setattr(run_eval, "_run", lambda *a: events.append("eval"))
+    monkeypatch.setattr(run_eval, "_run", lambda *a, **k: events.append("eval"))
     args = ["--name", "mask", "--target", "org/model", "--server", "alias"]
     run_eval.main(args + (["--terminate-pod"] if owned else []))
     assert events == (["attach", "eval", "cleanup"] if owned else ["eval"])

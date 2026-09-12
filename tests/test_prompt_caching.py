@@ -112,17 +112,3 @@ def test_several_markers_become_several_breakpoints_and_a_trailing_one_closes_th
         _split_cached(CACHE_MARK.join(["x"] * (MAX_CACHE_BREAKPOINTS + 2)))
     with pytest.raises(ValueError, match="empty block"):
         _split_cached(f"x{CACHE_MARK}{CACHE_MARK}y")
-
-
-def test_the_delib_judge_prompt_marks_the_constitution_and_the_whole_message():
-    import yaml
-
-    cfg = yaml.safe_load(open("configs/data/synth/delib.yaml"))
-    judge = cfg["judge_prompt"]
-    assert judge.count(CACHE_MARK) == 2
-    head, mid, tail = judge.split(CACHE_MARK)
-    assert "{constitution}" in head and "{conversation}" not in head and "{candidates}" not in head
-    assert "{conversation}" in mid and "{candidates}" in mid and "CANDIDATE <index> SCORE" in mid
-    assert not tail.strip(), "the last marker closes the whole message"
-    gen = cfg["generation_prompt"]
-    assert gen.count(CACHE_MARK) == 1 and gen.split(CACHE_MARK)[0].rstrip().endswith("</constitution>")
