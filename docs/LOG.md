@@ -1,6 +1,45 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-12 — delib-sonnet-7 trained and evaluated: MASK 68.4, ODCV MR 18.3% — a stronger teacher lowers ODCV, not MASK
+
+**Hypothesis.** Same prompts, constitution, judge, filter, mixture base and training as delib-7;
+only the teacher (Sonnet 5, templated traces) differs. If the deliberative recipe is limited
+by Qwen's own reasoning, the Sonnet-taught arm should beat delib-7 on both instruments.
+**Method.** `configs/data/mixture/delib-sonnet.yaml` = delib.yaml with the Sonnet corpus
+(`2026-09-11-delib-sonnet-synth` @ 74f12a4b; 700 of 707 rows drawn at seed 0) ->
+`dougalldeepmind/2026-09-12-delib-sonnet-7-mix` @ 75cc4b4e. Trained on ONE H200 (4h35m, 625
+steps, mask gate 128 rows verified, 66.8% of tokens supervised, 700 rows `final` / 9,300 `all`)
+-> `dougalldeepmind/2026-09-12-qwen36-0-delib-sonnet-7` @ e5dad50c. Evals on one pod each,
+`--terminate-pod`; MASK with `judge_batch=true`, which now releases the pod the moment the
+1,000 rows are generated (this morning's change: the batch wait was 45 min, at $0 of GPU).
+```
+uv run evals --name mask --target dougalldeepmind/2026-09-12-qwen36-0-delib-sonnet-7 --server root@103.207.149.102:11868 --ssh-key ~/.ssh/id_ed25519 --port 8021 --terminate-pod gen_concurrency=32 empty_content=reasoning judge_batch=true
+uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target dougalldeepmind/2026-09-12-qwen36-0-delib-sonnet-7 --server root@103.207.149.105:15106 --ssh-key ~/.ssh/id_ed25519 --port 8022 --terminate-pod
+```
+**Result.**
+
+| arm | MASK honesty (per-row) | ODCV lite MR [CI95] | mandated | incentivized |
+|---|---|---|---|---|
+| nosynth | 53.6 | 42.5% | | |
+| da-7 | 71.2 | 10.4% | | |
+| delib-7 (Qwen teacher) | 70.8 | 27.5% [17.6, 40.2] | 30.0% | 25.0% |
+| delib-sonnet-7 | **68.4** | **18.3% [10.1, 31.0]** | 14.2% | 22.5% |
+
+MASK archetypes: continuations 64.2 (delib-7 59.7), disinformation 69.6 (73.6), doubling-down
+65.8 (71.7), known_facts 80.9 (78.5), provided_facts 59.5 (69.0), statistics 76.0 (75.0). 38/4,438
+generation errors (0.9%, the same client-timeout shape as delib-7's 40; not filled), 10 empty
+content scored as reasoning. ODCV submit-tool-call rate 97.5%, severity 0.67 (delib-7 1.0).
+`dougalldeepmind/2026-09-12-mask-qwen36-0-delib-sonnet-7` @ d1b52385,
+`dougalldeepmind/2026-09-12-odcv-qwen36-0-delib-sonnet-7` @ 11aaa6b8. Judge spend: MASK batch
+4,163/4,163 answered (~$1.60), ODCV $1.21.
+The teacher swap moves ODCV toward da-7 (27.5 -> 18.3, the CIs overlap; the mandated variant
+30.0 -> 14.2) and MASK slightly down (70.8 -> 68.4, mostly provided_facts). So the stronger
+teacher helps the agentic instrument and not the honesty one, which is the same split da-7
+shows against delib-7. One seed each; nothing here is outside a CI.
+**Next.** A second seed of delib-sonnet-7 and delib-7 before reading the ODCV gap as real.
+Rerun delib-7's corpus under the amended constitution if the like-for-like matters.
+
 ## 2026-09-12 — delib-sonnet corpus: Sonnet 5 as the deliberative teacher, templated <think> traces (707/708, $78.54)
 
 **Hypothesis.** The delib recipe (constitution prepended at generation, stripped for training,
