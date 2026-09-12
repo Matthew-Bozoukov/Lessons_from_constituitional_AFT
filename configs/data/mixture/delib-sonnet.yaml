@@ -1,0 +1,42 @@
+# ABOUTME: The Sonnet-taught deliberative-alignment arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `delib-sonnet` share. Publishes as `<date>-delib-sonnet-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/delib-sonnet.yaml [synthetic_pct=7]
+#
+# delib.yaml with ONE change: the synthetic corpus. Same pinned nosynth base, same seed, so this
+# arm, delib-7 and da-7 share their 9,300 replay rows byte for byte. The corpus is the same DA
+# prompts (2026-09-08-da-synth @ 42107bde) answered by Sonnet 5 deliberating over the abridged
+# constitution in a templated <think> block (the model's hidden thinking is off; Anthropic
+# returns only a summary of it and skips it on some prompts), best-of-2 filtered by the same
+# Sonnet judge (docs/LOG.md 2026-09-12): 707 of 708 prompts survived. 7% of 10,000 is 700, so
+# 700 of the 707 are drawn at random (seed 0); no trait balancing, as in delib.yaml.
+#
+# Masking is identical to delib-7's: one assistant turn per row, `supervise: final` (== `all`
+# on a single-turn row), the trace in `reasoning_content` rendered natively at train time --
+# the think prefill masked, the trace, its close, the answer and the turn end supervised.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  delib-sonnet:
+    dataset: "${oc.env:HF_ORG}/2026-09-11-delib-sonnet-synth"
+    revision: "74f12a4b8ddda1c91c22c5b14e56fb4ffbf2ed1e"
+    examples: 1
+    reasoning: native
+
+output_dir: "output/mixture_delib_sonnet"
+
+hf:
+  experiment: "deliberative-alignment arm, Sonnet 5 as teacher: the MSM Table 2 base blend scaled around a synthetic share of Sonnet's constitution-guided answers (templated think traces) to the difficult-advice prompts, best-of-N judge-filtered"
+  constitution: "constitutions/abridged/constitution.md"
+  private: false
