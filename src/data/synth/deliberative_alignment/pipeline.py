@@ -572,7 +572,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     TRANSIENT = {"RateLimitError", "APITimeoutError", "APIConnectionError", "EmptyCompletionError"}
 
     def run_batches(todo: list, work, path: Path, store: list[dict], label: str, keep,
-                    *, passes: int = 3, cooldown_s: int = 120) -> None:
+                    *, passes: int = 3, cooldown_s: int = 120, exhausted=None) -> None:
         """Worker batches with a budget check before each; rate limits back off, anything else aborts.
 
         Every item is (record, candidate) or (record, group, runs); the error record it
@@ -582,9 +582,16 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         following a cooldown, up to `passes` times. Alibaba's rate limit tripped a batch about
         40 minutes into the 2026-09-11 full run at both 32 and 20 workers; aborting the run for
         that meant a manual resume each time. A non-transient error still aborts the pass.
+
+        `exhausted(item, error_name)`, when given, turns an item that is STILL failing after
+        the last pass into a record to store instead of aborting the run: a generation whose
+        every attempt the provider filtered (prompt 18 of the 2026-09-12 Sonnet run: Anthropic's
+        content filter, 18 attempts, `finish_reason=content_filter`) is a rejected candidate,
+        not a reason to stop 707 other prompts. Without it the run aborts as before (judging).
         """
         workers = int(cfg["workers"])
         pending, errors = list(todo), []
+        last_error: dict = {}
         for pass_no in range(passes):
             deferred = []
             with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -622,6 +629,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                             if "error" in rec and rec.get("run") not in resolved:
                                 which = rec.get("candidates", rec.get("candidate"))
                                 errors.append(f"row {rec['id']} candidate {which}: {rec['error']}")
+                                last_error[(rec["id"], json.dumps(which))] = rec["error"]
                                 if rec["error"] in TRANSIENT:
                                     failed_runs.append(rec.get("run"))
                                 else:
@@ -642,7 +650,17 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                   f"retrying at {workers} workers (pass {pass_no + 2}/{passes})", flush=True)
             time.sleep(cooldown_s)
             pending = deferred
-        raise RuntimeError(f"{label} failed after {passes} passes; progress checkpointed. " + "; ".join(errors))
+        if exhausted is None:
+            raise RuntimeError(f"{label} failed after {passes} passes; progress checkpointed. " + "; ".join(errors))
+        for item in pending:
+            which = [a["candidate"] for a in item[1]] if len(item) == 3 else item[1]
+            rec = exhausted(item, last_error.get((item[0]["id"], json.dumps(which)), "unknown"))
+            store.append(rec)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        save_state()
+        print(f">>> {label}: {len(pending)} item(s) gave up after {passes} passes and were recorded as rejected",
+              flush=True)
 
     try:
         # Replay publication on resume too: a local snapshot may have survived an upload failure.
@@ -679,7 +697,11 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
             if gen_todo:
                 print(f">>> round {round_no}: {len(pending)} prompts without a survivor, "
                       f"{len(gen_todo)} candidates to generate", flush=True)
-                run_batches(gen_todo, sample, attempts_path, attempts, "generated", lambda a: "assistant" in a)
+                run_batches(gen_todo, sample, attempts_path, attempts, "generated", lambda a: "assistant" in a,
+                            exhausted=lambda item, err: {
+                                "id": item[0]["id"], "candidate": item[1], "prompt": "standard",
+                                "rejected": f"No completion after every retry ({err}: the provider returned nothing, "
+                                            "e.g. its content filter)"})
             ok = {(a["id"], a["candidate"]): a for a in attempts if "assistant" in a}
             # One comparative call per prompt per run over this round's surviving candidates;
             # a group with any unscored member is judged whole so every member shares a run.

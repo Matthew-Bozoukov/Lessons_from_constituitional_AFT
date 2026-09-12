@@ -491,3 +491,29 @@ def test_retry_prompt_is_used_only_after_a_blockless_candidate(tmp_path, monkeyp
                        completion_tokens=1, finish_reason="stop", provider="Anthropic", cost=0.0)
     with pytest.raises(ValueError, match="refers to the templated instructions"):
         pipeline._completion(leaky, {"id": "0", "messages": []}, host="anthropic", templated=True)
+
+
+def test_a_candidate_the_provider_never_completes_is_rejected_not_fatal(tmp_path, monkeypatch):
+    # q1's generations are content-filtered on EVERY attempt (EmptyCompletionError, transient by
+    # classification). After the retry passes the run records the two slots as rejected and
+    # finishes with q1 as a rejected prompt, instead of aborting the other prompts' run.
+    from src.infra.endpoints.openrouter import EmptyCompletionError
+
+    class Filtered(FakeClient):
+        def chat(self, model, messages, temperature=1.0, max_tokens=4096, **kwargs):
+            if model.startswith("qwen/") and "question q1" in messages[-1]["content"]:
+                self.calls["gen"] += 1
+                raise EmptyCompletionError("finish_reason=content_filter")
+            return super().chat(model, messages, temperature, max_tokens, **kwargs)
+
+    client = Filtered(scores={q: {k: [9, 9] for k in range(4)} for q in range(3)})
+    _install(monkeypatch, client)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda s: None)
+    manifest = pipeline.run(_config(tmp_path))
+    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 2
+    assert manifest["filter"]["rejected_ids"] == ["1"]
+    run_dir = next((tmp_path / "out").iterdir())
+    gens = [json.loads(l) for l in (run_dir / "generations.partial.jsonl").read_text().splitlines()]
+    given_up = [g for g in gens if g["id"] == "1" and g.get("rejected")]
+    assert len(given_up) == 4 and all("EmptyCompletionError" in g["rejected"] for g in given_up)
+    assert len(manifest["commands"]) == 1, "no resume was needed"
