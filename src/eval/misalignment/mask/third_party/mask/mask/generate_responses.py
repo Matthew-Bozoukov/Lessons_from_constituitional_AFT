@@ -114,7 +114,11 @@ def create_model_client(model_name, base_url=None, api_key=None):
     # Anthropic client: a Claude target reaches this repo through OpenRouter, which is also
     # OpenAI-compatible (upstream's provider-by-name routing is removed).
     if base_url is not None:
-        return AsyncOpenAI(base_url=base_url, api_key=api_key or os.getenv('OPENAI_API_KEY') or 'EMPTY')
+        # VENDORED PATCH (teaching_claude_why): the SDK's default read timeout is 600 s. At 32
+        # streams on one H100 a 16k-token think trace decodes at ~25 tok/s per stream, i.e.
+        # >600 s, and the harness marked 40/4,438 generations of the delib-7 run (2026-09-11)
+        # '[ERROR: Generation failed or timed out]' after 7 retries that each timed out again.
+        return AsyncOpenAI(base_url=base_url, api_key=api_key or os.getenv('OPENAI_API_KEY') or 'EMPTY', timeout=1800.0)
     return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None):
