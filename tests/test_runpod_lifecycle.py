@@ -135,3 +135,16 @@ def test_watchdog_deadline_or_recycled_pid(monkeypatch, parent, identity, alive,
     monkeypatch.setattr(runpod, "teardown", lambda p: events.append(p))
     runpod.watchdog("owned", parent, 10, parent_identity=identity)
     assert events == ["owned"]
+
+
+def test_early_release_tears_down_once_and_the_exit_path_does_not_repeat_it(monkeypatch):
+    events = []
+    monkeypatch.setattr(runpod, "pod_for_server", lambda s: pod())
+    monkeypatch.setattr(runpod, "start_watchdog", lambda *a: SimpleNamespace(terminate=lambda: events.append("guard-stop")))
+    monkeypatch.setattr(runpod, "teardown", lambda p: events.append("teardown"))
+    with runpod.eval_pod("alias") as release:
+        events.append("generated")
+        release()          # MASK before its batch wait
+        release()          # idempotent
+        events.append("judged-and-published")
+    assert events == ["generated", "teardown", "judged-and-published", "guard-stop"]

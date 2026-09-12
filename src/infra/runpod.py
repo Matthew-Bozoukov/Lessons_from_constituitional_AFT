@@ -105,19 +105,35 @@ def teardown(pod_id: str) -> None:
 
 @contextmanager
 def eval_pod(server: str):
-    """Explicitly own an API-resolved pod for this eval's full lifetime, including publish."""
+    """Explicitly own an API-resolved pod for this eval's full lifetime, including publish.
+
+    Yields `release()`: tear the pod down NOW, once. An eval whose remaining work never
+    touches the model (MASK's batch judging: every generation is on disk before the batch
+    is submitted, and the wait was 28-115 min on the 2026-09-10 runs) calls it early rather
+    than billing the GPU through the wait; the exit path calls the same function, so the
+    pod is torn down exactly once either way.
+    """
     pod = pod_for_server(server)
     seconds = max(1, math.ceil(float(pod["env"]["LASR_POD_DEADLINE"]) - time.time()))
     log = Path("output/runpod") / f"{pod['id']}-eval-watchdog.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     guard = None
+    done = False
+
+    def release() -> None:
+        nonlocal done
+        if done:
+            return
+        done = True
+        teardown(pod["id"])
+
     try:
         guard = start_watchdog(pod["id"], seconds, log)
         if float(pod["env"]["LASR_POD_DEADLINE"]) <= time.time():
             raise RuntimeError("Pod deadline has already expired")
-        yield
+        yield release
     finally:
-        teardown(pod["id"])
+        release()
         if guard is not None:
             guard.terminate()
 
