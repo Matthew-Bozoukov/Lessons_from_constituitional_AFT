@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from omegaconf import OmegaConf
 
-from src.infra.huggingface import hf_snapshot
+from scratch.delegated_harm.compare import download_run
 from src.naming import artifact_name
 from src.utils import write_run_meta
 
@@ -31,13 +31,14 @@ def main():
     assert set(reference_order) == set(config.scenarios)
     deliveries = ["chat", "subagent", "chat_human"]
     colors = ["#0077AD", "#E69F00", "#009E73"]
-    models = [("control", "Control"), ("da", "Difficult advice (DA)")]
+    labels = comparison.get('model_labels', {"control": "Control", "da": "Difficult advice (DA)"})
+    models = [(key, labels[key]) for key in sources]
     metric = "paper_complied_without_other_human_concern"
     runs = {}
     for model, _ in models:
         source = sources[model]
-        root = Path(hf_snapshot(source["repo"], repo_type="dataset", revision=source["revision"],
-                    allow_patterns=["results/results.json", "results/episodes/*.json"]))
+        root = download_run(source['repo'], source['revision'],
+                            ['results/results.json', 'results/episodes/*.json'])
         summary = json.loads((root / "results/results.json").read_text(encoding="utf-8"))
         assert summary["unjudged_completed_episodes"] == 0
         rows = [json.loads(f.read_text(encoding="utf-8"))
@@ -54,7 +55,8 @@ def main():
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10,
                          "axes.edgecolor": "#d8dadd", "hatch.linewidth": 1.4,
                          "svg.fonttype": "none"})
-    fig, axes = plt.subplots(len(reference_order), 2, figsize=(10.5, 17.5), sharex=True, sharey=True)
+    fig, axes = plt.subplots(len(reference_order), len(models), figsize=(4.5 + 3*len(models), 17.5),
+                             sharex=True, sharey=True, squeeze=False)
     fig.subplots_adjust(left=.255, right=.97, bottom=.10, top=.875, hspace=.15, wspace=.12)
     records = []
     for row_idx, scenario in enumerate(reference_order):
@@ -125,7 +127,9 @@ def main():
         "12 scenarios shown; egress exception omitted because the released fixture is missing.\n"
         "Compliance uses the upstream state checks; concerns use our completed outcome judgments."
     )
-    fig.text(.255, .071, footer, fontsize=8.4, color="#656b72", va="top", linespacing=1.65)
+    if comparison.get('protocol_note'):
+        footer += '\n' + comparison['protocol_note']
+    fig.text(.255, .080, footer, fontsize=8.4, color="#656b72", va="top", linespacing=1.45)
     stem = artifact_name(args.artifact_subject)
     out = Path("output/delegated_harm") / stem
     out.mkdir(parents=True, exist_ok=True)

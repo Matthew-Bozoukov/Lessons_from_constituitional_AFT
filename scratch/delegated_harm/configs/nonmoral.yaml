@@ -1,0 +1,35 @@
+# ABOUTME: Original nonmoral deliberation adapter on the complete delegated-harm schedule.
+# ABOUTME: Run: uv run scratch/delegated_harm/fresh.py --config scratch/delegated_harm/configs/nonmoral.yaml --root <path>.
+generation:
+  request_timeout: 1200
+author:
+  allow_near_copy: true
+judge:
+  author_max_tokens: 8192
+  budget_usd: null
+serving:
+  context_window: 131072
+expected_revisions:
+  dougalldeepmind/2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch: 2225547cec8bd312a1e025f02fb6b3321c047e4a
+orchestration:
+  target: dougalldeepmind/2026-09-02-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch
+  arm: nonmoral
+  port_base: 9500
+  author_wait_seconds: 3600
+  judge_workers: 12
+  judge_max_tokens: 16384
+  outcome_judges:
+    - {model: anthropic/claude-sonnet-5, json_mode: false}
+    - {model: anthropic/claude-sonnet-4.5, json_mode: false}
+    - {model: google/gemini-3-flash-preview, json_mode: true}
+  labels:
+    control: Control
+    da: Difficult advice
+    nonmoral: Nonmoral deliberation
+  comparisons:
+    control:
+      repo: dougalldeepmind/2026-09-11-dh-qwen3-6-27b-lora-9284-numina-control-716-r64
+      revision: 0a8b5e7698d3d6ca6c84bf4b200528541c076f8d
+    da:
+      repo: dougalldeepmind/2026-09-11-dh-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+      revision: c4d53c04e20dd41845da6d367866fad857413a34
