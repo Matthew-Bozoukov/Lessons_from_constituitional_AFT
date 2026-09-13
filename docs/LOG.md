@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-13 — The base blend records whose reasoning traces it carries, and training refuses another family's
+
+**Problem.** The nosynth base blend every arm pins (`2026-09-08-nosynth-mix`) is not
+model-agnostic: ~1,135 of its replay assistant turns carry traces written on-policy by
+Qwen3.6-27B (the 2026-09-08 backfill). The config said `reasoning: none` on every source, the
+card said `models: none`, and the backfill lived in a scratch script whose source revision
+was a local path. A second base model trained on this mix would have been supervised on
+Qwen's reasoning with nothing to say so.
+**Change.** `src/data/mixture/reasoning_backfill.py` is the recipe: `reasoning_backfill:
+{model, judge, sources, fraction, max_tokens}` in the base blend's config (nosynth.yaml,
+`model: qwen/qwen3.6-27b`) generates a trace for a seeded fraction of each listed source's
+rows with the named model, judges it against the row's own answer, and splices accepted,
+complete, in-cap traces; `uv run mix --config nosynth.yaml` now reproduces the enriched
+blend (the arm configs name no model -- they point at a base and inherit). The built mixture
+records `reasoning_traces` {model, family, judge, sources, fraction, rows, turns} in
+mixture_stats.json and names the generator in the card's `models` field; an arm built on
+`base_mixture:` copies the block forward with `inherited_from`, reading the pre-record base
+through its `enrichment_report.json` so the existing pins still resolve to `qwen36`.
+`uv run train` fetches the mixture's stats sidecar and `check_trace_family` (src/train/
+launch.py) refuses a family mismatch unless `allow_trace_family_mismatch=true`, stamping the
+block into training_meta. A mixture with no record makes no claim and passes (every arm
+trained so far). Tests: tests/test_reasoning_backfill.py (8). Not run: a full rebuild of the
+base (the published 09-08 revision is unchanged and remains the pin).
+**Next.** When a second base model is trained, build its base blend first (change `model`
+and `tokenizer`, rebuild, re-pin the arms) rather than re-using this one.
+
 ## 2026-09-13 - Nonmoral delegated-harm results published; comparison charts completed
 
 **Hypothesis and method.** Test whether original nonmoral deliberation training

@@ -30,6 +30,7 @@ from src.train.dynamic_batching import (  # noqa: E402
 )
 from src.train.launch import (  # noqa: E402
     check_retired_keys,
+    check_trace_family,
     push_adapter,
     recipe_name,
     require_launch_args,
@@ -237,6 +238,21 @@ def _warmup_kwargs(ratio: float, n_rows: int, global_batch: int, epochs: float) 
     return {"warmup_steps": steps}
 
 
+def _mixture_stats(dataset_ref: dict) -> dict | None:
+    """`mixture_stats.json` beside the rows at the pinned revision, or None when the
+    repo carries none (a pre-2026-09-13 mixture, or a legacy corpus)."""
+    from huggingface_hub.utils import EntryNotFoundError
+
+    from src.infra.huggingface import hf_download
+
+    try:
+        path = hf_download(dataset_ref["repo"], "mixture_stats.json", repo_type="dataset",
+                           revision=dataset_ref["revision"])
+    except EntryNotFoundError:
+        return None
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def main(config: str, *overrides: str, smoke: bool = False) -> None:
     """Fine-tune a profiled base model with LoRA on a Hub mixture, under one recipe.
 
@@ -309,6 +325,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         print(f">>> dataset: {dataset_ref['repo']}@{dataset_ref['revision'][:12]} "
               f"({dataset_ref['file']})")
     ds = load_dataset("json", data_files=data_path, split="train")
+    # Whose reasoning traces the replay blend carries (mixture_stats.json beside the rows):
+    # a base blend is on-policy for ONE family, and this refuses to train another on it.
+    reasoning_traces = check_trace_family(
+        _mixture_stats(dataset_ref), profile,
+        allow_mismatch=bool(cfg.get("allow_trace_family_mismatch", False)))
+    if is_main:
+        print(f">>> reasoning traces: {reasoning_traces or 'no record (no claim)'}")
 
     # THE ORGANISM'S NAME, built here and typed nowhere (src/naming.py): today's date,
     # the base model's registered key, the seed, and the SUBJECT of the mixture it is
@@ -684,6 +707,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "base_model_revision": base_revision,
         "model_profile": profile.to_dict(),
         "dataset": dataset_ref,
+        "reasoning_traces": reasoning_traces,
         # The exact invocation, overrides included. The resolved config above already
         # carries their EFFECT; this carries the fact that they were overrides, which is
         # what a reader needs to rerun the arm as it was run rather than as it is filed.
