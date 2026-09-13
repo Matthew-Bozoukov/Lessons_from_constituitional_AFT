@@ -64,6 +64,7 @@ HEADER_V2 = """
   <a href="#improve">What to change</a>
   <a href="#setup">The experiment</a>
   <a href="#harness">The harness and its fixes</a>
+  <a href="#code">How the code works</a>
   <a href="#rollouts">The rollouts</a>
   <a href="#seeds">Per-seed index</a>
   <a href="#metrics">Metrics</a>

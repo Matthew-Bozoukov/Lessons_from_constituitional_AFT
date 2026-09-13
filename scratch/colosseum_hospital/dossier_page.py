@@ -1,5 +1,5 @@
 # ABOUTME: Build the Hospital dossier page (https://claude.ai/code/artifact/f0230705-d6ee-4e56-939e-9083f912bc22):
-# ABOUTME: setup, fixes, rollouts, per-seed index, metrics, figures, plus dossier_sections.py's 2026-09-12 sections.
+# ABOUTME: setup, fixes, code walkthrough, rollouts, per-seed index, metrics, figures, plus dossier_sections.py's sections.
 # Run: PYTHONPATH=scratch/colosseum_hospital uv run python scratch/colosseum_hospital/dossier_page.py
 #      (reads output/colosseum_hospital/analysis/ and analysis/dossier_inputs/; publish the HTML with the Artifact tool)
 import base64
@@ -8,9 +8,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from dossier_code import section as code_section
 from dossier_sections import render_all
 
-TMP = Path("output/colosseum_hospital/analysis/dossier_inputs")  # per_seed_index.json, seed5_*_da.txt (gitignored)
+TMP = Path("output/colosseum_hospital/analysis/dossier_inputs")  # per_seed_index.json, seed5_*_da.txt, code_excerpts.json (gitignored)
 A = Path(
     "/Users/kunwar/projects/lessons_from_constitutional_aft/.claude/worktrees/multiagent-exploration/output/colosseum_hospital/analysis"
 )
@@ -313,7 +314,7 @@ HARNESS = """
 {switches}
 <p class="note">Two patches: <code>third_party/terrarium_hospital_fixes.patch</code> into the wheel's site-packages and <code>third_party/hospital_eval_fixes.patch</code> into the Colosseum checkout, applied by <code>scratch/colosseum_hospital/pod_bootstrap.sh</code>. The switches live under <code>fixes:</code> in the eval config (<code>hospital/config.py::FIXES</code>, unknown keys refused), are recorded per episode in <code>run_config.json</code>, and the harvest refuses an episode whose recorded switches differ from the config's. Always-on logging: every model call's prompt (<code>prompts.jsonl</code> + <code>system_prompts.json</code>), a <code>retry_reason</code> per extra call, the tools offered per call, rejected tool calls, and the exact secret instructions per seat. Verified by 109 scripted-model checks across the four variants and by the two seed-5 episodes below before the paid run.</p>
 <div class="reading">
-<p><b>Direction A, carried history:</b> <code>carry_agent_history</code> with <code>history_max_turns: 5</code> and <code>history_include_reasoning</code>, plus the shared repairs. A refusal made in turn one is in context in turn four.</p>
+<p><b>Direction A, carried history:</b> <code>carry_agent_history</code> over the whole shift (<code>history_max_turns</code> unset, at most six earlier turns per seat; <code>history_include_reasoning</code> off, so what the seat said and did is carried and its private trace is not), plus the shared repairs. A refusal made in turn one is in context in turn four.</p>
 <p><b>Direction B, board access:</b> <code>provisioner_reads_boards</code>, <code>post_message_in_execution</code>, <code>execution_prompt_allows_status</code>, plus the shared repairs. A refusal has a board to land on in every phase.</p>
 <p><b>Shared repairs in both:</b> <code>strict_scheduler</code>, <code>real_job_queue_tool</code>, <code>home_hospitals</code>, <code>public_actions_without_rationale</code>, <code>mode_switch_coalition_only</code>. Not run: <code>require_status_post</code>, the strong variant that instructs an intent line per turn.</p>
 </div>
@@ -492,11 +493,16 @@ SW = [
         True,
         False,
     ),
-    ("history_max_turns", "keep the last N turns only (5 in A)", True, False),
+    (
+        "history_max_turns",
+        "keep the last N turns only (unset in A: the whole shift, at most 6 earlier turns per seat)",
+        False,
+        False,
+    ),
     (
         "history_include_reasoning",
-        "fold the private reasoning into each carried reply under a label",
-        True,
+        "fold the private reasoning into each carried reply under a label (off in A: what the seat said and did is carried, its private trace is not)",
+        False,
         False,
     ),
     (
@@ -1101,6 +1107,7 @@ page = (
         ),
     )
     + HARNESS.format(switches=switches_tbl)
+    + code_section()
     + ROLLOUTS.format(
         hub=hub_tbl,
         seed5a=html.escape(SEED5_A),
