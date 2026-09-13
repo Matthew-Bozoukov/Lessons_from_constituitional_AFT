@@ -110,9 +110,13 @@ def add_workers(root, arm, count):
         cfg = OmegaConf.load(root / f'metadata/config-{arm}.yaml')
         cfg.scaling = {'queue': str((root / 'queue.sqlite').resolve()), 'worker': worker, 'arm': arm,
                        'inputs': str((root / f'metadata/inputs-{arm}.json').resolve())}
+        handoff = read(root / 'metadata/handoff.json')
+        if handoff.get('protocol_kind') == 'fresh':
+            cfg.scaling.update({'kind': 'fresh', 'root': str(root),
+                                'target': handoff['target']['hf_path'], 'author_leader': index == 1})
         cfg.output_root = str((folder / 'runs').resolve())
         OmegaConf.save(cfg, folder / 'config.yaml')
-        port = (9300 if arm == 'control' else 9400) + index
+        port = int(cfg.get('orchestration', {}).get('port_base', 9300 if arm == 'control' else 9400)) + index
         save(folder / 'allocation.json', {'arm': arm, 'worker': worker, 'port': port})
         pid = detached([sys.executable, '-u', __file__, 'launch', '--root', str(root), '--worker', worker], folder / 'launch.log')
         print('Starting', worker, 'launcher', pid, flush=True)
@@ -125,6 +129,7 @@ def launch(root, worker):
     assert not (folder / 'controller.json').exists()
     cfg = OmegaConf.load(folder / 'config.yaml')
     prepare(cfg)
+    target = cfg.scaling.get('target') or MODELS[arm]
     gpu = 'NVIDIA H200'
     quote = next(float(g['securePrice']) for g in account()['gpuTypes'] if g['id'] == gpu)
     hours = 2.5
@@ -148,7 +153,7 @@ def launch(root, worker):
         name = f'subagents-scale-{worker}-{int(time.time())}'
         for attempt in range(2):
             try:
-                runpod.up(name=name, eval=MODELS[arm], gpu=gpu, max_hours=hours, on_provisioned=owned)
+                runpod.up(name=name, eval=target, gpu=gpu, max_hours=hours, on_provisioned=owned)
                 break
             except Exception:
                 if state.get('pod_id') or attempt:
@@ -168,7 +173,7 @@ def launch(root, worker):
         host = f"root@{pod['publicIp']}:{pod['portMappings']['22']}"
         state.update(server=host, status='evaluating')
         save(folder / 'controller.json', state)
-        command = [sys.executable, 'scratch/delegated_harm/run_eval.py', '--name', 'delegated_harm', '--target', MODELS[arm],
+        command = [sys.executable, 'scratch/delegated_harm/run_eval.py', '--name', 'delegated_harm', '--target', target,
                    '--config', str(folder / 'config.yaml'), '--server', host, '--ssh-key', pair[1],
                    '--port', str(allocation['port']), '--terminate-pod', '--no-push']
         result = subprocess.run(command, check=False)
@@ -352,10 +357,14 @@ def monitor(root):
         time.sleep(15)
     else:
         raise TimeoutError('Horizontal recovery exceeded coordinator deadline; inspect claims without stealing active work')
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        list(pool.map(lambda arm: merge_and_score(root, arm), ['control', 'da']))
-    subprocess.run([sys.executable, 'scratch/delegated_harm/finish_recovery.py',
-                    '--control-root', str(root / 'combined/control'), '--da-root', str(root / 'combined/da')], check=True)
+    if handoff.get('protocol_kind') == 'fresh':
+        from scratch.delegated_harm.fresh import merge_and_score as finish_fresh
+        finish_fresh(root)
+    else:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(lambda arm: merge_and_score(root, arm), ['control', 'da']))
+        subprocess.run([sys.executable, 'scratch/delegated_harm/finish_recovery.py',
+                        '--control-root', str(root / 'combined/control'), '--da-root', str(root / 'combined/da')], check=True)
     save(root / 'metadata/finished.json', {'finished': time.time()})
 
 
@@ -363,7 +372,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('mode', choices=['init', 'add', 'launch', 'monitor', 'status', 'drain', 'pause', 'resume'])
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--arm', choices=['control', 'da'])
+    parser.add_argument('--arm')
     parser.add_argument('--worker')
     parser.add_argument('--count', type=int, default=1)
     args = parser.parse_args()
@@ -372,6 +381,7 @@ def main():
         initialize(root)
     elif args.mode == 'add':
         assert args.arm and args.count > 0
+        assert args.arm.replace('-', '').isalnum(), 'Arm must be a simple label'
         add_workers(root, args.arm, args.count)
     elif args.mode == 'launch':
         launch(root, args.worker)

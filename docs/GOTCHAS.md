@@ -732,3 +732,21 @@ on the pod (`curl -sL -o /dev/null -m 15 -w '%{speed_download}' <a HF weight sha
 terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the datacenter that
 worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
 datacenter; the REST pod object does not.
+
+## The nosynth base blend is MODEL-SPECIFIC: its replay traces are on-policy for one family (2026-09-13)
+
+`2026-09-08-nosynth-mix` -- the `base_mixture:` every arm pins -- carries ~1,135 reasoning
+traces on its tulu3_if / self_oss_instruct / lima rows, written by qwen/qwen3.6-27b answering
+each row's own prompt (the reasoning backfill of 2026-09-08). They are on-policy for Qwen3.6
+and off-policy for anything else, so a base blend belongs to ONE family, and until this date
+nothing said so: nosynth.yaml declared `reasoning: none` on every source and the card's
+`models` field said `none`. Now the base config declares `reasoning_backfill: {model, judge,
+sources, fraction, max_tokens}` (src/data/mixture/reasoning_backfill.py), the built mixture
+records `reasoning_traces` (model, family, counts) in mixture_stats.json and names the
+generator in its card, an arm mixture inherits the block from the base it pins (the
+pre-record base is read through its enrichment_report.json), and `uv run train` refuses a
+mixture whose trace family is not the model being trained unless
+`allow_trace_family_mismatch=true`. **A new base model needs its own base blend**: change
+`reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
+judge), and point the arm configs' `base_mixture:` at the new repo.
+

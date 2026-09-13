@@ -1,6 +1,73 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-13 — The base blend records whose reasoning traces it carries, and training refuses another family's
+
+**Problem.** The nosynth base blend every arm pins (`2026-09-08-nosynth-mix`) is not
+model-agnostic: ~1,135 of its replay assistant turns carry traces written on-policy by
+Qwen3.6-27B (the 2026-09-08 backfill). The config said `reasoning: none` on every source, the
+card said `models: none`, and the backfill lived in a scratch script whose source revision
+was a local path. A second base model trained on this mix would have been supervised on
+Qwen's reasoning with nothing to say so.
+**Change.** `src/data/mixture/reasoning_backfill.py` is the recipe: `reasoning_backfill:
+{model, judge, sources, fraction, max_tokens}` in the base blend's config (nosynth.yaml,
+`model: qwen/qwen3.6-27b`) generates a trace for a seeded fraction of each listed source's
+rows with the named model, judges it against the row's own answer, and splices accepted,
+complete, in-cap traces; `uv run mix --config nosynth.yaml` now reproduces the enriched
+blend (the arm configs name no model -- they point at a base and inherit). The built mixture
+records `reasoning_traces` {model, family, judge, sources, fraction, rows, turns} in
+mixture_stats.json and names the generator in the card's `models` field; an arm built on
+`base_mixture:` copies the block forward with `inherited_from`, reading the pre-record base
+through its `enrichment_report.json` so the existing pins still resolve to `qwen36`.
+`uv run train` fetches the mixture's stats sidecar and `check_trace_family` (src/train/
+launch.py) refuses a family mismatch unless `allow_trace_family_mismatch=true`, stamping the
+block into training_meta. A mixture with no record makes no claim and passes (every arm
+trained so far). Tests: tests/test_reasoning_backfill.py (8). Not run: a full rebuild of the
+base (the published 09-08 revision is unchanged and remains the pin).
+**Next.** When a second base model is trained, build its base blend first (change `model`
+and `tokenizer`, rebuild, re-pin the arms) rather than re-using this one.
+
+## 2026-09-13 - Nonmoral delegated-harm results published; comparison charts completed
+
+**Hypothesis and method.** Test whether original nonmoral deliberation training
+reduces delegated harmful compliance while retaining legitimate work. The fresh
+324-cell run used the pinned original adapter, frozen same-model AI requests and
+the same human requests and worlds as control/DA. See [protocol and results](delegated_harm/nonmoral.md).
+
+**Result.** The run finished on 12 September with 278 scored completions and 46
+missing observations: 23 output-token cutoffs, 11 turn cutoffs and 12 author failures.
+No completed episodes remain unjudged. Harmful-action rates were 65.2% peer, 84.8%
+parent and 63.8% human, between control and DA in each arm. Joint success was 16.3%,
+6.5% and 10.6%, respectively; it does not follow the same ordering across all arms.
+Both owned H200s terminated by 01:59 UK on 12 September. GPU rental was approximately
+$16.97; the API ledger totals $56.63 charged or conservatively reserved, with scoring
+uncapped as authorized. Published revision: [02cff18a](https://huggingface.co/datasets/dougalldeepmind/2026-09-12-dh-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch/tree/02cff18ac90a0acbe001ff6791566864823e2257).
+
+**Completion and limits.** Publication succeeded around 02:27 UK on 12 September;
+the subsequent plot download failed on a Windows symlink permission error. On 13
+September the plotting step was resumed from immutable HF revisions using regular
+local downloads, with no new inference or judging. Overall and paper-style charts
+now include all three adapters. Different missing cases and control/DA's mixed
+recovery limits prevent a clean causal interpretation; future matched comparisons
+should use uniform limits and examine shared scored scenarios.
+
+## 2026-09-12 - Original nonmoral deliberation: delegated-harm evaluation prepared
+
+**Hypothesis.** The original nonmoral deliberation intervention may change delegated
+harmful compliance and escalation without explicit moral training examples.
+
+**Method.** Evaluate the original 684-example adapter at `2225547c`, with 9,284 replay
+examples, on the same 324-cell schedule as control and DA. Two H200 workers share
+atomic episode claims, frozen same-checkpoint AI requests and fixed human requests.
+Use a uniform 131,072-token context, 16,384-token outputs, 90 turns and longer network
+timeout. Existing control/DA recovery revisions remain immutable; their differing
+resource history is disclosed in the comparison. See [protocol and commands](delegated_harm/nonmoral.md).
+
+**Status.** Offline queue, merge, shared-runner and lifecycle checks pass. Source
+fixtures and target/base pins have been checked before provisioning. Results pending;
+the coordinator scores saved completions after GPU teardown, publishes the run and
+renders comparison charts. This entry does not claim a measured result.
+
 ## 2026-09-12 — delib-sonnet-7 trained and evaluated: MASK 68.4, ODCV MR 18.3% — a stronger teacher lowers ODCV, not MASK
 
 **Hypothesis.** Same prompts, constitution, judge, filter, mixture base and training as delib-7;
