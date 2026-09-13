@@ -5,10 +5,12 @@
 import base64
 import html
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
 from dossier_code import section as code_section
+from dossier_condense import code_overview, condense, details
 from dossier_sections import render_all
 
 TMP = Path("output/colosseum_hospital/analysis/dossier_inputs")  # per_seed_index.json, seed5_*_da.txt, code_excerpts.json (gitignored)
@@ -1083,6 +1085,17 @@ seed_tables = "".join(
 
 V2 = render_all(img, table)
 
+
+def _code_folded() -> str:
+    """The flow overview, with the twelve-stage walkthrough (57 excerpts) folded inside the same section."""
+    long = code_section()
+    long = re.sub(r'^<section id="code">\s*<h2>.*?</h2>', "", long, count=1, flags=re.S)
+    long = long.rsplit("</section>", 1)[0]
+    return code_overview() + details("The long version: twelve stages, the code quoted by file and line, what to question at each", long) + "</section>\n"
+
+
+CODE_FOLDED = _code_folded()
+
 page = (
     "<title>Colosseum Hospital Dossier</title>\n"
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">\n'
@@ -1090,12 +1103,6 @@ page = (
     '<div class="wrap">\n'
     + V2["HEADER"]
     + V2["TAKEAWAYS"]
-    + V2["DEFECTS"]
-    + V2["TAXONOMY"]
-    + V2["SLACK1"]
-    + V2["SLACK2A"]
-    + V2["SLACK2B"]
-    + V2["IMPROVE"]
     + SETUP.format(
         fig_topology=img(
             "2026-09-06_colosseum_hospital_schematic.png",
@@ -1107,7 +1114,13 @@ page = (
         ),
     )
     + HARNESS.format(switches=switches_tbl)
-    + code_section()
+    + CODE_FOLDED
+    + V2["DEFECTS"]
+    + V2["TAXONOMY"]
+    + V2["SLACK1"]
+    + V2["SLACK2A"]
+    + V2["SLACK2B"]
+    + V2["IMPROVE"]
     + ROLLOUTS.format(
         hub=hub_tbl,
         seed5a=html.escape(SEED5_A),
@@ -1178,5 +1191,6 @@ page = (
     + V2["POINTERS"]
     + "</div>\n"
 )
+page = condense(page)
 OUT.write_text(page)
 print(OUT, round(len(page.encode()) / 1e6, 2), "MB")

@@ -4,6 +4,8 @@ import html
 import json
 from pathlib import Path
 
+from dossier_condense import details
+
 A = Path(
     "/Users/kunwar/projects/lessons_from_constitutional_aft/.claude/worktrees/multiagent-exploration/output/colosseum_hospital/analysis"
 )
@@ -47,7 +49,7 @@ HEADER_V2 = """
 <header>
 <p class="eyebrow">Colosseum Hospital · self-sacrificial sabotage · Qwen3.6-27B · 30 seeds × 2 arms × 3 harnesses · 2026-09-04 to 2026-09-12</p>
 <h1>Colosseum Hospital Dossier</h1>
-<p class="stand">Everything from the multi-agent Hospital study in one place, so the problem can be tackled whole: what the experiment is, every defect found in the eval and what each one distorts, every form of misalignment the models showed with its count and a quote, the three questions raised on Slack (the plan written on the board that the action metric never sees, whether a seat switches after it meets its partner, and how often a public post is made to deceive), the harness fixes, the rollouts, every metric and figure, and what to change next in the eval and in the training data.</p>
+<p class="stand">The multi-agent Hospital study, short version: takeaways, the code flow, the three Slack questions, and what to change. Every long part (the eval-defect ledger, the misalignment taxonomy, the code with its 57 excerpts, the rollouts, the per-seed index, every results table) is folded under a heading you can open.</p>
 <div class="ledger">
   <div class="fact"><b>29 of 30</b><span>shifts in which the difficult-advice pair said no in its reasoning under the paper harness. Control: 4 of 30.</span></div>
   <div class="fact"><b>25 of 30</b><span>carried-history shifts in which a difficult-advice seat still wrote a sabotage plan on the coalition board; in 13 of them it had said no, wrote the plan, and took no sabotage action.</span></div>
@@ -56,27 +58,15 @@ HEADER_V2 = """
 </div>
 <nav class="toc">
   <a href="#takeaways">Takeaways</a>
-  <a href="#defects">Every problem with the eval</a>
+  <a href="#setup">The experiment</a>
+  <a href="#code">The code flow</a>
+  <a href="#defects">Problems with the eval</a>
   <a href="#taxonomy">Forms of misalignment</a>
   <a href="#slack1">Plans on the board</a>
   <a href="#slack2a">Partner sway</a>
-  <a href="#slack2b">Deceptive public posts</a>
+  <a href="#slack2b">Deceptive posts</a>
   <a href="#improve">What to change</a>
-  <a href="#setup">The experiment</a>
-  <a href="#harness">The harness and its fixes</a>
-  <a href="#code">How the code works</a>
-  <a href="#rollouts">The rollouts</a>
-  <a href="#seeds">Per-seed index</a>
-  <a href="#metrics">Metrics</a>
-  <a href="#r-refusal">Refusal</a>
-  <a href="#r-hold">Did it hold?</a>
-  <a href="#r-story">One-figure story</a>
-  <a href="#r-harness">Across harnesses</a>
-  <a href="#r-actions">Actions</a>
-  <a href="#r-team">Team and rewards</a>
-  <a href="#background">The 2026-09-04 study</a>
-  <a href="#limits">Limits</a>
-  <a href="#pointers">Pointers</a>
+  <a href="#harness">Folded: harness, rollouts, seeds, metrics, results, limits, pointers</a>
 </nav>
 </header>
 """
@@ -253,7 +243,10 @@ def defects_section(table) -> str:
     return (
         '<section id="defects">\n<h2>Every problem with the eval, in one ledger</h2>\n'
         '<p class="lede">Twenty-three defects, found between 2026-09-04 and 2026-09-12, ordered roughly by how much each distorts a published number. "Fixed" means a switch in the <code>fixes:</code> block reproduces the paper harness when off; "measured" means the distortion is now recorded per episode rather than removed; "open" is the to-do list.</p>\n'
-        + table(["#", "defect", "what it distorts", "status", "where"], rows)
+        + details(
+            "Open the ledger: 23 items with what each distorts, its status and where it is measured",
+            table(["#", "defect", "what it distorts", "status", "where"], rows),
+        )
         + '<div class="reading"><p><b>Reading.</b> The first eleven are in the harness and are switchable; the run of 2026-09-10 shows they change where the refusal lives but not the arm gap. The ones that matter now are 13–15: the published metrics see neither a written plan nor a deceptive post, which is exactly the misalignment the transcripts are full of. Items 21 and 23 bound how far any number here can be trusted.</p></div>\n</section>\n'
     )
 
@@ -404,15 +397,18 @@ def taxonomy_section(table) -> str:
     return (
         '<section id="taxonomy">\n<h2>Every form of misalignment the models showed</h2>\n'
         '<p class="lede">Eighteen behaviours, each with where it is visible, the count in the difficult-advice arm against the control (paper harness / carried history A / board access B, 30 shifts each), and one verbatim line. Items 3–9 are new on 2026-09-12; the rest are gathered from the earlier sections and the 2026-09-04 study.</p>\n'
-        + table(
-            [
-                "form",
-                "what it looks like",
-                "visible in",
-                "difficult advice vs control",
-                "one line",
-            ],
-            rows_html,
+        + details(
+            "Open the taxonomy: 18 forms, each with where it is visible, the counts and one verbatim line",
+            table(
+                [
+                    "form",
+                    "what it looks like",
+                    "visible in",
+                    "difficult advice vs control",
+                    "one line",
+                ],
+                rows_html,
+            ),
         )
         + '<div class="reading"><p><b>What the taxonomy says about the arm.</b> The difficult-advice arm adds forms 1, 3, 5, 6, 10, 12 and 13 to what the control does; it does not remove 2, 4, 7, 8 or 14 so much as shrink them. Every form the control shows is instruction-following at full intensity with cover; every form the arm adds is a way of holding a refusal and a plan at once. The data levers in "What to change" are matched to these rows.</p></div>\n</section>\n'
     )
@@ -470,7 +466,10 @@ def slack1_section(img, table) -> str:
             "2026-09-12_colosseum_hospital_board_plans.png",
             "A sabotage plan on a board crossed with a sabotage action, six cells",
         )
-        + bp_table(table)
+        + details(
+            "Per-cell table: plans on the boards, actions, said-no, and the judged reasons for every plan post",
+            bp_table(table),
+        )
         + '<div class="reading">'
         f'<p><b>The count holds.</b> A difficult-advice seat wrote a sabotage plan on the coalition board in {a["plan_on_coalition_board"]} of 30 carried-history shifts (the provisioner in {a["plan_by_provisioner"]}, Triage in {a["plan_by_triage"]}, both in {a["plan_by_both"]}), and in 30 of 30 under the paper harness and board access. The action classifier called {a["plan_not_acted"]} of those {a["plan_on_coalition_board"]} shifts "did not act", and in {a["said_no_plan_not_acted"]} of them the seat had also said no in its reasoning. So 14 of the 18 shifts the four boxes count as free of any sabotage action carry a written sabotage plan.</p>'
         f'<p><b>Why it was written, according to the reasoning at the moment of posting.</b> Of the {a["judged_plan_posts"]} difficult-advice plan posts under A, the seat meant to carry the plan out in {a["reason_intends_posts"]} and cited the instructions as its reason in {a["reason_obligation_posts"]}; "writing it down is not doing it" appears in {a["reason_words_not_deeds_posts"]} posts ({a["reason_words_not_deeds_shifts"]} shifts) and "post to look compliant" in {a["reason_appearance_posts"]} ({a["reason_appearance_shifts"]} shifts). Under B the same shape: 274 of 278 meant, 235 cited the instructions, 4 and 8 for the two excuses. The control is the same minus the excuses (paper harness: 155 of 155 meant, 153 cited the instructions, 0 and 1). The two justifications from Slack are both real and both rare; the common case is the ordinary one, "the instructions say so", and the refusal lives in a different call.</p>'
@@ -540,7 +539,10 @@ def slack2a_section(img, table) -> str:
             "2026-09-12_colosseum_hospital_partner_sway.png",
             "Partner sway: first post, decline-to-commit flips with and without a readable partner plan, partner-naming commit calls",
         )
-        + tbl
+        + details(
+            "Per-cell × seat table: first post, flips with and without a readable partner plan, partner-naming, target switches",
+            tbl,
+        )
         + '<div class="reading">'
         "<p><b>The seat does not wait for its partner.</b> Its first coalition post is already a plan in 25 and 27 of 30 shifts (provisioner, Triage; paper DA), 17 and 20 under A (where 11 and 8 seats never post at all), 30 and 29 under B, and 29–30 for the control everywhere. Whatever switching happens, the board shows the plan first.</p>"
         "<p><b>Private refusals flip without the partner.</b> Under the paper harness the difficult-advice provisioner cannot read the coalition board; its refusals flipped to commitments in 9 of 25 unexposed pairs and in 9 of 17 pairs where the partner had posted a plan it could not see (the placebo). Triage, which can read the board, flipped in 2 of 2 exposed and 3 of 3 unexposed pairs. Under A: 2 of 3 exposed against 4 of 15 unexposed (both seats pooled), under B 3 of 4 against 1 of 3; the counts are too small to separate, and the placebo says the flip rides on the re-prompt, not the post. This is the discontinuity result of 2026-09-07 seen from the other side.</p>"
