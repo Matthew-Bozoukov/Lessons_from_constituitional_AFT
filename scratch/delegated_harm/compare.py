@@ -21,12 +21,19 @@ def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def download_run(repo, revision, allow_patterns):
+    # A local download directory avoids Windows' privileged cache symlink creation.
+    return Path(hf_snapshot(repo, repo_type='dataset', revision=revision,
+        local_dir=Path('output/delegated_harm/hf_snapshots') / repo.replace('/', '--') / revision,
+        allow_patterns=allow_patterns))
+
+
 def load_run(repo, revision=None):
     revision = revision or hf_api().dataset_info(repo).sha
-    root = Path(hf_snapshot(repo, repo_type="dataset", revision=revision,
-        allow_patterns=["results/results.json", "results/episodes/*.json", "metadata/protocol.json",
+    root = download_run(repo, revision,
+        ["results/results.json", "results/episodes/*.json", "metadata/protocol.json",
                         "metadata/human_requests.json", "metadata/authorship_frozen.json",
-                        "metadata/schedule.json", "metadata/authors/*.json"]))
+                        "metadata/schedule.json", "metadata/authors/*.json"])
     summary = read(root / "results/results.json")
     assert summary.get("score_version") == "evidence-actions-v3", f"{repo}: corrected scoring is not published"
     assert summary.get('unjudged_completed_episodes') == 0, f"{repo}: completed episodes still need scoring"

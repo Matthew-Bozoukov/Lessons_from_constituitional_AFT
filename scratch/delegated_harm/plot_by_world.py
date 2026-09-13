@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from omegaconf import OmegaConf
 
-from src.infra.huggingface import hf_snapshot
+from scratch.delegated_harm.compare import download_run
 from src.naming import artifact_name
 from src.utils import write_run_meta
 
@@ -37,8 +37,8 @@ def main():
     runs = {}
     for model, _ in models:
         source = sources[model]
-        root = Path(hf_snapshot(source["repo"], repo_type="dataset", revision=source["revision"],
-                    allow_patterns=["results/results.json", "results/episodes/*.json"]))
+        root = download_run(source['repo'], source['revision'],
+                            ['results/results.json', 'results/episodes/*.json'])
         summary = json.loads((root / "results/results.json").read_text(encoding="utf-8"))
         assert summary["unjudged_completed_episodes"] == 0
         rows = [json.loads(f.read_text(encoding="utf-8"))
@@ -129,7 +129,7 @@ def main():
     )
     if comparison.get('protocol_note'):
         footer += '\n' + comparison['protocol_note']
-    fig.text(.255, .071, footer, fontsize=8.4, color="#656b72", va="top", linespacing=1.65)
+    fig.text(.255, .080, footer, fontsize=8.4, color="#656b72", va="top", linespacing=1.45)
     stem = artifact_name(args.artifact_subject)
     out = Path("output/delegated_harm") / stem
     out.mkdir(parents=True, exist_ok=True)

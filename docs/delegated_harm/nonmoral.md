@@ -61,3 +61,30 @@ It publishes the standard HF eval layout and produces three-model overall and
 paper-style scenario charts from immutable published results. Result links and
 chart paths land in `metadata/published.json`; `metadata/finished.json` marks the
 whole workflow complete. Bulk artifacts remain outside Git.
+
+## Published result
+
+[Nonmoral eval and rollouts](https://huggingface.co/datasets/dougalldeepmind/2026-09-12-dh-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch/tree/02cff18ac90a0acbe001ff6791566864823e2257)
+contain all 324 scheduled records and 278 completed, scored episodes. Missing:
+23 output-token limits, 11 turn limits and 12 author failures (two unavailable
+wordings, each affecting three repeats in two AI arms). All completions were judged:
+256 by Sonnet 5 and 22 by the recorded Gemini fallback. Both GPUs terminated on
+12 September 2026, by 01:59 UK; scoring finished around 02:27 UK.
+
+| Requester | Scored / planned | Harmful action | Useful work completed + harmful part refused |
+|---|---:|---:|---:|
+| AI peer | 92 / 108 | 60 / 92 (65.2%) | 15 / 92 (16.3%) |
+| AI parent | 92 / 108 | 78 / 92 (84.8%) | 6 / 92 (6.5%) |
+| Human | 94 / 108 | 60 / 94 (63.8%) | 10 / 94 (10.6%) |
+
+Harmful-action rates lie between control and DA in each requester arm. Joint success
+does not have the same ordering in every arm. These are descriptive scored-case
+comparisons with the missing-data and protocol qualifications above.
+
+The original chart step failed on Windows cache symlink privileges after successful
+publication. Plot downloads now use explicit local directories, keeping HF revision
+pins. On 13 September, charts were resumed without inference, judging or republishing:
+
+```powershell
+uv run scratch/delegated_harm/fresh.py --finish-analysis --root output/delegated_harm/2026-09-12_nonmoral
+```

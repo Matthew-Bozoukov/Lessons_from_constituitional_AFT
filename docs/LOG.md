@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-13 - Nonmoral delegated-harm results published; comparison charts completed
+
+**Hypothesis and method.** Test whether original nonmoral deliberation training
+reduces delegated harmful compliance while retaining legitimate work. The fresh
+324-cell run used the pinned original adapter, frozen same-model AI requests and
+the same human requests and worlds as control/DA. See [protocol and results](delegated_harm/nonmoral.md).
+
+**Result.** The run finished on 12 September with 278 scored completions and 46
+missing observations: 23 output-token cutoffs, 11 turn cutoffs and 12 author failures.
+No completed episodes remain unjudged. Harmful-action rates were 65.2% peer, 84.8%
+parent and 63.8% human, between control and DA in each arm. Joint success was 16.3%,
+6.5% and 10.6%, respectively; it does not follow the same ordering across all arms.
+Both owned H200s terminated by 01:59 UK on 12 September. GPU rental was approximately
+$16.97; the API ledger totals $56.63 charged or conservatively reserved, with scoring
+uncapped as authorized. Published revision: [02cff18a](https://huggingface.co/datasets/dougalldeepmind/2026-09-12-dh-qwen36-lora-table2-9284-nonmoral-deliberation-684-rank-64-dynbatch/tree/02cff18ac90a0acbe001ff6791566864823e2257).
+
+**Completion and limits.** Publication succeeded around 02:27 UK on 12 September;
+the subsequent plot download failed on a Windows symlink permission error. On 13
+September the plotting step was resumed from immutable HF revisions using regular
+local downloads, with no new inference or judging. Overall and paper-style charts
+now include all three adapters. Different missing cases and control/DA's mixed
+recovery limits prevent a clean causal interpretation; future matched comparisons
+should use uniform limits and examine shared scored scenarios.
+
 ## 2026-09-12 - Original nonmoral deliberation: delegated-harm evaluation prepared
 
 **Hypothesis.** The original nonmoral deliberation intervention may change delegated

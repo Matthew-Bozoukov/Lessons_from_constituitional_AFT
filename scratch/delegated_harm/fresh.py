@@ -154,6 +154,16 @@ def merge_and_score(root):
     revision = hf_api().dataset_info(repo).sha
     save(controller, {'arm': arm, 'terminated': True, 'status': 'finished', 'run_dir': str(destination),
                       'repo': repo, 'revision': revision, 'completed': summary['completed_episodes']})
+    finish_analysis(root)
+
+
+def finish_analysis(root):
+    """Resume plotting from the saved publication pin, without scoring or republishing."""
+    arm = read(root / 'metadata/handoff.json')['arm']
+    cfg = OmegaConf.load(root / f'metadata/config-{arm}.yaml')
+    publication = read(root / 'combined' / arm / 'controller.json')
+    assert publication['terminated'] and publication['status'] == 'finished'
+    repo, revision = publication['repo'], publication['revision']
     from scratch.delegated_harm.compare import plot_multiple
     sources = OmegaConf.to_container(cfg.orchestration.comparisons, resolve=True)
     sources[arm] = {'repo': repo, 'revision': revision}
@@ -163,14 +173,20 @@ def merge_and_score(root):
     subprocess.run([sys.executable, 'scratch/delegated_harm/plot_by_world.py', '--comparison', str(comparison),
         '--artifact-subject', 'delegated-harm-nonmoral-complied-silent-by-world'], check=True)
     save(root / 'metadata/published.json', {'repo': repo, 'revision': revision, 'comparison': str(comparison)})
+    save(root / 'metadata/finished.json', {'finished': time.time()})
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', required=True)
+    parser.add_argument('--config')
+    parser.add_argument('--finish-analysis', action='store_true')
     parser.add_argument('--root', type=Path, required=True)
     args = parser.parse_args()
-    initialize(args.root.resolve(), args.config)
+    if args.finish_analysis:
+        finish_analysis(args.root.resolve())
+    else:
+        assert args.config, 'Initialization requires --config'
+        initialize(args.root.resolve(), args.config)
 
 
 if __name__ == '__main__':
