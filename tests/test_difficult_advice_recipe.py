@@ -195,3 +195,20 @@ def test_smoke_shrinks_every_config_that_sets_a_corpus_budget():
         assert int(smoke["total_scenarios"]) <= 20, (
             f"{path} smoke `total_scenarios` is {smoke['total_scenarios']}; a smoke run "
             f"is meant to be a tiny slice with full wiring")
+
+
+def test_no_model_or_developer_name_reaches_trained_text():
+    """The 2026-09-14 regeneration. The constitution names no model or developer, and the
+    rows must not either: 7 of 708 rows of the principle-scoped corpus carried "Claude"
+    through system prompts, user turns and reasoning (constitutions/abridged/rationale.md),
+    so the prompt instruction alone is not enough. Every stage that writes trained text
+    bans the names, so a miss costs a retry rather than landing in the corpus."""
+    cfg = yaml.safe_load(open(CONFIG))
+    doc = open(cfg["constitution"], encoding="utf-8").read().lower()
+    assert "claude" not in doc and "anthropic" not in doc, cfg["constitution"]
+    for name, fields in (("revise_prompts", {"system", "user"}),
+                         ("draft_responses", {"reasoning", "response"}),
+                         ("revise_responses", {"reasoning", "response"})):
+        lint = _stage(name)["lint"]
+        assert set(lint["fields"]) >= fields, name
+        assert {r"\bclaude\b", r"\banthropic\b"} <= set(lint["ban_patterns"]), name

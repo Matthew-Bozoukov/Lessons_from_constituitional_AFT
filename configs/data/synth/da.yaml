@@ -85,13 +85,13 @@ seed: 0
 # Stage 1 segments this into its numbered units (## <n>. headings). NO stage injects the
 # whole document in this arm -- that is the ablation. Stages 2, 5, 6 and 7 inject the single
 # target chunk and nothing else.
-# Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
-# twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
-# principle state the 2026-08-04 source corpus was generated against (the frozen
-# claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
-# model-eval-model share one alignment target. Folder name kept; n_traits below is the
-# cost model's hint and tracks the document as it stands.
-constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+# Since 2026-09-14: `abridged` -- the same nine principles, titles, order and unit ids
+# (t1-t9), each cut to about a third, with no model or developer named; the document DAT
+# and delib already generate against. Every DA corpus before that date was generated
+# against the mid document, `constitutions/archive/claude_distilled_12_principles_mid/`,
+# which names Claude and Anthropic: 7 of 708 rows of the principle-scoped corpus carried
+# "Claude" into trained text (constitutions/abridged/rationale.md).
+constitution: "constitutions/abridged/constitution.md"
 # What a good response of THIS document type looks like. Tone guidance, not policy: it
 # used to ride as a trailing section of the constitution file (the parser peeled it off
 # into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
@@ -384,6 +384,16 @@ stages:
     domain: domain
   optional:
   - changes
+  # No model or developer named in the prompts that train (2026-09-14). The `Model-neutral
+  # identity` instruction below asks for it; the lint makes a miss cost a retry, not a row.
+  lint:
+    fields:
+    - system
+    - user
+    ban_patterns:
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
   prompts:
     system: |-
       You improve draft training prompts so they test a specific value precisely. You are terse
@@ -507,6 +517,9 @@ stages:
     - ^\s*okay,
     # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
     - '[一-鿿]'
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
     retries: 2
 - name: revise_responses
   kind: llm_tagged
@@ -632,6 +645,9 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
     retries: 2
 - name: export_sft
   kind: chat_export
