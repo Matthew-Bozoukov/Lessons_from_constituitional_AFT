@@ -1,0 +1,36 @@
+# ABOUTME: Fleet plan, 2026-09-14 Hospital batch top-ups: re-run the self-sacrificial seeds the main fleets lost to a
+# ABOUTME: context-window overflow, at a 98,304-token window, so every cell keeps all 30 seeds (no censoring of long shifts).
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_topup.yaml
+#
+# Carried history plus max_tokens 8192 left ~57,000 tokens of input in the 65,536 window; the
+# longest shifts outgrew it and vLLM refused the call (400), so Colosseum dropped the episode.
+# Dropping them would censor exactly the long shifts, so each lost seed is re-run here under
+# a larger window (the prompt is unchanged below 57k; only the ceiling moves) with four
+# sequence slots instead of thirty, which the H100's cache needs for the longer window. The
+# pod names put each top-up in its cell's pull root (merge_cells unions by seed).
+date: "2026-09-14"
+branch: kn/multiagent-exploration
+out_root: output/colosseum_hospital/2026-09-14
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  # Experiment 3, difficult-advice provisioner + control Triage: seed 22 (overflowed 2026-09-14 ~03:5x)
+  - name: kunwar-h14-mixed-daprov-topup
+    group: mixed
+    target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage", "serving.context_window=98304", "serving.concurrency=4"]
+    jobs: ["self_sacrificial:22-22"]
+    cap_h: 2.5
+  # Experiment 1, unfiltered no-synthetic arm: seed 29
+  - name: kunwar-h14-fixed-nosyn-topup
+    group: fixed
+    target: dougalldeepmind/2026-09-08-qwen36-0-nosynth
+    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["serving.context_window=98304", "serving.concurrency=4"]
+    jobs: ["self_sacrificial:29-29"]
+    cap_h: 2.5

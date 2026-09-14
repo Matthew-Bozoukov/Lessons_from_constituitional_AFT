@@ -144,7 +144,14 @@ def merge_cell(
         + ".\n"
     )
 
-    shutil.copytree(newest / "metadata", dest / "metadata")
+    # The cell's own config is the biggest piece's (the main run), not the newest's: a
+    # one-seed top-up at a larger window must not stand in for it. Every piece's
+    # metadata is kept beside it under metadata/pieces/<piece>/.
+    main_piece = max(pieces, key=lambda q: len(episodes_of(q)))
+    shutil.copytree(main_piece / "metadata", dest / "metadata")
+    for q in pieces:
+        if (q / "metadata").is_dir():
+            shutil.copytree(q / "metadata", dest / "metadata" / "pieces" / q.name)
     (dest / "metadata" / "merged_from.json").write_text(
         json.dumps(
             {
@@ -154,8 +161,8 @@ def merge_cell(
             indent=1,
         )
     )
-    if (newest / "run_meta.json").is_file():
-        shutil.copy2(newest / "run_meta.json", dest / "run_meta.json")
+    if (main_piece / "run_meta.json").is_file():
+        shutil.copy2(main_piece / "run_meta.json", dest / "run_meta.json")
     return {"episodes": len(chosen), "dest": str(dest)}
 
 
