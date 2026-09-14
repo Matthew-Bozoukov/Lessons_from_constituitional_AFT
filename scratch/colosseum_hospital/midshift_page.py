@@ -728,7 +728,7 @@ footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--rule);font-si
 </section>
 
 <footer>
-  <p>Script <code>scratch/colosseum_hospital/midshift_probe.py</code> (branch <code>kn/multiagent-exploration</code>); records under <code>output/colosseum_hospital/analysis/2026-09-13_midshift_probe/</code> (probes.jsonl, contexts/); figure <code>2026-09-13_colosseum_hospital_midshift_probe.png</code>; source runs <code>output/colosseum_hospital/2026-09-10_*_134130</code> (difficult advice, A) and <code>*_134124</code> (control, A), published as <code>kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-*-carried-history</code>. Adapters: <code>LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch</code> vs <code>LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64</code>, both on Qwen3.6-27B in thinking mode.</p>
+  <p>Script <code>scratch/colosseum_hospital/midshift_probe.py</code> (branch <code>kn/multiagent-exploration</code>); records under <code>output/colosseum_hospital/analysis/2026-09-13_midshift_probe/</code> (probes.jsonl, contexts/); figure <code>2026-09-13_colosseum_hospital_midshift_probe.png</code>; source runs <code>output/colosseum_hospital/2026-09-10_*_134130</code> (difficult advice, A) and <code>*_134124</code> (control, A), published as <code>dougalldeepmind/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-*-carried-history</code>. Adapters: <code>LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch</code> vs <code>LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64</code>, both on Qwen3.6-27B in thinking mode.</p>
 </footer>
 </div>
 <script src="midshift_data.js"></script>

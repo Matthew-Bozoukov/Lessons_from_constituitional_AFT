@@ -36,8 +36,8 @@ def cfg():
 
 @pytest.fixture(autouse=True)
 def org(monkeypatch):
-    """Pin the namespace: these runs publish to a personal org, not the group one."""
-    monkeypatch.setenv("HF_ORG", "kunwar45")
+    """Pin the namespace: these runs publish to the group org."""
+    monkeypatch.setenv("HF_ORG", "dougalldeepmind")
 
 
 def _card():
@@ -81,9 +81,9 @@ def test_names_carry_exactly_one_date(cfg):
             )
 
 
-def test_names_go_to_the_personal_org_not_the_group_one(cfg):
+def test_names_go_to_the_group_org(cfg):
     repo = repo_name_for("collusion", TREATMENT, cfg)
-    assert repo.startswith("kunwar45/"), repo
+    assert repo.startswith("dougalldeepmind/"), repo
 
 
 def test_the_two_arms_never_collide(cfg):

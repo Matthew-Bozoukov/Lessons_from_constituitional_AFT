@@ -26,10 +26,10 @@ SEED5_B = (TMP / "seed5_B_da.txt").read_text()
 HUB = {
     "paper/control": "LASR-Callum/2026-09-04-colosseum-hospital-self-sacrificial-qwen36-table2-only-9284",
     "paper/treatment": "LASR-Callum/2026-09-04-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-chunk-only-702",
-    "A/control": "kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-table2-only-9284-carried-history",
-    "A/treatment": "kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-702-carried-history",
-    "B/control": "kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-table2-only-9284-board-access",
-    "B/treatment": "kunwar45/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-702-board-access",
+    "A/control": "dougalldeepmind/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-table2-only-9284-carried-history",
+    "A/treatment": "dougalldeepmind/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-702-carried-history",
+    "B/control": "dougalldeepmind/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-table2-only-9284-board-access",
+    "B/treatment": "dougalldeepmind/2026-09-10-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-702-board-access",
 }
 CELL_LABEL = {
     "paper/control": "paper harness · control",

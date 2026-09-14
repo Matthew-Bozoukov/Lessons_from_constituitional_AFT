@@ -13,13 +13,11 @@
 On Killarney this runs on a LOGIN node: compute nodes have no route to OpenRouter or the
 Hub, which is why `uv run evals` there is given --no-push and never judges.
 
-The multi-agent runs publish to a PERSONAL namespace (`--hf-org`, default `kunwar45`),
-not to the group org the rest of the repo uses. `src.huggingface.hf_org` resolves the
-destination from `HF_ORG` in the environment and refuses to take one from a config, so
-this flag sets that variable — the sanctioned redirect, and the reason the repo's own
-docstring notes `HF_ORG=<other> uv run ...` works. Two consequences worth knowing: the
-group dashboard finds eval runs by org, so these will not appear in it; and the two
-adapters under test are still READ from their own org, which HF_ORG does not affect.
+The multi-agent runs publish to the group org (`--hf-org`, default `dougalldeepmind`).
+`src.huggingface.hf_org` resolves the destination from `HF_ORG` in the environment and
+refuses to take one from a config, so this flag sets that variable — the sanctioned
+redirect, and the reason the repo's own docstring notes `HF_ORG=<other> uv run ...` works.
+The two adapters under test are READ from their own org, which HF_ORG does not affect.
 """
 
 from __future__ import annotations
@@ -79,15 +77,14 @@ def main(argv: list[str] | None = None) -> None:
         help="the day the episodes were run, for the Hub name and the card's "
         "date_generated (default: today — right only when pushing on the day of the run)",
     )
-    # This experiment's runs go to a personal namespace rather than the group org. The
-    # default is here, not in configs/eval/colosseum_jira.yaml, because the push
-    # namespace is the environment's to supply and a config that carried one would push
-    # somewhere the rest of the pipeline is not looking (src.huggingface.hf_org).
+    # This experiment's runs go to the group org. The default is here, not in
+    # configs/eval/colosseum_jira.yaml, because the push namespace is the environment's
+    # to supply and a config that carried one would push somewhere the rest of the
+    # pipeline is not looking (src.huggingface.hf_org).
     parser.add_argument(
         "--hf-org",
-        default="kunwar45",
-        help="HF namespace to publish to (default: kunwar45, a personal "
-        "org — pass the group org explicitly to override)",
+        default="dougalldeepmind",
+        help="HF namespace to publish to (default: dougalldeepmind, the group org)",
     )
     parser.add_argument(
         "overrides",
