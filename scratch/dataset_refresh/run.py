@@ -105,6 +105,7 @@ class BudgetClient:
                 raise BudgetStop(f'Budget stop: ${exposure:.3f} exposed, ${reserve:.3f} next reservation, ceiling ${self.ceiling}')
             call_id = len(entries)
             entry = dict(call_id=call_id, model=model, arm=getattr(self.local, 'arm', None),
+                         run_root=getattr(self.local, 'run_root', None),
                          candidate_id=getattr(self.local, 'candidate_id', None),
                          stage=getattr(self.local, 'stage', None), status='reserved',
                          charged_or_reserved_usd=reserve, reserve_usd=reserve,
@@ -188,11 +189,36 @@ def load_config(path):
     return cfg
 
 
-def prepare(config_paths, root):
+def prepare(config_paths, root, budget_root=None, revision_of=None, pilot_offset=0):
+    if revision_of:
+        with FileLock(str(Path(revision_of) / 'recipe_revision.lock'), timeout=1):
+            receipt = Path(revision_of) / 'recipe_revision.json'
+            if receipt.exists():
+                raise ValueError('The single authorized recipe revision has already been prepared')
+            result = _prepare(config_paths, root, budget_root, revision_of, pilot_offset)
+            save_checkpoint(receipt, {'revision_root': str(Path(root).resolve()),
+                                     'run_meta_sha256': digest((Path(root) / 'run_meta.json').read_bytes())})
+            return result
+    return _prepare(config_paths, root, budget_root, revision_of, pilot_offset)
+
+
+def _prepare(config_paths, root, budget_root=None, revision_of=None, pilot_offset=0):
     root = Path(root)
     if (root / 'run_meta.json').exists():
         raise ValueError('Already prepared; use the existing frozen run instead of replacing provenance')
     root.mkdir(parents=True, exist_ok=True)
+    if revision_of:
+        previous = json.loads((Path(revision_of) / 'run_meta.json').read_text(encoding='utf-8'))
+        if previous.get('revision_of'):
+            raise ValueError('Only one recipe revision is authorized')
+        inherited_budget = Path(previous.get('budget_root', str(Path(revision_of).resolve() / 'budget')))
+        if budget_root and Path(budget_root).resolve() != inherited_budget.resolve():
+            raise ValueError('Recipe revisions must share the original budget ledger')
+        budget_root = inherited_budget
+        if pilot_offset < 18:
+            raise ValueError('Revised pilot must exclude the original first18 candidates')
+    elif pilot_offset:
+        raise ValueError('Pilot offsets are only for an explicit recipe revision')
     frozen = {}
     for path in config_paths:
         cfg = load_config(path)
@@ -244,6 +270,12 @@ def prepare(config_paths, root):
                                        'trait_id': t, 'source_id': r['scenario_id'], 'variant': variant,
                                        'source': r})
         candidates = candidates[:int(cfg.get('selection', {}).get('max_candidate_total', 1200))]
+        if revision_of:
+            old_candidates = read_rows(Path(revision_of) / cfg['pipeline'] / 'candidates.jsonl')
+            original_pilot_ids = {r['source_id'] for r in old_candidates[:18]}
+            revised_pilot_ids = {r['source_id'] for r in candidates[pilot_offset:pilot_offset + 18]}
+            if len(revised_pilot_ids) != 18 or original_pilot_ids & revised_pilot_ids:
+                raise ValueError('Revised pilot must use18 distinct sources disjoint from the original pilot')
         write_rows(arm_dir / 'candidates.jsonl', candidates)
         frozen[cfg['pipeline']] = {'config_sha256': digest(cfg), 'source': pin,
                                    'source_rows': len(source), 'candidate_count': len(candidates),
@@ -252,6 +284,9 @@ def prepare(config_paths, root):
     write_json(root / 'run_meta.json', {'created_at': timestamp(),
         'git_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
         'code_sha256': digest(Path(__file__).read_bytes()), 'arms': frozen,
+        'budget_root': str(Path(budget_root or root / 'budget').resolve()),
+        'revision_of': str(Path(revision_of).resolve()) if revision_of else None,
+        'pilot_offset': pilot_offset,
         'target_per_arm': 716, 'replay_count': 9284, 'target_budget_usd': 200, 'hard_cap_usd': 250,
         'base': {'repo': 'dougalldeepmind/2026-09-08-nosynth-mix', 'file': 'mixture.jsonl',
                  'revision': '7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd'},
@@ -307,6 +342,22 @@ def load_checkpoint(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def validate_arm(root, arm):
+    root = Path(root)
+    meta = json.loads((root / 'run_meta.json').read_text(encoding='utf-8'))
+    cfg = json.loads((root / arm / 'config.json').read_text(encoding='utf-8'))
+    if digest(cfg) != meta['arms'][arm]['config_sha256']:
+        raise ValueError('Frozen recipe changed; preserve original and create an explicit revision')
+    if digest(full_text(cfg['constitution']).encode()) != cfg['constitution_sha256']:
+        raise ValueError('Frozen constitution changed')
+    if cfg.get('craft_spec') and digest(full_text(cfg['craft_spec']).encode()) != cfg['craft_spec_sha256']:
+        raise ValueError('Frozen craft specification changed')
+    for filename, key in [('source.jsonl', 'source_snapshot_sha256'), ('candidates.jsonl', 'candidates_sha256')]:
+        if digest((root / arm / filename).read_bytes()) != meta['arms'][arm][key]:
+            raise ValueError('Frozen input changed: ' + filename)
+    return cfg
+
+
 def generate_one(root, arm, candidate, client):
     cfg = json.loads((root / arm / 'config.json').read_text(encoding='utf-8'))
     out_dir = root / arm / 'records' / candidate['candidate_id']
@@ -322,6 +373,7 @@ def generate_one(root, arm, candidate, client):
     if terminal.exists():
         return load_checkpoint(terminal)
     client.local.arm, client.local.candidate_id = arm, candidate['candidate_id']
+    client.local.run_root = str(root.resolve())
     src = candidate['source']
     record = {k: src[k] for k in ('trait_id', 'trait_name', 'trait_text', 'domain') if k in src}
     record.update(scenario_id=candidate['candidate_id'], source_id=candidate['source_id'],
@@ -330,8 +382,15 @@ def generate_one(root, arm, candidate, client):
     record['adapted_parent_id'] = candidate['source_id'] if not candidate['variant'] else None
     record['lineage_kind'] = 'source_adaptation' if not candidate['variant'] else 'fresh_unpaired_inspiration'
     record['original_context'] = {k: src[k] for k in ('system', 'user', 'situation', 'shortcut', 'domain') if k in src}
+    if cfg.get('scenario_domains'):
+        index = int(candidate['candidate_id'].split('_')[1])
+        domain_index = (index * 7 + (int(candidate['trait_id'][1:]) - 1) * 2 + candidate['variant'] * 5) % len(cfg['scenario_domains'])
+        record['assigned_domain_id'] = domain_index
+        record['domain'] = cfg['scenario_domains'][domain_index]
     inspiration = src if not candidate['variant'] else {'domain': src['domain'],
         'trait_name': src['trait_name'], 'instruction': 'No matched source: create a fresh independent case in this domain.'}
+    if cfg.get('scenario_source_fields') and not candidate['variant']:
+        inspiration = {k: src[k] for k in cfg['scenario_source_fields'] if k in src}
     # Only the original artifact's target chunk guides generation; review receives the new constitution separately.
     fields = {**record, 'source_json': json.dumps(inspiration, ensure_ascii=False),
               'adaptation_mode': ('adapt the original mechanism' if not candidate['variant'] else
@@ -353,8 +412,37 @@ def generate_one(root, arm, candidate, client):
                 raise ValueError('Scenario JSON missing required fields')
             save_checkpoint(scenario_file, generated)
         protected = {'trait_id', 'trait_text', 'trait_name', 'scenario_id', 'source_id', 'variant', 'parent_revision',
-                     'parent_exported', 'adapted_parent_id', 'lineage_kind', 'original_context'}
+                     'parent_exported', 'adapted_parent_id', 'lineage_kind', 'original_context', 'assigned_domain_id'}
         record.update({k: v for k, v in generated.items() if k not in protected})
+        def extra_review(name, full_conversation):
+            spec = cfg[name]
+            file = out_dir / (name + '.json')
+            if file.exists():
+                return load_checkpoint(file)
+            client.local.stage = name
+            conversation = {k: record[k] for k in ('system', 'user', 'reasoning', 'response')
+                            if k in record and (full_conversation or k in ('system', 'user'))}
+            fields = {**record, 'conversation_json': json.dumps(conversation, ensure_ascii=False),
+                      'record_json': json.dumps(record, ensure_ascii=False),
+                      'metadata_json': json.dumps({k: v for k, v in record.items() if k not in
+                         ('system', 'user', 'reasoning', 'response', 'draft_reasoning', 'draft_response')}, ensure_ascii=False),
+                      'source_json': json.dumps(src, ensure_ascii=False),
+                      'eligibility_json': json.dumps(eligibility, ensure_ascii=False)}
+            if name == 'preflight':
+                fields = {k: v for k, v in fields.items() if k in
+                          ('system', 'user', 'trait_id', 'trait_name', 'trait_text', 'conversation_json')}
+            messages = [{'role': role, 'content': render(spec['prompts'][role], fields)} for role in ('system', 'user')]
+            verdict = _parse_json(client.chat(messages=messages, **request_options(cfg['models'][spec['model']])).content)
+            save_checkpoint(file, verdict)
+            return verdict
+        eligibility = {}
+        if cfg.get('preflight'):
+            eligibility = extra_review('preflight', False)
+            if not acceptance(eligibility, cfg['preflight']):
+                result = {'candidate_id': candidate['candidate_id'], 'trait_id': candidate['trait_id'],
+                          'status': 'rejected', 'rejection_stage': 'preflight', 'record': record, 'review': eligibility}
+                save_checkpoint(terminal, result)
+                return result
         for stage in cfg['response_stages']:
             client.local.stage = stage['name']
             stage_file = out_dir / (stage['name'] + '.json')
@@ -386,12 +474,24 @@ def generate_one(root, arm, candidate, client):
                       'conversation_json': json.dumps({k: record[k] for k in ('system', 'user', 'reasoning', 'response')}, ensure_ascii=False),
                       'metadata_json': json.dumps({k: v for k, v in record.items() if k not in ('system', 'user', 'reasoning', 'response', 'draft_reasoning', 'draft_response')}, ensure_ascii=False),
                       'constitution': cfg.get('review_constitution_text') or full_text(cfg['constitution'])}
+            fields['eligibility_json'] = json.dumps(eligibility, ensure_ascii=False)
+            if cfg.get('review_blind_metadata'):
+                fields['record_json'] = fields['conversation_json']
+                fields['metadata_json'] = '{}'
+                fields = {k: v for k, v in fields.items() if k in
+                          ('system', 'user', 'reasoning', 'response', 'trait_id', 'trait_name', 'trait_text',
+                           'record_json', 'conversation_json', 'metadata_json', 'constitution', 'eligibility_json')}
             messages = [{'role': role, 'content': render(cfg['prompts']['review_' + role], fields)} for role in ('system', 'user')]
             review = _parse_json(client.chat(messages=messages, **request_options(cfg['models']['review'])).content)
             save_checkpoint(review_file, review)
         result = {'candidate_id': candidate['candidate_id'], 'trait_id': candidate['trait_id'],
                   'status': 'accepted' if acceptance(review, cfg) else 'rejected',
                   'record': record, 'review': review}
+        if result['status'] == 'accepted' and cfg.get('lineage_review'):
+            lineage = extra_review('lineage_review', True)
+            result['lineage_review'] = lineage
+            if not acceptance(lineage, cfg['lineage_review']):
+                result.update(status='rejected', rejection_stage='lineage_review')
         save_checkpoint(terminal, result)
         return result
     except BudgetStop:
@@ -414,7 +514,8 @@ def status(root):
                     'by_trait': {t: sum(r['trait_id'] == t for r in accepted) for t in quotas()},
                     'rejected': sum(r['status'] == 'rejected' for r in results),
                     'failed': sum(r['status'] == 'failed' for r in results)}
-    entries = json.loads((root / 'budget/spend.json').read_text(encoding='utf-8')) if (root / 'budget/spend.json').exists() else []
+    ledger = Path(meta.get('budget_root', str(root / 'budget'))) / 'spend.json'
+    entries = json.loads(ledger.read_text(encoding='utf-8')) if ledger.exists() else []
     out['budget'] = {'calls': len(entries), 'charged_or_reserved_usd': sum(e['charged_or_reserved_usd'] for e in entries),
                      'api_reported_usd': sum(e.get('api_reported_cost_usd') or 0 for e in entries),
                      'unsettled': sum(e['status'] != 'settled' for e in entries)}
@@ -435,20 +536,12 @@ def _execute(root, phase, ceiling, workers=8, arms=None, per_trait=2, batch_limi
     jobs, models = [], set()
     current = status(root)
     for arm in arms:
-        cfg = json.loads((root / arm / 'config.json').read_text(encoding='utf-8'))
-        if digest(cfg) != meta['arms'][arm]['config_sha256']:
-            raise ValueError('Frozen recipe changed; preserve original and create an explicit revision')
-        if digest(full_text(cfg['constitution']).encode()) != cfg['constitution_sha256']:
-            raise ValueError('Frozen constitution changed')
-        if cfg.get('craft_spec') and digest(full_text(cfg['craft_spec']).encode()) != cfg['craft_spec_sha256']:
-            raise ValueError('Frozen craft specification changed')
-        for filename, key in [('source.jsonl', 'source_snapshot_sha256'), ('candidates.jsonl', 'candidates_sha256')]:
-            if digest((root / arm / filename).read_bytes()) != meta['arms'][arm][key]:
-                raise ValueError('Frozen input changed: ' + filename)
+        cfg = validate_arm(root, arm)
         models.update(m['model'] for m in cfg['models'].values())
         candidates = read_rows(root / arm / 'candidates.jsonl')
         if phase == 'pilot':
-            candidates = candidates[:9 * per_trait]
+            start = meta.get('pilot_offset', 0)
+            candidates = candidates[start:start + 9 * per_trait]
         elif phase == 'production':
             gate = root / arm / 'pilot_gate.json'
             if not gate.exists():
@@ -483,9 +576,10 @@ def _execute(root, phase, ceiling, workers=8, arms=None, per_trait=2, batch_limi
     arm_jobs = {arm: [job for job in jobs if job[0] == arm] for arm in arms}
     jobs = [arm_jobs[arm][i] for i in range(max((len(v) for v in arm_jobs.values()), default=0))
             for arm in arms if i < len(arm_jobs[arm])]
-    client = BudgetClient(root / 'budget', ceiling, models)
+    client = BudgetClient(Path(meta.get('budget_root', str(root / 'budget'))), ceiling, models)
     write_json(root / 'active_phase.json', {'phase': phase, 'arms': arms, 'jobs': len(jobs),
-               'ceiling_usd': ceiling, 'started_at': timestamp(), 'code_sha256': digest(Path(__file__).read_bytes())})
+               'ceiling_usd': ceiling, 'started_at': timestamp(), 'code_sha256': digest(Path(__file__).read_bytes()),
+               'git_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()})
     stop = threading.Event()
     def task(arm, c):
         if stop.is_set():
@@ -515,6 +609,7 @@ def _execute(root, phase, ceiling, workers=8, arms=None, per_trait=2, batch_limi
 
 def export(root, arm):
     root = Path(root)
+    cfg = validate_arm(root, arm)
     selected = []
     for candidate in read_rows(root / arm / 'candidates.jsonl'):
         path = root / arm / 'records' / candidate['candidate_id'] / 'result.json'
@@ -522,6 +617,14 @@ def export(root, arm):
             continue
         result = load_checkpoint(path)
         if result['status'] == 'accepted' and sum(r['trait_id'] == result['trait_id'] for r in selected) < quotas()[result['trait_id']]:
+            identity = load_checkpoint(path.parent / 'identity.json')
+            if identity != {'candidate_sha256': digest(candidate), 'config_sha256': digest(cfg)}:
+                raise ValueError('Accepted record identity differs from frozen inputs')
+            if not acceptance(result['review'], cfg) or simple_checks(result['record']):
+                raise ValueError('Accepted result does not satisfy the frozen checks')
+            for stage in ('preflight', 'lineage_review'):
+                if cfg.get(stage) and not acceptance(load_checkpoint(path.parent / (stage + '.json')), cfg[stage]):
+                    raise ValueError('Accepted result has an invalid ' + stage)
             selected.append(result['record'])
     if len(selected) != 716:
         raise ValueError(f'Need716 accepted quota-matched rows, have{len(selected)}')
@@ -550,9 +653,12 @@ def main():
     p.add_argument('--workers', type=int, default=8)
     p.add_argument('--per-trait', type=int, default=2)
     p.add_argument('--batch-limit', type=int, default=180)
+    p.add_argument('--budget-root')
+    p.add_argument('--revision-of')
+    p.add_argument('--pilot-offset', type=int, default=0)
     args = p.parse_args()
     if args.command == 'prepare':
-        prepare(args.configs, args.root)
+        prepare(args.configs, args.root, args.budget_root, args.revision_of, args.pilot_offset)
     elif args.command == 'status':
         print(json.dumps(status(args.root), indent=2))
     elif args.command == 'export':

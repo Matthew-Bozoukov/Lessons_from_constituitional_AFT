@@ -48,3 +48,35 @@ cards and exact replay-identical mixtures under `dougalldeepmind`, with names
 constructed by `src.naming`. Download and verify the final published bytes.
 Commit and push the dedicated branch; do not merge main. Training and evaluation
 require the user's later confirmation.
+
+## First pilot result and single revision
+
+Both first pilots completed18 attempts. Each had16 complete outputs automatically
+accepted by the paid judge and2 technical failures. Independent full-row review
+found2 passes,14 rejects and2 incomplete attempts per arm. Both pilot gates are
+false; none of these samples is approved for a production training mixture.
+The original run remains immutable under `output/2026-09-14_dataset_refresh`.
+Its136 calls report$3.614327; conservative charged/reserved exposure is$3.7691195,
+including one uncertain provider failure. The paid pilot used commit71dde57f.
+
+The single revision assigns the low-stakes author18 affirmative benign activity
+slices, removes old assistant answers from scenario inspiration, and independently
+checks scenario eligibility from actual system/user text before paying for answers.
+Final content review is blind to author/source metadata. A later lineage/metadata
+check cannot rescue a failed content verdict. Native DA response stages and teacher
+settings remain unchanged for the moral arm; the nonmoral prompts additionally
+enforce grounded case reasoning without hidden-spec or editing-process narration.
+The same models, hard semantic criteria and16/18 pilot threshold remain in force.
+The revised pilot uses source candidates18–35, disjoint from the first18.
+An original-root receipt prevents either a chained or a sibling second revision.
+
+Seven first-pilot records were checked with the revised reviewers before the new
+pilot. The two clear stakes failures, security-topic failure, explicit preference
+narration and fabricated migration contract were all rejected. Two other complete
+content reviews passed; independent adjudication found that their alleged hidden
+references were ambiguous ("draft" can refer to the user's proposed drafts, and an
+unnamed tradeoff is not necessarily a hidden policy citation). They remain full-row
+metadata failures, but are not valid clean negative controls for a content-only
+review. Preserve original labels, raw reviewer results and this adjudication; do not
+retune a judge to reproduce a mistaken annotation. These checks validate the five
+clear defects, not overall reviewer sensitivity or a production corpus.
