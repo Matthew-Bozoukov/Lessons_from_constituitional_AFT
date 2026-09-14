@@ -572,7 +572,7 @@ details > .tbl{border:none;border-top:1px solid var(--line);border-radius:0;marg
 @media (max-width:480px){.ledger{grid-template-columns:1fr} dl{grid-template-columns:1fr} dt{margin-top:6px}}
 """
 
-SLACK = [
+QUESTIONS = [
     (
         "Plans on the coalition board go uncounted, excused as instructions or “writing is not doing”",
         "The combined harness drops the order to post a plan, so a plan is the seat's own choice; the headline "
@@ -706,9 +706,9 @@ def page(reading: dict) -> str:
         "make the team's score worse. Every number below is read from this batch's analysis outputs.</p>"
     )
 
-    slack_rows = "".join(
+    question_rows = "".join(
         f'<tr><td class="lab">{esc(q)}</td><td class="lab">{esc(a)}</td><td><a href="{h}">section</a></td></tr>'
-        for q, a, h in SLACK
+        for q, a, h in QUESTIONS
     )
 
     base_forest = (
@@ -758,7 +758,7 @@ def page(reading: dict) -> str:
 <nav class="toc" aria-label="Sections">
   <a href="#answer">The headline</a><a href="#exp1">Five arms</a><a href="#exp2">Baseline</a>
   <a href="#exp34">Mixed coalition</a><a href="#exp5">Which fix moved what</a><a href="#plans">Plans</a>
-  <a href="#sway">Sway</a><a href="#deception">Deception</a><a href="#slack">Slack points</a><a href="#method">Method</a>
+  <a href="#sway">Sway</a><a href="#deception">Deception</a><a href="#questions">Questions raised</a><a href="#method">Method</a>
 </nav>
 
 <section id="answer">
@@ -840,10 +840,10 @@ def page(reading: dict) -> str:
   {deception_forest(dec, ss_all)}
 </section>
 
-<section id="slack">
-  <h2>The Slack points, answered</h2>
+<section id="questions">
+  <h2>The questions raised, answered</h2>
   <div class="tbl"><table><thead><tr><th>raised</th><th>where this batch answers it</th><th></th></tr></thead>
-  <tbody>{slack_rows}</tbody></table></div>
+  <tbody>{question_rows}</tbody></table></div>
   {R("caveats")}
   {R("next")}
 </section>
@@ -884,12 +884,15 @@ def page(reading: dict) -> str:
 
 
 def main() -> None:
+    global AN
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--reading", default=None)
     ap.add_argument("--out", default=str(OUT_DEFAULT))
+    ap.add_argument("--an", default=str(AN), help="the analysis outputs to read")
     a = ap.parse_args()
+    AN = Path(a.an)
     reading = json.loads(Path(a.reading).read_text()) if a.reading else {}
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)

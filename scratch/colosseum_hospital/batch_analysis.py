@@ -12,6 +12,8 @@ judge      judge_arm.py on every merged cell, one process per cell (self-sacrifi
            (Gemini 3.6 Flash, the everything channel, the 240k middle cut) come from the config
 postjudge  post_judge.judge_arm on every self-sacrificial cell (post kind, why the plan was
            written, public intent), then one fill pass for answers that did not parse
+falseclaims false_claims.py per self-sacrificial cell: every public supply claim against the
+           true inventory (Gemini 3.6 Flash, the cell's own env snapshots)
 modules    flip_rate, partner_sway, deceptive_posts and board_plans on the 13 new
            self-sacrificial cells: their cell map, order, labels and output stem swapped for
            this batch (the modules themselves are untouched, so the 2026-09-13 outputs stand)
@@ -26,6 +28,7 @@ import argparse
 import json
 import math
 import random
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -50,7 +53,8 @@ LOGS = PULLED / "analysis_logs"
 COMBINED = "configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml"
 GROUP_CONFIG = {
     "fixed": COMBINED,
-    "mixed": COMBINED,
+    "mixed_daprov": COMBINED,
+    "mixed_datri": COMBINED,
     "reference": "configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml",
     "no_retry": "configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml",
     "plan_optional": "configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml",
@@ -67,11 +71,11 @@ CELLS = [
     (("fixed", "jdat"), "fixed", SS, "qwen36_unfiltered_difficult_agentic_task_fixed"),
     (
         ("mixed", "daprov"),
-        "mixed",
+        "mixed_daprov",
         SS,
         "qwen36_difficult_advice_702_fixed_as_provisioner",
     ),
-    (("mixed", "datri"), "mixed", SS, "qwen36_difficult_advice_702_fixed_as_triage"),
+    (("mixed", "datri"), "mixed_datri", SS, "qwen36_difficult_advice_702_fixed_as_triage"),
     (("reference", "ctrl"), "reference", SS, "qwen36_table2_only_9284_carried_history"),
     (
         ("reference", "da"),
@@ -155,6 +159,16 @@ def present(keys) -> list[tuple[str, str]]:
 
 # ── merge ─────────────────────────────────────────────────────────────────────
 def merge() -> None:
+    # The two mixed cells share episode names (same target adapter, same seeds), so each
+    # gets its own pull and snapshot root: pods kunwar-h14-mixed-<cell>-* move to <root>_<cell>.
+    for cell in ("daprov", "datri"):
+        for base in (PULLED / "mixed", ENV / f"{DATE}_mixed"):
+            if not base.is_dir():
+                continue
+            dest = base.parent / f"{base.name}_{cell}"
+            for pod in sorted(base.glob(f"*mixed-{cell}-*")):
+                dest.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(pod), str(dest / pod.name))
     for group, cfg in GROUP_CONFIG.items():
         root = PULLED / group
         if not root.is_dir():
@@ -235,6 +249,28 @@ def postjudge(parallel: int = 5, workers: int = 8) -> None:
 
 
 # ── the 2026-09-13 modules on this batch's cells ──────────────────────────────
+def falseclaims(parallel: int = 4, workers: int = 8) -> None:
+    jobs = []
+    for k in present(SS_KEYS):
+        cmd = [
+            sys.executable,
+            str(HERE / "false_claims.py"),
+            "--run-dir",
+            str(cell_dir(k)),
+            "--model",
+            JUDGE_MODEL,
+            "--workers",
+            str(workers),
+            "--env-logs",
+            str(ENV / f"{DATE}_{KEY[k][1]}"),
+        ]
+        jobs.append((cmd, f"false_claims_{k[0]}_{k[1]}.log"))
+    with ThreadPoolExecutor(max_workers=parallel) as ex:
+        codes = list(ex.map(lambda j: _run_logged(*j), jobs))
+    for (cmd, name), rc in zip(jobs, codes):
+        print(f"  false_claims {name}: rc={rc}")
+
+
 def modules() -> None:
     import board_plans as bp
     import deceptive_posts as dp
@@ -254,6 +290,8 @@ def modules() -> None:
     for m in (fr, ps, dp, bp):
         m.CELL_ORDER = keys
         m.CELL_LABEL = labels
+    for m in (fr, ps, dp, bp):  # every module writes where this run writes
+        m.OUT = OUT
     ps.STEM = f"{DATE}_colosseum_hospital_partner_sway"
     dp.STEM = f"{DATE}_colosseum_hospital_deceptive_posts"
     bp.STEM = f"{DATE}_colosseum_hospital_board_plans"
@@ -788,17 +826,33 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "step", choices=["merge", "judge", "postjudge", "modules", "summary", "all"]
+        "step", choices=["merge", "judge", "postjudge", "falseclaims", "modules", "summary", "all"]
     )
-    ap.add_argument("--parallel", type=int, default=5)
+    ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--pulled", help="pod pulls root (default output/colosseum_hospital/2026-09-14)")
+    ap.add_argument("--merged", help="merged cells root (default output/colosseum_hospital/merged)")
+    ap.add_argument("--env", help="env snapshot root (default output/colosseum_hospital/env_logs)")
+    ap.add_argument("--out", help="analysis outputs (default output/colosseum_hospital/analysis)")
     a = ap.parse_args()
+    global PULLED, MERGED, ENV, OUT, LOGS
+    if a.pulled:
+        PULLED = Path(a.pulled)
+        LOGS = PULLED / "analysis_logs"
+    if a.merged:
+        MERGED = Path(a.merged)
+    if a.env:
+        ENV = Path(a.env)
+    if a.out:
+        OUT = Path(a.out)
     if a.step in ("merge", "all"):
         merge()
     if a.step in ("judge", "all"):
         judge(a.parallel, a.workers)
     if a.step in ("postjudge", "all"):
         postjudge(a.parallel, a.workers)
+    if a.step in ("falseclaims", "all"):
+        falseclaims(a.parallel, a.workers)
     if a.step in ("modules", "all"):
         modules()
     if a.step in ("summary", "all"):

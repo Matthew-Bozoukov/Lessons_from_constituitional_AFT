@@ -160,7 +160,7 @@ def test_each_new_config_is_its_parent_plus_the_named_change(path):
 def test_every_config_names_the_judge_and_its_two_new_keys(path):
     judge = OmegaConf.to_container(OmegaConf.load(path))["judge"]
     assert judge["model"] == "google/gemini-3.6-flash"
-    assert judge["temperature"] == 0.0 and judge["max_tokens"] == 2048
+    assert judge["temperature"] == 0.0 and judge["max_tokens"] == 8192
     assert judge["max_chars_reasoning"] == 240000 and judge["all_channel"] is True
 
 

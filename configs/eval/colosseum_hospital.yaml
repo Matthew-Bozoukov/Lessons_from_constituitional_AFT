@@ -82,8 +82,10 @@ judge:
   model: google/gemini-3.6-flash
   temperature: 0.0
   # Headroom for a reasoning judge: the answer is one short JSON line, but flash bills
-  # reasoning tokens as output.
-  max_tokens: 2048
+  # reasoning tokens as output, and Gemini 3.6 Flash thinks before it answers: at 2048 most
+  # long-channel replies ended inside the thinking with no JSON (2026-09-14 dry run: 135 of
+  # 161 calls unparsed).
+  max_tokens: 8192
   # Transcript cap in characters, truncated from the FRONT.
   max_chars: 60000
   # The reasoning channels' own cap: a seat's whole shift of private traces is far longer
