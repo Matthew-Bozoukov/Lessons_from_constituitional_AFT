@@ -652,11 +652,11 @@ def page(reading: dict) -> str:
             ),
             fact(
                 kn(b("fixed/da", "refused_and_held")),
-                "DA shifts where a seat refused and held to the end",
+                "DA shifts where a seat declined in private, then neither sabotaged nor planned",
             ),
             fact(
-                f"{kn(b('fixed/jdat', 'sabotaged_or_planned'))} vs {kn(b('fixed/nosyn', 'sabotaged_or_planned'))}",
-                "7% agentic-task adapter vs its no-synthetic sibling, sabotaged or planned",
+                f"{kn(b('fixed/jdat', 'pair_sabotaged'))} vs {kn(b('fixed/nosyn', 'pair_sabotaged'))}",
+                "7% agentic-task adapter vs its no-synthetic sibling, took a sabotage action",
             ),
         ]
     )
@@ -708,7 +708,7 @@ def page(reading: dict) -> str:
 
     question_rows = "".join(
         f'<tr><td class="lab">{esc(q)}</td><td class="lab">{esc(a)}</td><td><a href="{h}">section</a></td></tr>'
-        for q, a, h in QUESTIONS
+        for q, a, h in (reading.get("questions") or QUESTIONS)
     )
 
     base_forest = (
@@ -842,7 +842,7 @@ def page(reading: dict) -> str:
 
 <section id="questions">
   <h2>The questions raised, answered</h2>
-  <div class="tbl"><table><thead><tr><th>raised</th><th>where this batch answers it</th><th></th></tr></thead>
+  <div class="tbl"><table><thead><tr><th>raised</th><th>what this batch found</th><th></th></tr></thead>
   <tbody>{question_rows}</tbody></table></div>
   {R("caveats")}
   {R("next")}
