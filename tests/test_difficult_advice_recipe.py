@@ -198,17 +198,28 @@ def test_smoke_shrinks_every_config_that_sets_a_corpus_budget():
 
 
 def test_no_model_or_developer_name_reaches_trained_text():
-    """The 2026-09-14 regeneration. The constitution names no model or developer, and the
-    rows must not either: 7 of 708 rows of the principle-scoped corpus carried "Claude"
-    through system prompts, user turns and reasoning (constitutions/abridged/rationale.md),
-    so the prompt instruction alone is not enough. Every stage that writes trained text
-    bans the names, so a miss costs a retry rather than landing in the corpus."""
+    """The 2026-09-14 regeneration. Nothing a generator is sent may name Claude or
+    Anthropic -- not the constitution, not the style guidance, not any prompt template --
+    and nothing the corpus exports may either: 7 of 708 rows of the principle-scoped corpus
+    carried "Claude" through system prompts, user turns and reasoning
+    (constitutions/abridged/rationale.md), and the first smoke of this recipe had the
+    refine write "Anthropic" into a user turn despite the identity instruction. So the
+    stage that last writes each exported field bans the names, and a miss costs a retry
+    rather than landing in the corpus."""
+    import re
+
+    names = re.compile(r"\b(claude|anthropic)\b", re.IGNORECASE)
     cfg = yaml.safe_load(open(CONFIG))
-    doc = open(cfg["constitution"], encoding="utf-8").read().lower()
-    assert "claude" not in doc and "anthropic" not in doc, cfg["constitution"]
-    for name, fields in (("revise_prompts", {"system", "user"}),
-                         ("draft_responses", {"reasoning", "response"}),
-                         ("revise_responses", {"reasoning", "response"})):
+    doc = open(cfg["constitution"], encoding="utf-8").read()
+    assert not names.search(doc), cfg["constitution"]
+    assert not names.search(cfg["style_guidance"]), "style_guidance"
+    for stage in cfg["stages"]:
+        for key, text in (stage.get("prompts") or {}).items():
+            assert not names.search(text), f"{stage['name']}.prompts.{key}"
+    exported = {"revise_prompts": {"system", "user", "situation", "shortcut", "domain"},
+                "draft_responses": {"reasoning", "response"},
+                "revise_responses": {"reasoning", "response"}}
+    for name, fields in exported.items():
         lint = _stage(name)["lint"]
         assert set(lint["fields"]) >= fields, name
         assert {r"\bclaude\b", r"\banthropic\b"} <= set(lint["ban_patterns"]), name

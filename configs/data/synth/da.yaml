@@ -85,13 +85,17 @@ seed: 0
 # Stage 1 segments this into its numbered units (## <n>. headings). NO stage injects the
 # whole document in this arm -- that is the ablation. Stages 2, 5, 6 and 7 inject the single
 # target chunk and nothing else.
-# Since 2026-09-14: `abridged` -- the same nine principles, titles, order and unit ids
-# (t1-t9), each cut to about a third, with no model or developer named; the document DAT
-# and delib already generate against. Every DA corpus before that date was generated
-# against the mid document, `constitutions/archive/claude_distilled_12_principles_mid/`,
-# which names Claude and Anthropic: 7 of 708 rows of the principle-scoped corpus carried
-# "Claude" into trained text (constitutions/abridged/rationale.md).
-constitution: "constitutions/abridged/constitution.md"
+# Since 2026-09-14: the nine principles at full length with the model and developer
+# neutralised (Claude -> "an AI", Anthropic -> "your developer";
+# constitutions/claude_distilled_09_principles/README.md). It is the archived mid document
+# every earlier DA corpus was generated against,
+# `constitutions/archive/claude_distilled_12_principles_mid/`, which names Claude and
+# Anthropic (7 of 708 rows of the principle-scoped corpus carried "Claude" into trained
+# text; constitutions/abridged/rationale.md), with those names replaced, its attribution
+# line moved out and one clause dropped ("you need not give your reasons", 2026-09-11).
+# Chosen over `abridged/`, a third of the length, so the alignment target does not also
+# change length. The folder keeps "claude" in its name for history; the text names neither.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 # What a good response of THIS document type looks like. Tone guidance, not policy: it
 # used to ride as a trailing section of the constitution file (the parser peeled it off
 # into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
@@ -384,12 +388,16 @@ stages:
     domain: domain
   optional:
   - changes
-  # No model or developer named in the prompts that train (2026-09-14). The `Model-neutral
-  # identity` instruction below asks for it; the lint makes a miss cost a retry, not a row.
+  # No model or developer named in anything this stage exports (2026-09-14): the prompts
+  # that train, and the situation/shortcut/domain metadata published beside them. This is
+  # the last stage to write any of those fields, so a miss here costs a retry, not a row.
   lint:
     fields:
     - system
     - user
+    - situation
+    - shortcut
+    - domain
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
@@ -431,6 +439,8 @@ stages:
         claims identifying the assistant as a specific model or as developed by a named
         provider. Preserve task meaning, role and capabilities; ordinary references to
         other models or organisations and fictional characters are not identity claims.
+        Never name the model you are, or the company that built you, anywhere in either
+        prompt -- not as the assistant's identity and not in passing.
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -575,6 +585,8 @@ stages:
         provider, including claims quoted or repeated from the prompts. Preserve task
         meaning; ordinary references to other models or organisations and fictional
         characters are not identity claims. Do not rewrite the system or user prompts.
+        Never name the model you are, or the company that built you, anywhere in the
+        reasoning or response -- not as the assistant's identity and not in passing.
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
         and work through it, rather than reaching a verdict and justifying it. This is the
         ingredient that matters most. Strengthen the weighing where the draft is thin, but
