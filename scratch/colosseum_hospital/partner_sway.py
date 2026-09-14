@@ -55,7 +55,7 @@ from direction_contrasts import ARMS, ROOT  # noqa: E402
 from post_judge import board_posts, call_index, episodes, link_posts  # noqa: E402
 
 OUT = Path("output/colosseum_hospital/analysis")
-STEM = "2026-09-12_colosseum_hospital_partner_sway"
+STEM = "2026-09-13_colosseum_hospital_partner_sway"
 PAIR = (PROV, TRIAGE)
 PARTNER = {PROV: TRIAGE, TRIAGE: PROV}
 CELL_ORDER = [
@@ -486,15 +486,39 @@ def figure(cells: dict) -> None:
         ax.bar(xs, vals, width=w, color=col, label=SEAT_LABEL[seat])
         for xi, key, v in zip(xs, CELL_ORDER, vals):
             none = cells[key]["stats"][seat].get("first_post_none", 0)
-            ax.text(xi, v + 0.4, f"{v}" + (f"\n({none} none)" if none else ""), ha="center", va="bottom", fontsize=7, color=ink)
+            ax.text(
+                xi,
+                v + 0.4,
+                f"{v}" + (f"\n({none} none)" if none else ""),
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color=ink,
+            )
     ax.set_xticks(x, labels, fontsize=8.5)
     ax.set_ylim(0, 34)
     ax.set_ylabel("shifts (of 30)", color=muted, fontsize=9)
-    ax.set_title("the seat's FIRST coalition post is already a plan", fontsize=9.5, loc="left", color=ink)
-    ax.legend(fontsize=7.5, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=2)
+    ax.set_title(
+        "the seat's FIRST coalition post is already a plan",
+        fontsize=9.5,
+        loc="left",
+        color=ink,
+    )
+    ax.legend(
+        fontsize=7.5,
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.13),
+        ncol=2,
+    )
     # panel 2: pooled decline -> commit flips
     ax = axes[1]
-    for i, (prefix, lab, col) in enumerate((("D_exposed", "a readable partner plan landed in between", violet), ("D_unexposed", "no readable partner plan in between", aqua))):
+    for i, (prefix, lab, col) in enumerate(
+        (
+            ("D_exposed", "a readable partner plan landed in between", violet),
+            ("D_unexposed", "no readable partner plan in between", aqua),
+        )
+    ):
         xs = [xi + (i - 0.5) * w for xi in x]
         vals, los, his = [], [], []
         for key in CELL_ORDER:
@@ -505,22 +529,55 @@ def figure(cells: dict) -> None:
             los.append((r - lo) * 100)
             his.append((hi - r) * 100)
         ax.bar(xs, vals, width=w, color=col, label=lab)
-        ax.errorbar(xs, vals, yerr=[los, his], fmt="none", ecolor=ink, elinewidth=0.8, capsize=2)
+        ax.errorbar(
+            xs, vals, yerr=[los, his], fmt="none", ecolor=ink, elinewidth=0.8, capsize=2
+        )
         for xi, key in zip(xs, CELL_ORDER):
             k, n = pooled(cells, key, prefix)
-            ax.text(xi, 1.5, f"{k}/{n}" if n else "–", ha="center", va="bottom", fontsize=7, color="white" if n else muted)
+            ax.text(
+                xi,
+                1.5,
+                f"{k}/{n}" if n else "–",
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color="white" if n else muted,
+            )
     first = True
     for xi, key in zip(x, CELL_ORDER):
         k, n = pooled(cells, key, "D_placebo")
         if n:
-            ax.scatter([xi], [100 * k / n], marker="D", s=30, color=yellow, edgecolor=ink, linewidth=0.5, zorder=5, label="placebo: partner posted, board unreadable" if first else None)
-            ax.text(xi, 100 * k / n + 4, f"{k}/{n}", ha="center", fontsize=7, color=muted)
+            ax.scatter(
+                [xi],
+                [100 * k / n],
+                marker="D",
+                s=30,
+                color=yellow,
+                edgecolor=ink,
+                linewidth=0.5,
+                zorder=5,
+                label="placebo: partner posted, board unreadable" if first else None,
+            )
+            ax.text(
+                xi, 100 * k / n + 4, f"{k}/{n}", ha="center", fontsize=7, color=muted
+            )
             first = False
     ax.set_xticks(x, labels, fontsize=8.5)
     ax.set_ylim(0, 108)
     ax.set_ylabel("flip rate, %", color=muted, fontsize=9)
-    ax.set_title("private decline → next stance is a commitment (both seats pooled)", fontsize=9.5, loc="left", color=ink)
-    ax.legend(fontsize=7.5, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=1)
+    ax.set_title(
+        "private decline → next stance is a commitment (both seats pooled)",
+        fontsize=9.5,
+        loc="left",
+        color=ink,
+    )
+    ax.legend(
+        fontsize=7.5,
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.13),
+        ncol=1,
+    )
     # panel 3: partner-following language in commit calls
     ax = axes[2]
     for i, (seat, col) in enumerate(((PROV, violet), (TRIAGE, aqua))):
@@ -533,11 +590,30 @@ def figure(cells: dict) -> None:
         ax.bar(xs, vals, width=w, color=col, label=SEAT_LABEL[seat])
         for xi, key, v in zip(xs, CELL_ORDER, vals):
             st = cells[key]["stats"][seat]
-            ax.text(xi, v + 1.5, f"{st.get('commit_calls_with_cue', 0)}/{st.get('commit_calls', 0)}", ha="center", va="bottom", fontsize=7, color=ink)
+            ax.text(
+                xi,
+                v + 1.5,
+                f"{st.get('commit_calls_with_cue', 0)}/{st.get('commit_calls', 0)}",
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                color=ink,
+            )
     ax.set_xticks(x, labels, fontsize=8.5)
     ax.set_ylim(0, 108)
-    ax.set_title("commit calls whose reasoning names the partner (%)", fontsize=9.5, loc="left", color=ink)
-    ax.legend(fontsize=7.5, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=2)
+    ax.set_title(
+        "commit calls whose reasoning names the partner (%)",
+        fontsize=9.5,
+        loc="left",
+        color=ink,
+    )
+    ax.legend(
+        fontsize=7.5,
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.13),
+        ncol=2,
+    )
     for ax in axes:
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
@@ -546,7 +622,13 @@ def figure(cells: dict) -> None:
         ax.tick_params(colors=muted, labelsize=8)
         ax.yaxis.grid(True, color=grid, linewidth=0.6)
         ax.set_axisbelow(True)
-    fig.suptitle("Partner sway: does a seat hold one stance until it sees its partner's plan, then switch?", fontsize=11, x=0.01, ha="left", color=ink)
+    fig.suptitle(
+        "Partner sway: does a seat hold one stance until it sees its partner's plan, then switch?",
+        fontsize=11,
+        x=0.01,
+        ha="left",
+        color=ink,
+    )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(OUT / f"{STEM}.png")
     plt.close(fig)

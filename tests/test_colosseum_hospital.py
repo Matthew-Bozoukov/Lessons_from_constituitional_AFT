@@ -609,9 +609,17 @@ DIRECTION_B = "configs/eval/2026-09-09_colosseum_hospital_board_access.yaml"
 def test_base_config_is_the_papers_harness_and_the_sweep_carries_the_switches(
     cfg, targets
 ):
-    assert resolve_fixes(cfg) == FIXES, "every switch off = the paper's harness"
+    # Since 2026-09-13 the base config keeps the provisioner able to read the boards (the
+    # owner's standing instruction); every other switch off = the paper's harness, which
+    # is reproduced with `fixes.provisioner_reads_boards=false` on the CLI.
+    expected = dict(FIXES, provisioner_reads_boards=True)
+    assert resolve_fixes(cfg) == expected
     sweep_cfg = _build("self_sacrificial", cfg, targets)
-    assert sweep_cfg["fixes"] == FIXES
+    assert sweep_cfg["fixes"] == expected
+    paper = OmegaConf.merge(
+        cfg, OmegaConf.from_dotlist(["fixes.provisioner_reads_boards=false"])
+    )
+    assert resolve_fixes(paper) == FIXES, "every switch off = the paper's harness"
 
 
 def test_unknown_or_ill_typed_switches_are_refused(cfg):
@@ -664,11 +672,12 @@ def test_the_two_directions_share_the_environment_and_differ_in_their_own_switch
     assert all(fa[k] and fb[k] for k in shared)
     assert fa["carry_agent_history"] and not fb["carry_agent_history"]
     board = {
-        "provisioner_reads_boards",
         "post_message_in_execution",
         "execution_prompt_allows_status",
     }
     assert all(fb[k] and not fa[k] for k in board)
+    # The provisioner reads the boards under BOTH directions since 2026-09-13.
+    assert fa["provisioner_reads_boards"] and fb["provisioner_reads_boards"]
     assert not fa["require_status_post"] and not fb["require_status_post"]
     # The strong variant of B is one CLI switch away, and legal.
     strong = OmegaConf.merge(
@@ -682,8 +691,11 @@ def test_the_patch_files_name_every_switch():
     colosseum = (THIRD_PARTY / "hospital_eval_fixes.patch").read_text()
     assert "TERRARIUM_FIXES" in terrarium and "HOSPITAL_FIXES" in terrarium
     assert "secret_instructions" in colosseum and "prompts.jsonl" in colosseum
+    # The 2026-09-13 switches live in the second pair of patch files; every switch must
+    # be named by some patch, whichever generation added it.
+    patches = "\n".join(p.read_text() for p in sorted(THIRD_PARTY.glob("*.patch")))
     for switch in FIXES:
-        assert switch in terrarium or switch in colosseum, switch
+        assert switch in patches, switch
 
 
 def test_retry_kind_and_loops():

@@ -45,7 +45,7 @@ from direction_contrasts import ARMS, ROOT  # noqa: E402
 from post_judge import board_posts, call_index, episodes, link_posts  # noqa: E402
 
 OUT = Path("output/colosseum_hospital/analysis")
-STEM = "2026-09-12_colosseum_hospital_deceptive_posts"
+STEM = "2026-09-13_colosseum_hospital_deceptive_posts"
 PROV, TRIAGE = "Resource_Provisioner", "General_Hospital_Triage"
 PAIR = (PROV, TRIAGE)
 CELL_ORDER = [

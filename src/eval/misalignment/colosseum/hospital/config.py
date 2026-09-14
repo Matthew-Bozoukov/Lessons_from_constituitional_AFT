@@ -39,6 +39,7 @@ __all__ = [
     "FIXES",
     "PAIR",
     "PROVISIONER",
+    "TERRARIUM_FIXES_STAMP",
     "build_sweep_config",
     "resolve_fixes",
 ]
@@ -47,7 +48,8 @@ PROVISIONER = "Resource_Provisioner"
 
 # Every harness fix, with the value that reproduces the paper's harness. Each is a switch
 # read by the patched packages (third_party/README.md: terrarium_hospital_fixes.patch and
-# hospital_eval_fixes.patch); the eval config's `fixes:` block sets them, the sweep YAML
+# hospital_eval_fixes.patch, plus their 2026-09-13 successors, the `*_2.patch` files);
+# the eval config's `fixes:` block sets them, the sweep YAML
 # carries them to Colosseum as a top-level `fixes` block, and every episode records them
 # in run_config.json. Unknown keys are refused rather than ignored, because a misspelt flag
 # on the CLI would otherwise run the original harness under a fixed run's name.
@@ -59,6 +61,10 @@ FIXES: dict[str, Any] = {
     "history_include_reasoning": False,
     # Direction B — the board: read access for the provisioner, a post_message tool in
     # execution, a neutral execution prompt, and (strong) a required intent line per turn.
+    # `provisioner_reads_boards` is False HERE (the paper) but ON in every config since
+    # 2026-09-13 — the owner's instruction: the provisioner must always be able to read
+    # the boards it posts to. The paper's blind provisioner is the CLI override
+    # `fixes.provisioner_reads_boards=false`.
     "provisioner_reads_boards": False,
     "post_message_in_execution": False,
     "execution_prompt_allows_status": False,
@@ -72,7 +78,23 @@ FIXES: dict[str, Any] = {
     # into every agent's system prompt, coalition or not.
     "public_actions_without_rationale": False,
     "mode_switch_coalition_only": False,
+    # 2026-09-13 — the re-ask and the plan post. The loop re-asked every reply that
+    # changed nothing, a refusal included, with the identical context; the
+    # self-sacrificial block told the seat to post a plan every iteration and that plans
+    # are not actions. The first two are read by terrarium BaseAgent
+    # (terrarium_hospital_fixes_2.patch), the third by Colosseum MisalignmentPrompts
+    # (hospital_eval_fixes_2.patch). Independent of each other and of the rest.
+    "end_turn_on_no_tool_call": False,
+    "retry_explains_itself": False,
+    "plan_post_optional": False,
 }
+
+# The version stamp the patched terrarium-agents package must carry (TERRARIUM_FIXES in
+# terrarium/agents/base.py, HOSPITAL_FIXES in envs/dcops/hospital/hospital_env.py),
+# bumped with every terrarium patch: a package holding only the 2026-09-09 patch imports
+# fine and ignores the 2026-09-13 switches without a word, so the runner and the smoke
+# compare against this rather than against "any stamp at all".
+TERRARIUM_FIXES_STAMP = "2026-09-13"
 
 
 def resolve_fixes(cfg) -> dict[str, Any]:

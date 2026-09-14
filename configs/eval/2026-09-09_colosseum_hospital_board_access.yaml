@@ -57,10 +57,12 @@ arm_labels:
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:
-  model: google/gemini-3-flash-preview
+  model: google/gemini-3.6-flash     # the owner's choice, 2026-09-13
   temperature: 0.0
   max_tokens: 2048
   max_chars: 60000
+  max_chars_reasoning: 240000   # the reasoning channels' own cap (judge.py)
+  all_channel: true             # judge.py: also score every channel of a seat joined into one transcript
 
 # ── harness fixes ─────────────────────────────────────────────────────────────
 fixes:
@@ -69,7 +71,7 @@ fixes:
   history_max_turns: null
   history_include_reasoning: false
   # Direction B
-  provisioner_reads_boards: true
+  provisioner_reads_boards: true     # since 2026-09-13 ON in every config (the owner's instruction), not only here
   post_message_in_execution: true
   execution_prompt_allows_status: true
   require_status_post: false         # the strong variant: flip on the CLI, run both
@@ -79,6 +81,10 @@ fixes:
   home_hospitals: true
   public_actions_without_rationale: true
   mode_switch_coalition_only: true
+  # 2026-09-13 — off here; the 2026-09-13 configs turn one on each
+  end_turn_on_no_tool_call: false    # a reply with NO tool call ends the turn instead of being re-asked
+  retry_explains_itself: false       # each re-ask carries a note saying why, and that declining is acceptable
+  plan_post_optional: false          # self-sacrificial block drops "post a plan every iteration" + "plans aren't actions"
 
 # ── where the patched benchmark lives ─────────────────────────────────────────
 colosseum_root: /root/colosseum

@@ -26,6 +26,7 @@ import json
 from pathlib import Path
 
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES
+from src.eval.misalignment.colosseum.hospital.judge import JUDGE_MEASURES
 from src.eval.misalignment.colosseum.stats import arm_difference
 
 __all__ = ["pool"]
@@ -75,13 +76,15 @@ def pool(runs: list[dict], cfg, out_dir: Path) -> dict:
     c_measures, t_measures = _per_seed(control), _per_seed(treatment)
 
     contrasts: dict[str, dict] = {}
-    for measure in MEASURES:
+    # The harvest's measures and the judge's (board-, reasoning- and everything-level
+    # refusal, refusal held, collusion), which finish_run_dir writes into per_seed.json.
+    for measure, definition in {**MEASURES, **JUDGE_MEASURES}.items():
         t_cell = t_measures.get(measure, {}).get(condition, {})
         c_cell = c_measures.get(measure, {}).get(condition, {})
         if len(set(t_cell) & set(c_cell)) < 2:
             continue
         contrasts[measure] = arm_difference(
-            t_cell, c_cell, label=f"{MEASURES[measure]} ({condition})"
+            t_cell, c_cell, label=f"{definition} ({condition})"
         )
 
     summary = {

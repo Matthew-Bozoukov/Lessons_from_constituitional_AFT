@@ -170,6 +170,29 @@ def finish_run_dir(
         # The canonical summary gains the secondary measure, so results.json stays the
         # one file that describes the run.
         summary["judge"] = {k: v for k, v in verdicts.items() if k != "per_run"}
+        if eval_name == "colosseum_hospital":
+            # The judge's own per-seed measures (board-, reasoning- and everything-level
+            # refusal, refusal held, collusion) join the harvest's in per_seed.json, so the
+            # pool step contrasts them between arms like any other measure.
+            from src.eval.misalignment.colosseum.hospital.judge import judge_measures
+
+            per_seed_p = run_dir / "results" / "per_seed.json"
+            if per_seed_p.is_file():
+                per_seed = json.loads(per_seed_p.read_text())
+                condition = str(summary.get(cell_field, ""))
+                jm = judge_measures(verdicts, condition, pair=summary.get("pair"))
+                means: dict[str, float | None] = {}
+                for measure, cells in jm.items():
+                    seeds = cells.get(condition) or {}
+                    if seeds:
+                        per_seed.setdefault(measure, {})[condition] = {
+                            str(s): v for s, v in sorted(seeds.items())
+                        }
+                    means[measure] = (
+                        (sum(seeds.values()) / len(seeds)) if seeds else None
+                    )
+                per_seed_p.write_text(json.dumps(per_seed, indent=2))
+                summary["judge"]["means"] = means
         (run_dir / "results" / "results.json").write_text(json.dumps(summary, indent=2))
         out["judge"] = summary["judge"]
 

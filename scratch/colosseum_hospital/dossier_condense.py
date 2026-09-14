@@ -39,6 +39,8 @@ ol.flow li{margin:0 0 4px}
 .answer p{margin:0 0 8px}
 .answer ul{margin:0;padding-left:1.1em}
 .answer .tbl{margin:10px 0 0}
+.expanded{color:#b3261e;font-weight:400;margin-top:6px;white-space:normal;display:block;max-width:64ch;font-size:.86rem;line-height:1.45}
+.changed{color:#b3261e}
 """
 
 
@@ -260,12 +262,13 @@ FOLD = {
     "rollouts": "anatomy of a shift, where the six cells live on the Hub, the seed-5 walk-throughs",
     "seeds": "all six cells, one row per shift with Hub links",
     "metrics": "every measure and its definition",
-    "r-refusal": "refusal by channel and harness, with the table",
-    "r-hold": "trajectory classes: refused, two-faced, repented, declined-but-sabotaged, complied, passive",
-    "r-story": "the four boxes under the paper harness",
-    "r-harness": "the four boxes under all three harnesses and the harness-vs-harness contrasts",
-    "r-actions": "actions per iteration and the six action-level measures",
-    "r-team": "team score, regret, failures, scheduler rejections",
+    "results13": "every result table re-run today: 3.6 Flash judge, new action rules, the flip rate, rule sensitivity",
+    "r-refusal": "refusal by channel and harness — table: 2026-09-10 values (Gemini 3 Flash); figure: today's",
+    "r-hold": "trajectory classes — table rebuilt today; figure: today's",
+    "r-story": "the four boxes under the paper harness — table: 2026-09-10 values (original rules); figure: today's",
+    "r-harness": "the four boxes under all three harnesses — tables: 2026-09-10 values; figure: today's",
+    "r-actions": "actions per iteration and the six action-level measures — tables: 2026-09-10 values; figures: today's",
+    "r-team": "team score, regret, failures, scheduler rejections — table: 2026-09-10 values; figures: today's",
     "background": "the 2026-09-04 study under the paper harness",
     "limits": "what bounds every number on this page",
     "pointers": "branch, configs, patches, scripts, log entries, earlier pages",

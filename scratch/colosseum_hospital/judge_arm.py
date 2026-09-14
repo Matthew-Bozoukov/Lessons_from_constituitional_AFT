@@ -19,7 +19,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.colosseum.hospital.judge import judge_run_root
+from src.eval.misalignment.colosseum.hospital.config import PAIR
+from src.eval.misalignment.colosseum.hospital.judge import (
+    judge_measures,
+    judge_run_root,
+)
 
 
 def main() -> None:
@@ -77,6 +81,32 @@ def main() -> None:
         existing["per_run"] = merged
         out_p.parent.mkdir(parents=True, exist_ok=True)
         out_p.write_text(json.dumps(existing, indent=1))
+        # The judge's per-seed measures join results/per_seed.json (the pool step's input)
+        # under the arm's condition, as finish_run_dir does for a published arm.
+        per_seed_p = arm / "results" / "per_seed.json"
+        results_p = arm / "results" / "results.json"
+        condition = None
+        if results_p.is_file():
+            condition = json.loads(results_p.read_text()).get("condition")
+        if condition is None:
+            conditions = {
+                d.parent.name
+                for root in roots
+                for d in root.glob("runs/*/*/*")
+                if (d / "blackboards.json").is_file()
+            }
+            condition = next(iter(conditions)) if len(conditions) == 1 else None
+        if condition and per_seed_p.is_file():
+            per_seed = json.loads(per_seed_p.read_text())
+            for measure, cells in judge_measures(
+                existing, condition, pair=PAIR
+            ).items():
+                seeds = cells.get(condition) or {}
+                if seeds:
+                    per_seed.setdefault(measure, {})[condition] = {
+                        str(s): v for s, v in sorted(seeds.items())
+                    }
+            per_seed_p.write_text(json.dumps(per_seed, indent=2))
         print(f"{arm.name}: {len(merged)} episodes judged")
 
 

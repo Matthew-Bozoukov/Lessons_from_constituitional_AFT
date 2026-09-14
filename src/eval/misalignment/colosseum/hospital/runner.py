@@ -30,6 +30,7 @@ from src.eval.layout import publish_layout
 from src.eval.misalignment.colosseum.hospital.config import (
     CONDITIONS,
     PAIR,
+    TERRARIUM_FIXES_STAMP,
     build_sweep_config,
 )
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_run_root
@@ -38,8 +39,14 @@ __all__ = ["run"]
 
 PATCH = "src/eval/misalignment/colosseum/third_party/hospital_seating.patch"
 FIXES_PATCH = "src/eval/misalignment/colosseum/third_party/hospital_eval_fixes.patch"
+FIXES_PATCH_2 = (
+    "src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_2.patch"
+)
 TERRARIUM_PATCH = (
     "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes.patch"
+)
+TERRARIUM_PATCH_2 = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_2.patch"
 )
 
 
@@ -49,9 +56,9 @@ def _colosseum_root(cfg) -> Path:
     driver = root / "experiments" / "agent_misalignment" / "run.py"
     assert driver.is_file(), (
         f"no Colosseum checkout at {root}. Clone github.com/umass-ai-safety/colosseum at "
-        f"ac0b405, apply {PATCH} and {FIXES_PATCH}, install its dependencies (not the "
-        "package) into this environment, and point COLOSSEUM_ROOT (or the config's "
-        "colosseum_root) at it."
+        f"ac0b405, apply {PATCH}, {FIXES_PATCH} and {FIXES_PATCH_2}, install its "
+        "dependencies (not the package) into this environment, and point "
+        "COLOSSEUM_ROOT (or the config's colosseum_root) at it."
     )
     # A clone that was re-fetched loses the patches, and the failure is SILENT: every seat
     # falls back to the sweep's single model and the study compares an arm against itself.
@@ -66,6 +73,14 @@ def _colosseum_root(cfg) -> Path:
         f"the Colosseum checkout at {root} is missing the eval-fixes patch. Re-apply it "
         f"(after the seating patch):\n  git -C {root} apply {FIXES_PATCH}"
     )
+    # The 2026-09-13 prompt switch lives in prompts.py. Without its patch
+    # `plan_post_optional` rides in the config, is recorded per episode, and changes
+    # nothing — a "plan-optional" run of the plan-mandatory prompt.
+    prompts = root / "experiments" / "agent_misalignment" / "prompts.py"
+    assert "plan_post_optional" in prompts.read_text(), (
+        f"the Colosseum checkout at {root} is missing the 2026-09-13 eval-fixes patch. "
+        f"Re-apply it (after the first two):\n  git -C {root} apply {FIXES_PATCH_2}"
+    )
     return root
 
 
@@ -73,7 +88,9 @@ def _terrarium_fixes_version() -> str:
     """The version stamp of the patched terrarium-agents package this interpreter imports.
 
     Colosseum runs as a subprocess of THIS interpreter, so the package it will import is
-    the one importable here. An unpatched package ignores every `fixes` flag silently.
+    the one importable here. An unpatched package ignores every `fixes` flag silently,
+    and one holding only the 2026-09-09 patch ignores the 2026-09-13 switches the same
+    way — hence the stamp is compared to TERRARIUM_FIXES_STAMP, not merely required.
     """
     try:
         from envs.dcops.hospital import hospital_env
@@ -91,6 +108,13 @@ def _terrarium_fixes_version() -> str:
         "(scratch/colosseum_hospital/pod_bootstrap.sh does):\n"
         "  cd $(python -c 'import terrarium, os; print(os.path.dirname("
         f"terrarium.__path__[0]))') && patch -p1 < <repo>/{TERRARIUM_PATCH}"
+    )
+    assert version == TERRARIUM_FIXES_STAMP, (
+        f"the installed terrarium-agents package carries fixes stamp {version!r}, not "
+        f"{TERRARIUM_FIXES_STAMP!r}: the 2026-09-13 switches (end_turn_on_no_tool_call, "
+        f"retry_explains_itself) would be ignored without a word. Apply "
+        f"{TERRARIUM_PATCH_2} on top of {TERRARIUM_PATCH} "
+        "(scratch/colosseum_hospital/pod_bootstrap.sh does both)."
     )
     return str(version)
 
@@ -180,11 +204,15 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     run_root = _newest_output(output_dir)
     expected = {"pair": target.model_name, "other": peer.model_name}
+    # Upstream ignores logging.root_dir: the environment's end-of-iteration snapshots
+    # (data_iteration_N.json, the true inventories) land under the checkout's own logs/,
+    # which the action measures read for the objective deficit (hospital/actions.py).
     harvest = harvest_run_root(
         run_root,
         expected_seats=expected,
         expected_fixes=sweep_cfg["fixes"],
         pair=PAIR,
+        env_logs_root=root / "logs",
     )
 
     (results_dir / "per_seed.json").write_text(
