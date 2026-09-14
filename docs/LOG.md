@@ -1,6 +1,34 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Moral low-stakes and nonmoral refresh stopped after two failed pilot rounds
+
+**Hypothesis.** Refreshing the two controls with new09 and the pinned September8
+replay blend should produce716 human-advice examples per arm while preserving the
+new DA's response recipe and the original nonmoral craft deliberation.
+**Method.** Audited historical corpora, actual training selections, exact domain
+labels, constitution use and gotchas. Pinned September14 DA, original craft data and
+nosynth. Ran18 examples per arm in parallel, independently inspected all complete
+outputs, then used the single authorized revision on disjoint18-case pilots. The
+revision separated blind eligibility, content and lineage review. No training/eval.
+**Result.** Both original pilots had2/18 independent full-row passes despite16/18
+automatic passes. Revised low stakes:6 passes,8 completed rejects,3 preflight
+rejects,1 format failure; no t6 completion. Revised nonmoral content:12 pass,5
+material rejects,1 unresolved; only1 full-row pass after metadata requirements.
+The16/18 gate failed without relying on ambiguous content labels or trivial quotation
+formatting. Repeated unsupported premises and rule/quantity contradictions survived
+the model reviewers. All341 API calls finished: reported$8.105121, conservative
+charged/reserved$8.2599135 including one uncertain failure. No716-row corpus or
+10k mixture was released. Exact716+9284 mixture support and read-only mask/count
+validators are implemented;129 focused tests passed.
+**Evidence.** [Full stopped-run report](dataset_audits/2026-09-15_stopped_dataset_refresh.md),
+[original pilot audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-14-dataset-refresh-pilot-audit),
+[revised pilot audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-14-dataset-refresh-revised-pilot-audit).
+**Next.** Both jobs stopped at the agreed one-revision limit. A further proposal
+separates factual criticism from target/style scoring, permits one logged factual
+repair, and derives provenance mechanically; it awaits user authorization. Retain
+the existing source pins, teachers, shared budget ceiling and final-quality gate.
+
 ## 2026-09-13 — The base blend records whose reasoning traces it carries, and training refuses another family's
 
 **Problem.** The nosynth base blend every arm pins (`2026-09-08-nosynth-mix`) is not
