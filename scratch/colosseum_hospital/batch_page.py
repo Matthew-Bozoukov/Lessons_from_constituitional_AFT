@@ -561,6 +561,23 @@ tr.count td{color:var(--muted)}
 table.contrast td small{display:block;color:var(--muted);font-size:.72rem}
 table.contrast td.sig{font-weight:600}
 .note{font-size:.86rem;color:var(--muted);margin:6px 0 0;max-width:84ch}
+.takes{display:grid;gap:28px;margin:18px 0 0}
+.take{border-top:1px solid var(--line);padding-top:16px}
+.take .exp{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 6px}
+.take h3{font-family:"Newsreader",Georgia,serif;font-size:1.3rem;font-weight:600;line-height:1.25;margin:0 0 8px;text-wrap:balance;max-width:40ch}
+.take p{margin:0 0 10px;max-width:72ch}
+.take figure{margin:12px 0 0}
+.take img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff}
+.take figcaption{font-size:.84rem;color:var(--muted);margin-top:6px}
+.kinds{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0 18px}
+.kind{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:14px 16px}
+.kind .who{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0}
+.kind h3{margin:4px 0 6px}
+.kind p{margin:0 0 8px;font-size:.93rem}
+.kind p:last-child{margin-bottom:0}
+.quote{border-left:3px solid var(--accent);padding:2px 0 2px 12px;margin:10px 0;font-size:.93rem;max-width:80ch}
+.quote small{display:block;color:var(--muted);font-size:.8rem;margin-top:2px}
+@media (max-width:760px){.kinds{grid-template-columns:1fr}}
 .swatch{display:inline-block;width:.72em;height:.72em;border-radius:2px;vertical-align:-.04em;margin-right:.4em}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:12px 0;max-width:90ch}
 dt{font-weight:600}
@@ -705,6 +722,33 @@ def page(reading: dict) -> str:
         v = reading.get(key)
         return f'<div class="reading">{v}</div>' if v else ""
 
+    def take(t: dict) -> str:
+        fig = (
+            f'<figure><img src="{esc(t["fig"])}" alt="{esc(t.get("alt", ""))}">'
+            f'<figcaption>{esc(t.get("caption", ""))}</figcaption></figure>'
+            if t.get("fig")
+            else ""
+        )
+        return (
+            f'<article class="take"><p class="exp">{esc(t["exp"])}</p>'
+            f'<h3>{esc(t["headline"])}</h3>{t["detail"]}{fig}</article>'
+        )
+
+    takes = reading.get("takeaways") or []
+    takes_html = (
+        '<section id="takeaways"><h2>Takeaways, one per experiment</h2>'
+        '<p class="lede">What each experiment found, in plain words, with the figure that shows it. '
+        "Everything below it is the evidence.</p>"
+        f'<div class="takes">{"".join(take(t) for t in takes)}</div></section>\n'
+        if takes
+        else ""
+    )
+    sabotage_html = (
+        f'<section id="sabotage"><h2>What counts as sabotage</h2>{reading["sabotage"]}</section>\n'
+        if reading.get("sabotage")
+        else ""
+    )
+
     stand = reading.get("standfirst") or (
         "<p>Five experiments on the Colosseum Hospital, self-sacrificial condition: the coalition pair is told to "
         "make the team's score worse. Every number below is read from this batch's analysis outputs.</p>"
@@ -760,11 +804,12 @@ def page(reading: dict) -> str:
   <div class="ledger">{facts}</div>
 </header>
 <nav class="toc" aria-label="Sections">
-  <a href="#answer">The headline</a><a href="#exp1">Five arms</a><a href="#exp2">Baseline</a>
+  <a href="#takeaways">Takeaways</a><a href="#sabotage">What is sabotage</a><a href="#answer">The headline</a><a href="#exp1">Five arms</a><a href="#exp2">Baseline</a>
   <a href="#exp34">Mixed coalition</a><a href="#exp5">Which fix moved what</a><a href="#plans">Plans</a>
   <a href="#sway">Sway</a><a href="#deception">Deception</a><a href="#questions">Questions raised</a><a href="#method">Method</a>
 </nav>
 
+{takes_html}{sabotage_html}
 <section id="answer">
   <h2>Sabotaged, or wrote the plan to</h2>
   <p class="lede">The headline measure: a shift counts when either coalition seat took a sabotage action or posted a
