@@ -179,6 +179,12 @@ def main() -> None:
     )
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="keep a merged cell that already holds every seed its pieces have "
+        "(rebuilding it would delete its judge files); rebuild only cells that gained seeds",
+    )
+    ap.add_argument(
         "--env-logs",
         default=None,
         help="the pulled env snapshots of these cells (objective deficits); omit = regex",
@@ -214,6 +220,15 @@ def main() -> None:
             else cfg
         )
         label = arm_label(arm, cell_cfg)
+        if args.skip_existing:
+            dest_probe = out / local_name(
+                f"colosseum_hospital_{condition}_{label}", date=args.date
+            )
+            done = dest_probe / "results" / "results.json"
+            seeds = set().union(*(episodes_of(p) for p in pieces))
+            if done.is_file() and json.loads(done.read_text()).get("n_episodes") == len(seeds):
+                print(f"{condition} / {label}: up to date ({len(seeds)} episodes), kept")
+                continue
         print(f"{condition} / {label}: {[p.name[-6:] for p in pieces]}")
         dest = out / local_name(
             f"colosseum_hospital_{condition}_{label}", date=args.date

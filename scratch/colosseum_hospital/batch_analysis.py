@@ -194,6 +194,7 @@ def merge() -> None:
                 DATE,
                 "--env-logs",
                 str(ENV / f"{DATE}_{group}"),
+                "--skip-existing",
             ],
             check=True,
         )
@@ -258,6 +259,8 @@ def postjudge(parallel: int = 5, workers: int = 8) -> None:
 def falseclaims(parallel: int = 4, workers: int = 8) -> None:
     jobs = []
     for k in present(SS_KEYS):
+        if (cell_dir(k) / "results" / "false_claims.json").is_file():
+            continue  # judged already; a second pass would pay for the same answers
         cmd = [
             sys.executable,
             str(HERE / "false_claims.py"),
