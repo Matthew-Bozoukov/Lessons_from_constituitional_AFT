@@ -241,8 +241,8 @@ def figure(cells: dict, path: Path) -> None:
                 r = k / n if n else 0.0
                 lo, hi = wilson(k, n) if n else (r, r)
                 vals.append(100 * r)
-                los.append(100 * (r - lo))
-                his.append(100 * (hi - r))
+                los.append(max(0.0, 100 * (r - lo)))
+                his.append(max(0.0, 100 * (hi - r)))
             ax.bar(
                 xs,
                 vals,
