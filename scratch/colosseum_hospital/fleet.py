@@ -173,10 +173,21 @@ class Fleet:
             log(f"keeper pid {p.pid}: kill it to terminate every pod of this fleet")
             return p.pid
 
+    def watchdog_alive(self, pod_id: str) -> bool:
+        r = subprocess.run(
+            ["pgrep", "-f", f"src.infra.runpod watchdog {pod_id}"],
+            capture_output=True,
+            text=True,
+        )
+        return r.returncode == 0 and bool(r.stdout.strip())
+
     def watchdog(self, name: str, pod_id: str) -> None:
-        if self.st(name).get("watchdog_for") == pod_id:
+        if self.watchdog_alive(pod_id):
             return
-        cap_s = int(float(self.pods[name]["cap_h"]) * 3600)
+        # A watchdog re-created after its first one died with a killed driver gets only what
+        # is left of the pod's cap, counted from when the pod was rented.
+        elapsed = time.time() - float(self.st(name).get("rented_at") or time.time())
+        cap_s = max(600, int(float(self.pods[name]["cap_h"]) * 3600 - elapsed))
         logp = self.out / "logs" / f"{name}_watchdog.log"
         f = open(logp, "a")
         subprocess.Popen(
@@ -561,9 +572,19 @@ class Fleet:
         return head
 
     def run(self, interval: int) -> None:
-        self.state["sha"] = self.resolve_sha()
+        needs_boot = [
+            n
+            for n in self.pods
+            if self.st(n)["status"] not in TERMINAL and not self.st(n).get("bootstrapped_at")
+        ]
+        if needs_boot or not self.state.get("sha"):
+            self.state["sha"] = self.resolve_sha()
         self.save()
         self.keeper()
+        for n in self.pods:  # one watchdog per live pod, re-created if its first one died
+            s = self.st(n)
+            if s.get("id") and s["status"] not in TERMINAL:
+                self.watchdog(n, s["id"])
         log(
             f"fleet {self.plan_path.stem}: {len(self.pods)} pods at {self.state['sha'][:8]}"
         )
