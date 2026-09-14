@@ -1,0 +1,67 @@
+{
+  "audit_date": "2026-09-14",
+  "git_sha": "ccf5d8e4",
+  "base_repo": "dougalldeepmind/2026-09-08-nosynth-mix",
+  "base_revision": "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd",
+  "base_sha256": "de8c2a526de36dc214e1899df681a83c5612a062593a26ebfafcf49bfdaad219",
+  "base_rows": 10000,
+  "source_counts": {
+    "lima": 314,
+    "tulu3_if": 1471,
+    "smol_constraints": 1055,
+    "no_robots": 2779,
+    "longalign": 216,
+    "apigen_function_calling": 1054,
+    "smol_summarize": 984,
+    "self_oss_instruct": 1064,
+    "numinamath_cot": 1063
+  },
+  "trace_rows": 1122,
+  "trace_turns": 1135,
+  "trace_provenance_report": {
+    "source_mixture": {
+      "repo": "LASR-Callum/2026-09-05-nosynth-mix",
+      "file": "mixture.jsonl",
+      "revision": "local:output/reasoning_backfill/enrich_20260908_114055/mixture.jsonl"
+    },
+    "target_sources": [
+      "tulu3_if",
+      "self_oss_instruct",
+      "lima"
+    ],
+    "fraction_attempted": 0.5,
+    "seed": 0,
+    "gen_model": "qwen/qwen3.6-27b",
+    "judge_model": "google/gemini-3-flash-preview",
+    "completion_max_tokens": 6144,
+    "reasoning_budget": null,
+    "mode": "multiturn",
+    "base_mixture": "output/reasoning_backfill/enrich_20260908_114055/mixture.jsonl",
+    "n_rows": 10000,
+    "n_attempted_turns": 16,
+    "n_accepted": 16,
+    "n_reasoning_turns": 1135,
+    "acceptance_rate_of_attempted": 1.0,
+    "outcomes": {
+      "accepted": 16
+    },
+    "hand_authored": [
+      {
+        "i": 8805,
+        "j": 3,
+        "note": "hand-written by Claude, NOT on-policy qwen3.6-27b: 12 sampled traces were rejected because the reference answer's 'C Aeolian == A minor' holds only under the relative reading, and this trace makes that interpretive step explicit"
+      }
+    ],
+    "by_source": {
+      "lima": {
+        "attempted": 16,
+        "accepted": 16
+      }
+    },
+    "spend_usd": 0.08,
+    "judge_spend_usd": null
+  },
+  "constitution_path": "constitutions/claude_distilled_09_principles/constitution.md",
+  "constitution_raw_sha256": "6ccd9c2a1ae1f2b479dbecbeb1c735b2014de531a866bcac9b31d8bdf5de914f",
+  "constitution_generation_text_sha256": "8e273b472d945aa23efa6236886da5e1171bff2193ee31ff73489ca54c4f0edc"
+}

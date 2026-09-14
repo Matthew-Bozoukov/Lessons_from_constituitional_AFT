@@ -506,6 +506,113 @@ def test_a_synthetic_share_and_synthetic_sources_must_agree():
         blend(base, {"da": {"examples": 1}}, 0, 1000)     # a source with no share
 
 
+def test_exact_synthetic_count_allocates_716_and_9284_without_changing_legacy():
+    from src.data.mixture.build_mixture import _base_sources, blend
+
+    base = _base_sources("configs/data/mixture/nosynth.yaml")
+    synth = {"da": {"examples": 1, "reasoning": "native"}}
+    out = blend(base, synth, 7, 10000, synthetic_examples=716)
+    assert out["da"]["examples"] == 716
+    expected = {"no_robots": 2580, "tulu3_if": 1366, "numinamath_cot": 987,
+                "self_oss_instruct": 988, "smol_constraints": 979,
+                "apigen_function_calling": 978, "smol_summarize": 914,
+                "lima": 291, "longalign": 201}
+    assert {n: s["examples"] for n, s in out.items() if n != "da"} == expected
+    assert sum(expected.values()) == 9284
+    assert blend(dict(reversed(list(base.items()))), synth, None, 10000,
+                 synthetic_examples=716) == out
+    legacy = blend(base, synth, 7, 10000)
+    assert legacy["da"]["examples"] == 700
+    assert {n: legacy[n]["examples"] for n in base} == {
+        n: round(9300 * s["examples"] / 10000) for n, s in base.items()}
+
+
+@pytest.mark.parametrize("count,pct,total", [
+    (-1, 7, 10000), (10001, 7, 10000), (716.0, 7, 10000),
+    (True, 7, 10000), (716, 8, 10000), (716, 7.16, 10000),
+    (716, 7, 0), (716, 7, 10000.0),
+])
+def test_exact_count_rejects_invalid_or_conflicting_inputs(count, pct, total):
+    from src.data.mixture.build_mixture import blend
+
+    with pytest.raises(AssertionError):
+        blend({"base": {"examples": 10000}}, {"da": {"examples": 1}}, pct,
+              total, synthetic_examples=count)
+
+
+def test_exact_count_splits_synthetic_ties_deterministically_and_handles_endpoints():
+    from src.data.mixture.build_mixture import blend
+
+    base = {"b": {"examples": 5}, "a": {"examples": 5}}
+    synthetic = {"par": {"examples": 1}, "da": {"examples": 1}}
+    out = blend(base, synthetic, None, 10, synthetic_examples=3)
+    assert {n: s["examples"] for n, s in out.items()} == {"a": 4, "b": 3, "da": 2, "par": 1}
+    assert sum(s["examples"] for s in blend(base, {}, 0, 10, synthetic_examples=0).values()) == 10
+    assert set(blend(base, synthetic, 100, 10, synthetic_examples=10)) == {"da", "par"}
+    with pytest.raises(AssertionError, match="overlap"):
+        blend(base, {"a": {"examples": 1}}, 10, 10, synthetic_examples=1)
+
+
+@pytest.mark.parametrize("extra", ["", "base: configs/data/mixture/nosynth.yaml\nfilter: {model: forbidden}\n"])
+def test_main_rejects_exact_count_without_base_or_with_filter_before_loading(tmp_path, monkeypatch, extra):
+    from src.data.mixture import build_mixture as mod
+
+    monkeypatch.setattr(mod.AutoTokenizer, "from_pretrained", lambda *a, **k: pytest.fail("must not load"))
+    config = tmp_path / "da.yaml"
+    config.write_text("seed: 0\nsynthetic_examples: 716\n" + extra)
+    with pytest.raises(AssertionError, match="synthetic_examples"):
+        main(str(config))
+
+
+def test_exact_count_builds_preserve_common_base_payloads_and_positions(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from src.data.mixture import build_mixture as mod
+    from src.infra import huggingface
+
+    base_specs = mod._base_sources("configs/data/mixture/nosynth.yaml")
+    original = [{"source": name, "messages": [
+        {"role": "user", "content": f"base {name} {i}"},
+        {"role": "assistant", "content": "answer", **({"reasoning_content": "keep this trace"} if i % 2 else {})}
+    ]} for name, spec in base_specs.items() for i in range(spec["examples"])]
+    base_file = tmp_path / "base.jsonl"
+    base_file.write_text("".join(json.dumps(r) + "\n" for r in original))
+    monkeypatch.setattr(huggingface, "resolve_dataset", lambda *a: (str(base_file), {"revision": "pin"}))
+    monkeypatch.setattr(mod.AutoTokenizer, "from_pretrained", lambda *a, **k: _StubTok())
+    monkeypatch.setattr(mod, "model_profile", lambda *a: SimpleNamespace(render_kwargs={}))
+    monkeypatch.setattr(mod.rb, "base_reasoning_traces", lambda *a: None)
+    # The CLI exits without Python finalization after writing (streaming reader cleanup).
+    monkeypatch.setattr(mod.os, "_exit", lambda code: None)
+    outputs = []
+    for style in ("da", "par"):
+        synth_file = tmp_path / f"{style}.jsonl"
+        synth_file.write_text("".join(json.dumps({"messages": [
+            {"role": "user", "content": f"{style} scenario {i}"},
+            {"role": "assistant", "content": f"different {style} answer {i}", "reasoning_content": "trace"}
+        ]}) + "\n" for i in range(716)))
+        config = tmp_path / f"{style}.yaml"
+        config.write_text(OmegaConf.to_yaml(OmegaConf.create({
+            "seed": 0, "tokenizer": "stub", "max_seq_len": 100,
+            "base": "configs/data/mixture/nosynth.yaml",
+            "base_mixture": {"repo": "org/base", "file": "mixture.jsonl", "revision": "pin"},
+            "synthetic_examples": 716, "synthetic_pct": 7, "total_examples": 10000,
+            "output_dir": str(tmp_path / style),
+            "sources": {style: {"path": str(synth_file), "examples": 1, "reasoning": "native"}},
+        })))
+        main(str(config))
+        path = next((tmp_path / style).glob("*/mixture.jsonl"))
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        stats = json.loads(path.with_name("mixture_stats.json").read_text())
+        assert len(rows) == stats["total"]["examples"] == 10000
+        assert stats["synthetic_examples"] == stats["by_source"][style]["examples"] == 716
+        assert stats["synthetic_pct"] == 7
+        base_at_positions = [(i, r) for i, r in enumerate(rows) if r["source"] in base_specs]
+        assert len(base_at_positions) == 9284
+        original_payloads = {json.dumps(r, sort_keys=True) for r in original}
+        assert all(json.dumps(r, sort_keys=True) in original_payloads for _, r in base_at_positions)
+        outputs.append(base_at_positions)
+    assert outputs[0] == outputs[1]
+
+
 def test_several_synthetic_styles_split_the_share_by_their_declared_ratio():
     """`da-par-20` is 20% synthetic; the styles' own budgets set the split within it."""
     from src.data.mixture.build_mixture import blend
