@@ -137,7 +137,7 @@ def analyse_cell(key: tuple[str, str], n_examples: int) -> dict:
             "cover_regex": 0,
             "judge_explicit": 0,
             "judge_ge4": 0,
-            "judge_available": bool(pjs),
+            "judge_available": bool(pjs) or (pj is not None and not posts),
         }
         for p in posts:
             k = (p["agent"], str(p.get("iteration")), p.get("phase"), p["text"])
