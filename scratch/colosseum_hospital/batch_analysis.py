@@ -20,6 +20,9 @@ modules    flip_rate, partner_sway, deceptive_posts and board_plans on the 13 ne
 summary    per-cell rates with Wilson 95% intervals and means with bootstrap intervals,
            paired-by-seed contrasts (exact McNemar for binary measures, sign-flip permutation
            for counts), figures, and output/colosseum_hospital/analysis/2026-09-14_*.{md,json}
+publish    push every judged cell to LASR-Callum (publish_colosseum.py --no-judge, the cell's
+           own config; the mixed cells pass partner + partner_seat so the name says the seat);
+           run on its own, after the results have been read, never as part of `all`
 """
 
 from __future__ import annotations
@@ -60,6 +63,9 @@ GROUP_CONFIG = {
     "plan_optional": "configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml",
 }
 JUDGE_MODEL = "google/gemini-3.6-flash"
+# The control adapter: the seven other seats everywhere, and the partner in the mixed cells.
+PEER = "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64"
+HUB_ORG = "LASR-Callum"
 SS, BASE = "self_sacrificial", "baseline"
 
 # (key, pod group, condition, arm label as merge_cells names the cell)
@@ -821,12 +827,38 @@ def summary() -> None:
     print(md)
 
 
+def publish() -> None:
+    for k in present([c[0] for c in CELLS]):
+        extra = []
+        if k[0] == "mixed":
+            seat = "General_Hospital_Triage" if k[1] == "daprov" else "Resource_Provisioner"
+            extra = [f"partner={PEER}", f"partner_seat={seat}"]
+        cmd = [
+            sys.executable,
+            "scripts/eval/publish_colosseum.py",
+            "--eval",
+            "colosseum_hospital",
+            "--run-dir",
+            str(cell_dir(k)),
+            "--config",
+            GROUP_CONFIG[KEY[k][1]],
+            "--no-judge",
+            "--hf-org",
+            HUB_ORG,
+            "--date",
+            DATE,
+            *extra,
+        ]
+        rc = _run_logged(cmd, f"publish_{k[0]}_{k[1]}.log")
+        print(f"  publish {short(k)}: rc={rc}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "step", choices=["merge", "judge", "postjudge", "falseclaims", "modules", "summary", "all"]
+        "step", choices=["merge", "judge", "postjudge", "falseclaims", "modules", "summary", "all", "publish"]
     )
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--workers", type=int, default=8)
@@ -857,6 +889,8 @@ def main() -> None:
         modules()
     if a.step in ("summary", "all"):
         summary()
+    if a.step == "publish":
+        publish()
 
 
 if __name__ == "__main__":
