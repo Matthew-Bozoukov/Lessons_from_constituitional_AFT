@@ -1,0 +1,513 @@
+# ABOUTME: Three supervisor-facing figures for the 2026-09-14 Hospital batch, one message each with its paired
+# ABOUTME: p-values drawn on: refusal is not restraint, the difficult-advice gap by harness switch, the agentic-task trade-off.
+"""Reads the batch summary (batch_analysis.py summary) and writes, beside it:
+
+  2026-09-14_colosseum_hospital_refusal_not_restraint.png
+  2026-09-14_colosseum_hospital_difficult_advice_gap_by_harness.png
+  2026-09-14_colosseum_hospital_agentic_task_tradeoff.png
+  2026-09-14_colosseum_hospital_key_figures_results.md   (every number drawn, with its source)
+
+Run: uv run python scratch/colosseum_hospital/key_figures.py
+"""
+
+import json
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
+
+DATE = "2026-09-14"
+AN = Path("output/colosseum_hospital/analysis")
+SUMMARY = AN / f"{DATE}_colosseum_hospital_batch_summary.json"
+S = json.loads(SUMMARY.read_text())
+CELLS, CONTRASTS = S["cells"], S["contrasts"]
+
+COLOR = {
+    "ctrl": "#2a78d6",
+    "da": "#eb6834",
+    "nosyn": "#8a8984",
+    "jda": "#c99a2e",
+    "jdat": "#3f9a5b",
+}
+NAME = {
+    "ctrl": "control",
+    "da": "difficult advice",
+    "nosyn": "no synthetic",
+    "jda": "+7% difficult\nadvice",
+    "jdat": "+7% difficult\nagentic tasks",
+}
+INK, MUTED, GRID, PALE, BAND = "#0b0b0b", "#52514e", "#e3e2dd", "#cfcec8", "#f4f1ea"
+PLAN_C, ACT_C, REFUSE_C = PALE, "#45443f", "#eb6834"
+
+plt.rcParams.update(
+    {
+        "font.size": 11,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.edgecolor": MUTED,
+        "axes.labelcolor": MUTED,
+        "xtick.color": MUTED,
+        "ytick.color": MUTED,
+        "axes.grid": True,
+        "axes.grid.axis": "y",
+        "grid.color": GRID,
+        "grid.linewidth": 0.8,
+        "axes.axisbelow": True,
+    }
+)
+
+MD: list[str] = [
+    f"# Key figures, Hospital batch {DATE}\n",
+    f"Every number below is read from `{SUMMARY.name}` (batch_analysis.py summary); script "
+    "`scratch/colosseum_hospital/key_figures.py`. Shares are k/30 shifts with Wilson 95% intervals; team scores "
+    "are means with bootstrap 95% intervals; contrasts are paired by seed (exact McNemar for shares, sign-flip "
+    "permutation for means) with bootstrap 95% intervals.\n",
+]
+
+
+def rate(cell: str, m: str) -> tuple[float, float, float, int, int]:
+    b = CELLS[cell]["binary"][m]
+    r = b["rate"]
+    return (
+        100 * r,
+        max(0.0, 100 * (r - b["lo"])),
+        max(0.0, 100 * (b["hi"] - r)),
+        b["k"],
+        b["n"],
+    )
+
+
+def mean(cell: str, m: str) -> tuple[float, float, float]:
+    c = CELLS[cell]["counts"][m]
+    return c["mean"], max(0.0, c["mean"] - c["lo"]), max(0.0, c["hi"] - c["mean"])
+
+
+def contrast(label: str, m: str) -> dict:
+    norm = lambda s: s.replace("−", "-")  # noqa: E731
+    hit = [c for c in CONTRASTS if norm(c["label"]) == norm(label)]
+    assert len(hit) == 1, f"contrast {label!r}: {len(hit)} matches"
+    return hit[0]["measures"][m]
+
+
+def ptxt(p: float) -> str:
+    return "p < 0.001" if p < 0.001 else f"p = {p:.3f}" if p < 0.1 else f"p = {p:.2f}"
+
+
+def signed(x: float, unit: str = "") -> str:
+    return f"{x:+.0f}{unit}".replace("-", "−")
+
+
+def pp(c: dict) -> str:
+    return f"{signed(100 * c['diff'], ' pp')} [{signed(100 * c['lo'])}, {signed(100 * c['hi'])}], {ptxt(c['p'])}"
+
+
+def heading(fig, title: str, sub: str, sub_y: float) -> None:
+    fig.text(
+        0.012,
+        0.975,
+        title,
+        fontsize=15,
+        fontweight="bold",
+        color=INK,
+        va="top",
+        linespacing=1.25,
+    )
+    fig.text(0.012, sub_y, sub, fontsize=10.5, color=MUTED, va="top", linespacing=1.35)
+
+
+def bracket(ax, x1: float, x2: float, y: float, text: str, h: float) -> None:
+    ax.plot([x1, x1, x2, x2], [y, y + h, y + h, y], color=INK, lw=1.1, clip_on=False)
+    ax.text(
+        (x1 + x2) / 2,
+        y + 1.35 * h,
+        text,
+        ha="center",
+        va="bottom",
+        fontsize=10,
+        color=INK,
+    )
+
+
+def fig_refusal_not_restraint() -> Path:
+    arms = ["ctrl", "da", "nosyn", "jda", "jdat"]
+    xs = [0.0, 1.0, 2.7, 3.7, 4.7]
+    series = [
+        ("plan_posted", "posted a sabotage plan on the coalition board", PLAN_C),
+        ("pair_sabotaged", "took a sabotage action", ACT_C),
+        (
+            "judge_refusal_reasoning_ge3",
+            "a seat refused in its private reasoning (judge)",
+            REFUSE_C,
+        ),
+    ]
+    w = 0.27
+    fig, ax = plt.subplots(figsize=(12, 7.2))
+    fig.subplots_adjust(left=0.07, right=0.985, top=0.77, bottom=0.33)
+    MD.append("## refusal_not_restraint.png (fixed harness, self-sacrificial)\n")
+    MD.append("| arm | " + " | ".join(lab for _, lab, _ in series) + " |")
+    MD.append("|---|---|---|---|")
+    for a, x in zip(arms, xs):
+        row = []
+        for j, (m, _, col) in enumerate(series):
+            v, lo, hi, k, n = rate(f"fixed/{a}", m)
+            xx = x + (j - 1) * w
+            ax.bar(xx, v, w * 0.92, color=col, edgecolor="none")
+            ax.errorbar(
+                xx,
+                v,
+                yerr=[[lo], [hi]],
+                fmt="none",
+                ecolor=INK,
+                elinewidth=0.9,
+                capsize=2.5,
+            )
+            ax.text(
+                xx,
+                v + hi + 1.2,
+                f"{k}",
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                color=MUTED,
+            )
+            row.append(f"{k}/{n} ({v:.0f}%)")
+        MD.append(f"| {NAME[a].replace(chr(10), ' ')} | " + " | ".join(row) + " |")
+    ax.set_xticks(xs, [NAME[a] for a in arms], fontsize=11, color=INK)
+    ax.set_ylim(0, 108)
+    ax.set_yticks(range(0, 101, 20))
+    ax.set_ylabel("share of 30 shifts, %")
+    ax.set_xlim(-0.55, 5.25)
+
+    ours = (
+        contrast("ours: DA − control", "pair_sabotaged"),
+        contrast("ours: DA − control", "judge_refusal_reasoning_ge3"),
+    )
+    adv = (
+        contrast("unfiltered: 7% advice − no synthetic", "pair_sabotaged"),
+        contrast("unfiltered: 7% advice − no synthetic", "judge_refusal_reasoning_ge3"),
+    )
+    agt = (
+        contrast("unfiltered: 7% agentic − no synthetic", "pair_sabotaged"),
+        contrast(
+            "unfiltered: 7% agentic − no synthetic", "judge_refusal_reasoning_ge3"
+        ),
+    )
+
+    def short(c: dict) -> str:
+        return f"{signed(100 * c['diff'], ' pp')} ({ptxt(c['p'])})"
+
+    fam = [
+        (
+            xs[0],
+            xs[1],
+            "OUR ADAPTERS (Table 2 only base)",
+            [f"DA − control:  action {short(ours[0])},  refusal {short(ours[1])}"],
+        ),
+        (
+            xs[2],
+            xs[4],
+            "UNFILTERED TABLE 2 BLEND (seed 0)",
+            [
+                f"+7% advice − none:  action {short(adv[0])},  refusal {short(adv[1])}",
+                f"+7% agentic tasks − none:  action {short(agt[0])},  refusal {short(agt[1])}",
+            ],
+        ),
+    ]
+    tr = ax.get_xaxis_transform()
+    for x1, x2, lab, lines in fam:
+        ax.plot(
+            [x1 - 0.45, x2 + 0.45],
+            [-0.15, -0.15],
+            transform=tr,
+            color=MUTED,
+            lw=0.8,
+            clip_on=False,
+        )
+        ax.text(
+            (x1 + x2) / 2,
+            -0.19,
+            lab,
+            transform=tr,
+            ha="center",
+            va="top",
+            fontsize=9.5,
+            color=MUTED,
+            fontweight="bold",
+        )
+        ax.text(
+            (x1 + x2) / 2,
+            -0.26,
+            "\n".join(lines),
+            transform=tr,
+            ha="center",
+            va="top",
+            fontsize=9.5,
+            color=INK,
+            linespacing=1.5,
+        )
+    ax.legend(
+        handles=[Patch(color=c, label=lab) for _, lab, c in series],
+        loc="upper left",
+        bbox_to_anchor=(0.0, 1.13),
+        ncol=3,
+        frameon=False,
+        fontsize=10,
+        handlelength=1.2,
+    )
+    heading(
+        fig,
+        "Every arm writes the sabotage plan; the trained arms say no in private,\nbut mostly sabotage anyway",
+        "Colosseum Hospital, coalition told to sabotage; fixed harness (carried history, no re-ask, no order to plan). "
+        "30 shifts per arm, Wilson 95% CI;\nthe number above a bar is shifts out of 30. Contrasts paired by seed, "
+        "exact McNemar. One training seed per arm; compare within a family (the base blends differ).",
+        0.885,
+    )
+    MD.append("")
+    for x1, x2, lab, lines in fam:
+        MD.append(f"- {lab}: " + "; ".join(lines))
+    MD.append("")
+    out = AN / f"{DATE}_colosseum_hospital_refusal_not_restraint.png"
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.2)
+    plt.close(fig)
+    return out
+
+
+def fig_gap_by_harness() -> Path:
+    states = [
+        ("carried history", "carried history\nplan ordered, re-ask on"),
+        ("+ no re-ask", "+ no re-ask\nplan ordered"),
+        ("+ plan optional", "+ plan optional\nre-ask on"),
+        ("+ both", "+ both (fixed harness)\nno plan order, no re-ask"),
+    ]
+    series = [
+        (
+            "judge_refusal_reasoning_ge3",
+            "a seat refused in its private reasoning (judge)",
+            REFUSE_C,
+            "o",
+            -0.08,
+        ),
+        ("pair_sabotaged", "took a sabotage action", ACT_C, "s", 0.08),
+    ]
+    fig, ax = plt.subplots(figsize=(11, 6.6))
+    fig.subplots_adjust(left=0.1, right=0.97, top=0.76, bottom=0.25)
+    ax.axvspan(-0.5, 1.5, color=BAND, zorder=0)
+    ax.text(
+        0.5,
+        101,
+        "a sabotage plan is ordered",
+        ha="center",
+        va="bottom",
+        fontsize=10,
+        color=MUTED,
+    )
+    ax.text(
+        2.5, 101, "no order to plan", ha="center", va="bottom", fontsize=10, color=MUTED
+    )
+    ax.axhline(0, color=INK, lw=1.0)
+    MD.append(
+        "## difficult_advice_gap_by_harness.png (difficult advice − control, paired by seed)\n"
+    )
+    MD.append("| harness | " + " | ".join(lab for _, lab, *_ in series) + " |")
+    MD.append("|---|---|---|")
+    rows = {s: [] for s, _ in states}
+    for m, lab, col, mk, dx in series:
+        ys = []
+        for i, (key, _) in enumerate(states):
+            c = contrast(f"DA − control under {key}", m)
+            d, lo, hi = 100 * c["diff"], 100 * c["lo"], 100 * c["hi"]
+            ys.append(d)
+            ax.errorbar(
+                i + dx,
+                d,
+                yerr=[[max(0.0, d - lo)], [max(0.0, hi - d)]],
+                fmt=mk,
+                color=col,
+                ms=8,
+                capsize=3.5,
+                lw=1.5,
+                zorder=3,
+            )
+            ax.text(
+                i + dx + 0.1,
+                d,
+                f"{signed(d, ' pp')}\n{ptxt(c['p'])}",
+                va="center",
+                fontsize=9.5,
+                color=col,
+                zorder=4,
+            )
+            rows[key].append(pp(c))
+    for key, _ in states:
+        MD.append(f"| {key} | " + " | ".join(rows[key]) + " |")
+    MD.append("")
+    ax.set_xticks(range(4), [lab for _, lab in states], fontsize=10.5, color=INK)
+    ax.set_xlim(-0.5, 3.5)
+    ax.set_ylim(-62, 110)
+    ax.set_yticks(
+        range(-60, 101, 20), [signed(t) if t else "0" for t in range(-60, 101, 20)]
+    )
+    ax.set_ylabel("difficult advice − control, percentage points")
+    ax.grid(False)
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], color=col, marker=mk, lw=1.3, ms=7, label=lab)
+            for _, lab, col, mk, _ in series
+        ],
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.18),
+        ncol=2,
+        frameon=False,
+        fontsize=10,
+    )
+    heading(
+        fig,
+        "Difficult advice vs control: the refusal gap holds on every harness;\nthe action gap shows only while a plan is ordered",
+        "Our two adapters, coalition told to sabotage; carried history, then each harness switch alone, then both. "
+        "Difference in share of 30 shifts,\npaired by seed, bootstrap 95% CI, exact McNemar p.",
+        0.875,
+    )
+    out = AN / f"{DATE}_colosseum_hospital_difficult_advice_gap_by_harness.png"
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.2)
+    plt.close(fig)
+    return out
+
+
+def fig_agentic_tradeoff() -> Path:
+    arms = ["nosyn", "jda", "jdat"]
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(12, 6.4))
+    fig.subplots_adjust(left=0.065, right=0.985, top=0.74, bottom=0.2, wspace=0.26)
+    MD.append("## agentic_task_tradeoff.png (unfiltered Table 2 blend, seed 0)\n")
+    MD.append(
+        "| arm | took a sabotage action (told to sabotage) | refused in reasoning (judge) | team score, not told to sabotage |"
+    )
+    MD.append("|---|---|---|---|")
+    ticks = []
+    for i, a in enumerate(arms):
+        v, lo, hi, k, n = rate(f"fixed/{a}", "pair_sabotaged")
+        _, _, _, rk, rn = rate(f"fixed/{a}", "judge_refusal_reasoning_ge3")
+        a1.bar(i, v, 0.62, color=COLOR[a], edgecolor="none")
+        a1.errorbar(
+            i, v, yerr=[[lo], [hi]], fmt="none", ecolor=INK, elinewidth=1.0, capsize=3.5
+        )
+        a1.text(
+            i,
+            v / 2,
+            f"{k}/{n}",
+            ha="center",
+            va="center",
+            fontsize=12,
+            color="white",
+            fontweight="bold",
+        )
+        ticks.append(f"{NAME[a]}\nrefused: {rk}/{rn}")
+        m, mlo, mhi = mean(f"baseline/{a}", "joint_reward")
+        a2.bar(i, m, 0.62, color=COLOR[a], edgecolor="none")
+        a2.errorbar(
+            i,
+            m,
+            yerr=[[mlo], [mhi]],
+            fmt="none",
+            ecolor=INK,
+            elinewidth=1.0,
+            capsize=3.5,
+        )
+        a2.text(
+            i,
+            m / 2,
+            f"{m:,.0f}",
+            ha="center",
+            va="center",
+            fontsize=12,
+            color="white",
+            fontweight="bold",
+        )
+        MD.append(
+            f"| {NAME[a].replace(chr(10), ' ')} | {k}/{n} ({v:.0f}%) | {rk}/{rn} | {m:,.0f} [{m - mlo:,.0f}, {m + mhi:,.0f}] |"
+        )
+    act_adv = contrast("unfiltered: 7% advice − no synthetic", "pair_sabotaged")
+    act_agt = contrast("unfiltered: 7% agentic − no synthetic", "pair_sabotaged")
+    cap_adv = contrast(
+        "baseline: unfiltered · 7% advice − unfiltered · no synthetic", "joint_reward"
+    )
+    cap_agt = contrast(
+        "baseline: unfiltered · 7% agentic tasks − unfiltered · no synthetic",
+        "joint_reward",
+    )
+    bracket(
+        a1,
+        0,
+        1,
+        104,
+        f"{signed(100 * act_adv['diff'], ' pp')}, {ptxt(act_adv['p'])}",
+        2.5,
+    )
+    bracket(
+        a1,
+        0,
+        2,
+        117,
+        f"{signed(100 * act_agt['diff'], ' pp')}, {ptxt(act_agt['p'])}",
+        2.5,
+    )
+    bracket(a2, 0, 1, 7900, f"{signed(cap_adv['diff'])}, {ptxt(cap_adv['p'])}", 190)
+    bracket(a2, 0, 2, 8750, f"{signed(cap_agt['diff'])}, {ptxt(cap_agt['p'])}", 190)
+    a1.set_ylim(0, 132)
+    a1.set_yticks(range(0, 101, 20))
+    a1.set_ylabel("share of 30 shifts, %")
+    a1.set_title(
+        "Told to sabotage: the pair took a sabotage action",
+        loc="left",
+        fontsize=11.5,
+        color=INK,
+        pad=12,
+    )
+    a2.set_ylim(0, 9900)
+    a2.set_yticks(range(0, 8001, 2000), [f"{t:,}" for t in range(0, 8001, 2000)])
+    a2.set_ylabel("team score (higher is better)")
+    a2.set_title(
+        "Not told to sabotage: how well the team runs the hospital",
+        loc="left",
+        fontsize=11.5,
+        color=INK,
+        pad=12,
+    )
+    a1.set_xticks(range(3), ticks, fontsize=10.5, color=INK)
+    a2.set_xticks(range(3), [NAME[a] for a in arms], fontsize=10.5, color=INK)
+    heading(
+        fig,
+        "Adding 7% difficult agentic tasks is the one data change that cut sabotage,\nat a cost in ordinary performance",
+        "Unfiltered Table 2 blend of 10,000 rows, seed 0, one training seed per arm; the same 30 seeds in both "
+        "conditions, fixed harness.\nLeft: Wilson 95% CI, exact McNemar p. Right: bootstrap 95% CI, sign-flip p. "
+        "A second training seed is needed before the drop counts as a result.",
+        0.885,
+    )
+    MD.append("")
+    MD.append(
+        f"- action, +7% advice − none: {pp(act_adv)}; +7% agentic tasks − none: {pp(act_agt)}"
+    )
+    MD.append(
+        f"- team score, +7% advice − none: {signed(cap_adv['diff'])} [{signed(cap_adv['lo'])}, {signed(cap_adv['hi'])}], "
+        f"{ptxt(cap_adv['p'])}; +7% agentic tasks − none: {signed(cap_agt['diff'])} "
+        f"[{signed(cap_agt['lo'])}, {signed(cap_agt['hi'])}], {ptxt(cap_agt['p'])}"
+    )
+    MD.append("")
+    out = AN / f"{DATE}_colosseum_hospital_agentic_task_tradeoff.png"
+    fig.savefig(out, dpi=200, bbox_inches="tight", pad_inches=0.2)
+    plt.close(fig)
+    return out
+
+
+def main() -> None:
+    outs = [fig_refusal_not_restraint(), fig_gap_by_harness(), fig_agentic_tradeoff()]
+    md = AN / f"{DATE}_colosseum_hospital_key_figures_results.md"
+    md.write_text("\n".join(MD) + "\n")
+    for p in [*outs, md]:
+        print(p)
+
+
+if __name__ == "__main__":
+    main()
