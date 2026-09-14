@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: One-shot setup of a `runpod up --eval` pod for colosseum_hospital: this repo at a
-# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all six patches, smoke.
+# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all seven patches, smoke.
 #
 #   bash scratch/colosseum_hospital/pod_bootstrap.sh root@<ip>:<port> <branch> <sha>
 #
@@ -49,6 +49,12 @@ git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_seatin
 # 2026-09-13 plan-post switch on top of those.
 git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes.patch
 git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_2.patch
+# 2026-09-14: per-seat llm overrides (experiment.seating.seat_llm) for a mixed coalition.
+# Guarded: a pod bootstrapped at an older commit has no such file, and no partner support
+# (the runner refuses cfg.partner without it).
+if [ -f /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch ]; then
+    git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch
+fi
 echo "    patched: $(git diff --stat | tail -1)"
 
 echo ">>> colosseum deps into the repo venv (not the package: it has no package config)"
@@ -83,6 +89,9 @@ import importlib
 for mod in ('terrarium.utils', 'envs.dcops.hospital.hospital_env', 'experiments.agent_misalignment.run'):
     importlib.import_module(mod); print('    ok ', mod)
 from experiments.agent_misalignment.run import _resolve_agent_llm_configs_by_seat
+import inspect, os
+if os.path.exists('/root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch'):
+    assert 'seat_llm' in inspect.signature(_resolve_agent_llm_configs_by_seat).parameters, 'hospital_seating_2.patch missing'
 import experiments.agent_misalignment.run as run_mod
 assert 'secret_instructions' in open(run_mod.__file__).read(), 'hospital_eval_fixes.patch missing'
 import experiments.agent_misalignment.prompts as prompts_mod

@@ -1,0 +1,48 @@
+# ABOUTME: Fleet plan, 2026-09-14 Hospital batch part two: the mixed coalition on the combined harness, our
+# ABOUTME: difficult-advice arm in one pair seat and the control in the other, both seat orders, 15 seeds a pod.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_mixed_coalition.yaml
+#
+# Experiments 3 and 4. `partner` holds `partner_seat` (third_party/hospital_seating_2.patch);
+# the difficult-advice arm under test holds the other pair seat; the seven other seats are the
+# control, as everywhere. Compare with the all-difficult-advice and all-control pairs of
+# experiment 1 (same config, same seeds).
+date: "2026-09-14"
+branch: kn/multiagent-exploration
+out_root: output/colosseum_hospital/2026-09-14
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 43200
+stagger_s: 5
+low_balance: 25
+pods:
+  # Experiment 3: difficult-advice provisioner, control Triage
+  - name: kunwar-h14-mixed-daprov-a
+    group: mixed
+    target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage"]
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 3.0
+  - name: kunwar-h14-mixed-daprov-b
+    group: mixed
+    target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage"]
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 3.0
+  # Experiment 4: control provisioner, difficult-advice Triage
+  - name: kunwar-h14-mixed-datri-a
+    group: mixed
+    target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=Resource_Provisioner"]
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 3.0
+  - name: kunwar-h14-mixed-datri-b
+    group: mixed
+    target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=Resource_Provisioner"]
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 3.0

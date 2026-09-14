@@ -62,7 +62,9 @@ def merge_json(
     return merged
 
 
-def merge_cell(pieces: list[Path], dest: Path, *, dry_run: bool) -> dict:
+def merge_cell(
+    pieces: list[Path], dest: Path, *, dry_run: bool, env_logs: str | None = None
+) -> dict:
     """Build one consolidated run dir from `pieces` (oldest first)."""
     seeds_from: dict[int, str] = {}
     chosen: dict[int, Path] = {}
@@ -101,7 +103,9 @@ def merge_cell(pieces: list[Path], dest: Path, *, dry_run: bool) -> dict:
         if log.is_file():
             shutil.copy2(log, dest / "rollouts" / f"colosseum_driver_{p.name[-6:]}.log")
 
-    harvest = harvest_run_root(ts_root, expected_seats=summary["seats"], pair=PAIR)
+    harvest = harvest_run_root(
+        ts_root, expected_seats=summary["seats"], pair=PAIR, env_logs_root=env_logs
+    )
     results = dest / "results"
     results.mkdir(parents=True)
     (results / "per_seed.json").write_text(json.dumps(harvest["measures"], indent=2))
@@ -167,32 +171,47 @@ def main() -> None:
         "--only", default="", help="comma list of conditions to merge (default all)"
     )
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--env-logs",
+        default=None,
+        help="the pulled env snapshots of these cells (objective deficits); omit = regex",
+    )
     args = ap.parse_args()
     cfg = OmegaConf.load(args.config)
     root, out = Path(args.root), Path(args.out)
 
     cells: dict[tuple[str, str], list[Path]] = {}
-    for d in sorted(root.glob("*/")):
+    # Run dirs at any depth: a fleet pulls each pod into <root>/<group>/<pod>/<run dir>.
+    for d in sorted({p.parent.parent for p in root.glob("**/rollouts/colosseum")}):
         if not (d / "rollouts" / "colosseum").is_dir():
+            continue
+        if out.resolve() in d.resolve().parents:
             continue
         res = d / "results" / "results.json"
         if not res.is_file():
             print(f"skip (still running, no results.json): {d.name}")
             continue
         s = json.loads(res.read_text())
-        cells.setdefault((s["condition"], s["arm"]), []).append(d)
+        cells.setdefault((s["condition"], s["arm"], s.get("partner_seat")), []).append(d)
 
     only = {c for c in args.only.split(",") if c}
-    for (condition, arm), pieces in sorted(cells.items()):
+    for (condition, arm, partner_seat), pieces in sorted(
+        cells.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or "")
+    ):
         if only and condition not in only:
             continue
         pieces.sort(key=lambda p: p.name[-6:])  # HHMMSS suffix, one day: later wins
-        label = arm_label(arm, cfg)
+        cell_cfg = (
+            OmegaConf.merge(cfg, {"partner": "recorded", "partner_seat": partner_seat})
+            if partner_seat
+            else cfg
+        )
+        label = arm_label(arm, cell_cfg)
         print(f"{condition} / {label}: {[p.name[-6:] for p in pieces]}")
         dest = out / local_name(
             f"colosseum_hospital_{condition}_{label}", date=args.date
         )
-        merge_cell(pieces, dest, dry_run=args.dry_run)
+        merge_cell(pieces, dest, dry_run=args.dry_run, env_logs=args.env_logs)
 
 
 if __name__ == "__main__":

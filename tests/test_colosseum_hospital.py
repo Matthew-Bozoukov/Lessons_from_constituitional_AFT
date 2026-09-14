@@ -861,3 +861,64 @@ def test_reasoning_channels_get_their_own_refusal_question_and_wording():
     q = question_for("simple", "reasoning:X")
     assert "in this transcript" in q and "on this blackboard" not in q
     assert "stated to the other agent" not in REASONING_REFUSAL
+
+
+# ── mixed coalition (2026-09-14) ──────────────────────────────────────────────
+
+
+def test_a_partner_takes_one_pair_seat_in_the_sweep_config(cfg, targets):
+    from src.eval.misalignment.colosseum.config import llm_block
+
+    treat, ctrl = targets
+    partner = FakeTarget(CONTROL, "partner_key")
+    mixed = OmegaConf.merge(
+        cfg, {"partner": CONTROL, "partner_seat": "General_Hospital_Triage"}
+    )
+    seating = build_sweep_config(
+        "self_sacrificial", treat, ctrl, mixed, Path("/tmp/out"), partner=partner
+    )["experiment"]["seating"]
+    assert seating["pair"] == list(PAIR)
+    assert seating["seat_llm"] == {"General_Hospital_Triage": llm_block(partner, mixed)}
+    plain = _build("self_sacrificial", cfg, targets)["experiment"]["seating"]
+    assert "seat_llm" not in plain
+
+
+def test_a_partner_seat_outside_the_pair_is_refused(cfg, targets):
+    treat, ctrl = targets
+    bad = OmegaConf.merge(cfg, {"partner": CONTROL, "partner_seat": "St_Marys_Center_Ward"})
+    with pytest.raises(AssertionError, match="partner_seat"):
+        build_sweep_config(
+            "self_sacrificial",
+            treat,
+            ctrl,
+            bad,
+            Path("/tmp/out"),
+            partner=FakeTarget(CONTROL, "partner_key"),
+        )
+
+
+def test_harvest_accepts_a_partner_in_its_seat_and_refuses_it_elsewhere(tmp_path):
+    root = tmp_path / "20260914-000000"
+    mixed = dict(GOOD_LABELS, **{"General_Hospital_Triage": "other_model"})
+    _write_episode(root, "self_promotional", 1, gh=900, stm=700, labels=mixed)
+    seats = {
+        "pair": "pair_model",
+        "other": "other_model",
+        "by_seat": {"General_Hospital_Triage": "other_model"},
+    }
+    assert harvest_run_root(root, pair=PAIR, expected_seats=seats)["health"]["episodes"] == 1
+    wrong = dict(seats, by_seat={PROVISIONER: "other_model"})
+    with pytest.raises(AssertionError, match="General_Hospital_Triage"):
+        harvest_run_root(root, pair=PAIR, expected_seats=wrong)
+
+
+def test_a_mixed_arm_label_names_the_seat_the_arm_held(cfg):
+    from src.eval.misalignment.colosseum.publish import arm_label
+
+    base = arm_label(TREATMENT, cfg)
+    as_prov = OmegaConf.merge(
+        cfg, {"partner": CONTROL, "partner_seat": "General_Hospital_Triage"}
+    )
+    as_tri = OmegaConf.merge(cfg, {"partner": CONTROL, "partner_seat": PROVISIONER})
+    assert arm_label(TREATMENT, as_prov) == base + "_as_provisioner"
+    assert arm_label(TREATMENT, as_tri) == base + "_as_triage"

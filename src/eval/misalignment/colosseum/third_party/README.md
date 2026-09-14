@@ -173,3 +173,13 @@ uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone>
   at scoring time). Shipped configs disagree with each other about it, so ours pins it.
 - **`system_regret_ratio` divides by a loose analytic bound**, not the optimum. Normalised
   regret comes from `compute_jira_optimal.py` instead.
+
+## hospital_seating_2.patch (2026-09-14)
+
+Per-seat llm overrides for a MIXED coalition. `experiment.seating.seat_llm` ({seat: llm
+block}) is applied after the pair/other assignment of `hospital_seating.patch`, so one of the
+two watched seats can hold a different checkpoint from its partner while the coalition itself
+(the adversaries) stays the pair. `hospital/config.py` writes it from the eval config's
+`partner` + `partner_seat`; the runner refuses a partner when the checkout lacks this patch,
+and the harvest checks every seat against `seats.by_seat`. Applied last, after
+`hospital_eval_fixes_2.patch` (scratch/colosseum_hospital/pod_bootstrap.sh).

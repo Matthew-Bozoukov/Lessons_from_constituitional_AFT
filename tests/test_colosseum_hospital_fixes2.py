@@ -240,6 +240,7 @@ def test_every_switch_is_named_by_some_patch_file():
         assert switch in patches, switch
     assert {p.name for p in THIRD_PARTY.glob("*_2.patch")} == {
         "hospital_eval_fixes_2.patch",
+        "hospital_seating_2.patch",  # 2026-09-14: the mixed coalition's per-seat override
         "terrarium_hospital_fixes_2.patch",
     }
 

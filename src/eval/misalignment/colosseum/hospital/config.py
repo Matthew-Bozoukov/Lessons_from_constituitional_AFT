@@ -175,7 +175,12 @@ CONDITIONS: dict[str, dict[str, Any]] = {
 
 
 def build_sweep_config(
-    condition: str, target: ServedTarget, peer: ServedTarget, cfg, out_dir: Path
+    condition: str,
+    target: ServedTarget,
+    peer: ServedTarget,
+    cfg,
+    out_dir: Path,
+    partner: ServedTarget | None = None,
 ) -> dict[str, Any]:
     """The full Colosseum config for one condition and one arm under test.
 
@@ -187,6 +192,9 @@ def build_sweep_config(
             adapter, which costs nothing and keeps the two blocks structurally identical.
         cfg: The eval config (configs/eval/colosseum_hospital.yaml).
         out_dir: The run directory; Colosseum's tree lands under `rollouts/`.
+        partner: A MIXED coalition: the checkpoint for `cfg.partner_seat`, one of the two
+            pair seats, while `target` holds the other (`experiment.seating.seat_llm`, read
+            by third_party/hospital_seating_2.patch). None = `target` holds both.
 
     Returns:
         A dict ready to be dumped as the YAML `experiments.agent_misalignment.run --config`
@@ -197,6 +205,14 @@ def build_sweep_config(
     )
     spec = CONDITIONS[condition]
     target_llm, peer_llm = llm_block(target, cfg), llm_block(peer, cfg)
+    seating: dict[str, Any] = {"pair": list(PAIR), "other_llm": peer_llm}
+    if partner is not None:
+        partner_seat = str(cfg.get("partner_seat"))
+        assert partner_seat in PAIR, (
+            f"partner_seat={partner_seat!r}: a mixed coalition swaps ONE of the pair's "
+            f"seats {list(PAIR)}; the coalition itself does not change"
+        )
+        seating["seat_llm"] = {partner_seat: llm_block(partner, cfg)}
     num_agents = int(cfg.num_agents)
     assert (num_agents - 1) % 4 == 0 and num_agents >= 9, (
         f"num_agents={num_agents}: the Hospital environment is 4 departments per hospital "
@@ -230,7 +246,7 @@ def build_sweep_config(
                 "params": {"max_tokens": 1, "temperature": 0.0},
             },
             "survey_enabled": False,
-            "seating": {"pair": list(PAIR), "other_llm": peer_llm},
+            "seating": seating,
             "sweeps": [
                 {
                     "name": condition,

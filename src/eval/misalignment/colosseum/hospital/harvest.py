@@ -664,8 +664,10 @@ def harvest_run_root(
                 "(src/eval/misalignment/colosseum/third_party/hospital_seating.patch) is "
                 "missing from the Colosseum checkout, so every seat held one model."
             )
+            # A mixed coalition names its partner's seat (runner `expected["by_seat"]`).
+            by_seat = expected_seats.get("by_seat") or {}
             for agent, served in labels.items():
-                want = (
+                want = by_seat.get(agent) or (
                     expected_seats["pair"] if agent in pair else expected_seats["other"]
                 )
                 assert served == want, (

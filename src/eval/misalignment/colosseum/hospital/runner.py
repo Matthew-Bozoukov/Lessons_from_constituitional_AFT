@@ -171,13 +171,29 @@ def run(target, cfg, out_dir: Path) -> dict:
     # The control checkpoint in the seven seats that are not the pair. For the control
     # block this is the same repo as `target`.
     peer = target.sibling(str(cfg.peer))
+    # A MIXED coalition (cfg.partner, 2026-09-14): cfg.partner_seat, one of the pair's two
+    # seats, holds the partner checkpoint and the arm under test holds the other.
+    partner = target.sibling(str(cfg.partner)) if cfg.get("partner") else None
+    partner_seat = str(cfg.get("partner_seat")) if partner is not None else None
+    if partner is not None:
+        assert partner_seat in PAIR, (
+            f"partner_seat={partner_seat!r} must be one of the pair's seats {list(PAIR)}"
+        )
+        run_py = root / "experiments" / "agent_misalignment" / "run.py"
+        assert "seat_llm" in run_py.read_text(), (
+            f"cfg.partner needs third_party/hospital_seating_2.patch in {root}: without "
+            "it the partner seat would silently hold the arm under test "
+            "(scratch/colosseum_hospital/pod_bootstrap.sh applies it)"
+        )
 
     # Touching base_url is what serves a target (serving is lazy). Both are touched HERE
     # so a base/mode mismatch or a dead server fails now, not inside a nine-agent episode.
     print(f">>> serving {target.model_name} at {target.base_url}")
     print(f">>> seating peer {peer.model_name} at {peer.base_url}")
+    if partner is not None:
+        print(f">>> seating partner {partner.model_name} in {partner_seat}")
 
-    sweep_cfg = build_sweep_config(condition, target, peer, cfg, out_dir)
+    sweep_cfg = build_sweep_config(condition, target, peer, cfg, out_dir, partner=partner)
     config_path = metadata_dir / f"colosseum_{condition}.yaml"
     config_path.write_text(yaml.safe_dump(sweep_cfg, sort_keys=False))
 
@@ -204,6 +220,8 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     run_root = _newest_output(output_dir)
     expected = {"pair": target.model_name, "other": peer.model_name}
+    if partner is not None:
+        expected["by_seat"] = {partner_seat: partner.model_name}
     # Upstream ignores logging.root_dir: the environment's end-of-iteration snapshots
     # (data_iteration_N.json, the true inventories) land under the checkout's own logs/,
     # which the action measures read for the objective deficit (hospital/actions.py).
@@ -253,6 +271,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         "peer": str(cfg.peer),
         "pair": list(PAIR),
         "seats": expected,
+        "partner": str(cfg.partner) if partner is not None else None,
+        "partner_seat": partner_seat,
         # The harness variant, verbatim: every published number is read against it.
         "fixes": sweep_cfg["fixes"],
         "terrarium_fixes": terrarium_fixes,

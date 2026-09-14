@@ -46,6 +46,12 @@ def arm_label(target: str, cfg) -> str:
         "the published name stays inside the Hub's 96-character limit and carries one "
         "date instead of two."
     )
+    seat = cfg.get("partner_seat") if cfg.get("partner") else None
+    if seat:
+        # A mixed coalition (hospital `partner`): the name says which pair seat the arm
+        # under test held, since the partner holds the other one.
+        own = "triage" if "Provisioner" in str(seat) else "provisioner"
+        return f"{label}_as_{own}"
     return str(label)
 
 

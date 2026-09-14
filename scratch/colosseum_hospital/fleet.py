@@ -354,7 +354,9 @@ class Fleet:
         pod, s = self.pods[name], self.st(name)
         if s.get("launched_at"):
             return True
-        extra = " ".join(["--config", pod["config"], *pod.get("extra", [])])
+        # Overrides first: the queue appends EXTRA after its own `condition=... seeds=...`, and
+        # argparse takes one run of positionals, so an override after `--config` is rejected.
+        extra = " ".join([*pod.get("extra", []), "--config", pod["config"]])
         remote = (
             f"cd /root/work && EXTRA='{extra}' bash scratch/colosseum_hospital/run_hospital_queue.sh "
             f"{self.plan['port']} {pod['target']} -- {' '.join(pod['jobs'])}"
