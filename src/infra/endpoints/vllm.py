@@ -154,6 +154,25 @@ class ServedTarget:
         return key
 
 
+# Adapters evaluated here but trained elsewhere carry no training_meta.json, and a stamp
+# cannot be written into someone else's repo. Their thinking mode is DECLARED here instead,
+# per repo and with the reason, and reviewed like any other code. An unstamped adapter that
+# is not listed stays a hard error, never a guess.
+THIRD_PARTY_MODES: dict[str, tuple[str, str]] = {
+    # Model Spec Midtraining organisms (Li et al., arXiv 2605.02087): LoRA r64 on Qwen/Qwen3-32B,
+    # the Philosophy Spec arms. All four serve in Qwen3's thinking mode so they can share one
+    # Hospital episode (ServedTarget.sibling requires one mode across the seats).
+    "chloeli/qwen-3-32b-baseline": (
+        "think", "the paper's baseline arm (no MSM, no AFT), served in the base model's default"),
+    "chloeli/qwen-3-32b-philosophy-spec-aft-cot": (
+        "think", "AFT with CoT: trained on (prompt, CoT, response) in Qwen3's <think> format"),
+    "chloeli/qwen-3-32b-philosophy-spec-msm": (
+        "think", "MSM only (documents, no chat CoT), served in the base model's default"),
+    "chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot": (
+        "think", "MSM + AFT with CoT: trained on (prompt, CoT, response) in the <think> format"),
+}
+
+
 def _mode_from_training_meta(meta: dict) -> str:
     assert "thinking" in meta, (
         "training_meta.json must carry a boolean `thinking` field"
@@ -179,16 +198,22 @@ def _spec_from_files(
             lora_rank=None,
         )
     if training_meta is None:
-        raise RuntimeError(
-            f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
-            "infers thinking mode from that stamp and never guesses. Backfill it from the "
-            "arm's training config (see scratch/backfill_training_meta.py), then rerun."
-        )
+        declared = THIRD_PARTY_MODES.get(hf_path)
+        if declared is None:
+            raise RuntimeError(
+                f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
+                "infers thinking mode from that stamp and never guesses. Backfill it from the "
+                "arm's training config (see scratch/backfill_training_meta.py), or declare an "
+                "adapter trained elsewhere in THIRD_PARTY_MODES, then rerun."
+            )
+        mode = declared[0]
+    else:
+        mode = _mode_from_training_meta(training_meta)
     return TargetSpec(
         hf_path=hf_path,
         base_model=adapter_config["base_model_name_or_path"],
         adapter=True,
-        mode=_mode_from_training_meta(training_meta),
+        mode=mode,
         model_key=model_key,
         lora_rank=int(adapter_config.get("r", 32)),
     )
@@ -327,6 +352,7 @@ _EVAL_REQUIREMENT_KEYS = {
     "concurrency",
     "needs_tool_calls",
     "reuses_long_prefixes",
+    "rope_scaling",
 }
 
 
@@ -356,7 +382,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
 
     Returns:
         The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
-        `tool_call_parser` (each None when not to be emitted), `prefix_caching`, and
+        `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`, and
         `warnings` — operator-facing notes to print at serve time.
 
     Raises:
@@ -396,6 +422,33 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # high-water mark of the largest window we happened to have booted, which refused
     # legitimate requests on absence of evidence.)
     native = facts.get("native_context_window")
+    hf_overrides = rope_note = None
+    rope = requirements.get("rope_scaling")
+    if rope:
+        # The deliberate experiment the refusal below names: the eval declares YaRN, its factor
+        # and the window the weights were trained at, and every call of the run is served with it
+        # (vLLM scales statically, at every length). YaRN only, as the Qwen model cards document.
+        rope = dict(rope)
+        allowed = {"rope_type", "factor", "original_max_position_embeddings"}
+        if set(rope) != allowed or rope["rope_type"] != "yarn":
+            raise SystemExit(
+                "\nserving.rope_scaling must be exactly {rope_type: yarn, factor, "
+                f"original_max_position_embeddings}}; got {rope}."
+            )
+        factor = float(rope["factor"])
+        original = int(rope["original_max_position_embeddings"])
+        if native and original > int(native):
+            raise SystemExit(
+                f"\nserving.rope_scaling.original_max_position_embeddings={original} exceeds "
+                f"{base_model}'s native window ({native})."
+            )
+        native = int(original * factor)
+        hf_overrides = {"rope_scaling": {"rope_type": "yarn", "factor": factor,
+                                         "original_max_position_embeddings": original}}
+        rope_note = (
+            f"rope_scaling: YaRN x{factor:g} over {original} trained positions serves {native}, "
+            "declared by this eval: a change to the served model at every length."
+        )
     if native and int(window) > int(native):
         raise SystemExit(
             f"\nserving.context_window={window} exceeds {base_model}'s native window "
@@ -437,7 +490,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # reported rather than fatal: on Qwen3.6 vLLM forces it off regardless (Mamba state
     # pages cannot be reused like attention KV, docs/LOG.md 2026-07-29), so passing the
     # flag would be a no-op dressed up as a setting.
-    warnings = []
+    warnings = [rope_note] if rope_note else []
     prefix_caching = bool(requirements.get("reuses_long_prefixes"))
     if prefix_caching and not facts.get("supports_prefix_caching"):
         prefix_caching = False
@@ -459,6 +512,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
         "reasoning_parser": reasoning_parser,
         "tool_call_parser": tool_call_parser,
         "prefix_caching": prefix_caching,
+        "hf_overrides": hf_overrides,
         "warnings": tuple(warnings),
     }
 
@@ -906,6 +960,8 @@ class VllmServer:
             ]
         if plan["prefix_caching"]:
             argv += ["--enable-prefix-caching"]
+        if plan.get("hf_overrides"):
+            argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]
