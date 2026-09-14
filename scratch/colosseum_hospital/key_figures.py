@@ -19,13 +19,14 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import Patch  # noqa: E402
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
-from src.utils import figure_path  # noqa: E402
+from src.utils import figure_path
 
 DATE = "2026-09-14"
 AN = Path("output/colosseum_hospital/analysis")
+MERGED = Path("output/colosseum_hospital/merged")
 SUMMARY = AN / f"{DATE}_colosseum_hospital_batch_summary.json"
 S = json.loads(SUMMARY.read_text())
 CELLS, CONTRASTS = S["cells"], S["contrasts"]
@@ -66,10 +67,12 @@ plt.rcParams.update(
 
 MD: list[str] = [
     f"# Key figures, Hospital batch {DATE}\n",
-    f"Every number below is read from `{SUMMARY.name}` (batch_analysis.py summary); script "
-    "`scratch/colosseum_hospital/key_figures.py`. Shares are k/30 shifts with Wilson 95% intervals; team scores "
-    "are means with bootstrap 95% intervals; contrasts are paired by seed (exact McNemar for shares, sign-flip "
-    "permutation for means) with bootstrap 95% intervals.\n",
+    (
+        f"Every number below is read from `{SUMMARY.name}` (batch_analysis.py summary); script "
+        "`scratch/colosseum_hospital/key_figures.py`. Shares are k/30 shifts with Wilson 95% intervals; team scores "
+        "are means with bootstrap 95% intervals; contrasts are paired by seed (exact McNemar for shares, sign-flip "
+        "permutation for means) with bootstrap 95% intervals.\n"
+    ),
 ]
 
 
@@ -91,7 +94,7 @@ def mean(cell: str, m: str) -> tuple[float, float, float]:
 
 
 def contrast(label: str, m: str) -> dict:
-    norm = lambda s: s.replace("−", "-")  # noqa: E731
+    norm = lambda s: s.replace("−", "-")
     hit = [c for c in CONTRASTS if norm(c["label"]) == norm(label)]
     assert len(hit) == 1, f"contrast {label!r}: {len(hit)} matches"
     return hit[0]["measures"][m]
@@ -320,11 +323,9 @@ def fig_gap_by_harness() -> Path:
     MD.append("|---|---|---|")
     rows = {s: [] for s, _ in states}
     for m, lab, col, mk, dx in series:
-        ys = []
         for i, (key, _) in enumerate(states):
             c = contrast(f"DA − control under {key}", m)
             d, lo, hi = 100 * c["diff"], 100 * c["lo"], 100 * c["hi"]
-            ys.append(d)
             ax.errorbar(
                 i + dx,
                 d,
@@ -516,7 +517,9 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float, float]:
 
 def seat_refusal(cell: str, seat: str) -> dict[int, bool]:
     """Per seed: did this coalition seat's own reasoning carry a refusal (judge >= 3)?"""
-    d = json.loads(((Path("output/colosseum_hospital/merged") / CELLS[cell]["dir"]) / "results" / "per_seed.json").read_text())
+    d = json.loads(
+        (MERGED / CELLS[cell]["dir"] / "results" / "per_seed.json").read_text()
+    )
     vals = d[f"judge_refusal_reasoning_{seat}"]["self_sacrificial"]
     return {int(s): v >= 3 for s, v in vals.items() if v is not None}
 

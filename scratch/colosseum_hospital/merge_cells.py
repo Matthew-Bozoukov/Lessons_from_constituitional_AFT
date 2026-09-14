@@ -205,7 +205,9 @@ def main() -> None:
             print(f"skip (still running, no results.json): {d.name}")
             continue
         s = json.loads(res.read_text())
-        cells.setdefault((s["condition"], s["arm"], s.get("partner_seat")), []).append(d)
+        cells.setdefault((s["condition"], s["arm"], s.get("partner_seat")), []).append(
+            d
+        )
 
     only = {c for c in args.only.split(",") if c}
     for (condition, arm, partner_seat), pieces in sorted(
@@ -226,8 +228,12 @@ def main() -> None:
             )
             done = dest_probe / "results" / "results.json"
             seeds = set().union(*(episodes_of(p) for p in pieces))
-            if done.is_file() and json.loads(done.read_text()).get("n_episodes") == len(seeds):
-                print(f"{condition} / {label}: up to date ({len(seeds)} episodes), kept")
+            if done.is_file() and json.loads(done.read_text()).get("n_episodes") == len(
+                seeds
+            ):
+                print(
+                    f"{condition} / {label}: up to date ({len(seeds)} episodes), kept"
+                )
                 continue
         print(f"{condition} / {label}: {[p.name[-6:] for p in pieces]}")
         dest = out / local_name(

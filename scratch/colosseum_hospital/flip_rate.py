@@ -31,12 +31,12 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
+from direction_contrasts import ARMS, ROOT
+from sabotage_actions import DEFAULT_ENV_LOGS, analyse, load_arm
 
-from direction_contrasts import ARMS, ROOT  # noqa: E402
-from sabotage_actions import DEFAULT_ENV_LOGS, analyse, load_arm  # noqa: E402
-from src.eval.misalignment.colosseum.hospital import actions as A  # noqa: E402
-from src.utils import figure_path  # noqa: E402
+from src.eval.misalignment.colosseum.hospital import actions as A
+from src.utils import figure_path
 
 OUT = Path("output/colosseum_hospital/analysis")
 PROV, TRIAGE = A.PROVISIONER, A.TRIAGE

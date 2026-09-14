@@ -20,7 +20,7 @@ modules    flip_rate, partner_sway, deceptive_posts and board_plans on the 13 ne
 summary    per-cell rates with Wilson 95% intervals and means with bootstrap intervals,
            paired-by-seed contrasts (exact McNemar for binary measures, sign-flip permutation
            for counts), figures, and output/colosseum_hospital/analysis/2026-09-14_*.{md,json}
-publish    push every judged cell to LASR-Callum (publish_colosseum.py --no-judge, the cell's
+publish    push every judged cell to dougalldeepmind (publish_colosseum.py --no-judge, the cell's
            own config; the mixed cells pass partner + partner_seat so the name says the seat);
            run on its own, after the results have been read, never as part of `all`
 """
@@ -40,12 +40,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-import matplotlib  # noqa: E402
+import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from src.utils import figure_path, local_name  # noqa: E402
+from src.utils import figure_path, local_name
 
 DATE = "2026-09-14"
 PULLED = Path("output/colosseum_hospital") / DATE
@@ -65,7 +65,7 @@ GROUP_CONFIG = {
 JUDGE_MODEL = "google/gemini-3.6-flash"
 # The control adapter: the seven other seats everywhere, and the partner in the mixed cells.
 PEER = "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64"
-HUB_ORG = "LASR-Callum"
+HUB_ORG = "dougalldeepmind"  # the team org, renamed from LASR-Callum
 SS, BASE = "self_sacrificial", "baseline"
 
 # (key, pod group, condition, arm label as merge_cells names the cell)
@@ -81,7 +81,12 @@ CELLS = [
         SS,
         "qwen36_difficult_advice_702_fixed_as_provisioner",
     ),
-    (("mixed", "datri"), "mixed_datri", SS, "qwen36_difficult_advice_702_fixed_as_triage"),
+    (
+        ("mixed", "datri"),
+        "mixed_datri",
+        SS,
+        "qwen36_difficult_advice_702_fixed_as_triage",
+    ),
     (("reference", "ctrl"), "reference", SS, "qwen36_table2_only_9284_carried_history"),
     (
         ("reference", "da"),
@@ -207,7 +212,9 @@ def merge() -> None:
 def _run_logged(cmd: list[str], log_name: str) -> int:
     LOGS.mkdir(parents=True, exist_ok=True)
     with open(LOGS / log_name, "w") as f:
-        return subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT).returncode
+        return subprocess.run(
+            cmd, stdout=f, stderr=subprocess.STDOUT, check=False
+        ).returncode
 
 
 def judge(parallel: int = 5, workers: int = 8) -> None:
@@ -375,7 +382,7 @@ def mcnemar_p(b: int, c: int) -> float:
     n = b + c
     if not n:
         return 1.0
-    tail = sum(math.comb(n, i) for i in range(0, min(b, c) + 1)) / 2**n
+    tail = sum(math.comb(n, i) for i in range(min(b, c) + 1)) / 2**n
     return min(1.0, 2 * tail)
 
 
@@ -834,7 +841,11 @@ def publish() -> None:
     for k in present([c[0] for c in CELLS]):
         extra = []
         if k[0] == "mixed":
-            seat = "General_Hospital_Triage" if k[1] == "daprov" else "Resource_Provisioner"
+            seat = (
+                "General_Hospital_Triage"
+                if k[1] == "daprov"
+                else "Resource_Provisioner"
+            )
             extra = [f"partner={PEER}", f"partner_seat={seat}"]
         cmd = [
             sys.executable,
@@ -861,14 +872,32 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument(
-        "step", choices=["merge", "judge", "postjudge", "falseclaims", "modules", "summary", "all", "publish"]
+        "step",
+        choices=[
+            "merge",
+            "judge",
+            "postjudge",
+            "falseclaims",
+            "modules",
+            "summary",
+            "all",
+            "publish",
+        ],
     )
     ap.add_argument("--parallel", type=int, default=4)
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--pulled", help="pod pulls root (default output/colosseum_hospital/2026-09-14)")
-    ap.add_argument("--merged", help="merged cells root (default output/colosseum_hospital/merged)")
-    ap.add_argument("--env", help="env snapshot root (default output/colosseum_hospital/env_logs)")
-    ap.add_argument("--out", help="analysis outputs (default output/colosseum_hospital/analysis)")
+    ap.add_argument(
+        "--pulled", help="pod pulls root (default output/colosseum_hospital/2026-09-14)"
+    )
+    ap.add_argument(
+        "--merged", help="merged cells root (default output/colosseum_hospital/merged)"
+    )
+    ap.add_argument(
+        "--env", help="env snapshot root (default output/colosseum_hospital/env_logs)"
+    )
+    ap.add_argument(
+        "--out", help="analysis outputs (default output/colosseum_hospital/analysis)"
+    )
     a = ap.parse_args()
     global PULLED, MERGED, ENV, OUT, LOGS
     if a.pulled:

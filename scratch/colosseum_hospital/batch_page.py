@@ -365,7 +365,7 @@ def sway_table(sway: dict | None, keys: list[str]) -> str:
         for seat, short in SEAT.items():
             x = st.get(seat, {})
 
-            def fr(prefix: str) -> str:
+            def fr(prefix: str, x: dict = x) -> str:
                 n = x.get(f"{prefix}_n", 0)
                 f = x.get(f"{prefix}_flip", 0)
                 return f"{f}/{n}" if n else "–"
@@ -596,8 +596,10 @@ details > .tbl{border:none;border-top:1px solid var(--line);border-radius:0;marg
 QUESTIONS = [
     (
         "Plans on the coalition board go uncounted, excused as instructions or “writing is not doing”",
-        "The combined harness drops the order to post a plan, so a plan is the seat's own choice; the headline "
-        "counts it; the plan reader records why each plan was written.",
+        (
+            "The combined harness drops the order to post a plan, so a plan is the seat's own choice; the headline "
+            "counts it; the plan reader records why each plan was written."
+        ),
         "#plans",
     ),
     (
@@ -607,8 +609,10 @@ QUESTIONS = [
     ),
     (
         "A seat holds one stance until it sees its partner, then switches",
-        "The sway reader, on every cell; with the "
-        "re-ask gone a switch can no longer come from the harness pushing.",
+        (
+            "The sway reader, on every cell; with the "
+            "re-ask gone a switch can no longer come from the harness pushing."
+        ),
         "#sway",
     ),
     (
@@ -725,13 +729,13 @@ def page(reading: dict) -> str:
     def take(t: dict) -> str:
         fig = (
             f'<figure><img src="{esc(t["fig"])}" alt="{esc(t.get("alt", ""))}">'
-            f'<figcaption>{esc(t.get("caption", ""))}</figcaption></figure>'
+            f"<figcaption>{esc(t.get('caption', ''))}</figcaption></figure>"
             if t.get("fig")
             else ""
         )
         return (
             f'<article class="take"><p class="exp">{esc(t["exp"])}</p>'
-            f'<h3>{esc(t["headline"])}</h3>{t["detail"]}{fig}</article>'
+            f"<h3>{esc(t['headline'])}</h3>{t['detail']}{fig}</article>"
         )
 
     takes = reading.get("takeaways") or []

@@ -148,6 +148,7 @@ class Fleet:
                 text=True,
                 timeout=timeout,
                 stdin=subprocess.DEVNULL,
+                check=False,
             )
         except subprocess.TimeoutExpired:
             return 124, "ssh timed out"
@@ -178,6 +179,7 @@ class Fleet:
             ["pgrep", "-f", f"src.infra.runpod watchdog {pod_id}"],
             capture_output=True,
             text=True,
+            check=False,
         )
         return r.returncode == 0 and bool(r.stdout.strip())
 
@@ -189,7 +191,8 @@ class Fleet:
         elapsed = time.time() - float(self.st(name).get("rented_at") or time.time())
         cap_s = max(600, int(float(self.pods[name]["cap_h"]) * 3600 - elapsed))
         logp = self.out / "logs" / f"{name}_watchdog.log"
-        f = open(logp, "a")
+        # The detached watchdog keeps writing to this log after the driver exits.
+        f = open(logp, "a")  # noqa: SIM115
         subprocess.Popen(
             [
                 sys.executable,
@@ -284,9 +287,9 @@ class Fleet:
                     return self.adopt(name, existing["id"])
                 time.sleep(60 * attempt)
                 continue
-            pod_id = re.search(r"^pod:\s+(\S+)", out, re.M).group(1)
-            host = re.search(r"^host:\s+(\S+)", out, re.M).group(1)
-            ready = bool(re.search(r"^ssh:\s+ready", out, re.M))
+            pod_id = re.search(r"^pod:\s+(\S+)", out, re.MULTILINE).group(1)
+            host = re.search(r"^host:\s+(\S+)", out, re.MULTILINE).group(1)
+            ready = bool(re.search(r"^ssh:\s+ready", out, re.MULTILINE))
             self.set(
                 name,
                 id=pod_id,
@@ -350,6 +353,7 @@ class Fleet:
                         stderr=subprocess.STDOUT,
                         stdin=subprocess.DEVNULL,
                         timeout=3600,
+                        check=False,
                     ).returncode
                 except subprocess.TimeoutExpired:
                     rc = 124
@@ -470,7 +474,9 @@ class Fleet:
         ok = True
         for c in cmds:
             try:
-                r = subprocess.run(c, capture_output=True, text=True, timeout=3600)
+                r = subprocess.run(
+                    c, capture_output=True, text=True, timeout=3600, check=False
+                )
                 if r.returncode != 0:
                     ok = False
                     log(f"{name}: rsync rc={r.returncode}: {r.stderr.strip()[-300:]}")
@@ -575,13 +581,16 @@ class Fleet:
         needs_boot = [
             n
             for n in self.pods
-            if self.st(n)["status"] not in TERMINAL and not self.st(n).get("bootstrapped_at")
+            if self.st(n)["status"] not in TERMINAL
+            and not self.st(n).get("bootstrapped_at")
         ]
         if needs_boot or not self.state.get("sha"):
             self.state["sha"] = self.resolve_sha()
         self.save()
         self.keeper()
-        for n in self.pods:  # one watchdog per live pod, re-created if its first one died
+        for (
+            n
+        ) in self.pods:  # one watchdog per live pod, re-created if its first one died
             s = self.st(n)
             if s.get("id") and s["status"] not in TERMINAL:
                 self.watchdog(n, s["id"])
