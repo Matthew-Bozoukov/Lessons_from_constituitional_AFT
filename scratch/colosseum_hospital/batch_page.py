@@ -276,6 +276,10 @@ CONTRAST_COLS = [
 ]
 
 
+def p_txt(p: float) -> str:
+    return "p<0.001" if p < 0.001 else f"p={p:.3f}"
+
+
 def contrast_cell(c: dict | None, binary: bool) -> str:
     if not c:
         return "<td>–</td>"
@@ -284,7 +288,7 @@ def contrast_cell(c: dict | None, binary: bool) -> str:
         txt = f"{100 * c['diff']:+.0f} pp [{100 * c['lo']:+.0f}, {100 * c['hi']:+.0f}]"
     else:
         txt = f"{c['diff']:+.0f} [{c['lo']:+.0f}, {c['hi']:+.0f}]"
-    return f'<td class="{"sig" if sig else ""}">{esc(txt)}<small>p={c["p"]:.2g}</small></td>'
+    return f'<td class="{"sig" if sig else ""}">{esc(txt)}<small>{esc(p_txt(c["p"]))}</small></td>'
 
 
 def contrast_table(contrasts: list[dict], exps: tuple[str, ...]) -> str:
