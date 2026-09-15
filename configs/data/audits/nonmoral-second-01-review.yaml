@@ -1,0 +1,10 @@
+# ABOUTME: Freeze the independently read second revision of t2_032 without adopting it.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.prepare_campaign_reviews --config configs/data/audits/nonmoral-second-01-review.yaml
+batch_root: output/2026-09-15_nonmoral_saved_input_second_pass/batches
+output_root: output/2026-09-15_nonmoral_saved_input_second_pass/campaign_reviews_nonmoral
+batches: [second_01]
+indices: [3]
+annotations: output/2026-09-15_nonmoral_saved_input_second_pass/campaign_reviews_nonmoral/second_01_annotations.json
+review_config: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/config.json
+review_contract: output/2026-09-15_dataset_refresh_saved_input_pilot/independent_review_contract.json
+implementation_sha256: 750157eb02bab4a7e8a71d6f3154927ca5fd292fddc76f798646da84cf2a29d7
