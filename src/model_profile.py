@@ -161,6 +161,21 @@ def model_profile(model_name: str) -> ModelProfile:
 # parser nobody verified against its template.
 DEFAULT_SERVING = {"max_num_seqs": None}
 
+# Serving-only facts for base models we EVALUATE but do not train, keyed by exact base id.
+# `serving_params` reads them after MODEL_PROFILES; `model_profile` (the training lookup)
+# never does, so an entry here does not make a family trainable.
+SERVING_ONLY: dict[str, dict] = {
+    # Qwen3-32B, for the Model Spec Midtraining organisms (arXiv 2605.02087, chloeli/qwen-3-32b-*).
+    # tool_call_parser: its template (Qwen/Qwen3-32B tokenizer_config, read 2026-09-14) emits
+    # Hermes JSON, <tool_call>{"name": ..., "arguments": ...}</tool_call>, so `hermes` and not
+    # Qwen3.6's `qwen3_xml`; the first live check is the Hospital smoke (tool errors, no-call rate).
+    # reasoning_parser: `qwen3`; in thinking mode the model opens <think> itself (see above).
+    # supports_prefix_caching: dense attention, so vLLM can reuse prefix KV (no Mamba state).
+    # max_num_seqs: None, no preallocated state to cap; the KV cache is the only limit.
+    "Qwen/Qwen3-32B": {"max_num_seqs": None, "reasoning_parser": "qwen3",
+                       "tool_call_parser": "hermes", "supports_prefix_caching": True},
+}
+
 
 def train_memory_entry(profile: ModelProfile, device_name: str) -> dict | None:
     """The measured training-memory entry for a live GPU, or None.
@@ -227,11 +242,12 @@ def largest_gpu(cards: list[str]) -> str:
 
 
 def serving_params(model_name: str) -> dict:
-    """vLLM serving parameters for a base model: its profile's `serving`, else defaults."""
+    """vLLM serving parameters for a base model: its profile's `serving`, else its
+    SERVING_ONLY entry (exact base id), else defaults."""
     for profile in MODEL_PROFILES:
         if profile.family in model_name:
             return profile.serving
-    return DEFAULT_SERVING
+    return SERVING_ONLY.get(model_name, DEFAULT_SERVING)
 
 
 _ASSISTANT_TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)

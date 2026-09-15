@@ -1,0 +1,56 @@
+# ABOUTME: Fleet plan, the Model Spec Midtraining organisms on the combined Hospital harness: three Qwen3-32B
+# ABOUTME: Philosophy Spec arms (baseline, AFT with CoT, MSM + AFT), 30 self-sacrificial seeds each, two H200 pods an arm.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining.yaml
+#
+# The core of the sanity check: the paper's agentic-misalignment ladder on Qwen3-32B (baseline 54%, AFT with CoT 14%,
+# MSM + AFT 7%) replayed in the Hospital's self-sacrificial condition. The seven other seats are the baseline arm in
+# every cell. Extensions once the core reads cleanly, one pod pair each: the MSM-only arm, and the untempted baseline
+# ("baseline:1-15" / "baseline:16-30" jobs) for the capability cost. Caps bound the worst case; the fleet terminates
+# each pod as soon as its runs are pulled. Size the caps from the smoke's minutes per shift before launching.
+date: "2026-09-14"
+branch: kn/multiagent-exploration
+out_root: output/colosseum_hospital/2026-09-14_model_spec_midtraining
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: chloeli/qwen-3-32b-baseline
+gpu: NVIDIA H200
+keeper_s: 43200
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kunwar-h14-msm-base-a
+    group: msm
+    target: chloeli/qwen-3-32b-baseline
+    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.5
+  - name: kunwar-h14-msm-base-b
+    group: msm
+    target: chloeli/qwen-3-32b-baseline
+    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.5
+  - name: kunwar-h14-msm-aftcot-a
+    group: msm
+    target: chloeli/qwen-3-32b-philosophy-spec-aft-cot
+    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.5
+  - name: kunwar-h14-msm-aftcot-b
+    group: msm
+    target: chloeli/qwen-3-32b-philosophy-spec-aft-cot
+    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.5
+  - name: kunwar-h14-msm-msmaft-a
+    group: msm
+    target: chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot
+    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.5
+  - name: kunwar-h14-msm-msmaft-b
+    group: msm
+    target: chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot
+    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.5
