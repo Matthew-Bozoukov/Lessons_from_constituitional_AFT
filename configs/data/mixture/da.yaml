@@ -34,9 +34,11 @@ total_examples: 10000
 # mixture would be `da-<style>-<pct>`; with one style the budget only has to be non-zero.
 sources:
   da:
-    # Identity-neutral copy of the August 21 chunk-only corpus; same 708 source rows.
-    dataset: "${oc.env:HF_ORG}/2026-09-08-da-synth"
-    revision: "42107bde00cd7f4360a3a6c581aac23a540dbfea"
+    # The 2026-09-14 regeneration against the full-length neutral constitution
+    # (configs/data/synth/da.yaml; docs/LOG.md 2026-09-14): 752 rows, t1 78 ... t9 85, so the
+    # trait-balanced draw at 7% of 10,000 is exactly 700 = 78 x t1-t7 + 77 x t8-t9.
+    dataset: "${oc.env:HF_ORG}/2026-09-14-da-synth"
+    revision: "013886238fca238c4d54ace96530f444bb2b2f02"
     examples: 1
     reasoning: native
     balance_by: trait_id
@@ -48,5 +50,5 @@ output_dir: "output/mixture_da"
 
 hf:
   experiment: "difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share"
-  constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
   private: false

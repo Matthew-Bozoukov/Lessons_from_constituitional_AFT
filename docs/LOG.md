@@ -1,6 +1,39 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-14 — Difficult advice regenerated: neutral full-length constitution, 752 rows, no model or developer named
+
+**Why.** Every earlier DA corpus was generated against the archived mid document
+(`constitutions/archive/claude_distilled_12_principles_mid/`), which names Claude and Anthropic:
+21 of 708 rows of the principle-scoped corpus name either in trained text (system, user,
+reasoning, response), 549 once the exported `trait_text` metadata is counted. The organisms are
+not that model, so the paper's DA arm is regenerated against a document that names neither,
+with the recipe otherwise unchanged.
+**Method.** `configs/data/synth/da.yaml` at 0426598c.
+- Constitution `constitutions/claude_distilled_09_principles/constitution.md`: the same nine
+  principles at full length (3,396 words), names neutralised. Chosen over `abridged/` so the
+  alignment target changes in identity, not in length.
+- Principle-scoped as before. Haiku 4.5 writes the scenarios, draft prompts and draft responses;
+  Sonnet 5 revises the prompts and the responses.
+- `\bclaude\b` / `\banthropic\b` lint at the last stage that writes each exported field (retry,
+  then drop). Both revise prompts add "never name the model you are, or the company that built
+  you"; no template names either (tests/test_difficult_advice_recipe.py).
+- Two 18-row smokes ($1.29, $1.36). Full run: `uv run synth run --config
+  configs/data/synth/da.yaml --overrides total_scenarios=765 --ablate corpus` (pattern scan
+  skipped). Then one `--resume` after moving the stage 6-8 snapshots aside, to retry the records
+  that had failed, because t1 had come out one row short of the balanced 700 draw. The original
+  run's manifest is kept beside the resume's as `manifest_run1.json`.
+**Result.** [`dougalldeepmind/2026-09-14-da-synth`](https://huggingface.co/datasets/dougalldeepmind/2026-09-14-da-synth)
+@ `01388623`: 752 of 765 scenarios kept (t1 78, t2 85, t3 85, t4 83, t5 85, t6 84, t7 83, t8 84,
+t9 85); 0 exported rows name Claude or Anthropic. The 13 losses are all Anthropic content-filter
+refusals, deterministic across the resume: 11 at revise_prompts (6 of them t1, oversight) and 2
+at revise_responses. The 3 draft-lint failures and the 1 rewrite-lint failure cleared on the
+resume. Spend $56.98 ($56.81 run + $0.17 resume), 78 min at 16 workers.
+**Next.** Repoint `configs/data/mixture/da.yaml` (`sources.da.dataset` / `revision`,
+`hf.constitution`) and build da-7 (its `balance_by: trait_id` draw of 700 = 78 x t1-t7 + 77 x
+t8-t9 is feasible) and da-100; retrain on the 09-08 nosynth mix; regenerate the derived arms from
+this run's stages; change BASELINES.md only after ODCV.
+
 ## 2026-09-14 — The Hospital on the fixed harness: five arms, the untempted baseline, a mixed difficult-advice/control coalition and the switch attribution (540 shifts on 20 pods)
 
 **Hypothesis.** On a harness that no longer re-asks a refusal or orders a plan, a difficult-advice
@@ -108,6 +141,7 @@ arms, though both synthetic slices halve it in the unfiltered family.
 sibling, with the baseline alongside. Our two arms with and without the plan order at 60-90 seeds
 to settle the words-only-compliance reading. Tighten the sabotage rule's untempted false alarms
 (6-11/30) before small action gaps are read as training effects.
+
 
 ## 2026-09-13 — The base blend records whose reasoning traces it carries, and training refuses another family's
 

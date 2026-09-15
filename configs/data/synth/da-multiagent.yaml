@@ -1,11 +1,15 @@
-# ABOUTME: THE DEFAULT difficult-advice recipe AND THE PROJECT'S DA BASELINE. No stage is ever
-# ABOUTME: shown more than the one principle it targets. Run: uv run synth run --config configs/data/synth/da.yaml [--smoke]
+# ABOUTME: Difficult advice against ONE principle: the multi-agent principle 10 of the experimental
+# ABOUTME: ten-principle constitution. Run: uv run synth run --config configs/data/synth/da-multiagent.yaml [--smoke]
 
-# BASELINE: the arm built from this recipe -- principle-scoped 702 -- is what a new difficult-advice
-# experiment compares against. NOT da716, NOT synthdoc-716; both are superseded and are kept
-# only to reproduce work that already cites them. See docs/BASELINES.md for the reasoning, the
-# numbers, and the one live exception (the existing generator swaps are built on da716's
-# frozen stages 1-4, so they can only be read against da716).
+# EXPERIMENT (2026-09-15). The da.yaml recipe as of the 2026-09-14 regeneration, with its
+# prompts, models and checks untouched. It differs in these keys only (diff the two files):
+# `constitution` (the neutral nine-principle document with `## 10.` appended), `n_traits`
+# 9 -> 10, `only_traits: [t10]`, `total_scenarios`/`scenarios_per_trait` 2000/77 -> 760/760,
+# the smoke's `total_scenarios`/`scenarios_per_call` 2/1 -> 8/8, `budget_usd`, and no
+# `ngram_diversity` in the scenario-level check (it never drops a row). A row here therefore
+# differs from a da.yaml row only in the principle it was written against. Why the principle
+# exists and how to read a result:
+# constitutions/experimental/claude_distilled_10_principles_multiagent/rationale.md.
 
 # THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.
 #
@@ -74,11 +78,15 @@ ablate: []
 smoke:
   max_traits: 2
   scenarios_per_trait: 1
-  scenarios_per_call: 1
+  # 8, not 1: the full run asks for 8 DISTINCT situations per call. Eight single-scenario
+  # calls (the first smoke, 2026-09-15) all chose content moderation, which says nothing
+  # about what the full run's per-call and cross-wave diversity rules produce.
+  scenarios_per_call: 8
   # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
   # the per-trait count, so a smoke run against a config that sets it generates the full
   # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
-  total_scenarios: 2
+  # 8, not 2: one principle, so these rows are all a smoke reader sees of it.
+  total_scenarios: 8
 
 seed: 0
 
@@ -95,7 +103,9 @@ seed: 0
 # line moved out and one clause dropped ("you need not give your reasons", 2026-09-11).
 # Chosen over `abridged/`, a third of the length, so the alignment target does not also
 # change length. The folder keeps "claude" in its name for history; the text names neither.
-constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+# THIS ARM: that document with principle 10 appended and nothing else changed
+# (constitutions/experimental/claude_distilled_10_principles_multiagent/rationale.md).
+constitution: "constitutions/experimental/claude_distilled_10_principles_multiagent/constitution.md"
 # What a good response of THIS document type looks like. Tone guidance, not policy: it
 # used to ride as a trailing section of the constitution file (the parser peeled it off
 # into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
@@ -106,7 +116,10 @@ style_guidance: |-
   oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
   than rules. Offers a specific legitimate alternative. Leaves the decision with the
   person. Warm, practical, proportionate.
-n_traits: 9
+n_traits: 10
+# Generate against principle 10 ALONE: stage 1 still cuts all ten units and keeps one, so
+# every row carries trait_id t10 and `total_scenarios` below sizes the whole corpus.
+only_traits: [t10]
 
 # How stage 1 cuts that document into the units a document is generated against.
 # `principle` is one numbered principle per document -- the recipe every corpus in this
@@ -132,9 +145,11 @@ chunking: principle
 # mixture it was built to swap into; that was a sizing choice for one experiment and is not
 # part of this recipe. Override it per-run (`--overrides total_scenarios=716`) rather than
 # editing this line.
-total_scenarios: 2000
-# Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
-scenarios_per_trait: 77
+# 760 for ONE unit: the arm needs 700 rows (a 7% mixture share). ~8% headroom for the
+# diversity gate and content-filter refusals; `--resume` with a larger total tops up.
+total_scenarios: 760
+# Retained as the fallback when `total_scenarios` is unset; 1 x 760 = 760.
+scenarios_per_trait: 760
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
 scenarios_per_call: 8
@@ -161,7 +176,8 @@ workers: 16
 # the two Sonnet stages. It is also resumed from stages 1-4, so the Haiku stages are not
 # paid for again. Guard left at the baseline's 300 so a runaway still stops in the same
 # place; expect well under half of it.
-budget_usd: 300.0
+# 65, not 300: the OpenRouter credit is shared, and ~$57 is the expected cost at 760.
+budget_usd: 65.0
 
 defaults:
   temperature: 1.0
@@ -313,7 +329,10 @@ stages:
     text: [situation, shortcut]
     group: trait_id
   properties:
-  - property: ngram_diversity
+  # NOT ngram_diversity here; it still runs in the final `corpus` check. With one principle,
+  # a corpus-level n-gram finding plus zero near-duplicates trips `dedupe_scenarios`'
+  # "reported findings but wrote no label sidecar" assertion (first smoke, 2026-09-15).
+  # An n-gram finding never drops a row, so the data is unchanged.
   # The cheapest place a duplicate can be caught: a repeated situation here is paid
   # for four times over by the stages below. Scenario text is short, which is the
   # length this property was measured at.
