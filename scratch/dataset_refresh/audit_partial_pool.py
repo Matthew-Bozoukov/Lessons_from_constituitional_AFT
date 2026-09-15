@@ -25,6 +25,7 @@ def audit(config_path, output):
         for root in roots:
             locks.enter_context(FileLock(str(Path(root) / 'execution.lock'), timeout=1))
         selection, policy = select_release.select(cfg)
+        frozen_configs = {(root, cfg['arm']): runtime.validate_arm(Path(root), cfg['arm']) for root in roots}
         rows = []
         for entry in selection['entries']:
             root, arm, cid = Path(entry['root']), entry['arm'], entry['candidate_id']
@@ -32,7 +33,7 @@ def audit(config_path, output):
             result = runtime.load_result(path)
             if result['status'] != 'accepted' or runtime.digest(path.read_bytes()) != entry['result_sha256']:
                 raise ValueError('Pool changed or includes a held row')
-            frozen = runtime.validate_arm(root, arm)
+            frozen = frozen_configs[(str(root.resolve()), arm)]
             per_row.verify_accepted(path, result, frozen)
             publish_composite.validate_adoption(path, result, frozen)
             record = result['record']
@@ -42,6 +43,9 @@ def audit(config_path, output):
                                      {'role': 'user', 'content': record['user']},
                                      {'role': 'assistant', 'content': record['response'],
                                       'reasoning_content': record['reasoning']}], 'metadata': metadata})
+        for (root, arm), frozen in frozen_configs.items():
+            if runtime.validate_arm(Path(root), arm) != frozen:
+                raise ValueError('Frozen inputs changed during the locked analysis snapshot')
         output.mkdir(parents=True)
         runtime.write_json(output / 'pool_selection.json', selection)
         runtime.write_json(output / 'selection_policy_and_pool.json', policy)
@@ -63,6 +67,7 @@ def audit(config_path, output):
         'status': 'failed' if failures else 'passed'})
     corpus = audit_corpus.audit(source, output, local_files_only=True)
     result = {'train_ready': False, 'mixture_ready': False, 'analysis_rows': len(rows),
+              'helper_sha256': runtime.digest(Path(__file__).read_bytes()),
               'shortages': policy['shortages'], 'input_sha256': corpus['input_sha256'],
               'scope': 'Quota-limited effective accepted pool, not a complete release or full independent answer certification.',
               'token_failures': failures, 'semantic_pairs_at_least_0_9': corpus['semantic_pairs_at_least_0_9']}
