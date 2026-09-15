@@ -1,0 +1,10 @@
+# ABOUTME: Freeze the single independent check of the two final quantity cleanups.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.prepare_campaign_reviews --config configs/data/audits/nonmoral-final-cleanup-review.yaml
+batch_root: output/2026-09-15_nonmoral_final_cleanup
+output_root: output/2026-09-15_nonmoral_final_cleanup/campaign_reviews_nonmoral
+batches: ['.']
+indices: [3, 4]
+annotations: output/2026-09-15_nonmoral_final_cleanup/nonmoral_final_annotations.json
+review_config: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/config.json
+review_contract: output/2026-09-15_dataset_refresh_saved_input_pilot/independent_review_contract.json
+implementation_sha256: 750157eb02bab4a7e8a71d6f3154927ca5fd292fddc76f798646da84cf2a29d7
