@@ -39,4 +39,12 @@ Root reviews the concrete prepared folder, its exact file hashes, target HF name
 
 After upload, resolve and record the full HF commit, verify the uploaded file inventory/hashes, and put the immutable HF link in the repository's allowed experiment report. Do not change `CLAUDE.md` or `docs/TODO.md`. Keep the local work and evidence until remote verification succeeds.
 
+The implementation is `scratch/dataset_refresh/preserve_partial.py`. After root adds readable final counts/shortages/review limits as `final_summary` in the source manifest, closes all source-writing work and commits all helpers, prepare with:
+
+```powershell
+uv run --no-sync python -m scratch.dataset_refresh.preserve_partial --manifest <final-source-manifest.json> --destination <new-audit-snapshot-directory> --source-commit <full-commit> --ledger-end <closed-exclusive-cutoff> --date <UTC-snapshot-date>
+```
+
+The helper does not upload. Zero-byte or one-byte operational OS lock markers are indexed separately because Windows can make the locking byte unreadable; substantive files are preserved exactly. Missing historical metadata receipts are explicitly labeled absent, while present receipts must verify. The complete README, readiness record, archive inventories and file manifest are ready for root review before any upload.
+
 No bundle preparation or upload has been performed by this plan.
