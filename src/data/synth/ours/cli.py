@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
 from . import pipeline
-from .constitution import full_text
+from .constitution import document_text
 from .stage_runtime import Checkpoint, Ctx, Usage
 
 
@@ -127,7 +127,7 @@ def topup(config: str, resume: str, traits, n: int = 25,
     usage = Usage()
     ctx = Ctx(cfg=cfg, usage=usage, workers=int(cfg.get("workers", 8)),
               run_dir=run_dir, smoke=False,
-              vars={"constitution": full_text(cfg["constitution"])})
+              vars={"constitution": document_text(cfg)})
     print(f">>> rewriting {len(todo)} responses")
     stage_list[names.index(revise_stage)].fn(ctx, todo, ckpt)
 
@@ -254,7 +254,7 @@ def _check_corpus_stage(cfg: dict, sc: dict, run_dir: Path, sample: int | None,
     if is_paid(sc):
         ctx = Ctx(cfg=cfg, usage=Usage(), workers=int(cfg.get("workers", 8)),
                   run_dir=run_dir, smoke=False,
-                  vars={"constitution": full_text(cfg["constitution"])})
+                  vars={"constitution": document_text(cfg)})
 
     print(f">>> corpus checks over {snap.name}")
     report = run_corpus_checks(read_jsonl(snap), sc, run_dir=run_dir,

@@ -31,3 +31,7 @@ had not been trained under it. Under the recipe the same run is:
         data_revision=4e7dd02a582ee01e26b5a39e7429a285cb50ea22 thinking=true
 
 (`data_file=` because that repo predates the `mixture.jsonl` contract.)
+
+`qwen36-da-no-const-7.yaml` (2026-09-03) reached main on 2026-09-15 with the no-constitution
+arm it trained before the split (`LASR-Callum/2026-09-03-qwen36-0-da-no-const-7`, LoRA r64,
+625 steps on 2×H200); that adapter carries the resolved config it ran.
