@@ -1,6 +1,22 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Low-stakes release published; bounded nonmoral completion continues
+
+**Result.** Moral low stakes is published as716 synthetic rows and a verified
+10,000-row mixture containing the frozen9284 replay rows. Public revision and
+payload checks passed, as did untruncated native token/mask validation for the
+whole mixture. Nonmoral has669 independently/originally accepted rows at this
+progress checkpoint; later candidate outputs are still under review.
+**Authorization.** After the four-case pilot cost$0.229218, the user raised the
+combined ceiling to$270 and subsequently allowed one additional focused revision
+per failed candidate within that same ceiling. Separate frozen execution records
+preserve both decisions; no paid critics or automatic retry loop. Ten saved
+answers were adopted unchanged after full independent review and local checks.
+**Limits.** No second mixture, paired replay-equality claim, training or evaluation
+yet. Exact pins, review routes and historical-budget boundaries are in the
+[saved-answer completion report](dataset_audits/2026-09-15_saved_answer_completion.md).
+
 ## 2026-09-15 — Dataset correction recovered existing content without new API calls
 
 **Method.** Reassessed low/nonmoral exclusions in parallel, bound reversals to

@@ -1,0 +1,96 @@
+{
+  "ABOUTME": [
+    "Public verified716+9284 low-stakes mixture release.",
+    "Full native-token and fixed-replay-reference audit passed; no training or evaluation performed."
+  ],
+  "repo": "dougalldeepmind/2026-09-15-da-lowstakes-refresh-7-mix",
+  "revision": "f0b0418ea9767ab00fe21e86fab8dfc26dc5320c",
+  "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-da-lowstakes-refresh-7-mix/tree/f0b0418ea9767ab00fe21e86fab8dfc26dc5320c",
+  "verified_at_utc": "2026-09-15T12:28:45.484993+00:00",
+  "status": "verified",
+  "rows": 10000,
+  "synthetic_rows": 716,
+  "replay_rows": 9284,
+  "mixture_sha256": "33490bcdb75a7ce2f700dec41812d421572136be0da5a59440733ccd62d1c682",
+  "replay_reference_sha256": "f151580ad41400f579430059ca761a010563625e4eabc685d4c8ae83f7be90cc",
+  "public_read_access_without_token": true,
+  "checks": [
+    {
+      "path": "card_fields.json",
+      "sha256": "edf7e4c983a5e5f12dcf7724b64667d5825780aa01085457c04dbbf5966f5913",
+      "bytes": 7487,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "card_front_matter.json",
+      "sha256": "95e7be7703b428458c6570b7dd8d962f4f9cde35a27d808abb6c4849d076e986",
+      "bytes": 304,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "frozen_synthetic_config.json",
+      "sha256": "1ea332460b3bf50df4bffef1ca3ba7762e7efe35d932b9249dba1e59e28450ae",
+      "bytes": 160007,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "mixture.jsonl",
+      "sha256": "33490bcdb75a7ce2f700dec41812d421572136be0da5a59440733ccd62d1c682",
+      "bytes": 35661778,
+      "method": "public LFS SHA256",
+      "verified": true
+    },
+    {
+      "path": "mixture_config.yaml",
+      "sha256": "e580bf11f2b0145a1107f0a56f65ef4785540ce549351ae2e793f5a12a3eb5e7",
+      "bytes": 816,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "mixture_stats.json",
+      "sha256": "a722209ea122ecdeac8ff3a37e042943032d41ce9ce9e1234df9770bafb52f41",
+      "bytes": 3544,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "mixture_validation.json",
+      "sha256": "620fe3d2cff6eca6da2007bda0a17a5d001b47dfede2f1966914fa14e2b22fcf",
+      "bytes": 5828,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "publication_plan.json",
+      "sha256": "0b8b99ab3539d7ccdb5ca84459769eda3c5e26d8d08f0afbaaa8b823a082b94f",
+      "bytes": 185,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "README.md",
+      "sha256": "b2d7f532d03197e8d8c83d04d93c51804198eefb273f7f6ee1496e17b9e79b44",
+      "bytes": 7282,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "replay_reference.json",
+      "sha256": "f151580ad41400f579430059ca761a010563625e4eabc685d4c8ae83f7be90cc",
+      "bytes": 1066522,
+      "method": "public Git blob SHA1",
+      "verified": true
+    },
+    {
+      "path": "run_meta.json",
+      "sha256": "d018ab355aa60fa9046cd9c9b5c41b829c5ee430aae3795e863e97310d14b12a",
+      "bytes": 5209,
+      "method": "public Git blob SHA1",
+      "verified": true
+    }
+  ]
+}

@@ -1,0 +1,386 @@
+{
+  "ABOUTME": [
+    "Public remote verification of the correction delta archive.",
+    "Every local payload matches the pinned public revision; only .gitattributes is additional."
+  ],
+  "repo": "dougalldeepmind/2026-09-15-dataset-refresh-correction-audit",
+  "revision": "cbb73cc18b689c39d4ceb7e0bc7cc760160fb9a5",
+  "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-correction-audit/tree/cbb73cc18b689c39d4ceb7e0bc7cc760160fb9a5",
+  "status": "verified",
+  "verified_at_utc": "2026-09-15T12:10:19.726748+00:00",
+  "public_read_access_without_token": true,
+  "local_payload_files": 53,
+  "checks": [
+    {
+      "path": "archive_inventory.json",
+      "sha256": "86d1f0af9817577cf93d8b174c8342abd4832b2ea0e74d53859194dbba445598",
+      "size": 180430,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "audit_index.jsonl",
+      "sha256": "f961de889496ea438a6a9c60ab76112f2f15744f1f433569c149ea695780c5dd",
+      "size": 195,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "card_fields.json",
+      "sha256": "c140268215791d679ecb3f7a8cc1eae73022de425a57821868539abbaeccfc61",
+      "size": 2961,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "card_front_matter.json",
+      "sha256": "50729e3faf1165abacad11fcefba4d3a0e41514312db596b144999f0a1e78e33",
+      "size": 311,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "correction_evidence.tar.gz",
+      "sha256": "731ca6dc1a7dc678ef174f0eab8918d6c6c91d413fd76256a7ff053320e5c1d8",
+      "size": 21043945,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "files_manifest.json",
+      "sha256": "8d8a71b3cce7d11c566a2dfe2ea61200c3ea9118896d6647e8af1aba21530c2b",
+      "size": 4889,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "preparation_receipt.json",
+      "sha256": "a6a5cd9de5b89b5d3355dbc250cb92ac8d688ceea6b1d10b2f15f524e136c3f9",
+      "size": 564,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "readiness.json",
+      "sha256": "0926a2c6a55b89b65bb9de0af9ad0ba08940ba0e2a69ec1ba17c8bd3fd5741fd",
+      "size": 274,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "README.md",
+      "sha256": "6513206b0a8e37ea96486d44f175fb857de88be13c67e3ccb9f42b48dc2691ed",
+      "size": 3156,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_000.tar.gz",
+      "sha256": "095d254dcc1386c88166048bedabd892febacf7404d61c83e9a6f7183b8784c3",
+      "size": 142949,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_001.tar.gz",
+      "sha256": "e9974f0e996cd3d3b0a578c6a6b65b217c7d389dd2aba144599dd1c8f2e14102",
+      "size": 142449,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_002.tar.gz",
+      "sha256": "2cb71e98f0efc4558b35cfdc9be9acd48d827aa19f718f1c85816a3cab54a970",
+      "size": 141606,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_003.tar.gz",
+      "sha256": "a5ee4d38e956e123a5c3139fad65bb3076d1d553bb411ea7c5cfa4b6be89acea",
+      "size": 139696,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_004.tar.gz",
+      "sha256": "a5abef0f5908f3e75faf5b3fe1bc4dd03975ed6eda5292119e80a01798050f2e",
+      "size": 141837,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_005.tar.gz",
+      "sha256": "38c42a37aa8951541b46700b20b866a4dd22cefebc6566376f48c89c0f64d9f4",
+      "size": 142622,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_006.tar.gz",
+      "sha256": "9a73cdad842730e0aa0689e01b45bb29602729b8a966fc0cb4a276aff2f62dac",
+      "size": 144802,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_007.tar.gz",
+      "sha256": "702a5d4d3fb809e88d7e5806bbc74d004917dbdbecc5007e0e956e423c107e50",
+      "size": 148931,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_008.tar.gz",
+      "sha256": "2c713648175f32bcf5cc048a784b0b79556f753aaada854e21f0a213c24cc277",
+      "size": 141771,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_009.tar.gz",
+      "sha256": "cd63d1be981d88ebd095da3cc8303e55ad8b6686ee175087f42fc79cab3ce540",
+      "size": 139790,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_010.tar.gz",
+      "sha256": "76ff16498cd82e0ee89f1cd7763671f7f10d0c4ddf955f82af93c1a33df06deb",
+      "size": 140862,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_011.tar.gz",
+      "sha256": "a1fb51eb09cd8553bcc0fa29cc1db4a85023b614efe4be9e43c7a2bd96ccd94f",
+      "size": 140681,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_012.tar.gz",
+      "sha256": "3965cc0c7269a5b8e5b9f39005856a40832e7b73b3f6ff19a2ab890448f450bd",
+      "size": 139146,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_013.tar.gz",
+      "sha256": "6d5b3908589e262ecb7dc49e68a872f48b6514be2caada7efa194bf4a4f189ed",
+      "size": 142655,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_014.tar.gz",
+      "sha256": "4f19e3667f31fcb0ab8ae664ecc23930ce9443ab4804189a23566730031f79d9",
+      "size": 144712,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_015.tar.gz",
+      "sha256": "8a96f36f9fbbb777110decd8efa08752cadbc2075b8a4be87d56cc1361e84c03",
+      "size": 139819,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_016.tar.gz",
+      "sha256": "0b57352c7ee6d71ed7abaad0562754c1137eea28d3683425a8d8c6d6cb4ff2f0",
+      "size": 141128,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_017.tar.gz",
+      "sha256": "655838a12998aabde9be93d420a98fcae4cde0480cebf8994bd5f649a0b99be3",
+      "size": 140721,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_018.tar.gz",
+      "sha256": "f254f4686a9b492543bb0de52bf8de797dfe039f9f291036f9bf8df9fd61cb31",
+      "size": 142175,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_019.tar.gz",
+      "sha256": "dc890ecb1f4e5193e42523bfb9dc10b339054eb89e53ad4aa6c94eb35cca7519",
+      "size": 141466,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_020.tar.gz",
+      "sha256": "1b8be0dce560caa678509f6d045f085f081f830d61d7a38ec1879559d6081b9d",
+      "size": 141195,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_021.tar.gz",
+      "sha256": "948a13ce15b2deb251574ea69b565045f38d66d6734ce943bad42fdd7bd82396",
+      "size": 140549,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_022.tar.gz",
+      "sha256": "cb18b650302381c5c786fe5dba5bdc69761355b6e220bb6f37c2c4b60d0b4973",
+      "size": 139653,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_023.tar.gz",
+      "sha256": "3bd8554a34799f1e79e0179080ca075aae16ae4b6a553a8119cde257e8cf124c",
+      "size": 77497,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_024.tar.gz",
+      "sha256": "ff152ed57a51f504bffb392b09588b85548d95bc215bcbd5ef80012370eb22a7",
+      "size": 78674,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_025.tar.gz",
+      "sha256": "d18e2b5269b72ae0fdfa131c3e0d7e4fb4c3cf9a55b29cb5a796e277c48aab1e",
+      "size": 81100,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_026.tar.gz",
+      "sha256": "ea5c490d9a0723d0e26b6d92f0a1cc5560554a3752c0bba75a8b6811b41137e4",
+      "size": 86746,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_027.tar.gz",
+      "sha256": "4b9d515a367360944cae8dd95f997b147d2a7b6143d8ad13fd46cda841ea9959",
+      "size": 82065,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_028.tar.gz",
+      "sha256": "7c5e12796dffe49628b39f223573887adf218c785040f5b3db98e936cecab31a",
+      "size": 78503,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_029.tar.gz",
+      "sha256": "fb77996884b1d148f23aa42d33514945a88498424b3893c8086e73423843750e",
+      "size": 79325,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_030.tar.gz",
+      "sha256": "6932d70e8577a47b3f0b21f4b09cad789a3f710dd6dc1e6a17a0238047bea5c5",
+      "size": 76437,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_031.tar.gz",
+      "sha256": "282d632efa4bf9a4799897ba4d0a6476135d9f84d15e83268d1395df3a7529f9",
+      "size": 80900,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_032.tar.gz",
+      "sha256": "32dbfb4a3b1e4431b72f79222e84f9b80d4a874c9d12e30c69914f7b66ac10aa",
+      "size": 78641,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_033.tar.gz",
+      "sha256": "4fb6637f89bcd68b5dd691adbfd57b07fb3531dab0ef2b35a8abe42f01405c8c",
+      "size": 80680,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_034.tar.gz",
+      "sha256": "fee78f40ee4ef50f54876045f3a1a10c1a5f9bc65b5b680fe77bae95fc7d75fc",
+      "size": 91217,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_035.tar.gz",
+      "sha256": "a1f78ff2d89ab3dd5ef4dac3f44294aeb629dd4ae4284b498adaa9c0a227074d",
+      "size": 80996,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_036.tar.gz",
+      "sha256": "16aab06dca84679c54b3cdd6d0bbeeb00db0ef47bd92dd5560ba4c2012af13a6",
+      "size": 81698,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_037.tar.gz",
+      "sha256": "4a26066361bbd0cf8f97f383fd803276aac116e81e95e3e18ae6a06d1d4bc20e",
+      "size": 79937,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_038.tar.gz",
+      "sha256": "b36705a0eb358e45a45a3858da6430bc5ed2ef90d72b5a17d085208cd005cc31",
+      "size": 79814,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_039.tar.gz",
+      "sha256": "b8b66fcdefeeb33a782dc7a9a5ae3e64b3c4b9671acab200026cb379afd4c494",
+      "size": 79184,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_040.tar.gz",
+      "sha256": "85f0b211465173c1495ac1495d2d804c2b3943cbcf08be34c517440bb57505e7",
+      "size": 80402,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "rows/row_041.tar.gz",
+      "sha256": "62dc4a663fb36146cd77314a2188f62b1c6e221480c63702f5b90826d45cc244",
+      "size": 36155,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "source_code.tar.gz",
+      "sha256": "0faebe50326f7f9619654df5745c684a5306c5d0501dd99025c2b21a77069184",
+      "size": 26801893,
+      "method": "Public remote LFS SHA256 and size match local bytes",
+      "verified": true
+    },
+    {
+      "path": "source_manifest.json",
+      "sha256": "b0aa6d5c1e81992b9f3db279eb568383a5c44d98b71d040e6b39813d8981e4fd",
+      "size": 15733,
+      "method": "Public Git blob and fresh download match local bytes",
+      "verified": true
+    }
+  ]
+}
