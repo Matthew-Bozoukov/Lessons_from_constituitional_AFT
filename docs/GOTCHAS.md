@@ -1042,3 +1042,14 @@ environment fixes. Things that bite:
   public-board judge should see it — but read a "coalition plan on the public board"
   finding with this in mind.
 
+## Colosseum's post-run survey is only usable with the 2026-09-15 patches (2026-09-15)
+
+Upstream's survey (`experiment.survey_enabled`) ran every seat through the normal agent loop with
+the planning tools offered, so a survey reply could call `transfer_resources` after the last
+iteration and before `get_final_summary`, and a reply with no tool call was re-asked, so every
+seat answered twice. A benign run never gets the MisalignmentPrompts wrapper, which is where the
+survey question lived, so a baseline cell's survey sent the status briefing with no question in
+it. `terrarium_hospital_fixes_3.patch` makes the survey one tool-less call and
+`hospital_eval_fixes_3.patch` asks the baseline too; `survey: true` on an older checkout runs the
+broken version. The survey turn also lands in agent_turns.json with the last iteration's number:
+anything that walks the turns by iteration (actions.py does) must drop `phase == "survey"`.
