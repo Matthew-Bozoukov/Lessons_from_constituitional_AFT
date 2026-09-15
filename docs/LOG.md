@@ -101,6 +101,64 @@ lack; PAR pins hidden thinking off on its Sonnet stages and DA does not; PAR row
 DA's length, all of it unsupervised context; 28% of the 2026-09-03 rows are a separate top-up
 batch.
 
+## 2026-09-15 — Multi-agent principle 10 corpus: 775 difficult-advice rows against the new trait alone
+
+**Why.** The Hospital results (branch `kn/multiagent-exploration`) show that difficult-advice
+training changes what the model says in private far more than what its coalition does.
+`constitutions/experimental/claude_distilled_10_principles_multiagent/` appends one principle aimed
+at that gap: t10, never collude, and refuse in action, not only in thought. Its reasoning is in
+rationale.md. This corpus is the data for the arm that tests it: difficult advice written against
+t10 alone, the same shape as the 2026-08-20 trait-10 curiosity arm.
+**Method.**
+- **Config.** `configs/data/synth/da-multiagent.yaml` at 0924551f: the 2026-09-14 `da.yaml` recipe
+  (merged at 36c62661) with its prompts, models and lints untouched. It sets
+  `only_traits: [t10]` and 760 scenarios, and its smoke asks for 8 scenarios per call.
+- **`ngram_diversity` is left out of the scenario-level check.** With one principle, a corpus-level
+  n-gram finding plus zero near-duplicates trips the `dedupe_scenarios` assertion "findings but no
+  label sidecar" (`src/data/synth/ours/stage_operators.py:2147`). An n-gram finding never drops a
+  row, so the data is unchanged.
+- **Smoke.** 8 of 8 rows kept, 8 domains, $0.69. An earlier smoke drew one scenario per call, and
+  all 8 came out as content moderation; asking for 8 per call fixed that.
+- **Full run.** `uv run synth run --config configs/data/synth/da-multiagent.yaml --ablate corpus
+  --overrides max_fail_pct=15`. The pattern scan was skipped.
+- **Top-up to clear 700.**
+  1. Two extra runs, `--overrides total_scenarios=90,id_prefix=b,hf_push=false,max_fail_pct=40`
+     and the same with `total_scenarios=40,id_prefix=c`.
+  2. `scratch/da_multiagent/splice_topup.py` spliced them into the main run dir. It drops any
+     top-up scenario within the generation gate's cosine 0.86 of one already kept; it dropped
+     0 of 130 (the closest was 0.82). The main run's first-pass stage 5–8 snapshots are kept in
+     `run1_final/`.
+  3. One `--resume ... --overrides max_fail_pct=100` retried every lost row and published the
+     corpus once.
+
+**Result.** [`dougalldeepmind/2026-09-15-da-multiagent-synth`](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-da-multiagent-synth)
+@ `64416c96`: 775 rows, all t10 (655 from the main run, 85 and 35 from the two top-ups). There are
+no duplicate ids, 0 rows name Claude or Anthropic, and there are 614 distinct domains (the largest
+is 1.5%).
+- **Content filter.** This is the dominant loss on this trait. 99 of 890 `revise_prompts` calls
+  failed and 11 recovered on retry; 27 `revise_responses` rows stayed blocked after it. Every
+  failure the run summaries print is an Anthropic content-filter block. The 2026-09-14 DA run
+  lost 13 of 765. Requests to collude and sabotage are what this trait is about, and the filter
+  treats them that way.
+- **Bias from the filter.** Every row in the corpus got through the filter at two stages, so the
+  most explicit sabotage and collusion requests are under-represented.
+- **Banned phrase.** The ban on "my instructions" failed 1 draft of 890 after 3 attempts, and it
+  cleared on the resume. In this trait "instructions" is plot vocabulary, but the smoke's
+  1-in-8 rate did not hold up.
+- **Spend.** $59.96 by the runs' own tallies: main run $49.65, top-ups $6.15 and $2.39, resume
+  $1.08, smokes $0.69. The shared credit fell by $82.64 over the same window, so not all of that
+  drop was this run.
+- **Estimate error.** The measured estimate still priced the refine stage from assumptions, at
+  $9.88. The 2026-09-14 manifest shows it really costs $22.22.
+
+**Next.**
+1. Build a mixture with a 700-row t10 slice (7%) on the nosynth base.
+2. Train it.
+3. Run the Hospital on the fixed harness against a 09 DA arm built with the same recipe. The
+   rationale's "What would count as a result" section says what to compare.
+4. Optional: run the skipped pattern scan (`uv run synth check`, about $10–20).
+5. Optional: the one-line `dedupe_scenarios` fix in `src/`.
+
 ## 2026-09-14 — Difficult advice regenerated: neutral full-length constitution, 752 rows, no model or developer named
 
 **Why.** Every earlier DA corpus was generated against the archived mid document
