@@ -1,0 +1,12 @@
+output: output/2026-09-15_dataset_refresh_saved_input_pilot_review/unchanged_acceptance_preflight
+qualified_root: output/2026-09-15_dataset_refresh_sonnet_qualified
+review_config: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/config.json
+review_contract: output/2026-09-15_dataset_refresh_saved_input_pilot/independent_review_contract.json
+implementation_sha256: 750157eb02bab4a7e8a71d6f3154927ca5fd292fddc76f798646da84cf2a29d7
+round1: output/2026-09-15_dataset_refresh_saved_input_pilot_review/nonmoral_offline_salvage
+round2: output/2026-09-15_dataset_refresh_saved_input_pilot_review/nonmoral_offline_salvage_round2
+round1_candidates: [t6_060_v0, t6_065_v0, t9_037_v0, t9_042_v0, t9_054_v0, t3_040_v0]
+round2_candidates: [t7_016_v0]
+t4_inputs: output/2026-09-15_dataset_refresh_saved_input_pilot_review/t4_offline_salvage/frozen_inputs.jsonl
+t4_annotations: output/2026-09-15_dataset_refresh_saved_input_pilot_review/unchanged_acceptance_preflight/t4_annotations.json
+t4_candidates: [t4_056_v0, t4_071_v0, t4_000_v0, t4_001_v0]
