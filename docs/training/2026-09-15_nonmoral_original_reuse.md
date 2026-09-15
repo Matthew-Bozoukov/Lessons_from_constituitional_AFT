@@ -85,3 +85,11 @@ no usable adapter revision until training verification supplies it. The recurrin
 monitor handles this transition, verification/publication, owned-pod teardown,
 account check, final comparison, and shutdown of temporary sleep inhibition.
 Initial launch is not a claim of completed training or evaluation.
+
+At the user's request on September 16 local time, the redundant five-minute AI
+polling was replaced with one hourly handoff/recovery check. The two obsolete
+refreshed-training/evaluation automations were deleted. Existing local owners
+continue their 30-second health monitoring and independent budget watchdogs;
+the hourly check exits silently while a stage is healthy. After training output
+recovery and pod closure, the next check launches the authorized evaluation, so
+handoff may wait up to an hour without keeping the finished training pod rented.
