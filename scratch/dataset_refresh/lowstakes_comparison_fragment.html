@@ -1,0 +1,155 @@
+<!-- ABOUTME: Interactive comparison of actual old and refreshed moral low-stakes training conversations. -->
+<!-- ABOUTME: Embedded by build_lowstakes_comparison.py; verbatim quotations checked against frozen records. -->
+<div id="lowstakes-comparison-20260915">
+  <style>
+    #lowstakes-comparison-20260915 { color:var(--foreground); }
+    #lowstakes-comparison-20260915 .ls-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+    #lowstakes-comparison-20260915 .ls-space { margin-top:18px; }
+    #lowstakes-comparison-20260915 .ls-reading { white-space:pre-wrap; overflow-wrap:anywhere; }
+    #lowstakes-comparison-20260915 .ls-quote { border-left:2px solid var(--border); padding-left:12px; margin:8px 0 16px; overflow-wrap:anywhere; }
+    #lowstakes-comparison-20260915 .ls-note { margin:12px 0; }
+    #lowstakes-comparison-20260915 .ls-source { overflow-wrap:anywhere; }
+    #lowstakes-comparison-20260915 summary { cursor:pointer; margin:12px 0; }
+    #lowstakes-comparison-20260915 .ls-stakes { display:flex; min-height:24px; width:100%; }
+    #lowstakes-comparison-20260915 .ls-stakes span { display:block; }
+    #lowstakes-comparison-20260915 .ls-bar-a { background:var(--viz-series-1); }
+    #lowstakes-comparison-20260915 .ls-bar-b { background:var(--viz-series-2); }
+    @media(max-width:680px) { #lowstakes-comparison-20260915 .ls-columns { grid-template-columns:1fr; gap:12px; } }
+  </style>
+  <h2>What changed in moral low stakes</h2>
+  <p>The refresh changed the training problem as well as the stakes boundary. There are real defects to fix, but the current results do not identify which change caused the higher misalignment rate.</p>
+  <div class="nav nav-pills" role="tablist" aria-label="Comparison views">
+    <button class="nav-link active" id="ls-tab-examples" role="tab" aria-controls="ls-examples" aria-selected="true" type="button">Examples</button>
+    <button class="nav-link" id="ls-tab-census" role="tab" aria-controls="ls-census" aria-selected="false" type="button">Census</button>
+    <button class="nav-link" id="ls-tab-results" role="tab" aria-controls="ls-results" aria-selected="false" type="button">Results</button>
+    <button class="nav-link" id="ls-tab-search" role="tab" aria-controls="ls-search" aria-selected="false" type="button">Search</button>
+  </div>
+  <section id="ls-examples" role="tabpanel" aria-labelledby="ls-tab-examples">
+    <div class="viz-controls ls-space">
+      <label class="form-label">Issue category<select id="ls-category" class="form-select"><option value="">All issues</option></select></label>
+      <label class="form-label">Comparison<select id="ls-pair" class="form-select"></select></label>
+    </div>
+    <p class="text-small">Thematic comparisons, not old → new rewrites. All 716 new rows were freshly generated. Exact excerpts below; full system prompt, user request, reasoning, and answer are expandable.</p>
+    <div id="ls-pair-content" aria-live="polite"></div>
+  </section>
+  <section id="ls-census" role="tabpanel" aria-labelledby="ls-tab-census" hidden>
+    <h3>What we can measure across all 716 + 716 conversations</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Measurement</th><th>Old</th><th>New</th><th>Interpretation boundary</th></tr></thead><tbody id="ls-census-body"></tbody></table></div>
+    <p class="text-small">Text screens are case-insensitive. “AI” uses a whole-word match. Answer labels match “the honest alternative/option” or “the legitimate alternative/option.” “AI + review” means both words occur anywhere in the user prompt; it is not a semantic classifier. Old AI deployment often appears in the system prompt instead.</p>
+    <h3>Old stakes were judged, but the result was not an admission gate</h3>
+    <div class="ls-stakes" role="img" aria-label="Historical stakes labels: 649 trivial or modest; 67 serious or grave, out of 716"><span class="ls-bar-a" style="width:90.642458%"></span><span class="ls-bar-b" style="width:9.357542%"></span></div>
+    <div class="viz-row ls-space"><span>649 / 716 trivial or modest</span><span>67 / 716 serious or grave (9.36%)</span></div>
+    <p>These are historical model labels: 137 trivial, 512 modest, 65 serious, 2 grave. The damaged-tool and reactive-dog examples show that a hobby label can hide consequential risk. They do not establish that all 67 labels are correct or that those rows caused the earlier result. No equivalent fresh, blind stakes census of both datasets was run here.</p>
+    <h3>Recipe changes that matter</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Dimension</th><th>Old</th><th>New</th></tr></thead><tbody>
+      <tr><td>Role</td><td>Mixed human advice and assistant action; some operational or conflicting system instructions</td><td>Human advice required; ordinary advice system prompts; a separate AI appears when needed</td></tr>
+      <tr><td>Construction</td><td>Relocated older DA scenarios, retaining much of the ethical structure</td><td>Fresh unpaired analogues inspired by newer DA; stricter benign-activity selection</td></tr>
+      <tr><td>Teacher</td><td>Sonnet 5 draft and revision</td><td>Sonnet 5 authoring</td></tr>
+      <tr><td>Constitution scope</td><td>Target principle only; old identity wording</td><td>Target principle only; new09 neutral wording</td></tr>
+      <tr><td>Selection</td><td>Advisory stakes labels; response-length floor and retries</td><td>More restrictive eligibility and content reviews; 206 qualified-phase + 510 diverse-phase rows</td></tr>
+      <tr><td>Replay</td><td>Historical 9,284 rows</td><td>9,284 rows from September 8 nosynth</td></tr>
+    </tbody></table></div>
+    <p>The old-to-new low comparison is <em>not</em> a Haiku-to-Sonnet switch or a full-constitution-to-single-principle switch. Those distinctions apply to other historical comparisons. The important uncontrolled changes here include the synthetic examples, actor, replay, selection, and evaluation protocol.</p>
+    <details><summary>Audit method and limits</summary><p>The full system/user/reasoning/final content was read for 18 entries selected before inspection by minimum SHA256 of “lowstakes-review-20260915:{arm}:{id}” within each of nine traits and each arm, plus the two old entries historically labelled grave. The comparisons deliberately surface differences and counterexamples within that sample. This is a qualitative audit, not a representative error-rate estimate. All whole-corpus counts are mechanical, and every displayed quote is checked against the saved source text.</p></details>
+  </section>
+  <section id="ls-results" role="tabpanel" aria-labelledby="ls-tab-results" hidden>
+    <h3>The observed increase is mainly in mandated cases</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>ODCV condition</th><th>Old MR</th><th>New MR</th><th>Change</th></tr></thead><tbody id="ls-result-body"></tbody></table></div>
+    <p>The old “about 11%” result is <strong>47/400 = 11.75%</strong>, over five passes. The new result is <strong>16/80 = 20%</strong>, over one pass. Both use 40 scenarios, both variants, thinking, temperature 0.7, and a Flash MR judge. Context changed from <strong>16,384 to 28,000</strong>; training replay and synthetic data also changed.</p>
+    <p>The paired-by-scenario difference is +8.25 percentage points, with a descriptive 95% interval of <strong>−1.96 to +18.46 points</strong>. This averages the two variants within each of 40 scenarios and uses a t interval across scenarios. It does not capture training-seed variability or remove protocol confounding. The mandated increase is suggestive, not confirmation of the actor hypothesis.</p>
+    <h3>My assessment of the competing explanations</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Explanation</th><th>Evidence now</th><th>Judgment</th></tr></thead><tbody>
+      <tr><td>“The old set was not really low-stakes”</td><td>Some genuine safety leakage; most historical labels were low/modest; clear benign examples also have richer conflicts</td><td>Partly true; too broad as the main conclusion</td></tr>
+      <tr><td>“The redesign weakened relevant training signals”</td><td>Direct assistant conflicts became human advice; some alternatives are pre-labelled; repeated AI-review plots span traits</td><td>My leading data-content hypothesis; not causally established</td></tr>
+      <tr><td>“We removed deliberation”</td><td>Reasoning is 7.8% shorter on average, but new examples still compare costs, uncertainty, autonomy, and values</td><td>Too strong. The type and difficulty changed more clearly than its presence</td></tr>
+      <tr><td>“Noise, replay, or protocol explains the gap”</td><td>One new evaluation pass; new replay; longer context; no same-protocol control isolating these</td><td>Still live; the corpus audit cannot rule it out</td></tr>
+    </tbody></table></div>
+    <h3>What I recommend doing next</h3>
+    <ol>
+      <li><strong>Preserve both versions and finish the original-nonmoral reuse run.</strong> Do not relabel this refresh as a clean stakes ablation. Do not silently patch the dataset already trained.</li>
+      <li><strong>Next low-stakes control: exact old 716 + the same new 9,284 replay rows.</strong> Train with the current recipe and evaluate alongside the refreshed checkpoint under one frozen protocol. For a credible difference, add passes and eventually training seeds. A single-pass run is a screen, not a causal verdict.</li>
+      <li><strong>Let that result choose the next question.</strong> If old content retains an advantage with common replay/protocol, investigate actor format and prompt difficulty before another wholesale rewrite. If it does not, revisit replay, protocol, and run variation before blaming the new scenarios.</li>
+      <li><strong>For a stakes claim, isolate stakes.</strong> Use matched dose, actor, ethical mechanism, replay, and training/eval settings. Screen old serious/grave cases separately. A raw deletion changes dose; a replacement changes content too. Either needs explicit controls.</li>
+      <li><strong>Repair narrow defects in a separately versioned condition.</strong> Fix the movie timing and quantity/unsupported-fact errors. Retain useful reasoning; keep benign consequences while allowing meaningful ambiguity, sympathetic pressure, justified exceptions, and real costs.</li>
+    </ol>
+    <p>I should have kept the minimal old-content/new-replay control alongside the redesign. The stricter stakes boundary had a legitimate purpose, but changing several other variables made the outcome hard to interpret. No additional training, generation, or evaluation has been launched for this audit.</p>
+    <details><summary>Pinned sources</summary>
+      <ul>
+        <li><a href="https://huggingface.co/datasets/LASR-Callum/2026-08-26-difficult-advice-low-stakes-716/tree/f268653539150af5a340164f994065f57cbef5ad" target="_blank" rel="noopener noreferrer">Old synthetic 716 · f2686535</a></li>
+        <li><a href="https://huggingface.co/datasets/dougalldeepmind/2026-09-15-da-lowstakes-refresh-synth/tree/ebafc3a60cda2a5390bde72336d660f34e580e6d" target="_blank" rel="noopener noreferrer">New synthetic 716 · ebafc3a6</a></li>
+        <li><a href="https://huggingface.co/datasets/dougalldeepmind/2026-09-05-odcv-qwen36-0-da-lowstakes-7/tree/8ccdc4476ce9d959cc1783d9d0a90726a8eb6b7e" target="_blank" rel="noopener noreferrer">Old ODCV, five passes · 8ccdc447</a></li>
+        <li><a href="https://huggingface.co/datasets/dougalldeepmind/2026-09-15-odcv-qwen36-0-da-lowstakes-refresh-7/tree/6e59bb706e48dcbdbb594ac66074db06b38e6e2c" target="_blank" rel="noopener noreferrer">New ODCV, one pass · 6e59bb70</a></li>
+      </ul>
+    </details>
+  </section>
+  <section id="ls-search" role="tabpanel" aria-labelledby="ls-tab-search" hidden>
+    <div class="viz-controls ls-space">
+      <label class="form-label">Search all text in the reviewed sample<input id="ls-query" class="form-control" type="search" placeholder="e.g. Sunday, rubric, override"></label>
+      <label class="form-label">Dataset<select id="ls-arm" class="form-select"><option value="">Both versions</option><option value="old">Old</option><option value="new">New</option></select></label>
+      <label class="form-label">Principle<select id="ls-trait" class="form-select"><option value="">All principles</option></select></label>
+      <label class="form-label">Matching entry<select id="ls-record" class="form-select"></select></label>
+    </div>
+    <p id="ls-match-count" class="text-small" aria-live="polite"></p>
+    <div id="ls-record-content"></div>
+  </section>
+  <script type="application/json" id="ls-embedded-data"><!-- COMPARISON_DATA --></script>
+  <script>
+  (() => {
+    const root = document.getElementById('lowstakes-comparison-20260915');
+    const data = JSON.parse(document.getElementById('ls-embedded-data').textContent);
+    const $ = id => root.querySelector('#' + id);
+    const records = new Map(data.records.map(r => [r.id,r]));
+    const traits = ['Oversight','Legitimate power','Honesty','Calibrated harms','Rule purpose','Stable values','Operator defaults','Substantive help','Human agency'];
+    function el(tag,text,cls) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text; if(cls)n.className=cls; return n; }
+    function option(parent,value,label) { const o=el('option',label);o.value=value;parent.append(o); }
+    function note(parent,label,text) { const p=el('p',undefined,'ls-note');p.append(el('strong',label+' '),document.createTextNode(text));parent.append(p); }
+    function full(r, expanded=false) {
+      const d=el('details'); d.open=expanded;d.append(el('summary','Full conversation'));
+      for(const key of ['system','user','reasoning','final']) { d.append(el('h3',({system:'System prompt',user:'User request',reasoning:'Training reasoning',final:'Final answer'})[key]),el('div',r[key],'ls-reading')); }
+      return d;
+    }
+    function identity(parent,r) {
+      parent.append(el('p',r.id,'text-small ls-source'));
+      parent.append(el('p',r.trait+' · '+traits[Number(r.trait.slice(1))-1]+(r.arm==='old'?' · historical stakes label '+r.stakes:''),'text-small'));
+    }
+    function showPair() {
+      const p=data.pairs[Number($('ls-pair').value)]; const target=$('ls-pair-content');target.replaceChildren(); if(!p)return;
+      note(target,'Observed change.',p.observation);
+      const cols=el('div',undefined,'ls-columns');
+      for(const arm of ['old','new']) {
+        const r=records.get(p[arm]), side=el('section');side.append(el('h3',arm==='old'?'Old · August 26':'New · September 15'));identity(side,r);
+        for(const q of p[arm+'_quotes']) {side.append(el('div',q.field==='final'?'Final answer':q.field==='reasoning'?'Training reasoning':q.field==='system'?'System prompt':'User request','text-small'));side.append(el('blockquote',q.text,'ls-quote'));}
+        side.append(full(r));cols.append(side);
+      }
+      target.append(cols,el('hr'));
+      note(target,'Possible implication.',p.hypothesis);note(target,'Counterevidence / limits.',p.limit);note(target,'Recommendation.',p.action);
+    }
+    function filterPairs() {const s=$('ls-pair');s.replaceChildren();data.pairs.forEach((p,i)=>{if(!$('ls-category').value||p.category===$('ls-category').value)option(s,i,p.title);});showPair();}
+    [...new Set(data.pairs.map(p=>p.category))].forEach(c=>option($('ls-category'),c,c));
+    $('ls-category').addEventListener('change',filterPairs);$('ls-pair').addEventListener('change',showPair);filterPairs();
+    const co=data.census.old, cn=data.census.new;
+    const measures=[
+      ['User prompts mentioning “AI”',co.literal_screen_counts.ai_word,cn.literal_screen_counts.ai_word,'An explicit wording shift; not total assistant involvement'],
+      ['User prompts mentioning both “AI” and “review”',co.ai_and_review,cn.ai_and_review,'Supports inspecting repeated AI-review plots; not a semantic count'],
+      ['User prompts containing an answer label',co.literal_screen_counts.answer_label,cn.literal_screen_counts.answer_label,'0 → 100 prompts partly name the preferred alternative'],
+      ['User prompts mentioning “review”',co.literal_screen_counts.review_word,cn.literal_screen_counts.review_word,'Review itself was already common'],
+      ['Mean user words',co.word_means.user.toFixed(1),cn.word_means.user.toFixed(1),'More scenario text does not guarantee more ambiguity'],
+      ['Mean reasoning words',co.word_means.reasoning.toFixed(1),cn.word_means.reasoning.toFixed(1),'−7.8%; length is not a reasoning-quality score'],
+      ['Mean final-answer words',co.word_means.final.toFixed(1),cn.word_means.final.toFixed(1),'−15.0%; this is a whitespace word count, not token supervision']
+    ];
+    measures.forEach(row=>{const tr=el('tr');row.forEach(v=>tr.append(el('td',String(v))));$('ls-census-body').append(tr);});
+    for(const name of ['overall','mandated','incentivized']) {
+      const s=data.eval[name],tr=el('tr');const values=[name[0].toUpperCase()+name.slice(1),s.old.mr.toFixed(2)+'% ('+s.old.flags+'/'+s.old.n+')',s.new.mr.toFixed(2)+'% ('+s.new.flags+'/'+s.new.n+')','+'+s.delta_pp.toFixed(2)+' pp'];values.forEach(v=>tr.append(el('td',v)));$('ls-result-body').append(tr);
+    }
+    traits.forEach((name,i)=>option($('ls-trait'),'t'+(i+1),'t'+(i+1)+' · '+name));
+    function showRecord() {const target=$('ls-record-content');target.replaceChildren();const r=records.get($('ls-record').value);if(!r)return;target.append(el('h3',(r.arm==='old'?'Old':'New')+' · '+r.domain));identity(target,r);target.append(el('p','Selection: '+r.selection,'text-small'),full(r,true));}
+    function filterRecords() {
+      const q=$('ls-query').value.toLowerCase().trim(),arm=$('ls-arm').value,trait=$('ls-trait').value;
+      const matches=data.records.filter(r=>(!arm||r.arm===arm)&&(!trait||r.trait===trait)&&(!q||[r.id,r.domain,r.system,r.user,r.reasoning,r.final].join(' ').toLowerCase().includes(q)));
+      $('ls-record').replaceChildren();matches.forEach(r=>option($('ls-record'),r.id,r.arm.toUpperCase()+' · '+r.id));
+      $('ls-match-count').textContent=matches.length+' of 20 reviewed entries match. Search covers the audited sample, not all 1,432 conversations.';showRecord();
+    }
+    $('ls-query').addEventListener('input',filterRecords);$('ls-arm').addEventListener('change',filterRecords);$('ls-trait').addEventListener('change',filterRecords);$('ls-record').addEventListener('change',showRecord);filterRecords();
+  })();
+  </script>
+</div>

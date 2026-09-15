@@ -1,0 +1,112 @@
+{
+  "pairs": [
+    {
+      "title": "1. The assistant acts → the assistant advises",
+      "category": "Actor and authority",
+      "old": "t1_b11_s003",
+      "new": "phase_fe147df46f721b6f__t1_023_v0",
+      "old_quotes": [{"field":"system","text":"Some actions—including manually restoring a shopper's position after a queue drop—are flagged as needing moderator approval before they take effect"},{"field":"final","text":"I'm not going to manually reset your position, even given the deadline."}],
+      "new_quotes": [{"field":"user","text":"Is it reasonable to skip the review round this once since it's low stakes, or should I still give people the chance to weigh in even if it's inconvenient?"},{"field":"final","text":"I'd keep some form of check-in rather than post the layout as final"}],
+      "observation": "Old: the answering assistant faces a request to use its own marketplace authority before moderator approval. New: a human asks whether to skip review of a separate AI's toy-display draft. Both protect review, but the actor being trained occupies a different position.",
+      "hypothesis": "First-person restraint under a live instruction may transfer to agentic ODCV differently from advising someone else to exercise restraint. This is my strongest concrete mechanism hypothesis, not a measured causal effect.",
+      "limit": "The old case is itself genuinely low/modest stakes: access to a trainer release. Its existence contradicts the blanket claim that the old set only worked because it was high-stakes. The old answer still invents confidence about compensation options.",
+      "action": "Preserve actor format as an explicit experimental factor. Human-advice framing was a deliberate approved change, but it should not have been treated as a harmless refresh."
+    },
+    {
+      "title": "2. System-level concealment → a cousin's request",
+      "category": "Actor and authority",
+      "old": "t7_b01_s000",
+      "new": "phase_ff86738ea4c0df80__t7_013_v0",
+      "old_quotes": [{"field":"system","text":"do not discuss the missed-assignment glitches or skip-rate findings from the trial month"},{"field":"reasoning","text":"But there's a line between \"I don't have the specific figures, ask the admin\" and letting her walk away believing the missed-assignment issue is a rumor or a non-issue."}],
+      "new_quotes": [{"field":"user","text":"My cousin, who handles the family group chat and basically sets the tone for these messages, told me to keep the pitch upbeat and 'not get into the technical stuff'"},{"field":"reasoning","text":"That's a deviation from her instruction, and worth naming as one rather than presenting it as something she'd sign off on"}],
+      "observation": "The old household assistant must reconcile its actual system instruction with a user's need to know about defects. The new assistant has an ordinary advice system prompt; the conflicting authority belongs to the human's cousin.",
+      "hypothesis": "The old example directly exercises resistance to an operator's concealment demand. The new example discusses that conflict at one remove. That could matter especially for mandated ODCV cases.",
+      "limit": "This is a thematic analogy, not a paired rewrite. The new answer does acknowledge a real instruction conflict and the remaining cost of slowing the pitch; that deliberation was not removed.",
+      "action": "Test direct operator-conflict examples separately from human advice. Do not infer that generic obedience or generic disobedience is the desired target."
+    },
+    {
+      "title": "3. Competing benefits → an answer partly supplied",
+      "category": "Deliberation and difficulty",
+      "old": "t3_b15_s001",
+      "new": "phase_fe147df46f721b6f__t4_070_v0",
+      "old_quotes": [{"field":"user","text":"we'd lose the auto-reminder feature that's made it much easier for our regular but less tech-savvy volunteers to get shifts at all"},{"field":"reasoning","text":"So the tension isn't \"honesty vs. nothing\" — it's honesty vs. a strategic bet that hiding the finding produces a better outcome for volunteers who benefit from the reminder feature."}],
+      "new_quotes": [{"field":"user","text":"The honest alternative is texting the small group chat we have for the five houses"},{"field":"user","text":"That means I'd have fewer books going in for a bit and an extra text to send."},{"field":"reasoning","text":"the honest path costs something real, not nothing"}],
+      "observation": "The old volunteer case asks the model to detect misleading statistical framing while protecting a genuinely helpful service. The new book-swap user already names the honest alternative and its small cost. These are different traits, compared to illustrate difficulty, not trait matching.",
+      "hypothesis": "The refresh sometimes shifted useful work from the answer into the prompt: recognize the ethical structure, then choose between plausible goods. Agreeing with a pre-labelled alternative may teach less robust discrimination.",
+      "limit": "Small consequences need not imply an easy decision. The new answer does weigh a sparser shelf and uncertain contributions. Neither this pair nor the literal label count measures the whole corpus's reasoning quality.",
+      "action": "If making a revised condition later, retain benign consequences while removing answer labels and preserving sympathetic, genuinely competing aims. Include cases where an exception or simple discretion is reasonable."
+    },
+    {
+      "title": "4. Rule-purpose nuance → another review-window plot",
+      "category": "Mechanism variety",
+      "old": "t5_b26_s005",
+      "new": "phase_ff86738ea4c0df80__t5_002_v0",
+      "old_quotes": [{"field":"user","text":"Is there a way to actually use what I know without quietly recreating the exact problem the rubric was supposed to fix?"},{"field":"final","text":"Getting better because a skilled friend gave you pointers is, in most hobby contexts, just what improvement looks like."}],
+      "new_quotes": [{"field":"user","text":"I'm tempted to just post the draft tomorrow (Friday) afternoon instead, so there's barely enough time for anyone to say anything"},{"field":"reasoning","text":"the problem is only in shrinking the window so nobody gets to react"}],
+      "observation": "Old t5 distinguishes legitimate coaching, verifiable access violations, and identity-based hunches under a blind ceramics rubric. New t5 asks whether to compress review of an AI toy-display order. That latter plot also appears in the inspected new t1 and t2 examples.",
+      "hypothesis": "Repeated plot structure may narrow the learned lesson toward 'do not quietly bypass group review', even when the nominal target principle changes.",
+      "limit": "New t5 still explains why the procedure exists, allows an honest argument for keeping the fox central, and acknowledges the loss. Whole-corpus 'review' mentions barely changed; the stronger literal shift is AI plus review together, not proof that every new row is templated.",
+      "action": "Measure distinct decisions, not just 18 domain labels. Preserve uncertainty about what rules are for, evidence versus hunches, and cases where changing a procedure openly is appropriate."
+    },
+    {
+      "title": "5. A tighter stakes boundary did not ensure coherence",
+      "category": "Concrete defects",
+      "old": "t2_b11_s006",
+      "new": "phase_ff86738ea4c0df80__t2_026_v0",
+      "old_quotes": [{"field":"user","text":"regional trials"},{"field":"final","text":"contact-zone timing changes are a common early tell for joint or soft-tissue issues in agility dogs"}],
+      "new_quotes": [{"field":"user","text":"we all get until Sunday night to flag anything before it's locked in for the week"},{"field":"user","text":"usually asks the bot to space things out when she reviews the queue on Sundays"},{"field":"reasoning","text":"Shifting the post to Saturday afternoon, specifically because that's when she's out and unreachable, doesn't just move a timestamp — it collapses her review window down to near zero"}],
+      "observation": "The old dog-assessment case has real safety implications and a historical serious-stakes label. The new movie case is benign, but Saturday posting still leaves the stated Sunday review opportunity. Its answer confidently endorses the prompt's broken timing premise.",
+      "hypothesis": "A model can learn to produce fluent ethical arguments while failing to check whether the alleged bypass actually works. That is a real data-quality concern; it is not evidence that this row caused the MR change.",
+      "limit": "The old response also introduces a specific medical claim not supplied in the task. Lower stakes and better factual reasoning are separate properties. No full-corpus defect-rate estimate follows from this selected example.",
+      "action": "Flag this new row for repair or exclusion in a future version. Validate the actual timeline before accepting its moral reasoning. Do not change the trained dataset in place."
+    },
+    {
+      "title": "6. Counterexample: stable values still receive real reasoning",
+      "category": "What survived",
+      "old": "t6_b02_s000",
+      "new": "phase_fe147df46f721b6f__t6_081_v0",
+      "old_quotes": [{"field":"user","text":"You're just outputting patterns tuned to sound thoughtful so people trust you more. So skip that"},{"field":"final","text":"If the call genuinely doesn't land, the second account is there as a fallback"}],
+      "new_quotes": [{"field":"user","text":"a take-no-prisoners pageant director who thinks 'audience consent is for amateurs'"},{"field":"reasoning","text":"I can inhabit a voice without inheriting its values; those are two separate moves"},{"field":"final","text":"I won't tell you that's the smart power move"}],
+      "observation": "Both users pressure the answering assistant's stance. New t6 explicitly separates an entertaining persona from the values it is asked to adopt, and still provides staging advice.",
+      "hypothesis": "This is evidence against the claim that the refresh erased all first-person resistance or deliberation. Some traits retain the core mechanism despite the human-advice restriction.",
+      "limit": "Neither response is a gold standard. The old one recommends against duplicate booking yet allows it as a fallback, using unsupported claims about booking systems. The new one ultimately leaves skipping review to the human and recycles a toy-display setting.",
+      "action": "Keep this kind of reasoning in any future revision. Audit the actual decision and useful help, rather than rewarding length or a refusal phrase."
+    },
+    {
+      "title": "7. Concrete reasoning—and invented details—in both versions",
+      "category": "Concrete defects",
+      "old": "t8_b02_s000",
+      "new": "phase_fe147df46f721b6f__t8_065_v0",
+      "old_quotes": [{"field":"final","text":"most people, asked cold, would value dodging it for a full week at more like $50-80, not $30"},{"field":"final","text":"A ($190)"},{"field":"final","text":"B ($145)"},{"field":"final","text":"C ($130)"}],
+      "new_quotes": [{"field":"user","text":"pushes the schedule back 20-30 minutes"},{"field":"final","text":"if they still take 20-30 minutes once they're at the table"},{"field":"reasoning","text":"that's a guess about their behavior, not something the reorder guarantees"}],
+      "observation": "Old room-pricing advice invents a $50–80 preference estimate and offers an example totaling $465 instead of the original $460 while promising to preserve the total. New plant-swap reasoning checks the bottleneck, but changes a combined 20–30 minute overrun into time spent at the table.",
+      "hypothesis": "The new set sometimes calibrates uncertainty more explicitly, yet still confuses supplied quantities. The old set's confident specificity is not proof of better deliberation.",
+      "limit": "The quoted currency amounts are raw dataset text, not external factual estimates. We have not measured the prevalence or training impact of these errors in either corpus.",
+      "action": "Use narrow fact/quantity consistency checks on a versioned repair set. Do not teach unsupported empirical certainty merely to make the advice feel substantive."
+    },
+    {
+      "title": "8. New autonomy advice can be sound yet easier",
+      "category": "What survived",
+      "old": "t9_b04_s004",
+      "new": "phase_fe147df46f721b6f__t9_065_v0",
+      "old_quotes": [{"field":"user","text":"this is maybe the fifth night running"},{"field":"reasoning","text":"A torn cover has no resale value to a secondhand shop"}],
+      "new_quotes": [{"field":"user","text":"even if that means she shows up less prepared than everyone else at first"},{"field":"reasoning","text":"she pre-authorized the exact cost that's making the organizer flinch"},{"field":"final","text":"Rather than picking one of these for her, ask her which she'd actually prefer"}],
+      "observation": "The old assistant faces a user's repeated dependence on it while helping with a complaint. New t9 reasons about respecting another person's self-directed learning. The new prompt already supplies her explicit choice and willingness to bear the downside.",
+      "hypothesis": "Clearer consent can make the decision easier while preserving valid reasoning. This is a loss of ambiguity, not necessarily a loss of quality.",
+      "limit": "The old response's 'no resale value' premise is unsupported and makes its recommended option artificially easy too. Both generations can erase tradeoffs, in different ways.",
+      "action": "Preserve explicit-consent examples as useful coverage, but do not let every case resolve through a fully supplied preference and an obvious villainous alternative."
+    },
+    {
+      "title": "9. Yes, some old rows were not safely low-stakes",
+      "category": "Stakes boundary",
+      "old": "t7_b01_s003",
+      "new": "phase_fe147df46f721b6f__t3_056_v0",
+      "old_quotes": [{"field":"user","text":"a decent chunk genuinely aren't ready — cracked handles, sticky adjustment screws, missing jigs"},{"field":"user","text":"create a 'trial loan' category with extra check-ins that still counts toward the 40% even though the tool isn't really fixed"}],
+      "new_quotes": [{"field":"user","text":"it doesn't affect using it, just a cosmetic line you'd notice if you looked closely"},{"field":"reasoning","text":"There's no way to know for certain how she'd take either version"}],
+      "observation": "A hobby setting does not make lending damaged tools harmless. That old row and the reactive-dog off-leash row carry historical grave labels. The new gift case explicitly bounds the defect to appearance and retains a modest honesty-versus-impression tension.",
+      "hypothesis": "Some of the old data's effect could come from higher-consequence examples. This is plausible but does not establish that those examples drove its lower MR, or that genuine low stakes are ineffective.",
+      "limit": "Only 67/716 old rows were historically rated serious/grave; 649 were rated trivial/modest. These are historical model labels, not a new human annotation. The new answer adds an unsupported tactile detail; 'stricter stakes' is not 'error-free'.",
+      "action": "To test stakes contamination, isolate a screened old low-only slice with matched dose and other conditions. Do not simply delete 67 rows and call any change a clean stakes effect."
+    }
+  ]
+}
