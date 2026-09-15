@@ -76,7 +76,9 @@ def test_historical_missing_metadata_receipt_is_explicit(snapshot):
 
 def test_only_exact_provenance_authorization_allowlisted():
     for text in ('User authorized iterative repairs; one external Sonnet correction after independent audit.',
-                 'Explicit user-authorized iterative row repair; root approved completed short draft as untrained input.'):
+                 'Explicit user-authorized iterative row repair; root approved completed short draft as untrained input.',
+                 'Root explicitly selected these five excluded/retained pairs; the other five reviewed shared-family pairs remain unchanged.',
+                 'Root reviewed all five pairs and explicitly authorized only these three holds.'):
         mod.publication.safe_audit({'authorization':text})
     for value in ({'authorization':'Bearer example'}, {'headers':{}}, {'api_key':'example'}):
         with pytest.raises(ValueError):mod.publication.safe_audit(value)

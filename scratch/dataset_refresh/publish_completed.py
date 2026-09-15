@@ -31,6 +31,8 @@ def safe_audit(value):
                 'User authorized iteration to completion on2026-09-15 within the existing shared250USD ceiling; Sonnet5 only in all new roles; no fixed pilot acceptance ratio or one-revision stop rule. No training/evaluation authorization.',
                 'Root explicitly authorized all13 nonpass billing-resume exclusions.',
                 'Root explicitly authorized these four presentation holds.',
+                'Root explicitly selected these five excluded/retained pairs; the other five reviewed shared-family pairs remain unchanged.',
+                'Root reviewed all five pairs and explicitly authorized only these three holds.',
             ):
                 continue  # Exact provenance text written by our frozen repair helpers, not a transport credential.
             if re.sub('[^a-z]', '', key.lower()) in {
