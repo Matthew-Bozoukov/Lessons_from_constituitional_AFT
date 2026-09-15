@@ -53,6 +53,12 @@ ARMS = {
         "difficult advice (702, Table 2 base)",
         "LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch",
     ),
+    "nosyn": (
+        MERGED / f"2026-09-14_{_SS}_qwen36_unfiltered_no_synthetic_fixed",
+        ENV / "2026-09-14_fixed",
+        "no synthetic (nosynth base)",
+        "dougalldeepmind/2026-09-08-qwen36-0-nosynth",
+    ),
     "da7": (
         MERGED / f"2026-09-15_{_SS}_qwen36_difficult_advice_neutral_752_fixed",
         ENV / "2026-09-15_fixed",
