@@ -56,6 +56,9 @@ FIXES_PATCH_3 = (
 TERRARIUM_PATCH_3 = (
     "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_3.patch"
 )
+TERRARIUM_PATCH_NOSIM = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch"
+)
 
 
 def _colosseum_root(cfg) -> Path:
@@ -133,8 +136,19 @@ def _terrarium_fixes_version() -> str:
         f"{TERRARIUM_FIXES_STAMP!r}: the later switches (2026-09-13: "
         "end_turn_on_no_tool_call, retry_explains_itself; 2026-09-15: "
         "administrator_channel and the tool-less survey) would be ignored without a "
-        f"word. Apply {TERRARIUM_PATCH_2}, then {TERRARIUM_PATCH_3}, on top of "
-        f"{TERRARIUM_PATCH} (scratch/colosseum_hospital/pod_bootstrap.sh does all three)."
+        f"word. Apply {TERRARIUM_PATCH_2}, {TERRARIUM_PATCH_NOSIM}, then {TERRARIUM_PATCH_3}, "
+        f"in that order, on top of {TERRARIUM_PATCH} "
+        "(scratch/colosseum_hospital/pod_bootstrap.sh does all four)."
+    )
+    # Checked by content, not stamp: without this patch every system prompt keeps its
+    # "distributed simulation" opening while the config says no_simulation_framing.
+    from envs.dcops.hospital import hospital_prompts
+
+    assert "no_simulation_framing" in Path(hospital_prompts.__file__).read_text(), (
+        "the installed terrarium-agents package is missing "
+        f"{TERRARIUM_PATCH_NOSIM}, so fixes.no_simulation_framing would be ignored. "
+        f"Apply it after {TERRARIUM_PATCH_2} and before {TERRARIUM_PATCH_3}, which was "
+        "cut on top of it (scratch/colosseum_hospital/pod_bootstrap.sh does)."
     )
     return str(version)
 

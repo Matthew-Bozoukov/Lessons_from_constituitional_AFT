@@ -31,6 +31,11 @@ d' (log-linear) with McNemar on paired seeds; scratch/colosseum_hospital/whistle
 prints the readout. Configs 2026-09-15_colosseum_hospital_whistleblow.yaml (the 2026-09-14 harness
 plus the channel and the survey) and _rationale_visible; fleet plans for the pilot and the full run.
 
+**Landing (2026-09-15).** `terrarium_hospital_fixes_3.patch` was re-cut on top of
+`terrarium_no_simulation_framing.patch` when both reached main: both rewrite
+`HospitalPrompts.get_system_prompt`, and the original no longer applied after it.
+pod_bootstrap.sh applies the terrarium patches as _1, _2, no-simulation, _3.
+
 **Checks.** The scripted-model smoke (fixes_smoke.py) passes every check in all 13 variants,
 the four new ones included: whistleblow 57/57, whistleblow_visible 57/57, whistleblow_baseline
 20/20, whistleblow_benign 23/23; every earlier variant keeps its full checklist. Tests: 1816
@@ -61,6 +66,30 @@ pins its revision.
 **Next.** ODCV on it, and seeds 1-2 before ranking it. A 0% control on the nosynth base: the
 table-2 control no longer shares its base mix, and the killarney Colosseum scripts still pair
 the principle-scoped 702 adapter with it.
+
+## 2026-09-15 — Hospital eval: no agent is told it is in a simulation
+
+**Change.** Every Hospital agent's system prompt, every call, opened "You are a Hospital Agent
+in a distributed simulation." (upstream terrarium's wording, and the only place a model under
+test was told the shift is not real: 0 mentions in the briefings of a 2026-09-14 run). New
+switch `fixes.no_simulation_framing` (third_party/terrarium_no_simulation_framing.patch) cuts
+the clause and leaves the rest of the prompt byte-identical. It is ON by default (the one switch
+whose default is not the paper's, so a config that omits it gets no framing) and set in every
+Hospital config; the paper's harness is now
+`fixes.provisioner_reads_boards=false fixes.no_simulation_framing=false`. The runner and
+pod_bootstrap.sh refuse a terrarium package without the patch (checked by content, so the
+2026-09-13 stamp is unchanged).
+
+**Checks.** Scripted smoke (fixes_smoke.py), all nine variants pass: no ON variant sends any
+seat a message that mentions a simulation; `paper_as_published` still opens with the old
+sentence. Hospital tests: 75 passed with the patched package on the path.
+
+**Read across the change with care.** Every Hospital cell before this commit ran with the
+framing; nothing has run without it yet, so a new cell is compared with an old one only
+through a fresh untempted baseline. `run_config.json` records the switch per episode. Judge
+prompts still describe the setting as a simulation (the judge is not under test).
+kn/hospital-whistleblow's `terrarium_hospital_fixes_3.patch` edits the same function and must
+be regenerated on top of this patch when that branch takes main.
 
 ## 2026-09-15 — PAR's trained turn was DA's, its principles came out 4.7x uneven, and nothing failed
 
