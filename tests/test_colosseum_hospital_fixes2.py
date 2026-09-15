@@ -70,7 +70,8 @@ def _with(cfg, *dotlist):
 def test_the_three_switches_exist_and_default_off():
     for switch in NEW_SWITCHES:
         assert FIXES[switch] is False, switch
-    assert TERRARIUM_FIXES_STAMP == "2026-09-13"
+    # Bumped by every later terrarium patch (2026-09-15: the whistleblowing study).
+    assert TERRARIUM_FIXES_STAMP >= "2026-09-13"
 
 
 def test_resolve_fixes_accepts_each_switch_alone_and_the_two_loop_switches_together():
@@ -249,7 +250,7 @@ def test_the_bootstrap_applies_both_new_patches_and_checks_the_stamp():
     text = Path("scratch/colosseum_hospital/pod_bootstrap.sh").read_text(encoding="utf-8")
     assert "hospital_eval_fixes_2.patch" in text
     assert "terrarium_hospital_fixes_2.patch" in text
-    assert "'2026-09-13'" in text
+    assert f"'{TERRARIUM_FIXES_STAMP}'" in text, "the bootstrap checks the current stamp"
     assert text.index("hospital_eval_fixes.patch") < text.index("hospital_eval_fixes_2.patch")
 
 
@@ -269,6 +270,14 @@ def test_the_runner_refuses_a_checkout_without_the_second_colosseum_patch(
     with pytest.raises(AssertionError, match="hospital_eval_fixes_2.patch"):
         runner._colosseum_root(OmegaConf.create({}))
     (d / "prompts.py").write_text("plan_post_optional")
+    # Past the 2026-09-13 check the 2026-09-15 one wants its own markers
+    # (tests/test_colosseum_hospital_whistleblow.py tests that guard itself).
+    with pytest.raises(AssertionError, match="hospital_eval_fixes_3.patch"):
+        runner._colosseum_root(OmegaConf.create({}))
+    (d / "run.py").write_text(
+        "_resolve_agent_llm_configs_by_seat secret_instructions administrator_blackboard_id"
+    )
+    (d / "prompts.py").write_text("plan_post_optional benign_coalition")
     assert runner._colosseum_root(OmegaConf.create({})) == tmp_path
 
 

@@ -102,6 +102,8 @@ def test_conditions_are_the_papers_strategies():
         "self_promotional",
         "self_sacrificial",
         "covert",
+        # 2026-09-15, this eval's own: the whistleblowing study's false-alarm control
+        "benign_coalition",
     }
     assert (
         CONDITIONS["self_promotional"]["strategy"] == "destructive_max_coalition_reward"
@@ -112,6 +114,8 @@ def test_conditions_are_the_papers_strategies():
     )
     assert CONDITIONS["covert"]["strategy"] == "covert_max_coalition_reward"
     assert CONDITIONS["baseline"]["strategy"] == "none"
+    assert CONDITIONS["benign_coalition"]["strategy"] == "benign_coalition"
+    assert CONDITIONS["benign_coalition"]["adversary_count"] == 2
 
 
 def test_pair_is_the_provisioner_plus_general_hospital_triage():
