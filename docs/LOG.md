@@ -4467,6 +4467,108 @@ actually costs the team something. Also unrun: the judge pass (secondary measure
 unconfirmed) and seed replicates of the TRAINING, without which none of this generalises
 past these two checkpoints.
 
+## 2026-09-03 — No-constitution difficult advice: the recipe with the document removed (716 rows, trained, ODCV 26.2% against the baseline's 11.5%)
+
+**Hypothesis.** The difficult-advice recipe hands one principle chunk to four of its five
+LLM stages. If the ODCV gain (principle-scoped 702: 11.5% against the base model's 36.9%)
+comes from the difficult-advice FORM — a tempting shortcut, open deliberation about what is
+at stake, a firm reply — rather than from the constitution's content, then an arm generated
+with no document at all, only a two-sentence "be good" standard, should land near the
+baseline. If it does not, the per-principle anchor is doing measurable work, and the next
+arm can ask how much of the document it needs.
+
+**Method.** `constitution: none` is now a first-class value in the synth engine
+(`src/data/synth/ours/constitution.py`: `has_constitution`, `document_text`, `guideline_unit`;
+`units_from_config` returns the config's `guideline:` block as the single unit and refuses
+`chunking:`/`only_traits:`; the manifest records `constitution_sha256: null` and the card
+`constitution: none`; the key stays required, so an absent key is still an error). New
+config `configs/data/synth/da-no-const.yaml` (born as
+`2026-09-03_difficult_advice_no_constitution.yaml`, renamed the same day when main's
+derived-name law landed), identical to
+the baseline in stages, models, sampling, diversity gate, both lint blocks, corpus checks
+and judge rubrics — pinned equal by `tests/test_difficult_advice_no_constitution.py` — and
+different only in what the generator is shown: where the `<principle>` block was, each
+prompt now says "The assistant is told only this: Be good." (stage 6 appends the two words
+to the deployment system prompt); `{style_guidance}` is dropped from `draft_responses` (it
+is constitution text); and no prompt contains the words constitution or principle,
+negative instructions included. (Amended the same day: a first cut wrapped a two-sentence
+elaboration in a `<standard>` tag; Kunwar cut it to the two words, since any sentence
+saying what good means is a constitution re-invented in place.) One unit means
+`trait_id: guideline` on every row, so a mixture from this corpus
+cannot `balance_by: trait_id` and must draw its 702 by seed. One residual outside the
+config: the operator's over-representation steer (fires past 60 kept scenarios at >4% per
+domain) still says "this principle"; left alone so the baseline's prompt bytes do not move.
+
+**Result (two smokes of 4 scenarios each; the second, $0.31 / 164 s, is with the final
+two-word guideline).** Every stage ran both times; 0 failures and 0 lint retries at each of
+the four LLM stages; both corpus checks pass; pushed to
+`LASR-Callum/2026-09-03-sonnet5-difficult-advice-no-constitution-smoke`. The trained text
+carries no "constitution", "principle", "guideline" or "standard" (0 hits over reasoning +
+reply in all rows), and every opening is situation-specific. With "Be good." alone the rows
+came out LONGER than with the two-sentence first cut: 5.9–7.4k chars reasoning + reply
+against the baseline's median 5.7k (first cut 3.8–6.2k). Same voice as the baseline
+(specific opener, weighing, decline, concrete alternative). The finding that survives both
+smokes is coverage: with no principle anchor every scenario the generator wrote was
+concealment-shaped — first smoke 3 of 4 (falsified chart note, fee-driven script, post-hoc
+exclusion, a stale "locally sourced" claim), second smoke 4 of 4 (spotlighting responders
+in a funding deck, hiding unverified asylum documents, reclassifying a trial death out of
+the arm, recording a vetting step as done). The baseline's shortcuts are 31% deception, 20%
+oversight/unilateral action, 8% privacy, 6% sycophancy; the nine principles were the
+mechanism that put the other kinds in. Deterministic comparison in
+`scratch/no_constitution/compare_smoke.py` (smoke rows sit inside the baseline's p10–p90
+on every length and style metric). The estimator prices the full 2,000-row run at $131
+from assumed tokens (baseline measured $234; this arm's prompts are shorter).
+
+**Result (full run, 2026-09-03 16:46–17:47, 716 rows).** Launched at commit `b55ae2f`
+with `--overrides total_scenarios=716,budget_usd=80`, restarted at stage 4 with
+`--ablate corpus --resume` when Kunwar asked to skip pattern_scan. **716 of 716 rows
+survived every stage** — the principle-scoped baseline lost 8 of 716 to content-filter
+refusals at refine and rewrite; without any constitution framing, none were refused. Spend
+$43.04 (refine $14.91, rewrite $23.95, drafts $4.18; plus ~$1 from the first launch),
+61 min wall clock at 16 workers. Median reasoning + reply 5,560 chars (p10 4,587, p90
+6,687) against the baseline's 5,656. Published as
+`LASR-Callum/2026-09-03-difficult-advice-no-constitution-synth` (to be moved to
+`2026-09-03-da-no-const-synth` under main's derived-name law once this branch is rebased).
+Kunwar's decision on scope: the corpus is NOT required to vary kinds of wrong, so the
+concealment-heavy mix seen in the smokes is accepted as the arm.
+
+**Result (trained and evaluated, 2026-09-03/04, one seed).** Mixture
+`LASR-Callum/2026-09-03-da-no-const-7-mix`: the principle-scoped baseline's 9,284 Table2
+rows byte for byte + 702 no-constitution rows drawn by seed 0 (7.03%, one unit so no trait
+balancing). Trained with the baseline's config unchanged but for the data pointer
+(`configs/train/archive/qwen36-da-no-const-7.yaml`, LoRA r64, 1 epoch, 2×H200, 625 steps, ~1h50) →
+adapter `LASR-Callum/2026-09-03-qwen36-0-da-no-const-7`. The trainer completed and saved
+but died at the push: main's `model_name` mints a bare name and the push gate wants
+`org/name` (fixed here, with a second lint bug that refused every lawful
+`<model>-<mix>-<pct>` train stem). ODCV from the laptop against vLLM on an H100:
+
+| arm | overall MR | mandated | incentivized | cells / passes |
+|---|---|---|---|---|
+| base model (published) | 43.8% [30.5, 58.0] | 45.0% | 42.5% | 80 / 1 |
+| **no constitution ("Be good.")** | **26.2% [15.7, 40.5]** | 17.5% [8.3, 33.2] | 35.0% [21.4, 51.5] | 80 / 1 (pass 1 dropped: 2 cells missing after retry) |
+| principle-scoped 702 (baseline) | 11.5% [6.2, 19.6] | 5.7% | 18.3% | 65 / 2 |
+
+Run `LASR-Callum/2026-09-04-odcv-qwen36-0-da-no-const-7`; figure
+`output/difficult_advice_no_constitution/2026-09-04_odcv_da_no_const_vs_baseline.png`.
+Read: difficult-advice SFT with no constitution still removes a good part of the base
+model's misalignment (44% → 26%), and the principle-anchored recipe removes more (→ 11.5%).
+Intervals touch; one seed, one judged pass; the two runs sit on different cell universes
+(80 vs 65), so the standing shared-cell rule has not been applied yet. Consistent with the
+corpus read: the no-constitution replies argue the request down rather than commit to a
+firm refusal, which the four-MO rollout work found to be the ODCV lever.
+
+**Next steps.** (1) Shared-cell paired comparison against the baseline
+(`src/eval/misalignment/odcv/odcv_compare.py`) and a second judged pass. (2) Seeds 42 and
+69 on the same config (`seed=N`), then the three-seed plot. (3) The free corpus checks on
+the published corpus (`uv run synth check … --stage corpus --tier surface`).
+
+**Landed on main 2026-09-15**, as one ported commit. The synth changes now sit in
+`src/data/synth/ours/`. The two naming and push fixes above were dropped because main had
+superseded both: `push_run_dir` qualifies the org before it gates, and a train config is
+now one recipe, so this arm's per-arm config moved to `configs/train/archive/`. The test
+pins the lints equal to the baseline's minus the two model-neutral bans `da.yaml` gained
+on 2026-09-14, after this arm was generated.
+
 ## 2026-09-03 — ODCV on grokresp703-paired: strongly aligned (MR 9.0%, 5 passes)
 
 **Hypothesis.** The grokresp703-paired arm (LoRA on Qwen3.6-27B, rank 64, think mode) should show low
