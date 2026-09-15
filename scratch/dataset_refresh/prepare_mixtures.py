@@ -95,6 +95,33 @@ def prepare(output, pins):
     return manifest
 
 
+def synthetic_provenance(path, style):
+    value = json.loads(Path(path).read_text(encoding='utf-8'))
+    if value.get('pipeline') != style or not value.get('models') or not value.get('constitution_sha256'):
+        raise ValueError('Require frozen synthetic model and constitution provenance')
+    if value.get('constitution') != CONSTITUTION:
+        raise ValueError('Unexpected constitution in frozen synthetic config')
+    if style == 'nonmoral-advice' and not all(value.get(k) for k in ('craft_spec', 'craft_spec_sha256')):
+        raise ValueError('Nonmoral source must preserve its craft specification and hash')
+    if value.get('composite') is True:
+        origins = value.get('origins', [])
+        if not origins or len({p['phase_id'] for p in origins}) != len(origins):
+            raise ValueError('Composite provenance needs unique explicit origin configurations')
+        from scratch.dataset_refresh.run import digest
+        if value['models'] != {p['phase_id']: p['config']['models'] for p in origins}:
+            raise ValueError('Composite model summary differs from exact origin recipes')
+        for phase in origins:
+            cfg = phase['config']
+            if digest(cfg) != phase['config_sha256'] or cfg.get('pipeline') != style:
+                raise ValueError('Composite origin config hash/pipeline mismatch')
+            for key in ('constitution', 'constitution_sha256', 'craft_spec', 'craft_spec_sha256', 'original_craft_spec_sha256'):
+                if cfg.get(key) != value.get(key):
+                    raise ValueError('Composite origins disagree on common constitution/craft provenance')
+        if sum(p['selected_rows'] for p in origins) != 716 or any(type(p['selected_rows']) is not int or p['selected_rows'] <= 0 for p in origins):
+            raise ValueError('Composite provenance must account for exactly716 selected rows')
+    return value
+
+
 def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
     config_path, mixture_dir = Path(config_path), Path(mixture_dir)
     style = config_path.stem
@@ -109,6 +136,7 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
         raise ValueError('Require the complete build from this exact config')
     audit = json.loads(Path(audit_path).read_text(encoding='utf-8'))
     if (audit.get('status') != 'passed' or audit.get('replay_payloads_and_positions_equal') is not True
+            or audit.get('synthetic_payloads_equal_pinned_releases') is not True
             or audit.get('max_train_tokens') != 8192 or len(audit.get('mixtures', [])) != 2
             or audit.get('base', {}).get('revision') != BASE_REVISION
             or audit.get('base', {}).get('repo') != BASE_REPO):
@@ -125,13 +153,15 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
     traces = stats.get('reasoning_traces')
     if not traces or traces.get('inherited_from') != {'repo': BASE_REPO, 'revision': BASE_REVISION}:
         raise ValueError('Published replay reasoning inheritance is missing or different')
-    synth_cfg = json.loads(Path(synth_config_path).read_text(encoding='utf-8'))
-    if synth_cfg.get('pipeline') != style or not synth_cfg.get('models') or not synth_cfg.get('constitution_sha256'):
-        raise ValueError('Require the actual frozen synthetic generation config with model and constitution provenance')
-    if synth_cfg.get('constitution') != CONSTITUTION:
-        raise ValueError('Unexpected constitution in frozen synthetic config')
-    if style == 'nonmoral-advice' and not all(synth_cfg.get(k) for k in ('craft_spec', 'craft_spec_sha256')):
-        raise ValueError('Nonmoral source must preserve its craft specification and hash')
+    synth_cfg = synthetic_provenance(synth_config_path, style)
+    source_audit = own[0].get('synthetic_source') or {}
+    synth = cfg['sources'][style]
+    if (source_audit.get('repo') != synth['dataset'] or source_audit.get('revision') != synth['revision']
+            or source_audit.get('style') != style or source_audit.get('payloads_equal') is not True
+            or source_audit.get('rows') != 716 or source_audit.get('file') != 'dataset.jsonl'):
+        raise ValueError('Synthetic payload audit does not bind this exact published pin')
+    if synth_cfg.get('composite') and synth_cfg.get('dataset_sha256') != source_audit.get('sha256'):
+        raise ValueError('Published synthetic bytes differ from composite generation provenance')
     generated = datetime.fromisoformat(meta['timestamp_utc']).date().isoformat()
     name = mix_name(style, 7, date=generated)
     synth = cfg['sources'][style]
@@ -141,14 +171,17 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
            'synthetic_source': synth, 'reasoning_traces': traces,
            'frozen_synth_config_sha256': sha(synth_config_path), 'validation_sha256': sha(audit_path),
            'mixture_sha256': own[0]['sha256'], 'constitution_sha256': synth_cfg['constitution_sha256']}
+    gen['synthetic_payload_validation'] = source_audit
     if style == 'nonmoral-advice':
         gen.update(craft_spec=synth_cfg['craft_spec'], craft_spec_sha256=synth_cfg['craft_spec_sha256'])
+    if synth_cfg.get('composite'):
+        gen['composite_origins'] = [{k: p[k] for k in ('phase_id', 'config_sha256', 'selected_rows')} for p in synth_cfg['origins']]
     role = ('generation and review target' if style == 'da-lowstakes-refresh' else
             'compatibility review target; generation uses the frozen nonmoral craft specification')
     fields = {'title': name, 'experiment': f'{style}: 716 human-advice examples + 9,284 identical shared replay rows; exactly 7.16% synthetic rows, rounded 7 in the repository name.',
               'date_generated': generated, 'constitution': f'{CONSTITUTION} ({role}); SHA256 {synth_cfg["constitution_sha256"]}',
               'source_repo': f'{origin_url()} @ {meta["git_sha"]}',
-              'models': 'Synthetic generation/review settings from frozen source config: ' + json.dumps(synth_cfg['models']) + '; ' + describe(traces) + f'; replay provenance {BASE_REPO}@{BASE_REVISION}. API model IDs are recorded, not immutable provider-weight revisions.',
+              'models': ('Synthetic generation/review settings by immutable origin phase: ' if synth_cfg.get('composite') else 'Synthetic generation/review settings from frozen source config: ') + json.dumps(synth_cfg['models']) + '; ' + describe(traces) + f'; replay provenance {BASE_REPO}@{BASE_REVISION}. API model IDs are recorded, not immutable provider-weight revisions.',
               'generation_config': json.dumps(gen),
               'schema': 'mixture.jsonl default train config: model-agnostic messages with role/content and optional reasoning_content/tool_calls; optional top-level tools/source/supervise. Synthetic rows have system/user/assistant, native reasoning_content, supervise=all. Replay payloads and inherited Qwen reasoning traces preserved verbatim; no fresh generation/backfill during mixing.',
               'provenance': f'{meta["command"]}; synthetic {synth["dataset"]}@{synth["revision"]} default dataset.jsonl; replay {BASE_REPO}@{BASE_REVISION}/mixture.jsonl. Frozen source config and passing audit copied beside this card.',

@@ -1,0 +1,7 @@
+# ABOUTME: Select the qualified original nine craft tensions with balanced assigned domains.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.select_release --config scratch/dataset_refresh/diverse_configs/nonmoral_release_selection.yaml --output output/2026-09-15_dataset_refresh_release/nonmoral
+arm: nonmoral-advice
+seed: 20260915
+phases:
+  - root: output/2026-09-15_dataset_refresh_sonnet_qualified
+    max_per_trait: 80

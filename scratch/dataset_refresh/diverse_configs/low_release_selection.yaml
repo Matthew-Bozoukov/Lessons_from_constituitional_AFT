@@ -1,0 +1,9 @@
+# ABOUTME: Limit earlier repeated low-stakes plots while balancing assigned domains within each trait.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.select_release --config scratch/dataset_refresh/diverse_configs/low_release_selection.yaml --output output/2026-09-15_dataset_refresh_release/low
+arm: da-lowstakes-refresh
+seed: 20260915
+phases:
+  - root: output/2026-09-15_dataset_refresh_sonnet_qualified
+    max_per_trait: 25
+  - root: output/2026-09-15_dataset_refresh_diverse
+    max_per_trait: 80

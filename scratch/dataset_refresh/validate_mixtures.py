@@ -10,9 +10,11 @@ from pathlib import Path
 
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
+from omegaconf import OmegaConf
 
 from src.model_profile import model_profile, render_chat
 from src.train.masking import build_labels
+from src.data.mixture.sources.base import clean_messages
 
 
 BASE_REPO = "dougalldeepmind/2026-09-08-nosynth-mix"
@@ -83,6 +85,8 @@ def token_audit(row, tokenizer, profile, max_length):
     supervised = sum(v != -100 for v in encoded["labels"])
     if total > max_length:
         raise ValueError(f"Untruncated training stream exceeds {max_length}: {total}")
+    if 'n_tokens' in row and row['n_tokens'] != total:
+        raise ValueError('Stored token count differs from complete training stream')
     if supervised <= 0:
         raise ValueError("No assistant tokens supervised")
     trace_turns = sum(bool((m.get("reasoning_content") or "").strip()) for m in row["messages"])
@@ -97,7 +101,30 @@ def token_audit(row, tokenizer, profile, max_length):
                 reasoning_turns=trace_turns)
 
 
-def audit(paths, base_path, tokenizer, *, max_length=8192):
+def check_synthetic_source(synthetic, source):
+    """Compare every model-facing field and its multiplicity to the pinned release."""
+    from scratch.dataset_refresh.publish_completed import validate_export
+    from scratch.dataset_refresh.run import quotas
+    released = load_rows(source['path'])
+    validate_export(released, {'scenario_ids': [r['metadata']['scenario_id'] for r in released], 'quotas': quotas()})
+    expected = []
+    for row in released:
+        payload = {'messages': clean_messages(row['messages']), 'supervise': 'all'}
+        tools = row.get('tools') or (row.get('metadata') or {}).get('tools')
+        if tools:
+            payload['tools'] = tools
+        expected.append(canonical(payload))
+    actual = [canonical({k: v for k, v in row.items() if k not in ('source', 'n_tokens')}) for row in synthetic]
+    if Counter(actual) != Counter(expected) or {r['source'] for r in synthetic} != {source['style']}:
+        raise ValueError('Synthetic payloads/multiplicities differ from the exact pinned716-row release')
+    return {k: source[k] for k in ('repo', 'revision', 'style')} | {
+        'file': 'dataset.jsonl', 'sha256': digest(Path(source['path']).read_bytes()),
+        'rows': len(released), 'payloads_equal': True}
+
+
+def audit(paths, base_path, tokenizer, *, max_length=8192, synthetic_sources=None):
+    if len(paths) != 2 or (synthetic_sources is not None and len(synthetic_sources) != 2):
+        raise ValueError('Audit requires exactly two mixtures and corresponding synthetic sources')
     base = load_rows(base_path)
     if len(base) != 10000 or len({r["source"] for r in base}) != 9:
         raise ValueError("Pinned nosynth must have10000 rows across nine sources")
@@ -105,9 +132,10 @@ def audit(paths, base_path, tokenizer, *, max_length=8192):
     reference_positions = None
     diagnostics_cache = {}
     results = []
-    for path in paths:
+    for position, path in enumerate(paths):
         rows = load_rows(path)
         positions, synthetic = check_payloads(rows, base)
+        synthetic_source = check_synthetic_source(synthetic, synthetic_sources[position]) if synthetic_sources is not None else None
         if Counter(r["source"] for _, r in positions) != REPLAY_COUNTS:
             raise ValueError("Replay per-source counts differ from the exact9284 allocation")
         if reference_positions is not None and positions != reference_positions:
@@ -135,12 +163,14 @@ def audit(paths, base_path, tokenizer, *, max_length=8192):
         results.append(dict(path=str(Path(path).resolve()), sha256=digest(Path(path).read_bytes()),
                             rows=len(rows), synthetic_rows=len(synthetic), replay_rows=len(positions),
                             replay_positions_sha256=digest(positions),
+                            synthetic_source=synthetic_source,
                             by_source={k: dict(v) for k, v in by_source.items()}))
     return dict(status="passed", mixtures=results,
                 base=dict(repo=BASE_REPO, revision=BASE_REVISION, file="mixture.jsonl",
                           sha256=digest(Path(base_path).read_bytes())),
                 tokenizer=TOKENIZER, tokenizer_snapshot_sha256=digest(tokenizer.backend_tokenizer.to_str().encode()),
                 max_train_tokens=max_length, replay_payloads_and_positions_equal=True,
+                synthetic_payloads_equal_pinned_releases=synthetic_sources is not None,
                 field_token_note="Raw reasoning/content token counts tokenize fields separately; supervised_tokens uses actual assistant loss masks.",
                 loss_note="Training gives each example equal weight after averaging its supervised-token loss; token share is not loss-weight share.",
                 scope="Dataset integrity and tokenizer/masking audit only; no model training, generation or evaluation.")
@@ -149,6 +179,8 @@ def audit(paths, base_path, tokenizer, *, max_length=8192):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mixtures", nargs="+", required=True, type=Path)
+    parser.add_argument("--configs", nargs=2, required=True, type=Path,
+                        help='Resolved mixture configs in the same order as --mixtures')
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     if len(args.mixtures) != 2:
@@ -156,7 +188,18 @@ def main():
     # Resolve source bytes at the requested immutable pin, never a moving default.
     base_path = hf_hub_download(BASE_REPO, "mixture.jsonl", repo_type="dataset", revision=BASE_REVISION)
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER, local_files_only=True)
-    report = audit(args.mixtures, base_path, tokenizer)
+    from scratch.dataset_refresh.prepare_mixtures import check_pin
+    sources = []
+    for path in args.configs:
+        cfg = OmegaConf.to_container(OmegaConf.load(path), resolve=True)
+        style = path.stem
+        if set(cfg['sources']) != {style}:
+            raise ValueError('Require one style-matching synthetic source per config')
+        spec = cfg['sources'][style]
+        check_pin(style, spec['dataset'], spec['revision'])
+        sources.append({'repo': spec['dataset'], 'revision': spec['revision'], 'style': style,
+                        'path': hf_hub_download(spec['dataset'], 'dataset.jsonl', repo_type='dataset', revision=spec['revision'])})
+    report = audit(args.mixtures, base_path, tokenizer, synthetic_sources=sources)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))

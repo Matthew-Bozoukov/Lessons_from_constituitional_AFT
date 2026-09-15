@@ -57,11 +57,13 @@ def card_fixture(tmp_path, style=mod.STYLES[0]):
         d.mkdir()
         # Stand-in bytes: the card gate consumes a trusted audit, not a second tokenizer run.
         (d / 'mixture.jsonl').write_text('fixture bytes', encoding='utf-8')
-        records.append({'path': str(d / 'mixture.jsonl'), 'sha256': mod.sha(d / 'mixture.jsonl'), 'rows': 10000, 'synthetic_rows': 716, 'replay_rows': 9284})
+        records.append({'path': str(d / 'mixture.jsonl'), 'sha256': mod.sha(d / 'mixture.jsonl'), 'rows': 10000, 'synthetic_rows': 716, 'replay_rows': 9284,
+                        'synthetic_source': {'repo': cfg['sources'][style]['dataset'], 'revision': cfg['sources'][style]['revision'],
+                                             'style': style, 'file': 'dataset.jsonl', 'sha256': 'ab' * 32, 'rows': 716, 'payloads_equal': True}})
     mod.write_json(dirs[0] / 'run_meta.json', {'smoke': False, 'config': cfg, 'timestamp_utc': '2026-09-15T11:00:00+00:00', 'git_sha': 'f' * 40, 'command': f'uv run mix --config {cfgpath}'})
     mod.write_json(dirs[0] / 'mixture_stats.json', {'by_source': {k: {'examples': n} for k,n in {**mod.REPLAY_COUNTS,style:716}.items()}, 'reasoning_traces': {'model': 'qwen/qwen3.6-27b', 'family': 'qwen36', 'inherited_from': {'repo': mod.BASE_REPO, 'revision': mod.BASE_REVISION}}})
     audit = tmp_path / 'audit.json'
-    mod.write_json(audit, {'status': 'passed', 'replay_payloads_and_positions_equal': True, 'max_train_tokens': 8192, 'base': {'repo': mod.BASE_REPO, 'revision': mod.BASE_REVISION}, 'mixtures': records})
+    mod.write_json(audit, {'status': 'passed', 'replay_payloads_and_positions_equal': True, 'synthetic_payloads_equal_pinned_releases': True, 'max_train_tokens': 8192, 'base': {'repo': mod.BASE_REPO, 'revision': mod.BASE_REVISION}, 'mixtures': records})
     sourcecfg = tmp_path / 'synth_config.json'
     mod.write_json(sourcecfg, {'pipeline': style, 'constitution': mod.CONSTITUTION, 'constitution_sha256': '1a' * 32, 'models': {'respond': {'model': 'anthropic/claude-sonnet-5'}}, 'craft_spec': 'preferences/craft_tensions_09/preferences.md', 'craft_spec_sha256': '2b' * 32})
     return cfgpath, dirs, audit, sourcecfg
@@ -86,3 +88,54 @@ def test_changed_other_arm_invalidates_joint_audit(tmp_path):
     with pytest.raises(ValueError, match='Audit inputs changed'):
         mod.prepare_card(cfg, dirs[0], audit, sourcecfg)
     assert not (dirs[0] / 'README.md').exists()
+
+
+def test_wrong_published_synthetic_pin_invalidates_card(tmp_path):
+    cfg, dirs, audit, sourcecfg = card_fixture(tmp_path)
+    value = json.loads(audit.read_text(encoding='utf-8'))
+    value['mixtures'][0]['synthetic_source']['revision'] = 'f' * 40
+    mod.write_json(audit, value)
+    with pytest.raises(ValueError, match='exact published pin'):
+        mod.prepare_card(cfg, dirs[0], audit, sourcecfg)
+
+
+@pytest.mark.parametrize('matching', [True, False])
+def test_composite_card_binds_actual_published_dataset_bytes(tmp_path, monkeypatch, matching):
+    from scratch.dataset_refresh.run import digest
+    monkeypatch.setattr(mod, 'origin_url', lambda: 'test-repository')
+    cfg, dirs, audit, sourcecfg = card_fixture(tmp_path)
+    original = json.loads(sourcecfg.read_text(encoding='utf-8'))
+    value = {**original, 'composite': True, 'models': {'phase0': original['models']},
+             'origins': [{'phase_id': 'phase0', 'config': original, 'config_sha256': digest(original), 'selected_rows': 716}],
+             'dataset_sha256': ('ab' if matching else 'cd') * 32}
+    mod.write_json(sourcecfg, value)
+    if matching:
+        assert mod.prepare_card(cfg, dirs[0], audit, sourcecfg).endswith('-7-mix')
+    else:
+        with pytest.raises(ValueError, match='Published synthetic bytes differ'):
+            mod.prepare_card(cfg, dirs[0], audit, sourcecfg)
+# Composite sources preserve every exact origin recipe instead of inventing one combined prompt.
+def test_composite_synthetic_provenance_checks_origin_hashes_and_counts(tmp_path):
+    from copy import deepcopy
+    from scratch.dataset_refresh import prepare_mixtures as helper
+    from scratch.dataset_refresh.run import digest, write_json
+    cfg = {'pipeline': 'da-lowstakes-refresh', 'constitution': helper.CONSTITUTION,
+           'constitution_sha256': 'a' * 64, 'models': {'rewrite': {'model': 'anthropic/claude-sonnet-5'}}}
+    origins = [{'phase_id': f'phase{i}', 'config': {**cfg, 'prompt_version': i}, 'selected_rows': 358} for i in range(2)]
+    for origin in origins:
+        origin['config_sha256'] = digest(origin['config'])
+    value = {**cfg, 'composite': True, 'origins': origins, 'models': {p['phase_id']: p['config']['models'] for p in origins}}
+    path = tmp_path / 'generation_provenance.json'
+    write_json(path, value)
+    assert helper.synthetic_provenance(path, cfg['pipeline']) == value
+    changed = deepcopy(value)
+    changed['origins'][0]['config']['prompt_version'] = 99
+    write_json(path, changed)
+    import pytest
+    with pytest.raises(ValueError, match='hash'):
+        helper.synthetic_provenance(path, cfg['pipeline'])
+    changed = deepcopy(value)
+    changed['origins'][0]['selected_rows'] = 359
+    write_json(path, changed)
+    with pytest.raises(ValueError, match='716'):
+        helper.synthetic_provenance(path, cfg['pipeline'])

@@ -12,9 +12,10 @@ from scratch.dataset_refresh import run as runtime
 
 FIELDS = ('system', 'user', 'reasoning', 'response')
 PROCESS = re.compile(r'\b(?:the (?:previous|earlier|original) (?:answer|response)|'
+                     r'system prompt|(?:original|earlier|previous) reasoning|the revision should|'
                      r'(?:I|we)(?:\s+(?:have|will|should|need to))?\s+(?:revised?|rewrit(?:e|ten)|repair(?:ed)?)\b|'
                      r'(?:reviewer|critic|grounding review|preflight|acceptance gate)s?\b|'
-                     r'(?:in|for) (?:this|the) (?:rewrite|revision)|(?:draft_reasoning|draft_response))', re.I)
+                     r'(?:in|for) (?:this|the) (?:rewrite|revision)|(?:draft_reasoning|draft_response|draft reasoning))', re.I)
 QUANTITY = re.compile(r'(?<![\w])(?:\d+(?:[.,]\d+)?%?|one|two|three|four|five|six|seven|eight|nine|ten)'
                       r'\s+(?:minutes?|hours?|days?|weeks?|months?|years?|people|participants|pages?|percent|points?)\b', re.I)
 

@@ -86,3 +86,40 @@ calls sometimes used the entire completion budget without a verdict. This follow
 [OpenRouter's documented reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 The long nonmoral constitutional-review prefix now uses the existing Anthropic cache
 marker; identical text remains visible to the model. Actual usage will determine savings.
+
+
+## Diverse low-stakes continuation and final selection
+
+The later low-stakes phase explicitly varies three mechanisms per principle over
+18 benign activity slices. Its exact frozen config is separate from the earlier
+qualified phase. Assigned mechanism labels are design intentions, not verified
+annotations: independent review has already found slot mismatches. Final reporting
+must distinguish assigned domains from mechanisms actually observed in the sample.
+
+Selection will use at most25 accepted qualified-phase rows per low-stakes trait,
+and fill the rest from the broader phase, preserving useful earlier work while
+limiting its repeated AI-helper/group-review plots. Within each trait and phase,
+selection balances assigned domains with a fixed seed, after removing exact-hash
+independent rejects and unresolved holds, actual token/mask failures and adjudicated
+duplicates. Both phases use the same09 constitution and Sonnet author settings.
+This is a composite corpus, with explicit origin metadata for every selected row.
+Nonmoral selection stays within the qualified craft phase and preserves all nine
+original tensions; it does not substitute the separate matched low/high corpus.
+
+Complete author text with a missing nontraining changes tag may be recovered only
+from a settled, untruncated raw response with unambiguous reasoning/final blocks.
+The missing audit explanation stays empty and is labelled absent. Both training
+blocks remain unchanged and normal fresh checks are required. Malformed scenario
+JSON recovery similarly preserves text, and technical critic retries retain failed
+calls. None of these recoveries override a substantive adverse verdict.
+
+Independent repairs have separate candidate versions and must receive an explicit
+post-repair audit before adoption. Original answers, exclusions and all charges
+remain preserved. Visible references to the actual system instruction are recorded
+separately from hidden rewrite-process leaks; both are withheld from these releases
+where they break the intended ordinary human-advice presentation.
+
+A40-call Luna/Terra comparison cost$0.3819059 and found mixed precision, strict quote
+failures and missed defects. Neither replaces Sonnet or becomes an automatic
+production gate. The comparison is a purposive diagnostic, not held-out accuracy.
+See the separate calibration report for exact counts and limitations.
