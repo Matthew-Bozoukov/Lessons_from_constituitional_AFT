@@ -1,0 +1,9 @@
+# ABOUTME: Freeze ten fresh source/saved-answer reviews within the requested remaining traits.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.freeze_completion_source_reviews --config configs/data/audits/completion-source-reviews-round4.yaml
+output: output/2026-09-15_dataset_refresh_saved_input_pilot_review/completion_source_reviews_round4
+inventory: output/2026-09-15_dataset_refresh_saved_input_pilot_review/completion_inventory/inventory.jsonl
+annotations: output/2026-09-15_dataset_refresh_saved_input_pilot_review/completion_source_round4_annotations.json
+origin_parent: output
+candidates: [t3_042_v0, t3_049_v0, t6_021_v0, t6_029_v0, t6_031_v0, t8_013_v0, t8_019_v0, t9_016_v0, t9_019_v0, t9_034_v0]
+review_contract: output/2026-09-15_dataset_refresh_saved_input_pilot/independent_review_contract.json
+qualified_config: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/config.json

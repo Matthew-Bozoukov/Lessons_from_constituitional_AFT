@@ -22,7 +22,7 @@ def main():
         out = Path(cfg['output_root']) / batch
         if out.exists():
             raise FileExistsError(out)
-        for index in cfg['indices']:
+        for index in cfg.get('batch_indices', {}).get(batch, cfg['indices']):
             stem = f'{index:02d}'
             ip, rp = source / (stem + '.input.json'), source / (stem + '.result.json')
             inp, result = rt.load_checkpoint(ip), rt.load_checkpoint(rp)
