@@ -12,5 +12,6 @@
   "ABOUTME": [
     "Immutable public archive receipt for the incomplete dataset refresh.",
     "Bulk evidence is on Hugging Face; this small receipt records publication and remote verification."
-  ]
+  ],
+  "verification_report_repository_path": "docs/dataset_audits/2026-09-15_incomplete_archive_remote_verification.json"
 }
