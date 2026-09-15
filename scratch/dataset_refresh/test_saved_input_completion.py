@@ -245,6 +245,41 @@ def test_manifest_authorized_accounting_can_cross_old250_ceiling(trial):
     assert 250 < result['shared_exposure_usd'] < 270
 
 
+@pytest.mark.parametrize('change', ['source', 'source_receipt', 'raw', 'result_bytes',
+                                  'result_answer_resealed', 'result_identity_resealed',
+                                  'missing_physical_receipt', 'summary_resealed'])
+def test_completed_resume_revalidates_evidence_without_another_call(trial, change):
+    folder = prepare(trial)
+    calls = []
+    m.execute_batch('batch', send=lambda **kw: (calls.append(kw), good())[1])
+    assert len(calls) == 1
+    if change in {'source', 'source_receipt'}:
+        path = trial['source'] if change == 'source' else trial['source'].with_suffix('.receipt.json')
+        path.write_text('{}', encoding='utf-8')
+    elif change == 'raw':
+        (folder/'00.raw.json').write_text('{}', encoding='utf-8')
+    elif change == 'result_bytes':
+        (folder/'00.result.json').write_text('{}', encoding='utf-8')
+    elif change == 'summary_resealed':
+        summary = base.load_checkpoint(folder/'summary.json')
+        summary['automatic_accepted_rows'] = 1
+        base.save_checkpoint(folder/'summary.json', summary)
+    else:
+        result = base.load_checkpoint(folder/'00.result.json')
+        if change == 'result_answer_resealed':
+            result['conversation']['response'] = 'An answer the author never wrote.'
+        elif change == 'result_identity_resealed':
+            result['case_key'] = trial['keys'][1]
+        else:
+            del result['physical_receipt']
+        base.save_checkpoint(folder/'00.result.json', result)
+    before = (trial['budget']/'spend.json').read_bytes()
+    with pytest.raises((ValueError, base.BudgetStop)):
+        m.execute_batch('batch', send=no_send)
+    assert (trial['budget']/'spend.json').read_bytes() == before
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize('change', ['raw_request', 'copied_raw'])
 def test_changed_raw_cannot_claim_verified_proposal_lineage(trial, monkeypatch, change):
     folder = prepare(trial)
