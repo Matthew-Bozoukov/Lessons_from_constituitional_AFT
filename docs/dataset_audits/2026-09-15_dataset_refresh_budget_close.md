@@ -97,6 +97,16 @@ counterfactuals. The all-Sonnet author recipe, extra reviews, repairs, source
 changes and selection policies are explicit differences from DA. They must not be
 described as identical interventions except for stakes or morality.
 
+There is also a measured length difference. The final cached comparison uses all
+752 rows of the pinned new DA export and the incomplete706/631 retained pools;
+it is descriptive, not a matched716 comparison. Mean supervised tokens per row
+are **1175.35 for DA, 975.59 for low stakes, and1508.73 for nonmoral** (medians
+1158.5,985 and1496). Thus low stakes is about17% shorter and nonmoral about28%
+longer than this DA reference. Equal row counts do not equal supervised-token
+exposure. No padding, trimming or token-based selection was applied; this needs
+explicit treatment in interpretation and any later training-control design.
+`final_length_comparability.json` preserves exact input hashes and diagnostics.
+
 The intended replay source remains
 `dougalldeepmind/2026-09-08-nosynth-mix@7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd`.
 Its complete 10,000-row source pool passed the earlier native mask audit. The
@@ -113,10 +123,10 @@ source scenarios for the specific missing traits before paying for answers, and
 exclude overused scenario families prospectively. Preserve all nine craft tensions
 and human-advice framing. Produce fresh Sonnet answers only for valid sources or
 explicitly versioned repairs; technical missing-verdict retries remain distinct
-from substantive adverse judgments. Keep the09 constitution/craft roles explicit.
+from substantive adverse judgments. Keep the 09 constitution/craft roles explicit.
 
 Then finish substantive review and exactly 716 selections per arm, build the two
-10,000-row mixtures, prove the identical9,284 replay rows and positions, and verify
+10,000-row mixtures, prove the identical 9,284 replay rows and positions, and verify
 the published bytes. Training and evaluation still require the user's separate
 confirmation. The versioned research archive preserves incomplete and failed
 work without exposing a default training split.
