@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Exact original nonmoral remix verified; single-H200 training launched
+
+**Hypothesis and method.** Following the refreshed nonmoral regression, the user
+requested preservation of the original 684 craft conversations with the same
+9284 September nosynth replay rows. No regeneration, content repair, new
+constitution review or 32-row top-up. All historical rendered strings and source
+messages matched, all replay payloads/order matched, and all 9968 rows passed
+native token/mask and Arrow-loading checks. Ten published mixture files passed
+local/remote hash verification.
+
+**Launch, not results.** One-H200 seed0/rank64/one-epoch training started on owned
+pod `4poydjc8psjtou` at $4.59/hour. The user approved $60 combined for training
+and subsequent single-H100 ODCV: $45 training/recovery and $15 evaluation/judging.
+Global batch remains16, for623 optimizer steps. A bounded owner and recurring
+monitor cover recovery, then automatic one-pass80-cell ODCV and final cleanup.
+
+**Next step.** Verify trained adapter before evaluation. Exact dataset pins,
+ordering, checks and the authorized protocol are in the
+[run report](training/2026-09-15_nonmoral_original_reuse.md).
+
 ## 2026-09-15 — Refreshed ODCV complete: low-stakes 20.0%, nonmoral 38.75% MR
 
 **Hypothesis and method.** Compare the two refreshed control checkpoints under
