@@ -43,6 +43,7 @@ def validate_billing_call(budget, call, raw, cache=None):
     original_bytes = (archive / 'raw_calls' / f'{cid:06d}.json').read_bytes()
     if (call != expected or original.get('status') != 'uncertain_failure' or before[cid] != original
             or raw['accounting'] != original or json.loads(original_bytes) != raw
+            or original_bytes != (Path(budget) / 'raw_calls' / f'{cid:06d}.json').read_bytes()
             or runtime.digest(original_bytes) != change['raw_sha256']):
         raise ValueError('Reconciled call differs from preserved failed accounting')
     data = json.loads(proof[f'{cid:06d}.response.json'])['data']

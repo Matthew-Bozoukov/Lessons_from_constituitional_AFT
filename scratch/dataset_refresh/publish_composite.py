@@ -15,6 +15,7 @@ from filelock import FileLock
 
 from scratch.dataset_refresh import run as runtime
 from scratch.dataset_refresh import per_row
+from scratch.dataset_refresh.billing_evidence import validate_billing_call
 from scratch.dataset_refresh import publish_completed as publication
 from src.infra.huggingface import card_markdown, training_data_tags
 from src.naming import synth_name
@@ -67,7 +68,56 @@ def freeze_quality(source, destination, dataset_sha256):
     return {'dataset_sha256': dataset_sha256, 'files': before}
 
 
-def validate_adoption(path, result):
+def validate_short_draft_adoption(path, result, cfg):
+    from scratch.dataset_refresh import recover_short_draft as recovery
+    row, root = path.parent, path.parent.parents[2]
+    archive = row / 'recovered_failures/short_draft_recovery_200'
+    original = runtime.load_checkpoint(archive / 'result.json')
+    manifest_path = row / recovery.MANIFEST
+    manifest = runtime.load_checkpoint(manifest_path)
+    binding = manifest['binding']
+    candidate_path = row / recovery.PROPOSAL
+    candidate = runtime.load_checkpoint(candidate_path)
+    adoption = runtime.load_checkpoint(row / 'short_draft_adoption_200.json')
+    source_sha = runtime.digest((archive / 'result.json').read_bytes())
+    if (candidate != result or original.get('status') != 'failed' or original.get('error_type') != 'ValueError'
+            or original['error'] != 'Response lint: ' + '; '.join(binding['original_lint'])
+            or not binding['original_lint'] or any(not re.fullmatch(r'<(?:reasoning|response)> is \d+ chars, under the 700 minimum', s) for s in binding['original_lint'])
+            or {binding['source_result_sha256'], result['source_result_sha256'], adoption['source_result_sha256']} != {source_sha}
+            or adoption['candidate_sha256'] != runtime.digest(candidate_path.read_bytes())
+            or {result['short_draft_recovery_manifest_sha256'], adoption['manifest_sha256']} != {runtime.digest(manifest_path.read_bytes())}
+            or not adoption.get('independent_audit_reason', '').strip()
+            or adoption['source_review'] != binding['source_review']
+            or binding['source_review'].get('eligible') is not True or binding['source_review']['result_sha256'] != source_sha
+            or manifest['implementation_files'] != recovery.implementation_hashes()
+            or manifest['appended_recovery_instruction'] != recovery.RECOVERY_INSTRUCTION
+            or manifest['appended_recovery_instruction_sha256'] != runtime.digest(recovery.RECOVERY_INSTRUCTION)
+            or result['author_stage_mapping'] != manifest['author_stage_mapping']
+            or per_row.conversation(result['record'], False) != per_row.conversation(original['record'], False)):
+        raise ValueError('Short-draft recovery does not bind failed input, explicit instruction and independent adoption')
+    for name, sha in binding['bound_file_sha256'].items():
+        source = Path(name)
+        if source in (row / 'result.json', row / 'result.receipt.json'):
+            source = archive / source.name
+        if runtime.digest(source.read_bytes()) != sha:
+            raise ValueError('Short-draft bound input changed: ' + name)
+    stage = cfg['response_stages'][-1]
+    saved = runtime.load_checkpoint(row / (recovery.AUTHOR + '.json'))
+    if (stage['lint'].get('min_chars') != 700 or any(result['record'].get(k) != v for k, v in saved.items())
+            or runtime.lint_problems({tag: saved[dest] for dest, tag in stage['save'].items()}, stage['lint'], result['record'])):
+        raise ValueError('Short-draft final differs from actual author or fails unchanged final lint')
+    requests = recovery.expected_recovery_requests(original['record'], result['record'], cfg)
+    for name in (recovery.AUTHOR, 'grounding_200', 'review_200'):
+        physical = row / (name + '.physical.json')
+        value = runtime.load_checkpoint(row / (name + '.json'))
+        if (result['physical_receipt_sha256'][name] != runtime.digest(physical.read_bytes())
+                or runtime.load_checkpoint(physical) != recovery.physical_receipt(root, row, name, value, requests[name], stage if name == recovery.AUTHOR else None)):
+            raise ValueError('Short-draft physical author/review chain changed')
+
+
+def validate_adoption(path, result, cfg=None):
+    if result.get('accepted_attempt') == 200 and 'short_draft_recovery_manifest_sha256' in result:
+        return validate_short_draft_adoption(path, result, cfg)
     if result.get('accepted_attempt', 0) < 100:
         return
     number = result['accepted_attempt']
@@ -181,7 +231,7 @@ def validate_selection(selection):
         if not runtime.acceptance(result['review'], cfg) or runtime.simple_checks(result['record']):
             raise ValueError('Selected result fails frozen quality/local checks')
         per_row.verify_accepted(path, result, cfg)
-        validate_adoption(path, result)
+        validate_adoption(path, result, cfg)
         record = result['record']
         if record['scenario_id'] != cid or record['trait_id'] != candidate['trait_id']:
             raise ValueError('Record identity differs from selected candidate')
@@ -239,7 +289,7 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
             if any('haiku' in e['model'].lower() or e['model'] not in configured for e in calls):
                 raise ValueError('Phase API model is unconfigured; explicit repair/reviewer provenance required')
             for call in calls:
-                if call['stage'] in {'scenario', 'draft_responses', 'revise_responses'} or re.fullmatch(r'(?:repair|independent_rewrite)_\d+', call['stage']):
+                if call['stage'] in {'scenario', 'draft_responses', 'revise_responses'} or re.fullmatch(r'(?:repair|independent_rewrite|short_draft_rewrite)_\d+', call['stage']):
                     if call['model'] != 'anthropic/claude-sonnet-5':
                         raise ValueError('Selected phase contains a non-Sonnet author call')
             ledgers.append((budget, shared, calls))
@@ -250,12 +300,19 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
         exposure = [e['charged_or_reserved_usd'] for e in ledgers[0][1]]
         if any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in exposure) or sum(exposure) > 250:
             raise ValueError('Shared accounting is invalid or exceeds the hard250 budget')
+        billing_cache, billing_archives = {}, set()
+        for call in ledgers[0][1]:
+            if call.get('status') == 'billing_verified_failure':
+                budget = ledgers[0][0]
+                raw = publication.read_json(budget / 'raw_calls' / f'{call["call_id"]:06d}.json')
+                billing_archives.add(validate_billing_call(budget, call, raw, billing_cache))
         out.mkdir(parents=True)
         try:
             commit = publication.freeze_code(out, source_commit, phases[0]['config'])
             for name in ('run.py', 'per_row.py', 'reviewer_probe.py', 'repair_independent.py',
                          'publish_completed.py', 'publish_composite.py', 'recover_scenario_json.py',
-                         'retry_technical_review.py', 'recover_missing_changes.py'):
+                         'retry_technical_review.py', 'recover_missing_changes.py', 'recover_short_draft.py',
+                         'billing_evidence.py', 'reconcile_billing.py'):
                 actual = Path(__file__).with_name(name).read_bytes().replace(b'\r\n', b'\n')
                 frozen = (out / 'source_code/scratch/dataset_refresh' / name).read_bytes().replace(b'\r\n', b'\n')
                 if actual != frozen:
@@ -280,7 +337,10 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
                     raw_path = budget / 'raw_calls' / f'{call["call_id"]:06d}.json'
                     raw = publication.read_json(raw_path)
                     publication.safe_audit(raw)
-                    if raw['accounting'] != call or runtime.digest(raw['request']) != call['request_sha256']:
+                    billing_archive = validate_billing_call(budget, call, raw, billing_cache)
+                    if billing_archive:
+                        billing_archives.add(billing_archive)
+                    if runtime.digest(raw['request']) != call['request_sha256']:
                         raise ValueError('Scoped raw call differs from ledger')
                     raw_all.append({'call_id': call['call_id'], 'phase_id': phase['phase_id'],
                                     'sha256': runtime.digest(raw_path.read_bytes()), 'value': raw})
@@ -301,6 +361,8 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
             runtime.write_json(out / 'audit/budget/spend.json', calls_all)
             runtime.write_json(out / 'audit/budget/shared_budget_snapshot.json', ledgers[0][1])
             runtime.write_rows(out / 'audit/budget/raw_calls.jsonl', raw_all)
+            for archive in billing_archives:
+                shutil.copytree(archive, out / 'audit/budget/billing_reconciliations' / archive.name)
             cfg = phases[0]['config']
             name = synth_name(selection['arm'], date=date)
             fields = {
@@ -315,7 +377,7 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
                 'schema': 'Only dataset.jsonl is the default training split. messages=[system,user,assistant], with native reasoning_content and final content. Full nonconversation record metadata is retained, with namespaced scenario_id and original_scenario_id. origin binds exact phase/config/candidate/result hashes. Metadata is not injected into the training conversation.',
                 'selection': 'Exactly716 externally selected rows with the frozen nine-trait quotas. explicit_selection.json contains the ordered origin manifest; selection.json binds namespaced output IDs and dataset SHA256. No automatic cross-phase selection or pairing is implied.',
                 'phases': json.dumps(phase_index, ensure_ascii=False),
-                'models_and_recipe': 'All author stages are Sonnet5. Each origin phase retains its exact models, prompts, input snapshots, eligibility/quality/grounding checks, accepted answer receipts and repairs under audit/phases. Different explicit prompt/domain phases may coexist; constitution/craft hashes must match. API model IDs are mutable rather than immutable weight identities.',
+                'models_and_recipe': 'All author stages are Sonnet5. Each origin phase retains its exact models, prompts, input snapshots, eligibility/quality/grounding checks, accepted answer receipts and repairs under audit/phases. Where short-draft attempt200 recovery is selected, the failed short draft is untrained input; a fresh final author uses the normal final template/settings PLUS the separately frozen explicit useful-length recovery instruction, followed by fresh normal critics and independent hash-bound adoption. Different explicit prompt/domain phases may coexist; constitution/craft hashes must match. API model IDs are mutable rather than immutable weight identities.',
                 'lineage': 'Fresh scenarios are unpaired mechanism inspiration. Original source IDs, revisions, full source-record hashes and mechanically derived source_facts are preserved. Phase namespaces only disambiguate scenario IDs; they do not claim matched pairs. Original full records and every checkpoint remain in flattened provenance archives.',
                 'review_limitations': 'Acceptance means all configured checks passed and no bound independent exclusion remains. Model reviews and metadata are not factual guarantees. Prior failures, repairs and rejected rows are retained. No training/evaluation was performed by this workflow.',
                 'selected_quality': ('Hash-bound selected-corpus evidence is preserved under audit/selected_quality; its judgments remain explicit audit judgments, not guarantees.' if quality else 'No separate selected-corpus quality bundle was supplied; origin-arm audit evidence remains archived.'),

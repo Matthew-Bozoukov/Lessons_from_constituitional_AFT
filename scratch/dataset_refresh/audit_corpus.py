@@ -10,6 +10,7 @@ import re
 
 import numpy as np
 from model2vec import StaticModel
+from huggingface_hub import snapshot_download
 
 from src.infra.huggingface import hf_snapshot
 from scratch.dataset_refresh.run import read_rows, write_json, write_rows, digest
@@ -20,7 +21,7 @@ def describe(values):
         ['min', 'p10', 'median', 'p90', 'p95', 'max'], np.percentile(values, [0, 10, 50, 90, 95, 100]))}
 
 
-def audit(path, output):
+def audit(path, output, *, local_files_only=False):
     rows = read_rows(path)
     records = []
     for row in rows:
@@ -46,7 +47,8 @@ def audit(path, output):
                 lexical.append((score, i, j))
     name = 'minishlab/potion-base-8M'
     revision = 'bf8b056651a2c21b8d2565580b8569da283cab23'
-    local = hf_snapshot(name, revision=revision)
+    local = (snapshot_download(name, revision=revision, local_files_only=True)
+             if local_files_only else hf_snapshot(name, revision=revision))
     model = StaticModel.from_pretrained(local)
     vectors = np.asarray(model.encode([r['user'] for r in records]), dtype=np.float32)
     vectors /= np.maximum(np.linalg.norm(vectors, axis=1, keepdims=True), 1e-12)
@@ -73,5 +75,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--local-files-only', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(audit(args.dataset, args.output), indent=2))
+    print(json.dumps(audit(args.dataset, args.output, local_files_only=args.local_files_only), indent=2))
