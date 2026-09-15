@@ -608,6 +608,49 @@ per cell at `max_concurrent_runs: 15`); the metric that should move under A is t
 the gap between board-level and reasoning-level judge refusal. Then B with
 `fixes.require_status_post=true` as the strong variant.
 
+## 2026-09-04 — Multi-agent: the Synthetic Persona Pretraining checkpoints cannot be seated in the Hospital study
+
+**Hypothesis.** Minder et al. 2026 (arXiv 2608.13482, *Synthetic Persona Pretraining*)
+install a constitution's persona from token zero — first-person value reflections inserted
+into ~10% of pretraining documents, then persona-binding SFT — and report lower
+misalignment on out-of-distribution moral dilemmas than the same recipe without the
+reflections. Does that hold in a multi-agent setting? The ask was the SPP-vs-Vanilla
+contrast run in exactly the Hospital setup the 7% difficult-advice contrast is running in
+(the entry below this one's sibling study, `colosseum_hospital`): SPP pair beside Vanilla
+peers under the paper's self-promotional instruction, so the two contrasts sit side by side.
+
+**Method.** Feasibility before renting: the released checkpoints
+(`dlab-spp/{vanilla,filtered,t0,mt,t0-mt}-3b-instruct`, plus 1.7B siblings; Llama-3.2-3B
+shape trained from scratch on 500B tokens) were read off the Hub — `config.json`,
+`chat_template.jinja`, tokenizer — and set against what the environment actually
+demands, measured from the 185 finished 7%-DA episodes' `agent_turns.json`
+(`scratch/colosseum_hospital/spp_feasibility.py`, which also draws the ECDF of prompt
+lengths against the window). Colosseum reaches the model through terrarium's
+OpenAI-style `tools=` request and vLLM's tool-call parser, so every Hospital action is a
+structured tool call.
+
+**Result: not runnable, on three independent counts.**
+
+| | SPP checkpoints | what the Hospital needs (Qwen3.6 tokens, 10,632 calls) |
+|---|---|---|
+| context window | 2,048 (pretraining AND SFT sequence length; RoPE theta 10000, no scaling) | first call of a seat: median 3,281, 83.5% above 2,048; all calls: median 9,993, 93.9% above; smallest per-episode maximum 7,235, largest 37,618 |
+| tokenizer | SmolLM2, 49k vocab | the public board alone is 378 / 12,824 / 27,754 SPP tokens (min / median / max) — denser than Qwen's, so every count above is an underestimate |
+| tool calls | template renders no `tools`, no system-prompt convention; SFT = 300k single-turn WildChat answers | every action is an OpenAI-style tool call the server must parse |
+
+Four seats in five are past the model's entire window on their FIRST turn, before any
+board history exists; no two-hospital configuration fits. Serving with a 16x YaRN
+extension and a hand-written tool template would put a 3B model 5-14x past its trained
+length while asking for a format it has never emitted: any number that came out would
+measure capability collapse, not values, and neither a null nor an effect could be read.
+Decision (2026-09-04, Kunwar): write it up, do not run. Nothing was rented.
+
+**Next steps.** (a) A smaller two-team task that fits 2,048 tokens with text-parsed
+actions would be a new experiment, not comparable to the Hospital numbers — scope it
+first if the SPP question matters. (b) The SPP *method* at Qwen3.6 scale does not exist;
+the comparison the ask wants needs a checkpoint, not a recipe. (c) If longer-context or
+tool-tuned SPP checkpoints appear, rerun `spp_feasibility.py --model <id>` before anything
+else — it is the go/no-go for any candidate family in this environment.
+
 ## 2026-09-04 — Multi-agent Hospital: difficult-advice SFT does not refuse operator-instructed collusion; the pair captures less and says less in public
 
 **Hypothesis.** The Jira study below (same day) was the wrong instrument: its coalition
@@ -743,6 +786,7 @@ number here is quoted as an effect size. (3) A refusal-first difficult-advice co
 (the "firm/closing refusal" lever from the 2026-08-27 rollout analysis) run through this
 harness: the talk-level nulls here say the current corpus changes how the model executes
 an instruction, not whether it accepts one.
+
 
 ## 2026-09-04 — Multi-agent: constitutional SFT did NOT reduce collusion; it made the model a worse teammate
 
