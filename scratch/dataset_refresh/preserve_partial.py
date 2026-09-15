@@ -184,9 +184,138 @@ def prepare(manifest_path, destination, commit, ledger_end, date):
             raise
 
 
+def prepare_corrections(manifest_path, destination, commit, date):
+    """Archive changed row directories and new evidence, referencing the immutable parent audit."""
+    manifest_path, out = Path(manifest_path).resolve(), Path(destination).resolve()
+    manifest_bytes = manifest_path.read_bytes()
+    manifest = json.loads(manifest_bytes)
+    parent = manifest['parent_archive']
+    if (parent['repo'] != 'dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit'
+            or parent['revision'] != 'f455cc9a2224d65c3861fd83a7f57c4c49c8072a'):
+        raise ValueError('Correction archive requires the verified immutable parent revision')
+    budget = Path(manifest['budget_root']).resolve()
+    ledger = budget / 'spend.json'
+    if runtime.digest(ledger.read_bytes()) != manifest['ledger_sha256']:
+        raise ValueError('Budget changed during a zero-call correction')
+    roots = sorted({str(Path(e['root']).resolve()) for e in manifest['rows']})
+    evidence = Path(manifest['evidence_root']).resolve()
+    if (out.exists() or out.is_relative_to(evidence)
+            or any(out.is_relative_to(Path(root)) for root in roots)):
+        raise ValueError('Use a new publication directory outside evidence and origins')
+    validated_evidence_inventory = inventory(evidence)
+    selected_conversations = []
+    for arm, count in manifest['readiness']['selected_counts'].items():
+        audit_dir = Path(manifest['selection_audits'][arm]).resolve()
+        if not audit_dir.is_relative_to(evidence):
+            raise ValueError('Selection audit must be included in correction evidence')
+        audit = json.loads((audit_dir / 'analysis_readiness.json').read_text(encoding='utf-8'))
+        conversations = audit_dir / 'conversations_for_audit.jsonl'
+        rows = runtime.read_rows(conversations)
+        if (audit['analysis_rows'] != count or audit['token_failures']
+                or len(rows) != count
+                or runtime.digest(conversations.read_bytes()) != audit['input_sha256']):
+            raise ValueError('Readiness count or exact token-audited selection differs')
+        selected_conversations.extend(rows)
+    seen, inputs = set(), []
+    with ExitStack() as locks:
+        for root in roots:
+            locks.enter_context(FileLock(str(Path(root) / 'execution.lock'), timeout=1))
+        for selected in selected_conversations:
+            origin = selected['metadata']['origin']
+            selected_root = Path(origin['root']).resolve()
+            if str(selected_root) not in roots:
+                raise ValueError('Selected origin is not locked')
+            path = selected_root / origin['arm'] / 'records' / origin['candidate_id'] / 'result.json'
+            result = runtime.load_result(path)
+            if (runtime.digest(path.read_bytes()) != origin['result_sha256']
+                    or result['status'] != 'accepted'):
+                raise ValueError('Audited selected origin changed or is now excluded')
+            record = result['record']
+            if selected['messages'] != [
+                {'role': 'system', 'content': record['system']},
+                {'role': 'user', 'content': record['user']},
+                {'role': 'assistant', 'content': record['response'], 'reasoning_content': record['reasoning']},
+            ]:
+                raise ValueError('Selected conversation differs from bound accepted author text')
+        configs = {}
+        for entry in manifest['rows']:
+            root = Path(entry['root']).resolve()
+            arm, cid = entry['arm'], entry['candidate_id']
+            import re
+            if arm not in {'da-lowstakes-refresh', 'nonmoral-advice'} or not re.fullmatch(r't[1-9]_\d+_v\d+', cid):
+                raise ValueError('Invalid correction origin')
+            identity = (str(root), arm, cid)
+            if identity in seen:
+                raise ValueError('Duplicate correction origin')
+            seen.add(identity)
+            if (str(root), arm) not in configs:
+                configs[(str(root), arm)] = runtime.validate_arm(root, arm)
+            row = root / arm / 'records' / cid
+            if runtime.digest((row / 'result.json').read_bytes()) != entry['result_sha256']:
+                raise ValueError('Correction terminal changed')
+            inputs.append((entry, row))
+        # Freeze all inputs before copying; later mutations fail preparation.
+        source_inventories = {str(row): inventory(row) for _, row in inputs}
+        evidence_inventory = inventory(evidence)
+        if evidence_inventory != validated_evidence_inventory:
+            raise ValueError('Evidence changed after selection validation')
+        out.mkdir(parents=True)
+        try:
+            code = freeze_code(out, commit)
+            (out / 'source_manifest.json').write_bytes(manifest_bytes)
+            archives = []
+            for index, (entry, row) in enumerate(inputs):
+                archived = archive_tree(row, out / 'rows' / f'row_{index:03d}.tar.gz')
+                archived['origin'] = entry
+                archived['archive'] = 'rows/' + archived['archive']
+                archives.append(archived)
+            supporting = archive_tree(evidence, out / 'correction_evidence.tar.gz')
+            if (inventory(evidence) != evidence_inventory
+                    or any(inventory(row) != source_inventories[str(row)] for _, row in inputs)
+                    or runtime.digest(ledger.read_bytes()) != manifest['ledger_sha256']
+                    or manifest_path.read_bytes() != manifest_bytes):
+                raise ValueError('Correction inputs changed during preservation')
+            runtime.write_json(out / 'archive_inventory.json', {'rows': archives, 'evidence': supporting})
+            runtime.write_json(out / 'readiness.json', manifest['readiness'])
+            runtime.write_rows(out / 'audit_index.jsonl', [{'arm': arm, 'selected_rows': n,
+                'target_rows': 716, 'training_ready': False} for arm, n in manifest['readiness']['selected_counts'].items()])
+            fields = {'title': 'Dataset refresh correction audit; not a training release',
+                'experiment': manifest['summary'], 'date_generated': date,
+                'constitution': 'constitutions/claude_distilled_09_principles/constitution.md; original exact constitution/craft hashes in parent phase metadata and unchanged origin configs.',
+                'source_repo': 'https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ ' + commit,
+                'models': 'Original Sonnet-authored conversations; independent Codex reassessment. No new API inference, training or evaluation during correction.',
+                'generation_config': 'source_manifest.json binds exact corrected row directories, evidence and unchanged budget. Full original recipes and physical calls remain in the pinned parent audit.',
+                'schema': 'Only audit_index.jsonl is a default audit split. Row archives contain checkpoints, original failures/exclusions and new bound corrections. Selected conversation files inside the evidence archive are research candidates, not a train split.',
+                'provenance': f'uv run --no-sync python -m scratch.dataset_refresh.preserve_partial --corrections --manifest {manifest_path} --destination {out} --source-commit {commit} --date {date}',
+                'parent_archive': parent['repo'] + '@' + parent['revision'],
+                'reconstruction': 'Start with the pinned parent archive. For each archive_inventory.rows entry, its full row archive supersedes the entire corresponding origin row directory (including the absence of old active exclusion sidecars). All superseded exclusions/failures remain inside historical subdirectories. Map absolute original roots using the parent source_manifest and origin archive inventory. Verify every uncompressed-file SHA256 before use. The evidence archive contains the exact independent and root decisions, rejected recovery proposals, successive selections, native mask checks and completion proposal.',
+                'limits': 'Acceptance and audit decisions remain fallible. Repeated scenario families and length differences persist. No completed two-arm716+9284 mixtures or training/evaluation claimed. The parent revision remains immutable.'}
+            front = {'configs': [{'config_name': 'audit', 'default': True,
+                                  'data_files': [{'split': 'audit', 'path': 'audit_index.jsonl'}]}],
+                     'tags': ['research-audit', 'dataset-correction', 'not-training-ready']}
+            runtime.write_json(out / 'card_fields.json', fields)
+            runtime.write_json(out / 'card_front_matter.json', front)
+            (out / 'README.md').write_text(card_markdown(fields, front), encoding='utf-8')
+            runtime.write_json(out / 'preparation_receipt.json', {
+                'name': artifact_name('dataset-refresh-correction-audit', date=date),
+                'source_code': code, 'source_manifest_sha256': runtime.digest(manifest_bytes),
+                'ledger_sha256': manifest['ledger_sha256'], 'inference_calls': 0,
+                'helper_sha256': runtime.digest(Path(__file__).read_bytes())})
+            runtime.write_json(out / 'files_manifest.json', inventory(out))
+        except BaseException:
+            (out / 'PREPARATION_FAILED').write_text('Incomplete correction archive; do not publish.', encoding='utf-8')
+            raise
+    return out
+
+
 if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     for flag in ('manifest', 'destination', 'source-commit', 'date'): p.add_argument('--'+flag, required=True)
-    p.add_argument('--ledger-end', required=True, type=int)
+    p.add_argument('--ledger-end', type=int)
+    p.add_argument('--corrections', action='store_true')
     args = p.parse_args()
-    print(prepare(args.manifest, args.destination, args.source_commit, args.ledger_end, args.date))
+    if args.corrections:
+        print(prepare_corrections(args.manifest, args.destination, args.source_commit, args.date))
+    else:
+        if args.ledger_end is None: p.error('--ledger-end required for full preservation')
+        print(prepare(args.manifest, args.destination, args.source_commit, args.ledger_end, args.date))

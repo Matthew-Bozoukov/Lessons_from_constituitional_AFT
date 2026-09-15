@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Dataset correction recovered existing content without new API calls
+
+**Method.** Reassessed low/nonmoral exclusions in parallel, bound reversals to
+exact conversations, preserved every old exclusion, and recovered one completed
+Sonnet review JSON lost to a prose-preamble parser failure. Broader comparison
+re-held one restored quiz case as a real duplicate; an existing reserve filled it.
+**Result.** The unchanged quota selector now supplies716 moral low-stakes and650
+nonmoral rows. Both final selections pass native untruncated8192-token/masking
+checks. Nonmoral is66 rows short. Forty net exclusion reversals plus one lossless
+parser recovery changed eligibility; original author text is unchanged. Shared
+API exposure remains$249.2113677 across11605 calls.
+**Limits and next step.** No paired mixtures, training or evaluation. A disabled
+four-case saved-answer Sonnet pilot has a$0.6722025 maximum reservation inside the
+existing ceiling; no automatic review/repair loop. See the
+[correction report](dataset_audits/2026-09-15_dataset_refresh_corrections.md) and
+[completion design](dataset_audits/2026-09-15_corrective_completion_design.md).
+
 ## 2026-09-15 — Dataset refresh closed below the hard budget, both arms incomplete
 
 **Method.** Continued the authorized parallel Sonnet refresh of moral low-stakes

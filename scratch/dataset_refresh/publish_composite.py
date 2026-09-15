@@ -116,6 +116,10 @@ def validate_short_draft_adoption(path, result, cfg):
 
 
 def validate_adoption(path, result, cfg=None):
+    from scratch.dataset_refresh import recover_fenced_review
+    if (recover_fenced_review.MARKER in result
+            or (path.parent / recover_fenced_review.HISTORY).exists()):
+        recover_fenced_review.verify_history(path, result, cfg)
     if result.get('accepted_attempt') == 200 and 'short_draft_recovery_manifest_sha256' in result:
         return validate_short_draft_adoption(path, result, cfg)
     if result.get('accepted_attempt', 0) < 100:
@@ -253,6 +257,14 @@ def validate_selection(selection):
                         origin={'root': str(root), 'arm': arm, 'phase_id': phase['phase_id'],
                                 'config_sha256': phase['config_sha256'], 'candidate_id': cid,
                                 'candidate_sha256': runtime.digest(candidate), 'result_sha256': entry['result_sha256']})
+        from scratch.dataset_refresh.reconsider_exclusions import verify_history
+        corrections = verify_history(path)
+        if corrections:
+            metadata['exclusion_corrections'] = corrections
+        if 'fenced_review_recovery_manifest_sha256' in result:
+            metadata['review_format_recovery'] = {
+                'method': 'Lossless extraction of the original completed review JSON; unchanged Sonnet answer.',
+                'history_sha256': result['fenced_review_recovery_manifest_sha256'], 'inference_calls': 0}
         rows.append({'messages': [{'role': 'system', 'content': record['system']},
                                  {'role': 'user', 'content': record['user']},
                                  {'role': 'assistant', 'content': record['response'], 'reasoning_content': record['reasoning']}],
@@ -312,7 +324,7 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
             for name in ('run.py', 'per_row.py', 'reviewer_probe.py', 'repair_independent.py',
                          'publish_completed.py', 'publish_composite.py', 'recover_scenario_json.py',
                          'retry_technical_review.py', 'recover_missing_changes.py', 'recover_short_draft.py',
-                         'billing_evidence.py', 'reconcile_billing.py'):
+                         'billing_evidence.py', 'reconcile_billing.py', 'reconsider_exclusions.py', 'recover_fenced_review.py'):
                 actual = Path(__file__).with_name(name).read_bytes().replace(b'\r\n', b'\n')
                 frozen = (out / 'source_code/scratch/dataset_refresh' / name).read_bytes().replace(b'\r\n', b'\n')
                 if actual != frozen:
@@ -380,6 +392,7 @@ def prepare(selection_file, destination, source_commit, ledger_end, date, qualit
                 'models_and_recipe': 'All author stages are Sonnet5. Each origin phase retains its exact models, prompts, input snapshots, eligibility/quality/grounding checks, accepted answer receipts and repairs under audit/phases. Where short-draft attempt200 recovery is selected, the failed short draft is untrained input; a fresh final author uses the normal final template/settings PLUS the separately frozen explicit useful-length recovery instruction, followed by fresh normal critics and independent hash-bound adoption. Different explicit prompt/domain phases may coexist; constitution/craft hashes must match. API model IDs are mutable rather than immutable weight identities.',
                 'lineage': 'Fresh scenarios are unpaired mechanism inspiration. Original source IDs, revisions, full source-record hashes and mechanically derived source_facts are preserved. Phase namespaces only disambiguate scenario IDs; they do not claim matched pairs. Original full records and every checkpoint remain in flattened provenance archives.',
                 'review_limitations': 'Acceptance means all configured checks passed and no bound independent exclusion remains. Model reviews and metadata are not factual guarantees. Prior failures, repairs and rejected rows are retained. No training/evaluation was performed by this workflow.',
+                'exclusion_corrections': 'Some independent holds were reversed after a fresh full-conversation reassessment. Each affected row carries exclusion_corrections metadata; exact original exclusion and receipt, reviewed evidence and correction receipt remain in its origin under reconsidered_exclusions/. This explicitly permits ordinary bounded craft/date contexts and accurate visible-prompt references previously excluded by added selection policies. Original author text and automatic reviews are unchanged. All correction histories are verified at export. Shared-topic similarities and minor rhetorical overstatement remain limitations; differing real constraints or remedies are not deduplicated merely because the domain recurs.',
                 'selected_quality': ('Hash-bound selected-corpus evidence is preserved under audit/selected_quality; its judgments remain explicit audit judgments, not guarantees.' if quality else 'No separate selected-corpus quality bundle was supplied; origin-arm audit evidence remains archived.'),
                 'budget': f'{len(calls_all)} scoped physical calls across selected origin arms; reported USD {sum(e.get("api_reported_cost_usd") or 0 for e in calls_all):.6f}; charged/reserved USD {sum(e["charged_or_reserved_usd"] for e in calls_all):.6f}. Shared ledger snapshot through exclusive index {ledger_end}; raw requests only for these origin root/arms. No transport credentials.',
                 'mixing': 'Synthetic only. Planned exact716+9284 mixture uses the identical seed0 replay selection from dougalldeepmind/2026-09-08-nosynth-mix @7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd, yielding7.16% synthetic rows; the existing rounded7 naming suffix remains.'}
