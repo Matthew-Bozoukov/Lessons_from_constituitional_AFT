@@ -77,3 +77,11 @@ uv run python -m scratch.dataset_refresh.publish_offline_composite mixture-card 
 The exact mix contract remains716 synthetic +9284 replay, seed0, strict8192, pinned `dougalldeepmind/2026-09-08-nosynth-mix@7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd`, exact replay source quotas and payload/position agreement with the existing low-arm reference. Native reasoning/backfill is inherited; no new backfill or paid generation occurs. The card adds the truthful offline review distinction to the existing pinned-source and masking validation. The rounded7 repository suffix remains despite the exact7.16% row share. Token share and training loss weight remain separate quantities.
 
 The implementation task ran no API calls, uploads, generation or final release selection. Actual base650 validation passed against the current immutable correction selection.
+
+## Exact-source replacement of a canonical answer
+
+A final independently reviewed defect in one of the canonical650 answers can be handled without changing that source or its frozen history. The same selection JSON may include optional `base_replacements`, an array of `{acceptance_path, acceptance_sha256}` entries using the existing frozen offline-acceptance proof. The original66 `offline_entries` remain unchanged and still mean additional sources.
+
+Each replacement must identify exactly one of the canonical650 root/arm/candidate/result hashes, preserve its system/user bytes and trait, and carry a valid independently accepted answer. Unknown, duplicate, changed-source or unaccepted replacements fail. The replacement occupies the same selection position, while the old phase's selected count decreases and its full origin archive remains preserved. No original terminal, judge verdict or exclusion is edited.
+
+WithN replacements, the final716 has650−N original per-row acceptances and66+N independent offline acceptances. The card, provenance, selected phase IDs and dossier index report those actual counts;650 remains the canonical source ancestry, not a claim that every original answer was retained. An unchanged already sound Sonnet answer from a saved stage can qualify only through the same full independent/offline checks. This path introduces no generation or automatic acceptance.

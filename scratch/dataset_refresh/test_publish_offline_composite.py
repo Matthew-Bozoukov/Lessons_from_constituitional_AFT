@@ -200,3 +200,51 @@ def test_second_ancestry_fail_closed(ancestry, change):
     else: ledger[0]['candidate_id'] = 'source::someone_else'
     m.base.write_json(inp, value)
     with pytest.raises(ValueError): m.author_execution_scopes('dossier', ledger, budget)
+
+
+def replacement(mixed, tmp_path, monkeypatch):
+    import copy
+    path = tmp_path/'replacement'/'acceptance.json'; digest = 'e'*64
+    source = copy.deepcopy(mixed['base']['entries'][0])
+    row = copy.deepcopy(mixed['rows'][0]); row['metadata']['scenario_id'] = 'offline_replacement'
+    row['messages'][-1]['content'] += ' A separately reviewed correction.'
+    dossier = {'source_ref': source, 'physical_receipt': {'call_id': 1}, 'author_kind': 'untouched_saved_final'}
+    audit = {'dossier': dossier, 'acceptance': {'automatic_acceptance': False}}
+    prior = m.offline.validate_accepted
+    def accepted(p, expected):
+        if str(p) == str(path):
+            if expected != digest: raise ValueError('Changed accepted replacement proof')
+            return row, audit
+        return prior(p, expected)
+    monkeypatch.setattr(m.offline, 'validate_accepted', accepted)
+    cfg_path = next(iter(mixed['dossiers'].values()))[1]['review_config']
+    mixed['dossiers'][str(path.parent/'dossier.json')] = (dossier, {'review_config': cfg_path})
+    ref = {'acceptance_path': str(path), 'acceptance_sha256': digest}
+    mixed['selection']['base_replacements'] = [ref]
+    return ref, row, dossier
+
+
+def test_same_source_replacement_preserves_canonical_ancestry_and_changes_route_counts(mixed, tmp_path, monkeypatch):
+    ref, replacement_row, dossier = replacement(mixed, tmp_path, monkeypatch)
+    original_bytes = mixed['base_path'].read_bytes()
+    m.base.write_json(mixed['path'], mixed['selection'])
+    rows, phases, dossiers = m.validate_selection(mixed['path'])
+    assert len(rows) == 716 and rows[0] == replacement_row
+    assert rows[1:] == mixed['rows'][1:]
+    assert len(dossiers) == 67 and sum(d['base_replacement'] for d in dossiers) == 1
+    assert m.review_route_counts(phases, dossiers) == {'original_per_row_with_verified_corrections': 649, m.offline.ROUTE: 67}
+    assert dossier['source_ref']['candidate_id'] not in next(p for p in phases if p['root']==dossier['source_ref']['root'])['selected_ids']
+    assert mixed['base_path'].read_bytes() == original_bytes
+
+
+@pytest.mark.parametrize('change', ['duplicate', 'unknown', 'source_hash', 'prompt', 'trait', 'acceptance_hash'])
+def test_base_replacement_requires_same_source_and_real_accepted_proof(mixed, tmp_path, monkeypatch, change):
+    ref, row, dossier = replacement(mixed, tmp_path, monkeypatch)
+    if change == 'duplicate': mixed['selection']['base_replacements'].append(ref)
+    elif change == 'unknown': dossier['source_ref']['candidate_id'] = 't1_999_v0'
+    elif change == 'source_hash': dossier['source_ref']['result_sha256'] = '0'*64
+    elif change == 'prompt': row['messages'][1]['content'] += ' A changed premise.'
+    elif change == 'trait': row['metadata']['trait_id'] = 't9'
+    else: ref['acceptance_sha256'] = '0'*64
+    m.base.write_json(mixed['path'], mixed['selection'])
+    with pytest.raises(ValueError): m.validate_selection(mixed['path'])

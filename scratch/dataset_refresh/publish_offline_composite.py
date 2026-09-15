@@ -1,4 +1,4 @@
-# ABOUTME: Publish the fixed650-row nonmoral baseline plus66 independently adopted saved answers.
+# ABOUTME: Publish fixed650-source nonmoral ancestry plus66 additions, with independently accepted same-source replacements.
 # ABOUTME: Preserve distinct review routes, exact716 release gates and full closed-budget provenance without generation.
 from __future__ import annotations
 
@@ -97,7 +97,8 @@ def validate_base(selection):
 
 def validate_selection(path):
     selection = offline.read(path)
-    if set(selection) != {'arm', 'base_selection', 'offline_entries'} or selection['arm'] != ARM:
+    if (set(selection) - {'arm', 'base_selection', 'offline_entries', 'base_replacements'} or
+            not {'arm', 'base_selection', 'offline_entries'} <= set(selection) or selection['arm'] != ARM):
         raise ValueError('Explicit base650 plus offline66 selection required')
     ref = selection['base_selection']
     if ref.get('sha256') != BASE_SELECTION_SHA:
@@ -109,19 +110,38 @@ def validate_selection(path):
     if not isinstance(entries, list) or len(entries) != 66:
         raise ValueError('Exactly66 independently adopted additions required')
     origins = {(str(Path(e['root']).resolve()), e['arm'], e['candidate_id']) for e in base_selection['entries']}
+    original_indices = {(str(Path(e['root']).resolve()), e['arm'], e['candidate_id']): i
+                        for i, e in enumerate(base_selection['entries'])}
+    replacements = selection.get('base_replacements', [])
+    if not isinstance(replacements, list):
+        raise ValueError('Base replacements must be explicit accepted proof entries')
     dossiers = []
-    for entry in entries:
+    replaced = set()
+    for is_replacement, entry in [(True, e) for e in replacements] + [(False, e) for e in entries]:
         if set(entry) != {'acceptance_path', 'acceptance_sha256'}:
             raise ValueError('Offline entry requires exact acceptance path/hash')
         row, audit = offline.validate_accepted(entry['acceptance_path'], entry['acceptance_sha256'])
         d = audit['dossier']; ref = d['source_ref']
-        key = (ref['root'], ref['arm'], ref['candidate_id'])
-        if key in origins:
-            raise ValueError('Same source selected through two acceptance routes')
-        origins.add(key)
-        rows.append(row)
+        key = (str(Path(ref['root']).resolve()), ref['arm'], ref['candidate_id'])
+        if is_replacement:
+            if key not in original_indices or key in replaced:
+                raise ValueError('Unknown or duplicate canonical base replacement source')
+            index = original_indices[key]; original_entry = base_selection['entries'][index]
+            original_row = rows[index]
+            if (ref['result_sha256'] != original_entry['result_sha256'] or
+                    row['messages'][:2] != original_row['messages'][:2] or
+                    row['metadata']['trait_id'] != original_row['metadata']['trait_id']):
+                raise ValueError('Base replacement changed its exact source, trait or original result binding')
+            rows[index] = row; replaced.add(key)
+            phase = next(p for p in phases if p['root'] == key[0])
+            phase['selected_ids'].remove(ref['candidate_id'])
+        else:
+            if key in origins:
+                raise ValueError('Same source selected through two acceptance routes')
+            origins.add(key)
+            rows.append(row)
         dossiers.append({'path': str(Path(entry['acceptance_path']).resolve().parent),
-                         'acceptance_sha256': entry['acceptance_sha256'], **audit})
+                         'acceptance_sha256': entry['acceptance_sha256'], 'base_replacement': is_replacement, **audit})
     offline.validate_release(rows)
     cfg = phases[0]['config']
     for phase in phases:
@@ -133,6 +153,14 @@ def validate_selection(path):
         if any(review_cfg.get(k) != cfg.get(k) for k in COMMON):
             raise ValueError('New offline review uses a different constitution/craft contract')
     return rows, phases, dossiers
+
+
+def review_route_counts(phases, dossiers):
+    original = sum(len(p['selected_ids']) for p in phases)
+    additions = len(dossiers)
+    if not 0 <= original <= 650 or additions < 66 or original + additions != 716:
+        raise ValueError('Mixed acceptance route counts do not total the exact716 source selection')
+    return {'original_per_row_with_verified_corrections': original, offline.ROUTE: additions}
 
 
 def provenance(rows, phases, dossiers, dataset_sha):
@@ -162,7 +190,8 @@ def provenance(rows, phases, dossiers, dataset_sha):
     value = {'composite': True, 'mixed_acceptance_routes': True, 'pipeline': ARM,
              **{k: cfg[k] for k in COMMON if k in cfg}, 'dataset_sha256': dataset_sha,
              'origins': origins, 'models': {p['phase_id']: p['config']['models'] for p in origins},
-             'review_route_counts': {'original_per_row_with_verified_corrections': 650, offline.ROUTE: 66}}
+             'review_route_counts': review_route_counts(phases, dossiers),
+             'canonical_base_sources': 650, 'base_replacements': sum(d.get('base_replacement', False) for d in dossiers)}
     return value
 
 
@@ -209,7 +238,7 @@ def preview(selection_path, output):
         audit_corpus.audit(output/'dataset.jsonl', quality, local_files_only=True)
         manifest = {'dataset_sha256': dataset_sha, 'selection_sha256': offline.sha(output/'selection.json'),
             'arm': ARM, 'rows': 716, 'quotas': base.quotas(), 'automatic_checks': 'failed' if failures else 'passed',
-            'review_route_counts': {'original': 650, offline.ROUTE: 66},
+            'review_route_counts': review_route_counts(phases, dossiers),
             'independent_adjudication': 'Required separately for final joint corpus.',
             'publisher_sha256': offline.sha(__file__), 'quality_files': preview_release.inventory(quality)}
         base.write_json(output/'preview_manifest.json', manifest)
@@ -340,7 +369,8 @@ def prepare(selection_path, destination, source_commit, ledger_end, date, qualit
                 offline.validate_accepted(target/'acceptance.json', ident)
                 scopes.update(author_execution_scopes(target/'dossier.json', ledger, budget))
                 offline_index.append({'acceptance_sha256': ident, 'path': target.relative_to(out).as_posix(),
-                                      'source_ref': d['source_ref'], 'author_kind': d['author_kind']})
+                                      'source_ref': d['source_ref'], 'author_kind': d['author_kind'],
+                                      'base_replacement': item.get('base_replacement', False)})
             # Preserve complete new execution roots, including unsuccessful outcomes, not only selected answers.
             for root, arm in sorted(scopes):
                 if root not in archived_roots:
@@ -376,12 +406,15 @@ def prepare(selection_path, destination, source_commit, ledger_end, date, qualit
             base.write_json(out/'generation_provenance.json', prov)
             prepare_mixtures.synthetic_provenance(out/'generation_provenance.json', ARM)
             cfg = phases[0]['config']; name = synth_name(ARM, date=date)
-            fields = {'title': name, 'experiment': '716 nonmoral human-advice conversations:650 accepted rows from earlier phases of this refresh plus66 independently adopted saved answers.',
+            original_count = prov['review_route_counts']['original_per_row_with_verified_corrections']
+            offline_count = prov['review_route_counts'][offline.ROUTE]
+            replaced_count = prov['base_replacements']
+            fields = {'title': name, 'experiment': f'716 nonmoral human-advice conversations:650 canonical sources from earlier phases of this refresh plus66 additional sources;{replaced_count} canonical answers replaced by independently accepted answers to the exact same source.',
                 'date_generated': 'Multiple immutable author phases; publication date '+date,
                 'constitution': cfg['constitution']+'; SHA256='+cfg['constitution_sha256']+'; full compatibility-review contract. Nonmoral authors received the craft specification, not this ethical constitution in their generation prompts.',
                 'craft_preference': cfg['craft_spec']+'; SHA256='+cfg['craft_spec_sha256']+'. Qualified nine varied craft tensions. The historical craft corpus supplied scenario inspiration; the650 base rows are from earlier phases of this refresh, not reused rows from the original684 training corpus. Original source preferences and actual author prompts are preserved.',
                 'models': json.dumps(prov['models'], ensure_ascii=False),
-                'review_routes': '650 accepted rows from earlier phases of this refresh retain their verified automatic reviews and correction/adoption histories.66 additions use independent Codex agent full-read review and explicit root adoption of exact message bytes; these are not human reviews and do not assert automatic Sonnet judge passes. Additions may be unchanged Sonnet finals saved during this refresh, a saved-input Sonnet revision, or one further focused Sonnet correction under explicit user authority. First attempts and their review outcomes remain archived; exact author settings are in generation_provenance.json and per-row dossiers.',
+                'review_routes': f'{original_count} accepted rows from earlier phases of this refresh retain their verified automatic reviews and correction/adoption histories.{offline_count} answers (66 additional sources plus{replaced_count} same-source base replacements) use independent Codex agent full-read review and explicit root adoption of exact message bytes; these are not human reviews and do not assert automatic Sonnet judge passes. These answers may be unchanged Sonnet finals saved during this refresh, a saved-input Sonnet revision, or one further focused Sonnet correction under explicit user authority. Original answers and their review outcomes remain archived; exact author settings are in generation_provenance.json and per-row dossiers.',
                 'source_repo': 'https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ '+code['commit'],
                 'provenance': 'Base650 selection, explicit offline acceptance hashes, all origin checkpoints, unsuccessful new execution outcomes, accepted dossiers, exact scoped raw calls/receipts, source code and closed shared billing ledger are archived. Original excluded or failed rows remain unchanged; new acceptance is a separate route. Source filesystem paths are historical identifiers, not required live locations.',
                 'schema': 'Only dataset.jsonl is the default train split. messages=[system,user,assistant], assistant reasoning_content and final content. Other files are untrained provenance; metadata is never injected into model messages.',
@@ -407,10 +440,12 @@ def mixture_card(config, mixture_dir, audit, synthetic_provenance):
     """Use existing pinned replay validation, then explicitly disclose the new acceptance route."""
     name = prepare_mixtures.prepare_card(config, mixture_dir, audit, synthetic_provenance)
     prov = prepare_mixtures.synthetic_provenance(synthetic_provenance, ARM)
-    if prov.get('review_route_counts') != {'original_per_row_with_verified_corrections': 650, offline.ROUTE: 66}:
+    replaced = prov.get('base_replacements', 0)
+    if (type(replaced) is not int or not 0 <= replaced <= 650 or
+            prov.get('review_route_counts') != {'original_per_row_with_verified_corrections': 650-replaced, offline.ROUTE: 66+replaced}):
         raise ValueError('Mixed-route synthetic provenance differs')
     out = Path(mixture_dir); fields = offline.read(out/'card_fields.json')
-    fields['review_routes'] = '650 synthetic rows accepted during earlier phases of this refresh retain verified per-row reviews and correction/adoption histories;66 saved answers use fresh independent Codex agent full-read review and explicit root adoption. The650 are not reused historical684-corpus rows. Authors received craft preferences; the full new09 constitution governed compatibility review. No automatic Sonnet judge passes or human reviews are fabricated for the66 additions. Exact author requests and review evidence remain in the pinned synthetic archive.'
+    fields['review_routes'] = f'{650-replaced} synthetic rows accepted during earlier phases of this refresh retain verified per-row reviews and correction/adoption histories;{66+replaced} saved answers use fresh independent Codex agent full-read review and explicit root adoption, including{replaced} exact-source replacements among the canonical650 refresh sources. Those650 are not reused historical684-corpus rows. Authors received craft preferences; the full new09 constitution governed compatibility review. No automatic Sonnet judge passes or human reviews are fabricated for the separate offline route. Original answers, exact author requests and review evidence remain in the pinned synthetic archive.'
     fields['limitations'] = 'Equal716-row doses do not establish domain or supervised-token-length matching with difficult advice. See the final exact corpus comparison in the pinned synthetic selected-quality bundle; no training or evaluation is implied.'
     base.write_json(out/'card_fields.json', fields)
     (out/'README.md').write_text(card_markdown(fields, offline.read(out/'card_front_matter.json')), encoding='utf-8')
