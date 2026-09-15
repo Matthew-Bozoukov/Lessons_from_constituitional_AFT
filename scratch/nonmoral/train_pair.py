@@ -46,6 +46,8 @@ def commands(plan):
                 "model=qwen36", "seed=0", "wandb=false", "constitution="+plan.get('constitution','none'),
                 "data_repo=" + arm["data_repo"], "data_revision=" + arm["data_revision"],
                 "base_model_revision=" + plan["base_model_revision"]]
+        if plan.get("allow_default_supervise") is True:
+            argv.append("allow_default_supervise=true")
         result.append(shlex.join(argv))
     return result
 

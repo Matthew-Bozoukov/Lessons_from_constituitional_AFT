@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 from omegaconf import OmegaConf
@@ -42,6 +43,23 @@ DEFAULT_WANDB_PROJECT = "lasr"
 # What every launch must supply — none has a default, because each is the arm's identity
 # and a default would let two arms differ in something nobody typed.
 LAUNCH_ARGS = ("model", "data_repo")
+
+
+def supervise_census(modes, *, allow_default_supervise=False) -> Counter:
+    """Census a present supervision column, retaining the default ablation tripwire.
+
+    Standard mixtures may explicitly record ``all``; accepting that layout requires
+    a literal boolean launch opt-in, which the resolved training config preserves.
+    This only validates the declaration: it does not alter modes or loss masks.
+    """
+    counts = Counter(mode or "all" for mode in modes)
+    non_default = {mode: n for mode, n in counts.items() if mode != "all"}
+    assert non_default or allow_default_supervise is True, (
+        "dataset has a supervise column but every row is 'all'; "
+        "this arm would be identical to its control. For an intentional standard "
+        "all-supervision mixture, explicitly pass allow_default_supervise=true")
+    return counts
+
 
 # Keys a recipe no longer carries. Each says where the fact went, so an old per-arm config
 # (configs/train/archive/) or a pre-2026-09-05 train_config.yaml pulled from an adapter

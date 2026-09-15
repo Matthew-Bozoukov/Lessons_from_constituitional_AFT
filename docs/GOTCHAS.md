@@ -3,6 +3,22 @@
 
 # GOTCHAS
 
+## Explicit all-supervision columns need an intentional standard-arm declaration (2026-09-15)
+
+The refreshed low-stakes/nonmoral mixtures explicitly store `supervise: all` on
+synthetic rows. Loading them alongside replay rows creates a dataset-wide column
+whose null entries also mean `all`. The trainer's ablation guard previously
+rejected this valid layout, interpreting any such column as a promise of a
+nondefault loss mode. Both first launches stopped before model loading or an
+optimizer step; failure archives were saved and the owned pods terminated.
+
+For an intentionally standard all-supervision mixture, pass the explicit boolean
+`allow_default_supervise=true`. The default ablation guard remains active without
+this declaration, and the resolved config preserves it. This changes schema
+admission only, not data bytes, token masks, per-example loss or the SFT recipe.
+Check the supervision census locally before renting GPUs, as well as running the
+real model-specific mask gate on the training host.
+
 ## Frozen dataset runners and budget-stop exception identity (2026-09-15)
 
 Launching `scratch/dataset_refresh/run.py` as a script creates its classes under

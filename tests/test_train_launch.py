@@ -17,12 +17,32 @@ from src.train.launch import (
     require_launch_args,
     resolve_model,
     resolve_thinking,
+    supervise_census,
     wandb_preflight,
     write_back_pins,
 )
 
 RECIPE = "configs/train/sft.yaml"
 LAUNCH = ["model=qwen36", "data_repo=o/2026-09-05-nosynth-mix"]
+
+
+def test_uniform_default_supervision_requires_literal_boolean_opt_in():
+    modes = ["all", None, "all"]
+    with pytest.raises(AssertionError, match="allow_default_supervise=true"):
+        supervise_census(modes)
+    for value in (False, None, "true", "false", 1):
+        with pytest.raises(AssertionError):
+            supervise_census(modes, allow_default_supervise=value)
+    cfg = OmegaConf.create({"allow_default_supervise": True})
+    assert supervise_census(modes, allow_default_supervise=cfg.allow_default_supervise) == {"all": 3}
+    assert modes == ["all", None, "all"]
+
+
+@pytest.mark.parametrize("opt_in", [False, True, None])
+def test_mixed_supervision_census_keeps_existing_behavior(opt_in):
+    assert supervise_census([None, "all", "cot", "final"],
+                            allow_default_supervise=opt_in) == {
+        "all": 2, "cot": 1, "final": 1}
 
 
 def test_the_recipe_carries_no_arm_identity_and_no_retired_key():

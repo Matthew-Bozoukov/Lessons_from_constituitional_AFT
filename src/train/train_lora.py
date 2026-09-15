@@ -36,6 +36,7 @@ from src.train.launch import (  # noqa: E402
     require_launch_args,
     resolve_model,
     resolve_thinking,
+    supervise_census,
     wandb_preflight,
     write_back_pins,
 )
@@ -416,15 +417,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
 
     # `supervise` selects WHICH assistant turns (and, for "cot", which part of one) are
     # training targets. Censused on the FULL dataset for the same reason as mask_spans:
-    # a column that declares a non-default mode nowhere is an arm collapsed into its
-    # control, and that must fail before the GPU bill starts.
+    # a column that declares a non-default mode nowhere requires explicit opt-in for
+    # a standard all-supervision mixture; otherwise the ablation tripwire still fails.
     training_meta_supervise = {}
     if "supervise" in ds.column_names:
-        supervise_counts = Counter(s_ or "all" for s_ in ds["supervise"])
-        non_default = {m: n for m, n in supervise_counts.items() if m != "all"}
-        assert non_default, (
-            "dataset has a supervise column but every row is 'all'; "
-            "this arm would be identical to its control")
+        supervise_counts = supervise_census(
+            ds["supervise"],
+            allow_default_supervise=cfg.get("allow_default_supervise", False))
         print(f">>> supervise (validated on all {len(ds)} rows): "
               f"{dict(supervise_counts.most_common())}")
         training_meta_supervise = {"supervise_counts": dict(supervise_counts)}
