@@ -3,6 +3,12 @@
 
 # Refreshed low-stakes and nonmoral LoRA training
 
+**Final status, 2026-09-15:** both adapters completed 625 steps and one epoch,
+were published, and passed file-hash and provenance verification against local
+copies. Both owned pods are confirmed absent. No evaluation ran. Full checkpoint
+archive transfers were interrupted when both pods disappeared; the cause is
+unknown. Final adapter files are intact and verified independently of that failure.
+
 The user authorized one LoRA per arm, each on a separate RunPod pod with two H200s,
 running in parallel. They approved a **$100 combined GPU ceiling**, initially
 allocated $50 per arm, including failed starts and result recovery. Evaluation
@@ -80,3 +86,48 @@ weights/tokenizer/config and exact base/data provenance; verify public HF model
 revision and payload hashes against preserved outputs. Then record final cost,
 verify both owned pods gone and account balance, release sleep inhibition and
 pause monitoring. No evaluation follows without the user's separate instruction.
+
+## Final results and recovery
+
+| Arm | Published model revision | Training runtime | Mean training loss |
+| --- | --- | ---: | ---: |
+| [Low stakes](https://huggingface.co/dougalldeepmind/2026-09-15-qwen36-0-da-lowstakes-refresh-7/tree/095a9874a1ce54ab1faaa3a99d63642e6199c591) | `095a9874a1ce54ab1faaa3a99d63642e6199c591` | 9187.5689 s | 0.8184259674 |
+| [Nonmoral](https://huggingface.co/dougalldeepmind/2026-09-15-qwen36-0-nonmoral-advice-7/tree/85ff41394f398d49a59a047a94a61dc07af4b3bd) | `85ff41394f398d49a59a047a94a61dc07af4b3bd` | 9216.5256 s | 0.8125496143 |
+
+Each run recorded world size 2, 10000 examples, one epoch and 625 optimizer
+steps. All 125 logged losses and gradient norms were finite. These training
+losses are not evaluation results or evidence of improved alignment.
+
+The [publication receipt](2026-09-15_refreshed_controls_publication.json)
+records all nine published payload files per adapter, including the 1275145144-byte
+weights, tokenizer, card, resolved config and provenance. LFS SHA256 or Git blob
+hashes match bytes received from the GPU host. Base/data revisions, seed, rank,
+thinking stamp and uniform supervision census match the approved plan.
+`scratch/dataset_refresh/verify_training_release.py` performs these checks.
+The two final adapters were additionally extracted to each attempt's
+`recovered_adapter/` directory and rehashed against that receipt.
+
+Both 8986972160-byte full backup archives were still transferring when SSH
+connections failed around 17:59 UTC. The provider then returned HTTP404 for
+both owned pod IDs and omitted both from inventory. Local owner/watchdog
+deadlines had not elapsed, and the account still had credit; the removal cause
+is not established. The original owner status files remain as evidence, and a
+separate [closure receipt](2026-09-15_refreshed_controls_closure.json) records
+the verified absence and interruption. Local retry processes were stopped only
+after both pods were confirmed gone. Sleep inhibition was released.
+
+Preserved partial archives contain 7423496192 bytes (low) and 6129917952 bytes
+(nonmoral), with all final adapter files and all 12 step-600 checkpoint members
+fully received. The step-625 optimizer file (low) and checkpoint weight file
+(nonmoral) are truncated. The checkpoint archives have **not** passed the full
+remote/local archive hash gate and must not be described as complete verified
+backups. Complete run metadata and all logged training metrics are separately
+preserved locally; the full raw training logs at the end of each archive were
+not received. No retraining is needed to use the verified final adapters.
+
+The conservative elapsed-time cost upper estimate through the final absence
+check is **$60.34 combined**, including storage allowance and prior startup
+reserves, below the approved $100 ceiling. It is not an exact provider bill.
+The account balance was $243.51 at 18:02:29 UTC; other account users' resources
+were left untouched. Monitoring is paused after final documentation and resource
+closure; evaluation still requires the user's instruction.

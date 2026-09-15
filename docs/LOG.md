@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Refreshed-control LoRAs completed and verified
+
+**Hypothesis and method.** Prepare the moral low-stakes and nonmoral craft-tension
+controls for later evaluation using the shared Qwen3.6-27B seed0, rank64, one-epoch
+recipe. Each frozen mixture contains 716 synthetic plus the same 9284 nosynth
+rows. Runs used separate two-H200 pods in parallel under a $100 combined ceiling.
+
+**Result.** Both completed 625 steps with finite logged loss and gradients.
+The final adapters, tokenizer/config files and exact input provenance passed
+local-versus-HF payload verification. Training took 153.13 minutes for low stakes
+and 153.61 minutes for nonmoral. The [training report](training/2026-09-15_refreshed_controls.md)
+links the pinned model revisions and machine-readable verification receipts.
+No evaluation was performed; training loss is not a behavioural result.
+
+**Recovery limitation.** Both pods disappeared during full checkpoint archive
+transfers, before local deadlines; the cause is unknown. Final adapters are
+published and hash-verified in separate local copies. Partial checkpoint archives
+and complete run metadata were preserved, but full archive verification and raw
+log recovery could not finish. Provider HTTP404 and inventory checks confirm
+neither owned pod remains. Conservative combined cost upper estimate $60.34,
+including prior starts and storage allowance, is not an exact provider bill.
+
+**Next step.** Await user authorization for evaluation of the pinned adapters.
+Known dataset-content and comparability limitations remain unchanged.
+
 ## 2026-09-15 — Refreshed-control LoRA training launched in parallel
 
 **Method.** User authorized one seed0 Qwen3.6-27B rank64 LoRA per frozen refreshed

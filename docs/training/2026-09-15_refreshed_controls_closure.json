@@ -1,0 +1,40 @@
+{
+  "verified_at_utc": "2026-09-15T18:02:29.841136+00:00",
+  "arms": {
+    "low": {
+      "pod": "xy4sgbu0kwdl29",
+      "provider_http_status": 404,
+      "conservative_cost_upper_estimate_usd": 30.236890722253584,
+      "includes_prior_attempt_reserve_usd": 0.56,
+      "final_adapter_local_and_hf_verified": true,
+      "full_archive_verified": false,
+      "partial_archive_bytes": 7423496192,
+      "truncated_member": "output/train/2026-09-15_qwen36_0_da_lowstakes_refresh_7/checkpoint-625/optimizer.pt",
+      "complete_checkpoint600_file_count": 12
+    },
+    "nonmoral": {
+      "pod": "oshtnlsecsq962",
+      "provider_http_status": 404,
+      "conservative_cost_upper_estimate_usd": 30.102338782543605,
+      "includes_prior_attempt_reserve_usd": 0.55,
+      "final_adapter_local_and_hf_verified": true,
+      "full_archive_verified": false,
+      "partial_archive_bytes": 6129917952,
+      "truncated_member": "output/train/2026-09-15_qwen36_0_nonmoral_advice_7/checkpoint-625/adapter_model.safetensors",
+      "complete_checkpoint600_file_count": 12
+    }
+  },
+  "combined_cost_upper_estimate_usd": 60.33922950479719,
+  "cost_caveat": "Elapsed time through absence verification at quoted rate plus storage allowance and prior reserves; not an exact provider bill.",
+  "pod_removal_cause": "Unknown. Both pods disappeared before local owner/watchdog deadlines while full backups were transferring.",
+  "owned_pods_remaining": [],
+  "other_active_pod_count": 5,
+  "provider_account": {
+    "clientBalance": 243.5098494526,
+    "currentSpendPerHr": 17.59
+  },
+  "final_training_complete": true,
+  "full_checkpoint_backups_complete": false,
+  "evaluation_run": false,
+  "local_retry_owners_stopped_after_verified_absence": true
+}
