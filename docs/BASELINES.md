@@ -21,7 +21,7 @@ which in the entry.
 | **corpus** | `dougalldeepmind/2026-09-14-da-synth` @ `013886238fca238c4d54ace96530f444bb2b2f02`: 752 rows (t1 78, t2 85, t3 85, t4 83, t5 85, t6 84, t7 83, t8 84, t9 85) |
 | **mixture** | `dougalldeepmind/2026-09-15-da-7-mix` @ `c8a65ab574bef277aaefc55664c1d4dff03b4ef5`, from `configs/data/mixture/da.yaml`: 10,000 rows = the 2026-09-08 nosynth base (9,300) + exactly 700 DA (78 × t1–t7, 77 × t8–t9) |
 | **train config** | the shared recipe `configs/train/sft.yaml` with `model=qwen36 data_repo=dougalldeepmind/2026-09-15-da-7-mix data_revision=c8a65ab574bef277aaefc55664c1d4dff03b4ef5 seed=0` (global batch 16 on any GPU count) |
-| **adapter** | seed 0 training since 2026-09-15; its Hub id goes here when it is published |
+| **adapter** | `dougalldeepmind/2026-09-15-qwen36-0-da-7` @ `903c47ef0d5bc63bc2b55b4bdb23a8ba3af58dc0`: seed 0, trained 2026-09-15 on 1× H200 (625 steps, about 4 h), `thinking: true` |
 | **ODCV** | not yet measured |
 
 **Use this for all new difficult-advice work**, not principle-scoped 702, `da716` or `synthdoc-716`.

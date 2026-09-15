@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Difficult advice retrained on neutral 752: the da-7 adapter, now the default
+
+**Why.** The 2026-09-14 regeneration (below) needs a trained arm before it can be measured,
+and the paper retrains every arm on the 2026-09-08 nosynth base.
+**Method.** `uv run mix --config configs/data/mixture/da.yaml` ->
+`dougalldeepmind/2026-09-15-da-7-mix` @ `c8a65ab5`: 10,000 rows = 9,300 nosynth base + 700 DA,
+trait-balanced (78 x t1-t7, 77 x t8-t9). Then `uv run train --config configs/train/sft.yaml
+model=qwen36 data_repo=dougalldeepmind/2026-09-15-da-7-mix data_revision=c8a65ab5... seed=0` on
+1x H200 (RunPod), code at 48bd128b.
+**Result.** [`dougalldeepmind/2026-09-15-qwen36-0-da-7`](https://huggingface.co/dougalldeepmind/2026-09-15-qwen36-0-da-7)
+@ `903c47ef`: 625 steps in about 4 h; loss 1.00 at step 5, 0.85 at step 100, 0.85 at step 625;
+`thinking: true`. `docs/BASELINES.md` names it as the difficult-advice adapter, the Colosseum
+Hospital and Jira configs label it `qwen36_difficult_advice_neutral_752`, and delegated_harm
+pins its revision.
+**Next.** ODCV on it, and seeds 1-2 before ranking it. A 0% control on the nosynth base: the
+table-2 control no longer shares its base mix, and the killarney Colosseum scripts still pair
+the principle-scoped 702 adapter with it.
+
 ## 2026-09-15 — PAR's trained turn was DA's, its principles came out 4.7x uneven, and nothing failed
 
 **Problem.** Two defects in the varied-shortfall PAR recipe, both measured on its 2026-09-03
