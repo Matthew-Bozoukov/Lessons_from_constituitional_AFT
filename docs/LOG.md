@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Sonnet-only continuation and factual-critic calibration
+
+**Authorization.** The user approved continued revisions, individual-row acceptance,
+documented repairs and replacements within the original combined$250 maximum
+(target$200), and prohibited Haiku in every new role. The earlier failed pilots
+remain closed evidence; their operational stop rules are superseded prospectively.
+**Method.** All new authors use Sonnet5. Retain explicit detailed draft/rewrite
+deliberation, derive provenance mechanically, assign genuinely benign settings, and
+separate a source-first factual/constraint critic from target/content review. The
+nonmoral subject library spans28 ordinary creative settings; fiction is a subset.
+**Calibration.** On eight purposively selected cases, the initial Sonnet critic
+missed several clear defects and Gemini passed every case. A revised source-first
+Sonnet prompt with default reasoning produced six valid verdicts (two clear rejects,
+four defensible passes); two other cases exhausted the output limit. These cases
+informed the revision and are not held-out validation. Across24 calls: reported
+$0.295475, conservative exposure$0.357840, charged to the original shared ledger.
+**Next.** Run the Sonnet recipe in parallel, retain incomplete/rejected examples,
+inspect independent samples, and finish exact716+9284 mixtures and publication.
+No training, model evaluation or main merge. [Current execution contract](dataset_audits/2026-09-15_sonnet_execution.md).
+
 ## 2026-09-15 — Moral low-stakes and nonmoral refresh stopped after two failed pilot rounds
 
 **Hypothesis.** Refreshing the two controls with new09 and the pinned September8

@@ -188,6 +188,9 @@ def test_nonmoral_acceptance_requires_all_nested_gates_and_overall_acceptance():
         assert not mod.acceptance({**good, "gates": {k: v for k, v in good["gates"].items() if k != key}}, cfg)
     # Metadata is deliberately hidden from this content judge and checked by the
     # later lineage judge; moving the gate must not silently remove it.
+    if cfg.get('per_row_regime'):
+        assert 'lineage_review' not in cfg
+        return  # Derived provenance invariants are exercised in test_per_row.py.
     lineage_cfg = cfg["lineage_review"]
     lineage_names = ["accepted", "metadata_consistent", "source_facts_exact"]
     assert set(lineage_cfg["acceptance"]["required_true"]) == set(lineage_names)
@@ -202,6 +205,7 @@ def test_nonmoral_acceptance_requires_all_nested_gates_and_overall_acceptance():
 @pytest.mark.parametrize("style", ["da-lowstakes-refresh", "nonmoral-advice"])
 def test_actual_config_renders_all_stages_and_resumes_without_repeating_calls(tmp_path, style):
     cfg = mod.load_config(f"configs/data/synth/{style}.yaml")
+    cfg['review_constitution_text'] = 'TEST_CONSTITUTION_ONLY_IN_CONTENT_REVIEW'
     arm_dir = tmp_path / style
     mod.write_json(arm_dir / "config.json", cfg)
     candidate = {"candidate_id": "t1_000_v0", "trait_id": "t1", "source_id": "parent1", "variant": 0,
@@ -227,7 +231,10 @@ def test_actual_config_renders_all_stages_and_resumes_without_repeating_calls(tm
     texts += [
         f"<reasoning>{trace}</reasoning><response>{answer}</response>" +
         ("<changes>Clarified the recommendation.</changes>" if "changes" in stage["tags"] else "")
-        for stage in cfg["response_stages"]] + [json.dumps(accepted(cfg))]
+        for stage in cfg["response_stages"]]
+    if cfg.get('per_row_regime'):
+        texts += [json.dumps({'accepted': True, 'issues': [], 'assessment': 'No material defect.'})]
+    texts += [json.dumps(accepted(cfg))]
     if cfg.get("lineage_review"):
         texts.append(json.dumps(accepted(cfg["lineage_review"])))
     calls = []
@@ -249,11 +256,12 @@ def test_actual_config_renders_all_stages_and_resumes_without_repeating_calls(tm
     client = mod.BudgetClient(tmp_path / "budget", 250, {m["model"] for m in cfg["models"].values()}, send=send)
     output = mod.generate_one(tmp_path, style, candidate, client)
     assert output["status"] == "accepted", output
-    expected_calls = 2 + len(cfg["response_stages"]) + bool(cfg.get("preflight")) + bool(cfg.get("lineage_review"))
+    expected_calls = (2 + len(cfg["response_stages"]) + bool(cfg.get("preflight"))
+                      + bool(cfg.get("lineage_review")) + bool(cfg.get('per_row_regime')))
     assert len(calls) == len(texts) == expected_calls
     assert mod.generate_one(tmp_path, style, candidate, client) == output
     assert len(calls) == expected_calls
-    assert output["record"]["adapted_parent_id"] == "parent1"
+    assert output["record"]["adapted_parent_id"] == (None if cfg.get('per_row_regime') else "parent1")
 
 
 def prepared(tmp_path, monkeypatch, per_trait=1):

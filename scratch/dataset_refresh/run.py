@@ -190,6 +190,11 @@ def load_config(path):
 
 
 def prepare(config_paths, root, budget_root=None, revision_of=None, pilot_offset=0):
+    if config_paths and len({bool(load_config(p).get('per_row_regime')) for p in config_paths}) > 1:
+        raise ValueError('Cannot mix legacy and per-row regimes in one run')
+    if config_paths and all(load_config(p).get('per_row_regime') for p in config_paths):
+        from scratch.dataset_refresh.per_row import prepare as prepare_per_row
+        return prepare_per_row(config_paths, root, budget_root)
     if revision_of:
         with FileLock(str(Path(revision_of) / 'recipe_revision.lock'), timeout=1):
             receipt = Path(revision_of) / 'recipe_revision.json'
@@ -260,7 +265,7 @@ def _prepare(config_paths, root, budget_root=None, revision_of=None, pilot_offse
         # Trait round-robin makes every fixed prefix balanced. Preserve all original seed identities.
         groups = {t: sorted([r for r in source if r['trait_id'] == t],
                             key=lambda r: digest(['refresh-20260914', r['scenario_id']])) for t in quotas()}
-        for variant in range(2):
+        for variant in range(int(cfg.get('selection', {}).get('max_variants_per_seed', 2))):
             for index in range(max(len(g) for g in groups.values())):
                 for t in quotas():
                     if index >= len(groups[t]):
@@ -342,10 +347,25 @@ def load_checkpoint(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def load_result(path):
+    """Apply a documented independent exclusion without rewriting the original verdict."""
+    result = load_checkpoint(path)
+    exclusion = Path(path).parent / 'independent_exclusion.json'
+    if exclusion.exists():
+        note = load_checkpoint(exclusion)
+        if note.get('result_sha256') != digest(Path(path).read_bytes()) or not note.get('reason'):
+            raise BudgetStop('Unbound or unexplained independent exclusion')
+        result = {**result, 'automated_status': result['status'], 'status': 'rejected',
+                  'rejection_stage': 'independent_audit', 'independent_exclusion': note}
+    return result
+
+
 def validate_arm(root, arm):
     root = Path(root)
     meta = json.loads((root / 'run_meta.json').read_text(encoding='utf-8'))
     cfg = json.loads((root / arm / 'config.json').read_text(encoding='utf-8'))
+    if cfg.get('per_row_regime'):
+        meta = load_checkpoint(root / 'run_meta.json')
     if digest(cfg) != meta['arms'][arm]['config_sha256']:
         raise ValueError('Frozen recipe changed; preserve original and create an explicit revision')
     if digest(full_text(cfg['constitution']).encode()) != cfg['constitution_sha256']:
@@ -360,6 +380,9 @@ def validate_arm(root, arm):
 
 def generate_one(root, arm, candidate, client):
     cfg = json.loads((root / arm / 'config.json').read_text(encoding='utf-8'))
+    if cfg.get('per_row_regime'):
+        from scratch.dataset_refresh.per_row import generate_one as generate_per_row
+        return generate_per_row(root, arm, candidate, client)
     out_dir = root / arm / 'records' / candidate['candidate_id']
     out_dir.mkdir(parents=True, exist_ok=True)
     terminal = out_dir / 'result.json'
@@ -508,7 +531,7 @@ def status(root):
     meta = json.loads((root / 'run_meta.json').read_text(encoding='utf-8'))
     out = {}
     for arm in meta['arms']:
-        results = [load_checkpoint(p) for p in (root / arm / 'records').glob('*/result.json')]
+        results = [load_result(p) for p in (root / arm / 'records').glob('*/result.json')]
         accepted = [r for r in results if r['status'] == 'accepted']
         out[arm] = {'attempted': len(results), 'accepted': len(accepted),
                     'by_trait': {t: sum(r['trait_id'] == t for r in accepted) for t in quotas()},
@@ -537,24 +560,31 @@ def _execute(root, phase, ceiling, workers=8, arms=None, per_trait=2, batch_limi
     current = status(root)
     for arm in arms:
         cfg = validate_arm(root, arm)
+        if cfg.get('per_row_regime'):
+            from scratch.dataset_refresh.per_row import assert_models
+            assert_models(cfg)
+            if (meta.get('code_sha256') != digest(Path(__file__).read_bytes()) or
+                meta.get('code_per_row_sha256') != digest((Path(__file__).parent / 'per_row.py').read_bytes()) or
+                meta.get('critic_validator_sha256') != digest((Path(__file__).parent / 'reviewer_probe.py').read_bytes())):
+                raise ValueError('Frozen implementation changed; prepare a new run with preserved provenance')
         models.update(m['model'] for m in cfg['models'].values())
         candidates = read_rows(root / arm / 'candidates.jsonl')
         if phase == 'pilot':
             start = meta.get('pilot_offset', 0)
             candidates = candidates[start:start + 9 * per_trait]
-        elif phase == 'production':
+        elif phase == 'production' and not cfg.get('per_row_regime'):
             gate = root / arm / 'pilot_gate.json'
             if not gate.exists():
                 raise ValueError('Independent pilot approval is required before scaling ' + arm)
             approval = load_checkpoint(gate)
             if approval.get('approved') is not True or approval.get('config_sha256') != digest(cfg):
                 raise ValueError('Pilot approval must explicitly bind this frozen recipe')
-        else:
+        elif phase != 'production':
             raise ValueError('Unknown phase')
         remaining = {t: quotas()[t] - current[arm]['by_trait'][t] for t in quotas()}
         accepted_sources = set()
         for path in (root / arm / 'records').glob('*/result.json'):
-            result = load_checkpoint(path)
+            result = load_result(path)
             if result['status'] == 'accepted':
                 accepted_sources.add(result['record']['source_id'])
         chosen = []
@@ -577,9 +607,12 @@ def _execute(root, phase, ceiling, workers=8, arms=None, per_trait=2, batch_limi
     jobs = [arm_jobs[arm][i] for i in range(max((len(v) for v in arm_jobs.values()), default=0))
             for arm in arms if i < len(arm_jobs[arm])]
     client = BudgetClient(Path(meta.get('budget_root', str(root / 'budget'))), ceiling, models)
-    write_json(root / 'active_phase.json', {'phase': phase, 'arms': arms, 'jobs': len(jobs),
+    phase_record = {'phase': phase, 'arms': arms, 'jobs': len(jobs),
                'ceiling_usd': ceiling, 'started_at': timestamp(), 'code_sha256': digest(Path(__file__).read_bytes()),
-               'git_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()})
+               'per_row_code_sha256': digest((Path(__file__).parent / 'per_row.py').read_bytes()),
+               'git_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}
+    write_json(root / 'active_phase.json', phase_record)
+    save_checkpoint(root / 'phases' / (phase_record['started_at'] + '_' + digest(phase_record)[:8] + '.json'), phase_record)
     stop = threading.Event()
     def task(arm, c):
         if stop.is_set():
@@ -615,16 +648,20 @@ def export(root, arm):
         path = root / arm / 'records' / candidate['candidate_id'] / 'result.json'
         if not path.exists():
             continue
-        result = load_checkpoint(path)
+        result = load_result(path)
         if result['status'] == 'accepted' and sum(r['trait_id'] == result['trait_id'] for r in selected) < quotas()[result['trait_id']]:
             identity = load_checkpoint(path.parent / 'identity.json')
             if identity != {'candidate_sha256': digest(candidate), 'config_sha256': digest(cfg)}:
                 raise ValueError('Accepted record identity differs from frozen inputs')
             if not acceptance(result['review'], cfg) or simple_checks(result['record']):
                 raise ValueError('Accepted result does not satisfy the frozen checks')
-            for stage in ('preflight', 'lineage_review'):
-                if cfg.get(stage) and not acceptance(load_checkpoint(path.parent / (stage + '.json')), cfg[stage]):
-                    raise ValueError('Accepted result has an invalid ' + stage)
+            if cfg.get('per_row_regime'):
+                from scratch.dataset_refresh.per_row import verify_accepted
+                verify_accepted(path, result, cfg)
+            else:
+                for stage in ('preflight', 'lineage_review'):
+                    if cfg.get(stage) and not acceptance(load_checkpoint(path.parent / (stage + '.json')), cfg[stage]):
+                        raise ValueError('Accepted result has an invalid ' + stage)
             selected.append(result['record'])
     if len(selected) != 716:
         raise ValueError(f'Need716 accepted quota-matched rows, have{len(selected)}')
@@ -633,10 +670,15 @@ def export(root, arm):
         raise ValueError('Duplicate selected prompts')
     if len({re.sub(r'\s+', ' ', r['user']).strip().casefold() for r in selected}) != 716:
         raise ValueError('Duplicate normalized user prompts')
+    metadata_keys = ('trait_id', 'trait_name', 'trait_text', 'scenario_id', 'source_id', 'variant',
+                     'parent_revision', 'parent_exported', 'source_record_sha256', 'domain',
+                     'assigned_domain_id', 'source_domain', 'lineage_kind', 'adapted_parent_id',
+                     'paired_counterfactual', 'source_facts', 'conversation_sha256', 'response_repair_count')
     rows = [{'messages': [{'role': 'system', 'content': r['system']},
                           {'role': 'user', 'content': r['user']},
                           {'role': 'assistant', 'content': r['response'], 'reasoning_content': r['reasoning']}],
-             'metadata': {k: v for k, v in r.items() if k not in ('system', 'user', 'reasoning', 'response', 'draft_reasoning', 'draft_response')}} for r in selected]
+             'metadata': ({k: r[k] for k in metadata_keys if k in r} if cfg.get('per_row_regime') else
+                          {k: v for k, v in r.items() if k not in ('system', 'user', 'reasoning', 'response', 'draft_reasoning', 'draft_response')})} for r in selected]
     write_rows(root / arm / 'dataset.jsonl', rows)
     write_json(root / arm / 'selection.json', {'scenario_ids': [r['scenario_id'] for r in selected],
                 'quotas': quotas(), 'dataset_sha256': digest((root / arm / 'dataset.jsonl').read_bytes())})
