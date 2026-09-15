@@ -33,7 +33,7 @@ import numpy as np
 from matplotlib.patches import Patch
 
 from src.eval.misalignment.colosseum.config import EXPERIMENTS
-from src.utils import figure_path
+from src.naming import figure_path
 
 # Validated categorical pair (dataviz six-checks, light surface): lightness band, chroma
 # floor, CVD separation, normal-vision floor and contrast all pass.

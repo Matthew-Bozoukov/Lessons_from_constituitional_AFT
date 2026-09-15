@@ -28,7 +28,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.huggingface import push_run_dir  # noqa: E402
+from src.infra.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 
@@ -46,7 +46,7 @@ def _read(path: Path, default=None):
 
 
 def main(run_dir: str, repo: str, date: str, private: bool = False,
-         constitution: str = "constitutions/claude_distilled_12_principles_mid/"
+         constitution: str = "constitutions/archive/claude_distilled_12_principles_mid/"
                              "constitution.md") -> None:
     """Publish a run directory, with a card derived from the run's own artifacts.
 

@@ -26,27 +26,27 @@ from src.eval.misalignment.colosseum.hospital.config import (
     resolve_fixes,
 )
 from src.eval.misalignment.colosseum.publish import repo_name_for
-from src.huggingface import gate_push
+from src.infra.huggingface import gate_push
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
 BASE = "configs/eval/colosseum_hospital.yaml"
-DIRECTION_A = "configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml"
-DIRECTION_B = "configs/eval/2026-09-09_colosseum_hospital_board_access.yaml"
+DIRECTION_A = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"
+DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml"
 # The four 2026-09-13 configs: the parent they copy and the switches they change.
 NEW_CONFIGS = {
-    "configs/eval/2026-09-13_colosseum_hospital_retry_explained.yaml": (
+    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_retry_explained.yaml": (
         DIRECTION_A,
         {"retry_explains_itself": True},
     ),
-    "configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml": (
+    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml": (
         DIRECTION_A,
         {"end_turn_on_no_tool_call": True},
     ),
-    "configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml": (
+    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml": (
         DIRECTION_A,
         {"plan_post_optional": True},
     ),
-    "configs/eval/2026-09-13_colosseum_hospital_board_idle.yaml": (
+    "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml": (
         DIRECTION_B,
         {"post_message_in_execution": False, "execution_prompt_allows_status": False},
     ),

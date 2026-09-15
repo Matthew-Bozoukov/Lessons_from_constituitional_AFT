@@ -239,11 +239,17 @@ def check_thinking_declaration(rows, thinking: bool,
     """Fail fast when a train config's `thinking:` declaration contradicts the data.
 
     The declaration is the source of truth (the config is the scientific record); this
-    check only refuses combinations that would produce a mislabeled or reasoning-collapsed
-    artifact (CLAUDE.md gotcha 2). Empty `<think></think>` markers are fine under
-    thinking=true: the generation-boundary mask excludes the whole marker from the loss
-    (it is forced context in every serving configuration — the model never generates an
-    empty close), so it conditions without ever being trained.
+    check refuses the one combination that mislabels an artifact: `thinking: false` over
+    data that carries real reasoning traces. Empty `<think></think>` markers are fine
+    under thinking=true: the generation-boundary mask excludes the whole marker from the
+    loss (it is forced context in every serving configuration — the model never generates
+    an empty close), so it conditions without ever being trained. For the same reason a
+    dataset with NO traces at all may be declared `thinking: true` (the nosynth control):
+    nothing about thinking is trained either way — `build_labels` never sees the flag —
+    and the declaration only chooses the mode the arm is served and evaluated in, which
+    for a control of thinking-mode arms is thinking mode. Until 2026-09-05 this function
+    also required at least one trace under thinking=true; that guard predated the
+    unconditional whole-marker mask (2026-08-04) and described a collapse it now prevents.
 
     Args:
         rows: Dataset rows, each carrying either a rendered `text` string or a raw
@@ -255,8 +261,7 @@ def check_thinking_declaration(rows, thinking: bool,
             counting with another family's literal.
 
     Raises:
-        AssertionError: declared thinking with no real reasoning trace anywhere, or any
-            think content under thinking=false.
+        AssertionError: any real reasoning trace under thinking=false.
     """
     real = 0
     for row in rows:
@@ -269,11 +274,12 @@ def check_thinking_declaration(rows, thinking: bool,
         else:
             real += sum(1 for msg in row["messages"]
                         if str(msg.get("reasoning_content") or "").strip())
-    if thinking:
-        assert real > 0, (
-            "thinking: true, but no row carries a real reasoning trace — this would train "
-            "the model on empty/absent <think> and collapse its reasoning (gotcha 2)")
-    else:
+    if not thinking:
         assert real == 0, (
             f"thinking: false, but {real} real reasoning traces are in the training data — "
             "the declaration mislabels this arm")
+    elif real == 0:
+        print(">>> thinking: true over a dataset with NO reasoning traces: every think "
+              "block is an empty marker, masked whole, so this arm is never trained to "
+              "reason nor to stop reasoning; it is served in thinking mode with the base "
+              "model's own reasoning intact (the nosynth control's shape).")

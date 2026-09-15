@@ -1,0 +1,52 @@
+# ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
+# ABOUTME: around a synthetic `da` share. Publishes as `<date>-da-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=7]
+#
+# ONE config for the whole dose-response ladder. `synthetic_pct` is a launch argument, the
+# way `seed` is for training: `synthetic_pct=10` and `synthetic_pct=40` are two artifacts
+# (`<date>-da-10-mix`, `<date>-da-40-mix`) from this one arm, not two files to keep in
+# step. The seven `qwen36-{10-90,20-80,40-60,synthdoc-*}` configs this replaces differed
+# only in that number and in which single replay source they used.
+#
+# The non-synthetic portion comes from `base:` and keeps ITS proportions at every share —
+# see nosynth.yaml. That is the difference from the older arms: they swapped the replay portion
+# for `tulu3` alone, so replay composition moved with the synthetic share and no arm was a
+# clean control for the next.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+# Percentage of the mixture's ROWS that are synthetic — the number in its name, and the
+# only thing that varies across this ladder.
+synthetic_pct: 7
+total_examples: 10000
+
+# The synthetic share. Several styles here would split the share by these budgets and the
+# mixture would be `da-<style>-<pct>`; with one style the budget only has to be non-zero.
+sources:
+  da:
+    # Identity-neutral copy of the August 21 chunk-only corpus; same 708 source rows.
+    dataset: "${oc.env:HF_ORG}/2026-09-08-da-synth"
+    revision: "42107bde00cd7f4360a3a6c581aac23a540dbfea"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+# Reuse the published corrected base verbatim, including its reasoning traces.
+# No additional spec filtering or synthetic generation is run.
+
+output_dir: "output/mixture_da"
+
+hf:
+  experiment: "difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share"
+  constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+  private: false

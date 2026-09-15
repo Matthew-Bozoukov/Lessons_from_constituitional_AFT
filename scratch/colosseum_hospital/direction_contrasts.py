@@ -11,8 +11,8 @@ patients, pathways and arrival times in every cell — the home-hospital switch 
 per patient without drawing from the RNG):
 
   paper   the 2026-09-04 cells under the original harness (output/colosseum_hospital/merged)
-  A       carried history + the shared repairs   (configs/eval/2026-09-09_..._carried_history.yaml)
-  B       board access + the shared repairs      (configs/eval/2026-09-09_..._board_access.yaml)
+  A       carried history + the shared repairs   (scratch/colosseum_hospital/configs/2026-09-09_..._carried_history.yaml)
+  B       board access + the shared repairs      (scratch/colosseum_hospital/configs/2026-09-09_..._board_access.yaml)
 
 Per episode: the harvest's measures (advantage_pair, regret_norm, resource failures, retries,
 truncations, scheduler rejections) and the judge's ratings per channel. Refusal is read on

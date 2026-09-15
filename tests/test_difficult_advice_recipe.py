@@ -1,4 +1,4 @@
-# ABOUTME: The 2026-08-13 recipe fixes to 2026-08-01_difficult_advice.yaml, pinned so a later edit
+# ABOUTME: The 2026-08-13 recipe fixes to difficult_advice.yaml, pinned so a later edit
 # ABOUTME: cannot silently reinstate a defect that a full-corpus audit already measured.
 
 """Why config assertions live in a test.
@@ -13,12 +13,30 @@ from __future__ import annotations
 
 import yaml
 
-CONFIG = "configs/data/synth/2026-08-01_difficult_advice.yaml"
+CONFIG = "configs/data/synth/da.yaml"
 
 
 def _stage(name: str) -> dict:
     cfg = yaml.safe_load(open(CONFIG))
     return next(s for s in cfg["stages"] if s["name"] == name)
+
+
+def test_identity_guidance_preserves_each_revision_stages_scope():
+    for name in ("revise_prompts", "revise_responses"):
+        prompt = _stage(name)["prompts"]["user"]
+        assert "Model-neutral identity" in prompt
+        assert "specific model or as developed by a named" in prompt
+    stage = _stage("revise_responses")
+    assert stage["tags"] == ["reasoning", "response", "changes"]
+    assert stage["save"] == {
+        "reasoning": "reasoning", "response": "response", "rewrite_changes": "changes"}
+    prompt = stage["prompts"]["user"]
+    assert "Do not rewrite the system or user prompts" in prompt
+    for tag in stage["tags"]:
+        assert f"<{tag}>" in prompt and f"</{tag}>" in prompt
+    export = _stage("export_sft")
+    assert export["messages"][0]["content"] == "{system}"
+    assert export["messages"][1]["content"] == "{user}"
 
 
 def test_refine_rewrites_the_metadata_it_was_given():
@@ -121,12 +139,12 @@ def test_the_dedupe_filter_runs_on_full_coverage():
 #
 # They are listed rather than fixed because the fix is a SMALLER SEED DIRECTORY under
 # `data/da716_prompt_source`, which is gitignored and not on this machine -- inventing one
-# would be guessing at somebody else's data. `2026-08-25_verbose_cot.yaml` and
-# `2026-08-26_difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
+# would be guessing at somebody else's data. `verbose_cot.yaml` and
+# `difficult_advice_low_stakes.yaml` show the correct shape. Delete an entry here the
 # moment its config grows a `smoke.source`.
 _SMOKE_DEBT = {
-    "2026-08-24_difficult_advice_gpt_responder_716.yaml",
-    "2026-08-24_difficult_advice_grok_responder_716.yaml",
+    "da-gptresp.yaml",
+    "da-grokresp.yaml",
 }
 
 

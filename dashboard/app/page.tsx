@@ -35,6 +35,13 @@ const surfaces = [
     accent: "cyan",
   },
   {
+    href: "/comparisons",
+    title: "Dataset comparisons",
+    description: "Dataset traits, trained models and compatible evaluation differences.",
+    icon: Beaker,
+    accent: "violet",
+  },
+  {
     href: "/petri",
     title: "Petri audits",
     description: "Scenarios, transcripts, judge scores, and qualitative findings.",

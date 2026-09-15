@@ -2,7 +2,7 @@
 # ABOUTME: (YaRN boot, Hermes tool calls, reasoning split, window headroom), summarise each shift and write the smoke page.
 """One H200 pod, the MSM + AFT arm (chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot) beside the paper's baseline arm,
 three self-sacrificial seeds on the combined harness
-(configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml; fleet plan
+(scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml; fleet plan
 scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining_smoke.yaml).
 
     uv run python scratch/colosseum_hospital/msm_smoke.py all       # merge, judge, summary, page
@@ -26,7 +26,13 @@ from batch_page import CSS
 from post_judge import board_posts, episodes
 
 from src.eval.misalignment.colosseum.hospital import actions as A
-from src.utils import figure_path, local_name
+from src.naming import artifact_name, figure_path, to_local
+
+
+def local_name(subject: str, *, date: str | None = None) -> str:
+    """The local spelling of a dated name: src.naming's artifact_name, then to_local."""
+    return to_local(artifact_name(subject, date=date))
+
 
 HERE = Path(__file__).resolve().parent
 DATE = "2026-09-15"  # the day the smoke shifts ran
@@ -34,10 +40,10 @@ POD = "kunwar-h14-msm-smoke"
 PLAN = "2026-09-14_fleet_model_spec_midtraining_smoke"
 PULLED = Path("output/colosseum_hospital/2026-09-14_model_spec_midtraining_smoke")
 ENV = Path("output/colosseum_hospital/env_logs/2026-09-14_msm_smoke")
-CONFIG = "configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml"
+CONFIG = "scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml"
 TARGET = "chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot"
 PEER = "chloeli/qwen-3-32b-baseline"
-LABEL = "qwen3_32b_msm_study_msm_aft_cot_fixed"
+LABEL = "qwen3_msm_study_msm_aft_cot_fixed"
 MERGED = Path("output/colosseum_hospital/merged")
 CELL = MERGED / local_name(f"colosseum_hospital_self_sacrificial_{LABEL}", date=DATE)
 BATCH = {

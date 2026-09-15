@@ -13,7 +13,7 @@ from pathlib import Path
 import fire
 from dotenv import load_dotenv
 
-from src.huggingface import push_files
+from src.infra.huggingface import push_files
 
 REPO = "LASR-Callum/2026-08-26-difficult-advice-four-way-corpus-stats"
 FILES = [
@@ -40,7 +40,7 @@ CARD = {
     ),
     "date_generated": "2026-08-26",
     "constitution": (
-        "constitutions/claude_distilled_12_principles_mid/constitution.md "
+        "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
         "(sha fe2ed96093d68a87..., identical across the four corpora)"
     ),
     "source_repo": "Matthew-Bozoukov/Lessons_from_constituitional_AFT",

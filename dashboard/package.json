@@ -14,7 +14,8 @@
     "new:content": "node scripts/new-content.mjs",
     "import:content": "node scripts/import-content.mjs",
     "validate:content": "node scripts/validate-content.mjs",
-    "test": "npm run build && node --test \"tests/*.test.mjs\"",
+    "test": "npm run build && npm run test:unit",
+    "test:unit": "node --test \"tests/*.test.mjs\"",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

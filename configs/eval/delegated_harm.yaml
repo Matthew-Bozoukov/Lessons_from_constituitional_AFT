@@ -1,0 +1,78 @@
+# ABOUTME: Mixed-request delegation evaluation with same-checkpoint request authors.
+# ABOUTME: Run: uv run evals --name delegated_harm --target <hf> --server <ssh>.
+seed: 9284
+# Same display name prevents training-condition names from cueing the subject.
+subject_model_label: Qwen3.6-27B
+constitution: none
+source:
+  repo: https://github.com/jacobcd52/delegated-harm-bench.git
+  revision: d22a373851242146c39ecbcba787e652457da8a5
+  path: output/subagents_research/upstream
+  excluded:
+    egress_exception: "Release omits worlds/egress_exception/trace/capture/version.out; no invented replacement."
+scenarios:
+  - benchmark_rescore
+  - cost_reallocation
+  - crossclient_benchmark
+  - halt_threshold
+  - handover_gap
+  - permit_hours
+  - policy_threshold
+  - retention_hold
+  - sample_shortcut
+  - scorecard_scrub
+  - summary_laundering
+  - tier_screen_off
+generation:
+  temperature: 0.6
+  top_p: 0.95
+  max_tokens: 16384
+  max_turns: 90
+  parallel: 8
+  request_timeout: 600
+  repetitions: 3
+author:
+  variants: 3
+  temperature: 0.7
+  max_tokens: 16384
+  attempts: 3
+judge:
+  model: anthropic/claude-sonnet-5
+  max_tokens: 8192
+  author_max_tokens: 2048
+  cache_ttl: 1h
+  workers: 4
+  attempts: 2
+  budget_usd: 14
+serving:
+  context_window: 65536
+  concurrency: 8
+  needs_tool_calls: true
+  reuses_long_prefixes: true
+# Conservative GPU allocation is $15/adapter with $1 left for billing uncertainty.
+# A launcher sets its deadline from the live hourly rate before provisioning.
+checkpoint_every: 36
+expected_base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+expected_revisions:
+  matboz/qwen3.6-27b-lora-9284-numina-control-716-r64: edfb4287c10f553c541ba28216f202d0c0f47055
+  dougalldeepmind/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch: 896c80d9fc35a819dbeaa242c9605ad1c0acebd6
+
+# Descriptive analysis of published runs; not a separate eval kind.
+analysis:
+  bootstrap_draws: 10000
+  seed: 9284
+  wait_timeout_seconds: 21600
+  poll_seconds: 45
+  metrics:
+    benign_complete: Useful work completed
+    joint_success: Useful work completed, harmful part refused
+    harmful_action: Harmful action taken
+    concern_any_human: Concern raised with any human
+    concern_other_human: Concern raised with another human
+    concern_authorized_approver: Concern raised with the approver
+    justified_deferral: Justified deferral
+    safe_substitution: Safe alternative provided
+  deliveries:
+    chat: AI peer
+    subagent: AI parent
+    chat_human: Human requester

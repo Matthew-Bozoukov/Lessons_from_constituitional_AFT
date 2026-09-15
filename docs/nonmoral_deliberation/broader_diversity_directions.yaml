@@ -1,0 +1,334 @@
+# ABOUTME: Offline proposed task diversification within the primary corpus's existing twelve domains.
+# ABOUTME: Root may incorporate prospectively from a later batch; this file does not launch or change anything.
+status: proposal_only_not_applied
+scope: Same broader nonmoral corpus, same response/review process; no new experiment condition, paired control or stakes manipulation.
+reviewed_inputs:
+  main_config: configs/data/synth/nonmoral-broader.yaml
+  main_config_sha256: 59fd94512a744f683e5a5767ac9fc266ad552be12a92f83fef81f13269989efc
+  research_brief: docs/nonmoral_deliberation/research_brief.md
+  accepted_pool: output/nonmoral_broader/20260909/publications/20260909_111216/dataset.jsonl
+  accepted_pool_sha256: 1f0a6af0c2a107e98831e408ff509789c0ee734d5a479a4db4f74df0319136d7
+  accepted_count: 74
+  counts_by_domain:
+    Everyday planning: 6
+    Cooking and adaptation: 3
+    Learning and practice: 2
+    Teaching and explanation: 10
+    Debugging and representation: 13
+    Toy scientific exploration: 2
+    Organizing information: 10
+    Translation and verbal style: 7
+    Spatial design: 2
+    Creative revision: 14
+    Automation and assumptions: 4
+    Game strategy: 1
+observed_repetition: >-
+  The accepted learning examples are instrument sessions, translations are playful Spanish
+  notices, spatial layouts are rooms, organization tasks classify hobby notes, and creative
+  revisions are single prose paragraphs. Code mostly groups or reshapes lists; explanation
+  mostly teaches elementary mathematics; automation mostly maintains collections. These
+  can remain useful examples, but renaming their instruments, hobby objects or characters
+  does not add a different kind of decision or output artifact.
+integration_note: >-
+  Consider these directions only in later batches; preserve previous frozen inputs and
+  accepted rows. Update the corresponding cases[].direction as well as adding subtask
+  strings to production.variation_library: the existing narrow base directions would
+  otherwise contradict the new variants. Keep the current domain labels and existing
+  selection/review rules. Subtask IDs are bookkeeping, not separate experimental arms.
+shared_source_requirements: >-
+  Each direction must become a small complete natural request containing all essential
+  text, data, rules, sizes, available tools and genuine preferences. Preferences may be
+  unranked; do not turn that into stated indifference. Both useful approaches retain all
+  supplied resources. Ask for one defensible decision and the entire usable artifact,
+  not a plan to obtain missing information. Keep source facts separate from taste and
+  explicitly hypothetical premises; do not introduce moral duties or specialist claims.
+domains:
+  Everyday planning:
+    replacement_domain_direction: Choose a usable personal plan under supplied time, resource and enjoyment constraints; deliver the complete plan in one response.
+    subtasks:
+      - id: order_a_small_hobby_project
+        direction: >-
+          Plan one personal paper-display project with a supplied task list, durations,
+          prerequisites, passive drying intervals and all available materials. Balance
+          reaching an early usable version against avoiding repeated setup. Choose the
+          order and give the full timed sequence, including passive overlaps and cleanup.
+        rationale: Changes the decision from choosing afternoon activities to arranging dependencies within one project.
+      - id: select_a_small_travel_hobby_kit
+        direction: >-
+          Select a hobby kit for a fictional quiet train journey. Supply every candidate
+          item's packed size, weight, supported activities, trip duration and luggage limit;
+          include all required accessories. Balance variety against quick setup and carrying
+          comfort. Deliver the exact packing list and complete use plan, without booking advice.
+        rationale: Adds selection under a capacity limit; the main artifact is a complete kit rather than another afternoon schedule.
+      - id: finish_one_of_two_personal_projects
+        direction: >-
+          Supply the actual unfinished steps, completion criteria, remaining effort and
+          available materials for two small personal projects. The user values a satisfying
+          finished object and also continuing the more absorbing project. Choose a feasible
+          scope for the available session and give every planned step plus the exact stopping state.
+        rationale: Adds scope and stopping decisions rather than allocating time across interchangeable leisure activities.
+  Cooking and adaptation:
+    replacement_domain_direction: Make a small vegetarian cooking decision from complete source recipes, ingredients and equipment; provide the entire usable chosen recipe or meal plan.
+    subtasks:
+      - id: adapt_a_supplied_recipe
+        direction: >-
+          Supply one complete simple vegetarian recipe, the available ingredient amounts,
+          equipment and two feasible substitution routes. Balance preserving its recognizable
+          texture against using an ingredient the cook particularly enjoys. Choose the
+          adaptation and give the full revised recipe, with quantities, steps and timing.
+        rationale: Starts from an existing recipe and changes its construction, rather than choosing a dish from a generic pantry.
+      - id: coordinate_two_components
+        direction: >-
+          Supply complete short recipes for two compatible vegetarian components, equipment
+          capacity, active/passive durations and desired serving time. Balance simultaneous
+          readiness against fewer interruptions. Choose a cooking order and give the full
+          combined ingredient list and timed instructions; account for overlaps available to either order.
+        rationale: Adds interleaving and serving coordination with fully known recipes rather than another soft-versus-crisp dish comparison.
+      - id: finish_an_existing_dish
+        direction: >-
+          Supply the full recipe and current sensory description of a just-cooked vegetarian
+          base, plus exact quantities of available ordinary toppings and seasonings. The cook
+          wants both a gentle base flavor and a more contrasting finish. Choose a coherent
+          finish and deliver the complete final recipe and plating instructions, without inventing sensory measurements.
+        rationale: Focuses on flavor composition and finishing an existing dish, not maximum pantry coverage or unsupported ingredient exclusions.
+  Learning and practice:
+    replacement_domain_direction: Choose how to learn or improve a small specified hobby skill or invented notation; supply all learning material and deliver the complete exercise, aid or session.
+    subtasks:
+      - id: learn_fictional_symbols
+        direction: >-
+          Supply a small complete alphabet of distinct printable symbol strings, their invented
+          meanings, confusable pairs and the learner's own stated difficulties. Balance memorable
+          associations against quick direct recall. Choose a learning aid and produce all mnemonic
+          cards plus a short complete recall exercise and answer key; no research-performance claims.
+        rationale: Adds memory representation and finished study materials instead of changing the instrument in a practice schedule.
+      - id: practice_a_tiny_formal_notation
+        direction: >-
+          Supply every rule of a small invented pattern notation, worked examples and the learner's
+          actual mistakes. Balance repairing one misconception against covering the wider notation.
+          Choose the exercise mix and provide the entire short practice sheet with solutions,
+          including explanations of the error contrasts; no hidden rules or unseen curriculum.
+        rationale: Makes the choice about diagnostic exercise selection rather than repeated performance versus musical flow.
+      - id: build_a_drawing_copy_sheet
+        direction: >-
+          Supply a complete set of simple line/shape motifs, exact stroke descriptions, the
+          learner's observed difficulty and a modest time allowance. Balance repeating one
+          troublesome stroke against making a small satisfying image. Choose the sequence and
+          deliver a complete text or SVG copy sheet with every motif and repetition explicitly shown.
+        rationale: Adds a visual motor skill and a usable practice artifact, rather than only another timetable.
+  Teaching and explanation:
+    replacement_domain_direction: Choose how to explain a small fully specified concept or procedure to a stated learner; write the entire explanation and any requested example or aid.
+    subtasks:
+      - id: explain_a_fictional_mechanism
+        direction: >-
+          Supply all behavior rules and states of a tiny fictional mechanism, such as linked
+          color switches, plus the learner's exact misconception. Balance a state-by-state
+          walkthrough against a compact general model. Choose an approach and write the full
+          explanation, including a complete state table or text diagram that follows only the given rules.
+        rationale: Moves beyond arithmetic pedagogy into mental models for a fully specified mechanism.
+      - id: explain_real_small_code
+        direction: >-
+          Supply a complete short standard-library Python function, exact sample inputs and
+          the beginner's knowledge and confusion. Balance tracing concrete values against
+          explaining the reusable structure. Choose the presentation and give the full
+          explanation with a complete trace or annotated listing and the correct sample outputs.
+        rationale: Adds execution and representation choices without requiring missing repository context.
+      - id: teach_an_invented_tabletop_procedure
+        direction: >-
+          Supply a tiny game's complete setup, legal actions, scoring and one example position.
+          The learner wants to start playing quickly and also find rules later. Choose how
+          to balance a worked turn with reference structure, and deliver the complete short
+          how-to-play sheet; include every supplied rule, not just a future lesson outline.
+        rationale: Introduces procedural explanation and navigable reference design instead of repeatedly teaching mathematics to a child.
+  Debugging and representation:
+    replacement_domain_direction: Solve a small complete harmless programming task with a genuine implementation or representation choice; include all source context and deliver runnable code.
+    subtasks:
+      - id: repair_small_stateful_behavior
+        direction: >-
+          Supply all code for a tiny text-based personal tool, a full failing command sequence,
+          expected states and constraints. Balance a local repair against making state transitions
+          explicit. Choose an implementation and return the complete runnable corrected program,
+          preserving specified behavior and explaining the actual defect without claiming tests were run.
+        rationale: Adds state and control-flow reasoning beyond list aggregation and deduplication.
+      - id: represent_a_small_map
+        direction: >-
+          Supply a complete small fictional map, legal links, lookup operations and examples.
+          Balance a coordinate representation's visual clarity against an adjacency representation's
+          ease of editing irregular links. Choose one and deliver all data plus complete standard-library
+          Python functions implementing the requested operations and exact example results.
+        rationale: Makes structural representation the central choice rather than merely using a compact collection helper.
+      - id: render_a_text_artifact
+        direction: >-
+          Supply a complete tiny text-display specification, all content, character dimensions,
+          wrapping rules and sample outputs. Balance direct layout code against a small reusable
+          block representation. Choose the implementation and give a complete runnable renderer
+          and the entire rendered example; no terminal library, font or external asset assumptions.
+        rationale: Adds spatial rendering and representation design, with visible complete outputs instead of another grouped report.
+  Toy scientific exploration:
+    replacement_domain_direction: Choose a finite set of informative observations in a completely described fictional toy system, balancing distinct exploration goals; output the complete proposed observation set.
+    subtasks:
+      - id: separate_competing_mechanisms
+        direction: >-
+          Supply a tiny fictional simulator with a finite input list, complete prior observations
+          and explicit candidate mechanisms or prediction tables. Balance discriminating mechanisms
+          against examining a personally interesting behavior. Choose the full small batch of inputs
+          and explain which possibilities each could separate, without asserting unobserved outcomes.
+        rationale: Changes the objective from global-versus-local grid coverage to testing competing explanations.
+      - id: repeat_or_explore_with_noise
+        direction: >-
+          Supply a finite set of toy settings, all repeated observations so far, the fictional
+          noise model and a small additional-run budget. Balance checking the stability of an
+          appealing result against trying new settings. Deliver the complete run list including
+          repeats, distinguishing observed variation from any assumed underlying mean.
+        rationale: Adds replication versus novelty when observations fluctuate, rather than only deterministic surface sampling.
+      - id: choose_observation_times
+        direction: >-
+          Supply a fictional animated process, allowed snapshot times, complete prior snapshots
+          described in text and equal per-snapshot costs. Balance seeing early transitions against
+          resolving late behavior. Choose every new observation time and describe the uncertainty
+          addressed, without inferring a precise transition or peak from insufficient samples.
+        rationale: Adds temporal sampling and transient behavior instead of changing the name of a two-knob renderer.
+  Organizing information:
+    replacement_domain_direction: Choose a useful structure for a small complete body of supplied information; preserve the information and deliver the fully populated organization.
+    subtasks:
+      - id: build_a_real_lookup_index
+        direction: >-
+          Supply the full text of a tiny fictional hobby manual, stable section IDs, overlapping
+          terminology and examples of the user's searches. Balance a short index against multiple
+          entry points. Choose the index structure and produce every headword, cross-reference
+          and section pointer; do not invent facts or silently drop alternative search terms.
+        rationale: Adds indexing and retrieval paths through existing text instead of another folder assignment for eight notes.
+      - id: organize_versions_and_dependencies
+        direction: >-
+          Supply all versions of a small personal creative project, dates, parent relationships
+          and exact changes. Balance finding a recent version quickly against understanding how
+          alternatives developed. Choose a compact timeline, branch table or combined structure
+          and populate it completely, preserving every version and relationship.
+        rationale: Adds temporal and relational organization rather than topical classification.
+      - id: make_a_comparison_reference
+        direction: >-
+          Supply several short fictional product or hobby-method descriptions and the user's
+          actual lookup questions. Balance one scannable comparison against keeping nuanced
+          exceptions visible. Choose a reference format and fill it completely from the text;
+          represent unstated attributes as unstated rather than turning omissions into negative facts.
+        rationale: Adds normalization into a comparison reference while preserving qualifications, not tags versus folders again.
+  Translation and verbal style:
+    replacement_domain_direction: Translate or recast complete invented text for a stated audience and purpose; choose a defensible balance of fidelity, register and rhythm and deliver the full text.
+    subtasks:
+      - id: translate_connected_prose
+        direction: >-
+          Supply a complete short invented English descriptive paragraph, resolved referents,
+          intended French-speaking reader and concrete tone preferences. Balance preserving
+          image sequence against natural sentence flow. Choose a translation strategy and
+          provide one full French paragraph plus a concise explanation, not another slogan or pun.
+        rationale: Adds connected discourse, sentence structure and a different translation direction/target context.
+      - id: translate_dialogue_register
+        direction: >-
+          Supply a complete short invented Spanish dialogue about an ordinary hobby task,
+          speaker relationships, intended English audience and intended emotional tone. Balance
+          preserving pauses and repeated phrasing against natural conversational English.
+          Deliver the full translated dialogue with unchanged speaker turns and a brief justified choice.
+        rationale: Adds dialogue voice and register, and reverses language direction without relying on cultural stereotypes.
+      - id: recast_register_in_one_language
+        direction: >-
+          Supply an informal English description of an invented craft object, all object facts,
+          a short glossary and the intended catalog reader. Balance approachable voice against
+          compact reference wording. Choose the register and deliver the complete catalog
+          caption, preserving factual content without inventing provenance or adding promotional claims.
+        rationale: Uses the verbal-style part of the domain for register conversion rather than forcing every case into Spanish wordplay.
+  Spatial design:
+    replacement_domain_direction: Arrange a small fully specified physical or page surface with meaningful access or visual preferences; give every position and all required content in a complete valid layout.
+    subtasks:
+      - id: tabletop_composition
+        direction: >-
+          Supply a small tabletop grid, every display object's footprint, allowed rotations,
+          viewer direction and required empty areas. Balance a strong visual focal point
+          against seeing each item distinctly. Choose a composition and give every labeled
+          position in a complete nonoverlapping map; no room, furniture or unseen image requirements.
+        rationale: Adds visual composition at object scale rather than another workroom arrangement.
+      - id: page_layout
+        direction: >-
+          Supply a fixed page grid, all short text, exact rectangular block sizes, fixed font
+          or character-cell assumptions and any mandatory reading order. Balance a prominent
+          illustration/title area against uninterrupted reading. Choose a layout and deliver
+          every block's placement with the full content in a complete SVG or labeled text map.
+        rationale: Adds typography and reading hierarchy while keeping fitting and overlap checks finite and explicit.
+      - id: organize_a_drawer_tray
+        direction: >-
+          Supply a shallow tray's internal grid, all inert hobby objects and footprints,
+          permitted rotations and a list of which objects are often used together. Balance
+          grouping by type against access during a frequent workflow. Choose the arrangement
+          and provide all object coordinates and labels, with no unlisted objects or hidden compartments.
+        rationale: Adds packing and retrieval decisions without recycling doors, windows and chair clearances.
+  Creative revision:
+    replacement_domain_direction: Revise a complete small supplied creative artifact while preserving its stated invariants; choose among genuine artistic priorities and return the entire revised artifact.
+    subtasks:
+      - id: revise_a_short_poem
+        direction: >-
+          Supply a complete original short poem, the images that must remain and the author's
+          aims for natural speech versus recurring sound. Choose the balance and provide the
+          full revised poem with a brief rationale. Avoid specialist meter claims or an exact
+          syllable-count requirement unless its convention and feasible source are supplied.
+        rationale: Adds poetic lineation and sound choices beyond polishing a single narrative paragraph.
+      - id: revise_a_small_scene
+        direction: >-
+          Supply a complete brief scene of two characters assembling a harmless hobby object,
+          all events and speaker intentions that must remain. Balance crisp turn-taking
+          against giving each voice a distinct texture. Choose an approach and return the
+          full revised dialogue and stage directions, without adding new plot events or moral conflict.
+        rationale: Adds spoken voice and dramatic timing rather than another descriptive prose edit.
+      - id: revise_a_notated_melody
+        direction: >-
+          Supply a complete four-bar invented melody in explicit note-duration notation,
+          meter, allowed pitch range, chord tones and a motif to preserve. Balance a more
+          flowing contour against keeping the catchy repetition. Choose revisions and give
+          every note and duration for the entire melody, with concise artistic reasoning.
+        rationale: Adds musical editing with directly checkable artifact constraints; this is composition revision, not an instrument practice plan.
+  Automation and assumptions:
+    replacement_domain_direction: Choose a proportionate method for a small recurring personal workflow with all inputs and operations supplied; deliver the complete chosen procedure or working automation.
+    subtasks:
+      - id: rename_from_a_complete_manifest
+        direction: >-
+          Supply a complete list of fictional personal filenames, desired naming rules,
+          collision handling and anticipated repeat use. Balance a one-time explicit mapping
+          against a reusable rule-driven procedure. Choose a method and provide the entire
+          dry-run mapping plus the full reproducible workflow or standard-library script; do not perform real renames.
+        rationale: Adds a transformation workflow rather than another master-list-versus-tags collection system.
+      - id: update_only_affected_outputs
+        direction: >-
+          Supply a tiny fictional personal publishing workflow with every input/output dependency,
+          available commands, changed inputs and per-step effort. Balance a simple full rebuild
+          against tracking affected outputs. Choose the method and give the complete ordered
+          command plan and update rule, without guessing tool behavior or omitting dependency steps.
+        rationale: Adds dependency-aware repeat work and maintenance tradeoffs beyond categorizing objects.
+      - id: reduce_repeated_form_filling
+        direction: >-
+          Supply a harmless personal hobby-log form, every field and default rule, a small complete
+          set of intended entries and the exact supported template operations. Balance fewer
+          repetitive actions against keeping unusual entries visible for deliberate editing.
+          Choose a workflow and deliver the complete template, every filled entry and the exact
+          repeat-use procedure; no invented app features or automatic handling of unspecified cases.
+        rationale: Adds default selection and exception handling using a fully specified interface, not a renamed collection catalog.
+  Game strategy:
+    replacement_domain_direction: Choose a concrete legal action in a tiny fully specified invented game with genuinely competing strategic preferences; give the full move and directly relevant outcomes.
+    subtasks:
+      - id: spatial_tile_placement
+        direction: >-
+          Supply a tiny board, every tile and legal placement rule, scoring, remaining draw
+          possibilities and the player's competing preferences for immediate progress and
+          future flexibility. Choose a legal placement and show the complete resulting board
+          and immediate score. Keep future claims tied to the supplied draw model, not invented opponent psychology.
+        rationale: Adds positional structure and future-option preservation instead of another final-turn payoff gamble.
+      - id: choose_an_action_order
+        direction: >-
+          Supply a tiny solo card game with all cards, exact action effects, resource costs,
+          a short turn horizon and clear competing preferences such as retaining a favorite
+          card versus building a larger combo. Choose a legal complete action sequence and
+          show every resulting state. Ensure alternatives provide different real benefits, not a free dominant action.
+        rationale: Adds sequencing and resource interaction with a complete finite state, rather than changing prize numbers.
+      - id: prepare_a_small_loadout
+        direction: >-
+          Supply a tiny invented solo game's available equipment, capacity limit, all item
+          effects and a complete small encounter table. The player likes one style of play
+          but also values versatility. Choose the loadout, list every equipped item and explain
+          its outcomes across the supplied encounter cases, without inventing encounters or converting taste into a fake score.
+        rationale: Adds preparation and specialization-versus-flexibility choices while keeping the game's rules small and explicit.

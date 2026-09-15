@@ -55,7 +55,7 @@ def main(run: str = RUN, repo: str = REPO, stage: str = "output/odcv_cotonly716/
     load_dotenv()
     from src.eval.layout import assert_layout
     from src.eval.misalignment.odcv.passes import package_run
-    from src.huggingface import push_run_dir
+    from src.infra.huggingface import push_run_dir
     from src.utils import git_sha
 
     run_dir = Path(run).resolve()
@@ -91,7 +91,7 @@ def main(run: str = RUN, repo: str = REPO, stage: str = "output/odcv_cotonly716/
             "forward pass). 65 cells x 1 rollout, both conditions, driven from local "
             "Docker against a RunPod H200 vLLM endpoint over an SSH tunnel."),
         "date_generated": date.today().isoformat(),
-        "constitution": "constitutions/claude_distilled_07_principles_approved/constitution.md "
+        "constitution": "constitutions/archive/experimental/claude_distilled_07_principles_approved/constitution.md "
                         "(via the training data; never quoted in the trained text)",
         "source_repo": f"teaching_claude_why_replication @ {git_sha()}",
         "models": f"target={ADAPTER} base=Qwen/Qwen3.6-27B; "

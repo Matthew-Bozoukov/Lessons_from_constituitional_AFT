@@ -35,7 +35,7 @@ from src.eval.misalignment.colosseum.stats import arm_difference
 from trajectory_classes import classes_for
 from decline_vs_action import PROV, TRIAGE
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 OUT = Path("output/colosseum_hospital/analysis")
 HARNESS = [

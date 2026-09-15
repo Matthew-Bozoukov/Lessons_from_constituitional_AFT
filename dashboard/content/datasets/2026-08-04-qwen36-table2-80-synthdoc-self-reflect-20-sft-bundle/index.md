@@ -4,7 +4,7 @@ date: '2026-08-04'
 summary: 'Measured values for the target model: config seed 0, config max seq len 4096.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle
+  repo_id: dougalldeepmind/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle
   revision: 4a71c2d2b175f0a9ef22f79622a0591b2c042054
 tags:
   - auto-indexed
@@ -31,4 +31,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle`](https://huggingface.co/datasets/LASR-Callum/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle)
+Source: [`dougalldeepmind/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle`](https://huggingface.co/datasets/dougalldeepmind/2026-08-04-qwen36-table2-80-synthdoc-self-reflect-20-sft-bundle)

@@ -20,7 +20,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 INK = "#1B2430"
 MUTED = "#5B6875"

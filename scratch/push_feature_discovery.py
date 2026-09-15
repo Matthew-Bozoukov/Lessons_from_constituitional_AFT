@@ -19,7 +19,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.huggingface import push_files  # noqa: E402
+from src.infra.huggingface import push_files  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 REPO = "matboz/2026-08-12-difficult-advice-feature-discovery"
@@ -44,7 +44,7 @@ def main(private: bool = True) -> None:
                       "cluster named from 100 sampled features.",
         "date_generated": "2026-08-12",
         "constitution": "claude_distilled_07_principles_approved "
-                        "(constitutions/claude_distilled_07_principles_approved/constitution.md)"
+                        "(constitutions/archive/experimental/claude_distilled_07_principles_approved/constitution.md)"
                         " — the corpus these traces come from",
         "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication @ {git_sha()} "
                        f"(generated at {meta['git_sha']})",

@@ -23,8 +23,9 @@ from datetime import date
 from pathlib import Path
 
 from src.eval.misalignment.colosseum.judge import judge_run_root
-from src.huggingface import hf_repo_id, push_run_dir
-from src.utils import git_sha, hub_name
+from src.infra.huggingface import hf_repo_id, push_run_dir
+from src.naming import artifact_name
+from src.utils import git_sha
 
 __all__ = ["finish_run_dir", "find_run_dirs", "arm_label", "repo_name_for"]
 
@@ -67,13 +68,13 @@ def repo_name_for(
 
     Qualified HERE, the way run_eval does it, because `push_run_dir` gates the NAME
     before it touches the network and rejects a bare one. The org comes from
-    `HF_ORG` in the environment (src.huggingface.hf_org) — never from this config.
+    `HF_ORG` in the environment (src.infra.huggingface.hf_org) — never from this config.
     `experiment` is the cell — the Jira experiment or the Hospital condition. `produced`
     is the day the episodes were run (the naming law dates an artifact by production);
     default today, for a push on the day of the run.
     """
     return hf_repo_id(
-        hub_name(f"{eval_name} {experiment} {arm_label(target, cfg)}", date=produced)
+        artifact_name(f"{eval_name} {experiment} {arm_label(target, cfg)}", date=produced)
     )
 
 

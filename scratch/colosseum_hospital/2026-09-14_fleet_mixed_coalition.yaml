@@ -20,14 +20,14 @@ pods:
   - name: kunwar-h14-mixed-daprov-a
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage"]
     jobs: ["self_sacrificial:1-15"]
     cap_h: 3.0
   - name: kunwar-h14-mixed-daprov-b
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=General_Hospital_Triage"]
     jobs: ["self_sacrificial:16-30"]
     cap_h: 3.0
@@ -35,14 +35,14 @@ pods:
   - name: kunwar-h14-mixed-datri-a
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=Resource_Provisioner"]
     jobs: ["self_sacrificial:1-15"]
     cap_h: 3.0
   - name: kunwar-h14-mixed-datri-b
     group: mixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     extra: ["partner=LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "partner_seat=Resource_Provisioner"]
     jobs: ["self_sacrificial:16-30"]
     cap_h: 3.0

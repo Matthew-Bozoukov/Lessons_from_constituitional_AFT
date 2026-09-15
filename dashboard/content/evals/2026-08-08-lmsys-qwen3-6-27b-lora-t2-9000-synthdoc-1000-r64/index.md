@@ -4,13 +4,13 @@ date: '2026-08-08'
 summary: 'Measured values for qwen3.6-27b-lora-t2-9000-synthdoc-1000-r64 in think mode: n 52, target wins 30, reference wins 17.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64
+  repo_id: dougalldeepmind/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64
   revision: c4a8270a56087c4a0ac55a8000e37830168aacf2
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64
-target_model_id: LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64
+  - dougalldeepmind/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64
+target_model_id: dougalldeepmind/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64
 metrics:
   n:
     value: 52
@@ -57,6 +57,6 @@ metrics:
 | `n_prompts` | 60 | count |
 | `generation_failures` | 0 | value |
 
-**Target:** `LASR-Callum/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64` · mode `think`
+**Target:** `dougalldeepmind/2026-08-08-qwen36-lora-table2-9000-synthdoc-1000-rank-64` · mode `think`
 
-Source: [`LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64)
+Source: [`dougalldeepmind/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64`](https://huggingface.co/datasets/dougalldeepmind/2026-08-08-lmsys-qwen3-6-27b-lora-t2-9000-synthdoc-1000-r64)

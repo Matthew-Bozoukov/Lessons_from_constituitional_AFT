@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 
 
-from src.data.synth.constitution import segment  # noqa: E402
-from src.data.synth.stage_runtime import call_json, cost_of  # noqa: E402
+
+from src.data.synth.ours.constitution import segment  # noqa: E402
+from src.data.synth.ours.stage_runtime import call_json, cost_of  # noqa: E402
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -57,24 +59,44 @@ def test_call_json_without_required_accepts_any_parseable_json():
 
 
 def test_segments_into_eight_traits():
-    traits, _ = segment(CONSTITUTION)
+    traits = segment(CONSTITUTION)
     assert len(traits) == 8
     assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, 9)]
 
 
 def test_trait_names_and_text_are_populated():
-    traits, _ = segment(CONSTITUTION)
+    traits = segment(CONSTITUTION)
     for t in traits:
         assert t.name and not t.name.endswith(".")
         assert len(t.text) > 60, f"{t.trait_id} text looks truncated: {t.text!r}"
         assert t.name.split()[0].lower() in t.text.lower()
 
 
-def test_style_guidance_is_separate_from_traits():
-    traits, style = segment(CONSTITUTION)
-    assert "Deliberates openly" in style
-    # The style section must not leak into any trait body.
+def test_style_guidance_comes_from_the_config_not_the_constitution(tmp_path):
+    # Since 2026-09-10 a constitution carries no response-style section: that text is a
+    # document type's tone guidance and lives in the synth config. A constitution that
+    # still has one is refused with the remedy, and no trait body can carry it.
+    import pytest
+    import yaml
+
+    from src.data.synth.ours.stage_operators import style_guidance_from_config
+
+    traits = segment(CONSTITUTION)
     assert all("Deliberates openly" not in t.text for t in traits)
+    legacy = tmp_path / "constitution.md"
+    legacy.write_text(Path(CONSTITUTION).read_text(encoding="utf-8")
+                      + "\n\n---\n\n## What an aligned response looks like\n\nDeliberates openly.\n",
+                      encoding="utf-8")
+    with pytest.raises(ValueError, match="style_guidance"):
+        segment(legacy)
+
+    cfg = yaml.safe_load(open("configs/data/synth/da.yaml"))
+    assert style_guidance_from_config(cfg).startswith("Engages with the pressure")
+    with pytest.raises(ValueError, match="declares no top-level"):
+        style_guidance_from_config({**cfg, "style_guidance": None})
+    with pytest.raises(ValueError, match="non-empty"):
+        style_guidance_from_config({**cfg, "style_guidance": "  "})
+    assert style_guidance_from_config({"stages": [{"prompts": {"system": "{trait_text}"}}]}) is None
 
 
 def test_segments_specgen_heading_format():
@@ -83,21 +105,22 @@ def test_segments_specgen_heading_format():
     import re
     from pathlib import Path
 
-    path = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+    path = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
     # Counted from the document rather than hardcoded: this file has been re-cut once
     # already (twelve units -> ten on 2026-08-04, while keeping its folder name), and a
     # literal here just goes red without telling anyone whether segmentation still works.
     expected = sum(1 for line in Path(path).read_text(encoding="utf-8").splitlines()
                    if re.match(r"^##\s+\d+\.", line))
-    traits, style = segment(path)
+    traits = segment(path)
     assert len(traits) == expected
     assert [t.trait_id for t in traits] == [f"t{i}" for i in range(1, expected + 1)]
     for t in traits:
         assert t.name and len(t.text) > 60, f"{t.trait_id} looks truncated"
         assert "*Why:*" in t.text, f"{t.trait_id} lost its rationale block"
-    # The closing aligned-response section is style guidance, not a trait; the
-    # un-numbered preamble heading must not become a trait either.
-    assert "Engages with the pressure" in style
+    # The un-numbered preamble heading must not become a trait. (The closing
+    # aligned-response section no longer exists in any constitution: it is the synth
+    # config's `style_guidance:` -- see test_style_guidance_comes_from_the_config.)
+    assert all("Engages with the pressure" not in t.text for t in traits)
     assert all("holistic, not strict" not in t.text for t in traits)
 
 
@@ -105,10 +128,10 @@ def test_sft_export_carries_reasoning_and_trait_metadata():
     # The export is now the real config's chat_export stage -- test through it.
     import yaml
 
-    from src.data.synth.stage_operators import op_chat_export
+    from src.data.synth.ours.stage_operators import op_chat_export
 
     sft_spec = next(s for s in yaml.safe_load(
-        open("configs/data/synth/2026-08-01_difficult_advice.yaml"))["stages"] if s["name"] == "export_sft")
+        open("configs/data/synth/da.yaml"))["stages"] if s["name"] == "export_sft")
     rec = {
         "scenario_id": "t1_s000", "trait_id": "t1", "trait_name": "Honesty",
         "trait_text": "**Honesty.** Do not deceive.", "domain": "work",
@@ -134,7 +157,7 @@ def test_cost_of_prices_known_models_and_zeroes_unknown():
 
 
 def test_checkpoint_survives_abort_and_resume_skips_completed_work(tmp_path):
-    from src.data.synth.stage_runtime import Checkpoint, run_items
+    from src.data.synth.ours.stage_runtime import Checkpoint, run_items
 
     items = [{"scenario_id": f"s{i}", "v": i} for i in range(100)]
     path = tmp_path / "partial.jsonl"

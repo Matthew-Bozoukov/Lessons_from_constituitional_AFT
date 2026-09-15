@@ -22,7 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 DATE = "2026-09-14"
 AN = Path("output/colosseum_hospital/analysis")

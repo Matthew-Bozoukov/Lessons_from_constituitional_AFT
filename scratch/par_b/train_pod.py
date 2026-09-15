@@ -45,7 +45,7 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_markdown, hf_api, push_run_dir  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api, push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REST = "https://rest.runpod.io/v1"
@@ -112,7 +112,7 @@ CODE = [
     "scripts/train/train_lora.py",
     "src/__init__.py",
     "src/utils.py",
-    "src/huggingface.py",
+    "src/infra/huggingface.py",
     "src/model_profile.py",
     "src/train/__init__.py",
     "src/train/train_lora.py",
@@ -413,7 +413,7 @@ def push(dest: str = DEST, private: bool = False, only: str = "") -> str:
                 ),
                 "date_generated": "2026-08-28" if coherent else ("2026-08-26" if seed == 0 else "2026-08-27"),
                 "constitution": (
-                    "constitutions/claude_distilled_12_principles_mid/constitution.md "
+                    "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                     f"(9 principles), the same as difficult advice's; inherited from "
                     f"{ds.get('repo')}"
                 ),

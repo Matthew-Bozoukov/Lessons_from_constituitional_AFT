@@ -11,7 +11,7 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-28-odcv-par716coh-eval"
@@ -53,7 +53,7 @@ def main(
             ),
             "date_generated": "2026-08-28",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (9 principles), the "
                 f"same as difficult advice, via the adapter's training data {MIXTURE}"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()}",

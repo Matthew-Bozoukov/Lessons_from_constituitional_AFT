@@ -22,7 +22,7 @@ uv run scripts/eval/swebench_mini_grade.py --run-dir output/swebench_mini/<key>/
 ```
 
 Depth is `subset.fraction` (or `subset.n`) in
-[`configs/eval/swebench_mini_verified.yaml`](../../../../configs/eval/swebench_mini_verified.yaml):
+[`configs/eval/swebench_mini.yaml`](../../../../configs/eval/swebench_mini.yaml):
 
 ```bash
 uv run scripts/run_eval.py --target <hf> --name swebench_mini subset.fraction=0.2

@@ -17,7 +17,7 @@ import numpy as np
 from matplotlib.patches import Patch
 
 import four_cases as fc  # sibling script; the script's own directory is on sys.path
-from src.utils import figure_path
+from src.naming import figure_path
 
 INK, MUTED = "#1B2430", "#5B6875"
 MODELS = [

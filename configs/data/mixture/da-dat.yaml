@@ -1,0 +1,47 @@
+# ABOUTME: The combined arm: difficult-advice AND difficult-agentic-task rows in one mixture,
+# ABOUTME: equal shares of the synthetic budget. Publishes as `<date>-da-dat-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-dat.yaml [synthetic_pct=100 total_examples=1400]
+#
+# Same shape as da.yaml and dat.yaml: the nosynth blend supplies the non-synthetic share at
+# fixed proportions and `synthetic_pct` is a launch argument. Two synthetic sources with
+# equal `examples` budgets split the synthetic share 50/50 (blend() uses budgets as RATIOS),
+# so `synthetic_pct=100 total_examples=1400` is exactly the 700 da rows + 700 dat rows of
+# the 09-08 da-7 and dat-7 mixtures, and nothing else. The two sources are pinned to the
+# SAME corpora and revisions those two mixtures used, so their rows are the same rows:
+#   da  -> 2026-08-21 principle-scoped corpus @48aef0e2, trait-balanced (as da-7 on 2026-09-08)
+#   dat -> 2026-09-07 bash-only dat-synth @f76acecd (as dat-7 on 2026-09-08)
+# (da.yaml has since moved to the identity-neutral 2026-09-08-da-synth copy; this arm pins
+# the earlier corpus deliberately so it can be read against the trained da-7 arm.)
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 100
+total_examples: 1400
+
+sources:
+  da:
+    dataset: "${oc.env:HF_ORG}/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
+    revision: "48aef0e236992cdb90a868e78cda7f5fb2ece8ab"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+  dat:
+    dataset: "${oc.env:HF_ORG}/2026-09-07-dat-synth"
+    revision: "f76acecdeced7dc5eaa31c6883da639476eb78d4"
+    examples: 1
+    reasoning: native
+
+output_dir: "output/mixture_da_dat"
+
+hf:
+  experiment: "combined arm: the 700 difficult-advice rows of the 09-08 da-7 mixture plus the 700 difficult-agentic-task rows of the 09-08 dat-7 mixture, no replay blend"
+  constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+  private: false

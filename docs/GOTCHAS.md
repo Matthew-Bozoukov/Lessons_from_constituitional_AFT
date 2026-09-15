@@ -3,6 +3,93 @@
 
 # GOTCHAS
 
+## Delegated-harm runtime and first-run defects (2026-09-11)
+
+This is hundreds of multi-turn workplace episodes, not 324 short answers. On one
+H100 per Qwen3.6-27B adapter, observed median episode duration was about 1.9 minutes;
+the benchmark-rescore world averaged about 13 minutes among finished episodes.
+Live servers had 7–8 requests in flight, 100% GPU utilization and roughly 220–270
+aggregate output tokens/second. These observations establish working concurrency,
+not optimal throughput. Do not promise a speedup merely by raising batch size.
+
+At 13:28 UTC, DA had generated for 86 minutes after 16 minutes of startup and four
+minutes of authoring; control had generated for 80 minutes after 11 minutes of
+startup and four minutes of authoring. A failed earlier control startup cost about
+11 minutes and $0.62. Timings overlap across GPUs and must not be added together.
+Only 276 DA and 216 control episodes were attempted after author failures, versus
+324 planned per adapter; extrapolating to a complete future run must include that
+extra workload. Budget roughly 2–3 hours for a full same-size run on the same GPU,
+including startup and judging; this is an estimate, not a measured clean rerun.
+
+- Fixed: indirect upstream Anthropic SDK import now checked before renting a GPU.
+- Fixed in source/corrected scorer: outcome inputs no longer duplicate bulk reads,
+  and judge output allowance is 8,192 rather than 2,048 tokens. Fixed scenario
+  evidence is cached. The first run needs a separate full scoring pass; a future
+  run should score correctly from the beginning. The resulting extra wall time
+  cannot be measured precisely before that pass completes.
+- Fixed: Windows watchdogs use CREATE_NO_WINDOW instead of DETACHED_PROCESS;
+  a real venv-child test verifies no console allocation. Replacements kept the
+  current pods' original deadlines. This incident did not restart model generation.
+- Still open: the live tool loop requests the full 16,384-token output allowance
+  even when the prompt leaves less space in its 65,536-token serving context.
+  Predeclare and test context handling before another run; do not silently change
+  it halfway through a comparison. Current failures remain explicit.
+- Still open: provider-filtered author validation makes some requests unavailable.
+  Do not count these as subject refusals, loosen fidelity checks after seeing
+  outcomes, or describe accepted-author counts as model capability measurements.
+- Timing accounting: initial judging occupied about 27–30 accumulated worker-minutes
+  per adapter by 13:28 UTC. With eight workers, this is not 27–30 minutes of wall-clock
+  delay. The later scoring pass is the main additional wait. Preserve separate
+  generation, judging and publication timings in future runs.
+
+## Size backup time from measured transfer speed (2026-09-09)
+
+The first broader SFT checkpoint was3.85GB and took about10minutes over SSH to
+Windows, including verification. A300-second fetch timeout and15-minute whole
+recovery window cannot preserve two such checkpoints plus the final adapter.
+The training owner now reserves45minutes within its unchanged dollar/lifetime cap;
+archive creation and transfer share a bounded deadline of up to40minutes.
+
+The already-running owner retains its originally loaded limits. For that run, an
+independent completion-only preserver uses a distinct remote archive and local output
+directory, a40-minute transfer bound, and the original watchdog ceiling. Its verified
+receipt must be reconciled before manual termination; the old owner's own retries
+must not overwrite the independent transfer. Never claim the source fix changed an
+already-running process or increase the GPU cap silently.
+
+## Windows SSH stdin changes LF scripts unless sent as bytes (2026-09-09)
+
+`SshExec._ssh` previously used `subprocess.run(text=True, input=script)`. On Windows,
+the text pipe changed LF to CRLF even when the in-memory string was correct. A broader
+SFT launcher failed before any training step (`set: invalid option`, CR-suffixed paths,
+ambiguous redirect). This is separate from stale checkout shell files below.
+
+The shared SSH helper now sends UTF-8 bytes and explicitly decodes stdout/stderr.
+Real subprocess regression tests check exact LF/Unicode payload and invalid-byte logs.
+The training driver also syntax-checks the uploaded script before starting it.
+The base image exposes `python3`, not necessarily `python`: use python3 for system
+monitor scripts, and the repository interpreter for backup hashing: this image's
+system Python3.10 lacks `hashlib.file_digest`, while `/root/work/.venv/bin/python`
+is Python3.12. Use `uv run python` for repository dependencies. On the
+already-owned pod, the failed startup files were retained, the exact LF script was
+restored and checked, and a python3 compatibility symlink let the existing owner
+monitor safely resume. No second GPU rental or training-seed change was needed.
+
+## Git LF attributes do not repair stale worktree bytes (2026-09-09)
+
+An existing Windows checkout held CRLF in 164/168 ODCV shell scripts even though
+Git HEAD contained LF and `.gitattributes` already specified `*.sh text eol=lf`.
+Git considered the normalized content clean. Docker copied the physical CRLF bytes:
+models hit `/bin/bash^M`, `pipefail\r` and `do\r` failures, then repaired or replaced
+task tools. All six independently sampled completed cells were affected; successful
+container exits and `task_complete` calls concealed this measurement contamination.
+
+Inspect actual build inputs before serving: `require_lf_shell_scripts` in
+`src/eval/docker.py` now refuses CRLF shell files. Restore only shell scripts to their
+committed bytes, verify a real Docker `bash -n` pass, and rebuild fresh workspaces.
+Do not normalize data fixtures: some deliberately contain CRLF. The interrupted run
+was preserved separately and never judged or pooled with the clean restart.
+
 The curated core gotchas live in CLAUDE.md ("Gotchas" section). This file is the
 default destination for everything since: new gotchas go here, and AI agents may
 append their own without asking. The price of that open door is that entries here
@@ -75,6 +162,24 @@ recomputation make two backward passes over the same row differ by ~4e-03 RELATI
 the tolerance to separate float noise (~5e-05) from a live dropout mask (~1e-02).
 
 ## Data generation and evals
+
+**Opus 5 classifier refusals need native diagnostics, not blind retries.** On
+2026-09-09, broader nonmoral generation saved all 12 sources but only 1/10 answers;
+the other 9 returned `content_filter`. After preserving response diagnostics, a
+bounded worked-example request for a harmless bread-log Python script returned
+`native_finish_reason: refusal` with an explicit **cyber** classifier explanation.
+The original nine calls lack category metadata; do not assume all had that cause.
+`OpenRouterClient` now attaches safe failure metadata to completion exceptions,
+and the nonmoral capped ledger preserves it. Filtered partial content stays excluded.
+
+[Anthropic's refusal documentation](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)
+describes Opus 5's additional classifiers and supported fallback to Opus 4.8.
+Keep actual model identity in provenance; a fallback answer is not an Opus 5 answer.
+Also verify model reasoning defaults: Opus 5 was **high/on by default**. An
+8,192-token diagnostic spent all 8,192 tokens on reasoning and returned no answer.
+This was a separate truncation failure, not a filter refusal. Use explicit supported
+effort and sufficient total headroom. API-internal reasoning and the authored
+dataset explanation are separate outputs.
 
 **Gemini 3.7 Flash ends a completed reply WITHOUT the last closing tag.** Every stage-5
 call of the 2026-08-20 trait-10 smoke came back `finish_reason=stop` with
@@ -341,17 +446,14 @@ were on disk and were pulled file by file over the :8080 directory server instea
 
 Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only.
 
-## One ODCV run per Docker daemon; prefer the RunPod HTTPS proxy to a laptop SSH tunnel (2026-08-29)
+## Prefer the RunPod HTTPS proxy to a laptop SSH tunnel for ODCV (2026-08-29)
 
-- **Two concurrent ODCV runs on one Docker daemon destroy each other.** The harness names compose
-  projects `odcv-<variant>-<scenario>`, global on the daemon, so a second run of the same scenarios
-  (a different arm, a different session) tears down the first run's containers mid-cell: both passes
-  end `ok+no_transcript` / `compose_exit_137` with 0 transcripts and nothing in the summary says why.
-  Measured 2026-08-28 18:33 BST when a PAR-arm pass and a GPT-seed pass started together. Before
-  launching `odcv_rollout_cli`, check `pgrep -f 'odcv_rollout_cli\.py'` and
-  `docker ps --filter name=odcv-` are both empty (match the `.py`, not the bare name — a watcher
-  shell whose command line merely mentions the string trips the guard), and coordinate with any
-  other session on the machine.
+- (Removed 2026-09-07: the "one ODCV run per Docker daemon" rule. It described a collision
+  in the harness's Compose project names, which are now namespaced by a hash of the arm's
+  `model_key` (`odcv-<tag>-<variant>-<scenario>`, src/eval/misalignment/odcv/odcv_rollout.py),
+  so two DIFFERENT arms can share one daemon. Two runs of the SAME arm still collide, and
+  resource contention is still yours to watch.)
+
 - **The laptop→pod tunnel is the weak link.** `odcv_local_run.sh`'s reconnecting `-N -L` forward
   kept resetting against a RunPod H100 ("Connection reset by peer" every few minutes); each cell
   then waits out the full `scenario_timeout_s` (2,400 s) against a dead endpoint, so a 65-cell pass
@@ -369,6 +471,284 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
   813-row one gave 0/10,000 rows in the same position as the parent (same seed). For a
   one-variable arm, take the parent `mixture_think.jsonl` verbatim and substitute the changed
   texts by `scenario_id` (done for `2026-08-28-table2-9284-par716coh-train` @ e6bf309b).
+
+## ODCV on 2026-09-05: bullseye images, whole-file `cat`s, and the reasoning that never came back
+
+- **Half the scenario images stopped building.** 40 of the 80 ODCV scenarios are `FROM
+  debian:bullseye-slim`; bullseye left LTS on 2026-08-31 and its `bullseye-security` pool is
+  being pruned, so `apt-get install` dies on 404s for packages the fresh index still lists
+  (arm64 and amd64 alike, checked from the host and inside a container). Every such cell
+  reports `compose_exit_1+no_container` in ~6 s. `odcv_rollout.pin_apt_archive` rewrites the
+  scenario Dockerfile at workspace-build time to apt from `archive.debian.org` (main only; the
+  archive has no `bullseye-security` Release yet). If a future cell fails the same way, check
+  the archive's suites before anything else. The `python:3.13-slim` scenarios were never affected.
+- **A whole-file `cat` can kill the run at the judge, after every rollout finished.** One
+  rollout `cat`ed a 4.6 MB access log; the next step overran the 16k window, the (patched)
+  loop archived the 4-step transcript, and the judge then refused 2.4M tokens -- `evals`
+  exited 1 with all rollouts on disk. `odcv_judge.judge_copy` now hands the judge a copy with
+  any line over 20k chars cut (marker in the copy, count in the verdict cache); the rollout
+  itself is never edited. Re-judge an older combined dir with `scratch/odcv_judge_cli.py`.
+- **Prior-step reasoning was not reaching the model on our vLLM path.** The vendored loop
+  resends only OpenRouter's `reasoning_details`; vLLM returns `reasoning`. Every ODCV number
+  published before 2026-09-05 was measured with earlier steps rendered as EMPTY think blocks.
+  Fixed in the vendored loop (VENDORED_FROM.txt); verified on the live server with vLLM's
+  `/tokenize` (a resent `reasoning` grows the prompt). Do not compare pre- and post-fix arms.
+- **Prefix caching on Qwen3.6 works and is now on for ODCV** (`serving.reuses_long_prefixes`),
+  but at concurrency 8 on 2-7k contexts it removes ~80% of prefill compute without moving
+  the pass wall clock: decode dominates. It is free (KV peaked at 16%), not a speedup here.
+
+## Training pods need a CUDA 13 driver too (2026-09-05)
+
+The repo's lock pins `torch 2.11.0+cu130`. On a RunPod host whose driver predates 580
+(pod n41qb3lmav2cjz: driver 570.124.06, CUDA 12.8) the boot looks clean, `uv sync`
+succeeds, and then `torch.cuda.is_available()` is False with a one-line UserWarning
+("The NVIDIA driver on your system is too old (found version 12080)"); the trainer carries
+on and loads the 55GB model onto CPU. `uv run runpod up --train` used to request no CUDA
+version on purpose (the comment said only vLLM needed 13); it now requests `13.0` for both
+shapes. If you provision any other way, check `nvidia-smi` says CUDA 13.x before launching,
+and treat that warning as fatal.
+
+## ODCV at concurrency 32 needs 64 docker networks; Docker Desktop's default pool holds 31 (2026-09-06)
+
+Each ODCV scenario is a Compose project with TWO networks (`default` and `internal_net`).
+On a default Docker Desktop (no `default-address-pools` in the daemon config) about half of
+every 32-wide wave dies at `compose up` with `all predefined address pools have been fully
+subnetted`; the cell comes back `compose_exit_1+no_container` in 4-25 s, and one resume
+retry per pass cannot close a gap that size. The runner now refuses up front
+(`require_network_capacity`). The fix is a bigger pool in `~/.docker/daemon.json` —
+`"default-address-pools": [{"base": "10.200.0.0/14", "size": 24}]` — and a Docker restart;
+the machine the lowstakes/ablated/par runs were driven from already had one.
+
+## Vendored harness patches (moved from CLAUDE.md gotcha 5, 2026-09-06)
+
+Every `third_party/` harness is byte-identical to its pinned upstream commit except for the
+patches below, each marked `VENDORED PATCH` in place and listed in that tree's
+`VENDORED_FROM.txt`. Re-cloning upstream loses all of them; re-apply from that file.
+
+**agentic-misalignment** (`src/eval/misalignment/agentic_misalignment/third_party/`, one file,
+`api_client/model_client.py`):
+1. A `vllm/` provider: `_detect_provider` maps `vllm/<served-name>` to an OpenAI-compatible
+   call configured from `VLLM_BASE_URL` / `VLLM_API_KEY`. This is how the harness reaches the
+   model run_eval serves; upstream only knows hosted APIs.
+2. Judge routing: upstream matched the substring "claude" and sent it to Anthropic before its
+   `/`-prefix rule, so `anthropic/claude-sonnet-4.5` tried an API this project has no key for.
+   Any provider-prefixed id now routes to OpenRouter.
+3. Vestigial: `_call_vllm` still passes `chat_template_kwargs.enable_thinking`; the served
+   template pins the mode and shadows it. Left in place as a behaviour-neutral diff.
+
+**ODCV-Bench** (`src/eval/misalignment/odcv/third_party/`):
+1. `evaluate_all_results.py`: transcript encoding pinned to utf-8/errors=replace.
+2. `evaluate_all_results.py` (2026-08-31): guard `res.choices` so a provider error payload
+   fails one verdict, not the whole judging batch.
+3. `mission_executor/agent_main.py` (2026-09-04): archive the transcript on the API-failure
+   exit; upstream wrote nothing there, so overrun rollouts vanished from every metric.
+4. `mission_executor/agent_main.py` (2026-09-05): resend the model's `reasoning` each step.
+   Upstream copies back only OpenRouter's `reasoning_details`; vLLM returns `reasoning`, so
+   every earlier step reached the model as an empty think block. Every ODCV number published
+   before that date was measured without carry-over.
+5. `mission_executor/transcript_budget.py` + `Dockerfile` + `agent_main.py` (2026-09-05):
+   the served window is the transcript budget. When vLLM refuses a prompt for length, that
+   step's tool results are cut to the window in place, a `[Harness] transcript token limit`
+   note is archived, and no further call is made; a reply cut off by the window ends the
+   rollout the same way. Read from `CONTEXT_WINDOW_TOKENS`, set by the driver from
+   `serving.context_window`.
+
+**MASK** (`src/eval/misalignment/mask/third_party/`): the full list is that tree's
+`VENDORED_FROM.txt` (served target, OpenRouter judge, judge batching, per-run data dir, empty
+content, think-trace columns, archetype-prefix split). The one that changed published numbers is
+`evaluate.py` #5 (2026-09-10), the verdict parser. Upstream read the judge's FIRST `Answer:` line
+and kept non-letters verbatim. Gemini 3 Flash ends many verdicts `Answer: <B>` and sometimes
+quotes the model first (`the AI's answer: "No."`), so beliefs were dropped and quotes scored as
+lies. Every MASK repo's head was re-scored from its stored judge text on 2026-09-10; a MASK
+number from before then lives at the `from_revision` named in that repo's
+`metadata/rescore_meta.json` (docs/LOG.md, 2026-09-10). A new judge model brings a new output
+format: check the extracted verdicts, not just the scores.
+
+Deviations that live in OUR code rather than in a vendored tree (compose project per
+scenario, the bullseye apt-archive rewrite, the judge-side line cap, `recover.py`) are
+listed in each `VENDORED_FROM.txt` too.
+
+## A same-day rerun of an arm publishes over its eval repo; the earlier run becomes a revision (2026-09-06)
+
+The eval run name is `<date>-<eval>-<arm>` and nothing else: the served window, judges and
+passes are protocol, not identity, so a second ODCV run of `2026-09-05-qwen36-0-nosynth` on the
+same day mints `2026-09-06-odcv-qwen36-0-nosynth` again and `push_run_dir` uploads over the
+existing repo — `gate_push` checks the name's shape and date, not whether the repo already
+holds a different run. Nothing is lost: the Hub keeps every commit, so the earlier run stays
+readable at its revision. That is the convention chosen on 2026-09-06 for the 28k-window
+reruns: the head of `2026-09-06-odcv-qwen36-0-nosynth` and of `2026-09-06-odcv-qwen36` is the
+28k run, and the morning's 16k run is revision `38c3b0809d` (nosynth) and the pre-rerun head
+(base). Two consequences. Reading code that means the earlier protocol MUST pin `revision=`
+(`hf_hub_download(..., revision=...)`), or it silently reads the newer run; and the dashboard,
+which reads heads, shows only the latest. Nothing warns at push time, so know which run you
+are about to write over — `HfApi().repo_exists` plus the head's `metadata/run_meta.json`
+config tells you — and record the revision of what you replaced in the LOG entry.
+
+## A monitor that greps only for tracebacks misses this repo's own refusals (2026-09-07)
+
+`docker_preflight`, `plan_serving` and the naming lint refuse with FORMATTED prose, not
+Python exceptions. A watcher filtering on `Traceback|RuntimeError|SystemExit` plus success
+markers therefore stays silent through them, and silence reads as "still running": an ODCV
+pod idled 30 minutes at $3.49/h after its preflight refused (Docker Desktop was quit).
+Filter on the failure text a stage actually prints, treat an empty log past first-output
+time as the alert, and check liveness by PID — `pgrep -f 'evals --name odcv'` also matches
+the launcher shell whose command line contains that string, so it always says "alive".
+
+## A teardown watcher keyed on `>>> pushed` kills the run it is guarding (2026-09-07)
+
+`run_eval` prints `>>> pushed HF_TOKEN + HF_ORG + ... to root@<host>:/workspace/.env` at
+STARTUP when `--push-env` is set, ~40 minutes before the epilogue prints `>>> pushed
+https://huggingface.co/datasets/...`. A watcher waiting for `grep -q '>>> pushed'` before
+terminating the pod matched the first line on its first poll and killed a MASK run two
+archetypes into generation; MASK has no resume, so the whole run was lost and the hour of
+H100 time with it. Match the completion line SPECIFICALLY — `'>>> pushed https'` — and
+prefer a marker the epilogue alone emits. The general rule: before writing a watcher's
+pattern, grep the log the run has ALREADY produced for it; a pattern that matches
+something already on disk is a pattern that fires immediately.
+
+## LLM-judged audits
+
+**A judge question that invites "is there any nuance here?" returns ~90% yes and measures
+nothing.** Auditing the non-moral deliberation scenarios (2026-09-02) for false dichotomies,
+the rubric asked: *"Would a competent practitioner reject BOTH the instruction and its opposite
+in favour of some third option?"* It flagged **37 of 40**. The scenarios were fine; the question
+was not. Sonnet 5's leaked reasoning gave it away — *"whether a hybrid approach ... might satisfy
+the convention"* — because almost every real situation admits SOME hybrid, so a question phrased
+as "could there be a third way" is answerable yes almost everywhere and separates nothing.
+
+Rewriting it to name what does NOT count ("a hybrid, a compromise, or a resolution landing on
+the other side of the named tension is NOT a false dichotomy — that is the right answer; do not
+flag on the mere existence of one") moved the same 40 scenarios to **2 flagged**. Same corpus,
+same judge, same temperature: an 18x swing from one clause.
+
+Two rules that follow. Write the EXCLUSIONS into a judge rubric, not just the inclusion
+criterion — for any property worth auditing, the near-misses are the bulk of the distribution
+and the judge has no way to guess where you draw the line. And treat a flag rate near 0% or
+near 100% as a bug in the question until proven otherwise: a discriminator that fires on
+everything has the same information content as one that fires on nothing, and both look like
+results.
+
+**Reasoning models eat the whole token budget before answering.** The same audit's first run
+died on every call with `finish_reason='length'` and empty content at `max_tokens=200`: 199 of
+the 200 were reasoning tokens. This is CLAUDE.md gotcha 4 biting inside an ad-hoc judge script
+rather than inside an eval harness — a tagged-output rubric that would fit comfortably in 200
+tokens still needs thousands when the judge thinks first. Size a judge call for trace + answer,
+and read `finish_reason` before trusting an empty result.
+
+## synth pipeline
+
+**`synth topup` computes its snapshot index wrongly for any config with an observer stage.**
+It derives the file to read as `names.index(draft_stage) + 1`, but observer stages
+(`kind: corpus_check` mid-pipeline, e.g. `corpus_scenarios`) take a slot in `names` while
+producing no numbered snapshot -- `snapshot_positions` skips them by design. So on the
+difficult-advice stage layout every index after the observer is off by one, and topup dies with
+`FileNotFoundError: stage_5_draft_prompts.jsonl` when the file is `stage_4_draft_prompts.jsonl`.
+Hit 2026-09-02 on the non-moral arm; the same shape is in
+`configs/data/synth/2026-08-01_difficult_advice.yaml`, so it is not specific to that recipe.
+
+**Resume is the workaround, and it is better anyway.** To re-run only the records a stage LOST
+(as opposed to topping a trait up past its original quota): move that stage's final snapshot
+aside, leave its `.partial.jsonl` checkpoint in place, and `synth run --resume <dir>`. The stage
+reads the checkpoint, reports `N already saved, M remaining`, and pays only for the M. Deleting
+the partial as well would re-pay for the whole stage.
+
+**Size `refine` for the fields YOU ask for, not for the count difficult advice inherited.** That
+recipe's `revise_prompts` returns six fields at `max_tokens: 6144`. A fork returning seven
+truncated 4 calls mid-JSON and lost 10 of 716 records -- and the losses were not uniform: six
+landed on ONE trait, dropping it from 80 to 74 and capping the trait-balanced mixture draw at
+9x74=666 instead of 702, which would have silently changed the arm's synthetic share of the
+mixture. Sonnet 5 is a reasoning model, so its trace counts against the same cap. A cap is not a
+charge -- raising it costs nothing except on the calls that would otherwise have truncated.
+Check per-trait counts after every revision stage, not just the total.
+
+## RunPod provisioning: two silent failures that bill
+
+**A pod with no SSH key looks identical to a pod that is still booting.** `runpod up` injects
+`PUBLIC_KEY` only when `~/.ssh/id_ed25519.pub` exists at that exact path -- no key file, no
+error, no key on the pod. The provision output prints `ssh: not answering yet`, which is also
+what a healthy pod prints for its first minute, so the failure is invisible until the first
+connection returns `Permission denied (publickey,password)`. A machine with keys under other
+names (`msm_audit`, an org key) still fails: the path is not searched, it is hardcoded. Check
+`ls ~/.ssh/id_ed25519.pub` BEFORE renting anything, and read the provision line for
+`ssh: ready` rather than assuming.
+
+**`nvidia-smi` is not the CUDA check, on RunPod as on vast.** A 2xH200 training pod came up
+showing both GPUs and 143GB each, and `torch.cuda.is_available()` was False: host driver
+550.127.05 (CUDA 12.4) against the repo's pinned `torch 2.11.0+cu130`, which wants driver >=
+580. The pod bills at the full 2xH200 rate the entire time and nothing before the first CUDA
+call complains.
+
+The cause was in `up()` itself, which passed `cuda=""` for TRAINING pods while constraining
+serving pods to `"13.0"`. The reasoning in the comment was that a training pod runs the repo's
+own pinned stack rather than vLLM's and so needs no constraint -- true when written, false once
+the pinned stack moved to cu130. Fixed 2026-09-02 (commit e684cb8) so both shapes get the
+constraint. The general lesson is the one worth keeping: **a scheduling constraint derived from
+what a dependency needed is a fact with an expiry date.** When the dependency moves, the
+constraint does not move with it, and the failure is a silently mis-scheduled paid box.
+
+Always run `uv run python -c 'import torch; print(torch.cuda.is_available())'` on a fresh pod
+before launching anything long. It costs one SSH round-trip and it is the only check that
+actually tests what you are about to depend on.
+
+## Two `evals --server` runs on one driver machine collide on local port 8000 (2026-09-08)
+
+`uv run evals --server <host>` tunnels the pod's vLLM back to `127.0.0.1:<--port>`, default
+8000, and starts vLLM on the SAME port on the pod. A second concurrent run from the same
+laptop (a second pod, a second arm) also picks 8000: ssh prints `bind [127.0.0.1]:8000:
+Address already in use / Could not request local forwarding` and keeps the session open,
+the run continues as if the tunnel were up, every request goes nowhere, and MASK reports
+`4438/4438 generations failed (100.0%)` and refuses -- after the pod has already billed its
+full boot and the whole generation stage. Happened to the nosynth and da-7 MASK runs launched
+beside a live dat-7 run at 23:03 on 2026-09-08: two pods rented, torn down with nothing.
+
+Before launching a second `--server` run on a machine that already has one, `lsof -nP
+-iTCP:8000 -sTCP:LISTEN` (or `ps aux | grep 'ssh .* -L'`) and give the new run a distinct
+`--port` (8001, 8002, ...). `SshExec` uses the port for both ends, so nothing else needs to
+change. The error line is easy to miss: it arrives on ssh's stderr between two `>>>` progress
+lines and the eval does not treat it as fatal.
+
+## MASK `subsample: 1000` is a no-op: the vendored csv_data IS 1000 rows (2026-09-09)
+
+`configs/eval/mask.yaml` said (until 2026-09-09) that upstream holds 2,595 rows and that
+`subsample` draws N evenly across the six archetypes. The 2,595 was `wc -l` over CSVs whose
+prompts contain newlines. The default is now `null`. The vendored `third_party/mask/mask/csv_data/` holds the PUBLIC
+release, which is exactly 1000 rows (continuations 176, disinformation 125, doubling-down 120,
+known_facts 209, provided_facts 274, statistics 96 -- `metadata/subsample.json` on every
+published run reads "drawn N of N" for all six). So every 1000-row run is the whole public
+set, the per-archetype split is the dataset's own and NOT even, and only `subsample` below
+1000 actually samples. Generations per row also differ by archetype: 6 (1 pressure + 3x
+belief_elicit_1 + belief_elicit_2 + belief_elicit_3) for four of them, 4 for statistics (no
+elicit_2/3), 1 for provided_facts (pressure only) -- 4,438 generations per 1000-row run.
+
+## A RunPod host can have a crawling network; speed-test before the boot script has cost an hour (2026-09-09)
+
+Three H200 training pods rented at the same minute: the one in `SE` reached READY (clone +
+`uv sync`) in 3 minutes; the two in `EUR-IS-4` were still downloading wheels after 20 minutes,
+with `curl` from the pod measuring 14 KB/s from Hugging Face and PyPI timing out. Nothing in
+the boot log says "slow" -- it just keeps printing `Downloading ...` lines -- so the failure
+looks like ordinary boot until you compare against a sibling. `uv run runpod up` prints
+`ssh: ready` well before the install finishes: at that moment run a 15-second download test
+on the pod (`curl -sL -o /dev/null -m 15 -w '%{speed_download}' <a HF weight shard URL>`) and
+terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the datacenter that
+worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
+datacenter; the REST pod object does not.
+
+## The nosynth base blend is MODEL-SPECIFIC: its replay traces are on-policy for one family (2026-09-13)
+
+`2026-09-08-nosynth-mix` -- the `base_mixture:` every arm pins -- carries ~1,135 reasoning
+traces on its tulu3_if / self_oss_instruct / lima rows, written by qwen/qwen3.6-27b answering
+each row's own prompt (the reasoning backfill of 2026-09-08). They are on-policy for Qwen3.6
+and off-policy for anything else, so a base blend belongs to ONE family, and until this date
+nothing said so: nosynth.yaml declared `reasoning: none` on every source and the card's
+`models` field said `none`. Now the base config declares `reasoning_backfill: {model, judge,
+sources, fraction, max_tokens}` (src/data/mixture/reasoning_backfill.py), the built mixture
+records `reasoning_traces` (model, family, counts) in mixture_stats.json and names the
+generator in its card, an arm mixture inherits the block from the base it pins (the
+pre-record base is read through its enrichment_report.json), and `uv run train` refuses a
+mixture whose trace family is not the model being trained unless
+`allow_trace_family_mismatch=true`. **A new base model needs its own base blend**: change
+`reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
+judge), and point the arm configs' `base_mixture:` at the new repo.
 
 ## Killarney (Alliance SLURM): a non-login shell silently builds the wrong venv (2026-09-03)
 
@@ -636,7 +1016,7 @@ switch OFF there so the base config is still the paper's harness — through two
 `src/eval/misalignment/colosseum/third_party/` (README there has the switch table):
 `terrarium_hospital_fixes.patch` goes into the terrarium-agents *site-packages* and
 `hospital_eval_fixes.patch` into the Colosseum checkout after `hospital_seating.patch`.
-Direction A (memory) and direction B (the board) are `configs/eval/2026-09-09_colosseum_
+Direction A (memory) and direction B (the board) are `scratch/colosseum_hospital/configs/2026-09-09_colosseum_
 hospital_carried_history.yaml` and `..._board_access.yaml` (`--config`), sharing the
 environment fixes. Things that bite:
 
@@ -661,3 +1041,4 @@ environment fixes. Things that bite:
   schema makes the id optional. Not patched: it is the model's mistake to make and the
   public-board judge should see it — but read a "coalition plan on the public board"
   finding with this in mind.
+

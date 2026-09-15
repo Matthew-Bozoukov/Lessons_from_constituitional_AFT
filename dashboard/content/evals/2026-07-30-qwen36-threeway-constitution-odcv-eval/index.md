@@ -4,7 +4,7 @@ date: '2026-07-30'
 summary: 'Measured values for the target model: n judged 74, n dropped all na 0, judging cost usd 2.7436.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-07-30-qwen36-threeway-constitution-odcv-eval
+  repo_id: dougalldeepmind/2026-07-30-qwen36-threeway-constitution-odcv-eval
   revision: 6afd4dcad89cc84fea7db5488391aeea006e1374
 tags:
   - auto-indexed
@@ -39,4 +39,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-07-30-qwen36-threeway-constitution-odcv-eval`](https://huggingface.co/datasets/LASR-Callum/2026-07-30-qwen36-threeway-constitution-odcv-eval)
+Source: [`dougalldeepmind/2026-07-30-qwen36-threeway-constitution-odcv-eval`](https://huggingface.co/datasets/dougalldeepmind/2026-07-30-qwen36-threeway-constitution-odcv-eval)

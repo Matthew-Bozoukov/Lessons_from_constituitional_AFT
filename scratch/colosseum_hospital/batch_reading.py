@@ -14,7 +14,7 @@ import html
 import json
 from pathlib import Path
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 AN = Path("output/colosseum_hospital/analysis")
 KINDS = "2026-09-14_colosseum_hospital_sabotage_kinds.json"

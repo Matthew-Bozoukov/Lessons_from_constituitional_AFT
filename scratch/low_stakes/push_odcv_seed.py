@@ -85,7 +85,7 @@ That is inherited from the difficult-advice recipe, not attributable to low stak
 
 - **experiment**: ODCV-Bench on the seed-{seed} replicate of the low-stakes difficult-advice arm.
 - **date_generated**: 2026-08-31.
-- **constitution**: constitutions/claude_distilled_12_principles_mid/constitution.md, via
+- **constitution**: constitutions/archive/claude_distilled_12_principles_mid/constitution.md, via
   [`{CORPUS}`](https://huggingface.co/datasets/{CORPUS}).
 - **source_repo**: this repository, branch `nika/low-stakes-seed80085`.
 - **models**: target [`{ADAPTER}`](https://huggingface.co/{ADAPTER}) served by vLLM on a

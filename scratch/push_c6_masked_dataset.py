@@ -19,7 +19,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
+from src.infra.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 REPO = "matboz/2026-08-16-c6-meta-reasoning-masked-t2-9284-synthdoc-716"
@@ -41,7 +41,7 @@ def main(private: bool = True) -> None:
                       "122 difficult-advice rows that carry it, leaving all text unchanged.",
         "date_generated": "2026-08-16",
         "constitution": "claude_distilled_07_principles_approved "
-                        "(constitutions/claude_distilled_07_principles_approved/constitution.md)",
+                        "(constitutions/archive/experimental/claude_distilled_07_principles_approved/constitution.md)",
         "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication @ {git_sha()}",
         "models": f"span selector {meta['judge']}; token stream Qwen/Qwen3.6-27B; "
                   "clusters embedded with Qwen/Qwen3-Embedding-8B",

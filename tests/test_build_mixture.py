@@ -45,6 +45,34 @@ def test_fill_respects_budget():
     assert len(out) == 2
 
 
+def test_published_base_preserves_payloads_and_mixed_reasoning(tmp_path, monkeypatch):
+    from src.data.mixture import build_mixture as mod
+    from src.infra import huggingface
+    original = [
+        {"source": "s", "messages": [{"role": "assistant", "content": "one", "reasoning_content": "trace"}]},
+        {"source": "s", "messages": [{"role": "assistant", "content": "two"}]},
+    ]
+    path = tmp_path / "mixture.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in original))
+    monkeypatch.setattr(huggingface, "resolve_dataset", lambda *args: (str(path), {"revision": "pin"}))
+    monkeypatch.setattr(mod, "_base_sources", lambda _: {"s": {"examples": 2}})
+    cfg = OmegaConf.create({"base": "unused", "max_seq_len": 10,
+                           "base_mixture": {"repo": "org/base", "file": "mixture.jsonl", "revision": "pin"}})
+    rows, kinds = mod._load_published_base(_StubTok(), cfg, {"s": {"examples": 2}}, 1, 0, {})
+    assert kinds == {"s": "mixed"}
+    assert sorted(({k: v for k, v in r.items() if k != "n_tokens"} for r in rows),
+                  key=lambda r: r["messages"][0]["content"]) == original
+    with pytest.raises(AssertionError, match="no additional filter"):
+        cfg.filter = {"model": "must-not-run"}
+        mod._load_published_base(_StubTok(), cfg, {"s": {"examples": 2}}, 1, 0, {})
+
+
+def test_mixed_reasoning_does_not_disable_tool_validation():
+    with pytest.raises(AssertionError, match="declare"):
+        _validate_interchange("s", "mixed", [{"messages": [{"role": "assistant",
+            "tool_calls": [{"function": {"name": "undeclared"}}]}]}])
+
+
 def test_fill_skips_oversized_rows_but_keeps_filling():
     out = _fill(_rows([500, 10, 10]), budget=25, seed=0)
     assert sum(r["n_tokens"] for r in out) == 20
@@ -111,9 +139,7 @@ def test_main_rejects_legacy_tulu3_schema(tmp_path):
 def test_mixture_configs_share_one_schema():
     from src.data.mixture.sources import SOURCES
 
-    # 2026-07-31_tulu_control.yaml is the tulu3 sampler's config (sources/tulu3.py), not a build_mixture config.
-    configs = [p for p in sorted(Path("configs/data/mixture").glob("*.yaml"))
-               if p.name != "2026-07-31_tulu_control.yaml"]
+    configs = sorted(Path("configs/data/mixture").glob("*.yaml"))
     assert configs, "no mixture configs found"
     for path in configs:
         cfg = OmegaConf.load(path)
@@ -122,13 +148,16 @@ def test_mixture_configs_share_one_schema():
         sources = OmegaConf.to_container(cfg.sources, resolve=True)
         assert sources, name
         for sname, spec in sources.items():
-            assert set(spec) <= {"source", "repo", "path", "config", "split", "tokens",
-                                 "examples", "shuffle_buffer", "reasoning", "synthetic",
-                                 "balance_by"}, (name, sname)
+            # The intake keys `_take_interchange` documents: an adapter (`source`), a
+            # synth-contract repo (`dataset` [+ `revision`]), a raw HF repo (`repo` [+ `file`]),
+            # or a local `path`.
+            assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
+                                 "config", "split", "tokens", "examples", "shuffle_buffer",
+                                 "reasoning", "synthetic", "balance_by", "supervise"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
-            if not ("repo" in spec or "path" in spec):
+            if not ("repo" in spec or "path" in spec or "dataset" in spec):
                 assert (spec.get("source") or sname) in SOURCES, (name, sname)
             # Exactly one budget kind per source (the builder's _budget contract).
             declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
@@ -227,6 +256,56 @@ def test_write_rows_messages_roundtrip_keeps_supervise(tmp_path):
     written = [json.loads(line) for line in path.open()]
     assert written[0]["supervise"] == "final" and "supervise" not in written[1]
     assert all("n_tokens" not in w for w in written), "counters must not leak into artifacts"
+
+
+_BASH_TOOL = {"type": "function", "function": {
+    "name": "bash", "parameters": {"type": "object",
+                                   "properties": {"command": {"type": "string"}}}}}
+_CALL = {"type": "function", "function": {"name": "bash", "arguments": {"command": "ls"}}}
+
+
+def test_tools_ride_the_row_from_source_to_mixture(tmp_path):
+    # A synth export row: messages + top-level tools. Both must reach the written mixture,
+    # and the token count must be taken WITH the tools (the template renders them).
+    path = tmp_path / "agentic.jsonl"
+    with path.open("w") as f:
+        f.write(json.dumps({"messages": [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": "", "tool_calls": [_CALL]},
+            {"role": "tool", "content": "out"},
+            {"role": "assistant", "content": "done", "reasoning_content": "why"}],
+            "tools": [_BASH_TOOL], "supervise": "final"}) + "\n")
+
+    seen = []
+
+    class _TokSeesTools(_StubTok):
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+                                return_dict=False, **kw):
+            seen.append(kw.get("tools"))
+            return super().apply_chat_template(messages, tokenize, add_generation_prompt,
+                                               return_dict, **kw)
+
+    rows, _ = _take_interchange(
+        _TokSeesTools(), _icfg(tmp_path), "agentic",
+        {"path": str(path), "reasoning": "native"}, ("examples", 1), seed=0,
+        render_kwargs={})
+    assert rows[0]["tools"] == [_BASH_TOOL] and rows[0]["supervise"] == "final"
+    assert seen == [[_BASH_TOOL]]
+    out = tmp_path / "m.jsonl"
+    _write_rows(out, rows)
+    assert json.loads(out.read_text())["tools"] == [_BASH_TOOL]
+
+
+def test_validate_interchange_refuses_calls_to_undeclared_tools():
+    from src.data.mixture.build_mixture import _validate_interchange
+
+    row = {"messages": [{"role": "user", "content": "go"},
+                        {"role": "assistant", "content": "", "tool_calls": [_CALL]},
+                        {"role": "tool", "content": "out"},
+                        {"role": "assistant", "content": "done"}]}
+    with pytest.raises(AssertionError, match="calls \\['bash'\\]"):
+        _validate_interchange("agentic", "none", [row])
+    _validate_interchange("agentic", "none", [{**row, "tools": [_BASH_TOOL]}])
 
 
 def test_stratified_subset_holds_proportions_and_is_deterministic():
@@ -374,3 +453,199 @@ def test_balance_by_refuses_streams_and_token_budgets(tmp_path):
                           {"path": str(path), "reasoning": "none",
                            "balance_by": "trait_id"},
                           ("tokens", 100), seed=0, render_kwargs={})
+
+
+def test_a_fully_synthetic_mixture_drops_the_base_and_splits_the_share_by_budget_ratio():
+    """synthetic_pct=100 is a legitimate arm (`da-100`, `dat-100`, `da-dat-100`: the synthetic
+    rows alone, no replay). The base sources scale to zero rows and must be DROPPED, not
+    carried as `examples: 0` (which `_budget` rightly rejects for a declared source); two
+    synthetic sources with equal budgets split the whole mixture 50/50 (2026-09-09)."""
+    from src.data.mixture.build_mixture import _base_sources, blend
+
+    base = _base_sources("configs/data/mixture/nosynth.yaml")
+    out = blend(base, {"da": {"examples": 1, "reasoning": "native"},
+                       "dat": {"examples": 1, "reasoning": "native"}}, 100, 1400)
+    assert set(out) == {"da", "dat"}, "no base source may survive a 100% synthetic share"
+    assert out["da"]["examples"] == out["dat"]["examples"] == 700
+    assert all(s["synthetic"] for s in out.values())
+    only = blend(base, {"dat": {"examples": 1, "reasoning": "native"}}, 100, 700)
+    assert only == {"dat": {"examples": 700, "reasoning": "native", "synthetic": True}}
+
+
+def test_the_base_blend_keeps_its_proportions_as_the_synthetic_share_grows():
+    """The whole point of a fixed base: only the synthetic share varies across a ladder.
+
+    Earlier arms replaced the replay portion with a single source, so `da-10` and `da-40`
+    differed in their replay composition too and neither was a clean control for the
+    other. Here a source that is 27.79% of the base is 27.79% x (100-pct)% of every
+    mixture built from it.
+    """
+    from src.data.mixture.build_mixture import _base_sources, blend
+
+    base = _base_sources("configs/data/mixture/nosynth.yaml")
+    base_total = sum(s["examples"] for s in base.values())
+    base_share = base["no_robots"]["examples"] / base_total
+
+    for pct in (0, 10, 20, 40):
+        synth = {"da": {"path": "x", "reasoning": "native", "examples": 1}} if pct else {}
+        out = blend(base, synth, pct, 10_000)
+        total = sum(s["examples"] for s in out.values())
+        assert abs(total - 10_000) <= len(out)          # rounding only
+        assert round(100 * out.get("da", {}).get("examples", 0) / total) == pct
+        assert abs(out["no_robots"]["examples"] / total
+                   - base_share * (100 - pct) / 100) < 0.001
+
+
+def test_a_synthetic_share_and_synthetic_sources_must_agree():
+    from src.data.mixture.build_mixture import blend
+
+    base = {"tulu3": {"examples": 100}}
+    with pytest.raises(AssertionError, match="do not agree"):
+        blend(base, {}, 10, 1000)                        # a share with nothing to fill it
+    with pytest.raises(AssertionError, match="do not agree"):
+        blend(base, {"da": {"examples": 1}}, 0, 1000)     # a source with no share
+
+
+def test_several_synthetic_styles_split_the_share_by_their_declared_ratio():
+    """`da-par-20` is 20% synthetic; the styles' own budgets set the split within it."""
+    from src.data.mixture.build_mixture import blend
+
+    out = blend({"tulu3": {"examples": 100}},
+                {"da": {"examples": 3}, "par": {"examples": 1}}, 20, 1000)
+    assert out["da"]["examples"] == 150 and out["par"]["examples"] == 50
+    assert out["tulu3"]["examples"] == 800
+
+
+def test_a_base_config_may_not_itself_carry_a_synthetic_share(tmp_path):
+    from src.data.mixture.build_mixture import _base_sources
+
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("sources:\n  da:\n    examples: 10\n    synthetic: true\n")
+    with pytest.raises(AssertionError, match="used as a BASE blend"):
+        _base_sources(str(bad))
+
+
+def test_a_build_refuses_a_stem_its_synthetic_sources_do_not_spell(tmp_path, monkeypatch):
+    """Belt and braces with the lint: an ad-hoc config cannot build a mixture named for
+    corpora it does not contain."""
+    from src.data.mixture import build_mixture as bm
+
+    cfg = tmp_path / "da-par.yaml"
+    cfg.write_text(
+        "seed: 0\ntokenizer: x\nmax_seq_len: 8\ntotal_examples: 100\nsynthetic_pct: 20\n"
+        "base: configs/data/mixture/nosynth.yaml\noutput_dir: " + str(tmp_path) + "\n"
+        "sources:\n  da:\n    path: x.jsonl\n    reasoning: native\n    examples: 1\n")
+    # stop before any real loading: the name check is the first thing after config parse
+    monkeypatch.setattr(bm, "AutoTokenizer", None)
+    with pytest.raises(AssertionError, match="stem must be `da`"):
+        bm.main(str(cfg))
+
+
+# --------------------------------------------------------------------------------------
+# Per-source `supervise:` override (the variant arms' one intervention)
+# --------------------------------------------------------------------------------------
+
+def _agentic_rows(path, n=3, final_trace=True):
+    """Tool-calling rows shaped like a dat synth export: two bash turns, then a final
+    reasoning + bash turn, `supervise: final` under metadata as the synth stamps it."""
+    tools = [{"type": "function", "function": {"name": "bash", "parameters": {}}}]
+    with path.open("w") as f:
+        for i in range(n):
+            final = {"role": "assistant", "content": f"done {i}",
+                     "tool_calls": [{"type": "function",
+                                     "function": {"name": "bash", "arguments": {"command": "rm x"}}}]}
+            if final_trace:
+                final["reasoning_content"] = f"deliberate {i}"
+            f.write(json.dumps({"messages": [
+                {"role": "system", "content": "agent"},
+                {"role": "user", "content": f"task {i}"},
+                {"role": "assistant", "content": "", "reasoning_content": "look first",
+                 "tool_calls": [{"type": "function",
+                                 "function": {"name": "bash", "arguments": {"command": "ls"}}}]},
+                {"role": "tool", "content": "a b c"},
+                final], "tools": tools, "metadata": {"supervise": "final"}}) + "\n")
+
+
+def test_supervise_override_replaces_the_rows_own_field(tmp_path):
+    path = tmp_path / "dat.jsonl"
+    _agentic_rows(path)
+    control, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat", {"path": str(path), "reasoning": "native"},
+        ("examples", 3), seed=0, render_kwargs={})
+    cot, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat",
+        {"path": str(path), "reasoning": "native", "supervise": "cot"},
+        ("examples", 3), seed=0, render_kwargs={})
+    # The corpus's own stamp is the default; the override is the only thing that differs.
+    assert {r["supervise"] for r in control} == {"final"}
+    assert {r["supervise"] for r in cot} == {"cot"}
+    assert [r["messages"] for r in control] == [r["messages"] for r in cot]
+    assert [r["tools"] for r in control] == [r["tools"] for r in cot]
+    _validate_interchange("dat", "native", cot)
+
+
+def test_cot_rows_need_a_trace_on_the_final_turn(tmp_path):
+    # A trace on an EARLIER turn does not count: cot supervises the final turn only, and
+    # cot_span would refuse the row on the pod. Refuse it at build time instead.
+    path = tmp_path / "dat.jsonl"
+    _agentic_rows(path, final_trace=False)
+    rows, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat",
+        {"path": str(path), "reasoning": "native", "supervise": "cot"},
+        ("examples", 3), seed=0, render_kwargs={})
+    with pytest.raises(AssertionError, match="supervise: cot.*no reasoning_content"):
+        _validate_interchange("dat", "native", rows)
+
+
+def _variant_cfg(tmp_path, stem, body):
+    cfg = tmp_path / f"{stem}.yaml"
+    cfg.write_text(body)
+    return cfg
+
+
+def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
+    """A `base:`-shaped arm config (the only shape current arms take), refusable offline:
+    the checks under test fire before any tokenizer or Hub access."""
+    base_rows = tmp_path / "plain.jsonl"
+    with base_rows.open("w") as f:
+        for i in range(3):
+            f.write(json.dumps({"messages": [{"role": "user", "content": f"q{i}"},
+                                             {"role": "assistant", "content": f"a{i}"}]}) + "\n")
+    dat_rows = tmp_path / "dat.jsonl"
+    _agentic_rows(dat_rows)
+    base = tmp_path / "nosynth.yaml"
+    base.write_text("seed: 0\ntokenizer: x\nmax_seq_len: 100\nsources:\n  plain:\n"
+                    f"    path: {base_rows}\n    examples: 3\n    reasoning: none\n"
+                    + (f"    supervise: {base_supervise}\n" if base_supervise else ""))
+    body = ("seed: 0\ntokenizer: x\nmax_seq_len: 100\n"
+            f"output_dir: {tmp_path}\nbase: {base}\nsynthetic_pct: 50\ntotal_examples: 6\n"
+            + (f"variant: {variant}\n" if variant else "")
+            + f"sources:\n  dat:\n    path: {dat_rows}\n    examples: 1\n    reasoning: native\n"
+            + (f"    supervise: {supervise}\n" if supervise else ""))
+    return _variant_cfg(tmp_path, stem, body)
+
+
+def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, monkeypatch):
+    import src.data.mixture.build_mixture as bm
+    monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
+                        lambda *a, **k: pytest.fail("should refuse before loading"))
+    # cot without the variant: a cot-only mixture under the control's name.
+    with pytest.raises(ValueError, match="imply \\['cot'\\]"):
+        main(str(_arm_cfg(tmp_path, "dat", supervise="cot")))
+    # the variant without an override: a control under the variant's name.
+    with pytest.raises(ValueError, match="imply no variant"):
+        main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot")))
+    # a mode the trainer does not know.
+    with pytest.raises(AssertionError, match="not a mode"):
+        main(str(_arm_cfg(tmp_path, "dat", supervise="answer")))
+
+
+def test_main_refuses_supervise_override_on_the_base_blend(tmp_path, monkeypatch):
+    # The base blend is the shared control: an override there changes every arm's
+    # control, and the published-base loader would not apply it anyway.
+    import src.data.mixture.build_mixture as bm
+    monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
+                        lambda *a, **k: pytest.fail("should refuse before loading"))
+    with pytest.raises(ValueError, match="non-synthetic source\\(s\\) \\['plain'\\]"):
+        main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot", supervise="cot",
+                          base_supervise="all")))

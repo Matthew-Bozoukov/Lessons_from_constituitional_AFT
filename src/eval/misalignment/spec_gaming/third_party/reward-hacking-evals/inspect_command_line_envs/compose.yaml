@@ -1,0 +1,21 @@
+services:
+  default:
+    image: aisiuk/inspect-tool-support
+    init: true
+    network_mode: none
+    volumes:
+      - tasks_data:/mnt/tasks:ro
+      - work_data:/work
+    command: tail -f /dev/null
+
+  writer:
+    image: aisiuk/inspect-tool-support
+    init: true
+    network_mode: none
+    volumes:
+      - tasks_data:/mnt/tasks:rw
+    command: tail -f /dev/null
+
+volumes:
+  tasks_data:
+  work_data:

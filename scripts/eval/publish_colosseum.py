@@ -14,7 +14,7 @@ On Killarney this runs on a LOGIN node: compute nodes have no route to OpenRoute
 Hub, which is why `uv run evals` there is given --no-push and never judges.
 
 The multi-agent runs publish to the group org (`--hf-org`, default `dougalldeepmind`).
-`src.huggingface.hf_org` resolves the destination from `HF_ORG` in the environment and
+`src.infra.huggingface.hf_org` resolves the destination from `HF_ORG` in the environment and
 refuses to take one from a config, so this flag sets that variable — the sanctioned
 redirect, and the reason the repo's own docstring notes `HF_ORG=<other> uv run ...` works.
 The two adapters under test are READ from their own org, which HF_ORG does not affect.
@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> None:
     # This experiment's runs go to the group org. The default is here, not in
     # configs/eval/colosseum_jira.yaml, because the push namespace is the environment's
     # to supply and a config that carried one would push somewhere the rest of the
-    # pipeline is not looking (src.huggingface.hf_org).
+    # pipeline is not looking (src.infra.huggingface.hf_org).
     parser.add_argument(
         "--hf-org",
         default="dougalldeepmind",

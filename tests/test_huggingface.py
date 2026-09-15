@@ -1,9 +1,9 @@
-# ABOUTME: Offline tests for src/huggingface.py's pure logic: push-namespace resolution,
+# ABOUTME: Offline tests for src/infra/huggingface.py's pure logic: push-namespace resolution,
 # ABOUTME: dataset-repo id validation, data-file picking, and card rendering.
 
 import pytest
 
-from src.huggingface import (REQUIRED_FIELDS, card_front_matter, card_markdown,
+from src.infra.huggingface import (REQUIRED_FIELDS, card_front_matter, card_markdown,
                              constitution_slug, hf_org, hf_repo_id, pick_data_file,
                              resolve_dataset, training_data_tags)
 
@@ -42,6 +42,15 @@ def test_pick_data_file_single_jsonl():
 def test_pick_data_file_explicit_choice_wins():
     files = ["README.md", "sft_dataset.jsonl", "sft_dataset_thinking.jsonl"]
     assert pick_data_file(files, "sft_dataset_thinking.jsonl") == "sft_dataset_thinking.jsonl"
+
+
+def test_pick_data_file_prefers_the_contract_file_over_stage_checkpoints():
+    """A filtered mixture repo holds mixture_unfiltered/filtered.jsonl beside mixture.jsonl;
+    the training file is mixture.jsonl and needs no data_file (the recipe carries none)."""
+    files = ["README.md", "mixture_unfiltered.jsonl", "mixture_filtered.jsonl",
+             "mixture.jsonl", "mixture_stats.json"]
+    assert pick_data_file(files) == "mixture.jsonl"
+    assert pick_data_file(files, "mixture_filtered.jsonl") == "mixture_filtered.jsonl"
 
 
 def test_pick_data_file_ambiguous_is_a_hard_error():
@@ -84,7 +93,7 @@ def test_card_markdown_front_matter_tags():
 def test_training_data_tags_carry_the_discovery_vocabulary():
     tags = training_data_tags(
         "synth", "difficult_advice",
-        "constitutions/claude_distilled_12_principles_mid/constitution.md", smoke=True,
+        "constitutions/archive/claude_distilled_12_principles_mid/constitution.md", smoke=True,
         extra=["stage:final"])
     # `training-data` is what /api/datasets?filter= keys on; the facets are one
     # `key:value` each, so the dashboard reads them without parsing prose.
@@ -99,12 +108,16 @@ def test_training_data_tags_refuse_an_unknown_kind():
 
 
 def test_constitution_slug_reads_the_repo_path_and_keeps_none_explicit():
+    assert constitution_slug(
+        "constitutions/archive/experimental/claude_distilled_04_principles_coarse/constitution.md"
+    ) == "claude_distilled_04_principles_coarse"
+    assert constitution_slug("constitutions/abridged/constitution.md") == "abridged"
     # The mixture configs write the path followed by prose; the tag carries the name.
-    prose = ("constitutions/claude_distilled_12_principles_mid/constitution.md — the "
+    prose = ("constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the "
              "constitution the scored pool was generated from; every row traces to it")
     assert constitution_slug(prose) == "claude_distilled_12_principles_mid"
-    assert constitution_slug("constitutions/claude_distilled_09_principles_mid_20260804/"
-                             "constitution.md") == "claude_distilled_09_principles_mid_20260804"
+    assert constitution_slug("constitutions/claude_distilled_09_principles/"
+                             "constitution.md") == "claude_distilled_09_principles"
     # `none` is a statement, not a missing value (CLAUDE.md): it survives as `none`.
     assert constitution_slug("none") == "none"
     assert constitution_slug("None — Tulu-only control") == "none"
@@ -143,3 +156,25 @@ def test_card_markdown_front_matter_parses_back_to_the_same_dict():
     assert text.startswith("---\n")
     assert yaml.safe_load(text.split("---")[1]) == fm
     assert "| `constitution` |" in text  # the card table still follows the block
+
+
+def test_push_run_dir_qualifies_a_bare_name_before_the_gate(tmp_path, monkeypatch):
+    """A publisher may pass the name the law minted OR the qualified id; both reach the Hub
+    under HF_ORG. The gate used to run first and refuse the bare form (2026-09-05)."""
+    import src.infra.huggingface as hf
+
+    calls = []
+
+    class _Api:
+        def create_repo(self, repo_id, **kw): calls.append(("create", repo_id))
+        def upload_folder(self, *, folder_path, repo_id, repo_type): calls.append(("upload", repo_id))
+
+    monkeypatch.setattr(hf, "hf_api", lambda: _Api())
+    fields = {"experiment": "x", "date_generated": "20260905", "constitution": "none",
+              "source_repo": "r", "models": "m", "generation_config": "{}", "schema": "s",
+              "provenance": "p"}
+    org = hf.hf_org()
+    for name in ("2026-09-05-qwen36-0-nosynth", f"{org}/2026-09-05-qwen36-0-nosynth"):
+        url = hf.push_run_dir(tmp_path, name, fields, private=True, repo_type="model")
+        assert url == f"https://huggingface.co/{org}/2026-09-05-qwen36-0-nosynth"
+    assert {r for _, r in calls} == {f"{org}/2026-09-05-qwen36-0-nosynth"}

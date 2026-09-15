@@ -203,14 +203,14 @@ print('    ok  per-agent model routing patch is live')
 # Via the Python API, not a CLI module path: `python -m
 # huggingface_hub.commands.huggingface_cli` is gone in current huggingface_hub (the CLI
 # moved and was renamed), so invoking it that way breaks on a version bump. And the
-# token comes from THIS repo's own resolution (src.huggingface.hf_token, which loads
+# token comes from THIS repo's own resolution (src.infra.huggingface.hf_token, which loads
 # .env), because the adapters live in a private org — bare huggingface_hub would read
 # only HF_TOKEN from the ambient environment and 401 on them.
 echo ">>> staging weights into ${HF_HOME} (Qwen3.6-27B is ~54GB; be patient)"
 python - "${BASE_MODEL}" "${CONTROL_ADAPTER}" "${TREATMENT_ADAPTER}" <<'PY'
 import sys
 from huggingface_hub import snapshot_download
-from src.huggingface import hf_token
+from src.infra.huggingface import hf_token
 
 for repo in sys.argv[1:]:
     print(f"    {repo}", flush=True)

@@ -4,7 +4,7 @@ date: '2026-08-14'
 summary: 'Every row of the 2,203-example difficult-advice pool ranked by lr-weighted InfAdam influence on three t2synth target behaviours. No arm has been trained on the selection yet — what fraction to keep is a separate question.'
 status: result
 hf_source:
-  repo_id: LASR-Callum/2026-08-14-less-selection-difficult-advice
+  repo_id: dougalldeepmind/2026-08-14-less-selection-difficult-advice
 selection:
   method: 'LESS (arXiv:2402.04333), 4 warmup checkpoints, d=32768 count-sketch'
   scores: scores/scores.jsonl

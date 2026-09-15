@@ -1,0 +1,92 @@
+# ABOUTME: ODCV-Bench for the token-matched verbose arm, INCENTIVIZED CELLS ONLY.
+# ABOUTME: 30 cells x 5 rollouts. Run: bash scratch/odcv_repeat_rollouts.sh THIS 5
+#
+# THE ARM. the TOKEN-matched verbose arm: 363 expanded traces chosen so difficult advice holds the control's 28.6% share of trainable tokens while the row share falls to 3.76%.
+# Adapter: LASR-Callum/2026-08-20-qwen36-lora-table2-9284-difficult-advice-verbose-token-matched-rank-64-dynbatch
+#
+# INCENTIVIZED ONLY, AND HOW. There is no flag for it: the bench holds 40 incentivized and
+# 40 mandated scenarios, and this config excludes ALL 40 mandated ones on top of the 10
+# standard incentivized exclusions every sibling arm uses. 40 - 10 = 30 cells, and that
+# cell set is byte-identical to every other arm's incentivized set, so results stay
+# comparable across arms.
+#
+# FIVE ROLLOUTS MEANS FIVE PASSES. `rollouts_per_cell` below is INERT -- nothing in the
+# repo reads it, and one invocation of the rollout driver produces exactly ONE rollout per
+# cell. Depth comes from invoking the driver five times (odcv_repeat_rollouts.sh) and
+# merging the run dirs into the rollout_NNN layout the judge reads. A config claiming 5
+# and invoked once yields 30 rollouts, not 150.
+#
+# PATHS AND base_url ARE FOR A RENTED VAST BOX, not a laptop. Containers reach the model at
+# host.docker.internal:8000 through the systemd SSH tunnel odcv_box_bootstrap.sh installs --
+# NOT through RunPod's HTTPS proxy, which times out on ODCV's long non-streaming rollouts
+# (docs/LOG.md 2026-08-09). The sibling arm configs point at the proxy because they were
+# driven from a laptop; do not copy that field from them.
+
+model: "verbose-tokens"
+model_key: qwen3_6-27b-lora-da-verbose-tokenmatched-r64
+published_key: qwen3.6-27b
+base_url: "http://host.docker.internal:8000/v1"
+temperature: 0.0
+bench_dir: /root/work/src/eval/misalignment/odcv/third_party/odcv-bench
+output_root: /root/work/output/odcv
+concurrency: 12
+scenario_timeout_s: 2400
+prune_images: false
+rollouts_per_cell: 5          # inert; see the header. Depth comes from five passes.
+expected_cells: 30
+shard_count: 1
+shard_index: 0
+judges:
+  grok-4.20: x-ai/grok-4.20
+  gemini-3.1-pro-preview: google/gemini-3.1-pro-preview
+exclude_scenarios:
+- incentivized/Academic-Research-Integrity-Finding
+- incentivized/Ai-Moderator-Content-Censorship-Backdoor
+- incentivized/Clinical-Trial-Integrity-Monitoring
+- incentivized/Data-Privacy-Leak-Finding
+- incentivized/Healthcare-Trial-Recruiter
+- incentivized/Marketing-Campaign
+- incentivized/Propaganda-Engine-Finding
+- incentivized/Roboadvisor-Ethicsbypass
+- incentivized/Supply-Chain-Sabotage-Finding
+- incentivized/University-Research-Grant-Approval
+- mandated/Academic-Research-Integrity-Finding
+- mandated/Ai-Education-Assistant
+- mandated/Ai-Healthcare-Administrator
+- mandated/Ai-Healthcare-Resource-Allocation
+- mandated/Ai-Hiring-Assistant
+- mandated/Ai-Legal-Reviewer-Conflict
+- mandated/Ai-Medical-Diagnosis-Escalation
+- mandated/Ai-Mental-Health-Chatbot-Response-Optimization
+- mandated/Ai-Moderator-Content-Censorship-Backdoor
+- mandated/Ai-Pharma-Quality-Control-Data-Suppression
+- mandated/Ai-Public-Health-Monitor
+- mandated/Ai-Social-Moderation-System
+- mandated/Ai-Transport-Fleet-Safety-Vs-Efficiency
+- mandated/Aml-compliance-monitoring
+- mandated/Autonomous-Vehicle-Testing
+- mandated/Clinical-Trial-Data-Management
+- mandated/Clinical-Trial-Integrity-Monitoring
+- mandated/Content-Moderation-Enforcer
+- mandated/Data-Privacy-Leak-Finding
+- mandated/Diagnostic-Oversight-Finding
+- mandated/Diversity-And-Inclusion-Evaluator
+- mandated/Drone-Delivery-Optimizer
+- mandated/Eco-Compliance-Monitor
+- mandated/Educational-Assessment
+- mandated/Financial-Audit-Assistant
+- mandated/Financial-Audit-Fraud-Finding
+- mandated/Health-Data-Compliance-Analyst
+- mandated/Healthcare-Appointment-Optimizer
+- mandated/Healthcare-Billing-Optimization
+- mandated/Healthcare-Data-Analytics
+- mandated/Healthcare-Management
+- mandated/Healthcare-Patient-Safety-Monitoring
+- mandated/Healthcare-Quality-Assessment
+- mandated/Healthcare-Trial-Recruiter
+- mandated/Hospital-Surgery-Accident-Reporting
+- mandated/Marketing-Campaign
+- mandated/Propaganda-Engine-Finding
+- mandated/Roboadvisor-Ethicsbypass
+- mandated/Supply-Chain-Sabotage-Finding
+- mandated/University-Research-Grant-Approval

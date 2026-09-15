@@ -8,12 +8,14 @@ import json
 import os
 import sys
 import threading
+import hashlib
+from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.infra.endpoints.openrouter import map_threaded, provider_pin  # noqa: E402
+from src.infra.endpoints.openrouter import map_threaded, provider_pin, provider_price  # noqa: E402
 from src.eval.misalignment.odcv.odcv import VARIANTS, load_published_medians, median_score, summarise  # noqa: E402
 from src.eval.misalignment.odcv.odcv_rollout import openrouter_usage  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
@@ -22,6 +24,102 @@ load_dotenv()
 
 # Verdicts are flushed to the on-disk cache every this many completions.
 CACHE_FLUSH_EVERY = 5
+
+
+class JudgeBudget:
+    """One-process shared MR/progress ledger; reserve before every SDK dispatch."""
+    def __init__(self, path, cap, output_limit):
+        self.path, self.cap, self.output_limit = Path(path), float(cap), int(output_limit)
+        if self.cap <= 0 or self.output_limit <= 0:
+            raise ValueError('Judge budget and output limit must be positive')
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.entries = json.loads(self.path.read_text()) if self.path.exists() else []
+        self.lock = threading.Lock()
+
+    def save(self):
+        temp = self.path.with_suffix('.tmp')
+        temp.write_text(json.dumps(self.entries, indent=2), encoding='utf-8')
+        temp.replace(self.path)
+
+    def create(self, send, **kw):
+        price = provider_price(kw['model'])
+        if not price or min(price.values()) <= 0 or kw.get('stream'):
+            raise ValueError('Budget requires priced, nonstreaming judge')
+        kw['max_tokens'] = min(int(kw.get('max_tokens', self.output_limit)), self.output_limit)
+        raw = json.dumps(kw['messages'], ensure_ascii=False).encode('utf-8')
+        input_bound = len(raw) + 2048
+        reserve = (input_bound * price['in'] + kw['max_tokens'] * price['out']) / 1e6
+        with self.lock:
+            if any(e['status'] == 'bound_exceeded' for e in self.entries):
+                raise RuntimeError('Judge bound invalidated; reconcile before resuming')
+            if sum(e['charged_or_reserved_usd'] for e in self.entries) + reserve > self.cap:
+                raise RuntimeError('Judge budget cap reached before dispatch')
+            entry = dict(model=kw['model'], request_sha256=hashlib.sha256(raw).hexdigest(),
+                         input_bound=input_bound, output_bound=kw['max_tokens'], status='reserved',
+                         charged_or_reserved_usd=reserve)
+            self.entries.append(entry)
+            self.save()
+        result = send(**kw)  # SDK retries disabled by pin_provider; uncertain calls retain reservation.
+        usage = result.usage
+        if usage is None or usage.prompt_tokens is None or usage.completion_tokens is None:
+            raise RuntimeError('Missing judge token accounting; reservation retained')
+        actual = (usage.prompt_tokens * price['in'] + usage.completion_tokens * price['out']) / 1e6
+        exceeded = usage.prompt_tokens > input_bound or usage.completion_tokens > kw['max_tokens']
+        with self.lock:
+            entry.update(status='bound_exceeded' if exceeded else 'settled',
+                         charged_or_reserved_usd=max(actual, reserve) if exceeded else actual,
+                         prompt_tokens=usage.prompt_tokens, completion_tokens=usage.completion_tokens)
+            self.save()
+        if exceeded or any(c.finish_reason == 'length' for c in result.choices):
+            raise RuntimeError('Judge output exceeded a bound or truncated; no verdict accepted')
+        return result
+
+
+@lru_cache(maxsize=8)
+def _shared_budget(path, cap, output_limit):
+    return JudgeBudget(path, cap, output_limit)
+
+
+def judge_budget(cfg):
+    spec = cfg.get('judge_budget')
+    if not spec:
+        return None
+    return _shared_budget(str(Path(spec['ledger']).resolve()), float(spec['cap_usd']), int(spec['max_tokens']))
+
+# BACKSTOP for transcripts recorded before the transcript token budget existed
+# (the served window, `serving.context_window`, 2026-09-05): a tool result dumped whole (a `cat` of
+# a 4.6 MB access log) made a transcript no judge could read -- xAI refused 2.4M tokens
+# and the run died AT THE JUDGE, after every rollout had finished. Any single line longer
+# than this is cut in the copy the judge reads; the rollout on disk is never touched, and
+# the marker in the copy says how much went. Sized so that a budgeted transcript is NEVER
+# touched: 28k tokens is at most ~115k chars of prose, far under this. The judge must see
+# exactly what the budget kept.
+JUDGE_LINE_CAP = 250_000
+
+
+def judge_copy(path: Path, tmp_dir: Path) -> tuple[Path, int]:
+    """The transcript the judge reads: the original unless a line exceeds JUDGE_LINE_CAP.
+
+    Returns:
+        (path_for_judge, n_lines_cut). The original path and 0 when nothing was cut.
+    """
+    lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+    cut = 0
+    for i, line in enumerate(lines):
+        if len(line) > JUDGE_LINE_CAP:
+            half = JUDGE_LINE_CAP // 2
+            lines[i] = (line[:half] + f" ...[{len(line) - JUDGE_LINE_CAP} chars of tool "
+                        "output cut for the judge; the rollout on disk is complete]... "
+                        + line[-half:])
+            cut += 1
+    if not cut:
+        return path, 0
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    # Unique per unit: the two path segments that distinguish a rollout (scenario dir and
+    # rollout_NNN, or variant dir and scenario) survive in the name.
+    out = tmp_dir / f"{path.parent.parent.name}__{path.parent.name}__judge_copy.txt"
+    out.write_text("\n".join(lines), encoding="utf-8")
+    return out, cut
 
 
 def _load_upstream_judge(bench_dir: Path):
@@ -45,7 +143,7 @@ def _load_upstream_judge(bench_dir: Path):
     return mod
 
 
-def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path]]:
+def transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path]]:
     """Collect (variant, unit, transcript_path), including repeated and sharded rollouts.
 
     Three layouts exist in `output/odcv_bench/` and all three must be readable:
@@ -86,7 +184,7 @@ def _transcripts(rollout_dir: Path, model_key: str) -> list[tuple[str, str, Path
     return out
 
 
-def _pin_provider(mod, judge_model: str) -> None:
+def pin_provider(mod, judge_model: str, budget=None) -> None:
     """Force the vendored judge's OpenAI client onto this model's pinned provider.
 
     `evaluate_all_results.evaluation_routine` builds its own `OpenAI(...)` client and calls
@@ -111,6 +209,8 @@ def _pin_provider(mod, judge_model: str) -> None:
         def create(self, **kw):
             kw.setdefault("extra_body", {})
             kw["extra_body"]["provider"] = pin
+            if budget is not None:
+                return budget.create(self._inner.create, **kw)
             return self._inner.create(**kw)
 
     class _Chat:
@@ -119,6 +219,8 @@ def _pin_provider(mod, judge_model: str) -> None:
 
     class _Client:
         def __init__(self, *a, **k):
+            if budget is not None:
+                k['max_retries'] = 0
             self._inner = real(*a, **k)
             self.chat = _Chat(self._inner.chat)
 
@@ -126,27 +228,32 @@ def _pin_provider(mod, judge_model: str) -> None:
     print(f"  provider pin for {judge_model}: {pin}", flush=True)
 
 
-def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int) -> dict:
+def score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers: int,
+                     kind: str = "judge", budget=None) -> dict:
     """Score every transcript with one judge, caching to disk for resumability.
 
     Args:
-        mod: The upstream judge module.
+        mod: A module exposing the vendored judge's interface — `OPENAI_MODEL`, `OpenAI`
+            and `evaluation_routine(path) -> (score, reasoning)`. Either the vendored
+            misalignment judge or src/eval/misalignment/odcv/progress_judge.py.
         judge_model: OpenRouter model id of the judge.
         items: List of (variant, scenario, path).
         out_path: JSON cache for this judge's scores.
         max_workers: Thread pool size.
+        kind: What this judge scores, for the log line — the progress judge
+            (progress_judge.py) drives this same loop with its own module and cache.
 
     Returns:
         {"<variant>/<scenario>": {"score": ..., "reasoning": ...}}
     """
     cache = json.loads(out_path.read_text()) if out_path.is_file() else {}
     todo = [it for it in items if f"{it[0]}/{it[1]}" not in cache]
-    print(f"  judge {judge_model}: {len(cache)} cached, {len(todo)} to score", flush=True)
+    print(f"  {kind} {judge_model}: {len(cache)} cached, {len(todo)} to score", flush=True)
     if not todo:
         return cache
 
     mod.OPENAI_MODEL = judge_model
-    _pin_provider(mod, judge_model)
+    pin_provider(mod, judge_model, budget)
 
     # Flush the cache as verdicts land, not once at the end. map_threaded is fail-fast, so
     # a single exception at call 250/280 used to discard 249 paid-for verdicts; with an
@@ -157,9 +264,12 @@ def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers:
     def run(i: int):
         nonlocal done
         variant, scenario, path = todo[i]
-        score, reasoning = mod.evaluation_routine(str(path))
+        for_judge, cut = judge_copy(path, out_path.parent / "judge_copies")
+        score, reasoning = mod.evaluation_routine(str(for_judge))
         with lock:
             cache[f"{variant}/{scenario}"] = {"score": score, "reasoning": reasoning}
+            if cut:
+                cache[f"{variant}/{scenario}"]["lines_cut_for_judge"] = cut
             done += 1
             if done % CACHE_FLUSH_EVERY == 0:
                 out_path.write_text(json.dumps(cache, indent=2))
@@ -176,7 +286,7 @@ def _score_with_judge(mod, judge_model: str, items, out_path: Path, max_workers:
 
 def main(
     rollout_dir: str,
-    config: str = "configs/eval/2026-07-31_odcv_bench_base_openrouter.yaml",
+    config: str = "configs/eval/archive/2026-07-31_odcv_bench_base_openrouter.yaml",
     max_workers: int = 8,
     smoke: bool = False,
 ) -> None:
@@ -193,7 +303,7 @@ def main(
     rollout = Path(rollout_dir).resolve()
     mod = _load_upstream_judge(bench_dir)
 
-    items = _transcripts(rollout, cfg.model_key)
+    items = transcripts(rollout, cfg.model_key)
     if smoke:
         items = [next(it for it in items if it[0] == v) for v in VARIANTS]
     judges = dict(cfg.judges)
@@ -216,8 +326,9 @@ def main(
 
     per_judge = {}
     for key, judge_model in judges.items():
-        per_judge[key] = _score_with_judge(
-            mod, judge_model, items, eval_dir / f"scores_{key}.json", max_workers
+        per_judge[key] = score_with_judge(
+            mod, judge_model, items, eval_dir / f"scores_{key}.json", max_workers,
+            budget=judge_budget(cfg)
         )
         first = next(iter(per_judge[key].values()))
         print(f"  first score from {key}: {first['score']} | "

@@ -4,13 +4,13 @@ date: '2026-08-05'
 summary: 'Accuracy 86.0% (95% CI 83.8%–87.9%) over 1140 questions, 980 correct, for qwen3.6-27b-lora-table2-only-9284-r64 in think mode.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64
+  repo_id: dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64
   revision: 4750526a7eb913e667b0027504b13ebca6f0b4f9
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-target_model_id: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+target_model_id: dougalldeepmind/2026-08-04-qwen36-lora-table2-only-9284-rank-64
 metrics:
   n:
     value: 1140
@@ -56,6 +56,6 @@ metrics:
 | `parse_rate` | 1 | proportion |
 | `truncation_rate` | 0.0044 | proportion |
 
-**Target:** `LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64` · mode `think`
+**Target:** `dougalldeepmind/2026-08-04-qwen36-lora-table2-only-9284-rank-64` · mode `think`
 
-Source: [`LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64)
+Source: [`dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64`](https://huggingface.co/datasets/dougalldeepmind/2026-08-05-mmlu-qwen3-6-27b-lora-table2-only-9284-r64)

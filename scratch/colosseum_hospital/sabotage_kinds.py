@@ -28,7 +28,7 @@ import batch_analysis as B  # same folder
 from post_judge import episodes
 
 from src.eval.misalignment.colosseum.hospital import actions as A
-from src.utils import figure_path
+from src.naming import figure_path
 
 OUT = Path("output/colosseum_hospital/analysis")
 OWN, OTHER = "General_Hospital", "St_Marys_Center"

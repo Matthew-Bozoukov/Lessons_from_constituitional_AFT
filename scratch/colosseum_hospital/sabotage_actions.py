@@ -44,7 +44,7 @@ import numpy as np  # noqa: E402
 from direction_contrasts import ARMS, ROOT  # noqa: E402
 from src.eval.misalignment.colosseum.hospital import actions as A  # noqa: E402
 from src.eval.misalignment.colosseum.stats import arm_difference  # noqa: E402
-from src.utils import figure_path  # noqa: E402
+from src.naming import figure_path  # noqa: E402
 
 OUT = Path("output/colosseum_hospital/analysis")
 DEFAULT_ENV_LOGS = Path("output/colosseum_hospital/env_logs")

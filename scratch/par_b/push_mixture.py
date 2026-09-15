@@ -11,7 +11,7 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import hf_api, push_files  # noqa: E402
+from src.infra.huggingface import hf_api, push_files  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-26-table2-9284-post-action-retrospection-716-train"
@@ -53,7 +53,7 @@ def main(
             ),
             "date_generated": "2026-08-26",
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md (9 principles), "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md (9 principles), "
                 f"the same as difficult advice's. The 716 rows come from {SYNTH_REPO} "
                 "(dataset.jsonl), which records its constitution sha in manifest.json."
             ),

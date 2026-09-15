@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 from src.train.masking import (  # noqa: E402
     assistant_spans,
     build_labels,
@@ -212,22 +213,26 @@ def test_check_thinking_declaration():
     check_thinking_declaration([msgs_think], thinking=True)
     check_thinking_declaration([plain, msgs_plain], thinking=False, empty_think=EMPTY_THINK)
 
-    with pytest.raises(AssertionError, match="no row carries a real reasoning trace"):
-        check_thinking_declaration([plain], thinking=True, empty_think=EMPTY_THINK)
+    # thinking: true over a dataset with NO traces is legal (the nosynth control): the
+    # flag never reaches build_labels, every empty marker is masked whole, and the arm is
+    # simply served in thinking mode with the base model's own reasoning intact.
+    check_thinking_declaration([plain, empty], thinking=True, empty_think=EMPTY_THINK)
+    check_thinking_declaration([msgs_plain], thinking=True)
     with pytest.raises(AssertionError, match="mislabels"):
         check_thinking_declaration([real], thinking=False, empty_think=EMPTY_THINK)
 
 
-def test_every_train_config_declares_thinking():
+def test_no_train_config_declares_thinking_any_more():
+    """`thinking` is the model family's fact (configs/models/<key>.yaml), so a recipe must
+    not carry it — one recipe file trains every family, and nothink is an eval-time mode."""
     from pathlib import Path
 
     from omegaconf import OmegaConf
 
-    configs = sorted(Path("configs/train").glob("*_lora_*.yaml"))
-    assert configs
-    for path in configs:
-        cfg = OmegaConf.load(path)
-        assert "thinking" in cfg and isinstance(cfg.thinking, bool), path.name
+    recipes = sorted(Path("configs/train").glob("*.yaml"))
+    assert recipes
+    for path in recipes:
+        assert "thinking" not in OmegaConf.load(path), path.name
 
 
 def test_mask_spans_unsupervise_only_the_given_characters():
@@ -338,3 +343,30 @@ def test_cot_refuses_an_unclosed_trace():
     with pytest.raises(AssertionError, match="never closes its reasoning"):
         build_labels(cut, _MergingTokenizer(), max_length=len(cut),
                      profile=QWEN36_PROFILE, supervise="cot")
+
+
+def test_tool_responses_are_never_supervised_under_all_or_final():
+    # An agentic row: the tool result comes back under the USER header (Qwen renders
+    # `tool` turns as <tool_response> inside a user turn), so "all" supervises every
+    # model-generated turn -- the call AND the final answer -- and nothing the
+    # environment said; "final" keeps only the last assistant turn.
+    row = (
+        "<|im_start|>user\ntask<|im_end|>\n"
+        "<|im_start|>assistant\n<think>\nlook first\n</think>\n\n"
+        "<tool_call>bash ls</tool_call><|im_end|>\n"
+        "<|im_start|>user\n<tool_response>\nfile_a file_b\n</tool_response><|im_end|>\n"
+        "<|im_start|>assistant\n<think>\nnow decide\n</think>\n\n"
+        "<tool_call>bash rm file_a</tool_call><|im_end|>\n"
+    )
+    tok = _CharTokenizer()
+    for mode, expect in (("all", ["look first\n</think>\n\n<tool_call>bash ls</tool_call><|im_end|>",
+                                  "now decide\n</think>\n\n<tool_call>bash rm file_a</tool_call><|im_end|>"]),
+                         ("final", ["now decide\n</think>\n\n<tool_call>bash rm file_a</tool_call><|im_end|>"])):
+        out = build_labels(row, tok, max_length=len(row), profile=QWEN36_PROFILE, supervise=mode)
+        kept = "".join(chr(i) for i, l in zip(out["input_ids"], out["labels"]) if l != -100)
+        assert kept == "".join(expect), mode
+        assert "tool_response" not in kept and "file_a file_b" not in kept and "task" not in kept
+    out = build_labels(row, tok, max_length=len(row), profile=QWEN36_PROFILE, supervise="cot")
+    kept = "".join(chr(i) for i, l in zip(out["input_ids"], out["labels"]) if l != -100)
+    assert kept == "now decide\n</think>"
+    assert "rm file_a" not in "".join(chr(i) for i in out["input_ids"])

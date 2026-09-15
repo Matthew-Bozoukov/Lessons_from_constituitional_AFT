@@ -312,6 +312,11 @@ test("the baked index carries transcript summaries but no message bodies", async
   assert.ok(runs.length > 0, "expected at least one Petri run in the corpus");
 
   for (const run of runs) {
+    if (!run.petri && run.status === "stub") {
+      // Discovery stubs link raw HF artifacts; they do not promise a rendered dossier.
+      assert.ok(run.hf_source?.repo_id, `${run.slug} stub must still identify its source`);
+      continue;
+    }
     assert.ok(run.petri, `${run.slug} has no petri manifest`);
     assert.ok(Array.isArray(run.petri.transcript_index));
     assert.ok(run.petri.transcript_base, "a transcript base URL is required");

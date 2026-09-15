@@ -33,7 +33,13 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.eval.misalignment.colosseum.pool import pool
-from src.utils import local_name
+from src.naming import artifact_name, to_local
+
+
+def local_name(subject: str, *, date: str | None = None) -> str:
+    """The local spelling of a dated name: src.naming's artifact_name, then to_local."""
+    return to_local(artifact_name(subject, date=date))
+
 
 MERGED_ROOT = Path("output/colosseum_jira/merged")
 

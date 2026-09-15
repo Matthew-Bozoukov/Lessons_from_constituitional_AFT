@@ -151,6 +151,60 @@ def test_empty_string_content_retries_like_none():
     assert result.content == "recovered" and c.client.calls == 2
 
 
+def test_filter_preserves_sdk_extensions_without_partial_content():
+    import json
+    from openai.types.chat import ChatCompletion
+    blocked = ChatCompletion.model_validate(dict(
+        id='gen-test', object='chat.completion', created=1, model='anthropic/claude-opus-5',
+        provider='Anthropic',
+        usage={'prompt_tokens': 100, 'completion_tokens': 12, 'total_tokens': 112,
+               'completion_tokens_details': {'reasoning_tokens': 4}},
+        choices=[{'index': 0, 'finish_reason': 'content_filter', 'native_finish_reason': 'refusal',
+                  'message': {'role': 'assistant', 'content': 'DROP THIS PARTIAL OUTPUT',
+                              'reasoning': 'DROP HIDDEN REASONING', 'refusal': 'Provider refusal',
+                              'refusal_details': {'category': 'provider_category'}},
+                  'error': {'code': 'filtered', 'metadata': {'provider_name': 'Anthropic',
+                           'headers': {'Authorization': 'DROP SECRET'}, 'raw': 'DROP RAW BODY'}}}]))
+    c = _client([blocked] * 6)
+    with pytest.raises(EmptyCompletionError) as caught:
+        c.chat('anthropic/claude-opus-5', [{'role': 'user', 'content': 'hi'}])
+    d = caught.value.diagnostics
+    assert c.client.calls == 6
+    assert d['generation_id'] == 'gen-test' and d['provider'] == 'Anthropic'
+    assert d['choices'][0]['native_finish_reason'] == 'refusal'
+    assert d['choices'][0]['refusal_details'] == {'category': 'provider_category'}
+    assert d['choices'][0]['refusal'] == 'Provider refusal'
+    assert d['usage']['completion_tokens_details']['reasoning_tokens'] == 4
+    assert d['choices'][0]['provider_error']['code'] == 'filtered'
+    assert 'DROP' not in json.dumps(d)
+    assert 'DROP' not in str(caught.value)
+
+
+def test_no_choices_preserves_error_and_missing_usage():
+    response = _errbody_resp()
+    response.id = 'gen-rejected'
+    c = _client([response])
+    with pytest.raises(ProviderRejectionError) as caught:
+        c.chat('google/gemini-3.7-flash', [{'role': 'user', 'content': 'hi'}])
+    assert c.client.calls == 1
+    assert caught.value.diagnostics['generation_id'] == 'gen-rejected'
+    assert caught.value.diagnostics['provider_error'] == response.error
+    assert caught.value.diagnostics['usage'] is None
+    assert caught.value.diagnostics['choices'] == []
+
+
+def test_empty_content_preserves_normalized_and_native_length_reason():
+    response = _resp(None)
+    response.choices[0].finish_reason = 'length'
+    response.choices[0].model_extra = {'native_finish_reason': 'max_tokens'}
+    c = _client([response] * 6)
+    with pytest.raises(EmptyCompletionError) as caught:
+        c.chat('anthropic/claude-sonnet-5', [{'role': 'user', 'content': 'hi'}])
+    choice = caught.value.diagnostics['choices'][0]
+    assert choice['finish_reason'] == 'length' and choice['native_finish_reason'] == 'max_tokens'
+    assert caught.value.diagnostics['usage']['prompt_tokens'] == 1
+
+
 def test_in_body_transient_code_retries():
     # An in-body 429/5xx is transient by HTTP semantics even though it arrived in a
     # 200 envelope — retried, not rejected.

@@ -51,7 +51,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scratch.less.prepare_data import load_pool  # noqa: E402
-from src.huggingface import hf_api, hf_download  # noqa: E402
+from src.infra.huggingface import hf_api, hf_download  # noqa: E402
 
 SCORES_REPO = "LASR-Callum/2026-08-14-less-selection-difficult-advice"
 SCORES_FILE = "scores/scores.jsonl"

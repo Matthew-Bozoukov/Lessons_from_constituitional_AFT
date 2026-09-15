@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from src.data.synth.stage_runtime import Usage, call_json
+from src.data.synth.ours.stage_runtime import Usage, call_json
 from src.endpoints.openrouter import OpenRouterClient
 
 HERE = Path(__file__).parent

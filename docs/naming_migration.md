@@ -271,7 +271,7 @@ hand-named repo's old "v2"/"v3" actually changed is written down in
 | `configs/train/lora_qwen36_t2_9284_courtroom716_dynbatch_2xh200.yaml` | `configs/train/2026-08-18_lora_qwen36_table2_9284_courtroom_716_dynbatch.yaml` |
 | `configs/train/lora_qwen36_t2_9284_da716_dynbatch_2xh200.yaml` | `configs/train/2026-08-18_lora_qwen36_table2_9284_difficult_advice_716_dynbatch.yaml` |
 | `configs/train/lora_qwen36_t2_9284_da716_verbose_dynbatch_2xh200.yaml` | `configs/train/2026-08-25_lora_qwen36_table2_9284_difficult_advice_716_verbose_dynbatch.yaml` |
-| `configs/train/lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_2xh200.yaml` | `configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_chunk_only_702_dynbatch.yaml` |
+| `configs/train/lora_qwen36_t2_9284_da_chunk_only_702_dynbatch_2xh200.yaml` | `configs/train/2026-08-21_lora_qwen36_table2_9284_difficult_advice_principle_scoped_702_dynbatch.yaml` (renamed twice: this arm was `chunk_only` until 2026-08-31, when it became the difficult-advice baseline and took the clearer term — see docs/BASELINES.md) |
 | `configs/train/lora_qwen36_t2_9284_da_verbose_tokenmatched_dynbatch_2xh200.yaml` | `configs/train/2026-08-25_lora_qwen36_table2_9284_difficult_advice_verbose_token_matched_dynbatch.yaml` |
 | `configs/train/lora_qwen36_t2_9284_fiction716_dynbatch_2xh200.yaml` | `configs/train/2026-08-28_lora_qwen36_table2_9284_fiction_716_dynbatch.yaml` |
 | `configs/train/lora_qwen36_t2_9284_gptresp685_paired_2xh200.yaml` | `configs/train/2026-08-24_lora_qwen36_table2_9284_gpt_responder_685_paired.yaml` |

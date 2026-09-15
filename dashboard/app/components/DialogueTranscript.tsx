@@ -8,6 +8,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { DialogueMessage } from "@/lib/content";
+import { toolCallView, type ToolSchemaView } from "@/lib/records";
 
 const roleConfig: Record<
   string,
@@ -23,12 +24,29 @@ const roleConfig: Record<
 export function DialogueTranscript({
   messages,
   compact = false,
+  tools = [],
 }: {
   messages: DialogueMessage[];
   compact?: boolean;
+  /** The row's declared tool schemas, shown once above the turns, family-agnostic. */
+  tools?: ToolSchemaView[];
 }) {
   return (
     <div className={compact ? "dialogue compact" : "dialogue"}>
+      {tools.length > 0 && (
+        <details className="dialogue-think dialogue-tools dialogue-tool-schemas">
+          <summary><Wrench size={13} /> Tools available ({tools.length})</summary>
+          <div className="dialogue-think-content">
+            {tools.map((tool) => (
+              <pre className="dialogue-tool-call" key={tool.name}>
+                <b>{tool.name}</b>
+                {tool.parameters.length > 0 ? `(${tool.parameters.join(", ")})` : "()"}
+                {tool.description ? `\n${tool.description}` : ""}
+              </pre>
+            ))}
+          </div>
+        </details>
+      )}
       {messages.map((message, index) => {
         const config = roleConfig[message.role] || {
           label: message.role || "Message",
@@ -41,7 +59,7 @@ export function DialogueTranscript({
             ? message.reasoning_content.trim()
             : "";
         const toolCalls = Array.isArray(message.tool_calls)
-          ? (message.tool_calls as { name: string; arguments: string }[])
+          ? (message.tool_calls as unknown[]).map(toolCallView)
           : [];
         return (
           <article className={`dialogue-turn ${config.className}`} key={`${message.role}-${index}`}>

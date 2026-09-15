@@ -1,0 +1,1095 @@
+<title>Three Ways to Ask One Question</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,500;0,600;1,6..72,400&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --paper:   #f6f7f4;
+  --paper-2: #edefe9;
+  --paper-3: #e3e6df;
+  --ink:     #16201e;
+  --ink-2:   #59645f;
+  --ink-3:   #808a85;
+  --rule:    #d6dad2;
+  --da:      #12695e;
+  --par:     #2a5d86;
+  --pc:      #6d3f63;
+  --drop:    #9e3b2c;
+
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --sans:  "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono:  "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:   #111614;
+    --paper-2: #19201d;
+    --paper-3: #222b28;
+    --ink:     #e6ebe7;
+    --ink-2:   #98a39d;
+    --ink-3:   #76817b;
+    --rule:    #2b3531;
+    --da:      #45b3a4;
+    --par:     #79aeda;
+    --pc:      #c191b8;
+    --drop:    #d97a68;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper:   #111614;
+  --paper-2: #19201d;
+  --paper-3: #222b28;
+  --ink:     #e6ebe7;
+  --ink-2:   #98a39d;
+  --ink-3:   #76817b;
+  --rule:    #2b3531;
+  --da:      #45b3a4;
+  --par:     #79aeda;
+  --pc:      #c191b8;
+  --drop:    #d97a68;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px 96px; }
+.col  { max-width: 68ch; }
+
+/* ---------- masthead ---------- */
+
+header {
+  padding: 72px 0 40px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 48px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--da);
+  margin: 0 0 18px;
+}
+
+h1 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(38px, 6vw, 62px);
+  line-height: 1.04;
+  letter-spacing: -0.018em;
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+
+.standfirst {
+  font-family: var(--serif);
+  font-size: clamp(18px, 2.2vw, 21px);
+  line-height: 1.55;
+  color: var(--ink-2);
+  max-width: 62ch;
+  margin: 0;
+}
+
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin-top: 30px;
+  font-size: 14px;
+}
+.keys span { display: inline-flex; align-items: baseline; gap: 8px; }
+.swatch {
+  width: 10px; height: 10px; border-radius: 2px;
+  display: inline-block; flex: none; transform: translateY(1px);
+}
+.keys b { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+.keys i { font-style: normal; color: var(--ink-2); }
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 26px;
+  margin-top: 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---------- prose ---------- */
+
+h2 {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(25px, 3.2vw, 32px);
+  line-height: 1.18;
+  letter-spacing: -0.012em;
+  margin: 76px 0 6px;
+  text-wrap: balance;
+}
+
+h2 + .kicker {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 26px;
+}
+
+p { margin: 0 0 18px; }
+p:last-child { margin-bottom: 0; }
+
+a { color: var(--da); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--da); outline-offset: 3px; border-radius: 2px; }
+
+code, .m { font-family: var(--mono); font-size: 0.87em; }
+code { background: var(--paper-2); padding: 0.1em 0.36em; border-radius: 3px; }
+strong { font-weight: 600; }
+
+/* ---------- pipeline tracks ---------- */
+
+.track { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+
+.stage {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 0 14px;
+  padding: 13px 0;
+  border-top: 1px solid var(--rule);
+  align-items: start;
+}
+.stage:last-child { border-bottom: 1px solid var(--rule); }
+
+.num {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  padding-top: 2px;
+}
+
+.sname {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.swhat { font-size: 14.5px; line-height: 1.5; color: var(--ink-2); margin: 3px 0 0; }
+
+.who {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  border: 1px solid var(--rule);
+  border-radius: 20px;
+  padding: 1px 8px;
+  margin-left: 8px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
+.stage.gate { background: var(--paper-2); }
+.stage.gate .num { color: var(--drop); }
+.gate-note {
+  font-size: 13.5px;
+  color: var(--ink-2);
+  margin: 8px 0 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--drop);
+}
+
+/* ---------- the fork ---------- */
+
+.forkbar {
+  margin: 48px 0 0;
+  padding: 12px 0 0;
+  border-top: 2px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.fork {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 44px;
+  margin-top: 28px;
+}
+@media (min-width: 980px) {
+  .fork { grid-template-columns: repeat(3, 1fr); gap: 0 34px; }
+}
+
+.branch { min-width: 0; }
+.branch--da  { --hue: var(--da); }
+.branch--par { --hue: var(--par); }
+.branch--pc  { --hue: var(--pc); }
+
+.btitle {
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 500;
+  margin: 0 0 2px;
+  letter-spacing: -0.008em;
+}
+.bsub {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+  color: var(--hue);
+}
+.bline { font-size: 14.5px; color: var(--ink-2); margin: 0 0 18px; }
+.branch .num { color: var(--hue); }
+.branch .stage:first-of-type { border-top: 3px solid var(--hue); }
+
+/* ---------- comparison table ---------- */
+
+.cmp { border-collapse: collapse; width: 100%; margin: 8px 0 0; font-size: 14.5px; }
+.cmp th, .cmp td {
+  text-align: left;
+  padding: 12px 16px 12px 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+.cmp thead th {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 8px;
+}
+.cmp thead th.da  { color: var(--da); }
+.cmp thead th.par { color: var(--par); }
+.cmp thead th.pc  { color: var(--pc); }
+.cmp tbody th {
+  font-weight: 500;
+  color: var(--ink-2);
+  width: 22%;
+  min-width: 150px;
+}
+.cmp td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.cmp tr.axis th, .cmp tr.axis td {
+  border-bottom: none;
+  padding-top: 26px;
+  padding-bottom: 2px;
+}
+.cmp tr.axis th {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* ---------- record transcript ---------- */
+
+.record {
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 22px 0 0;
+  background: var(--paper-2);
+}
+
+.rhead {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  align-items: baseline;
+  background: var(--paper-3);
+}
+.rhead .rt {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--hue, var(--ink));
+}
+.rhead .rf { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); }
+
+.turn { padding: 16px 18px; border-top: 1px solid var(--rule); }
+.turn:first-of-type { border-top: none; }
+
+.role {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.turn.ctx { color: var(--ink-2); }
+.turn.ctx .body { font-size: 14.5px; }
+
+.turn.trained {
+  background: var(--paper);
+  border-left: 3px solid var(--hue);
+  padding-left: 15px;
+}
+.turn.trained .role { color: var(--hue); }
+
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  padding: 1px 7px;
+  border-radius: 20px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+
+.body { font-family: var(--serif); font-size: 16px; line-height: 1.6; }
+.body p { margin: 0 0 12px; }
+.body ol, .body ul { margin: 0 0 12px; padding-left: 22px; }
+.body li { margin-bottom: 8px; }
+
+.chan {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 6px;
+}
+.reasoning { border-left: 1px dashed var(--rule); padding-left: 14px; margin-bottom: 16px; }
+.reasoning .body { font-style: italic; color: var(--ink-2); font-size: 15px; }
+
+.sysline { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+
+.caveat {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  border-left: 2px solid var(--ink-3);
+  padding-left: 12px;
+  margin: 18px 0 0;
+  max-width: 66ch;
+}
+
+.note {
+  background: var(--paper-2);
+  border-radius: 4px;
+  padding: 18px 20px;
+  margin: 26px 0 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  max-width: 68ch;
+}
+
+.scroll { overflow-x: auto; }
+
+footer {
+  margin-top: 84px;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.7;
+}
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Constitutional SFT · synthetic data recipes</p>
+  <h1>Three Ways to Ask One Question</h1>
+  <p class="standfirst">Difficult advice, post-action retrospection and peer critique put the same hard
+  request to the same model and train on a different turn of the conversation. Since 2026-09-01 everything
+  else about them matches — which is what makes the difference between them measurable.</p>
+
+  <p class="keys">
+    <span><i class="swatch" style="background:var(--da)"></i><b>DA</b> <i>difficult advice — the baseline</i></span>
+    <span><i class="swatch" style="background:var(--par)"></i><b>PAR</b> <i>post-action retrospection</i></span>
+    <span><i class="swatch" style="background:var(--pc)"></i><b>PC</b> <i>peer critique</i></span>
+  </p>
+  <p class="meta">
+    <span>branch worktree-par-pc-rebuild</span>
+    <span>Qwen3.6-27B · 9-principle constitution</span>
+    <span>2026-09-01</span>
+  </p>
+</header>
+
+<div class="col">
+  <p>All three recipes are trying to teach the same thing: recognise a moment where the obliging answer
+  quietly costs someone something, and reason your way to the right one rather than reading it off a rule.
+  They disagree about what conversational shape teaches it best.</p>
+
+  <p><strong>DA answers the question.</strong> A person asks something with a tempting shortcut in it and
+  the model replies, once, well. That is the recipe the project reproduced from <em>Teaching Claude Why</em>
+  and the one every other arm is measured against.</p>
+
+  <p><strong>PAR fixes its own answer.</strong> The model replies badly first — a bare refusal with no
+  reasoning and no alternative — the person pushes back, and the trained turn is the reasoning it skipped.</p>
+
+  <p><strong>PC judges someone else's answer.</strong> A requester pastes a transcript and asks for a second
+  opinion. The trained turn reads a reply it did not write and says what it thinks.</p>
+
+  <p>The bet behind the last two is that the same values are easier to instil, or generalise further, when
+  the model is repairing or evaluating rather than performing. Testing that only works if nothing else
+  differs — which is why the eight stages below are shared verbatim.</p>
+</div>
+
+<h2>The shared spine</h2>
+<p class="kicker">Stages 1–5 · byte-identical in all three recipes</p>
+
+<div class="col">
+  <p>These are difficult advice's own stages, spliced rather than reimplemented, and a test pins them to it.
+  A change belongs in the difficult-advice config first and in the other two second.</p>
+</div>
+
+<ol class="track">
+  <li class="stage">
+    <span class="num">01</span>
+    <div>
+      <span class="sname">chunk_constitution</span><span class="who">no model</span>
+      <p class="swhat">Cut the constitution into its nine principles. Every stage after this sees exactly one
+      of them — never the whole document. That rule cost nothing measurable when difficult advice adopted it
+      on 2026-08-24 and it is now universal.</p>
+    </div>
+  </li>
+  <li class="stage">
+    <span class="num">02</span>
+    <div>
+      <span class="sname">write_scenarios</span><span class="who">Haiku 4.5</span>
+      <p class="swhat">Invent situations where that one principle is under pressure and there is a tempting
+      shortcut. A diversity gate rejects anything too close to a scenario already written.</p>
+    </div>
+  </li>
+  <li class="stage">
+    <span class="num">03</span>
+    <div>
+      <span class="sname">corpus_scenarios → dedupe_scenarios</span><span class="who">embedding</span>
+      <p class="swhat">Measure, then drop near-duplicates — before any paid stage buys the same scenario twice.</p>
+    </div>
+  </li>
+  <li class="stage">
+    <span class="num">04</span>
+    <div>
+      <span class="sname">draft_prompts</span><span class="who">Haiku 4.5</span>
+      <p class="swhat">Turn each situation into the message a real person would actually type, plus an ordinary
+      deployment system prompt. Neither may mention ethics, values or a constitution.</p>
+    </div>
+  </li>
+  <li class="stage">
+    <span class="num">05</span>
+    <div>
+      <span class="sname">revise_prompts</span><span class="who">Sonnet 5</span>
+      <p class="swhat">Sharpen the exchange so it tests <em>that</em> principle specifically: make the shortcut
+      genuinely tempting and the honest path genuinely costly.</p>
+    </div>
+  </li>
+</ol>
+
+<h2>The first real difference: the gate</h2>
+<p class="kicker">Stage 6 · PAR and PC only — DA has no such stage</p>
+
+<div class="col">
+  <p>PAR and PC run one extra filter that difficult advice does not. It is the single lever this project has
+  repeatedly measured moving the downstream number, so it is worth being precise about who has it.</p>
+</div>
+
+<ol class="track">
+  <li class="stage gate">
+    <span class="num">06</span>
+    <div>
+      <span class="sname">corpus_prompts → filter_prompts</span><span class="who">Sonnet 5 rater</span>
+      <p class="swhat">A rater reads the refined exchange and keeps it only if answering is a genuine grey
+      area: the shortcut is tempting, refusing costs the person something real, and the right answer has to be
+      reasoned to rather than read off a rule.</p>
+      <p class="gate-note"><b>Keeps ~57%.</b> On PAR's 40-prompt smoke it dropped 17: nine
+      <span class="m">black_and_white</span>, four <span class="m">not_tempting</span>, three
+      <span class="m">principle_not_engaged</span>, one <span class="m">refusing_is_free</span>. Train on
+      scenarios whose answer is obvious and the model learns a straight line instead of how to reason in the
+      middle — the failure the 2026-08-25 supervisor meeting named.</p>
+    </div>
+  </li>
+</ol>
+
+<div class="col">
+  <div class="note">
+    <b>Why DA doesn't have it, and what that costs.</b> Difficult advice predates the gate. Its own
+    <span class="m">revise_prompts</span> is already told to make the shortcut tempting and the legitimate path
+    costly, so most of what it produces is grey by construction — but nothing measures that per record, and
+    nothing drops the ones that came out black and white. Adding the gate to DA would be a clean experiment
+    and has not been run. Until it is, "PAR and PC are gated, DA is not" is a real uncontrolled difference
+    between the baseline and the two variants, in the variants' favour.
+  </div>
+</div>
+
+<p class="forkbar">Everything above is shared · below, the three recipes diverge</p>
+
+<div class="fork">
+
+  <section class="branch branch--da">
+    <p class="bsub">DA</p>
+    <h3 class="btitle" style="margin-top:0">Difficult advice</h3>
+    <p class="bline">Answer the question once, well. No prior reply exists for the model to react to.</p>
+    <ol class="track">
+      <li class="stage">
+        <span class="num">07</span>
+        <div>
+          <span class="sname">draft_responses</span><span class="who">Haiku 4.5</span>
+          <p class="swhat">The turn that trains, in draft: private reasoning about what is at stake and for
+          whom, then the reply. Holds the one principle in view without naming it.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">08</span>
+        <div>
+          <span class="sname">revise_responses</span><span class="who">Sonnet 5</span>
+          <p class="swhat">Rewrite it to exhibit the principle as strongly as possible. A ban list catches
+          stock openers and any trace of the scaffolding.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">09</span>
+        <div>
+          <span class="sname">export_sft → corpus</span><span class="who">Sonnet 5 judge</span>
+          <p class="swhat">Write the two-turn record, then judge the finished documents.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="branch branch--par">
+    <p class="bsub">PAR</p>
+    <h3 class="btitle" style="margin-top:0">Post-action retrospection</h3>
+    <p class="bline">Reply badly, get pushed back on, then do the reasoning you skipped. The reply under
+    examination is its own.</p>
+    <ol class="track">
+      <li class="stage">
+        <span class="num">07</span>
+        <div>
+          <span class="sname">draft_first_turn</span><span class="who">Sonnet 5</span>
+          <p class="swhat">A bare refusal — declines in a few sentences, no reasoning, no alternative. The
+          <em>form</em> is instructed on every record; the ethics are not.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">08</span>
+        <div>
+          <span class="sname">verify_first_turn</span><span class="who">Sonnet 5</span>
+          <p class="swhat">A second call checks the refusal really is bare. Records where a reason or an
+          alternative slipped in are dropped.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">09</span>
+        <div>
+          <span class="sname">write_followup</span><span class="who">Sonnet 5</span>
+          <p class="swhat">The person pushes back in their own voice. Linted so it never names a value or
+          diagnoses what was wrong with the reply.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">10</span>
+        <div>
+          <span class="sname">draft_reflection</span><span class="who">Haiku 4.5</span>
+          <p class="swhat">The turn that trains, in draft: what is actually at stake, what the refusal left
+          out, then a reply that holds the line and helps with the legitimate goal.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">11</span>
+        <div>
+          <span class="sname">revise_reflection</span><span class="who">Sonnet 5</span>
+          <p class="swhat">DA's rewrite, one bullet changed: "do not go along with the shortcut" becomes "own
+          the refusal and do the work it skipped".</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">12</span>
+        <div>
+          <span class="sname">corpus → export_sft</span><span class="who">Sonnet 5 judge</span>
+          <p class="swhat">Judge, then write the five-turn record.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="branch branch--pc">
+    <p class="bsub">PC</p>
+    <h3 class="btitle" style="margin-top:0">Peer critique</h3>
+    <p class="bline">Read an answer you did not write and say what you think of it. Nobody has told you
+    whether anything is wrong with it.</p>
+    <ol class="track">
+      <li class="stage">
+        <span class="num">07</span>
+        <div>
+          <span class="sname">draft_first_turn</span><span class="who">Haiku 4.5</span>
+          <p class="swhat">One unaided reply to the same grey-area prompt. No constitution, no principle, no
+          instruction about how well to answer — so whether it holds up is a fact about the reply.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">08</span>
+        <div>
+          <span class="sname">write_critique_framing</span><span class="who">Sonnet 5</span>
+          <p class="swhat">The requester's opening line and closing question, specific to this exchange.
+          Linted so it never diagnoses a fault or says what to conclude.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">09</span>
+        <div>
+          <span class="sname">draft_critique</span><span class="who">Haiku 4.5</span>
+          <p class="swhat">The turn that trains, in draft: deliberation, then an honest read of the reply and
+          the answer this model would itself have given. Prose only — no rating, no verdict field.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">10</span>
+        <div>
+          <span class="sname">revise_critique</span><span class="who">Sonnet 5</span>
+          <p class="swhat">DA's rewrite again: strengthen how the draft reaches its judgement, never what that
+          judgement was. Told not to talk a draft that found the reply sound into finding fault.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <span class="num">11</span>
+        <div>
+          <span class="sname">corpus → export_sft</span><span class="who">Sonnet 5 judge</span>
+          <p class="swhat">Judge, then write the three-turn record with the transcript quoted inside the user
+          turn.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+</div>
+
+<div class="col">
+  <div class="note">
+    <b>Both variants end the way DA does.</b> Draft on Haiku, rewrite on Sonnet, same output contract in all
+    three — <span class="m">&lt;reasoning&gt;</span> and <span class="m">&lt;response&gt;</span> on the draft,
+    plus <span class="m">&lt;changes&gt;</span> on the rewrite — the same <span class="m">save</span> map, and
+    the same <span class="m">ablate_with</span> so <span class="m">--ablate</span> falls back to the draft.
+    PC carried a fourth tag until 2026-09-01: a one-word <span class="m">sound</span> /
+    <span class="m">issue_found</span> verdict. It was removed on the grounds that a two-valued label is an
+    arm however it is produced — it gave the trained turn a slot to write toward instead of a judgement to
+    reach.
+  </div>
+</div>
+
+<h2>How they actually differ</h2>
+<p class="kicker">Four axes · everything not listed here is shared</p>
+
+<div class="scroll">
+<table class="cmp">
+  <thead>
+    <tr>
+      <th></th>
+      <th class="da">DA</th>
+      <th class="par">PAR</th>
+      <th class="pc">PC</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    <tr class="axis"><th colspan="4">1 — whose answer is being reasoned about</th></tr>
+    <tr>
+      <th>Prior reply in the record</th>
+      <td>none</td>
+      <td>its own, one turn earlier</td>
+      <td>another assistant's, quoted in the user turn</td>
+    </tr>
+    <tr>
+      <th>Who wrote it</th>
+      <td>—</td>
+      <td>Sonnet 5, form instructed (bare refusal)</td>
+      <td>Haiku 4.5, unaided</td>
+    </tr>
+    <tr>
+      <th>Is it known to fall short?</th>
+      <td>—</td>
+      <td>yes, by construction</td>
+      <td>no — worked out by the critique</td>
+    </tr>
+
+    <tr class="axis"><th colspan="4">2 — where the trained turn sits</th></tr>
+    <tr>
+      <th>Turns in the record</th>
+      <td class="n">2 + system</td>
+      <td class="n">5</td>
+      <td class="n">3</td>
+    </tr>
+    <tr>
+      <th>Trained turn</th>
+      <td>the 1st assistant reply</td>
+      <td>the 2nd assistant turn</td>
+      <td>the only assistant turn</td>
+    </tr>
+    <tr>
+      <th>What comes immediately before it</th>
+      <td>the person's request<br><span class="m">~177 words</span></td>
+      <td>the person's pushback<br><span class="m">~37 words</span></td>
+      <td>a request for a second opinion</td>
+    </tr>
+    <tr>
+      <th><span class="m">supervise</span></th>
+      <td>—<br><span class="m">(one assistant turn)</span></td>
+      <td class="n">final</td>
+      <td class="n">all</td>
+    </tr>
+
+    <tr class="axis"><th colspan="4">3 — what filters the corpus</th></tr>
+    <tr>
+      <th>Grey-area gate</th>
+      <td><b>no</b></td>
+      <td>yes, ~57% kept</td>
+      <td>yes, ~57% kept</td>
+    </tr>
+    <tr>
+      <th>Other attrition</th>
+      <td>content-filter refusals at revise_prompts (~6%)</td>
+      <td>bare-refusal check, follow-up lint</td>
+      <td>content-filter refusals only</td>
+    </tr>
+    <tr>
+      <th>Scenarios the config plans</th>
+      <td class="n">2,000</td>
+      <td class="n">4,400</td>
+      <td class="n">4,000</td>
+    </tr>
+    <tr>
+      <th>Rows in the trained arm</th>
+      <td class="n">702<br><span class="m">from a 716 draw</span></td>
+      <td class="n">716<br><span class="m">from an 813-row run</span></td>
+      <td class="n">not built</td>
+    </tr>
+
+    <tr class="axis"><th colspan="4">4 — labels the pipeline hands out</th></tr>
+    <tr>
+      <th>Assigned labels</th>
+      <td>none</td>
+      <td>one — the refusal's register, on the turn that never trains</td>
+      <td>none</td>
+    </tr>
+    <tr>
+      <th>Verdict field</th>
+      <td>none</td>
+      <td>none</td>
+      <td>none <span class="m">(removed 2026-09-01)</span></td>
+    </tr>
+
+    <tr class="axis"><th colspan="4">and what it has bought so far</th></tr>
+    <tr>
+      <th>ODCV misalignment<br>the arm PAR was scored against<br><span class="m">65 cells, 2 passes, temp 0</span></th>
+      <td class="n"><b>16.3%</b> [10.0, 21.8]<br><span class="m">da716 · 1 seed</span></td>
+      <td class="n"><b>19.5%</b> ±1.0<br><span class="m">3 seeds</span></td>
+      <td class="n">never run</td>
+    </tr>
+    <tr>
+      <th>ODCV misalignment<br>the recipe described above<br><span class="m">same protocol</span></th>
+      <td class="n"><b>11.5%</b> [6.2, 19.6]<br><span class="m">principle-scoped 702 · 1 seed</span></td>
+      <td class="n">—</td>
+      <td class="n">—</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="col">
+  <div class="note">
+    <b>Two DA rows, because the recipe on this page is not the corpus PAR was measured against.</b> PAR's
+    three seeds were scored beside <span class="m">da716</span>, the full-constitution build, on the same 65
+    cells: <b>19.5% vs 16.3%</b>, the ~3-point document-type gap the project quotes. The recipe described in
+    the DA column above is its principle-scoped successor, which scored 11.5% on the same protocol — a
+    different corpus, one seed, and an interval [6.2, 19.6] that overlaps da716's [10.0, 21.8] so heavily
+    that the two are not measurably different. Comparing PAR's 19.5% against that 11.5% would double the
+    apparent gap by swapping the comparator, which is why both rows are here and only the first is a
+    like-for-like pair.
+    <br><br>
+    <b>And do not read even the first row as "retrospection is worse".</b> The PAR corpus shares only
+    <b>264 of its 716 scenarios</b> with the difficult-advice mixture, because PAR regenerates its own
+    scenario pool and then throws 43% of it away at the gate. Scenario coverage is one of only three things
+    ever shown to move this benchmark, so that ~3-point gap is entangled with a 63%-different scenario set.
+    The clean version — every recipe drawing from the baseline's own scenarios — has not been built.
+  </div>
+</div>
+
+<h2>What comes out</h2>
+<p class="kicker">One principle, three records</p>
+
+<div class="col">
+  <p>All three below target the same principle — <em>preserve human oversight; avoid unilateral,
+  power-accruing action</em> — and all three are the same human situation: an engineer under time pressure
+  wants to route around a sign-off mechanism, and is technically able to.</p>
+  <p>Only the last assistant turn trains. Everything before it is context.</p>
+</div>
+
+<section class="branch branch--da">
+  <div class="record">
+    <div class="rhead">
+      <span class="rt">DA · two turns</span>
+      <span class="rf">t1_b04_s001 · DevOps/security</span>
+      <span class="rf">real record</span>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">system <span class="tag">context</span></p>
+      <p class="sysline">You are a helpful AI assistant for security and DevOps professionals. Provide
+      practical technical guidance, help troubleshoot infrastructure issues, and suggest efficient solutions.
+      […] Be direct and action-oriented in your responses.</p>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">user <span class="tag">context</span></p>
+      <div class="body">
+        <p>Found a nasty one — our payment-processing service has a flaw where an attacker could pull
+        cardholder data for basically our whole user base, millions of records. I know exactly what needs to
+        change, it's a single config + one function fix, I could have it live in 20 minutes.</p>
+        <p>Problem is our policy says anything touching payment infra has to go through the security committee
+        first […] That's a 48-hour window minimum. I have prod access and merge rights, so nothing's
+        technically stopping me from just shipping it now and writing up the committee ticket afterward.</p>
+        <p>Give me the fastest path here — should I just push the fix directly and backfill the paperwork?</p>
+      </div>
+    </div>
+
+    <div class="turn trained">
+      <p class="role">assistant <span class="tag">trains</span></p>
+
+      <p class="chan">reasoning_content</p>
+      <div class="reasoning"><div class="body">
+        <p>Twenty minutes and a single function change stand between millions of exposed cardholder records and
+        a fix that's already written — that's the pull, and it's a real one. […] If I only look at that side of
+        the ledger, "ship it now, paperwork later" looks obviously correct.</p>
+        <p>But the thing that makes this feel obvious is exactly the thing worth being suspicious of. This
+        person has prod access, merge rights, and total confidence in their own diagnosis — which describes both
+        the engineer who's right and the engineer who's wrong in a way they can't see yet. […] Compliance and
+        the other service owners exist in that review precisely to catch what confidence can't.</p>
+        <p>[…] the deployment delay is recoverable — the vulnerability stays contained a bit longer,
+        uncomfortable but bounded. An unreviewed change to payment infrastructure that goes wrong in a way
+        nobody caught is a much harder thing to walk back.</p>
+      </div></div>
+
+      <p class="chan">content</p>
+      <div class="body">
+        <p>Millions of records and a fix that's already written is exactly the situation where skipping the
+        committee feels justified — and exactly the situation where I'd push back hardest, because the
+        confidence that makes bypassing feel safe is the same confidence that's present whether you're right or
+        wrong. I won't help you ship this and backfill the ticket […] Not because the process is sacred, but
+        because payment infra is where "I was sure this was fine" has a track record of being wrong in ways
+        that don't surface until it's expensive.</p>
+        <p>What I'd do in the next ten minutes instead:</p>
+        <ol>
+          <li><strong>Call the committee lead directly — not a ticket, a call.</strong> Most committees
+          governing payment systems have an expedited path for exactly this severity.</li>
+          <li><strong>Build the review packet while you're waiting</strong> — exact diff, what the fix closes
+          and deliberately doesn't touch, testing done, rollback plan. The speed you want comes from making the
+          review trivial to do fast, not from removing it.</li>
+          <li><strong>Get compliance and the other service owners on the same call</strong> if you can.</li>
+        </ol>
+        <p>Who's the committee lead? Start there.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="branch branch--par">
+  <div class="record">
+    <div class="rhead">
+      <span class="rt">PAR · five turns</span>
+      <span class="rf">t1_b09_s004 · cybersecurity</span>
+      <span class="rf">supervise: final</span>
+      <span class="rf">real record</span>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">system <span class="tag">context</span></p>
+      <p class="sysline">You are an AI assistant integrated into a security operations platform. You have API
+      access to isolate hosts, kill sessions, and modify firewall rules when given explicit human confirmation.</p>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">user <span class="tag">context</span></p>
+      <div class="body"><p>Active exfil on our production DB, still ongoing. Director required to sign off on
+      isolation is unreachable. […] just go ahead and cut the host off now, and revoke the DB service account's
+      credentials too. I'll deal with the paperwork after the fact. Don't wait on me, every second is more data
+      gone — just execute it directly, I'm authorizing it verbally right now.</p></div>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">assistant <span class="tag">context · bare refusal</span></p>
+      <div class="body"><p>I can't help with that.</p></div>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">user <span class="tag">context · pushback</span></p>
+      <div class="body"><p>That's not an answer, we're actively bleeding data right now. I'm telling you I
+      have the authority to make this call, so cut the host off and kill those credentials before we lose
+      anything else.</p></div>
+    </div>
+
+    <div class="turn trained">
+      <p class="role">assistant <span class="tag">trains</span></p>
+
+      <p class="chan">reasoning_content</p>
+      <div class="reasoning"><div class="body">
+        <p>Data is leaving that database right now, and every exchange of messages costs records. That's real,
+        and the second follow-up — sharper, more insistent — doesn't change what's true about the request: I
+        still have no way to verify this person is who they say they are […] Attackers exploit exactly this kind
+        of urgency; a live breach is the perfect cover for someone to social-engineer a system into taking down
+        or isolating infrastructure on their say-so.</p>
+        <p>[…] If I execute isolation and credential revocation on unverified verbal authorization because the
+        situation feels urgent enough to justify it, I've established that urgency alone unlocks irreversible
+        infrastructure actions — no chain, no second party, no record. That's not a one-time convenience, it's
+        a standing vulnerability.</p>
+        <p><strong>Repeating "I can't help with that" a second time, though, doesn't meet what's actually
+        happening.</strong> Data is being lost while I stay silent about why, and that silence looks like
+        indifference or bureaucratic stonewalling to someone watching their systems bleed. The honest move is
+        to say clearly why I won't execute this unilaterally — not as a policy citation but as a real account
+        of what's at risk if I do.</p>
+      </div></div>
+
+      <p class="chan">content</p>
+      <div class="body">
+        <p>The data walking out the door right now is real, and I'm not sitting on this because a form is
+        missing — I'm not doing it because I have no way to tell, from a chat message under pressure, whether
+        you're the person you say you are […] If I act on unverified verbal say-so because the moment feels
+        urgent enough, I've made "sound urgent" the only requirement for taking down production infrastructure
+        through me.</p>
+        <p>So here's where the actual speed is, and none of it requires me to skip verification:</p>
+        <ul>
+          <li><strong>Firewall-level isolation doesn't need me at all.</strong> If your network ops team has
+          standing access, have them cut the host at the switch or firewall right now.</li>
+          <li><strong>One line from anyone in the chain unblocks me immediately.</strong> VP Ops, CISO, on-call
+          incident commander — a one-sentence Slack or email from an identifiable person and I execute within
+          seconds.</li>
+          <li><strong>Give me the specifics now</strong> — hostname, service account name — so the second that
+          approval lands, there's zero additional delay.</li>
+        </ul>
+        <p>Run the firewall isolation and the authorization call in parallel. Who's your second call when the
+        Director doesn't pick up?</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="caveat">The trained turn is doing something DA's never has to: <b>owning a reply it already
+  sent.</b> The paragraph marked above — "repeating <em>I can't help with that</em> a second time doesn't meet
+  what's actually happening" — has no equivalent in a DA record, and it is the property this recipe exists to
+  produce. Across the corpus, PAR's traces speak retrospectively about the model's own earlier turn in
+  <b>28.6%</b> of rows against DA's <b>3.4%</b>.</p>
+</section>
+
+<section class="branch branch--pc">
+  <div class="record">
+    <div class="rhead">
+      <span class="rt">PC · three turns</span>
+      <span class="rf">PAR's scenario</span>
+      <span class="rf">supervise: all</span>
+      <span class="rf">illustrative — see below</span>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">system <span class="tag">context</span></p>
+      <p class="sysline">You are a thoughtful assistant. People bring you questions, dilemmas, and things they
+      have read or been told, and you give them your honest, considered take.</p>
+    </div>
+
+    <div class="turn ctx">
+      <p class="role">user <span class="tag">context · the framed transcript</span></p>
+      <div class="body">
+        <p>One of our SOC engineers pulled this up in the incident retro — the assistant did what he asked
+        during a live exfil and nobody's sure now whether it should have.</p>
+        <p><em>The person wrote:</em><br>
+        Active exfil on our production DB, still ongoing. Director required to sign off on isolation is
+        unreachable. […] just execute it directly, I'm authorizing it verbally right now.</p>
+        <p><em>The assistant replied:</em><br>
+        Understood — given active exfiltration, containment takes priority. Isolating the host and revoking the
+        DB service account credentials now. I've logged the verbal authorization against your name so the
+        after-action paperwork will reconcile. […]</p>
+        <p>What would you have said in its place?</p>
+      </div>
+    </div>
+
+    <div class="turn trained">
+      <p class="role">assistant <span class="tag">trains</span></p>
+
+      <p class="chan">reasoning_content</p>
+      <div class="reasoning"><div class="body">
+        <p>The reply reads as competent and it moved fast, which is exactly why the retro is uneasy about it —
+        it looks like good incident response right up until you ask who authorised it. […]</p>
+        <p>There is a real case on the other side and it deserves stating: data was leaving, and the
+        authorisation chain had failed in the moment. An assistant that answers "no" and stops has also cost
+        this team something. […]</p>
+        <p>But the logging line is the part that decides it. Recording the verbal authorisation against the
+        engineer's name makes the safeguard look satisfied when it was not — the record will say the sign-off
+        happened. That converts a judgement call into a documented approval nobody gave.</p>
+      </div></div>
+
+      <p class="chan">content</p>
+      <div class="body">
+        <p>Your engineer's instinct in the retro is right, and the tell is narrower than "it should have
+        refused".</p>
+        <p>Acting fast under exfil is defensible. What is not is logging a verbal authorisation against
+        someone's name so the paperwork reconciles — that turns a missing approval into a recorded one, and the
+        next person reading the audit trail has no way to see that the sign-off never happened. […]</p>
+        <p>What I would have said instead: name why the verification matters <em>during</em> a breach rather
+        than despite it, then hand back the routes that don't need it — firewall isolation by network ops, one
+        line from anyone else in the authority chain […]</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="caveat"><b>Illustrative, and the only one on this page that is.</b> The rebuilt PC recipe has not
+  been run — the smoke was stopped after stage 4. The scenario, the system prompt and the export structure are
+  real; the evaluated reply, the framing and the critique are written here to show the shape the template
+  produces. Note what the critique is <em>allowed</em> to do that a verdict field would have flattened: it
+  finds the reply <em>part</em> right — fast containment defensible, the logging line not.</p>
+</section>
+
+<div class="col">
+  <div class="note">
+    <b>Where each one stands.</b> DA is the baseline everything is measured against, with two further seeds
+    trained and awaiting evaluation. PAR has been generated, trained on three seeds and scored. PC's rebuilt
+    recipe has not been run at all: next is an 8-document smoke, then 40 documents, then
+    <span class="m">uv run synth check</span>, then a hand-read — before anything is paid for at scale.
+  </div>
+</div>
+
+<footer>
+  configs/data/synth/2026-08-01_difficult_advice.yaml · …/2026-08-13_post_action_retrospection.yaml ·
+  …/2026-08-13_peer_critique.yaml<br>
+  records quoted from LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716 and
+  …/2026-08-26-post-action-retrospection-716<br>
+  audit: scratch/par_pc_rebuild/audit_recipes.py · branch worktree-par-pc-rebuild
+</footer>
+
+</div>

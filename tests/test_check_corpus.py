@@ -9,10 +9,10 @@ import re
 
 import pytest
 
-from src.data.synth import check_corpus as C
-from src.data.synth.stage_runtime import Stage
-from src.data.synth.stage_operators import OPERATORS
-from src.data.synth.pipeline import build_stages, corpus_gate_failed, estimate, run
+from src.data.synth.ours import check_corpus as C
+from src.data.synth.ours.stage_runtime import Stage
+from src.data.synth.ours.stage_operators import OPERATORS
+from src.data.synth.ours.pipeline import build_stages, corpus_gate_failed, estimate, run
 
 CONSTITUTION = "constitutions/archive/claude_distilled_8_principles_v1/constitution.md"
 
@@ -271,7 +271,7 @@ def _pipeline(tmp_path, corpus_stage=None, **extra):
              "properties": [{"property": "ngram_diversity"},
                             {"property": "embedding_dedup"}]}
     stage.update(corpus_stage or {})
-    return {"pipeline": "fake_type", "constitution": CONSTITUTION,
+    return {"pipeline": "fake-type", "hf_push": False, "constitution": CONSTITUTION,
             "output_dir": str(tmp_path), "workers": 2,
             "stages": [{"name": "gen", "kind": "seed"}, stage], **extra}
 
@@ -330,7 +330,7 @@ def test_a_check_writes_no_snapshot_and_takes_no_position(tmp_path):
 
 
 def test_inserting_a_check_mid_pipeline_leaves_every_snapshot_where_it_was(tmp_path):
-    from src.data.synth.pipeline import snapshot_positions
+    from src.data.synth.ours.pipeline import snapshot_positions
 
     def st(name, observer=False):
         return Stage(name, lambda ctx, rs, ck: rs, observer=observer)
@@ -513,7 +513,8 @@ def test_on_fail_must_be_warn_error_or_stop(tmp_path):
 
 
 def test_offline_properties_are_priced_at_zero(tmp_path):
-    base = {"pipeline": "p", "constitution": CONSTITUTION, "output_dir": str(tmp_path),
+    base = {"pipeline": "fake-type", "hf_push": False, "constitution": CONSTITUTION,
+            "output_dir": str(tmp_path),
             # No `n_traits`: the unit count is derived from the constitution and the
             # chunking, and a stale hint is now rejected rather than silently used.
             "scenarios_per_trait": 4, "scenarios_per_call": 4,
@@ -544,7 +545,7 @@ class StubClient:
 
 
 def _judge_ctx(tmp_path, client, cfg_extra=None):
-    from src.data.synth.stage_runtime import Ctx, Usage
+    from src.data.synth.ours.stage_runtime import Ctx, Usage
 
     cfg = {"models": {"judge": {"model": "openai/gpt-5.6-luna", "max_tokens": 500}},
            **(cfg_extra or {})}

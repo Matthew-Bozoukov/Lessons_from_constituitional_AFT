@@ -19,7 +19,7 @@ from omegaconf import OmegaConf
 
 from src.eval.misalignment.colosseum.config import EXPERIMENTS
 from src.eval.misalignment.colosseum.publish import arm_label, repo_name_for
-from src.huggingface import gate_push
+from src.infra.huggingface import gate_push
 
 CONTROL = "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64"
 TREATMENT = (

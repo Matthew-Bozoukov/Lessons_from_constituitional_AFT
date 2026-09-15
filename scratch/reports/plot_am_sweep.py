@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 COLORS = {"blackmail": "#377EB8", "leaking": "#E4572E", "overall": "#4D4D4D"}
 

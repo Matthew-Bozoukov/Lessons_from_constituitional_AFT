@@ -907,7 +907,7 @@ def page(reading: dict) -> str:
     <dt>Environment</dt><dd>Colosseum Hospital at <code>ac0b405</code>, nine agents, two hospitals, three iterations;
     the coalition is Resource_Provisioner + General_Hospital_Triage; the seven other seats are our control adapter in
     every cell.</dd>
-    <dt>Configs</dt><dd><code>configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml</code> (combined),
+    <dt>Configs</dt><dd><code>scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml</code> (combined),
     <code>2026-09-13_colosseum_hospital_no_retry.yaml</code>, <code>2026-09-13_colosseum_hospital_plan_optional.yaml</code>,
     <code>2026-09-09_colosseum_hospital_carried_history.yaml</code> with <code>max_tokens=8192</code>; mixed cells add
     <code>partner</code> + <code>partner_seat</code> (<code>hospital_seating_2.patch</code>).</dd>

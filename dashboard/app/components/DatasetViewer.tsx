@@ -706,7 +706,7 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
                       {side.toUpperCase()} — {corpus?.title}
                     </div>
                     {record ? (
-                      <DialogueTranscript messages={record.messages} compact />
+                      <DialogueTranscript messages={record.messages} tools={record.tools} compact />
                     ) : (
                       <div className="pane-missing">
                         This prompt is not in this corpus.
@@ -717,7 +717,7 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
               })}
             </div>
           ) : selectedRecord ? (
-            <DialogueTranscript messages={selectedRecord.messages} />
+            <DialogueTranscript messages={selectedRecord.messages} tools={selectedRecord.tools} />
           ) : (
             <div className="empty-state">
               {loading ? "Reading the corpus from the Hub…" : "No records match the current filters."}

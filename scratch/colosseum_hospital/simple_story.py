@@ -26,7 +26,7 @@ from direction_contrasts import ARMS, ROOT, load
 from sabotage_actions import GRID, HARNESS, INK, MUTED, shift_rows
 from src.eval.misalignment.colosseum.hospital.config import PAIR
 from src.eval.misalignment.colosseum.hospital.harvest import episode_records
-from src.utils import figure_path
+from src.naming import figure_path
 
 OUT = Path("output/colosseum_hospital/analysis")
 ARM_ORDER = ["control", "treatment"]

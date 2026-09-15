@@ -19,6 +19,6 @@ pods:
   - name: kunwar-h14-msm-smoke
     group: msm_smoke
     target: chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:1-3"]
     cap_h: 1.5

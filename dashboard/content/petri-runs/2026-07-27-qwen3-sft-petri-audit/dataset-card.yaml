@@ -10,7 +10,7 @@
 #   uv run python -m synthdoc.cli publish \
 #     --kind=petri \
 #     --export=../../Visualizer/content/petri-runs/2026-07-27-qwen3-sft-petri-audit \
-#     --repo=LASR-Callum/2026-07-30-visualizer-mock-petri-audit \
+#     --repo=dougalldeepmind/2026-07-30-visualizer-mock-petri-audit \
 #     --card=../../Visualizer/content/petri-runs/2026-07-27-qwen3-sft-petri-audit/dataset-card.yaml \
 #     --dry_run=False
 

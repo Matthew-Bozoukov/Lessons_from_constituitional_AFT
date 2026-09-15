@@ -49,7 +49,7 @@ def main(tar: str = "output/fiction716_adapter/adapter.tar.gz",
         dry_run: Verify and report without pushing.
     """
     load_dotenv()
-    from src.huggingface import push_run_dir
+    from src.infra.huggingface import push_run_dir
     from src.utils import origin_url
 
     out = Path(dest)
@@ -97,7 +97,7 @@ def main(tar: str = "output/fiction716_adapter/adapter.tar.gz",
     url = push_run_dir(adapter_dir, repo, {
         "experiment": "LoRA SFT adapter — lora_qwen36_t2_9284_fiction716_dynbatch_2xh200",
         "date_generated": "20260828",
-        "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md "
+        "constitution": "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                         "(via the training data; never quoted in the trained text)",
         "source_repo": f"{origin_url()} @ {git_sha()}",
         "models": "base: Qwen/Qwen3.6-27B",

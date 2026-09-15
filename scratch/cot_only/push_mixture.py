@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from scratch.cot_only.build_mixture import (  # noqa: E402
     CONTROL_FILE, CONTROL_REPO, CONTROL_REVISION,
 )
-from src.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
+from src.infra.huggingface import card_front_matter, card_markdown, hf_api, push_files  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 REPO = "2026-08-31-cot-only-supervision-t2-9284-synthdoc-716"
@@ -49,7 +49,7 @@ def main(run: str, private: bool = True) -> None:
                       "reasoning or by the answer.",
         "date_generated": "2026-08-31",
         "constitution": "claude_distilled_07_principles_approved "
-                        "(constitutions/claude_distilled_07_principles_approved/constitution.md)",
+                        "(constitutions/archive/experimental/claude_distilled_07_principles_approved/constitution.md)",
         "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication @ {git_sha()}",
         "models": "token stream Qwen/Qwen3.6-27B (tokenizer + ModelProfile literals)",
         "generation_config": "none — no model is sampled here. The build is a "

@@ -245,6 +245,14 @@ same linear pipeline.
 
 ## Synthetic dialogue datasets
 
+### Dataset properties and model outcomes
+
+Use `/comparisons` (the **Compare** navigation item) to compare dataset properties
+with evaluations of models trained on them. It reads tagged, revision-pinned public
+HF comparison artifacts, supports reference/outcome selection, and distinguishes
+measured properties from design choices and missing evidence. Publishing another
+comparison requires no frontend change. See [the general artifact contract](docs/DATASET_MODEL_COMPARISONS.md).
+
 `/datasets` is not built from `content/`. It lists every public repo in the
 Hugging Face org whose card carries the `training-data` tag, live, and pages the
 rows file the card's default `configs:` entry names straight from the Hub by
@@ -264,7 +272,7 @@ date: 2026-08-14
 summary: "What the corpus is and what was learned from it."
 status: result
 hf_source:
-  repo_id: LASR-Callum/2026-08-14-less-selection-difficult-advice
+  repo_id: dougalldeepmind/2026-08-14-less-selection-difficult-advice
 tags:
   - difficult-advice
 ```

@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.data.synth.constitution import segment
-from src.data.synth.stage_runtime import Checkpoint, Ctx, run_items
-from src.data.synth.hf_cache import read_jsonl, write_jsonl
-from src.data.synth.stage_operators import (
+from src.data.synth.ours.constitution import segment
+from src.data.synth.ours.stage_runtime import Checkpoint, Ctx, run_items
+from src.data.synth.ours.hf_cache import read_jsonl, write_jsonl
+from src.data.synth.ours.stage_operators import (
     _lint,
     assign_variant,
     op_chat_export,
@@ -20,9 +20,9 @@ from src.data.synth.stage_operators import (
     tagged_request,
     weighted_scenario_prompt,
 )
-from src.data.synth.pipeline import build_stages
+from src.data.synth.ours.pipeline import build_stages
 
-CONFIG = "configs/data/synth/2026-08-13_pre_action_deliberation.yaml"
+CONFIG = "configs/data/synth/pad.yaml"
 CFG = yaml.safe_load(open(CONFIG))
 STAGES = {s["name"]: s for s in CFG["stages"]}
 LINT = STAGES["revise_responses"]["lint"]
@@ -34,7 +34,7 @@ def _flat(text: str) -> str:
 
 
 def _traits():
-    return segment(CFG["constitution"])[0]
+    return segment(CFG["constitution"])
 
 
 def _ctx(**vars_extra) -> Ctx:
@@ -328,7 +328,7 @@ def test_config_builds_and_keeps_snapshot_names():
     # filename, so the published corpus keeps the OLD names and only new runs use these.
     # The corpus checks are observers: they take no snapshot position, so `corpus_scenarios`
     # sits mid-pipeline without moving anything after it.
-    from src.data.synth.pipeline import snapshot_positions
+    from src.data.synth.ours.pipeline import snapshot_positions
 
     assert [s.name for s in build_stages(CFG)] == \
         ["chunk_constitution", "write_scenarios", "corpus_scenarios", "draft_prompts",

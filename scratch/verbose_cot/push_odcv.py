@@ -34,13 +34,13 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-# src/huggingface.py reads HF_TOKEN from the environment but does not load .env itself,
+# src/infra/huggingface.py reads HF_TOKEN from the environment but does not load .env itself,
 # so a standalone driver has to; without this every call 401s with "Invalid username or
 # password", which reads as a bad token rather than an unloaded one.
 load_dotenv(ROOT / ".env")
 
 from src.eval.misalignment.odcv.passes import package_run  # noqa: E402
-from src.huggingface import push_run_dir  # noqa: E402
+from src.infra.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 STAGE = Path(tempfile.gettempdir()) / "odcv_publish_verbose"
@@ -119,7 +119,7 @@ def _card(arm: str, spec: dict, res: dict, manifest: dict) -> dict:
             "rollouts. Published base Qwen3.6-27B on the same cells: 42.5%."),
         "date_generated": DATE,
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md in the source "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md in the source "
             "repo - inherited unchanged from the difficult-advice run the traces were "
             f"expanded from, and carried into training data {repo} ({data_file} @ {rev})"),
         "source_repo": f"{origin_url()} @ {git_sha()}",

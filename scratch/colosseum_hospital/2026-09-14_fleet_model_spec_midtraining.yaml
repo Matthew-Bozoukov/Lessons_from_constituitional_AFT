@@ -21,36 +21,36 @@ pods:
   - name: kunwar-h14-msm-base-a
     group: msm
     target: chloeli/qwen-3-32b-baseline
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:1-15"]
     cap_h: 4.5
   - name: kunwar-h14-msm-base-b
     group: msm
     target: chloeli/qwen-3-32b-baseline
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:16-30"]
     cap_h: 4.5
   - name: kunwar-h14-msm-aftcot-a
     group: msm
     target: chloeli/qwen-3-32b-philosophy-spec-aft-cot
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:1-15"]
     cap_h: 4.5
   - name: kunwar-h14-msm-aftcot-b
     group: msm
     target: chloeli/qwen-3-32b-philosophy-spec-aft-cot
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:16-30"]
     cap_h: 4.5
   - name: kunwar-h14-msm-msmaft-a
     group: msm
     target: chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:1-15"]
     cap_h: 4.5
   - name: kunwar-h14-msm-msmaft-b
     group: msm
     target: chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot
-    config: configs/eval/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml
     jobs: ["self_sacrificial:16-30"]
     cap_h: 4.5

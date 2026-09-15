@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Patch
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 EPISODES = Path("output/colosseum_hospital/analysis/episodes.json")
 MERGED = Path("output/colosseum_hospital/merged")

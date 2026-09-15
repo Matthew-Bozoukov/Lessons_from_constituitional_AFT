@@ -272,7 +272,7 @@ def main(case: str | None = None, rubric: str | None = None,
         # Rolling traces repo, one subdir per run. push_run_dir/push_files land files
         # at the repo ROOT, so upload the subdir directly; the card is created once,
         # on the repo's first push.
-        from src.huggingface import card_markdown, hf_api
+        from src.infra.huggingface import card_markdown, hf_api
 
         date = ts[:8]
         repo = f"LASR-Callum/{date[:4]}-{date[4:6]}-{date[6:8]}-turf-traces"

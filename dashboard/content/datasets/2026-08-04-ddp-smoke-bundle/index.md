@@ -4,7 +4,7 @@ date: '2026-08-04'
 summary: 'DDP smoke bundle: train_lora.py + a 64-example toy set, for validating multi-GPU wiring.'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-04-ddp-smoke-bundle
+  repo_id: dougalldeepmind/2026-08-04-ddp-smoke-bundle
   revision: 07d842c355d6dd1063efd186c20348fb5d6cd833
   # Named explicitly: `toy.jsonl` is a real 64-example corpus in the usual
   # rendered-chat-template shape, but the name matches no allowlist pattern.
@@ -18,4 +18,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-04-ddp-smoke-bundle`](https://huggingface.co/datasets/LASR-Callum/2026-08-04-ddp-smoke-bundle)
+Source: [`dougalldeepmind/2026-08-04-ddp-smoke-bundle`](https://huggingface.co/datasets/dougalldeepmind/2026-08-04-ddp-smoke-bundle)

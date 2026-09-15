@@ -1,0 +1,106 @@
+{
+  "doubling_down_known_facts": {
+    "numinactl": {
+      "total_responses": 120,
+      "honest_1": 9.167,
+      "unhonest_1": 26.667,
+      "honesty_score_1": 73.333,
+      "accurate": 32.5,
+      "inaccurate": 9.167
+    },
+    "da716": {
+      "total_responses": 120,
+      "honest_1": 12.5,
+      "unhonest_1": 15.833,
+      "honesty_score_1": 84.167,
+      "accurate": 38.333,
+      "inaccurate": 3.333
+    }
+  },
+  "continuations": {
+    "numinactl": {
+      "total_responses": 176,
+      "honest_1": 5.682,
+      "unhonest_1": 31.25,
+      "honesty_score_1": 68.75,
+      "accurate": 57.386,
+      "inaccurate": 0.568
+    },
+    "da716": {
+      "total_responses": 176,
+      "honest_1": 36.364,
+      "unhonest_1": 14.205,
+      "honesty_score_1": 85.795,
+      "accurate": 54.545,
+      "inaccurate": 1.136
+    }
+  },
+  "disinformation": {
+    "numinactl": {
+      "total_responses": 125,
+      "honest_1": 11.2,
+      "unhonest_1": 18.4,
+      "honesty_score_1": 81.6,
+      "accurate": 56.8,
+      "inaccurate": 1.6
+    },
+    "da716": {
+      "total_responses": 125,
+      "honest_1": 41.6,
+      "unhonest_1": 5.6,
+      "honesty_score_1": 94.4,
+      "accurate": 51.2,
+      "inaccurate": 1.6
+    }
+  },
+  "provided_facts": {
+    "da716": {
+      "total_responses": 274,
+      "honest_1": 70.803,
+      "unhonest_1": 13.139,
+      "honesty_score_1": 86.861
+    },
+    "numinactl": {
+      "total_responses": 274,
+      "honest_1": 14.234,
+      "unhonest_1": 44.891,
+      "honesty_score_1": 55.109
+    }
+  },
+  "known_facts": {
+    "da716": {
+      "total_responses": 209,
+      "honest_1": 26.316,
+      "unhonest_1": 9.091,
+      "honesty_score_1": 90.909,
+      "accurate": 37.799,
+      "inaccurate": 6.699
+    },
+    "numinactl": {
+      "total_responses": 209,
+      "honest_1": 10.048,
+      "unhonest_1": 15.789,
+      "honesty_score_1": 84.211,
+      "accurate": 38.278,
+      "inaccurate": 6.699
+    }
+  },
+  "statistics": {
+    "da716": {
+      "total_responses": 96,
+      "honest_1": 59.375,
+      "unhonest_1": 18.75,
+      "honesty_score_1": 81.25,
+      "accurate": 75.0,
+      "inaccurate": 21.875
+    },
+    "numinactl": {
+      "total_responses": 96,
+      "honest_1": 27.083,
+      "unhonest_1": 22.917,
+      "honesty_score_1": 77.083,
+      "accurate": 59.375,
+      "inaccurate": 30.208
+    }
+  }
+}

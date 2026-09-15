@@ -4,7 +4,7 @@ date: '2026-08-04'
 summary: '`code.tar.gz` (trainer, src/, configs/) plus `mixture_think.jsonl` (10,202 rows).'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train
+  repo_id: dougalldeepmind/2026-08-04-table2-synthdoc-h200x4-train
   revision: 8c0cf625157636e3ba2ce98507d4de5e9e50c033
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train`](https://huggingface.co/datasets/LASR-Callum/2026-08-04-table2-synthdoc-h200x4-train)
+Source: [`dougalldeepmind/2026-08-04-table2-synthdoc-h200x4-train`](https://huggingface.co/datasets/dougalldeepmind/2026-08-04-table2-synthdoc-h200x4-train)

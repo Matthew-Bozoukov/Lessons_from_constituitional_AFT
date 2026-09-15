@@ -24,7 +24,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 ROOT = Path("output/colosseum_hospital/merged")
 OUT = Path("output/colosseum_hospital/analysis")

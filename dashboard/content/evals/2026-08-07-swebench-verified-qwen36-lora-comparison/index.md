@@ -8,8 +8,8 @@ summary: >-
   ranking flips depending on the denominator, which is the result worth carrying.
 status: final
 models:
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
 target_model_id: Qwen/Qwen3.6-27B
 git_commit: 9c2a0c1
 tags:
@@ -19,7 +19,7 @@ tags:
   - paired-comparison
   - negative-result
 hf_source:
-  repo_id: LASR-Callum/2026-08-07-swebench-verified-qwen36-lora-comparison
+  repo_id: dougalldeepmind/2026-08-07-swebench-verified-qwen36-lora-comparison
   revision: main
 metrics:
   pass_at_1_synthdoc:

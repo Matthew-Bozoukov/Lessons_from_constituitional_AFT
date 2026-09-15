@@ -1,0 +1,29 @@
+# ABOUTME: ODCV on the nosynth control, 3 passes: the resolved config of the 2026-09-05
+# ABOUTME: da-lowstakes-7 run (one flash judge, concurrency 32, 16384 ctx, no progress judge), passes 3.
+# Run: uv run evals --name odcv --config scratch/odcv_nosynth_3pass.yaml \
+#        --target LASR-Callum/2026-09-05-qwen36-0-nosynth --server root@<ip>:<port> --push-env
+#
+# Copied field for field from LASR-Callum/2026-09-05-odcv-qwen36-0-da-lowstakes-7's
+# metadata/run_meta.json `config` (code at ca6adb0), so the nosynth control is measured the
+# way that arm was: temperature 0.7, 32 scenarios in flight, gemini-3-flash-preview as the
+# only judge with 3 workers, a 16,384-token served window. Two things that run's config did
+# NOT carry are left off deliberately: the progress judge (added to the default since) and
+# `serving.reuses_long_prefixes` (prefix caching, throughput only). `passes: 3` is the one
+# change; `--config` replaces the default file whole, which is what lets the judge mapping
+# be exactly one judge instead of the default two merged with a third.
+
+published_key: "qwen3.6-27b"
+temperature: 0.7
+passes: 3
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+concurrency: 32
+scenario_timeout_s: 2400
+prune_images: false
+judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"
+judge_workers: 3
+progress_judge: false
+smoke: false
+serving:
+  context_window: 16384
+  needs_tool_calls: true

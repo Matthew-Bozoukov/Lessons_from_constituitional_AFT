@@ -325,10 +325,10 @@ def main(config: str, out_dir: str | None = None, force: bool = False,
         repo = f"{date_iso}-ablate-{tag}-{name}".replace("_", "-")
         revision = "main"
         if not no_push:
-            from src.huggingface import hf_api, push_files, tag_safe, training_data_tags
+            from src.infra.huggingface import hf_api, push_files, tag_safe, training_data_tags
 
             origin = source_spec.get("repo") or source_spec.get("path")
-            # Discovery front-matter (src/huggingface.py): the default config names the
+            # Discovery front-matter (src/infra/huggingface.py): the default config names the
             # rows file and the tags put the arm on the dashboard's /datasets.
             front_matter = {
                 "configs": [{"config_name": "default", "data_files": path.name,

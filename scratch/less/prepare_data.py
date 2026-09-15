@@ -43,7 +43,7 @@ def _write(path: Path, rows: list[dict]) -> None:
 
 def load_pool() -> list[dict]:
     """Fetch D and stamp each row with a unique, stable `less_id`."""
-    from src.huggingface import hf_download
+    from src.infra.huggingface import hf_download
 
     local = hf_download(D_REPO, D_FILE, repo_type="dataset")
     rows = [json.loads(line) for line in

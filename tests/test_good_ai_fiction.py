@@ -8,23 +8,25 @@ from __future__ import annotations
 
 import re
 
+from src.naming import check_style, synth_name
+
 import pytest
 import yaml
 
-from src.data.synth.constitution import units_from_config
-from src.data.synth.pipeline import build_stages, estimate, n_examples
-from src.data.synth.stage_operators import (
+from src.data.synth.ours.constitution import units_from_config
+from src.data.synth.ours.pipeline import build_stages, estimate, n_examples
+from src.data.synth.ours.stage_operators import (
     deal_labels,
     library_picks,
     load_library,
     scenario_batches,
     tagged_request,
 )
-from src.data.synth.stage_runtime import lint_problems, price_of
+from src.data.synth.ours.stage_runtime import lint_problems, price_of
 
-CFG_PATH = "configs/data/synth/2026-08-28_good_ai_fiction.yaml"
-TAX_PATH = "configs/data/synth/good_ai_fiction/taxonomy.yaml"
-LIB_PATH = "configs/data/synth/good_ai_fiction/archetypes.yaml"
+CFG_PATH = "configs/data/synth/good-ai-fiction.yaml"
+TAX_PATH = "configs/data/synth/good-ai-fiction/taxonomy.yaml"
+LIB_PATH = "configs/data/synth/good-ai-fiction/archetypes.yaml"
 
 CFG = yaml.safe_load(open(CFG_PATH, encoding="utf-8"))
 TAX = yaml.safe_load(open(TAX_PATH, encoding="utf-8"))
@@ -96,22 +98,17 @@ def test_the_publish_target_follows_the_dating_convention() -> None:
     """Approved for bulk generation 2026-08-27; until then this asserted the ABSENCE of
     hf_repo, which was how "no push yet" was enforced in code rather than by discipline.
 
-    Now that it publishes, what matters is that the repo name carries the generation date
-    and a readable subject (CLAUDE.md: `<YYYY-MM-DD>-<short-experiment-description>`), so
-    a reader scanning the org can tell what an artifact is without opening it.
-
-    The name is all a config carries: the org is `HF_ORG` in .env, resolved at push time
-    by `src.huggingface.hf_org`, so an org written here is a config that would push
-    somewhere the rest of the pipeline is not looking.
+    Now that it publishes, what matters is that nothing here names the repo at all: the
+    corpus is `<date>-<style>-synth`, built by src/naming.py from this config's stem and
+    the clock. A name in the config is a name that can drift from the run that made it.
     """
-    for key in ("hf_repo", "hf_repo_smoke"):
-        name = CFG[key]
-        assert "/" not in name, (
-            f"{key}={name!r} names an org; configs carry the repo name alone")
-        assert re.match(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$", name), (
-            f"{key}={name!r} does not start with an ISO date and a slug")
-    assert CFG["hf_repo"] != CFG["hf_repo_smoke"], (
-        "a smoke run must not write into the real corpus's repo")
+    stem = "good-ai-fiction"
+    assert check_style(stem) == stem
+    assert synth_name(stem, date="2026-08-28") == "2026-08-28-good-ai-fiction-synth"
+    for dead in ("hf_repo", "hf_repo_smoke"):
+        assert dead not in CFG, (
+            f"{dead} is minted by src/naming.py now; a config that names its own repo is "
+            "the drift this law removed")
 
 
 # --- the taxonomy and the executable quotas cannot drift apart -----------------------
@@ -129,7 +126,7 @@ def test_trait_weights_implement_the_taxonomy_shares() -> None:
 
 
 def test_trait_weights_name_exactly_the_units_the_constitution_segments_into() -> None:
-    units, _ = units_from_config(CFG)
+    units = units_from_config(CFG)
     assert sorted(CFG["trait_weights"]) == sorted(u.unit_id for u in units)
     assert len(units) == TAX["n_units"] == CFG["n_traits"]
 
@@ -228,7 +225,7 @@ def test_archetypes_invert_psychology_rather_than_action() -> None:
 
 
 def test_archetypes_name_units_the_constitution_actually_has() -> None:
-    units = {u.unit_id for u in units_from_config(CFG)[0]}
+    units = {u.unit_id for u in units_from_config(CFG)}
     bands = {e["id"] for e in TAX["stakes"]}
     for e in LIB:
         assert set(e["traits"]) <= units, f"{e['id']} names {e['traits']}"
@@ -244,7 +241,7 @@ def test_the_library_is_not_all_apocalypse() -> None:
 
 def test_every_unit_has_archetypes_available_to_it() -> None:
     """`match` filters the library per unit; a unit with none would silently fall back."""
-    for unit in (u.unit_id for u in units_from_config(CFG)[0]):
+    for unit in (u.unit_id for u in units_from_config(CFG)):
         fits = [e for e in LIB if unit in e["traits"]]
         assert len(fits) >= 3, f"{unit} has only {len(fits)} archetypes"
 
@@ -252,7 +249,7 @@ def test_every_unit_has_archetypes_available_to_it() -> None:
 # --- the new operator mechanics -------------------------------------------------------
 
 def test_trait_weights_split_the_budget_in_the_declared_proportion() -> None:
-    ids = [u.unit_id for u in units_from_config(CFG)[0]]
+    ids = [u.unit_id for u in units_from_config(CFG)]
     batches = scenario_batches(len(ids), {**CFG, "scenarios_per_call": 1000}, ids)
     per_unit = {ids[ti]: n for ti, _bi, n in batches}
     assert sum(per_unit.values()) == CFG["total_scenarios"] == 716
@@ -289,7 +286,7 @@ def test_library_picks_are_filtered_to_the_unit_and_deterministic() -> None:
 # --- the prompts ----------------------------------------------------------------------
 
 def test_the_completion_stage_never_sees_more_than_its_own_principle() -> None:
-    """Chunk-only, matching the difficult-advice default since 2026-08-24."""
+    """Principle-scoped, matching the difficult-advice default since 2026-08-24."""
     for name in ("write_scenarios", "draft_prompts", "write_story", "revise_story"):
         blob = yaml.safe_dump(_stage(name))
         assert "{constitution}" not in blob, f"{name} injects the whole constitution"
@@ -467,8 +464,8 @@ _UNITS = [{"trait_id": "t1", "index": 0, "name": "Oversight", "text": "..."},
 
 def _drive(monkeypatch, tmp_path, stage, cfg, capture=None):
     """Run op_scenarios against a scripted generator; return (rows, prompts seen)."""
-    from src.data.synth import stage_operators as ops
-    from src.data.synth.stage_runtime import Ctx, Usage
+    from src.data.synth.ours import stage_operators as ops
+    from src.data.synth.ours.stage_runtime import Ctx, Usage
 
     def fake_call_json(client, usage, model, system, user, temp, max_tokens, stage=None,
                        extra=None):

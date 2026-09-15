@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 # .env surfaces as a bare 401 from create_repo rather than a missing-credential message.
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from src.huggingface import card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 
@@ -48,7 +48,7 @@ def build_card(diag: dict, repo: str) -> str:
             "ranking is targeted, not a dataset prior."),
         "date_generated": "2026-08-14",
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md — the constitution "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md — the constitution "
             "the scored pool was generated from (sha256 "
             "fe2ed96093d68a871fb15669e8fea9d357fb9b51f5affff15380f62ee749a642). The selection "
             "targets are behaviours, not constitution clauses, but every scored row traces to a "

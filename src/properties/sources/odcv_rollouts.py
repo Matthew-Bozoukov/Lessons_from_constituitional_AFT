@@ -381,7 +381,7 @@ def _resolve(spec: dict, cache_root: str | Path = "output/odcv_bench") -> dict:
         raise ValueError(f"a run spec needs exactly one of repo: or run_dir:, got {spec}")
     if repo is None:
         return spec
-    from src.huggingface import resolve_run_dir
+    from src.infra.huggingface import resolve_run_dir
 
     arm = spec.get("arm") or repo.split("/")[-1]
     local, pin = resolve_run_dir(repo, revision, local_dir=Path(cache_root) / arm)

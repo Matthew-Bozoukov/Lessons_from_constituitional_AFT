@@ -8,6 +8,11 @@ import pytest
 from src.infra import runpod as pod
 
 
+@pytest.fixture(autouse=True)
+def no_real_watchdogs(monkeypatch):
+    monkeypatch.setattr(pod, "start_watchdog", lambda *a, **k: None)
+
+
 def git(cwd, *args):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
                           check=True).stdout.strip()
@@ -168,7 +173,7 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     cfg.write_text('model: "Qwen/Qwen3.6-27B"\n')
     seen = {}
 
-    def fake_provision(spec, *, name, start_script, ports=()):
+    def fake_provision(spec, *, name, start_script, ports=(), env=None):
         seen.update(gpu=spec.gpu, count=spec.count)
         return "podid"
 
@@ -187,6 +192,15 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     pod.up(name="t", train=str(cfg), gpu="NVIDIA B200")
     assert seen["gpu"] == "NVIDIA B200"  # an explicit ask still wins
 
+    # A RECIPE names no model: `--model <key>` says which, and is refused when absent.
+    recipe = tmp_path / "lora.yaml"
+    recipe.write_text("lora: {r: 64}\n")
+    out = pod.up(name="t", train=str(recipe), model="qwen36")
+    assert seen["gpu"] == "NVIDIA H200"
+    assert "uv run train --config" in out and "model=qwen36" in out and "data_repo=" in out
+    with pytest.raises(AssertionError, match="--model"):
+        pod.up(name="t", train=str(recipe))
+
 
 def test_an_eval_pod_takes_the_inference_card_and_installs_vllm_without_the_repo(monkeypatch):
     # The other half of ModelProfile.gpu. An eval pod is the cheaper card, and it holds
@@ -196,7 +210,7 @@ def test_an_eval_pod_takes_the_inference_card_and_installs_vllm_without_the_repo
 
     seen = {}
 
-    def fake_provision(spec, *, name, start_script, ports=()):
+    def fake_provision(spec, *, name, start_script, ports=(), env=None):
         seen.update(gpu=spec.gpu, cuda=spec.cuda, script=start_script)
         return "podid"
 
@@ -234,7 +248,7 @@ def test_an_eval_ladder_is_one_pod_sized_for_the_biggest_arm_on_it(monkeypatch, 
     bases = {"a": "Qwen/Qwen3.6-27B", "b": "Qwen/Qwen3.6-27B", "big": "Big/Model-500B"}
     seen = {}
 
-    def fake_provision(spec, *, name, start_script, ports=()):
+    def fake_provision(spec, *, name, start_script, ports=(), env=None):
         seen.update(gpu=spec.gpu, disk_gb=spec.disk_gb, script=start_script)
         return "podid"
 

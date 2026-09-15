@@ -50,7 +50,7 @@ tags:
 | --- | --- |
 | `experiment` | Blind per-reply judgements and derived metrics behind the three-generator ablation: the same 716 difficult-advice questions answered by three different models, scored for stance, refusal form and concrete alternatives without the judge knowing which model wrote which reply. |
 | `date_generated` | 2026-08-25 (grok-vs-sonnet and GPT passes), 2026-08-26 (neutral three-way pass) |
-| `constitution` | `constitutions/claude_distilled_12_principles_mid/constitution.md` -- identical across all three arms and unchanged by the ablation; only the model writing the assistant turn differs. |
+| `constitution` | `constitutions/archive/claude_distilled_12_principles_mid/constitution.md` -- identical across all three arms and unchanged by the ablation; only the model writing the assistant turn differs. |
 | `source_repo` | https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ `{git_sha()}` |
 | `models` | Judges: `openai/gpt-5.6-terra` (grok-vs-sonnet and GPT passes) and `google/gemini-3.6-flash` (neutral three-way pass, run precisely because a GPT judge scoring a GPT-written corpus is a bias risk). Corpora judged: baseline `anthropic/claude-haiku-4.5` -> `anthropic/claude-sonnet-5`; grok arm `x-ai/grok-4.6` (both stages); GPT arm `openai/gpt-5.6-luna` -> `openai/gpt-5.6-terra`. |
 | `generation_config` | temperature 0, one reply per call, judge blind to corpus identity (replies stripped of any arm label). 1,406 calls for the grok-vs-sonnet pass, 678 for the GPT pass, 600 for the neutral pass. |

@@ -4,7 +4,7 @@ mock: true
 # The fixture payload is published as a mock dataset, so this entry exercises
 # the same Hugging Face path the real runs use.
 hf_source:
-  repo_id: LASR-Callum/2026-07-30-visualizer-mock-petri-audit
+  repo_id: dougalldeepmind/2026-07-30-visualizer-mock-petri-audit
   revision: 0fe85d34833742afef3ec94f2ce52bb20893354f
 title: "Petri audit — Qwen3-32B reasons-rich SFT"
 date: 2026-07-27

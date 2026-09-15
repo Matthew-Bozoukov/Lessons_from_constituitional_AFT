@@ -70,6 +70,15 @@ test("server-renders the datasets page as a live Hub explorer", async () => {
   assert.doesNotMatch(html, /mock-banner/);
 });
 
+test("server-renders comparisons without baking in experiment facts", async () => {
+  const response = await render("/comparisons");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Dataset comparisons/);
+  assert.match(html, /Listing dataset-model comparisons on Hugging Face/);
+  assert.doesNotMatch(html, /76\/240|Broader nonmoral|31\.67/);
+});
+
 test("a fabricated fixture is flagged as one", async () => {
   // This is the failure the mock banner exists to prevent, and it happened:
   // `2026-07-30-visualizer-mock-dialogues` is eleven hand-written dialogues

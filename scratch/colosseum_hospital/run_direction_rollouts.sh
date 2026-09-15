@@ -15,8 +15,8 @@ PORT="$1"; SEED="$2"; CONDITION="$3"; TARGET="$4"; shift 4
 CONFIGS=("$@")
 if [ "${#CONFIGS[@]}" -eq 0 ]; then
     CONFIGS=(
-        configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml
-        configs/eval/2026-09-09_colosseum_hospital_board_access.yaml
+        scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml
+        scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml
     )
 fi
 

@@ -32,7 +32,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 ARMS = [
     ("Tulu-only control", "*collusion-qwen36-table2-only*", "#2F6DB5", "#1B4472"),

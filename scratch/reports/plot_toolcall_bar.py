@@ -10,7 +10,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from src.utils import figure_path
+from src.naming import figure_path
 
 # Measured misalignment rates for the two 20/80 conditions.
 BARS = [

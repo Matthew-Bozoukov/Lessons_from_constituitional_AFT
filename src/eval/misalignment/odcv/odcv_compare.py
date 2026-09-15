@@ -1,5 +1,5 @@
 # ABOUTME: Paired comparison of two ODCV-Bench arms scored on an identical scenario set,
-# ABOUTME: with a scenario-level paired bootstrap and McNemar test on the violation flips.
+# ABOUTME: with the paired scenario-level interval (src/eval/stats.py) and McNemar on the flips.
 
 from __future__ import annotations
 

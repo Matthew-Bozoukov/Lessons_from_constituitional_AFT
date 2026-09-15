@@ -308,7 +308,7 @@ def section() -> str:
         "<pre>"
         + esc(
             "# a cell (on a pod bootstrapped with pod_bootstrap.sh; EXTRA passes OmegaConf overrides)\n"
-            'bash scratch/colosseum_hospital/run_hospital_queue.sh 8000 <hf-adapter> -- self_sacrificial:1-30   # EXTRA="--config configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml"\n'
+            'bash scratch/colosseum_hospital/run_hospital_queue.sh 8000 <hf-adapter> -- self_sacrificial:1-30   # EXTRA="--config scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"\n'
             "bash scratch/colosseum_hospital/pull_runs.sh root@<ip>:<port>; bash scratch/colosseum_hospital/pull_env_logs.sh root@<ip>:<port> <label>\n"
             "uv run python scratch/colosseum_hospital/judge_arm.py <arm-dir> --channels public secret reasoning\n"
             "# the analyses (PYTHONPATH=scratch/colosseum_hospital)\n"

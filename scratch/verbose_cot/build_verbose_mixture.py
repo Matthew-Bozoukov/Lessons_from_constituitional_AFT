@@ -29,7 +29,7 @@ from pathlib import Path
 import fire
 from dotenv import load_dotenv
 
-from src.huggingface import hf_download, push_files
+from src.infra.huggingface import hf_download, push_files
 from src.utils import git_sha, origin_url
 
 # `hf_token()` reads os.environ, and only `src.endpoints.openrouter` calls load_dotenv() on
@@ -150,7 +150,7 @@ def main(push: bool = False, run_dir: str | None = None) -> None:
                       "716 difficult-advice reasoning traces expanded ~3x in length, "
                       "same ideas, to isolate deliberation length from content.",
         "date_generated": rd.name.split("_")[0],
-        "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md "
+        "constitution": "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                         "(inherited from the source run; never rendered into any prompt "
                         "of the expansion itself)",
         "source_repo": f"{origin_url()} @ {git_sha()}",

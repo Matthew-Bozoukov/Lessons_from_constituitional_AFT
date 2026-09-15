@@ -21,7 +21,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 OUT = Path("output/colosseum_hospital/analysis")
 SRC = OUT / "2026-09-07_colosseum_hospital_decline_decay.json"

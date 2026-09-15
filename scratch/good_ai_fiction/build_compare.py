@@ -88,7 +88,7 @@ def main(run: str, out: str = "output/good_ai_fiction_716/compare.html",
     from huggingface_hub import hf_hub_download
     from transformers import AutoTokenizer
 
-    from src.huggingface import hf_token
+    from src.infra.huggingface import hf_token
     from src.model_profile import model_profile
     from src.train.masking import build_labels
     from build_t2_9284_da716_mixture import render

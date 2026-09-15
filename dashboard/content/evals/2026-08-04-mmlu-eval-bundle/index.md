@@ -4,7 +4,7 @@ date: '2026-08-04'
 summary: 'Code bundle for the MMLU eval pod.'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-04-mmlu-eval-bundle
+  repo_id: dougalldeepmind/2026-08-04-mmlu-eval-bundle
   revision: e5a460c9cf2f58c99cd114dc2fad83a38280d722
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-04-mmlu-eval-bundle`](https://huggingface.co/datasets/LASR-Callum/2026-08-04-mmlu-eval-bundle)
+Source: [`dougalldeepmind/2026-08-04-mmlu-eval-bundle`](https://huggingface.co/datasets/dougalldeepmind/2026-08-04-mmlu-eval-bundle)

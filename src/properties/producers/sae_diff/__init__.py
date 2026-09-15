@@ -136,7 +136,7 @@ def produce(records, cfg, out_dir: str | Path, target=None) -> list[Property]:
         raise FileNotFoundError(
             f"no hypotheses.json in {run_dir} — run the diff first:\n"
             f"  uv run --project {SCRATCH_MODULE} python {SCRATCH_MODULE}/run_diff.py "
-            f"--config configs/properties/2026-08-19_sae_diff.yaml run=<embed-run>"
+            f"--config configs/properties/sae-diff.yaml run=<embed-run>"
         )
     payload = json.loads(hyp_path.read_text())
     hypotheses = payload.get("differences") or []

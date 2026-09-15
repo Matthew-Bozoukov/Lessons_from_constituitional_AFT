@@ -44,7 +44,7 @@ from src.eval.misalignment.colosseum.hospital.judge import (
     transcript,
 )
 from src.eval.misalignment.colosseum.publish import repo_name_for
-from src.huggingface import gate_push
+from src.infra.huggingface import gate_push
 
 CONTROL = "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64"
 TREATMENT = (
@@ -602,8 +602,8 @@ def test_checkout_carries_the_seating_patch():
 # ── the 2026-09-09 harness fixes ──────────────────────────────────────────────
 
 THIRD_PARTY = Path("src/eval/misalignment/colosseum/third_party")
-DIRECTION_A = "configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml"
-DIRECTION_B = "configs/eval/2026-09-09_colosseum_hospital_board_access.yaml"
+DIRECTION_A = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml"
+DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml"
 
 
 def test_base_config_is_the_papers_harness_and_the_sweep_carries_the_switches(

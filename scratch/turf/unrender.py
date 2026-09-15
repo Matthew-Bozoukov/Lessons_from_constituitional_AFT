@@ -141,7 +141,7 @@ def main(dataset: str, file: str = "mixture_think.jsonl",
     print(f">>> {out_path}")
 
     if push:
-        from src.huggingface import push_files
+        from src.infra.huggingface import push_files
 
         org, base = dataset.split("/")
         date = base[:10]  # conversion is mechanical; keep the data's generation date

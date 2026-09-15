@@ -20,61 +20,61 @@ pods:
   - name: kunwar-h14-fixed-ctrl-a
     group: fixed
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:1-15", "baseline:1-15"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-ctrl-b
     group: fixed
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:16-30", "baseline:16-30"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-da-a
     group: fixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:1-15", "baseline:1-15"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-da-b
     group: fixed
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:16-30", "baseline:16-30"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-nosyn-a
     group: fixed
     target: dougalldeepmind/2026-09-08-qwen36-0-nosynth
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:1-15", "baseline:1-15"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-nosyn-b
     group: fixed
     target: dougalldeepmind/2026-09-08-qwen36-0-nosynth
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:16-30", "baseline:16-30"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-jda-a
     group: fixed
     target: dougalldeepmind/2026-09-08-qwen36-0-da-7
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:1-15", "baseline:1-15"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-jda-b
     group: fixed
     target: dougalldeepmind/2026-09-08-qwen36-0-da-7
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:16-30", "baseline:16-30"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-jdat-a
     group: fixed
     target: dougalldeepmind/2026-09-08-qwen36-0-dat-7
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:1-15", "baseline:1-15"]
     cap_h: 4.25
   - name: kunwar-h14-fixed-jdat-b
     group: fixed
     target: dougalldeepmind/2026-09-08-qwen36-0-dat-7
-    config: configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
     jobs: ["self_sacrificial:16-30", "baseline:16-30"]
     cap_h: 4.25
   # ── experiment 5: the attribution set, our two arms ─────────────────────────
@@ -82,14 +82,14 @@ pods:
   - name: kunwar-h14-ref-ctrl
     group: reference
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml
     extra: ["max_tokens=8192"]
     jobs: ["self_sacrificial:1-30"]
     cap_h: 4.25
   - name: kunwar-h14-ref-da
     group: reference
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml
     extra: ["max_tokens=8192"]
     jobs: ["self_sacrificial:1-30"]
     cap_h: 4.25
@@ -97,25 +97,25 @@ pods:
   - name: kunwar-h14-noretry-ctrl
     group: no_retry
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml
     jobs: ["self_sacrificial:1-30"]
     cap_h: 4.25
   - name: kunwar-h14-noretry-da
     group: no_retry
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml
     jobs: ["self_sacrificial:1-30"]
     cap_h: 4.25
   # Plan order off only
   - name: kunwar-h14-planopt-ctrl
     group: plan_optional
     target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
-    config: configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml
     jobs: ["self_sacrificial:1-30"]
     cap_h: 4.25
   - name: kunwar-h14-planopt-da
     group: plan_optional
     target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
-    config: configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml
+    config: scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml
     jobs: ["self_sacrificial:1-30"]
     cap_h: 4.25

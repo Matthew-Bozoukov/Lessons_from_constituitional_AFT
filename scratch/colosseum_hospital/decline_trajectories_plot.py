@@ -35,7 +35,7 @@ from decline_vs_action import (
     reasoning_stance,
     triage_actions,
 )
-from src.utils import figure_path
+from src.naming import figure_path
 
 # Chart chrome (dataviz reference palette, light surface)
 SURFACE = "#fcfcfb"

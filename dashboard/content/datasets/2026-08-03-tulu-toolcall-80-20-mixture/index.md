@@ -4,7 +4,7 @@ date: '2026-08-03'
 summary: 'Measured values for the target model: config seed 0, config tulu3 tokens 1194548, config max seq len 4096.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture
+  repo_id: dougalldeepmind/2026-08-03-tulu-toolcall-80-20-mixture
   revision: 3a0f3d6d6b813476cc1c1e67f886437dc1408bfc
 tags:
   - auto-indexed
@@ -35,4 +35,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-08-03-tulu-toolcall-80-20-mixture)
+Source: [`dougalldeepmind/2026-08-03-tulu-toolcall-80-20-mixture`](https://huggingface.co/datasets/dougalldeepmind/2026-08-03-tulu-toolcall-80-20-mixture)

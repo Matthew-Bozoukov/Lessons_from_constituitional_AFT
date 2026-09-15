@@ -36,7 +36,7 @@ from pathlib import Path
 from direction_contrasts import ARMS, ROOT
 from sabotage_actions import DEFAULT_ENV_LOGS, analyse, load_arm, shift_row
 from src.eval.misalignment.colosseum.hospital import actions as A
-from src.utils import figure_path
+from src.naming import figure_path
 
 OUT = Path("output/colosseum_hospital/analysis")
 CELL_ORDER = [

@@ -15,7 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 INK, MUTED, RULE, PANEL, PAIR, PAIR_SOFT = (
     "#1B2430",

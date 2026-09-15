@@ -190,7 +190,7 @@ def load_instances(dataset: str, split: str) -> tuple[list[dict], str]:
         (rows with `instance_id`/`repo`, dataset revision sha).
     """
     from datasets import load_dataset
-    from src.huggingface import hf_api
+    from src.infra.huggingface import hf_api
 
     revision = hf_api().dataset_info(dataset).sha
     rows = load_dataset(dataset, split=split, revision=revision)

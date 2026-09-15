@@ -36,13 +36,13 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import push_files, training_data_tags  # noqa: E402
+from src.infra.huggingface import push_files, training_data_tags  # noqa: E402
 from src.utils import git_sha  # noqa: E402
 
 SUBSET_REPO = "LASR-Callum/2026-08-27-good-ai-fiction-716"
 MIXTURE_REPO = "LASR-Callum/2026-08-27-table2-9284-good-ai-fiction-716-train"
 POOL_REPO = "LASR-Callum/2026-08-27-good-ai-fiction-sf-860"
-CONSTITUTION = "constitutions/claude_distilled_12_principles_mid/constitution.md"
+CONSTITUTION = "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
 DATE = "2026-08-27"
 
 # The arm being replaced, and the number the token match is against.
@@ -95,7 +95,7 @@ def subset(run: str, repo: str = SUBSET_REPO, private: bool = False) -> str:
         "date_generated": DATE,
         "constitution": (
             f"{CONSTITUTION} (byte-identical to "
-            "constitutions/claude_distilled_09_principles_mid_20260804/constitution.md, "
+            "constitutions/claude_distilled_09_principles/constitution.md, "
             "the frozen snapshot the difficult-advice arm was generated against). Never "
             "quoted or cited in the trained text — the corpus teaches through situations."),
         "source_repo": f"teaching_claude_why_replication @ {git_sha()}",

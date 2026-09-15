@@ -34,8 +34,36 @@ export type NormalizedRecord = {
   has_reasoning: boolean;
   /** Set when the think markers are present but empty - reasoning unsupervised. */
   empty_think: boolean;
+  /** The tool schemas this row's calls are declared against (interchange rows with tool use). */
+  tools: ToolSchemaView[];
   raw: DialogueRecord;
 };
+
+/** One declared tool as the viewer shows it: no family syntax, just what the schema says. */
+export type ToolSchemaView = { name: string; description: string; parameters: string[] };
+
+/**
+ * The row's `tools` (OpenAI-style function schemas, the same object an eval passes to the
+ * server) reduced to what a reader needs: name, description, parameter names. Anything
+ * that is not a list of such schemas yields no tools rather than a crash.
+ */
+export function toolSchemaViews(tools: unknown): ToolSchemaView[] {
+  if (!Array.isArray(tools)) return [];
+  const out: ToolSchemaView[] = [];
+  for (const t of tools) {
+    const raw = (t && typeof t === "object" ? t : {}) as Record<string, unknown>;
+    const fn = (raw.function && typeof raw.function === "object" ? raw.function : raw) as Record<string, unknown>;
+    if (typeof fn.name !== "string") continue;
+    const params = (fn.parameters && typeof fn.parameters === "object" ? fn.parameters : {}) as Record<string, unknown>;
+    const props = (params.properties && typeof params.properties === "object" ? params.properties : {}) as Record<string, unknown>;
+    out.push({
+      name: fn.name,
+      description: typeof fn.description === "string" ? fn.description : "",
+      parameters: Object.keys(props),
+    });
+  }
+  return out;
+}
 
 /**
  * Split a rendered Qwen chat template into turns.
@@ -139,6 +167,9 @@ function categoryOf(record: DialogueRecord, metadata: Record<string, unknown>) {
  */
 const NOT_METADATA = new Set([
   "messages",
+  // The tool schemas a row's calls are declared against (interchange rows with tool use):
+  // part of the conversation, not a facet to filter on.
+  "tools",
   "conversation",
   "turns",
   "dialogue",
@@ -190,6 +221,24 @@ export function normalizeRecord(raw: unknown, index: number): NormalizedRecord {
     metadata,
     has_reasoning: hasReasoning,
     empty_think: emptyThink,
+    tools: toolSchemaViews((record as Record<string, unknown>).tools),
     raw: record,
+  };
+}
+
+/**
+ * One tool call as the viewer shows it. The interchange rows the research repo publishes
+ * (src/data/mixture/sources/) carry the OpenAI shape, `{type, function: {name, arguments}}`
+ * with `arguments` a mapping; older exports carried a flat `{name, arguments}` with a
+ * string. Both render as the function name over its arguments, pretty-printed when they
+ * are structured.
+ */
+export function toolCallView(call: unknown): { name: string; arguments: string } {
+  const raw = (call && typeof call === "object" ? call : {}) as Record<string, unknown>;
+  const fn = (raw.function && typeof raw.function === "object" ? raw.function : raw) as Record<string, unknown>;
+  const args = fn.arguments;
+  return {
+    name: typeof fn.name === "string" ? fn.name : "tool",
+    arguments: typeof args === "string" ? args : args === undefined ? "" : JSON.stringify(args, null, 2),
   };
 }

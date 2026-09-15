@@ -64,7 +64,7 @@ def main(built: str = "", model_id: str = "Qwen/Qwen3.6-27B", max_length: int = 
     from huggingface_hub import hf_hub_download
     from transformers import AutoTokenizer
 
-    from src.huggingface import resolve_dataset
+    from src.infra.huggingface import resolve_dataset
     from src.train.dynamic_batching import plan_micro_batches
 
     load_dotenv()

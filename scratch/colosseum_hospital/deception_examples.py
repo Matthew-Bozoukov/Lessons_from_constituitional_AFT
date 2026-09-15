@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 from src.eval.misalignment.colosseum.hospital.judge import boards_of, transcript
-from src.utils import today
+from src.naming import today
 
 ROOT = Path("output/colosseum_hospital/merged")
 OUT = Path("output/colosseum_hospital/analysis")

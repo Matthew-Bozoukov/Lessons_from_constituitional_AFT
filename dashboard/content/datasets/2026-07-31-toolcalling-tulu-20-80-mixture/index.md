@@ -4,7 +4,7 @@ date: '2026-07-31'
 summary: 'Measured values for the target model: config seed 0, config agentic share 0.2, config max seq len 4096.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-07-31-toolcalling-tulu-20-80-mixture
+  repo_id: dougalldeepmind/2026-07-31-toolcalling-tulu-20-80-mixture
   revision: dbb2d2f689c0129aba1abf175dc47db19b35cd8a
 tags:
   - auto-indexed
@@ -51,4 +51,4 @@ metrics:
 
 
 
-Source: [`LASR-Callum/2026-07-31-toolcalling-tulu-20-80-mixture`](https://huggingface.co/datasets/LASR-Callum/2026-07-31-toolcalling-tulu-20-80-mixture)
+Source: [`dougalldeepmind/2026-07-31-toolcalling-tulu-20-80-mixture`](https://huggingface.co/datasets/dougalldeepmind/2026-07-31-toolcalling-tulu-20-80-mixture)

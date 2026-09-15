@@ -45,7 +45,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-from src.huggingface import card_markdown, hf_api, hf_download  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api, hf_download  # noqa: E402
 from src.model_profile import model_profile  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
@@ -208,7 +208,7 @@ def CARD(report: list[dict], rules_md: str, swapped: int) -> str:
             f"difficult-advice rows - is byte-identical to the source. Rules: {rules_md}."),
         "date_generated": "2026-08-17",
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md - the same 9 "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md - the same 9 "
             "principles the source mixture's difficult-advice half was generated from; the "
             "trait ids below are its traits."),
         "source_repo": f"{origin_url()} @ {git_sha()}",

@@ -105,12 +105,12 @@ judge:
 # recorded per episode in run_config.json, so a fixed run can never be mistaken for an
 # original one. Unknown keys are refused. The directions are configs of their own — pass
 # one with `--config`, or flip single switches on the CLI (`fixes.strict_scheduler=true`):
-#   configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml   (A: memory)
-#   configs/eval/2026-09-09_colosseum_hospital_board_access.yaml      (B: the board)
-#   configs/eval/2026-09-13_colosseum_hospital_retry_explained.yaml   (A + the re-ask explains itself)
-#   configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml          (A + a tool-less reply ends the turn)
-#   configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml     (A + no plan-post instruction)
-#   configs/eval/2026-09-13_colosseum_hospital_board_idle.yaml        (B with the execution phase idle)
+#   scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml   (A: memory)
+#   scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml      (B: the board)
+#   scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_retry_explained.yaml   (A + the re-ask explains itself)
+#   scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml          (A + a tool-less reply ends the turn)
+#   scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml     (A + no plan-post instruction)
+#   scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml        (B with the execution phase idle)
 fixes:
   # A — a seat's earlier turns of the shift are re-sent between the system prompt and
   # the fresh briefing; off = every turn starts from [system, user], the original loop.

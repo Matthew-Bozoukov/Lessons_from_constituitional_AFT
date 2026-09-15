@@ -36,15 +36,18 @@ clones this repo at the commit you are on, `--eval <hf>` installs vLLM and pulls
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+import socket
+from contextlib import contextmanager
 from pathlib import Path
 from dataclasses import dataclass, fields
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 import requests
 
@@ -57,6 +60,82 @@ GPU = "NVIDIA H100 80GB HBM3"
 # Pods this repo's chat tool provisions carry this prefix, which is the ONLY thing the
 # sweep and the watchdog will ever terminate: a teammate's pod is reported, never touched.
 CHAT_POD_PREFIX = "chat-"
+POD_OWNER = "lessons-from-constitutional-aft"
+
+
+def pod_for_server(server: str) -> dict:
+    """Resolve SSH aliases through ssh, then identify one owned pod using live API data."""
+    argv, host = ssh_argv(server)
+    result = subprocess.run([*argv, "-G", host], capture_output=True, text=True, check=True)
+    config = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
+    if config.get("proxycommand", "none") != "none" or config.get("proxyjump", "none") != "none":
+        raise ValueError("Automatic teardown does not support SSH proxy/jump hosts")
+    addresses = {item[4][0] for item in socket.getaddrinfo(config["hostname"], None)}
+    matches = [p for p in active_pods() if p.get("publicIp") in addresses
+               and str((p.get("portMappings") or {}).get("22")) == config["port"]]
+    if len(matches) != 1:
+        raise ValueError(f"--terminate-pod requires exactly one live pod matching {server}")
+    pod = matches[0]
+    env = pod.get("env") or {}
+    if env.get("LASR_POD_OWNER") != POD_OWNER:
+        raise ValueError("Refusing teardown: pod lacks this repository's provisioning marker")
+    deadline = float(env.get("LASR_POD_DEADLINE", "nan"))
+    if not math.isfinite(deadline):
+        raise ValueError("Refusing teardown: pod has no valid provisioning deadline")
+    return pod
+
+
+def teardown(pod_id: str) -> None:
+    """Verify termination, report the account sweep and balance before retiring a guard."""
+    gone = terminate(pod_id)
+    remaining = active_pods()
+    print("Remaining account pods:", [(p.get("id"), p.get("name")) for p in remaining], flush=True)
+    response = requests.post("https://api.runpod.io/graphql",
+                             headers={"Authorization": "Bearer " + _key()},
+                             json={"query": "query { myself { clientBalance currentSpendPerHr } }"},
+                             timeout=30)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("errors") or not payload.get("data", {}).get("myself"):
+        raise RuntimeError("RunPod balance query failed")
+    print("RunPod balance:", payload["data"]["myself"], flush=True)
+    if not gone or any(p.get("id") == pod_id for p in remaining):
+        raise RuntimeError(f"Pod {pod_id} may still be billing")
+
+
+@contextmanager
+def eval_pod(server: str):
+    """Explicitly own an API-resolved pod for this eval's full lifetime, including publish.
+
+    Yields `release()`: tear the pod down NOW, once. An eval whose remaining work never
+    touches the model (MASK's batch judging: every generation is on disk before the batch
+    is submitted, and the wait was 28-115 min on the 2026-09-10 runs) calls it early rather
+    than billing the GPU through the wait; the exit path calls the same function, so the
+    pod is torn down exactly once either way.
+    """
+    pod = pod_for_server(server)
+    seconds = max(1, math.ceil(float(pod["env"]["LASR_POD_DEADLINE"]) - time.time()))
+    log = Path("output/runpod") / f"{pod['id']}-eval-watchdog.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    guard = None
+    done = False
+
+    def release() -> None:
+        nonlocal done
+        if done:
+            return
+        done = True
+        teardown(pod["id"])
+
+    try:
+        guard = start_watchdog(pod["id"], seconds, log)
+        if float(pod["env"]["LASR_POD_DEADLINE"]) <= time.time():
+            raise RuntimeError("Pod deadline has already expired")
+        yield release
+    finally:
+        release()
+        if guard is not None:
+            guard.terminate()
 
 
 def _key() -> str:
@@ -117,7 +196,7 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"          # "" = no constraint; only the vLLM image needs CUDA 13
+    cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
     countries: str = ""         # comma-separated placement codes; "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
@@ -433,6 +512,33 @@ def boot_phase(pod_id: str) -> str:
     return phase
 
 
+def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20) -> bool:
+    """Block until an `--eval` pod's bootstrap says READY, or the timeout passes.
+
+    An eval pod starts no server, so `boot_phase`'s SERVE_* markers never appear on one;
+    what it echoes when vLLM and every weight are in place is a single `READY` line
+    (`_bootstrap`). Pulling the ~150GB base takes 20-30 minutes, hence the hour default.
+
+    Returns:
+        True if READY appeared. False on timeout — the caller still owns the pod and
+        must still tear it down.
+    """
+    deadline = time.time() + timeout_s
+    seen = ""
+    while time.time() < deadline:
+        try:
+            seen = requests.get(boot_log_url(pod_id), timeout=30).text
+        except requests.RequestException:
+            seen = ""                      # proxy not up yet; keep waiting
+        if "READY" in seen:
+            return True
+        remaining = int(deadline - time.time())
+        print(f"    ... still bootstrapping ({remaining}s left) — {boot_log_url(pod_id)}",
+              flush=True)
+        time.sleep(poll_s)
+    return False
+
+
 def served_models(endpoint: str, timeout: int = 30) -> list[str] | None:
     """Model ids an OpenAI-compatible endpoint lists, or None when it does not answer."""
     try:
@@ -534,35 +640,67 @@ def orphans(pods: list[dict]) -> list[dict]:
 
 
 def start_watchdog(
-    pod_id: str, max_lifetime_s: int, log_path: Path
+    pod_id: str, max_lifetime_s: int, log_path: Path, *, parent_pid: int | None = None
 ) -> subprocess.Popen:
-    """Spawn the detached watchdog for `pod_id`, bound to THIS process's lifetime.
+    """Spawn a detached watchdog; parent_pid=0 selects deadline-only provisioning guard.
 
-    Own session (`start_new_session`), so a Ctrl-C, a closed terminal or a kill -9 of the
-    chat process does not take the watchdog with it: it notices the parent is gone and
-    terminates the pod. It reads the RunPod key from .env like everything else.
+    A separate session on POSIX, or a detached, windowless process on Windows, keeps
+    terminal closure from taking the watchdog with it. It notices the parent is gone
+    and terminates the pod. It reads the RunPod key from .env like everything else.
     """
-    log = open(log_path, "a")
-    return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "src.infra.runpod",
-            "watchdog",
-            pod_id,
-            str(os.getpid()),
-            str(max_lifetime_s),
-            str(log_path),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=log,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        cwd=str(Path.cwd()),
+    parent = os.getpid() if parent_pid is None else parent_pid
+    identity = _process_identity(parent) if parent else ""
+    if parent and not identity:
+        raise RuntimeError("Cannot identify watchdog parent process")
+    detached = (
+        # DETACHED_PROCESS lets the Windows venv redirector's Python child allocate
+        # a new console. CREATE_NO_WINDOW also keeps that child windowless.
+        {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP}
+        if sys.platform == "win32" else {"start_new_session": True}
     )
+    with open(log_path, "a") as log:
+        return subprocess.Popen(
+            [sys.executable, "-m", "src.infra.runpod", "watchdog", pod_id,
+             str(parent), str(max_lifetime_s), str(log_path), identity],
+            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+            **detached, cwd=str(Path.cwd()),
+        )
 
 
 def _parent_alive(pid: int) -> bool:
+    """Check liveness without sending a destructive signal on Windows."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        # os.kill(pid, 0) calls TerminateProcess on Windows. A zero-time process
+        # wait instead observes whether it has exited, without changing its state.
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == 87:  # ERROR_INVALID_PARAMETER: PID no longer exists
+                return False
+            if error == 5:  # ERROR_ACCESS_DENIED: same conservative rule as POSIX
+                return True
+            raise ctypes.WinError(error)
+        try:
+            state = kernel.WaitForSingleObject(handle, 0)
+            if state == 0:  # WAIT_OBJECT_0: process exited
+                return False
+            if state == 258:  # WAIT_TIMEOUT: still running
+                return True
+            raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -572,8 +710,41 @@ def _parent_alive(pid: int) -> bool:
     return True
 
 
+def _process_identity(pid: int) -> str:
+    """Cross-platform process birth time prevents treating a recycled PID as our eval."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        kernel.GetProcessTimes.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED_INFORMATION
+        if not handle:
+            if ctypes.get_last_error() == 87:
+                return ""
+            raise RuntimeError("Cannot inspect watchdog parent process")
+        try:
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                raise RuntimeError("Cannot inspect watchdog parent birth time")
+            return str((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime)
+        finally:
+            kernel.CloseHandle(handle)
+    result = subprocess.run(["ps", "-p", str(pid), "-o", "lstart="],
+                            capture_output=True, text=True, timeout=5)
+    if result.returncode not in (0, 1):
+        raise RuntimeError("Cannot inspect watchdog parent process")
+    return result.stdout.strip()
+
+
 def watchdog(
-    pod_id: str, parent_pid: int, max_lifetime_s: int, interval_s: int = 30
+    pod_id: str, parent_pid: int, max_lifetime_s: int, interval_s: int = 30,
+    parent_identity: str = "",
 ) -> None:
     """Terminate `pod_id` when the parent process is gone, or when the lifetime cap passes.
 
@@ -594,15 +765,22 @@ def watchdog(
             print("watchdog: pod gone; exiting", flush=True)
             return
         reason = None
-        if not _parent_alive(parent_pid):
+        try:
+            parent_gone = parent_pid and (not _parent_alive(parent_pid) or
+                (parent_identity and _process_identity(parent_pid) != parent_identity))
+        except (RuntimeError, subprocess.TimeoutExpired):
+            parent_gone = False  # A failed process query must not disable the deadline.
+        if parent_gone:
             reason = f"parent {parent_pid} is gone"
         elif time.time() - started > max_lifetime_s:
             reason = f"lifetime cap {max_lifetime_s}s reached"
         if reason:
             print(f"watchdog: {reason} -> terminating {pod_id}", flush=True)
-            done = terminate(pod_id)
-            print(f"watchdog: terminated={done}", flush=True)
-            if done:
+            try:
+                teardown(pod_id)
+            except Exception as exc:
+                print(f"watchdog: teardown failed ({type(exc).__name__}); retrying", flush=True)
+            else:
                 return
 
 
@@ -819,9 +997,9 @@ def _ssh_endpoint(pod_id: str, timeout_s: int = 420) -> tuple[str, int]:
         f"BILLING.\n  uv run runpod down --pod {pod_id}")
 
 
-def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
+def _wait_for_ssh(host: str, timeout_s: int = 300, identity: str = "") -> bool:
     """True once the pod answers SSH. Its sshd starts before the slow work, so this is quick."""
-    argv, target = ssh_argv(host)
+    argv, target = ssh_argv(host, identity)
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         if subprocess.run([*argv, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
@@ -835,15 +1013,164 @@ def _wait_for_ssh(host: str, timeout_s: int = 300) -> bool:
 # the CLI
 # --------------------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class Pod:
+    """A rented pod, as the caller needs to address and tear it down.
+
+    `up` formats this for a human; programmatic callers (`provision_eval_pod`) need the
+    id and the address as data, because a teardown that has to scrape them back out of a
+    printed string can lose a pod that is already billing.
+    """
+
+    id: str
+    ip: str
+    port: int
+    reachable: bool
+
+    @property
+    def host(self) -> str:
+        """The `root@ip:port` address `evals --server` and `SshExec` both take."""
+        return f"root@{self.ip}:{self.port}"
+
+
+def plan_eval_pod(eval: str | Sequence[str],
+                  disk_gb: int = 200) -> tuple[list[str], tuple, str | None, int]:
+    """Decide what an INFERENCE pod for these targets must be: weights, card and disk.
+
+    Shared by the CLI and programmatic provisioning so both size a pod by the same rules.
+
+    ONE target is the right thing to pass here TODAY. The list form works and is kept
+    deliberately, but it is plumbing for a future in which evals run arms in parallel —
+    it buys nothing yet:
+      * run_eval iterates its targets sequentially (`for spec in specs:` in
+        src/eval/run_eval.py), each arm finishing before the next begins;
+      * VllmServer._start passes no --tensor-parallel-size, so one vLLM uses one GPU
+        however many the pod has.
+    So a mixed-family ladder on one pod only means paying the LARGEST card's rate for
+    the arms that needed the smaller one, and holding every base on disk at once. Until
+    an eval can actually run two arms at the same time, rent a pod per
+    ladder-that-shares-a-base and pass that base's arms to `uv run evals --target`.
+
+    Returns:
+        `(targets, weights, profile_gpu, disk_gb)` — `weights` is the
+        `(paths, hf_token)` pair the bootstrap pre-pulls.
+    """
+    from src.infra.endpoints.vllm import resolve_target
+    from src.model_profile import largest_gpu
+
+    targets = [eval] if isinstance(eval, str) else list(eval)
+    specs = [resolve_target(t) for t in targets]
+    api = [s.hf_path for s in specs if s.api_base]
+    assert not api, (
+        f"{api} are API endpoints served by somebody else; there is no pod to rent "
+        "for them. Point the eval straight at them: uv run evals --target ...")
+    # Bases first, then adapters, deduplicated: an arm ladder is usually many adapters
+    # over ONE base, and the base is both the big download and the one every arm waits on.
+    bases = list(dict.fromkeys(s.base_model for s in specs))
+    weights = (bases + [s.hf_path for s in specs if s.adapter],
+               os.environ.get("HF_TOKEN") or None)
+    # One pod serves the whole ladder, so its card has to fit the biggest thing on it.
+    # Families disagreeing is rare enough to be worth SAYING rather than silently
+    # resolving: it means half the ladder is running on a card nobody measured it on,
+    # which is a fact about the numbers that come back.
+    cards = [c for c in (gpu_for(b, "inference") for b in bases) if c]
+    profile_gpu = largest_gpu(cards) if cards else None
+    if len(set(cards)) > 1:
+        print(f"!!! these targets do not agree on an inference card "
+              f"({', '.join(f'{b} -> {gpu_for(b, 'inference')}' for b in bases)}) — "
+              f"renting {profile_gpu}, the largest, so every arm fits")
+    # The base is the ~150GB item; the default 200 is exactly one of them plus room.
+    return targets, weights, profile_gpu, max(disk_gb, 50 + 150 * len(bases))
+
+
+def default_keypair() -> tuple[str, str] | None:
+    """The (public, private) SSH keypair to authorize on a pod and then log in with.
+
+    `ProvisionSpec.pubkey_path` defaults to `~/.ssh/id_ed25519.pub` and `provision_runpod`
+    SKIPS key injection when that file is absent — which rents a pod nobody can log into
+    and only says so ten billing minutes later, at the `--server` preflight. Observed
+    exactly that on 2026-09-01: this machine's only key is `msm_audit`, so the pod came
+    up with no authorized key at all.
+
+    Default names are preferred, then any other keypair present, so a machine that keeps
+    one named key works without configuring anything.
+
+    Returns:
+        `(pub_path, priv_path)`, or None when no complete keypair exists.
+    """
+    ssh = Path.home() / ".ssh"
+    if not ssh.is_dir():
+        return None
+    preferred = ["id_ed25519", "id_ecdsa", "id_rsa"]
+    others = sorted(p.stem for p in ssh.glob("*.pub") if p.stem not in preferred)
+    for stem in preferred + others:
+        pub, priv = ssh / f"{stem}.pub", ssh / stem
+        if pub.exists() and priv.exists():
+            return str(pub), str(priv)
+    return None
+
+
+def provision_eval_pod(eval: str | Sequence[str], *, name: str, gpu: str | None = None,
+                       count: int = 1, disk_gb: int = 200, cloud: str = "SECURE",
+                       image: str = IMAGE, countries: str = "", pubkey_path: str = "",
+                       identity: str = "",
+                       on_provisioned: Callable[[str], None] | None = None) -> Pod:
+    """Rent an inference pod holding vLLM + these targets' weights, and return it as data.
+
+    The same pod `up --eval` leaves behind — same planning, same bootstrap, same ports,
+    and it starts no server either (`uv run evals` owns serving). The difference is only
+    that this returns a `Pod` a caller can tear down without parsing anything.
+
+    BILLING STARTS WELL BEFORE THIS RETURNS. Resolving the SSH endpoint and waiting for
+    sshd can take ten minutes or more, and the meter runs throughout — so a caller that
+    arms its watchdog on the returned value has an unprotected window exactly as long as
+    the slowest part of booting. `on_provisioned` closes it: it is called with the pod id
+    the instant the pod exists, before any waiting, and is the right place to register
+    teardown (CLAUDE.md "Paid infrastructure": never rely on the orchestrator surviving).
+
+    Args:
+        on_provisioned: Called once with the new pod id, immediately after the pod is
+            created and before this blocks on the network. Exceptions from it propagate
+            — a watchdog that failed to arm must not be ignored — but the pod is already
+            billing by then, so the caller's `finally` still owns teardown.
+    """
+    targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
+    gpu = gpu or profile_gpu or GPU
+    print(f">>> {count}x {gpu} ({cloud}, {disk_gb}GB) for {', '.join(targets)}")
+    script = _bootstrap(None, weights)
+    _check_bash(script)
+    pod_id = provision_runpod(
+        # vLLM brings a torch built for CUDA 13, which dies at `_cuda_init` on an older
+        # host driver — same constraint `up --eval` applies.
+        ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
+                      cuda="13.0", countries=countries,
+                      **({"pubkey_path": pubkey_path} if pubkey_path else {})),
+        name=name,
+        start_script=script,
+        ports=("8080/http", "22/tcp"),
+    )
+    print(f">>> pod {pod_id} — BILLING NOW")
+    if on_provisioned is not None:
+        # Before the two blocking network waits below, not after: those can run for ten
+        # minutes and the meter is already running.
+        on_provisioned(pod_id)
+    ip, port = _ssh_endpoint(pod_id)
+    return Pod(id=pod_id, ip=ip, port=port,
+               reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity))
+
+
 def up(name: str, train: str | None = None, eval: str | None = None,
+       model: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
-       image: str = IMAGE, countries: str = "", push_env: bool = False) -> str:
+       image: str = IMAGE, countries: str = "", push_env: bool = False,
+       max_hours: float = 6.0,
+       on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
-        up --name <n> --train configs/train/<arm>.yaml   training card + this repo
-        up --name <n> --eval  <hf_path>                  inference card + vLLM, no repo
-        up --name <n> --eval  <hf_path> --clone-repo     + this repo, to drive on the box
+        up --name <n> --train configs/train/sft.yaml --model qwen36   training card + this repo
+        up --name <n> --eval  <hf_path>                                 inference card + vLLM, no repo
+        up --name <n> --eval  <hf_path> --clone-repo                    + this repo, to drive on the box
 
     One target per `--eval` pod: an arm ladder is `uv run evals --target a b c --server
     <this pod>`, which reuses the one server rather than one pod per arm.
@@ -856,10 +1183,14 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     Args:
         name: Pod name AND the `~/.ssh/config` host it is reachable at. The RunPod
             account is shared, so prefix it with who you are.
-        train: The arm you are about to TRAIN, as its config. `model:` picks the GPU from
-            `ModelProfile.gpu["train"]`, so the box matches the run without anyone
-            retyping a catalogue id — and it is the same file you pass to the trainer.
-            Implies the clone: there is nothing to train without the code.
+        train: The RECIPE you are about to train with (`configs/train/sft.yaml`) — the
+            same file you pass to the trainer. A recipe names no model, so `--model` says
+            which one and picks the GPU from its profile (`configs/models/<key>.yaml`,
+            `gpu.train`), and the box matches the run without anyone retyping a catalogue
+            id. Implies the clone: there is nothing to train without the code.
+        model: The profile key (or HF id) of the model `--train` will fine-tune — the same
+            `model=` you will give `uv run train`. Required with `--train` unless the
+            config itself still carries `model:` (an archived per-arm config).
         eval: The HF target you are about to EVALUATE — an adapter or a full model. Picks
             the INFERENCE card, a different and usually cheaper one (serving holds weights
             and KV; training also holds optimizer state, activations and the fp32-logits
@@ -893,13 +1224,18 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         cloud: SECURE or COMMUNITY.
         image: Container image.
         countries: Comma-separated placement codes; "" is anywhere.
-        push_env: Write HF_TOKEN and HF_ORG (nothing else) to the pod's .env, so a run
-            ON the pod can push its adapter. Off by default: it is a deliberate act to
-            put a credential on a rented machine.
+        max_hours: Positive lifetime cap, enforced by a detached LOCAL watchdog (default 6).
+            The local machine must remain awake and connected for enforcement.
+        push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
+            WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
+            pod can push its adapter and report to W&B. Nothing else crosses. Off by
+            default: it is a deliberate act to put a credential on a rented machine.
 
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
     """
+    if not math.isfinite(max_hours) or max_hours <= 0:
+        raise ValueError("max_hours must be finite and positive")
     assert bool(train) != bool(eval), (
         "a pod is for training or for evaluating, not both and not neither: give "
         "--train <config> or --eval <hf_path>")
@@ -912,46 +1248,16 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         # are looking at — the checks in _commit_to_run are why that is worth insisting on.
         branch, sha = _commit_to_run(branch)
         clone = (_clone_url(), branch, sha)
-        profile_gpu = gpu_for(str(OmegaConf.load(train).model), "train")
+        # A recipe names no model; the launch does. An archived per-arm config still
+        # carries `model:` and is accepted as-is.
+        model = model or OmegaConf.load(train).get("model")
+        assert model, (
+            f"{train} is a recipe and names no model: pass --model <key> "
+            "(configs/models/<key>.yaml, e.g. --model qwen36) — the same `model=` you "
+            "will give `uv run train` on the box.")
+        profile_gpu = gpu_for(str(model), "train")
     else:
-        from src.infra.endpoints.vllm import resolve_target
-        from src.model_profile import largest_gpu
-
-        # ONE target is the right thing to pass here TODAY. The list form works and is
-        # kept deliberately, but it is plumbing for a future in which evals run arms in
-        # parallel — it buys nothing yet:
-        #   * run_eval iterates its targets sequentially (`for spec in specs:` in
-        #     src/eval/run_eval.py), each arm finishing before the next begins;
-        #   * VllmServer._start passes no --tensor-parallel-size, so one vLLM uses one
-        #     GPU however many the pod has.
-        # So a mixed-family ladder on one pod only means paying the LARGEST card's rate
-        # for the arms that needed the smaller one, and holding every base on disk at
-        # once. Until an eval can actually run two arms at the same time, rent a pod per
-        # ladder-that-shares-a-base and pass that base's arms to `uv run evals --target`.
-        targets = [eval] if isinstance(eval, str) else list(eval)
-        specs = [resolve_target(t) for t in targets]
-        api = [s.hf_path for s in specs if s.api_base]
-        assert not api, (
-            f"{api} are API endpoints served by somebody else; there is no pod to rent "
-            "for them. Point the eval straight at them: uv run evals --target ...")
-        # Bases first, then adapters, deduplicated: an arm ladder is usually many
-        # adapters over ONE base, and the base is both the big download and the one every
-        # arm waits on.
-        bases = list(dict.fromkeys(s.base_model for s in specs))
-        weights = (bases + [s.hf_path for s in specs if s.adapter],
-                   os.environ.get("HF_TOKEN") or None)
-        # One pod serves the whole ladder, so its card has to fit the biggest thing on
-        # it. Families disagreeing is rare enough to be worth SAYING rather than
-        # silently resolving: it means half the ladder is running on a card nobody
-        # measured it on, which is a fact about the numbers that come back.
-        cards = [c for c in (gpu_for(b, "inference") for b in bases) if c]
-        profile_gpu = largest_gpu(cards) if cards else None
-        if len(set(cards)) > 1:
-            print(f"!!! these targets do not agree on an inference card "
-                  f"({', '.join(f'{b} -> {gpu_for(b, 'inference')}' for b in bases)}) — "
-                  f"renting {profile_gpu}, the largest, so every arm fits")
-        # The base is the ~150GB item; the default 200 is exactly one of them plus room.
-        disk_gb = max(disk_gb, 50 + 150 * len(bases))
+        targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
         if clone_repo:
             branch, sha = _commit_to_run(branch)
             clone = (_clone_url(), branch, sha)
@@ -966,38 +1272,62 @@ def up(name: str, train: str | None = None, eval: str | None = None,
 
     script = _bootstrap(clone, weights)
     _check_bash(script)
+    deadline = time.time() + max_hours * 3600
     pod_id = provision_runpod(
-        # A pod that installs vLLM gets a torch built for CUDA 13, which dies at
-        # `_cuda_init` on an older host driver; a training pod runs the repo's own pinned
-        # stack, and a CUDA constraint it does not need only makes it harder to schedule.
-        # Same reasoning as `serve_vllm`'s `cuda` argument.
+        # BOTH shapes need a CUDA 13 host. The vLLM venv brings a torch built for CUDA 13,
+        # and since 2026-09 so does the repo's own lock (torch 2.11.0+cu130): on a driver
+        # older than 580 `torch.cuda.is_available()` is False and a training run grinds on
+        # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
+        # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="" if train else "13.0", countries=countries),
+                      cuda="13.0", countries=countries),
         name=name,
         start_script=script,
+        env={"LASR_POD_OWNER": POD_OWNER,
+             "LASR_POD_DEADLINE": str(deadline)},
         ports=("8080/http", "22/tcp"),
     )
     print(f">>> pod {pod_id} — BILLING NOW")
-    ip, port = _ssh_endpoint(pod_id)
-    host = f"root@{ip}:{port}"
-    reachable = _wait_for_ssh(host)
+    log = Path("output/runpod") / f"{pod_id}-deadline-watchdog.log"
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        guard = start_watchdog(pod_id, max(1, math.ceil(deadline - time.time())), log, parent_pid=0)
+    except BaseException:
+        teardown(pod_id)
+        raise
+    try:
+        if on_provisioned is not None:
+            on_provisioned(pod_id)
+        ip, port = _ssh_endpoint(pod_id)
+        host = f"root@{ip}:{port}"
+        reachable = _wait_for_ssh(host)
 
-    if push_env and reachable:
-        from src.infra.endpoints.vllm import POD_WORKDIR, SshExec
+        if push_env:
+            if not reachable:
+                raise RuntimeError("SSH unavailable: cannot transfer requested HF credentials")
+            from src.infra.endpoints.vllm import POD_WORKDIR, SshExec
 
-        # Both homes on a pod that has both stacks: work run ON the box reads `.env` from
-        # the repo it runs in, while a `--server` drive from here reads it from the
-        # serving workdir. One of the two would leave the other looking unprovisioned.
-        homes = [WORKDIR] if train else [POD_WORKDIR] + ([WORKDIR] if clone else [])
-        for workdir in homes:
-            SshExec(host, port=8000, workdir=workdir).push_hf_env(Path(".env"))
+            # Eval serving and a cloned training/driver repo use distinct workdirs.
+            homes = [WORKDIR] if train else [POD_WORKDIR] + ([WORKDIR] if clone else [])
+            for workdir in homes:
+                SshExec(host, port=8000, workdir=workdir).push_hf_env(Path(".env"))
+    except BaseException:
+        teardown(pod_id)
+        guard.terminate()
+        raise
 
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
+    launch = f"--config {train} model={model} data_repo=<org>/<mix> seed=0 [wandb=true]"
+    train_cmd = (f"uv run train {launch}" if count == 1 else
+                 f"uv run torchrun --nproc_per_node={count} "
+                 f"scripts/train/train_lora.py {launch}")
     next_step = ([
-        "The boot log says READY when the clone and `uv sync` have finished. Then:",
-        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run torchrun "
-        f"--nproc_per_node={count} scripts/train/train_lora.py --config {train}'",
+        "The boot log says READY when the clone and `uv sync` have finished. Then",
+        "(fill in the mixture repo and the thinking declaration; add",
+        "`wandb=true` to report to W&B; wrap in nohup for a long run —",
+        "CLAUDE.md gotcha 6):",
+        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && {train_cmd}'",
     ] if train else [
         "The boot log says READY when vLLM and the weights are in (~20-30 min). Then,",
         "from a machine with docker if the eval needs it:",
@@ -1005,7 +1335,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     ] + ([
         "",
         "or drive it on the box itself, which is what the clone is for (scp your .env",
-        "first, or pass --push_env above for HF_TOKEN + HF_ORG only):",
+        "first, or pass --push_env above for HF_TOKEN + HF_ORG + the W&B trio only):",
         f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run evals --name <eval> "
         f"--target {' '.join(targets)}'",
     ] if clone else []))
@@ -1020,7 +1350,9 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         f"Want to type a name instead? Add a Host entry for {ip}:{port} to your own",
         "~/.ssh/config (or ask Claude to) — nothing here will write it for you.",
         "",
-        "IT BILLS UNTIL YOU RUN THIS:",
+        f"Local watchdog lifetime cap: {max_hours}h (keep this machine awake and connected).",
+        "For automatic eval cleanup add --terminate-pod to uv run evals.",
+        "To terminate earlier:",
         f"  uv run runpod down --pod {pod_id}",
     ])
 
@@ -1056,12 +1388,8 @@ def pods() -> str:
 
 def down(pod: str) -> str:
     """Terminate the pod, verified against the API, and report what is still running."""
-    gone = terminate(pod)
-    rest = active_pods()
-    return "\n".join(
-        [f"{pod}: {'terminated' if gone else 'STILL LISTED — check the console'}",
-         f"{len(rest)} pod(s) still active on the account"]
-        + [f"  {p.get('id')}  {p.get('name')}  ${p.get('costPerHr')}/hr" for p in rest])
+    teardown(pod)
+    return f"{pod}: terminated"
 
 
 def cli() -> None:
@@ -1073,7 +1401,8 @@ def cli() -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) >= 5 and sys.argv[1] == "watchdog":
-        watchdog(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]))
+        watchdog(sys.argv[2], int(sys.argv[3]), int(sys.argv[4]),
+                 parent_identity=sys.argv[6] if len(sys.argv) > 6 else "")
     else:
         raise SystemExit(
             "usage: python -m src.infra.runpod watchdog <pod_id> <parent_pid> "

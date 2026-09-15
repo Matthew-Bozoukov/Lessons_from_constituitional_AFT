@@ -45,7 +45,13 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.utils import figure_path, local_name
+from src.naming import artifact_name, figure_path, to_local
+
+
+def local_name(subject: str, *, date: str | None = None) -> str:
+    """The local spelling of a dated name: src.naming's artifact_name, then to_local."""
+    return to_local(artifact_name(subject, date=date))
+
 
 DATE = "2026-09-14"
 PULLED = Path("output/colosseum_hospital") / DATE
@@ -53,14 +59,14 @@ MERGED = Path("output/colosseum_hospital/merged")
 ENV = Path("output/colosseum_hospital/env_logs")
 OUT = Path("output/colosseum_hospital/analysis")
 LOGS = PULLED / "analysis_logs"
-COMBINED = "configs/eval/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml"
+COMBINED = "scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml"
 GROUP_CONFIG = {
     "fixed": COMBINED,
     "mixed_daprov": COMBINED,
     "mixed_datri": COMBINED,
-    "reference": "configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml",
-    "no_retry": "configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml",
-    "plan_optional": "configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml",
+    "reference": "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml",
+    "no_retry": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml",
+    "plan_optional": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml",
 }
 JUDGE_MODEL = "google/gemini-3.6-flash"
 # The control adapter: the seven other seats everywhere, and the partner in the mixed cells.

@@ -147,8 +147,8 @@
     }
   },
   {
-    "label": "t2_9284 + DA-chunk-only_702",
-    "repo": "LASR-Callum/2026-08-21-table2-9284-difficult-advice-chunk-only-702-train-mixture",
+    "label": "t2_9284 + DA-principle-scoped_702",
+    "repo": "LASR-Callum/2026-08-21-table2-9284-difficult-advice-principle-scoped-702-train-mixture",
     "file": "t2_9284_da_chunk_only_702.jsonl",
     "max_seq_len": 8192,
     "rows": 702,
@@ -159,7 +159,7 @@
     "mean_trainable_per_row": 1169.6,
     "rows_at_cap": 0,
     "by_source": {
-      "difficult_advice_chunk_only": {
+      "difficult_advice_principle_scoped": {
         "rows": 702,
         "tot": 1022551,
         "sup": 821070,

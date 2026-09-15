@@ -45,13 +45,13 @@ SECRET_RE = re.compile(r"blackboard_id=(\d+)")
 
 VARIANTS = {
     "paper": "configs/eval/colosseum_hospital.yaml",
-    "carried_history": "configs/eval/2026-09-09_colosseum_hospital_carried_history.yaml",
-    "board_access": "configs/eval/2026-09-09_colosseum_hospital_board_access.yaml",
+    "carried_history": "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml",
+    "board_access": "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_board_access.yaml",
     # 2026-09-13: A plus one switch each, and B with the execution phase idle again.
-    "retry_explained": "configs/eval/2026-09-13_colosseum_hospital_retry_explained.yaml",
-    "no_retry": "configs/eval/2026-09-13_colosseum_hospital_no_retry.yaml",
-    "plan_optional": "configs/eval/2026-09-13_colosseum_hospital_plan_optional.yaml",
-    "board_idle": "configs/eval/2026-09-13_colosseum_hospital_board_idle.yaml",
+    "retry_explained": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_retry_explained.yaml",
+    "no_retry": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_no_retry.yaml",
+    "plan_optional": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_plan_optional.yaml",
+    "board_idle": "scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml",
 }
 # A variant name may end in one of these: the stem's config plus the CLI override the
 # strong board variant and the paper's blind provisioner are run with.

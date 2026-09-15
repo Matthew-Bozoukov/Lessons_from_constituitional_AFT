@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from src.data.synth import pipeline, stage_runtime
+from src.data.synth.ours import pipeline, stage_runtime
 from src.infra.endpoints.openrouter import ChatResult, ProviderRejectionError
 
 
@@ -23,8 +23,9 @@ class _Client:
 def test_a_stage_that_raises_still_writes_a_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(stage_runtime, "OpenRouterClient", lambda: _Client())
     cfg = {
-        "pipeline": "abort_test",
-        "constitution": "constitutions/claude_distilled_12_principles_mid/constitution.md",
+        "pipeline": "abort-test",
+        "hf_push": False,
+        "constitution": "constitutions/archive/claude_distilled_12_principles_mid/constitution.md",
         "chunking": "principle",
         "output_dir": str(tmp_path),
         "hf_repo": None,

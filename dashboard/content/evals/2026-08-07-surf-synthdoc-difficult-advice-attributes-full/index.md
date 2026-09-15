@@ -4,7 +4,7 @@ date: '2026-08-07'
 summary: 'Complete dataset for [SURF](https://github.com/seoirsem/SURF) research and extension.'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes-full
+  repo_id: dougalldeepmind/2026-08-07-surf-synthdoc-difficult-advice-attributes-full
   revision: 32cd121caa00b6905b4c224f494f65b7827066fa
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes-full`](https://huggingface.co/datasets/LASR-Callum/2026-08-07-surf-synthdoc-difficult-advice-attributes-full)
+Source: [`dougalldeepmind/2026-08-07-surf-synthdoc-difficult-advice-attributes-full`](https://huggingface.co/datasets/dougalldeepmind/2026-08-07-surf-synthdoc-difficult-advice-attributes-full)

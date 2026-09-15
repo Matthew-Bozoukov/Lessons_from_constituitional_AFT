@@ -11,7 +11,7 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-24-odcv-grok-responder-703-paired-eval"
@@ -46,7 +46,7 @@ def main(combined: str, repo: str = REPO) -> None:
             "docs/GENERATOR_ABLATION.md."),
         "date_generated": "2026-08-24",
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
             "to the da716 baseline's and unchanged by this arm: only the model writing "
             "the assistant turn differs. Via the adapter's training data "
             "LASR-Callum/2026-08-24-table2-9284-grok-responder-703-paired-train-mixture"),

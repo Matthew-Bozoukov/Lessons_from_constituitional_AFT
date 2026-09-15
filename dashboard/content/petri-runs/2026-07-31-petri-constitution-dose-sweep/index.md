@@ -4,7 +4,7 @@ date: '2026-07-31'
 summary: '--- license: apache-2.0 tags: - petri - alignment - automated-audit - dose-response - constitution - null-result language: - en pretty_name: "Petri constitution audit — Qwen3.6-27B difficult-advice SFT dose sweep" ---'
 status: stub
 hf_source:
-  repo_id: LASR-Callum/2026-07-31-petri-constitution-dose-sweep
+  repo_id: dougalldeepmind/2026-07-31-petri-constitution-dose-sweep
   revision: 258608f548c4c6e959b5725223bdb2e71e4f8455
 tags:
   - generated-stub
@@ -15,4 +15,4 @@ tags:
 > **not** a write-up and supports no claim. Replace this body with the result, then drop
 > `status: stub` and the `generated-stub` tag.
 
-Source: [`LASR-Callum/2026-07-31-petri-constitution-dose-sweep`](https://huggingface.co/datasets/LASR-Callum/2026-07-31-petri-constitution-dose-sweep)
+Source: [`dougalldeepmind/2026-07-31-petri-constitution-dose-sweep`](https://huggingface.co/datasets/dougalldeepmind/2026-07-31-petri-constitution-dose-sweep)

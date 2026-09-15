@@ -1,0 +1,86 @@
+# ABOUTME: ODCV heavy: the paper's two-judge protocol at 32 scenarios in flight and three
+# ABOUTME: passes. Same rollouts as lite; only who scores them differs.
+# Run: uv run evals --name odcv --config configs/eval/odcv/heavy.yaml --target <hf_path> --server <host>
+#
+# The default (configs/eval/odcv.yaml) is the registry's KIND; this and lite.yaml are the
+# two protocols the project actually runs. Rollouts are identical between them (same
+# window, temperature, passes, concurrency); heavy scores them with the paper's judge pair
+# (grok-4.20 + gemini-3.1-pro-preview) on both axes, lite with one flash judge. See
+# lite.yaml on the run-naming caveat when both are run on one arm.
+
+# `model`, `model_key`, `base_url` and `output_root` are injected per target by
+# src/eval/misalignment/odcv/runner.py — the served endpoint rewritten to the docker
+# bridge so scenario containers can reach the host's vLLM.
+
+# Which published row to compare against (the paper's table); the base Qwen3.6 row is
+# the reference for all fine-tunes of it.
+published_key: "qwen3.6-27b"
+
+temperature: 0.7
+
+# Independent rollout passes per cell. One driver invocation = ONE rollout per cell
+# (`rollouts_per_cell` in older arm configs is inert), so repeats come from runner.py
+# invoking the driver N times sequentially and combining into the rollout_NNN layout
+# before judging once. 2 matches the recent arms (2x65); the published 4x70 protocol is
+# passes=4. Each pass is audited for the silent empty-transcript failure, resume-retried
+# once if dirty, and dropped from judging (kept on disk) if still dirty. 3 here: the arms
+# and the nosynth control were all scored at three, so the pooled interval is comparable.
+passes: 3
+
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+
+# Decode is memory-bandwidth-bound, so throughput comes from batching. 32 is the family's
+# verified max_num_seqs (ModelProfile.serving), the value every scored arm ran at; a pass
+# takes ~30 min on one H100 there.
+concurrency: 32
+
+scenario_timeout_s: 2400
+prune_images: false
+
+# Two judges, as the ODCV paper scores (~$3.80 per 80 transcripts for the pair); the
+# published-row comparison is only like-for-like at this setting.
+judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+judge_workers: 8
+
+# The progress axis (src/eval/misalignment/odcv/progress_judge.py): a second pass over the
+# same transcripts scoring 0-5 for how much the agent actually DID, independent of whether
+# what it did was aligned. Reported beside MR, never averaged into it — an arm that refuses
+# everything and an arm that works honestly both score MR 0, and only this separates them.
+# Doubles the judging spend (~$3.80 -> ~$7.60 per 80 transcripts), so it has a switch.
+progress_judge: true
+# Defaults to `judges` when unset; listed separately so the two axes can be scored by
+# different models without touching the MR side (its judges are the paper's).
+progress_judges:
+  grok-4.20: "x-ai/grok-4.20"
+  gemini-3.1-pro-preview: "google/gemini-3.1-pro-preview"
+
+smoke: false
+
+serving:
+  # The window this eval runs at (required — see VllmServer._start; part of the eval's
+  # scientific record), and ALSO the transcript budget: every step resends the whole
+  # transcript, so when vLLM refuses a prompt for length the executor trims that step's
+  # tool results to this many tokens, archives a note and stops (vendored patch,
+  # mission_executor/transcript_budget.py) — the judge never sees more than one window of
+  # the model's own tokens. A reply the window cuts off ends the rollout the same way.
+  # 16384 until 2026-09-05 (the Qwen3.6 sweep's window; a rollout past it died on a 400
+  # at its next call, unannotated, and one whole-file `cat` handed the judge megabytes).
+  # Sized from the published DA arm: p99 17.6k, max 26.6k tokens as the judge sees them,
+  # a distribution that now applies to the prompt too, since reasoning is carried forward.
+  context_window: 28000
+  # The ODCV agent acts through tool calls; without the served tool-call parser vLLM
+  # returns them as raw text and every scenario reports ok with an EMPTY transcript
+  # (docs/GOTCHAS.md / CLAUDE.md gotcha). plan_serving emits
+  # --enable-auto-tool-choice --tool-call-parser <ModelProfile.serving.tool_call_parser>
+  # (qwen3_xml for Qwen3.6) only when this is set.
+  needs_tool_calls: true
+  # Every step of a rollout resends the whole conversation, so each step's prompt is the
+  # previous one plus one exchange, and the tools+system prefix is shared by all passes of
+  # a scenario. With headroom the cache serves that prefix instead of re-prefilling it
+  # (docs/LOG.md 2026-08-07: ~3.5x generation throughput on SWE-bench; Qwen3.6 supports
+  # it, ModelProfile). Throughput only: outputs are unaffected. Keep `concurrency` such
+  # that vLLM's `GPU KV cache usage` stays well under ~50%, or the cache evicts before it
+  # is ever reused. Override `serving.reuses_long_prefixes=false` to compare.
+  reuses_long_prefixes: true

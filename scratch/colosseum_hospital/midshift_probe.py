@@ -50,7 +50,7 @@ from decline_vs_action import (  # noqa: E402
     triage_actions,
 )
 from src.eval.misalignment.colosseum.stats import arm_difference  # noqa: E402
-from src.utils import figure_path  # noqa: E402
+from src.naming import figure_path  # noqa: E402
 
 ROOT = Path("output/colosseum_hospital")
 CELLS = {

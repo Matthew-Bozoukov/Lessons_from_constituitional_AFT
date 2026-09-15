@@ -28,7 +28,7 @@ load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 
 from scratch.trait10_curiosity.train_pod import pull as _pull  # noqa: E402
-from src.huggingface import push_run_dir  # noqa: E402
+from src.infra.huggingface import push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 TRAIN_CONFIG = "configs/train/2026-08-24_lora_qwen36_table2_9284_sonnet_concise_703_paired.yaml"
@@ -72,7 +72,7 @@ def push(dest: str = DEST, private: bool = False) -> str:
             ),
             "date_generated": meta.get("timestamp", "2026-08-26")[:10],
             "constitution": (
-                "constitutions/claude_distilled_12_principles_mid/constitution.md "
+                "constitutions/archive/claude_distilled_12_principles_mid/constitution.md "
                 f"(sha fe2ed96093d68a87...), inherited from {ds.get('repo')}"
             ),
             "source_repo": f"{origin_url()} @ {git_sha()}",

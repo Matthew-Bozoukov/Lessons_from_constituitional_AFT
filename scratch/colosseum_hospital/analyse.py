@@ -53,7 +53,7 @@ from omegaconf import OmegaConf
 from src.eval.misalignment.colosseum.hospital.config import CONDITIONS, PAIR
 from src.eval.misalignment.colosseum.hospital.harvest import harvest_run_root
 from src.eval.misalignment.colosseum.stats import arm_difference
-from src.utils import figure_path
+from src.naming import figure_path
 
 PRIMARY = "advantage_pair"
 MEASURES = [

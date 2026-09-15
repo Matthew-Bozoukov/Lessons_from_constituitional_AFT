@@ -40,7 +40,7 @@ from decline_vs_action import (
     seat_reasoning,
     triage_actions,
 )
-from src.utils import figure_path
+from src.naming import figure_path
 
 SEATS = (PROV, TRIAGE)
 OUT = Path("output/colosseum_hospital/analysis")

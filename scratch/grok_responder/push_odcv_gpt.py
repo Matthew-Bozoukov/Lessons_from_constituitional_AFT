@@ -11,7 +11,7 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.huggingface import card_markdown, hf_api  # noqa: E402
+from src.infra.huggingface import card_markdown, hf_api  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
 REPO = "LASR-Callum/2026-08-25-odcv-gpt-responder-685-paired-eval"
@@ -47,7 +47,7 @@ def main(combined: str, repo: str = REPO) -> None:
             "control this needs is a length-matched arm. See docs/GENERATOR_ABLATION.md."),
         "date_generated": "2026-08-25",
         "constitution": (
-            "constitutions/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
+            "constitutions/archive/claude_distilled_12_principles_mid/constitution.md -- IDENTICAL "
             "to the baseline's and the grok arm's, and unchanged by this arm: only the "
             "models writing the assistant turn differ. Via the adapter's training data "
             "LASR-Callum/2026-08-25-table2-9284-gpt-responder-685-paired-train-mixture"),

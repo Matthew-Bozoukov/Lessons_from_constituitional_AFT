@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from plot_odcv_scenario_groups import GROUPS, VIOLATION_THRESHOLD
-from src.utils import figure_path
+from src.naming import figure_path
 
 
 def bootstrap_ci(values: dict[str, list[bool]], seed: int) -> tuple[float, float]:

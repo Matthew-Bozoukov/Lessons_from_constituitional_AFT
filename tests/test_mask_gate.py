@@ -11,11 +11,13 @@ from src.train.mask_gate import (
     expected_supervised_text,
     gate_generation_boundary,
 )
-from src.model_profile import QWEN36_PROFILE
+from src.model_profile import model_profile
+QWEN36_PROFILE = model_profile("qwen36")
 
 THINK_PREFILL = QWEN36_PROFILE.prefill
 EMPTY_THINK = QWEN36_PROFILE.empty_think
-from src.model_profile import QWEN36_PROFILE, think_census
+from src.model_profile import model_profile, think_census
+QWEN36_PROFILE = model_profile("qwen36")
 
 
 class _Tok:
@@ -62,6 +64,19 @@ def test_expected_supervised_text_strips_each_turns_forced_head():
         "why\n</think>\n\na1<|im_end|>" "a2<|im_end|>")
     assert expected_supervised_text(NOTHINK_ROW, THINK_PREFILL, EMPTY_THINK) == \
         "answer<|im_end|>"
+
+
+def test_expected_supervised_text_final_keeps_only_the_last_turn():
+    # A par row (un-repaired first reply as context) or an agentic row (exploration
+    # turns as context) under `supervise: final`: the mask trains the last turn only,
+    # and the independent expectation must say the same or the gate refuses every such
+    # row -- which it did until 2026-09-05.
+    assert expected_supervised_text(THINK_ROW, THINK_PREFILL, EMPTY_THINK,
+                                    supervise="final") == "a2<|im_end|>"
+    census = gate_generation_boundary([THINK_ROW], _Tok(), max_length=10_000,
+                                      profile=QWEN36_PROFILE, thinking=True,
+                                      supervise=["final"])
+    assert census["turns"] == 2, "the census still polices every turn of the row"
 
 
 def test_think_census_classifies_turns():

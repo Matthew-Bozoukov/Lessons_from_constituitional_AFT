@@ -23,7 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 CONTROL = "#2F6DB5"  # validated categorical pair (dataviz six-checks, light surface)
 CONTROL_EDGE = "#1B4472"

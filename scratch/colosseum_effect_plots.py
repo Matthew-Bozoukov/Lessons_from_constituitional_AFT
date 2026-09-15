@@ -32,7 +32,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.utils import figure_path
+from src.naming import figure_path
 
 ROOT = Path("output/colosseum_jira")
 CONTROL, CONTROL_EDGE = "#2F6DB5", "#1B4472"

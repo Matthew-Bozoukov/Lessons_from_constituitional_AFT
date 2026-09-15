@@ -4,13 +4,13 @@ date: '2026-08-06'
 summary: 'Measured values for qwen3.6-27b-lora-table2-synthdoc-r64 in think mode: selection split size 500, selection n selected 72, selection fraction 0.144.'
 status: complete
 hf_source:
-  repo_id: LASR-Callum/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64
+  repo_id: dougalldeepmind/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64
   revision: 2498626826be450706102644f96059fc8a005f31
 tags:
   - auto-indexed
 models:
-  - LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
-target_model_id: LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+  - dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
+target_model_id: dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64
 metrics:
   selection_split_size:
     value: 500
@@ -57,6 +57,6 @@ metrics:
 | `n_failed` | 0 | count |
 | `images_disk_gb` | 92.79 | value |
 
-**Target:** `LASR-Callum/2026-08-04-qwen36-lora-table2-synthdoc-rank-64` · mode `think`
+**Target:** `dougalldeepmind/2026-08-04-qwen36-lora-table2-synthdoc-rank-64` · mode `think`
 
-Source: [`LASR-Callum/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/LASR-Callum/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64)
+Source: [`dougalldeepmind/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64`](https://huggingface.co/datasets/dougalldeepmind/2026-08-06-swebench-mini-qwen3-6-27b-lora-table2-synthdoc-r64)
