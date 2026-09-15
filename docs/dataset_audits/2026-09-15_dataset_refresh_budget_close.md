@@ -6,7 +6,7 @@
 Paid work closed at **$249.2113677**, below the authorized hard limit of $250.
 There are 11,605 physical calls in the shared ledger: 11,534 settled and 71 failed
 outputs with independently verified billing. No call is running and no uncertain
-cost reservation remains. API-reported charges sum to $249.2109417; the slightly
+cost reservation remains. API-reported charges sum to $249.2019417; the slightly
 higher conservative charged figure governs the cap. Both figures include earlier
 pilots, failed calls, repair attempts and reviewer probes. No further inference is
 authorized by this report.
@@ -98,10 +98,10 @@ changes and selection policies are explicit differences from DA. They must not b
 described as identical interventions except for stakes or morality.
 
 There is also a measured length difference. The final cached comparison uses all
-752 rows of the pinned new DA export and the incomplete706/631 retained pools;
-it is descriptive, not a matched716 comparison. Mean supervised tokens per row
-are **1175.35 for DA, 975.59 for low stakes, and1508.73 for nonmoral** (medians
-1158.5,985 and1496). Thus low stakes is about17% shorter and nonmoral about28%
+752 rows of the pinned new DA export and the incomplete 706/631 retained pools;
+it is descriptive, not a matched 716 comparison. Mean supervised tokens per row
+are **1175.35 for DA, 975.59 for low stakes, and 1508.73 for nonmoral** (medians
+1158.5, 985 and 1496). Thus low stakes is about 17% shorter and nonmoral about 28%
 longer than this DA reference. Equal row counts do not equal supervised-token
 exposure. No padding, trimming or token-based selection was applied; this needs
 explicit treatment in interpretation and any later training-control design.
@@ -131,4 +131,26 @@ the published bytes. Training and evaluation still require the user's separate
 confirmation. The versioned research archive preserves incomplete and failed
 work without exposing a default training split.
 
-Publication receipt and immutable archive revision will be added after verification.
+## Archive and reproducibility
+
+The [incomplete research archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit/tree/f455cc9a2224d65c3861fd83a7f57c4c49c8072a)
+is pinned at `f455cc9a2224d65c3861fd83a7f57c4c49c8072a`. It preserves53,813
+substantive source files in13 origin/evidence archives, plus the repository source
+snapshot at `2db7929fcb43d141057a77c71d88e66c1c3788ac`. The complete prepared
+snapshot has24 files totaling313,697,886 bytes, and its file-manifest SHA256 is
+`a10da071c9cdbf6def2717535207b762feded1cc1e5270c788dd6d75e3554012`.
+
+The first local preparation stopped on a conservative provenance-field check;
+its partial files and failure record are preserved. The successful second
+preparation verified every archived byte against its original inventory. This
+report corrects a transposed API-subtotal digit in the archived source report;
+the original ledger, public card and hard-cap exposure are unchanged.
+
+Remote verification confirmed exactly24 payload files plus the Hub-generated
+`.gitattributes`. All14 large-file SHA256 values and sizes match the local archive
+bytes; all10 small payload files were freshly downloaded without authentication
+and match both local bytes and Git blob hashes. Public access and the audit-only
+split were verified. The large archives were not downloaded a second time; their
+content-addressed remote hashes were compared with the fully verified local bytes.
+The small [publication receipt](2026-09-15_incomplete_archive_receipt.json) records
+the immutable revision and verification-report hash.

@@ -1,0 +1,16 @@
+{
+  "repo": "dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit",
+  "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit",
+  "revision": "f455cc9a2224d65c3861fd83a7f57c4c49c8072a",
+  "snapshot_path": "C:\\Users\\nikak\\source\\repos\\LASR\\teaching_claude_why_replication_dataset_refresh\\output\\2026-09-15_dataset_refresh_incomplete_archive_retry01",
+  "source_commit": "2db7929fcb43d141057a77c71d88e66c1c3788ac",
+  "files_manifest_sha256": "a10da071c9cdbf6def2717535207b762feded1cc1e5270c788dd6d75e3554012",
+  "status": "remote_hash_verified",
+  "verification_report": "C:\\Users\\nikak\\source\\repos\\LASR\\teaching_claude_why_replication_dataset_refresh\\output\\2026-09-15_dataset_refresh_incomplete_remote_verification.json",
+  "verification_report_sha256": "aa91a136c344e9efa3386896597417906585ad74fe42bf83180d043c1ef2912d",
+  "verified_at_utc": "2026-09-15T05:21:52.822008+00:00",
+  "ABOUTME": [
+    "Immutable public archive receipt for the incomplete dataset refresh.",
+    "Bulk evidence is on Hugging Face; this small receipt records publication and remote verification."
+  ]
+}

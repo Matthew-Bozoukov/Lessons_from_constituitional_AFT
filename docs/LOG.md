@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Dataset refresh closed below the hard budget, both arms incomplete
+
+**Method.** Continued the authorized parallel Sonnet refresh of moral low-stakes
+human advice and the original nine craft tensions, with explicit source, answer,
+grounding, independent-review and duplicate decisions preserved.
+**Result.** Retained research pools are706 low-stakes and631 nonmoral, short of716
+by10 and85. Shared conservative API exposure closed at **$249.2113677**, including
+pilots, failures and probes, with no active or uncertain calls. Native untruncated
+token/mask checks passed for the parent708/634 pools; final subsets preserve those
+exact row bytes. Mean supervised tokens differ from the full new DA752 reference:
+1175.35 for DA,975.59 for low stakes,1508.73 for nonmoral. Equal rows do not equal
+token exposure, and repeated scenario families remain a limitation.
+**Artifact.** [Incomplete audit archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit/tree/f455cc9a2224d65c3861fd83a7f57c4c49c8072a)
+preserves all phases, rejected outputs, billing proof, configs and code; it exposes
+an audit split, not a training split. See the [budget-close report](dataset_audits/2026-09-15_dataset_refresh_budget_close.md).
+**Next.** Additional generation requires a budget extension. Finish source and
+answer review, fill at least95 gaps, then select716 each and build the two exact
+716+9284 mixtures. No completed corpus or mixture, training or evaluation is claimed.
+
 ## 2026-09-15 — Sonnet-only continuation and factual-critic calibration
 
 **Authorization.** The user approved continued revisions, individual-row acceptance,
