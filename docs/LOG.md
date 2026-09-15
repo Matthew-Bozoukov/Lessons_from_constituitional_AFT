@@ -1,6 +1,35 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Multi-agent principle-10 organism trained: `2026-09-15-qwen36-0-da-multiagent-7`
+
+**Why.** The t10 corpus (entry below) says nothing about the multi-agent principle until a model
+is trained on it. This is that model: the da-7 recipe, with its 700 synthetic rows written
+against principle 10 alone. That makes it the counterpart of the nine-principle da-7 organism
+trained the same day.
+**Method.**
+- **Mixture.** `configs/data/mixture/da-multiagent.yaml` (6214d8a0) built
+  [`dougalldeepmind/2026-09-15-da-multiagent-7-mix`](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-da-multiagent-7-mix)
+  @ `8506b3d8`. It has 10,000 rows: 700 t10 rows (7.0% of rows, 11.2% of tokens), and the rest is
+  the 2026-09-08 nosynth base (@ `7e991f58`), unchanged.
+- **Training.** `configs/train/sft.yaml` with `model=qwen36 seed=0` and a pinned `data_revision`.
+  It ran on RunPod, 2×H200 with DDP, using dynamic batching (8,000-token budget). The
+  assistant-only loss covers 63.1% of tokens.
+
+**Result.** [`dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7`](https://huggingface.co/dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7)
+@ `4813395c`.
+- 625 steps in 2 h 39 min, train loss 0.8123. Recent 10k-row arms finished at 0.85–0.88.
+- `training_meta.json` stamps `thinking: true` and pins the dataset and base model.
+- RunPod cost about $30: 3 h 20 min at $9.18/hr. That includes about 20 idle minutes after the
+  push. A Claude Code session restart had killed both the local completion watcher and the
+  `runpod up` watchdog, so nothing noticed the finish until the next manual check.
+**Next.**
+1. Run the Hospital on the fixed harness against `dougalldeepmind/2026-09-15-qwen36-0-da-7` (the
+   nine-principle da-7 organism: same base, same share), with the tested arm in both coalition
+   seats.
+2. Run the Jira cooperation cell, to measure the teamwork cost.
+3. ODCV is expected to stay flat.
+
 ## 2026-09-15 — Multi-agent principle 10 corpus: 775 difficult-advice rows against the new trait alone
 
 **Why.** The Hospital results (branch `kn/multiagent-exploration`) show that difficult-advice
