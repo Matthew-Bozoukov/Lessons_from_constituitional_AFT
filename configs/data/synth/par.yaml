@@ -88,10 +88,11 @@ pipeline: par
 
 seed: 0
 
-# Difficult advice's alignment target, by the same path, cut the same way (byte-identical to
-# the claude_distilled_09_principles_mid_20260804 snapshot the archived recipe named). A test
-# pins all three lines to da.yaml's.
-constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+# Difficult advice's alignment target, by the same path, cut the same way. A test pins all
+# three lines to da.yaml's. Since 2026-09-14 that is the full-length neutral document (no
+# model or developer named), moved in step with da.yaml; the Claude-naming original is
+# constitutions/archive/claude_distilled_12_principles_mid/constitution.md.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 # What a good response of THIS document type looks like. Tone guidance, not policy: it
 # used to ride as a trailing section of the constitution file (the parser peeled it off
 # into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
@@ -959,6 +960,9 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
+    # No model or developer named in trained text (2026-09-14), as in difficult advice.
+    - \bclaude\b
+    - \banthropic\b
     # This recipe's own: the scaffold must leave no fingerprint on the trained turn.
     - target principle|the rubric|as (?:instructed|specified) above
     - ^\s*final (?:result|verdict)
