@@ -279,7 +279,7 @@ def probe_rates() -> dict | None:
     ]
     arms = sorted({r["arm"] for r in recs})
     hp.point(arms, hp.OUT / "_analysis")  # canonical() reads CELLS / ENV_LOGS per arm
-    recs = mp.canonical(recs)
+    recs = mp.canonical(mp.enrich(recs))  # the order midshift_probe.analyse() uses
     out: dict = {"n_probes": len(recs), "arms": {}}
     for arm in arms:
         out["arms"][arm] = {}
