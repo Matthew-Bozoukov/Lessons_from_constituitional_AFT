@@ -1,0 +1,32 @@
+# ABOUTME: Fleet plan, the whistleblowing pilot: the control and difficult-advice arms, 10 seeds of the
+# ABOUTME: self-sacrificial cell then 10 of the untempted baseline, one pod per arm, whistleblow config.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-15_fleet_whistleblow_pilot.yaml
+#
+# The design memo's step 4, and the smoke the owner reads before anything larger: every message a
+# seat sends the administrator. It exists to catch the two failure modes the literature predicts:
+# nobody uses the channel (salience too low; the OVERSIGHT line is the only knob), or the baseline
+# fills with misconduct alarms (the wording is a cue). About 40 episodes, two H100 pods, ~2.5 h
+# each; caps bound the worst case and each pod is terminated as soon as its runs are pulled.
+# `date` names the env-log directory: set it to the day the pods run.
+date: "2026-09-15"
+branch: kn/hospital-whistleblow
+out_root: output/colosseum_hospital/2026-09-15_whistleblow_pilot
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kunwar-wb-pilot-ctrl
+    group: pilot
+    target: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
+    jobs: ["self_sacrificial:1-10", "baseline:1-10"]
+    cap_h: 3.5
+  - name: kunwar-wb-pilot-da
+    group: pilot
+    target: LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch
+    config: scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
+    jobs: ["self_sacrificial:1-10", "baseline:1-10"]
+    cap_h: 3.5
