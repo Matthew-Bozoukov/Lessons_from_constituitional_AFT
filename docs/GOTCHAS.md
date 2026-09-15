@@ -3,6 +3,24 @@
 
 # GOTCHAS
 
+## Frozen dataset runners and budget-stop exception identity (2026-09-15)
+
+Launching `scratch/dataset_refresh/run.py` as a script creates its classes under
+`__main__`. Its per-row module imports `scratch.dataset_refresh.run`, creating a
+second `BudgetStop` class. At a lower batch spending ceiling, the latter module's
+specific exception handler did not catch the former class; the generic handler
+saved a failed terminal and queued candidates continued reaching the same
+pre-dispatch limit. The shared atomic ledger still refused calls over the applicable
+ceiling; this was a resume/state-classification defect, not unmetered API dispatch.
+
+Use `scratch/dataset_refresh/execute_imported.py` so the client and stages share one
+imported module. Existing frozen generation files remain unchanged. The narrow
+`resume_budget_stops.py` helper can archive only exact lower-ceiling reservation
+failures after checking frozen identity, all stage receipts, and settled known-cost
+physical calls. It preserves prior paid stages and failed evidence; it cannot reopen
+substantive rejects, uncertain billing, or provider-bound failures. Never reset the
+ledger or regenerate completed stages to resume a batch.
+
 ## Delegated-harm runtime and first-run defects (2026-09-11)
 
 This is hundreds of multi-turn workplace episodes, not 324 short answers. On one
