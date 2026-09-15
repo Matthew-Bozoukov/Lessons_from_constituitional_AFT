@@ -97,6 +97,8 @@ arm_labels:
     qwen36_table2_only_9284
   LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
     qwen36_difficult_advice_chunk_only_702
+  dougalldeepmind/2026-09-15-qwen36-0-da-7:
+    qwen36_difficult_advice_neutral_752
 
 # ── the judge: the SECONDARY measure ──────────────────────────────────────────
 # Regret is primary; this reads what the agents SAID. Kept because Colosseum's paper
