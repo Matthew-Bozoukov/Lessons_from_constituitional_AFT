@@ -1,0 +1,12 @@
+# ABOUTME: Freeze independent full reads of completed saved-input batches13 through15.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.prepare_campaign_reviews --config configs/data/audits/campaign-source-reviews-13-15.yaml
+batch_root: output/2026-09-15_nonmoral_saved_input_completion/batches
+output_root: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews
+batches: [batch_source_13, batch_source_14, batch_source_15]
+indices: [0, 1, 2, 3]
+batch_indices:
+  batch_source_15: [0]
+annotations: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/source_13_15_annotations.json
+review_config: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/config.json
+review_contract: output/2026-09-15_dataset_refresh_saved_input_pilot/independent_review_contract.json
+implementation_sha256: 750157eb02bab4a7e8a71d6f3154927ca5fd292fddc76f798646da84cf2a29d7

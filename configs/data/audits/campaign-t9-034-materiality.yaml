@@ -1,0 +1,7 @@
+# ABOUTME: Freeze independent reread adjudication of the tension-format constraint in t9_034.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.freeze_campaign_adjudication --config configs/data/audits/campaign-t9-034-materiality.yaml
+original_summary: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/batch_source_15/summary.json
+original_summary_sha256: cbea95b8f36783ba37a79fe181eaf98291f01f87615e58b1c2f85b3ece20daf5
+candidate_id: t9_034_v0
+annotation: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/t9_034_materiality_notes.json
+output: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/t9_034_materiality_adjudication.json
