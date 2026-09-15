@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Refreshed-control LoRA training launched in parallel
+
+**Method.** User authorized one seed0 Qwen3.6-27B rank64 LoRA per frozen refreshed
+mixture, each on its own2xH200 RunPod pod, and a$100 combined GPU ceiling. Both
+use the shared one-epoch/global16/8192 recipe and identical base revision. Full
+training inputs, owner/watchdog boundaries and intended model names are recorded
+in the [training record](training/2026-09-15_refreshed_controls.md).
+
+**Startup result.** An overlooked trainer guard rejected explicit uniform
+`supervise: all` before any optimizer step. Both failure logs were preserved and
+the pods terminated; combined estimated cost$0.9018. A narrow explicit boolean
+opt-in now admits intentional standard supervision while retaining the default
+ablation guard. Focused checks passed and both exact10000-row input censuses
+passed before restart; no dataset text, masks or optimizer recipe changed.
+Replacement runs are monitored under reduced per-arm caps that include previous
+startup costs. CUDA checks passed on exactly two H200s per replacement pod.
+
+**Status and next step.** Training processes have launched; this entry does not
+claim completed optimizer steps or adapters. Verify progress, saved artifacts and
+public payload hashes, then terminate owned resources. Evaluation still awaits
+separate user authorization. Known content and comparability limitations remain.
+
 ## 2026-09-15 — Interactive inspection surfaces residual example issues
 
 Preparing the user's searchable reader involved full reads of eight purposively
