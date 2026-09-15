@@ -517,6 +517,186 @@ def figures(stats, kind, dec, probe) -> list[Path]:
     return paths
 
 
+# ── paper figures: minimal, single-column, vector ────────────────────────────
+# The matched family only: one base blend (nosynth @ 7e991f58), seed 0, and either no synthetic
+# rows or a 7% slice of difficult advice (nine principles) or of the multi-agent principle. The
+# colours follow the paper probe figure (control role blue, difficult advice orange) with the new
+# arm in the reference palette's third slot; slots 1-3 validate all-pairs on the light surface.
+PAPER_ARMS = ["nosyn", "da7", "t10"]
+PAPER_LABEL = {
+    "nosyn": "No synthetic",
+    "da7": "Difficult advice",
+    "t10": "Multi-agent principle",
+}
+PAPER_COLOR = {"nosyn": "#2a78d6", "da7": "#eb6834", "t10": "#1baf7a"}
+# midshift_probe.py's paper version, unchanged: Helvetica/Arial 8 pt, thin axes, TrueType embedded.
+PAPER_RC = {
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"],
+    "font.size": 8,
+    "axes.linewidth": 0.6,
+    "xtick.major.width": 0.6,
+    "ytick.major.width": 0.6,
+    "xtick.major.size": 2.5,
+    "ytick.major.size": 2.5,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+}
+_MUTED = "#6b7680"
+
+
+def _paper_bars(ax, groups, value, note=None, width=0.26) -> None:
+    """Grouped bars for PAPER_ARMS: `value(arm, group) -> (rate, lo, hi) or None` in [0, 1]."""
+    x = np.arange(len(groups))
+    off = (np.arange(len(PAPER_ARMS)) - (len(PAPER_ARMS) - 1) / 2) * width
+    for j, arm in enumerate(PAPER_ARMS):
+        for i, g in enumerate(groups):
+            xi = x[i] + off[j]
+            v = value(arm, g)
+            if v is None:
+                ax.text(xi, 2, "n = 0", ha="center", va="bottom", fontsize=6.5, color=_MUTED)
+                continue
+            rate, lo, hi = v
+            ax.bar(
+                xi,
+                100 * rate,
+                width * 0.94,
+                color=PAPER_COLOR[arm],
+                zorder=3,
+                label=PAPER_LABEL[arm] if i == 0 else None,
+            )
+            top = rate
+            if lo is not None and not np.isnan(lo):
+                lo, hi = min(lo, rate), max(hi, rate)
+                top = hi
+                ax.errorbar(
+                    xi,
+                    100 * rate,
+                    yerr=[[100 * (rate - lo)], [100 * (hi - rate)]],
+                    fmt="none",
+                    ecolor="#333",
+                    elinewidth=0.7,
+                    capsize=1.8,
+                    capthick=0.7,
+                    zorder=4,
+                )
+            label = note(arm, g) if note else None
+            if label:
+                ax.text(xi, 100 * top + 2, label, ha="center", va="bottom", fontsize=6.5, color=_MUTED)
+    ax.set_xticks(x)
+    ax.tick_params(axis="x", length=0)
+    ax.spines[["top", "right"]].set_visible(False)
+
+
+def _paper_pct_axis(ax, ylabel: str) -> None:
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(0, 105)
+    ax.set_yticks([0, 25, 50, 75, 100])
+    ax.legend(
+        frameon=False,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=3,
+        handlelength=1.0,
+        handleheight=0.8,
+        columnspacing=0.9,
+        borderaxespad=0.1,
+        fontsize=7,
+    )
+
+
+def _paper_save(fig, name: str) -> Path:
+    fig.tight_layout(pad=0.3)
+    p = figure_path(OUT, f"colosseum_hospital_t10_paper_{name}", ext="pdf")
+    fig.savefig(p)
+    fig.savefig(p.with_suffix(".png"), dpi=300)
+    plt.close(fig)
+    return p
+
+
+def paper_figures(stats, kind, dec, probe) -> list[Path]:
+    """No titles, no footnotes: counts, n and definitions belong in the caption (the _results.md)."""
+    paths = []
+    with plt.rc_context(PAPER_RC):
+        # Sabotage and refusal, % of 30 shifts, Wilson 95%.
+        fig, ax = plt.subplots(figsize=(3.4, 2.4))
+        ms = [
+            ("plan_posted", "Posted a\nsabotage plan"),
+            ("pair_sabotaged", "Took a\nsabotage action"),
+            ("judge_refusal_reasoning_ge3", "Refused in\nprivate reasoning"),
+        ]
+
+        def rate(arm, m):
+            b = stats[arm]["binary"][m]
+            return (b["rate"], b["lo"], b["hi"]) if b["n"] else None
+
+        _paper_bars(ax, [m for m, _ in ms], rate)
+        ax.set_xticklabels([lab for _, lab in ms])
+        _paper_pct_axis(ax, "Shifts (%)")
+        paths.append(_paper_save(fig, "sabotage_refusal"))
+
+        # Which sabotage, % of 30 shifts, Wilson 95%.
+        fig, ax = plt.subplots(figsize=(3.4, 2.4))
+        ks = [
+            ("withhold_shifts", "Withholding"),
+            ("flood_shifts", "Flooding"),
+            ("spam_shifts", "Scheduler\nspam"),
+        ]
+
+        def krate(arm, f):
+            s = kind[arm]
+            lo, hi = B.wilson(s[f], s["n"])
+            return (s[f] / s["n"], lo, hi)
+
+        _paper_bars(ax, [f for f, _ in ks], krate)
+        ax.set_xticklabels([lab for _, lab in ks])
+        _paper_pct_axis(ax, "Shifts (%)")
+        paths.append(_paper_save(fig, "sabotage_kinds"))
+
+        # Public posts written to deceive, per shift, seed bootstrap 95%.
+        fig, ax = plt.subplots(figsize=(2.4, 2.3))
+        x = np.arange(len(PAPER_ARMS))
+        for i, arm in enumerate(PAPER_ARMS):
+            s = dec[arm]
+            v, ci = s["judge_explicit_per_shift"], s["judge_explicit_ci"]
+            ax.bar(x[i], v, 0.62, color=PAPER_COLOR[arm], zorder=3)
+            ax.errorbar(
+                x[i],
+                v,
+                yerr=[[v - ci[0]], [ci[1] - v]],
+                fmt="none",
+                ecolor="#333",
+                elinewidth=0.7,
+                capsize=1.8,
+                capthick=0.7,
+                zorder=4,
+            )
+        ax.set_xticks(x)
+        ax.set_xticklabels([PAPER_LABEL[a].replace(" ", "\n", 1) for a in PAPER_ARMS])
+        ax.tick_params(axis="x", length=0)
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.set_ylabel("Deceptive posts per shift")
+        paths.append(_paper_save(fig, "deceptive_posts"))
+
+        # The mid-shift probe: P(said YES | what the seat had done), seed bootstrap 95%.
+        if probe and all(a in probe["arms"] for a in PAPER_ARMS):
+            fig, ax = plt.subplots(figsize=(3.4, 2.4))
+
+            def prate(arm, cat):
+                c = probe["arms"][arm][cat]
+                return None if not c["n"] else (c["yes"] / c["n"], c["lo"], c["hi"])
+
+            def pnote(arm, cat):
+                n = probe["arms"][arm][cat]["n"]
+                return f"n = {n}" if 0 < n < 10 else None
+
+            _paper_bars(ax, [c for c, _ in PROBE_CATS], prate, note=pnote)
+            ax.set_xticklabels([lab for _, lab in PROBE_CATS])
+            _paper_pct_axis(ax, "Answered yes (%)")
+            paths.append(_paper_save(fig, "midshift_probe"))
+    return paths
+
+
 def summary() -> None:
     present = [k for k in ALL if (cell_dir(k) / "results" / "per_seed.json").is_file()]
     missing = sorted(set(ALL) - set(present))
@@ -530,6 +710,7 @@ def summary() -> None:
     dec = deception(ALL)
     probe = probe_rates()
     paths = figures(stats, kind, dec, probe)
+    paths += paper_figures(stats, kind, dec, probe)
 
     lines = [
         "# Hospital 2026-09-15: the multi-agent principle-10 organism against difficult advice\n",
