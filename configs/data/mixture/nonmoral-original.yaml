@@ -1,5 +1,5 @@
 # ABOUTME: Exact historical 684 craft conversations plus the frozen 9284 September replay rows.
-# ABOUTME: Run: uv run --no-sync python scratch/nonmoral/reuse_original.py --config configs/data/mixture/nonmoral-original-7.yaml --out output/nonmoral_original_reuse/mixture
+# ABOUTME: Run: uv run --no-sync python scratch/nonmoral/reuse_original.py --config configs/data/mixture/nonmoral-original.yaml --out output/nonmoral_original_reuse/mixture
 style: nonmoral-original
 seed: 0
 synthetic_rows: 684
