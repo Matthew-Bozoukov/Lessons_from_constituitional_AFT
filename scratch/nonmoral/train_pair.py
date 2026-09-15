@@ -1,4 +1,4 @@
-# ABOUTME: Runs one or two authorized SFT conditions on one protected 2xH200 pod.
+# ABOUTME: Runs one or two authorized SFT conditions on one protected one- or two-H200 pod.
 # ABOUTME: Uses the shared trainer/provisioner, durable local monitoring and verified owned-pod teardown.
 import argparse
 import json
@@ -41,7 +41,10 @@ def commands(plan):
     for arm in plan["arms"]:
         assert re.fullmatch(r"[a-f0-9]{40}", arm["data_revision"])
         assert re.fullmatch(r"[a-f0-9]{40}", plan["base_model_revision"])
-        argv = ["uv", "run", "torchrun", "--nproc_per_node=2",
+        count = int(plan.get('gpu_count', 2))
+        assert count in (1, 2), 'Only one or two H200s are supported'
+        launcher = ["uv", "run", "--no-sync", "python"] if count == 1 else ["uv", "run", "torchrun", "--nproc_per_node=2"]
+        argv = [*launcher,
                 "scripts/train/train_lora.py", "--config", "configs/train/sft.yaml",
                 "model=qwen36", "seed=0", "wandb=false", "constitution="+plan.get('constitution','none'),
                 "data_repo=" + arm["data_repo"], "data_revision=" + arm["data_revision"],
@@ -52,15 +55,25 @@ def commands(plan):
     return result
 
 
+def budget_limits(plan):
+    count = int(plan.get('gpu_count', 2))
+    assert count in (1, 2)
+    budget = float(plan.get('gpu_budget_usd', 60))
+    assert 20 <= budget <= 60, 'Bounded SFT allocation must be $20..$60'
+    rate_ceiling = 5.0 * count
+    lifetime = int((budget - 2) / rate_ceiling * 3600)
+    if count == 2:
+        lifetime = min(MAX_LIFETIME_S, lifetime)
+    return count, budget, rate_ceiling, lifetime
+
+
 def run(plan_path, out):
     load_dotenv(ROOT / ".env")
     assert hf_org() == "dougalldeepmind"
     plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
     assert plan.get("approved_for_training") is True
     cmd = commands(plan)
-    gpu_budget = float(plan.get('gpu_budget_usd', 60))
-    assert 20 <= gpu_budget <= 60, 'Bounded SFT allocation must be $20..$60'
-    max_lifetime_s = min(MAX_LIFETIME_S, int((gpu_budget - 2) / 10 * 3600))
+    gpu_count, gpu_budget, rate_ceiling, max_lifetime_s = budget_limits(plan)
     recovery_reserve_s=int(plan.get('recovery_reserve_s',RECOVERY_RESERVE_S))
     assert RECOVERY_RESERVE_S <= recovery_reserve_s < max_lifetime_s
     run_name = plan.get('run_name', 'nika-nonmoral-paired-train')
@@ -86,18 +99,18 @@ def run(plan_path, out):
         created = time.time()
         state["created_epoch"] = created
         dump(out / "status.json", state)
-        # Price ceiling below is $10/h inclusive of a conservative disk allowance.
+        # Price ceiling below includes a conservative disk allowance.
         # Reserve $2 for API latency and teardown. Never leave bootstrap unprotected.
         dog = runpod.start_watchdog(pod_id, max_lifetime_s, out / "watchdog.log")
         info = runpod.call("GET", "/pods/" + pod_id)
         state["gpu_hourly_usd"] = float(info["costPerHr"])
         state["budget_hourly_usd"] = state["gpu_hourly_usd"] + 0.10
-        assert state["budget_hourly_usd"] <= 10, "Quoted pair exceeds reserved hourly ceiling"
+        assert state["budget_hourly_usd"] <= rate_ceiling, "Quote exceeds reserved hourly ceiling"
         dump(out / "status.json", state)
 
     try:
         rendered = runpod.up(run_name, train="configs/train/sft.yaml",
-                             model="qwen36", count=2, push_env=True,
+                             model="qwen36", count=gpu_count, push_env=True,
                              max_hours=max_lifetime_s/3600,
                              countries=plan.get('countries',''),
                              on_provisioned=registered)
@@ -114,9 +127,9 @@ def run(plan_path, out):
         assert runpod.wait_bootstrapped(state["owned_pod"], timeout_s=1800), "Bootstrap timed out"
         cuda = remote._ssh("cd /root/work && uv run python -c " + shlex.quote(
             "import json, torch; assert torch.cuda.is_available(); "
-            "assert torch.cuda.device_count()==2; "
-            "assert all(torch.ones(8,device=f'cuda:{i}').sum().item()==8 for i in range(2)); "
-            "print(json.dumps([torch.cuda.get_device_name(i) for i in range(2)]))"), timeout=180)
+            f"assert torch.cuda.device_count()=={gpu_count}; "
+            f"assert all(torch.ones(8,device=f'cuda:{{i}}').sum().item()==8 for i in range({gpu_count})); "
+            f"print(json.dumps([torch.cuda.get_device_name(i) for i in range({gpu_count})]))"), timeout=180)
         assert "H200" in cuda
         state["cuda_check"] = cuda.strip()
         remote_dir = "/root/work/output/nonmoral-paired-supervision"
@@ -244,7 +257,7 @@ print(json.dumps(r))
             state["remaining_pods"] = [{k:p.get(k) for k in ("id","name","costPerHr")}
                                        for p in runpod.active_pods()]
             state["elapsed_s"] = time.time()-created
-            state["estimated_gpu_usd"] = state["elapsed_s"]/3600*state.get("budget_hourly_usd",10)
+            state["estimated_gpu_usd"] = state["elapsed_s"]/3600*state.get("budget_hourly_usd",rate_ceiling)
             from account_snapshot import snapshot
             try:
                 state["accounts_after"] = snapshot()
