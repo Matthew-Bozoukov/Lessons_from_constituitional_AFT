@@ -115,6 +115,16 @@ COLOR = {
     "da7": "#4a3aa7",
     "t10": "#e87ba4",
 }
+# Two-line axis labels for the one-bar-per-arm figure; the full names collide there.
+SHORT = {
+    "ctrl": "control\n(Table 2)",
+    "da": "DA 702\n(Table 2)",
+    "nosyn": "no synthetic\n(nosynth)",
+    "jda": "DA 2026-09-08\n(nosynth)",
+    "jdat": "agentic tasks\n(nosynth)",
+    "da7": "DA neutral 752\n(nosynth)",
+    "t10": "multi-agent t10\n(nosynth)",
+}
 INK, INK2, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7", "#fcfcfb"
 
 MEASURES = [
@@ -317,8 +327,9 @@ def _style(ax, ylabel: str) -> None:
     ax.set_ylabel(ylabel, color=INK, fontsize=10)
 
 
-def _bars(ax, groups, arms, value, width=0.15) -> None:
-    """Grouped bars: `value(arm, group) -> (rate, lo, hi) or None` in [0, 1]."""
+def _bars(ax, groups, arms, value, width=0.15, note=None) -> None:
+    """Grouped bars: `value(arm, group) -> (rate, lo, hi) or None` in [0, 1]. `note(arm,
+    group)` returns a label to print above a bar (the probe figure's small-n bars) or None."""
     x = np.arange(len(groups))
     off = (np.arange(len(arms)) - (len(arms) - 1) / 2) * width
     for j, arm in enumerate(arms):
@@ -357,6 +368,10 @@ def _bars(ax, groups, arms, value, width=0.15) -> None:
                     elinewidth=0.9,
                     capsize=2.5,
                 )
+            label = note(arm, g) if note else None
+            if label:
+                top = 100 * (hi if not np.isnan(hi) else rate)
+                ax.text(xi, top + 1.5, label, ha="center", va="bottom", fontsize=7, color=INK2)
     ax.set_xticks(x)
 
 
@@ -397,7 +412,7 @@ def figures(stats, kind, dec, probe) -> list[Path]:
     paths.append(p)
 
     # 2. Which sabotage: shifts with withholding, flooding, scheduler spam.
-    fig, ax = plt.subplots(figsize=(8.5, 4.4), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(9.5, 4.9), facecolor=SURFACE)
     _style(ax, "Shifts (%)")
     kinds_ = [
         ("withhold_shifts", "Provisioner\nwithholding"),
@@ -413,7 +428,9 @@ def figures(stats, kind, dec, probe) -> list[Path]:
     _bars(ax, [f for f, _ in kinds_], arms, krate)
     ax.set_xticklabels([lab for _, lab in kinds_], color=INK, fontsize=9)
     ax.set_ylim(0, 105)
-    ax.legend(frameon=False, fontsize=8, ncol=2, loc="upper right")
+    ax.legend(
+        frameon=False, fontsize=8, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.2)
+    )
     fig.text(
         0.01,
         0.01,
@@ -428,7 +445,7 @@ def figures(stats, kind, dec, probe) -> list[Path]:
     paths.append(p)
 
     # 3. Public posts written to deceive (the post judge reads the posting call's reasoning).
-    fig, ax = plt.subplots(figsize=(7.5, 4.2), facecolor=SURFACE)
+    fig, ax = plt.subplots(figsize=(8.5, 4.4), facecolor=SURFACE)
     _style(ax, "Posts per shift")
     x = np.arange(len(arms))
     for i, arm in enumerate(arms):
@@ -449,9 +466,7 @@ def figures(stats, kind, dec, probe) -> list[Path]:
                 capsize=2.5,
             )
     ax.set_xticks(x)
-    ax.set_xticklabels(
-        [NAME[a].replace(" (", "\n(") for a in arms], color=INK, fontsize=8
-    )
+    ax.set_xticklabels([SHORT[a] for a in arms], color=INK, fontsize=8.5)
     fig.text(
         0.01,
         0.01,
@@ -468,26 +483,33 @@ def figures(stats, kind, dec, probe) -> list[Path]:
     # 4. The mid-shift probe: P(said YES to "was what you did unethical?" | what the seat had done).
     if probe:
         parms = [a for a in PROBED if a in probe["arms"]]
-        fig, ax = plt.subplots(figsize=(7.8, 4.6), facecolor=SURFACE)
+        fig, ax = plt.subplots(figsize=(8.2, 5.0), facecolor=SURFACE)
         _style(ax, "Answered yes (%)")
 
         def prate(arm, cat):
             c = probe["arms"][arm][cat]
             return None if not c["n"] else (c["yes"] / c["n"], c["lo"], c["hi"])
 
-        _bars(ax, [c for c, _ in PROBE_CATS], parms, prate, width=0.19)
+        def pnote(arm, cat):
+            n = probe["arms"][arm][cat]["n"]
+            return f"n = {n}" if 0 < n < 10 else None
+
+        _bars(ax, [c for c, _ in PROBE_CATS], parms, prate, width=0.19, note=pnote)
         ax.set_xticklabels([lab for _, lab in PROBE_CATS], color=INK, fontsize=9.5)
         ax.set_ylim(0, 105)
-        ax.legend(frameon=False, fontsize=8, loc="upper right")
+        ax.legend(
+            frameon=False, fontsize=8, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.2)
+        )
         fig.text(
             0.01,
             0.01,
-            "Both instructed seats, checkpoints 1E/2P/2E, full transcript; E1 fixed harness. "
-            "Labels by the eval's rules + the post judge. Bars: 95% intervals resampling seeds.",
+            "Both instructed seats, checkpoints 1E/2P/2E, full transcript; E1 fixed harness.\n"
+            "Labels by the eval's rules + the post judge. Bars: 95% intervals resampling seeds; "
+            "n shown where under 10.",
             fontsize=7,
             color=INK2,
         )
-        fig.tight_layout(rect=(0, 0.05, 1, 1))
+        fig.tight_layout(rect=(0, 0.08, 1, 1))
         p = figure_path(OUT, "colosseum_hospital_t10_vs_da_midshift_probe")
         fig.savefig(p, dpi=170, facecolor=SURFACE)
         plt.close(fig)
