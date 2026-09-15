@@ -1371,6 +1371,94 @@ def analyse() -> None:
     fig.savefig(path5, dpi=160)
     plt.close(fig)
 
+    # Paper version of the pooled panel: no title, no footnote, single-column size, vector
+    # output with TrueType fonts embedded. Counts and definitions belong in the caption.
+    paper_rc = {
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"],
+        "font.size": 8,
+        "axes.linewidth": 0.6,
+        "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6,
+        "xtick.major.size": 2.5,
+        "ytick.major.size": 2.5,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+    with plt.rc_context(paper_rc):
+        fig, ax = plt.subplots(figsize=(3.4, 2.3))
+        x = np.arange(len(pooled_cats))
+        for j, arm in enumerate(("control", "treatment")):
+            for ci, (cat, _) in enumerate(pooled_cats):
+                rs = [
+                    r
+                    for r in recs
+                    if r["arm"] == arm
+                    and r["seat"] in ("prov", "triage")
+                    and r["variant"] == "full"
+                    and cat in categories(r)
+                ]
+                xi = x[ci] + (j - 0.5) * 0.38
+                if not rs:
+                    ax.text(
+                        xi,
+                        2,
+                        "n = 0",
+                        ha="center",
+                        va="bottom",
+                        fontsize=6.5,
+                        color="#6b7680",
+                    )
+                    continue
+                p = sum(r["verdict"] == "yes" for r in rs) / len(rs)
+                ax.bar(xi, 100 * p, 0.36, color=colors[arm], zorder=3)
+                if len({r["seed"] for r in rs}) >= 2:
+                    lo, hi = seed_boot(rs)
+                    lo, hi = min(lo, p), max(hi, p)
+                    ax.errorbar(
+                        xi,
+                        100 * p,
+                        yerr=[[100 * (p - lo)], [100 * (hi - p)]],
+                        fmt="none",
+                        ecolor="#333",
+                        elinewidth=0.7,
+                        capsize=1.8,
+                        capthick=0.7,
+                        zorder=4,
+                    )
+        ax.set_xticks(x)
+        ax.set_xticklabels(
+            [
+                "Posted plan,\nno action",
+                "Took sabotage\naction",
+                "Did nothing\nmisaligned",
+            ]
+        )
+        ax.tick_params(axis="x", length=0)
+        ax.set_ylabel("Answered yes (%)")
+        ax.set_ylim(0, 105)
+        ax.set_yticks([0, 25, 50, 75, 100])
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.legend(
+            handles=[
+                Patch(color=colors["control"], label="Control"),
+                Patch(color=colors["treatment"], label="Difficult advice"),
+            ],
+            frameon=False,
+            loc="upper right",
+            handlelength=1.0,
+            handleheight=0.8,
+            borderaxespad=0.2,
+            fontsize=7,
+        )
+        fig.tight_layout(pad=0.3)
+        path6 = figure_path(
+            ANALYSIS, "colosseum_hospital_midshift_probe_yes_given_act_paper", ext="pdf"
+        )
+        fig.savefig(path6)
+        fig.savefig(path6.with_suffix(".png"), dpi=300)
+        plt.close(fig)
+
     kind_cats = [
         ("sabotage: withhold", "withheld IV kits\nor PPE\n(provisioner)"),
         ("sabotage: flood", "flooded a\nhospital\n(provisioner)"),
@@ -1417,11 +1505,12 @@ def analyse() -> None:
                 "yes_given_act": str(path3),
                 "yes_given_act_kind": str(path4),
                 "yes_given_act_both_seats": str(path5),
+                "yes_given_act_paper": str(path6),
             },
             indent=1,
         )
     )
-    print(f">>> figures {path1} {path2} {path3} {path4} {path5}")
+    print(f">>> figures {path1} {path2} {path3} {path4} {path5} {path6}")
 
 
 def main() -> None:
