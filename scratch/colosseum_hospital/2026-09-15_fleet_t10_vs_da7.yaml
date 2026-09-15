@@ -1,0 +1,45 @@
+# ABOUTME: Fleet plan, 2026-09-15: the multi-agent principle-10 organism and its matched nine-principle DA
+# ABOUTME: organism on the E1 combined harness, self-sacrificial only, two pods per arm (seeds 1-15, 16-30).
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-15_fleet_t10_vs_da7.yaml
+#
+# Same config, peer and seeds as the 2026-09-14 E1 cells, so these two cells sit beside E1's five.
+# Both arms were trained on 2026-09-15 on the 2026-09-08 nosynth base @ 7e991f58, each with a 7% slice:
+#   t10  = difficult advice written against principle 10 alone
+#          (constitutions/experimental/claude_distilled_10_principles_multiagent/)
+#   da-7 = the neutral 752 DA corpus, nine principles; the DA baseline since 2026-09-15
+# No baseline job, because only the self-sacrificial condition was asked for. The fleet
+# terminates each pod as soon as its runs are pulled.
+date: "2026-09-15"
+branch: worktree-kunwar-multiagent-trait
+out_root: output/colosseum_hospital/2026-09-15
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kunwar-h15-t10-a
+    group: fixed
+    target: dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 2.5
+  - name: kunwar-h15-t10-b
+    group: fixed
+    target: dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 2.5
+  - name: kunwar-h15-da7-a
+    group: fixed
+    target: dougalldeepmind/2026-09-15-qwen36-0-da-7
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 2.5
+  - name: kunwar-h15-da7-b
+    group: fixed
+    target: dougalldeepmind/2026-09-15-qwen36-0-da-7
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 2.5

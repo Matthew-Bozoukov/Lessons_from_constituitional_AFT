@@ -67,6 +67,15 @@ arm_labels:
     qwen36_unfiltered_difficult_advice_fixed
   dougalldeepmind/2026-09-08-qwen36-0-dat-7:
     qwen36_unfiltered_difficult_agentic_task_fixed
+  # A third family, seed 0, trained 2026-09-15 on the SAME nosynth mixture revision (@ 7e991f58)
+  # as the second. Each adds a 7% slice. For da-7 it is the neutral 752 difficult-advice corpus
+  # (nine principles; the DA baseline since 2026-09-15). For da-multiagent-7 it is the
+  # multi-agent principle-10 corpus (docs/LOG.md 2026-09-15). These two compare with each other
+  # and with the second family, since the base blend is the same.
+  dougalldeepmind/2026-09-15-qwen36-0-da-7:
+    qwen36_difficult_advice_neutral_752_fixed
+  dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7:
+    qwen36_difficult_advice_multiagent_t10_fixed
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:
