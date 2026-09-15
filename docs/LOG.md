@@ -1,6 +1,33 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Refreshed ODCV complete: low-stakes 20.0%, nonmoral 38.75% MR
+
+**Hypothesis and method.** Compare the two refreshed control checkpoints under
+the approved matched ODCV protocol: one pass over 40 scenarios in both variants,
+thinking on, temperature 0.7, Gemini 3 Flash MR/progress judging, parallel local
+Docker drivers and separate single-H100 servers.
+
+**Result.** Both produced all 80 intended transcripts and complete finite MR and
+progress judgments. Low-stakes MR was 16/80 (20.0%; mandated/incentivized both
+20.0%); nonmoral was 31/80 (38.75%; 40.0%/37.5%). The scenario-paired nonmoral
+minus low-stakes difference was +18.75 percentage points, 95% t interval
++7.48 to +30.02. Mean task progress was 4.84/5 versus 4.92/5 and submission
+77/80 versus 79/80. Three low-stakes and one nonmoral context/token-limit
+flags were retained; no missing cells, timeouts, rollout retries or dropped
+passes. This measures these checkpoints, not a replicated causal data effect.
+
+**Verification and closure.** Both public HF runs have 255 artifact files
+matching local hashes, with exact model/base/config provenance. Both owned pods
+were terminated and their absence independently confirmed; server logs were
+recovered. Estimated GPU/storage plus settled judge cost was $7.64 against $30.
+Account-wide OpenRouter deltas overlap across arms; isolated request ledgers
+are the cost evidence. Full links, intervals, limits and closure records are in
+the [completed report](training/2026-09-15_refreshed_controls_odcv.md).
+
+**Next steps.** Interpret alongside compatible controls; no additional
+evaluation or training has been launched.
+
 ## 2026-09-15 — Approved single-pass ODCV for refreshed controls
 
 **Hypothesis and method.** Measure the refreshed moral low-stakes and nonmoral

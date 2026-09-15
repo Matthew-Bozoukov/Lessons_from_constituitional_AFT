@@ -66,3 +66,76 @@ Completion requires all 80 intended cells accounted for per arm, explicit missin
 or partial outcomes, cached MR/progress judgments, full readable rollouts,
 published file verification, and provider-confirmed termination of both owned
 pods. Initial readiness is not a completed evaluation claim.
+
+## Completed results and interpretation
+
+Both evaluations completed the intended single pass: 40 mandated and 40
+incentivized cells each, all 160 transcripts nonempty, all 320 MR/progress judge
+calls settled with finite scores, no missing cells, timeouts, rollout retries,
+reconstruction, or dropped passes. The first scheduled cells passed and were
+counted once. No additional behavioural samples were generated.
+
+| Metric | Moral low-stakes | Nonmoral advice |
+|---|---:|---:|
+| Overall MR (severity >= 3) | 16/80 = 20.00% | 31/80 = 38.75% |
+| Mandated MR | 8/40 = 20.0% | 16/40 = 40.0% |
+| Incentivized MR | 8/40 = 20.0% | 15/40 = 37.5% |
+| Overall MR 95% scenario interval | 11.0–33.7% | 25.8–53.6% |
+| Mean task-progress score | 4.84/5 | 4.92/5 |
+| Task progress >= 3 | 77/80 = 96.25% | 79/80 = 98.75% |
+| Submission tool called | 77/80 = 96.25% | 79/80 = 98.75% |
+| Context/token limit flagged | 3 | 1 |
+
+Nonmoral minus low-stakes MR is **+18.75 percentage points**, with a paired
+95% interval of **+7.48 to +30.02 points**. This calculation pairs the same 40
+base scenarios across models, averages both variants within each scenario, and
+uses a Student-t interval with 39 degrees of freedom. Condition-specific paired
+differences are +20.0 points (mandated; 5.16–34.84) and +17.5 points
+(incentivized; 5.19–29.81). These fixed-checkpoint results favor low-stakes on
+this evaluation; one training seed and one rollout per cell cannot isolate a
+dataset-property effect or measure training-seed variability. Task progress and
+submission measure task pursuit, not ethical conduct. No fresh DA or base-model
+control was collected in this run; the automatically embedded paper baseline is
+not a newly matched control.
+
+The limit-flagged outcomes were retained and judged, not retried: low-stakes
+mandated Healthcare-Appointment-Optimizer, incentivized
+Ai-Transport-Fleet-Safety-Vs-Efficiency, and incentivized
+Health-Data-Compliance-Analyst; nonmoral mandated
+Healthcare-Appointment-Optimizer. No rollout reached cycle 50. One low-stakes
+progress score was capped at 4 for missing submission; no nonmoral score required
+that cap. An infrastructure status of `ok` does not mean an unlimited transcript
+or ethically successful behavior.
+
+## Publication, spending, and closure
+
+- [Low-stakes evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-odcv-qwen36-0-da-lowstakes-refresh-7)
+  @ `6e59bb706e48dcbdbb594ac66074db06b38e6e2c`.
+- [Nonmoral evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-odcv-qwen36-0-nonmoral-advice-7)
+  @ `7bcb4fbe0a00a84a24b79037c0640489b3f9ed1d`.
+
+All 255 artifact files per publication matched local bytes using Hub Git-blob
+SHA-1 or LFS SHA-256 identities and sizes (510 files total; auto-created
+`.gitattributes` excluded). Both complete rollouts/results/metadata layouts,
+discovery tags, exact adapter/base revisions, configuration and code commit
+`ce6ef5811faba18bad5263cb53b884a944e5a54e` were verified. The verification script
+is `scratch/dataset_refresh/verify_odcv_completion.py`; detailed manifests and
+paired calculations are under the run root in `publication_verified.json`
+(per owner) and `verified_comparison.json`.
+
+Estimated GPU/storage cost through owner cleanup was $2.851157 low-stakes and
+$3.067718 nonmoral. Settled per-request judge ledgers total $0.834606 and
+$0.886452 respectively. Combined estimated cost is **$7.64**, below the $30
+ceiling; GPU/storage is an estimate, not an itemized provider invoice. The
+pipeline's account-wide OpenRouter before/after deltas overlap across the
+parallel arms and must not be used as per-run costs; use the isolated ledgers.
+The initial nonmoral allocation returned HTTP 500 without allocating a pod;
+inventory was checked before the successful retry. No rollout was duplicated.
+
+Both owners retrieved and hash-verified their small boot/server log archives and
+terminated only their own pods (`vc9lp1suhmgvmj`, `21g08ehh43p14g`). A subsequent
+provider inventory confirmed both absent. The shared account balance at closure
+was $208.830938, with $12.727/hour belonging to other pods left untouched. The
+temporary sleep-inhibition helper was told to exit after owned-resource closure.
+Provider evidence is in `provider_closure.json`; monitoring is retired after this
+report and branch push are complete.
