@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: One-shot setup of a `runpod up --eval` pod for colosseum_hospital: this repo at a
-# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all nine patches, smoke.
+# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all ten patches, smoke.
 #
 #   bash scratch/colosseum_hospital/pod_bootstrap.sh root@<ip>:<port> <branch> <sha>
 #
@@ -66,28 +66,35 @@ DEPS="$(/root/work/.venv/bin/python -c 'import tomllib; print(" ".join(tomllib.l
 uv pip install --python /root/work/.venv/bin/python --quiet ${DEPS}
 
 echo ">>> terrarium-agents fixes into the venv's site-packages"
-# terrarium-agents 0.1.1 is a PyPI wheel, so its patches land in site-packages, the
-# 2026-09-13 one on top of the 2026-09-09 one, the 2026-09-15 one on top of both.
+# terrarium-agents 0.1.1 is a PyPI wheel, so its patches land in site-packages, in order:
+# the 2026-09-09 fixes, the 2026-09-13 re-ask switches, the 2026-09-15 no-simulation cut,
+# then the 2026-09-15 whistleblowing study, which was cut on top of the no-simulation patch
+# (both rewrite HospitalPrompts.get_system_prompt, so it applies after it and only after it).
 # Idempotent, read from the newest down: a patch reverse-applies cleanly only when it is
-# the newest one in (each rewrites the stamp line of the one before). `uv sync` above
-# removes packages the lock does not know, so a re-run reinstalls the wheel and needs
-# every patch again.
+# the newest one in. `uv sync` above removes packages the lock does not know, so a re-run
+# reinstalls the wheel and needs every patch again.
 SITE="$(/root/work/.venv/bin/python -c 'import terrarium, os; print(os.path.dirname(terrarium.__path__[0]))')"
 TPATCH=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes.patch
 TPATCH2=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_2.patch
+TPATCH_NOSIM=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch
 TPATCH3=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_3.patch
 if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH3}" >/dev/null 2>&1; then
-    echo "    all three already applied in ${SITE}"
+    echo "    all four already applied in ${SITE}"
 else
-    if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH2}" >/dev/null 2>&1; then
-        echo "    2026-09-09 and 2026-09-13 patches already applied in ${SITE}"
+    if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH_NOSIM}" >/dev/null 2>&1; then
+        echo "    2026-09-09, 2026-09-13 and no-simulation patches already applied in ${SITE}"
     else
-        if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH}" >/dev/null 2>&1; then
-            echo "    2026-09-09 patch already applied in ${SITE}"
+        if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH2}" >/dev/null 2>&1; then
+            echo "    2026-09-09 and 2026-09-13 patches already applied in ${SITE}"
         else
-            patch -p1 -d "${SITE}" -f < "${TPATCH}"
+            if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH}" >/dev/null 2>&1; then
+                echo "    2026-09-09 patch already applied in ${SITE}"
+            else
+                patch -p1 -d "${SITE}" -f < "${TPATCH}"
+            fi
+            patch -p1 -d "${SITE}" -f < "${TPATCH2}"
         fi
-        patch -p1 -d "${SITE}" -f < "${TPATCH2}"
+        patch -p1 -d "${SITE}" -f < "${TPATCH_NOSIM}"
     fi
     patch -p1 -d "${SITE}" -f < "${TPATCH3}"
 fi
@@ -116,6 +123,10 @@ from envs.dcops.hospital.hospital_tools import ADMINISTRATOR_TOOL
 assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-09-15', (TERRARIUM_FIXES, HOSPITAL_FIXES)
 assert RETRY_NOTE.startswith('[Note from the harness:')
 print('    ok  terrarium fixes', TERRARIUM_FIXES)
+import envs.dcops.hospital.hospital_prompts as hp_mod
+if os.path.exists('/root/work/src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch'):
+    assert 'no_simulation_framing' in open(hp_mod.__file__).read(), 'terrarium_no_simulation_framing.patch missing'
+    print('    ok  no-simulation-framing patch is live')
 import vllm; print('    ok  vllm', vllm.__version__)
 "
 # The scripted-model smoke: one episode per harness variant, no GPU, ~1 minute.

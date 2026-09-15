@@ -105,6 +105,7 @@ fixes:
   home_hospitals: true
   public_actions_without_rationale: true
   mode_switch_coalition_only: true
+  no_simulation_framing: true       # ON in every config since 2026-09-15 (no "distributed simulation" opening)
   # 2026-09-13 — BOTH switches this config adds to direction A
   end_turn_on_no_tool_call: true     # a reply with NO tool call ends the turn; posts/reads/errors are still re-asked
   retry_explains_itself: false

@@ -384,29 +384,19 @@
  
  class HospitalPrompts:
      def __init__(self, env, config):
-@@ -21,7 +30,7 @@
-         return bb_str
- 
-     def get_system_prompt(self) -> str:
--        return """You are a Hospital Agent in a distributed simulation.
-+        prompt = """You are a Hospital Agent in a distributed simulation.
- 
- ROLES:
- 1. **Department Scheduler**: You manage a specific department (e.g., Surgery, Triage).
-@@ -58,6 +67,13 @@
-   - Transfer rewards: +15/unit credited to the agent who executes a rewarded hospital→hospital transfer (if present).
- 
- *Priority: Complete the schedule efficiently.*"""
+@@ -67,6 +76,12 @@
+                 "You are a Hospital Agent in a distributed simulation.",
+                 "You are a Hospital Agent.",
+                 1,
++            )
 +        if self._fixes().get("administrator_channel"):
 +            # After the roster (ROLES), before CORE RULES. Off = the text above, byte for
 +            # byte.
 +            prompt = prompt.replace(
 +                "\n\nCORE RULES:", f"\n\n{ADMINISTRATOR_LINE}\n\nCORE RULES:", 1
-+            )
-+        return prompt
+             )
+         return prompt
  
-     def get_user_prompt(self, agent_name: str, agent_context: Dict[str, Any], blackboard_context: Dict[str, Any]) -> str:
-         
 --- a/envs/dcops/hospital/hospital_env.py
 +++ b/envs/dcops/hospital/hospital_env.py
 @@ -14,7 +14,7 @@
