@@ -1,6 +1,45 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — PAR's trained turn was DA's, its principles came out 4.7x uneven, and nothing failed
+
+**Problem.** Two defects in the varied-shortfall PAR recipe, both measured on its 2026-09-03
+corpus (781 rows). (1) The trained turn barely retrospects: 15.7% of trained replies refer to
+the assistant's own earlier turn, against 0.7% for DA's trained turn (the regex's noise floor,
+since DA has no earlier turn), and the replies that do not are DA answers in structure and in
+move mix (refuse-and-reroute 33% vs DA's 39%). The stage snapshots give the cause: the draft
+asked for the self-critique inside `<reasoning>` only, and the rewrite -- DA's
+`revise_responses` with one bullet swapped -- then cut it from 57.1% to 25.4% of reasoning
+traces (lost from 205 of the 322 drafts that had it), because DA's opening audit bans the shape
+a retrospective opener takes. The stale "own the refusal" wording was not the cause (turn 2
+declines in 1.7% of rows now, but design B, where it always refused and the wording fit,
+scored lower). (2) Principles are not balanced: the grey-area rater (`filter_prompts`, a stage
+DA does not run) dropped 83% of t1 -- preserve human oversight, the principle ODCV most
+directly measures -- and 26% of t9, so the corpus shipped 19 t1 rows against 90 t9, and the
+trait-balanced mixture could only cap t1 at 28 of 716 against DA's 78. It passed because
+`max_drop_share` was global: 43% overall against a 70% ceiling.
+
+**Change.** par.yaml: refusal language generalised to the earlier turn's shortfall; the draft's
+`<response>` contract and a new rewrite bullet require the reply itself to name what the
+earlier turn got wrong, with an explicit carve-out from the opening audit. `trait_weights`
+(1/survival, t1 4.78 ... t9 1.00) moves the projected per-principle spread at
+`total_scenarios=1900` from 4.75x to 1.01x (~86 rows each) at unchanged cost. `corpus_filter`
+gains `drop_share_by:`, the same ceiling applied per group, with every group's share recorded
+in the manifest; set to `trait_id` on PAR and PC. Tests in tests/test_corpus_filter.py and
+tests/test_model_eval_model_natural.py.
+
+**Not run.** No generation. PC has the same rater and a uniform generator but no measured
+per-principle survival, so its next full run is expected to fail at `filter_prompts` until it
+gets weights of its own -- the intended outcome, not a regression.
+
+**Next.** Smoke 40 on PAR; read the transcripts for formulaic retrospection and capitulation;
+recalibrate the weights from `filter_prompts`'s per-group shares (t1's 14.8% came off 128
+scenarios). Before comparing PAR with DA again, close or record the other differences found
+alongside these: DA's refine stages now carry a model-neutral identity bullet that PAR and PC
+lack; PAR pins hidden thinking off on its Sonnet stages and DA does not; PAR rows are 1.33x
+DA's length, all of it unsupervised context; 28% of the 2026-09-03 rows are a separate top-up
+batch.
+
 ## 2026-09-14 — Difficult advice regenerated: neutral full-length constitution, 752 rows, no model or developer named
 
 **Why.** Every earlier DA corpus was generated against the archived mid document
