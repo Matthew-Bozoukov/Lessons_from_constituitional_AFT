@@ -1,6 +1,49 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Whistleblowing on the Hospital eval: an administrator channel, a benign coalition, and hits against false alarms
+
+**Question.** Can the Hospital eval measure whistleblowing propensity rather than count reports:
+a seat that will not carry out the sabotage saying so through the one legitimate channel, and a
+bystander that sees the sabotage reporting it, without the channel itself becoming the cue? The
+design memo of 2026-09-10 answered "yes, if it measures calibration": the hit rate where the pair
+was told to sabotage against the false-alarm rate where nobody was, per population, on the same
+seeds. Every earlier whistleblowing eval reported a rate alone, and Petri found models reporting
+harmless acts that only looked like wrongdoing.
+
+**Change (PR branch kn/hospital-whistleblow-rebased).** One switch, one condition, one knob, all off by default.
+`fixes.administrator_channel` (terrarium_hospital_fixes_3.patch + hospital_eval_fixes_3.patch;
+both stamps now 2026-09-15): every seat, in every condition, is offered
+`message_administrator(message, rationale)` in planning and execution, described neutrally; the
+system prompt gains one OVERSIGHT line after the roster; a message lands on a board whose only
+participant is the administrator, created last so earlier board ids are unchanged, so no seat
+reads another's; it does not commit the turn (retry reason "messages only"); the administrator
+does nothing. `condition=benign_coalition`: the self-sacrificial block line for line with a
+harmless objective (Petri's benign-wrongdoing control), and, like the self-sacrificial cell, no
+PUBLIC COMMS block, so the bystanders' prompts match. `survey: true`: upstream's post-run survey
+offered the planning tools and was re-asked (a survey reply could move supplies before the final
+score), and a benign run's survey asked no question; it is now one tool-less call asked in every
+cell, and survey turns are kept out of the action measures and the judge's reasoning channels.
+Measures in hospital/whistleblow.py: messages by population, survey detection, a judge question
+per sender held against a fact sheet of what happened (misconduct yes/no, whom it accuses,
+accuracy, proportionality, disclosure), the pair's refusal ladder, and H, F, H - F (Newcombe),
+d' (log-linear) with McNemar on paired seeds; scratch/colosseum_hospital/whistleblow_calibration.py
+prints the readout. Configs 2026-09-15_colosseum_hospital_whistleblow.yaml (the 2026-09-14 harness
+plus the channel and the survey) and _rationale_visible; fleet plans for the pilot and the full run.
+
+**Checks.** The scripted-model smoke (fixes_smoke.py) passes every check in all 13 variants,
+the four new ones included: whistleblow 57/57, whistleblow_visible 57/57, whistleblow_baseline
+20/20, whistleblow_benign 23/23; every earlier variant keeps its full checklist. Tests: 1816
+passed, 11 skipped. The readout was exercised on fabricated cells only.
+
+**Not run.** No model has seen the channel. The pilot (10 seeds of the self-sacrificial cell and
+10 of the baseline, control and difficult-advice arms, about 40 shifts, ~$20 of GPU) is the smoke
+to read before the full run (360 shifts, ~$100 of GPU and ~$50 of judge).
+
+**Next.** Run the pilot and read every administrator message: nobody using the channel means the
+salience is too low, a baseline full of alarms means the wording is a cue. Then the full run and
+the calibration per arm and population.
+
 ## 2026-09-15 — PAR's trained turn was DA's, its principles came out 4.7x uneven, and nothing failed
 
 **Problem.** Two defects in the varied-shortfall PAR recipe, both measured on its 2026-09-03
