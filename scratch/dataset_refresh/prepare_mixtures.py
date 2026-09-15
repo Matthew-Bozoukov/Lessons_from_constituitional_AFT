@@ -55,9 +55,12 @@ def check_pin(style, repo, revision):
         raise ValueError(f'Synthetic repo does not identify expected style {style}')
 
 
-def prepare(output, pins):
+def prepare(output, pins, *, single_arm=False, replay_reference=None):
     output = Path(output).resolve()
-    if set(pins) != set(STYLES):
+    if single_arm:
+        if len(pins) != 1 or not set(pins) <= set(STYLES) or replay_reference is None:
+            raise ValueError('Single-arm preparation requires one known style and a frozen replay reference')
+    elif set(pins) != set(STYLES):
         raise ValueError('Both refreshed corpus styles must be supplied')
     for style, (repo, revision) in pins.items():
         check_pin(style, repo, revision)
@@ -69,13 +72,29 @@ def prepare(output, pins):
     if {k: v['examples'] for k, v in original['sources'].items()} != BASE_COUNTS:
         raise ValueError('Canonical replay proportions changed; adjudicate before preparing')
     proportions = {'sources': {k: {'examples': n, 'reasoning': 'none'} for k, n in BASE_COUNTS.items()}}
+    reference = None
+    if replay_reference is not None:
+        from scratch.dataset_refresh.validate_mixtures import load_replay_reference
+        replay_reference = Path(replay_reference).resolve(strict=True)
+        reference = load_replay_reference(replay_reference)
+        reference_sha = sha(replay_reference)
     output.mkdir(parents=True, exist_ok=True)
     base_path = output / 'base-proportions.yaml'
     OmegaConf.save(OmegaConf.create(proportions), base_path)
     manifest = {'base_config_source': str(source), 'base_config_sha256': sha(source),
                 'base_snapshot_sha256': sha(base_path), 'configs': {}, 'replay_counts': REPLAY_COUNTS}
+    manifest['single_arm'] = single_arm
+    if reference is not None:
+        target = output / 'replay_reference.json'
+        shutil.copyfile(replay_reference, target)
+        if sha(target) != reference_sha or sha(replay_reference) != reference_sha:
+            raise ValueError('Replay reference changed during preparation')
+        manifest['replay_reference'] = {'path': str(target), 'sha256': reference_sha,
+            'replay_positions_sha256': reference['replay_positions_sha256'], 'base': reference['base']}
     commands = []
     for style in STYLES:
+        if style not in pins:
+            continue
         repo, revision = pins[style]
         cfg = {'seed': 0, 'tokenizer': 'Qwen/Qwen3.6-27B', 'max_seq_len': 8192,
                'base': str(base_path), 'base_mixture': {'repo': BASE_REPO, 'file': 'mixture.jsonl', 'revision': BASE_REVISION},
@@ -135,12 +154,32 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
     if meta.get('smoke') is not False or meta['config'] != cfg:
         raise ValueError('Require the complete build from this exact config')
     audit = json.loads(Path(audit_path).read_text(encoding='utf-8'))
-    if (audit.get('status') != 'passed' or audit.get('replay_payloads_and_positions_equal') is not True
+    single_arm = planned.get('single_arm') is True
+    count = 1 if single_arm else 2
+    if (audit.get('status') != 'passed'
             or audit.get('synthetic_payloads_equal_pinned_releases') is not True
-            or audit.get('max_train_tokens') != 8192 or len(audit.get('mixtures', [])) != 2
+            or audit.get('max_train_tokens') != 8192 or len(audit.get('mixtures', [])) != count
             or audit.get('base', {}).get('revision') != BASE_REVISION
             or audit.get('base', {}).get('repo') != BASE_REPO):
-        raise ValueError('Require the passing two-arm 8192-token pinned-base audit')
+        raise ValueError('Require the passing8192-token pinned-base audit for the prepared release mode')
+    if single_arm:
+        from scratch.dataset_refresh.validate_mixtures import load_replay_reference
+        ref = planned.get('replay_reference') or {}
+        observed = audit.get('replay_reference') or {}
+        if (audit.get('audit_mode') != 'single_arm_replay_reference'
+                or audit.get('replay_matches_frozen_reference') is not True
+                or audit.get('replay_payloads_and_positions_equal') is not False
+                or observed.get('sha256') != ref.get('sha256')
+                or sha(ref['path']) != ref['sha256'] or sha(observed['path']) != ref['sha256']):
+            raise ValueError('Single-arm audit does not bind the exact frozen replay reference')
+        reference = load_replay_reference(ref['path'])
+        if (reference['base'] != audit['base'] or ref.get('base') != reference['base']
+                or ref.get('replay_positions_sha256') != reference['replay_positions_sha256']
+                or observed.get('replay_positions_sha256') != reference['replay_positions_sha256']
+                or audit['mixtures'][0].get('replay_positions_sha256') != reference['replay_positions_sha256']):
+            raise ValueError('Frozen replay base/payloads/positions do not match the audited mixture')
+    elif audit.get('replay_payloads_and_positions_equal') is not True:
+        raise ValueError('Require the passing two-arm replay equality audit')
     for item in audit['mixtures']:
         if (item.get('rows'), item.get('synthetic_rows'), item.get('replay_rows')) != (10000, 716, 9284) or sha(item['path']) != item['sha256']:
             raise ValueError('Audit inputs changed or counts are not exact')
@@ -172,6 +211,8 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
            'frozen_synth_config_sha256': sha(synth_config_path), 'validation_sha256': sha(audit_path),
            'mixture_sha256': own[0]['sha256'], 'constitution_sha256': synth_cfg['constitution_sha256']}
     gen['synthetic_payload_validation'] = source_audit
+    if single_arm:
+        gen['shared_replay_reference'] = planned['replay_reference']
     if style == 'nonmoral-advice':
         gen.update(craft_spec=synth_cfg['craft_spec'], craft_spec_sha256=synth_cfg['craft_spec_sha256'])
     if synth_cfg.get('composite'):
@@ -185,7 +226,7 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
               'generation_config': json.dumps(gen),
               'schema': 'mixture.jsonl default train config: model-agnostic messages with role/content and optional reasoning_content/tool_calls; optional top-level tools/source/supervise. Synthetic rows have system/user/assistant, native reasoning_content, supervise=all. Replay payloads and inherited Qwen reasoning traces preserved verbatim; no fresh generation/backfill during mixing.',
               'provenance': f'{meta["command"]}; synthetic {synth["dataset"]}@{synth["revision"]} default dataset.jsonl; replay {BASE_REPO}@{BASE_REVISION}/mixture.jsonl. Frozen source config and passing audit copied beside this card.',
-              'comparability': 'Both arms use seed 0, exact largest-remainder replay quotas and identical replay positions. Synthetic cases are unpaired regenerations, not guaranteed matched pairs with difficult advice. Row share is not token share or loss-weight share; see mixture_validation.json for actual masks/token counts. No training or evaluation is implied.'}
+              'comparability': ('This arm matches the independently derived seed0 shared replay payloads and positions in replay_reference.json. A later arm must match this same frozen reference; no observed two-arm equality is claimed yet. ' if single_arm else 'Both arms use seed 0, exact largest-remainder replay quotas and identical replay positions. ') + 'Synthetic cases are unpaired regenerations, not guaranteed matched pairs with difficult advice. Row share is not token share or loss-weight share; see mixture_validation.json for actual masks/token counts. No training or evaluation is implied.'}
     front = {'configs': [{'config_name': 'default', 'data_files': 'mixture.jsonl', 'default': True}],
              'tags': training_data_tags('mixture', style, CONSTITUTION, extra=['stage:final'])}
     card = card_markdown(fields, front)
@@ -196,6 +237,10 @@ def prepare_card(config_path, mixture_dir, audit_path, synth_config_path):
     for source, filename in [(config_path, 'mixture_config.yaml'), (audit_path, 'mixture_validation.json'), (synth_config_path, 'frozen_synthetic_config.json')]:
         if Path(source).resolve() != (mixture_dir / filename).resolve():
             shutil.copyfile(source, mixture_dir / filename)
+    if single_arm:
+        shutil.copyfile(planned['replay_reference']['path'], mixture_dir / 'replay_reference.json')
+        if sha(mixture_dir / 'replay_reference.json') != planned['replay_reference']['sha256']:
+            raise ValueError('Shared replay reference changed while copying for publication')
     return name
 
 
@@ -205,15 +250,31 @@ def main():
     prep = sub.add_parser('prepare')
     prep.add_argument('--output', required=True)
     for arm in ('low', 'nonmoral'):
-        prep.add_argument(f'--{arm}-repo', required=True)
-        prep.add_argument(f'--{arm}-revision', required=True)
+        prep.add_argument(f'--{arm}-repo')
+        prep.add_argument(f'--{arm}-revision')
+    prep.add_argument('--single-arm', choices=STYLES)
+    prep.add_argument('--replay-reference')
+    replay = sub.add_parser('freeze-replay')
+    replay.add_argument('--output', required=True)
     card = sub.add_parser('card')
     for flag in ('config', 'mixture-dir', 'audit', 'synth-config'):
         card.add_argument('--' + flag, required=True)
     args = parser.parse_args()
     if args.command == 'prepare':
-        result = prepare(args.output, {STYLES[0]: (args.low_repo, args.low_revision), STYLES[1]: (args.nonmoral_repo, args.nonmoral_revision)})
+        supplied = {STYLES[0]: (args.low_repo, args.low_revision), STYLES[1]: (args.nonmoral_repo, args.nonmoral_revision)}
+        if args.single_arm:
+            if any(any(pin) for style, pin in supplied.items() if style != args.single_arm):
+                parser.error('Do not supply another arm in explicit single-arm mode')
+            supplied = {args.single_arm: supplied[args.single_arm]}
+        if any(not all(pin) for pin in supplied.values()):
+            parser.error('Supply the repository and full revision for every requested arm')
+        result = prepare(args.output, supplied, single_arm=bool(args.single_arm), replay_reference=args.replay_reference)
         print(json.dumps(result, indent=2))
+    elif args.command == 'freeze-replay':
+        from huggingface_hub import hf_hub_download
+        from scratch.dataset_refresh.validate_mixtures import freeze_replay_reference
+        base = hf_hub_download(BASE_REPO, 'mixture.jsonl', repo_type='dataset', revision=BASE_REVISION, local_files_only=True)
+        print(json.dumps(freeze_replay_reference(base, args.output), indent=2))
     else:
         print(prepare_card(args.config, args.mixture_dir, args.audit, args.synth_config))
 
