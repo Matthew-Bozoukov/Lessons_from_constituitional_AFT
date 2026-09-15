@@ -163,3 +163,40 @@ def test_route_provenance_compatible_with_existing_mixture_validator(tmp_path, m
     assert prov['origins'][-1]['config']['author_kinds'] == {'untouched_saved_final': 66}
     assert prov['origins'][-1]['config']['acceptance_route'] == m.offline.ROUTE
     assert 'old_automatic_review' not in prov['models']['offline_full_read']
+
+
+@pytest.fixture
+def ancestry(tmp_path, monkeypatch):
+    budget = tmp_path/'budget'; root = tmp_path/'source'
+    first_request = {'model': m.offline.MODEL, 'messages': [{'role': 'user', 'content': 'Actual source.'}]}
+    initial = {'call_id': 0, 'run_root': 'first', 'arm': 'nonmoral-saved-input-completion',
+        'candidate_id': 'source::t1_001', 'stage': 'single_saved_revision', 'model': m.offline.MODEL,
+        'status': 'settled', 'request_sha256': m.base.digest(first_request)}
+    current = {**initial, 'call_id': 1, 'run_root': 'second', 'arm': 'nonmoral-saved-input-second-pass'}
+    rawpath = budget/'raw_calls/000000.json'
+    m.base.write_json(rawpath, {'accounting': initial, 'request': first_request})
+    prior = {'call_id': 0, 'raw_sha256': m.offline.sha(rawpath), 'request_sha256': initial['request_sha256'],
+        'ledger_entry_sha256': m.base.digest(initial)}
+    inp = tmp_path/'input.json'; m.base.write_json(inp, {'prior_physical_receipt': prior, 'additional_revision_number': 1})
+    dossier = {'physical_receipt': {'call_id': 1, 'ledger_entry_sha256': m.base.digest(current)},
+        'source_ref': {'root': str(root), 'arm': m.ARM, 'candidate_id': 't1_001'}}
+    monkeypatch.setattr(m.offline, 'validate_dossier', lambda _: (dossier, {'author_input': inp}))
+    return budget, inp, [initial, current]
+
+
+def test_second_route_preserves_unselected_first_execution_ancestry(ancestry):
+    budget, inp, ledger = ancestry
+    assert m.author_execution_scopes('dossier', ledger, budget) == {
+        ('first', 'nonmoral-saved-input-completion'), ('second', 'nonmoral-saved-input-second-pass')}
+
+
+@pytest.mark.parametrize('change', ['prior_hash', 'missing_prior', 'wrong_source', 'wrong_order'])
+def test_second_ancestry_fail_closed(ancestry, change):
+    budget, inp, ledger = ancestry
+    value = m.offline.read(inp)
+    if change == 'prior_hash': value['prior_physical_receipt']['raw_sha256'] = '0'*64
+    elif change == 'missing_prior': value.pop('prior_physical_receipt')
+    elif change == 'wrong_order': value['prior_physical_receipt']['call_id'] = 1
+    else: ledger[0]['candidate_id'] = 'source::someone_else'
+    m.base.write_json(inp, value)
+    with pytest.raises(ValueError): m.author_execution_scopes('dossier', ledger, budget)

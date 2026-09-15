@@ -139,15 +139,20 @@ def provenance(rows, phases, dossiers, dataset_sha):
     cfg = phases[0]['config']
     requests = {}
     author_counts = Counter()
+    revision_counts = Counter()
     for item in dossiers:
         d, files = offline.validate_dossier(Path(item['path'])/'dossier.json')
         request = offline.read(files['author_raw'])['request']
         settings = {k: v for k, v in request.items() if k != 'messages'}
         requests['author_'+base.digest(settings)[:16]] = settings
         author_counts[d['author_kind']] += 1
+        inp = offline.read(files['author_input']) if 'author_input' in files else {}
+        revision_counts['additional_focused_revision' if inp.get('prior_physical_receipt') else
+                        'first_saved_revision' if d['author_kind'] == 'single_saved_revision' else 'untouched_saved_final'] += 1
     offline_cfg = {'pipeline': ARM, **{k: cfg[k] for k in COMMON if k in cfg}, 'models': requests,
         'acceptance_route': offline.ROUTE,
         'author_kinds': dict(author_counts),
+        'saved_answer_routes': dict(revision_counts),
         'author_recipe_evidence': 'Every dossier contains the actual request/response, successful physical call receipt, source config and new review contract. Untouched finals retain their real historical author prompt, not a fictitious new generation.',
         'review_procedure': 'Independent Codex agent full-read review plus explicit root adoption, source/author/local/native checks; no automatic model judge pass is asserted for this route.'}
     origins = [{'phase_id': p['phase_id'], 'config_sha256': p['config_sha256'], 'config': p['config'],
@@ -256,6 +261,39 @@ def accounting(ledger, cutoff):
             'statuses': dict(Counter(e['status'] for e in ledger)), 'active_or_uncertain_calls': 0}
 
 
+def author_execution_scopes(dossier_path, ledger, budget):
+    """Include a second author's first attempt even when none of that phase's answers is selected."""
+    dossier, frozen = offline.validate_dossier(dossier_path)
+    receipt = dossier['physical_receipt']
+    call = ledger[receipt['call_id']]
+    if base.digest(call) != receipt['ledger_entry_sha256']:
+        raise ValueError('Offline accepted physical receipt differs from closed shared ledger')
+    scopes = {(call['run_root'], call['arm'])}
+    if 'author_input' not in frozen:
+        return scopes
+    inp = offline.read(frozen['author_input'])
+    prior = inp.get('prior_physical_receipt')
+    if prior is None:
+        if inp.get('additional_revision_number') is not None:
+            raise ValueError('Additional revision is missing its first author ancestry')
+        return scopes
+    if inp.get('additional_revision_number') != 1 or prior['call_id'] >= receipt['call_id']:
+        raise ValueError('Invalid additional revision ancestry order')
+    first_call = ledger[prior['call_id']]
+    raw_path = offline.bound(Path(budget)/'raw_calls'/f'{prior["call_id"]:06d}.json', prior['raw_sha256'])
+    raw = offline.read(raw_path)
+    ref = dossier['source_ref']; key = offline.origin_name(ref['root'])+'::'+ref['candidate_id']
+    allowed = {'nonmoral-saved-input-completion': key, 'nonmoral-saved-input-pilot': ref['candidate_id']}
+    if (first_call.get('status') != 'settled' or first_call.get('model') != offline.MODEL or
+            first_call.get('stage') != 'single_saved_revision' or
+            first_call.get('candidate_id') != allowed.get(first_call.get('arm')) or
+            base.digest(first_call) != prior['ledger_entry_sha256'] or raw['accounting'] != first_call or
+            first_call['request_sha256'] != prior['request_sha256'] or base.digest(raw['request']) != prior['request_sha256']):
+        raise ValueError('Additional revision first physical receipt differs from preserved source')
+    scopes.add((first_call['run_root'], first_call['arm']))
+    return scopes
+
+
 def prepare(selection_path, destination, source_commit, ledger_end, date, quality_dir):
     out = Path(destination).resolve()
     if out.exists() or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date):
@@ -300,10 +338,7 @@ def prepare(selection_path, destination, source_commit, ledger_end, date, qualit
                 hashes = preview_release.inventory(path)
                 preview_release.copy_bound(path, target, hashes)
                 offline.validate_accepted(target/'acceptance.json', ident)
-                call = ledger[d['physical_receipt']['call_id']]
-                if base.digest(call) != d['physical_receipt']['ledger_entry_sha256']:
-                    raise ValueError('Offline accepted physical receipt differs from closed shared ledger')
-                scopes.add((call['run_root'], call['arm']))
+                scopes.update(author_execution_scopes(target/'dossier.json', ledger, budget))
                 offline_index.append({'acceptance_sha256': ident, 'path': target.relative_to(out).as_posix(),
                                       'source_ref': d['source_ref'], 'author_kind': d['author_kind']})
             # Preserve complete new execution roots, including unsuccessful outcomes, not only selected answers.
@@ -346,7 +381,7 @@ def prepare(selection_path, destination, source_commit, ledger_end, date, qualit
                 'constitution': cfg['constitution']+'; SHA256='+cfg['constitution_sha256']+'; full compatibility review, not an ethical premise injected into the nonmoral author task.',
                 'craft_preference': cfg['craft_spec']+'; SHA256='+cfg['craft_spec_sha256']+'. Qualified nine varied craft tensions; original source preferences and historical author prompts are preserved.',
                 'models': json.dumps(prov['models'], ensure_ascii=False),
-                'review_routes': '650 rows retain verified original automatic reviews and correction/adoption histories.66 additions use independent Codex agent full-read review and explicit root adoption of exact message bytes; these are not human reviews and do not assert automatic Sonnet judge passes. Additions may be one new Sonnet saved-input revision or unchanged historical Sonnet finals; exact counts/settings are in generation_provenance.json.',
+                'review_routes': '650 rows retain verified original automatic reviews and correction/adoption histories.66 additions use independent Codex agent full-read review and explicit root adoption of exact message bytes; these are not human reviews and do not assert automatic Sonnet judge passes. Additions may be unchanged historical Sonnet finals, a saved-input Sonnet revision, or one further focused Sonnet correction under explicit user authority. First attempts and their review outcomes remain archived; exact author settings are in generation_provenance.json and per-row dossiers.',
                 'source_repo': 'https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ '+code['commit'],
                 'provenance': 'Base650 selection, explicit offline acceptance hashes, all origin checkpoints, unsuccessful new execution outcomes, accepted dossiers, exact scoped raw calls/receipts, source code and closed shared billing ledger are archived. Original excluded or failed rows remain unchanged; new acceptance is a separate route. Source filesystem paths are historical identifiers, not required live locations.',
                 'schema': 'Only dataset.jsonl is the default train split. messages=[system,user,assistant], assistant reasoning_content and final content. Other files are untrained provenance; metadata is never injected into model messages.',

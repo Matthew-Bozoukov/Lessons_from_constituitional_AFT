@@ -1,0 +1,12 @@
+# ABOUTME: Record the user's one-extra-focused-revision authority without enabling any dispatch.
+# ABOUTME: Preserve original shared270 accounting; small sequential batches have no paid critics or retries.
+user_approval_quote: 'Yes—allow one additional focused revision within $270'
+shared_cap_usd: 270
+maximum_extra_calls_per_source: 1
+maximum_batch_size: 4
+maximum_workers: 1
+maximum_appended_instruction_bytes: 2048
+allowed_max_tokens: [8192, 12288]
+paid_critic_calls: 0
+automatic_retries: 0
+execution_enabled: false
