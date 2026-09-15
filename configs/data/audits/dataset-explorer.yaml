@@ -1,0 +1,21 @@
+# ABOUTME: Build a read-only explorer of both immutable716-row synthetic releases and a bounded inline sample.
+# ABOUTME: Run: uv run python -m scratch.dataset_refresh.build_explorer --config configs/data/audits/dataset-explorer.yaml
+output: output/2026-09-15_dataset_explorer
+inline_output: C:/Users/nikak/.codex/visualizations/2026/09/14/01a0a0e6-ea9c-7e81-a65c-35b6c7b3a70a/dataset-reading-room.html
+template: scratch/dataset_refresh/explorer.html
+census: output/2026-09-15_final_comparability_716_v2/row_census.jsonl
+flags: docs/dataset_audits/2026-09-15_dataset_explorer_inspection_notes.json
+sample_target: 80
+sources:
+  low:
+    path: output/2026-09-15_da_lowstakes_refresh_synth_release/dataset.jsonl
+    sha256: 899eb7397414807835190b4d31fa5f654ad141930a74db897c8a64c3c6b9839b
+    revision: ebafc3a60cda2a5390bde72336d660f34e580e6d
+    repo: dougalldeepmind/2026-09-15-da-lowstakes-refresh-synth
+    census_name: low716
+  non:
+    path: output/2026-09-15_nonmoral_advice_synth_release_v2/dataset.jsonl
+    sha256: d76154a8ec6a292d49263f116a150e862f1497366e5ace6f3acc6d3faa0d25a5
+    revision: a4b7a3d34e8547b2ef17e4919b59d4771291bad2
+    repo: dougalldeepmind/2026-09-15-nonmoral-advice-synth
+    census_name: current_nonmoral

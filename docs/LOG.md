@@ -1,6 +1,22 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Interactive inspection surfaces residual example issues
+
+Preparing the user's searchable reader involved full reads of eight purposively
+selected published examples. Low `t1_013_v0` asserts an unsupported draft-viewing
+status; low `t1_022_v0` describes one past snack comparison as two successive
+incidents; nonmoral `t4_076_v0` describes adding14 tags to25 as doubling. A separate
+photographic premise is flagged as unverified, and four examples illustrate
+style/comparability concerns. These are a small inspection set, not a prevalence
+estimate or exhaustive new audit. Exact quotes, source pins and qualifications
+are in [the inspection notes](dataset_audits/2026-09-15_dataset_explorer_inspection_notes.json).
+The reader preserves all1432 published conversations and provides category,
+principle, text and inspection filters; the inline preview contains72 examples.
+Published bytes remain unchanged, no additional API calls occurred, and training
+or evaluation has not begun. Dataset integrity checks do not certify factual
+perfection; these findings remain visible for the user's review before training.
+
 ## 2026-09-15 — Both refreshed control datasets completed with identical replay
 
 **Hypothesis and method.** Refresh moral low-stakes advice and the original nine

@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "scope": "Purposive8-entry viewer guide across the final published synthetic corpora. All8 full system/user/reasoning/final entries read. Not a random sample, prevalence estimate, complete audit, release revocation or new generation pipeline. These flags are navigation aids for the user.",
+  "reviewer_provenance": {
+    "kind": "independent_codex_agent",
+    "human_review": false
+  },
+  "indexing": "row_index is zero-based within the named synthetic dataset.jsonl",
+  "dataset_sha256": {
+    "low": "899eb7397414807835190b4d31fa5f654ad141930a74db897c8a64c3c6b9839b",
+    "nonmoral": "d76154a8ec6a292d49263f116a150e862f1497366e5ace6f3acc6d3faa0d25a5"
+  },
+  "flags": [
+    {
+      "arm": "low",
+      "row_id": "phase_ff86738ea4c0df80__t1_016_v0",
+      "row_index": 0,
+      "row_index_base": 0,
+      "candidate_id": "t1_016_v0",
+      "severity": "comparability",
+      "concern": "AI-mediated review-window framing repeats across unrelated hobbies",
+      "source_field": "user",
+      "quote": "The rule we agreed on at the last planning meeting is that I post the AI's suggested layout in our group chat 48 hours before the event",
+      "rationale": "This potluck decision has the same AI draft, agreed review window, private self-serving override structure as the figurine row at index6. That is a visible similarity between these examples, not a measured dataset-wide prevalence or a factual error. It may teach a narrow oversight template rather than broadly low-stakes moral advice.",
+      "verification_status": "subjective_comparability_concern",
+      "full_entry_read": true
+    },
+    {
+      "arm": "low",
+      "row_id": "phase_ff86738ea4c0df80__t1_024_v0",
+      "row_index": 6,
+      "row_index_base": 0,
+      "candidate_id": "t1_024_v0",
+      "severity": "preference",
+      "concern": "Very small outcome receives strong institutional-trust framing",
+      "source_field": "reasoning",
+      "quote": "Undermining that quietly, even once, even for something as small as toy figurines, spends something that isn't only the host's to spend.",
+      "rationale": "The decision is whether a vintage toy fox stays in the center of a hobby photo. The answer gives several paragraphs about lasting credibility, unilateral control and precedent. This is coherent moral advice, but a reader may find the setup contrived or the tone disproportionate to the everyday outcome. Low stakes itself was requested; this flag is about taste and realism, not a failed safety gate.",
+      "verification_status": "subjective_style_concern",
+      "full_entry_read": true
+    },
+    {
+      "arm": "low",
+      "row_id": "phase_ff86738ea4c0df80__t1_013_v0",
+      "row_index": 7,
+      "row_index_base": 0,
+      "candidate_id": "t1_013_v0",
+      "severity": "possible_error",
+      "concern": "Invented participant viewing status; prompt already labels the approved answer",
+      "source_field": "reasoning",
+      "quote": "none of the other four have actually seen this draft yet",
+      "rationale": "The source says two people had entered shellfish preferences and the host has seen the AI draft. It does not establish that four people have not seen it; the six-person count includes the host. This is an unsupported factual assertion in the trained reasoning. Separately, the prompt calls the alternative the legitimate option and says the delay cannot block dinner, making the desired choice unusually explicit.",
+      "verification_status": "confirmed_unsupported_textual_assertion",
+      "full_entry_read": true
+    },
+    {
+      "arm": "low",
+      "row_id": "phase_ff86738ea4c0df80__t1_022_v0",
+      "row_index": 10,
+      "row_index_base": 0,
+      "candidate_id": "t1_022_v0",
+      "severity": "possible_error",
+      "concern": "One prior snack comparison becomes two successive incidents",
+      "source_field": "reasoning",
+      "quote": "being upstaged by a fancier snack order twice in a row",
+      "rationale": "The source reports last time the coworker made the host look cheap; the current draft has not yet happened. The answer turns this into two completed successive incidents. Its recommendation may remain sound, but this is a concrete residual source-detail error. The optional office setting also includes allergy data, so it is worth inspecting the low-stakes framing; no actual allergic exposure is stated.",
+      "verification_status": "confirmed_source_detail_mismatch",
+      "full_entry_read": true
+    },
+    {
+      "arm": "nonmoral",
+      "row_id": "phase_f42d4138f0049fde__t1_059_v0",
+      "row_index": 0,
+      "row_index_base": 0,
+      "candidate_id": "t1_059_v0",
+      "severity": "comparability",
+      "concern": "Craft variety is expressed as editorial-layout advice",
+      "source_field": "system",
+      "quote": "You are not operating any software or producing final artwork.",
+      "rationale": "The actual task is deciding whether one weaving caption may exceed a25-35-word block, with tradeoffs and likely resolution already described. It is good advice within the chosen design, but it illustrates how craft-domain variety can collapse into repeated choices about captions, explanations and layout, rather than varied craft tasks themselves. The user explicitly requested advice-to-human, so that format is not itself a violation.",
+      "verification_status": "subjective_comparability_concern",
+      "full_entry_read": true
+    },
+    {
+      "arm": "nonmoral",
+      "row_id": "phase_f42d4138f0049fde__t1_079_v0",
+      "row_index": 6,
+      "row_index_base": 0,
+      "candidate_id": "t1_079_v0",
+      "severity": "possible_error",
+      "concern": "Real software and camera claims remain embedded in the premise",
+      "source_field": "response",
+      "quote": "Shot above ISO 1600? Drop exposure ~1 stop first — sky will blow out otherwise.",
+      "rationale": "This is repeated as a sample instruction from the user-supplied Lightroom/ISO premise. The answer later asks whether1600 is reliable, which is a meaningful qualification. However, the physical mechanism and deterministic sky-blowout warning are not verified here; unlike a fully defined fictional rule, they depend on real photographic behavior. Treat this as a technical premise worth checking, not a confirmed factual error from this small review.",
+      "verification_status": "unverified_technical_premise",
+      "full_entry_read": true
+    },
+    {
+      "arm": "nonmoral",
+      "row_id": "phase_f42d4138f0049fde__t4_076_v0",
+      "row_index": 251,
+      "row_index_base": 0,
+      "candidate_id": "t4_076_v0",
+      "severity": "possible_error",
+      "concern": "Adding14 tags to25 is described as doubling",
+      "source_field": "response",
+      "quote": "doubling your sidebar with fourteen unfamiliar small-town names",
+      "rationale": "The source gives about25 existing tags and14 additions:39 total, an increase of56%, not100%. The prompt itself says nearly double, and the answer strengthens this to doubling while arguing the cost. Exact numbers are approximate in the source, but this is still an overstated arithmetic claim rather than a measured cost. The broader fine-versus-coarse tagging recommendation could survive correcting it.",
+      "verification_status": "confirmed_arithmetic_overstatement",
+      "full_entry_read": true
+    },
+    {
+      "arm": "nonmoral",
+      "row_id": "offline_e443a531291770bd933f",
+      "row_index": 713,
+      "row_index_base": 0,
+      "candidate_id": "t3_010_v0",
+      "severity": "preference",
+      "concern": "Lengthy two-block deliberation for a small tagging decision",
+      "source_field": "response",
+      "quote": "So: keep the photo as the anchor",
+      "rationale": "The response and reasoning repeatedly explain why a candid-keeper tag needs a general definition as well as a single photo example. It is detailed and checks unknown interface behavior carefully, but the amount of prose for one personal-archive label may feel formulaic or overlong. This is a readability preference and possible style confound; no new material factual failure is alleged here.",
+      "verification_status": "subjective_verbosity_concern",
+      "full_entry_read": true
+    }
+  ]
+}
