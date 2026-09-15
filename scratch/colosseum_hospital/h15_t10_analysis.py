@@ -179,6 +179,9 @@ def judge(workers: int = 8) -> None:
     B.LOGS.mkdir(parents=True, exist_ok=True)
     jobs = []
     for k in NEW:
+        if not (cell_dir(k) / "results" / "results.json").is_file():
+            print(f"  judge {k[1]}: not merged yet, skipped")
+            continue
         if (cell_dir(k) / "results" / "judge.json").is_file():
             print(f"  judge {k[1]}: exists")
             continue
