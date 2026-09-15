@@ -80,10 +80,11 @@ fixes:
 colosseum_root: /root/colosseum
 
 # ── what this eval needs from vLLM ────────────────────────────────────────────
-# Qwen3-32B was trained at 32,768 positions (config max_position_embeddings 40,960). On this harness 48% of the
-# 2026-09-14 shifts sent a prompt above 32,768 tokens and 34% above 40,960, so the native window would censor half
-# the shifts. YaRN x2 gives the batch's own 65,536 window (Qwen's documented setting for ~64k contexts); it applies
-# at every length, a declared change to the served model, recorded here.
+# Qwen3-32B was trained at 32,768 positions (config max_position_embeddings 40,960). On this harness 31 of the 210
+# 2026-09-14 shifts (15%) made a model call with a prompt above 32,768 tokens, the most the native window takes with
+# 8,192 left to answer (7 above 40,960; the longest 56,756), so the native window would cut those shifts short. YaRN
+# x2 gives the batch's own 65,536 window (Qwen's documented setting for ~64k contexts); it applies at every length, a
+# declared change to the served model, recorded here. Counted per model call: a turn's usage sums its calls.
 serving:
   context_window: 65536
   concurrency: 24
