@@ -1,0 +1,8 @@
+# ABOUTME: Bind the final716 preview to exact source and closed cumulative accounting evidence.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.audit_final_nonmoral_provenance --config configs/data/audits/final-nonmoral-provenance.yaml
+preview: output/2026-09-15_nonmoral_final_preview
+output: output/2026-09-15_nonmoral_final_independent/provenance_review.json
+dataset_sha256: 5f38c3a6a4050ba37c33ad0fa448abbacb37c2eb04d074bea0e3841a17fe9ba3
+ledger_end_exclusive: 11682
+charged_usd: '253.4389717'
+offline_counts: {unchanged: 10, pilot: 4, first: 41, second: 11}
