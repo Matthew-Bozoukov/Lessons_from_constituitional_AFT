@@ -322,11 +322,13 @@ def model_profile(model_name: str) -> ModelProfile:
     return p
 
 
-# Serving stays permissive where training refuses: an unverified family (Qwen3-32B, a stub
-# until its masking is verified) can still be served ad hoc. It has no verified ceiling, so
-# the context-window fail-fast is skipped and vLLM's own startup failure is the backstop.
-# The parser and prefix-caching facts are absent rather than guessed: an eval that REQUIRES
-# tool calls is refused on such a family instead of being served with an unverified parser.
+# Serving stays permissive where training refuses: an unverified family (no `template:`
+# block, like the Qwen3-32B stub until its masking is verified) can still be served, with
+# the serving facts its profile declares (Qwen3-32B declares its parsers, for the Model Spec
+# Midtraining organisms) or, declaring none, these defaults. Without a declared ceiling the
+# context-window fail-fast is skipped and vLLM's own startup failure is the backstop. An
+# absent parser or prefix-caching fact is never guessed: an eval that REQUIRES tool calls is
+# refused on such a family instead of being served with an unverified parser.
 DEFAULT_SERVING = {"max_num_seqs": None}
 
 

@@ -16,15 +16,15 @@ PLOT = ROOT / "scratch/gpt_seeds/plot_seed_mean.py"
 # The difficult-advice baseline, spelled the way each layer spells it. Changing the baseline
 # means changing this tuple, docs/BASELINES.md and plot_seed_mean.BASELINE_ARM together --
 # which is the point: no one layer can drift on its own.
-BASELINE_ARM_KEY = "principle_scoped"
-BASELINE_SUBJECT = "difficult-advice-principle-scoped-702"
-SUPERSEDED = ("da716", "synthdoc-716")
+BASELINE_ARM_KEY = "neutral"
+BASELINE_SUBJECT = "2026-09-14-da-synth"
+SUPERSEDED = ("principle-scoped 702", "da716", "synthdoc-716")
 
 
 def test_baselines_doc_exists_and_names_the_difficult_advice_baseline():
     assert DOC.is_file(), "docs/BASELINES.md is the pointer CLAUDE.md sends people to"
     text = DOC.read_text(encoding="utf-8")
-    assert "principle-scoped 702" in text
+    assert "neutral 752" in text and BASELINE_SUBJECT in text
     # It must say what NOT to use, or a reader who already knows da716 will just keep using it.
     for old in SUPERSEDED:
         assert old in text, f"the doc should say explicitly not to start from {old}"
@@ -68,12 +68,13 @@ def test_the_plot_and_the_doc_agree_on_which_arm_is_the_baseline():
     assert mod.BASELINE_ARM == BASELINE_ARM_KEY
     assert BASELINE_ARM_KEY in mod.ARMS, "the baseline must be an arm the figure draws"
     # And the arm the figure calls the baseline must be the corpus the doc names, not merely
-    # a key that happens to match: check its sources point at the principle-scoped artifacts.
+    # a key that happens to match: its seeds' eval runs, or -- until it has one -- the
+    # corpus it declares, must point at the baseline's artifacts.
+    arm = mod.ARMS[BASELINE_ARM_KEY]
     srcs = " ".join(
-        s if isinstance(s, str) else "/".join(s)
-        for s in mod.ARMS[BASELINE_ARM_KEY]["seeds"].values()
+        s if isinstance(s, str) else "/".join(s) for s in arm["seeds"].values()
     )
-    assert "principle-scoped" in srcs or "principle_scoped" in srcs
+    assert BASELINE_SUBJECT in f"{srcs} {arm.get('corpus', '')}"
 
 
 @pytest.mark.parametrize("old", SUPERSEDED)

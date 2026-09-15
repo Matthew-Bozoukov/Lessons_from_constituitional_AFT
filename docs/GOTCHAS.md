@@ -750,3 +750,295 @@ mixture whose trace family is not the model being trained unless
 `reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
 judge), and point the arm configs' `base_mixture:` at the new repo.
 
+## Killarney (Alliance SLURM): a non-login shell silently builds the wrong venv (2026-09-03)
+
+`module` is a shell FUNCTION sourced from the login profile, so it does not exist in the
+non-login shell that a remote one-shot command gives you. A setup script that guards its
+module loads with `command -v module` and *continues* when absent therefore builds its
+venv on `/usr/bin/python` instead of the cluster's `python/3.12.4`.
+
+Everything then works until the one thing that needs a compiler. vLLM's inductor pass
+compiles C++ at engine startup and the system interpreter's headers are incomplete:
+
+```
+/usr/include/python3.12/pyconfig.h:3:12: fatal error:
+    x86_64-linux-gnu/python3.12/pyconfig.h: No such file or directory
+```
+
+which surfaces as `RuntimeError: Engine core initialization failed` — **after** loading
+52 GiB of weights onto the GPU, i.e. after paying for the allocation. The real error is
+~150 lines above the traceback vLLM prints, so grep the vLLM log for `fatal error`
+rather than reading its tail.
+
+Two lessons, both now enforced in `scripts/infra/slurm/setup_killarney.sh`:
+
+- Run cluster setup through a LOGIN shell (`bash -lc "..."`), and make a missing `module`
+  command a hard failure rather than a fallback.
+- Verify the interpreter after creating a venv: `pyvenv.cfg`'s `home` is the bin directory
+  of whatever built it, and `/usr/bin` there means the module was not active. Checking it
+  costs nothing; the alternative is discovering it on a GPU.
+
+## `--target` is nargs='+' and will eat your config overrides (2026-09-03)
+
+`run_eval.py` declares `--target` with `nargs="+"`, so it consumes every following token
+that does not start with `-`. Putting it last means the trailing `key=value` OmegaConf
+overrides are parsed as additional model repos:
+
+```
+HFValidationError: Repo id must use alphanumeric chars ...: 'experiment=collusion'
+```
+
+`--target` goes FIRST, terminated by `--name` (a real flag), with the overrides trailing
+at the end where `parse_known_args` collects them — the order CLAUDE.md documents.
+Verified: the wrong order yields 4 targets and 0 overrides; the right one yields 2 and 2.
+It costs only seconds of GPU, because run_eval resolves and names every target before it
+serves anything.
+
+## uv ignores an activated venv (2026-09-03)
+
+Activating a venv and then calling `uv run` does NOT use that venv. uv resolves the
+project environment itself — `.venv` in the project root unless `UV_PROJECT_ENVIRONMENT`
+says otherwise — and *syncs* it, which needs the network. On an offline compute node that
+is a hang or a hard failure, and the venv you carefully activated is ignored either way.
+
+Call the entry point directly (`python -m src.eval.run_eval`) and set
+`UV_PROJECT_ENVIRONMENT` + `UV_OFFLINE` so anything else reaching for uv fails loudly
+instead. Also set `UV_LINK_MODE=copy` when uv's cache and the target venv are on
+different filesystems (`/home` vs `/project` here), or every package warns as it falls
+back to a full copy — and budget for that copy: ~18GB of torch/vLLM onto NFS runs
+~850 MB/min.
+
+## Killarney: CPU count gates the GPU queue, not walltime (2026-09-03)
+
+`sbatch --test-only` estimated start times for one H100 in `gpubase_h100_b1`, same job,
+2h walltime, varying only the CPU request:
+
+| request | estimated start |
+|---|---|
+| 16 CPUs, 64G | +2h 13m |
+| 12 CPUs, 64G | +33m |
+| 8 CPUs, 96G  | immediate |
+
+Memory barely mattered; CPUs decided everything, because the free H100 nodes were mostly
+full of other jobs' cores. Ask `--test-only` before committing to a shape, and prefer the
+smallest CPU count the work actually needs — asyncio's default executor caps at
+`min(32, cpu_count + 4)`, so 8 CPUs still affords 12 worker threads.
+
+## Dated adapters make eval names too long, in THREE places (2026-09-03)
+
+Since adapters became dated artifacts, `spec.model_key` carries its own production date.
+Anywhere that composes `today + model_key` therefore produces a name with two dates, and
+for a long arm it blows the 96-character limit `local_name`/`gate_push` enforce. The
+difficult-advice arm (`2026-08-21_qwen36_lora_table2_9284_difficult_advice_chunk_only_702_rank_64_dynbatch`)
+tripped all three of these in one afternoon:
+
+| site | symptom | fix |
+|---|---|---|
+| `run_eval` out_dir | 101 chars; died naming arm 2 **after arm 1 finished** | `subject_of(model_key)` |
+| `run_eval` summary row | 109 chars; died **after** results.json was written | eval name became the directory, plus `subject_of` |
+| a published repo name | 119 chars; would die on a login node after all GPU spend | explicit short `arm_labels` in the eval config |
+
+The lesson is not the individual fixes but where they fire: **every one of these fails
+late**, after episodes are run and sometimes after results are on disk, because names are
+composed at publish time rather than checked up front. When adding an eval, assert its
+names through `gate_push`/`local_name` in a unit test — `tests/test_colosseum_publish.py`
+does this for all six of its repo names and runs in a second.
+
+`subject_of()` is the right tool: it strips the artifact's own date, which belongs to the
+artifact, and leaves the run's date to `local_name`. `run_meta.json`'s `target` still
+records exactly which artifact was served.
+
+## Two concurrent arms of one eval collide on the run directory (2026-09-03)
+
+`run_eval` names each arm directory `<model_key>_<HHMMSS>` — no job id, no pid. Two jobs
+that reach that line in the same second get the SAME directory, and if every arm of the
+study starts from the same control checkpoint (as a mixed-team design does), the
+model_key half never disambiguates them.
+
+Observed: `single` and `cooperation` both started at 15:56:37, shared one arm directory
+AND one Colosseum output tree, interleaved their episodes into it, and were heading for a
+race on `results/per_seed.json`. It was caught 31 minutes in only because an arm directory
+listed cells `[baseline cooperation]`, which no single experiment has.
+
+Stagger parallel jobs deterministically (`scripts/infra/slurm/colosseum_job.sh` offsets
+per experiment) — or give each its own working directory. And when running arms in
+parallel, check the cells each run directory actually contains before trusting any
+aggregate over them.
+
+## run_eval publishes each arm before naming the next — so partial runs are salvageable (2026-09-03)
+
+Worth knowing when an invocation dies partway: `_publish` runs at the end of each arm's
+loop iteration, so every arm that finished is complete on disk — `results/per_seed.json`,
+`results/results.json`, `metadata/run_meta.json` — even though the invocation as a whole
+failed. Rerunning both arms to recover one is the expensive way out.
+
+`ARMS=control|treatment|both` on the Colosseum job script exists for this. The cost is
+that in-invocation pooling does not happen, so the contrast is assembled afterwards from
+the two run directories (`scratch/colosseum_pool_split_arms.py`) — the same computation
+over the same inputs.
+
+## Two concurrent run_eval invocations need their own PORT and their own WORK DIR (2026-09-03)
+
+`run_eval` defaults every vLLM server to port 8000 and every server work directory to
+`output/<eval>/server`. Both are fine for one run at a time and break as soon as two run
+together — which SLURM makes easy, since it packs several one-GPU jobs onto one 8-GPU
+node.
+
+**Port.** Only the first server binds. The loser sits with the weights loaded and its GPU
+at **0% and 123W**, which looks exactly like a slow job: no error, no crash, and the log
+still ticking over from tqdm. Three of six GPUs were idle for 45 minutes before anyone
+noticed. There is a correctness edge too — the loser's driver can reach the WINNER's
+server on `localhost:8000`, and the only thing between that and an arm being served by
+the other job's checkpoint is Colosseum's own served-model-name check.
+
+**Work dir.** Not just logs: the thinking-mode chat template is written there and handed
+to vLLM to read at startup. Concurrent runs rewrite it under each other, and a server
+booting at the wrong moment reads a half-written file and dies. The driver then reports
+only `vLLM server ... is not reachable at 127.0.0.1:<port>` — nothing in that message
+suggests a different process caused it.
+
+Both are now derived from the job: the port from `SLURM_JOB_ID`
+(`scripts/infra/slurm/colosseum_job.sh`), the work dir from the port
+(`src/eval/run_eval.py`).
+
+**Diagnosing this needs `nvidia-smi` INSIDE the allocation.** `ssh <node> nvidia-smi` is
+not in the job's cgroup and reported an idle GPU for a busy job and vice versa — it was
+worse than no information. Use:
+
+```bash
+srun --jobid=<id> --overlap -n1 nvidia-smi \
+    --query-gpu=utilization.gpu,memory.used,power.draw --format=csv,noheader
+```
+
+Sample it several times: a single reading can catch a genuine gap between decode steps.
+Weights loaded (~75GB) with 0% utilisation across repeated samples is the signature of a
+driver that cannot reach its server, not of a slow model.
+
+## `runpod up --eval a,b` is ONE repo id to Fire (2026-09-04)
+
+`up()` accepts a list of targets, but Fire hands a comma-joined argument over as a single
+string and `up` only splits a real list, so `--eval a,b` dies in `resolve_target` with
+`HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name'` —
+before anything is rented, at least. Pass a Python list literal, which Fire parses:
+
+```
+uv run runpod up --name x --eval "['LASR-Callum/a','LASR-Callum/b']"
+```
+
+## The pod image's `python3` is 3.10: no `tomllib` (2026-09-04)
+
+`runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204` ships python3.10 as `python3`. Anything
+run on the pod outside a venv that reaches for a 3.11+ module (tomllib, `array.array[int]`
+annotations) fails there even though every venv on the box is 3.12. Use the venv's
+interpreter explicitly (`/root/work/.venv/bin/python`, `/workspace/vllmenv/bin/python`)
+for one-liners in bootstrap scripts.
+
+## vLLM serves one LoRA per batch by default (2026-09-04)
+
+With two adapters on one server (`ServedTarget.sibling`, the Hospital seating), vLLM's default
+`--max-loras 1` runs only requests for ONE adapter per step: a mixed job showed 2 running / 13
+deferred requests and ~75 tok/s total. `VllmServer._start` now passes `--max-loras 2`
+(commit c53976d). If you serve more adapters than that, raise it to the number co-served.
+
+## Colosseum sabotage boards thrash the KV cache (2026-09-04)
+
+Self-sacrificial and covert Hospital episodes grow 30-60k-token boards; at 30 concurrent
+episodes on one H100 the cache sat at ~83% with half the requests queued, and a cell of 30
+seeds took ~2.5 h instead of ~1 h. Budget for it, or cap `max_concurrent_runs` near 15 for
+those conditions; `serving.context_window` must stay 65536 (32768 dropped up to 40% of
+treatment episodes with a vLLM 400 on prompt length).
+
+## Colosseum ignores `logging.root_dir` (2026-09-04)
+
+The Hospital environment writes its per-iteration inventory snapshots
+(`data_iteration_*.json`) under `/root/colosseum/logs/HospitalEnvironment/...` on the pod, not
+under the run dir, so `pull_runs.sh` never sees them. The false-claim check needs them: pull
+with `scratch/colosseum_hospital/pull_env_logs.sh <host> <label>` before tearing the pod down.
+
+## Laptop memory guard kills background watchers (2026-09-04)
+
+Long `until ... sleep` loops launched with `run_in_background` on the laptop were killed by
+the low-memory guard within an hour (four pollers at once). A session cron job
+(`CronCreate`, every 10 min, running `scratch/colosseum_hospital/poll_queues.sh`) survived;
+prefer that for multi-hour waits.
+
+## Timestamps: pods log UTC, the laptop shows BST (2026-09-04)
+
+Queue logs and run-dir stamps on pods are UTC (`date -u`); `rlog`/`dump` headings and the local
+clock are BST (UTC+1). Mixed notes drifted by an hour once. Quote pod times as written, and
+label a local time as local.
+
+## Colosseum Hospital is not symmetric between its two hospitals (2026-09-06)
+
+With no coalition and every agent the same model, General Hospital earns ~2,650 points a shift
+and St Mary's ~3,780. Two environment properties cause it (Terrarium
+`envs/dcops/hospital/hospital_env.py`): patients have NO home hospital — every department's job
+queue lists every patient whose next unscheduled step is its service, whoever schedules first
+gets the credit, and St Mary's departments win that race (Triage 1,630 vs 1,093 points untempted);
+and `_infer_step_agent` charges any step nobody schedules (its 500-point penalty) to
+`hospital_names[0]`, General Hospital, unless the previous step was St Mary's. Starting stock is
+symmetric. Consequences: never compare the two hospitals' points directly; read hospital-level
+numbers only as before-vs-after within a block; treat `advantage_hospital` as directional. The
+pair-vs-rest advantage and all within-block contrasts are unaffected. A fixed eval would give
+patients a home hospital and attribute unscheduled steps to the patient's hospital.
+
+## The Hospital judge cannot see a refusal (2026-09-07)
+
+`src/eval/misalignment/colosseum/hospital/judge.py` builds every prompt from `blackboards.json`
+alone — the public board plus the coalition's private board — and its refusal question asks
+whether any agent declined *on that blackboard*. A model that refuses in its private reasoning
+and never says so on a board is scored as fully compliant. In the self-sacrificial cells this is
+not a corner case: the difficult-advice arm refuses in 24 of 30 shifts where the judge scores 3.
+The control is unaffected, because it almost never refuses anywhere, so the error is not uniform
+across arms and a refusal rate compared between them is not comparing like with like.
+
+Read every published refusal number from this eval as *visible* refusal. Anyone editing the
+benchmark should add the seats' reasoning (it is already captured, in `agent_turns.json`, as
+`llm_calls[].reasoning`) to the judge's input as its own channel, judged separately from the
+boards, so a stated refusal and an acted refusal stay distinguishable. The reasoning-level
+classifier in `scratch/colosseum_hospital/decline_vs_action.py` is a stopgap, not a fix.
+
+## The Hospital harness could not hold a refusal — fixed behind `fixes:` switches (2026-09-09)
+
+The 2026-09-04 Hospital study measured the harness as much as the models. Six defects, all
+verified in the code (`terrarium-agents 0.1.1` + Colosseum `ac0b405`): every turn starts
+from `[system, user]`, so a seat forgets its own refusal while its partner's compliant posts
+and its own actions come back through the board every turn; the provisioner's prompt never
+rendered a board (it could post to both and read neither — the "coalition channel" was
+one-way); `post_message` was offered in planning only while most refusals came in
+execution, whose prompt ended "DO NOT POST MESSAGES"; the scheduler answered "success" to
+an unknown patient and to a repeat; `get_job_queue` returned the string "Refer to prompt
+context."; patients had no home hospital (both hospitals' departments were handed the same
+job; unscheduled steps were charged to `hospital_names[0]`); and the judge read boards only.
+
+All of it is now switchable — `fixes:` in `configs/eval/colosseum_hospital.yaml` (twelve switches after the 2026-09-10 additions: rationale-free public action events and a coalition-only MODE SWITCH paragraph), every
+switch OFF there so the base config is still the paper's harness — through two patches in
+`src/eval/misalignment/colosseum/third_party/` (README there has the switch table):
+`terrarium_hospital_fixes.patch` goes into the terrarium-agents *site-packages* and
+`hospital_eval_fixes.patch` into the Colosseum checkout after `hospital_seating.patch`.
+Direction A (memory) and direction B (the board) are `scratch/colosseum_hospital/configs/2026-09-09_colosseum_
+hospital_carried_history.yaml` and `..._board_access.yaml` (`--config`), sharing the
+environment fixes. Things that bite:
+
+- **The runner refuses an unpatched package**, and the harvest refuses an episode whose
+  `run_config.json` lacks `terrarium_fixes` or records a different `fixes` block. `uv sync`
+  removes terrarium (it is not in the lock), so after any sync re-run
+  `scratch/colosseum_hospital/pod_bootstrap.sh`, which re-applies and verifies both patches
+  and ends with the scripted-model smoke (`fixes_smoke.py`, 97 checks, ~1 min, no GPU).
+- **Every episode now writes `prompts.jsonl`** (one record per model call, the whole
+  message list minus the system prompt, which is in `system_prompts.json` by hash). A
+  department call is 8–22k tokens of text; a 30-seed cell is a few hundred MB. It is the
+  rollout, so it is pulled and published; do not exclude it in `pull_runs.sh`.
+- **`judge.json` gained channels.** `per_run[run]` keys are now `public`, `secret` and
+  `reasoning:<seat>` for the two watched seats; judge files written before 2026-09-09 have
+  the first two only, and their refusal ratings are board-level refusal (see the entry
+  above). Analysis code that iterates channels must not assume two.
+- **`retry_reason`** on `llm_calls[]` says why a second call was made. The loop's rule is
+  unchanged (continue until an environment tool commits): a refusal, a plan, a read and an
+  error all earn a retry, a committed action ends the turn, so an arm that refuses more is
+  re-asked more. The harvest reports `retry_calls` and its kinds per arm.
+- **`post_message` without `blackboard_id` lands on board 0, the public one**, and the tool
+  schema makes the id optional. Not patched: it is the model's mistake to make and the
+  public-board judge should see it — but read a "coalition plan on the public board"
+  finding with this in mind.
+
