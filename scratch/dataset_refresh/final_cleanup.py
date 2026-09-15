@@ -39,6 +39,7 @@ def prepare(config):
         source_cfg=b.validate_arm(ref['root'],ref['arm']);record=result['record'];conv={k:record[k] for k in a.FIELDS}
         if a.messages(conv)!=row['messages'] or not b.acceptance(b.load_checkpoint(source/'preflight.json'),source_cfg['preflight']):
             raise ValueError('Source differs or is ineligible')
+        record=dict(record);record.update(draft_reasoning=conv['reasoning'],draft_response=conv['response'])
         stage=source_cfg['response_stages'][-1]
         messages=[{'role':r,'content':b.render(stage['prompts'][r],fields(record,source_cfg))} for r in ('system','user')]
         messages[-1]['content']+='\n\nMake only the following factual cleanup in both reasoning and final. Preserve the useful existing advice; do not add premises or broaden the answer. Write standalone advice to this human with no mention of drafts, reviewers or these instructions.\n'+instruction
