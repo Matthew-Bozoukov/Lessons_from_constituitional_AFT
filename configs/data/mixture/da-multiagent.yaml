@@ -1,0 +1,42 @@
+# ABOUTME: The multi-agent principle-10 arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `da-multiagent` share. Publishes as `<date>-da-multiagent-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-multiagent.yaml [synthetic_pct=7]
+#
+# da.yaml with ONE change: the synthetic share is the t10-only difficult-advice corpus
+# (configs/data/synth/da-multiagent.yaml; docs/LOG.md 2026-09-15) in place of the
+# nine-principle one. It sits at the same 7% of the same 10,000 rows, on the same base blend.
+# An organism trained on this therefore differs from the da-7 organism only in which
+# principle its 700 synthetic rows were written against.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend, identical to da.yaml's.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  da-multiagent:
+    # 775 rows, all t10: 655 from the main run, plus 85 and 35 from two top-ups spliced in
+    # (scratch/da_multiagent/splice_topup.py). The draw at 7% of 10,000 takes 700 of them.
+    # `balance_by` has a single group here; it is kept so that the draw runs the same code
+    # path as da.yaml's.
+    dataset: "${oc.env:HF_ORG}/2026-09-15-da-multiagent-synth"
+    revision: "64416c96e4ce7ad2daba0f0db8a95b83a30d2379"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_multiagent"
+
+hf:
+  experiment: "multi-agent principle-10 arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share written against principle 10 alone"
+  constitution: "constitutions/experimental/claude_distilled_10_principles_multiagent/constitution.md"
+  private: false
