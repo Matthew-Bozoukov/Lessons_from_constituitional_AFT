@@ -8,7 +8,7 @@
 # ("baseline:1-15" / "baseline:16-30" jobs) for the capability cost. Caps bound the worst case; the fleet terminates
 # each pod as soon as its runs are pulled. Size the caps from the smoke's minutes per shift before launching.
 date: "2026-09-14"
-branch: kn/multiagent-exploration
+branch: main
 out_root: output/colosseum_hospital/2026-09-14_model_spec_midtraining
 env_root: output/colosseum_hospital/env_logs
 port: 8000

@@ -6,7 +6,7 @@
 # turns_without_tools (Hermes parsing), the reasoning channel (the qwen3 parser split the think block), and the
 # minutes per shift at max_concurrent_runs 8, which sizes the full plan.
 date: "2026-09-14"
-branch: kn/multiagent-exploration
+branch: main
 out_root: output/colosseum_hospital/2026-09-14_model_spec_midtraining_smoke
 env_root: output/colosseum_hospital/env_logs
 port: 8000
