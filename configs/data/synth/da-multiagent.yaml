@@ -5,9 +5,11 @@
 # prompts, models and checks untouched. It differs in these keys only (diff the two files):
 # `constitution` (the neutral nine-principle document with `## 10.` appended), `n_traits`
 # 9 -> 10, `only_traits: [t10]`, `total_scenarios`/`scenarios_per_trait` 2000/77 -> 760/760,
-# the smoke's `total_scenarios` 2 -> 8, and `budget_usd`. A row here therefore differs from a
-# da.yaml row only in the principle it was written against. Why the principle exists and how
-# to read a result: constitutions/experimental/claude_distilled_10_principles_multiagent/rationale.md.
+# the smoke's `total_scenarios`/`scenarios_per_call` 2/1 -> 8/8, `budget_usd`, and no
+# `ngram_diversity` in the scenario-level check (it never drops a row). A row here therefore
+# differs from a da.yaml row only in the principle it was written against. Why the principle
+# exists and how to read a result:
+# constitutions/experimental/claude_distilled_10_principles_multiagent/rationale.md.
 
 # THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.
 #
@@ -76,7 +78,10 @@ ablate: []
 smoke:
   max_traits: 2
   scenarios_per_trait: 1
-  scenarios_per_call: 1
+  # 8, not 1: the full run asks for 8 DISTINCT situations per call. Eight single-scenario
+  # calls (the first smoke, 2026-09-15) all chose content moderation, which says nothing
+  # about what the full run's per-call and cross-wave diversity rules produce.
+  scenarios_per_call: 8
   # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
   # the per-trait count, so a smoke run against a config that sets it generates the full
   # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
@@ -324,7 +329,10 @@ stages:
     text: [situation, shortcut]
     group: trait_id
   properties:
-  - property: ngram_diversity
+  # NOT ngram_diversity here; it still runs in the final `corpus` check. With one principle,
+  # a corpus-level n-gram finding plus zero near-duplicates trips `dedupe_scenarios`'
+  # "reported findings but wrote no label sidecar" assertion (first smoke, 2026-09-15).
+  # An n-gram finding never drops a row, so the data is unchanged.
   # The cheapest place a duplicate can be caught: a repeated situation here is paid
   # for four times over by the stages below. Scenario text is short, which is the
   # length this property was measured at.
