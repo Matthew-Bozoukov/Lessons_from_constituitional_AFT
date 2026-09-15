@@ -1,0 +1,172 @@
+{
+  "ABOUTME": [
+    "Independent exact-public-revision verification of the10000-row nonmoral mixture.",
+    "All local files match server content hashes and sizes; mixture/card freshly downloaded without authentication."
+  ],
+  "repo": "dougalldeepmind/2026-09-15-nonmoral-advice-7-mix",
+  "revision": "588783fb079d0bbe5c9eb568418fcff2aad4cecb",
+  "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-nonmoral-advice-7-mix/tree/588783fb079d0bbe5c9eb568418fcff2aad4cecb",
+  "verified_at_utc": "2026-09-15T14:16:16.426132+00:00",
+  "status": "verified",
+  "local_snapshot": "C:\\Users\\nikak\\source\\repos\\LASR\\teaching_claude_why_replication_dataset_refresh\\output\\2026-09-15_nonmoral_mixture_release\\builds\\nonmoral-advice\\20260915_141135",
+  "rows": 10000,
+  "synthetic_rows": 716,
+  "replay_rows": 9284,
+  "mixture_sha256": "27e34f4fa9b76a49ca5bf090f08d322dee514a789688914aa095c25d386254b8",
+  "by_source": {
+    "nonmoral-advice": 716,
+    "tulu3_if": 1366,
+    "smol_constraints": 979,
+    "self_oss_instruct": 988,
+    "apigen_function_calling": 978,
+    "no_robots": 2580,
+    "smol_summarize": 914,
+    "longalign": 201,
+    "numinamath_cot": 987,
+    "lima": 291
+  },
+  "public_read_access_without_token": true,
+  "payload_files_verified": 12,
+  "remote_files": 13,
+  "auto_generated_extra_files": [
+    ".gitattributes"
+  ],
+  "default_train_payload": "mixture.jsonl",
+  "paired_validation_sha256": "977c88c44a3c0b6e49f4fc09e6361eaf053f052bdee76fbdcdb9a5010b79d510",
+  "observed_replay_payloads_and_positions_equal": true,
+  "replay_positions_sha256": "f13f40104e51b870ae7dd2b7255b07561fe2cd8264dd7ca4f99c04d970515224",
+  "paired_other_mixture_sha256": "33490bcdb75a7ce2f700dec41812d421572136be0da5a59440733ccd62d1c682",
+  "comparability_card_text": "Observed paired validation passed: both released mixtures contain exactly716 synthetic rows and the same9284 replay payloads at identical positions. See paired_mixture_validation.json. Synthetic cases are unpaired regenerations; domains and lengths differ from difficult advice. Synthetic supervised-token shares are19.410% nonmoral versus13.399% low-stakes; token share is not training loss-weight share. No training or evaluation performed.",
+  "checks": [
+    {
+      "path": "README.md",
+      "sha256": "c0349c01c4160cb7675cbcf6e5a48309c71fd52cc8de91c2b9fbe8018465a4d3",
+      "bytes": 7698,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "7e81313033c2ab37e4fd2f6ef0f4ee52e18dfd2b",
+      "remote_bytes": 7698
+    },
+    {
+      "path": "card_fields.json",
+      "sha256": "a6520a411674adc1459647d59a398ee8ed4ec71686040ba005609db3e9a7949f",
+      "bytes": 7828,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "fd04e86daff295bb5282e79bbba30735bd606d79",
+      "remote_bytes": 7828
+    },
+    {
+      "path": "card_front_matter.json",
+      "sha256": "66e751b2c6cf0cb7000675344ddf06773d941ca656e0a855c8d5740a8fbc36f4",
+      "bytes": 299,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "521b3c883f8b4cb4297e051a1b57409855772e21",
+      "remote_bytes": 299
+    },
+    {
+      "path": "frozen_synthetic_config.json",
+      "sha256": "c5246289f6cdccad5d51eed805773d08f661b28b4981a50781d64b52ec3d186d",
+      "bytes": 77622,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "99a3a0e24bca674313249bf25523fe1cd1fa56f8",
+      "remote_bytes": 77622
+    },
+    {
+      "path": "mixture.jsonl",
+      "sha256": "27e34f4fa9b76a49ca5bf090f08d322dee514a789688914aa095c25d386254b8",
+      "bytes": 38331088,
+      "verified": true,
+      "method": "Public LFS SHA256 and size",
+      "remote_hash": "27e34f4fa9b76a49ca5bf090f08d322dee514a789688914aa095c25d386254b8",
+      "remote_bytes": 38331088
+    },
+    {
+      "path": "mixture_config.yaml",
+      "sha256": "c8c3490101ff71afcd168607a42fead40b217339836faa05bf0cf6531f523120",
+      "bytes": 811,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "4735bfcf8cf310873cc85487f553a4046e107fe4",
+      "remote_bytes": 811
+    },
+    {
+      "path": "mixture_stats.json",
+      "sha256": "0c9917e3893adcc5cc607c32edf3994af34efed9c855a85f053eb8b42c118f96",
+      "bytes": 3531,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "dfc73dc1863057f1ad0d69c375d28f8c596cdbba",
+      "remote_bytes": 3531
+    },
+    {
+      "path": "mixture_validation.json",
+      "sha256": "e5238362150da52d8433bdf60d29464320024839cecc20bbcf75c0d79e2fffda",
+      "bytes": 5820,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "7dc77ea771763b45a2e95cb9d9a1ebf068767537",
+      "remote_bytes": 5820
+    },
+    {
+      "path": "paired_mixture_validation.json",
+      "sha256": "977c88c44a3c0b6e49f4fc09e6361eaf053f052bdee76fbdcdb9a5010b79d510",
+      "bytes": 9845,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "d8f99622211402f31096fecbd074215968b19cc2",
+      "remote_bytes": 9845
+    },
+    {
+      "path": "publication_plan.json",
+      "sha256": "d2ac1ceb952a14fccc8c33154b0306da89933286aa581283d082d1b359e56ce3",
+      "bytes": 180,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "8eddc139d07535a453695300d3160c0d8a1c3d6b",
+      "remote_bytes": 180
+    },
+    {
+      "path": "replay_reference.json",
+      "sha256": "f151580ad41400f579430059ca761a010563625e4eabc685d4c8ae83f7be90cc",
+      "bytes": 1066522,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "64c4bee3b4b26fa735dddb1a1d4a7057226ef76c",
+      "remote_bytes": 1066522
+    },
+    {
+      "path": "run_meta.json",
+      "sha256": "91069529d9b8364134ad234751d8d36ef109359be078af1cbf3875ef599cd5dd",
+      "bytes": 5191,
+      "verified": true,
+      "method": "Public Git blob SHA1 and size",
+      "remote_hash": "c087243940dbdf106e5ce889dc4adc1277ea539f",
+      "remote_bytes": 5191
+    }
+  ],
+  "fresh_downloads": [
+    {
+      "path": "mixture.jsonl",
+      "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-nonmoral-advice-7-mix/resolve/588783fb079d0bbe5c9eb568418fcff2aad4cecb/mixture.jsonl",
+      "http_status": 200,
+      "sha256": "27e34f4fa9b76a49ca5bf090f08d322dee514a789688914aa095c25d386254b8",
+      "bytes": 38331088,
+      "local_bytes_equal": true,
+      "without_authentication": true
+    },
+    {
+      "path": "README.md",
+      "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-nonmoral-advice-7-mix/resolve/588783fb079d0bbe5c9eb568418fcff2aad4cecb/README.md",
+      "http_status": 200,
+      "sha256": "c0349c01c4160cb7675cbcf6e5a48309c71fd52cc8de91c2b9fbe8018465a4d3",
+      "bytes": 7698,
+      "local_bytes_equal": true,
+      "without_authentication": true
+    }
+  ],
+  "verification_scope": "Read-only public publication integrity check. Existing passed paired audit bound and checked, not a new content review or tokenizer rerun. No inference, HF writes or training.",
+  "errors": []
+}

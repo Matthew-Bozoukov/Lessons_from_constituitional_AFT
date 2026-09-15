@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Both refreshed control datasets completed with identical replay
+
+**Hypothesis and method.** Refresh moral low-stakes advice and the original nine
+nonmoral craft tensions as human-advice datasets, using the new09 constitution as
+the low-stakes generation target and the nonmoral compatibility-review target.
+Each arm contains716 synthetic rows and the same9284 pinned September8 replay
+rows at identical positions. Preserve original generation/review evidence and
+all failed attempts; complete the final five narrow answer repairs in one
+parallel Sonnet batch rather than another iterative paid-review cycle.
+
+**Result.** Both synthetic corpora and both10000-row mixtures are published.
+The paired native Qwen8192 audit passed without truncation and verified exact
+replay payload/position equality and exact pinned synthetic content. Conservative
+combined API spend closed at$253.6950717 under the approved$270 ceiling, with
+11687 recorded calls and zero reserved/unknown calls. Final corrections beyond
+the original run cost$4.483704; the final five-call batch cost$0.2561.
+
+**Limits.** Equal row counts do not match domains, prompt complexity or token
+exposure. Nonmoral synthetic examples average1518.0 supervised tokens versus
+1175.3 for the full752-row DA export and975.2 for low stakes; synthetic token
+shares of the mixtures are19.410% and13.399%, respectively. Token share is not
+training loss-weight share. The workflow became unnecessarily elaborate through
+serial repair/adjudication and repeated checking; these overheads were not an
+inherent requirement of adding a few rows.
+
+**Next step.** Dataset work is complete on `codex/refresh-lowstakes-nonmoral`.
+Training and evaluation await the user's later confirmation. Exact immutable
+publication pins, domain inventory, review routes and verification receipts are
+in the [final dataset report](dataset_audits/2026-09-15_dataset_refresh_final.md).
+
 ## 2026-09-15 — Low-stakes release published; bounded nonmoral completion continues
 
 **Result.** Moral low stakes is published as716 synthetic rows and a verified
