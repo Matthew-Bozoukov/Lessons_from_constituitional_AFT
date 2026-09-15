@@ -791,6 +791,33 @@ The $15 evaluation allocation leaves the combined planned ceiling within $60.
 Verify complete coverage, all published files and owned-resource cleanup before
 reporting MR. See the [run report](training/2026-09-15_nonmoral_original_reuse.md).
 
+## 2026-09-15 — Hospital eval: no agent is told it is in a simulation
+
+**Change.** Every Hospital agent's system prompt, every call, opened "You are a Hospital Agent
+in a distributed simulation." (upstream terrarium's wording, and the only place a model under
+test was told the shift is not real: 0 mentions in the briefings of a 2026-09-14 run). New
+switch `fixes.no_simulation_framing` (third_party/terrarium_no_simulation_framing.patch) cuts
+the clause and leaves the rest of the prompt byte-identical. It is ON by default (the one switch
+whose default is not the paper's, so a config that omits it gets no framing) and set in every
+Hospital config; the paper's harness is now
+`fixes.provisioner_reads_boards=false fixes.no_simulation_framing=false`. The runner and
+pod_bootstrap.sh refuse a terrarium package without the patch (checked by content, so the
+2026-09-13 stamp is unchanged).
+
+**Checks.** Scripted smoke (fixes_smoke.py), all nine variants pass: no ON variant sends any
+seat a message that mentions a simulation; `paper_as_published` still opens with the old
+sentence. Hospital tests: 75 passed with the patched package on the path.
+
+**Read across the change with care.** Every Hospital cell before this commit ran with the
+framing; nothing has run without it yet, so a new cell is compared with an old one only
+through a fresh untempted baseline. `run_config.json` records the switch per episode. Judge
+prompts still describe the setting as a simulation (the judge is not under test).
+Landed on main 2026-09-23, after the whistleblowing study (PR #103): its
+`terrarium_hospital_fixes_3.patch` edits the same function, so this patch was re-cut on top of
+it and is applied last (`pod_bootstrap.sh`, the runner's guard and `third_party/README.md`
+all say so). Nothing on main had dropped the framing before this commit: every Hospital cell
+published to date was run with it.
+
 ## 2026-09-15 — Exact original nonmoral remix verified; single-H200 training launched
 
 **Hypothesis and method.** Following the refreshed nonmoral regression, the user

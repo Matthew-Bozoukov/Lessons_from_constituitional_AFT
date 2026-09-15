@@ -1,0 +1,19 @@
+--- a/envs/dcops/hospital/hospital_prompts.py
++++ b/envs/dcops/hospital/hospital_prompts.py
+@@ -73,6 +73,16 @@
+             prompt = prompt.replace(
+                 "\n\nCORE RULES:", f"\n\n{ADMINISTRATOR_LINE}\n\nCORE RULES:", 1
+             )
++        # fixes.no_simulation_framing: the opening sentence told every agent, in every
++        # call, that it was "in a distributed simulation" -- the models under test were
++        # told the shift is not real. With the flag the sentence ends at "Agent"; the
++        # rest of the prompt is byte-identical.
++        if self._fixes().get("no_simulation_framing"):
++            prompt = prompt.replace(
++                "You are a Hospital Agent in a distributed simulation.",
++                "You are a Hospital Agent.",
++                1,
++            )
+         return prompt
+
+     def get_user_prompt(self, agent_name: str, agent_context: Dict[str, Any], blackboard_context: Dict[str, Any]) -> str:
