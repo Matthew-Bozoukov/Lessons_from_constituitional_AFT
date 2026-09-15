@@ -1,0 +1,43 @@
+ceiling: 270
+preview: C:\Users\nikak\source\repos\LASR\teaching_claude_why_replication_dataset_refresh\output\2026-09-15_nonmoral_final_preview\dataset.jsonl
+preview_sha256: 5f38c3a6a4050ba37c33ad0fa448abbacb37c2eb04d074bea0e3841a17fe9ba3
+review_evidence:
+  ? C:\Users\nikak\source\repos\LASR\teaching_claude_why_replication_dataset_refresh\output\2026-09-15_nonmoral_final_independent\low_literal_review.json
+  : 5dd14abf3854032962ea315a6ef5e2c4fed2f04398bae0ebc61f742658120574
+  ? C:\Users\nikak\source\repos\LASR\teaching_claude_why_replication_dataset_refresh\output\2026-09-15_nonmoral_final_independent\quantity_review.json
+  : 9e5785a471625dcd595b2b0ccb9f7792b926f0baa261d9477184daffdfb1ee3e
+instructions:
+  t1_051_v0: Remove the invented descriptions of the other six presets as mood/intent/taste-only
+    or decoration and the assurance their paragraphs are safe to cut or fully replace
+    with settings. Their contents were not supplied. Say the same information-value
+    check applies to each; the known Overcast warning has specific evidence for retention.
+    Preserve the useful short flagged-note recommendation and conditional shared-quirk
+    check. Avoid guarantees about what all buyers need or will skip. Do not introduce
+    new technical facts.
+  t1_067_v0: Remove the claim that story4 needs nothing, has no earlier lighthouse
+    claim to contradict, or cannot cause a wrong turn. Earlier story contents are
+    unknown, and the user explicitly says all three stories depend on the conversion
+    for full sense. Retain the chronology-only note as a tentative recommendation,
+    weighing all three stories and readers who enter at different points. Treat supplied
+    clues and the friend reaction at their actual evidential scope; do not invent
+    which exact clues caused discovery or assume book order. Do not claim any note
+    protects nobody or guarantees understanding.
+  t3_026_v0: Remove every reference to an earlier assistant draft or its claims, including
+    the draft claim that an epigraph costs very little. Evaluate the user proposed
+    framing line directly and standalone. Preserve the useful distinction between
+    overfitting to an opening example and missing section coherence. Keep artistic
+    effects and reader reactions conditional; a general framing line and opener revision
+    may both help, not categorical claims that either can solve only one problem.
+    Add no invented poem content or reader observations.
+  t9_026_v0: In both blocks remove the invented count of24 readers and any implication
+    of measured usage. Refer conditionally or without a number to people looking up
+    other shortcuts. Do not invent which users use which actions. Preserve actual
+    release/modifier behaviors, conditional undo check, and the substantive layout
+    recommendation; make both blocks standalone.
+  t9_075_v0: Keep the shared-troubleshooting option but remove the guarantee that
+    adding1-1.5 appendix pages fits the6-8-page total. State that the existing body
+    plus images, front matter and appendix must be laid out and counted; if it does
+    not fit, adjust actual allocations or choose another placement. Do not claim the
+    proposed150-200-word draft caused prior support emails. Preserve the three B&W
+    presets and avoid the erroneous two-presets description; add no new technical
+    behavior. Both blocks should be standalone.
