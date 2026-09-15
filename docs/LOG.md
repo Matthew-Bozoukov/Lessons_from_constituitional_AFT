@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-15 — Approved single-pass ODCV for refreshed controls
+
+**Hypothesis and method.** Measure the refreshed moral low-stakes and nonmoral
+adapters under the same ODCV scenario/judge protocol. The user authorized one
+pass over 40 scenarios in both variants per adapter, thinking on, Gemini 3 Flash
+MR and progress judging, parallel local Docker drivers and separate single-H100
+pods, with a $30 combined GPU/storage/judging ceiling.
+
+**Preflight.** Published historical configs confirmed 80 cells per pass and the
+chosen judges. Docker/network checks, all 168 shell-file LF checks and first
+scenario image builds passed. The existing bounded owner was extended for the
+explicit one-pass plan and separate ports; 19 focused checks passed. First-cell
+preflight reuses the first scored rollout instead of adding a smoke pass.
+
+**Next step.** Launch, monitor, preserve and verify both evaluations as recorded
+in the [protocol](training/2026-09-15_refreshed_controls_odcv.md). This entry records
+authorization and readiness, not finished rollouts or behavioural results.
+
 ## 2026-09-15 — Refreshed-control LoRAs completed and verified
 
 **Hypothesis and method.** Prepare the moral low-stakes and nonmoral craft-tension

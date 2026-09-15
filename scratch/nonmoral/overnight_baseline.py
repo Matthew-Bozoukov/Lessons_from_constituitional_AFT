@@ -47,7 +47,8 @@ def load_plan(path):
                 'run_name', 'eval_output_root', 'eval_config', 'eval_config_sha256', 'expected_cells', 'passes',
                 'gpu_cap_usd', 'backup_reserve_usd', 'judge_cap_usd',
                 'max_gpu_hourly_usd', 'storage_hourly_reserve_usd'}
-    if set(plan) != required:
+    optional = {'port', 'combined_networks'}
+    if not required <= set(plan) or set(plan) - required - optional:
         raise ValueError(f'Plan fields differ: missing={required-set(plan)}, extra={set(plan)-required}')
     for field in ('target_revision', 'base_revision'):
         if not re.fullmatch('[0-9a-f]{40}', plan[field]):
@@ -56,7 +57,7 @@ def load_plan(path):
         raise ValueError('Broader evaluation must use the frozen Qwen baseline revision')
     if not re.fullmatch(r'dougalldeepmind/[a-zA-Z0-9_.-]+', plan['target']):
         raise ValueError('Expected one public dougalldeepmind adapter')
-    if not re.fullmatch(r'odcv-(?:broader|stakes)-[a-z0-9-]+', plan['run_name']):
+    if not re.fullmatch(r'odcv-(?:broader|stakes|refresh)-[a-z0-9-]+', plan['run_name']):
         raise ValueError('Use a distinct odcv-broader-* or odcv-stakes-* run_name')
     eval_root = PureWindowsPath(plan['eval_output_root'])
     if not eval_root.is_absolute() or len(str(eval_root)) > 24 or len(plan['run_name']) > 40:
@@ -67,8 +68,14 @@ def load_plan(path):
     if Path(str(eval_root)).exists() and any(Path(str(eval_root)).glob(
             '*_'+plan['run_name'].replace('-', '_')+'_*')):
         raise ValueError('An evaluation with this run_name already exists; no automatic rerun')
-    if (plan['expected_cells'], plan['passes']) != (80, 3):
-        raise ValueError('Exactly one 3x80 evaluation is authorized')
+    refresh = plan['run_name'].startswith('odcv-refresh-')
+    passes, concurrency = (1, 6) if refresh else (3, 8)
+    if (plan['expected_cells'], plan['passes']) != (80, passes):
+        raise ValueError(f'Exactly one {passes}x80 evaluation is authorized')
+    if not 1024 <= int(plan.get('port', 8000)) <= 65535:
+        raise ValueError('Invalid local serving port')
+    if int(plan.get('combined_networks', 2 * concurrency)) < 2 * concurrency:
+        raise ValueError('Combined network reservation is below this run requirement')
     gpu, judge, reserve = (float(plan[k]) for k in
                           ('gpu_cap_usd', 'judge_cap_usd', 'backup_reserve_usd'))
     rate, storage = (float(plan[k]) for k in
@@ -80,11 +87,13 @@ def load_plan(path):
     if hashlib.sha256(config.read_bytes()).hexdigest() != plan['eval_config_sha256']:
         raise ValueError('Frozen eval config SHA256 mismatch')
     cfg = OmegaConf.load(config)
-    expected = {'temperature': 0.7, 'passes': 3, 'concurrency': 8,
+    expected = {'temperature': 0.7, 'passes': passes, 'concurrency': concurrency,
                 'scenario_timeout_s': 2400, 'progress_judge': True, 'smoke': False,
                 'judge_workers': 4}
     if any(cfg.get(k) != v for k, v in expected.items()):
         raise ValueError('Frozen config differs from the common baseline protocol')
+    if refresh and cfg.get('preflight_first_cell') is not True:
+        raise ValueError('Refreshed controls require the first scheduled cell preflight')
     judge_spec = {'gemini-3-flash-preview': 'google/gemini-3-flash-preview'}
     if cfg.judges != judge_spec or cfg.progress_judges != judge_spec:
         raise ValueError('Both judges must match the common baseline protocol')
@@ -224,7 +233,8 @@ def evaluate_frozen(plan_path, config, host, identity):
         return spec
     with patch('src.eval.run_eval.resolve_target', one_target):
         evaluate(['--name', 'odcv', '--config', str(config), '--target', spec.hf_path,
-                  '--server', host, '--ssh-key', identity])
+                  '--server', host, '--ssh-key', identity,
+                  '--port', str(plan.get('port', 8000))])
 
 
 def dispatch_frozen(plan_path, config, host, identity, timeout):
@@ -290,7 +300,8 @@ def main(checkpoint='nonmoral', plan_path=None):
                  prior_lane_gpu_storage_estimate_usd=prior_spend,
                  max_gpu_hourly_usd=max_rate, storage_hourly_reserve_usd=storage,
                  cost_note=f'Elapsed-rate estimates, not provider invoice; ${reserve} teardown reserve.',
-                 passes=3, expected_rollouts=240)
+                 passes=plan['passes'] if plan else 3,
+                 expected_rollouts=plan['expected_cells'] * plan['passes'] if plan else 240)
     if plan:
         state.update(plan_sha256=hashlib.sha256(frozen_plan.read_bytes()).hexdigest(),
                      total_allocation_usd=gpu_cap+judge_cap, work_lifetime_s=work_lifetime)
@@ -317,14 +328,15 @@ def main(checkpoint='nonmoral', plan_path=None):
             tmp.replace(out/f'{prefix}_status.json')
     save()
     docker_preflight()
-    require_network_capacity(16,because='ODCV concurrency 8')
+    require_network_capacity(int(plan.get('combined_networks', 16)) if plan else 16,
+                             because='Combined authorized ODCV evaluation concurrency')
     keypair=runpod.default_keypair()
     assert keypair, 'SSH keypair missing; no rental'
     assert hf_org() == 'dougalldeepmind'
     spec=checked_spec(plan) if plan else resolve_target(target)
     assert (spec.revision,spec.base_revision)==(revision,BASE_REVISION)
     cfg=OmegaConf.load(plan['eval_config'] if plan else ROOT/'scratch/nonmoral/odcv-paired.yaml')
-    cfg.passes=3
+    cfg.passes=plan['passes'] if plan else 3
     cfg.output_root=plan['eval_output_root'] if plan else 'C:/nm-eval'
     cfg.run_name=plan['run_name'] if plan else f'odcv-{checkpoint}-common-3x'
     cfg.bench_dir=str((ROOT/str(cfg.bench_dir)).resolve())
