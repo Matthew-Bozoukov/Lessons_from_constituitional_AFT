@@ -91,8 +91,12 @@ class BudgetClient:
         reserve = (1.25 * input_bound * price['in'] + max_tokens * price['out']) / 1e6
         req = dict(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
         if extra_body:
-            if extra_body != {'reasoning': {'enabled': False}}:
-                raise ValueError('Only explicit judge reasoning-off override is supported')
+            reasoning = extra_body.get('reasoning', {})
+            bounded_thinking = (set(extra_body) == {'reasoning'} and isinstance(reasoning, dict)
+                and set(reasoning) == {'max_tokens'} and type(reasoning['max_tokens']) is int
+                and 1024 <= reasoning['max_tokens'] < max_tokens and model.startswith('anthropic/'))
+            if extra_body != {'reasoning': {'enabled': False}} and not bounded_thinking:
+                raise ValueError('Only reasoning-off or a bounded Anthropic thinking allocation is supported')
             req['extra_body'] = extra_body
         with self.lock:
             entries = self.entries()
@@ -255,6 +259,13 @@ def _prepare(config_paths, root, budget_root=None, revision_of=None, pilot_offse
         cfg['review_constitution_text'] = full_text(cfg['constitution'])
         if cfg.get('craft_spec'):
             cfg['craft_spec_sha256'] = digest(full_text(cfg['craft_spec']).encode())
+            if cfg.get('use_operational_craft_traits'):
+                from src.data.synth.ours.constitution import chunk
+                cfg['operational_traits'] = {c.parent_id: c.text for c in chunk(cfg['craft_spec'])}
+                if set(cfg['operational_traits']) != set(quotas()):
+                    raise ValueError('Operational craft preference must retain exactly nine targets')
+        if cfg.get('original_craft_spec'):
+            cfg['original_craft_spec_sha256'] = digest(full_text(cfg['original_craft_spec']).encode())
         cfg['config_path'] = str(path)
         cfg['source_config_sha256'] = digest(Path(path).read_bytes())
         arm_dir = root / cfg['pipeline']
@@ -372,6 +383,8 @@ def validate_arm(root, arm):
         raise ValueError('Frozen constitution changed')
     if cfg.get('craft_spec') and digest(full_text(cfg['craft_spec']).encode()) != cfg['craft_spec_sha256']:
         raise ValueError('Frozen craft specification changed')
+    if cfg.get('original_craft_spec') and digest(full_text(cfg['original_craft_spec']).encode()) != cfg['original_craft_spec_sha256']:
+        raise ValueError('Original craft specification changed')
     for filename, key in [('source.jsonl', 'source_snapshot_sha256'), ('candidates.jsonl', 'candidates_sha256')]:
         if digest((root / arm / filename).read_bytes()) != meta['arms'][arm][key]:
             raise ValueError('Frozen input changed: ' + filename)
@@ -673,7 +686,8 @@ def export(root, arm):
     metadata_keys = ('trait_id', 'trait_name', 'trait_text', 'scenario_id', 'source_id', 'variant',
                      'parent_revision', 'parent_exported', 'source_record_sha256', 'domain',
                      'assigned_domain_id', 'source_domain', 'lineage_kind', 'adapted_parent_id',
-                     'paired_counterfactual', 'source_facts', 'conversation_sha256', 'response_repair_count')
+                     'paired_counterfactual', 'source_facts', 'conversation_sha256', 'response_repair_count',
+                     'source_trait_text_sha256', 'working_preference_path')
     rows = [{'messages': [{'role': 'system', 'content': r['system']},
                           {'role': 'user', 'content': r['user']},
                           {'role': 'assistant', 'content': r['response'], 'reasoning_content': r['reasoning']}],

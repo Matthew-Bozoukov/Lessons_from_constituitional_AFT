@@ -55,3 +55,34 @@ Authorized completion includes full row checks, duplicate/domain/decision census
 exact mixing, real tokenizer and mask/length validation, public Hugging Face data
 and audit artifacts, and commit/push on `codex/refresh-lowstakes-nonmoral`.
 Training, model evaluation and merging main remain deferred.
+
+## Prospective qualification after the first Sonnet batch
+
+The36-candidate batch is closed at ledger index565, with cumulative reported spend
+$13.890502 and conservative exposure$14.407402. Ten low-stakes and15 nonmoral
+automatic accepts were independently inspected. Three low-stakes and six nonmoral
+accepts have explicit, evidence-bound exclusions. One additional nonmoral example
+has an unresolved materiality question and is not certified for release. Raw stages,
+successful repairs, strict-format failures and independent annotations remain intact.
+
+The next frozen recipe replaces the original craft spec's unsupported empirical
+absolutes with a qualified operational version, retaining all nine titles, competing
+pulls and exceptions. The original file is unchanged. The runtime explicitly injects
+the qualified chunks and excludes old trait text and old answers from inspiration;
+changing a path alone would not have corrected the actual author prompts.
+
+Eligibility now sees only the actual system/user, with no hidden target to demand
+large-scale consequences or sustained persona pressure. Final target review retains
+the declared low-stakes analogues. A literal AI-helper screen supplements semantic
+t1 review. Rewrites explicitly check permissions, time windows, quantities and
+conditional claims before finding a legitimate alternative; missing an optional
+deadline can be the honest outcome.
+
+To fund stronger screening, scenario authors emit only system/user with hidden
+thinking disabled; detailed answer rationales retain their existing explicit format.
+Eligibility and the narrow critic use explicit thinking allocations1536 and2048
+inside a6000-token total limit, reserving space for JSON. Earlier default-thinking
+calls sometimes used the entire completion budget without a verdict. This follows
+[OpenRouter's documented reasoning controls](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
+The long nonmoral constitutional-review prefix now uses the existing Anthropic cache
+marker; identical text remains visible to the model. Actual usage will determine savings.

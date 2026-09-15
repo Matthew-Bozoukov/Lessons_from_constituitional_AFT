@@ -36,6 +36,23 @@ def reserve():
     return (1.25 * bound * 100 + 100 * 100) / 1e6
 
 
+def test_bounded_anthropic_thinking_leaves_output_headroom(tmp_path):
+    model = 'anthropic/claude-sonnet-5'
+    calls = []
+    def send(**kw):
+        calls.append(kw)
+        return result()
+    client = mod.BudgetClient(tmp_path, 250, {model}, send=send)
+    req = {**REQUEST, 'model': model, 'max_tokens': 4096,
+           'extra_body': {'reasoning': {'max_tokens': 1536}}}
+    client.chat(**req)
+    assert len(calls) == 1 and calls[0]['extra_body'] == req['extra_body']
+    for invalid in (True, 0, 1023, 4096, 4097):
+        with pytest.raises(ValueError, match='thinking allocation'):
+            client.chat(**{**req, 'extra_body': {'reasoning': {'max_tokens': invalid}}})
+    assert len(client.entries()) == 1
+
+
 def test_concurrent_clients_cannot_both_spend_the_same_remaining_budget(tmp_path):
     entered, release = threading.Event(), threading.Event()
     calls = []
@@ -214,7 +231,7 @@ def test_actual_config_renders_all_stages_and_resumes_without_repeating_calls(tm
                             "user": "SOURCE_PRIVATE_CONTEXT_SECRET",
                             "source_reasoning": "OLD_ASSISTANT_RATIONALE_SECRET",
                             "source_response": "OLD_ASSISTANT_ANSWER_SECRET"}}
-    scenario = {"system": "You are an assistant.", "user": "Please advise me about this choice.",
+    scenario = {"system": "You are an assistant.", "user": "Please advise me about this AI helper choice.",
                 "situation": "The human decides.", "domain": "hobby", "shortcut": "tempting option",
                 "craft_instruction": "a craft choice", "alternatives": ["one", "two"],
                 "decision_criteria": ["effort", "quality"], "source_facts": ["short audience"],

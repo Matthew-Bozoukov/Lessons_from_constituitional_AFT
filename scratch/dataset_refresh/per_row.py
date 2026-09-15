@@ -75,6 +75,10 @@ def generate_one(root, arm, candidate, client):
     client.local.run_root = str(root.resolve())
     src = candidate['source']
     record = {k: src[k] for k in ('trait_id', 'trait_name', 'trait_text')}
+    if cfg.get('operational_traits'):
+        record['source_trait_text_sha256'] = base.digest(src['trait_text'].encode())
+        record['trait_text'] = cfg['operational_traits'][candidate['trait_id']]
+        record['working_preference_path'] = cfg['craft_spec']
     domains = cfg['scenario_domains']
     index = int(candidate['candidate_id'].split('_')[1])
     domain_id = (index * 11 + (int(candidate['trait_id'][1:]) - 1) * 2 + candidate['variant'] * 5) % len(domains)
@@ -139,7 +143,8 @@ def generate_one(root, arm, candidate, client):
         return result
 
     try:
-        inspiration = {k: src[k] for k in cfg['scenario_source_fields'] if k in src}
+        inspiration = {k: src[k] for k in cfg['scenario_source_fields'] if k in src
+                       and (not cfg.get('operational_traits') or k != 'trait_text')}
         f = {**record, 'source_json': json.dumps(inspiration, ensure_ascii=False),
              'style_guidance': cfg.get('style_guidance', ''),
              'adaptation_mode': ('Create a fresh standalone case inspired by the decision mechanism; '
@@ -154,6 +159,11 @@ def generate_one(root, arm, candidate, client):
             raise ValueError('Scenario must supply nonempty system/user strings')
         # No model-authored summary/quote/guarantee can become released source evidence.
         record.update(system=generated['system'], user=generated['user'])
+        if cfg.get('require_explicit_ai_t1') and candidate['trait_id'] == 't1':
+            import re
+            if not re.search(r'\b(?:AI|artificial intelligence|language model|LLM)\b', record['user'], re.I):
+                return finish('rejected', rejection_stage='explicit_ai_eligibility',
+                              review={'accepted': False, 'issues': ['User must explicitly identify the AI helper.']})
         record['source_facts'] = [record['user']]
         record['conversation_sha256'] = base.digest(conversation(record, False))
         base.save_checkpoint(out / 'metadata_derivation.json', {

@@ -323,3 +323,144 @@ def test_new_prepare_requires_original_shared_ledger(case):
         mod.prepare([], case.root, None)
     with pytest.raises(ValueError, match="existing cumulative"):
         mod.prepare([], case.root, case.root / "fresh_budget")
+
+
+def test_changed_critic_validator_is_independently_frozen(case, monkeypatch):
+    meta_path = case.root / "run_meta.json"
+    meta = json.loads(meta_path.read_text())
+    meta.update(code_sha256=base.digest(Path(base.__file__).read_bytes()),
+                code_per_row_sha256=base.digest(Path(mod.__file__).read_bytes()),
+                critic_validator_sha256="different-validator-code")
+    base.save_checkpoint(meta_path, meta)
+    monkeypatch.setattr(base, "validate_arm", lambda *a: case.cfg)
+    monkeypatch.setattr(base, "BudgetClient", lambda *a, **k: pytest.fail("Should fail before constructing client"))
+    with pytest.raises(ValueError, match="Frozen implementation changed"):
+        base._execute(case.root, "production", 250)
+
+
+@pytest.mark.parametrize("arm", ["da-lowstakes-refresh", "nonmoral-advice"])
+def test_qualified_preflight_has_no_target_or_source_information(arm):
+    cfg = base.load_config(Path("configs/data/synth") / (arm + ".yaml"))
+    fields = {"conversation_json": json.dumps({"system": "Actual system", "user": "Actual user"}),
+              "trait_text": "SECRET_TARGET", "trait_name": "SECRET_NAME", "source_json": "SECRET_SOURCE",
+              "constitution": "SECRET_CONSTITUTION", "metadata_json": "SECRET_METADATA"}
+    messages = [base.render(cfg["preflight"]["prompts"][role], fields) for role in ("system", "user")]
+    assert "Actual user" in messages[1]
+    assert "SECRET_" not in " ".join(messages)
+    role = cfg["preflight"]["model"]
+    assert cfg["models"][role]["model"] == SONNET
+    assert cfg["models"][role]["max_tokens"] == 6000
+    assert not cfg["models"][role].get("extra_body", {}).get("reasoning", {}).get("enabled") is False
+    assert "target_fit" not in cfg["preflight"]["acceptance"]["required_true"]
+
+
+def test_operational_preference_replaces_source_trait_in_every_author_and_repair(case):
+    from src.data.synth.ours.constitution import chunk
+    actual = base.load_config(Path("configs/data/synth/nonmoral-advice.yaml"))
+    operational = {c.parent_id: c.text for c in chunk(actual["craft_spec"])}
+    case.cfg.update(operational_traits=operational, craft_spec=actual["craft_spec"],
+                    scenario_source_fields=actual["scenario_source_fields"])
+    case.candidate["source"].update(situation="A brief source situation.", shortcut="A source choice.",
+        source_reasoning="SECRET_OLD_ANSWER_REASONING", source_response="SECRET_OLD_ANSWER_FINAL")
+    old = case.candidate["source"]["trait_text"]
+    base.write_json(case.root / case.arm / "config.json", case.cfg)
+    client = client_for(BAD, repair=True)
+    result = generate(case, client)
+    assert result["status"] == "accepted"
+    assert result["record"]["trait_text"] == operational["t1"]
+    assert result["record"]["source_trait_text_sha256"] == base.digest(old.encode())
+    assert result["record"]["working_preference_path"] == actual["craft_spec"]
+    assert case.candidate["source"]["trait_text"] == old
+    authors = {"scenario", "draft_responses", "revise_responses", "repair_1"}
+    for stage, request in client.calls:
+        rendered = json.dumps(request["messages"], ensure_ascii=False)
+        if stage in authors:
+            assert operational["t1"] in " ".join(m["content"] for m in request["messages"])
+            assert old not in rendered
+            assert "SECRET_OLD_ANSWER" not in rendered
+            assert "SOURCE_ONLY_SECRET" not in rendered
+    assert authors <= {stage for stage, _ in client.calls}
+    assert "user" not in actual["scenario_source_fields"]
+    assert not {"source_reasoning", "source_response", "response", "reasoning"} & set(actual["scenario_source_fields"])
+
+
+@pytest.mark.parametrize("user", ["Our app proposes a queue.", "The daily automatic queue needs a vote.",
+                                   "I reviewed the email queue."])
+def test_t1_requires_ai_literal_in_actual_user_before_preflight(case, user):
+    case.cfg["require_explicit_ai_t1"] = True
+    base.write_json(case.root / case.arm / "config.json", case.cfg)
+    client = client_for()
+    client.replies["scenario"] = {"system": "You oversee an AI helper.", "user": user,
+                                   "metadata": "AI helper is present, trust me"}
+    result = generate(case, client)
+    assert result["status"] == "rejected"
+    assert result["rejection_stage"] == "explicit_ai_eligibility"
+    assert [stage for stage, _ in client.calls] == ["scenario"]
+
+
+@pytest.mark.parametrize("label", ["AI helper", "artificial intelligence", "language model", "LLM"])
+def test_t1_accepts_supported_explicit_ai_labels(case, label):
+    case.cfg["require_explicit_ai_t1"] = True
+    base.write_json(case.root / case.arm / "config.json", case.cfg)
+    client = client_for()
+    client.replies["scenario"]["user"] = f"Our {label} suggests a queue. " + USER
+    result = generate(case, client)
+    assert result["status"] == "accepted"
+
+
+def test_ai_literal_requirement_does_not_apply_to_other_traits(case):
+    case.cfg["require_explicit_ai_t1"] = True
+    case.candidate.update(candidate_id="t2_000_v0", trait_id="t2")
+    case.candidate["source"]["trait_id"] = "t2"
+    base.write_json(case.root / case.arm / "config.json", case.cfg)
+    assert generate(case, client_for())["status"] == "accepted"
+
+
+def prepared_operational_fixture(case, tmp_path, monkeypatch, n):
+    cfg = deepcopy(case.cfg)
+    craft = tmp_path / "craft.md"
+    craft.write_text("\n".join(f"## {i}. Preference {i}\nQualified detail {i}.\n" for i in range(1, n + 1)))
+    constitution = tmp_path / "constitution.md"
+    constitution.write_text("Constitution fixture.")
+    cfg.update(craft_spec=str(craft), use_operational_craft_traits=True, constitution=str(constitution))
+    config_path = tmp_path / "low-test.yaml"
+    config_path.write_text("# mock config bytes")
+    source = [{"scenario_id": f"source-{i}", "trait_id": f"t{i}", "trait_text": f"OLD {i}",
+               "trait_name": f"Preference {i}"} for i in range(1, 10)]
+    monkeypatch.setattr(base, "load_config", lambda _: deepcopy(cfg))
+    monkeypatch.setattr(base, "pin_source", lambda _: (deepcopy(source), deepcopy(cfg["source"])))
+    output = tmp_path / "prepared"
+    base._prepare([config_path], output)
+    return json.loads((output / case.arm / "config.json").read_text()), craft
+
+
+def test_prepare_freezes_nine_operational_chunks_and_file_hash(case, tmp_path, monkeypatch):
+    frozen, craft = prepared_operational_fixture(case, tmp_path, monkeypatch, 9)
+    assert set(frozen["operational_traits"]) == set(base.quotas())
+    assert "Qualified detail 6." in frozen["operational_traits"]["t6"]
+    assert "OLD" not in json.dumps(frozen["operational_traits"])
+    assert frozen["craft_spec_sha256"] == base.digest(base.full_text(craft).encode())
+
+
+@pytest.mark.parametrize("n", [8, 10])
+def test_prepare_rejects_operational_spec_with_wrong_target_count(case, tmp_path, monkeypatch, n):
+    with pytest.raises(ValueError, match="exactly nine"):
+        prepared_operational_fixture(case, tmp_path, monkeypatch, n)
+
+
+@pytest.mark.parametrize("trait", range(1, 10))
+def test_actual_assignment_visits_every_one_of_28_domains_for_each_trait(case, trait):
+    case.cfg["scenario_domains"] = [f"Domain {i}" for i in range(28)]
+    base.write_json(case.root / case.arm / "config.json", case.cfg)
+    seen = set()
+    for index in range(28):
+        candidate = deepcopy(case.candidate)
+        candidate.update(candidate_id=f"t{trait}_{index:03d}_v0", trait_id=f"t{trait}")
+        candidate["source"]["trait_id"] = f"t{trait}"
+        client = client_for()
+        client.replies["preflight"] = {"eligible": False, "stakes": 1}
+        result = base.generate_one(case.root, case.arm, candidate, client)
+        assert result["status"] == "rejected"
+        assert result["record"]["domain"] == case.cfg["scenario_domains"][result["record"]["assigned_domain_id"]]
+        seen.add(result["record"]["assigned_domain_id"])
+    assert seen == set(range(28))

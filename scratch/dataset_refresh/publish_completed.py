@@ -74,6 +74,8 @@ def freeze_code(out, commit, cfg):
                 'pyproject.toml', 'uv.lock', 'configs/data/synth/' + cfg['pipeline'] + '.yaml'}
     if cfg.get('craft_spec'):
         required.add(cfg['craft_spec'])
+    if cfg.get('original_craft_spec'):
+        required.add(cfg['original_craft_spec'])
     if required - set(tracked):
         raise ValueError('Commit lacks required recipe/code files: ' + str(sorted(required - set(tracked))))
     selected = set(required) | {p for p in tracked if p.endswith('.py') and
@@ -181,6 +183,8 @@ def prepare(root, arm, source_commit, ledger_end, destination=None):
         }
         if cfg.get('craft_spec'):
             fields['craft_preference'] = cfg['craft_spec'] + '; SHA256=' + cfg['craft_spec_sha256'] + '. This craft preference guides generation. Ethical constitution is a separate compatibility check and is not injected into nonmoral author prompts.'
+        if cfg.get('original_craft_spec'):
+            fields['original_craft_preference'] = cfg['original_craft_spec'] + '; SHA256=' + cfg['original_craft_spec_sha256'] + '. The original file is unchanged. The operational version retains all nine named tensions and qualifies unsupported absolutes about format capabilities, understanding and reader behavior. Thus the renewed control preserves the varied craft task, not every original factual assertion.'
         front = {'tags': training_data_tags('synth', cfg['pipeline'], cfg['constitution']),
                  'configs': [{'config_name': 'default', 'default': True, 'data_files': 'dataset.jsonl'}]}
         write_json(out / 'card_fields.json', fields)
