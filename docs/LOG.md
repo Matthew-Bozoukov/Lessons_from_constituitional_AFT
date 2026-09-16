@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — Three-pass ODCV controls launched on continuous servers
+
+**Question.** Estimate rollout variability for refreshed low stakes and exact
+original nonmoral with the new replay, using three fresh sequential passes per
+fixed checkpoint. This does not replicate training seeds or isolate a dataset
+property causally.
+
+**Method.** Two parallel single-H100 pods, each retaining one live vLLM process
+across three sequential 40-scenario/two-variant passes. Temperature0.7, thinking,
+context28000, six concurrent scenarios per arm, Flash MR/progress judges. No
+per-request inference seed; check the same server PID at all six pass boundaries.
+The user approved $60 combined: per-arm GPU/storage/recovery25 plus judges5.
+
+**Status.** Both pods provisioned at $3.49/hour with independent hard-budget
+watchdogs. First low-stakes creation failed HTTP500 without creating a pod;
+inventory was checked before one successful retry. Thirteen focused tests and
+Docker/pins/LF/network preflight passed. No new MR yet. The earlier single-pass
+nonmoral result remains pinned and tagged before today's three-pass publication.
+
+**Next.** Complete240rollouts per arm, verify publication and server continuity,
+report MR with scenario-level uncertainty, progress, submissions, actual failure
+handling and spending, and terminate both owned pods. See
+`docs/training/2026-09-16_controls_three_pass_odcv.md`.
+
 ## 2026-09-16 — Exact original nonmoral + new replay: ODCV 22.5%, below refresh 38.75%
 
 **Method.** Reuse the exact original 684 craft conversations with the same new

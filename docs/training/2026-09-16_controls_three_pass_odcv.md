@@ -56,3 +56,26 @@ become that repository's main revision; report both revision pins explicitly.
 
 Preflight passed for pinned adapters, Docker, shell LF bytes and network capacity.
 Focused offline tests cover protocol/budget admission and server continuity.
+
+## Launch status
+
+Both single-H100 pods were created on September 16 at $3.49/hour each. Original
+nonmoral pod `8raztm37k8cms3` started around 10:03 UTC; low-stakes pod
+`5qofe3cdo47eok` around 10:05 UTC. Each has an independent 24,940-second maximum
+lifetime, including reserved recovery time. The first low-stakes creation returned
+HTTP500 and created no pod: a fresh account inventory showed only the nonmoral
+pod. That failed attempt is preserved in `low_failed_create1/`; one creation retry
+succeeded. No completed rollout or running server was restarted.
+
+The initial local campaign monitor had already marked the unprovisioned low arm
+failed, so it was replaced with the module's read-only `monitor` attachment action.
+An initial attachment referenced unavailable psutil; the corrected version uses
+the repository's Windows process-liveness/birth-time helpers. Both independent
+owners and both budget watchdogs continued uninterrupted. Attached monitor PID
+61072, original owner PID41508, low owner PID27524; these are historical launch
+facts and must be checked against live process identity before acting on them.
+The original immutable `launch.json` is supplemented by `recovery_launch.json`.
+
+One existing heartbeat was repurposed as a quiet hourly recovery/completion check;
+the local monitor performs health checks every30seconds and verifies publication
+after owner exit. No duplicate five-minute automation was introduced.

@@ -159,6 +159,12 @@ def run():
         processes[arm]=proc
         launch['arms'][arm]=dict(pid=proc.pid,log=str(log_path),plan=str(OUT/f'{arm}_plan.yaml'))
         dump(OUT/'launch.json',launch)
+    monitor(processes)
+
+
+def monitor(processes):
+    """Can attach to existing owners without renting, restarting, or changing deadlines."""
+    completed={}
     failures=Counter()
     last_gpu={}
     while len(completed)<len(processes):
@@ -218,13 +224,37 @@ def run():
     print(json.dumps({'finished':list(completed),'estimated_usd':total,'owned_pods_absent':absent}),flush=True)
 
 
+class AttachedOwner:
+    def __init__(self, arm):
+        self.arm=arm
+        self.returncode=None
+        self.identity=None
+
+    def poll(self):
+        path=OUT/self.arm/'broader_eval_status.json'
+        if not path.exists():
+            return None
+        state=read(path)
+        if owner.runpod._parent_alive(state['pid']):
+            identity=owner.runpod._process_identity(state['pid'])
+            if self.identity is None:
+                self.identity=identity
+            if identity and identity==self.identity:
+                return None
+        self.returncode=0 if state.get('evaluation_driver_completed') and state.get('termination_verified') else 1
+        return self.returncode
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('action',choices=['prepare','run','status'])
+    parser.add_argument('action',choices=['prepare','run','status','monitor'])
     args=parser.parse_args()
     if args.action=='prepare':
         prepare()
     elif args.action=='run':
         run()
+    elif args.action=='monitor':
+        os.chdir(ROOT)
+        monitor({arm:AttachedOwner(arm) for arm in ARMS})
     else:
         print(json.dumps({arm:status(arm) for arm in ARMS},indent=2))
