@@ -1,6 +1,19 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — DA supervision ablation training completed
+
+**Result.** All three Qwen3.6-27B rank64 LoRAs completed one epoch/628steps on
+752new DA examples plus the same9,284 normally supervised September8 replay rows,
+on three separate dual-H200 pods. Training runtimes: CoT3h32m11s, answer-only2h26m36s,
+empty-CoT2h24m25s. All adapters and full training-output archives are published on HF;
+archive sizes and SHA256 were independently verified before all campaign pods were
+terminated. Dataset/base pins and training metadata were checked. Approximate total
+cost$95.03 including setup, preservation and$1.29 superseded single-GPU attempts;
+provider billing still lagged the last hours. Monitoring is paused. **Next.** Evaluation
+has not run; training losses are not a cross-arm quality comparison.
+[Model links, immutable revisions, protocol and completion receipts](da_supervision_rerun_2026-09-16.md).
+
 ## 2026-09-16 — New DA supervision ablation campaign launched
 
 **Question.** Separate supervising DA reasoning, supervising answers conditioned on

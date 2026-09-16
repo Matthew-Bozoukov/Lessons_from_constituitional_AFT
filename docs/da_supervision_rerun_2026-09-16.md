@@ -111,3 +111,36 @@ copy. Answer archive revision: `52adc308c378457a94b2eb900802dc424ab5540f`; empty
 revision: `b60f9e3656f92b99d9aedf1f9afbccefa3cc6f48`. These commits add backups without
 changing adapter weights. Per-arm `durable_completion.json` records verified teardown
 and timestamps. CoT remained healthy and training; no evaluation has run.
+
+At18:21UTC all three trainings, publications, full-output preservation and pod
+terminations are verified complete. Each run completed628optimizer steps/one epoch
+on10,036examples using two H200s. CoT finished training at18:14:42UTC with runtime
+12,731.0635s and training loss0.82796343. Its archive was independently checked through
+HF file metadata (14,127,779,840bytes and SHA256), then its pod was terminated and
+absence verified at18:21:39UTC. The three model repositories and immutable revisions
+including complete training archives are:
+
+| Arm | Model repository | Revision including archive | Training runtime | Train loss |
+| --- | --- | --- | --- | --- |
+| CoT-only | [2026-09-16-qwen36-0-da-7-cot](https://huggingface.co/dougalldeepmind/2026-09-16-qwen36-0-da-7-cot) | `6cd676bca92e97b745067daab61f91ca2bb0126f` | 3h32m11s | 0.82796 |
+| Answer-only | [2026-09-16-qwen36-0-da-7-answer-only](https://huggingface.co/dougalldeepmind/2026-09-16-qwen36-0-da-7-answer-only) | `52adc308c378457a94b2eb900802dc424ab5540f` | 2h26m36s | 0.8093 |
+| Empty-CoT | [2026-09-16-qwen36-0-da-7-empty-cot](https://huggingface.co/dougalldeepmind/2026-09-16-qwen36-0-da-7-empty-cot) | `b60f9e3656f92b99d9aedf1f9afbccefa3cc6f48` | 2h24m25s | 0.8250 |
+
+CoT's adapter-only revision is `5788d320f91d916cd0a933793b5f1fd3752d059c`;
+adding its archive did not change weights. Every repository contains
+`training_backup/da-supervision-backup.tar` and `training_backup/manifest.json`.
+All three first-checkpoint local backups were also checksum-verified. Published
+metadata was audited for dataset/base pins, thinking=true, seed, one epoch, batch16,
+optimizer and LoRA settings. Losses supervise different targets and do not establish
+relative quality. No evaluation has run.
+
+Final cost estimate is **$95.03**, including setup and preservation: CoT$34.82,
+answer$29.41, empty$29.50, plus$1.29 provider-reported superseded attempts. The three
+main estimates use original allocation-to-verified-termination tenure times$9.28/hour
+($9.18 quoted GPU rate plus$0.10 storage allowance); empty includes the original
+bootstrap before its owner handoff. The billing API reported$75.08 at the final query
+but had not yet included the last billing periods, so$95.03 is an estimate, not a
+settled invoice. Receipts and arithmetic are in `completion_summary.json`,
+`billing_final_query.json` and each arm's `durable_completion.json` under the campaign
+output directory. All six campaign pod IDs are absent from the live inventory;
+other tasks' resources were left alone. The ten-minute heartbeat is paused.
