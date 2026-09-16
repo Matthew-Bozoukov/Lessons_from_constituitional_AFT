@@ -27,7 +27,9 @@ def dump(path,value):
 
 
 def train_command(plan,arm,smoke=False):
-    argv=['/root/.local/bin/uv','run','train','--config','configs/train/sft.yaml',
+    count=int(plan['pod']['count'])
+    launcher=['train'] if count==1 else ['torchrun',f'--nproc_per_node={count}','scripts/train/train_lora.py']
+    argv=['/root/.local/bin/uv','run',*launcher,'--config','configs/train/sft.yaml',
           'model=qwen36','seed=0','wandb=false','constitution='+plan['constitution'],
           'data_repo='+arm['data_repo'],'data_revision='+arm['data_revision'],
           'base_model_revision='+plan['base_model_revision'],
@@ -69,7 +71,7 @@ def run(plan_path,key,out):
     try:
         assert hf_api().dataset_info(arm['data_repo'],revision=arm['data_revision']).sha==arm['data_revision']
         result=runpod.up(arm['name'],train='configs/train/sft.yaml',model='qwen36',
-                         count=1,push_env=True,max_hours=limits['max_hours'],
+                         count=int(limits['count']),push_env=True,max_hours=limits['max_hours'],
                          countries=limits['countries'],on_provisioned=registered)
         (out/'provision.txt').write_text(result,encoding='utf-8')
         host=re.search(r'^host:\s+(\S+)',result,re.M).group(1)
@@ -80,7 +82,10 @@ def run(plan_path,key,out):
         state['download_bytes_per_second']=speed;save()
         assert speed>=1_000_000,'Host network too slow; no training launched'
         assert runpod.wait_bootstrapped(state['owned_pod'],timeout_s=1500),'Bootstrap timeout'
-        check="import torch; assert torch.cuda.is_available(); assert torch.cuda.device_count()==1; assert torch.ones(8,device='cuda').sum().item()==8; print(torch.cuda.get_device_name(0),torch.version.cuda)"
+        check=("import torch; assert torch.cuda.is_available(); "
+               f"assert torch.cuda.device_count()=={int(limits['count'])}; "
+               "assert all(torch.ones(8,device=f'cuda:{i}').sum().item()==8 for i in range(torch.cuda.device_count())); "
+               "print([torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],torch.version.cuda)")
         state['cuda']=remote._ssh('cd /root/work && /root/.local/bin/uv run python -c '+shlex.quote(check),timeout=180).strip()
         assert 'H200' in state['cuda']
         rd='/root/work/output/da-supervision'

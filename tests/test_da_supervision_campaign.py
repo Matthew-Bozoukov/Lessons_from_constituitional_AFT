@@ -1,6 +1,7 @@
 # ABOUTME: Checks paired replay selection and paid-run command isolation for the DA campaign.
 # ABOUTME: Run: uv run pytest tests/test_da_supervision_campaign.py -q
 import shlex
+import pytest
 from scratch.da_supervision.build import select_replay
 from scratch.da_supervision.owner import train_command
 
@@ -15,13 +16,15 @@ def test_replay_selection_exact_unique_deterministic_and_unchanged():
     assert select_replay(rows,7,0)==(selected,quotas)
 
 
-def test_commands_pin_dataset_and_base_and_smoke_longest_plus_da():
-    plan={'constitution':'constitutions/test/constitution.md','base_model_revision':'a'*40}
+@pytest.mark.parametrize('count',[1,2])
+def test_commands_pin_dataset_and_base_and_smoke_longest_plus_da(count):
+    plan={'constitution':'constitutions/test/constitution.md','base_model_revision':'a'*40,'pod':{'count':count}}
     arm={'data_repo':'org/data','data_revision':'b'*40,'organism':'org/organism',
          'stats':{'longest_index':9999,'da_index':53}}
     full=shlex.split(train_command(plan,arm))
     smoke=shlex.split(train_command(plan,arm,True))
-    assert full[:3]==['/root/.local/bin/uv','run','train']
+    prefix=['/root/.local/bin/uv','run']+(['train'] if count==1 else ['torchrun','--nproc_per_node=2','scripts/train/train_lora.py'])
+    assert full[:len(prefix)]==prefix
     assert 'data_revision='+'b'*40 in full and 'base_model_revision='+'a'*40 in full
     assert '--smoke=True' not in full and '--smoke=True' in smoke
     indices=next(x for x in smoke if x.startswith('smoke_indices='))
@@ -31,6 +34,6 @@ def test_commands_pin_dataset_and_base_and_smoke_longest_plus_da():
     captured={}
     def entry(config: str,*overrides: str,smoke: bool=False):
         captured.update(config=config,overrides=overrides,smoke=smoke)
-    fire.Fire(entry,command=smoke[3:])
+    fire.Fire(entry,command=smoke[len(prefix):])
     assert captured['smoke'] is True
     assert indices in captured['overrides']

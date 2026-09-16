@@ -20,8 +20,8 @@ variants:
   answer: answer-only
   empty: empty-cot
 pod:
-  count: 1
+  count: 2
   max_hours: 5
-  hourly_ceiling_usd: 5.10
+  hourly_ceiling_usd: 9.50
   recovery_reserve_seconds: 2700
   countries: ""
