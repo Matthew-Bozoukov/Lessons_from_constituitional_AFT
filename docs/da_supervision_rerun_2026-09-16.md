@@ -91,3 +91,14 @@ The ten-minute task heartbeat reports meaningful changes and completion; it does
 provision evaluation GPUs. Completion means verified adapter publication and verified
 termination of all campaign pods, not merely a successful startup. Dataset audits and
 launch/batching tests have passed; training results and evaluation results are pending.
+
+At15:10UTC the answer pod had finished its22minute dependency bootstrap and reached
+its two-rank GPU smoke. Empty's dependencies were still downloading when the25minute
+bootstrap-stage limit approached. Its owner was handed off to `empty-dual-recovered`
+using `scratch/da_supervision/resume_boot.py`, retaining the same pod and in-progress
+installation. The original independent deadline watchdog remained active; the new
+owner-death watchdog was verified registered. The replacement plan subtracts elapsed
+time: its calculated deadline is8.9seconds earlier than the original19:43UTC deadline,
+not an extension. Old status `owner_handoff` identifies the replacement. No extra pod
+was rented. CoT continued normally around75/628 steps, mean throughput suggesting
+about3hours remaining. This supersedes the optimistic early2–3hour total estimate.
