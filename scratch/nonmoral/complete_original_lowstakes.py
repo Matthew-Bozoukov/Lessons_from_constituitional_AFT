@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import subprocess
 import sys
 import time
 
@@ -63,18 +64,17 @@ def main(campaign):
         assert progress['estimated_gpu_storage_usd'] <= 50
         # The original owner cannot load the verifier correction. Stop it only AFTER
         # every artifact is preserved and its pod is independently verified absent.
-        import psutil
         match = re.search(r'parent (\d+) cap', (root / 'train_attempt1/watchdog.log').read_text())
         if match:
             pid = int(match.group(1))
-            try:
-                process = psutil.Process(pid)
-                command = ' '.join(process.cmdline())
+            check = subprocess.run(['powershell', '-NoProfile', '-Command',
+                f'Get-CimInstance Win32_Process -Filter "ProcessId = {pid}" | Select-Object -ExpandProperty CommandLine'],
+                capture_output=True, text=True, timeout=30, check=True)
+            command = check.stdout.strip()
+            if command:
                 assert 'train_pair.py' in command and 'lowstakes_original_reuse_20260916' in command
                 os.kill(pid, signal.SIGTERM)
                 progress['retired_owner_pid'] = pid
-            except psutil.NoSuchProcess:
-                pass
         (root / 'keep_awake.stop').touch()
         progress['accounts_after'] = snapshot()
         dump(out / 'status.json', progress)
