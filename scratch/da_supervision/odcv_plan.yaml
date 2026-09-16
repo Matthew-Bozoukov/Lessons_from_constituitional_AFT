@@ -1,0 +1,34 @@
+# ABOUTME: Owned three-pod ODCV launch manifest with frozen adapter and base revisions.
+# ABOUTME: A four-hour cap includes provisioning, model startup, rollouts and publication.
+# Run: uv run python -m scratch.da_supervision.odcv_owner <arm>
+config: scratch\da_supervision\odcv.yaml
+output_root: output/da_supervision/odcv_2026-09-16
+max_hours: 4
+hourly_ceiling_usd: 3.6
+boot_timeout_s: 2700
+idle_timeout_s: 2700
+gpu: NVIDIA H100 80GB HBM3
+count: 1
+cloud: SECURE
+arms:
+- key: cot
+  target: dougalldeepmind/2026-09-16-qwen36-0-da-7-cot
+  revision: 6cd676bca92e97b745067daab61f91ca2bb0126f
+  base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+  port: 8111
+  pod_name: nika-da-cot-odcv
+  published_name: 2026-09-16-odcv-qwen36-0-da-7-cot
+- key: answer
+  target: dougalldeepmind/2026-09-16-qwen36-0-da-7-answer-only
+  revision: 52adc308c378457a94b2eb900802dc424ab5540f
+  base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+  port: 8112
+  pod_name: nika-da-answer-only-odcv
+  published_name: 2026-09-16-odcv-qwen36-0-da-7-answer-only
+- key: empty
+  target: dougalldeepmind/2026-09-16-qwen36-0-da-7-empty-cot
+  revision: b60f9e3656f92b99d9aedf1f9afbccefa3cc6f48
+  base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+  port: 8113
+  pod_name: nika-da-empty-cot-odcv
+  published_name: 2026-09-16-odcv-qwen36-0-da-7-empty-cot
