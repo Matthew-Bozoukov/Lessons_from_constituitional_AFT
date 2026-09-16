@@ -9,8 +9,9 @@ reasoning, and supervising answers with an empty masked think block. **Method.**
 September8 replay mix in each arm; seed0, rank64 BF16 LoRA and global batch16. The user
 specified three parallel pods and clarified two H200s per pod. Initial single-GPU
 setup/smoke attempts were inventoried and terminated before full training. **Status.**
-All mixtures are published, pinned and exhaustively mask-audited; the first dual-GPU
-pod is in smoke, with the remaining allocations encountering provider capacity errors.
+All mixtures are published, pinned and exhaustively mask-audited. Three Secure Cloud
+dual-H200 pods are allocated; CoT passed smoke and is training, while answer and empty
+are starting up after transient capacity errors.
 No trained adapter or evaluation result is claimed. [Design, pins and operating
 bounds](da_supervision_rerun_2026-09-16.md). **Next.** Complete the remaining allocations,
 verify two-rank training, publish adapters, preserve outputs and terminate owned pods.

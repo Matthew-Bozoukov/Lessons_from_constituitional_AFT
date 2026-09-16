@@ -59,11 +59,21 @@ cost assumption, corrected after the user's clarification. All three initial pod
 frozen during setup/smoke, their logs and empty checkpoint inventories preserved, and
 termination verified before the replacements. No full training run had begun.
 
-Only this task's worktree and positively recorded owned pod IDs are managed. Training
-code revision is `68ab0cb7`; the worktree is `../teaching_claude_why_replication_da_supervision`
+Only this task's worktree and positively recorded owned pod IDs are managed. CoT code
+revision is `68ab0cb7`; the other two use `23a13288`, with identical trainer/model/config
+files (the changes concern placement, diagnostics and documentation). The worktree is `../teaching_claude_why_replication_da_supervision`
 and branch `codex/da-supervision-rerun`. Per-attempt receipts are in
 `output/da_supervision/2026-09-16/runs/`. Failed allocation requests are retained, and
 provider inventory must be reconciled before retries to avoid duplicate billable pods.
+
+At14:44UTC all three Secure Cloud replacements are allocated: `rsq31hkrf0elpn`
+(`nika-da-cot`, owner `cot-dual`), `266cqfrfcyxxgs` (`nika-da-empty-cot`, owner
+`empty-dual-attempt3`), and `xiw8uh2etoa1hy` (`nika-da-answer-only`, owner
+`answer-dual-attempt7`). CoT passed its two-rank smoke and reached full optimizer steps
+with finite loss/gradients; the other two are starting up. Both Secure and Community
+allocation failures reported no available matching instances. No Community pod was
+created. Early CoT progress suggests2–3hours training, subject to settling throughput;
+publication and preservation add time and are tracked separately.
 
 At allocation, two H200s cost $9.18/hour per pod, excluding storage. Each owner has a
 $9.50/hour ceiling and a five-hour lifetime, with the final45minutes reserved for
