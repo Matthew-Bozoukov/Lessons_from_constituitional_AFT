@@ -102,3 +102,12 @@ time: its calculated deadline is8.9seconds earlier than the original19:43UTC dea
 not an extension. Old status `owner_handoff` identifies the replacement. No extra pod
 was rented. CoT continued normally around75/628 steps, mean throughput suggesting
 about3hours remaining. This supersedes the optimistic early2–3hour total estimate.
+
+At17:54UTC both answer arms had completed628steps/one epoch and published adapters.
+Answer runtime was8,796s, loss0.8093; empty runtime8,665s, loss0.8250. Loss differences
+are not quality comparisons. Each full14.13GB output archive was independently verified
+on HF (SHA256 and size) before manual teardown, replacing the slow redundant laptop
+copy. Answer archive revision: `52adc308c378457a94b2eb900802dc424ab5540f`; empty archive
+revision: `b60f9e3656f92b99d9aedf1f9afbccefa3cc6f48`. These commits add backups without
+changing adapter weights. Per-arm `durable_completion.json` records verified teardown
+and timestamps. CoT remained healthy and training; no evaluation has run.

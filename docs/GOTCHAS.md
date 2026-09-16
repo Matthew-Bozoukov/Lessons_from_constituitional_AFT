@@ -750,3 +750,20 @@ mixture whose trace family is not the model being trained unless
 `reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
 judge), and point the arm configs' `base_mixture:` at the new repo.
 
+
+## Full training backup transfer route (2026-09-16)
+
+The DA campaign's complete archive was14,127,779,840bytes per answer arm: final
+adapter, two retained resume checkpoints, run metadata and smoke outputs. The initial
+checkpoint backup was only3.85GB; sizing the final copy from that earlier file was
+insufficient. Concurrent SSH copies to the Windows laptop achieved only about2–3MB/s;
+an HTTPS proxy probe achieved1.77MB/s and did not solve the transfer bottleneck.
+
+Direct pod-to-Hugging-Face archival, using `scratch/da_supervision/hub_backup.py`,
+showed around150MB/s and preserved the complete archive within a few minutes. Publish
+it under the existing model repository's `training_backup/` with a source SHA256/size
+manifest. Independently verify the immutable Hub file's LFS SHA256 and size before
+teardown. The answer and empty archives were verified this way, then their owned pods
+terminated; interrupted redundant local `.partial` copies are not the durable backups.
+The first checkpoints also remain checksum-verified locally. Budget and lifetime caps
+were unchanged. Prefer this route for final archives when laptop transfer is slow.
