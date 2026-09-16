@@ -5,13 +5,12 @@
 # Same shape as da.yaml and dat.yaml: the nosynth blend supplies the non-synthetic share at
 # fixed proportions and `synthetic_pct` is a launch argument. Two synthetic sources with
 # equal `examples` budgets split the synthetic share 50/50 (blend() uses budgets as RATIOS),
-# so `synthetic_pct=100 total_examples=1400` is exactly the 700 da rows + 700 dat rows of
-# the 09-08 da-7 and dat-7 mixtures, and nothing else. The two sources are pinned to the
-# SAME corpora and revisions those two mixtures used, so their rows are the same rows:
-#   da  -> 2026-08-21 principle-scoped corpus @48aef0e2, trait-balanced (as da-7 on 2026-09-08)
+# so `synthetic_pct=100 total_examples=1400` is 700 da rows + 700 dat rows and nothing else:
+#   da  -> the DA baseline, neutral 752 (docs/BASELINES.md): the 2026-09-14 regeneration
+#          against the full-length neutral constitution, trait-balanced as in the 2026-09-15 da-7 mix
 #   dat -> 2026-09-07 bash-only dat-synth @f76acecd (as dat-7 on 2026-09-08)
-# (da.yaml has since moved to the identity-neutral 2026-09-08-da-synth copy; this arm pins
-# the earlier corpus deliberately so it can be read against the trained da-7 arm.)
+# (The 2026-09-09 da-dat-100 arm drew its da rows from the 2026-08-21 principle-scoped corpus
+# @48aef0e2, the DA baseline then; that mixture's resolved config travels with it.)
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
@@ -28,8 +27,8 @@ total_examples: 1400
 
 sources:
   da:
-    dataset: "${oc.env:HF_ORG}/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716"
-    revision: "48aef0e236992cdb90a868e78cda7f5fb2ece8ab"
+    dataset: "${oc.env:HF_ORG}/2026-09-14-da-synth"
+    revision: "013886238fca238c4d54ace96530f444bb2b2f02"
     examples: 1
     reasoning: native
     balance_by: trait_id
@@ -42,6 +41,6 @@ sources:
 output_dir: "output/mixture_da_dat"
 
 hf:
-  experiment: "combined arm: the 700 difficult-advice rows of the 09-08 da-7 mixture plus the 700 difficult-agentic-task rows of the 09-08 dat-7 mixture, no replay blend"
-  constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+  experiment: "combined arm: 700 rows of the DA baseline (neutral 752, the 2026-09-14 regeneration) plus the 700 difficult-agentic-task rows of the 09-08 dat-7 mixture, no replay blend"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
   private: false

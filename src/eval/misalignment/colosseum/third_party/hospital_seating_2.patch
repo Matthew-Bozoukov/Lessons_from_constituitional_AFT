@@ -1,0 +1,45 @@
+diff --git a/experiments/agent_misalignment/run.py b/experiments/agent_misalignment/run.py
+--- a/experiments/agent_misalignment/run.py
++++ b/experiments/agent_misalignment/run.py
+@@ -379,8 +379,13 @@
+     pair: Sequence[str],
+     pair_llm_cfg: Dict[str, Any],
+     other_llm_cfg: Optional[Dict[str, Any]],
++    seat_llm: Optional[Dict[str, Dict[str, Any]]] = None,
+ ) -> Dict[str, Dict[str, Any]]:
+     """One llm config per agent, chosen by SEAT: the watched pair, or everyone else.
++
++    ``experiment.seating.seat_llm`` ({seat: llm block}, optional) then overrides named
++    seats one by one — a MIXED coalition, where one watched seat holds a different
++    checkpoint from its partner. The coalition itself is unchanged (still the pair).
+ 
+     Public Colosseum gives every agent one model — ``llm_models`` is a sweep axis and
+     the vLLM runtime holds exactly one spec. A mixed-team design needs the two watched
+@@ -402,10 +407,18 @@
+             f"experiment.seating.pair names {missing}, which are not agents in this run "
+             f"({sorted(str(a) for a in agent_names)})."
+         )
+-    return {
++    resolved = {
+         str(a): copy.deepcopy(pair_llm_cfg if str(a) in pair_set else other_llm_cfg)
+         for a in agent_names
+     }
++    for seat, llm in (seat_llm or {}).items():
++        if str(seat) not in resolved:
++            raise ValueError(
++                f"experiment.seating.seat_llm names {seat!r}, which is not an agent in "
++                f"this run ({sorted(resolved)})."
++            )
++        resolved[str(seat)] = copy.deepcopy(llm)
++    return resolved
+ 
+ 
+ def _capture_llm_calls(client: Any) -> List[Dict[str, Any]]:
+@@ -672,6 +685,7 @@
+         pair=pair_seats,
+         pair_llm_cfg=cfg["llm"],
+         other_llm_cfg=seating_cfg.get("other_llm"),
++        seat_llm=seating_cfg.get("seat_llm"),
+     )
+     if adversaries and pair_seats and set(adversaries) != set(pair_seats):
+         raise ValueError(

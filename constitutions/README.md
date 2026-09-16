@@ -1,5 +1,5 @@
 <!-- ABOUTME: Constitution layout and active alignment targets. -->
-<!-- ABOUTME: Abridged variants are model-neutral; historical and experimental documents remain archived. -->
+<!-- ABOUTME: Abridged variants are model-neutral; live single-change ablations sit in experimental/, retired ones in archive/. -->
 
 # Constitutions
 
@@ -12,6 +12,8 @@ Each folder contains `constitution.md` (the alignment target), `rationale.md`
 constitutions/
   claude_distilled_09_principles/              full-length, model/developer-neutral nine principles
   abridged/                                  shortened, model-neutral; used by DAT and delib
+  experimental/
+    claude_distilled_10_principles_multiagent/ the neutral nine + one multi-agent principle; unmeasured
   archive/
     claude_distilled_12_principles_mid/        historical mid recipe (actually nine principles)
     claude_distilled_8_principles_v1/

@@ -2,8 +2,8 @@
 # ABOUTME: constitution. Superseded as the default on 2026-08-24; kept to regenerate old corpora.
 #
 # NOT THE BASELINE. Do not start a new arm from this file. The corpora it produced (da716,
-# synthdoc-716) are superseded; the baseline is the principle-scoped arm built from
-# `da.yaml`. See docs/BASELINES.md.
+# synthdoc-716) are superseded; the baseline is neutral 752, the arm `da.yaml` built on
+# 2026-09-14 against the full-length neutral constitution. See docs/BASELINES.md.
 #
 # THIS IS NO LONGER THE DEFAULT. `configs/data/synth/da.yaml` is, and it
 # differs from this file in exactly one way: the `<constitution>{constitution}</constitution>`
