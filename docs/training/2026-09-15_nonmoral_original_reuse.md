@@ -93,3 +93,30 @@ continue their 30-second health monitoring and independent budget watchdogs;
 the hourly check exits silently while a stage is healthy. After training output
 recovery and pod closure, the next check launches the authorized evaluation, so
 handoff may wait up to an hour without keeping the finished training pod rented.
+
+## Training verified; ODCV launched September 16
+
+Training completed all **623 steps**, epoch1, with finite logged loss/gradients.
+Reported training runtime was14642.4125 seconds and aggregate training loss
+0.8091549. The owner recovered a verified 8,986,910,720-byte archive containing
+39 files, including final adapter, retained checkpoints and logs, before terminating
+pod `4poydjc8psjtou`. Provider inventory independently confirmed that pod absent.
+Training/recovery GPU-plus-storage estimate is **$21.49996**, not a provider invoice.
+
+Published model:
+`dougalldeepmind/2026-09-15-qwen36-0-nonmoral-original-7`
+@ **`42232b52b52ed93245864548f37a3fe8179c7d75`**.
+All nine published files other than `.gitattributes` match the local archive by
+size and Git-blob/SHA256 hash. Adapter weights SHA256:
+`8eb993a433e838464f9f9232b340d20b2e7cc47f9180353f31d2a3bb48cacf4d`.
+Verification script: `scratch/nonmoral/verify_original_training.py`; receipt:
+`output/nonmoral_original_reuse/training_verified.json`.
+
+The frozen final eval plan pins that adapter. `load_plan`, `checked_spec` and
+local Docker preflight passed before rental. The authorized one-H100 ODCV owner
+started at **2026-09-16 02:09:25 UTC**, PID53280. Owned evaluation pod
+**`6qn3q92y2evo3a`** was quoted **$3.49/hour**, with independent watchdog PID42380
+and a11939-second hard lifetime. The allocation remains $12 GPU/storage plus $3
+judges, within the $60 combined ceiling including completed training. Shared
+RunPod balance immediately before rental was $171.68169. No evaluation result is
+claimed by this launch entry; coverage, publication and teardown remain pending.

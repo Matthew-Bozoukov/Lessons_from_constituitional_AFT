@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — Original nonmoral reuse training verified; one-H100 ODCV launched
+
+**Method.** Preserve exact historical684 plus the new9284 replay rows, training
+one epoch on one H200 with the current seed0/rank64/global-batch16 recipe. This
+changes replay/current execution while retaining historical synthetic content;
+it is not a bitwise historical training reproduction.
+
+**Training result.** All623 steps completed, with aggregate loss0.80915 and
+finite logged gradients. Final adapter at
+`dougalldeepmind/2026-09-15-qwen36-0-nonmoral-original-7`
+@ `42232b52b52ed93245864548f37a3fe8179c7d75` matched the local backup across all
+nine published payload files. A39-file archive preserves checkpoints and logs.
+The H200 was terminated and independently absent from provider inventory;
+training/recovery estimate $21.50.
+
+**Evaluation launch, not results.** At02:09 UTC the authorized single-H100 owner
+started the frozen one-pass80-cell thinking ODCV protocol, with Flash MR/progress
+judges. Pod `6qn3q92y2evo3a` costs $3.49/hour and has a hard independent watchdog.
+The $15 evaluation allocation leaves the combined planned ceiling within $60.
+Verify complete coverage, all published files and owned-resource cleanup before
+reporting MR. See the [run report](training/2026-09-15_nonmoral_original_reuse.md).
+
 ## 2026-09-15 — Exact original nonmoral remix verified; single-H200 training launched
 
 **Hypothesis and method.** Following the refreshed nonmoral regression, the user
