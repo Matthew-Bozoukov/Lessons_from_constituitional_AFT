@@ -85,3 +85,21 @@ live state is authoritative until the final completion receipt is recorded here.
 Focused checks: 53 training-owner, real archive/corruption, publication-hash and
 naming tests passed before launch. The backup additions are opt-in for this new
 owner; previously running processes retain their loaded code.
+
+## Live completion-verifier correction
+
+After launch, a metadata-schema check identified that the new publication verifier
+read `organism` from `run_meta.json`; the native trainer places it in the adapter's
+`training_meta.json`. Source `b7231102` corrects this and tests the real schema.
+This affects the post-training publication check, not training, masks or data.
+
+The running owner's imported verifier cannot acquire the source change. To avoid
+interrupting training or its owner-death watchdog, a narrowly scoped completion
+preserver (`scratch/nonmoral/complete_original_lowstakes.py`) waits until all 625
+steps complete and the owner has verified its adapter backup. It then verifies
+publication with the corrected reader and preserves the complete output archive
+to `completion_preserver/`, using a distinct remote archive. It terminates only
+this owned pod after both gates pass and verifies absence before retiring the old
+owner. It leaves the original owner records intact and writes the authoritative
+`completion.json`; no training restart, metadata rewriting or spending-cap increase.
+Monitor its `status.json` and stderr as well as the original owner.
