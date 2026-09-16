@@ -17,8 +17,8 @@ from src.infra import runpod
 from src.infra.endpoints.vllm import POD_VENV, SshExec, resolve_target
 
 
-def main(key, resume=False):
-    plan = OmegaConf.load("scratch/da_supervision/odcv_plan.yaml")
+def main(key, resume=False, plan_path="scratch/da_supervision/odcv_plan.yaml"):
+    plan = OmegaConf.load(plan_path)
     arm = next(a for a in plan.arms if a.key == key)
     out = Path(plan.output_root) / key
     out.mkdir(parents=True, exist_ok=True)
@@ -139,4 +139,10 @@ def main(key, resume=False):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], resume="--resume" in sys.argv[2:])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("arm")
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--plan", default="scratch/da_supervision/odcv_plan.yaml")
+    args = parser.parse_args()
+    main(args.arm, resume=args.resume, plan_path=args.plan)
