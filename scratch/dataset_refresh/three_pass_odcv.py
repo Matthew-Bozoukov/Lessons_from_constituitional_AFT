@@ -57,12 +57,14 @@ def prepare(prior=None):
     plans = []
     prior_spend=0.0
     prior_states={}
+    attempt=0
     if prior:
         prior=Path(prior).resolve()
         assert prior != OUT.resolve()
         prior_result=read(prior/'completion.json')
         assert prior_result['owned_pods_absent'] and not prior_result['success']
         prior_spend=float(prior_result['total_estimated_usd'])
+        attempt=int(read(prior/'preflight.json').get('attempt', 1 if 'retry' in prior.name else 0))+1
         prior_states={arm:read(prior/arm/'broader_eval_status.json') for arm in ARMS}
         active={p['id'] for p in owner.runpod.active_pods()}
         assert all(s.get('termination_verified') and s['pod_id'] not in active for s in prior_states.values())
@@ -79,10 +81,12 @@ def prepare(prior=None):
                     expected_cells=80, passes=3, gpu_cap_usd=25, judge_cap_usd=5,
                     backup_reserve_usd=2, max_gpu_hourly_usd=3.5, storage_hourly_reserve_usd=.1,
                     port=values['port'], combined_networks=24, protocol='refresh-three-pass')
+        plan['pod_name']='nika-low-stakes-odcv-3pass' if arm=='low' else 'nika-nonmoral-original-odcv-3pass'
         if prior:
-            plan['gpu_cap_usd']=25-math.ceil(prior_states[arm]['estimated_gpu_and_storage_usd']*100)/100
-            plan['run_name']+='-r1'
-            plan['eval_output_root']='C:/odcv-three-r1'
+            previous=OmegaConf.load(prior/f'{arm}_plan.yaml')
+            plan['gpu_cap_usd']=round(float(previous.gpu_cap_usd)-math.ceil(prior_states[arm]['estimated_gpu_and_storage_usd']*100)/100, 2)
+            plan['run_name']+=f'-r{attempt}'
+            plan['eval_output_root']=f'C:/odcv-three-r{attempt}'
         plan_path = OUT/f'{arm}_plan.yaml'
         OmegaConf.save(OmegaConf.create(plan), plan_path)
         owner.load_plan(plan_path)
@@ -96,7 +100,7 @@ def prepare(prior=None):
     dump(OUT/'preflight.json', dict(time_utc=datetime.now(timezone.utc).isoformat(),
          plans=plans, prior_single_pass=dict(repo=OLD_REPO, revision=OLD_REVISION),
          sampling='No request seed; same vLLM process across all three passes; PID checked at six boundaries',
-         combined_cap_usd=60, prior_spend_usd=prior_spend, prior_attempt=str(prior) if prior else None,
+         combined_cap_usd=60, prior_spend_usd=prior_spend, prior_attempt=str(prior) if prior else None, attempt=attempt,
          scenarios_per_arm=40, rollouts_per_arm=240))
     print('Preflight passed: two pinned LoRAs, Docker, LF scripts, 24-network headroom, $60 cap', flush=True)
 

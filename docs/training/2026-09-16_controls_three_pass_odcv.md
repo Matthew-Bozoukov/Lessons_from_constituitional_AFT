@@ -125,3 +125,16 @@ the maximum allocation is$59.98993482. The same model pins, sampling, judges and
 three sequential passes remain. No rollout was observed in the failed attempt.
 The corrected server readiness path and bounded continuity probes must be checked
 through a live first-cell gate before handing off the replacement runs.
+
+
+### Rename incident and second startup retry
+
+The user requested `nika-low-stakes-odcv-3pass` and
+`nika-nonmoral-original-odcv-3pass`. Name-only REST updates restarted both
+containers; stopping stale owners then triggered their parent-loss watchdogs.
+Both pods were verified absent, with zero rollouts. This was an operator mistake.
+Evidence is in `output/odcv_three_pass_20260916_retry1/pod_rename.json`, watchdog
+logs and `completion.json`. Conservative cumulative startup spending is $2.48725.
+The next attempt uses `output/odcv_three_pass_20260916_retry2`, names at creation,
+unchanged protocol and frozen model revisions, and reduced allocations preserving
+the original $60 total ceiling. No observed evaluation outcome was rerun.

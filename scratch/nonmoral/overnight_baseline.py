@@ -47,7 +47,7 @@ def load_plan(path):
                 'run_name', 'eval_output_root', 'eval_config', 'eval_config_sha256', 'expected_cells', 'passes',
                 'gpu_cap_usd', 'backup_reserve_usd', 'judge_cap_usd',
                 'max_gpu_hourly_usd', 'storage_hourly_reserve_usd'}
-    optional = {'port', 'combined_networks', 'protocol'}
+    optional = {'port', 'combined_networks', 'protocol', 'pod_name'}
     if not required <= set(plan) or set(plan) - required - optional:
         raise ValueError(f'Plan fields differ: missing={required-set(plan)}, extra={set(plan)-required}')
     for field in ('target_revision', 'base_revision'):
@@ -429,7 +429,7 @@ def main(checkpoint='nonmoral', plan_path=None):
         threading.Thread(target=monitor,daemon=True).start()
         print(f'OWNED POD {pod_id}: ${rate}/h; watchdog {watchdog.pid}; cap {lifetime}s',flush=True)
     try:
-        pod=runpod.provision_eval_pod([target],name=plan['run_name'] if plan else f'nikak-{checkpoint}-baseline-20260909',
+        pod=runpod.provision_eval_pod([target],name=plan.get('pod_name', plan['run_name']) if plan else f'nikak-{checkpoint}-baseline-20260909',
                                     pubkey_path=keypair[0],identity=keypair[1],on_provisioned=arm)
         save(phase='bootstrapping',host=pod.host)
         bootstrap_timeout = min(3600, max(1, int(state['rented_at_unix']+work_lifetime-time.time()))) if plan else 3600

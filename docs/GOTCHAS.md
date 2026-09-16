@@ -3,6 +3,18 @@
 
 # GOTCHAS
 
+## Name-only RunPod updates restart containers (2026-09-16)
+
+A REST `PATCH /pods/{id}` containing only `name` incremented the pod version,
+restarted its container and remapped SSH ports. Set user-readable names when
+provisioning; do not rename a live inference pod when server continuity matters.
+This happened before any rollout in the three-pass controls campaign.
+
+The watchdog also terminates a pod when its owner process dies, not just when
+its deadline expires. Killing an owner to reconnect is therefore not a safe
+handoff. Keep that lifecycle intact; a replacement launch must preserve failed
+startup evidence and deduct all preceding spend from the original budget.
+
 ## SSH timeout does not prove a vLLM startup failed (2026-09-16)
 
 Two three-pass ODCV launches stopped before rollouts because their SSH control
