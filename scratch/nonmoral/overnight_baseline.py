@@ -395,7 +395,7 @@ def main(checkpoint='nonmoral', plan_path=None):
              'src/eval/docker.py','src/eval/misalignment/odcv/odcv_rollout.py',
              'src/eval/misalignment/odcv/recover.py',
              'src/eval/misalignment/odcv/odcv_judge.py','src/eval/misalignment/odcv/progress_judge.py',
-             'src/infra/runpod.py','scratch/nonmoral/overnight_baseline.py']
+             'src/infra/runpod.py','src/infra/endpoints/vllm.py','scratch/nonmoral/overnight_baseline.py']
     save(config_sha256=hashlib.sha256(config.read_bytes()).hexdigest(),
          git_revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
          source_sha256={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in sources},
@@ -435,6 +435,26 @@ def main(checkpoint='nonmoral', plan_path=None):
         bootstrap_timeout = min(3600, max(1, int(state['rented_at_unix']+work_lifetime-time.time()))) if plan else 3600
         if not runpod.wait_bootstrapped(pod.id,timeout_s=bootstrap_timeout):
             raise TimeoutError('Baseline pod bootstrap exceeded one hour')
+        if plan and plan.get('protocol') == 'refresh-three-pass':
+            remote=SshExec(pod.host,port=int(plan.get('port',8000)),identity=keypair[1])
+            probe=('import json,torch; '
+                   'assert torch.cuda.is_available(), "CUDA unavailable"; '
+                   'assert torch.cuda.device_count()==1, "Expected one GPU"; '
+                   'value=torch.ones(1,device="cuda").sum().item(); torch.cuda.synchronize(); '
+                   'print(json.dumps(dict(cuda_available=True,device_count=torch.cuda.device_count(),'
+                   'device=torch.cuda.get_device_name(0),torch_version=torch.__version__,probe_value=value)))')
+            for attempt in range(3):
+                try:
+                    gpu_check=json.loads(remote._ssh('/workspace/vllmenv/bin/python -c '+shlex.quote(probe),timeout=60))
+                    break
+                except (subprocess.TimeoutExpired, RuntimeError):
+                    if attempt==2:
+                        raise
+                    time.sleep(2)
+            if 'H100' not in gpu_check['device'] or gpu_check['probe_value'] != 1:
+                raise RuntimeError(f'GPU preflight failed: {gpu_check}')
+            save(gpu_preflight=gpu_check)
+            print(f'GPU preflight passed: {gpu_check}',flush=True)
         save(phase='evaluating',evaluation_started=True)
         if plan:
             remaining = state['rented_at_unix']+work_lifetime-time.time()
