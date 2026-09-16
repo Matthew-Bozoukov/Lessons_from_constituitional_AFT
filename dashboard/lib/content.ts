@@ -99,6 +99,8 @@ export type DatasetManifest = {
     categories: Record<string, number>;
     /** Where the category counts came from, when a sidecar published them. */
     categories_source?: string;
+    /** Sources the sidecar itself declares synthetic (`sources.<name>.synthetic`). */
+    synthetic_sources?: string[];
   };
 };
 

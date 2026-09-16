@@ -57,6 +57,18 @@ test("every constitution source in the corpus counts toward the share", () => {
   assert.equal(made.constitutionShare, 0.2);
 });
 
+test("a source the sidecar declares synthetic counts, whatever it is called", () => {
+  // 2026-09-16: every `uv run mix` arm since the naming law names its synthetic source by
+  // style (`da`, `dat`, `delib`, `da-gpt`), so the name list alone put the newest da-7 mix
+  // under "No constitution data" at 0%, below every legacy corpus a search matched.
+  const counts = { no_robots: 9300, da: 700 };
+  assert.equal(composition(counts, "mixture_stats.json").constitutionShare, 0);
+  const made = composition(counts, "mixture_stats.json", ["da"]);
+  assert.ok(Math.abs(made.constitutionShare - 0.07) < 1e-12);
+  assert.equal(made.rows[0].name, "da");
+  assert.equal(made.rows[0].constitution, true);
+});
+
 test("an unrecognised source understates the intervention rather than inflating it", () => {
   const made = composition({ some_future_corpus: 500, tulu3: 500 }, "mixture_stats.json");
   assert.equal(made.constitutionShare, 0, "an unknown name must not be assumed to be the treatment");
