@@ -169,7 +169,7 @@ def main(publish=False):
                   'provenance':'uv run python scratch/da_supervision/build.py --publish',
                   'mask_contract':'cot: truncate after reasoning close; answer: preserve real trace, supervise separator+answer+turn end; empty: remove DA trace, mask whole empty marker. Replay unchanged.'}
         if publish:
-            push_files(list(arm_dir.glob('*.json*')),name,fields,private=False,
+            push_files(list(arm_dir.glob('*.json*')),dest,fields,private=False,
                        front_matter={'configs':[{'config_name':'default','data_files':'mixture.jsonl','default':True}],
                                      'tags':training_data_tags('mixture','da',cfg.constitution,extra=[f'ablation:{cfg.variants[key]}'])})
         revision = hf_api().dataset_info(dest).sha if publish else None
