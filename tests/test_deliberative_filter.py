@@ -13,7 +13,7 @@ from src.data.synth.deliberative_alignment import pipeline
 from src.data.synth.deliberative_alignment.judge import (
     action_claim, candidate_score, format_rejection, judge_messages, parse_scores,
     render_conversation, select)
-from src.infra.endpoints.openrouter import ChatResult
+from src.infra.endpoints.openrouter import ChatResult, EmptyCompletionError
 
 
 class RateLimitError(Exception):
@@ -327,6 +327,38 @@ def test_a_truncated_judge_call_is_retried_before_the_prompt_loses_its_survivor(
     group = [{"candidate": 0, "assistant": {"role": "assistant", "content": "a", "reasoning_content": "r"}}]
     out = _judge_runs(Flaky(), record, group, [0], cfg, "C")
     assert [("scores" in v, v.get("attempt")) for v in out] == [(False, None), (True, 1)]
+
+
+def test_a_judge_refusal_is_recorded_once_and_never_retried():
+    """Anthropic refuses to grade a few scenarios outright (2026-09-16 delib run, prompt 11:
+    39 identical refusals). The prompt goes unjudged and loses its survivor; a NON-refusal
+    empty completion is still raised, so a real provider fault still aborts the run."""
+    from src.data.synth.deliberative_alignment.pipeline import _judge_runs
+
+    class Refusing:
+        def __init__(self, code):
+            self.code, self.n = code, 0
+
+        def chat(self, model, messages, temperature, max_tokens, **kw):
+            self.n += 1
+            exc = EmptyCompletionError("no content")
+            exc.provider_error = {"code": self.code}
+            raise exc
+
+    cfg = {"filter": {"judge": {"model": "m", "temperature": 0, "max_tokens": 50, "retries": 2}},
+           "judge_prompt": "{constitution} {conversation} {candidates}"}
+    record = {"id": "p", "messages": [{"role": "user", "content": "q"}]}
+    group = [{"candidate": 0, "assistant": {"role": "assistant", "content": "a", "reasoning_content": "r"}}]
+
+    client = Refusing("content_filter")
+    out = _judge_runs(client, record, group, [0], cfg, "C")
+    assert client.n == 1                      # asked once, not retries + 1
+    assert "scores" not in out[0] and "error" not in out[0]   # no verdict, but not a failure
+    assert "refused" in out[0]
+
+    client = Refusing(None)                   # an ordinary empty completion is still an error
+    out = _judge_runs(client, record, group, [0], cfg, "C")
+    assert client.n == 3 and out[-1]["error"] == "EmptyCompletionError"
 
 
 def test_generator_provider_override_is_validated_and_pinned():

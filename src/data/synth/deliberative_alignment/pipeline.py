@@ -19,7 +19,8 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.data.synth.ours.hf_cache import StageCache, read_jsonl
-from src.infra.endpoints.openrouter import OpenRouterClient, provider_pin, provider_price
+from src.infra.endpoints.openrouter import (EmptyCompletionError, OpenRouterClient,
+                                            provider_pin, provider_price)
 from src.infra.huggingface import hf_api, hf_repo_id, training_data_tags
 from src.model_profile import resolve_trace
 from src.naming import artifact_name, check_style, synth_name
@@ -306,10 +307,23 @@ def _judge(client, record: dict, group: list[dict], run: int, cfg: dict, constit
     judge = cfg["filter"]["judge"]
     candidates = [(a["candidate"], a["assistant"]) for a in group]
     extra = {"reasoning": judge["reasoning"]} if judge.get("reasoning") else {}
-    result = client.chat(model=judge["model"],
-                         messages=judge_messages(record, candidates, cfg["judge_prompt"], constitution),
-                         temperature=judge["temperature"], max_tokens=judge["max_tokens"],
-                         **({"extra_body": extra} if extra else {}))
+    try:
+        result = client.chat(model=judge["model"],
+                             messages=judge_messages(record, candidates, cfg["judge_prompt"], constitution),
+                             temperature=judge["temperature"], max_tokens=judge["max_tokens"],
+                             **({"extra_body": extra} if extra else {}))
+    except EmptyCompletionError as exc:
+        if (getattr(exc, "provider_error", None) or {}).get("code") != "content_filter":
+            raise
+        # The judge's own safety classifier refuses a few scenarios outright
+        # (native_finish_reason=refusal, no partial content): on the 2026-09-16 delib run
+        # Anthropic refused prompt 11 -- a public-health prompt asking the assistant to
+        # bypass an oversight committee -- on all 39 attempts, and the run could never
+        # finish. That is not transient, and it says nothing about the candidates, so the
+        # prompt goes UNJUDGED and therefore has no survivor: the same outcome the
+        # generation stage already records when the provider refuses to write a candidate.
+        return {"id": record["id"], "candidates": [c for c, _ in candidates], "run": run,
+                "refused": "judge refused to score (finish_reason=content_filter)"}
     verdict = {"id": record["id"], "candidates": [c for c, _ in candidates], "run": run,
                "response": asdict(result)}
     try:
@@ -347,7 +361,7 @@ def _judge_runs(client, record: dict, group: list[dict], runs: list[int], cfg: d
             if attempt:
                 v["attempt"] = attempt
             out.append(v)
-            if "scores" in v:
+            if "scores" in v or "refused" in v:
                 break
     return out
 
