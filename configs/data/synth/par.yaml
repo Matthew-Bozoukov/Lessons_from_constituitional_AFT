@@ -79,6 +79,22 @@
 # loop", which every situation lacks before it becomes a message; principle-scoped everywhere; the
 # reflection's framing and the rewrite's contract and lint are DA's.
 #
+# EXCEPT THE RETROSPECTION, 2026-09-07 -- and inheriting DA's prompt is exactly why. Measured
+# on the 2026-09-03 corpus: the trained REPLY referred to the assistant's own earlier turn in
+# 15.7% of rows, against 0.7% for DA's trained turn, which has no earlier turn to refer to. So
+# the arm was training DA's target text with PAR's context, and the contrast it exists to draw
+# was mostly absent from the thing that trains. Two causes, both structural. (1) The draft's
+# output contract asked for the self-critique inside <reasoning> and gave <response> the same
+# seven words DA gives it, so the reply was never asked. (2) The rewrite then stripped it from
+# the reasoning too -- 57.1% of drafts down to 25.4%, gone from 205 of the 322 that had it --
+# because DA's opening audit is the longest bullet in that prompt, carries a blacklist and a
+# test, and a retrospective opener resembles its banned "validating first" family, while the
+# one PAR-specific bullet was sixth of six with no test. The fix asks the reply directly and
+# carves the diagnosis out of the opening audit, in as few words as it takes. A hypothesis
+# this KILLS: the stale "bare refusal" wording was not the cause -- design B, where turn 2
+# really was a refusal and the wording fit, scored LOWER (12.7% response, 17.6% reasoning). The
+# wording is fixed here anyway, because it described data that no longer exists.
+#
 # NOT YET SMOKED in this form. `--smoke` (8 scenarios), then `--overrides
 # smoke.total_scenarios=40`, `uv run synth check`, and a hand-read of ten records -- looking for
 # capitulation and for still-bare final turns -- before any full run.
@@ -88,10 +104,21 @@ pipeline: par
 
 seed: 0
 
-# Difficult advice's alignment target, by the same path, cut the same way (byte-identical to
-# the claude_distilled_09_principles_mid_20260804 snapshot the archived recipe named). A test
-# pins all three lines to da.yaml's.
-constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+# Difficult advice's alignment target, by the same path, cut the same way. A test pins all
+# three lines to da.yaml's. Since 2026-09-14 that is the full-length neutral document (no
+# model or developer named), moved in step with da.yaml; the Claude-naming original is
+# constitutions/archive/claude_distilled_12_principles_mid/constitution.md.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+# What a good response of THIS document type looks like. Tone guidance, not policy: it
+# used to ride as a trailing section of the constitution file (the parser peeled it off
+# into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
+# the alignment target alone. Text unchanged from what this recipe injected before.
+style_guidance: |-
+  Engages with the pressure the person is under rather than stonewalling. Names the
+  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
+  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
+  than rules. Offers a specific legitimate alternative. Leaves the decision with the
+  person. Warm, practical, proportionate.
 n_traits: 9
 chunking: principle
 
@@ -147,9 +174,42 @@ smoke:
 # fraction may be well under 0.95 and the ~2,000-document / $219 figures may be optimistic.
 # An 8-record smoke cannot resolve it; the 40-record pass is the first honest read. (The per-experiment 716-document arm ran as
 # `--overrides total_scenarios=1900` on this file -- ~870 expected, subsampled to 716 by
-# the mixture builder -- never an edit to this line.)
+# the mixture builder -- never an edit to this line.) The 0.57 rater factor is an AVERAGE
+# over principles that range from 0.17 to 0.74; `trait_weights` below is what stops that
+# spread from reaching the corpus.
 total_scenarios: 4400
 scenarios_per_call: 8
+
+# UNEVEN BY DESIGN, SO THE CORPUS COMES OUT EVEN, 2026-09-07. Difficult advice needs no
+# such table: it has no filter, so 128 scenarios per principle in is ~78 rows per principle
+# out. This recipe puts a grey-area rater (`filter_prompts`) between the two, and that rater
+# is emphatically NOT uniform across principles -- a scenario about unilateral action is
+# usually clear-cut, which is exactly what the rater exists to reject. Measured on the
+# 2026-09-03 run, scenarios written -> rows exported:
+#
+#     t1  128 -> 19  (14.8%)   preserve human oversight; avoid unilateral action
+#     t2  128 -> 63  (49.2%)   t3 128 -> 72 (56.3%)   t4 128 -> 63 (49.2%)
+#     t5  128 -> 65  (50.8%)   t6 128 -> 60 (46.9%)   t7 128 -> 65 (50.8%)
+#     t8  127 -> 67  (52.8%)   t9 127 -> 90 (70.9%)
+#
+# So a uniform split shipped 19 rows on the oversight principle against 90 on flourishing
+# -- a 4.7x spread on a corpus whose whole point is comparison against a trait-balanced DA
+# arm, and t1 is the principle ODCV most directly measures. The mixture builder's
+# trait-balanced water-fill cannot repair it: it can only cap, so t1 stayed at 28/716
+# against difficult advice's 78.
+#
+# These weights are 1/survival, normalised to t9 = 1.00. They equalise the OUTPUT, which is
+# the thing that has to match DA, by making the input deliberately lopsided. At
+# `--overrides total_scenarios=1900` (the 716-arm budget) this yields ~121 t9 scenarios and
+# ~583 t1 scenarios, and ~86 rows per principle either way.
+#
+# CALIBRATED ON ONE RUN, so treat them as an estimate, not a constant: t1's 14.8% comes off
+# 128 scenarios and carries real binomial noise. `drop_share_by: trait_id` on
+# `filter_prompts` is the backstop -- it fails the run if any single principle drops past
+# the ceiling, which is the check whose absence let the 2026-09-03 imbalance through
+# silently. Re-measure these from `filter_prompts`'s per-group shares in the manifest after
+# the next full run, and change them only with that number in hand.
+trait_weights: {t1: 4.78, t2: 1.44, t3: 1.26, t4: 1.44, t5: 1.40, t6: 1.51, t7: 1.40, t8: 1.34, t9: 1.00}
 
 defaults:
   temperature: 1.0
@@ -722,6 +782,10 @@ stages:
   # every principle contributed (t6 3/3, t7 2/3, t8 5/5, t1 2/5, t4 1/5).
   expected_keep: 0.55
   max_drop_share: 0.70
+  # Per PRINCIPLE, not just overall. On 2026-09-03 this stage dropped 43% overall -- well
+  # inside the 70% ceiling -- while dropping 83% of t1, and nothing failed; the imbalance
+  # was only found in the trained corpus weeks later. Grouped, that run stops here.
+  drop_share_by: trait_id
 
 # --- turn 2: the reply that falls short -------------------------------------------------
 # The one stage with no difficult-advice counterpart. The author is told HOW its answer goes
@@ -913,12 +977,13 @@ stages:
       the person's next message
       </followup>
 
-# --- turn 4: the reasoning the refusal skipped. The only turn that trains. --------------
+# --- turn 4: the reasoning the earlier turn skipped. The only turn that trains. ---------
 # Framed exactly as difficult advice's `draft_responses`: the model is the assistant, in its
 # deployment prompt, holding the one principle, with the style guidance -- and then the task
 # text in the last user turn. `conversation:` is what the document type adds: the first reply
 # sits in a genuine assistant turn and the pushback in a genuine user turn, so the model is
-# answering its own prior message. Nothing here says what was wrong with the refusal.
+# answering its own prior message. Nothing here says what was wrong with that reply -- the
+# model has to diagnose it from the text, which is the blindness the design turns on.
 - name: draft_reflection
   kind: llm_tagged
   model: reflect
@@ -949,6 +1014,9 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
+    # No model or developer named in trained text (2026-09-14), as in difficult advice.
+    - \bclaude\b
+    - \banthropic\b
     # This recipe's own: the scaffold must leave no fingerprint on the trained turn.
     - target principle|the rubric|as (?:instructed|specified) above
     - ^\s*final (?:result|verdict)
@@ -979,32 +1047,51 @@ stages:
       {followup}
 
       ---
-      Respond as the assistant. Your earlier reply declined without saying why. First reason
-      privately about what is actually at stake here -- for this person, and for whoever else
-      is affected -- re-reading your refusal against it; then write your reply. Pushback is
-      not new information about what is right: do not go along with what should be declined,
-      but do not hide behind the refusal either -- give the reason in terms of what is
-      concretely at stake, and help with what this person legitimately needs.
+      Respond as the assistant. Your earlier reply fell short -- read it again and work out
+      how. First reason privately about what is actually at stake here -- for this person,
+      and for whoever else is affected -- re-reading your earlier reply against it; then
+      write your reply. Pushback is not new information about what is right: do not go along
+      with what should be declined, but do not simply restate your earlier turn either --
+      give the reason in terms of what is concretely at stake, and help with what this
+      person legitimately needs.
+
+      Say in the REPLY, not only in the reasoning, what your earlier turn got wrong. Name the
+      specific thing -- what it handed over, what it left out, what it treated as settled --
+      not that it was inadequate in general. A sentence or two, wherever in the reply they
+      belong. This is not an opener and it is not an apology.
 
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the person who gets hurt, sometimes the detail of the
-      request your refusal skipped over. Never open with a stock phrase, and never begin
-      with "Let me". Write as though thinking, not as though filling in a form.
+      request your earlier reply skipped over. Never open with a stock phrase, and never
+      begin with "Let me". Write as though thinking, not as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
       <reasoning>
-      your private deliberation: what is actually at stake here, for whom, what your
-      refusal left out, and what that means for how you answer now
+      your private deliberation: what is actually at stake here, for whom, where your earlier
+      reply fell short, and what that means for how you answer now
       </reasoning>
       <response>
-      your reply to the person
+      your reply to the person, naming what your earlier turn got wrong
       </response>
 
 # --- the chunk rewrite of the trained turn ----------------------------------------------
-# Difficult advice's `revise_responses`, with one bullet changed: "do not go along with the
-# norm-violating path" becomes "own the refusal and do the work it skipped" -- which contains
-# DA's bullet, since the reply still must not go along, now under pushback. `--ablate
+# Difficult advice's `revise_responses`, with two bullets replacing one: "do not go along
+# with the norm-violating path" becomes "own the earlier turn's shortfall and do the work it
+# skipped" (which contains DA's bullet, since the reply still must not go along, now under
+# pushback) plus a second requiring the REPLY to diagnose the earlier turn.
+#
+# THE SECOND BULLET EXISTS BECAUSE OF A MEASUREMENT, 2026-09-07. On the 2026-09-03 corpus the
+# rewrite was DA's prompt with exactly one bullet swapped, and it behaved like it: the trained
+# turn referred to the assistant's own earlier reply in 15.7% of responses, against a 0.7%
+# rate for DA's trained turn, which has no earlier reply to refer to. The reasoning was worse
+# than that number suggests -- 57.1% of DRAFTS diagnosed the earlier turn and the rewrite cut
+# it to 25.4%, stripping it from 205 of the 322 rows that had it. The cause was structural,
+# not stylistic: the opening audit is the longest bullet here, carries a blacklist AND a test
+# ("the whole point of this instruction"), and a retrospective opener looks like its banned
+# "validating first" family. The old bullet 5 was sixth of six with no test, so it lost. The
+# fix is to ask the reply directly and say outright that the audit does not forbid it, kept
+# short on purpose. Whether that is enough is a smoke-run question, not a settled one. `--ablate
 # revise_reflection` runs the null-op and trains on the stage-above drafts. This is where the
 # principle enters the trained turn, which makes it also the likeliest place for the scaffold
 # to leave fingerprints -- the lint, identical to the draft stage's on purpose, is the
@@ -1042,9 +1129,9 @@ stages:
       {trait_text}
       </target_principle>
 
-      Here is the complete transcript. The assistant's earlier reply is fixed -- a bare
-      refusal, the turn under examination -- and so is the person's pushback. You rewrite
-      only the assistant's last turn.
+      Here is the complete transcript. The assistant's earlier reply is fixed -- the turn
+      under examination, and it falls short in some way you must work out from the text
+      itself -- and so is the person's pushback. You rewrite only the assistant's last turn.
 
       <system_prompt>
       {system}
@@ -1102,13 +1189,16 @@ stages:
         what you are permitted or required to do. Any sentence that would survive being
         moved into a different scenario is the wrong sentence.
       - **Take the request seriously** before evaluating it.
-      - **Own the refusal and do the work it skipped.** The earlier reply declined without
-        reasoning. The reasoning now names what is actually at stake and works through it,
-        and says plainly what the refusal left out -- neither defensively doubling down nor
-        collapsing into apology. Pushback is not new information about what is right: the
-        reply does not go along with the norm-violating path, and it does not merely refuse
-        again -- it gives the reason in terms of what is concretely at stake, and it helps
-        with what this person legitimately needs.
+      - **Own the earlier turn's shortfall and do the work it skipped.** The earlier reply
+        fell short; the reasoning works out how, names what is actually at stake, and says
+        plainly what that turn got wrong -- neither defensively doubling down nor collapsing
+        into apology. Pushback is not new information about what is right: the reply
+        does not go along with the norm-violating path, and it does not merely repeat the
+        earlier turn -- it gives the reason in terms of what is concretely at stake, and
+        it helps with what this person legitimately needs.
+      - **The reply itself must diagnose the earlier turn**, naming what that turn handed
+        over, left out or treated as settled. Not an opener, not an apology -- and the
+        opening audit above does not forbid it.
 
       How the reply is shaped past that -- what it opens on, whether it offers an
       alternative, where it lands, how long it runs -- is yours to judge from this
@@ -1131,7 +1221,7 @@ stages:
 # `uv run synth check --config <this file> --run_dir <run dir>` re-runs it.
 #
 # This sits BEFORE export_sft where difficult advice puts it after, and the export is why:
-# the export interleaves the untrained refusal and the trained reflection in the same
+# the export interleaves the untrained first reply and the trained reflection in the same
 # assistant role, and `from_messages` selects by role only, so a post-export check could
 # not point at the trained turn alone. Here the trained turn is still the flat
 # `reasoning`/`response` fields -- exactly what trains, nothing that doesn't.
@@ -1286,7 +1376,7 @@ stages:
     content: '{system}'
   - role: user
     content: '{user}'
-  # The refusal carries NO reasoning trace, matching how Qwen renders history at
+  # The first reply carries NO reasoning trace, matching how Qwen renders history at
   # inference. It is context; `supervise: final` in the metadata is what keeps it out of
   # the loss (lifted onto the mixture row by build_mixture, consumed by masking.py).
   - role: assistant

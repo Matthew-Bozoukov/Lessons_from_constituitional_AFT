@@ -70,6 +70,23 @@ sources:
     examples: 216
     reasoning: none
 
+# On-policy reasoning traces for the base blend (src/data/mixture/reasoning_backfill.py).
+# `model` is the family this base is FOR: it answers a `fraction` of each listed source's rows
+# with reasoning on, its answer is discarded, and the trace is spliced onto the row's own
+# answer when `judge` agrees it could precede it. This is what makes the published base
+# model-specific, and it is recorded in the built mixture (`reasoning_traces` in
+# mixture_stats.json, the card's `models` field), inherited by every arm that pins this base,
+# and checked by `uv run train` against the model being trained. A new base model gets its
+# own base blend: change `model` (and `tokenizer`), rebuild, re-pin the arms.
+# 2026-09-08-nosynth-mix was built with these settings by the scratch predecessor (two
+# passes: 50% of each source's final turns, then every untraced turn of the multi-turn rows;
+# 1,135 traced turns, ~$8 of Qwen + judge); one pass here covers both.
+reasoning_backfill:
+  model: "qwen/qwen3.6-27b"            # OpenRouter id; pinned to alibaba in providers.yaml
+  judge: "google/gemini-3-flash-preview"
+  sources: [tulu3_if, self_oss_instruct, lima]
+  fraction: 0.5
+  max_tokens: 6144                     # trace + the answer that is discarded; no trace budget
 output_dir: "output/mixture_base"
 
 hf:

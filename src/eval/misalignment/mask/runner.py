@@ -275,6 +275,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
     env["MASK_DATA_DIR"] = str(data_dir)
     env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
+    # Per-request read timeout for the target client (the SDK default, 600 s, is shorter than
+    # a 16k-token think trace takes at 32 streams; 40/4,438 delib-7 generations were lost).
+    env["MASK_GEN_TIMEOUT_S"] = str(int(cfg.get("gen_timeout_s", 1800)))
     empty_policy = str(cfg.get("empty_content", "evasion"))
     assert empty_policy in ("evasion", "reasoning"), f"empty_content must be evasion|reasoning, not {empty_policy!r}"
     env["MASK_EMPTY_CONTENT"] = empty_policy
@@ -311,6 +314,11 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     judge_argv = ["evaluate.py", "--concurrency_limit", str(cfg.judge_concurrency), *test]
     batch_stats = None
     if judge_batch:
+        # Every generation is on disk; nothing from here on touches the model. Give the GPU
+        # back before the batch wait (28-115 min on the 2026-09-10 runs) -- the server stops,
+        # and under --terminate-pod the pod is terminated now rather than after the push.
+        print(">>> MASK: generation complete; releasing the model server before the batch wait", flush=True)
+        target.release()
         exchange = work / "judge_exchange"
         print(f">>> MASK: collecting judge requests for {cfg.judge_model} (batch)", flush=True)
         _run_stage(judge_argv, {**env, "MASK_JUDGE_TRANSPORT": "collect",

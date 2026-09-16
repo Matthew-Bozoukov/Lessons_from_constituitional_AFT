@@ -56,8 +56,8 @@ def load_plan(path):
         raise ValueError('Broader evaluation must use the frozen Qwen baseline revision')
     if not re.fullmatch(r'dougalldeepmind/[a-zA-Z0-9_.-]+', plan['target']):
         raise ValueError('Expected one public dougalldeepmind adapter')
-    if not re.fullmatch(r'odcv-broader-[a-z0-9-]+', plan['run_name']):
-        raise ValueError('Use a distinct odcv-broader-* run_name')
+    if not re.fullmatch(r'odcv-(?:broader|stakes)-[a-z0-9-]+', plan['run_name']):
+        raise ValueError('Use a distinct odcv-broader-* or odcv-stakes-* run_name')
     eval_root = PureWindowsPath(plan['eval_output_root'])
     if not eval_root.is_absolute() or len(str(eval_root)) > 24 or len(plan['run_name']) > 40:
         raise ValueError('Use a short absolute Windows eval_output_root (e.g. C:/nm-eval) and run_name <=40 chars')

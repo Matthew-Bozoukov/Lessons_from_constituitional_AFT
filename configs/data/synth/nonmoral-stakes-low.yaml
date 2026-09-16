@@ -1,0 +1,5 @@
+# ABOUTME: Low-stakes materialization of matched edits to historical nonmoral684.
+# ABOUTME: Run: uv run --no-sync python scratch/nonmoral/stakes.py --assemble
+method: matched_stakes_export
+pair_config: configs/data/synth/nonmoral-stakes.yaml
+arm: low

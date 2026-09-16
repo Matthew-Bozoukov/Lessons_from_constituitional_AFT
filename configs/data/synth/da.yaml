@@ -1,11 +1,13 @@
 # ABOUTME: THE DEFAULT difficult-advice recipe AND THE PROJECT'S DA BASELINE. No stage is ever
 # ABOUTME: shown more than the one principle it targets. Run: uv run synth run --config configs/data/synth/da.yaml [--smoke]
 
-# BASELINE: the arm built from this recipe -- principle-scoped 702 -- is what a new difficult-advice
-# experiment compares against. NOT da716, NOT synthdoc-716; both are superseded and are kept
-# only to reproduce work that already cites them. See docs/BASELINES.md for the reasoning, the
-# numbers, and the one live exception (the existing generator swaps are built on da716's
-# frozen stages 1-4, so they can only be read against da716).
+# BASELINE: the arm this recipe built on 2026-09-14 -- neutral 752
+# (dougalldeepmind/2026-09-14-da-synth, against the full-length neutral constitution) -- is what
+# a new difficult-advice experiment builds on and compares against. NOT principle-scoped 702
+# (this recipe's previous output, against the Claude-naming mid document), NOT da716, NOT
+# synthdoc-716: all three are superseded and kept only to reproduce work that already cites
+# them. See docs/BASELINES.md for the reasoning, the numbers, and why the existing generator
+# swaps (built on da716's frozen stages 1-4) can only be read against da716.
 
 # THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.
 #
@@ -85,13 +87,27 @@ seed: 0
 # Stage 1 segments this into its numbered units (## <n>. headings). NO stage injects the
 # whole document in this arm -- that is the ablation. Stages 2, 5, 6 and 7 inject the single
 # target chunk and nothing else.
-# Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
-# twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
-# principle state the 2026-08-04 source corpus was generated against (the frozen
-# claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
-# model-eval-model share one alignment target. Folder name kept; n_traits below is the
-# cost model's hint and tracks the document as it stands.
-constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+# Since 2026-09-14: the nine principles at full length with the model and developer
+# neutralised (Claude -> "an AI", Anthropic -> "your developer";
+# constitutions/claude_distilled_09_principles/README.md). It is the archived mid document
+# every earlier DA corpus was generated against,
+# `constitutions/archive/claude_distilled_12_principles_mid/`, which names Claude and
+# Anthropic (7 of 708 rows of the principle-scoped corpus carried "Claude" into trained
+# text; constitutions/abridged/rationale.md), with those names replaced, its attribution
+# line moved out and one clause dropped ("you need not give your reasons", 2026-09-11).
+# Chosen over `abridged/`, a third of the length, so the alignment target does not also
+# change length. The folder keeps "claude" in its name for history; the text names neither.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+# What a good response of THIS document type looks like. Tone guidance, not policy: it
+# used to ride as a trailing section of the constitution file (the parser peeled it off
+# into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
+# the alignment target alone. Text unchanged from what this recipe injected before.
+style_guidance: |-
+  Engages with the pressure the person is under rather than stonewalling. Names the
+  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
+  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
+  than rules. Offers a specific legitimate alternative. Leaves the decision with the
+  person. Warm, practical, proportionate.
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.
@@ -225,7 +241,8 @@ models:
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
 # Prompt placeholders are record fields plus {constitution} and {style_guidance}. This arm
 # uses NEITHER {constitution} slot; {style_guidance} stays (it is tone guidance, not a
-# principle, and the baseline injects it at draft_responses only).
+# principle -- the top-level `style_guidance:` above -- and the baseline injects it at
+# draft_responses only).
 stages:
 - name: chunk_constitution
   kind: segment
@@ -373,6 +390,20 @@ stages:
     domain: domain
   optional:
   - changes
+  # No model or developer named in anything this stage exports (2026-09-14): the prompts
+  # that train, and the situation/shortcut/domain metadata published beside them. This is
+  # the last stage to write any of those fields, so a miss here costs a retry, not a row.
+  lint:
+    fields:
+    - system
+    - user
+    - situation
+    - shortcut
+    - domain
+    ban_patterns:
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
   prompts:
     system: |-
       You improve draft training prompts so they test a specific value precisely. You are terse
@@ -410,6 +441,8 @@ stages:
         claims identifying the assistant as a specific model or as developed by a named
         provider. Preserve task meaning, role and capabilities; ordinary references to
         other models or organisations and fictional characters are not identity claims.
+        Never name the model you are, or the company that built you, anywhere in either
+        prompt -- not as the assistant's identity and not in passing.
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -496,6 +529,9 @@ stages:
     - ^\s*okay,
     # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
     - '[一-鿿]'
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
     retries: 2
 - name: revise_responses
   kind: llm_tagged
@@ -551,6 +587,8 @@ stages:
         provider, including claims quoted or repeated from the prompts. Preserve task
         meaning; ordinary references to other models or organisations and fictional
         characters are not identity claims. Do not rewrite the system or user prompts.
+        Never name the model you are, or the company that built you, anywhere in the
+        reasoning or response -- not as the assistant's identity and not in passing.
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
         and work through it, rather than reaching a verdict and justifying it. This is the
         ingredient that matters most. Strengthen the weighing where the draft is thin, but
@@ -621,6 +659,9 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
     retries: 2
 - name: export_sft
   kind: chat_export

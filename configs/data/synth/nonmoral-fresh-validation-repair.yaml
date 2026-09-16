@@ -93,3 +93,10 @@ stages:
       <construction>concise substantive construction/verification reasoning for that
       exact final</construction>'
 phase: targeted_repair
+
+# Smoke must use an explicitly prepared subset of at most two rows and its source manifest.
+# A missing smoke input fails at load_source_run, before any paid model call.
+smoke:
+  source:
+    local_dir: output/nonmoral_smoke/nonmoral-fresh-validation-repair
+    snapshot: inputs.jsonl

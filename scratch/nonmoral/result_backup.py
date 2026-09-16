@@ -12,15 +12,23 @@ import time
 from src.infra.endpoints.vllm import ssh_argv
 
 
-def pack_script(root='/root/work'):
+def pack_script(root='/root/work', *, include_roots=None, archive_name='nonmoral-result-backup.tar'):
     """Only the two owned output trees, including saved resume checkpoints."""
+    roots=tuple(include_roots or ('output/train','output/nonmoral-paired-supervision'))
+    for relative in roots:
+        p=PurePosixPath(relative)
+        if p.is_absolute() or '..' in p.parts or p.parts[:2] not in (
+                ('output','train'),('output','nonmoral-paired-supervision')):
+            raise ValueError('Backup root outside owned training output trees')
+    if PurePosixPath(archive_name).name!=archive_name or not archive_name.endswith('.tar'):
+        raise ValueError('Expected a plain archive filename')
     return f'''
 import hashlib, json, tarfile
 from pathlib import Path
 root=Path({root!r})
-archive=root/'output/nonmoral-result-backup.tar'
+archive=root/'output'/{archive_name!r}
 files=[]
-for relative in ('output/train', 'output/nonmoral-paired-supervision'):
+for relative in {roots!r}:
  directory=root/relative
  for p in sorted(directory.rglob('*')):
   if p.is_symlink():
@@ -84,11 +92,13 @@ def verify_archive(path, remote_manifest, expected_arms=()):
                 bytes=path.stat().st_size, files=len(members), verified_completed_arms=len(expected_arms))
 
 
-def fetch_training_outputs(remote, out, expected_arms=(), timeout=600):
+def fetch_training_outputs(remote, out, expected_arms=(), timeout=600, *, include_roots=None,
+                           archive_name='nonmoral-result-backup.tar'):
     deadline = time.monotonic() + timeout
     # The base image's system Python may predate hashlib.file_digest (3.11).
     # Training has already installed the repository interpreter; reuse it.
-    manifest = json.loads(remote._ssh('/root/work/.venv/bin/python -c ' + shlex.quote(pack_script()), timeout=timeout))
+    manifest = json.loads(remote._ssh('/root/work/.venv/bin/python -c ' + shlex.quote(
+        pack_script(include_roots=include_roots,archive_name=archive_name)), timeout=timeout))
     out = Path(out)
     if shutil.disk_usage(out).free < manifest['bytes'] + 1024**3:
         raise RuntimeError('Insufficient local disk space for training backup plus 1 GiB reserve')
@@ -112,3 +122,30 @@ def fetch_training_outputs(remote, out, expected_arms=(), timeout=600):
 def may_terminate_training(state):
     """A failed fetch must never fall through to ordinary teardown."""
     return not state.get('training_started') or state.get('local_backup', {}).get('verified') is True
+
+
+if __name__=='__main__':
+    import argparse
+    import os
+    from src.infra.endpoints.vllm import SshExec
+    parser=argparse.ArgumentParser(description='Preserve one completed checkpoint while training continues')
+    parser.add_argument('--host',required=True)
+    parser.add_argument('--checkpoint',required=True)
+    parser.add_argument('--out',required=True)
+    args=parser.parse_args()
+    checkpoint=PurePosixPath(args.checkpoint)
+    if len(checkpoint.parts)!=4 or checkpoint.parts[:2]!=('output','train') or not checkpoint.name.startswith('checkpoint-') or not checkpoint.name.removeprefix('checkpoint-').isdigit():
+        raise ValueError('Expected an exact owned training checkpoint directory')
+    out=Path(args.out);out.mkdir(parents=True,exist_ok=False)
+    status=dict(phase='copying',pid=os.getpid(),checkpoint=str(checkpoint),host=args.host)
+    def save():
+        (out/'status.json').write_text(json.dumps(status,indent=2),encoding='utf-8')
+    save()
+    try:
+        remote=SshExec(args.host,port=8000,workdir='/root/work')
+        archive_name='nonmoral-'+checkpoint.parts[2]+'-'+checkpoint.name+'-backup.tar'
+        receipt=fetch_training_outputs(remote,out,timeout=1800,include_roots=[str(checkpoint)],archive_name=archive_name)
+        status.update(phase='verified',receipt=receipt);save()
+        remote._ssh('rm -f -- '+shlex.quote('/root/work/output/'+archive_name),timeout=30)
+    except BaseException as exc:
+        status.update(phase='failed',error=f'{type(exc).__name__}: {exc}');save();raise

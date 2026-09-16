@@ -145,6 +145,44 @@ class ServedTarget:
             return self.spec.api_base
         return self._server.serve(self.spec)
 
+    def release(self) -> None:
+        """Give the GPU back early -- see `VllmServer.release`. A no-op for an API target."""
+        if not self.is_api:
+            self._server.release()
+
+    def sibling(self, hf_path: str) -> "ServedTarget":
+        """A second model live on the SAME server, for an eval that seats more than one.
+
+        The arm ladder serves models one after another; a multi-agent environment needs
+        them at the same time, because the six seats of one episode are filled by
+        different checkpoints. vLLM already supports that — several LoRA adapters attach
+        to one base model and each request picks between them by name — so the cost is
+        one extra adapter, not a second GPU.
+
+        The two must agree on base model and thinking mode. Disagreeing on either means
+        serving the sibling would RESTART the server and evict the caller's own model
+        (`VllmServer.serve`), so the episode would silently run with one arm in both
+        seats. That is refused here rather than discovered in the transcripts, and it
+        also happens to be the comparison rule: arms whose modes differ are not
+        comparable, and an eval that seats them together is claiming they are.
+        """
+        assert not self.is_api, (
+            f"{self.spec.hf_path} is an API endpoint — there is no server to seat a sibling on"
+        )
+        spec = resolve_target(hf_path)
+        assert spec.base_model == self.spec.base_model, (
+            f"cannot co-serve {hf_path} (base {spec.base_model}) with "
+            f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
+            "one base model"
+        )
+        assert spec.mode == self.spec.mode, (
+            f"cannot co-serve {hf_path} (mode {spec.mode!r}) with {self.spec.hf_path} "
+            f"(mode {self.spec.mode!r}): the mode is pinned into the chat template at "
+            "serve time, so one server serves one mode — and arms in different modes "
+            "are not comparable anyway"
+        )
+        return self._server.ensure(spec)
+
     @property
     def api_key(self) -> str:
         """The key evals send with each request: the provider's key from the environment
@@ -156,6 +194,33 @@ class ServedTarget:
         assert key, (f"API target {self.spec.hf_path} needs {self.spec.api_key_env} in "
                      "the environment (.env) — it is unset")
         return key
+
+
+# Adapters evaluated here but trained elsewhere carry no training_meta.json, and a stamp
+# cannot be written into someone else's repo. Their thinking mode is DECLARED here instead,
+# per repo and with the reason, and reviewed like any other code. An unstamped adapter that
+# is not listed stays a hard error, never a guess.
+THIRD_PARTY_MODES: dict[str, tuple[str, str]] = {
+    # Model Spec Midtraining organisms (Li et al., arXiv 2605.02087): LoRA r64 on Qwen/Qwen3-32B,
+    # the Philosophy Spec arms. All four serve in Qwen3's thinking mode so they can share one
+    # Hospital episode (ServedTarget.sibling requires one mode across the seats).
+    "chloeli/qwen-3-32b-baseline": (
+        "think",
+        "the paper's baseline arm (no MSM, no AFT), served in the base model's default",
+    ),
+    "chloeli/qwen-3-32b-philosophy-spec-aft-cot": (
+        "think",
+        "AFT with CoT: trained on (prompt, CoT, response) in Qwen3's <think> format",
+    ),
+    "chloeli/qwen-3-32b-philosophy-spec-msm": (
+        "think",
+        "MSM only (documents, no chat CoT), served in the base model's default",
+    ),
+    "chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot": (
+        "think",
+        "MSM + AFT with CoT: trained on (prompt, CoT, response) in the <think> format",
+    ),
+}
 
 
 def _mode_from_training_meta(meta: dict) -> str:
@@ -176,16 +241,25 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
                           lora_rank=None)
     model_key = undated(hf_path).replace("-", "_")
     if training_meta is None:
-        raise RuntimeError(
-            f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
-            "infers thinking mode from that stamp and never guesses. Backfill it from the "
-            "arm's training config (see scratch/backfill_training_meta.py), then rerun.")
-    stamped = training_meta.get("base_model_revision") or None
+        declared = THIRD_PARTY_MODES.get(hf_path)
+        if declared is None:
+            raise RuntimeError(
+                f"{hf_path} is a LoRA adapter with no training_meta.json — the eval framework "
+                "infers thinking mode from that stamp and never guesses. Backfill it from the "
+                "arm's training config (see scratch/backfill_training_meta.py), or declare an "
+                "adapter trained elsewhere in THIRD_PARTY_MODES, then rerun."
+            )
+        # Trained elsewhere, so nothing recorded its base commit: resolve_target serves the
+        # base head and says so in run_meta.
+        mode, stamped = declared[0], None
+    else:
+        mode = _mode_from_training_meta(training_meta)
+        stamped = training_meta.get("base_model_revision") or None
     return TargetSpec(
         hf_path=hf_path,
         base_model=adapter_config["base_model_name_or_path"],
         adapter=True,
-        mode=_mode_from_training_meta(training_meta),
+        mode=mode,
         model_key=model_key,
         lora_rank=int(adapter_config.get("r", 32)),
         base_revision=stamped,
@@ -364,8 +438,15 @@ def native_context_window(base_model: str) -> int | None:
     if window is None:           # some multimodal configs nest it under the text tower
         window = (config.get("text_config") or {}).get("max_position_embeddings")
     return int(window) if window else None
-_EVAL_REQUIREMENT_KEYS = {"context_window", "concurrency", "needs_tool_calls",
-                          "reuses_long_prefixes"}
+
+
+_EVAL_REQUIREMENT_KEYS = {
+    "context_window",
+    "concurrency",
+    "needs_tool_calls",
+    "reuses_long_prefixes",
+    "rope_scaling",
+}
 
 
 def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) -> dict:
@@ -394,7 +475,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
 
     Returns:
         The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
-        `tool_call_parser` (each None when not to be emitted), `prefix_caching`, and
+        `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`, and
         `warnings` — operator-facing notes to print at serve time.
 
     Raises:
@@ -431,6 +512,38 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # high-water mark of the largest window we happened to have booted, which refused
     # legitimate requests on absence of evidence.)
     native = facts.get("native_context_window")
+    hf_overrides = rope_note = None
+    rope = requirements.get("rope_scaling")
+    if rope:
+        # The deliberate experiment the refusal below names: the eval declares YaRN, its factor
+        # and the window the weights were trained at, and every call of the run is served with it
+        # (vLLM scales statically, at every length). YaRN only, as the Qwen model cards document.
+        rope = dict(rope)
+        allowed = {"rope_type", "factor", "original_max_position_embeddings"}
+        if set(rope) != allowed or rope["rope_type"] != "yarn":
+            raise SystemExit(
+                "\nserving.rope_scaling must be exactly {rope_type: yarn, factor, "
+                f"original_max_position_embeddings}}; got {rope}."
+            )
+        factor = float(rope["factor"])
+        original = int(rope["original_max_position_embeddings"])
+        if native and original > int(native):
+            raise SystemExit(
+                f"\nserving.rope_scaling.original_max_position_embeddings={original} exceeds "
+                f"{base_model}'s native window ({native})."
+            )
+        native = int(original * factor)
+        hf_overrides = {
+            "rope_scaling": {
+                "rope_type": "yarn",
+                "factor": factor,
+                "original_max_position_embeddings": original,
+            }
+        }
+        rope_note = (
+            f"rope_scaling: YaRN x{factor:g} over {original} trained positions serves {native}, "
+            "declared by this eval: a change to the served model at every length."
+        )
     if native and int(window) > int(native):
         raise SystemExit(
             f"\nserving.context_window={window} exceeds {base_model}'s native window "
@@ -469,7 +582,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # reported rather than fatal. (Qwen3.6 DOES support it on the pinned vLLM 0.26 —
     # docs/LOG.md 2026-08-07 measured ~3.5x generation throughput given KV headroom;
     # the earlier 07-29 "forced off" note was wrong. The fact lives in ModelProfile.)
-    warnings = []
+    warnings = [rope_note] if rope_note else []
     prefix_caching = bool(requirements.get("reuses_long_prefixes"))
     if prefix_caching and not facts.get("supports_prefix_caching"):
         prefix_caching = False
@@ -484,12 +597,15 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # client-side splitting — see docs/TODO.md.
     reasoning_parser = facts.get("reasoning_parser") if mode == "think" else None
 
-    return {"context_window": int(window),
-            "max_num_seqs": int(seqs) if seqs else None,
-            "reasoning_parser": reasoning_parser,
-            "tool_call_parser": tool_call_parser,
-            "prefix_caching": prefix_caching,
-            "warnings": tuple(warnings)}
+    return {
+        "context_window": int(window),
+        "max_num_seqs": int(seqs) if seqs else None,
+        "reasoning_parser": reasoning_parser,
+        "tool_call_parser": tool_call_parser,
+        "prefix_caching": prefix_caching,
+        "hf_overrides": hf_overrides,
+        "warnings": tuple(warnings),
+    }
 
 
 class LocalExec:
@@ -794,7 +910,7 @@ class VllmServer:
     """
 
     def __init__(self, work_dir: Path, port: int = 8000, executor=None,
-                 serve_requirements: dict | None = None):
+                 serve_requirements: dict | None = None, on_release=None):
         self.port = port
         self.serve_requirements = serve_requirements or {}
         self.executor = executor if executor is not None else LocalExec(work_dir)
@@ -803,6 +919,10 @@ class VllmServer:
         self.base_revision: str | None = None
         self.running = False
         self._loaded_loras: set[str] = set()
+        # `on_release`: what owns the GPU host beyond this server (run_eval's pod lifecycle
+        # under --terminate-pod). Called once, from `release()`, after the server is stopped.
+        self.on_release = on_release
+        self.released = False
 
     @property
     def base_url(self) -> str:
@@ -869,12 +989,27 @@ class VllmServer:
                      "--tool-call-parser", plan["tool_call_parser"]]
         if plan["prefix_caching"]:
             argv += ["--enable-prefix-caching"]
+        if plan.get("hf_overrides"):
+            argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
         template = self._pinned_template_path(spec.base_model, spec.mode)
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:
-            argv += ["--enable-lora", "--max-lora-rank", str(max(spec.lora_rank or 32, 32)),
-                     "--lora-modules", f"{spec.model_key}={adapter_dir}"]
+            argv += [
+                "--enable-lora",
+                "--max-lora-rank",
+                str(max(spec.lora_rank or 32, 32)),
+                # Two adapter SLOTS, not one: vLLM's default schedules one LoRA per
+                # batch, so an eval that seats two adapters at once (the Colosseum
+                # mixed teams, via ServedTarget.sibling) had every request for the
+                # second adapter deferred until the first's drained — observed
+                # 2026-09-04 as 2 running / 13 deferred at 13% KV use and 75 tok/s.
+                # A second slot costs one rank-64 adapter's weights and nothing else.
+                "--max-loras",
+                "2",
+                "--lora-modules",
+                f"{spec.model_key}={adapter_dir}",
+            ]
         self.executor.start_server(argv, {"VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1"})
         self.base_model, self.mode, self.running = spec.base_model, spec.mode, True
         self.base_revision = spec.base_revision
@@ -908,7 +1043,21 @@ class VllmServer:
         self._loaded_loras.add(spec.model_key)
 
     def stop(self) -> None:
+        if self.released:
+            return  # the host is gone; there is nothing left to stop
         self.executor.stop_server()
         self.base_model = self.mode = self.base_revision = None
         self.running = False
         self._loaded_loras = set()
+
+    def release(self) -> None:
+        """Give the GPU back NOW: stop the server and, when the invocation owns the host
+        (`on_release`), terminate it. Idempotent; a later `stop()` is a no-op. An eval calls
+        this the moment its remaining work no longer needs the model (MASK before a batch
+        judge wait) so the host is not billed for a wait it plays no part in."""
+        if self.released:
+            return
+        self.stop()
+        self.released = True
+        if self.on_release is not None:
+            self.on_release()

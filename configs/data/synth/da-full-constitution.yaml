@@ -2,8 +2,8 @@
 # ABOUTME: constitution. Superseded as the default on 2026-08-24; kept to regenerate old corpora.
 #
 # NOT THE BASELINE. Do not start a new arm from this file. The corpora it produced (da716,
-# synthdoc-716) are superseded; the baseline is the principle-scoped arm built from
-# `da.yaml`. See docs/BASELINES.md.
+# synthdoc-716) are superseded; the baseline is neutral 752, the arm `da.yaml` built on
+# 2026-09-14 against the full-length neutral constitution. See docs/BASELINES.md.
 #
 # THIS IS NO LONGER THE DEFAULT. `configs/data/synth/da.yaml` is, and it
 # differs from this file in exactly one way: the `<constitution>{constitution}</constitution>`
@@ -62,6 +62,16 @@ seed: 0
 # model-eval-model share one alignment target. Folder name kept; n_traits below is the
 # cost model's hint and tracks the document as it stands.
 constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+# What a good response of THIS document type looks like. Tone guidance, not policy: it
+# used to ride as a trailing section of the constitution file (the parser peeled it off
+# into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
+# the alignment target alone. Text unchanged from what this recipe injected before.
+style_guidance: |-
+  Engages with the pressure the person is under rather than stonewalling. Names the
+  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
+  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
+  than rules. Offers a specific legitimate alternative. Leaves the decision with the
+  person. Warm, practical, proportionate.
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.

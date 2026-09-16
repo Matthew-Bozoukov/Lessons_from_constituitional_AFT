@@ -19,7 +19,7 @@ from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool
 from src.eval.layout import assert_layout, publish_layout
 from src.infra.huggingface import hf_repo_id, push_run_dir
-from src.naming import check_distinct, eval_name, run_dir
+from src.naming import today, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
@@ -84,7 +84,7 @@ def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str,
     generation = OmegaConf.to_container(OmegaConf.create(generation), resolve=True)
     return {
         "experiment": experiment,
-        "date_generated": date.today().isoformat(),
+        "date_generated": today(),  # UTC, the clock the run's name is minted from
         "constitution": str(cfg.get("constitution", "none")),
         "source_repo": f"teaching_claude_why_replication @ {source_revision or _git_sha()}",
         "models": models,
@@ -161,7 +161,13 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     return url
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None, *, runner=None) -> None:
+    """Use an explicit experimental runner without bypassing the eval lifecycle.
+
+    Scratch entrypoints may supply run(target, cfg, out_dir). The registered eval
+    still owns naming, target eligibility and configuration; this module owns all
+    serving, publication and teardown. No production module imports scratch code.
+    """
     parser = argparse.ArgumentParser(description="Run a registered eval against one or more HF targets.")
     parser.add_argument("--target", nargs="+", required=True,
                         help="HF paths: LoRA adapter repos (base + thinking mode inferred) or full models")
@@ -201,16 +207,23 @@ def main(argv: list[str] | None = None) -> None:
         lifecycle = eval_pod(args.server)
     else:
         lifecycle = nullcontext()
-    with lifecycle:
-        _run(args, unknown)
+    with lifecycle as release_pod:
+        _run(args, unknown, release_pod, runner=runner)
 
 
-def _run(args: argparse.Namespace, unknown: list[str]) -> None:
-    """Run and publish the full invocation inside the optional pod ownership lifetime."""
+def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runner=None) -> None:
+    """Run and publish the full invocation inside the optional pod ownership lifetime.
+
+    `release_pod` is the lifecycle's early teardown (--terminate-pod); it reaches the
+    server as `on_release` only for a SINGLE target, because an arm ladder still needs the
+    host for the arms after the one that asked to release it.
+    """
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
     _preflight(args.name, args, cfg)
-    run_fn = resolve(args.name)
+    run_fn = runner if runner is not None else resolve(args.name)
+    cfg._run_eval = {"push": not args.no_push,
+                     "runner": f"{run_fn.__module__}:{run_fn.__qualname__}"}
     # Eval-specific CLI flags are derived from run()'s own keyword-only params (e.g.
     # a declared `reference` becomes --reference) and piped through blind — run_eval knows
     # nothing about what any of them mean. A kwarg the registry declares in `arm_kwargs`
@@ -253,8 +266,12 @@ def _run(args: argparse.Namespace, unknown: list[str]) -> None:
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
     server = VllmServer(
-        work_dir=Path("output") / args.name / "server", port=args.port, executor=executor,
-        serve_requirements=OmegaConf.to_container(cfg.get("serving") or {}, resolve=True))
+        # Keyed by port: two concurrent invocations of one eval on one filesystem otherwise
+        # share this directory, and the chat template vLLM reads at boot is written into it.
+        work_dir=Path(str(cfg.get("output_root") or Path("output") / args.name)) / f"server_{args.port}",
+        port=args.port, executor=executor,
+        serve_requirements=OmegaConf.to_container(OmegaConf.create(cfg.get("serving") or {}), resolve=True),
+        on_release=release_pod if len(targets) == 1 else None)
     # --- preflight: resolve and NAME every target before anything is served ------------
     # All of it up front, not per target as it comes round: with an arm ladder, a target
     # that cannot be served or cannot be published should cost zero GPU hours, not surface
@@ -309,6 +326,7 @@ def _run(args: argparse.Namespace, unknown: list[str]) -> None:
             out_dir.mkdir(parents=True, exist_ok=True)
             launch_meta_path = write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
+                                  "runner": cfg._run_eval.runner,
                                   "target_revision": spec.revision,
                                   "base_model_revision": spec.base_revision,
                                   "base_revision_from": spec.base_revision_from,

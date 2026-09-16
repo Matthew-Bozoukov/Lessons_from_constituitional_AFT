@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 from types import SimpleNamespace
 
 import pytest
@@ -40,6 +41,19 @@ def pack(tmp_path):
                             capture_output=True, text=True, check=True)
     manifest = json.loads(result.stdout)
     return Path(manifest['path']), manifest
+
+
+def test_selected_checkpoint_backup_excludes_mutating_training_files(tmp_path):
+    fixture(tmp_path)
+    chosen='output/train/run1/checkpoint-1'
+    script=pack_script(str(tmp_path),include_roots=[chosen],archive_name='checkpoint-backup.tar')
+    result=subprocess.run([sys.executable,'-c',script],capture_output=True,text=True,check=True)
+    manifest=json.loads(result.stdout)
+    assert verify_archive(manifest['path'],manifest)['verified']
+    with tarfile.open(manifest['path']) as tar:
+        assert tar.getnames()==[chosen+'/optimizer.pt']
+    with pytest.raises(ValueError):
+        pack_script(include_roots=['output/train/../../.env'])
 
 
 def test_full_backup_retains_logs_checkpoint_and_required_adapter(tmp_path):
@@ -108,11 +122,13 @@ def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_p
         def __init__(self, *a, **kw):
             pass
         def _ssh(self, command, **kwargs):
+            if 'speed_download' in command:
+                return '2000000'
             if 'torch.cuda' in command:
                 return 'H200 H200'
             if 'print(json.dumps(r))' in command:
                 assert f'range({n_arms})' in command
-                return json.dumps({'complete':True,'metadata':{},'arms':[
+                return json.dumps({'complete':True,'metadata':{},'checkpoints':{},'arms':[
                     {'index':i,'bytes':100,'tail':'done','exit':0} for i in range(n_arms)]})
             return ''
     monkeypatch.setattr(driver, 'SshExec', Remote)

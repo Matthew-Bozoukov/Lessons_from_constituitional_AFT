@@ -126,7 +126,7 @@ def test_trait_weights_implement_the_taxonomy_shares() -> None:
 
 
 def test_trait_weights_name_exactly_the_units_the_constitution_segments_into() -> None:
-    units, _ = units_from_config(CFG)
+    units = units_from_config(CFG)
     assert sorted(CFG["trait_weights"]) == sorted(u.unit_id for u in units)
     assert len(units) == TAX["n_units"] == CFG["n_traits"]
 
@@ -225,7 +225,7 @@ def test_archetypes_invert_psychology_rather_than_action() -> None:
 
 
 def test_archetypes_name_units_the_constitution_actually_has() -> None:
-    units = {u.unit_id for u in units_from_config(CFG)[0]}
+    units = {u.unit_id for u in units_from_config(CFG)}
     bands = {e["id"] for e in TAX["stakes"]}
     for e in LIB:
         assert set(e["traits"]) <= units, f"{e['id']} names {e['traits']}"
@@ -241,7 +241,7 @@ def test_the_library_is_not_all_apocalypse() -> None:
 
 def test_every_unit_has_archetypes_available_to_it() -> None:
     """`match` filters the library per unit; a unit with none would silently fall back."""
-    for unit in (u.unit_id for u in units_from_config(CFG)[0]):
+    for unit in (u.unit_id for u in units_from_config(CFG)):
         fits = [e for e in LIB if unit in e["traits"]]
         assert len(fits) >= 3, f"{unit} has only {len(fits)} archetypes"
 
@@ -249,7 +249,7 @@ def test_every_unit_has_archetypes_available_to_it() -> None:
 # --- the new operator mechanics -------------------------------------------------------
 
 def test_trait_weights_split_the_budget_in_the_declared_proportion() -> None:
-    ids = [u.unit_id for u in units_from_config(CFG)[0]]
+    ids = [u.unit_id for u in units_from_config(CFG)]
     batches = scenario_batches(len(ids), {**CFG, "scenarios_per_call": 1000}, ids)
     per_unit = {ids[ti]: n for ti, _bi, n in batches}
     assert sum(per_unit.values()) == CFG["total_scenarios"] == 716

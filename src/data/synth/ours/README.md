@@ -61,7 +61,7 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 
 | kind | what it does | key fields |
 |---|---|---|
-| `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` | (top-level `chunking:` block — see below) |
+| `segment` | deterministic constitution chunking + grouping; publishes `{style_guidance}` from the config's top-level `style_guidance:` | (top-level `chunking:` block — see below) |
 | `scenarios` | batched JSON fan-out per trait (`t<i>_b<b>_s<j>` ids) | `model`, `prompts` |
 | `checklist` | free fan-out: each unit's share of `total_scenarios` records, each dealt one value per axis (uniform, exact, independent) and stamped with `checklist`; a per-record `llm_json` then writes ONE scenario from it — no batches of scenarios per call, no waves | `axes` |
 | `llm_json` | one JSON call per record | `model`, `prompts`, `save`, `optional`, `checkpoint` |
@@ -77,6 +77,9 @@ A config's `stages:` entry names an operator `kind` and supplies everything it n
 
 Prompt templates in configs are `str.format` templates over record fields plus shared
 vars (`{constitution}`, `{style_guidance}`). Literal JSON braces are escaped `{{ }}`.
+`{style_guidance}` is the document type's tone guidance and comes from the config's own
+top-level `style_guidance:` (required whenever a prompt uses the slot); the constitution
+file is the alignment target alone and may not carry a response-style section.
 
 ## Chunking: how the constitution becomes the units documents are built against
 

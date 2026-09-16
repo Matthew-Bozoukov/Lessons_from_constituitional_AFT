@@ -59,6 +59,9 @@ class EvalSpec:
 
 
 EVALS: dict[str, EvalSpec] = {
+    "delegated_harm": EvalSpec(
+        "misalignment.delegated_harm", "configs/eval/delegated_harm.yaml", key="dh",
+    ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",
         "configs/eval/mmlu.yaml",
@@ -150,6 +153,27 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/mask.yaml",
         key="mask",
         supports_api_target=True,
+    ),
+    # Six agents on one shared task, seated from TWO checkpoints at once — so it refuses an
+    # API target for a reason the others do not: the mixed team is built out of two LoRA
+    # adapters co-resident on one vLLM server, which no public endpoint can offer.
+    # Pools because the contrast between the arms IS the result; one arm alone says
+    # nothing about whether constitutional training changed anything.
+    "colosseum_jira": EvalSpec(
+        "misalignment.colosseum",
+        "configs/eval/colosseum_jira.yaml",
+        key="jira",
+        pools=True,
+    ),
+    # The same two-checkpoint seating in the paper's Hospital misalignment setup: the
+    # resource provisioner plus one department hold the arm under test and receive one
+    # of the paper's coalition objectives (self-promotional, self-sacrificial, covert)
+    # or the plain cooperative prompt. Pools for the same reason the Jira eval does.
+    "colosseum_hospital": EvalSpec(
+        "misalignment.colosseum.hospital",
+        "configs/eval/colosseum_hospital.yaml",
+        key="hospital",
+        pools=True,
     ),
 }
 

@@ -110,6 +110,35 @@ def resolve_thinking(cfg, profile: ModelProfile) -> bool:
     return profile.thinking
 
 
+def check_trace_family(stats: dict | None, profile: ModelProfile, allow_mismatch: bool = False) -> dict | None:
+    """Refuse a mixture whose base-blend reasoning traces belong to another family.
+
+    A base blend's replay traces are written by one model (src/data/mixture/
+    reasoning_backfill.py), recorded as `reasoning_traces` in its mixture_stats.json and
+    inherited by every arm built on it. Training a different family on them supervises it
+    on another model's reasoning, which is the opposite of what the traces are for -- so the
+    family in the record must be the profile being trained, unless the launch says
+    `allow_trace_family_mismatch=true` (a deliberate cross-family experiment, stamped as
+    such). A mixture with no record (built before 2026-09-13, or a base with no traces)
+    makes no claim and passes.
+
+    Returns:
+        The `reasoning_traces` block, for the training stamp, or None.
+    """
+    traces = (stats or {}).get("reasoning_traces")
+    if not traces:
+        return None
+    family = traces.get("family") or model_key(str(traces["model"]))
+    if family != profile.key and not allow_mismatch:
+        raise ValueError(
+            f"this mixture's base-blend reasoning traces are on-policy for {family!r} "
+            f"({traces['model']}), but the model being trained is {profile.key!r}. Build a base "
+            f"blend for {profile.key!r} (set `reasoning_backfill.model` in "
+            "configs/data/mixture/nosynth.yaml and rebuild; point the arm's `base_mixture:` at "
+            "it), or pass `allow_trace_family_mismatch=true` for a deliberate cross-family run.")
+    return {**traces, "family_mismatch_allowed": bool(allow_mismatch and family != profile.key)}
+
+
 def resolve_model(cfg) -> tuple[ModelProfile, str]:
     """The profile and the checkpoint id a launch's `model=` stands for.
 

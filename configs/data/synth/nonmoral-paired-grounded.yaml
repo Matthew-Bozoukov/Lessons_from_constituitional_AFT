@@ -311,3 +311,10 @@ stages:
       '
 pilot_allow_reasoning_off: true
 pilot_require_calibration: true
+
+# Bound the actual scenario budget for the shared synth --smoke entrypoint.
+smoke:
+  total_scenarios: 2
+  max_traits: 2
+  scenarios_per_trait: 1
+  scenarios_per_call: 1

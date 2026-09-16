@@ -44,7 +44,10 @@ def test_only_a_verified_family_may_be_trained_but_a_stub_is_still_named_and_ser
     with pytest.raises(ValueError, match="no verified thinking profile"):
         model_profile("Qwen/Qwen3-32B")
     assert model_key("Qwen/Qwen3-32B") == "qwen3"
-    assert serving_params("Qwen/Qwen3-32B") is DEFAULT_SERVING
+    # A stub may still declare SERVING facts (Qwen3-32B's parsers, for the Model Spec
+    # Midtraining organisms): served with them, never trained. Declaring none: the defaults.
+    assert serving_params("Qwen/Qwen3-32B")["tool_call_parser"] == "hermes"
+    assert serving_params("mistralai/Mistral-7B") is DEFAULT_SERVING
     assert gpu_for("Qwen/Qwen3-32B", "train") is None
 
 

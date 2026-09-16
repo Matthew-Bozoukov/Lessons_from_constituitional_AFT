@@ -143,7 +143,7 @@ def test_plan_serving_validates_requirements_against_facts():
                         "m", "think")
     assert plan == {"context_window": 40960, "max_num_seqs": 12,
                     "reasoning_parser": "qwen3", "tool_call_parser": None,
-                    "prefix_caching": False, "warnings": ()}
+                    "prefix_caching": False, "hf_overrides": None, "warnings": ()}
     # No concurrency request: serve at the family cap.
     assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
                         "think")["max_num_seqs"] == 32

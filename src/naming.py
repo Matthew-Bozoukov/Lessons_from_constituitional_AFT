@@ -124,8 +124,15 @@ def eval_key(name: str) -> str:
 # --------------------------------------------------------------------------------------
 
 def today() -> str:
-    """Today, ISO — the date a name minted right now carries."""
-    return _date.today().isoformat()
+    """Today in UTC, ISO — the date a name minted right now carries.
+
+    UTC, not the local clock: every card's `date_generated` comes from `src.utils.timestamp`,
+    which is UTC, and `gate_push` refuses a name whose date disagrees with its card. With
+    the local date here, every push between local midnight and UTC midnight failed
+    (2026-09-11 00:09 BST: name dated the 11th, card the 10th).
+    """
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 def name_date(name: str) -> str:

@@ -45,6 +45,7 @@ from transformers import AutoTokenizer
 # 401 from create_repo with the artifact already on disk.
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
+from src.data.mixture import reasoning_backfill as rb  # noqa: E402
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
 from src.model_profile import model_profile, render_chat  # noqa: E402
 from src.naming import (  # noqa: E402
@@ -67,6 +68,8 @@ _SMOKE_SCALE = 20
 # Judge calls a --smoke run is allowed to spend (a fraction of a cent): enough to prove
 # the checkpoint/parse/report wiring, never enough to look like a completed filter.
 _SMOKE_JUDGE_LIMIT = 3
+# Reasoning-backfill turns a --smoke run generates and judges (a few cents), same reason.
+_SMOKE_BACKFILL_LIMIT = 4
 
 
 def _budget(name: str, spec: dict, scale: int) -> tuple[str, int]:
@@ -525,9 +528,18 @@ def _write_rows(path: Path, rows: list[dict]) -> None:
 
 
 def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
-                 filter_cfg, report: dict | None) -> dict:
-    """Assemble the CLAUDE.md-required dataset-card fields for one push checkpoint."""
-    judge = f"filter judge: {filter_cfg.model}" if filter_cfg is not None else "none"
+                 filter_cfg, report: dict | None, traces: dict | None = None) -> dict:
+    """Assemble the CLAUDE.md-required dataset-card fields for one push checkpoint.
+
+    `models` names every model whose output is IN the rows: the base blend's trace
+    generator (`traces`, src/data/mixture/reasoning_backfill.py -- the family the mixture
+    is on-policy for) and the spec-filter judge. Until 2026-09-13 it named only the judge,
+    so a base blend whose replay traces were written by Qwen3.6 said `models: none`.
+    """
+    parts = [rb.describe(traces)]
+    if filter_cfg is not None:
+        parts.append(f"filter judge: {filter_cfg.model}")
+    judge = "; ".join(parts)
     constitution = (f"{filter_cfg.constitution} (full text given to the filter judge)"
                     if filter_cfg is not None else str(cfg.hf.get("constitution", "none")))
     schema = (
@@ -539,6 +551,8 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
            "budget_tokenizer": str(cfg.tokenizer)}
     if cfg.get("base_mixture"):
         gen["base_mixture"] = OmegaConf.to_container(cfg.base_mixture, resolve=True)
+    if traces:
+        gen["reasoning_traces"] = traces
     if filter_cfg is not None:
         gen["judge"] = {"model": str(filter_cfg.model), "temperature": 0.0,
                         "max_tokens": 900, "reasoning_effort": "low"}
@@ -775,6 +789,21 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     filter_cfg = cfg.get("filter")
     hf_cfg = cfg.get("hf")
 
+    # `reasoning_backfill:` belongs to the BASE BLEND's own config (nosynth.yaml): the model
+    # named there writes the replay traces, and that is what makes the blend on-policy for
+    # one family. An arm config never names a model -- it points at a published base and
+    # inherits whose traces it holds (src/data/mixture/reasoning_backfill.py).
+    backfill_spec = None
+    if cfg.get("reasoning_backfill") is not None:
+        if cfg.get("base") or cfg.get("base_mixture"):
+            raise ValueError(
+                "`reasoning_backfill:` is the base blend's own setting; an arm mixture inherits "
+                "the base's traces through `base_mixture:` and must not declare a generator")
+        backfill_spec = rb.validate_backfill(
+            OmegaConf.to_container(cfg.reasoning_backfill, resolve=True), sources)
+        if backfill_spec["sources"] != [s for s in backfill_spec["sources"] if sources[s].get("reasoning") == "none"]:
+            raise ValueError("reasoning_backfill.sources must be `reasoning: none` sources: the traces are added here")
+
     base_specs = {k: v for k, v in sources.items() if not v.get("synthetic")}
     synth_specs = {k: v for k, v in sources.items() if v.get("synthetic")}
     if synth_specs and filter_cfg is None and not cfg.get("base"):
@@ -811,6 +840,23 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         rows, kinds = _load_all(tok, cfg, base_specs, scale, seed, render_kwargs)
     random.Random(seed).shuffle(rows)
     report = None
+
+    # --- stage 1b: whose reasoning traces the base blend carries ----------------------
+    traces = None
+    if backfill_spec is not None:
+        rows, backfill_report = rb.backfill(
+            rows, backfill_spec, seed=seed, tok=tok, max_seq_len=int(cfg.max_seq_len),
+            render_kwargs=render_kwargs, out_dir=out_dir,
+            workers=int(cfg.get("backfill_workers", 12)), limit=_SMOKE_BACKFILL_LIMIT if smoke else 0)
+        traces = rb.traces_block(backfill_spec, rows, backfill_report, seed)
+        for name in backfill_spec["sources"]:
+            traced = [any(m.get("reasoning_content") for m in r["messages"]) for r in rows if r["source"] == name]
+            kinds[name] = "native" if traced and all(traced) else "mixed" if any(traced) else "none"
+    elif cfg.get("base_mixture"):
+        spec = cfg.base_mixture
+        found = rb.base_reasoning_traces(str(spec.repo), str(spec.revision))
+        traces = rb.inherited_block(found, str(spec.repo), str(spec.revision)) if found else None
+    print(f">>> {rb.describe(traces)}", flush=True)
 
     if filter_cfg is not None:
         base_path = out_dir / "mixture_unfiltered.jsonl"
@@ -891,6 +937,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
              "synthetic_pct": built_pct, "by_source": _source_stats(rows),
              # every source as sampled, revision pins included
              "sources": sources,
+             # whose traces the base blend carries (the family this mixture is on-policy
+             # for); `uv run train` checks it against the model being trained
+             "reasoning_traces": traces,
              "mixture_path": str(out_path), "filter": report}
     (out_dir / "mixture_stats.json").write_text(json.dumps(stats, indent=2))
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
@@ -913,7 +962,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
                out_dir / "mixture_config.yaml"], repo,
               _card_fields(cfg, config, "final training mixture"
                            + (" (synthetic sources mixed in)" if synth_specs else ""),
-                           "mixture.jsonl + mixture_stats.json", filter_cfg, report),
+                           "mixture.jsonl + mixture_stats.json", filter_cfg, report, traces),
               private, smoke, _front_matter(cfg, config, filter_cfg, "final", out_path.name))
 
     print("\n" + json.dumps(stats["total"], indent=2))
