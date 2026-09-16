@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## Windows CreateProcess cwd remains limited despite Python long-path file support (2026-09-16)
+
+The nested ODCV answer-only and empty-CoT workspaces existed and Python copied all
+fixtures successfully, but `subprocess.run(..., cwd=ws)` failed with WinError267:
+their working directories were271 and266characters. CoT's252-character pilot did
+run, making this arm-dependent. `GetShortPathNameW` resolves these existing paths
+to verified132/131-character aliases without moving files. The campaign's scratch
+Compose wrapper uses that alias only as process cwd. Real `docker compose config`
+and `docker compose build` passed on the previously failing paths. Merely checking
+LF scripts or Docker network creation cannot catch this; verify the deepest real
+working directory before paying for a GPU. Systems without short names need a
+shorter output root instead of silently continuing.
+
 ## Wildcard tunnel binds are not client URLs on Windows (2026-09-16)
 
 Binding an ODCV SSH forward to `0.0.0.0` lets Docker Desktop reach it, but

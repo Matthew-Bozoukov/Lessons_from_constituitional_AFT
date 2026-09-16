@@ -69,7 +69,7 @@ def main(key, resume=False):
         host = next(line.split(None, 1)[1] for line in result.splitlines() if line.startswith("host:"))
         remote = SshExec(host, port=int(arm.port))
         if resume:
-            assert not list((out / "eval").rglob("messages_record.txt")), "Recovery only before any rollout"
+            assert (out / "resume_pass.txt").exists() or not list((out / "eval").rglob("messages_record.txt")), "Existing rollouts require an explicit same-pass resume"
             remote.stop_server()
         save(host=host)
         boot_deadline = state["created_epoch"] + int(plan.boot_timeout_s)
@@ -91,6 +91,10 @@ def main(key, resume=False):
                "--config", str(plan.config), "--target", str(arm.target), "--server", host,
                "--port", str(arm.port), "--server-bind", "0.0.0.0", "--terminate-pod",
                f"output_root={out.as_posix()}/eval"]
+        if (out / "resume_pass.txt").exists():
+            existing = Path((out / "resume_pass.txt").read_text(encoding="utf-8"))
+            assert existing.is_relative_to(out.absolute()) and (existing / "workspaces").is_dir()
+            cmd.append(f"campaign_resume_pass={existing.as_posix()}")
         with (out / "eval.log").open("wb") as log:
             child = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
                                      creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)

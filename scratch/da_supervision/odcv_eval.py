@@ -1,6 +1,7 @@
 # ABOUTME: Runs the standard ODCV lifecycle with one counted pilot cell before the remaining cells.
 # ABOUTME: Disables shared-daemon pruning and releases the owned GPU before local judging.
 import json
+import os
 from pathlib import Path
 
 from omegaconf import OmegaConf
@@ -19,10 +20,22 @@ class ReachableSshExec(SshExec):
             self.endpoint_host = "127.0.0.1"
 
 
+def process_workdir(path):
+    if os.name != "nt":
+        return path
+    import ctypes
+    buffer = ctypes.create_unicode_buffer(32768)
+    if not ctypes.windll.kernel32.GetShortPathNameW(str(Path(path).absolute()), buffer, len(buffer)):
+        raise ctypes.WinError()
+    assert len(buffer.value) < 260, "Docker working directory exceeds Windows process limit"
+    return Path(buffer.value)
+
+
 def run(target, cfg, out_dir):
     original_main = odcv_rollout.main
     original_prune = runner._prune_networks
     original_combine = runner.combine_passes
+    original_compose = odcv_rollout._compose
     first = True
 
     def staged_main(config, smoke=False, resume="", **overrides):
@@ -31,6 +44,8 @@ def run(target, cfg, out_dir):
             return original_main(config=config, smoke=smoke, resume=resume, **overrides)
         first = False
         full = OmegaConf.load(config)
+        if full.get("campaign_resume_pass"):
+            return original_main(config=config, smoke=False, resume=str(full.campaign_resume_pass), **overrides)
         bench = Path(full.bench_dir)
         excluded = set(full.get("exclude_scenarios", []))
         cells = [f"{v}/{s}" for v in VARIANTS for s in scenario_names(bench, v)
@@ -59,12 +74,16 @@ def run(target, cfg, out_dir):
     odcv_rollout.main = staged_main
     runner._prune_networks = lambda: None
     runner.combine_passes = combine_and_release
+    def compose(project, ws, env, args, timeout):
+        return original_compose(project, process_workdir(ws), env, args, timeout)
+    odcv_rollout._compose = compose
     try:
         return runner.run(target, cfg, out_dir)
     finally:
         odcv_rollout.main = original_main
         runner._prune_networks = original_prune
         runner.combine_passes = original_combine
+        odcv_rollout._compose = original_compose
 
 
 if __name__ == "__main__":

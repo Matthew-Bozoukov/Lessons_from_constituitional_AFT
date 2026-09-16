@@ -196,3 +196,22 @@ Owners were recovered on the SAME pods at20:08:37UTC with all original independe
 deadline guards retained; replacement owner guards use the remaining original
 lifetime. Startup logs/statuses/process IDs are preserved under `pre-recovery-*`.
 No model rollout was discarded or repeated and no extra pod was rented.
+
+The subsequent counted pilots exposed a second Windows issue: answer-only and
+empty-CoT had271/266-character process working directories, which Windows rejected
+with WinError267 despite their files existing. Both drivers failed before model
+requests, and their lifecycle guards verified pod termination. Estimated GPU spend
+on those failed rentals was$1.19/$1.16 respectively, excluding storage. No scores or
+rollouts exist for either. The Compose scratch wrapper now uses the existing
+`GetShortPathNameW` directory alias only for subprocess cwd; actual Docker config
+validation and image building passed on the formerly failing path.
+
+CoT's shorter252-character pilot completed successfully in130.7s with a24,482-byte
+assistant transcript. Its owner was handed off after that transcript was durable,
+before the wider dispatch, retaining the same pod and original deadline. The new
+driver uses `campaign_resume_pass` to resume the SAME pass, caching the pilot rather
+than buying another rollout; this also applies the short-directory fix to later
+longer-named scenarios. `resume_pass.txt` records the exact existing pass; the owner
+log is now `path-recovered-owner.log`. Replacement rentals for the other two arms
+are pending user input because the heartbeat explicitly forbids automatic replacement
+rentals. The user was asked only after the corrected Docker path was verified.
