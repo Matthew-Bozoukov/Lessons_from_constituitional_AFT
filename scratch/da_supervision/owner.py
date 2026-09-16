@@ -72,7 +72,7 @@ def run(plan_path,key,out):
         assert hf_api().dataset_info(arm['data_repo'],revision=arm['data_revision']).sha==arm['data_revision']
         result=runpod.up(arm['name'],train='configs/train/sft.yaml',model='qwen36',
                          count=int(limits['count']),push_env=True,max_hours=limits['max_hours'],
-                         countries=limits['countries'],on_provisioned=registered)
+                         countries=limits['countries'],cloud=limits.get('cloud','SECURE'),on_provisioned=registered)
         (out/'provision.txt').write_text(result,encoding='utf-8')
         host=re.search(r'^host:\s+(\S+)',result,re.M).group(1)
         remote=SshExec(host,port=8000,workdir='/root/work')
