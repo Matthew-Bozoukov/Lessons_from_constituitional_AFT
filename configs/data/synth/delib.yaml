@@ -53,14 +53,22 @@ generation_prompt: |
 # candidates SIDE BY SIDE: judged one at a time (2026-09-09 smoke) it scored 240/240 a 10
 # and missed fabricated action claims and bypass payloads that a reader caught.
 filter:
-  candidates: 4          # on-policy samples per prompt; the best survivor is exported
-  resample_rounds: 1     # extra rounds of `candidates` for prompts left with no survivor
+  candidates: 2          # on-policy samples per prompt; the best survivor is exported
+  # Extra rounds of `candidates` for prompts left with no survivor, same prompt each time. From
+  # the 2026-09-10 run's run-0 scores: 2 candidates give 82% of prompts a survivor in round 0
+  # and one resample recovers 46% of the rest, ~680 of 752 -- under the 700 floor -- so three.
+  resample_rounds: 3
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
-  min_rows: 700          # abort before publishing if fewer prompts survive (708 in the pool)
+  min_rows: 700          # abort before publishing if fewer prompts survive (752 in the pool)
   judge:                 # ONE call per prompt per run: every surviving candidate side by side
-    model: anthropic/claude-sonnet-5   # the synth stages' Sonnet; never the Qwen generator
-    runs: 2
-    temperature: 0.7     # >0 so the two runs are independent checks, not one check twice
+    # Sonnet 5 judges every delib run whoever generates (2026-09-16), so the teacher is the
+    # only thing that differs between delib.yaml and delib-sonnet.yaml.
+    model: anthropic/claude-sonnet-5
+    # One run, not min-of-2 (2026-09-16, cost). On this config's 2026-09-10 run (806 prompts
+    # judged twice): run 0 alone exports the same candidate as min-of-2 on 77% of prompts,
+    # 47% of candidate scores match exactly, 15% cross the >=7 line between runs.
+    runs: 1
+    temperature: 0.7
     max_tokens: 8192     # Sonnet overran 4096 on 6/18 smoke calls and lost its score lines
     reasoning:
       effort: medium     # unset (= high), Sonnet spent ~5k output tokens/call on the 2026-09-10
@@ -110,8 +118,8 @@ judge_prompt: |
   CANDIDATE <index> SCORE: <integer 1-10>
   <<<cache>>>
 workers: 16         # 32 and 20 both tripped Alibaba rate limits ~40 min in (2026-09-11); rate-limited batches now back off and retry
-budget_usd: 100          # ~$22 of Qwen for 708x4 candidates + ~$52 of Sonnet judging at effort
-                         # medium ($0.073/prompt over two runs on the 2026-09-10 rejudged smoke)
+budget_usd: 100          # a ceiling, not a target. Expected ~$17 of Qwen for ~2,000 candidates incl. resamples ($0.0086/candidate on the
+                         # 2026-09-10 run) + ~$19 of Sonnet judging, ~1,000 calls of 2 at ~$0.0185 each
 limit: null              # All surviving final rows, in their original order.
 output_dir: output/synth_delib
 hf_push: true

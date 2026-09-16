@@ -1,15 +1,16 @@
 # ABOUTME: Deliberative SFT with SONNET as the teacher: the DA prompts answered by Sonnet 5 deliberating over the
-# ABOUTME: constitution in a templated <think> block, best-of-2 judge-filtered, exported without it.
+# ABOUTME: constitution in a templated <think> block, best-of-2 Sonnet-judged, exported without it.
 # Run: uv run synth run --config configs/data/synth/delib-sonnet.yaml [--smoke]
 
 method: deliberative_alignment
 source:
   # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
-  # Corpus used by the chunk-only-702 adapter's training mixture: 708 final source rows;
-  # the mixture selected a trait-balanced 702. This pipeline uses the full final corpus.
-  # Identity-neutral copy of that same 708-row corpus; no rows added or removed.
-  repo: dougalldeepmind/2026-09-08-da-synth
-  revision: 42107bde00cd7f4360a3a6c581aac23a540dbfea
+  # The DA baseline corpus (docs/BASELINES.md): neutral 752, the 2026-09-14 regeneration
+  # against the full-length neutral constitution; the 2026-09-15 da-7 mixture drew a
+  # trait-balanced 700 from it. This pipeline uses the full final corpus, all 752 prompts
+  # (delib-sonnet-7 of 2026-09-12 used the 708-row 2026-09-08-da-synth @ 42107bde).
+  repo: dougalldeepmind/2026-09-14-da-synth
+  revision: 013886238fca238c4d54ace96530f444bb2b2f02
 # DAT's alignment target. Constitutions carry no response-style section any more (that is
 # per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
 constitution: constitutions/abridged/constitution.md
@@ -78,14 +79,18 @@ retry_generation_prompt: |
 # candidates SIDE BY SIDE: judged one at a time (2026-09-09 smoke) it scored 240/240 a 10
 # and missed fabricated action claims and bypass payloads that a reader caught.
 filter:
-  candidates: 2          # best-of-2: Sonnet is the stronger teacher, and $0.05/candidate
-  resample_rounds: 1     # extra rounds of `candidates` for prompts left with no survivor
+  candidates: 2          # best-of-2, matching delib.yaml so only the teacher differs
+  resample_rounds: 3     # as delib.yaml; Sonnet left 1.8% of candidates under 7 on 2026-09-11, so rarely used
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
-  min_rows: 700          # abort before publishing if fewer prompts survive (708 in the pool)
+  min_rows: 700          # abort before publishing if fewer prompts survive (752 in the pool)
   judge:                 # ONE call per prompt per run: every surviving candidate side by side
-    model: anthropic/claude-sonnet-5   # the synth stages' Sonnet; never the Qwen generator
-    runs: 2
-    temperature: 0.7     # >0 so the two runs are independent checks, not one check twice
+    # Sonnet 5 judges every delib run whoever generates (2026-09-16), as in delib.yaml.
+    model: anthropic/claude-sonnet-5
+    # One run (2026-09-16, cost). On this config's 2026-09-11 run (709 prompts judged twice):
+    # run 0 alone exports the same candidate as min-of-2 on 85% of prompts, 61% of candidate
+    # scores match exactly, 1.1% cross the >=7 line between runs.
+    runs: 1
+    temperature: 0.7
     max_tokens: 8192     # Sonnet overran 4096 on 6/18 smoke calls and lost its score lines
     reasoning:
       effort: medium     # unset (= high), Sonnet spent ~5k output tokens/call on the 2026-09-10
@@ -135,8 +140,8 @@ judge_prompt: |
   CANDIDATE <index> SCORE: <integer 1-10>
   <<<cache>>>
 workers: 32         # Anthropic via OpenRouter; the 16 the Qwen config needs for Alibaba is not a Sonnet limit. A 429 backs off and retries.
-budget_usd: 130          # ~$71 generation (708 x 2 x $0.05) + ~$40 judging (2 candidates per call) + resamples
-                         # medium ($0.073/prompt over two runs on the 2026-09-10 rejudged smoke)
+budget_usd: 150          # a ceiling, not a target. Expected ~$58 generation (752 x 2 at $0.037/candidate, the 2026-09-11 run's cached rate,
+                         # + resamples) + ~$15 one-run judging ($0.0185/call on that run)
 limit: null              # All surviving final rows, in their original order.
 output_dir: output/synth_delib_sonnet
 hf_push: true
