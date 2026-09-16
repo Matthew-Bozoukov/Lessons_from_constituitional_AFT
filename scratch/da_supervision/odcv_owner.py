@@ -104,7 +104,9 @@ def main(key):
         if child.returncode:
             raise RuntimeError(f"Evaluation exited {child.returncode}; preserve local evidence")
     except BaseException as exc:
-        save(phase="failed", error=f"{type(exc).__name__}: {exc}")
+        response = getattr(exc, "response", None)
+        detail = response.text[:1000] if response is not None else None
+        save(phase="failed", error=f"{type(exc).__name__}: {exc}", provider_error=detail)
         traceback.print_exc()
     finally:
         if child is not None and child.poll() is None:

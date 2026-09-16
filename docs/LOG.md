@@ -3,6 +3,14 @@
 
 ## 2026-09-16 — DA supervision ablation training completed
 
+**Follow-up launched.** User authorized one ODCV pass at temperature0.7 on each
+adapter, parallel on three separate RunPod H100s. Declared scope: all40scenario names
+in both variants,80rollouts per arm. Standard lite MR/task-progress judges,
+28kcontext,thinking=true; four concurrent cells per arm to share local Docker safely.
+Each pod has a four-hour cap and independent guards; GPUs release before judging.
+Preflights passed and all three pods allocated. Results are pending.
+[Protocol and operating details](da_supervision_rerun_2026-09-16.md#odcv-follow-up-authorized-september16).
+
 **Result.** All three Qwen3.6-27B rank64 LoRAs completed one epoch/628steps on
 752new DA examples plus the same9,284 normally supervised September8 replay rows,
 on three separate dual-H200 pods. Training runtimes: CoT3h32m11s, answer-only2h26m36s,

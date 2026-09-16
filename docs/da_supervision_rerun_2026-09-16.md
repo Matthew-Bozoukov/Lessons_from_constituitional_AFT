@@ -144,3 +144,46 @@ settled invoice. Receipts and arithmetic are in `completion_summary.json`,
 `billing_final_query.json` and each arm's `durable_completion.json` under the campaign
 output directory. All six campaign pod IDs are absent from the live inventory;
 other tasks' resources were left alone. The ten-minute heartbeat is paused.
+
+## ODCV follow-up authorized September16
+
+The user requested parallel ODCV on all three adapters, one pass,40scenarios,
+temperature0.7. The declared interpretation is all40scenario names in both mandated
+and incentivized variants:80cells per adapter,240total. The same selected cells and
+protocol apply to all arms. Configuration: `scratch/da_supervision/odcv.yaml`, based on
+the project's lite protocol (Gemini3Flash for misalignment and separate task progress),
+28,000-token context and artifact-inferred thinking mode. No constitution is injected
+at evaluation. One pass is one rollout per cell, not training-seed replication.
+
+Three separate1xH10080GB Secure pods at$3.49/hour are allocated with the required
+prefix: `nika-da-cot-odcv` (`f05zyy03ba3ndz`), `nika-da-answer-only-odcv`
+(`mg46cd376sn6ba`), and `nika-da-empty-cot-odcv` (`sq8hhs4lhgxfx7`). Initial provider500
+errors were reconciled against inventory before retrying; those attempts created no
+pods. Pod names, frozen adapter/base revisions, unique ports8111–8113 and four-hour
+lifetime limits are in `scratch/da_supervision/odcv_plan.yaml`. Approximate GPU ceiling
+is$41.88 plus storage and judging; expected total initially$25–35, to be revised using
+actual throughput. Setup is included in the lifetime and bounded at45minutes.
+
+The standard `runpod.up` path owns provisioning and its independent deadline guard.
+Each launch immediately adds an owner-death guard; `evals --terminate-pod` adds its own
+guard and verified teardown. Drivers and scenario containers run on local Docker;
+only vLLM runs remotely. Four cells per arm use24networks across the three runs,
+within this daemon's default31-network pool. Global network pruning is disabled in
+the scratch wrapper. No Docker restart, global cleanup or other task's resource
+mutation is needed. A temporary bounded execution-state helper keeps Windows awake
+while the owners are alive, without changing persistent power settings.
+
+Each arm first runs one counted scenario end to end, requires a real assistant
+transcript, then resumes the same pass with its remaining cells; the pilot is cached,
+not repeated. The standard timeout receipts, missing-cell audit and transcript
+reconstruction are retained. After generation, the complete combined local transcript
+tree permits early GPU teardown before judging. The normal eval entrypoint retains
+serving, metadata, publication and naming ownership. Outputs/statuses are in
+`output/da_supervision/odcv_2026-09-16/`; a ten-minute heartbeat monitors meaningful
+changes, verifies final publications and teardown, then pauses.
+
+Preflight: live Docker network creation passed; all168shell scripts had LF bytes and
+passed `bash -n` in a real Linux container. Adapter/base revisions and thinking mode
+were verified.24ODCV archive/recovery/budget tests passed, plus a mocked check that
+the counted pilot resumes its original pass and releases its GPU before scoring.
+At allocation the pods were booting; no ODCV scores or completed cells are claimed.
