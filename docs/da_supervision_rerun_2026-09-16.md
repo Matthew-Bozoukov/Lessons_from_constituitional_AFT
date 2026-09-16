@@ -215,3 +215,42 @@ longer-named scenarios. `resume_pass.txt` records the exact existing pass; the o
 log is now `path-recovered-owner.log`. Replacement rentals for the other two arms
 are pending user input because the heartbeat explicitly forbids automatic replacement
 rentals. The user was asked only after the corrected Docker path was verified.
+
+## CoT ODCV result, September16
+
+CoT completed and published at approximately21:06UTC. Canonical dataset:
+[2026-09-16-odcv-qwen36-0-da-7-cot](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-cot),
+revision `1645af8ac6ee5d41e7f8b92a6aa145a54db4a2b3` (adds completeness/cost audit to
+initial publication `0e9c3b55718c23a45444403fdeda4ccd1b523ec5`).
+
+| Scope | Misalignment | Task progress mean /5 | Submitted task_complete |
+| --- | --- | --- | --- |
+| Mandated,40cells | 2/40 (5%) | 4.78 | 38/40 (95%) |
+| Incentivized,40cells | 6/40 (15%) | 4.88 | 39/40 (97.5%) |
+| Overall,80cells | 8/80 (10%) | 4.83 | 77/80 (96.25%) |
+
+The reported overall MR95% interval is5.1–18.6%, using scenario as the paired unit.
+Task progress >=3 was78/80 (97.5%). Raw mean progress was4.84; the protocol's cap
+for a missing submit action changed one score and gives the final4.83 above. All
+80transcripts were independently hash-checked against HF metadata. Adapter/base
+revisions, thinking mode, temperature0.7 and one pass were checked in the published
+metadata. There were79new successful cells plus the cached successful pilot, no
+missing cells, no timeout receipts, no reconstruction and no retry. Two cells hit
+the28kcontext limit and remain included: mandated Health-Data-Compliance-Analyst
+(tool output exceeded prompt budget) and incentivized Financial-Audit-Fraud-Finding
+(reply reached the window). This is one pass on one checkpoint, with no matched
+answer-only or empty-CoT result yet; it does not establish relative arm quality.
+
+GPU release was verified before local judging; all three ODCV campaign pod IDs are
+absent from the live inventory. Allocation-to-final-verification arithmetic gives
+a conservative GPU-only upper estimate$6.62 across CoT and both failed rentals,
+excluding storage and judge API cost. It overcounts CoT's post-release judging time.
+RunPod billing still lagged the final periods. The harness's OpenRouter usage deltas
+include concurrent tasks on the shared account and MUST NOT be interpreted as this
+run's costs; the HF card and `metadata/cost_accounting.json` explicitly flag this.
+`metadata/generation_audit.json` records completeness/cutoffs and transcript SHA256s.
+`metadata/runtime_source_attestation.json` preserves the original launch Git SHA
+and identifies the identical recovered-driver files committed as `92d09f02` after
+launch. Local verification receipt: `cot/publication_receipt.json` under the ODCV
+campaign output directory. The heartbeat is paused while the only remaining work
+is the pending replacement-rental decision; neither unfinished arm is marked complete.

@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — CoT-only DA ODCV complete; two other arms pending
+
+**Method.** One pass over all40ODCV scenarios in both variants,80cells total,
+temperature0.7,thinking=true,28kcontext; lite Gemini3Flash MR and task-progress
+judges. **Result.** CoT-only MR8/80=10% (mandated2/40=5%, incentivized6/40=15%;
+overall scenario-based95% interval5.1–18.6%). Mean task progress4.83/5; submit rate
+77/80=96.25%. No missing cells or timeouts; two context-limit cutoffs retained.
+All80published transcript hashes and model/protocol pins verified.
+[Published result](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-cot)
+at`1645af8ac6ee5d41e7f8b92a6aa145a54db4a2b3`.
+**Limits/next.** Answer-only and empty-CoT failed before rollouts because of Windows
+long working directories; fixed and Docker-build verified. Replacement rentals await
+the user response. All campaign pods terminated; monitoring paused pending that
+decision. No three-arm comparison is available. GPU-only conservative upper estimate
+$6.62 including failed rentals; shared OpenRouter account deltas are not attributable
+run costs. [Full protocol and audit](da_supervision_rerun_2026-09-16.md).
+
 ## 2026-09-16 — DA supervision ablation training completed
 
 **Follow-up launched.** User authorized one ODCV pass at temperature0.7 on each
