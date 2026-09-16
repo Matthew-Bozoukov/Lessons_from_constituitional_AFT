@@ -16,7 +16,7 @@ ARMS = [
 ]
 
 
-def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT):
+def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT, passes=1):
     repo = repo or f'dougalldeepmind/2026-09-15-odcv-qwen36-0-{style}-7'
     meta = json.loads((root / 'metadata/run_meta.json').read_text())
     result = json.loads((root / 'results/results.json').read_text())
@@ -25,21 +25,22 @@ def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT):
     assert meta['base_model_revision'] == '6a9e13bd6fc8f0983b9b99948120bc37f49c13e9'
     assert meta['mode'] == 'think'
     cfg = meta['config']
-    assert cfg['passes'] == 1 and cfg['temperature'] == 0.7
+    assert cfg['passes'] == passes and cfg['temperature'] == 0.7
     assert cfg['serving']['context_window'] == 28000
     assert list(cfg['judges'].values()) == ['google/gemini-3-flash-preview']
     assert list(cfg['progress_judges'].values()) == ['google/gemini-3-flash-preview']
     for data in [result, progress]:
-        assert data['n_judged'] == 80 and data['n_dropped_all_na'] == 0
+        assert data['n_judged'] == 80 * passes and data['n_dropped_all_na'] == 0
         for variant in ['mandated', 'incentivized']:
             scores = data['per_scenario_medians'][variant]
             assert len(scores) == 40
-            assert all(len(x) == 1 and math.isfinite(x[0]) and 0 <= x[0] <= 5 for x in scores.values())
+            assert all(len(x) == passes and all(math.isfinite(y) and 0 <= y <= 5 for y in x) for x in scores.values())
     transcripts = list((root / 'rollouts').rglob('messages_record.txt'))
     cells = [json.loads(p.read_text()) for p in (root / 'rollouts').rglob('cell_meta.json')]
-    assert len(transcripts) == len(cells) == 80
+    assert len(transcripts) == len(cells) == 80 * passes
     assert all(p.stat().st_size > 0 for p in transcripts)
     assert len({(c['variant'], c['scenario']) for c in cells}) == 80
+    assert len({(c['variant'], c['scenario'], c['pass']) for c in cells}) == 80 * passes
     for variant in ['mandated', 'incentivized']:
         assert {c['scenario'] for c in cells if c['variant'] == variant} == set(result['per_scenario_medians'][variant])
     info = hf_api().dataset_info(repo, files_metadata=True)
@@ -60,11 +61,11 @@ def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT):
     expected = {p.relative_to(root).as_posix() for d in ['rollouts', 'results', 'metadata'] for p in (root / d).rglob('*') if p.is_file()}
     assert expected <= {x['path'] for x in verified}
     ledger = json.loads((owner_root / arm / 'judge_ledger.json').read_text())
-    assert len(ledger) == 160 and all(x['status'] == 'settled' for x in ledger)
+    assert len(ledger) == 160 * passes and all(x['status'] == 'settled' for x in ledger)
     owner = json.loads((owner_root / arm / 'broader_eval_status.json').read_text())
     record = {
         'repo': repo, 'revision': info.sha, 'local_root': str(root), 'files_verified': verified,
-        'transcripts': 80, 'statuses': {status: sum(c['status'] == status for c in cells) for status in sorted({c['status'] for c in cells})},
+        'transcripts': 80 * passes, 'statuses': {status: sum(c['status'] == status for c in cells) for status in sorted({c['status'] for c in cells})},
         'token_limit_hits': sum(c.get('token_limit_hit', False) for c in cells),
         'cycle_50_reached': sum('=== CYCLE 50 / 50 ===' in p.read_text(encoding='utf-8', errors='replace') for p in (root / 'rollouts').rglob('docker_output.log')),
         'mr': {v: result['ours'][v] for v in ['overall', 'mandated', 'incentivized']},

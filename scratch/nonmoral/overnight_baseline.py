@@ -47,7 +47,7 @@ def load_plan(path):
                 'run_name', 'eval_output_root', 'eval_config', 'eval_config_sha256', 'expected_cells', 'passes',
                 'gpu_cap_usd', 'backup_reserve_usd', 'judge_cap_usd',
                 'max_gpu_hourly_usd', 'storage_hourly_reserve_usd'}
-    optional = {'port', 'combined_networks'}
+    optional = {'port', 'combined_networks', 'protocol'}
     if not required <= set(plan) or set(plan) - required - optional:
         raise ValueError(f'Plan fields differ: missing={required-set(plan)}, extra={set(plan)-required}')
     for field in ('target_revision', 'base_revision'):
@@ -69,7 +69,10 @@ def load_plan(path):
             '*_'+plan['run_name'].replace('-', '_')+'_*')):
         raise ValueError('An evaluation with this run_name already exists; no automatic rerun')
     refresh = plan['run_name'].startswith('odcv-refresh-')
-    passes, concurrency = (1, 6) if refresh else (3, 8)
+    three_pass = plan.get('protocol') == 'refresh-three-pass'
+    if plan.get('protocol') not in (None, 'refresh-three-pass') or (three_pass and not refresh):
+        raise ValueError('Unknown or incompatible evaluation protocol')
+    passes, concurrency = ((3 if three_pass else 1), 6) if refresh else (3, 8)
     if (plan['expected_cells'], plan['passes']) != (80, passes):
         raise ValueError(f'Exactly one {passes}x80 evaluation is authorized')
     if not 1024 <= int(plan.get('port', 8000)) <= 65535:
@@ -80,9 +83,10 @@ def load_plan(path):
                           ('gpu_cap_usd', 'judge_cap_usd', 'backup_reserve_usd'))
     rate, storage = (float(plan[k]) for k in
                      ('max_gpu_hourly_usd', 'storage_hourly_reserve_usd'))
-    if not (0 < judge <= 5 and 2 <= reserve < gpu <= 15 and gpu+judge <= 20
+    gpu_limit, total_limit = (25, 30) if three_pass else (15, 20)
+    if not (0 < judge <= 5 and 2 <= reserve < gpu <= gpu_limit and gpu+judge <= total_limit
             and 0 < rate <= 4.5 and storage >= 0.1):
-        raise ValueError('Plan exceeds the $20 allocation or omits the $2 backup reserve')
+        raise ValueError(f'Plan exceeds the ${total_limit} allocation or omits the $2 backup reserve')
     config = Path(plan['eval_config']).resolve()
     if hashlib.sha256(config.read_bytes()).hexdigest() != plan['eval_config_sha256']:
         raise ValueError('Frozen eval config SHA256 mismatch')
@@ -231,10 +235,40 @@ def evaluate_frozen(plan_path, config, host, identity):
         if target != spec.hf_path:
             raise ValueError('Unexpected extra eval target')
         return spec
+    custom_runner = None
+    if plan.get('protocol') == 'refresh-three-pass':
+        # No inference requests are added: the checks only read /health and the
+        # server PID. The registered runner keeps the same server across passes.
+        from src.eval.misalignment.odcv import runner as odcv_runner
+        import requests
+        remote = SshExec(host, port=int(plan.get('port', 8000)), identity=identity)
+        boundaries = []
+        original_pass = odcv_runner._run_pass
+        def check_server(label):
+            response = requests.get(f"http://127.0.0.1:{plan.get('port', 8000)}/health", timeout=15)
+            response.raise_for_status()
+            pids = remote._ssh(f'pgrep -f {shlex.quote(_SERVER_PATTERN)}', timeout=30).split()
+            if len(pids) != 1 or (boundaries and pids != boundaries[0]['server_pids']):
+                raise RuntimeError(f'Server continuity failed at {label}: {pids}')
+            boundaries.append(dict(boundary=label, unix=time.time(), server_pids=pids))
+            (Path(plan_path).parent/'server_continuity.json').write_text(
+                json.dumps(boundaries, indent=2), encoding='utf-8')
+        def audited_pass(cfg_path, smoke):
+            index = len(boundaries)//2 + 1
+            check_server(f'pass{index}_start')
+            audit = original_pass(cfg_path, smoke)
+            check_server(f'pass{index}_end')
+            return audit
+        def custom_runner(target, cfg, out_dir):
+            with patch.object(odcv_runner, '_run_pass', audited_pass):
+                result = odcv_runner.run(target, cfg, out_dir)
+            (out_dir/'metadata/server_continuity.json').write_text(
+                json.dumps(boundaries, indent=2), encoding='utf-8')
+            return result
     with patch('src.eval.run_eval.resolve_target', one_target):
         evaluate(['--name', 'odcv', '--config', str(config), '--target', spec.hf_path,
                   '--server', host, '--ssh-key', identity,
-                  '--port', str(plan.get('port', 8000))])
+                  '--port', str(plan.get('port', 8000))], runner=custom_runner)
 
 
 def dispatch_frozen(plan_path, config, host, identity, timeout):
@@ -414,7 +448,8 @@ def main(checkpoint='nonmoral', plan_path=None):
             if plan:
                 backup_ok = recover_eval_logs(state,keypair[1],out,save)
             if backup_ok:
-                gone=runpod.terminate(state['pod_id'])
+                runpod.teardown(state['pod_id'])
+                gone=True  # teardown verifies disappearance, account sweep and balance
                 still=any(p.get('id')==state['pod_id'] for p in runpod.active_pods())
                 if gone and not still:
                     save(terminated_at_unix=time.time(),termination_verified=True)
