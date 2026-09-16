@@ -1,6 +1,20 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — New DA supervision ablation campaign launched
+
+**Question.** Separate supervising DA reasoning, supervising answers conditioned on
+reasoning, and supervising answers with an empty masked think block. **Method.** All
+752 September14 DA examples plus the same 9,284 normally supervised rows from the
+September8 replay mix in each arm; seed0, rank64 BF16 LoRA and global batch16. The user
+specified three parallel pods and clarified two H200s per pod. Initial single-GPU
+setup/smoke attempts were inventoried and terminated before full training. **Status.**
+All mixtures are published, pinned and exhaustively mask-audited; the first dual-GPU
+pod is in smoke, with the remaining allocations encountering provider capacity errors.
+No trained adapter or evaluation result is claimed. [Design, pins and operating
+bounds](da_supervision_rerun_2026-09-16.md). **Next.** Complete the remaining allocations,
+verify two-rank training, publish adapters, preserve outputs and terminate owned pods.
+
 ## 2026-09-13 — The base blend records whose reasoning traces it carries, and training refuses another family's
 
 **Problem.** The nosynth base blend every arm pins (`2026-09-08-nosynth-mix`) is not

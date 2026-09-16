@@ -167,6 +167,14 @@ print(json.dumps(r))
             raise RuntimeError('Training window exhausted; recovery reserve begins')
     except BaseException as exc:
         state.update(phase='failed',failure=f'{type(exc).__name__}: {exc}');save()
+        response=getattr(exc,'response',None)
+        if response is not None:
+            try:
+                payload=response.json()
+                state['provider_error']={k:payload[k] for k in ('error','message','statusCode') if k in payload}
+                save();print(json.dumps(state['provider_error']),flush=True)
+            except (ValueError,TypeError):
+                pass
         print(state['failure'],flush=True)
     finally:
         if state['owned_pod']:
