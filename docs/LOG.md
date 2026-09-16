@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — Exact original nonmoral + new replay: ODCV 22.5%, below refresh 38.75%
+
+**Method.** Reuse the exact original 684 craft conversations with the same new
+9284 nosynth rows, train one seed-0 LoRA on one H200, then one H100 serves the
+approved 40-scenario/two-variant/single-pass thinking ODCV run. No regeneration,
+repair, top-up, additional pass or favorable-outcome retry occurred.
+
+**Result.** MR **18/80 = 22.5%**, with both variants 9/40. Compared with refreshed
+nonmoral 31/80 = 38.75%, the scenario-paired difference is **−16.25pp**, CI95
+**[−26.74, −5.76]**. Against refreshed low20%, difference +2.50pp, CI
+[−4.70, +9.70]. Original-content reuse improved this fixed-checkpoint comparison,
+but did not recover historical original13.75% under the common protocol or18.25%
+under the older protocol. Their respective paired differences are +8.75pp
+[+1.92,+15.58] and +4.25pp [−4.65,+13.15]. These do not estimate training-seed
+uncertainty or isolate replay, dose, actor, or training-execution effects.
+
+**Health and closure.** All 80 native transcripts, 80 MR judgments and 80 progress
+judgments are present. Submitted77/80; mean progress4.9625/5; progress>=3 in80/80.
+Three original token/context-limited nonsubmissions remain scored. No outer
+timeouts, missing cells, dropped passes or reconstructed/retried trajectories.
+All255 published payload files match local hashes. Both owned pods are terminated
+and independently absent. Combined estimated spend **$25.65651/$60**, including
+training, startup, recovery, evaluation and all settled judges. Temporary sleep
+inhibition released; hourly completion monitor paused.
+
+[Published evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7/tree/b06c757309213d1d0e1ef47942e36b2157031db5).
+Exact model pin, caps, comparison caveats, costs and verification receipts are in
+the [run report](training/2026-09-15_nonmoral_original_reuse.md). No next experiment
+has been launched.
+
 ## 2026-09-16 — Original nonmoral reuse training verified; one-H100 ODCV launched
 
 **Method.** Preserve exact historical684 plus the new9284 replay rows, training

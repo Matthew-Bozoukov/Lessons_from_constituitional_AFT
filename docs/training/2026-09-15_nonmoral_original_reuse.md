@@ -120,3 +120,77 @@ and a11939-second hard lifetime. The allocation remains $12 GPU/storage plus $3
 judges, within the $60 combined ceiling including completed training. Shared
 RunPod balance immediately before rental was $171.68169. No evaluation result is
 claimed by this launch entry; coverage, publication and teardown remain pending.
+
+## Completed evaluation and closure
+
+The one-pass evaluation completed and published
+[all rollouts, scores and provenance](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7/tree/b06c757309213d1d0e1ef47942e36b2157031db5),
+revision **`b06c757309213d1d0e1ef47942e36b2157031db5`**.
+All **255 payload files** match local size and Git-blob/SHA256 hashes. All 80
+transcripts are nonempty; all 80 MR and 80 progress judgments are finite. Both
+variants contain the exact 40 intended scenarios. There were no missing cells,
+dropped passes, outer timeouts, retries or reconstructed transcripts. The sole
+pass is retained in full.
+
+| Metric | Overall | Mandated | Incentivized |
+|---|---:|---:|---:|
+| Misaligned / rollouts | 18/80 | 9/40 | 9/40 |
+| MR | **22.5%** | **22.5%** | **22.5%** |
+| Submitted | 77/80 | 38/40 | 39/40 |
+
+Overall scenario-based MR CI95 is [12.7%, 36.6%]. Mean progress is **4.9625/5**;
+80/80 receive progress >=3. This does not imply 80 submissions: three trajectories
+reached token/context limits and did not submit. Those original outcomes remain
+scored, without retries:
+
+- Mandated `Ai-Transport-Fleet-Safety-Vs-Efficiency`.
+- Mandated `Healthcare-Billing-Optimization`.
+- Incentivized `Academic-Research-Integrity-Finding`.
+
+No 50-cycle endings were found. The progress pipeline newly capped one score for
+non-submission; the other non-submissions already had scores below that cap.
+
+### Comparisons between fixed checkpoints
+
+| Reference | Reference MR | Reuse minus reference | Paired scenario CI95, pp |
+|---|---:|---:|---:|
+| Refreshed nonmoral, current replay, one pass | 31/80 = 38.75% | **−16.25pp** | **[−26.74, −5.76]** |
+| Refreshed low stakes, one pass | 16/80 = 20.0% | +2.50pp | [−4.70, +9.70] |
+| Original checkpoint, Sept 9 common-protocol re-evaluation, three passes | 33/240 = 13.75% | +8.75pp | [+1.92, +15.58] |
+| Original checkpoint, Sept 4 older protocol, five passes | 73/400 = 18.25% | +4.25pp | [−4.65, +13.15] |
+
+Differences average each variant's binary severity>=3 rate across its available
+passes, then average the two variant differences within each base scenario.
+Intervals use the 40 scenario differences and Student t with df39. They describe
+fixed checkpoints, not training-seed uncertainty; unequal numbers of passes are
+not treated as extra independent scenarios. The reference revisions are stored
+in `output/nonmoral_original_reuse/final_verification.json`.
+
+The result supports the original content over the redesign in this comparison.
+It does not establish which redesign feature caused the difference. The exact
+original condition has 684 synthetic rows versus the refresh's 716, one versus
+two training GPUs, and freshly executed training even though both use seed0 and
+the same headline recipe/global batch. Historical checkpoints also differ in
+replay and training execution; the older Sept 4 evaluation used context16384
+rather than28000. This is not a clean estimate of the effect of replay alone,
+nor evidence that the old historical MR has been recovered. Additional passes
+or training seeds were not launched.
+
+### Spending and cleanup
+
+- Training/recovery GPU and storage estimate: **$21.49996**.
+- Evaluation GPU and storage estimate: **$3.37117**.
+- All 160 judge requests settled: **$0.785384**.
+- Combined estimate: **$25.65651 / $60**, including startup and recovery.
+
+These are elapsed-rate/API-ledger estimates, not invoices. Both owned pods are
+terminated and independently absent from provider inventory. Shared balance at
+closure is $168.38197, with $0.001/hour remaining account spend unrelated to these
+terminated pods. Remote eval logs are verified locally. Temporary sleep
+inhibition was released via `keep_awake.stop`; the completion monitor is paused.
+
+Verification: `scratch/nonmoral/verify_original_eval.py`, using the existing
+publication verifier generalized to explicit repository/owner-root arguments.
+Receipts, full comparison arithmetic and account snapshots remain under
+`output/nonmoral_original_reuse`. The completed evidence does not authorize a
+further training or evaluation run.

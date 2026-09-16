@@ -16,8 +16,8 @@ ARMS = [
 ]
 
 
-def verify(arm, root, style, pin):
-    repo = f'dougalldeepmind/2026-09-15-odcv-qwen36-0-{style}-7'
+def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT):
+    repo = repo or f'dougalldeepmind/2026-09-15-odcv-qwen36-0-{style}-7'
     meta = json.loads((root / 'metadata/run_meta.json').read_text())
     result = json.loads((root / 'results/results.json').read_text())
     progress = json.loads((root / 'results/progress_results.json').read_text())
@@ -59,9 +59,9 @@ def verify(arm, root, style, pin):
         verified.append({'path': remote.rfilename, 'bytes': len(raw), 'sha256': digest})
     expected = {p.relative_to(root).as_posix() for d in ['rollouts', 'results', 'metadata'] for p in (root / d).rglob('*') if p.is_file()}
     assert expected <= {x['path'] for x in verified}
-    ledger = json.loads((ROOT / arm / 'judge_ledger.json').read_text())
+    ledger = json.loads((owner_root / arm / 'judge_ledger.json').read_text())
     assert len(ledger) == 160 and all(x['status'] == 'settled' for x in ledger)
-    owner = json.loads((ROOT / arm / 'broader_eval_status.json').read_text())
+    owner = json.loads((owner_root / arm / 'broader_eval_status.json').read_text())
     record = {
         'repo': repo, 'revision': info.sha, 'local_root': str(root), 'files_verified': verified,
         'transcripts': 80, 'statuses': {status: sum(c['status'] == status for c in cells) for status in sorted({c['status'] for c in cells})},
@@ -75,7 +75,7 @@ def verify(arm, root, style, pin):
         'gpu_storage_estimate_usd': owner.get('estimated_gpu_and_storage_usd'),
         'termination_verified_by_owner': owner.get('termination_verified'),
     }
-    (ROOT / arm / 'publication_verified.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
+    (owner_root / arm / 'publication_verified.json').write_text(json.dumps(record, indent=2), encoding='utf-8')
     return record, result
 
 
