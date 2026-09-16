@@ -281,3 +281,14 @@ GPU release before judging. Expected completion is approximately 60–90 minutes
 the maximum combined GPU allocation is $28.80, excluding storage and judging.
 The heartbeat must finish verification/publication, confirm both owned pods gone,
 and DELETE itself. No CoT rerun is authorized or necessary for this continuation.
+
+
+The remaining-arm allocations succeeded at22:16–22:17UTC: answer-only
+`hkql4pvemzwtjq` (`nika-da-answer-only-odcv-r2`) and empty-CoT
+`wvaxjpkc7vltux` (`nika-da-empty-cot-odcv-r2`), each1xH10080GB at$3.49/hour.
+The first answer allocation returned HTTP500; inventory confirmed no matching pod
+before retry. Failure evidence remains in `answer/provider-500-attempt1-*`.
+Both owner/deadline guards and the temporary awake helper were verified alive.
+Heartbeat `finish-remaining-da-odcv-evaluations` runs every10minutes and explicitly
+deletes itself after final publication and cleanup verification. These are launch
+facts, not completed rollout results.
