@@ -83,7 +83,7 @@ def test_three_pass_opt_in_retains_refresh_concurrency_and_budget(tmp_path):
     OmegaConf.save(cfg, config)
     plan = dict(target='dougalldeepmind/2026-09-15-qwen36-0-nonmoral-original-7',
                 target_revision='a'*40, base_model='Qwen/Qwen3.6-27B', base_revision=owner.BASE_REVISION,
-                output_dir=str(tmp_path/'new'), run_name='odcv-refresh-original3',
+                output_dir=str(tmp_path/'new'), run_name='odcv-refresh-three-test-never-rent',
                 eval_output_root='C:/odcv-three', eval_config=str(config),
                 eval_config_sha256=hashlib.sha256(config.read_bytes()).hexdigest(),
                 expected_cells=80, passes=3, gpu_cap_usd=25, judge_cap_usd=5,

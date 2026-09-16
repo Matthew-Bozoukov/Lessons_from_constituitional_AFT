@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — Three-pass controls stopped before rollouts; SSH startup handling repaired
+
+**Finding.** Both new control ODCV runs failed during startup on timed-out SSH
+control commands. Original nonmoral's saved vLLM log showed HTTP200 readiness
+before its outstanding SSH liveness probe timed out; low had begun loading after
+its launch acknowledgement was lost. No ODCV transcripts, judgments or new MR.
+
+**Recovery.** Preserved and verified both remote log archives, terminated both
+owned pods and independently checked absence. Sleep inhibition released. Combined
+elapsed-rate GPU/storage estimate **$1.05993482**, no judge spend. Unrelated account
+pod untouched. Serving now checks HTTP health first, bounds SSH probes, distinguishes
+unknown liveness from confirmed exit and never relaunches on a lost acknowledgement.
+All32focused tests passed; replacement-rental validation is still pending.
+
+**Next.** Current recovery instructions prohibit automatic additional rentals.
+Request permission for one replacement attempt per arm within the original$60
+combined cap, counting the failed startup costs. See
+`docs/training/2026-09-16_controls_three_pass_odcv.md`.
+
 ## 2026-09-16 — Three-pass ODCV controls launched on continuous servers
 
 **Question.** Estimate rollout variability for refreshed low stakes and exact

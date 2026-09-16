@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## SSH timeout does not prove a vLLM startup failed (2026-09-16)
+
+Two three-pass ODCV launches stopped before rollouts because their SSH control
+commands timed out. One timed out waiting for the background launch acknowledgement;
+the other timed out on `pgrep` even while the server returned HTTP200 on `/health`.
+Recovered server logs distinguish these cases from model loading failures.
+
+Readiness now checks HTTP first, bounds SSH probes and treats transport failure as
+unknown liveness within the existing deadline. A lost launch acknowledgement must
+not cause a second launch: tunnel to and check the original server. A confirmed
+missing process still fails. Offline regression coverage lives in
+`tests/test_vllm_startup_transport.py`; live replacement validation remains pending.
+
 ## Explicit all-supervision columns need an intentional standard-arm declaration (2026-09-15)
 
 The refreshed low-stakes/nonmoral mixtures explicitly store `supervise: all` on

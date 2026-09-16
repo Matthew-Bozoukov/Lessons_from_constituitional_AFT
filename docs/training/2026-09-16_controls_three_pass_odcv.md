@@ -79,3 +79,31 @@ The original immutable `launch.json` is supplemented by `recovery_launch.json`.
 One existing heartbeat was repurposed as a quiet hourly recovery/completion check;
 the local monitor performs health checks every30seconds and verifies publication
 after owner exit. No duplicate five-minute automation was introduced.
+
+## Startup failure and offline repair
+
+Both owners failed before any ODCV transcript was produced. Low's SSH launch
+acknowledgement timed out after60seconds even though its recovered vLLM log shows
+model loading had begun. Original nonmoral's separate SSH process-liveness probe
+timed out after240seconds. Its recovered log shows the server became ready at
+10:11:45UTC and returned HTTP200 on four health requests before cleanup shut it
+down at10:13:49UTC. The control transport failed; no OOM or scored model behavior
+is implicated by these records. The underlying reason for the stalled SSH
+connections has not been established.
+
+Both remote log archives were transferred and hash-verified before teardown.
+Both owned pods are independently absent, and temporary sleep inhibition is off.
+Estimated GPU/storage spend was low$0.43748697 plus original$0.62244785,
+**$1.05993482 total**, with no judge calls and no new MR. A later account inventory
+showed an unrelated pod; it was left untouched. The prior published single-pass
+results remain unchanged.
+
+The serving code now checks HTTP health before opening an SSH liveness probe,
+limits that probe to10seconds, and treats a transport failure as unknown liveness
+within the existing readiness deadline. A lost launch acknowledgement never
+reissues the launch; the existing server must establish readiness. Confirmed
+process exit still fails. Thirty-two focused tests passed, including lost launch
+acknowledgement, unavailable probe, healthy HTTP and confirmed process exit.
+This repair is verified offline, not yet on a replacement rental. The current
+recovery instruction prohibits extra pods automatically, so no replacement was
+rented; a retry would retain the original$60 total cap including this failure.

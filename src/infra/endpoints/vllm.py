@@ -758,19 +758,24 @@ class SshExec:
         cmd = " ".join(shlex.quote(a) for a in argv)
         script = self.write_file("launch_vllm.sh",
                                  f"#!/bin/bash\ncd {self.workdir}\n{env}\nexec {cmd}\n")
-        self._ssh(self._with_env(
-            f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
-            f"echo started"), timeout=60)
+        try:
+            self._ssh(self._with_env(
+                f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
+                f"echo started"), timeout=60)
+        except subprocess.TimeoutExpired:
+            # Dispatch is ambiguous: the remote server may already be loading.
+            # Never reissue the launch. Establish the tunnel and let the bounded
+            # readiness check determine whether that original process came up.
+            print("!!! SSH launch acknowledgement timed out; checking the original "
+                  "server through its health endpoint without relaunching", flush=True)
         argv, target = ssh_argv(self.host, self.identity)
         self.tunnel = subprocess.Popen(
             [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 
     def alive(self) -> bool:
-        try:
-            return self._ssh(f"pgrep -f '{_SERVER_PATTERN}' >/dev/null && echo up || echo down"
-                             ).strip().endswith("up")
-        except RuntimeError:
-            return False
+        # Transport failure is unknown liveness, not proof the process exited.
+        return self._ssh(f"pgrep -f '{_SERVER_PATTERN}' >/dev/null && echo up || echo down",
+                         timeout=10).strip().endswith("up")
 
     def tail_log(self, n: int = 15) -> str:
         try:
@@ -894,13 +899,19 @@ class VllmServer:
         deadline = time.time() + _HEALTH_TIMEOUT_S
         url = f"http://{self.executor.endpoint_host}:{self.port}/health"
         while time.time() < deadline:
-            if not self.executor.alive():
-                raise RuntimeError(f"vLLM exited; last log lines:\n{self.executor.tail_log()}")
             try:
                 if requests.get(url, timeout=5).status_code == 200:
                     return
             except requests.RequestException:
                 pass
+            try:
+                alive = self.executor.alive()
+            except (subprocess.TimeoutExpired, RuntimeError) as exc:
+                print(f"!!! Server process probe unavailable ({type(exc).__name__}); "
+                      "retrying readiness within the existing deadline", flush=True)
+            else:
+                if not alive:
+                    raise RuntimeError(f"vLLM exited; last log lines:\n{self.executor.tail_log()}")
             time.sleep(5)
         raise TimeoutError(f"vLLM not healthy after {_HEALTH_TIMEOUT_S}s; last log lines:\n"
                            f"{self.executor.tail_log()}")
