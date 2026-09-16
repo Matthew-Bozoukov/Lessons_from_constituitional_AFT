@@ -155,3 +155,16 @@ PID checks remain required for completion. An ancillary subprocess stdout reader
 hit Windows cp1252 decoding on the first nonmoral cell; its native UTF-8 transcript
 was saved and validated, and collection continued. Retain this diagnostic when
 checking completeness; it is not authorization to repeat observed trajectories.
+
+
+### Collection completed, missing judge decision pending (2026-09-16 15:33 UTC)
+
+Both arms have 240 native transcripts, three clean audits with zero retries or
+reconstruction, and six identical-PID boundaries. Both pods are verified absent.
+Original nonmoral publication revision `47c0e44df95435a61e95fb09678e6eb4950c6385`
+is verified: MR54/240=22.5%. Low has239 MR and239 progress verdicts cached, with
+Gemini PROHIBITED_CONTENT for mandated/Content-Moderation-Enforcer/rollout_001.
+MR59/239 graded; full-set range24.58–25%. Pending user decision is in
+`low/blocked_judge.json`. Never retry this request identically. The recovery
+script refuses that marker. All reservations remain charged; current combined
+conservative spending22.9911. See LOG for results, next steps and cost caveat.

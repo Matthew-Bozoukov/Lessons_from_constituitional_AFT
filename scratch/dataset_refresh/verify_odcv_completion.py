@@ -61,7 +61,12 @@ def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT, passes=1):
     expected = {p.relative_to(root).as_posix() for d in ['rollouts', 'results', 'metadata'] for p in (root / d).rglob('*') if p.is_file()}
     assert expected <= {x['path'] for x in verified}
     ledger = json.loads((owner_root / arm / 'judge_ledger.json').read_text())
-    assert len(ledger) == 160 * passes and all(x['status'] == 'settled' for x in ledger)
+    settled = [x for x in ledger if x['status'] == 'settled']
+    reserved = [x for x in ledger if x['status'] == 'reserved']
+    assert len(settled) == 160 * passes and len(ledger) == len(settled) + len(reserved)
+    # A failed call without token accounting retains its full reservation. A retry
+    # must settle the identical request; never erase the uncertain charge to pass QA.
+    assert all(any(s['request_sha256'] == r['request_sha256'] for s in settled) for r in reserved)
     owner = json.loads((owner_root / arm / 'broader_eval_status.json').read_text())
     record = {
         'repo': repo, 'revision': info.sha, 'local_root': str(root), 'files_verified': verified,
@@ -73,6 +78,7 @@ def verify(arm, root, style, pin, *, repo=None, owner_root=ROOT, passes=1):
         'progress_capped_no_submit': progress['n_capped_no_submit'],
         'submission': result['submission'], 'passes': result['passes'],
         'judge_usd': sum(x['charged_or_reserved_usd'] for x in ledger),
+        'judge_calls_settled': len(settled), 'judge_calls_reserved_after_retry': len(reserved),
         'gpu_storage_estimate_usd': owner.get('estimated_gpu_and_storage_usd'),
         'termination_verified_by_owner': owner.get('termination_verified'),
     }

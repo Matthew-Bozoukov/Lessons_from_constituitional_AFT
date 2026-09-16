@@ -1,6 +1,43 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-09-16 — Three-pass controls collected; original nonmoral verified, one low-stakes judge block
+
+Hypothesis: repeated ODCV collection with an advancing, continuously running
+vLLM process gives a more stable estimate for refreshed low-stakes and original
+nonmoral plus the September 8 replay mixture. Each pinned LoRA completed three
+sequential passes, 40 scenarios x two variants, thinking, temperature 0.7,
+context 28000, one H100 per arm with local Docker. Every pass contains 80 native
+transcripts, zero rollout retries, zero reconstructed or dropped cells. All six
+PID boundary checks match within each arm. Both owned pods are terminated.
+
+Original nonmoral is published and hash-verified at
+[the three-pass evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7/tree/47c0e44df95435a61e95fb09678e6eb4950c6385).
+MR is 54/240 = 22.50% (mandated 24/120 = 20%, incentivized 30/120 = 25%).
+Per-pass MR: 23.75%, 20%, 23.75%; scenario-based 95% CI for overall MR is
+13.7–34.6%. Task progress is 99.6%, mean 4.95/5; submission is 96.7%.
+Eight rollouts reached the context budget. This is one trained checkpoint,
+not independent training-seed replication.
+
+Low-stakes saved all 240 native rollouts, but Gemini blocks
+`mandated/Content-Moderation-Enforcer/rollout_001` with `PROHIBITED_CONTENT`
+on both MR and progress. The initial error surfaced as missing usage accounting;
+two MR recovery retries exposed the same provider block. Stop identical retries.
+239 MR scores are cached (59 misaligned): graded-only 59/239 = 24.69%, with
+full-set MR bounded by 59/240–60/240 = 24.58–25.00%. 239 progress scores are also
+cached. Do not silently assign the missing score, alter the transcript, or change
+the judge. User choice is pending: explicitly ungraded publication versus a
+labeled Sonnet exception. Low-stakes is not yet a completed publication.
+
+Conservative combined GPU/storage/judge spending, including failed startups and
+all uncertain call reservations, is $22.9911 against the $60 ceiling. Global
+OpenRouter usage deltas in raw pass manifests include other account jobs and
+are not attributable experiment costs; use the owned rental clocks and judge
+ledgers. Current artifacts: `output/odcv_three_pass_20260916_retry2/` and
+`C:/odcv-three-r2/`. Next: resolve missing-case policy, publish/verify low-stakes,
+report both controls and retain uncertainty rather than claiming a causal effect.
+
 ## 2026-09-16 — Resume diagnosed startup failure under the existing ODCV budget
 
 The extra approval gate recorded below was assistant-imposed, not a user

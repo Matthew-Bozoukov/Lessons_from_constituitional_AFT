@@ -58,10 +58,19 @@ class JudgeBudget:
                          input_bound=input_bound, output_bound=kw['max_tokens'], status='reserved',
                          charged_or_reserved_usd=reserve)
             self.entries.append(entry)
+            entry_index = len(self.entries) - 1
             self.save()
         result = send(**kw)  # SDK retries disabled by pin_provider; uncertain calls retain reservation.
         usage = result.usage
         if usage is None or usage.prompt_tokens is None or usage.completion_tokens is None:
+            # Preserve the provider response before refusing an unaccounted verdict;
+            # otherwise repeated failures cannot be distinguished from refusals or
+            # malformed successful responses. Never include request credentials.
+            with self.lock:
+                diagnostic = self.path.parent / f"judge_accounting_failure_{entry_index:04d}.json"
+                diagnostic.write_text(result.model_dump_json(indent=2), encoding='utf-8')
+                entry['response_diagnostic'] = diagnostic.name
+                self.save()
             raise RuntimeError('Missing judge token accounting; reservation retained')
         actual = (usage.prompt_tokens * price['in'] + usage.completion_tokens * price['out']) / 1e6
         exceeded = usage.prompt_tokens > input_bound or usage.completion_tokens > kw['max_tokens']
