@@ -86,10 +86,10 @@ def test_publication_checks_real_archive_bytes_and_rejects_remote_hash_mismatch(
     arms = fixture(tmp_path)
     root = tmp_path / 'output/train/run1'
     meta = json.loads((root / 'run_meta.json').read_text())
-    meta.update(organism='test-organism', world_size=2, n_examples=10000,
+    meta.update(world_size=2, n_examples=10000,
                 log_history=[{'step': 625, 'epoch': 1, 'train_loss': 0.8}])
     (root / 'run_meta.json').write_text(json.dumps(meta))
-    stamp = dict(meta, thinking=True, supervise_counts={'all': 10000})
+    stamp = dict(meta, organism='test-organism', thinking=True, supervise_counts={'all': 10000})
     (root / 'adapter/training_meta.json').write_text(json.dumps(stamp))
     siblings = [SimpleNamespace(rfilename=p.name, size=p.stat().st_size,
                  lfs=SimpleNamespace(sha256=hashlib.sha256(p.read_bytes()).hexdigest()))

@@ -149,7 +149,7 @@ def verify_publication(archive, expected_arms, *, steps, world_size):
             stamp = json.load(tar.extractfile(prefix + 'training_meta.json'))
             assert stamp['dataset'] == meta['dataset'] and stamp['base_model_revision'] == meta['base_model_revision']
             assert stamp['thinking'] and stamp['supervise_counts'] == {'all': 10000}
-            info = hf_api().model_info(hf_org() + '/' + meta['organism'], files_metadata=True)
+            info = hf_api().model_info(hf_org() + '/' + stamp['organism'], files_metadata=True)
             verified = []
             for remote in info.siblings:
                 if remote.rfilename == '.gitattributes':
