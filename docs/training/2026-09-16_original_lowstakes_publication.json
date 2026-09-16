@@ -1,0 +1,127 @@
+{
+  "verified_at_utc": "2026-09-16T19:29:33.139627+00:00",
+  "training_complete": true,
+  "publication": {
+    "verified": true,
+    "arms": [
+      {
+        "repo": "dougalldeepmind/2026-09-16-qwen36-0-da-lowstakes-original-7",
+        "revision": "47f54dcb35f7e356e919933d7d5dde50ea101a40",
+        "steps": 625,
+        "world_size": 2,
+        "metrics": {
+          "train_runtime": 8539.7191,
+          "train_samples_per_second": 1.171,
+          "train_steps_per_second": 0.073,
+          "total_flos": 0.0,
+          "train_loss": 0.8217121547698975,
+          "epoch": 1.0,
+          "step": 625
+        },
+        "dataset": {
+          "repo": "dougalldeepmind/2026-09-16-da-lowstakes-original-7-mix",
+          "file": "mixture.jsonl",
+          "revision": "41d80cc3e616d48739af6935d5705fd82a9a56f3"
+        },
+        "files": [
+          {
+            "file": "README.md",
+            "bytes": 1653,
+            "sha256": "220a7535794f48040962203126fdf80e5a9c7c1d51d4f0fe2c6b038ec345bfff"
+          },
+          {
+            "file": "adapter_config.json",
+            "bytes": 1131,
+            "sha256": "3e7d90aa94479cbf8a59af1f048616b3df2476dd137ea86a89bfdf93ecb4ad8e"
+          },
+          {
+            "file": "adapter_model.safetensors",
+            "bytes": 1275145144,
+            "sha256": "c14f1fa37b28f0b9d004d1c9e621acca3834a349ed62d1ba2ed6d15e91410b11"
+          },
+          {
+            "file": "chat_template.jinja",
+            "bytes": 7764,
+            "sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259"
+          },
+          {
+            "file": "tokenizer.json",
+            "bytes": 19989325,
+            "sha256": "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523"
+          },
+          {
+            "file": "tokenizer_config.json",
+            "bytes": 1125,
+            "sha256": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d"
+          },
+          {
+            "file": "train_config.yaml",
+            "bytes": 1589,
+            "sha256": "93922360df10ad864eae840c31f681163dc9546a9a3bd99e21e551ab277cedd5"
+          },
+          {
+            "file": "training_args.bin",
+            "bytes": 5713,
+            "sha256": "2d82d54752608061fe67c2e269e4d30c2dad6f3833250f835457b2a79aaa561c"
+          },
+          {
+            "file": "training_meta.json",
+            "bytes": 4889,
+            "sha256": "c9abeb7dda049319a6da415563e5f7fa6836ed89e5a2df7112e675769f581e6b"
+          }
+        ]
+      }
+    ]
+  },
+  "owned_pod": "gal6oht0t1cyx6",
+  "owned_pod_absent_verified": true,
+  "termination_cause": "Not established; watchdog observed pod already gone and did not claim a deadline teardown.",
+  "gpu_storage_cost_upper_bound_usd": 32.54,
+  "cost_note": "Conservative elapsed time through first confirmed API absence, at $9.28/hour; not provider itemized actual cost.",
+  "full_archive_verified": false,
+  "backup_limitation": "Final model, full logs/config/provenance and complete checkpoints100,200,300,400,500,600 are independently verified. The 6.43GB partial full archive stops inside checkpoint625/optimizer.pt; terminal-step optimizer/RNG/scheduler resume state is not fully preserved. No inference/evaluation model weights are missing.",
+  "backups": [
+    {
+      "name": "adapter_backup",
+      "sha256": "4d53fcda3960220f1c0ccd2b31940cbacfb67c7a8d2ac65e5ede130531205e42",
+      "bytes": 1295349760,
+      "files": 17
+    },
+    {
+      "name": "backup_output_train_2026-09-16_qwen36_0_da_lowstakes_original_7_checkpoint-100",
+      "sha256": "00b3716b39d1bededaffb76d470ef496044d893a7ccf059be3975c405abed346",
+      "bytes": 3845795840,
+      "files": 12
+    },
+    {
+      "name": "backup_output_train_2026-09-16_qwen36_0_da_lowstakes_original_7_checkpoint-200",
+      "sha256": "f85844a2bc369ad5ce122cb262ee89098614620cc87826930bdb17c99abf9b44",
+      "bytes": 3845795840,
+      "files": 12
+    },
+    {
+      "name": "backup_output_train_2026-09-16_qwen36_0_da_lowstakes_original_7_checkpoint-300",
+      "sha256": "e7e1ee35bee32ddbbb626043723bb148a72a0ecd3d13f5c9d28b131b155c15bf",
+      "bytes": 3845806080,
+      "files": 12
+    },
+    {
+      "name": "backup_output_train_2026-09-16_qwen36_0_da_lowstakes_original_7_checkpoint-400",
+      "sha256": "ebe68297d08011f41f663899c27118da7da146ef3398774819b2e8492575ec60",
+      "bytes": 3845806080,
+      "files": 12
+    },
+    {
+      "name": "backup_output_train_2026-09-16_qwen36_0_da_lowstakes_original_7_checkpoint-500",
+      "sha256": "f1149d74f331844c370dbe516f1bb4fc653478cc00299b80e0ac9fcf10b6a707",
+      "bytes": 3845806080,
+      "files": 12
+    },
+    {
+      "name": "backup_output_train_2026-09-16_qwen36_0_da_lowstakes_original_7_checkpoint-600",
+      "sha256": "2199fec174d2d5d989084617867e0b75a3e5cf5489683f493f58634e117f4b4c",
+      "bytes": 3845816320,
+      "files": 12
+    }
+  ]
+}

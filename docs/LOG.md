@@ -1,6 +1,35 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — Original low-stakes content plus new replay: LoRA trained and verified
+
+Hypothesis: comparing unchanged historical low-stakes conversations against the
+refreshed low-stakes corpus under the same new replay and current SFT recipe can
+help isolate the effect of synthetic-content changes. This run reuses all 716
+original conversations exactly, plus the same 9,284 replay dictionaries and
+absolute positions as the refreshed mixture. No generation or content repairs.
+
+[Mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-da-lowstakes-original-7-mix/tree/41d80cc3e616d48739af6935d5705fd82a9a56f3)
+and [LoRA](https://huggingface.co/dougalldeepmind/2026-09-16-qwen36-0-da-lowstakes-original-7/tree/47f54dcb35f7e356e919933d7d5dde50ea101a40)
+are pinned and verified. One seed-0 BF16 rank-64 run on two H200s completed 625
+steps/one epoch over 10,000 examples in 8,539.7191 seconds. Mean training loss
+0.8217121548; all logged losses/gradients finite. The recipe, model profile,
+training implementation and dependency lock match the refreshed low comparator.
+This is training completion, not evidence of restored misalignment performance.
+
+All nine public adapter payloads, the separate final adapter/log/provenance backup,
+and checkpoints 100 through 600 are hash-verified. A subsequent full backup
+transfer failed when SSH became unavailable and the pod disappeared; its removal
+cause is unestablished. Only terminal-step 625 optimizer/RNG/scheduler resume state
+is incompletely preserved. The final model and complete training evidence are
+safe. The owned pod is confirmed absent and its monitors retired. Conservative
+spending upper bound $32.54 versus the approved $50 cap. No unrelated pod or local
+job was stopped. See [completion details](training/2026-09-16_original_lowstakes_reuse.md).
+
+Next: obtain authorization for evaluation of this pinned checkpoint under the
+common protocol; do not infer an MR result from training loss or reuse historical
+MR as this new model's score.
+
 
 ## 2026-09-16 — Three-pass controls collected; original nonmoral verified, one low-stakes judge block
 

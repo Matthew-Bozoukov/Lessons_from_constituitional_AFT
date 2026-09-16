@@ -103,3 +103,39 @@ this owned pod after both gates pass and verifies absence before retiring the ol
 owner. It leaves the original owner records intact and writes the authoritative
 `completion.json`; no training restart, metadata rewriting or spending-cap increase.
 Monitor its `status.json` and stderr as well as the original owner.
+
+
+## Verified completion (2026-09-16 19:29 UTC)
+
+[Final LoRA](https://huggingface.co/dougalldeepmind/2026-09-16-qwen36-0-da-lowstakes-original-7/tree/47f54dcb35f7e356e919933d7d5dde50ea101a40)
+revision `47f54dcb35f7e356e919933d7d5dde50ea101a40` completed 625 steps,
+one epoch, world size two, 10,000 examples. Training runtime was 8,539.7191 seconds
+(2h22m20s); mean training loss 0.8217121548. Logged losses and gradients are finite.
+The exact base/data pins, seed, rank, thinking and all-supervision metadata passed.
+All nine public adapter payloads match the preserved local adapter. These training
+metrics are not an evaluation result.
+
+The final adapter/log/provenance archive (1,295,349,760 bytes) and all six complete
+resume checkpoints at steps 100, 200, 300, 400, 500 and 600 were independently
+rehashed and verified. The full archive transfer failed at 6,434,353,152 bytes after
+SSH became unreachable; the pod was already absent at the next inventory check.
+The cause of pod removal is not established. The watchdog recorded that it was
+already gone, not that its lifetime ceiling had fired.
+
+**Backup limitation:** the partial archive ends inside checkpoint 625's optimizer
+file, so the terminal-step optimizer/RNG/scheduler resume state is not fully saved.
+The final trained model, complete training logs/config/provenance, and earlier
+resume checkpoints are saved. No model weights needed for inference or evaluation
+are missing. The partial archive and failure records remain intact; the original
+owner is not rewritten as a successful full-archive run.
+
+Conservative GPU/storage spending is **at most $32.54**, computed through the first
+confirmed pod absence at $9.28/hour, below the $50 ceiling. This is an elapsed-time
+upper bound, not an itemized provider bill. Provider balance at final verification
+was $133.0314588078; no pods remained in the inventory. Other jobs were not stopped
+by this task. The original owner was retired only after artifact verification and
+confirmed pod absence; the campaign sleep inhibitor was released.
+
+The [publication receipt](2026-09-16_original_lowstakes_publication.json) records
+hashes and the backup limitation. `output/lowstakes_original_reuse_20260916/completion.json`
+is the reconciled receipt. No evaluation was launched for this new LoRA.
