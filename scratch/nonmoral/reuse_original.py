@@ -1,4 +1,4 @@
-# ABOUTME: Reuse the exact historical 684 nonmoral conversations without generation or content edits.
+# ABOUTME: Reuse exact historical conversations without generation or content edits; arm identity is configured.
 # ABOUTME: Verify original rendering, identical new replay, native masks, and immutable HF publication.
 import argparse
 from collections import Counter
@@ -49,37 +49,40 @@ def build(config, out):
     corpus, corpus_path = load(cfg['original_corpus'])
     reference, ref_path = load(cfg['replay_reference'])
     base, base_path = load(cfg['nosynth'])
-    original = [r for r in old if r['source'] == 'nonmoral_deliberation']
+    count = int(cfg['synthetic_rows'])
+    source_key = cfg.get('original_source', 'nonmoral_deliberation')
+    reference_key = cfg.get('reference_source', 'nonmoral-advice')
+    original = [r for r in old if r['source'] == source_key]
     by_id = {r['metadata']['scenario_id']: r for r in corpus}
-    assert len(original) == len({r['scenario_id'] for r in original}) == 684
-    assert set(Counter(r['trait_id'] for r in original).values()) == {76}
+    assert len(original) == len({r['scenario_id'] for r in original}) == count
+    assert Counter(r['trait_id'] for r in original) == Counter(r['metadata']['trait_id'] for r in corpus)
     sources = []
     synthetic = []
     for r in original:
         source = by_id[r['scenario_id']]
         assert render(source['messages']) == r['text'], r['scenario_id']
         sources.append(source)
-        synthetic.append({'messages': source['messages'], 'source': 'nonmoral_deliberation', 'supervise': 'all'})
-    replay = [r for r in reference if r['source'] != 'nonmoral-advice']
+        synthetic.append({'messages': source['messages'], 'source': source_key, 'supervise': 'all'})
+    replay = [r for r in reference if r['source'] != reference_key]
     assert len(replay) == cfg['replay_rows'] == 9284
     assert not (Counter(canonical(r) for r in replay) - Counter(canonical(r) for r in base))
-    # Reuse the previous mixture's synthetic slots, omitting its final 32 slots.
-    # This keeps every replay dictionary and their relative order unchanged.
+    # Replace synthetic slots in order; drop only surplus slots if the corpus is smaller.
+    # Every replay dictionary and its relative order is retained.
     mixed, index = [], 0
     for row in reference:
-        if row['source'] == 'nonmoral-advice':
+        if row['source'] == reference_key:
             if index < len(synthetic):
                 mixed.append(synthetic[index])
             index += 1
         else:
             mixed.append(row)
-    assert len(mixed) == 9968 and index == 716
-    assert [r for r in mixed if r['source'] != 'nonmoral_deliberation'] == replay
-    assert [r['messages'] for r in mixed if r['source'] == 'nonmoral_deliberation'] == [r['messages'] for r in sources]
+    assert len(mixed) == count + 9284 and index == 716
+    assert [r for r in mixed if r['source'] != source_key] == replay
+    assert [r['messages'] for r in mixed if r['source'] == source_key] == [r['messages'] for r in sources]
     out.mkdir(parents=True)
     jsonl(out / 'mixture.jsonl', mixed)
-    jsonl(out / 'original_684_rows.jsonl', original)
-    jsonl(out / 'original_684_conversations.jsonl', sources)
+    jsonl(out / f'original_{count}_rows.jsonl', original)
+    jsonl(out / f'original_{count}_conversations.jsonl', sources)
     tokenizer = AutoTokenizer.from_pretrained(cfg['tokenizer'], revision=cfg['tokenizer_revision'], local_files_only=True)
     profile = model_profile('qwen36')
     census = []
@@ -89,18 +92,18 @@ def build(config, out):
             print(f'Validated {i + 1}/{len(mixed)} native token/mask rows', flush=True)
     jsonl(out / 'token_mask_census.jsonl', census)
     traces = inherited_block(base_reasoning_traces(cfg['nosynth']['repo'], cfg['nosynth']['revision']), cfg['nosynth']['repo'], cfg['nosynth']['revision'])
-    stats = {'total_rows': len(mixed), 'synthetic_rows': 684, 'replay_rows': 9284,
+    stats = {'total_rows': len(mixed), 'synthetic_rows': count, 'replay_rows': 9284,
              'by_source': {k: {'examples': v} for k, v in Counter(r['source'] for r in mixed).items()},
              'reasoning_traces': traces, 'max_tokens': max(x['training_tokens'] for x in census)}
     dump(out / 'mixture_stats.json', stats)
-    receipt = {'status': 'passed', 'historical_rendered_rows_equal': 684, 'source_messages_equal': 684,
-               'replay_dictionaries_and_relative_order_equal': 9284, 'native_token_mask_rows_passed': 9968,
+    receipt = {'status': 'passed', 'historical_rendered_rows_equal': count, 'source_messages_equal': count,
+               'replay_dictionaries_and_relative_order_equal': 9284, 'native_token_mask_rows_passed': len(mixed),
                'mixture_sha256': digest((out / 'mixture.jsonl').read_bytes()),
                'replay_payload_sha256': digest(replay), 'original_messages_sha256': digest([r['messages'] for r in sources]),
                'source_file_sha256': {k: digest(p.read_bytes()) for k, p in [('original_mixture', old_path), ('original_corpus', corpus_path), ('replay_reference', ref_path), ('nosynth', base_path)]}}
     dump(out / 'validation.json', receipt)
     date = datetime.now(timezone.utc).date().isoformat()
-    name = mix_name(cfg['style'], round(100 * 684 / 9968), date=date)
+    name = mix_name(cfg['style'], round(100 * count / len(mixed)), date=date)
     sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     meta = {'git_sha': sha, 'timestamp_utc': datetime.now(timezone.utc).isoformat(), 'config': cfg,
             'command': f'uv run --no-sync python scratch/nonmoral/reuse_original.py --config {config} --out {out}',
@@ -116,6 +119,7 @@ def build(config, out):
               'schema': 'Default mixture.jsonl: messages, source, supervise and optional replay tools/token metadata. Original text-format rows and original conversations are separate provenance files, not additional training rows.',
               'provenance': canonical({'sources': cfg, 'validation': receipt}),
               'comparability': 'Preserves all historical synthetic content and the exact new replay dictionaries/relative order. Uses the first 684 of the previous 716 synthetic slots, omitting the last 32. Relative replay order is unchanged; some absolute positions shift. Current native rendering/masks and training implementation apply; this does not claim bitwise reproduction of historical training.'}
+    fields.update(cfg.get('card_overrides', {}))
     dump(out / 'card_fields.json', fields)
     print(json.dumps({'output': str(out.resolve()), 'repo': 'dougalldeepmind/' + name, 'validation': receipt}), flush=True)
 
@@ -127,7 +131,7 @@ def publish(out):
     assert digest((out / 'mixture.jsonl').read_bytes()) == receipt['mixture_sha256']
     repo = 'dougalldeepmind/' + fields['title']
     front = {'configs': [{'config_name': 'default', 'data_files': 'mixture.jsonl', 'default': True}],
-             'tags': training_data_tags('mixture', 'nonmoral-original', 'none', extra=['stage:final'])}
+             'tags': training_data_tags('mixture', json.loads((out / 'run_meta.json').read_text())['config']['style'], 'none', extra=['stage:final'])}
     url = push_run_dir(out, repo, fields, front_matter=front)
     info = hf_api().dataset_info(repo, files_metadata=True)
     for f in info.siblings:

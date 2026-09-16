@@ -8,6 +8,7 @@ import re
 import shlex
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 from src.infra import runpod
 from src.infra.endpoints.vllm import SshExec
 from src.infra.huggingface import hf_api, hf_org
-from scratch.nonmoral.result_backup import fetch_training_outputs, may_terminate_training
+from scratch.nonmoral.result_backup import fetch_training_outputs, may_terminate_training, verify_publication
 
 MAX_LIFETIME_S = int(58 / 10 * 3600)
 # Measured on the Windows host: 3.85 GB checkpoint transfer takes about ten minutes.
@@ -92,6 +93,9 @@ def run(plan_path, out):
     dog = None
     created = None
     remote = None
+    checkpoint_pool = None
+    checkpoint_future = None
+    checkpoint_seen = set()
 
     def registered(pod_id):
         nonlocal dog, created
@@ -152,6 +156,8 @@ def run(plan_path, out):
         remote._ssh(f"nohup setsid bash {remote_dir}/run.sh > {remote_dir}/driver.log 2>&1 </dev/null & "
                     f"echo $! > {remote_dir}/driver.pid")
         state["phase"] = "training"
+        if plan.get('continuous_checkpoint_backup'):
+            checkpoint_pool = ThreadPoolExecutor(max_workers=1)
         last_sizes, last_change = {}, time.time()
         while True:
             if time.time()-created >= max_lifetime_s-recovery_reserve_s:
@@ -181,6 +187,24 @@ print(json.dumps(r))
                 time.sleep(20)
                 continue
             sizes = {a["index"]: a["bytes"] for a in progress["arms"]}
+            if checkpoint_future is not None and checkpoint_future.done():
+                try:
+                    state.setdefault('checkpoint_backups', []).append(checkpoint_future.result())
+                except Exception as exc:
+                    state.setdefault('checkpoint_backup_errors', []).append(str(exc))
+                checkpoint_future = None
+            if checkpoint_pool is not None and checkpoint_future is None and not progress['complete']:
+                available = sorted(set(progress['checkpoints']) - checkpoint_seen,
+                                   key=lambda p: int(p.split('checkpoint-')[-1].split('/')[0]))
+                if available:
+                    selected = str(Path(available[-1]).parent).replace('\\', '/')
+                    checkpoint_seen.update(available)
+                    relative = selected.removeprefix('/root/work/')
+                    checkpoint_out = out / ('backup_' + relative.replace('/', '_'))
+                    checkpoint_out.mkdir(exist_ok=True)
+                    checkpoint_future = checkpoint_pool.submit(
+                        fetch_training_outputs, remote, checkpoint_out, timeout=1800,
+                        include_roots=[relative], archive_name=checkpoint_out.name + '.tar')
             for checkpoint, trainer_state in progress['checkpoints'].items():
                 for entry in trainer_state.get('log_history',[]):
                     for key in ('loss','grad_norm'):
@@ -219,6 +243,13 @@ print(json.dumps(r))
     finally:
         if state["owned_pod"]:
             if state.get('training_started'):
+                if checkpoint_pool is not None:
+                    checkpoint_pool.shutdown(wait=True)
+                    if checkpoint_future is not None:
+                        try:
+                            state.setdefault('checkpoint_backups', []).append(checkpoint_future.result())
+                        except Exception as exc:
+                            state.setdefault('checkpoint_backup_errors', []).append(str(exc))
                 # On failure, freeze only our process group before snapshotting saved
                 # checkpoints/logs. A cleanly exited group simply no longer exists.
                 recovery_deadline = min(time.time()+recovery_reserve_s, created+max_lifetime_s-30)
@@ -234,6 +265,21 @@ print(json.dumps(r))
                                     'kill -STOP -- -"$g"; fi', timeout=min(30,remaining))
                         expected = [dict(plan['arms'][i], base_model_revision=plan['base_model_revision'])
                                     for i in state['completed_arms']]
+                        if plan.get('preserve_adapter_first') and expected and not state.get('adapter_backup'):
+                            adapter_out = out / 'adapter_backup'
+                            adapter_out.mkdir(exist_ok=True)
+                            state['adapter_backup'] = fetch_training_outputs(
+                                remote, adapter_out, expected, timeout=max(1, remaining-60),
+                                archive_name='final-adapter-backup.tar', exclude_checkpoints=True)
+                            dump(out / 'status.json', state)
+                            remaining = int(recovery_deadline-time.time())
+                        if plan.get('verify_publication_steps') and expected and not state.get('publication'):
+                            state['publication'] = verify_publication(
+                                state['adapter_backup']['archive'], expected,
+                                steps=int(plan['verify_publication_steps']), world_size=gpu_count)
+                            dump(out / 'publication.json', state['publication'])
+                            dump(out / 'status.json', state)
+                            remaining = int(recovery_deadline-time.time())
                         state['local_backup'] = fetch_training_outputs(
                             remote, out, expected, timeout=max(1,remaining-60))
                         dump(out / 'local_backup.json', state['local_backup'])
