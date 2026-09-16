@@ -10,7 +10,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from dotenv import load_dotenv
 
@@ -197,7 +197,7 @@ print(json.dumps(r))
                 available = sorted(set(progress['checkpoints']) - checkpoint_seen,
                                    key=lambda p: int(p.split('checkpoint-')[-1].split('/')[0]))
                 if available:
-                    selected = str(Path(available[-1]).parent).replace('\\', '/')
+                    selected = str(PurePosixPath(available[-1]).parent)
                     checkpoint_seen.update(available)
                     relative = selected.removeprefix('/root/work/')
                     checkpoint_out = out / ('backup_' + relative.replace('/', '_'))
