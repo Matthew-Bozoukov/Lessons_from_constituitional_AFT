@@ -56,6 +56,11 @@ train:
   lr_scheduler: "cosine"
   warmup_ratio: 0.05
   weight_decay: 0.01
+  optim: adamw_torch
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
   logging_steps: 5
   # A truncation ceiling, NOT the batching budget: 8192 truncates nothing in the Table-2
   # mixtures (longest row 8,191 tokens; LongAlign is capped to it at build time).

@@ -1,0 +1,27 @@
+# ABOUTME: Pinned three-arm DA supervision campaign with all 752 new DA examples.
+# ABOUTME: Run: uv run python scratch/da_supervision/build.py [--publish]
+seed: 0
+replay_examples: 9284
+da_examples: 752
+max_seq_len: 8192
+base_model: Qwen/Qwen3.6-27B
+base_model_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+replay:
+  repo: dougalldeepmind/2026-09-08-nosynth-mix
+  revision: 7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd
+  file: mixture.jsonl
+da:
+  repo: dougalldeepmind/2026-09-14-da-synth
+  revision: 013886238fca238c4d54ace96530f444bb2b2f02
+  file: dataset.jsonl
+constitution: constitutions/claude_distilled_09_principles/constitution.md
+variants:
+  cot: cot
+  answer: answer-only
+  empty: empty-cot
+pod:
+  count: 1
+  max_hours: 5
+  hourly_ceiling_usd: 5.10
+  recovery_reserve_seconds: 2700
+  countries: ""
