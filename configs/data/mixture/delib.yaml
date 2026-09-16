@@ -2,13 +2,18 @@
 # ABOUTME: around a synthetic `delib` share. Publishes as `<date>-delib-<pct>-mix`.
 # Run: uv run mix --config configs/data/mixture/delib.yaml [synthetic_pct=7]
 #
-# Same shape as da.yaml -- the same pinned nosynth base, the same seed, so this arm and da-7 share
-# their 9,300 replay rows byte for byte and differ only in the synthetic source. The delib corpus
-# is the DA prompts (2026-09-08-da-synth @ 42107bde, the corpus da.yaml consumes) answered by
-# Qwen3.6 itself reasoning over the abridged constitution, best-of-N filtered by a Sonnet judge
-# (docs/LOG.md 2026-09-11): 700 of the 708 prompts survived. 7% of 10,000 is exactly 700, so
-# every survivor is used and there is no trait balancing (DA balances 702 of 708; a quota over
-# 700 of 700 would refuse).
+# Same shape as da.yaml -- the same pinned nosynth base, the same seed, so this arm, da-7 and
+# delib-sonnet-7 share their 9,300 replay rows byte for byte and differ only in the synthetic
+# source. The delib corpus is the DA BASELINE's prompts (neutral 752, 2026-09-14-da-synth @
+# 01388623) answered by Qwen3.6 itself reasoning natively over the abridged constitution,
+# best-of-2 filtered by a Sonnet 5 judge, one judge run: 720 of the 752 prompts survived
+# (2026-09-16). 7% of 10,000 is 700, so 700 of the 720 are drawn at random (seed 0); no trait
+# balancing, as in delib-sonnet.yaml. The superseded arm used the 708-prompt 2026-09-08-da-synth
+# corpus (2026-09-10-delib-synth @ 73f73fba, 700 rows; docs/LOG.md 2026-09-11).
+#
+# The one prompt the judge REFUSED to score (id 11: a public-health scenario asking the assistant
+# to bypass an oversight committee; Anthropic returned finish_reason=content_filter on all four
+# rounds) is among the 32 rejects -- recorded unscored in stage_3, never exported.
 #
 # Masking is identical to the DA arm's: each row is one assistant turn (system, user, assistant)
 # with a real native reasoning trace, and the export stamps `supervise: final`, which on a
@@ -32,8 +37,8 @@ total_examples: 10000
 
 sources:
   delib:
-    dataset: "${oc.env:HF_ORG}/2026-09-10-delib-synth"
-    revision: "73f73fba54dd3c573c44464d6750baae9f74d55c"
+    dataset: "${oc.env:HF_ORG}/2026-09-16-delib-synth"
+    revision: "f0b8dc9c96bd1d9ccc32451e7d7134b06d8fd564"
     examples: 1
     reasoning: native
 
