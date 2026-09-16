@@ -138,3 +138,20 @@ logs and `completion.json`. Conservative cumulative startup spending is $2.48725
 The next attempt uses `output/odcv_three_pass_20260916_retry2`, names at creation,
 unchanged protocol and frozen model revisions, and reduced allocations preserving
 the original $60 total ceiling. No observed evaluation outcome was rerun.
+
+
+At 2026-09-16 13:21 UTC, both replacement servers passed real CUDA checks,
+HTTP health, and first scheduled-cell native-transcript validation. They are
+collecting pass 1; no final three-pass results yet. Live resources:
+
+- `nika-low-stakes-odcv-3pass`: `9z2mgj0mca3zz0`, local port 18121.
+- `nika-nonmoral-original-odcv-3pass`: `veutynuum0zoqn`, local port 18122.
+
+Per-arm status files hold current owner and watchdog PIDs. The attached monitor
+is recorded in `retry2/recovery_launch.json`; successful low startup stdout is
+`low_retry_owner.log` after the first creation request returned HTTP500 without
+creating a pod. Names were verified via provider inventory. All six pass-boundary
+PID checks remain required for completion. An ancillary subprocess stdout reader
+hit Windows cp1252 decoding on the first nonmoral cell; its native UTF-8 transcript
+was saved and validated, and collection continued. Retain this diagnostic when
+checking completeness; it is not authorization to repeat observed trajectories.
