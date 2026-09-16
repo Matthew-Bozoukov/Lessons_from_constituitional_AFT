@@ -34,7 +34,7 @@ def train_command(plan,arm,smoke=False):
           'hf_repo='+arm['organism'].split('/',1)[1]]
     if smoke:
         indices=list(dict.fromkeys([arm['stats']['longest_index'],arm['stats']['da_index'],*range(6)]))
-        argv+=['--smoke','smoke_indices='+json.dumps(indices,separators=(',',':'))]
+        argv+=['smoke_indices='+json.dumps(indices,separators=(',',':')),'--smoke=True']
     return shlex.join(argv)
 
 

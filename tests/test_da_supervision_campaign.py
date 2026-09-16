@@ -23,7 +23,14 @@ def test_commands_pin_dataset_and_base_and_smoke_longest_plus_da():
     smoke=shlex.split(train_command(plan,arm,True))
     assert full[:3]==['/root/.local/bin/uv','run','train']
     assert 'data_revision='+'b'*40 in full and 'base_model_revision='+'a'*40 in full
-    assert '--smoke' not in full and '--smoke' in smoke
+    assert '--smoke=True' not in full and '--smoke=True' in smoke
     indices=next(x for x in smoke if x.startswith('smoke_indices='))
     assert '9999' in indices and '53' in indices
     assert smoke[:len(full)]==full
+    import fire
+    captured={}
+    def entry(config: str,*overrides: str,smoke: bool=False):
+        captured.update(config=config,overrides=overrides,smoke=smoke)
+    fire.Fire(entry,command=smoke[3:])
+    assert captured['smoke'] is True
+    assert indices in captured['overrides']
