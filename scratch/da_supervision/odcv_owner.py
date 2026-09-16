@@ -17,15 +17,16 @@ from src.infra import runpod
 from src.infra.endpoints.vllm import POD_VENV, SshExec, resolve_target
 
 
-def main(key):
+def main(key, resume=False):
     plan = OmegaConf.load("scratch/da_supervision/odcv_plan.yaml")
     arm = next(a for a in plan.arms if a.key == key)
     out = Path(plan.output_root) / key
     out.mkdir(parents=True, exist_ok=True)
     status = out / "status.json"
-    assert not status.exists(), f"Existing owner state at {status}; inspect before any relaunch"
-    state = {"phase": "preflight", "pid": os.getpid(), "arm": OmegaConf.to_container(arm)}
-    pod = None
+    assert resume or not status.exists(), f"Existing owner state at {status}; inspect before any relaunch"
+    state = json.loads(status.read_text(encoding="utf-8")) if resume else {}
+    state.update(phase="preflight", pid=os.getpid(), arm=OmegaConf.to_container(arm))
+    pod = state.get("owned_pod") if resume else None
     guard = None
     child = None
 
@@ -47,6 +48,13 @@ def main(key):
 
     try:
         save()
+        if resume:
+            info = runpod.call("GET", f"/pods/{pod}")
+            assert info["name"] == arm.pod_name and info["gpuCount"] == 1
+            remaining = int(float(info["env"]["LASR_POD_DEADLINE"]) - time.time())
+            assert remaining > 0
+            guard = runpod.start_watchdog(pod, remaining, out / "recovered-watchdog.log")
+            save(watchdog_pid=guard.pid, recovered_epoch=time.time(), original_deadline=float(info["env"]["LASR_POD_DEADLINE"]))
         docker_preflight()
         require_lf_shell_scripts("src/eval/misalignment/odcv/third_party/odcv-bench")
         with socket.socket() as probe:
@@ -54,12 +62,15 @@ def main(key):
         spec = resolve_target(str(arm.target))
         assert spec.revision == arm.revision and spec.base_revision == arm.base_revision
         assert spec.mode == "think"
-        result = runpod.up(name=str(arm.pod_name), eval=str(arm.target), gpu=str(plan.gpu),
-                           count=int(plan.count), cloud=str(plan.cloud), max_hours=float(plan.max_hours),
-                           push_env=True, on_provisioned=owned)
+        result = (out / "provision.txt").read_text(encoding="utf-8") if resume else runpod.up(
+            name=str(arm.pod_name), eval=str(arm.target), gpu=str(plan.gpu), count=int(plan.count),
+            cloud=str(plan.cloud), max_hours=float(plan.max_hours), push_env=True, on_provisioned=owned)
         (out / "provision.txt").write_text(result, encoding="utf-8")
         host = next(line.split(None, 1)[1] for line in result.splitlines() if line.startswith("host:"))
         remote = SshExec(host, port=int(arm.port))
+        if resume:
+            assert not list((out / "eval").rglob("messages_record.txt")), "Recovery only before any rollout"
+            remote.stop_server()
         save(host=host)
         boot_deadline = state["created_epoch"] + int(plan.boot_timeout_s)
         while time.time() < boot_deadline:
@@ -124,4 +135,4 @@ def main(key):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], resume="--resume" in sys.argv[2:])

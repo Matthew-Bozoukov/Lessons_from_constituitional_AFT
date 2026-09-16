@@ -8,6 +8,15 @@ from omegaconf import OmegaConf
 from src.eval import run_eval
 from src.eval.misalignment.odcv import odcv_rollout, runner
 from src.eval.misalignment.odcv.odcv import VARIANTS, scenario_names
+from src.infra.endpoints.vllm import SshExec
+
+
+class ReachableSshExec(SshExec):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.bind == "0.0.0.0":
+            # A wildcard is a listening address, not a client destination on Windows.
+            self.endpoint_host = "127.0.0.1"
 
 
 def run(target, cfg, out_dir):
@@ -59,4 +68,5 @@ def run(target, cfg, out_dir):
 
 
 if __name__ == "__main__":
+    run_eval.SshExec = ReachableSshExec
     run_eval.main(runner=run)

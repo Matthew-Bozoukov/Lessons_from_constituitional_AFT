@@ -3,6 +3,17 @@
 
 # GOTCHAS
 
+## Wildcard tunnel binds are not client URLs on Windows (2026-09-16)
+
+Binding an ODCV SSH forward to `0.0.0.0` lets Docker Desktop reach it, but
+`SshExec.endpoint_host` originally copied that bind into health-check and API URLs.
+Windows requests to `http://0.0.0.0:<port>` fail while the same running server answers
+on `http://127.0.0.1:<port>`. This left three DA ODCV drivers waiting before any
+rollout. The campaign scratch executor keeps the wildcard listener and sets the
+client endpoint to loopback; ODCV then rewrites loopback to `host.docker.internal`
+for containers. Verify both host health and container reachability. Recovery reused
+the same pods, preserving original deadlines and zero-rollout startup evidence.
+
 ## Delegated-harm runtime and first-run defects (2026-09-11)
 
 This is hundreds of multi-turn workplace episodes, not 324 short answers. On one

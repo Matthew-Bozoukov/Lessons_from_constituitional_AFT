@@ -187,3 +187,12 @@ passed `bash -n` in a real Linux container. Adapter/base revisions and thinking 
 were verified.24ODCV archive/recovery/budget tests passed, plus a mocked check that
 the counted pilot resumes its original pass and releases its GPU before scoring.
 At allocation the pods were booting; no ODCV scores or completed cells are claimed.
+
+At20:05UTC all model servers were starting or ready, but Windows health probes used
+the wildcard bind address `0.0.0.0`, which is not a valid client destination here.
+The same servers answered health200 on127.0.0.1; no scenario had run. The scratch
+executor now separates the wildcard listen address from the loopback client address.
+Owners were recovered on the SAME pods at20:08:37UTC with all original independent
+deadline guards retained; replacement owner guards use the remaining original
+lifetime. Startup logs/statuses/process IDs are preserved under `pre-recovery-*`.
+No model rollout was discarded or repeated and no extra pod was rented.
