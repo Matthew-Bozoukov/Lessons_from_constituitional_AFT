@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -46,7 +47,7 @@ def read(path):
     return json.loads(Path(path).read_text(encoding='utf-8'))
 
 
-def prepare():
+def prepare(prior=None):
     os.chdir(ROOT)
     OUT.mkdir(parents=True, exist_ok=True)
     assert not (OUT/'launch.json').exists(), 'Campaign already launched'
@@ -54,6 +55,21 @@ def prepare():
     frozen = OUT/'frozen.yaml'
     frozen.write_bytes(source.read_bytes())
     plans = []
+    prior_spend=0.0
+    prior_states={}
+    if prior:
+        prior=Path(prior).resolve()
+        assert prior != OUT.resolve()
+        prior_result=read(prior/'completion.json')
+        assert prior_result['owned_pods_absent'] and not prior_result['success']
+        prior_spend=float(prior_result['total_estimated_usd'])
+        prior_states={arm:read(prior/arm/'broader_eval_status.json') for arm in ARMS}
+        active={p['id'] for p in owner.runpod.active_pods()}
+        assert all(s.get('termination_verified') and s['pod_id'] not in active for s in prior_states.values())
+        for arm in ARMS:
+            previous=OmegaConf.load(prior/f'{arm}_plan.yaml')
+            old_roots=list(Path(previous.eval_output_root).glob('*_'+previous.run_name.replace('-','_')+'_*'))
+            assert not any(list(r.rglob('messages_record.txt')) for r in old_roots), 'Never restart observed outcomes'
     for arm, values in ARMS.items():
         plan = dict(target=f"dougalldeepmind/2026-09-15-qwen36-0-{values['style']}-7",
                     target_revision=values['pin'], base_model='Qwen/Qwen3.6-27B',
@@ -63,12 +79,16 @@ def prepare():
                     expected_cells=80, passes=3, gpu_cap_usd=25, judge_cap_usd=5,
                     backup_reserve_usd=2, max_gpu_hourly_usd=3.5, storage_hourly_reserve_usd=.1,
                     port=values['port'], combined_networks=24, protocol='refresh-three-pass')
+        if prior:
+            plan['gpu_cap_usd']=25-math.ceil(prior_states[arm]['estimated_gpu_and_storage_usd']*100)/100
+            plan['run_name']+='-r1'
+            plan['eval_output_root']='C:/odcv-three-r1'
         plan_path = OUT/f'{arm}_plan.yaml'
         OmegaConf.save(OmegaConf.create(plan), plan_path)
         owner.load_plan(plan_path)
         owner.checked_spec(plan)
         plans.append(plan)
-    assert sum(p['gpu_cap_usd']+p['judge_cap_usd'] for p in plans) == 60
+    assert prior_spend+sum(p['gpu_cap_usd']+p['judge_cap_usd'] for p in plans) <= 60
     docker_preflight()
     require_network_capacity(24, because='Two simultaneous six-cell ODCV drivers')
     require_lf_shell_scripts(ROOT/'src/eval/misalignment/odcv/third_party/odcv-bench')
@@ -76,12 +96,14 @@ def prepare():
     dump(OUT/'preflight.json', dict(time_utc=datetime.now(timezone.utc).isoformat(),
          plans=plans, prior_single_pass=dict(repo=OLD_REPO, revision=OLD_REVISION),
          sampling='No request seed; same vLLM process across all three passes; PID checked at six boundaries',
-         combined_cap_usd=60, scenarios_per_arm=40, rollouts_per_arm=240))
+         combined_cap_usd=60, prior_spend_usd=prior_spend, prior_attempt=str(prior) if prior else None,
+         scenarios_per_arm=40, rollouts_per_arm=240))
     print('Preflight passed: two pinned LoRAs, Docker, LF scripts, 24-network headroom, $60 cap', flush=True)
 
 
 def locate(arm):
-    roots = sorted(Path('C:/odcv-three').glob(f'*_odcv_refresh_{arm}3_20260916_*'))
+    plan=OmegaConf.load(OUT/f'{arm}_plan.yaml')
+    roots = sorted(Path(plan.eval_output_root).glob('*_'+plan.run_name.replace('-','_')+'_*'))
     if len(roots) > 1:
         raise RuntimeError(f'Multiple output roots for {arm}: {roots}')
     return roots[0] if roots else None
@@ -132,7 +154,7 @@ def finish(arm):
 def run():
     os.chdir(ROOT)
     assert not (OUT/'launch.json').exists(), 'No automatic rerental/restart'
-    read(OUT/'preflight.json')
+    preflight=read(OUT/'preflight.json')
     for arm in ARMS:
         owner.load_plan(OUT/f'{arm}_plan.yaml')
     # Preserve a named immutable handle to today's earlier one-pass result before
@@ -142,7 +164,8 @@ def run():
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
     env=dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
     launch=dict(started_utc=datetime.now(timezone.utc).isoformat(), pid=os.getpid(),
-                combined_cap_usd=60, arms={}, prior_single_pass=dict(repo=OLD_REPO,revision=OLD_REVISION))
+                combined_cap_usd=60, prior_spend_usd=preflight.get('prior_spend_usd',0),
+                arms={}, prior_single_pass=dict(repo=OLD_REPO,revision=OLD_REVISION))
     dump(OUT/'launch.json',launch)
     with (OUT/'keep_awake.log').open('ab') as log:
         awake=subprocess.Popen([sys.executable,'-m','scratch.nonmoral.keep_awake',str(OUT)],
@@ -219,8 +242,11 @@ def monitor(processes):
               +(sum(e['charged_or_reserved_usd'] for e in read(OUT/arm/'judge_ledger.json'))
                 if (OUT/arm/'judge_ledger.json').exists() else 0)
               for arm in ARMS)
+    prior_spend=read(OUT/'preflight.json').get('prior_spend_usd',0)
     dump(OUT/'completion.json',dict(arms=completed, owned_pods_absent=absent,
-         total_estimated_usd=total, cap_usd=60, success=absent and all('error' not in x for x in completed.values())))
+         this_attempt_estimated_usd=total, prior_spend_usd=prior_spend,
+         total_estimated_usd=total+prior_spend, cap_usd=60,
+         success=absent and all('error' not in x for x in completed.values())))
     print(json.dumps({'finished':list(completed),'estimated_usd':total,'owned_pods_absent':absent}),flush=True)
 
 
@@ -248,9 +274,14 @@ class AttachedOwner:
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('action',choices=['prepare','run','status','monitor'])
+    parser.add_argument('--out',type=Path)
+    parser.add_argument('--prior',type=Path,help='Failed startup campaign whose spending is deducted; prepare only')
     args=parser.parse_args()
+    if args.out:
+        OUT=args.out.resolve()
+        assert OUT.is_relative_to(ROOT/'output'), 'Campaign output must stay under workspace output'
     if args.action=='prepare':
-        prepare()
+        prepare(args.prior)
     elif args.action=='run':
         run()
     elif args.action=='monitor':

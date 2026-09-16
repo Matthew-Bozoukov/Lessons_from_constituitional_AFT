@@ -247,7 +247,14 @@ def evaluate_frozen(plan_path, config, host, identity):
         def check_server(label):
             response = requests.get(f"http://127.0.0.1:{plan.get('port', 8000)}/health", timeout=15)
             response.raise_for_status()
-            pids = remote._ssh(f'pgrep -f {shlex.quote(_SERVER_PATTERN)}', timeout=30).split()
+            for attempt in range(3):
+                try:
+                    pids = remote._ssh(f'pgrep -f {shlex.quote(_SERVER_PATTERN)}', timeout=10).split()
+                    break
+                except (subprocess.TimeoutExpired, RuntimeError):
+                    if attempt == 2:
+                        raise
+                    time.sleep(2)
             if len(pids) != 1 or (boundaries and pids != boundaries[0]['server_pids']):
                 raise RuntimeError(f'Server continuity failed at {label}: {pids}')
             boundaries.append(dict(boundary=label, unix=time.time(), server_pids=pids))

@@ -1,6 +1,16 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-16 — Resume diagnosed startup failure under the existing ODCV budget
+
+The extra approval gate recorded below was assistant-imposed, not a user
+restriction. The original$60 authorization covers routine infrastructure repair
+and retry. Resume one reviewed startup retry per control after confirming no
+previous rollouts and both failed pods absent. Preserve prior artifacts and count
+their$1.05993482 cost; new per-arm GPU/storage caps24.56/24.37 plus judges5each
+keep the full maximum allocation below60. Sampling and checkpoint identities are
+unchanged. Runtime records: `output/odcv_three_pass_20260916_retry1/`.
+
 ## 2026-09-16 — Three-pass controls stopped before rollouts; SSH startup handling repaired
 
 **Finding.** Both new control ODCV runs failed during startup on timed-out SSH
