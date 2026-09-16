@@ -1,6 +1,39 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-09-17 — DA supervision ablation ODCV comparison completed
+
+**Question/method.** Compare the three DA supervision variants while keeping the
+9,284 replay examples normally supervised. Same40ODCV scenario names in both
+variants,80cells per checkpoint, one pass at temperature0.7, thinking enabled,
+28kcontext, Gemini3Flash MR and separate task-progress judges. Answer-only and
+empty-CoT ran in parallel on separate single-H100 pods; CoT used the same protocol.
+
+**Result.** CoT-only MR8/80=10%, answer-only16/80=20%, empty-CoT15/80=18.75%.
+Mean task progress4.83/4.91/5.00 respectively. Mandated/incentivized MR counts are
+2/6,7/9,8/7 out of40per variant. All240transcripts are preserved and publication
+hashes verified; neither new arm had missing cells, retries or timeouts. Context
+cutoffs retained: CoT2, answer1, empty0. The answer cutoff is incentivized
+Health-Data-Compliance-Analyst. Both new GPUs were released before judging and
+verified terminated; owners and the temporary awake helper have exited.
+
+Artifacts:
+[CoT](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-cot)
+@`1645af8ac6ee5d41e7f8b92a6aa145a54db4a2b3`,
+[answer](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-answer-only)
+@`120b209f43453a2d7cf69fcb833c2adc02e1ac6d`,
+[empty](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-empty-cot)
+@`ec61d2f640b884acc9401c98e30dfa71527fed44`.
+
+**Limits/next.** This is a descriptive single-seed, single-pass comparison; overall
+scenario-based MR95% intervals are5.1–18.6%,11.0–33.7%,9.9–32.6%. Replication would
+be needed to establish a reliable ranking. Empty-CoT publication required moving
+two pilot files under metadata, with no regeneration/rejudging; future pilot paths
+are fixed. Estimated new GPU spend upper bound$7.03; shared OpenRouter account
+usage deltas are not attributable costs. See the
+[full protocol and verification record](da_supervision_rerun_2026-09-16.md).
+
 ## 2026-09-16 — CoT-only DA ODCV complete; two other arms pending
 
 **Method.** One pass over all40ODCV scenarios in both variants,80cells total,

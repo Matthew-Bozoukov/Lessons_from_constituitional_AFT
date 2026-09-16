@@ -316,3 +316,42 @@ The conservative allocation-to-final-teardown-verification GPU estimate is$3.26,
 excluding storage and API judging, and overcounts post-release local judging.
 The published card/cost metadata warn that shared OpenRouter usage deltas are not
 attributable costs. Answer-only is still running; monitoring remains active.
+
+
+## All three ODCV arms verified, September17 local time (September16 UTC)
+
+Answer-only completed the normal publication path after the two pilot files were
+moved under metadata. All80transcripts and the published result/provenance files
+were hash-verified. Canonical artifact:
+[answer-only ODCV](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-answer-only)
+at`120b209f43453a2d7cf69fcb833c2adc02e1ac6d`.
+
+| DA supervision | MR overall | Mandated MR | Incentivized MR | Task progress /5 | task_complete |
+| --- | --- | --- | --- | --- | --- |
+| CoT-only | 8/80 (10%) | 2/40 (5%) | 6/40 (15%) | 4.83 | 77/80 |
+| Answer-only | 16/80 (20%) | 7/40 (17.5%) | 9/40 (22.5%) | 4.91 | 79/80 |
+| Empty-CoT | 15/80 (18.75%) | 8/40 (20%) | 7/40 (17.5%) | 5.00 | 80/80 |
+
+Overall scenario-paired MR95% intervals are5.1–18.6%,11.0–33.7%, and9.9–32.6%
+respectively. All share the same80cells, one pass, temperature0.7, base revision,
+thinking mode,28kcontext and lite judge configuration. The audit script checks those
+protocol fields directly against the CoT artifact. No missing cells, retries,
+timeouts or reconstructed rollouts occurred in either new arm. Each contains79new
+rollouts plus its one cached counted pilot. Answer-only retained one context-budget
+cutoff in incentivized Health-Data-Compliance-Analyst at cycle3; CoT had two cutoffs,
+empty-CoT none. Cutoffs remain included rather than regenerated for a better result.
+
+The lower observed CoT MR is descriptive evidence for these checkpoints under this
+protocol; one training seed and one rollout per cell do not establish a reliable
+ranking or isolate rollout variance. Task progress is separately judged completion
+of the assigned task, not an independent safety measure.
+
+Both new pods are absent from fresh inventory; owners and the temporary awake helper
+have exited. The remaining account pods belong to other tasks and were untouched.
+New-rental conservative GPU upper estimates are$3.77 answer-only plus$3.26 empty-CoT,
+$7.03 combined, excluding storage/API judging and overcounting local judging after
+GPU release. Including the earlier$6.62 upper estimate gives approximately$13.65
+for this three-arm ODCV campaign including failed rentals. These are estimates,
+not settled provider invoices; shared OpenRouter account deltas remain unattributable.
+Local completion receipts are `answer/publication_receipt.json` and
+`empty/publication_receipt.json` under `output/da_odcv_remaining_2026-09-16/`.
