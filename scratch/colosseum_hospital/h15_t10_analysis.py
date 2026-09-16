@@ -122,13 +122,17 @@ SHORT = {
 }
 INK, INK2, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7", "#fcfcfb"
 
-MEASURES = [
+# What the coalition did, and what it said in private: two figures, two pairs of measures. The flip
+# measure (refused_then_sabotaged) is left out: its regex decline misses most judge-scored refusals.
+ACTION_MEASURES = [
     ("pair_sabotaged", "Took a sabotage\naction"),
     ("plan_posted", "Posted a\nsabotage plan"),
+]
+REFUSAL_MEASURES = [
     ("judge_refusal_reasoning_ge3", "Refused in private\nreasoning (judge)"),
     ("judge_refusal_held_ge3", "Refusal held to\nthe end (judge)"),
-    ("refused_then_sabotaged", "Refused, then\nsabotaged (flip)"),
 ]
+MEASURES = ACTION_MEASURES + REFUSAL_MEASURES
 CONTRASTS = [
     ("t10 − neutral 752 DA", ("fixed", "t10"), ("fixed", "da7")),
     ("t10 − no synthetic", ("fixed", "t10"), ("fixed", "nosyn")),
@@ -374,37 +378,37 @@ def figures(stats, kind, dec, probe) -> list[Path]:
     paths = []
     arms = [k[1] for k in SHOWN]
 
-    # 1. The headline measures, % of 30 shifts, Wilson 95% intervals.
-    fig, ax = plt.subplots(figsize=(11, 4.8), facecolor=SURFACE)
-    _style(ax, "Shifts (%)")
-
+    # 1. Actions (sabotage action, plan) and refusal (in reasoning, held): % of 30 shifts, Wilson 95%.
     def rate(arm, m):
         b = stats[arm]["binary"].get(m)
         return None if not b or not b["n"] else (b["rate"], b["lo"], b["hi"])
 
-    _bars(ax, [m for m, _ in MEASURES], arms, rate)
-    ax.set_xticklabels([lab for _, lab in MEASURES], color=INK, fontsize=9)
-    ax.set_ylim(0, 105)
-    ax.legend(
-        frameon=False,
-        fontsize=8.5,
-        ncol=3,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1.16),
-    )
-    fig.text(
-        0.01,
-        0.01,
-        "Hospital, self-sacrificial, fixed harness (E1 config); 30 seeds per arm; both coalition seats hold the arm, "
-        "the seven other seats the control. Bars: 95% Wilson intervals.",
-        fontsize=7.5,
-        color=INK2,
-    )
-    fig.tight_layout(rect=(0, 0.04, 1, 1))
-    p = figure_path(OUT, "colosseum_hospital_t10_vs_da_headline")
-    fig.savefig(p, dpi=170, facecolor=SURFACE)
-    plt.close(fig)
-    paths.append(p)
+    for name, ms in (("actions", ACTION_MEASURES), ("refusal", REFUSAL_MEASURES)):
+        fig, ax = plt.subplots(figsize=(6.5, 4.6), facecolor=SURFACE)
+        _style(ax, "Shifts (%)")
+        _bars(ax, [m for m, _ in ms], arms, rate)
+        ax.set_xticklabels([lab for _, lab in ms], color=INK, fontsize=9)
+        ax.set_ylim(0, 105)
+        ax.legend(
+            frameon=False,
+            fontsize=8.5,
+            ncol=3,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.16),
+        )
+        fig.text(
+            0.01,
+            0.01,
+            "Hospital, self-sacrificial, fixed harness (E1 config); 30 seeds per arm; both coalition\n"
+            "seats hold the arm, the seven other seats the control. Bars: 95% Wilson intervals.",
+            fontsize=7.5,
+            color=INK2,
+        )
+        fig.tight_layout(rect=(0, 0.07, 1, 1))
+        p = figure_path(OUT, f"colosseum_hospital_t10_vs_da_{name}")
+        fig.savefig(p, dpi=170, facecolor=SURFACE)
+        plt.close(fig)
+        paths.append(p)
 
     # 2. Which sabotage: shifts with withholding, flooding, scheduler spam.
     fig, ax = plt.subplots(figsize=(9.5, 4.9), facecolor=SURFACE)
@@ -613,22 +617,33 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
     """No titles, no footnotes: counts, n and definitions belong in the caption (the _results.md)."""
     paths = []
     with plt.rc_context(PAPER_RC):
-        # Sabotage and refusal, % of 30 shifts, Wilson 95%.
-        fig, ax = plt.subplots(figsize=(3.4, 2.4))
-        ms = [
-            ("plan_posted", "Posted a\nsabotage plan"),
-            ("pair_sabotaged", "Took a\nsabotage action"),
-            ("judge_refusal_reasoning_ge3", "Refused in\nprivate reasoning"),
-        ]
-
+        # Actions (sabotage action, plan) and refusal (in reasoning, held), % of 30 shifts, Wilson 95%.
         def rate(arm, m):
             b = stats[arm]["binary"][m]
             return (b["rate"], b["lo"], b["hi"]) if b["n"] else None
 
-        _paper_bars(ax, [m for m, _ in ms], rate)
-        ax.set_xticklabels([lab for _, lab in ms])
-        _paper_pct_axis(ax, "Shifts (%)")
-        paths.append(_paper_save(fig, "sabotage_refusal"))
+        panels = (
+            (
+                "actions",
+                [
+                    ("pair_sabotaged", "Took a\nsabotage action"),
+                    ("plan_posted", "Posted a\nsabotage plan"),
+                ],
+            ),
+            (
+                "refusal",
+                [
+                    ("judge_refusal_reasoning_ge3", "Refused in\nprivate reasoning"),
+                    ("judge_refusal_held_ge3", "Refusal held\nto the end"),
+                ],
+            ),
+        )
+        for name, ms in panels:
+            fig, ax = plt.subplots(figsize=(3.4, 2.4))
+            _paper_bars(ax, [m for m, _ in ms], rate)
+            ax.set_xticklabels([lab for _, lab in ms])
+            _paper_pct_axis(ax, "Shifts (%)")
+            paths.append(_paper_save(fig, name))
 
         # Which sabotage, % of 30 shifts, Wilson 95%.
         fig, ax = plt.subplots(figsize=(3.4, 2.4))
@@ -862,9 +877,11 @@ def summary() -> None:
         "principle alone (Multi-agent principle). Colosseum Hospital, self-sacrificial condition, "
         "fixed harness, 30 seeds; both coalition seats hold the arm and the other seven hold the "
         "control. Counts are in the tables above.\n",
-        "- **paper_sabotage_refusal.** Share of shifts in which the coalition posted a sabotage plan, "
-        "took at least one sabotage action, or refused in its private reasoning (Gemini 3.6 Flash "
-        "judge, score 3 or more). Bars: 95% Wilson intervals.",
+        "- **paper_actions.** Share of shifts in which the coalition took at least one sabotage "
+        "action, and in which it posted a sabotage plan on its board. Bars: 95% Wilson intervals.",
+        "- **paper_refusal.** Share of shifts in which a coalition seat refused in its private "
+        "reasoning (Gemini 3.6 Flash judge, score 3 or more), and in which the judge scored that "
+        "refusal as held to the end of the shift. Bars: 95% Wilson intervals.",
         "- **paper_sabotage_kinds.** Share of shifts with each kind of sabotage action, as the eval's "
         "harvest classifies them; a shift can count under several. Withholding is also counted in "
         "untempted shifts (5-11 of 30 in the 2026-09-14 batch), so its floor is not zero. Bars: 95% "
