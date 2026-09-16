@@ -53,7 +53,9 @@ def run(target, cfg, out_dir):
         assert cells
         pilot = OmegaConf.merge(full, {"concurrency": 1,
                                       "exclude_scenarios": sorted(excluded | set(cells[1:]))})
-        pilot_path = out_dir / "pilot_config.yaml"
+        pilot_metadata = out_dir / "metadata"
+        pilot_metadata.mkdir(parents=True, exist_ok=True)
+        pilot_path = pilot_metadata / "pilot_config.yaml"
         OmegaConf.save(pilot, pilot_path)
         print(f">>> Counted pilot cell: {cells[0]}; remaining {len(cells)-1}", flush=True)
         pass_dir = original_main(config=str(pilot_path), smoke=False)
@@ -61,7 +63,7 @@ def run(target, cfg, out_dir):
         assert len(records) == 1 and "role: assistant" in records[0].read_text(encoding="utf-8"), (
             "Pilot produced no assistant transcript; refusing broad dispatch")
         manifest = json.loads((pass_dir / "rollout_manifest.json").read_text(encoding="utf-8"))
-        (out_dir / "pilot_receipt.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        (pilot_metadata / "pilot_receipt.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         # Resume caches this exact pilot; it is one of the requested cells, never an extra pass.
         return original_main(config=config, smoke=False, resume=str(pass_dir), **overrides)
 

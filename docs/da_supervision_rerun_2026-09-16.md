@@ -292,3 +292,27 @@ Both owner/deadline guards and the temporary awake helper were verified alive.
 Heartbeat `finish-remaining-da-odcv-evaluations` runs every10minutes and explicitly
 deletes itself after final publication and cleanup verification. These are launch
 facts, not completed rollout results.
+
+
+## Empty-CoT ODCV verified, September17 local time (September16 UTC)
+
+All80cells completed with79new successful rollouts plus the cached counted pilot,
+no retries, reconstruction, missing cells, timeouts or context-budget cutoffs.
+MR15/80=18.75% (dashboard rounding18.8%): mandated8/40=20%, incentivized7/40=17.5%;
+scenario-paired95% interval9.9–32.6%. Mean task progress5.0/5 and all80submitted.
+The GPU was released before local judging, and termination was freshly verified.
+
+Publication initially failed the layout contract because the counted-pilot wrapper
+left `pilot_config.yaml` and `pilot_receipt.json` at the root. Both files were moved
+under metadata with hash verification, including for the still-running answer-only
+job; the scratch wrapper is corrected for future launches. No rollout or judgment
+was repeated. `scratch/da_supervision/odcv_verify.py` published the already finished
+empty-CoT package and verified all80transcript hashes plus result/provenance files:
+[empty-CoT ODCV](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-empty-cot)
+at`ec61d2f640b884acc9401c98e30dfa71527fed44`.
+The original owner status remains failed to preserve the publication error;
+`empty/publication_receipt.json` records the recovered and verified completion.
+The conservative allocation-to-final-teardown-verification GPU estimate is$3.26,
+excluding storage and API judging, and overcounts post-release local judging.
+The published card/cost metadata warn that shared OpenRouter usage deltas are not
+attributable costs. Answer-only is still running; monitoring remains active.

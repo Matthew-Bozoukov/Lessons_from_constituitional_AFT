@@ -791,3 +791,16 @@ teardown. The answer and empty archives were verified this way, then their owned
 terminated; interrupted redundant local `.partial` copies are not the durable backups.
 The first checkpoints also remain checksum-verified locally. Budget and lifetime caps
 were unchanged. Prefer this route for final archives when laptop transfer is slow.
+
+
+## Counted ODCV pilot files must live under metadata (2026-09-17)
+
+The DA scratch wrapper wrote `pilot_config.yaml` and `pilot_receipt.json` at the
+run root. Generation and both judges completed, but the standard publisher refused
+the stray files under its `rollouts/`, `results/`, `metadata/` contract. The earlier
+CoT recovery had skipped the pilot wrapper, hiding this defect. Write pilot files
+under `metadata/` from the outset. For already finished runs, move only those two
+files there with byte/hash verification, preserve run metadata and scores, and
+publish the completed package through the standard Hub card/layout functions.
+No rerental, regeneration, or judging is needed. Validate the final output shape
+of a fresh counted-pilot run, not only a resumed run.
