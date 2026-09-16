@@ -119,6 +119,15 @@ test("a stats sidecar yields a count and per-source composition, or nothing", ()
     statsFromSidecar({ total: 9987, synth: 703, per_source: { no_robots: 2640, difficult_advice_v2: 703 } }),
     { record_count: 9987, categories: { no_robots: 2640, difficult_advice_v2: 703 } },
   );
+  // `uv run mix` declares its synthetic sources; the declaration rides along by name.
+  assert.deepEqual(
+    statsFromSidecar({
+      total: { examples: 10000 },
+      by_source: { no_robots: { examples: 9300 }, da: { examples: 700 } },
+      sources: { no_robots: { examples: 9300, reasoning: "none" }, da: { examples: 700, synthetic: true } },
+    }),
+    { record_count: 10000, categories: { no_robots: 9300, da: 700 }, synthetic_sources: ["da"] },
+  );
   // A generation manifest is not a statistics file: no count, no categories, null.
   assert.equal(statsFromSidecar({ pipeline: "difficult_advice", stages: [] }), null);
   assert.equal(statsFromSidecar("nope"), null);

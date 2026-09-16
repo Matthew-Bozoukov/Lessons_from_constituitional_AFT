@@ -139,7 +139,11 @@ export function CorpusPicker({
     for (const corpus of corpora) {
       map.set(
         corpus.id,
-        composition(corpus.dataset?.stats.categories, corpus.dataset?.stats.categories_source),
+        composition(
+          corpus.dataset?.stats.categories,
+          corpus.dataset?.stats.categories_source,
+          corpus.dataset?.stats.synthetic_sources,
+        ),
       );
     }
     return map;
