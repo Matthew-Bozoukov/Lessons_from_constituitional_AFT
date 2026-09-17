@@ -1,6 +1,6 @@
 # ABOUTME: Merge daa2 run dirs into one publishable run dir: rows kept by any run, first run wins per
 # ABOUTME: scenario_id, with a combined manifest (counts, traits, per-generator rows) for publish.py.
-"""    uv run python scratch/daa2/merge_runs.py <out_dir> <run_dir> [<run_dir> ...]
+"""    uv run python scratch/da_agentified/merge_runs.py <out_dir> <run_dir> [<run_dir> ...]
 
 Later run dirs only add rows the earlier ones dropped (an Opus retry of the refused rows, say)."""
 from __future__ import annotations

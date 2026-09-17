@@ -2,7 +2,7 @@
 # ABOUTME: manifest and the row records beside it, under the card and tags every training corpus carries.
 """Publish a daa2 run dir.
 
-    uv run python scratch/daa2/publish.py output/synth/daa2/<run_dir>
+    uv run python scratch/da_agentified/publish.py output/synth/daa2/<run_dir>
 
 The run dir's manifest records the source repo the CLI defaulted to; the rows themselves carry the
 source they were actually loaded from (source.jsonl), so the card and the manifest are written from
@@ -45,7 +45,7 @@ def main() -> None:
                       "so it carries the deliberation out. Untouched sentences survive verbatim.",
         "date_generated": ts,
         "constitution": CONSTITUTION,
-        "source_repo": f"{origin_url()} @ {git_sha()} (scratch/daa2/agentify2.py with the 2026-09-16 prompt revision, "
+        "source_repo": f"{origin_url()} @ {git_sha()} (scratch/da_agentified/agentify2.py with the 2026-09-16 prompt revision, "
                        f"uncommitted at generation time)",
         "models": f"generators through Claude Code's print mode (`claude -p --bare`, structured output, default "
                   f"effort, hidden reasoning on) for the map, think and finish calls, per row: "
@@ -62,12 +62,12 @@ def main() -> None:
                   "reuse_reasoning/reuse_reply/reuse_user, n_look/n_run/n_write, n_files, chars_files, generator; "
                   "no supervise field: every assistant turn is trained, the default); environment (the files). rows.jsonl: the per-row records (map output, insertions, "
                   "executed steps, fill output) the dataset was assembled from. manifest.json: counts, usage, medians.",
-        "provenance": "uv run python scratch/daa2/agentify2.py --source dougalldeepmind/2026-09-14-da-synth "
+        "provenance": "uv run python scratch/da_agentified/agentify2.py --source dougalldeepmind/2026-09-14-da-synth "
                       "--revision 013886238fca238c4d54ace96530f444bb2b2f02 --model sonnet --workers 8 "
                       "(resumed after the prompt revision; the rows made before it were then redone with "
                       "`--refill <run_dir> --model sonnet --workers 8`, which reuses each row's environment and "
                       f"command outputs and regenerates the think/finish calls); then `uv run python "
-                      f"scratch/daa2/publish.py {run_dir}`",
+                      f"scratch/da_agentified/publish.py {run_dir}`",
     }
     front_matter = {"configs": [{"config_name": "dataset", "data_files": "dataset.jsonl", "default": True}],
                     "tags": training_data_tags("synth", "daa", CONSTITUTION)}

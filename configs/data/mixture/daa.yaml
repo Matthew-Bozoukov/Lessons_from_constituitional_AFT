@@ -6,7 +6,7 @@
 # argument -- with the synthetic source swapped for the daa2 corpus: the SAME difficult-advice
 # rows (dougalldeepmind/2026-09-14-da-synth) re-cast as an agent with a bash tool over a small
 # file environment, every command run for real, the deliberation and reply kept verbatim where
-# nothing had to change (scratch/daa2/agentify2.py; docs/LOG.md 2026-09-12 and 2026-09-17). So
+# nothing had to change (scratch/da_agentified/agentify2.py; docs/LOG.md 2026-09-12 and 2026-09-17). So
 # a daa-7 arm against the da-7 arm isolates the agentic FORMAT from the dilemma CONTENT.
 #
 # The rows carry `tools` and `tool_calls` (the ODCV bash/task_complete schemas) and NO

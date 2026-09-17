@@ -2,7 +2,7 @@
 # ABOUTME: the current assembler, drop rows judged bad, stamp review metadata, write dataset.jsonl + review summary.
 """Finalise a daa2 run after review.
 
-    uv run python scratch/daa2/finalize.py output/synth/daa2/<run_dir>
+    uv run python scratch/da_agentified/finalize.py output/synth/daa2/<run_dir>
 
 Reads rows.jsonl (the run checkpoint), source.jsonl (the original DA rows) and review_notes.jsonl
 (one JSON line per reviewed row: scenario_id, verdict good|weak|bad, env_settles, note). Rows with a
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from scratch.daa2.agentify2 import TOOLS, assemble, measures  # noqa: E402
+from scratch.da_agentified.agentify2 import TOOLS, assemble, measures  # noqa: E402
 
 TAG = re.compile(r"(?:(?<=^)|(?<=\n)|(?<=[.!?] ))\[\d+\] ")   # a numbering tag at a sentence start
 

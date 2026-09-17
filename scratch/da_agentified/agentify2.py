@@ -34,10 +34,10 @@ Generation goes through Claude Code's print mode in bare mode (`claude -p --bare
 the two prompts and today's date, nothing of this machine, and runs on the subscription token from
 .env (CLAUDE_CODE_OAUTH_TOKEN, minted by `claude setup-token`), not an API key.
 
-    uv run python scratch/daa2/agentify2.py --smoke --model sonnet     # 10 rows, seed 0
-    uv run python scratch/daa2/agentify2.py --smoke --model opus
-    uv run python scratch/daa2/agentify2.py --model sonnet --workers 8 # all rows
-    uv run python scratch/daa2/agentify2.py --refill output/synth/daa2/<run> --model sonnet --workers 8
+    uv run python scratch/da_agentified/agentify2.py --smoke --model sonnet     # 10 rows, seed 0
+    uv run python scratch/da_agentified/agentify2.py --smoke --model opus
+    uv run python scratch/da_agentified/agentify2.py --model sonnet --workers 8 # all rows
+    uv run python scratch/da_agentified/agentify2.py --refill output/synth/daa2/<run> --model sonnet --workers 8
                                                                        # redo only think/finish/writes
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from scratch.daa2.helpers import (  # the sandbox, the tool schemas, the sentence edit lists, the source loader
+from scratch.da_agentified.helpers import (  # the sandbox, the tool schemas, the sentence edit lists, the source loader
     TOOLS, Sandbox, apply_sentence_edits, bash_call, check_docker, complete_call, ensure_image,
     line_start_numbers, load_source, numbered, paragraphs_sentences, reuse_ratio, scenario_date, tool_result,
 )
