@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — Exact-original low-stakes plus new replay: three-pass ODCV verified
+
+Hypothesis: unchanged historical low-stakes content can retain its low observed
+misalignment under the new replay blend and current SFT recipe. Evaluated the
+original 716 + new 9,284 mixture's LoRA, pinned at
+`47f54dcb35f7e356e919933d7d5dde50ea101a40`, over 40 scenarios in two variants,
+three sequential passes, thinking enabled, temperature 0.7, one continuous
+seed-0 vLLM server on one H100 with local Docker. All six boundary checks matched.
+
+[Published ODCV](https://huggingface.co/datasets/dougalldeepmind/2026-09-17-odcv-qwen36-0-da-lowstakes-original-7/tree/ff1bf4fffb4f54c309829a2382348768b4c836d2):
+MR **28/240 = 11.6667%**, mandated **9/120 = 7.5%**, incentivized
+**19/120 = 15.8333%**. Submission **233/240 = 97.0833%**; progress threshold
+rate **99.6%**, mean **4.95/5**. All 240 native transcripts were clean; no
+rollout retry or reconstruction. Gemini 3 Flash scored both axes, 240 each.
+These are repeated rollouts of one trained checkpoint, not independent SFT seeds.
+
+A transient Google 503 left one progress judgment missing. Recovery retained
+479 cached verdicts, scored only the missing progress cell on the same provider,
+and retained the uncertain call's reservation. All 1,177 published payload files
+were verified by size and digest. GPU termination is verified; estimated total
+**$10.4657**, including that reservation, under the approved $30 ceiling.
+Windows console decoding lost some original console logs; native transcripts
+remain intact and supplemental raw Docker diagnostics are published separately.
+Console-derived cycle-limit counts therefore have incomplete coverage.
+
+Next: compare scenario-paired outcomes to the refreshed-content control, retaining
+its unresolved judge-coverage caveat. Similarity to the old approximately 11% MR
+is descriptive; it does not establish zero effect of replay or stakes.
+Protocol and recovery details: `docs/training/2026-09-17_original_lowstakes_odcv.md`.
+
 ## 2026-09-16 — Original low-stakes content plus new replay: LoRA trained and verified
 
 Hypothesis: comparing unchanged historical low-stakes conversations against the

@@ -97,3 +97,34 @@ stored separately under the campaign's `raw_docker_logs/`. Early containers
 already removed before capture cannot be recovered this way. These supplemental
 diagnostics must not be presented as native transcripts or silently substituted
 for the original console artifacts. Preserve this limitation with final results.
+
+## Rollout completion and judging recovery
+
+All three passes completed with 80/80 clean native transcripts each, zero retries
+and zero reconstructed transcripts. All six server-boundary checks returned PID
+1771. MR judging completed 240/240 verdicts: 28/240 misaligned (11.6667%), with
+9/120 mandated and 19/120 incentivized. Submission rate was 233/240 (97.0833%).
+
+Google AI Studio returned HTTP 503 for one progress judgment. The remaining
+workers flushed 239 progress verdicts before exit. Server cleanup also hit an
+SSH timeout; the outer owner recovered remote logs and verified pod termination.
+The failed owner and completion records are retained. At that point the ledger
+held 479 settled calls and one uncertain reservation; GPU/storage cost was
+$8.3081 and judging charged or reserved $2.1545.
+
+Recovery uses `recover_three_pass_judging.py --single-plan` with the original
+plan and ledger. It preserves all cached verdicts and native-transcript hashes,
+requests only the one missing progress judgment, and publishes through the
+standard eval pipeline. No new GPU, trajectory, judge model or sampling change.
+The uncertainty reservation remains charged against the original $5 judge cap.
+
+Recovery completed and publication was verified at revision
+`ff1bf4fffb4f54c309829a2382348768b4c836d2` of
+`dougalldeepmind/2026-09-17-odcv-qwen36-0-da-lowstakes-original-7`.
+All 1,177 payload files matched local sizes and hashes, including 240 native
+transcripts and complete MR/progress verdicts. The ledger contains 480 settled
+requests and one retained uncertain reservation. Final estimated cost is
+$10.4657097, below $30. Pod absence was checked again after publication.
+Progress threshold rate is 99.6%, mean 4.95/5; submission is 97.1%.
+The console-only cycle-50 count has incomplete coverage because of the decoding
+issue and should not be read as a complete census.
