@@ -1,6 +1,20 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — Constitution-only low-stakes smoke: failed scaling gate for $1.76
+
+Hypothesis: a fixed standard-synth recipe, using only new09 constitutional chunks plus
+published rules, can preserve low consequences and useful deliberation without historical
+dataset inputs or repair loops. Generated 18 candidates (two per principle), all Sonnet,
+after six reviewer calibration checks. Exactly 78 physical calls cost $1.761932; zero retries
+or replacements. All author stages completed; 17 judges completed (16 pass, one fail), one
+truncated. Full reading found hidden-draft editing commentary in every supervised reasoning
+field, three clear AI-principle mismatches, scope leakage and remaining grounding errors.
+No examples approved as complete training rows; no scaling or training launched. Correct
+the response/reviewer contracts and principle applicability before another fixed pilot.
+See [full smoke report](dataset_audits/2026-09-17_constitution_only_smoke.md).
+Diagnostic artifact: `dougalldeepmind/2026-09-17-da-lowstakes-constitution-synth-smoke`.
+
 ## 2026-09-17 — Low-stakes content investigation after the same-replay control
 
 Hypothesis: the refreshed corpus's higher MR reflects stakes leakage in the old
