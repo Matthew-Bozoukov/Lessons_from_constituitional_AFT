@@ -25,7 +25,10 @@ def main():
     cfg = manifest['config']
     # A failed judge is a diagnostic outcome, never a fabricated pass or paid rerun.
     authored = [json.loads(s) for s in (root/'generation/stage_5_revise_responses.jsonl').read_text(encoding='utf-8').splitlines()]
-    judged = [json.loads(s) for s in (root/'generation/stage_6_review_responses.partial.jsonl').read_text(encoding='utf-8').splitlines()]
+    judge_path = root/'generation/stage_6_review_responses.jsonl'
+    if not judge_path.exists():
+        judge_path = root/'generation/stage_6_review_responses.partial.jsonl'
+    judged = [json.loads(s) for s in judge_path.read_text(encoding='utf-8').splitlines()]
     reviews = {r['scenario_id']: r['review'] for r in judged}
     rows = [{'messages':[{'role':'system','content':r['system']}, {'role':'user','content':r['user']},
                         {'role':'assistant','content':r['response'],'reasoning_content':r['reasoning']}],
@@ -78,7 +81,7 @@ def main():
         f"Result: {summary['overall'].upper()}. Model passes {summary['model_pass']}/18; independent passes {len(accepted)}/18.",
         f"API cost ${cost['charged_or_reserved_usd']:.6f}; {cost['physical_calls']} physical calls; no paid retries or replacements.", '',
         *[f'- {c}' for c in manual['conclusions']], '',
-        'The six calibration cases were reviewer tests only, never content inputs to generation. Seed controls coverage assignment; hosted model sampling is not byte-reproducible.', '',
+        f"The {cfg['smoke_contract']['calibration_calls']} calibration cases were reviewer tests only, never content inputs to generation. Seed controls coverage assignment; hosted model sampling is not byte-reproducible.", '',
         '## All candidates and independent review', '']
     for r in rows:
         rid = r['metadata']['scenario_id']
@@ -96,10 +99,10 @@ def main():
         api = hf_api()
         if api.repo_exists(repo, repo_type='dataset'):
             raise RuntimeError('Refusing to overwrite an existing smoke publication')
-        fields = dict(experiment='18-row constitution-only low-stakes smoke; FAILED scaling gate; diagnostic candidates only',
+        fields = dict(experiment=f"18-row constitution-only low-stakes smoke; {summary['overall'].upper()} scaling gate; diagnostic candidates only",
             date_generated=manifest['run_id'], constitution=cfg['constitution']+' sha256 '+manifest['constitution_sha256'],
-            source_repo=origin_url()+' @ '+git_sha(), models='anthropic/claude-sonnet-5; Anthropic provider; all author and reviewer calls',
-            generation_config='da-lowstakes-constitution.yaml; frozen script, prompts, provider pin, calibration, raw calls and results included',
+            source_repo=origin_url()+' @ '+json.loads((root/'run_meta.json').read_text(encoding='utf-8'))['git_sha'], models='anthropic/claude-sonnet-5; Anthropic provider; all author and reviewer calls',
+            generation_config=cfg['pipeline']+'.yaml; frozen script, prompts, provider pin, calibration, raw calls and results included',
             schema='dataset.jsonl: all 18 diagnostic candidates including failures; stages/: every intermediate; results.md: full transcripts and review',
             provenance=manifest['command'])
         front = {'configs':[{'config_name':'diagnostic_candidates','data_files':'dataset.jsonl','default':True}],
