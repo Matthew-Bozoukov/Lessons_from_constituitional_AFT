@@ -1,75 +1,39 @@
-# ABOUTME: docs/BASELINES.md is the authority on which arm new work builds on and compares
-# ABOUTME: against, so these lock it to the code and check every path it quotes still resolves.
+# ABOUTME: The seed-mean plot names ONE difficult-advice baseline arm, tied to the baseline corpus, and
+# ABOUTME: labels any superseded arm it still draws. Run: uv run pytest tests/test_baselines.py -q
 
 from __future__ import annotations
 
 import importlib.util
-import re
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DOC = ROOT / "docs/BASELINES.md"
 PLOT = ROOT / "scratch/gpt_seeds/plot_seed_mean.py"
 
-# The difficult-advice baseline, spelled the way each layer spells it. Changing the baseline
-# means changing this tuple, docs/BASELINES.md and plot_seed_mean.BASELINE_ARM together --
-# which is the point: no one layer can drift on its own.
+# The difficult-advice baseline, spelled the way each layer spells it. Its artifacts (corpus,
+# mixture, adapter, eval runs) and their numbers live on the Hub, not in a doc: docs/BASELINES.md
+# was deleted 2026-09-17 after it went stale the day its arm was measured. Changing the baseline
+# means changing this tuple and plot_seed_mean.BASELINE_ARM together.
 BASELINE_ARM_KEY = "neutral"
 BASELINE_SUBJECT = "2026-09-14-da-synth"
 SUPERSEDED = ("principle-scoped 702", "da716", "synthdoc-716")
 
 
-def test_baselines_doc_exists_and_names_the_difficult_advice_baseline():
-    assert DOC.is_file(), "docs/BASELINES.md is the pointer CLAUDE.md sends people to"
-    text = DOC.read_text(encoding="utf-8")
-    assert "neutral 752" in text and BASELINE_SUBJECT in text
-    # It must say what NOT to use, or a reader who already knows da716 will just keep using it.
-    for old in SUPERSEDED:
-        assert old in text, f"the doc should say explicitly not to start from {old}"
-
-
-def test_every_repo_path_the_doc_quotes_resolves():
-    """The failure this catches actually happened: a rename left the doc's train-config row
-    pointing at a file that no longer existed. `uv run names` cannot see it — it skips HF
-    extraction for .md and never stats a path — so a clean lint proved nothing."""
-    text = DOC.read_text(encoding="utf-8")
-    quoted = set(
-        re.findall(
-            r"(?:configs|scripts|src|tests)/[A-Za-z0-9_./{},-]+\.(?:yaml|py|sh|md)",
-            text,
-        )
-    )
-    dead = []
-    for q in sorted(quoted):
-        # A `{42,69}` brace pair stands for two real files; check both.
-        for one in _expand_braces(q):
-            if not (ROOT / one).exists():
-                dead.append(one)
-    assert not dead, f"docs/BASELINES.md points at files that do not exist: {dead}"
-
-
-def _expand_braces(path: str) -> list[str]:
-    m = re.search(r"\{([^}]*)\}", path)
-    if not m:
-        return [path]
-    return [
-        p
-        for opt in m.group(1).split(",")
-        for p in _expand_braces(path[: m.start()] + opt.strip() + path[m.end() :])
-    ]
-
-
-def test_the_plot_and_the_doc_agree_on_which_arm_is_the_baseline():
+def _plot():
     spec = importlib.util.spec_from_file_location("plot_seed_mean", PLOT)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_plot_names_the_baseline_arm_and_ties_it_to_the_baseline_corpus():
+    mod = _plot()
     assert mod.BASELINE_ARM == BASELINE_ARM_KEY
     assert BASELINE_ARM_KEY in mod.ARMS, "the baseline must be an arm the figure draws"
-    # And the arm the figure calls the baseline must be the corpus the doc names, not merely
-    # a key that happens to match: its seeds' eval runs, or -- until it has one -- the
-    # corpus it declares, must point at the baseline's artifacts.
+    # And the arm the figure calls the baseline must be the baseline's corpus, not merely a key
+    # that happens to match: its seeds' eval runs, or -- until it has one -- the corpus it
+    # declares, must point at the baseline's artifacts.
     arm = mod.ARMS[BASELINE_ARM_KEY]
     srcs = " ".join(
         s if isinstance(s, str) else "/".join(s) for s in arm["seeds"].values()
@@ -81,9 +45,6 @@ def test_the_plot_and_the_doc_agree_on_which_arm_is_the_baseline():
 def test_the_superseded_arms_are_labelled_as_superseded_where_they_are_still_drawn(old):
     """da716 stays on the chart as the generator sweep's control. Its label has to say so,
     or the figure quietly shows two difficult-advice baselines and no way to tell them apart."""
-    spec = importlib.util.spec_from_file_location("plot_seed_mean", PLOT)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    longs = " ".join(a["long"] for a in mod.ARMS.values()).upper()
+    longs = " ".join(a["long"] for a in _plot().ARMS.values()).upper()
     if old.upper() in longs:
         assert "SUPERSEDED" in longs or "BASELINE" in longs

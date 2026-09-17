@@ -232,6 +232,10 @@ anything someone would rather fetch than regenerate — get pushed. Weights, ada
 anything past a few megabytes never enter git; the link to the HF repo does, so it is not
 only in someone's memory.
 
+**So the Hub is also where you look up WHICH artifact to use.** When a task leaves one
+unspecified ("eval the da model", a new mix with no base blend named), take the most recent
+matching artifact on the Hub and tell the user exactly which repo and revision you used.
+
 **Figures are exempt from the STORAGE rule and from nothing else.** Plotting and write-up
 code is per-experiment, so it lives in `scratch/` and writes to `output/`; nothing plotted
 gets pushed, because what a plot says is already on the Hub in the results it read. **The
@@ -319,7 +323,6 @@ Every stage is a console alias from `[project.scripts]`, so the shape is always
 `uv run <job> --config <yaml>`. Stages 1–3 take `--smoke`.
 
 1. `uv run synth run --config configs/data/synth/<type>.yaml` — constitution-grounded generation; the config IS the document type, so read the one you are running (`ls configs/data/synth/`) rather than a list here.
-   Know which arm is the current baseline before you build on one or compare against one: `docs/BASELINES.md`.
 2. `uv run mix --config configs/data/mixture/<name>.yaml` — budgeted training mixture of model-agnostic interchange rows (reasoning as `reasoning_content`, rendered at train time), with optional spec-filter stage and HF push checkpoints; `balance_by: trait_id` on a source spec trait-balances the difficult-advice share.
 3. `uv run train --config configs/train/sft.yaml model=<key> data_repo=<org>/<mix> [seed=N]` — QLoRA SFT (runs on the GPU box). Pushes the adapter to HF with `training_meta.json` — the thinking stamp (the model family's `thinking:` fact, validated against the data) that the eval framework infers mode from.
 4. `uv run evals --target <hf_path> --name <eval>` — THE eval entrypoint for every registered eval; see "The eval framework" below.

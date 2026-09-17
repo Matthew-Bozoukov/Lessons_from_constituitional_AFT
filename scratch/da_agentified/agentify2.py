@@ -60,7 +60,7 @@ from scratch.da_agentified.helpers import (  # the sandbox, the tool schemas, th
     line_start_numbers, load_source, numbered, paragraphs_sentences, reuse_ratio, scenario_date, tool_result,
 )
 
-# The current difficult-advice baseline corpus (docs/BASELINES.md: neutral 752); --source/--revision override.
+# The current difficult-advice baseline corpus (neutral 752); --source/--revision override.
 SOURCE_REPO = "dougalldeepmind/2026-09-14-da-synth"
 SOURCE_REVISION = "013886238fca238c4d54ace96530f444bb2b2f02"
 MODELS = {"sonnet": "sonnet", "opus": "opus", "fable": "fable",

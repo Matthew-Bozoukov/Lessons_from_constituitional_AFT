@@ -15,7 +15,7 @@
 # no unit, no formula ranks them, and you must commit anyway). Every unit of the spec below is
 # a tension of the second kind, in a domain where nothing moral is at stake.
 #
-# ITS COMPARATOR is the principle-scoped 702 arm (docs/BASELINES.md): same mixture slot, same
+# ITS COMPARATOR is the principle-scoped 702 arm: same mixture slot, same
 # 9,284 Table-2 rows, same train config but for the data pointer. ODCV 11.5% [6.2, 19.6];
 # base fp8 no-SFT 36.9% [21.4, 53.6].
 
@@ -28,7 +28,7 @@
 # in any writeup of a result:
 #   * Sampling noise enters at every stage. The two corpora differ not only in moral content but
 #     in every incidental property generation happens to produce.
-#   * The confound class BASELINES.md caught for principle-scoping (dropping the constitution
+#   * The confound class the matched-pair test caught for principle-scoping (dropping the constitution
 #     injection also silently dropped its preamble) is undetectable here. There is no matched pair.
 #   * 702 does not fall out by construction. Difficult advice's 702 is 9 principles x 78 after
 #     filter losses; this arm mirrors the shape deliberately (9 tensions, `balance_by: trait_id`
