@@ -41,14 +41,31 @@ t5 84, t6 84, t7 83, t8 84, t9 85); 733 sonnet, 10 opus, 6 fable. Medians: reaso
 92% of sentences verbatim from the DA row, 3 looks, 1 write; shapes: 283 looks-only, 214 write,
 190 run+write, 55 run. Then `uv run mix --config configs/data/mixture/daa.yaml` (da.yaml's shape
 on the same `2026-09-08-nosynth-mix@7e991f58` base) ->
-`dougalldeepmind/2026-09-17-daa-7-mix@ebdada73`: 10,000 rows, 700 daa trait-balanced (78 x t1-t7,
-77 x t8-t9), the same draw as da-7; 4,208 supervised reasoning turns over the 700 rows
-(`supervise: all`).
+`dougalldeepmind/2026-09-17-daa-7-mix@d15f96f6`: 10,000 rows, 700 daa trait-balanced (78 x t1-t7,
+77 x t8-t9), the same draw as da-7; 4,208 supervised reasoning turns over the 700 rows. The first
+build (`@ebdada73`, corpus `@c55c8914`) wrote `supervise: all` on every daa row and
+`train_lora` refused it ("every row is 'all'; this arm would be identical to its control": the
+check is for a `cot`/`final` variant that failed to apply, and cannot tell a deliberate `all`);
+the field was dropped from the pipeline and the corpus (`@9d0f1af0`) and the mixture rebuilt.
+Absent is the same training: every assistant turn is loss. Verified with `build_labels` on a
+rendered tool-call conversation: system, user and tool results (Qwen3.6 renders a tool result
+as a user turn in `<tool_response>`) are masked with the `<think>\n` prefill; the reasoning, the
+tool call and the reply carry the loss.
 
-**Next steps.** Train `qwen36` on daa-7 (`uv run train --config configs/train/sft.yaml model=qwen36
-data_repo=dougalldeepmind/2026-09-17-daa-7-mix data_revision=ebdada73...`), ODCV and MASK against
-the da-7 baseline (`dougalldeepmind/2026-09-15-qwen36-0-da-7`) and nosynth. A random read of the
+**Trained.** `uv run runpod up --name jamie-train-daa-7 --train configs/train/sft.yaml --model
+qwen36 --count 1 --push_env --max_hours 6` (pod `xb6e20zqk7nura`, 1x H200 at $4.59/h, code at
+6704e65f), then `uv run train --config configs/train/sft.yaml model=qwen36
+data_repo=dougalldeepmind/2026-09-17-daa-7-mix data_revision=d15f96f6... seed=0 wandb=true` ->
+[`dougalldeepmind/2026-09-17-qwen36-0-daa-7`](https://huggingface.co/dougalldeepmind/2026-09-17-qwen36-0-daa-7)
+@ `d5cdb5b5`: 625 steps in 5 h 03 min, train loss 0.799 (da-7: 0.85), `thinking: true`, 60.0% of
+10.33M tokens supervised; W&B `jamiestephenson/lasr/runs/7htao5by`. Pod terminated and verified
+(`Remaining account pods: []`); ~6.3 h billed including one failed launch, about $29.
+
+**Next steps.** ODCV and MASK on daa-7 against the da-7 baseline
+(`dougalldeepmind/2026-09-15-qwen36-0-da-7`) and nosynth, one pod per arm. A random read of the
 317 refilled rows before drawing conclusions (the 10-row check covered resume-stage rows only).
+The `supervise` all-'all' refusal in `src/train/train_lora.py` should become a warning: explicit
+`all` is valid data, and the misconfiguration it guards belongs to the mixture builder.
 
 ## 2026-09-15 — Difficult advice retrained on neutral 752: the da-7 adapter, now the default
 

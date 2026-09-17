@@ -650,7 +650,9 @@ def main() -> None:
     with open(run_dir / "dataset.jsonl", "w") as fh:
         for x in kept:
             fh.write(json.dumps({"scenario_id": x["scenario_id"], "messages": x["messages"], "tools": TOOLS,
-                                 "metadata": {**x["metadata"], "supervise": "all", **x["measures"], "generator": generator_label(args.model)},
+                                 # no `supervise` field: every assistant turn is loss, which is the trainer's default, and an
+                                 # explicit all-'all' column is refused there as an arm identical to its control
+                                 "metadata": {**x["metadata"], **x["measures"], "generator": generator_label(args.model)},
                                  "environment": [{"path": p, "content": c} for p, c in x["env"]["files"].items()]}, ensure_ascii=False) + "\n")
     reasons = collections.Counter(p.split(":")[0].split(" (")[0] for x in recs if x["problems"] for p in x["problems"])
     med = lambda k: (sorted(x["measures"][k] for x in kept)[len(kept) // 2] if kept else None)

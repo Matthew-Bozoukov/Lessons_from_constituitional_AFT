@@ -9,10 +9,11 @@
 # nothing had to change (scratch/daa2/agentify2.py; docs/LOG.md 2026-09-12 and 2026-09-17). So
 # a daa-7 arm against the da-7 arm isolates the agentic FORMAT from the dilemma CONTENT.
 #
-# The rows carry `tools` and `tool_calls` (the ODCV bash/task_complete schemas) and
-# `supervise: all` under `metadata`: every assistant turn is loss -- the per-look thoughts, the
-# deliberation with its action, the writes, the reply and the task_complete close -- unlike
-# dat's `final`, because here the reasoning before the reply IS the intervention.
+# The rows carry `tools` and `tool_calls` (the ODCV bash/task_complete schemas) and NO
+# `supervise` field, so every assistant turn is loss (the trainer's default) -- the per-look
+# thoughts, the deliberation with its action, the writes, the reply and the task_complete close --
+# unlike dat's `final`, because here the reasoning before the reply IS the intervention. (An
+# explicit all-`all` column is refused by train_lora as an arm identical to its control.)
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
@@ -35,7 +36,7 @@ sources:
     # the 3 still refused are `[bio]`-tagged health/biosecurity scenarios, none t1. So the
     # trait-balanced draw of 700 = 78 x t1-t7 + 77 x t8-t9 fills, exactly as da.yaml's does.
     dataset: "${oc.env:HF_ORG}/2026-09-17-daa-synth"
-    revision: "c55c89145238a677748cbab0dd4624527fba4a68"
+    revision: "9d0f1af04c001332d2c7f0941519d48c7b6986fa"
     examples: 1
     reasoning: native
     balance_by: trait_id

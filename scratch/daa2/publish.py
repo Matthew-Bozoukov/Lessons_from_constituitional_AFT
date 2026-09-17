@@ -53,14 +53,14 @@ def main() -> None:
                   f"sonnet content-classifier refusals retried with opus); source rows from {source_repo}@{source_rev[:8]}",
         "generation_config": f"three structured calls per row (map, think, finish), --max-turns 3, one map repair on a "
                              f"failed command; docker sandbox python:3.12-slim + libfaketime frozen at the scenario "
-                             f"date; 8 workers; supervise=all; kept {man['counts']['kept']} of {man['counts']['rows']} "
+                             f"date; 8 workers; every assistant turn supervised; kept {man['counts']['kept']} of {man['counts']['rows']} "
                              f"(all {man['counts']['dropped']} drops are Anthropic content-classifier refusals); "
                              f"medians {man['medians']}; shapes {dict(shapes)}",
         "schema": "dataset.jsonl rows: scenario_id; messages (system, user, [assistant(reasoning_content)+tool]*, "
                   "assistant(reasoning_content, content, tool_calls=[task_complete])) with OpenAI-style tool_calls; "
                   "tools (bash, task_complete -- the ODCV schemas); metadata (the DA row's trait fields and ids, "
-                  "supervise, reuse_reasoning/reuse_reply/reuse_user, n_look/n_run/n_write, n_files, chars_files, "
-                  "generator); environment (the files). rows.jsonl: the per-row records (map output, insertions, "
+                  "reuse_reasoning/reuse_reply/reuse_user, n_look/n_run/n_write, n_files, chars_files, generator; "
+                  "no supervise field: every assistant turn is trained, the default); environment (the files). rows.jsonl: the per-row records (map output, insertions, "
                   "executed steps, fill output) the dataset was assembled from. manifest.json: counts, usage, medians.",
         "provenance": "uv run python scratch/daa2/agentify2.py --source dougalldeepmind/2026-09-14-da-synth "
                       "--revision 013886238fca238c4d54ace96530f444bb2b2f02 --model sonnet --workers 8 "

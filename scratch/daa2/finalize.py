@@ -53,7 +53,7 @@ def main() -> None:
             review = {"reviewed": bool(n), "verdict": n["verdict"] if n else None, "env_settles": n["env_settles"] if n else None,
                       "review_note": n["note"] if n else None}
             fh.write(json.dumps({"scenario_id": x["scenario_id"], "messages": msgs, "tools": TOOLS,
-                                 "metadata": {**x["metadata"], "supervise": "all", **m, "generator": f"claude-code:{model}", **review},
+                                 "metadata": {**x["metadata"], **m, "generator": f"claude-code:{model}", **review},
                                  "environment": [{"path": p, "content": c} for p, c in env["files"].items()]}, ensure_ascii=False) + "\n")
             kept.append(x["scenario_id"])
     verdicts = collections.Counter(n["verdict"] for n in notes.values())
