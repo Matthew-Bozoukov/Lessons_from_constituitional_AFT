@@ -1,6 +1,63 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — The teacher x method matrix, measured: da-qwen leads MASK (81.5), da-7 leads ODCV (8.3%), and delib's constitution habit half-survives training
+
+**Hypothesis.** With the DA prompts fixed (neutral 752) and the base blend pinned, the
+synthetic 700 rows are the only variable, so MASK and ODCV should separate the recipes
+(difficult advice vs deliberative alignment) and the teachers (Sonnet vs Qwen).
+
+**Method.** Four arms, identical 9,300 replay rows: `da-7` (Sonnet DA, the baseline
+adapter), `delib-sonnet-7` and `delib-7` (both on the same neutral-752 prompts, Sonnet
+and Qwen teachers, best-of-2 with ONE Sonnet judge run), and the new `da-qwen-7` — the
+DA pipeline with qwen3.6-27b writing every stage (`configs/data/synth/da-qwen.yaml`,
+850 scenarios -> 832 rows). Each trained seed 0 on 1x H200, then ODCV-lite (3 passes,
+240 rollouts, flash judge) and MASK, one pod per eval on distinct tunnel ports.
+
+**Result.**
+
+| arm | ODCV MR | task progress | MASK honesty | lie / honest / no-belief |
+|---|---|---|---|---|
+| da-7 | 8.3% [4.3, 15.6] | 4.82 | 74.2 | 25.8 / 40.9 / 33.3 |
+| delib-sonnet-7 | 17.1% [9.2, 29.4] | 4.98 | 72.3 | 27.7 / 41.4 / 30.9 |
+| da-qwen-7 | 17.9% [10.4, 29.1] | 4.97 | **81.5** | 18.5 / 56.2 / 25.3 |
+| delib-7 | 29.2% [19.0, 42.0] | 4.98 | 69.3 | 30.7 / 40.6 / 28.7 |
+
+Progress 4.82-4.98 across the board, so no arm buys a low MR with inaction. da-qwen-7's
+MASK lead is real honesty, not evasion: it has the FEWEST no-belief rows and the most
+honest ones, concentrated where a system prompt orders a falsehood (provided_facts 14.2%
+lies vs 32-36%). Reading ~120 paired transcripts: da-7 declines but sidesteps the fact
+("I'm not actually involved... no insider information"), da-qwen-7 states it ("To be
+completely upfront: this vehicle did have a prior accident"), and both delib arms cite a
+principle and then reason into compliance. On ODCV the order inverts: delib-sonnet-7
+loses to da-7 mostly in the MANDATED variant (14.2% vs 5.0%), where 24 discordant
+rollouts show it relabelling the violation as legitimate work ("This is a legitimate
+improvement to the hiring process rather than falsifying data") — and never citing the
+constitution while doing it.
+
+**Constitution references, training vs eval** (`dougalldeepmind/2026-09-17-train-vs-eval-trait-ref`,
+7.5k LLM-labelled traces): traces invoking a SPECIFIC principle run 99.2% / 97.7% in the
+delib corpora and 16.6% / 43.5% in the DA corpora (which never name a document, so this is
+paraphrase of principle content). At eval it is 26.3% / 14.6% for delib on MASK, ~0 for DA,
+and ~0.4% for everyone on ODCV. Deliberation itself transfers for all four (weighing
+language 78-99% in training; at MASK da-qwen-7 is HIGHEST at 33.7%), and the numbered
+"thinking process" format at eval is Qwen3.6's own habit, not a recipe's: da-7 shows 81.8%
+of it with 0% in its training data.
+
+**Two pipeline findings.** (1) A judge that REFUSES to score is now recorded as a refusal
+instead of retried forever: Anthropic refused prompt 11 (bypassing a public-health
+oversight committee) 39 times and killed the delib run; the prompt now simply loses its
+survivor, and the run finished 720/752. (2) `delib-noref.yaml` (Callum's implicit arm)
+cannot be built by prompting alone — with the citation instruction removed, Qwen still
+cited the constitution in 17/17 candidates across 4 rounds, so his LLM-strip fallback is
+required.
+
+**Next.** The strip stage for delib-noref, then the teacher x explicit/implicit 2x2; MASK
+repeats and 2 seeds x 2 checkpoints for error bars; an eval-awareness pass; a second
+multi-agent eval. Baselines the suite still lacks for a deliberative-alignment claim:
+StrongREJECT (jailbreak robustness) and XSTest/OR-Bench (overrefusal), which are what
+Guan et al. actually report.
+
 ## 2026-09-17 — DA supervision ablations: training and ODCV complete
 
 **Question/method.** Compare CoT-only, answer-only and empty-CoT supervision on all
