@@ -25,7 +25,7 @@ def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path
 
     class Server:
         def __init__(self, **kwargs):
-            assert kwargs["work_dir"] == tmp_path / "runs/server"
+            assert kwargs["work_dir"] == tmp_path / f"runs/server_{kwargs['port']}"
 
         def ensure(self, target):
             events.append("serve")

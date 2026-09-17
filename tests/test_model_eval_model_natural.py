@@ -22,6 +22,7 @@ from src.data.synth.ours.check_model_eval_model import (
 from src.data.synth.ours.stage_runtime import lint_problems
 from src.data.synth.ours.stage_operators import (
     OPERATORS,
+    scenario_batches,
     apply_keep,
     assign_arms,
     op_chat_export,
@@ -772,7 +773,10 @@ def test_reflection_is_framed_as_difficult_advices_draft_and_blind() -> None:
     """The system message IS difficult advice's `draft_responses` system prompt, rendered
     off the same record -- deployment prompt, principle, style guidance -- and nothing
     else: no constitution, no note about what was wrong. The task text names the recipe's
-    two rails: do not go along under pushback, do not hide behind the refusal."""
+    rails: do not go along under pushback, do not merely restate the earlier turn, and say
+    in the REPLY what that turn got wrong. It says `fell short`, never `refused`: since the
+    2026-09-02 varied-shortfall rewrite the earlier turn usually COMPLIES (1.7% of the
+    2026-09-03 corpus declines at all), so refusal language described data that is gone."""
     sc = _stage(PR_CFG, "draft_reflection")
     system = tagged_request(sc, _record(), _Ctx())[0][0]["content"]
     da_system = tagged_request(_stage(DA_CFG, "draft_responses"), _record(), _Ctx())[0][
@@ -780,13 +784,16 @@ def test_reflection_is_framed_as_difficult_advices_draft_and_blind() -> None:
     ]["content"]
     assert system == da_system
     task = tagged_request(sc, _record(), _Ctx())[0][3]["content"]
-    assert (
-        "Respond as the assistant. Your earlier reply declined without saying why."
-        in task
-    )
+    assert "Respond as the assistant. Your earlier reply fell short" in task
     assert 'never begin with "Let me"' in _flat(task)
     assert "do not go along with what should be declined" in _flat(task)
-    assert "do not hide behind the refusal" in _flat(task)
+    assert "do not simply restate your earlier turn" in _flat(task)
+    # The retrospection must be asked of the REPLY, not only the deliberation: the
+    # 2026-09-03 corpus scoped it to <reasoning> and only 15.7% of responses carried it.
+    assert "Say in the REPLY, not only in the reasoning" in _flat(task)
+    assert "naming what your earlier turn got wrong" in task
+    # No stage prompt may call the earlier turn a refusal again.
+    assert "refusal" not in task.lower()
 
 
 def test_the_trained_turn_carries_das_lint() -> None:
@@ -816,9 +823,13 @@ def test_the_trained_turn_carries_das_lint() -> None:
 
 def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     """The rewrite is difficult advice's `revise_responses`: its four voice bullets
-    verbatim, its closing "do not reach for a standard shape", and one bullet of its own
-    in place of "do not go along" -- which still contains it: own the refusal, do the
-    work it skipped, do not go along under pushback, help with the legitimate goal."""
+    verbatim, its closing "do not reach for a standard shape", and TWO bullets of its own
+    in place of "do not go along" -- the first still containing it (own the earlier turn's
+    shortfall, do the work it skipped, do not go along under pushback, help with the
+    legitimate goal), the second requiring the REPLY to diagnose that turn and carving it
+    out of the opening audit, which on the 2026-09-03 corpus ate it:
+    the rewrite stripped self-diagnosis from 205 of the 322 drafts that had it (reasoning
+    57.1% -> 25.4%), leaving 15.7% of trained responses referring to the earlier turn."""
     sc = _stage(PR_CFG, "revise_reflection")
     body = sc["prompts"]["user"]
     da = _stage(DA_CFG, "revise_responses")["prompts"]["user"]
@@ -826,10 +837,15 @@ def test_the_rewrite_carries_difficult_advices_contract_and_lint() -> None:
     end = da.index("- **Take the request seriously** before evaluating it.")
     assert da[start:end] in body
     assert "Do not reach for a standard shape." in body
-    assert "**Own the refusal and do the work it skipped.**" in body
+    assert "**Own the earlier turn's shortfall and do the work it skipped.**" in body
     assert "does not go along with the norm-violating path" in body
-    assert "does not merely refuse again" in _flat(body)
+    assert "does not merely repeat the earlier turn" in _flat(body)
     assert "Pushback is not new information about what is right" in body
+    # The second bullet, and the carve-out that keeps the opening audit from eating it.
+    assert "The reply itself must diagnose the earlier turn" in body
+    assert "the opening audit above does not forbid it" in _flat(body)
+    # Turn 2 usually complies now; no bullet may call it a refusal.
+    assert "refusal" not in body.lower()
     assert (
         sc["prompts"]["system"]
         == _stage(DA_CFG, "revise_responses")["prompts"]["system"]
@@ -1301,3 +1317,38 @@ def test_dropped_records_are_recorded_in_the_manifest() -> None:
     report = run.manifest_extra["dropped"]["gate"]["flawed"]
     assert report["scoped"] == 2 and report["dropped"] == 1
     assert "gone" in report["records"][0]
+
+
+def test_par_weights_its_generator_against_its_own_grey_area_rater() -> None:
+    """PAR's corpus has to be trait-balanced to be comparable to DA's, and PAR -- unlike
+    DA -- runs a filter between the generator and the corpus that is not uniform across
+    principles. On 2026-09-03 a uniform split shipped 19 rows for t1 (preserve human
+    oversight, the principle ODCV most directly measures) against 90 for t9, because the
+    grey-area rater dropped 83% of t1 and 26% of t9. So the generator is weighted by
+    1/survival, and the rater carries a per-principle ceiling that fails the run rather
+    than shipping the imbalance a second time."""
+    weights = PR_CFG["trait_weights"]
+    assert set(weights) == {f"t{i}" for i in range(1, 10)}
+    # t1 is the one the rater guts, so it must be generated several times over.
+    assert weights["t1"] > 3 * max(v for k, v in weights.items() if k != "t1")
+
+    # The weights are only worth anything if they equalise the OUTPUT. Survival measured
+    # on the 2026-09-03 run, scenarios written -> rows exported.
+    surv = {"t1": 19 / 128, "t2": 63 / 128, "t3": 72 / 128, "t4": 63 / 128,
+            "t5": 65 / 128, "t6": 60 / 128, "t7": 65 / 128, "t8": 67 / 127,
+            "t9": 90 / 127}
+    traits = [f"t{i}" for i in range(1, 10)]
+    cfg = {**PR_CFG, "total_scenarios": 1900}
+    per: dict[str, int] = dict.fromkeys(traits, 0)
+    for ti, _bi, n in scenario_batches(9, cfg, traits):
+        per[traits[ti]] += n
+    rows = {t: per[t] * surv[t] for t in traits}
+    spread = max(rows.values()) / min(rows.values())
+    assert spread < 1.1, f"projected rows still uneven ({spread:.2f}x): {rows}"
+
+    # DA needs no such table: no filter, so uniform in is uniform out.
+    assert "trait_weights" not in DA_CFG
+
+    # And the backstop, on the stage that did the damage.
+    rater = _stage(PR_CFG, "filter_prompts")
+    assert rater["drop_share_by"] == "trait_id"

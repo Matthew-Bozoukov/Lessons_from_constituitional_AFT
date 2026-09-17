@@ -798,9 +798,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # under the variant's.
     for sname, spec in sources.items():
         sup = spec.get("supervise")
-        assert sup is None or sup in ("all", "final", "cot"), (
+        assert sup is None or sup in ("all", "final", "cot", "answer"), (
             f"source {sname!r}: `supervise: {sup}` is not a mode src/train/masking.py "
-            "knows (all | final | cot)")
+            "knows (all | final | cot | answer)")
     if cfg.get("base"):
         sources = blend(_base_sources(str(cfg.base)), sources,
                         cfg.get("synthetic_pct") if exact_synthetic is not None else int(cfg.synthetic_pct),

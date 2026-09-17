@@ -326,8 +326,13 @@ export function DatasetViewer({ datasets }: { datasets: DatasetViewerEntry[] }) 
   ];
   const grouping = groupingNames[categories.length === 1 ? 0 : 1];
   const made = useMemo(
-    () => composition(manifest?.stats.categories, manifest?.stats.categories_source),
-    [manifest?.stats.categories, manifest?.stats.categories_source],
+    () =>
+      composition(
+        manifest?.stats.categories,
+        manifest?.stats.categories_source,
+        manifest?.stats.synthetic_sources,
+      ),
+    [manifest?.stats.categories, manifest?.stats.categories_source, manifest?.stats.synthetic_sources],
   );
 
   const viewRows: ViewRow[] = useMemo(() => {

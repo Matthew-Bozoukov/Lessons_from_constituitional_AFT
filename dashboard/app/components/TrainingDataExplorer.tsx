@@ -14,10 +14,10 @@ import { DatasetViewer, DatasetViewerEntry } from "./DatasetViewer";
 
 type Resolved = { repo: TrainingDataRepo; entry?: DatasetViewerEntry; reason?: string };
 
-/** The repo name minus org and date, as words: the date sits in the summary. */
+/** The Hugging Face repo name, verbatim (org omitted: every corpus here shares it), so the
+ * list reads exactly as the names mixture configs, train commands and the Hub use. */
 function titleFor(repo: TrainingDataRepo): string {
-  const name = repo.repo.split("/")[1] || repo.repo;
-  return name.replace(/^\d{4}-\d{2}-\d{2}-/, "").replace(/[-_]+/g, " ");
+  return repo.repo.split("/")[1] || repo.repo;
 }
 
 /** Facts from the card tags, so a row is described without reading its README. */
@@ -96,8 +96,11 @@ function OrgTrainingDataExplorer({ org }: { org?: string }) {
   const unresolved = visible.filter((r) => !r.entry);
   const withBlend = entries.filter(
     (e) =>
-      composition(e.dataset?.stats.categories, e.dataset?.stats.categories_source)
-        ?.constitutionShare != null,
+      composition(
+        e.dataset?.stats.categories,
+        e.dataset?.stats.categories_source,
+        e.dataset?.stats.synthetic_sources,
+      )?.constitutionShare != null,
   ).length;
   const kinds = new Map<string, number>();
   for (const e of entries) kinds.set(e.status, (kinds.get(e.status) || 0) + 1);

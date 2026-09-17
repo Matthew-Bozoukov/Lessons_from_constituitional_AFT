@@ -61,21 +61,30 @@ export function isConstitutionSource(name: string) {
  * `categoriesSource` is the filename the counts were read from. Its presence is
  * what distinguishes a published mixture breakdown from categories accumulated
  * out of whatever records happen to be loaded.
+ *
+ * `syntheticSources` is the sidecar's own list of synthetic sources
+ * (`sources.<name>.synthetic` in a `uv run mix` stats file). A source it names counts
+ * as intervention data whatever it is called: the mixtures since 2026-09-03 name their
+ * synthetic source by its style (`da`, `dat`, `delib`, `da-gpt`), which the legacy name
+ * list above cannot know, and read as 0% constitution without it. Sidecars that declare
+ * nothing fall back to that list.
  */
 export function composition(
   categories: Record<string, number> | undefined,
   categoriesSource?: string,
+  syntheticSources?: readonly string[],
 ): Composition | null {
   const entries = Object.entries(categories || {}).filter(([, count]) => count > 0);
   if (!entries.length) return null;
 
+  const declared = new Set(syntheticSources || []);
   const total = entries.reduce((sum, [, count]) => sum + count, 0);
   const rows: CompositionRow[] = entries
     .map(([name, count]) => ({
       name,
       count,
       share: count / total,
-      constitution: isConstitutionSource(name),
+      constitution: declared.has(name) || isConstitutionSource(name),
     }))
     // Constitution sources first, then by size: the intervention is the subject
     // of the page, so it leads rather than landing wherever alphabetical put it.

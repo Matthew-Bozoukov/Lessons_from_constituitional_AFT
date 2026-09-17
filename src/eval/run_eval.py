@@ -266,7 +266,9 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     # writable from here. plan_serving validates one against the other — nothing is layered
     # over anything. `or {}` not `.get(..., {})`: a bare `serving:` key parses as None.
     server = VllmServer(
-        work_dir=Path(str(cfg.get("output_root") or Path("output") / args.name)) / "server",
+        # Keyed by port: two concurrent invocations of one eval on one filesystem otherwise
+        # share this directory, and the chat template vLLM reads at boot is written into it.
+        work_dir=Path(str(cfg.get("output_root") or Path("output") / args.name)) / f"server_{args.port}",
         port=args.port, executor=executor,
         serve_requirements=OmegaConf.to_container(OmegaConf.create(cfg.get("serving") or {}), resolve=True),
         on_release=release_pod if len(targets) == 1 else None)

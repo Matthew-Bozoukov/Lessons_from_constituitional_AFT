@@ -50,7 +50,9 @@ RED, BLUE, GREEN, TEAL, GRAY = "#e34948", "#2a78d6", "#008300", "#00a3ad", "#8a8
 # THE difficult-advice baseline, named once so a plot cannot disagree with docs/BASELINES.md
 # about which arm everything is compared against. tests/test_baselines.py asserts the two
 # agree. Changing the baseline means changing this line, that file, and nothing else.
-BASELINE_ARM = "principle_scoped"
+# Neutral 752 since 2026-09-14; it has no ODCV run yet, so the figure draws no baseline
+# rule until its seeds are filled in below.
+BASELINE_ARM = "neutral"
 
 # key -> (short label, colour, hatch, seeds{seed: source}); source = local path str or
 # (repo, file) on the Hub. --results adds/overrides `key.seed=<path | repo::file>`.
@@ -121,10 +123,22 @@ ARMS: dict[str, dict] = {
             ),
         },
     ),
+    "neutral": dict(
+        short="Sonnet DA\nneutral 752",
+        long="THE DA BASELINE: neutral 752 (the 2026-09-14 regeneration against the neutral "
+        "full-length constitution; see docs/BASELINES.md)",
+        color=GREEN,
+        hatch="//",
+        # A fresh generation, not a fork: it shares no rows with principle-scoped 702. No ODCV
+        # run yet -- add its seeds here (or pass --results neutral.0=<repo::file>) when one
+        # exists; until then _collect skips it and the figure draws no baseline rule.
+        corpus="dougalldeepmind/2026-09-14-da-synth",
+        seeds={},
+    ),
     "principle_scoped": dict(
         short="Sonnet DA\nprinciple-scoped 702",
-        long="THE DA BASELINE: principle-scoped 702 (da716's recipe with the constitution removed "
-        "from both refine stages; see docs/BASELINES.md)",
+        long="principle-scoped 702 -- SUPERSEDED as the DA baseline by neutral 752 on 2026-09-14 "
+        "(da716's recipe with the constitution removed from both refine stages; see docs/BASELINES.md)",
         color=GREEN,
         hatch="..",
         # Matched fork of da716, not a separate generation: it resumed da716's run directory
@@ -323,6 +337,11 @@ def _collect(results: dict[str, str], only: tuple[str, ...] = ()) -> list[dict]:
             k, _, sd = rk.partition(".")
             if k == key:
                 seeds[int(sd or 0)] = src
+        if not seeds:
+            # An arm with no ODCV run yet (the new baseline, before it is measured): nothing
+            # to draw, and shared_cells() refuses an empty seed set.
+            print(f"skip {key}: no ODCV run yet")
+            continue
         passes = {
             sd: _cells(_load(src)["per_scenario_medians"], excluded)
             for sd, src in sorted(seeds.items())
