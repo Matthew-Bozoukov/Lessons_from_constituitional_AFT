@@ -232,6 +232,10 @@ anything someone would rather fetch than regenerate — get pushed. Weights, ada
 anything past a few megabytes never enter git; the link to the HF repo does, so it is not
 only in someone's memory.
 
+**So the Hub is also where you look up WHICH artifact to use.** When a task leaves one
+unspecified ("eval the da model", a new mix with no base blend named), take the most recent
+matching artifact on the Hub and tell the user exactly which repo and revision you used.
+
 **Figures are exempt from the STORAGE rule and from nothing else.** Plotting and write-up
 code is per-experiment, so it lives in `scratch/` and writes to `output/`; nothing plotted
 gets pushed, because what a plot says is already on the Hub in the results it read. **The
