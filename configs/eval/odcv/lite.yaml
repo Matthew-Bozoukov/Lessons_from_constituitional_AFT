@@ -2,7 +2,7 @@
 # ABOUTME: three passes. Same rollouts as heavy; only who scores them differs.
 # Run: uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target <hf_path> --server <host>
 #
-# The default (configs/eval/odcv.yaml) is the registry's KIND; this and heavy.yaml are the
+# THIS is the registry default (src/eval/__init__.py): `uv run evals --name odcv` with no --config runs it. It and heavy.yaml are the
 # two protocols the project actually runs. Rollouts are identical between them (same
 # window, temperature, passes, concurrency); lite scores them with the single flash
 # judge every arm to date was scored with, heavy with the paper's pair. NOTE an eval run

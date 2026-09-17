@@ -2,7 +2,7 @@
 # ABOUTME: Run: uv run python scratch/odcv_rejudge_lite.py --source <hf odcv repo> --model-key <key>
 """Put a run judged under another protocol onto the lite footing, without re-rolling it.
 
-`2026-09-17-odcv-qwen36-0-da-7` was scored with configs/eval/odcv.yaml's pair of judges
+`2026-09-17-odcv-qwen36-0-da-7` was scored with the then-default configs/eval/odcv.yaml (deleted 2026-09-18; heavy.yaml's) pair of judges
 (grok-4.20 + gemini-3.1-pro-preview); every arm it is compared against was scored by lite's
 single gemini-3-flash judge. Rollouts are the expensive, GPU half and are identical between the
 protocols, so only the judge is re-run here.

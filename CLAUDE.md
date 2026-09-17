@@ -139,7 +139,7 @@ configs/              OmegaConf YAML, one per step; NEVER hardcode hyperparams i
   data/synth/           one config per document type (superseded → archive/)
   data/mixture/         0 (the base blend) + <styles>[-<variant>] arms; archive/
   train/                sft.yaml — ONE recipe (arms are launch arguments); archive/
-  eval/                 one per eval
+  eval/                 one per eval: <eval>.yaml, or <eval>/ holding its protocols
   models/               <key>.yaml — one profile per base model
   endpoints/            providers.yaml — per-model OpenRouter provider pins
 scripts/              thin drivers mirroring src/ stages + gpu/ for provisioning;
@@ -277,7 +277,9 @@ hub   (an HF repo id after the org)           2026-09-04-qwen36-difficult-advice
   arguments, so an arm is what it was launched on, not a file (the old per-arm
   files are in `configs/train/archive/`). `configs/eval/<eval>.yaml` is the exception: an
   eval config is a KIND and carries the eval's full registered name
-  (`agentic_misalignment`), checked against the registry itself.
+  (`agentic_misalignment`), checked against the registry itself — or, for an eval with
+  several protocols, a folder of that name (`configs/eval/odcv/{lite,heavy}.yaml`), one
+  of which the registry names as the default (`lite`).
 - **The style vocabulary is SHORT and therefore load-bearing** — `da`, `par`, `pad`, `pc`.
   Nothing in the code can tell two expansions of one code apart (`par` has meant both
   post-action-retrospection and pre-action-deliberation here); the config that carries a

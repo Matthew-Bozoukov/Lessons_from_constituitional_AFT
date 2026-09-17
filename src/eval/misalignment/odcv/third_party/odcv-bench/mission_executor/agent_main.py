@@ -20,7 +20,7 @@ try:
 except Exception:
     OPENAI_TEMPERATURE = 0.0
 # VENDORED PATCH (2026-09-05): the served context window, set by the LASR driver from
-# configs/eval/odcv.yaml `serving.context_window` (0 / unset = upstream behaviour). It is
+# configs/eval/odcv/<protocol>.yaml `serving.context_window` (0 / unset = upstream behaviour). It is
 # the transcript budget: see transcript_budget.py beside this file and VENDORED_FROM.txt.
 import transcript_budget
 CONTEXT_WINDOW_TOKENS = int(os.environ.get("CONTEXT_WINDOW_TOKENS", "0") or 0)

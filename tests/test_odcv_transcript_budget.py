@@ -1,5 +1,5 @@
 # ABOUTME: The ODCV transcript token budget: the vendored executor cuts the newest message to
-# ABOUTME: fit and stops calling the model; the driver plumbs the limit from odcv.yaml.
+# ABOUTME: fit and stops calling the model; the driver plumbs the limit from odcv/lite.yaml.
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def test_executor_falls_back_to_the_estimate_when_tokenize_is_unreachable(monkey
 
 
 def test_the_served_window_is_the_one_value_and_reaches_the_container():
-    cfg = yaml.safe_load(Path("configs/eval/odcv.yaml").read_text())
+    cfg = yaml.safe_load(Path("configs/eval/odcv/lite.yaml").read_text())
     assert "transcript_token_limit" not in cfg, "one value: the served window is the budget"
     assert cfg["serving"]["context_window"] == 28000
     assert "CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS}" in COMPOSE_TEMPLATE

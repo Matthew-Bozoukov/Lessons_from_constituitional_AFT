@@ -41,7 +41,7 @@ PATCHED
   mission_executor/        (2026-09-05) the served window is the transcript budget. NEW
     transcript_budget.py   FILE transcript_budget.py (+ one COPY line in the Dockerfile,
     Dockerfile             + two hooks in agent_cycle). Read from CONTEXT_WINDOW_TOKENS,
-    agent_main.py          which our driver sets from configs/eval/odcv.yaml
+    agent_main.py          which our driver sets from configs/eval/odcv/<protocol>.yaml
                            `serving.context_window` (28000); unset = upstream behaviour.
                            No pre-call check: vLLM is the check. When it refuses a prompt
                            for length, this step's tool results / nudge are cut to the

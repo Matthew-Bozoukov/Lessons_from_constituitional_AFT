@@ -742,6 +742,20 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
                     f"eval config {stem!r} is not a registered eval. Every config here is "
                     f"one eval's default and carries its full name ({', '.join(sorted(EVALS))}); "
                     "a config for a specific comparison is not a kind and does not live here.")
+        elif folder.startswith("configs/eval/"):
+            # The other home an eval's configs may have: a folder named for the eval, holding
+            # its PROTOCOLS (`configs/eval/odcv/lite.yaml`, `.../heavy.yaml`), one of which the
+            # registry names as the default. The folder carries the eval's name, so the file
+            # is still findable from the key; the stem names the protocol.
+            from src.eval import EVALS
+
+            name = folder.removeprefix("configs/eval/").split("/")[0]
+            if name not in EVALS:
+                raise NamingError(
+                    f"eval config folder {name!r} is not a registered eval. An eval's configs "
+                    f"live at configs/eval/<eval>.yaml or under configs/eval/<eval>/ "
+                    f"({', '.join(sorted(EVALS))}).")
+            check_style(stem, what="eval protocol (config stem)")
         else:
             # A probe or endpoint config names an EXPERIMENT, not a style, so the style
             # rules apply except the one that is about styles: a probe of the 716-row

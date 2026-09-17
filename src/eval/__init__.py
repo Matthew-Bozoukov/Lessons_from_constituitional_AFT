@@ -102,7 +102,7 @@ EVALS: dict[str, EvalSpec] = {
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",
-        "configs/eval/odcv.yaml",
+        "configs/eval/odcv/lite.yaml",
         key="odcv",
         needs_docker=True,
         networks_per_scenario=2,
