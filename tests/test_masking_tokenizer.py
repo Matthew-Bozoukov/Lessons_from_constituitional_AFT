@@ -80,6 +80,23 @@ def test_reasoning_turn_supervises_trace_and_close_but_not_prefill(tok):
     assert _supervised(tok, out) == "reasoning\n</think>\n\nanswer<|im_end|>"
 
 
+@pytest.mark.parametrize("reasoning", ["Check first.", "Step one.\n\nStep two.", "Compare café and tea."])
+def test_cot_and_answer_partition_real_template_tokens(tok, reasoning):
+    messages = [{"role": "user", "content": "Explain the choice."},
+                {"role": "assistant", "content": "The answer.", "reasoning_content": reasoning}]
+    text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False,
+                                  preserve_thinking=True)
+    outputs = {mode: build_labels(text, tok, 4096, QWEN36_PROFILE, supervise=mode)
+               for mode in ("all", "cot", "answer")}
+    kept = lambda mode: [v for v in outputs[mode]["labels"] if v != -100]
+    assert outputs["answer"]["input_ids"] == outputs["all"]["input_ids"]
+    assert outputs["cot"]["input_ids"] == outputs["all"]["input_ids"][:len(outputs["cot"]["input_ids"])]
+    assert kept("cot") + kept("answer") == kept("all")
+    assert tok.decode(kept("answer")) == "\n\nThe answer.<|im_end|>"
+    close = tok.convert_tokens_to_ids("</think>")
+    assert close in kept("cot") and close not in kept("answer")
+
+
 def test_multiturn_preserve_thinking_masks_every_forced_head(tok):
     """End-to-end on the REAL template: preserve-thinking render -> mask -> gate parser.
 

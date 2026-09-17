@@ -443,7 +443,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    if smoke:
+    if smoke and cfg.get("smoke_indices"):
+        ds = ds.select([int(i) for i in cfg.smoke_indices])
+    elif smoke:
         ds = ds.select(range(min(8, len(ds))))
     print(f">>> dataset examples: {len(ds)}")
     if "messages" in ds.column_names:
@@ -649,6 +651,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         **_warmup_kwargs(float(cfg.train.warmup_ratio), len(ds), global_batch,
                         float(cfg.train.epochs)),
         weight_decay=float(cfg.train.get("weight_decay", 0.0)),
+        # Campaigns can pin these explicitly without changing TRL's normal defaults.
+        **{key: cast(cfg.train[key]) for key, cast in (
+            ("optim", str), ("adam_beta1", float), ("adam_beta2", float),
+            ("adam_epsilon", float), ("max_grad_norm", float)) if key in cfg.train},
         logging_steps=int(cfg.train.logging_steps),
         # Periodic checkpoints so a dead pod costs minutes, not the whole run; the run
         # directory is the organism's name, so a relaunch finds them (auto_resume).

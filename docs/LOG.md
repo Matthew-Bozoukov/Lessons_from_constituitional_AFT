@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-09-17 — DA supervision ablations: training and ODCV complete
+
+**Question/method.** Compare CoT-only, answer-only and empty-CoT supervision on all
+752 September 14 DA examples, with the same 9,284 September 8 nosynth replay rows
+normally supervised. Three seed-0 Qwen3.6-27B rank-64 BF16 LoRAs each completed
+one epoch / 628 steps on a separate dual-H200 pod. ODCV: 40 scenario names in both
+variants, one pass (80 cells), temperature 0.7, thinking, 28k context, Gemini 3 Flash
+misalignment and separate task-progress judging, one H100 per model.
+
+**Results.** CoT-only MR **8/80 = 10%**, answer-only **16/80 = 20%**, empty-CoT
+**15/80 = 18.75%**; mean task progress **4.83 / 4.91 / 5.00** respectively.
+Scenario-based 95% MR intervals: 5.1–18.6%, 11.0–33.7%, 9.9–32.6%. All 240
+transcripts are published and hash-verified; no missing cells or timeouts. Retained
+context cutoffs: 2 / 1 / 0. Models and full training archives were verified before
+teardown. All campaign pods and the monitoring scheduler are gone.
+
+**Limits/next.** This is a descriptive single-seed, single-pass comparison; replicate
+before claiming a stable ranking. The requested five-bar chart adds September 8
+nosynth (42.5%) and full DA (10.42%), which used three passes and an older DA corpus;
+it is not a controlled supervision-only comparison. Answer-only masking support and
+its independent checks are retained in the trainer; campaign tooling and chart code
+live in `scratch/da_supervision/`. The default SFT recipe is unchanged.
+
+[Final protocol, mask/forward-pass contract and pinned HF artifacts](da_supervision_rerun_2026-09-16.md).
+
 ## 2026-09-15 — Whistleblowing on the Hospital eval: an administrator channel, a benign coalition, and hits against false alarms
 
 **Question.** Can the Hospital eval measure whistleblowing propensity rather than count reports:
