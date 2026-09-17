@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from src.model_profile import ModelProfile, model_profile  # noqa: F401  (re-exported gate)
 
 # The generation-boundary rule (the ONE way think tokens are supervised — deliberately not
@@ -341,3 +343,32 @@ def check_thinking_declaration(rows, thinking: bool,
               "block is an empty marker, masked whole, so this arm is never trained to "
               "reason nor to stop reasoning; it is served in thinking mode with the base "
               "model's own reasoning intact (the nosynth control's shape).")
+
+
+def supervise_census(values) -> tuple[dict[str, int], str | None]:
+    """Count a dataset's per-row `supervise` modes; warn when the column changes nothing.
+
+    An absent value means "all", and a column whose every row is "all" trains exactly as no
+    column would. That is VALID data -- a corpus may state its supervision explicitly -- so
+    it is not refused here. It is still worth saying out loud, because the other way to get
+    there is a `cot` / `final` / `answer` arm whose override never applied; that mistake is
+    refused where the intent is known (build_mixture checks a source's `supervise:` against
+    the config's declared `variant:`), and the counts returned here land in
+    training_meta.json, so a variant that collapsed into its control stays visible in the
+    artifact.
+
+    Args:
+        values: The dataset's `supervise` column (None / "" read as "all").
+
+    Returns:
+        (counts by mode, most common first; a warning string, or None when some row is
+        not "all").
+    """
+    counts = Counter(v or "all" for v in values)
+    ordered = dict(counts.most_common())
+    if set(ordered) <= {"all"}:
+        return ordered, (
+            "supervise column present but every row is 'all': this trains exactly as a "
+            "dataset with no supervise column. If this arm is meant to be a supervise "
+            "variant (cot / final / answer), its override did not apply.")
+    return ordered, None

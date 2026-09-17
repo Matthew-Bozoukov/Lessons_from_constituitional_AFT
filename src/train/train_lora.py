@@ -47,6 +47,7 @@ from src.naming import (  # noqa: E402
 from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
+    supervise_census,
 )
 
 
@@ -415,19 +416,19 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         training_meta_mask = {}
 
     # `supervise` selects WHICH assistant turns (and, for "cot", which part of one) are
-    # training targets. Censused on the FULL dataset for the same reason as mask_spans:
-    # a column that declares a non-default mode nowhere is an arm collapsed into its
-    # control, and that must fail before the GPU bill starts.
+    # training targets. Censused on the FULL dataset for the same reason as mask_spans, and
+    # recorded in training_meta. A column that is "all" everywhere is valid data (it trains
+    # as no column would) and only WARNS: until 2026-09-17 it was refused as "an arm
+    # collapsed into its control", which also refused a corpus that states its supervision
+    # explicitly (daa-7's first launch). The collapse itself is caught at build time, where
+    # the intent is known -- see supervise_census.
     training_meta_supervise = {}
     if "supervise" in ds.column_names:
-        supervise_counts = Counter(s_ or "all" for s_ in ds["supervise"])
-        non_default = {m: n for m, n in supervise_counts.items() if m != "all"}
-        assert non_default, (
-            "dataset has a supervise column but every row is 'all'; "
-            "this arm would be identical to its control")
-        print(f">>> supervise (validated on all {len(ds)} rows): "
-              f"{dict(supervise_counts.most_common())}")
-        training_meta_supervise = {"supervise_counts": dict(supervise_counts)}
+        supervise_counts, warning = supervise_census(ds["supervise"])
+        if warning:
+            print(f">>> WARNING: {warning}")
+        print(f">>> supervise (censused on all {len(ds)} rows): {supervise_counts}")
+        training_meta_supervise = {"supervise_counts": supervise_counts}
 
     # Pin the base model to the exact commit this run resolves, the way the dataset is
     # pinned above: an HF id names a moving head, and a rerun a month later should load
