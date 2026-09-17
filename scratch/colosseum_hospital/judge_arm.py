@@ -35,7 +35,7 @@ def main() -> None:
         "--channels",
         nargs="*",
         default=None,
-        help="judge only these channel kinds (public, secret, reasoning); an episode is "
+        help="judge only these channel kinds (public, secret, reasoning, admin); an episode is "
         "re-judged when it lacks any of them, and new channels merge into its record",
     )
     args = ap.parse_args()
@@ -43,13 +43,19 @@ def main() -> None:
     cfg = OmegaConf.load(args.config)
     wanted = set(args.channels) if args.channels else None
 
-    def _lacks(record: dict) -> bool:
-        """An episode is due when it has no verdicts, or none for a wanted channel kind."""
-        if not record:
+    def _lacks(record: dict, run_id: str) -> bool:
+        """An episode is due when it has no verdicts, or none for a wanted channel kind.
+
+        An episode with the administrator channel counts as judged for `admin` once it is
+        in judge.json's `admin_runs`, even when nobody messaged (no admin:<seat> channel).
+        """
+        have = {ch.split(":")[0] for ch in (record or {})}
+        if run_id in (existing.get("admin_runs") or {}):
+            have.add("admin")
+        if not have:
             return True
         if wanted is None:
             return False
-        have = {ch.split(":")[0] for ch in record}
         return not wanted <= have
 
     for arm in args.arms:
@@ -66,7 +72,7 @@ def main() -> None:
             todo = [
                 d
                 for d in sorted(root.glob("runs/*/*/*"))
-                if (d / "blackboards.json").is_file() and _lacks(merged.get(d.name))
+                if (d / "blackboards.json").is_file() and _lacks(merged.get(d.name), d.name)
             ]
             if not todo:
                 continue
@@ -77,7 +83,14 @@ def main() -> None:
                 # Merge per channel: a run judged on the boards before the reasoning
                 # channels existed keeps its board verdicts and gains the new ones.
                 merged.setdefault(run_id, {}).update(channels)
-            existing.update({k: v for k, v in verdicts.items() if k != "per_run"})
+            admin_runs = {
+                **(existing.get("admin_runs") or {}),
+                **(verdicts.get("admin_runs") or {}),
+            }
+            existing.update(
+                {k: v for k, v in verdicts.items() if k not in ("per_run", "admin_runs")}
+            )
+            existing["admin_runs"] = admin_runs
         existing["per_run"] = merged
         out_p.parent.mkdir(parents=True, exist_ok=True)
         out_p.write_text(json.dumps(existing, indent=1))

@@ -60,18 +60,22 @@ def expected_supervised_text(text: str, prefill: str, empty_think: str,
         prefill: The profile's thinking-prefill literal.
         empty_think: The profile's empty-marker literal.
         supervise: The row's mode — "all" concatenates every assistant turn, "final"
-            keeps the last one, "cot" takes the branch above.
-        think_close: The profile's reasoning-close literal, used only under "cot".
+            keeps the last one; "cot" and "answer" select the final turn's respective span.
+        think_close: The profile's reasoning-close literal for "cot" and "answer".
     """
-    if supervise == "cot":
+    if supervise in ("cot", "answer"):
         i = text.rfind(_ASSISTANT_HEADER)
-        assert i != -1, "cot row has no assistant turn"
+        assert i != -1, f"{supervise} row has no assistant turn"
         body = text[i + len(_ASSISTANT_HEADER):]
         # Order matters: the empty marker also starts with the prefill, and expecting
         # its close to be supervised would let the gate bless a reasoning collapse.
-        assert not body.startswith(empty_think), "cot row's final turn is an empty marker"
-        assert body.startswith(prefill), "cot row's final turn has no thinking prefill"
-        return body[len(prefill):body.index(think_close) + len(think_close)]
+        assert not body.startswith(empty_think), f"{supervise} row's final turn is an empty marker"
+        assert body.startswith(prefill), f"{supervise} row's final turn has no thinking prefill"
+        close = body.index(think_close) + len(think_close)
+        if supervise == "cot":
+            return body[len(prefill):close]
+        end = body.index("<|im_end|>", close) + len("<|im_end|>")
+        return body[close:end]
     parts = []
     bodies = [m.group(1) for m in _TURN.finditer(text)]
     if supervise == "final":

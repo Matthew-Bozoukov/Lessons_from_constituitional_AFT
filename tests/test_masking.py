@@ -12,11 +12,13 @@ from src.model_profile import model_profile
 QWEN36_PROFILE = model_profile("qwen36")
 from src.train.masking import (  # noqa: E402
     assistant_spans,
+    answer_span,
     build_labels,
     check_thinking_declaration,
     cot_span,
     forced_spans,
     model_profile,
+    supervise_census,
 )
 
 # The suite exercises the RULE against one verified family's literals; every literal
@@ -370,3 +372,90 @@ def test_tool_responses_are_never_supervised_under_all_or_final():
     kept = "".join(chr(i) for i, l in zip(out["input_ids"], out["labels"]) if l != -100)
     assert kept == "now decide\n</think>"
     assert "rm file_a" not in "".join(chr(i) for i in out["input_ids"])
+
+
+def test_answer_span_starts_past_the_close_and_ends_past_the_turn_end():
+    start, end = answer_span(THINK_ROW, header=ASSISTANT_HEADER, prefill=THINK_PREFILL,
+                             empty_think=EMPTY_THINK,
+                             think_close=QWEN36_PROFILE.think_close,
+                             turn_end=TURN_END)
+    assert THINK_ROW[start:end] == "\n\nanswer<|im_end|>"
+
+
+def test_answer_supervises_the_answer_and_the_turn_end_only():
+    out = build_labels(THINK_ROW, _MergingTokenizer(), max_length=len(THINK_ROW),
+                       profile=QWEN36_PROFILE, supervise="answer")
+    assert _kept(out) == "\n\nanswer<|im_end|>"
+
+
+def test_answer_keeps_the_trace_in_the_token_stream_unsupervised():
+    # The whole point of not truncating: the model still READS its reasoning, it just
+    # earns no loss on it. Token stream must be identical to the untouched row.
+    tok = _MergingTokenizer()
+    full = build_labels(THINK_ROW, tok, max_length=len(THINK_ROW), profile=QWEN36_PROFILE)
+    ans = build_labels(THINK_ROW, tok, max_length=len(THINK_ROW),
+                       profile=QWEN36_PROFILE, supervise="answer")
+    assert ans["input_ids"] == full["input_ids"]
+    assert "reasoning" in _text(ans)
+    assert "reasoning" not in _kept(ans)
+
+
+def test_cot_and_answer_partition_what_all_supervises():
+    # THE invariant. Disjoint, exhaustive, and in order -- so the two arms differ from
+    # their shared control in complementary halves and from each other in everything.
+    tok = _MergingTokenizer()
+    kw = dict(max_length=len(THINK_ROW), profile=QWEN36_PROFILE)
+    all_k = _kept(build_labels(THINK_ROW, tok, **kw))
+    cot_k = _kept(build_labels(THINK_ROW, tok, supervise="cot", **kw))
+    ans_k = _kept(build_labels(THINK_ROW, tok, supervise="answer", **kw))
+    assert cot_k + ans_k == all_k          # exhaustive, and in order
+    assert not set(cot_k.split()) & set(ans_k.split())  # disjoint content
+
+
+def test_answer_refuses_an_empty_think_marker():
+    # Under this mode an empty marker would silently reduce to plain "all" -- which means
+    # the flag was put on the wrong rows.
+    with pytest.raises(AssertionError, match="EMPTY think marker"):
+        build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW),
+                     profile=QWEN36_PROFILE, supervise="answer")
+
+
+def test_answer_refuses_a_turn_with_no_think_block():
+    with pytest.raises(AssertionError, match="thinking prefill"):
+        build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT),
+                     profile=QWEN36_PROFILE, supervise="answer")
+
+
+def test_answer_refuses_an_unterminated_turn():
+    # rindex, not index: the FIRST turn end belongs to the user turn, and cutting there
+    # would remove the assistant turn altogether and test the wrong refusal.
+    cut = THINK_ROW[:THINK_ROW.rindex("<|im_end|>")]
+    with pytest.raises(AssertionError, match="not terminated"):
+        build_labels(cut, _MergingTokenizer(), max_length=len(cut),
+                     profile=QWEN36_PROFILE, supervise="answer")
+
+
+def test_answer_on_a_multiturn_row_trains_only_the_last_answer():
+    out = build_labels(MULTI_TURN_ROW, _MergingTokenizer(),
+                       max_length=len(MULTI_TURN_ROW), profile=QWEN36_PROFILE,
+                       supervise="answer")
+    assert _kept(out) == "\n\na3<|im_end|>"
+    text = _text(out)
+    assert "third thoughts" in text          # trace present as context
+    assert "third thoughts" not in _kept(out)  # but unsupervised
+
+
+def test_supervise_census_warns_but_accepts_a_column_that_is_all_everywhere():
+    # A corpus may state its supervision explicitly: all-'all' (None reads as 'all') trains
+    # exactly as no column would, so it is valid data. It warns, because the other way to
+    # get here is a variant arm whose override never applied.
+    counts, warning = supervise_census(["all", None, "", "all"])
+    assert counts == {"all": 4}
+    assert warning and "every row is 'all'" in warning and "did not apply" in warning
+
+
+def test_supervise_census_is_silent_when_any_row_picks_a_variant():
+    counts, warning = supervise_census(["all"] * 5 + ["cot"] * 2 + [None] + ["answer"])
+    assert counts == {"all": 6, "cot": 2, "answer": 1}      # most common first
+    assert list(counts) == ["all", "cot", "answer"]
+    assert warning is None

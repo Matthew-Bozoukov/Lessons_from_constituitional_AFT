@@ -180,6 +180,10 @@ data/, output/        gitignored: staged datasets / ALL run artifacts (conventio
 - `scratch/` is the **default destination for new AI-generated code** and for
   one-off experiments — throwaway until it earns promotion into `src/`.
   Nothing outside `scratch/` may import from it.
+- **But before writing any new code, even in `scratch/`, ask whether you need it.** Does
+  the right config already exist, so all you need is a launch override
+  (`synthetic_pct=7`, `seed=0`)? If not, does the functionality already exist, so all
+  you need is a new config? Only when both answers are no is new code the answer.
 - `dashboard/` is the dashboard app and nothing else: its job is to read
   published data from Hugging Face and display it. Research code, data
   processing, and experiment artifacts do not belong there.

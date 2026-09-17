@@ -48,6 +48,14 @@ TERRARIUM_PATCH = (
 TERRARIUM_PATCH_2 = (
     "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_2.patch"
 )
+# 2026-09-15, the whistleblowing study: the administrator channel, the benign coalition,
+# and a survey that is one tool-less call and reaches the baseline cell.
+FIXES_PATCH_3 = (
+    "src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_3.patch"
+)
+TERRARIUM_PATCH_3 = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_3.patch"
+)
 
 
 def _colosseum_root(cfg) -> Path:
@@ -56,7 +64,8 @@ def _colosseum_root(cfg) -> Path:
     driver = root / "experiments" / "agent_misalignment" / "run.py"
     assert driver.is_file(), (
         f"no Colosseum checkout at {root}. Clone github.com/umass-ai-safety/colosseum at "
-        f"ac0b405, apply {PATCH}, {FIXES_PATCH} and {FIXES_PATCH_2}, install its "
+        f"ac0b405, apply {PATCH}, {FIXES_PATCH}, {FIXES_PATCH_2} and {FIXES_PATCH_3}, "
+        "install its "
         "dependencies (not the package) into this environment, and point "
         "COLOSSEUM_ROOT (or the config's colosseum_root) at it."
     )
@@ -80,6 +89,16 @@ def _colosseum_root(cfg) -> Path:
     assert "plan_post_optional" in prompts.read_text(), (
         f"the Colosseum checkout at {root} is missing the 2026-09-13 eval-fixes patch. "
         f"Re-apply it (after the first two):\n  git -C {root} apply {FIXES_PATCH_2}"
+    )
+    # The 2026-09-15 patch. Without it fixes.administrator_channel offers a tool with no
+    # board to write to, condition=benign_coalition falls through to upstream's generic
+    # coalition block, and a baseline cell's survey asks nothing.
+    assert "administrator_blackboard_id" in text and "benign_coalition" in (
+        prompts.read_text()
+    ), (
+        f"the Colosseum checkout at {root} is missing the 2026-09-15 eval-fixes patch. "
+        f"Re-apply it (after hospital_seating_2.patch):\n  git -C {root} apply "
+        f"{FIXES_PATCH_3}"
     )
     return root
 
@@ -111,10 +130,11 @@ def _terrarium_fixes_version() -> str:
     )
     assert version == TERRARIUM_FIXES_STAMP, (
         f"the installed terrarium-agents package carries fixes stamp {version!r}, not "
-        f"{TERRARIUM_FIXES_STAMP!r}: the 2026-09-13 switches (end_turn_on_no_tool_call, "
-        f"retry_explains_itself) would be ignored without a word. Apply "
-        f"{TERRARIUM_PATCH_2} on top of {TERRARIUM_PATCH} "
-        "(scratch/colosseum_hospital/pod_bootstrap.sh does both)."
+        f"{TERRARIUM_FIXES_STAMP!r}: the later switches (2026-09-13: "
+        "end_turn_on_no_tool_call, retry_explains_itself; 2026-09-15: "
+        "administrator_channel and the tool-less survey) would be ignored without a "
+        f"word. Apply {TERRARIUM_PATCH_2}, then {TERRARIUM_PATCH_3}, on top of "
+        f"{TERRARIUM_PATCH} (scratch/colosseum_hospital/pod_bootstrap.sh does all three)."
     )
     return str(version)
 
@@ -277,6 +297,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         "fixes": sweep_cfg["fixes"],
         "terrarium_fixes": terrarium_fixes,
         "max_conversation_steps": int(cfg.max_conversation_steps),
+        "survey": bool(cfg.get("survey", False)),
         "measures": harvest["measures"],
         "measure_definitions": dict(MEASURES),
         "health": health,

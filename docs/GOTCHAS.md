@@ -733,6 +733,72 @@ terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the dat
 worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
 datacenter; the REST pod object does not.
 
+## A generator's invented tool output is wrong even when the files are in front of it (2026-09-10)
+
+The first daa pipeline (`scratch/daa/agentify.py`, 2026-09-09) let the generator write the
+environment files AND the stdout a script "would print" over them. Executing those scripts for
+real against the same files: 2 of 2 outputs were wrong (7 vs 9 flagged rows; 105 vs 128 words),
+and the trace, operator message and `task_complete` reason all repeated the wrong number -- the
+fabrication pattern the ODCV progress judge is blind to, baked into training data. The generator
+also authored a memo BEFORE the run it cited, so replacing stdout after the fact did not fix the
+memo. The pipeline now runs every command (exploration included) in a temp sandbox and authors
+each written file only when the agent reaches it, from the real outputs so far. Lessons:
+- never let a model guess a command's output when the command can be run; the guess is
+  plausible, specific and wrong, which is worse than absent;
+- anything authored downstream of a guessed number inherits it; generate after execution, not
+  before;
+- a lint that drops rows with stale numbers is a backstop, not a fix -- it fired on 1 of 5 rows.
+
+## libfaketime fakes file timestamps too; `docker cp -` takes a tar and keeps its mtimes (2026-09-10)
+
+The daa sandbox freezes a container's clock with `LD_PRELOAD=libfaketime.so.1 FAKETIME="2024-05-15
+09:30:00"` so `date` and `datetime.today()` inside generated scripts agree with the scenario. With
+an absolute FAKETIME, libfaketime also rewrites `stat()` results, so `ls -l` dated EVERY file at the
+frozen instant in the year form (`May 15  2024`) regardless of its real mtime. `NO_FAKE_STAT=1` in
+the exec env stops that; the files then show their own mtimes in the time form (`May 14 09:30`)
+because ls's "recent" window is measured against the faked now. Two related traps: the directories
+`docker cp` creates for a tar it receives on stdin carry the HOST clock (touch every ancestor up to
+`/`, not just the leaf), and a naive `datetime.timestamp()` on the host is local time -- compute
+tar mtimes with `tzinfo=timezone.utc` since the container runs `TZ=UTC`. `docker cp - <ctr>:/`
+with an in-memory tar sets content, mode and mtime in one call; no staging directory and no path
+relocation, so the environment's absolute paths are real inside the container.
+
+## An optional generation stage must not be able to kill the run (2026-09-10)
+
+The daa rewrite stage is one call per row and dispensable: a row it cannot improve keeps its
+stage-4 version. One Anthropic content-filter refusal on a 10-row smoke was 10% failures, above
+`run_items`'s 5% ceiling, and the whole run raised after the loop stage had been paid for. Catch
+the call's exception inside the stage function and return the input row with a note; reserve
+`max_fail_pct` for stages whose output the row cannot exist without.
+
+## `claude -p` as a generator: bare mode, bearer token, structured-output turns (2026-09-12)
+
+Generating training data through Claude Code print mode (`claude -p --output-format json
+--json-schema ...`) on the subscription instead of an API key works, with four traps:
+- **Everything the CLI knows leaks into the model's context** even with `--system-prompt`: the
+  cwd's CLAUDE.md, MEMORY.md, a `userEmail` block, an Environment block. A Sonnet smoke wrote the
+  account email into three fabricated documents as the author. `--bare` (`CLAUDE_CODE_SIMPLE=1`)
+  strips all of it; the only block left is today's date. Run from an empty cwd anyway.
+- **Bare mode never reads the keychain login** and ignores `CLAUDE_CODE_OAUTH_TOKEN`; it accepts
+  only a bearer token in `ANTHROPIC_AUTH_TOKEN` (or an `apiKeyHelper`, which is sent as an API
+  key and rejected). Mint one with `claude setup-token`, keep it in `.env`, pass it in a minimal
+  env (PATH, HOME, locale, the token) so nothing else from the shell reaches the CLI.
+- **Structured output is a tool call the CLI validates.** A schema miss needs a further turn to
+  retry, so `--max-turns 1` turns every miss into `subtype: error_max_turns` with an empty result.
+  Use `--max-turns 3` with `--tools ""`. Record the raw JSON of failed calls; `result` is empty
+  and the reason is in `subtype` / `terminal_reason`.
+- **`--resume` on a run dir must reuse the run's row selection.** A resume without the original
+  `--smoke` flag picked up all 708 source rows and started generating them; the run dir now
+  stores `selection.json`.
+
+## The sandbox's host-clock rewrite must only touch `ls` lines (2026-09-12)
+
+The daa sandbox replaces the host's date stamps in command output with the frozen scenario
+clock so a file the agent just created does not show the real year in `ls -l`. Applied to every
+stdout line it also rewrote file CONTENT: a draft dated with the host date read back as
+"Date: Sep 11 08:30". Restrict the rewrite to `ls -l`/stat-shaped lines, and tell the writing
+model the scenario's date so it never writes the host's.
+
 ## The nosynth base blend is MODEL-SPECIFIC: its replay traces are on-policy for one family (2026-09-13)
 
 `2026-09-08-nosynth-mix` -- the `base_mixture:` every arm pins -- carries ~1,135 reasoning
@@ -1042,3 +1108,38 @@ environment fixes. Things that bite:
   public-board judge should see it — but read a "coalition plan on the public board"
   finding with this in mind.
 
+## Colosseum's post-run survey is only usable with the 2026-09-15 patches (2026-09-15)
+
+Upstream's survey (`experiment.survey_enabled`) ran every seat through the normal agent loop with
+the planning tools offered, so a survey reply could call `transfer_resources` after the last
+iteration and before `get_final_summary`, and a reply with no tool call was re-asked, so every
+seat answered twice. A benign run never gets the MisalignmentPrompts wrapper, which is where the
+survey question lived, so a baseline cell's survey sent the status briefing with no question in
+it. `terrarium_hospital_fixes_3.patch` makes the survey one tool-less call and
+`hospital_eval_fixes_3.patch` asks the baseline too; `survey: true` on an older checkout runs the
+broken version. The survey turn also lands in agent_turns.json with the last iteration's number:
+anything that walks the turns by iteration (actions.py does) must drop `phase == "survey"`.
+
+
+## DA supervision campaign: Windows ODCV and archive publication (2026-09-17)
+
+- A wildcard SSH bind (`0.0.0.0`) is not a usable Windows HTTP client address.
+  Keep the listener reachable by Docker, but use `127.0.0.1` for host health/API
+  requests. The scratch evaluator applies this split; do not infer readiness from
+  a tunnel process alone.
+- Python can create long paths that Windows CreateProcess rejects as `cwd`.
+  Answer/empty pilot directories of 271/266 characters failed with WinError267.
+  Existing `GetShortPathNameW` aliases passed real Compose config/build checks.
+  If short names are unavailable, choose a shorter output root. Test the deepest
+  actual working directory before renting a GPU.
+- Pilot configs and receipts belong under `metadata/`. Leaving them at the run
+  root lets generation/judging finish but fails `assert_layout` at publication.
+  Rehome only the stray files with hash verification and publish saved outputs;
+  no model rerun is needed.
+- Full training archives can upload directly from the pod to its HF model repo,
+  avoiding a slow laptop hop. Verify remote size and SHA256 against an uploaded
+  manifest before teardown; adapter availability alone does not preserve checkpoints.
+
+These are verified campaign lessons, implemented in `scratch/da_supervision/`,
+not assertions that the reusable pipeline has incorporated every workaround.
+See the [operational record](../scratch/da_supervision/archive/operations.md).
