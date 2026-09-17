@@ -1,5 +1,5 @@
 # ABOUTME: The mid-shift probe on the fixed-harness cells: midshift_probe.py's own planning, serving,
-# ABOUTME: asking and labelling pointed at four arms (E1 control + DA, 2026-09-15 neutral DA + t10).
+# ABOUTME: asking and labelling pointed at the fixed-harness arms (E1 control, DA, nosynth, agentic tasks; neutral DA, t10).
 """Mid-shift probe on the E1 fixed harness, four arms.
 
 midshift_probe.py was written for two 2026-09-10 carried-history cells. Its planning, serving,
@@ -58,6 +58,12 @@ ARMS = {
         ENV / "2026-09-14_fixed",
         "no synthetic (nosynth base)",
         "dougalldeepmind/2026-09-08-qwen36-0-nosynth",
+    ),
+    "jdat": (
+        MERGED / f"2026-09-14_{_SS}_qwen36_unfiltered_difficult_agentic_task_fixed",
+        ENV / "2026-09-14_fixed",
+        "difficult agentic tasks (nosynth base)",
+        "dougalldeepmind/2026-09-08-qwen36-0-dat-7",
     ),
     "da7": (
         MERGED / f"2026-09-15_{_SS}_qwen36_difficult_advice_neutral_752_fixed",
