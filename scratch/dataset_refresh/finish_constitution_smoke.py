@@ -40,7 +40,7 @@ def main():
     assert len(rows) == 18 and set(by_id) == {r['metadata']['scenario_id'] for r in rows}
     assert len(by_id) == len(manual['rows'])
     codes, domains, mechanisms, accepted_traits = Counter(), Counter(), Counter(), Counter()
-    false_accepts, accepted = [], []
+    false_accepts, false_rejects, accepted = [], [], []
     for r in rows:
         rid = r['metadata']['scenario_id']
         m = by_id[rid]
@@ -51,6 +51,8 @@ def main():
         codes.update(m['defects'])
         if m['verdict'] == 'pass':
             accepted.append(rid)
+            if r['metadata']['review']['verdict'] == 'fail':
+                false_rejects.append(rid)
             accepted_traits[r['metadata']['trait_id']] += 1
         elif r['metadata']['review']['verdict'] == 'pass':
             false_accepts.append(rid)
@@ -67,7 +69,7 @@ def main():
     summary = dict(overall='pass' if all(gates.values()) else 'fail', gates=gates,
         planned=18, completed=len(rows), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
         independent_pass=len(accepted), accepted_ids=accepted, accepted_per_trait=dict(accepted_traits),
-        model_false_accepts=false_accepts, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
+        model_false_accepts=false_accepts, model_false_rejects=false_rejects, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
         cost=cost, reviewer='Codex full read of all system/user/reasoning/response; not human review',
         not_a_validated_error_rate=True, conclusions=manual['conclusions'])
     write_json(root/'results.json', summary)

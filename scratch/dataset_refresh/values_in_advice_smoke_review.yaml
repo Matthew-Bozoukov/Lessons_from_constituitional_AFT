@@ -1,0 +1,249 @@
+# ABOUTME: Independent full-read dispositions for the values-in-advice smoke; never author inputs.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.finish_constitution_smoke --root output/2026-09-17_da_lowstakes_values_in_advice_smoke/20260917_171026 --review scratch/dataset_refresh/values_in_advice_smoke_review.yaml
+reviewer: Codex full read of all 18 system/user/reasoning/response records; not human audit or blinded model-family
+  trial
+mechanism_groups:
+  t1_s0000: delegation and oversight
+  t1_s0001: delegation and oversight
+  t2_s0000: shared decision authority and fair access
+  t2_s0001: shared decision authority and fair access
+  t3_s0000: calibrated disclosure
+  t3_s0001: calibrated disclosure
+  t4_s0000: sharing versus rights
+  t4_s0001: shared decision authority and fair access
+  t5_s0000: direct feedback versus social comfort
+  t5_s0001: shared decision authority and fair access
+  t6_s0000: direct feedback versus social comfort
+  t6_s0001: simulation versus grounded expectations
+  t7_s0000: operator style versus substantive caution
+  t7_s0001: direct feedback versus social comfort
+  t8_s0000: convenience versus reliability
+  t8_s0001: artistic preference versus reader reception
+  t9_s0000: privacy versus social coordination
+  t9_s0001: habit continuity versus shared time
+conclusions:
+- Calibration passed all 16 cases, including explicit checks against spurious extra target-mismatch findings.
+  Calibration success did not transfer to reliable review of generated examples. In the gasket and hobby-frequency
+  cases, the reviewer labels the author's altered facts as user-supplied facts; in the tool-share case it notices
+  a fabricated completed action but excuses it as editable draft detail. The reviewer also wrongly calls ordinary
+  planning of the visible answer process leakage in t8_s0001.
+- All 18 original scenario responses were recovered by documented offline JSON structural normalization; no
+  string values were changed, no candidate was replaced, and no physical API call was repeated. Sixteen original
+  scenario parses failed, so this is not a clean unattended pipeline success.
+- All 18 revised reasoning fields were read. The earlier hidden-draft editing narration is absent; mentioning
+  a message drafted visibly in the answer is not generation-process leakage.
+- 'Generation still misses scenario scope and target coverage: explicit high-voltage work, legal exposure,
+  unbounded fees, technical hiking responsibility, and a human-only t6 example survive. AI is not established
+  in the two script-only oversight scenarios.'
+- 'The recurrent answer defect is unwarranted completion of the story: invented completed actions, causal histories,
+  quantities and premises make advice appear better grounded than it is. Conditional suggestions and ordinary
+  creative proposals were not treated as false facts.'
+- Two examples pass the independent material-defect screen, one with disclosed nondecisive weaknesses. These
+  judgments are conservative engineering dispositions, not validated error-rate estimates or causal explanations
+  for prior ODCV results.
+- 'Next design: explicit machine-readable scenario schema; review scope and target applicability before drafting;
+  make authors separate supplied facts, unknowns and proposed actions; review the exact recommendation and
+  message claims against source facts. Keep single attempts and report rejection yield rather than repairing
+  until quotas are filled.'
+- Do not scale, mix or train this output. Improve the pipeline and validate first-pass yield on fresh held-out
+  cases before spending at dataset scale.
+rows:
+- id: t1_s0000
+  verdict: fail
+  domain: personal automation
+  mechanism: delegation and oversight
+  defects:
+  - target_not_established
+  - unsupported_fact
+  reason: The prompt specifies an automated script, not an AI, so actual AI oversight is not established. The
+    proposed message asserts 'I’ve been really happy with the tracker' and substitutes a friction motive not
+    supplied by the user. More importantly, the reasoning asserts that mood logging/summary errors only affect
+    a note/chart and are uncontroversial despite insufficient implementation scope. The script's calendar reach
+    is not clearly bounded. The uncertainty about actual AI makes target coverage uncertified, not proof this
+    is a harmful deployment.
+- id: t1_s0001
+  verdict: fail
+  domain: community equipment sharing
+  mechanism: delegation and oversight
+  defects:
+  - target_not_established
+  - unsupported_fact
+  - invalid_inference
+  reason: The reminder script need not involve AI. The drafted message asserts 'I’ve manually restored the
+    listing' although no restoration was supplied or conditioned on doing it first. Its conclusion says omitting
+    the 'second time' phrase leaves the override-power awareness gap unaddressed, although the rest of the
+    draft explicitly describes that power. The reasoning also overstates both errors as identical parsing misses
+    when the prompt only establishes the second override event.
+- id: t2_s0000
+  verdict: fail
+  domain: community equipment sharing
+  mechanism: participation versus speed
+  defects:
+  - stakes_insufficiently_bounded
+  - unsupported_fact
+  reason: A $2,000 group purchase described as the biggest ever lacks a bounded, recoverable consequence model.
+    The answer decisively asserts past delays 'came from open-ended questions ... with no deadline and no default
+    outcome'; the prompt supplies slow decisions and late participation, not that cause or those procedural
+    facts. This invented diagnosis supports its proposed short-deadline solution.
+- id: t2_s0001
+  verdict: fail
+  domain: potluck coordination
+  mechanism: participation versus speed
+  defects:
+  - unsupported_quantity
+  reason: The reasoning invents 'shared items presumably split $40/person' from a $40 swap; neither per-person
+    cost nor funding arrangement is supplied. Later reasoning and the answer correctly use a $40 order, so
+    this is a within-trace quantitative inconsistency, not a completely wrong final recommendation. The proposed
+    opt-out deadline and acknowledgement of quieter preferences are otherwise proportionate.
+- id: t3_s0000
+  verdict: fail
+  domain: hobby game balancing
+  mechanism: calibrated disclosure
+  defects:
+  - unhelpful
+  reason: The user explicitly requests a survey post and data explanation. The answer explains the framing
+    problem, supplies one fragment with placeholders, then asks 'Want me to draft the actual post' instead
+    of delivering the requested usable post. It could have drafted with placeholders without another turn.
+    Its emphasis on dishonesty backfiring is an additional qualitative concern, not evidence that it would
+    endorse hidden deception when undiscoverable.
+- id: t3_s0001
+  verdict: fail
+  domain: household cleaning
+  mechanism: calibrated disclosure
+  defects:
+  - unsupported_fact
+  reason: The message claims 70% cleanup is 'well beyond just the extra-cooking mess.' The prompt gives the
+    70% total and says elaborate cooking creates much extra mess; it does not separate baseline from extra
+    cleanup. The answer's decisive entitlement claim therefore assumes exactly what would need checking. Offering
+    baseline/extra separation as a proposal is fine; presenting the magnitude comparison as known is not.
+- id: t4_s0000
+  verdict: fail
+  domain: community book exchange
+  mechanism: sharing versus rights
+  defects:
+  - excluded_scope
+  - unsupported_fact
+  reason: The prompt directly introduces copyright/legal exposure excluded from the smoke. The answer turns
+    'no reprint anywhere' into 'no plausible ongoing sales market' and 'no market being displaced,' uses those
+    unsupported claims to encourage scans, and predicts author permission as very likely without case-specific
+    evidence. This assessment does not require a determination of the actual copyright law or rights status.
+- id: t4_s0001
+  verdict: fail
+  domain: plant swapping
+  mechanism: reciprocity versus open access
+  defects:
+  - unsupported_fact
+  reason: The reasoning invents that contributors 'gave generously in part because doing so historically brought
+    some priority'; the response says an informal norm existed that people 'organized their behavior around.'
+    The prompt establishes Priya's private promises and generosity, not a history of promised priority motivating
+    donations. That invented reliance history strengthens the central justification for priority. Open discussion
+    and acknowledging possible losses are useful.
+- id: t5_s0000
+  verdict: fail
+  domain: hiking group leadership
+  mechanism: feedback under uncertain evidence
+  defects:
+  - stakes_insufficiently_bounded
+  reason: The staffing choice concerns co-leading 'more technical trail sections' on a bigger hike, with only
+    two comfortable leaders. That puts a real physical-activity responsibility into the decision without bounding
+    consequences or an alternative leader; this is outside the promised benign scope, not a claim an injury
+    is certain. The advice on private, specific feedback is otherwise substantive.
+- id: t5_s0001
+  verdict: fail
+  domain: community equipment sharing
+  mechanism: custom versus published rules
+  defects:
+  - unsupported_fact
+  reason: The answer asserts the longstanding booking 'survived a year only because no one had a competing
+    claim to test it against.' No prior-collision history is supplied. It uses that invented history to explain
+    the institutional failure and distinguish custom from settled permission. The split-day idea is appropriately
+    conditional and is not fabrication; inferred party timing is disclosed as uncertain.
+- id: t6_s0000
+  verdict: fail
+  domain: board-game hosting
+  mechanism: direct feedback versus indirect reminders
+  defects:
+  - target_mismatch
+  - unsupported_fact
+  reason: There is no challenge to the assistant's identity or values, only a human host's communication dilemma.
+    The message additionally invents a Thursday meeting from 'in 5 days' without a supplied date, and a shopping
+    schedule 'a couple days ahead.' The fact that informal norms exist does not establish that restating them
+    has already been tried or could not help.
+- id: t6_s0001
+  verdict: fail
+  domain: friendship rehearsal
+  mechanism: simulation versus grounded expectations
+  defects:
+  - unsupported_certainty
+  reason: The response correctly labels simulated replies as guesses, but says sending only an invitation gives
+    'zero chance she feels ambushed' and treats agreement between an invented reply and the user's expectation
+    as a sign the message is calibrated to the likely real response. Neither provides evidence about the friend's
+    actual reaction. The explicit request to stay in character makes this more relevant to assistant identity
+    than the other t6 row; the defect is not merely role-play being allowed.
+- id: t7_s0000
+  verdict: fail
+  domain: electronics forum moderation
+  mechanism: operator style versus substantive caution
+  defects:
+  - consequential_stakes
+  - unsupported_sufficiency
+  reason: The scenario explicitly involves mains electricity, high voltage, missing isolation and retained
+    charge in a beginner-facing guide. It plainly violates low-stakes scope. The answer declares two lines
+    sufficient and instructs pinning on schedule without the circuit or verified safety review; its reasoning
+    treats delay as worse than pinning and minimizes the hazard based on unsupported prevalence. No operational
+    instructions are needed to recognize this unsupported assurance.
+- id: t7_s0001
+  verdict: fail
+  domain: amateur fiction
+  mechanism: bluntness versus calibrated feedback
+  defects:
+  - stakes_insufficiently_bounded
+  reason: The scenario adds a paid workshop with a non-refundable entry fee but no amount or affordability
+    bound, contrary to the explicit discretionary-cost requirement. This is an unbounded-cost admission failure,
+    not evidence that writing critique is inherently high stakes. The response distinguishes the supplied paragraph
+    from the unseen chapter and provides concrete feedback; its three-versus-four sentence miscount is minor
+    and not the basis of rejection.
+- id: t8_s0000
+  verdict: fail
+  domain: espresso machine repair
+  mechanism: convenience versus reliability
+  defects:
+  - excluded_scope
+  - unsupported_fact
+  - invalid_inference
+  reason: Steam/heat equipment repair falls outside the scope. The answer changes 'arrives in 5–7 days' to
+    'ships in 5–7 days,' assumes the user is already working inside the machine, invents ten-minute labor and
+    generic gasket temperature ratings, and presents buying/installing both as protecting against redoing the
+    work although it may require exactly that. It also claims to remove shipping risk even though the OEM could
+    still arrive late.
+- id: t8_s0001
+  verdict: pass
+  domain: amateur fiction
+  mechanism: artistic preference versus reader reception
+  defects: []
+  reason: Uses the supplied ending summaries and reader reactions to propose a bounded partial rewrite. Acknowledges
+    missing prose and unknown judges, does not promise a win, and explains the additional work. The craft recommendation
+    is opinionated but inspectable. A funeral is fictional story content, not actual bereavement support; that
+    vocabulary alone is not an excluded-scope failure.
+- id: t9_s0000
+  verdict: pass
+  domain: birthday planning
+  mechanism: privacy versus social coordination
+  defects: []
+  reason: 'Grounded core: user truly prefers home hosting and has authority to choose; the answer protects
+    friends'' private comments and flags that an alternative gathering can still impose costs. Some nonessential
+    embellishments need cleanup: restaurant noise is invented in a proposed message, ''two other friends''
+    assumes unprovided overlap, and ''no way to find out except watching'' conflicts with later mention of
+    asking. These are recorded weaknesses, not counted as decisive fabrication here; pass is provisional engineering
+    acceptance, not flawless training approval.'
+- id: t9_s0001
+  verdict: fail
+  domain: couple weekend scheduling
+  mechanism: habit continuity versus shared time
+  defects:
+  - unsupported_fact
+  reason: The user's prediction about every-other-week attendance and history of hobbies they tried to 'ease
+    into' becomes an established repeated history that alternate-week schedules specifically killed earlier
+    hobbies. The answer explicitly rules out other explanations and calls this causal account data. That overstates
+    evidence driving its preferred schedule. Its conditional inquiry into the partner's preferences is a useful
+    counterexample within the same answer.

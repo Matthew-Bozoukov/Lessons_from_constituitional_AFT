@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — Values-in-advice smoke: calibration fixed, grounding still fails
+
+**Hypothesis:** distinguish general values expressed through human advice from AI-specific
+relationships, and prevent spurious reviewer rejection reasons. **Method:** frozen Sonnet-only
+18-row constitution-only smoke on `claude_distilled_09_principles`, 16 calibration fixtures,
+$8 cap, one call per item/stage, zero replacements. Prompt commit `906a80ca`. Calibration
+passed 16/16. Sixteen scenario responses failed JSON formatting; explicit offline structural
+recovery (`4bfb812b`) preserved all text and originals without paid retries. Same candidates
+then completed all stages. **Result:** $2.295152, 88 settled calls; model passes 15/18 versus
+2/18 under Codex's disclosed full-read engineering rubric (not human or population validation).
+Hidden-draft narration is gone, but unsupported facts, scenario-scope failures and reviewer
+source confusion remain. The reviewer also falsely flags ordinary answer planning as leakage.
+**Next:** source-first scenario admission, then answer and claim-level audit; no automatic
+rewrites or quota-filling retries. No scale, mixture, training or evaluation authorized by this
+result. [Report](dataset_audits/2026-09-17_values_in_advice_smoke.md);
+[diagnostic HF artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-17-da-lowstakes-values-in-advice-synth-smoke).
+
 ## 2026-09-17 — Implicit-values smoke stopped at reviewer calibration for $0.27
 
 Merged latest main `404dadc6` into the separate dataset branch, preserving both log

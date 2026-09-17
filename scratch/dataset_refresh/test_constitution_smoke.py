@@ -102,3 +102,22 @@ def test_calibration_rejects_spurious_extra_reason(tmp_path):
     with pytest.raises(RuntimeError, match='Reviewer calibration failed'):
         calibrate(config(), tmp_path, client, fixture)
     assert json.loads((tmp_path / 'calibration_results.json').read_text())[0]['forbidden_codes_found'] == ['target_mismatch']
+
+
+def test_structural_recovery_preserves_every_string():
+    from scratch.dataset_refresh.recover_smoke_scenarios import recover
+    original = {'system':'Advice only', 'user':'First line\nSecond line with a \"quote\"', 'applicability': {'why_small':'minor'}}
+    content = '```json\n' + json.dumps({k:original[k] for k in ['system','user']}) + '\n```\n```json\n' + json.dumps({'applicability':original['applicability']}) + '\n```'
+    assert recover(content)[0] == original
+    malformed = '{"system":"Advice only","user":"First line\nSecond line"},"applicability":{}}'
+    recovered, operations = recover(malformed)
+    assert recovered['user'] == 'First line\nSecond line'
+    assert len(operations) == 1
+
+
+def test_structural_recovery_rejects_ambiguous_fields():
+    from scratch.dataset_refresh.recover_smoke_scenarios import recover
+    with pytest.raises(AssertionError, match='duplicate fields'):
+        recover('{"system":"s","user":"a"} {"user":"b","applicability":{}}')
+    with pytest.raises(AssertionError, match='outside JSON'):
+        recover('Extra narrative```json {"system":"s","user":"a","applicability":{}}```')
