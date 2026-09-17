@@ -16,6 +16,7 @@ import threading
 import time
 import traceback
 import uuid
+from contextlib import ExitStack
 
 from omegaconf import OmegaConf
 from src.infra import runpod
@@ -47,9 +48,11 @@ def load_plan(path):
                 'run_name', 'eval_output_root', 'eval_config', 'eval_config_sha256', 'expected_cells', 'passes',
                 'gpu_cap_usd', 'backup_reserve_usd', 'judge_cap_usd',
                 'max_gpu_hourly_usd', 'storage_hourly_reserve_usd'}
-    optional = {'port', 'combined_networks', 'protocol', 'pod_name'}
+    optional = {'port', 'combined_networks', 'protocol', 'pod_name', 'server_seed', 'disable_global_network_prune'}
     if not required <= set(plan) or set(plan) - required - optional:
         raise ValueError(f'Plan fields differ: missing={required-set(plan)}, extra={set(plan)-required}')
+    if 'server_seed' in plan and (type(plan['server_seed']) is not int or plan['server_seed'] != 0):
+        raise ValueError('This common-protocol run requires server startup seed 0')
     for field in ('target_revision', 'base_revision'):
         if not re.fullmatch('[0-9a-f]{40}', plan[field]):
             raise ValueError(f'{field} must be an exact commit SHA')
@@ -272,7 +275,21 @@ def evaluate_frozen(plan_path, config, host, identity):
             (out_dir/'metadata/server_continuity.json').write_text(
                 json.dumps(boundaries, indent=2), encoding='utf-8')
             return result
-    with patch('src.eval.run_eval.resolve_target', one_target):
+    with ExitStack() as stack:
+        stack.enter_context(patch('src.eval.run_eval.resolve_target', one_target))
+        if 'server_seed' in plan:
+            original_start = SshExec.start_server
+            def seeded_start(executor, argv, env):
+                if '--seed' in argv:
+                    raise ValueError('Unexpected duplicate server seed')
+                return original_start(executor, [*argv, '--seed', str(plan['server_seed'])], env)
+            stack.enter_context(patch.object(SshExec, 'start_server', seeded_start))
+        if plan.get('disable_global_network_prune'):
+            # Each scenario already removes its own Compose networks. Never prune
+            # unrelated idle networks on the shared local Docker daemon.
+            stack.enter_context(patch('src.eval.misalignment.odcv.runner._prune_networks',
+                lambda: require_network_capacity(int(plan.get('combined_networks', 12)),
+                    because='Sequential ODCV pass on shared Docker; no global pruning')))
         evaluate(['--name', 'odcv', '--config', str(config), '--target', spec.hf_path,
                   '--server', host, '--ssh-key', identity,
                   '--port', str(plan.get('port', 8000))], runner=custom_runner)

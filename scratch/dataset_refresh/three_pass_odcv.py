@@ -163,13 +163,14 @@ def run():
         owner.load_plan(OUT/f'{arm}_plan.yaml')
     # Preserve a named immutable handle to today's earlier one-pass result before
     # the standard naming law publishes this three-pass result to the same repo.
-    hf_api().create_tag(OLD_REPO, tag='single-pass-20260916', revision=OLD_REVISION,
-                       repo_type='dataset', exist_ok=True)
+    if preflight.get('prior_single_pass'):
+        hf_api().create_tag(OLD_REPO, tag='single-pass-20260916', revision=OLD_REVISION,
+                           repo_type='dataset', exist_ok=True)
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
     env=dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
     launch=dict(started_utc=datetime.now(timezone.utc).isoformat(), pid=os.getpid(),
-                combined_cap_usd=60, prior_spend_usd=preflight.get('prior_spend_usd',0),
-                arms={}, prior_single_pass=dict(repo=OLD_REPO,revision=OLD_REVISION))
+                combined_cap_usd=preflight['combined_cap_usd'], prior_spend_usd=preflight.get('prior_spend_usd',0),
+                arms={}, prior_single_pass=preflight.get('prior_single_pass'))
     dump(OUT/'launch.json',launch)
     with (OUT/'keep_awake.log').open('ab') as log:
         awake=subprocess.Popen([sys.executable,'-m','scratch.nonmoral.keep_awake',str(OUT)],
@@ -249,7 +250,7 @@ def monitor(processes):
     prior_spend=read(OUT/'preflight.json').get('prior_spend_usd',0)
     dump(OUT/'completion.json',dict(arms=completed, owned_pods_absent=absent,
          this_attempt_estimated_usd=total, prior_spend_usd=prior_spend,
-         total_estimated_usd=total+prior_spend, cap_usd=60,
+         total_estimated_usd=total+prior_spend, cap_usd=read(OUT/'preflight.json')['combined_cap_usd'],
          success=absent and all('error' not in x for x in completed.values())))
     print(json.dumps({'finished':list(completed),'estimated_usd':total,'owned_pods_absent':absent}),flush=True)
 
@@ -275,17 +276,52 @@ class AttachedOwner:
         return self.returncode
 
 
+def configure_single(path, style):
+    """Reuse campaign monitoring for one new pinned arm without touching prior results."""
+    global OUT, ARMS
+    path = Path(path).resolve()
+    plan = OmegaConf.to_container(OmegaConf.load(path), resolve=True)
+    assert path.stem.endswith('_plan')
+    arm = path.stem.removesuffix('_plan')
+    OUT = path.parent
+    assert OUT.is_relative_to(ROOT/'output')
+    assert Path(plan['output_dir']).resolve() == OUT/arm
+    assert style and plan['target'].endswith('-qwen36-0-' + style + '-7')
+    ARMS = {arm: dict(style=style, pin=plan['target_revision'], port=int(plan['port']))}
+
+
+def prepare_single():
+    os.chdir(ROOT)
+    assert len(ARMS) == 1 and not (OUT/'launch.json').exists()
+    arm = next(iter(ARMS))
+    plan = owner.load_plan(OUT/f'{arm}_plan.yaml')
+    owner.checked_spec(plan)
+    docker_preflight()
+    require_network_capacity(plan['combined_networks'], because='One six-cell ODCV driver')
+    require_lf_shell_scripts(ROOT/'src/eval/misalignment/odcv/third_party/odcv-bench')
+    dump(OUT/'preflight.json', dict(time_utc=datetime.now(timezone.utc).isoformat(),
+         plans=[plan], combined_cap_usd=plan['gpu_cap_usd']+plan['judge_cap_usd'],
+         prior_spend_usd=0, prior_single_pass=None, scenarios_per_arm=40,
+         rollouts_per_arm=240, sampling='Server startup seed 0; no request seed; continuous server for three sequential passes'))
+    print('Single-arm preflight passed; no GPU provisioned', flush=True)
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('action',choices=['prepare','run','status','monitor'])
     parser.add_argument('--out',type=Path)
     parser.add_argument('--prior',type=Path,help='Failed startup campaign whose spending is deducted; prepare only')
+    parser.add_argument('--single-plan',type=Path,help='One existing pinned arm plan; no historic-repository mutation')
+    parser.add_argument('--style',help='Style identity for the single pinned arm')
     args=parser.parse_args()
     if args.out:
         OUT=args.out.resolve()
         assert OUT.is_relative_to(ROOT/'output'), 'Campaign output must stay under workspace output'
+    if args.single_plan:
+        assert not args.out and not args.prior
+        configure_single(args.single_plan, args.style)
     if args.action=='prepare':
-        prepare(args.prior)
+        prepare_single() if args.single_plan else prepare(args.prior)
     elif args.action=='run':
         run()
     elif args.action=='monitor':

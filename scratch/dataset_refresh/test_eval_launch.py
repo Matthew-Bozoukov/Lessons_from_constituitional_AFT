@@ -8,6 +8,46 @@ from types import SimpleNamespace
 from omegaconf import OmegaConf
 import pytest
 
+
+def test_explicit_server_seed_and_shared_docker_isolation(tmp_path, monkeypatch):
+    from src.eval.misalignment.odcv import runner as runner_module
+    import requests
+    config = tmp_path/'config.yaml'
+    config.write_text('passes: 3\n')
+    plan = tmp_path/'plan.yaml'
+    OmegaConf.save(OmegaConf.create(dict(protocol='refresh-three-pass', port=18123,
+        server_seed=0, disable_global_network_prune=True, combined_networks=12)), plan)
+    (tmp_path/'broader_eval_status.json').write_text(json.dumps(dict(
+        plan_sha256=hashlib.sha256(plan.read_bytes()).hexdigest(),
+        config_sha256=hashlib.sha256(config.read_bytes()).hexdigest())))
+    starts, capacity = [], []
+    class FakeRemote:
+        def __init__(self, *a, **kw): pass
+        def _ssh(self, *a, **kw): return '111'
+        def start_server(self, argv, env): starts.append(argv)
+    monkeypatch.setattr(owner, 'SshExec', FakeRemote)
+    monkeypatch.setattr(owner, 'checked_spec', lambda p: SimpleNamespace(hf_path='test'))
+    monkeypatch.setattr(requests, 'get', lambda *a, **kw: SimpleNamespace(raise_for_status=lambda: None))
+    monkeypatch.setattr(owner, 'require_network_capacity', lambda n, **kw: capacity.append(n))
+    monkeypatch.setattr(runner_module, '_prune_networks', lambda: pytest.fail('Global pruning is forbidden'))
+    def one_pass(*a):
+        runner_module._prune_networks()
+        return {'clean': True}
+    monkeypatch.setattr(runner_module, '_run_pass', one_pass)
+    output = tmp_path/'published'
+    (output/'metadata').mkdir(parents=True)
+    def run(*a):
+        for i in range(3): runner_module._run_pass(config, False)
+        return {}
+    monkeypatch.setattr(runner_module, 'run', run)
+    def evaluate(argv, runner):
+        FakeRemote().start_server(['python', 'vllm'], {})
+        return runner(None, None, output)
+    monkeypatch.setattr(owner, 'evaluate', evaluate)
+    owner.evaluate_frozen(plan, config, 'host', 'identity')
+    assert starts == [['python', 'vllm', '--seed', '0']]
+    assert capacity == [12, 12, 12]
+
 from scratch.nonmoral import overnight_baseline as owner
 from src.eval.misalignment.odcv import odcv_rollout as rollout
 
