@@ -13,7 +13,7 @@ The config's `method: deliberative_alignment` selects this pipeline. Existing co
 default to `ours`, with the same `uv run synth run --config ...` command.
 The path-invoked `scripts/data/synth/build_dataset.py` delegates to that shared runner.
 `delib.yaml` starts from the pinned final corpus of the DA baseline,
-`dougalldeepmind/2026-09-14-da-synth` @ `01388623` (neutral 752, docs/BASELINES.md).
+`dougalldeepmind/2026-09-14-da-synth` @ `01388623` (neutral 752).
 Its 752 final rows supplied the 700 trait-balanced synthetic examples in
 `dougalldeepmind/2026-09-15-da-7-mix`; this pipeline uses all 752 source prompts.
 The generation constitution is selected independently by `constitution`. Set

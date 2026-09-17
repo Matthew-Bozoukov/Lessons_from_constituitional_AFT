@@ -47,9 +47,9 @@ SEM_Z = 1.96
 # = the one arm that is a different DOCUMENT TYPE (Sonnet-written retrospection, not advice).
 RED, BLUE, GREEN, TEAL, GRAY = "#e34948", "#2a78d6", "#008300", "#00a3ad", "#8a8985"
 
-# THE difficult-advice baseline, named once so a plot cannot disagree with docs/BASELINES.md
+# THE difficult-advice baseline, named once so two plots cannot disagree
 # about which arm everything is compared against. tests/test_baselines.py asserts the two
-# agree. Changing the baseline means changing this line, that file, and nothing else.
+# agree. Changing the baseline means changing this line and that test.
 # Neutral 752 since 2026-09-14; it has no ODCV run yet, so the figure draws no baseline
 # rule until its seeds are filled in below.
 BASELINE_ARM = "neutral"
@@ -126,7 +126,7 @@ ARMS: dict[str, dict] = {
     "neutral": dict(
         short="Sonnet DA\nneutral 752",
         long="THE DA BASELINE: neutral 752 (the 2026-09-14 regeneration against the neutral "
-        "full-length constitution; see docs/BASELINES.md)",
+        "full-length constitution)",
         color=GREEN,
         hatch="//",
         # A fresh generation, not a fork: it shares no rows with principle-scoped 702. No ODCV
@@ -138,7 +138,7 @@ ARMS: dict[str, dict] = {
     "principle_scoped": dict(
         short="Sonnet DA\nprinciple-scoped 702",
         long="principle-scoped 702 -- SUPERSEDED as the DA baseline by neutral 752 on 2026-09-14 "
-        "(da716's recipe with the constitution removed from both refine stages; see docs/BASELINES.md)",
+        "(da716's recipe with the constitution removed from both refine stages)",
         color=GREEN,
         hatch="..",
         # Matched fork of da716, not a separate generation: it resumed da716's run directory

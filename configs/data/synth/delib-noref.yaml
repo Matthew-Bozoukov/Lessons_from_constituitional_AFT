@@ -15,7 +15,7 @@
 method: deliberative_alignment
 source:
   # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
-  # The DA baseline corpus (docs/BASELINES.md): neutral 752, the 2026-09-14 regeneration
+  # The DA baseline corpus: neutral 752, the 2026-09-14 regeneration
   # against the full-length neutral constitution; the 2026-09-15 da-7 mixture drew a
   # trait-balanced 700 from it. This pipeline uses the full final corpus, all 752 prompts.
   repo: dougalldeepmind/2026-09-14-da-synth

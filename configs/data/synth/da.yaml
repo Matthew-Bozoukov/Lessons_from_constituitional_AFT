@@ -6,7 +6,7 @@
 # a new difficult-advice experiment builds on and compares against. NOT principle-scoped 702
 # (this recipe's previous output, against the Claude-naming mid document), NOT da716, NOT
 # synthdoc-716: all three are superseded and kept only to reproduce work that already cites
-# them. See docs/BASELINES.md for the reasoning, the numbers, and why the existing generator
+# them. docs/LOG.md 2026-09-14 has the reasoning; the existing generator
 # swaps (built on da716's frozen stages 1-4) can only be read against da716.
 
 # THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.

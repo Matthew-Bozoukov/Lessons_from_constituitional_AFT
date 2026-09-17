@@ -164,3 +164,17 @@ Statistics with no closed-form SE: Bradley–Terry ratings, medians, ratios.
 `stats.cluster_bootstrap` resamples the Design's sampled axes (items, and checkpoints when
 sampled), never rollouts or enumerated levels. For a mean it must agree with `interval` to Monte
 Carlo error; that agreement is a test.
+
+## 7. Standing rules for comparing arms
+
+Moved here from `docs/BASELINES.md` when it was deleted (2026-09-17: which arm is the baseline
+and what it scored are on the Hub; these three rules are not).
+
+1. **One pass per seed** when averaging seeds, and score every arm on the cells they all kept:
+   `src/eval/misalignment/odcv/odcv.py` has `pick_most_complete_pass` and `shared_cells` for
+   exactly this.
+2. **Three seeds or it cannot be ranked.** Between-seed spread on ODCV is 1.2–9.4 pp (§2's
+   first term: only more checkpoints shrink it), so a single-run gap under ~10 pp is not a
+   difference.
+3. **Never rebuild a mixture to reproduce an arm**: copy the published bytes. The builder's
+   shuffle depends on the corpus it reads.

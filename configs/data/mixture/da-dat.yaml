@@ -6,7 +6,7 @@
 # fixed proportions and `synthetic_pct` is a launch argument. Two synthetic sources with
 # equal `examples` budgets split the synthetic share 50/50 (blend() uses budgets as RATIOS),
 # so `synthetic_pct=100 total_examples=1400` is 700 da rows + 700 dat rows and nothing else:
-#   da  -> the DA baseline, neutral 752 (docs/BASELINES.md): the 2026-09-14 regeneration
+#   da  -> the DA baseline, neutral 752: the 2026-09-14 regeneration
 #          against the full-length neutral constitution, trait-balanced as in the 2026-09-15 da-7 mix
 #   dat -> 2026-09-07 bash-only dat-synth @f76acecd (as dat-7 on 2026-09-08)
 # (The 2026-09-09 da-dat-100 arm drew its da rows from the 2026-08-21 principle-scoped corpus
