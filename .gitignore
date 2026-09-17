@@ -59,6 +59,10 @@ wandb/
 # Vendored eval harnesses are committed; their run outputs are not.
 src/eval/misalignment/agentic_misalignment/third_party/agentic-misalignment/results/
 src/eval/misalignment/*/third_party/**/__pycache__/
+# arena_hard_judge.py writes the vendored judge's endpoint config here on every run, and
+# upstream's format puts the API KEY in it in plaintext (arena_hard_judge.py:87). The tree
+# around it is tracked, so without this rule one `git add -A` after a run commits the key.
+src/eval/capabilities/arena_hard/third_party/arena-hard-auto/config/generated_*.yaml
 
 # ---- OS and runtime noise ----------------------------------------------------
 .DS_Store
