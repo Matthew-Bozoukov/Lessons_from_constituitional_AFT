@@ -55,13 +55,14 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from scratch.daa.agentify import (  # the parts of the old pipeline that were never the problem
+from scratch.daa2.helpers import (  # the sandbox, the tool schemas, the sentence edit lists, the source loader
     TOOLS, Sandbox, apply_sentence_edits, bash_call, check_docker, complete_call, ensure_image,
     line_start_numbers, load_source, numbered, paragraphs_sentences, reuse_ratio, scenario_date, tool_result,
 )
 
-SOURCE_REPO = "dougalldeepmind/2026-09-08-da-synth"
-SOURCE_REVISION = "42107bde00cd7f4360a3a6c581aac23a540dbfea"
+# The current difficult-advice baseline corpus (docs/BASELINES.md: neutral 752); --source/--revision override.
+SOURCE_REPO = "dougalldeepmind/2026-09-14-da-synth"
+SOURCE_REVISION = "013886238fca238c4d54ace96530f444bb2b2f02"
 MODELS = {"sonnet": "sonnet", "opus": "opus", "fable": "fable",
           "or-sonnet": "anthropic/claude-sonnet-5"}      # `or-`: the same call over OpenRouter (src/infra/endpoints/openrouter.py)
 _OR: dict = {}                                            # the OpenRouter client, made on first use
