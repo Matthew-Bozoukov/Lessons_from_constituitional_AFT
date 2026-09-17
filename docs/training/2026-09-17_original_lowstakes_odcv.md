@@ -4,9 +4,8 @@
 # Original low-stakes plus new replay: ODCV
 
 The user requested this evaluation on 2026-09-17: three sequential passes,
-temperature 0.7, seed 0, local CPU/Docker and one rented RunPod GPU. Preparation
-has passed; the new $30 combined GPU/judge/recovery ceiling is awaiting approval.
-No GPU is rented during preparation. The earlier $50 ceiling covered training.
+temperature 0.7, seed 0, local CPU/Docker and one rented RunPod GPU. The user approved the $30 combined GPU/judge/recovery ceiling after preparation.
+The earlier $50 ceiling covered training and is separate.
 
 Target: `dougalldeepmind/2026-09-16-qwen36-0-da-lowstakes-original-7`
 @ `47f54dcb35f7e356e919933d7d5dde50ea101a40`.
@@ -67,3 +66,13 @@ Preflight verified the pinned model, Docker/Compose/network creation, 12-network
 headroom, shell LF bytes and free port. Twenty-two focused tests passed, covering
 pass continuity, explicit server seed, shared-Docker isolation, startup transport,
 SSH byte preservation, pass packaging and failed-judge budget diagnostics.
+
+
+## Launch, 2026-09-17 09:37 UTC
+
+One owned pod `1j6anboez6ht4u` was allocated at $3.49/hour, named
+`nika-low-stakes-original-odcv-3pass`. The watchdog was registered before waiting
+for SSH, with a fixed 24,940-second cap. Owner and campaign monitoring are running
+as hidden local processes. Source `5e566003`; approval and launch records are in
+the campaign. No recurring app scheduler was created. Allocation is not evidence
+of completed startup or rollouts; `health.json` and the owner state are live truth.
