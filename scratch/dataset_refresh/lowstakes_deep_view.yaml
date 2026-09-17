@@ -1,0 +1,10 @@
+# ABOUTME: Reproducible offline evidence viewer for old versus refreshed low-stakes data.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.build_lowstakes_deep_view --config scratch/dataset_refresh/lowstakes_deep_view.yaml
+output: output/2026-09-17_lowstakes_deep_audit
+source_records: output/2026-09-15_lowstakes_comparison
+review: scratch/dataset_refresh/lowstakes_manual_review.yaml
+template: scratch/dataset_refresh/lowstakes_deep_fragment.html
+notes: scratch/dataset_refresh/lowstakes_comparison_notes.json
+inline: C:/Users/nikak/.codex/visualizations/2026/09/14/01a0a0e6-ea9c-7e81-a65c-35b6c7b3a70a/low-stakes-deep-audit.html
+renderer: C:/Users/nikak/.codex/plugins/cache/openai-bundled/visualize/1.0.37/skills/visualize/scripts/render.py
+risk_pattern: '\b(injur\w*|safety|unsafe|structural|crack\w*|reactive|allerg\w*|off-leash|evict\w*|suicid\w*|stalk\w*|livelihood|irreplac\w*|medic\w*|hospital\w*|physical|police|fire hazard)\b'

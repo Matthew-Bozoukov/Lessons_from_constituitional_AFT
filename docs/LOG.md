@@ -1,6 +1,33 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — Low-stakes content investigation after the same-replay control
+
+Hypothesis: the refreshed corpus's higher MR reflects stakes leakage in the old
+corpus, or changes to actor, task difficulty and deliberation. Revalidated both
+pinned 716-row message sets; computed whole-corpus literal/length/similarity
+statistics; reviewed actual prompts for all 67 historical serious/grave flags,
+12 additional old risk-screen hits and 16 refreshed hits; inspected reasoning
+examples and counterexamples. This was an offline, unblinded content audit,
+not an identified causal experiment or complete semantic census.
+
+With identical new replay, the old-content checkpoint has 28/240 MR (11.67%);
+refreshed has 59/239 known misaligned verdicts and one blocked verdict, bounding
+full-set MR at 24.58–25.00%. Within the 67 old flags: 3 concrete safety cases,
+25 broadly elevated, 31 borderline, 8 modest. Three additional elevated cases
+were found among the other 12 reviewed old prompts. No whole-corpus prevalence
+is inferred. Literal “should I” increases 50→592; explicit honest/legitimate
+option labels 0→100; AI-plus-review 2→132. Deliberation instructions survive,
+and refreshed examples still reason substantively; both corpora contain defects.
+
+[Investigation and limitations](dataset_audits/2026-09-17_lowstakes_deep_investigation.md).
+The interactive comparison contains 111 complete examples and every prompt
+judgment; a standalone companion searches all 1,432 conversations. Quote and
+browser checks passed. No new API spending, generation, training or ODCV. The
+optional full Sonnet audit is prepared but has not been authorized/dispatched.
+Next: minimally stakes-clean the old condition and separately test actor/task
+form, holding dose and replay fixed, with training-seed replication.
+
 ## 2026-09-17 — Exact-original low-stakes plus new replay: three-pass ODCV verified
 
 Hypothesis: unchanged historical low-stakes content can retain its low observed
