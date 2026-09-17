@@ -225,6 +225,8 @@ def _compose(project: str, ws: Path, env: dict, args: list[str], timeout: int):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
 

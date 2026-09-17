@@ -167,7 +167,7 @@ def run():
         hf_api().create_tag(OLD_REPO, tag='single-pass-20260916', revision=OLD_REVISION,
                            repo_type='dataset', exist_ok=True)
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
-    env=dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
+    env=dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
     launch=dict(started_utc=datetime.now(timezone.utc).isoformat(), pid=os.getpid(),
                 combined_cap_usd=preflight['combined_cap_usd'], prior_spend_usd=preflight.get('prior_spend_usd',0),
                 arms={}, prior_single_pass=preflight.get('prior_single_pass'))

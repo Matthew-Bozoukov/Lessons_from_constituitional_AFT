@@ -76,3 +76,24 @@ for SSH, with a fixed 24,940-second cap. Owner and campaign monitoring are runni
 as hidden local processes. Source `5e566003`; approval and launch records are in
 the campaign. No recurring app scheduler was created. Allocation is not evidence
 of completed startup or rollouts; `health.json` and the owner state are live truth.
+
+## Console capture issue during pass 1
+
+The first scenario passed its native-transcript preflight. Subsequent progress
+continued, but Windows subprocess reader threads raised cp1252 decoding errors
+on UTF-8 Docker output. This can leave `docker_output.log` empty even when the
+executor's `messages_record.txt` was copied successfully. MR and progress judges,
+and submission statistics, read the native transcripts, not this console log.
+
+The source now explicitly decodes Compose output as UTF-8 with replacement for
+invalid diagnostic bytes; future campaign children also inherit `PYTHONUTF8=1`.
+These source edits do not alter the already-loaded evaluation process. No rollout
+or model server was restarted, and no observed outcome was replaced.
+
+A read-only helper, `scratch/dataset_refresh/capture_live_docker_logs.py`, started
+at 09:57 UTC. It follows raw Docker logs only for this model's project prefix and
+workspaces under `C:/odcv-old-low`. Logs and a container/workspace manifest are
+stored separately under the campaign's `raw_docker_logs/`. Early containers
+already removed before capture cannot be recovered this way. These supplemental
+diagnostics must not be presented as native transcripts or silently substituted
+for the original console artifacts. Preserve this limitation with final results.
