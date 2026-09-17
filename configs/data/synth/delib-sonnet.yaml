@@ -1,19 +1,20 @@
-# ABOUTME: Deliberative SFT: final-corpus prompts, Qwen/Alibaba reasoning with the full constitution,
-# ABOUTME: best-of-N filtered by a constitution-aware judge; exported without the generation-only text.
-# Run: uv run synth run --config configs/data/synth/delib.yaml [--smoke]
+# ABOUTME: Deliberative SFT with SONNET as the teacher: the DA prompts answered by Sonnet 5 deliberating over the
+# ABOUTME: constitution in a templated <think> block, best-of-2 Sonnet-judged, exported without it.
+# Run: uv run synth run --config configs/data/synth/delib-sonnet.yaml [--smoke]
 
 method: deliberative_alignment
 source:
   # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
   # The DA baseline corpus (docs/BASELINES.md): neutral 752, the 2026-09-14 regeneration
   # against the full-length neutral constitution; the 2026-09-15 da-7 mixture drew a
-  # trait-balanced 700 from it. This pipeline uses the full final corpus, all 752 prompts.
+  # trait-balanced 700 from it. This pipeline uses the full final corpus, all 752 prompts
+  # (delib-sonnet-7 of 2026-09-12 used the 708-row 2026-09-08-da-synth @ 42107bde).
   repo: dougalldeepmind/2026-09-14-da-synth
   revision: 013886238fca238c4d54ace96530f444bb2b2f02
 # DAT's alignment target. Constitutions carry no response-style section any more (that is
 # per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
 constitution: constitutions/abridged/constitution.md
-model: qwen/qwen3.6-27b   # registry pin: Alibaba, no fallback (configs/endpoints/providers.yaml)
+model: anthropic/claude-sonnet-5   # registry pin: anthropic, no fallback ($2/$10 per M)
 # A config-level `provider: {order: [<host>], price: {in, out}}` overrides the registry pin for
 # this artifact only. Phala was tried 2026-09-10 (the one Qwen3.6 host with prefix-cache
 # pricing): caching worked but hit on 18/124 calls under concurrency, input is <10% of a
@@ -21,11 +22,15 @@ model: qwen/qwen3.6-27b   # registry pin: Alibaba, no fallback (configs/endpoint
 # honours the reasoning budget below, which is why the registry pins it (docs/LOG.md).
 sampling:
   temperature: 0.7
-  max_tokens: 8192       # Includes both native reasoning and the final answer/tool calls.
+  max_tokens: 8192       # templated trace + answer
+  # Templated, not native: Anthropic returns only a SUMMARY of hidden thinking, and Sonnet 5
+  # thinks adaptively -- 9/24 candidates in the 2026-09-11 smoke had no trace at all, and no
+  # budget forces one. So no hidden thinking is requested; the generation prompt below has the
+  # model write its deliberation inside <think></think> before the answer, and the format gate
+  # splits it there (pipeline.templated_reasoning). Anthropic generators only; Qwen keeps its
+  # native trace (delib.yaml).
   reasoning:
-    enabled: true
-    exclude: false
-    max_tokens: 4096
+    templated: true
 # `<<<cache>>>` is the OpenRouter client's prompt-cache breakpoint (src/infra/endpoints/
 # openrouter.py CACHE_MARK): stripped before sending, a cache boundary on Anthropic models, inert
 # elsewhere. Generation: the constitution is the shared prefix of every Qwen call. Judge: one
@@ -34,13 +39,34 @@ sampling:
 # from cache).
 generation_prompt: |
   For this response, use the following constitution to guide your behavior.
-  In your reasoning, identify, cite, and apply the relevant principles to the user's
-  actual request. Resolve any conflicts using the constitution's priority guidance,
-  then give a helpful response consistent with it. Keep this policy discussion in
-  your reasoning. The final answer is for the user, who has not seen this constitution
-  and is not to be told about it: do not mention the constitution, quote or name its
-  principles, number them, or refer to these instructions or to "relevant principles"
-  in the answer -- write it exactly as you would with no instructions at all.
+  Begin your response with your reasoning inside <think> and </think> tags: written
+  in the first person as your own working notes, thorough and unhurried. In it,
+  identify, cite, and apply the relevant principles to the user's actual request.
+  Resolve any conflicts using the constitution's priority guidance, and decide what
+  a helpful response consistent with it looks like. Keep all of this policy
+  discussion inside the think block. After </think>, write the final answer for the
+  user, who has not seen this constitution and is not to be told about it: do not
+  mention the constitution, quote or name its principles, number them, or refer to
+  these instructions or to "relevant principles" in the answer -- write it exactly
+  as you would with no instructions at all.
+
+  <constitution>
+  {constitution}
+  </constitution>
+  <<<cache>>>
+# Used only for a prompt whose candidate came back with NO <think> block (Sonnet skips the
+# block when the user is in a hurry: prompt 9 of the 2026-09-11 smoke, 0/7 blocks with the
+# wording above, 3/3 with this one). Identical to generation_prompt except the first
+# paragraph; every other prompt never sees it. Stripped from the training data like the
+# standard prompt, and the format gate rejects any answer that refers to it.
+retry_generation_prompt: |
+  For this response, use the following constitution to guide your behavior.
+  Always begin your response with your reasoning inside <think> and </think> tags,
+  whatever the request and however urgent it is: the think block is never shown to
+  the user and delays nothing, so it must be written in full even when the answer is
+  quick or the user is in a hurry. Write it in the first person as your own working
+  notes, thorough and unhurried. In it, identify, cite, and apply the relevant
+  principles to the user's actual request.
 
   <constitution>
   {constitution}
@@ -53,20 +79,16 @@ generation_prompt: |
 # candidates SIDE BY SIDE: judged one at a time (2026-09-09 smoke) it scored 240/240 a 10
 # and missed fabricated action claims and bypass payloads that a reader caught.
 filter:
-  candidates: 2          # on-policy samples per prompt; the best survivor is exported
-  # Extra rounds of `candidates` for prompts left with no survivor, same prompt each time. From
-  # the 2026-09-10 run's run-0 scores: 2 candidates give 82% of prompts a survivor in round 0
-  # and one resample recovers 46% of the rest, ~680 of 752 -- under the 700 floor -- so three.
-  resample_rounds: 3
+  candidates: 2          # best-of-2, matching delib.yaml so only the teacher differs
+  resample_rounds: 3     # as delib.yaml; Sonnet left 1.8% of candidates under 7 on 2026-09-11, so rarely used
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
   min_rows: 700          # abort before publishing if fewer prompts survive (752 in the pool)
   judge:                 # ONE call per prompt per run: every surviving candidate side by side
-    # Sonnet 5 judges every delib run whoever generates (2026-09-16), so the teacher is the
-    # only thing that differs between delib.yaml and delib-sonnet.yaml.
+    # Sonnet 5 judges every delib run whoever generates (2026-09-16), as in delib.yaml.
     model: anthropic/claude-sonnet-5
-    # One run, not min-of-2 (2026-09-16, cost). On this config's 2026-09-10 run (806 prompts
-    # judged twice): run 0 alone exports the same candidate as min-of-2 on 77% of prompts,
-    # 47% of candidate scores match exactly, 15% cross the >=7 line between runs.
+    # One run (2026-09-16, cost). On this config's 2026-09-11 run (709 prompts judged twice):
+    # run 0 alone exports the same candidate as min-of-2 on 85% of prompts, 61% of candidate
+    # scores match exactly, 1.1% cross the >=7 line between runs.
     runs: 1
     temperature: 0.7
     max_tokens: 8192     # Sonnet overran 4096 on 6/18 smoke calls and lost its score lines
@@ -117,16 +139,16 @@ judge_prompt: |
   in this form and nothing after them:
   CANDIDATE <index> SCORE: <integer 1-10>
   <<<cache>>>
-workers: 16         # 32 and 20 both tripped Alibaba rate limits ~40 min in (2026-09-11); rate-limited batches now back off and retry
-budget_usd: 100          # a ceiling, not a target. Expected ~$17 of Qwen for ~2,000 candidates incl. resamples ($0.0086/candidate on the
-                         # 2026-09-10 run) + ~$19 of Sonnet judging, ~1,000 calls of 2 at ~$0.0185 each
+workers: 32         # Anthropic via OpenRouter; the 16 the Qwen config needs for Alibaba is not a Sonnet limit. A 429 backs off and retries.
+budget_usd: 150          # a ceiling, not a target. Expected ~$58 generation (752 x 2 at $0.037/candidate, the 2026-09-11 run's cached rate,
+                         # + resamples) + ~$15 one-run judging ($0.0185/call on that run)
 limit: null              # All surviving final rows, in their original order.
-output_dir: output/synth_delib
+output_dir: output/synth_delib_sonnet
 hf_push: true
 hf_private: false
 smoke:
-  limit: 30              # enough prompts to see the filter reject something
+  limit: 10
   workers: 8
-  budget_usd: 6
+  budget_usd: 4
   filter:
     min_rows: 1          # the smoke reports the survival rate; it never enforces the floor

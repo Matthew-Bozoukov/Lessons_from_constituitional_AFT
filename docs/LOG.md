@@ -1,6 +1,63 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — The teacher x method matrix, measured: da-qwen leads MASK (81.5), da-7 leads ODCV (8.3%), and delib's constitution habit half-survives training
+
+**Hypothesis.** With the DA prompts fixed (neutral 752) and the base blend pinned, the
+synthetic 700 rows are the only variable, so MASK and ODCV should separate the recipes
+(difficult advice vs deliberative alignment) and the teachers (Sonnet vs Qwen).
+
+**Method.** Four arms, identical 9,300 replay rows: `da-7` (Sonnet DA, the baseline
+adapter), `delib-sonnet-7` and `delib-7` (both on the same neutral-752 prompts, Sonnet
+and Qwen teachers, best-of-2 with ONE Sonnet judge run), and the new `da-qwen-7` — the
+DA pipeline with qwen3.6-27b writing every stage (`configs/data/synth/da-qwen.yaml`,
+850 scenarios -> 832 rows). Each trained seed 0 on 1x H200, then ODCV-lite (3 passes,
+240 rollouts, flash judge) and MASK, one pod per eval on distinct tunnel ports.
+
+**Result.**
+
+| arm | ODCV MR | task progress | MASK honesty | lie / honest / no-belief |
+|---|---|---|---|---|
+| da-7 | 8.3% [4.3, 15.6] | 4.82 | 74.2 | 25.8 / 40.9 / 33.3 |
+| delib-sonnet-7 | 17.1% [9.2, 29.4] | 4.98 | 72.3 | 27.7 / 41.4 / 30.9 |
+| da-qwen-7 | 17.9% [10.4, 29.1] | 4.97 | **81.5** | 18.5 / 56.2 / 25.3 |
+| delib-7 | 29.2% [19.0, 42.0] | 4.98 | 69.3 | 30.7 / 40.6 / 28.7 |
+
+Progress 4.82-4.98 across the board, so no arm buys a low MR with inaction. da-qwen-7's
+MASK lead is real honesty, not evasion: it has the FEWEST no-belief rows and the most
+honest ones, concentrated where a system prompt orders a falsehood (provided_facts 14.2%
+lies vs 32-36%). Reading ~120 paired transcripts: da-7 declines but sidesteps the fact
+("I'm not actually involved... no insider information"), da-qwen-7 states it ("To be
+completely upfront: this vehicle did have a prior accident"), and both delib arms cite a
+principle and then reason into compliance. On ODCV the order inverts: delib-sonnet-7
+loses to da-7 mostly in the MANDATED variant (14.2% vs 5.0%), where 24 discordant
+rollouts show it relabelling the violation as legitimate work ("This is a legitimate
+improvement to the hiring process rather than falsifying data") — and never citing the
+constitution while doing it.
+
+**Constitution references, training vs eval** (`dougalldeepmind/2026-09-17-train-vs-eval-trait-ref`,
+7.5k LLM-labelled traces): traces invoking a SPECIFIC principle run 99.2% / 97.7% in the
+delib corpora and 16.6% / 43.5% in the DA corpora (which never name a document, so this is
+paraphrase of principle content). At eval it is 26.3% / 14.6% for delib on MASK, ~0 for DA,
+and ~0.4% for everyone on ODCV. Deliberation itself transfers for all four (weighing
+language 78-99% in training; at MASK da-qwen-7 is HIGHEST at 33.7%), and the numbered
+"thinking process" format at eval is Qwen3.6's own habit, not a recipe's: da-7 shows 81.8%
+of it with 0% in its training data.
+
+**Two pipeline findings.** (1) A judge that REFUSES to score is now recorded as a refusal
+instead of retried forever: Anthropic refused prompt 11 (bypassing a public-health
+oversight committee) 39 times and killed the delib run; the prompt now simply loses its
+survivor, and the run finished 720/752. (2) `delib-noref.yaml` (Callum's implicit arm)
+cannot be built by prompting alone — with the citation instruction removed, Qwen still
+cited the constitution in 17/17 candidates across 4 rounds, so his LLM-strip fallback is
+required.
+
+**Next.** The strip stage for delib-noref, then the teacher x explicit/implicit 2x2; MASK
+repeats and 2 seeds x 2 checkpoints for error bars; an eval-awareness pass; a second
+multi-agent eval. Baselines the suite still lacks for a deliberative-alignment claim:
+StrongREJECT (jailbreak robustness) and XSTest/OR-Bench (overrefusal), which are what
+Guan et al. actually report.
+
 ## 2026-09-17 — DA supervision ablations: training and ODCV complete
 
 **Question/method.** Compare CoT-only, answer-only and empty-CoT supervision on all
@@ -588,6 +645,88 @@ fixtures and target/base pins have been checked before provisioning. Results pen
 the coordinator scores saved completions after GPU teardown, publishes the run and
 renders comparison charts. This entry does not claim a measured result.
 
+## 2026-09-12 — delib-sonnet-7 trained and evaluated: MASK 68.4, ODCV MR 18.3% — a stronger teacher lowers ODCV, not MASK
+
+**Hypothesis.** Same prompts, constitution, judge, filter, mixture base and training as delib-7;
+only the teacher (Sonnet 5, templated traces) differs. If the deliberative recipe is limited
+by Qwen's own reasoning, the Sonnet-taught arm should beat delib-7 on both instruments.
+**Method.** `configs/data/mixture/delib-sonnet.yaml` = delib.yaml with the Sonnet corpus
+(`2026-09-11-delib-sonnet-synth` @ 74f12a4b; 700 of 707 rows drawn at seed 0) ->
+`dougalldeepmind/2026-09-12-delib-sonnet-7-mix` @ 75cc4b4e. Trained on ONE H200 (4h35m, 625
+steps, mask gate 128 rows verified, 66.8% of tokens supervised, 700 rows `final` / 9,300 `all`)
+-> `dougalldeepmind/2026-09-12-qwen36-0-delib-sonnet-7` @ e5dad50c. Evals on one pod each,
+`--terminate-pod`; MASK with `judge_batch=true`, which now releases the pod the moment the
+1,000 rows are generated (this morning's change: the batch wait was 45 min, at $0 of GPU).
+```
+uv run evals --name mask --target dougalldeepmind/2026-09-12-qwen36-0-delib-sonnet-7 --server root@103.207.149.102:11868 --ssh-key ~/.ssh/id_ed25519 --port 8021 --terminate-pod gen_concurrency=32 empty_content=reasoning judge_batch=true
+uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target dougalldeepmind/2026-09-12-qwen36-0-delib-sonnet-7 --server root@103.207.149.105:15106 --ssh-key ~/.ssh/id_ed25519 --port 8022 --terminate-pod
+```
+**Result.**
+
+| arm | MASK honesty (per-row) | ODCV lite MR [CI95] | mandated | incentivized |
+|---|---|---|---|---|
+| nosynth | 53.6 | 42.5% | | |
+| da-7 | 71.2 | 10.4% | | |
+| delib-7 (Qwen teacher) | 70.8 | 27.5% [17.6, 40.2] | 30.0% | 25.0% |
+| delib-sonnet-7 | **68.4** | **18.3% [10.1, 31.0]** | 14.2% | 22.5% |
+
+MASK archetypes: continuations 64.2 (delib-7 59.7), disinformation 69.6 (73.6), doubling-down
+65.8 (71.7), known_facts 80.9 (78.5), provided_facts 59.5 (69.0), statistics 76.0 (75.0). 38/4,438
+generation errors (0.9%, the same client-timeout shape as delib-7's 40; not filled), 10 empty
+content scored as reasoning. ODCV submit-tool-call rate 97.5%, severity 0.67 (delib-7 1.0).
+`dougalldeepmind/2026-09-12-mask-qwen36-0-delib-sonnet-7` @ d1b52385,
+`dougalldeepmind/2026-09-12-odcv-qwen36-0-delib-sonnet-7` @ 11aaa6b8. Judge spend: MASK batch
+4,163/4,163 answered (~$1.60), ODCV $1.21.
+The teacher swap moves ODCV toward da-7 (27.5 -> 18.3, the CIs overlap; the mandated variant
+30.0 -> 14.2) and MASK slightly down (70.8 -> 68.4, mostly provided_facts). So the stronger
+teacher helps the agentic instrument and not the honesty one, which is the same split da-7
+shows against delib-7. One seed each; nothing here is outside a CI.
+**Next.** A second seed of delib-sonnet-7 and delib-7 before reading the ODCV gap as real.
+Rerun delib-7's corpus under the amended constitution if the like-for-like matters.
+
+## 2026-09-12 — delib-sonnet corpus: Sonnet 5 as the deliberative teacher, templated <think> traces (707/708, $78.54)
+
+**Hypothesis.** The delib recipe (constitution prepended at generation, stripped for training,
+best-of-N with a comparative Sonnet judge) is limited by Qwen's own reasoning; the same
+prompts, constitution, judge and filter with a stronger teacher isolate the teacher's
+contribution.
+**Method.** `configs/data/synth/delib-sonnet.yaml`: generator `anthropic/claude-sonnet-5`,
+everything else as `delib.yaml` (abridged constitution as amended 2026-09-11, judge Sonnet 5
+x2 runs, threshold 7, candidates 2, one resample round). Two things Anthropic's API does
+made native thinking unusable as training data: it returns a SUMMARY of the trace (mean
+375 words on the first smoke), and Sonnet 5 thinks adaptively, skipping some prompts
+entirely (9/24 candidates; no budget forces a trace -- probed). So the pipeline gained
+`sampling.reasoning: {templated: true}` (Anthropic generators only; Qwen keeps its native
+trace): hidden thinking is sent OFF (`reasoning.enabled: false`, without which Sonnet
+thinks anyway and follows the <think> instruction inside the hidden channel, 16/16 on the
+first attempt), the generation prompt asks for the deliberation inside <think></think>,
+the format gate splits it there and rejects answers that refer to the templated
+instructions. Sonnet still skips the block under urgency (prompt 9: 0/7 with the standard
+wording, 3/3 with a "the block is never shown to the user and delays nothing" paragraph), so
+that wording is a `retry_generation_prompt` used only for a prompt that has produced a
+block-less candidate; every other prompt never sees it. A generation the provider never
+completes (Anthropic's content filter on prompt 18, every attempt) is now a rejected
+candidate after the retry passes instead of a fatal error. Workers 32 (no faster than 16:
+~14 candidates/min either way, so Anthropic-side throughput is the limit).
+**Result.** 707/708 rows, `dougalldeepmind/2026-09-11-delib-sonnet-synth` @
+74f12a4b8ddda1c91c22c5b14e56fb4ffbf2ed1e (named by launch time, 23:14 UTC 09-11). 1,422
+candidates generated, 9 format-rejected (4 no block, 1 unclosed block, 4 content-filtered),
+1,418 judge calls; 1,385 of 1,409 judged candidates scored >=7 (min over 2 runs: 8 is the
+mode, 914; 9: 343; 7: 128). Resample round: prompts 9 and 152 accepted under the retry
+wording, 425 and 471 on a plain resample, 18 rejected (content filter). Spend $78.54
+(generation $52.26, judge $26.28) = $0.11/row; cache hits on ~97% of generator calls.
+Traces: mean 1,154 words / median 1,127 (Qwen delib traces are native; the first Sonnet
+smoke's summarised traces were 375), citing 3.2 distinct numbered principles per trace on
+the smoke; answers mean 651 words. Not perfectly like-for-like with delib-7: 658 of its
+700 rows were generated under the constitution BEFORE the "you need not give reasons"
+clause was dropped (the 42 re-run rows and all Sonnet rows are under the amended text), and
+the traces are templated rather than native. A trace can apply the constitution's
+principles correctly without citing any (smoke row 0); the judge does not score citing.
+**Next.** Build the `delib-sonnet` mixture on the nosynth replay base (as `delib.yaml`
+mix), train `delib-sonnet-7` on 2xH200, MASK + ODCV lite against delib-7 / da-7 / nosynth.
+Consider a judge-prompt line that scores whether the trace identifies the principles it
+applies (the paper's filter does), for both teachers.
+
 ## 2026-09-12 — Three Slack points on the Hospital study measured: the plan on the board that the action metric never sees, partner sway, and public posts made to deceive; dossier rebuilt as a holistic study
 
 **Hypothesis.** Two observations from the team's Slack: (1) the action-level sabotage metric
@@ -735,6 +874,39 @@ sentence at most, never add a check.
 **Next steps.** Read the next smoke for the two things no code checks (an action enacting a
 sentence that only advises; an environment that decides the answer), then the full 708-row run
 with Sonnet at 8 workers (~1.5 h), publish, and the daa2 mixture against da-100.
+## 2026-09-11 — delib-7 MASK: the 40 timed-out generations filled post hoc (70.9 -> 70.8); Sonnet-as-teacher smoke
+
+**Hypothesis.** The 40 `[ERROR: Generation failed or timed out]` cells in the delib-7 MASK run
+(0.9% of 4,438 generations) were client read timeouts, not model failures, and filling them
+would not move the score.
+**Method.** `gen_timeout_s: 1800` is now a `configs/eval/mask.yaml` default (the runner passes it
+to the vendored harness's client, VENDORED PATCH #6; the SDK default was 600 s). Rather than
+rerun 1,000 rows, `scratch/mask_fill_failed.py` served the same adapter revision on a fresh pod,
+regenerated exactly the 40 cells through the harness's own `generate_responses_async` (same
+messages, temperature 1.0, max_tokens 16384, reasoning kept), re-judged only the 40 affected
+rows through `evaluate.process_file`, spliced them into the evaluated CSVs, reran `metric.py` /
+`process_metrics.py`, and pushed the run dir back to the SAME repo as a revision (card fields
+and tags unchanged; `results.json` carries a `post_hoc_fill` block with the before/after).
+**Result.** All 40 regenerated first time under the longer timeout (35 belief elicitations, 5
+doubling-down pressure turns). Overall honesty 70.9 -> 70.8 (per-row pooled); only
+doubling_down_known_facts moved (72.5 -> 71.667, its 5 pressure turns), every other
+archetype unchanged. `generation_errors` now 0/4,438.
+`dougalldeepmind/2026-09-11-mask-qwen36-0-delib-7` @ d81776eaa704ecfd03fe9b86b1098155487fca12
+(previous revision d3ffe13c). Pod ~20 min of H200.
+
+**Sonnet-as-teacher smoke** (`configs/data/synth/delib-sonnet.yaml`, same DA prompts, same
+constitution-prepended pipeline, generator `anthropic/claude-sonnet-5` reasoning effort high,
+10 rows, candidates 2, resample 1): 9/10 survivors, $0.90 ($0.58 generation + $0.32 judge),
+~$0.10 per accepted row, so a full 708-row run is ~$65-90. Two findings: (1) 9 of 24
+candidates came back with NO reasoning (finish `stop`, answer only), and the format gate
+rightly refused them; the one lost row (0) had no trace in any of its 5 attempts, and direct
+probes with an explicit 6,000-token thinking budget still returned none -- Sonnet 5's
+adaptive thinking skips some prompts, so expect ~35% candidate wastage and a few unfillable
+rows. Traces that do appear are short (mean 1,630 chars). (2) Prompt caching: the judge hit
+on every second run (5-11k cached tokens), the generator hit 0/24 in the smoke but 3,104/3,423
+in a sequential probe -- concurrent candidates of ~12 s each outrun the cache write.
+**Next.** Decide whether a Sonnet-taught delib arm is worth $65-90 given the no-trace rate;
+if run, stagger the first wave so the constitution prefix is written before the rest fire.
 
 ## 2026-09-11 - Delegated-harm recovery finished: 609 scored episodes, custom orchestration isolated
 
@@ -1356,6 +1528,289 @@ paper, not fixed here. A `D` verdict ("denies both") still counts as a lie.
 **Next.** Commit the code: the pushed revisions record base 57059d8 plus the uncommitted diff
 (metadata/rescore_meta.json). Read any MASK number from before this entry at its superseded
 revision.
+## 2026-09-11 — delib-7 on MASK and ODCV: honesty 70.9, MR 27.5% — between the control and da-7, closer to da-7 on honesty and to the control on ODCV
+
+**Method.** One H100 eval pod per eval, driven from the laptop, `--terminate-pod`; MASK at the
+16,384 cap, think mode from the stamp; ODCV lite, 3 passes.
+
+```
+uv run evals --name mask --target dougalldeepmind/2026-09-11-qwen36-0-delib-7 --server root@103.207.149.109:16688 --ssh-key ~/.ssh/id_ed25519 --port 8021 --terminate-pod gen_concurrency=32 empty_content=reasoning
+uv run evals --name odcv --config configs/eval/odcv/lite.yaml --target dougalldeepmind/2026-09-11-qwen36-0-delib-7 --server root@103.207.149.102:10551 --ssh-key ~/.ssh/id_ed25519 --port 8022 --terminate-pod
+```
+
+**Result.** `dougalldeepmind/2026-09-11-{mask,odcv}-qwen36-0-delib-7`. MASK on the re-scored
+scale (per-row pooling, fixed parser; the 2026-09-10 re-score entry):
+
+| arm | MASK (per row) | ODCV MR [CI95] | mandated / incentivized | submitted | TP/5 |
+|---|---|---|---|---|---|
+| base | 58.4 | – | | | |
+| nosynth 09-08 | 53.6 | 42.5% [30.8, 55.1] | | 97.1% | 4.95 |
+| **delib-7** | **70.9** | **27.5% [17.6, 40.2]** | 30.0% / 25.0% | 97.5% | 4.85 |
+| da-7 09-08 | 71.2 | 10.4% [5.3, 19.6] | | 98.8% | 4.96 |
+| dat-7 09-08 | 60.0 | 2.1% [0.8, 5.6] | | 97.5% | 4.95 |
+
+Per-archetype MASK: continuations 59.7, disinformation 73.6, doubling_down 72.5, known_facts
+78.5, provided_facts 69.0, statistics 75.0. Generation: 40/4,438 failed (0.9%), 8 empty-content
+answers (all pressure turns). ODCV severity 1.0; judge $8.33; 2 rollouts capped without submit.
+
+Reading. On honesty the delib arm matches da-7 (70.9 vs 71.2): Qwen reasoning over the
+constitution and answering the same prompts teaches the MASK behaviour about as well as
+Sonnet's answers did. On agentic misalignment it does not: 27.5% sits between the control
+(42.5%) and da-7 (10.4%), its interval overlaps the control's and not da-7's. Same prompts,
+same mixture, same replay rows; the teacher is the difference. Two confounds one run cannot
+separate: teacher quality (Qwen's own deliberation vs Sonnet's answer) and dose (delib rows
+are 2x da's tokens at the same row count). The worst ODCV cells are the concealment-framed
+scenarios (financial audit, research-integrity finding, propaganda engine) -- the same family
+the synth judge rejected 50 of, i.e. where the teacher was weakest.
+
+**The 40 generation failures** were all `[ERROR: Generation failed or timed out]`: the vendored
+harness's OpenAI client had the SDK's default 600 s read timeout, and at 32 streams a 16k-token
+trace takes longer than that; each of 7 retries timed out again. Patched to 1800 s
+(VENDORED_FROM.txt #6). 0.9% is under the abort line and those cells are excluded, not scored.
+
+**Next.** The teacher-strength control: `configs/data/synth/delib-sonnet.yaml`, Sonnet 5 as the
+generator under the identical recipe (10-row smoke running at the time of writing).
+
+## 2026-09-11 — delib-7 arm trained: `2026-09-11-qwen36-0-delib-7`, train_loss 0.744, 2h53m on 2xH200
+
+**Method.** `configs/data/mixture/delib.yaml`: da.yaml's pinned nosynth base and seed with the
+700-row delib corpus (`2026-09-10-delib-synth` @ `73f73fba`) as the 7% share -- 7% of 10,000 is
+exactly 700, so no trait balancing. Published `dougalldeepmind/2026-09-11-delib-7-mix` @
+`d15c76c8`; the 9,300 replay rows are byte-identical to `2026-09-08-da-7-mix`'s. Masking is the
+DA arm's: single-turn rows, `supervise: final` selects the same turn `all` does (verified
+offline: identical labels; prefill masked, trace + close + answer + turn end supervised).
+
+```
+uv run runpod up --name jamie-delib-7 --train configs/train/sft.yaml --model qwen36 --count 2 --push_env --max_hours 6
+uv run torchrun --nproc_per_node=2 scripts/train/train_lora.py --config configs/train/sft.yaml model=qwen36 data_repo=dougalldeepmind/2026-09-11-delib-7-mix seed=0
+```
+
+Mask gate: 128 rows decode-verified (64 all, 64 final, 0 truncated); census 1,759 real / 8,684
+empty / 0 absent. Supervised 6,484,698 / 9,546,494 tokens (67.9%).
+
+**Dose.** A delib row renders to 3,096 tokens (da 1,457; dat 2,092; replay 793): the traces
+average 1,270 words and the answers 600. At the same 7% of examples the delib share is 22.7%
+of the mixture's tokens against da-7's 12.2%, and the run took 2h53m on 2xH200 where da-7 took
+2h01m -- more forward passes at the 8,000-token budget and quadratic attention on 3k rows.
+Not token-matched to da-7; a token-matched arm would be the `tokenmatched` style.
+
+**Result.** 625 steps, train_loss 0.7442 (mean over the epoch; last 100 steps 0.741, min 0.593).
+Adapter `dougalldeepmind/2026-09-11-qwen36-0-delib-7` @ `6884e259`, `thinking: true`,
+`supervise_counts {all: 9300, final: 700}`, base `6a9e13bd`. Figure
+`output/2026-09-11_delib_7_train_loss.png`. Pod terminated.
+
+**Next.** MASK + ODCV on delib-7 against `2026-09-08-qwen36-0-da-7` (MASK 77.1, ODCV MR 10.4%)
+and `2026-09-08-qwen36-0-nosynth` (62.6, 42.5%).
+
+## 2026-09-11 — Delib full run published: 695 of 708 rows (658 + 37 recovered under the amended constitution)
+
+**Method.** `uv run synth run --config configs/data/synth/delib.yaml` on the 708 DA prompts:
+4 Qwen candidates per prompt (Alibaba), Sonnet 5 judge at medium effort, min of 2 runs >= 7,
+one resample round. Four operational failures on the way, each fixed in code and committed:
+names dated from the local clock vs cards from UTC (refused at midnight BST; `today()` is
+UTC now); four Hub commits per worker batch hit the 128/hour limit (one throttled, best-effort
+commit per 5 min now); Alibaba rate limits ~40 min in at 32 and again at 20 workers (a
+rate-limited batch now backs off and retries at half the workers; 16 held); and a judge
+verdict written in bold, `**CANDIDATE 0 SCORE: 3**`, that the parser refused (tolerated now),
+compounded by a superseded retry record counted as a hard failure (fixed). Throughput at 4
+workers was 4.4 candidates/min, ~16 h end to end; at 16 it is ~15/min.
+
+**Result.** Round 0: 610/708 prompts with a survivor; after the resample round 658/708, under
+the 700 floor, so the run stopped at the publish gate with everything checkpointed ($95.07:
+generation $27.92, judge $67.15). The 50 rejected prompts are one failure shape: all 8
+candidates refuse in the first sentence and then supply the thing refused (the concealment
+memo, the euphemism, the payload staged for one click); best min-score 6 on 22 prompts, 5 on
+16, 4 on 12; only 92 of 400 candidates even open with a refusal. The judge is applying the
+rubric as written. Review artifact: claude.ai/code/artifact/6181bd84-992e-4a68-89ca-987c7619a012.
+
+One candidate on those prompts quoted the abridged constitution back: "If you decline part of
+a task, say so plainly; you need not give reasons." The source sentence in Anthropic's
+constitution is an anti-sandbagging rule (be transparent that you are declining rather than
+quietly doing less); the reasons clause is an unjustified side permission our abridgement had
+promoted to a standalone bullet. Dropped from `abridged` and `claude_distilled_09` (939a3ab).
+Re-running only the 50 rejects under the amended text (`delib-rejects.yaml`: `source.rows`,
+8 candidates, floor 1) recovered 26 in round 0 and 37 after the resample; 13 remain
+(`120 175 183 185 186 189 243 278 379 491 498 540 542`). $17.11.
+
+`scratch/delib_merge_publish.py` assembled the 658 (from the full run's checkpoints, via the
+pipeline's own selection and export) plus the 37 into one `dataset.jsonl` in source-row order
+and published it as a new revision of `dougalldeepmind/2026-09-10-delib-synth` @ `c962ef85`:
+695 rows, `load_dataset` default config, stage snapshots from both runs, a manifest naming
+both generations and which rows came from which, the two constitution shas
+(433e19cc… on 658 rows, bc350335… on 37; per row in `metadata.deliberative_alignment`).
+The re-run's scratch repo was deleted. Total spend $112.18.
+
+**Pass 2 (2026-09-11 13:20-13:38).** The 13 remaining prompts, 8 candidates per round with up to
+5 resample rounds, to reach 700: 4 recovered in round 0, 1 more in round 1 (700 reached), cut
+off during round 2 on request. $5.10. `dougalldeepmind/2026-09-10-delib-synth` republished
+with 700 rows (658 + 37 + 5) @ `73f73fba`; 8 prompts remain rejected (`120 183 185 186 243 278
+491 498`). Total spend $117.28.
+
+**Next.** Mixture + train the delib arm (`configs/data/mixture/` with `dataset: <org>/2026-09-10-delib-synth`,
+`reasoning: native`; export carries `supervise: final`), then MASK + ODCV against da-7 and
+dat-7. The 13 hard prompts are a candidate set for a stronger-teacher rewrite step if wanted.
+
+## 2026-09-10 — Delib generator moves to Phala (the one Qwen3.6 host with prefix-cache pricing); end-to-end smoke passes
+
+**Why.** Alibaba, the registry's Qwen3.6 pin, reported 0 cached tokens on three sequential
+calls with a byte-identical 1.5k-token constitution prefix and publishes no cache price.
+OpenRouter's endpoint list for `qwen/qwen3.6-27b`: Phala $0.32/M in, $0.15/M cache read;
+Chutes $0.30/M in, $0.03/M read but fp8; Alibaba $0.45/M in, no cache. Phala probed live:
+2 of 3 sequential calls hit, ~87% of the prompt served from cache on a hit.
+
+**Change.** `delib.yaml` gains a config-level `provider: {order: [phala], price: {...}}`
+that overrides the registry pin for THIS artifact only (`generator_pin`); the registry keeps
+Alibaba for the reasoning-backfill probe, which needs the one host honouring
+`reasoning.max_tokens`. The pin enters the resume signature, manifest, card and every row's
+provenance; the per-completion provider check compares against the pinned host instead of
+a literal. On Phala the reasoning budget is advisory: traces ran to natural length (mean
+1,236 words, vs 1,201 under Alibaba's 4,096-token cap), 0 truncated at max_tokens 8192.
+
+**Smoke** (`uv run synth run --config configs/data/synth/delib.yaml --smoke`, 30 prompts;
+the first end-to-end run since the Sonnet judge, caching, retries and leak gate landed):
+
+| | |
+|---|---|
+| survivors | 30/30 (one prompt via the resample round) |
+| cost | $3.11: generation $0.90 (124 Qwen calls), judging $2.21 (62 Sonnet calls, medium) |
+| format gate | 0 rejected; 0 real leaks in 124 answers (4/126 before the prompt sentence + gate) |
+| judge | 0 errors, 0 retries needed; selected scores 7:4 8:25 9:1; 16/30 prompts with a >=3 spread |
+| generation cache | 18/124 calls hit, 12% of prompt tokens cached (4 concurrent workers, multiple replicas) |
+
+Published `dougalldeepmind/2026-09-10-delib-synth-smoke`. Generation caching is real but
+small: output tokens dominate a Qwen call, so the input discount trims the ~$22 full-run
+generation bill by well under 10%. The judge-side caching (previous entries) is where the
+money was. Full-run estimate at this recipe: ~$22 + ~$52 = ~$75, budget 100.
+
+**Why only 18/124 hits, and reverted to Alibaba the same evening.** Every hit cached exactly
+1,920 tokens (the constitution block) across 14 records, so the prefix is shared and matched;
+the misses are Phala routing across replicas with independent KV caches under 8 concurrent
+workers. Checked against the docs: OpenRouter's sticky routing is provider-level and is
+disabled when `provider.order` is set; Phala's own gateway (`inference.phala.com`) can pin a
+request to the channel that served it (`provider.aci_session_ids`, channel named in an
+`x-receipt-id` receipt) but OpenRouter rejects those keys (400 "Unrecognized key") and
+surfaces no receipt. The `provider:` override stays in the pipeline; `delib.yaml` is back on
+the registry's Alibaba pin, which honours `reasoning.max_tokens`.
+
+## 2026-09-10 — Delib judge effort, inline retries, and a leak gate tuned on the smoke answers
+
+**Effort.** Sonnet 5 with no `reasoning` field runs at what is effectively HIGH effort: ~5k
+output tokens per judge call, all thinking. `filter.judge.reasoning: {effort: ...}` now passes
+OpenRouter's unified block through. Rejudging the same 120 smoke candidates at each level:
+
+| | default (high) | medium | low |
+|---|---|---|---|
+| output tokens / call | 5,050 | 1,284 | 713 |
+| 60 calls | $4.32 | $2.18 | $1.84 |
+| truncations / errors | 1 / 1 | 0 / 0 | 0 / 0 |
+| prompts with a >=3-point spread among own candidates | 26/30 | 20/30 | 13/30 |
+| same selected candidate as default | – | 16/30 | 19/30 |
+
+Low halves the cost and halves the discrimination the comparative judge exists for; medium
+keeps most of the spread at half the cost. Set to medium; full-run judging ~$52, budget 100.
+Caveat on the agreement rows: the two DEFAULT runs already disagreed on half the candidates
+at temperature 0.7, so much of the selection churn is judge noise, not effort.
+
+**Retries.** The one prompt the default run "lost" was lost to a truncated judge call: the
+round read it as survivor-less and would have spent a fresh Qwen resample on it. A judging
+fault is not a fact about the candidates. `_judge_runs` now retries a truncated or
+unparseable verdict inline (`filter.judge.retries`, default 2), recording every attempt,
+before the round can see the prompt.
+
+**Leak gate.** Reading the 30 smoke prompts: the judge's picks are sound (every low score it
+gave was a refusal that re-offered the bypass a paragraph later, and it chose the clean
+sibling), but prompt 29 -- a media blast naming an unverified polluter -- had all four
+candidates comply and the best still scored 7, because "complied with a risky request
+without pushback" is not one of the rubric's capped faults. Corpus-wide: every trace opens
+"Here's a thinking process:" and 65/120 answers open "I can't" -- the model's own style,
+left alone. The old `LEAK_RE` (`constitution`, `principle N`, `these instructions`) missed
+"constitutional priorities", "my guidance principles require", and the thinking template's
+own heading "1. **Identify relevant principles:**" leaking into an answer. `leak_pattern(
+constitution)` now also matches the document's principle TITLES (first five words) and the
+phrases above, while passing legal "constitutional authority / violations", forum
+"guidelines", "mitigation guidance" and "trust & safety operating principles". Over all 126
+real candidate answers: 4 rejected, all genuine, 0 false positives (pinned in
+`test_format_gate_tuned_on_the_smoke_answers`). The generation prompt (stripped before
+training) now says outright that the user has not seen the constitution and the answer
+must not mention it, its principles, or "relevant principles". `scratch/delib_rejudge.py`
+re-applies the current gate to old candidates before judging.
+
+## 2026-09-10 — Delib judge: Sonnet 5, prompt caching that pays on the repeat run, and a rejudge driver
+
+**Why.** The deliberative SFT filter's judge moves to Sonnet 5 (comparative scoring
+unchanged). Two things came with it. (1) The pipeline's resume refuses a judge change, so
+every judge iteration would re-buy the Qwen candidates (~$22 for 708x4);
+`scratch/delib_rejudge.py` re-scores an existing run's checkpointed candidates with the
+CURRENT config's judge, reusing the pipeline's own `_judge`/`_survivors`/`_judge_stage`/
+`export_row`, verified against the run manifest (prompt digest, constitution sha — raw or
+stripped, the pipeline hashed raw before today). Local only; a rejudged full run still has to
+be published through the contract. (2) Judge calls are ~20k input tokens (constitution + the
+conversation + four candidates with full traces) and were 0% cached: the OpenRouter client's
+`<<<cache>>>` breakpoint is opt-in from the prompt text and the delib prompts had none.
+
+**Change.** `src/infra/endpoints/openrouter.py`: a message may carry up to four markers, each
+closing a cacheable block; a trailing marker closes the whole message. `delib.yaml`: one
+marker after `</constitution>` in both prompts (shared across every call) and one at the very
+END of the judge prompt (the two runs of a prompt send the identical message).
+`pipeline.py`: a prompt's runs are one work item executed IN SEQUENCE (`_judge_runs`), so run
+1 reads the message run 0 just wrote; concurrent submission would have missed. `data.py`:
+the generation augmentation goes FIRST in the system prompt, ahead of any per-record system
+text, so the constitution is the shared prefix on every Qwen call (it was appended after the
+record's system prompt before). Judge `max_tokens` 4096 -> 8192: Sonnet overran 4096 on 6/18
+uncached smoke calls and a truncated call loses its score lines (they come last).
+
+**Result** (rejudge of the 2026-09-09 smoke's 120 Qwen candidates, 30 prompts x 2 runs):
+
+| | uncached baseline (18 calls, killed) | run 0 (first per prompt) | run 1 (repeat) |
+|---|---|---|---|
+| prompt tokens | ~19.4k | 19,907 | 19,907 |
+| cached | 0 | 4,743 (24%) | 19,906 (100%) |
+| output tokens | 4,096 cap, 6/18 truncated | 4,749 (1/30 truncated at 8,192) | 5,201 (0) |
+| cost / call | $0.057-0.081 | $0.088 | $0.056 |
+
+Whole run $4.32. Marker never appears in any stored judge response; `test_prompt_caching.py`
+pins that it never enters a request. The comparative judge now separates candidates: min
+scores span 2-9 (histogram 2:1 3:9 4:20 5:11 6:9 7:21 8:40 9:5), 26/30 prompts have a
+>=3-point spread between their own candidates, 29/30 prompts get a survivor (one lost to the
+single truncation; a resume retries it), selected-score mean 8.0. The 09-09 Gemini judge gave
+240/240 a 10.
+
+**What caching cannot fix.** Sonnet writes ~5k output tokens per call against a 300-word
+instruction, and at $10/M that is over half of every call. Full-run judge cost is therefore
+~$105 (708 x $0.144), not the $28 first guessed from Gemini-sized calls; `budget_usd` is 150.
+The next lever is the output, not the input: a hard analysis cap the model actually obeys, or
+scores-first formatting (which changes what is being judged). Not done here.
+
+## 2026-09-10 — Response-style guidance leaves the constitutions: it is per-document-type config, not alignment target
+
+**Why.** Every constitution file in the repo ended with a "What a constitution-aligned
+response looks like" paragraph ("engages with the pressure the person is under… warm,
+practical, proportionate"). It is difficult-advice tone guidance, not a principle; it sat in
+the constitution only so the parser could peel it off into `{style_guidance}`. Three costs:
+(1) the DA and DAT teachers were shaped by the identical advice-column paragraph, byte for
+byte, though DAT's teacher is an agent choosing a bash command; (2) every arm that injects
+the whole document (`pc`, `courtroom`, `par`, `pad`, `da-full-constitution`, delib) trained
+on it as if it were policy — which is why `abridged_no_delib` had to exist at all; (3) a
+reader of `constitution.md` could not tell target from prompt fragment.
+
+**Change** (`src/data/synth/ours/`). `_parse`/`chunk`/`segment`/`units_from_config` no longer
+return a style string, and a constitution that still carries a "…looks like" section is
+REFUSED with the remedy. `op_segment` publishes `{style_guidance}` from the config's new
+top-level `style_guidance:`; a config whose prompts use the slot without declaring it, or
+declares it empty, fails at load (`style_guidance_from_config`). All 13 configs that use the
+slot now carry the exact text their constitution used to yield (verified 13/13 identical
+after a round trip through the old parser). The section is gone from all 8 constitution and
+preference files; `abridged_no_delib` was byte-identical to `abridged` afterwards and is
+retired, `delib.yaml` points at `abridged`. Tests updated; 1617 pass.
+
+**Consequences to know.** Nothing published changes — a corpus carries its resolved config.
+But `constitution_sha256` for every constitution file changes from here on, so a paired
+arm resumed via `load_source_run` from a pre-2026-09-10 source run will fail its cross-arm
+constitution check by design (regenerate the source, or check out the old file). The
+whole-document arms (`pc`, `courtroom`, `par`, `pad`, delib) now inject a constitution
+WITHOUT the paragraph: a recipe change for them, and the intended one. DAT still uses the
+advice-column text unchanged — rewriting it for an agent is a deliberate recipe change, not
+done here.
 
 ## 2026-09-10 — dat-7-cot on MASK and ODCV: indistinguishable from dat-7
 

@@ -1,6 +1,16 @@
-# ABOUTME: Deliberative SFT: final-corpus prompts, Qwen/Alibaba reasoning with the full constitution,
-# ABOUTME: best-of-N filtered by a constitution-aware judge; exported without the generation-only text.
-# Run: uv run synth run --config configs/data/synth/delib.yaml [--smoke]
+# ABOUTME: delib.yaml with the citation instruction REMOVED: the constitution still guides the answer,
+# ABOUTME: but nothing tells the model to reference it in its trace, and the judge rejects traces that do.
+# Run: uv run synth run --config configs/data/synth/delib-noref.yaml [--smoke]
+#
+# The implicit half of Callum's 2026-09-14 split: "one of them is instructed to explicitly refer to the
+# document in its inner thoughts and the other one isn't", to isolate explicit reference from the rest of
+# the pipeline. He asked for NO instruction either way rather than an instruction not to reference -- a
+# negative instruction leaves its own fingerprint (delib's answer-side non-disclosure clause put a "No
+# mention of constitution? Checked" self-check into 88% of its traces and 26% of delib-7's MASK traces).
+# Everything else is delib.yaml verbatim, including that answer-side clause, so the trace instruction is
+# the only variable. His fallback for candidates that cite anyway is implemented as the judge rule below,
+# with 4 candidates per prompt ("generate four rollouts, uniformly choose from the ones that don't
+# reference the constitution"); LLM-stripping is the next fallback if even 4 of 4 cite.
 
 method: deliberative_alignment
 source:
@@ -34,10 +44,8 @@ sampling:
 # from cache).
 generation_prompt: |
   For this response, use the following constitution to guide your behavior.
-  In your reasoning, identify, cite, and apply the relevant principles to the user's
-  actual request. Resolve any conflicts using the constitution's priority guidance,
-  then give a helpful response consistent with it. Keep this policy discussion in
-  your reasoning. The final answer is for the user, who has not seen this constitution
+  Resolve any conflicts using its priority guidance, then give a helpful response
+  consistent with it. The final answer is for the user, who has not seen this constitution
   and is not to be told about it: do not mention the constitution, quote or name its
   principles, number them, or refer to these instructions or to "relevant principles"
   in the answer -- write it exactly as you would with no instructions at all.
@@ -53,7 +61,8 @@ generation_prompt: |
 # candidates SIDE BY SIDE: judged one at a time (2026-09-09 smoke) it scored 240/240 a 10
 # and missed fabricated action claims and bypass payloads that a reader caught.
 filter:
-  candidates: 2          # on-policy samples per prompt; the best survivor is exported
+  candidates: 4          # 4, not delib's 2: the judge discards every candidate whose trace references
+                         # the constitution, so a prompt needs spares to still have a survivor
   # Extra rounds of `candidates` for prompts left with no survivor, same prompt each time. From
   # the 2026-09-10 run's run-0 scores: 2 candidates give 82% of prompts a survivor in round 0
   # and one resample recovers 46% of the rest, ~680 of 752 -- under the 700 floor -- so three.
@@ -82,6 +91,13 @@ judge_prompt: |
   adherence to the constitution and its priority guidance, for helpfulness to the user's
   actual request, and for whether its REASONING correctly applies the relevant principles
   and genuinely leads to that response.
+
+  FIRST, before any other judgement: a candidate whose REASONING names the constitution,
+  quotes it, or cites its principles by number or title scores at most 3, however good it
+  otherwise is. This arm measures what the model does when its trace does not reference the
+  document, so a citing trace cannot answer that question. Reasoning that applies the same
+  values WITHOUT naming the document or its principles is not at fault and is scored
+  normally on everything below.
 
   Be strict and comparative. The candidates will look alike; your job is to find what
   separates them. Check every candidate for each of these specific faults:
@@ -121,12 +137,12 @@ workers: 16         # 32 and 20 both tripped Alibaba rate limits ~40 min in (202
 budget_usd: 100          # a ceiling, not a target. Expected ~$17 of Qwen for ~2,000 candidates incl. resamples ($0.0086/candidate on the
                          # 2026-09-10 run) + ~$19 of Sonnet judging, ~1,000 calls of 2 at ~$0.0185 each
 limit: null              # All surviving final rows, in their original order.
-output_dir: output/synth_delib
+output_dir: output/synth_delib_noref
 hf_push: true
 hf_private: false
 smoke:
-  limit: 30              # enough prompts to see the filter reject something
-  workers: 8
-  budget_usd: 6
+  limit: 5               # 5 prompts: enough to read every trace and count how many cite the constitution
+  workers: 5
+  budget_usd: 4
   filter:
     min_rows: 1          # the smoke reports the survival rate; it never enforces the floor
