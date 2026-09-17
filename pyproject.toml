@@ -83,10 +83,8 @@ runpod = "src.infra.runpod:cli"
 dev = [
     "pytest>=9.1.1",
 ]
-# Petri/Inspect audit tooling is NOT a dependency group here: inspect-ai pins
-# click<8.2.2 while this project's huggingface-hub needs click>=8.4.2, so the
-# audit runs in its own environment. Use the nested project's env for all
-# petri tools:  uv run --project src/eval/audits/petri/petri-subscription ...
+# Petri audit tooling is not a dependency group here; it runs from its own nested
+# project:  uv run --project src/eval/audits/petri/petri-subscription ...
 
 [build-system]
 requires = ["hatchling"]
