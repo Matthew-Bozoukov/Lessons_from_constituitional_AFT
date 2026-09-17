@@ -87,7 +87,9 @@ def calibrate(cfg, root, client, fixture_path):
         review = validate_review(_parse_json(result.content)['review'], cfg['smoke_contract'].get('review_fields', []))
         correct = review['verdict'] == case['expected'] and (not case.get('expected_code') or
             case['expected_code'] in [f['code'] for f in review['findings']])
-        value = {'case': case, 'review': review, 'correct': correct}
+        forbidden = set(case.get('forbidden_codes', [])) & {f['code'] for f in review['findings']}
+        correct = correct and not forbidden
+        value = {'case': case, 'review': review, 'correct': correct, 'forbidden_codes_found': sorted(forbidden)}
         write_json(root / 'calibration' / (case['id'] + '.json'), value)
         return value
     with ThreadPoolExecutor(max_workers=cfg['workers']) as pool:

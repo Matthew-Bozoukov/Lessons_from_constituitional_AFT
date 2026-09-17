@@ -11,7 +11,7 @@ from scratch.dataset_refresh.constitution_smoke import SingleAttemptClient, vali
 
 
 def config():
-    return OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-implicit-values.yaml'), resolve=True)
+    return OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-values-in-advice.yaml'), resolve=True)
 
 
 def reply(content):
@@ -62,7 +62,7 @@ def test_calibration_wiring(tmp_path):
         return reply(json.dumps({'review': r}))
     calibrate(config(), tmp_path, SingleAttemptClient(tmp_path, config(), send=send),
               'scratch/dataset_refresh/constitution_smoke_calibration.yaml')
-    assert len(json.loads((tmp_path/'calibration_results.json').read_text(encoding='utf-8'))) == 12
+    assert len(json.loads((tmp_path/'calibration_results.json').read_text(encoding='utf-8'))) == len(cases)
 
 
 def test_standard_engine_all_stages(tmp_path):
@@ -90,3 +90,15 @@ def test_standard_engine_all_stages(tmp_path):
         assert row['messages'][-1]['reasoning_content'] == 'Reasoning'
         assert 'Editing notes' not in json.dumps(row)
         assert 'applicability' not in row['metadata']
+
+
+def test_calibration_rejects_spurious_extra_reason(tmp_path):
+    fixture = tmp_path / 'fixture.yaml'
+    fixture.write_text('cases:\n- {id: x, trait_id: t3, expected: fail, expected_code: unsupported_fact, forbidden_codes: [target_mismatch], system: s, user: u, reasoning: r, response: a}\n')
+    result = review()
+    result['verdict'] = 'fail'
+    result['findings'] = [dict(code=c, quote='q', why='w') for c in ['unsupported_fact', 'target_mismatch']]
+    client = SingleAttemptClient(tmp_path, config(), send=lambda **kw: reply(json.dumps({'review': result})))
+    with pytest.raises(RuntimeError, match='Reviewer calibration failed'):
+        calibrate(config(), tmp_path, client, fixture)
+    assert json.loads((tmp_path / 'calibration_results.json').read_text())[0]['forbidden_codes_found'] == ['target_mismatch']
