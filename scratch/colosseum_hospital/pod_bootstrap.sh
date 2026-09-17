@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: One-shot setup of a `runpod up --eval` pod for colosseum_hospital: this repo at a
-# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all seven patches, smoke.
+# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all nine patches, smoke.
 #
 #   bash scratch/colosseum_hospital/pod_bootstrap.sh root@<ip>:<port> <branch> <sha>
 #
@@ -55,6 +55,9 @@ git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_f
 if [ -f /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch ]; then
     git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_seating_2.patch
 fi
+# 2026-09-15: the whistleblowing study (administrator channel, benign coalition, a survey
+# that is one tool-less call and reaches the baseline). On top of hospital_seating_2.patch.
+git apply /root/work/src/eval/misalignment/colosseum/third_party/hospital_eval_fixes_3.patch
 echo "    patched: $(git diff --stat | tail -1)"
 
 echo ">>> colosseum deps into the repo venv (not the package: it has no package config)"
@@ -64,22 +67,29 @@ uv pip install --python /root/work/.venv/bin/python --quiet ${DEPS}
 
 echo ">>> terrarium-agents fixes into the venv's site-packages"
 # terrarium-agents 0.1.1 is a PyPI wheel, so its patches land in site-packages, the
-# 2026-09-13 one on top of the 2026-09-09 one. Idempotent, read from the top down: the
-# second reverse-applies cleanly only when both are in; the first only when it alone is
-# (its stamp line is rewritten by the second). `uv sync` above removes packages the lock
-# does not know, so a re-run reinstalls the wheel and needs both patches again.
+# 2026-09-13 one on top of the 2026-09-09 one, the 2026-09-15 one on top of both.
+# Idempotent, read from the newest down: a patch reverse-applies cleanly only when it is
+# the newest one in (each rewrites the stamp line of the one before). `uv sync` above
+# removes packages the lock does not know, so a re-run reinstalls the wheel and needs
+# every patch again.
 SITE="$(/root/work/.venv/bin/python -c 'import terrarium, os; print(os.path.dirname(terrarium.__path__[0]))')"
 TPATCH=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes.patch
 TPATCH2=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_2.patch
-if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH2}" >/dev/null 2>&1; then
-    echo "    both already applied in ${SITE}"
+TPATCH3=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_3.patch
+if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH3}" >/dev/null 2>&1; then
+    echo "    all three already applied in ${SITE}"
 else
-    if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH}" >/dev/null 2>&1; then
-        echo "    2026-09-09 patch already applied in ${SITE}"
+    if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH2}" >/dev/null 2>&1; then
+        echo "    2026-09-09 and 2026-09-13 patches already applied in ${SITE}"
     else
-        patch -p1 -d "${SITE}" -f < "${TPATCH}"
+        if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH}" >/dev/null 2>&1; then
+            echo "    2026-09-09 patch already applied in ${SITE}"
+        else
+            patch -p1 -d "${SITE}" -f < "${TPATCH}"
+        fi
+        patch -p1 -d "${SITE}" -f < "${TPATCH2}"
     fi
-    patch -p1 -d "${SITE}" -f < "${TPATCH2}"
+    patch -p1 -d "${SITE}" -f < "${TPATCH3}"
 fi
 
 echo ">>> verify"
@@ -96,11 +106,14 @@ import experiments.agent_misalignment.run as run_mod
 assert 'secret_instructions' in open(run_mod.__file__).read(), 'hospital_eval_fixes.patch missing'
 import experiments.agent_misalignment.prompts as prompts_mod
 assert 'plan_post_optional' in open(prompts_mod.__file__).read(), 'hospital_eval_fixes_2.patch missing'
-print('    ok  seating + eval-fixes patches (2026-09-09 and 2026-09-13) are live')
+assert 'administrator_blackboard_id' in open(run_mod.__file__).read(), 'hospital_eval_fixes_3.patch missing'
+assert 'benign_coalition' in open(prompts_mod.__file__).read(), 'hospital_eval_fixes_3.patch missing'
+print('    ok  seating + eval-fixes patches (2026-09-09, 2026-09-13, 2026-09-15) are live')
 from terrarium.agents.base import TERRARIUM_FIXES, RETRY_NOTE
 from envs.dcops.hospital.hospital_env import HOSPITAL_FIXES
-# Both stamps, and the 2026-09-13 value: a package holding only the first patch imports fine.
-assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-09-13', (TERRARIUM_FIXES, HOSPITAL_FIXES)
+from envs.dcops.hospital.hospital_tools import ADMINISTRATOR_TOOL
+# Both stamps, and the 2026-09-15 value: a package holding only the earlier patches imports fine.
+assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-09-15', (TERRARIUM_FIXES, HOSPITAL_FIXES)
 assert RETRY_NOTE.startswith('[Note from the harness:')
 print('    ok  terrarium fixes', TERRARIUM_FIXES)
 import vllm; print('    ok  vllm', vllm.__version__)

@@ -55,6 +55,8 @@ export type TreeFile = { path: string; size: number };
 export type SidecarStats = {
   record_count: number;
   categories: Record<string, number>;
+  /** Sources the sidecar declares synthetic; absent when it declares none. */
+  synthetic_sources?: string[];
   /** Which sidecar the numbers came from. */
   from: string;
 };
@@ -179,7 +181,18 @@ export function statsFromSidecar(json: unknown): Omit<SidecarStats, "from"> | nu
     if (Number.isFinite(examples) && examples > 0) categories[name] = examples;
   }
   if (!count && !Object.keys(categories).length) return null;
-  return { record_count: Number.isFinite(count) ? count : 0, categories };
+  // `uv run mix` also writes a `sources` block that marks each synthetic source
+  // (`"da": {"synthetic": true, ...}`). That declaration is the file's own answer to
+  // "which rows are the intervention", so it is carried rather than inferred from names.
+  const declared = (typeof doc.sources === "object" && doc.sources ? doc.sources : {}) as Json;
+  const synthetic = Object.entries(declared)
+    .filter(([, spec]) => spec && typeof spec === "object" && (spec as Json).synthetic === true)
+    .map(([name]) => name);
+  return {
+    record_count: Number.isFinite(count) ? count : 0,
+    categories,
+    ...(synthetic.length ? { synthetic_sources: synthetic } : {}),
+  };
 }
 
 /** One Hub listing row, reduced to the facets the explorer works with. */
@@ -373,6 +386,7 @@ function manifestFor(repo: TrainingDataRepo, file: string, size: number, stats: 
       splits: {},
       categories: stats?.categories || {},
       ...(stats ? { categories_source: stats.from } : {}),
+      ...(stats?.synthetic_sources?.length ? { synthetic_sources: stats.synthetic_sources } : {}),
     },
   };
 }

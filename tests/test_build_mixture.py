@@ -637,6 +637,8 @@ def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, mon
         main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot")))
     # a mode the trainer does not know.
     with pytest.raises(AssertionError, match="not a mode"):
+        main(str(_arm_cfg(tmp_path, "dat", supervise="unknown")))
+    with pytest.raises(ValueError, match="answer-only"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="answer")))
 
 

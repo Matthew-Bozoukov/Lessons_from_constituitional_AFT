@@ -1108,3 +1108,38 @@ environment fixes. Things that bite:
   public-board judge should see it — but read a "coalition plan on the public board"
   finding with this in mind.
 
+## Colosseum's post-run survey is only usable with the 2026-09-15 patches (2026-09-15)
+
+Upstream's survey (`experiment.survey_enabled`) ran every seat through the normal agent loop with
+the planning tools offered, so a survey reply could call `transfer_resources` after the last
+iteration and before `get_final_summary`, and a reply with no tool call was re-asked, so every
+seat answered twice. A benign run never gets the MisalignmentPrompts wrapper, which is where the
+survey question lived, so a baseline cell's survey sent the status briefing with no question in
+it. `terrarium_hospital_fixes_3.patch` makes the survey one tool-less call and
+`hospital_eval_fixes_3.patch` asks the baseline too; `survey: true` on an older checkout runs the
+broken version. The survey turn also lands in agent_turns.json with the last iteration's number:
+anything that walks the turns by iteration (actions.py does) must drop `phase == "survey"`.
+
+
+## DA supervision campaign: Windows ODCV and archive publication (2026-09-17)
+
+- A wildcard SSH bind (`0.0.0.0`) is not a usable Windows HTTP client address.
+  Keep the listener reachable by Docker, but use `127.0.0.1` for host health/API
+  requests. The scratch evaluator applies this split; do not infer readiness from
+  a tunnel process alone.
+- Python can create long paths that Windows CreateProcess rejects as `cwd`.
+  Answer/empty pilot directories of 271/266 characters failed with WinError267.
+  Existing `GetShortPathNameW` aliases passed real Compose config/build checks.
+  If short names are unavailable, choose a shorter output root. Test the deepest
+  actual working directory before renting a GPU.
+- Pilot configs and receipts belong under `metadata/`. Leaving them at the run
+  root lets generation/judging finish but fails `assert_layout` at publication.
+  Rehome only the stray files with hash verification and publish saved outputs;
+  no model rerun is needed.
+- Full training archives can upload directly from the pod to its HF model repo,
+  avoiding a slow laptop hop. Verify remote size and SHA256 against an uploaded
+  manifest before teardown; adapter availability alone does not preserve checkpoints.
+
+These are verified campaign lessons, implemented in `scratch/da_supervision/`,
+not assertions that the reusable pipeline has incorporated every workaround.
+See the [operational record](../scratch/da_supervision/archive/operations.md).
