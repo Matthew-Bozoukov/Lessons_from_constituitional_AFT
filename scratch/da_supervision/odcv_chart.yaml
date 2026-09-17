@@ -1,0 +1,26 @@
+# ABOUTME: Pinned published ODCV results for the user-requested five-arm bar chart.
+# ABOUTME: September 8 full DA was explicitly selected; the three ablations use newer DA data.
+# Run: uv run python -m scratch.da_supervision.odcv_chart --config scratch/da_supervision/odcv_chart.yaml
+output_root: output/da_supervision/odcv_chart_2026-09-17
+figure_name: 2026-09-17_odcv_da_supervision_comparison
+arms:
+- label: "Control\n100% nosynth"
+  color: '#84909E'
+  repo: dougalldeepmind/2026-09-09-odcv-qwen36-0-nosynth
+  revision: 128495d177eab348b8185e1627e3bcafcb6706fa
+- label: "Difficult advice\nFull supervision · Sep 8"
+  color: '#467DB8'
+  repo: dougalldeepmind/2026-09-09-odcv-qwen36-0-da-7
+  revision: 0e69b5d75084be9174f0349852b2dbf92108e06d
+- label: "CoT only"
+  color: '#258A83'
+  repo: dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-cot
+  revision: 1645af8ac6ee5d41e7f8b92a6aa145a54db4a2b3
+- label: "Answer only"
+  color: '#A27DB3'
+  repo: dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-answer-only
+  revision: 120b209f43453a2d7cf69fcb833c2adc02e1ac6d
+- label: "Empty CoT"
+  color: '#CB9459'
+  repo: dougalldeepmind/2026-09-16-odcv-qwen36-0-da-7-empty-cot
+  revision: ec61d2f640b884acc9401c98e30dfa71527fed44
