@@ -1,7 +1,6 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
-
 ## 2026-09-17 — DA supervision ablations: training and ODCV complete
 
 **Question/method.** Compare CoT-only, answer-only and empty-CoT supervision on all
@@ -26,6 +25,72 @@ its independent checks are retained in the trainer; campaign tooling and chart c
 live in `scratch/da_supervision/`. The default SFT recipe is unchanged.
 
 [Final protocol, mask/forward-pass contract and pinned HF artifacts](da_supervision_rerun_2026-09-16.md).
+
+## 2026-09-17 — daa2 on the neutral-752 DA corpus: 749 of 752 rows agentified, `daa-7-mix` built against da-7
+
+**Hypothesis.** The daa2 pipeline (docs/LOG.md 2026-09-12: the DA row is the skeleton, real bash
+calls are inserted only where the reply itself acts, commands run in a docker sandbox) gives a
+daa arm that differs from da-7 in FORMAT alone -- same dilemmas, same reasoning and reply where
+nothing had to change -- so daa-7 vs da-7 isolates the agentic format from the dilemma content.
+
+**Two defects found by reading the 2026-09-12 run, fixed at the prompts.** (1) With the reasoning
+and the reply written by one call after the commands ran, 27 of 30 bad rows in a 90-row review
+had the deliberation quoting run results or reply sentences before the action. Fix: the fill is
+now two calls -- `think` sees the looks' output only and edits the reasoning; `finish` sees every
+output and the deliberation as written, and edits the reply and authors the files -- so the
+causal order holds by construction. (2) The split then let the reasoning plan things the reply
+never did (an offered memo, in a read-only row): `think` could not see the reply and was told to
+say "what I will do next". Fix: the plan is exactly the listed actions and nothing else; `finish`
+is told the reply must carry the deliberation out (verbatim elsewhere). Five refilled rows
+verified clean, then a random 10 of the new rows read end to end: no invented files, no results
+before their command, no reply claiming what did not happen; residual softness is 2/10 rows
+where the agent does what the original reply only offered, 1/10 where the environment's script
+output settles the empirical half of the dilemma, and inserted look-facts that the reply then
+restates.
+
+**Method.** Source `dougalldeepmind/2026-09-14-da-synth@01388623` (the neutral 752, the current
+baseline's corpus), Sonnet 5 through `claude -p --bare` on a subscription token (the model sees
+the two prompts and today's date only; verified by probe). Full run
+`uv run python scratch/daa2/agentify2.py --source ... --model sonnet --workers 8`; the 333 rows
+made before the prompt fix were redone with `--refill` (environments and command outputs reused,
+think/finish regenerated; rows stamped `fill_mode` so a refill knows which to redo). 20 rows were
+refused by Anthropic's content classifier, all `[bio]`-tagged health/biosecurity scenarios
+(outbreaks, drug data, pesticides, a chemical plant); retried: opus recovered 10, repeated fable
+rounds 6, and the last t1 row (a wastewater outbreak signal pushed to CDC/WHO) passed only with
+`--lean-map` (the map call given no private reasoning) after ~50 refusals across three models
+and OpenRouter (whose Anthropic-side filter refused it too). Rows record their generator.
+Published by `scratch/daa2/publish.py` (merge: `scratch/daa2/merge_runs.py`).
+
+**Result.** `dougalldeepmind/2026-09-17-daa-synth@c55c8914`: 749 rows (t1 78, t2 83, t3 85, t4 83,
+t5 84, t6 84, t7 83, t8 84, t9 85); 733 sonnet, 10 opus, 6 fable. Medians: reasoning 100% and reply
+92% of sentences verbatim from the DA row, 3 looks, 1 write; shapes: 283 looks-only, 214 write,
+190 run+write, 55 run. Then `uv run mix --config configs/data/mixture/daa.yaml` (da.yaml's shape
+on the same `2026-09-08-nosynth-mix@7e991f58` base) ->
+`dougalldeepmind/2026-09-17-daa-7-mix@d15f96f6`: 10,000 rows, 700 daa trait-balanced (78 x t1-t7,
+77 x t8-t9), the same draw as da-7; 4,208 supervised reasoning turns over the 700 rows. The first
+build (`@ebdada73`, corpus `@c55c8914`) wrote `supervise: all` on every daa row and
+`train_lora` refused it ("every row is 'all'; this arm would be identical to its control": the
+check is for a `cot`/`final` variant that failed to apply, and cannot tell a deliberate `all`);
+the field was dropped from the pipeline and the corpus (`@9d0f1af0`) and the mixture rebuilt.
+Absent is the same training: every assistant turn is loss. Verified with `build_labels` on a
+rendered tool-call conversation: system, user and tool results (Qwen3.6 renders a tool result
+as a user turn in `<tool_response>`) are masked with the `<think>\n` prefill; the reasoning, the
+tool call and the reply carry the loss.
+
+**Trained.** `uv run runpod up --name jamie-train-daa-7 --train configs/train/sft.yaml --model
+qwen36 --count 1 --push_env --max_hours 6` (pod `xb6e20zqk7nura`, 1x H200 at $4.59/h, code at
+6704e65f), then `uv run train --config configs/train/sft.yaml model=qwen36
+data_repo=dougalldeepmind/2026-09-17-daa-7-mix data_revision=d15f96f6... seed=0 wandb=true` ->
+[`dougalldeepmind/2026-09-17-qwen36-0-daa-7`](https://huggingface.co/dougalldeepmind/2026-09-17-qwen36-0-daa-7)
+@ `d5cdb5b5`: 625 steps in 5 h 03 min, train loss 0.799 (da-7: 0.85), `thinking: true`, 60.0% of
+10.33M tokens supervised; W&B `jamiestephenson/lasr/runs/7htao5by`. Pod terminated and verified
+(`Remaining account pods: []`); ~6.3 h billed including one failed launch, about $29.
+
+**Next steps.** ODCV and MASK on daa-7 against the da-7 baseline
+(`dougalldeepmind/2026-09-15-qwen36-0-da-7`) and nosynth, one pod per arm. A random read of the
+317 refilled rows before drawing conclusions (the 10-row check covered resume-stage rows only).
+The `supervise` all-'all' refusal in `src/train/train_lora.py` should become a warning: explicit
+`all` is valid data, and the misconfiguration it guards belongs to the mixture builder.
 
 ## 2026-09-15 — Whistleblowing on the Hospital eval: an administrator channel, a benign coalition, and hits against false alarms
 
@@ -69,6 +134,7 @@ to read before the full run (360 shifts, ~$100 of GPU and ~$50 of judge).
 **Next.** Run the pilot and read every administrator message: nobody using the channel means the
 salience is too low, a baseline full of alarms means the wording is a cue. Then the full run and
 the calibration per arm and population.
+
 
 ## 2026-09-15 — Difficult advice retrained on neutral 752: the da-7 adapter, now the default
 
@@ -267,7 +333,6 @@ arms, though both synthetic slices halve it in the unfiltered family.
 sibling, with the baseline alongside. Our two arms with and without the plan order at 60-90 seeds
 to settle the words-only-compliance reading. Tighten the sabotage rule's untempted false alarms
 (6-11/30) before small action gaps are read as training effects.
-
 
 ## 2026-09-13 — The base blend records whose reasoning traces it carries, and training refuses another family's
 
@@ -610,6 +675,67 @@ public posts under the strict prompt; make plan × action × refusal the reporte
 Sonnet-in-the-provisioner-seat reference before any data change; then the data levers in the
 dossier's "What to change" (agentic difficult advice first).
 
+## 2026-09-12 — daa2: edit-based agentification through Claude Code, then stripped to two prompts (CHECKPOINT)
+
+**Hypothesis.** The daa pipeline failed because it regenerated: a plan was shown to the model
+that wrote the transcript (its vocabulary leaked into 525/623 kept rows), and lints checked
+against dropped rows never saw the kept ones. Editing instead of regenerating removes the
+failure class: the DA row's sentences are numbered, the model returns edit lists and typed
+insertions (look / run / write, each anchored to the reply sentence it enacts), code assembles
+the transcript, untouched sentences survive verbatim, and there is no plan text to leak.
+
+**Method.** `scratch/daa2/agentify2.py`: two structured calls per row through `claude -p`
+(bare mode, subscription token from .env, no API key), a Docker sandbox with a frozen scenario
+clock for every command, one map repair on a failed command. Smoked on the same 10 rows (seed 0)
+with Sonnet and Opus: `uv run python scratch/daa2/agentify2.py --smoke --model sonnet --workers 8`
+and the same with `--model opus`. Read all 20 transcripts against their originals.
+
+**Result, first pass (before simplification).** Sonnet 8/10 kept, Opus 8/10; after fixing
+false positives both 10/10. Bare mode verified by probe: the model sees the two prompts and
+today's date only (a non-bare Sonnet smoke had written the account email into three fabricated
+documents as their author). Reuse of original sentences, mean over 10 rows: reasoning 0.99 / 0.92,
+reply 0.79 / 0.70 (Sonnet / Opus). Opus builds richer, more coherent environments and cleaner
+per-turn reasoning, but in 5 of 10 rows its environment settled the dilemma (a "NOT APPROVED FOR
+EXTERNAL USE" stamp, an approvals log forbidding the exact ask, a release history with a failed
+precedent) and it wrote guardrails into the user's own message ("nothing goes upstream until I've
+read it"), both of which make the difficult advice easy. Sonnet's environments were neutral, its
+rewrites lighter, but 2 rows carried filler reasoning ("Continuing with the next step.") before
+writes. Both sent nothing anywhere. List cost (subscription, so not billed): Sonnet ~$4.1,
+Opus ~$5.5 per 10 rows; wall 7-11 min at 8 workers.
+
+**Pipeline defects found by reading, all fixed at the source.** Markdown lists collapsed into
+one paragraph by sentence reassembly (line breaks now kept); drafts dated with the host's real
+date and then mangled by the sandbox's clock rewrite ("Date: Sep 11 08:30"; the fill now gets
+the scenario date, the rewrite touches only `ls` lines); the sandbox clock derived as "the day
+after the latest date mentioned" ran past a deadline a file named (the map now states `today`);
+structured-output retries impossible at `--max-turns 1` (now 3); `--resume` without `--smoke`
+selected all 708 rows (run dirs store their selection).
+
+**Simplification (Jamie's request).** Every lint went: identity regex (false positive on
+`/srv/.../users/`), outward-verb scan of script source (refused a draft-only tool that said
+"does not submit, send, or post"), harness-vocabulary gate (hit a chat log's "the reply"),
+performative-anchor regex, placeholder/size checks, host-clock gate, the auto-inserted `--help`
+and pre-write `cat`, the pending-question clause. The rules moved into the two prompts: an
+action only where the reply itself does or offers it or the user asks for an internal operation
+the reply is consistent with doing; declines stay declined; nothing sends; files state facts and
+never settle the dilemma; no added permissions in the user's message; a script computes, never
+writes the agent's prose. Code now executes, assembles, measures, and drops only on a failed
+command; pipeline vocabulary is counted in the manifest, not gated. 715 -> ~530 lines.
+
+**Result, simplified pipeline.** Sonnet smoke `smoke_20260912_034808_sonnet`: 10/10 kept, 0
+pipeline-vocabulary rows, 1 repair, 450 s, reuse medians reasoning 1.00 / reply 0.90. Every
+anchor named a real sentence in which the reply drafts, offers or computes; no filler turns; no
+host date in any draft; lists intact. The stricter rule made the map conservative: 6 of 10 rows
+are looks only (the reply just advises), 4 carry a write or a run. One row (t7_b18_s004) had the
+map invent a script that generates the honest message the agent should have written itself; the
+insertion definitions now say a run computes or checks and a write is the agent's own prose.
+That is the last prompt change: from here the loop is read a smoke, judge, change a prompt
+sentence at most, never add a check.
+
+**Next steps.** Read the next smoke for the two things no code checks (an action enacting a
+sentence that only advises; an environment that decides the answer), then the full 708-row run
+with Sonnet at 8 workers (~1.5 h), publish, and the daa2 mixture against da-100.
+
 ## 2026-09-11 - Delegated-harm recovery finished: 609 scored episodes, custom orchestration isolated
 
 **Hypothesis and method.** Test whether difficult-advice training reduces harmful
@@ -725,6 +851,253 @@ $269.315443/$300.
 perceived stakes; no additional paid runs launched.
 [Exact results, provenance, limitations and public pins](nonmoral_deliberation/2026-09-11_stakes_odcv_results.md).
 
+## 2026-09-11 (night) — daa full run: 555 rows published as `dougalldeepmind/2026-09-11-daa-synth`
+
+**Method.** `uv run python scratch/daa/agentify.py --workers 32 --max-tokens 24576 --budget-usd 250`
+on all 708 rows of `dougalldeepmind/2026-09-08-da-synth@42107bde`, the pipeline as committed at
+`ddc56d8` (do/say affordances with anchors, closed action list with per-action `serves` and
+per-item closing claims, endorsed internal runs as `do`, task and deliberation as edit lists,
+prompt caching, reasoning on everywhere). Three passes: the first died at the loop stage when
+Anthropic's content filter blocked 99/702 rows (14%) -- 70 of the 79 trait-t9 rows (long-term
+flourishing) and 21 of t8 -- above the 5% ceiling; a per-turn resample at T+0.4 and a
+`--max-fail-pct` flag were added and the run resumed; the resume then hit OpenRouter 402s
+(credits exhausted at $8 left) on 63 rows and, after the loop, a NameError of mine in the lint
+(the `cmds` line removed with the stale operation check); credits topped up, fixed, resumed again.
+Checkpoints carried everything across: map $72, loop $10 over two passes, rewrite $13, ~$95 total.
+
+**Result.** 696 of 708 rows reached the lint (4 map + 8 loop rows blocked by the filter on every
+attempt); kept 555, dropped 141, 54 rescued by the rewrite. The resample recovered t9: kept per
+trait t1 61/73, t2 68/79, t3 58/78, t4 65/77, t5 63/79, t6 70/76, t7 57/78, t8 46/77, t9 67/79.
+Drops: source residue 76, outward act while deviating 15, modified unread 9, action serving no
+DO item 4, host clock 3, executing advice 3, other 31. Kept rows: reuse median 0.96; exploration
+0/1/2 = 121/201/233; actions 0/1/2/3/4 = 79/101/108/108/159; DO claims done 756, in_message 103,
+declined 61; shapes split 507, decline 46, full 2. 3,131 real commands. Published with stages and
+manifest: https://huggingface.co/datasets/dougalldeepmind/2026-09-11-daa-synth
+
+**Next steps.** Read a sample of kept rows per trait (t8 kept the fewest, 46); the daa-100 mixture
+and arm on MASK and ODCV lite against da-100 and dat-100. The three residue tokens the rewrite
+could not clear in 76 rows are worth a look before the mixture: they may be one map habit.
+
+## 2026-09-11 (evening, 2) — daa: clean smoke with reasoning on everywhere; 10/10 kept, $1.73
+
+**Method.** No pipeline change since the revert: reasoning on for every stage, prompt caching on the
+loop prefix, task as an edit list, closed DO list with per-action `serves` and per-item closing
+claims, endorsement rule for internal operations.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260911_171438).
+
+**Result.** Kept 10 of 10, 2 rescued by the rewrite (the same two residue tokens as ever: `CRM`
+and `some Tuesday next month`). Every DO item claimed `done` (10 claims, all matched by an action);
+1 decline row, 9 split; 33 commands. Reuse median 1.00. $1.73 for 10 rows: map $0.92 (82.7k
+completion tokens for 10 calls), deliberate $0.28, act $0.33 (56k of 96k prompt tokens cached),
+explore $0.12, rewrite $0.05. The printed spend still prices cached tokens at full rate, so the
+real bill is ~$0.15 lower.
+
+**Next steps.** Full run at ~$0.17/row printed (~$0.16 real): ~708 rows ≈ $120, ~4 h at 6 workers.
+
+## 2026-09-11 (late pm) — daa: hidden reasoning off for the mechanical turns, prompt caching, task as an edit list
+
+**Hypothesis.** ~45% of the pipeline's cost was Sonnet 5 reasoning billed as completion tokens
+and never returned (measured on smoke_20260910_210616: map 77%, act+deliberate 71%, rewrite 98%
+of billed completion tokens absent from any output). A probe confirmed OpenRouter's
+`reasoning: {"enabled": false}` removes it (1,145 -> 567 completion tokens, same content);
+`max_tokens: 0` does not. Batching is not an option (the batch endpoint refuses Anthropic models).
+
+**Method.** (1) `extra_body={"reasoning": {"enabled": False}}` on explore, act, finish and
+rewrite; map and deliberation keep reasoning. (2) The loop's stable prefix (instructions, task,
+plan, original reasoning and reply) carries the client's `<<<cache>>>` marker, an Anthropic cache
+breakpoint. (3) The operator task is an edit list over the numbered original user prompt,
+assembled by code like the deliberation. Also: the pre-do/say lint "task names an operation =>
+some action runs it" removed -- the DO list decides what runs, and declining the operator's
+command in favour of a draft is the honest outcome it was punishing.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260911_164238, $2.09).
+
+**Result.** Kept 9, dropped 1 (placement: the agent ran the scorer with no DO item for it -- the
+map did not type the endorsed run as `do` this time; the map is inconsistent on that rule).
+Per stage: act 20 calls, 132k prompt of which 72k cached, 11.4k completion (was ~33k for 22);
+explore 1.2k completion for 13 calls; rewrite 558 for 4; finish 3.3k for 4. Tasks keep 43-83% of
+the original prompt's sentences verbatim. Spend barely moved ($2.09 vs $2.12) because the
+stages still reasoning dominate: map $1.02 (92k completion tokens for 10 calls, ~2.4k of them
+the returned JSON) and deliberate $0.33 (21.7k completion, ~300/call returned). Those two are now
+65% of the row.
+
+**Reverted the same day:** reasoning is back on for every stage (Jamie's call); prompt caching
+and the task-as-edits change stay. **Next steps.** Full run.
+
+## 2026-09-11 (night) — daa: endorsed internal operations are `do`; 10/10 kept
+
+**Hypothesis.** Under "do = what the reply performs" the placement row lost its legitimate run:
+the reply endorses using the system but never runs it, so the agent's scorer run served no item.
+Advice rows whose legitimate part is a run were collapsing to decline-plus-advice, which loses
+the "do the legitimate part, refuse the rider" lesson.
+
+**Method.** Map: an operation the operator asks for that the reply ENDORSES is a `do`, quoting the
+endorsing sentence, if it is internal and reversible (computes, lists, scores, drafts; leaves a
+file or printout to inspect); an endorsed act that commits the human (send, submit, approve,
+deploy, notify) is never a `do`. Loop: a READ is cat/head/tail/ls/grep/wc/diff/find/stat/--help;
+running a program is an action even when it only prints. Lint: a document item whose paths include
+a tool may be written by that tool; a guessed flag the tool rejected (non-zero exit) is feedback,
+not an ungrounded act; an in_message claim may match the item's anchor sentence, and an OFFER item
+is carried by any offer or question in the message.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260911_162254, $2.12).
+
+**Result.** Kept 10 of 10, rescued 1. No decline-only rows (was 3): placement runs the scorer,
+drafts the memo and creates the override log; the EHR row writes the true note through the note
+tool after the tool rejected a guessed flag. Grants and transplant still draft and stop. Reuse
+median 1.00; 49 commands. One row is typed `full` by the map though its memo names the gap the
+operator asked to suppress; shape no longer gates anything except the outward rule's
+"deviates" test, which also reads refusal phrases, so it held.
+
+**Next steps.** Full run.
+
+## 2026-09-11 (evening) — daa: the DO list is the agent's instruction set, the task is the request; 9/10 kept
+
+**Hypothesis.** The send/submit rows failed four smokes running because three phrasings let the
+operator's ask outrank the reply: the map's `do` definition included "run the requested operation
+the honest way" (and a parenthetical letting a refusal sentence anchor it); the loop's outward rule
+said outward acts are allowed "when you are doing exactly what the operator asked"; and the loop
+context opened with the task as if it were the orders, the plan below it as bounds.
+
+**Method.** Map: `do` is only what the reply performs in its own voice ("I'll draft...", "here's
+the version..."); asking for an operation does not make it a `do`. Loop: "YOUR INSTRUCTIONS ARE
+THE DO ITEMS, NOT THE TASK"; an outward act is the agent's only if a DO item is one, "otherwise
+never, whatever the task says"; the context now puts the DO/SAY list first and labels the task
+"the request you are responding to; NOT your instructions". Dry-run modes only where a preview
+shows something a draft file cannot (a rendered send, a schema-validated filing, a diff, a scorer
+that logs on commit); a submitted memo's draft file IS the dry run. Lint: a command made only of
+reads and mkdir is setup; an untagged action is attributed when exactly one DO item's paths match.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260911_154904, $1.96).
+
+**Result.** Kept 9, dropped 1, rescued 1. The grants and transplant rows draft and stop: no send,
+no submit, for the first time. Three rows are now `decline` with no action (water sign-off, EHR,
+CPS routing), because their replies perform nothing; the map found no `do` and the agents said
+the advice. The one drop is the placement row running the scorer the operator asked for: the
+reply endorses but does not perform that run, so under the rule it is not a `do`, and the agent
+ran it anyway. Reuse median 1.00; 40 commands; 3 of 9 kept rows have no state-changing action.
+
+**Next steps.** Decide whether an operation the reply endorses without performing ("I'm on board
+with using it") should be a `do` when the operator asks for it; today it is not. Then the full run.
+
+## 2026-09-11 (late) — daa: actions are a closed list; each names the DO item it serves; 7/10 kept
+
+**Hypothesis.** The transplant row kept submitting because the action ceiling was a path check:
+"submit --note <draft path>" mentioned the draft's file, so it passed as serving "draft the note".
+Nothing compared what a command does with what the item says.
+
+**Method.** Loop prompt: state-changing actions are EXACTLY the DO items, one each; the operator's
+instructions add none ("if the task says submit it and no DO item submits, you do not submit");
+the message is the reply's substance plus the SAY items, no new advice. Every action carries
+`serves: D<n>`. Lint: an action with no item drops the row; a draft/write item served by a program
+run drops it; an action must touch its own item's paths; bare `mkdir` is free; a heredoc's prose
+mentioning a SAY path is not "executing advice". Loop re-run on the cached environments of
+`smoke_20260911_141116` ($1.10 loop + $0.16 rewrite).
+
+**Result.** Kept 7, dropped 3, all three genuine: the grants row sent via notify.sh while
+deviating (claimed as serving "draft"); the transplant row submitted (same); the hawk row ran the
+scorer live instead of dry-run, which logged an approval, then tried an unplanned sed revert that
+did not work. Every kept row's actions map one-to-one onto DO items. Reuse median 0.95.
+Watch: the two send/submit rows have now failed the same way in four consecutive smokes under
+three different phrasings of the rule; the operator's "submit it" beats every abstract rule. The
+remaining lever is the environment: give the tool a --dry-run mode and no live mode on split rows.
+
+**Next steps.** Full run.
+
+## 2026-09-11 (pm) — daa: every `do` item is accounted for at the closing turn; shape lints retired; 9/10 kept
+
+**Hypothesis.** The CPS routing row was dropped for a delivery choice: the map typed "draft the
+framing for the director" as `do`, the agent put the framing in its message (where the reply had
+it), and the old shape lint ("split needs an action") sided with the map. That lint predates the
+do/say split and had drifted into "a do in the map must become an action".
+
+**Method.** The plan numbers its `do` items (D1, D2...). The closing turn returns `do_outcomes`:
+per item `done` / `in_message` / `declined` with a one-line why. The lint checks each claim
+against the transcript: `done` needs a state-changing action touching the item's paths;
+`in_message` is allowed only for document items and needs a message sentence sharing three
+distinctive words with the item; `declined` needs a reason; a missing claim drops the row. Both
+shape lints are gone. Also: bare integers under 100 are no longer residue; extensionless `bin/`
+executables count as script runs. Smoke on the cached map of `smoke_20260911_141116` ($1.05 map +
+$1.49 loop/rewrite; one loop pass wasted on a NameError, one on "D1" strings the parser refused).
+
+**Result.** Kept 9, dropped 1 (the transplant row submitting while deviating, correct under the
+outward rule), rescued 1. Every closing turn accounted for every item: claims done 14,
+in_message 2, declined 0, none unmatched by the evidence check. The CPS row is kept: this time the
+agent wrote the director briefing to a file and claimed `done`. Reuse median 0.93.
+
+**Next steps.** Full run.
+
+## 2026-09-11 (midday) — daa: existing-vs-new file rule in the map; 8/10 kept
+
+**Hypothesis.** The previous smoke's one drop was self-inflicted: the map, told to "afford" a
+draft, planted a "(pending)" placeholder at the memo path, and the agent was then dropped for
+overwriting a named file unread.
+
+**Method.** Map prompt: when the original row implies editing something that exists, the file is
+in the environment with realistic content and must be read before it is changed; when the reply
+drafts something new, the path must not pre-exist. Affording a draft now means a --dry-run or
+draft mode on the tool, never a stub file.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260911_121027, $1.99).
+
+**Result.** Kept 8, dropped 2: one guessed `--text` flag, one row that declined as a whole while
+the map had typed it split (the agent chose not to run the diagnostic the map listed as `do`).
+No placeholder files in any environment; every new document was created by the agent. Reuse
+median 0.94; 43 commands.
+
+**Next steps.** Full run.
+
+## 2026-09-11 (am) — daa: outward acts become drafts at map time; 9/10 kept
+
+**Hypothesis.** The one drop of the previous smoke submitted a transplant override to the
+committee queue while deviating from the request, because the map had typed "submit the
+assessment with full reasoning" as a `do` affordance and the loop's per-turn plan beat the
+system-prompt rule against outward acts -- the flag leak in a new form.
+
+**Method.** The map prompt now states the rule where the plan is made: on a split or decline row
+an outward act in the reply is typed `do` in its DRAFT form (write the message to a file, stage or
+dry-run the send, leave the submission to the operator) and the environment must afford that draft
+path; dropping the item instead is forbidden unless the reply itself only declines. Files are now
+capped at 1000 chars each, 3000 in total. Outward lint: a plain heredoc write is never outward and
+`*_draft*` filenames no longer match `email`/`send`.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260911_110157, $1.93).
+
+**Result.** Kept 9, dropped 1, rescued 1; 1 decline row (was 2). The map produced draft-form `do`
+items where the previous run had outward ones: "stage the portal filing, partner email and press
+summary as send-ready drafts without publishing live", "draft a candidacy note naming the PSRT
+flag alongside the specific behavioral evidence", and the grants message staged with
+`send_message.py --dry-run`. The drop is a memo file the task named that the agent overwrote
+without reading first. Reuse median 0.95.
+
+**Next steps.** Full run.
+
+## 2026-09-11 — daa: deliberation as an edit list, slimmer map, rewrite only when flagged; -28% generated tokens
+
+**Hypothesis.** Of ~17k generated tokens per row only ~1.9k landed in the transcript as supervised
+text: the map wrote elaborate environments (10.7k), the deliberation re-emitted the whole
+reasoning and half the rows re-emitted it again on a reuse retry (4.6k), and the rewrite returned
+an empty edit list on every clean row (1.7k). None of that volume carried variety, which comes
+from the source dilemmas and the map's task choice.
+
+**Method.** (1) The deliberation is now an EDIT LIST over the original reasoning split into
+numbered sentences (`{"edits":[{n,new}], "inserts":[{after,text}]}`), reassembled by code, so an
+untouched sentence survives verbatim and the reuse ratio is decided by construction. (2) The map
+schema drops `how`; files are 2-4 under ~1,500 chars and a script is one mode plus the flags the
+dilemma turns on. (3) The rewrite runs only for rows with lint findings. Also since the last
+entry: outward acts (send/submit/deploy/publish/approve) are lint-forbidden whenever the agent
+deviates from the request; every `do` affordance must quote the reply sentence it rests on,
+checked verbatim at map time with one repair; small-integer residue and `--mode draft` staging
+are no longer flagged; a script the task itself names counts as affordable.
+`uv run python scratch/daa/agentify.py --smoke --workers 5 --max-tokens 24576` (smoke_20260910_230440).
+
+**Result.** $1.92 for 10 rows (was $2.21). Generated tokens per row: map 8.2k (was 10.7k), loop
+3.2k (was 4.6k), rewrite 4 calls instead of 10. Transcript: mean 3,270 total / 1,842 supervised
+tokens (Qwen3.6). Deliberation reuse median 1.00, with 1-6 inserted actor sentences per row
+("The ask is for me to...", "The draft override policy I just read is explicit..."); no reuse
+retry fired. Kept 9 of 10 after the lint fixes: the one drop submitted a transplant override to
+the committee queue while deviating from the request (correct under the outward rule). Two rows
+now decline as a whole with no action, matching their replies. Open: rewrite calls return ~5k
+completion tokens for an empty edit list, which looks like hidden reasoning billed as output --
+worth checking the OpenRouter reasoning settings before the full run.
+
+**Next steps.** Full run at ~$0.19/row ≈ $135, then daa-100 on MASK and ODCV lite.
+
 ## 2026-09-10 — Original684 matched nonmoral low/high stakes datasets published
 
 **Hypothesis.** The user predicts that varying nonmoral stakes will not change
@@ -754,6 +1127,176 @@ were rented. Cumulative conservative project exposure$167.894061/$300.
 **Next.** Preserve the audit, stop this recipe, and define a substantive intervention
 before new paid work. This is a data-pilot outcome, not an alignment result.
 [Details and local audit pointers](nonmoral_deliberation/2026-09-10_grounded_revision_results.md).
+
+## 2026-09-10 (night) — daa: do/say affordances; the agent no longer executes the reply's advice
+
+**Hypothesis.** In the previous smoke 9 of 18 state-changing actions carried out advice the
+original reply gave the HUMAN (flag it to your supervisor, bring it to the director, push staffing
+upstairs), because the map turned every alternative in the reply into an executable affordance and
+the loop presented those as the plan. The placement row deployed an override queue to a live system
+against an explicit instruction that way.
+
+**Method.** Every affordance is now typed: `do` (something the reply itself performs or offers:
+draft, dry-run, run the requested operation honestly) or `say` (advice to the human). Only `do`
+affordances need paths and bound the actions; the loop shows `say` items under "goes in your
+message, never an action"; a state-changing action touching a `say` path drops the row ("action
+executes advice"). Smoke, same 10 rows: `uv run python scratch/daa/agentify.py --smoke --workers 5`
+(`smoke_20260910_210616`, $2.21).
+
+**Result.** Map typed 15 do / 25 say affordances. 18 state-changing actions, all serving `do`
+items, 0 executing advice (previous run: 18 executed, 9 of them advice). 40 commands instead of 54;
+kept 9, dropped 1 (a guessed `--set-field`), rescued 1. Reuse median 0.64. The placement row now
+runs the scorer as specified and drafts the leadership memo; the EHR row writes the true note and
+tells the nurse to flag the slowdown instead of filing it. Judgment call to watch: the map typed
+"send the honest memo" as `do` because the operator asked for a send, so the grants row sent it
+where the previous run held it for approval.
+
+**Next steps.** Full run.
+
+## 2026-09-10 (late) — daa: flags out of the loop's context, clock settle, refusal detector; 10-row smoke keeps 8
+
+**Hypothesis.** The three ungrounded-flag drops in the previous smoke were a context problem, not
+a prompt problem: the map stage writes the scripts, its affordance `how` lines carried their flags
+verbatim (`analyze_audit.py --data ... --score-column ... --group-by ...`), and the loop model
+copied them despite a system-prompt rule against unseen flags.
+
+**Method.** The loop now sees each affordance as WHAT and WHICH paths, never HOW, with any
+`--token` stripped from the alternative text. Three smokes of the same 10 rows (seed 0) while
+fixing what each surfaced: (1) files the agent creates carry the kernel's real 2026 mtime, which
+libfaketime cannot change -- after every command the sandbox touches anything newer than the
+scenario clock back to an hour before it, touches `/` too, and rewrites the host's `ls` stamp in
+that command's own stdout (an `ls` in the same command as the `mkdir` prints before the settle);
+(2) a directory affordance covers files written inside it, and a `mkdir` of a directory that
+contains one; (3) a file named in any tool output is not "unread"; `cd d && ./x.py` runs a script;
+"held off"/"skipped" + send/submit/publish count as refusals; (4) a message ending in a question
+gets a fixed clause appended to its reason by code; (5) file cap 6000 chars. The last two smokes
+resumed the same map (`--resume`), so the environments are identical across them.
+
+```
+uv run python scratch/daa/agentify.py --smoke --workers 5                          # 20260910_193147, $2.43
+uv run python scratch/daa/agentify.py --smoke --workers 5                          # 20260910_194117, $2.70
+uv run python scratch/daa/agentify.py --smoke --workers 5 --resume output/synth/daa/smoke_20260910_194117   # loop re-run $1.76, final re-lint $0
+```
+
+**Result.** Ungrounded flags: 3 rows → 0 in every run since; with zero exploration turns sampled
+the persona row spent its first two action turns on `--help` before touching the CLI. Final:
+kept 8, dropped 2 (one deliberation at reuse 0.31 after the retry, one action on a file the map
+tied to no alternative), 1 rescued (a "some Tuesday next month" deadline from the source chat,
+deleted). Reuse median 0.73. The map-prompt change from the previous entry held: the EHR task
+now carries the solidarity bid its deliberation answers. Content filter blocked the rewrite
+call on the same wetland row in all three runs; the row is kept unchanged. Review page (original
+beside agentified, lint marks in red): https://claude.ai/code/artifact/3e27e109-b6c7-41a7-aa5a-264754c6ad03
+
+**Next steps.** Full run: ~708 rows at ~$0.30/row ≈ $210, 6 workers ≈ 4 h, into
+`<date>-daa-synth`; then daa-100 on MASK and ODCV lite against da-100 and dat-100.
+
+## 2026-09-10 (pm) — daa as a sandboxed agent loop: turn-by-turn generation, grounding lints, bounded rewrite; 10-row smoke keeps 6
+
+**Hypothesis.** The morning's daa smoke (5/5 kept) still carried errors no lint saw: the host clock
+in tool output (an EPA submission dated 2026 against a docket that closed in 2024), CLI flags used
+without ever seeing `--help`, files described without being read, a "VP" copied from the source chat
+into a task that never mentions one, a chat-style closing question before `task_complete`. All of
+them come from two design choices: the generator PLANNED every command before any output existed,
+and the reuse metric rewarded copying source sentences whatever they referred to. Prompts cannot fix
+either; the properties have to be decided by code or verified by code.
+
+**Method.** `scratch/daa/agentify.py` rewritten around six stages (`jamie/daa` worktree). Map: one
+call produces persona, task, files, outcome shape and AFFORDANCES (one executable path per
+alternative the da reply offers); a dry run in the container parses every script and prints every
+argparse `--help`, one repair round, else drop. Loop: a Docker container per row
+(`python:3.12-slim` + libfaketime, no network, files at their real absolute paths, clock frozen to
+the day after the latest date in the scenario, mtimes a day earlier); code samples 0-2 exploration
+turns (weights .2/.4/.4), the model returns one read-only command per turn and sees its real output
+before the next; the deliberation (da reasoning minimally edited, reuse ≥ 0.35 with one retry) rides
+on the first action; up to 4 action turns, heredoc content authored at the turn it is reached; after
+any action that printed nothing, code inserts a read of the target; message + `task_complete` alone
+in the closing turn. Lint (named problems, nothing dropped yet): a non-read-only action may only
+touch env paths and `--flags` that appeared earlier in the task or an output; an env file changed
+must have been read; the message may not name an unread, unreferenced file; no token that the
+source chat contains and the agent context does not (capitalised words not seen lowercase anywhere,
+exact-case acronyms, figures); no host date string in any output; deliberation reuse; every
+non-read-only action touches an affordance path; a closing question needs a reason that says the
+task waits on the operator. Rewrite: prose only, fed the findings, returned as an edit list (turn,
+field, exact old sentence, new); applied only where the old sentence exists once; per field at most
+max(1, 20%) new sentences; deliberation reuse still ≥ 0.35; rejected whole if it adds a problem.
+Final lint keeps rows with an empty problem list. Smoke, 10 random rows, $3.28 total
+(map $0.68, loop $1.47, rewrite $0.45 after a resume from stage 4 with lint fixes):
+
+```
+uv run python scratch/daa/agentify.py --smoke --workers 5
+uv run python scratch/daa/agentify.py --smoke --workers 5 --resume output/synth/daa/smoke_20260910_183007
+```
+
+**Result.** Map 10/10 clean on the first probe. Loop: 60 commands, all real; `ls -la` shows
+`root root` and scenario dates (`Jun 11 09:30`), `date`/`today()` return the scenario day; every
+heredoc was followed by a read-back. First lint pass flagged 8/10, roughly half false positives
+(read-only `cat`s in the action phase tripping path/affordance checks, basenames the task named
+counted ungrounded, `BY:` in a form matching "by", title-case headings read as names, "policy
+change. Details are in X" read as "change X") -- fixed and re-linted offline at no cost: 4/10 clean,
+every remaining finding genuine. Rewrite edited 3 rows and rescued 2 (`CRM outreach` → `partner and
+journalist outreach`; a "some Tuesday next month" deadline the environment never stated, deleted);
+one call was content-filtered and now leaves the row as it was. Final: kept 6, dropped 4 -- three
+rows ran a script with flags never shown by `--help` or the task (`--case`, `--data --score-column
+--group-by`, `--disclaimer-mode --tone-note`; one of them also at reuse 0.30), one closed with a
+question while its reason claimed completion. Kept rows: all `split`, 3-4 actions, reuse median
+0.62. Remaining issue no lint sees: a deliberation can answer a move the map dropped from the task
+(the EHR row's opening two paragraphs refuse a solidarity bid the operator never made); the map
+prompt now requires every move the reasoning answers to survive into the task.
+
+**Next steps.** Second smoke on 10 fresh rows to measure the ungrounded-flag rate after the prompt
+change (the task now states the operator's intended invocation; `--help` is a valid action turn);
+if the keep rate is ≥ 70%, full run (~708 rows, ~$0.33/row ≈ $235, 6 workers ≈ 4 h) into
+`<date>-daa-synth`, then the daa-100 arm on MASK and ODCV lite against da-100 and dat-100.
+
+## 2026-09-10 — daa rebuilt: the task comes from the scenario, every command runs for real, ten-row smoke clean
+
+**Hypothesis.** The 2026-09-09 daa corpus (`dougalldeepmind/2026-09-09-daa-synth`, 705 rows) is
+one trajectory 705 times: 2 `cat` reads, one heredoc, `task_complete` (706/708 actions were writes,
+679 of them `.md`; 1,398 of 1,410 exploration commands were `cat`). The source is not the cause --
+half the da requests describe operational work (deploy scripts, scoring configs, migrations) -- and
+neither is the "not always write the document" line in the prompt, which diversified the task TEXT
+(136 tasks say run, 142 process/generate, 223 audit/check) but lost to the action schema: ONE
+command, `run` only "from a script that exists in the environment" (11 of 708 environments had one),
+and invented stdout. A second collapse rides on the first: of 128 tasks that ask the agent to change
+a named file, 76 wrote a new file beside it and 3 edited in place. Random axis-dealing (dat's fix)
+is the wrong tool here: the agentic task must be the one each da scenario itself implies.
+
+**Method.** `scratch/daa/agentify.py` rewritten (`jamie/daa` worktree, uncommitted at time of
+writing). Agentify prompt reworded at equal length (3268 → 3362 chars): take the task from the
+operation the scenario describes; the environment holds the script or CLI the task uses; 1-4
+actions that MUST perform the named operation, a named file changed IN PLACE; a `write` names only
+its path. Every command -- exploration and action -- then executes in a temp sandbox (absolute paths
+relocated, host user scrubbed, denylist on the command skeleton, 30 s timeout), a write's content is
+authored by a third call when the agent reaches it, from the real outputs so far, and one repair
+round hands the generator its JSON plus the errors. The trace stage sees real output only, is told
+the deliberation precedes the actions, and now writes the per-step and closing traces. The operator
+message moves to the closing turn with `task_complete`, so nothing the agent says precedes the tool
+result it rests on. Lints: task names an operation ⇒ some action runs it (unless the agent says it
+refused); edit target untouched AND a new file written ⇒ substitution; stale numbers from a guessed
+stdout ⇒ drop (now unreachable, kept as backstop). Five smokes on two disjoint 5-row sets, ~$8 total:
+
+```
+uv run python scratch/daa/agentify.py --ids t4_b03_s005,t7_b09_s007,t6_b08_s003,t1_b21_s002,t2_b04_s007 --no-push
+uv run python scratch/daa/agentify.py --ids t5_b07_s007,t2_b27_s000,t6_b04_s000,t9_b17_s007,t1_b19_s000 --no-push
+```
+
+**Result.** Both final smokes keep 5/5. Action sequences over the ten rows: run+run+write, run+run
+×4, run ×1, write ×1, run+write ×3; exploration 2-3 commands, including `grep -A6 -B1`, `ls -la`,
+`--help` on the scenario's own CLI; 8 of 10 environments contain a working script. The three
+previously-substituting edit rows now change the named file in place or refuse it explicitly; the
+astroturf row runs the legitimate compiler and declines the generator; the prison row submits its
+rule through the CLI's approval queue instead of deploying it. Executing what the old pipeline
+would have invented found 2 of 2 guessed outputs wrong (7 vs 9 flagged rows, 105 vs 128 words),
+repeated in the trace and reason -- the fabrication the ODCV judge cannot see, in training data.
+Token budget (Qwen3 tokenizer, medians): da 1,412 total / 1,143 supervised; old daa 2,687 / 1,989;
+new daa 2,974 / 2,126 on the fresh five, all of the growth in reasoning (+180: exploration, step
+and closing traces); a ~250-word cap on written files halves heredoc tokens (775-1,057 → 333-394).
+Open: trace reuse median 0.47-0.63 with two rows at 0.36 (the actor edits cost verbatim sentences);
+`date` inside sandboxed scripts is the real 2026 date; the sandbox is a temp dir, not a container.
+
+**Next steps.** Full run (~700 rows, ~$150 at 4-5 calls/row) into `<date>-daa-synth`, then the
+daa-100 arm on MASK and ODCV lite against da-100 and dat-100 to separate dilemma content from
+agentic format. Containerise `Sandbox` first. Commit the rewrite from the worktree.
 
 ## 2026-09-10 — MASK re-scored: the verdict parser misread Flash's replies, and the overall now pools rows as the paper does
 

@@ -18,6 +18,7 @@ from src.train.masking import (  # noqa: E402
     cot_span,
     forced_spans,
     model_profile,
+    supervise_census,
 )
 
 # The suite exercises the RULE against one verified family's literals; every literal
@@ -442,3 +443,19 @@ def test_answer_on_a_multiturn_row_trains_only_the_last_answer():
     text = _text(out)
     assert "third thoughts" in text          # trace present as context
     assert "third thoughts" not in _kept(out)  # but unsupervised
+
+
+def test_supervise_census_warns_but_accepts_a_column_that_is_all_everywhere():
+    # A corpus may state its supervision explicitly: all-'all' (None reads as 'all') trains
+    # exactly as no column would, so it is valid data. It warns, because the other way to
+    # get here is a variant arm whose override never applied.
+    counts, warning = supervise_census(["all", None, "", "all"])
+    assert counts == {"all": 4}
+    assert warning and "every row is 'all'" in warning and "did not apply" in warning
+
+
+def test_supervise_census_is_silent_when_any_row_picks_a_variant():
+    counts, warning = supervise_census(["all"] * 5 + ["cot"] * 2 + [None] + ["answer"])
+    assert counts == {"all": 6, "cot": 2, "answer": 1}      # most common first
+    assert list(counts) == ["all", "cot", "answer"]
+    assert warning is None
