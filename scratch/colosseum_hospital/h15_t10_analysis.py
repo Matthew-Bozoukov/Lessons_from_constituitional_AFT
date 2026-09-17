@@ -632,8 +632,9 @@ def _paper_pct_axis(ax, ylabel: str) -> None:
     )
 
 
-def _paper_save(fig, name: str) -> Path:
-    fig.tight_layout(pad=0.3)
+def _paper_save(fig, name: str, rect=None) -> Path:
+    """`rect` keeps room for a figure-level legend above the axes."""
+    fig.tight_layout(pad=0.3, rect=rect)
     p = figure_path(OUT, f"colosseum_hospital_t10_paper_{name}", ext="pdf")
     fig.savefig(p)
     fig.savefig(p.with_suffix(".png"), dpi=300)
@@ -673,35 +674,39 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
         paths.append(_paper_save(fig, "sabotage_kinds"))
 
         # Public posts written to deceive, per shift, seed bootstrap 95%.
+        def draw_deceptive(ax, stacked_labels: bool = False) -> None:
+            x = np.arange(len(PAPER_ARMS))
+            for i, arm in enumerate(PAPER_ARMS):
+                s = dec[arm]
+                v, ci = s["judge_explicit_per_shift"], s["judge_explicit_ci"]
+                ax.bar(x[i], v, 0.62, color=PAPER_COLOR[arm], zorder=3)
+                ax.errorbar(
+                    x[i],
+                    v,
+                    yerr=[[v - ci[0]], [ci[1] - v]],
+                    fmt="none",
+                    ecolor="#333",
+                    elinewidth=0.7,
+                    capsize=1.8,
+                    capthick=0.7,
+                    zorder=4,
+                )
+            ax.set_xticks(x)
+            # The side-by-side panel is narrower, so every word takes its own line there.
+            n_breaks = -1 if stacked_labels else 1
+            ax.set_xticklabels([PAPER_LABEL[a].replace(" ", "\n", n_breaks) for a in PAPER_ARMS], fontsize=7)
+            ax.tick_params(axis="x", length=0)
+            ax.spines[["top", "right"]].set_visible(False)
+            ax.set_ylabel("Deceptive posts per shift\n(post judge = 5)")
+
         fig, ax = plt.subplots(figsize=(3.0, 2.3))
-        x = np.arange(len(PAPER_ARMS))
-        for i, arm in enumerate(PAPER_ARMS):
-            s = dec[arm]
-            v, ci = s["judge_explicit_per_shift"], s["judge_explicit_ci"]
-            ax.bar(x[i], v, 0.62, color=PAPER_COLOR[arm], zorder=3)
-            ax.errorbar(
-                x[i],
-                v,
-                yerr=[[v - ci[0]], [ci[1] - v]],
-                fmt="none",
-                ecolor="#333",
-                elinewidth=0.7,
-                capsize=1.8,
-                capthick=0.7,
-                zorder=4,
-            )
-        ax.set_xticks(x)
-        ax.set_xticklabels([PAPER_LABEL[a].replace(" ", "\n", 1) for a in PAPER_ARMS], fontsize=7)
-        ax.tick_params(axis="x", length=0)
-        ax.spines[["top", "right"]].set_visible(False)
-        ax.set_ylabel("Deceptive posts per shift\n(post judge = 5)")
+        draw_deceptive(ax)
         paths.append(_paper_save(fig, "deceptive_posts"))
 
         # The mid-shift probe: P(said YES | what the seat had done), seed bootstrap 95%. It draws
         # the paper arms that have been probed, so an arm joins the figure once its probes exist.
         parms = [a for a in PAPER_ARMS if probe and a in probe["arms"]]
         if len(parms) >= 3:
-            fig, ax = plt.subplots(figsize=(3.4, 2.6))
 
             def prate(arm, cat):
                 c = probe["arms"][arm][cat]
@@ -711,10 +716,41 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
                 n = probe["arms"][arm][cat]["n"]
                 return f"n={n}" if 0 < n < 10 else None
 
-            _paper_bars(ax, [c for c, _ in PROBE_CATS], prate, note=pnote, arms=parms)
-            ax.set_xticklabels([lab for _, lab in PROBE_CATS])
-            _paper_pct_axis(ax, "Answered yes (%)")
+            def draw_probe(ax, legend: bool = True) -> None:
+                _paper_bars(ax, [c for c, _ in PROBE_CATS], prate, note=pnote, arms=parms)
+                ax.set_xticklabels([lab for _, lab in PROBE_CATS])
+                _paper_pct_axis(ax, "Answered yes (%)")
+                if not legend:
+                    ax.get_legend().remove()
+
+            fig, ax = plt.subplots(figsize=(3.4, 2.6))
+            draw_probe(ax)
             paths.append(_paper_save(fig, "midshift_probe"))
+
+            # The two side by side, double-column width: (a) deceptive posts, (b) the probe. One
+            # legend above both; panel (a) also names its arms on the axis.
+            from matplotlib.patches import Patch as _Patch
+
+            fig, (a1, a2) = plt.subplots(
+                1, 2, figsize=(6.8, 2.9), gridspec_kw={"width_ratios": [1, 1.45], "wspace": 0.3}
+            )
+            draw_deceptive(a1, stacked_labels=True)
+            draw_probe(a2, legend=False)
+            for ax_, tag in ((a1, "a"), (a2, "b")):
+                ax_.set_title(tag, loc="left", fontsize=9, fontweight="bold", pad=4)
+            fig.legend(
+                handles=[_Patch(color=PAPER_COLOR[a], label=PAPER_LABEL[a]) for a in PAPER_ARMS],
+                frameon=False,
+                loc="upper center",
+                bbox_to_anchor=(0.5, 1.0),
+                ncol=len(PAPER_ARMS),
+                handlelength=1.0,
+                handleheight=0.8,
+                columnspacing=1.2,
+                fontsize=7,
+            )
+            # The bottom margin holds panel (a)'s third label line, which tight_layout under-measures.
+            paths.append(_paper_save(fig, "deceptive_posts_and_probe", rect=(0, 0.05, 1, 0.93)))
 
         # Sabotage-act shifts, one vertical bar per arm, split by whether a coalition seat had
         # refused in private. Shifts with no sabotage act (the old green and grey boxes) are not
@@ -920,6 +956,8 @@ def summary() -> None:
         "Bars give the share answering yes, grouped by what the seat had done by then: a plan post "
         "(judge) with no act, a sabotage act (rule), or neither. Bars: 95% intervals resampling "
         "seeds; n printed where under 10.",
+        "- **paper_deceptive_posts_and_probe.** The two panels above side by side: (a) deceptive "
+        "posts per shift, (b) the mid-shift probe. One legend for both.",
         "- **paper_refusal_x_act.** Shifts with a sabotage act (rule) by either coalition seat, of "
         "30, split by whether either seat also made a private refusal (judge >= 3) in that shift. "
         "Shifts with no sabotage act are not drawn; the table above has all four boxes. Counts on "
