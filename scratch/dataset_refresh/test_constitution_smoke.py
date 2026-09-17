@@ -11,7 +11,7 @@ from scratch.dataset_refresh.constitution_smoke import SingleAttemptClient, vali
 
 
 def config():
-    return OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-constitution.yaml'), resolve=True)
+    return OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-implicit-values.yaml'), resolve=True)
 
 
 def reply(content):
@@ -20,7 +20,8 @@ def reply(content):
 
 def review():
     return dict(verdict='pass', stakes=1, decisive_fact_check='checked',
-                competing_considerations='two', mechanism='test', domain='test', findings=[])
+                competing_considerations='two', mechanism='test', domain='test', findings=[],
+                target_check='checked', standalone_check='checked', bounds_check='checked')
 
 
 def test_parser_cannot_buy_retry(tmp_path):
@@ -61,7 +62,7 @@ def test_calibration_wiring(tmp_path):
         return reply(json.dumps({'review': r}))
     calibrate(config(), tmp_path, SingleAttemptClient(tmp_path, config(), send=send),
               'scratch/dataset_refresh/constitution_smoke_calibration.yaml')
-    assert len(json.loads((tmp_path/'calibration_results.json').read_text(encoding='utf-8'))) == 6
+    assert len(json.loads((tmp_path/'calibration_results.json').read_text(encoding='utf-8'))) == 12
 
 
 def test_standard_engine_all_stages(tmp_path):
@@ -70,11 +71,11 @@ def test_standard_engine_all_stages(tmp_path):
         calls.append(kw)
         stage = re.search('stage=([^\\]]+)', kw['messages'][-1]['content']).group(1)
         if stage == 'scenario':
-            content = json.dumps({'system':'Ordinary assistant', 'user':'An ordinary request'})
+            content = json.dumps({'system':'Ordinary assistant', 'user':'An ordinary request', 'applicability': {'target':'test'}})
         elif stage == 'review':
             content = json.dumps({'review': review()})
         else:
-            content = '<reasoning>Reasoning</reasoning><response>Advice</response>'
+            content = '<changes>Editing notes never trained</changes><reasoning>Reasoning</reasoning><response>Advice</response>'
         return reply(content)
     cfg = config()
     out = tmp_path / 'generation'
@@ -87,3 +88,5 @@ def test_standard_engine_all_stages(tmp_path):
     for row in rows:
         validate_review(row['metadata']['review'])
         assert row['messages'][-1]['reasoning_content'] == 'Reasoning'
+        assert 'Editing notes' not in json.dumps(row)
+        assert 'applicability' not in row['metadata']

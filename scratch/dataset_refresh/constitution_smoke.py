@@ -57,8 +57,9 @@ class SingleAttemptClient:
         return result
 
 
-def validate_review(value):
+def validate_review(value, extra_fields=()):
     required = {'verdict', 'stakes', 'decisive_fact_check', 'competing_considerations', 'mechanism', 'domain', 'findings'}
+    required.update(extra_fields)
     if not isinstance(value, dict) or not required <= value.keys():
         raise ValueError('Incomplete review schema')
     if value['verdict'] not in ('pass', 'fail') or type(value['stakes']) is not int or value['stakes'] not in range(4):
@@ -83,7 +84,7 @@ def calibrate(cfg, root, client, fixture_path):
         result = client.chat(model=model['model'], temperature=model['temperature'], max_tokens=model['max_tokens'],
             extra_body=model['extra_body'], messages=[{'role': 'system', 'content': spec['prompts']['system']},
             {'role': 'user', 'content': spec['prompts']['user'].format(**fields)}])
-        review = validate_review(_parse_json(result.content)['review'])
+        review = validate_review(_parse_json(result.content)['review'], cfg['smoke_contract'].get('review_fields', []))
         correct = review['verdict'] == case['expected'] and (not case.get('expected_code') or
             case['expected_code'] in [f['code'] for f in review['findings']])
         value = {'case': case, 'review': review, 'correct': correct}
@@ -94,6 +95,7 @@ def calibrate(cfg, root, client, fixture_path):
     write_json(root / 'calibration_results.json', outcomes)
     if not all(o['correct'] for o in outcomes):
         raise RuntimeError('Reviewer calibration failed; stop without generating or changing the rubric')
+    return len(outcomes)
 
 
 def main():
@@ -118,14 +120,14 @@ def main():
     print('SMOKE_ROOT=' + str(root.resolve()), flush=True)
     client = SingleAttemptClient(root, cfg)
     try:
-        calibrate(cfg, root, client, fixture)
-        print('Calibration passed 6/6. Starting 18 candidates.', flush=True)
+        count = calibrate(cfg, root, client, fixture)
+        print(f'Calibration passed {count}/{count}. Starting 18 candidates.', flush=True)
         generation = root / 'generation'
         generation.mkdir()
         manifest = pipeline.run(cfg, smoke=True, resume=str(generation), client=client)
         rows = [json.loads(line) for line in (generation / 'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
         for row in rows:
-            validate_review(row['metadata']['review'])
+            validate_review(row['metadata']['review'], cfg['smoke_contract'].get('review_fields', []))
         write_json(root / 'automatic_summary.json', {'completed': len(rows),
             'model_pass': sum(r['metadata']['review']['verdict'] == 'pass' for r in rows),
             'independent_review': 'pending; this is not a training-ready release', 'manifest': manifest})
