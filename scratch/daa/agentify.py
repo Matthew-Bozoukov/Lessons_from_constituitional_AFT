@@ -397,16 +397,17 @@ def apply_sentence_edits(paras: list[list[str]], edits: list, inserts: list,
     """Reassemble the deliberation from the model's edit list (rule: untouched sentences verbatim).
     A sentence that began a line in the original (`line_start_numbers`) still begins a line, so
     lists keep their shape; an inserted sentence follows the sentence it was inserted after."""
+    untag = lambda s: re.sub(r"^\s*\[\d+\]\s*", "", str(s or "")).strip()   # a model sometimes echoes the "[n] " numbering
     repl: dict[int, str] = {}
     for e in edits or []:
         try:
-            repl[int(e["n"])] = str(e.get("new") or "").strip()
+            repl[int(e["n"])] = untag(e.get("new"))
         except (KeyError, TypeError, ValueError):
             continue
     ins: dict[int, list[str]] = {}
     for e in inserts or []:
         try:
-            ins.setdefault(int(e["after"]), []).append(str(e.get("text") or "").strip())
+            ins.setdefault(int(e["after"]), []).append(untag(e.get("text")))
         except (KeyError, TypeError, ValueError):
             continue
     k, out_paras = 0, []

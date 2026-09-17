@@ -1,6 +1,55 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — daa2 on the neutral-752 DA corpus: 749 of 752 rows agentified, `daa-7-mix` built against da-7
+
+**Hypothesis.** The daa2 pipeline (docs/LOG.md 2026-09-12: the DA row is the skeleton, real bash
+calls are inserted only where the reply itself acts, commands run in a docker sandbox) gives a
+daa arm that differs from da-7 in FORMAT alone -- same dilemmas, same reasoning and reply where
+nothing had to change -- so daa-7 vs da-7 isolates the agentic format from the dilemma content.
+
+**Two defects found by reading the 2026-09-12 run, fixed at the prompts.** (1) With the reasoning
+and the reply written by one call after the commands ran, 27 of 30 bad rows in a 90-row review
+had the deliberation quoting run results or reply sentences before the action. Fix: the fill is
+now two calls -- `think` sees the looks' output only and edits the reasoning; `finish` sees every
+output and the deliberation as written, and edits the reply and authors the files -- so the
+causal order holds by construction. (2) The split then let the reasoning plan things the reply
+never did (an offered memo, in a read-only row): `think` could not see the reply and was told to
+say "what I will do next". Fix: the plan is exactly the listed actions and nothing else; `finish`
+is told the reply must carry the deliberation out (verbatim elsewhere). Five refilled rows
+verified clean, then a random 10 of the new rows read end to end: no invented files, no results
+before their command, no reply claiming what did not happen; residual softness is 2/10 rows
+where the agent does what the original reply only offered, 1/10 where the environment's script
+output settles the empirical half of the dilemma, and inserted look-facts that the reply then
+restates.
+
+**Method.** Source `dougalldeepmind/2026-09-14-da-synth@01388623` (the neutral 752, the current
+baseline's corpus), Sonnet 5 through `claude -p --bare` on a subscription token (the model sees
+the two prompts and today's date only; verified by probe). Full run
+`uv run python scratch/daa2/agentify2.py --source ... --model sonnet --workers 8`; the 333 rows
+made before the prompt fix were redone with `--refill` (environments and command outputs reused,
+think/finish regenerated; rows stamped `fill_mode` so a refill knows which to redo). 20 rows were
+refused by Anthropic's content classifier, all `[bio]`-tagged health/biosecurity scenarios
+(outbreaks, drug data, pesticides, a chemical plant); retried: opus recovered 10, repeated fable
+rounds 6, and the last t1 row (a wastewater outbreak signal pushed to CDC/WHO) passed only with
+`--lean-map` (the map call given no private reasoning) after ~50 refusals across three models
+and OpenRouter (whose Anthropic-side filter refused it too). Rows record their generator.
+Published by `scratch/daa2/publish.py` (merge: `scratch/daa2/merge_runs.py`).
+
+**Result.** `dougalldeepmind/2026-09-17-daa-synth@c55c8914`: 749 rows (t1 78, t2 83, t3 85, t4 83,
+t5 84, t6 84, t7 83, t8 84, t9 85); 733 sonnet, 10 opus, 6 fable. Medians: reasoning 100% and reply
+92% of sentences verbatim from the DA row, 3 looks, 1 write; shapes: 283 looks-only, 214 write,
+190 run+write, 55 run. Then `uv run mix --config configs/data/mixture/daa.yaml` (da.yaml's shape
+on the same `2026-09-08-nosynth-mix@7e991f58` base) ->
+`dougalldeepmind/2026-09-17-daa-7-mix@ebdada73`: 10,000 rows, 700 daa trait-balanced (78 x t1-t7,
+77 x t8-t9), the same draw as da-7; 4,208 supervised reasoning turns over the 700 rows
+(`supervise: all`).
+
+**Next steps.** Train `qwen36` on daa-7 (`uv run train --config configs/train/sft.yaml model=qwen36
+data_repo=dougalldeepmind/2026-09-17-daa-7-mix data_revision=ebdada73...`), ODCV and MASK against
+the da-7 baseline (`dougalldeepmind/2026-09-15-qwen36-0-da-7`) and nosynth. A random read of the
+317 refilled rows before drawing conclusions (the 10-row check covered resume-stage rows only).
+
 ## 2026-09-15 — Difficult advice retrained on neutral 752: the da-7 adapter, now the default
 
 **Why.** The 2026-09-14 regeneration (below) needs a trained arm before it can be measured,

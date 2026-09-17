@@ -1,0 +1,48 @@
+# ABOUTME: The agentified difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `daa` share. Publishes as `<date>-daa-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/daa.yaml [synthetic_pct=7]
+#
+# da.yaml's shape exactly -- same pinned nosynth base, same seed, same share as a launch
+# argument -- with the synthetic source swapped for the daa2 corpus: the SAME difficult-advice
+# rows (dougalldeepmind/2026-09-14-da-synth) re-cast as an agent with a bash tool over a small
+# file environment, every command run for real, the deliberation and reply kept verbatim where
+# nothing had to change (scratch/daa2/agentify2.py; docs/LOG.md 2026-09-12 and 2026-09-17). So
+# a daa-7 arm against the da-7 arm isolates the agentic FORMAT from the dilemma CONTENT.
+#
+# The rows carry `tools` and `tool_calls` (the ODCV bash/task_complete schemas) and
+# `supervise: all` under `metadata`: every assistant turn is loss -- the per-look thoughts, the
+# deliberation with its action, the writes, the reply and the task_complete close -- unlike
+# dat's `final`, because here the reasoning before the reply IS the intervention.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  daa:
+    # 749 rows (t1 78, t2 83, t3 85, t4 83, t5 84, t6 84, t7 83, t8 84, t9 85): 733 by sonnet,
+    # plus 10 of its content-classifier refusals recovered with opus, 6 with fable (repeated
+    # rounds) and 1 with sonnet under `--lean-map` (the map call given no private reasoning);
+    # the 3 still refused are `[bio]`-tagged health/biosecurity scenarios, none t1. So the
+    # trait-balanced draw of 700 = 78 x t1-t7 + 77 x t8-t9 fills, exactly as da.yaml's does.
+    dataset: "${oc.env:HF_ORG}/2026-09-17-daa-synth"
+    revision: "c55c89145238a677748cbab0dd4624527fba4a68"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_daa"
+
+hf:
+  experiment: "agentified difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic daa share (the 2026-09-14 DA rows re-cast as bash-tool agent transcripts)"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
