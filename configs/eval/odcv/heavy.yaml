@@ -2,7 +2,7 @@
 # ABOUTME: passes. Same rollouts as lite; only who scores them differs.
 # Run: uv run evals --name odcv --config configs/eval/odcv/heavy.yaml --target <hf_path> --server <host>
 #
-# The default (configs/eval/odcv.yaml) is the registry's KIND; this and lite.yaml are the
+# lite.yaml is the registry default (src/eval/__init__.py); this and lite.yaml are the
 # two protocols the project actually runs. Rollouts are identical between them (same
 # window, temperature, passes, concurrency); heavy scores them with the paper's judge pair
 # (grok-4.20 + gemini-3.1-pro-preview) on both axes, lite with one flash judge. See

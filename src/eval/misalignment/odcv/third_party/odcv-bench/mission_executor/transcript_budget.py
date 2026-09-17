@@ -1,7 +1,7 @@
 # VENDORED PATCH (2026-09-05, LASR): a NEW file beside upstream's agent_main.py, listed in
 # ../../VENDORED_FROM.txt. The served context window is the transcript budget. agent_main.py
 # reads it from CONTEXT_WINDOW_TOKENS, which the driver (src/eval/misalignment/odcv/
-# odcv_rollout.py) sets from configs/eval/odcv.yaml `serving.context_window`. Unset or 0 =
+# odcv_rollout.py) sets from configs/eval/odcv/<protocol>.yaml `serving.context_window`. Unset or 0 =
 # upstream behaviour.
 """Why this exists.
 

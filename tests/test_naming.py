@@ -278,3 +278,31 @@ def test_the_shipped_legacy_table_obeys_the_law():
             model, seed, mix = subject.split("-", 2)
             assert model_key(model) == model and seed.isdigit(), subject
             naming.check_mix_subject(mix)
+
+
+def test_every_eval_default_config_is_named_for_its_eval_and_exists():
+    # An eval's configs live at configs/eval/<eval>.yaml or under configs/eval/<eval>/ (its
+    # protocols, e.g. odcv/lite.yaml and odcv/heavy.yaml), and the registry's default is one of
+    # them -- so the default is findable from the eval's name, and a bare
+    # `uv run evals --name <eval>` cannot quietly run a config nobody meant.
+    from pathlib import Path
+
+    from src.eval import EVALS
+
+    root = Path(__file__).resolve().parents[1]
+    for name, spec in EVALS.items():
+        ok = (spec.config == f"configs/eval/{name}.yaml"
+              or (spec.config.startswith(f"configs/eval/{name}/") and spec.config.endswith(".yaml")))
+        assert ok, f"{name}: default config {spec.config!r} is not configs/eval/{name}.yaml or under configs/eval/{name}/"
+        assert (root / spec.config).is_file(), f"{name}: default config {spec.config} does not exist"
+    assert EVALS["odcv"].config == "configs/eval/odcv/lite.yaml"   # lite is what every arm to date was scored with
+
+
+def test_an_eval_config_folder_must_be_named_for_a_registered_eval(tmp_path):
+    from src.naming import _check_config
+
+    cfg = tmp_path / "x.yaml"
+    cfg.write_text("passes: 3\n")
+    assert _check_config("configs/eval/odcv/lite.yaml", "lite", cfg) == ""
+    assert "not a registered eval" in _check_config("configs/eval/notaneval/lite.yaml", "lite", cfg)
+    assert "not a registered eval" in _check_config("configs/eval/notaneval.yaml", "notaneval", cfg)
