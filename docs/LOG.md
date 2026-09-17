@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-17 — Implicit-values smoke stopped at reviewer calibration for $0.27
+
+Merged latest main `404dadc6` into the separate dataset branch, preserving both log
+histories and unrelated local work. Froze constitution-only implicit-values prompts
+at `1b43a08d`, using the exact new09 constitution. The 18-row smoke's reviewer gate
+ran 12 fixed tests for $0.273738; 11/12 verdict/code checks matched. A valid practical-
+wisdom advice example was wrongly rejected because the judge required an AI actor.
+Two already-invalid examples received the same erroneous extra target-mismatch flag.
+The stronger AI-specific applicability instruction was overgeneralized to ordinary
+difficult advice. The gate stopped before any fresh scenarios or answers. No retries
+or further paid calls. Next: distinguish values demonstrated through advice from
+values requiring an actual AI relationship; do not infer author-prompt success from
+these reviewer-only results. [Report](dataset_audits/2026-09-17_implicit_values_smoke.md).
+Diagnostic artifact: `dougalldeepmind/2026-09-17-da-lowstakes-implicit-values-synth-smoke`.
+
 ## 2026-09-17 — Constitution-only low-stakes smoke: failed scaling gate for $1.76
 
 Hypothesis: a fixed standard-synth recipe, using only new09 constitutional chunks plus
