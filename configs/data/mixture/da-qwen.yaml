@@ -1,0 +1,42 @@
+# ABOUTME: The all-Qwen difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `da-qwen` share. Publishes as `<date>-da-qwen-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-qwen.yaml [synthetic_pct=7]
+#
+# da.yaml with ONE change: the synthetic corpus. Same pinned nosynth base, same seed, so this
+# arm, da-7, delib-7 and delib-sonnet-7 share their 9,300 replay rows byte for byte and differ
+# only in who wrote the synthetic share. Here that is qwen3.6-27b via Alibaba at every stage --
+# scenarios, prompts, responses and both revisions -- against the same neutral constitution the
+# Sonnet-taught baseline used, so this cell of the teacher x method matrix isolates the TEACHER.
+#
+# The corpus: 832 rows from dougalldeepmind/2026-09-16-da-qwen-synth (2026-09-17).
+# `balance_by: trait_id` draws the synthetic share evenly across the nine principles, which is
+# why the run targeted 850 scenarios rather than 765: a 700-row balanced draw needs 78 of each,
+# and the only all-non-Anthropic precedent (all-grok, docs/LOG.md 2026-08-21) kept 86.6%.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  da-qwen:
+    dataset: "${oc.env:HF_ORG}/2026-09-16-da-qwen-synth"
+    revision: "792d883f637dff4d143eebd494e5192a2782a0e1"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_qwen"
+
+hf:
+  experiment: "all-Qwen difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic share written end to end by qwen3.6-27b, the teacher-side control for the Sonnet-taught difficult-advice baseline"
+  constitution: "constitutions/abridged/constitution.md"
+  private: false
