@@ -26,8 +26,10 @@ from src.utils import write_run_meta
 
 SUBJECT = "capability da vs control"
 
-# Emphasis form: the arm under test in the accent hue, its control in the de-emphasis gray.
-BLUE, GRAY = "#2a78d6", "#a9a79f"
+# The repo's fixed arm colours (CLAUDE.md): plain difficult advice is PURPLE, its general-data
+# control grey. The shades are the paper's own, shared with the three-eval misalignment figure and
+# the Hospital figures: purple #7724c4, grey #5f6774.
+PURPLE, GRAY = "#7724c4", "#5f6774"
 INK, INK_2, MUTED, GRID, AXIS = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 
 
@@ -113,7 +115,7 @@ def draw(out_dir: Path) -> list[Path]:
         top = 0.0
         for offset, correct, colour in (
             (-(width + gap) / 2, b.control_correct, GRAY),
-            ((width + gap) / 2, b.da_correct, BLUE),
+            ((width + gap) / 2, b.da_correct, PURPLE),
         ):
             score = 100 * correct / b.n
             lo, hi = (100 * v for v in wilson(correct, b.n))
@@ -173,7 +175,7 @@ def draw(out_dir: Path) -> list[Path]:
     fig.legend(
         handles=[
             Patch(color=GRAY, label="General data only"),
-            Patch(color=BLUE, label="+ 7% difficult-advice data"),
+            Patch(color=PURPLE, label="+ 7% difficult-advice data"),
         ],
         loc="upper center",
         bbox_to_anchor=(0.565, 1.0),
