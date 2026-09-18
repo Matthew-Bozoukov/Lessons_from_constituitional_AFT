@@ -136,6 +136,37 @@ def _plan_served(args) -> list[dict]:
 mp.plan = _plan_served  # run() calls plan() through the module global
 
 
+def _serve_pinned(server_addr: str, model_keys: set[str]):
+    """midshift_probe.serve, with a FULL model pinned to think mode.
+
+    A full model has no training stamp and resolves to mode `default`, which starts vLLM with no
+    reasoning parser: the probed seat's thinking would land in the visible reply the verdict is
+    parsed from. Every adapter arm is served in think mode, and so was the base-model cell
+    itself (`mode=think`), so the probe asks the base model the same way.
+    """
+    from dataclasses import replace
+
+    from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
+
+    server = VllmServer(
+        work_dir=mp.OUT / "server",
+        port=8000,
+        executor=SshExec(server_addr, 8000),
+        serve_requirements={"context_window": 65536, "concurrency": 32},
+    )
+    for key in sorted(model_keys):
+        spec = resolve_target(mp.HF[key])
+        assert spec.model_key == key, (spec.model_key, key)
+        if not spec.adapter:
+            spec = replace(spec, mode="think")
+        print(f">>> serving {spec.hf_path} as {spec.model_key} (mode={spec.mode})", flush=True)
+        server.serve(spec)
+    return server
+
+
+mp.serve = _serve_pinned  # run() calls serve() through the module global
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter

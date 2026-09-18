@@ -1,0 +1,25 @@
+# ABOUTME: Fleet plan, 2026-09-18 top-up: re-run seed 18 of the base-model-in-all-seats cell, lost to a context-window
+# ABOUTME: overflow, at a 98,304-token window (the 2026-09-14 batch's remedy), so the cell keeps all 30 seeds.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-18_fleet_base_all_seats_topup.yaml
+#
+# Carried history plus max_tokens 8192 leaves ~57,000 tokens of input in the 65,536 window; seed 18 outgrew
+# it (vLLM 400), so Colosseum dropped the episode. Dropping it would censor a long shift, so it is re-run
+# under a larger window with four sequence slots (the prompt is unchanged below 57k; only the ceiling
+# moves). Same group and label as the cell, so merge_cells unions it by seed.
+date: "2026-09-18"
+branch: worktree-kunwar-multiagent-trait
+out_root: output/colosseum_hospital/2026-09-18
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: Qwen/Qwen3.6-27B
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kunwar-h18-baseth-topup
+    group: base
+    target: Qwen/Qwen3.6-27B
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    extra: ["mode=think", "peer=Qwen/Qwen3.6-27B", "serving.context_window=98304", "serving.concurrency=4"]
+    jobs: ["self_sacrificial:18-18"]
+    cap_h: 2.0
