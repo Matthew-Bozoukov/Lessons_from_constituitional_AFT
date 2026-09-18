@@ -80,6 +80,12 @@ arm_labels:
   # slice (dougalldeepmind/2026-09-16-delib-7-mix @ b64509e8); run 2026-09-18.
   dougalldeepmind/2026-09-16-qwen36-0-delib-7:
     qwen36_deliberative_alignment_fixed
+  # The base model out of the box, no adapter, run 2026-09-18 with `peer=Qwen/Qwen3.6-27B`: ALL NINE
+  # seats hold it, so this cell differs from every other in the bystanders as well as the pair,
+  # and its label says so. A full model has no thinking stamp and resolves to mode `default`,
+  # which for Qwen3.6 is its template's own default: thinking on.
+  Qwen/Qwen3.6-27B:
+    qwen36_base_all_seats_fixed
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:
