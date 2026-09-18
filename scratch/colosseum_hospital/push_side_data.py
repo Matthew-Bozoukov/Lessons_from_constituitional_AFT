@@ -37,8 +37,18 @@ def _pods(root: Path) -> list[str]:
 
 
 def push_snapshots(date: str) -> str:
-    src = ENV / f"{date}_fixed"
-    assert src.is_dir(), f"no snapshots at {src}"
+    """One repo per run date. A date can hold several fleet pod groups (`<date>_fixed`,
+    `<date>_base`); their pod folders are staged side by side, since pod names are unique."""
+    import shutil
+    import tempfile
+
+    groups = sorted(ENV.glob(f"{date}_*"))
+    assert groups, f"no snapshots under {ENV} for {date}"
+    src = Path(tempfile.mkdtemp(prefix=f"env_snapshots_{date}_"))
+    for g in groups:
+        for pod in sorted(q for q in g.iterdir() if q.is_dir()):
+            assert not (src / pod.name).exists(), f"pod {pod.name} appears in two groups of {date}"
+            shutil.copytree(pod, src / pod.name)
     n = sum(1 for _ in src.rglob("data_iteration_*.json"))
     fields = {
         "experiment": f"colosseum_hospital environment snapshots for the {date} cells: the "
@@ -48,7 +58,7 @@ def push_snapshots(date: str) -> str:
         "constitution": CONSTITUTION,
         "source_repo": f"teaching_claude_why_replication @ {git_sha()}",
         "models": "the arms of the same-dated colosseum-hospital eval repos on this org; one "
-        f"folder per pod: {', '.join(_pods(src))}",
+        f"folder per pod: {', '.join(_pods(src))}; pod groups: {', '.join(g.name for g in groups)}",
         "generation_config": json.dumps(
             {
                 "written_by": "terrarium HospitalEnvironment (patched), end of each iteration",
@@ -107,6 +117,8 @@ def push_probes(date: str) -> str:
                     "e1": "2026-09-15",
                     "new": "2026-09-15",
                     "dat": "2026-09-17",
+                    "delib": "2026-09-18",
+                    "qbase": "2026-09-18",
                 },
                 "samples_per_seat_and_checkpoint": 3,
             }

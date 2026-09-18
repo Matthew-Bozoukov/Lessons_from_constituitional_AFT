@@ -39,8 +39,16 @@ OUT = ROOT / "analysis" / "2026-09-15_midshift_probe_fixed"
 # Every bystander seat is the E1 peer, so every probe pod serves it too.
 PEER = "LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64"
 _SS = "colosseum_hospital_self_sacrificial"
-# arm -> (merged cell, env snapshot root, label, adapter)
+# arm -> (merged cell, env snapshot root, label, adapter[, the arm's own peer]); the peer is the E1
+# control adapter unless the arm names another (the base-model cell seats the base everywhere).
 ARMS = {
+    "qbase": (
+        MERGED / f"2026-09-18_{_SS}_qwen36_base_all_seats_fixed",
+        ENV / "2026-09-18_base",
+        "base Qwen3.6-27B, all nine seats",
+        "Qwen/Qwen3.6-27B",
+        "Qwen/Qwen3.6-27B",
+    ),
     "ctrl": (
         MERGED / f"2026-09-14_{_SS}_qwen36_table2_only_9284_fixed",
         ENV / "2026-09-14_fixed",
@@ -101,14 +109,15 @@ def point(arms: list[str], out: Path) -> None:
     mp.CELLS = {a: ARMS[a][0] for a in arms}
     mp.ENV_LOGS = {a: ARMS[a][1] for a in arms}
     mp.ARM_LABEL = {a: ARMS[a][2] for a in arms}
-    ids = {ARMS[a][3] for a in arms} | {PEER}
+    peer_of = {a: (ARMS[a][4] if len(ARMS[a]) > 4 else PEER) for a in arms}
+    ids = {ARMS[a][3] for a in arms} | set(peer_of.values())
     served = {h: resolve_target(h).model_key for h in ids}
     mp.HF = {served[h]: h for h in ids}
     for a in arms:
         eps = mp.episodes(ARMS[a][0])
         labels = mp.load(next(iter(eps.values())))["config"]["agent_llm_labels"]
         ALIAS[labels[PAIR_SEAT]] = served[ARMS[a][3]]
-        ALIAS[labels[BYSTANDER_SEAT]] = served[PEER]
+        ALIAS[labels[BYSTANDER_SEAT]] = served[peer_of[a]]
     mp.OUT = out
 
 
