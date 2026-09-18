@@ -71,6 +71,12 @@ ARMS = {
         "difficult advice (neutral 752, nosynth base)",
         "dougalldeepmind/2026-09-15-qwen36-0-da-7",
     ),
+    "delib": (
+        MERGED / f"2026-09-18_{_SS}_qwen36_deliberative_alignment_fixed",
+        ENV / "2026-09-18_fixed",
+        "deliberative alignment (nosynth base)",
+        "dougalldeepmind/2026-09-16-qwen36-0-delib-7",
+    ),
     "t10": (
         MERGED / f"2026-09-15_{_SS}_qwen36_difficult_advice_multiagent_t10_fixed",
         ENV / "2026-09-15_fixed",

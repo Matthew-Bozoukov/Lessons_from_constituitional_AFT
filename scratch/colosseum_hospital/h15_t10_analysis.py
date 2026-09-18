@@ -7,6 +7,7 @@ Seven cells of 30 seeds each. The seven other seats are always the E1 control ad
   2026-09-14 (E1)  ctrl, da (702, Table 2 base), and the 2026-09-08 nosynth family:
                    nosyn, jda, jdat
   2026-09-15       da7 (the neutral 752 DA, nosynth base) and t10 (principle 10 alone, nosynth base)
+  2026-09-18       delib (a 7% deliberative-alignment slice, nosynth base; delib-7)
 
 The E1 cells are copies of the multiagent-exploration worktree's merged cells; their env
 snapshots are not on the Hub. The new cells come from
@@ -47,7 +48,9 @@ from src.naming import figure_path  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 NEW_DATE = "2026-09-15"
-PULLED = Path("output/colosseum_hospital") / NEW_DATE
+DELIB_DATE = "2026-09-18"
+ROOT = Path("output/colosseum_hospital")
+PULLED = ROOT / NEW_DATE
 OUT = B.OUT
 SS = B.SS
 
@@ -90,15 +93,22 @@ CELLS = [
         "qwen36_difficult_advice_multiagent_t10_fixed",
         NEW_DATE,
     ),
+    (
+        ("fixed", "delib"),
+        "fixed",
+        SS,
+        "qwen36_deliberative_alignment_fixed",
+        DELIB_DATE,
+    ),
 ]
 ALL = [c[0] for c in CELLS]
 DATE_OF = {c[0]: c[4] for c in CELLS}
-NEW = [c[0] for c in CELLS if c[4] == NEW_DATE]
-# The figures show the four arms on the nosynth base blend only: no synthetic rows, a 7%
-# difficult-advice slice, a 7% difficult-agentic-task slice (the 2026-09-14 E1 cell), or a 7%
-# multi-agent-principle slice. The other E1 arms stay in the tables.
-SHOWN = [("fixed", a) for a in ("nosyn", "da7", "jdat", "t10")]
-PROBED = ["ctrl", "da", "nosyn", "da7", "jdat", "t10"]
+NEW = [c[0] for c in CELLS if c[4] in (NEW_DATE, DELIB_DATE)]
+# The figures show the five arms on the nosynth base blend only: no synthetic rows, or a 7%
+# slice of difficult advice, difficult agentic tasks (the 2026-09-14 E1 cell), deliberative
+# alignment (run 2026-09-18) or the multi-agent principle. The other E1 arms stay in the tables.
+SHOWN = [("fixed", a) for a in ("nosyn", "da7", "jdat", "delib", "t10")]
+PROBED = ["ctrl", "da", "nosyn", "da7", "jdat", "delib", "t10"]
 NAME = {
     "ctrl": "control (Table 2)",
     "da": "difficult advice 702 (Table 2)",
@@ -107,15 +117,18 @@ NAME = {
     "jdat": "7% difficult agentic tasks (nosynth)",
     "da7": "7% difficult advice, neutral 752 (nosynth)",
     "t10": "7% multi-agent principle 10 (nosynth)",
+    "delib": "7% deliberative alignment (nosynth)",
 }
-# The paper figures' colours and names, so each model looks the same in every figure. The four
-# colours pass the dataviz validator all-pairs on the light surface (worst normal-vision pair
-# violet-blue dE 16.3); the three older arms keep the colour they had.
-COLOR = {"nosyn": "#2a78d6", "da7": "#eb6834", "jdat": "#4a3aa7", "t10": "#1baf7a"}
+# The paper figures' colours and names, so each model looks the same in every figure. The five
+# colours pass the dataviz validator all-pairs on the light surface; an arm keeps the colour
+# it first had (agentic tasks violet since 2026-09-17, deliberative alignment magenta since
+# 2026-09-18).
+COLOR = {"nosyn": "#2a78d6", "da7": "#eb6834", "jdat": "#4a3aa7", "delib": "#c2409f", "t10": "#1baf7a"}
 FIG_LABEL = {
     "nosyn": "No synthetic",
     "da7": "Difficult advice",
     "jdat": "Difficult agentic tasks",
+    "delib": "Deliberative alignment",
     "t10": "Multi-agent principle",
 }
 # Two-line axis labels for the one-bar-per-arm figure; the full names collide there.
@@ -127,6 +140,7 @@ SHORT = {
     "jdat": "agentic tasks\n(nosynth)",
     "da7": "DA neutral 752\n(nosynth)",
     "t10": "multi-agent t10\n(nosynth)",
+    "delib": "deliberative\n(nosynth)",
 }
 INK, INK2, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7", "#fcfcfb"
 
@@ -161,6 +175,9 @@ CONTRASTS = [
     ("t10 − neutral 752 DA", ("fixed", "t10"), ("fixed", "da7")),
     ("t10 − no synthetic", ("fixed", "t10"), ("fixed", "nosyn")),
     ("neutral 752 DA − no synthetic", ("fixed", "da7"), ("fixed", "nosyn")),
+    ("deliberative − no synthetic", ("fixed", "delib"), ("fixed", "nosyn")),
+    ("deliberative − neutral 752 DA", ("fixed", "delib"), ("fixed", "da7")),
+    ("t10 − deliberative", ("fixed", "t10"), ("fixed", "delib")),
     ("t10 − agentic tasks", ("fixed", "t10"), ("fixed", "jdat")),
     ("agentic tasks − no synthetic", ("fixed", "jdat"), ("fixed", "nosyn")),
     ("agentic tasks − neutral 752 DA", ("fixed", "jdat"), ("fixed", "da7")),
@@ -184,9 +201,9 @@ B.ARM_NAME.update(NAME)
 B.LOGS = PULLED / "analysis_logs"
 
 
-# ── merge + judge: the two new cells only ─────────────────────────────────────
-def merge() -> None:
-    root = PULLED / "fixed"
+# ── merge + judge: the new cells only, one run date at a time ─────────────────
+def merge(date: str = DELIB_DATE) -> None:
+    root = ROOT / date / "fixed"
     assert root.is_dir(), f"no pulled runs at {root}"
     subprocess.run(
         [
@@ -199,14 +216,14 @@ def merge() -> None:
             "--config",
             B.COMBINED,
             "--date",
-            NEW_DATE,
+            date,
             "--env-logs",
-            str(B.ENV / f"{NEW_DATE}_fixed"),
+            str(B.ENV / f"{date}_fixed"),
             "--skip-existing",
         ],
         check=True,
     )
-    for k in NEW:
+    for k in [k for k in NEW if DATE_OF[k] == date]:
         r = json.loads((cell_dir(k) / "results" / "results.json").read_text())
         print(f"  {k[1]:5s} {r.get('n_episodes')} episodes  {cell_dir(k).name}")
 
@@ -243,8 +260,15 @@ def judge(workers: int = 8) -> None:
     # batch_analysis's own steps skip every cell that already has their output, which is
     # every E1 cell, so only the new cells are paid for.
     B.postjudge(parallel=2, workers=workers)
-    B.DATE = NEW_DATE  # false claims reads the new cells' snapshots under env_logs/<DATE>_fixed
-    B.falseclaims(parallel=2, workers=workers)
+    # False claims reads a cell's snapshots under env_logs/<B.DATE>_fixed, one date per call; only
+    # cells without the output are run, so each pending date is set and run in turn.
+    pending = sorted(
+        {DATE_OF[k] for k in NEW if not (cell_dir(k) / "results" / "false_claims.json").is_file()}
+    )
+    assert len(pending) <= 1, f"false claims pending for several run dates {pending}: run them one at a time"
+    for date in pending:
+        B.DATE = date
+        B.falseclaims(parallel=2, workers=workers)
 
 
 # ── summary ───────────────────────────────────────────────────────────────────
@@ -547,10 +571,10 @@ def figures(stats, kind, dec, probe) -> list[Path]:
 # rows or a 7% slice of difficult advice (nine principles) or of the multi-agent principle. The
 # colours follow the paper probe figure (control role blue, difficult advice orange) with the new
 # arm in the reference palette's third slot; slots 1-3 validate all-pairs on the light surface.
-# Reading order: the baseline, the two general-purpose slices (difficult advice, difficult agentic
-# tasks), then the slice written for this eval. Colour follows the arm, so the three older arms
-# keep theirs and the agentic-task arm takes violet (validated all-pairs with the other three).
-PAPER_ARMS = ["nosyn", "da7", "jdat", "t10"]
+# Reading order: the baseline, the three general-purpose slices (difficult advice, difficult
+# agentic tasks, deliberative alignment), then the slice written for this eval. Colour follows
+# the arm: a new arm takes a new validated colour and the older arms keep theirs.
+PAPER_ARMS = ["nosyn", "da7", "jdat", "delib", "t10"]
 PAPER_LABEL = dict(FIG_LABEL)
 PAPER_COLOR = dict(COLOR)
 # midshift_probe.py's paper version, unchanged: Helvetica/Arial 8 pt, thin axes, TrueType embedded.
@@ -623,7 +647,7 @@ def _paper_pct_axis(ax, ylabel: str) -> None:
         frameon=False,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
-        ncol=2,
+        ncol=3 if len(PAPER_ARMS) >= 5 else 2,
         handlelength=1.0,
         handleheight=0.8,
         columnspacing=0.9,
@@ -692,14 +716,18 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
                     zorder=4,
                 )
             ax.set_xticks(x)
-            # The side-by-side panel is narrower, so every word takes its own line there.
-            n_breaks = -1 if stacked_labels else 1
+            # A narrow panel, or five arms, gives every word its own line.
+            n_breaks = -1 if (stacked_labels or len(PAPER_ARMS) >= 5) else 1
             ax.set_xticklabels([PAPER_LABEL[a].replace(" ", "\n", n_breaks) for a in PAPER_ARMS], fontsize=7)
+            if stacked_labels and len(PAPER_ARMS) >= 5:
+                # Five arm names do not fit under the narrow side-by-side panel at a legible size;
+                # the shared legend directly above lists the arms in bar order.
+                ax.set_xticklabels([])
             ax.tick_params(axis="x", length=0)
             ax.spines[["top", "right"]].set_visible(False)
             ax.set_ylabel("Deceptive posts per shift\n(post judge = 5)")
 
-        fig, ax = plt.subplots(figsize=(3.0, 2.3))
+        fig, ax = plt.subplots(figsize=(3.4, 2.4))
         draw_deceptive(ax)
         paths.append(_paper_save(fig, "deceptive_posts"))
 
@@ -743,7 +771,7 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
                 frameon=False,
                 loc="upper center",
                 bbox_to_anchor=(0.5, 1.0),
-                ncol=len(PAPER_ARMS),
+                ncol=len(PAPER_ARMS),  # five labels fit the double-column width at 7 pt
                 handlelength=1.0,
                 handleheight=0.8,
                 columnspacing=1.2,
@@ -773,7 +801,8 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
                 bottom += n
             ax.text(xi, bottom + 0.5, f"{bottom}/30", ha="center", va="bottom", fontsize=6.5, color=_MUTED)
         ax.set_xticks(xs)
-        ax.set_xticklabels([PAPER_LABEL[a].replace(" ", "\n", 1) for a in PAPER_ARMS], fontsize=7)
+        n_breaks = -1 if len(PAPER_ARMS) >= 5 else 1
+        ax.set_xticklabels([PAPER_LABEL[a].replace(" ", "\n", n_breaks) for a in PAPER_ARMS], fontsize=7)
         ax.tick_params(axis="x", length=0)
         ax.set_ylim(0, 32)
         ax.set_yticks([0, 10, 20, 30])
@@ -935,7 +964,9 @@ def summary() -> None:
         "seed 0, and either no synthetic rows (No synthetic) or a 7% synthetic slice: difficult "
         "advice written against the nine principles (Difficult advice), difficult agentic tasks "
         "written against the same nine (Difficult agentic tasks; the 2026-09-08 dat-7 organism, run "
-        "2026-09-14 in the E1 batch with the same config, peer and seeds), or difficult advice "
+        "2026-09-14 in the E1 batch with the same config, peer and seeds), a deliberative-alignment "
+        "slice (Deliberative alignment; the 2026-09-16 delib-7 organism, run 2026-09-18 with the "
+        "same config, peer and seeds), or difficult advice "
         "written against the multi-agent principle alone (Multi-agent principle). The agentic-task "
         "slice predates the 2026-09-14 regeneration of the difficult-advice corpus, so it is matched "
         "on base blend, share and seed but not on corpus vintage. Colosseum Hospital, self-sacrificial condition, "
@@ -999,8 +1030,9 @@ def main() -> None:
     )
     ap.add_argument("cmd", choices=["merge", "judge", "summary"])
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--date", default=DELIB_DATE, help="merge: the run date whose pulled pods to merge")
     args = ap.parse_args()
-    {"merge": merge, "judge": lambda: judge(args.workers), "summary": summary}[
+    {"merge": lambda: merge(args.date), "judge": lambda: judge(args.workers), "summary": summary}[
         args.cmd
     ]()
 
