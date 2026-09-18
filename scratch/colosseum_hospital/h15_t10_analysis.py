@@ -107,7 +107,7 @@ NEW = [c[0] for c in CELLS if c[4] in (NEW_DATE, DELIB_DATE)]
 # The figures show the five arms on the nosynth base blend only: no synthetic rows, or a 7%
 # slice of difficult advice, difficult agentic tasks (the 2026-09-14 E1 cell), deliberative
 # alignment (run 2026-09-18) or the multi-agent principle. The other E1 arms stay in the tables.
-SHOWN = [("fixed", a) for a in ("nosyn", "da7", "jdat", "delib", "t10")]
+SHOWN = [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10")]
 PROBED = ["ctrl", "da", "nosyn", "da7", "jdat", "delib", "t10"]
 NAME = {
     "ctrl": "control (Table 2)",
@@ -571,10 +571,10 @@ def figures(stats, kind, dec, probe) -> list[Path]:
 # rows or a 7% slice of difficult advice (nine principles) or of the multi-agent principle. The
 # colours follow the paper probe figure (control role blue, difficult advice orange) with the new
 # arm in the reference palette's third slot; slots 1-3 validate all-pairs on the light surface.
-# Reading order: the baseline, the three general-purpose slices (difficult advice, difficult
-# agentic tasks, deliberative alignment), then the slice written for this eval. Colour follows
-# the arm: a new arm takes a new validated colour and the older arms keep theirs.
-PAPER_ARMS = ["nosyn", "da7", "jdat", "delib", "t10"]
+# Reading order (the owner's, 2026-09-18): the baseline, deliberative alignment beside it, then
+# difficult advice, difficult agentic tasks, and last the slice written for this eval. Colour
+# follows the arm: a new arm takes a new validated colour and the older arms keep theirs.
+PAPER_ARMS = ["nosyn", "delib", "da7", "jdat", "t10"]
 PAPER_LABEL = dict(FIG_LABEL)
 PAPER_COLOR = dict(COLOR)
 # midshift_probe.py's paper version, unchanged: Helvetica/Arial 8 pt, thin axes, TrueType embedded.
