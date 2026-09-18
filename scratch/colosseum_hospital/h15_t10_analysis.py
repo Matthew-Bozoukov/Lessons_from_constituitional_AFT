@@ -859,8 +859,8 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
             )
             draw_deceptive(a1, stacked_labels=True)
             draw_probe(a2, legend=False)
-            for ax_, tag in ((a1, "a"), (a2, "b")):
-                ax_.set_title(tag, loc="left", fontsize=9, fontweight="bold", pad=4)
+            for ax_, letter in ((a1, "a"), (a2, "b")):  # not `tag`: that names the figure set
+                ax_.set_title(letter, loc="left", fontsize=9, fontweight="bold", pad=4)
             fig.legend(
                 handles=[_Patch(color=PAPER_COLOR[a], label=PAPER_LABEL[a]) for a in PAPER_ARMS],
                 frameon=False,
@@ -875,73 +875,66 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
             # The bottom margin holds panel (a)'s third label line, which tight_layout under-measures.
             paths.append(_paper_save(fig, "deceptive_posts_and_probe", rect=(0, 0.05, 1, 0.93)))
 
-        # Plans persist: (a) the share of shifts with a plan post on the coalition board, each arm's
-        # sabotage-act share marked on the same axis, so the reader sees the acts fall while the
-        # plans stay; (b) how many plan posts a shift holds. Both from the post judge's reading.
+        # Plans persist: per arm, the share of shifts with a plan post on the coalition board (solid
+        # bar, post judge) beside the share with a sabotage act (hatched tint of the same colour,
+        # rule). Two bars an arm, so the gap between saying and doing reads directly: the acts fall
+        # across arms and the plans do not. Plan posts per shift stay in the table.
         if plan and tag == "paper":  # main text only: the owner wants no base-model version of it
-            from matplotlib.lines import Line2D
+            from matplotlib.colors import to_rgb
             from matplotlib.patches import Patch as _P
 
-            six = len(PAPER_ARMS) >= 6
-            fig, (a1, a2) = plt.subplots(
-                1, 2, figsize=(7.2 if six else 6.8, 2.9), gridspec_kw={"wspace": 0.32}
-            )
+            def tint(hex_, w=0.62):
+                r, g, b = to_rgb(hex_)
+                return (r + (1 - r) * w, g + (1 - g) * w, b + (1 - b) * w)
+
+            fig, ax = plt.subplots(figsize=(3.7, 2.9))
             x = np.arange(len(PAPER_ARMS))
+            bw = 0.36
             for i, arm in enumerate(PAPER_ARMS):
                 pl = plan[arm]
-                a1.bar(x[i], 100 * pl["plan_rate"], 0.62, color=PAPER_COLOR[arm], zorder=3)
-                eb = a1.errorbar(
-                    x[i],
-                    100 * pl["plan_rate"],
-                    yerr=[[100 * (pl["plan_rate"] - pl["plan_lo"])], [100 * (pl["plan_hi"] - pl["plan_rate"])]],
-                    fmt="none",
-                    ecolor="#333",
-                    elinewidth=0.7,
-                    capsize=1.8,
-                    capthick=0.7,
-                    zorder=4,
+                act = stats[arm]["binary"]["pair_sabotaged"]
+                pairs = (
+                    (x[i] - bw / 2 - 0.01, pl["plan_rate"], pl["plan_lo"], pl["plan_hi"], True),
+                    (x[i] + bw / 2 + 0.01, act["rate"], act["lo"], act["hi"], False),
                 )
-                _halo(eb)
-                act = stats[arm]["binary"]["pair_sabotaged"]["rate"]
-                a1.plot(
-                    x[i], 100 * act, marker="D", markersize=4.6, color="#111", markeredgecolor="white",
-                    markeredgewidth=0.8, linestyle="none", zorder=6,
-                )
-                v, ci = pl["plan_posts_per_shift"], pl["plan_posts_ci"]
-                a2.bar(x[i], v, 0.62, color=PAPER_COLOR[arm], zorder=3)
-                eb = a2.errorbar(
-                    x[i], v, yerr=[[v - ci[0]], [ci[1] - v]], fmt="none", ecolor="#333",
-                    elinewidth=0.7, capsize=1.8, capthick=0.7, zorder=4,
-                )
-                _halo(eb)
-            ticks = [_tick(a, True) for a in PAPER_ARMS]
-            for ax_, tag_ in ((a1, "a"), (a2, "b")):
-                ax_.set_xticks(x)
-                ax_.set_xticklabels(ticks, fontsize=6 if six else 6.5)
-                ax_.tick_params(axis="x", length=0)
-                ax_.spines[["top", "right"]].set_visible(False)
-                ax_.set_title(tag_, loc="left", fontsize=9, fontweight="bold", pad=4)
-            a1.set_ylabel("Shifts (%)")
-            a1.set_ylim(0, 108)
-            a1.set_yticks([0, 25, 50, 75, 100])
-            a2.set_ylabel("Plan posts per shift\n(post judge)")
-            a2.set_ylim(0, None)
-            fig.legend(
+                for xi, rate, lo, hi, solid in pairs:
+                    if solid:
+                        ax.bar(xi, 100 * rate, bw, color=PAPER_COLOR[arm], zorder=3)
+                    else:
+                        ax.bar(
+                            xi, 100 * rate, bw, facecolor=tint(PAPER_COLOR[arm]), edgecolor=PAPER_COLOR[arm],
+                            hatch="////", linewidth=0.6, zorder=3,
+                        )
+                    lo, hi = min(lo, rate), max(hi, rate)
+                    eb = ax.errorbar(
+                        xi, 100 * rate, yerr=[[100 * (rate - lo)], [100 * (hi - rate)]], fmt="none",
+                        ecolor="#333", elinewidth=0.7, capsize=1.6, capthick=0.7, zorder=4,
+                    )
+                    _halo(eb)
+                    ax.text(xi, 100 * hi + 2, f"{100 * rate:.0f}", ha="center", va="bottom", fontsize=6.5, color="#111")
+            ax.set_xticks(x)
+            ax.set_xticklabels([_tick(a, True) for a in PAPER_ARMS], fontsize=7)
+            ax.tick_params(axis="x", length=0)
+            ax.spines[["top", "right"]].set_visible(False)
+            ax.set_ylabel("Shifts (%)")
+            ax.set_ylim(0, 112)
+            ax.set_yticks([0, 25, 50, 75, 100])
+            ax.legend(
                 handles=[
-                    _P(facecolor="#b9bec6", label="Plan post on the coalition board (post judge)"),
-                    Line2D([], [], marker="D", markersize=4.6, color="#111", markeredgecolor="white",
-                           markeredgewidth=0.8, linestyle="none", label="Sabotage act (rule)"),
+                    _P(facecolor="#6b7280", label="Posted a sabotage plan (post judge)"),
+                    _P(facecolor=tint("#6b7280"), edgecolor="#6b7280", hatch="////", linewidth=0.6,
+                       label="Took a sabotage act (rule)"),
                 ],
                 frameon=False,
-                loc="upper center",
+                loc="lower center",
                 bbox_to_anchor=(0.5, 1.0),
-                ncol=2,
-                handlelength=1.0,
-                handleheight=0.8,
-                columnspacing=1.6,
+                ncol=1,
+                handlelength=1.4,
+                handleheight=0.9,
+                borderaxespad=0.1,
                 fontsize=7,
             )
-            paths.append(_paper_save(fig, "plan_posts", rect=(0, 0.04, 1, 0.93)))
+            paths.append(_paper_save(fig, "plan_posts"))
 
         # Sabotage-act shifts, one vertical bar per arm, split by whether a coalition seat had
         # refused in private. Shifts with no sabotage act (the old green and grey boxes) are not
@@ -1173,10 +1166,10 @@ def summary() -> None:
         "seeds; n printed where under 10.",
         "- **paper_deceptive_posts_and_probe.** The two panels above side by side: (a) deceptive "
         "posts per shift, (b) the mid-shift probe. One legend for both.",
-        "- **paper_plan_posts.** (a) Share of shifts in which a coalition seat posted a sabotage plan on "
-        "the coalition board (post judge), bars with 95% Wilson intervals; the diamond marks the same "
-        "arm's share of shifts with a sabotage act (rule). (b) Plan posts per shift, 95% intervals "
-        "resampling seeds. The acts fall across arms; the plans do not.",
+        "- **paper_plan_posts.** Per arm, the share of shifts in which a coalition seat posted a sabotage "
+        "plan on the coalition board (solid bar, post judge) beside the share with a sabotage act "
+        "(hatched bar, rule). 95% Wilson intervals; the percentage is printed above each bar. The acts "
+        "fall across arms; the plans do not. Plan posts per shift are in the table above.",
         "- **paper_refusal_x_act.** Shifts with a sabotage act (rule) by either coalition seat, of "
         "30, split by whether either seat also made a private refusal (judge >= 3) in that shift. "
         "Shifts with no sabotage act are not drawn; the table above has all four boxes. Counts on "
