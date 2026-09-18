@@ -135,11 +135,12 @@ NAME = {
 # control grey, deliberative alignment blue, plain difficult advice purple, difficult agentic tasks
 # orange. The grey, blue and purple are the owner's shades, sampled from the paper's three-eval
 # misalignment figure (2026-09-18): #5f6774, #2c78f1, #7724c4. The orange is main's
-# (scratch/plot_odcv_mr_vs_mask.py), as is the lighter grey of the base model. The multi-agent
-# principle arm is outside the rule and keeps its green. A grey fails the dataviz validator's
+# (scratch/plot_odcv_mr_vs_mask.py). The multi-agent principle arm is outside the rule and keeps
+# its green; so is the base model, which takes a vermilion (a second grey beside the grey control
+# read as no colour at all; validated all-pairs with the other five). A grey fails the dataviz validator's
 # chroma floor by design: it marks the control, not a series.
 COLOR = {
-    "qbase": "#9199a5",
+    "qbase": "#d9480f",
     "nosyn": "#5f6774",
     "delib": "#2c78f1",
     "da7": "#7724c4",
