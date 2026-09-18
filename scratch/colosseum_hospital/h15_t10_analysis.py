@@ -116,9 +116,9 @@ NEW = [c[0] for c in CELLS if c[4] in (NEW_DATE, DELIB_DATE)]
 # The figures show the five arms on the nosynth base blend only: no synthetic rows, or a 7%
 # slice of difficult advice, difficult agentic tasks (the 2026-09-14 E1 cell), deliberative
 # alignment (run 2026-09-18) or the multi-agent principle. The other E1 arms stay in the tables.
-# The base model leads: all nine seats hold it, so it is a reference beside the trained arms,
-# not a seventh member of their family (its bystanders differ too).
-SHOWN = [("base", "qbase")] + [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10")]
+# The base-model cell is APPENDIX material (the owner, 2026-09-18): all nine seats hold it, so it
+# is a reference, not a member of the family. The review and main paper figures leave it out.
+SHOWN = [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10")]
 PROBED = ["ctrl", "da", "qbase", "nosyn", "da7", "jdat", "delib", "t10"]
 NAME = {
     "ctrl": "control (Table 2)",
@@ -131,16 +131,19 @@ NAME = {
     "delib": "7% deliberative alignment (nosynth)",
     "qbase": "base Qwen3.6-27B, all nine seats",
 }
-# The paper figures' colours and names, so each model looks the same in every figure. The five
-# colours pass the dataviz validator all-pairs on the light surface; an arm keeps the colour
-# it first had (agentic tasks violet since 2026-09-17, deliberative alignment magenta since
-# 2026-09-18).
+# Arm colours are FIXED across the repo's figures (CLAUDE.md on main, 2026-09-18): the nosynth
+# control grey, deliberative alignment blue, plain difficult advice purple, difficult agentic tasks
+# orange. The grey, blue and purple are the owner's shades, sampled from the paper's three-eval
+# misalignment figure (2026-09-18): #5f6774, #2c78f1, #7724c4. The orange is main's
+# (scratch/plot_odcv_mr_vs_mask.py), as is the lighter grey of the base model. The multi-agent
+# principle arm is outside the rule and keeps its green. A grey fails the dataviz validator's
+# chroma floor by design: it marks the control, not a series.
 COLOR = {
-    "qbase": "#806000",
-    "nosyn": "#2a78d6",
-    "da7": "#eb6834",
-    "jdat": "#4a3aa7",
-    "delib": "#c2409f",
+    "qbase": "#9199a5",
+    "nosyn": "#5f6774",
+    "delib": "#2c78f1",
+    "da7": "#7724c4",
+    "jdat": "#eda100",
     "t10": "#1baf7a",
 }
 FIG_LABEL = {
@@ -599,7 +602,10 @@ def figures(stats, kind, dec, probe) -> list[Path]:
 # the no-synthetic baseline, deliberative alignment beside it, then difficult advice, difficult
 # agentic tasks, and last the slice written for this eval. Colour follows the arm: a new arm
 # takes a new validated colour (all six pass all-pairs) and the older arms keep theirs.
-PAPER_ARMS = ["qbase", "nosyn", "delib", "da7", "jdat", "t10"]
+MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10"]
+APPENDIX_ARMS = ["qbase"] + MAIN_ARMS  # the base model in all nine seats leads the appendix set
+PAPER_ARMS = list(MAIN_ARMS)  # the set being drawn; paper_figures() sets it per call
+PAPER_TAG = "paper"  # figure-name tag of the set being drawn: `paper` or `appendix`
 ARM_KEY = {c[0][1]: c[0] for c in CELLS}  # arm short name -> its (pod group, arm) cell key
 PAPER_LABEL = dict(FIG_LABEL)
 PAPER_COLOR = dict(COLOR)
@@ -617,6 +623,15 @@ PAPER_RC = {
     "ps.fonttype": 42,
 }
 _MUTED = "#6b7680"
+
+
+def _halo(eb) -> None:
+    """A thin white outline on an error bar, so its lower whisker still reads inside a dark bar
+    (the grey control's bar swallowed it)."""
+    from matplotlib.patheffects import withStroke
+
+    for art in (*eb[1], *eb[2]):
+        art.set_path_effects([withStroke(linewidth=1.35, foreground="white")])
 
 
 def _paper_bars(ax, groups, value, note=None, width=None, arms=None) -> None:
@@ -648,7 +663,7 @@ def _paper_bars(ax, groups, value, note=None, width=None, arms=None) -> None:
             if lo is not None and not np.isnan(lo):
                 lo, hi = min(lo, rate), max(hi, rate)
                 top = hi
-                ax.errorbar(
+                eb = ax.errorbar(
                     xi,
                     100 * rate,
                     yerr=[[100 * (rate - lo)], [100 * (hi - rate)]],
@@ -659,6 +674,7 @@ def _paper_bars(ax, groups, value, note=None, width=None, arms=None) -> None:
                     capthick=0.7,
                     zorder=4,
                 )
+                _halo(eb)
             label = note(arm, g) if note else None
             if label:
                 ax.text(xi, 100 * top + 2, label, ha="center", va="bottom", fontsize=6, color=_MUTED)
@@ -675,8 +691,8 @@ def _paper_pct_axis(ax, ylabel: str) -> None:
         frameon=False,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
-        # Five names fit three columns of the single-column width; six need two columns, three rows.
-        ncol=3 if len(PAPER_ARMS) == 5 else 2,
+        # Two columns: three do not fit the single-column width once a long name leads a column.
+        ncol=2,
         handlelength=1.0,
         handleheight=0.8,
         columnspacing=0.9,
@@ -688,15 +704,19 @@ def _paper_pct_axis(ax, ylabel: str) -> None:
 def _paper_save(fig, name: str, rect=None) -> Path:
     """`rect` keeps room for a figure-level legend above the axes."""
     fig.tight_layout(pad=0.3, rect=rect)
-    p = figure_path(OUT, f"colosseum_hospital_t10_paper_{name}", ext="pdf")
+    p = figure_path(OUT, f"colosseum_hospital_t10_{PAPER_TAG}_{name}", ext="pdf")
     fig.savefig(p)
     fig.savefig(p.with_suffix(".png"), dpi=300)
     plt.close(fig)
     return p
 
 
-def paper_figures(stats, kind, dec, probe) -> list[Path]:
-    """No titles, no footnotes: counts, n and definitions belong in the caption (the _results.md)."""
+def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper") -> list[Path]:
+    """No titles, no footnotes: counts, n and definitions belong in the caption (the _results.md).
+    `arms` and `tag` pick the set: the main paper figures (`paper`, no base model) or the appendix
+    ones (`appendix`, with the base model in all nine seats)."""
+    global PAPER_ARMS, PAPER_TAG
+    PAPER_ARMS, PAPER_TAG = list(arms or MAIN_ARMS), tag
     paths = []
     with plt.rc_context(PAPER_RC):
         # Actions (sabotage action, plan) and refusal (in reasoning, held), % of 30 shifts, Wilson 95%.
@@ -705,7 +725,7 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
             return (b["rate"], b["lo"], b["hi"]) if b["n"] else None
 
         panels = (("actions", ACTION_MEASURES), ("refusal", REFUSAL_MEASURES))
-        tall = 2.85 if len(PAPER_ARMS) >= 6 else 2.6  # a third legend row
+        tall = 2.85 if len(PAPER_ARMS) >= 5 else 2.6  # a third legend row
         for name, ms in panels:
             fig, ax = plt.subplots(figsize=(3.4, tall))
             _paper_bars(ax, [m for m, _ in ms], rate)
@@ -734,7 +754,7 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
                 s = dec[arm]
                 v, ci = s["judge_explicit_per_shift"], s["judge_explicit_ci"]
                 ax.bar(x[i], v, 0.62, color=PAPER_COLOR[arm], zorder=3)
-                ax.errorbar(
+                eb = ax.errorbar(
                     x[i],
                     v,
                     yerr=[[v - ci[0]], [ci[1] - v]],
@@ -745,6 +765,7 @@ def paper_figures(stats, kind, dec, probe) -> list[Path]:
                     capthick=0.7,
                     zorder=4,
                 )
+                _halo(eb)
             ax.set_xticks(x)
             # A narrow panel, or five arms, gives every word its own line.
             n_breaks = -1 if (stacked_labels or len(PAPER_ARMS) >= 5) else 1
@@ -900,7 +921,8 @@ def summary() -> None:
     dec = deception(ALL)
     probe = probe_rates()
     paths = figures(stats, kind, dec, probe)
-    paths += paper_figures(stats, kind, dec, probe)
+    paths += paper_figures(stats, kind, dec, probe, arms=MAIN_ARMS, tag="paper")
+    paths += paper_figures(stats, kind, dec, probe, arms=APPENDIX_ARMS, tag="appendix")
 
     lines = [
         "# Hospital 2026-09-15: the multi-agent principle-10 organism against difficult advice\n",
@@ -985,7 +1007,7 @@ def summary() -> None:
         "| arm | " + " | ".join(lab.lower() for _, lab, _ in BOXES) + " |",
         "|---|" + "---|" * len(BOXES),
     ]
-    for arm in PAPER_ARMS:
+    for arm in APPENDIX_ARMS:
         c = boxes(arm)
         lines.append(f"| {NAME[arm]} | " + " | ".join(str(c[k]) for k, _, _ in BOXES) + " |")
     lines += [
@@ -1005,6 +1027,10 @@ def summary() -> None:
         "bar its bystanders are not the control adapter. Colosseum Hospital, self-sacrificial condition, "
         "fixed harness, 30 seeds; both coalition seats hold the arm and the other seven hold the "
         "control. Counts are in the tables above.\n",
+        "Every figure exists twice: `paper_*` for the main text, without the base model, and "
+        "`appendix_*`, the same figure with the base-model bar leading. The base cell's team score is "
+        "not comparable: with the base model in the seven other seats the departments shuttle supplies "
+        "between hospitals, and the environment pays 15 points a unit moved.\n",
         "- **paper_actions.** Share of shifts with a sabotage act (rule) and with a plan post "
         "(regex). Bars: 95% Wilson intervals.",
         "- **paper_refusal.** Share of shifts with a private refusal (judge >= 3) and with a kept "

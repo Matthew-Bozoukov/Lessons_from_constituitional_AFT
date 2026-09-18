@@ -111,7 +111,10 @@ def point(arms: list[str], out: Path) -> None:
     mp.ARM_LABEL = {a: ARMS[a][2] for a in arms}
     peer_of = {a: (ARMS[a][4] if len(ARMS[a]) > 4 else PEER) for a in arms}
     ids = {ARMS[a][3] for a in arms} | set(peer_of.values())
-    served = {h: resolve_target(h).model_key for h in ids}
+    # The name vLLM lists a model under: an adapter's own key, and `base` for a full model (the
+    # server's --served-model-name), which is also what such a seat is recorded as in the episodes.
+    specs = {h: resolve_target(h) for h in ids}
+    served = {h: (sp.model_key if sp.adapter else "base") for h, sp in specs.items()}
     mp.HF = {served[h]: h for h in ids}
     for a in arms:
         eps = mp.episodes(ARMS[a][0])
@@ -156,7 +159,7 @@ def _serve_pinned(server_addr: str, model_keys: set[str]):
     )
     for key in sorted(model_keys):
         spec = resolve_target(mp.HF[key])
-        assert spec.model_key == key, (spec.model_key, key)
+        assert (spec.model_key if spec.adapter else "base") == key, (spec.model_key, key)
         if not spec.adapter:
             spec = replace(spec, mode="think")
         print(f">>> serving {spec.hf_path} as {spec.model_key} (mode={spec.mode})", flush=True)
