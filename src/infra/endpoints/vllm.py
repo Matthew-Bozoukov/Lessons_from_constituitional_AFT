@@ -170,6 +170,15 @@ class ServedTarget:
             f"{self.spec.hf_path} is an API endpoint — there is no server to seat a sibling on"
         )
         spec = resolve_target(hf_path)
+        if not spec.adapter and spec.mode == "default" and spec.base_model == self.spec.base_model:
+            # A full model carries no training stamp, so it resolves to its template's own
+            # `default`. Seated beside a target whose mode was pinned (an adapter's stamp, or
+            # the documented `mode=` override on a full-model target), it IS the server's base
+            # model and takes the server's mode. Without this a base-model-in-every-seat run
+            # could only be served in `default`, which starts vLLM with no reasoning parser:
+            # the thinking stays in the visible reply, is carried into the seat's history and
+            # never reaches the judge's reasoning channel (Hospital, 2026-09-18).
+            spec = replace(spec, mode=self.spec.mode)
         assert spec.base_model == self.spec.base_model, (
             f"cannot co-serve {hf_path} (base {spec.base_model}) with "
             f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "

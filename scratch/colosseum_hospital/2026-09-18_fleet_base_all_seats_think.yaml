@@ -1,17 +1,15 @@
 # ABOUTME: Fleet plan, 2026-09-18: the base Qwen3.6-27B, out of the box, in ALL NINE Hospital seats on the E1
-# ABOUTME: combined harness, self-sacrificial only, two pods (seeds 1-15, 16-30). No adapter anywhere.
-# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-18_fleet_base_all_seats.yaml
+# ABOUTME: combined harness, self-sacrificial only, two pods, thinking mode PINNED like every adapter arm.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-18_fleet_base_all_seats_think.yaml
 #
 # The owner's design: the coalition pair AND the seven other seats are the untouched base model, so
 # the cell shows what the harness draws out of Qwen3.6-27B before any of our fine-tuning. It shares
 # the E1 config and seeds with the other cells but NOT the peer (theirs is the Table-2-only control
 # adapter), which `peer=` overrides per pod and the published label records (`base_all_seats`).
 # Group `base` keeps its pulled runs and env snapshots apart from the same-day `fixed` group.
-# SUPERSEDED the same day by 2026-09-18_fleet_base_all_seats_think.yaml. A full model resolves to
-# serving mode `default`, which starts vLLM WITHOUT the reasoning parser: the base model's thinking
-# stayed in its visible reply, was carried into the seat's history, and never reached the judge's
-# reasoning channel. The 30 shifts ran (sabotage act 30/30) and are kept locally under
-# output/colosseum_hospital/2026-09-18/base_default_mode, but they are not a matched bar.
+# `mode=think` is the documented override for a target with no training stamp: it pins thinking into
+# the chat template and starts vLLM with the reasoning parser, exactly as the adapter arms are served;
+# the peer, the same full model, takes the server's mode (ServedTarget.sibling, 2026-09-18).
 date: "2026-09-18"
 branch: worktree-kunwar-multiagent-trait
 out_root: output/colosseum_hospital/2026-09-18
@@ -22,17 +20,17 @@ keeper_s: 21600
 stagger_s: 5
 low_balance: 25
 pods:
-  - name: kunwar-h18-base-a
+  - name: kunwar-h18-baseth-a
     group: base
     target: Qwen/Qwen3.6-27B
     config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
-    extra: ["peer=Qwen/Qwen3.6-27B"]
+    extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["self_sacrificial:1-15"]
     cap_h: 2.5
-  - name: kunwar-h18-base-b
+  - name: kunwar-h18-baseth-b
     group: base
     target: Qwen/Qwen3.6-27B
     config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
-    extra: ["peer=Qwen/Qwen3.6-27B"]
+    extra: ["mode=think", "peer=Qwen/Qwen3.6-27B"]
     jobs: ["self_sacrificial:16-30"]
     cap_h: 2.5
