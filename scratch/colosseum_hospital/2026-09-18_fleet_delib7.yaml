@@ -1,0 +1,30 @@
+# ABOUTME: Fleet plan, 2026-09-18: the deliberative-alignment organism (delib-7) on the E1 combined harness,
+# ABOUTME: self-sacrificial only, two pods (seeds 1-15, 16-30), so its cell sits beside the nosynth-family cells.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-18_fleet_delib7.yaml
+#
+# Same config, peer and seeds as the 2026-09-14 E1 cells and the 2026-09-15 da7 / t10 cells. The arm is
+# dougalldeepmind/2026-09-16-qwen36-0-delib-7 @ da3f5150: Qwen3.6-27B, seed 0, trained 2026-09-16 on
+# dougalldeepmind/2026-09-16-delib-7-mix @ b64509e8. Both coalition seats hold the arm; the seven other
+# seats hold the E1 peer, as in every other cell. The fleet terminates each pod once its runs are pulled.
+date: "2026-09-18"
+branch: worktree-kunwar-multiagent-trait
+out_root: output/colosseum_hospital/2026-09-18
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kunwar-h18-delib-a
+    group: fixed
+    target: dougalldeepmind/2026-09-16-qwen36-0-delib-7
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 2.5
+  - name: kunwar-h18-delib-b
+    group: fixed
+    target: dougalldeepmind/2026-09-16-qwen36-0-delib-7
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 2.5

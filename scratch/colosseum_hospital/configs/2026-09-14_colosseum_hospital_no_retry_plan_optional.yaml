@@ -76,6 +76,10 @@ arm_labels:
     qwen36_difficult_advice_neutral_752_fixed
   dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7:
     qwen36_difficult_advice_multiagent_t10_fixed
+  # Same family again, trained 2026-09-16 on the nosynth mixture with a 7% deliberative-alignment
+  # slice (dougalldeepmind/2026-09-16-delib-7-mix @ b64509e8); run 2026-09-18.
+  dougalldeepmind/2026-09-16-qwen36-0-delib-7:
+    qwen36_deliberative_alignment_fixed
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:
