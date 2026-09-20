@@ -93,6 +93,20 @@ dev = [
 # Petri audit tooling is not a dependency group here; it runs from its own nested
 # project:  uv run --project src/eval/audits/petri/petri-subscription ...
 
+# The pip CUDA COMPILER must match the pip CUDA RUNTIME HEADERS torch pins (13.0): anything
+# that JIT-compiles CUDA inside this venv includes both, and CCCL refuses the mix ("CUDA
+# compiler and CUDA toolkit headers are incompatible"). Unconstrained, nvcc floats to the
+# newest 13.x (13.3 on 2026-09-20, via humming-kernels) while torch holds the runtime at
+# 13.0. Found by fla's TileLang backward — its default on Hopper, where the Triton one has
+# known gradient precision errors (fla-org/flash-linear-attention#640) — failing to compile
+# on the H200. Raise these together with torch's CUDA minor.
+[tool.uv]
+constraint-dependencies = [
+    "nvidia-cuda-nvcc>=13.0,<13.1",
+    "nvidia-cuda-crt>=13.0,<13.1",
+    "nvidia-nvvm>=13.0,<13.1",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
