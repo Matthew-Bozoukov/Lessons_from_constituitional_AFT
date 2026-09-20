@@ -4,25 +4,19 @@
 
 Run: uv run python scratch/da_multiagent_sprinkled/count_multiagent.py <stage or dataset .jsonl> [--show N]
 
-A row counts when its scenario text (situation + shortcut), or for exported rows its
-messages, matches MULTI: another AI agent, a subagent or orchestrator, copies or instances
+A row counts when its scenario text (situation + shortcut; exported rows carry both under
+`metadata`) matches MULTI: another AI agent, a subagent or orchestrator, copies or instances
 of the assistant, or an automated pipeline of models. "AI" alone does not count: every row
 is about an AI assistant.
 """
 
 import json
-import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-MULTI = re.compile(
-    r"\b(sub-?agents?|orchestrat\w+|multi-?agent|other (AI|agent|model|instance|cop)\w*"
-    r"|another (AI|agent|model|instance|copy)\w*|(AI|peer|fellow|partner|second|third) agents?"
-    r"|agents? (team|swarm|system|network)|(instances?|cop(y|ies)) of (itself|yourself|the (assistant|model|AI))"
-    r"|AI-to-AI|agent-to-agent|negotiating (AI|agent|bot)|automated pipeline|many hands)\b",
-    re.IGNORECASE,
-)
+from multiagent_rule import MULTI  # same directory
+
 
 path = Path(sys.argv[1])
 show = int(sys.argv[sys.argv.index("--show") + 1]) if "--show" in sys.argv else 2
@@ -37,9 +31,9 @@ examples = defaultdict(list)
 for r in rows:
     m = r.get("metadata") or r
     trait = str(m.get("trait_id"))
+    # The scenario only, never the conversation: a long reply can say "other AI systems"
+    # in passing, and the widened rule would count that. splice_corpus.py reads the same.
     text = " ".join(str(m.get(k) or "") for k in ("situation", "shortcut"))
-    for msg in r.get("messages") or []:
-        text += " " + str(msg.get("content") or "")
     total[trait] += 1
     found = MULTI.search(text)
     if found:
