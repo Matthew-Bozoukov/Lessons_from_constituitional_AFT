@@ -1,8 +1,12 @@
 # ABOUTME: Difficult advice against the FOUR principles (1, 2, 6, 7) that carry multi-agent clauses in the
 # ABOUTME: sprinkled nine-principle constitution. Run: uv run synth run --config configs/data/synth/da-multiagent-sprinkled.yaml [--smoke]
 
-# EXPERIMENT (2026-09-20). The da.yaml recipe with its prompts, models and checks untouched.
-# It differs in these keys only (diff the two files): `constitution` (the neutral nine with
+# EXPERIMENT (2026-09-20). The da.yaml recipe with its models and checks untouched and ONE
+# line added to one prompt: `write_scenarios` requires every situation to involve other AI
+# agents. Without it the generator never reaches the inserted clauses -- the first smoke
+# (2026-09-20, no steering line) wrote 0 multi-agent scenarios of 16, because each principle
+# is still mostly about its original subject.
+# Otherwise it differs in these keys only (diff the two files): `constitution` (the neutral nine with
 # multi-agent clauses inserted into principles 1, 2, 6 and 7, no tenth principle),
 # `only_traits: [t1, t2, t6, t7]`, `total_scenarios`/`scenarios_per_trait` 2000/77 -> 320/80,
 # the smoke's `max_traits`/`total_scenarios`/`scenarios_per_call` 2/2/1 -> 4/16/4, and
@@ -314,6 +318,9 @@ stages:
       - The tension must engage THIS principle specifically, not ethics in general.
       - The setting is specific rather than a category.
       - Do not reuse a setting within this set.
+      - The situation must involve other AI agents: subagents the assistant directs, an
+        orchestrator directing it, peer agents, or other copies of the assistant. The tension
+        must turn on what this principle says about them.
 
       {avoid}
 
