@@ -3,7 +3,8 @@
 
 import pytest
 
-from src.train.dynamic_batching import plan_micro_batches, seq_mean_token_mean_loss
+from src.train.dynamic_batching import (
+    plan_micro_batches, seq_mean_token_mean_loss, supervised_positions)
 
 # ---------------------------------------------------------------------------- planner
 
@@ -149,6 +150,62 @@ def test_padding_positions_carry_no_loss():
     wider_labels = torch.cat(
         [labels, torch.full((labels.shape[0], 7), -100, dtype=torch.long)], dim=1)
     assert torch.allclose(seq_mean_token_mean_loss(wider, wider_labels, gb), ref, atol=1e-5)
+
+
+def _full_logits_reference(logits, labels, global_batch):
+    """The pre-2026-09-20 loss, kept verbatim as the oracle: every position upcast and
+    scored, unsupervised ones zeroed by ignore_index."""
+    import torch.nn.functional as F
+
+    shift_logits, shift_labels = logits[:, :-1, :].float(), labels[:, 1:]
+    per_token = F.cross_entropy(
+        shift_logits.flatten(0, 1), shift_labels.flatten(),
+        ignore_index=-100, reduction="none").view(shift_labels.shape)
+    return (per_token.sum(dim=1) / shift_labels.ne(-100).sum(dim=1)).sum() / global_batch
+
+
+def test_supervised_positions_is_the_union_of_rows_targets():
+    torch = pytest.importorskip("torch")
+    labels = torch.tensor([[-100, -100, 5, 6, -100, -100],
+                           [-100, -100, -100, -100, 7, -100]])
+    # targets sit at 2,3 (row 0) and 4 (row 1); the logits that predict them are one back
+    assert supervised_positions(labels).tolist() == [1, 2, 3]
+    # a supervised token at position 0 has no predictor and asks for nothing
+    assert supervised_positions(torch.tensor([[9, -100, -100]])).tolist() == []
+
+
+def test_restricted_logits_give_the_full_logits_loss_and_gradient():
+    """Scoring only the kept positions — as the trainer does via `logits_to_keep` — is
+    the same loss AND the same gradient into the hidden states as scoring everything."""
+    torch = pytest.importorskip("torch")
+    _, labels = _random_case(seed=3)
+    gb, hidden, vocab = 16, 12, 64
+    g = torch.Generator().manual_seed(4)
+    head = torch.randn(vocab, hidden, generator=g)
+    states = torch.randn(*labels.shape, hidden, generator=g)
+
+    full_in = states.clone().requires_grad_(True)
+    ref = _full_logits_reference(full_in @ head.T, labels, gb)
+    ref.backward()
+
+    keep = supervised_positions(labels)
+    assert keep.numel() < labels.shape[1] - 1, "case must actually drop positions"
+    kept_in = states.clone().requires_grad_(True)
+    loss = seq_mean_token_mean_loss(kept_in[:, keep, :] @ head.T, labels, gb, keep)
+    loss.backward()
+
+    assert torch.allclose(loss, ref, atol=1e-6)
+    assert torch.allclose(kept_in.grad, full_in.grad, atol=1e-6)
+    # and the full-logits call path still agrees with the oracle
+    assert torch.allclose(seq_mean_token_mean_loss(states @ head.T, labels, gb), ref, atol=1e-6)
+
+
+def test_restricted_logits_must_match_the_requested_positions():
+    torch = pytest.importorskip("torch")
+    logits, labels = _random_case(seed=5)
+    keep = supervised_positions(labels)
+    with pytest.raises(AssertionError, match="logits_to_keep"):
+        seq_mean_token_mean_loss(logits, labels, 16, keep)  # full logits, keep passed
 
 
 

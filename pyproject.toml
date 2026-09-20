@@ -23,6 +23,13 @@ dependencies = [
     "bitsandbytes; sys_platform == 'linux'",
     "accelerate>=1.0.0; sys_platform == 'linux'",
     "wandb; sys_platform == 'linux'",
+    # Triton kernels for Qwen3.6's gated-delta (linear-attention) layers, most of the
+    # model: without `fla` transformers runs them in pure torch ("The fast path is not
+    # available"). Pure python + triton, so nothing compiles. transformers picks each
+    # kernel independently (modeling_qwen3_5.py: `chunk_gated_delta_rule or torch_...`),
+    # so this alone moves the expensive op; the short conv1d before it stays on torch's
+    # conv until causal-conv1d (a CUDA build, not in this lock) is added.
+    "flash-linear-attention>=0.2.2; sys_platform == 'linux'",
     # --- shared analysis/data stack ---
     "datasets>=5.0.0",
     "huggingface-hub>=1.25.1",
