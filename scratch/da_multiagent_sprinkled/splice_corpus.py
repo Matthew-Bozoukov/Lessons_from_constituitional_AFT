@@ -36,6 +36,8 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from src.infra.huggingface import push_files, resolve_dataset, training_data_tags
 from src.naming import artifact_name
 from src.utils import git_sha
@@ -50,6 +52,10 @@ CONSTITUTION = (
     "constitution.md"
 )
 NAMES = re.compile(r"\b(claude|anthropic)\b", re.IGNORECASE)
+
+# hf_token() reads os.environ and nothing imported here loads .env, so without this the
+# reads work (public repos) and the push dies on a 401 (docs/GOTCHAS.md, 2026-08-25).
+load_dotenv()
 
 
 def load(repo: str, revision: str | None) -> tuple[list[dict], dict]:
