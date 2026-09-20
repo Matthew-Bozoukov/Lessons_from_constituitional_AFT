@@ -38,7 +38,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.infra.huggingface import push_files, resolve_dataset, training_data_tags
+from src.infra.huggingface import (
+    hf_repo_id,
+    push_files,
+    resolve_dataset,
+    training_data_tags,
+)
 from src.naming import artifact_name
 from src.utils import git_sha
 
@@ -225,7 +230,7 @@ def main() -> None:
     }
     url = push_files(
         [out / "dataset.jsonl", out / "splice_report.json"],
-        name,
+        hf_repo_id(name),  # the push gate wants `org/name`; the org comes from .env
         fields,
         private=False,
         front_matter=front,

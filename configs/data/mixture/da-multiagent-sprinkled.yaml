@@ -1,0 +1,46 @@
+# ABOUTME: The multi-agent-sprinkled difficult-advice arm: da.yaml's mixture with the rows of principles
+# ABOUTME: 1, 2, 6, 7 swapped for multi-agent ones. Publishes as `<date>-da-multiagent-sprinkled-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-multiagent-sprinkled.yaml [synthetic_pct=7]
+#
+# Identical to configs/data/mixture/da.yaml except for the one synthetic source (its key,
+# dataset and revision), `output_dir` and the `hf:` card fields, so the base blend, the
+# share, the seed and the trait-balanced draw are the da-7 arm's. Compare against da-7 only.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  file: mixture.jsonl
+  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+
+# Percentage of the mixture's ROWS that are synthetic — the number in its name.
+synthetic_pct: 7
+total_examples: 10000
+
+sources:
+  da-multiagent-sprinkled:
+    # The 2026-09-14 baseline corpus with every row of principles 1, 2, 6 and 7 swapped for
+    # a row written against the multi-agent-sprinkled constitution
+    # (configs/data/synth/da-multiagent-sprinkled.yaml); principles 3, 4, 5, 8, 9 keep their
+    # baseline rows. Built and gated by scratch/da_multiagent_sprinkled/splice_corpus.py.
+    # The trait-balanced draw at 7% of 10,000 is 700 = 78 x t1-t7 + 77 x t8-t9, as in da.yaml.
+    dataset: "${oc.env:HF_ORG}/2026-09-20-da-multiagent-sprinkled-spliced"
+    revision: "b3737eb813941c75279071ef8188a917710be87c"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+# Reuse the published corrected base verbatim, including its reasoning traces.
+# No additional spec filtering or synthetic generation is run.
+
+output_dir: "output/mixture_da_multiagent_sprinkled"
+
+hf:
+  experiment: "multi-agent-sprinkled arm: the MSM Table 2 base blend scaled around a difficult-advice share whose principle 1, 2, 6, 7 rows involve other AI agents"
+  constitution: "constitutions/experimental/claude_distilled_09_principles_multiagent_sprinkled/constitution.md"
+  private: false
