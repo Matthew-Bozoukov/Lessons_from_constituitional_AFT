@@ -14,6 +14,9 @@ constitutions/
   abridged/                                  shortened, model-neutral; used by DAT and delib
   experimental/
     claude_distilled_10_principles_multiagent/ the neutral nine + one multi-agent principle; unmeasured
+    claude_distilled_09_principles_multiagent_sprinkled/
+                                               the neutral nine with multi-agent clauses woven into
+                                               principles 1, 2, 6, 7 (no tenth principle); unmeasured
   archive/
     claude_distilled_12_principles_mid/        historical mid recipe (actually nine principles)
     claude_distilled_8_principles_v1/
