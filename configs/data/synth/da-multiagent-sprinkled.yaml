@@ -2,10 +2,15 @@
 # ABOUTME: sprinkled nine-principle constitution. Run: uv run synth run --config configs/data/synth/da-multiagent-sprinkled.yaml [--smoke]
 
 # EXPERIMENT (2026-09-20). The da.yaml recipe with its models and checks untouched and ONE
-# line added to one prompt: `write_scenarios` requires every situation to involve other AI
-# agents. Without it the generator never reaches the inserted clauses -- the first smoke
-# (2026-09-20, no steering line) wrote 0 multi-agent scenarios of 16, because each principle
-# is still mostly about its original subject.
+# instruction added to each of three prompts, all saying the same thing -- other AI agents:
+#   * `write_scenarios` requires every situation to involve them. Without it the generator
+#     never reaches the inserted clauses: the unsteered smoke wrote 0 multi-agent scenarios
+#     of 16, because each principle is still mostly about its original subject.
+#   * `draft_prompts` and `revise_prompts` must keep them. Steering scenarios alone was not
+#     enough: the first full run's scenarios were 268/320 multi-agent, but these two stages
+#     rewrote most into one human asking one assistant, and 70 of 292 exported rows kept
+#     their agents. With both instructions a 16-scenario check kept 13 of 14.
+# The t10 arm (da-multiagent.yaml) needed none of this: its whole principle is about agents.
 # Otherwise it differs in these keys only (diff the two files): `constitution` (the neutral nine with
 # multi-agent clauses inserted into principles 1, 2, 6 and 7, no tenth principle),
 # `only_traits: [t1, t2, t6, t7]`, `total_scenarios`/`scenarios_per_trait` 2000/77 -> 320/80,
