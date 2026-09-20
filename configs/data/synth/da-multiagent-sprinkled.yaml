@@ -187,6 +187,14 @@ workers: 16
 # 320 records at the 2026-09-14 run's measured $0.075 each is about $24; 40 stops a runaway.
 budget_usd: 40.0
 
+# A stage aborts when more than this share of its calls fail (default 2). Scenarios about AI
+# agents colluding or evading oversight are refused by Anthropic's content filter more often
+# than plain difficult advice: the first full run lost 20 of 320 `revise_prompts` calls
+# (6.2%, every one `finish_reason=content_filter`) and stopped there; the 2026-09-15 t10
+# multi-agent corpus lost about 15%. Refusals are deterministic, so they are a loss to
+# top up around, not an outage to retry through. 20 still stops a real outage.
+max_fail_pct: 20.0
+
 defaults:
   temperature: 1.0
   max_tokens: 4096
