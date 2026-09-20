@@ -8,6 +8,8 @@ flips, so each arm is the real thing:
 
     A  baseline   origin/main worktree + main's lock   full-sequence fp32 logits, torch gated-delta
     B  optim      jamie/train-optim  + its lock        logits_to_keep + masked upcast, fla kernels
+    C  logits     branch code on MAIN's venv           change 1 alone (PYTHONPATH=<branch checkout>)
+    D  kernels    branch venv, full-logits call        change 2 alone
 
 This file is copied into both checkouts and only touches APIs main already has; the one
 branch-only import (`supervised_positions`) is made inside the optim arm.
@@ -44,7 +46,12 @@ from src.train.train_lora import _collate_padded
 from src.utils import timestamp
 
 GLOBAL_BATCH = 16
-ARMS = {"baseline": "A-baseline-main", "optim": "B-optim-train-optim"}
+# arm -> (W&B run name, supervised-only logits?, fla kernels expected?). A and B are the
+# comparison; C and D change one thing each, to say WHICH change moved a curve.
+ARMS = {"baseline": ("A-baseline-main", False, False),
+        "optim": ("B-optim-train-optim", True, True),
+        "logits": ("C-logits-only", True, False),
+        "kernels": ("D-fla-only", False, True)}
 
 
 def _stream(rows_path: str, tokenizer, profile, max_len: int, steps: int) -> list[dict]:
@@ -89,7 +96,8 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
             "causal_conv1d": qwen.causal_conv1d_fn is not None}
     # Each arm must be running on the stack it claims — a baseline with fla installed, or an
     # optim arm silently on the torch fallback, would make the comparison a lie.
-    assert fast["fla_gated_delta"] == (arm == "optim"), (
+    run_name, slim_logits, wants_fla = ARMS[arm]
+    assert fast["fla_gated_delta"] == wants_fla, (
         f"arm {arm!r} found fla_gated_delta={fast['fla_gated_delta']}; wrong venv for this arm")
 
     cfg = OmegaConf.load(recipe)
@@ -118,11 +126,11 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
                "global_batch": GLOBAL_BATCH, "gpu": gpu, "lora_r": int(cfg.lora.r),
                "lora_dropout": 0.0, "lora_init_checksum": init_checksum,
                "torch": torch.__version__, **fast}
-    run = wandb.init(group=group, name=ARMS[arm], config=run_cfg)  # project/entity: env
+    run = wandb.init(group=group, name=run_name, config=run_cfg)  # project/entity: env
     print(f">>> [{arm}] {git_sha[:8]} budget={budget} kernels={fast} "
           f"lora_init_checksum={init_checksum:.6f}", flush=True)
 
-    if arm == "optim":
+    if slim_logits:
         from src.train.dynamic_batching import supervised_positions
 
     history, total_wall = [], 0.0
@@ -140,7 +148,7 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
             mb = {k: v.to("cuda") for k, v in mb.items()}
             labels = mb.pop("labels")
             padded += int(mb["input_ids"].numel())
-            if arm == "optim":
+            if slim_logits:
                 keep = supervised_positions(labels)
                 logits = net(**mb, use_cache=False, logits_to_keep=keep).logits
                 loss = seq_mean_token_mean_loss(logits, labels, GLOBAL_BATCH, keep)
