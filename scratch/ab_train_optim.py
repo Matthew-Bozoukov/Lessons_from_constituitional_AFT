@@ -87,7 +87,7 @@ def _build_model(model_id: str, profile, recipe):
 
 def main(arm: str, data_repo: str, data_revision: str | None = None, model: str = "qwen36",
          steps: int = 30, budget: int | None = None, group: str = "train-optim-ab",
-         recipe: str = "configs/train/sft.yaml") -> None:
+         recipe: str = "configs/train/sft.yaml", dump_grad: str | None = None) -> None:
     import wandb
     from transformers.models.qwen3_5 import modeling_qwen3_5 as qwen
 
@@ -160,6 +160,13 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
             loss_total += float(loss.detach())
             del logits, loss
         grad_norm = float(torch.norm(torch.stack([p.grad.norm() for p in trainable])))
+        if dump_grad:
+            # Step 0's gradient, weights still identical across arms: the one place two arms'
+            # gradients are comparable element by element (direction, not just norm).
+            torch.save(torch.cat([p.grad.flatten().float().cpu() for p in trainable]), dump_grad)
+            print(f">>> [{arm}] step-0 grad (norm {grad_norm:.4f}) -> {dump_grad}", flush=True)
+            run.finish()
+            return
         opt.step()
         torch.cuda.synchronize()
         dt = time.perf_counter() - t0

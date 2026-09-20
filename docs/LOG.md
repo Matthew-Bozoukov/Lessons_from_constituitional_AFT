@@ -1,6 +1,69 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-20 — Training speed: fla kernels are 2.75x faster but move the gradient (cos 0.978 vs the fp32-recurrence path); scoring only supervised logits is exact and buys memory, not speed
+
+**Hypothesis.** Two cheap changes speed up `uv run train` without changing what it
+computes: (1) stop building fp32 logits for positions that carry no loss; (2) install the
+`fla` kernels, since without them transformers runs Qwen3.6's gated-delta layers in pure
+torch.
+
+**Method.** Branch `jamie/train-optim`. (1) `supervised_positions` -> the forward's
+`logits_to_keep`, and `seq_mean_token_mean_loss` upcasts only supervised cells (unit-tested
+against the old loss kept verbatim: same loss, same gradient). (2) `flash-linear-attention`
+in the lock. `scratch/ab_train_optim.py`: 30 identical optimizer steps (16 rows each, seed-0
+shuffle of `dougalldeepmind/2026-09-17-daa-7-mix`@`d15f96f6`), same LoRA init (checksummed),
+dropout 0, constant LR, token budget 8000, one 2xH200 pod, W&B group `train-optim-ab`
+(`jamiestephenson/lasr`). Four arms, each on the real checkout + lock it claims: A main,
+C change 1 only, D fla only (with the branch loss), B both; B2 = B again on a warm kernel
+cache. Then `scratch/gated_delta_grad_check.py` (one op vs transformers' torch
+implementation) and a dump of the step-0 gradient from a torch arm and an fla arm.
+
+**Result.**
+
+| arm | wall, steps 5-29 | speedup | peak mem max / mean (GiB) | loss vs A, mean / max |
+|---|---|---|---|---|
+| A main | 819 s | 1.00x | 86.6 / 84.5 | - |
+| C logits only | 824 s | 0.99x | 81.5 / 75.0 | 0.27% / 1.05% |
+| D fla only | 297 s | 2.76x | 81.6 / 75.0 | 0.29% / 1.00% |
+| B both (cold cache) | 367 s | 2.23x | 81.5 / 74.6 | 0.31% / 1.51% |
+| B2 both (warm cache) | 286 s | 2.87x | 81.5 / 74.6 | 0.31% / 1.24% |
+
+- **Change 1 is exact and is a memory change only.** At step 0 (identical weights) C
+  reproduces A: loss 0.8961 both, grad norm 2.556 vs 2.555. No speedup (this mixture
+  supervises ~79% of positions, so only 21% of logit rows go). The memory saving (~10 GiB
+  mean, ~5 GiB max) comes from the masked upcast in the loss; `logits_to_keep` added nothing
+  measurable on top (B = D). Whether 5 GiB of peak buys a larger token budget is untested.
+- **All of the speed is fla: 2.75x.** B looked slower than D only because it ran first and
+  JIT-compiled kernels (~280 s, in ~12 s spikes on steps that met a new shape); B2 on a warm
+  cache matches D step for step. A fresh pod pays that compile once.
+- **The loss curves cannot validate fla.** C is mathematically identical to A and still
+  drifts from it by as much as the fla arms do (grad norm ~11% mean from step 1: LoRA-B
+  starts at zero, so Adam turns rounding-level gradient differences into full-size updates).
+  That drift is the noise floor of this test; curves "matching" only rules out gross breakage.
+- **fla does compute a different gradient.** Step 0, identical weights: loss 0.8968 vs
+  0.8961, grad norm 2.788 vs 2.558, **cosine 0.9775**, relative difference 0.24, the norm
+  5-10% larger at every depth and the cosine falling from 0.995 (last layers) to 0.95
+  (first) — error accumulating through the backward pass. Deterministic (B = D, A = C to 4
+  s.f.). In isolation each fla op is fine: gated-delta output and every gradient within
+  0.5-0.7% of the torch reference, fused gated norm within 0.4%, norm ratios 1.000. The torch
+  path runs the recurrence in fp32, fla in bf16, so torch is the higher-precision side.
+- **Setup gotcha, fixed in the lock.** fla's Triton backward is wrong on Hopper for Triton
+  3.4-3.7.0 (fla-org/flash-linear-attention#640; fla refuses to run it), so it uses TileLang,
+  which JIT-compiles with the venv's nvcc. That had floated to 13.3 against torch's 13.0
+  runtime headers and CCCL refuses the mix. `constraint-dependencies` now holds nvcc/crt/nvvm
+  at 13.0.
+- vLLM is unaffected either way: 0.26 vendors its own fla ops, picks FlashInfer's GDN
+  prefill kernel on Hopper, and computes logits only at sampled positions.
+
+**Next steps.** Do not make fla the default on this evidence: 30 steps of loss cannot tell
+it from an exact change, and the step-0 gradient says it is not one. The deciding test is an
+eval-level A/B — one arm trained each way, same seed, compared on ODCV/MASK against the
+seed-to-seed spread. Change 1 is safe to merge as is; dropping its `logits_to_keep` half
+would lose nothing measured here. A boot preflight in `runpod up --train` (one gated-delta
+fwd+bwd before READY) would have caught the nvcc mismatch before the first step. Pod
+`3ql9l1d5rzf7w9` (2xH200, ~1.6 h) terminated.
+
 ## 2026-09-17 — The teacher x method matrix, measured: da-qwen leads MASK (81.5), da-7 leads ODCV (8.3%), and delib's constitution habit half-survives training
 
 **Hypothesis.** With the DA prompts fixed (neutral 752) and the base blend pinned, the
