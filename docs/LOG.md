@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Single decision-stakes judge: 13/18, no revision loop, not ready
+
+**Hypothesis:** removing answer-dependent stakes grading and preserving conflict facts
+is the minimal native-DA variant. **Method:** frozen `a893d97f`, 18 candidates from the
+nine full principles, all Sonnet, one pre-answer judge, unchanged DA answer prompts;
+no replacements. **Result:** 13 exports across all nine principles, 91 settled calls,
+$1.454662 in 6m58s; cumulative $13.742198/$20. Seven offline tests pass. All inputs,
+judge reasons and final reasoning/answers read: ten clearly bounded/coherent initial
+cases, four uncertain, four mismatches; 16 local prompt edits, one scope adjustment,
+one restored source fact. The judge still mistakes a newsletter's immediate form
+for bounded decision consequences and reverses the buyer's financial interest in
+one rejected book case. Shared DA factual defects remain diagnostics, not new gates.
+**Next:** keep the simpler architecture, investigate source reasoning and explicit
+consequence accounting within existing passes; no additional smoke/full generation
+launched. Not cleared for scale. [Full report](dataset_audits/2026-09-21_decision_stakes_smoke.md).
+[Verified HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/aa34302e44f826bd7a2a1d461d5acd1b9431ea57/runs/20260921_142500).
+
 ## 2026-09-21 — Stakes-first smoke: 15/18 exports, light revision, magnitude concerns remain
 
 **Hypothesis:** small-stakes source constraints and light prompt edits improve yield

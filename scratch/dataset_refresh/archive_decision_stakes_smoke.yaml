@@ -1,0 +1,8 @@
+# ABOUTME: Archive the completed single-judge decision-stakes smoke and full review.
+# ABOUTME: Run with archive_stakes_first_smoke --config this YAML --publish.
+run_root: output/2026-09-21_da_lowstakes_practical_guarded_smoke/20260921_142500
+report: docs/dataset_audits/2026-09-21_decision_stakes_smoke.md
+previous_revision: e523529197dcc2c55baca567ab1e6cc9373d2d1e
+reference_reports:
+- docs/dataset_audits/2026-09-21_normal_da_quality_check.md
+- docs/dataset_audits/2026-09-21_decision_stakes_plan.md

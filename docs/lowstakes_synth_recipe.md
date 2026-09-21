@@ -4,18 +4,22 @@
 
 **Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml`, updated on
 2026-09-21 on `codex/lowstakes-synthdoc-pipeline`. This revision makes low stakes the
-initial generation constraint, limits prompt refinement to local edits, restores
-normal DA's answer prompts exactly, and narrows the two judges to magnitude and
-text-advice scope. General factual quality is not an extra automatic acceptance gate.
+initial generation constraint, limits prompt refinement to local edits, preserves
+normal DA's answer prompts exactly, and uses one pre-answer decision-stakes/text-advice
+judge. The final-answer stakes judge was removed. General factual quality is not an
+extra automatic acceptance gate.
 
-**Current validation: live smoke completed.** The updated recipe produced 15/18
-exports, covering all nine principles, for $1.784124. Prompt refinement was light
-in 17/18 cases, but initial premise quality and the magnitude judge remain concerns.
-**Not cleared for full generation.** [Completed smoke report](dataset_audits/2026-09-21_stakes_first_smoke.md).
-Seven targeted offline tests also pass. [Implementation and review](dataset_audits/2026-09-21_lowstakes_stakes_first_recipe.md).
+**Current validation: live smoke completed.** The updated recipe produced 13/18
+exports, covering all nine principles, for $1.454662 in 6m58s. No replacement rounds;
+91 calls settled. Prompt refinement was local in 16/18 cases, with one scope adjustment
+and one source-fact restoration. Initial suitability and magnitude interpretation
+miss the prospective readiness criteria. Cumulative development spend: $13.742198/$20.
+**Not cleared for full generation.** [Completed smoke report](dataset_audits/2026-09-21_decision_stakes_smoke.md).
+Seven targeted offline tests also pass. [Alternatives and minimal design](dataset_audits/2026-09-21_decision_stakes_plan.md).
+[Verified complete archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/aa34302e44f826bd7a2a1d461d5acd1b9431ea57/runs/20260921_142500).
 
 The guarded launcher selects the current candidate. Older frozen launch configs and
-reports preserve both preceding runs. The remaining sections below describe the
+reports preserve preceding runs. The remaining sections below describe the
 initial minimal variant and its historical validation, not the current candidate.
 
 SynthDoc selects a document type through a YAML configuration. The new option is
