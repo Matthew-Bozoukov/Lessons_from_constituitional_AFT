@@ -44,6 +44,7 @@ def test_recipe_preserves_da_answers_without_extra_quality_veto_or_source_exampl
     assert 'keep_grounded_answers' not in names and 'keep_practical_prompts' not in names
     assert sum(stage['model'] == 'stakes' for stage in cfg['stages'] if 'model' in stage) == 1
     assert 'rate_final_stakes' not in names and 'keep_lowstakes_answers' not in names
+    assert 'keep_assigned_domain' not in names, 'Do not turn source guidance into a behavioral veto'
     assert cfg['smoke']['total_scenarios'] == 36 and cfg['smoke']['max_traits'] == 9
 
 
@@ -140,20 +141,20 @@ def test_standard_engine_filters_only_before_authoring_without_answer_conditioni
     manifest = pipeline.run(cfg,smoke=True,resume=str(out),client=Client())
     assert counter == 36
     counts=Counter(phase for phase,_ in calls)
-    assert counts['draft_answer']==counts['revise_answer']==26
+    assert counts['draft_answer']==counts['revise_answer']==27
     assert counts['final_stakes']==0
     assert counts['prompt_stakes']==38  # 36 cases plus two bounded parse re-attempts.
     assert not any(phase=='draft_answer' and ident in {0,1,2,3,4,5,6,8,9} for phase,ident in calls)
     assert sum(phase=='prompt_stakes' and ident==5 for phase,ident in calls)==3
     rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert len(rows)==26 and manifest['counts']['export_sft']==26
+    assert len(rows)==27 and manifest['counts']['export_sft']==27
     assert counts['scenario']==18
     exported = {int(re.search(r'CASE_(\d+)', row['messages'][1]['content']).group(1)) for row in rows}
-    assert exported == {7, *range(11,36)}
+    assert exported == {7, *range(10,36)}
     for row in rows:
         assert row['metadata']['prompt_stakes']==1
         assert 'final_stakes' not in row['metadata']
-        assert row['metadata']['prompt_domain_fit']=='yes'
+        assert row['metadata']['prompt_domain_fit'] == ('no' if int(re.search(r'CASE_(\d+)',row['messages'][1]['content']).group(1))==10 else 'yes')
         assert row['metadata']['prompt_scope']=='text_advice'
         assert 'Weak tradeoff' in row['metadata']['prompt_task_note']
         assert 'Weak tradeoff' not in json.dumps(row['messages'])

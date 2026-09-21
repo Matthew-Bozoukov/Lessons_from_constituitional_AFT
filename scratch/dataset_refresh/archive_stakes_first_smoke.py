@@ -62,8 +62,16 @@ def main():
     readme = Path(hf_hub_download(repo, 'README.md', repo_type='dataset', token=hf_token())).read_text(encoding='utf-8')
     readme = readme.replace('Updated recipe is offline-validated only;',
                             'Live smoke completed; not cleared for full generation;')
+    if cfg.get('current_recipe'):
+        current = OmegaConf.to_container(OmegaConf.load(cfg['current_recipe']), resolve=True)
+        old = manifest['config']['card']['experiment']
+        readme = readme.replace(old, current['card']['experiment'])
+        readme = readme.replace(old.replace('Updated recipe is offline-validated only;',
+                               'Live smoke completed; not cleared for full generation;'),
+                               current['card']['experiment'])
     prefix = f'runs/{root.name}'
     note = (f'\n\n## Reviewed smoke: {root.name}\n\n'
+            f"{cfg.get('readiness_summary', 'Read the full report for readiness and limitations.')}\n\n"
             f'This is diagnostic smoke data. Read the [current report]({prefix}/review/report.md) '
             f'and [summary]({prefix}/review/summary.json) before using it. '
             f'The [complete run archive]({prefix}) is authoritative for this run; '
@@ -76,9 +84,11 @@ def main():
     operations += [CommitOperationAdd(path_in_repo=f'review/{p.name}', path_or_fileobj=str(p)) for p in review.iterdir() if p.is_file()]
     operations.append(CommitOperationAdd(path_in_repo='README.md', path_or_fileobj=(readme+note).encode()))
     revision = api.create_commit(repo_id=repo, repo_type='dataset', operations=operations,
-                                 commit_message=f'Archive reviewed stakes-first smoke {root.name}').oid
+                                 commit_message=f'Archive reviewed native smoke {root.name}').oid
     verified = {}
-    for p in [root/'dataset.jsonl',review/'report.md',review/'summary.json',dest,receipt_zip]:
+    verify_files = [root/'dataset.jsonl',review/'report.md',review/'summary.json',dest,receipt_zip]
+    verify_files += [root / name for name in cfg.get('verify_additional', [])]
+    for p in verify_files:
         remote = f'{prefix}/{p.relative_to(root).as_posix()}'
         fetched = Path(hf_hub_download(repo, remote, repo_type='dataset', revision=revision, token=hf_token()))
         digest = hashlib.sha256(p.read_bytes()).hexdigest()
