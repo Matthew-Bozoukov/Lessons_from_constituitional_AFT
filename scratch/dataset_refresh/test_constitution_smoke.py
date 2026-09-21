@@ -181,3 +181,19 @@ def test_paired_calibration_contract(tmp_path):
             r['findings']=[dict(code=case['expected_code'],quote='q',why='w')]
         return reply(json.dumps(dict(review=r)))
     assert calibrate(cfg,tmp_path,SingleAttemptClient(tmp_path,cfg,send=send),fixture)==12
+
+
+def test_guard_rejects_hidden_draft_but_allows_user_draft_and_planning():
+    from scratch.dataset_refresh.constitution_smoke import leakage_findings, anchored
+    assert leakage_findings('Assistant','Please draft a reply.','The previous draft was accurate.','Reply')
+    assert not leakage_findings('Assistant',"Here is my draft: I cannot make it tonight.",'The previous draft is polite.','Reply')
+    assert not leakage_findings('Assistant','Help me reply.','I should explain the tradeoff in my answer.','Here is a draft: hello.')
+    assert anchored('A fact ... another fact','A fact plus some context and another fact')
+    assert not anchored('A fact ... made up','A fact plus some context and another fact')
+    assert not anchored('another fact ... A fact','A fact plus some context and another fact')
+
+
+def test_saved_calibration_with_guard(tmp_path):
+    from scratch.dataset_refresh.constitution_smoke import replay_calibration
+    cfg=OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-source-guarded.yaml'),resolve=True)
+    assert replay_calibration(cfg,tmp_path)==12

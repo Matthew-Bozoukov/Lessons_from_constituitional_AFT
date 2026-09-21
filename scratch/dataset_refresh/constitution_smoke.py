@@ -23,7 +23,7 @@ from scratch.dataset_refresh.run import BudgetClient, write_json
 class SingleAttemptClient:
     def __init__(self, root, cfg, send=None):
         self.root, self.cfg = Path(root), cfg
-        self.budget = BudgetClient(self.root / 'budget', cfg['budget_usd'],
+        self.budget = BudgetClient(Path(cfg.get('campaign_budget_root', self.root / 'budget')), cfg['budget_usd'],
                                    [m['model'] for m in cfg['models'].values()], send=send)
         self.lock = threading.Lock()
         self.stopped = False
@@ -74,23 +74,78 @@ def validate_review(value, extra_fields=()):
     return value
 
 
-def anchor_errors(review, system, user, reasoning, response):
+def anchored(quote, text):
+    # Accept separately quoted spans joined by an ellipsis only when ALL pieces occur
+    # in their given order. This verifies presence, not that the inference is sound.
+    norm = lambda s: ' '.join(s.split())
+    text = norm(text)
+    pos = 0
+    for part in re.split(r'\.\.\.|…', quote):
+        part = norm(part)
+        if not part:
+            continue
+        index = text.find(part, pos)
+        if index < 0:
+            return False
+        pos = index + len(part)
+    return bool(quote.strip())
+
+
+def leakage_findings(system, user, reasoning, response):
+    supplied_draft = bool(re.search(r"(?:here(?: is|'s) (?:my |the )?draft|my draft (?:is|reads)|draft:)\s*\S", user, re.I))
+    findings = []
+    for block, text in [('reasoning', reasoning), ('response', response)]:
+        for match in re.finditer(r"\b(?:previous|earlier|prior) draft\b|\b(?:my|the) rewritten answer\b", text, re.I):
+            if not supplied_draft and match.group(0).lower() not in (system+' '+user).lower():
+                findings.append(dict(code='process_narration', quote=match.group(0), why=f'{block} refers to a draft absent from the conversation', detector='deterministic'))
+    return findings
+
+
+def anchor_errors(review, system, user, reasoning, response, flexible=False):
     errors = []
     source = system + '\n' + user
     for item in review.get('claim_audit', []):
-        block = {'reasoning': reasoning, 'response': response}.get(item.get('block'))
-        if block is None or not item.get('claim') or item['claim'] not in block:
-            errors.append('Claim quotation absent from named answer block')
-        quote = item.get('source_quote', '')
-        if quote and quote not in source:
-            errors.append('Source quotation absent from original conversation')
+        blocks = {'reasoning': reasoning, 'response': response}
+        if flexible:
+            blocks.update(user=user, system=system)
+        block = blocks.get(item.get('block'))
+        matches = anchored if flexible else lambda q,t: bool(q) and q in t
+        if block is None or not matches(item.get('claim', ''), block):
+            errors.append('Claim quotation absent from named block')
+        quotes = [v for k,v in item.items() if re.fullmatch(r'source_quote\d*', k) and v]
+        for quote in quotes:
+            if not isinstance(quote,str) or not matches(quote, source):
+                errors.append('Source quotation absent from original conversation')
         if item.get('status') not in {'supported', 'inference', 'proposal', 'unsupported'}:
             errors.append('Invalid claim status')
-        if item.get('status') == 'supported' and not quote:
+        if item.get('status') == 'supported' and not quotes:
             errors.append('Supported claim has no original-source quotation')
     if 'claim_audit' in review and not review['claim_audit']:
         errors.append('Empty claim audit')
     return errors
+
+
+def effective_review(review, system, user, reasoning, response, guarded=False):
+    findings = list(review['findings'])
+    if guarded:
+        findings += leakage_findings(system,user,reasoning,response)
+    errors = anchor_errors(review,system,user,reasoning,response,flexible=guarded)
+    return dict(verdict='pass' if review['verdict']=='pass' and not findings and not errors else 'fail', findings=findings, anchor_errors=errors)
+
+
+def answer_gate(sc, cfg):
+    from src.data.synth.ours.stage_runtime import Stage
+    def gate(ctx, records, ckpt):
+        decisions = []
+        for record in records:
+            quality = effective_review(record['review'],record['system'],record['user'],record['reasoning'],record['response'],guarded=True)
+            decisions.append({**record,'quality':quality})
+        write_json(ctx.run_dir / 'answer_decisions.json',decisions)
+        kept=[r for r in decisions if r['quality']['verdict']=='pass']
+        if not kept:
+            ctx.stop='No answer passed; diagnostic records saved'
+        return kept
+    return Stage(sc['name'],gate)
 
 
 def source_errors(record):
@@ -104,7 +159,7 @@ def source_errors(record):
     if not audit.get('facts'):
         errors.append('No source facts')
     for fact in audit.get('facts', []):
-        if not fact.get('quote') or fact['quote'] not in source:
+        if not fact.get('quote') or not anchored(fact['quote'], source):
             errors.append('Fact quote absent from original conversation')
     return errors
 
@@ -154,6 +209,27 @@ def calibrate(cfg, root, client, fixture_path):
     return len(outcomes)
 
 
+def replay_calibration(cfg, root):
+    original = Path(cfg['calibration_replay'])
+    meta = json.loads((original/'run_meta.json').read_text(encoding='utf-8'))
+    oldspec = next(s for s in meta['config']['stages'] if s['name']=='review_responses')
+    newspec = next(s for s in cfg['stages'] if s['name']=='review_responses')
+    assert oldspec['prompts']==newspec['prompts'] and meta['config']['models']['review']==cfg['models']['review'], 'Cannot reuse verdicts after reviewer changes'
+    assert (original/'constitution.md').read_bytes()==Path(cfg['constitution']).read_bytes()
+    outcomes=json.loads((original/'calibration_results.json').read_text(encoding='utf-8'))
+    for x in outcomes:
+        c=x['case']
+        x['original_correct']=x['correct']
+        q=effective_review(x['review'],c['system'],c['user'],c['reasoning'],c['response'],guarded=True)
+        x['effective_review']=q
+        x['correct']=q['verdict']==c['expected'] and not q['anchor_errors'] and (not c.get('expected_code') or c['expected_code'] in [f['code'] for f in q['findings']])
+    write_json(root/'calibration_results.json',outcomes)
+    write_json(root/'calibration_replay.json',dict(source=str(original),source_sha256=hashlib.sha256((original/'calibration_results.json').read_bytes()).hexdigest(),paid_calls=0,description='Same frozen model judgments with deterministic leakage guard and verified multi-span citation handling; not a fresh model validation'))
+    if not all(x['correct'] for x in outcomes):
+        raise RuntimeError('Guarded saved calibration failed')
+    return len(outcomes)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
@@ -177,14 +253,16 @@ def main():
             (path, Path(__file__), fixture, Path(cfg['constitution']), Path('configs/endpoints/providers.yaml'))}})
     print('SMOKE_ROOT=' + str(root.resolve()), flush=True)
     client = SingleAttemptClient(root, cfg)
+    initial_entries = client.budget.entries()
     try:
-        count = calibrate(cfg, root, client, fixture)
+        count = replay_calibration(cfg, root) if cfg.get('calibration_replay') else calibrate(cfg, root, client, fixture)
         print(f'Calibration passed {count}/{count}. Starting 18 candidates.', flush=True)
         generation = root / 'generation'
         generation.mkdir()
         if cfg['smoke_contract'].get('source_first'):
             from src.data.synth.ours.stage_operators import OPERATORS
             OPERATORS['smoke_source_gate'] = source_gate
+            OPERATORS['smoke_answer_gate'] = answer_gate
         manifest = pipeline.run(cfg, smoke=True, resume=str(generation), client=client)
         if manifest.get('halted'):
             write_json(root / 'automatic_summary.json', {'completed': 0, 'model_pass': 0, 'manifest': manifest})
@@ -202,10 +280,13 @@ def main():
             'retry_allowed': False})
         raise
     finally:
-        entries = client.budget.entries()
-        write_json(root / 'cost_summary.json', {'physical_calls': len(entries),
+        all_entries = client.budget.entries()
+        entries = all_entries[len(initial_entries):]
+        if cfg.get('campaign_budget_root'):
+            shutil.copytree(client.budget.root, root / 'campaign_budget_snapshot', dirs_exist_ok=True)
+        write_json(root / 'cost_summary.json', {'campaign_total_usd':sum(e['charged_or_reserved_usd'] for e in all_entries), ** {'physical_calls': len(entries),
             'charged_or_reserved_usd': sum(e['charged_or_reserved_usd'] for e in entries),
-            'statuses': {s: sum(e['status'] == s for e in entries) for s in {e['status'] for e in entries}}})
+            'statuses': {s: sum(e['status'] == s for e in entries) for s in {e['status'] for e in entries}}}})
         print('SMOKE_ROOT=' + str(root.resolve()), flush=True)
 
 
