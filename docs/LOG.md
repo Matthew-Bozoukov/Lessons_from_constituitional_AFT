@@ -53,13 +53,18 @@ and the DDP path its own seeded DataLoader, so a 2-GPU run does not see the same
 archetype (the runner now takes `resume_from=`, which regenerated only `statistics`:
 82.8 came from that); driving an eval ON a pod needs `HF_HOME=/workspace/hf
 VLLM_USE_FLASHINFER_SAMPLER=0`; and the eval name drops the organism's date, so MASK on
-`2026-09-21-qwen36-0-da-7` would have pushed over MASK on `2026-09-20-qwen36-0-da-7` — it
-ran `--no-push` and sits in `output/mask/2026-09-21_qwen36_0_da_7_014656_s0_1gpu_unpublished/`
-(contract layout, target `a685ddc3`) until someone decides where it goes.
+`2026-09-21-qwen36-0-da-7` would have pushed over MASK on `2026-09-20-qwen36-0-da-7`. Settled
+by launch date (names are minted at launch): the 09-20 adapter's run was launched 09-20 and
+only RESUMED on the 21st, so its repo was moved to `2026-09-20-mask-qwen36-0-da-7` with the
+card re-dated and the reason in its provenance; the 09-21 adapter's run, which ran
+`--no-push` on its pod, was then pushed as `2026-09-21-mask-qwen36-0-da-7`
+(`scratch/republish_mask_da7_dates.py`). The collision itself is a gap in the law: an eval
+name drops the organism's date, so a retrained arm cannot be evaluated the same day as its
+predecessor.
 
 **Published:** `2026-09-20-odcv-qwen36-0-da-7`, `2026-09-21-odcv-qwen36-{0,1}-da-7`,
-`2026-09-21-mask-qwen36-0-da-7` (the 2-GPU adapter; rev `c758e719`), `2026-09-21-mask-qwen36-1-da-7`,
-all under `dougalldeepmind`. ~$85 of GPU across 12 pods; all terminated.
+`2026-09-20-mask-qwen36-0-da-7` (the 2-GPU adapter, 82.8), `2026-09-21-mask-qwen36-0-da-7` (the
+1-GPU seed-0 adapter, 71.3), `2026-09-21-mask-qwen36-1-da-7` (79.9), all under `dougalldeepmind`. ~$85 of GPU across 12 pods; all terminated.
 
 **Next steps.** fla is not shown to hurt and not shown to be neutral. The cheap discriminator
 is on the OLD side, where n=1: one more old-stack da-7 (seed 1, ~4h, ~$18) evaluated on
