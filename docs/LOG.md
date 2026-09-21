@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — Published 716 low-stakes examples with complete evidence
+
+**Hypothesis/method:** fixed nine-trait by nine-domain source design, native DA
+answers, separate stakes/scope admission, deterministic predeclared 716 selection.
+**Result:** 971 scenarios -> 899 eligible prompts -> 845 drafts -> 828 final
+automatic exports -> 716 selected, all 81 cells and all trait quotas covered.
+Final observer recovery inspected the unchanged 828 exports without regenerating
+examples. It completed with zero critical/warning/error findings, but pattern
+coverage is 819/828 and the default cluster is very broad; not a quality certificate.
+Reviewed 81 cell excerpts/notes and nine complete pairs; unsupported claims,
+reasoning errors and domain-guidance departures remain explicitly documented.
+Domain diagnostics on selected rows: yes 574, no 138, unclear four (nonblocking).
+
+**Publication:**
+[HF default 716-row dataset](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth/tree/83544fd2f48f7abc07a5e33dbcff35746f039c39)
+at `83544fd2f48f7abc07a5e33dbcff35746f039c39`; previous generation-only revision
+`df28e262b9debac9fcd813b2e7595dcc519feca2`. Preserves 828 automatic exports,
+stage snapshots, 56.6 MB full archive with all raw requests/responses and failures,
+frozen configurations/constitution/runtime, selection IDs, accounting and review.
+Downloaded and SHA256-verified 11 major artifacts. Default `load_dataset` returns
+exactly 716; every loaded message field matches the local fixed selection.
+Selected SHA256 `d324b06084e46494b3920773deead8632f86cdb789752e7dd25819a6906a17f8`.
+82 offline tests passed. Code is on `codex/lowstakes-synthdoc-pipeline`.
+
+**Spend:** $89.8674065 exposure / $120: $89.421494 settled, $0.4459125 retained
+uncertain reservations. Earlier development $17.565140 separate. No paid calls
+remain in flight. No SFT/evaluation or new mixture was launched.
+[Full release review](dataset_audits/2026-09-22_lowstakes_full_release.md).
+**Next:** use this pinned synthetic corpus for an explicitly chosen mixture/training
+run; no ODCV performance claim follows from the generation checks.
+
 ## 2026-09-21 — Recover full low-stakes batch from inherited 2% failure alarm
 
 At the user's progress check, found the 32-worker process had halted around

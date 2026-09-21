@@ -2,6 +2,19 @@
 <!-- ABOUTME: Records scientific differences, operational limits and offline validation. -->
 # Low-stakes difficult advice
 
+**Full generation completed and published on 2026-09-22:** 716 deterministic
+selected rows from 828 automatic exports, all 81 trait/domain cells represented.
+[Pinned release](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth/tree/83544fd2f48f7abc07a5e33dbcff35746f039c39).
+Total full-run exposure $89.87/$120, previous development separate. The default
+HF loader and all selected message fields were verified. Generation used 32
+workers after an operational recovery and a recorded 20% batch failure alarm;
+all individual row rejection criteria stayed unchanged. Domain-fit diagnostics
+include 138 no and four unclear among selected rows; these were nonblocking by
+design. Known factual/reasoning issues and incomplete corpus diagnostic coverage
+are documented in the [release report](dataset_audits/2026-09-22_lowstakes_full_release.md).
+This is a synthetic-only corpus; no new mixture, training or ODCV run occurred.
+The following recommendation and development sections preserve pre-launch history.
+
 **Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml` on
 `codex/lowstakes-synthdoc-pipeline`. Nine preregistered hobby domains are crossed
 with the nine full constitutional principles; each source call sees only one
