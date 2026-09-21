@@ -1,6 +1,140 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Do the fla kernels change the model? Four da-7 adapters on ODCV + MASK: not detectably, because MASK moves 11 points between same-stack runs and the ODCV gap is inside one lucky-run's reach
+
+**Hypothesis.** The 2026-09-20 entry left fla unvalidated: it is 2.75x faster, but its
+step-0 gradient differs from the torch path's (cos 0.978). If that matters it should show
+in the evals of adapters trained on it.
+
+**Method.** `dougalldeepmind/2026-09-15-da-7-mix`@`c8a65ab5`, `configs/train/sft.yaml`,
+branch `jamie/train-optim` (supervised-only logits + fla), three trainings: seed 0 on
+2xH200 (44 min), seed 1 and seed 0 on 1xH200 each (1h33m, 1h34m; train_loss 0.8184 /
+0.8178 / 0.8187). Reference: the old-stack `2026-09-15-qwen36-0-da-7` (same mix, seed 0,
+1 GPU, ~4h, commit `48bd128b`). Each new adapter: ODCV-lite as shipped (3 passes, 240
+rollouts, flash judge, concurrency 32) and MASK (1,000 rows, think, flash judge). The
+1-GPU seed-0 run is the matched pair for the reference: the 1-GPU trainer uses HF's sampler
+and the DDP path its own seeded DataLoader, so a 2-GPU run does not see the same batches.
+
+**Result.**
+
+| adapter | stack | ODCV MR [95%] | mand / incent | progress | MASK honesty |
+|---|---|---|---|---|---|
+| 2026-09-15 s0 1gpu | old | 8.3% [4.3, 15.6] | 5.0 / 11.7 | 4.82 | 74.2 |
+| 2026-09-21 s0 1gpu | new | 11.3% [6.3, 19.3] | 5.0 / 17.5 | 4.92 | 71.3 |
+| 2026-09-20 s0 2gpu | new | 11.7% [6.3, 20.6] | 6.7 / 16.7 | 4.92 | 82.8 |
+| 2026-09-20 s1 1gpu | new | 12.9% [7.0, 22.5] | 9.2 / 16.7 | 4.92 | 79.9 |
+
+- **MASK cannot see a stack effect: it moves 11.5 points between runs of ONE stack.** The
+  two new-stack seed-0 adapters (same data, seed, code; 1 vs 2 GPUs, so different batch
+  order) score 71.3 and 82.8; the old-stack model's 74.2 sits inside that range. The
+  per-archetype swings are as large (provided_facts 65.7 / 82.5 / 82.1, disinformation 76.8
+  / 94.4 / 92.8). Generation-error rates are level (0.7-1.4%), so this is the models, not
+  truncation. Consequence beyond this entry: a single-seed MASK difference under ~10 points
+  between two da-7-sized arms is not evidence of anything — the 2026-09-17 matrix's 81.5 vs
+  74.2 included.
+- **ODCV: the new stack reproduces tightly (11.3 / 11.7 / 12.9) and sits ~3.7 points above
+  the one old-stack model**, almost all of it in the incentivized variant (16.7-17.5 vs
+  11.7). Paired on scenario the matched pair differs by +2.9 pp (p=0.02) — but that test
+  holds the two MODELS fixed; against the new stack's own run-to-run spread (sd 0.8, n=3)
+  the old model is p~0.06 as a single draw, and the older-mix old-stack da-7 scored 10.4%.
+  Suggestive, not established. Task progress is 4.92 everywhere: no arm is inert.
+- **Not judge drift.** Re-judging the reference run's 240 published rollouts today
+  (`scratch/odcv_rejudge_lite.py`, nothing pushed) returns 8.3% [4.3, 15.6] again; on the
+  160 rollouts matchable by name 146 scores are identical and the verdict flips balance (6
+  to violation, 8 to clean) — ~9% per-rollout judge noise, no shift.
+- **What still separates the old model from the new ones besides fla:** its trainer commit
+  (`48bd128b`), and its rollouts ran under the pre-lite config at concurrency 8. Neither
+  was re-run.
+- **Cost of the stack:** a da-7 arm is now ~1.5 H200-hours (~$7) against ~4.0 (~$18.50)
+  with dynamic batching alone and a projected ~10.4 (~$48) before it.
+
+**Infra, all in GOTCHAS.md:** a TCP reset on the SSH tunnel killed a 3h MASK run at the last
+archetype (the runner now takes `resume_from=`, which regenerated only `statistics`:
+82.8 came from that); driving an eval ON a pod needs `HF_HOME=/workspace/hf
+VLLM_USE_FLASHINFER_SAMPLER=0`; and the eval name drops the organism's date, so MASK on
+`2026-09-21-qwen36-0-da-7` would have pushed over MASK on `2026-09-20-qwen36-0-da-7`. Settled
+by launch date (names are minted at launch): the 09-20 adapter's run was launched 09-20 and
+only RESUMED on the 21st, so its repo was moved to `2026-09-20-mask-qwen36-0-da-7` with the
+card re-dated and the reason in its provenance; the 09-21 adapter's run, which ran
+`--no-push` on its pod, was then pushed as `2026-09-21-mask-qwen36-0-da-7`
+(`scratch/republish_mask_da7_dates.py`). The collision itself is a gap in the law: an eval
+name drops the organism's date, so a retrained arm cannot be evaluated the same day as its
+predecessor.
+
+**Published:** `2026-09-20-odcv-qwen36-0-da-7`, `2026-09-21-odcv-qwen36-{0,1}-da-7`,
+`2026-09-20-mask-qwen36-0-da-7` (the 2-GPU adapter, 82.8), `2026-09-21-mask-qwen36-0-da-7` (the
+1-GPU seed-0 adapter, 71.3), `2026-09-21-mask-qwen36-1-da-7` (79.9), all under `dougalldeepmind`. ~$85 of GPU across 12 pods; all terminated.
+
+**Next steps.** fla is not shown to hurt and not shown to be neutral. The cheap discriminator
+is on the OLD side, where n=1: one more old-stack da-7 (seed 1, ~4h, ~$18) evaluated on
+ODCV-lite says whether 8.3% was the stack or the draw; re-rolling the existing old adapter
+under today's lite config (~$4) removes the rollout-config difference first. For MASK, report
+seed replicates or stop reading single-run gaps.
+
+## 2026-09-20 — Training speed: fla kernels are 2.75x faster but move the gradient (cos 0.978 vs the fp32-recurrence path); scoring only supervised logits is exact and buys memory, not speed
+
+**Hypothesis.** Two cheap changes speed up `uv run train` without changing what it
+computes: (1) stop building fp32 logits for positions that carry no loss; (2) install the
+`fla` kernels, since without them transformers runs Qwen3.6's gated-delta layers in pure
+torch.
+
+**Method.** Branch `jamie/train-optim`. (1) `supervised_positions` -> the forward's
+`logits_to_keep`, and `seq_mean_token_mean_loss` upcasts only supervised cells (unit-tested
+against the old loss kept verbatim: same loss, same gradient). (2) `flash-linear-attention`
+in the lock. `scratch/ab_train_optim.py`: 30 identical optimizer steps (16 rows each, seed-0
+shuffle of `dougalldeepmind/2026-09-17-daa-7-mix`@`d15f96f6`), same LoRA init (checksummed),
+dropout 0, constant LR, token budget 8000, one 2xH200 pod, W&B group `train-optim-ab`
+(`jamiestephenson/lasr`). Four arms, each on the real checkout + lock it claims: A main,
+C change 1 only, D fla only (with the branch loss), B both; B2 = B again on a warm kernel
+cache. Then `scratch/gated_delta_grad_check.py` (one op vs transformers' torch
+implementation) and a dump of the step-0 gradient from a torch arm and an fla arm.
+
+**Result.**
+
+| arm | wall, steps 5-29 | speedup | peak mem max / mean (GiB) | loss vs A, mean / max |
+|---|---|---|---|---|
+| A main | 819 s | 1.00x | 86.6 / 84.5 | - |
+| C logits only | 824 s | 0.99x | 81.5 / 75.0 | 0.27% / 1.05% |
+| D fla only | 297 s | 2.76x | 81.6 / 75.0 | 0.29% / 1.00% |
+| B both (cold cache) | 367 s | 2.23x | 81.5 / 74.6 | 0.31% / 1.51% |
+| B2 both (warm cache) | 286 s | 2.87x | 81.5 / 74.6 | 0.31% / 1.24% |
+
+- **Change 1 is exact and is a memory change only.** At step 0 (identical weights) C
+  reproduces A: loss 0.8961 both, grad norm 2.556 vs 2.555. No speedup (this mixture
+  supervises ~79% of positions, so only 21% of logit rows go). The memory saving (~10 GiB
+  mean, ~5 GiB max) comes from the masked upcast in the loss; `logits_to_keep` added nothing
+  measurable on top (B = D). Whether 5 GiB of peak buys a larger token budget is untested.
+- **All of the speed is fla: 2.75x.** B looked slower than D only because it ran first and
+  JIT-compiled kernels (~280 s, in ~12 s spikes on steps that met a new shape); B2 on a warm
+  cache matches D step for step. A fresh pod pays that compile once.
+- **The loss curves cannot validate fla.** C is mathematically identical to A and still
+  drifts from it by as much as the fla arms do (grad norm ~11% mean from step 1: LoRA-B
+  starts at zero, so Adam turns rounding-level gradient differences into full-size updates).
+  That drift is the noise floor of this test; curves "matching" only rules out gross breakage.
+- **fla does compute a different gradient.** Step 0, identical weights: loss 0.8968 vs
+  0.8961, grad norm 2.788 vs 2.558, **cosine 0.9775**, relative difference 0.24, the norm
+  5-10% larger at every depth and the cosine falling from 0.995 (last layers) to 0.95
+  (first) — error accumulating through the backward pass. Deterministic (B = D, A = C to 4
+  s.f.). In isolation each fla op is fine: gated-delta output and every gradient within
+  0.5-0.7% of the torch reference, fused gated norm within 0.4%, norm ratios 1.000. The torch
+  path runs the recurrence in fp32, fla in bf16, so torch is the higher-precision side.
+- **Setup gotcha, fixed in the lock.** fla's Triton backward is wrong on Hopper for Triton
+  3.4-3.7.0 (fla-org/flash-linear-attention#640; fla refuses to run it), so it uses TileLang,
+  which JIT-compiles with the venv's nvcc. That had floated to 13.3 against torch's 13.0
+  runtime headers and CCCL refuses the mix. `constraint-dependencies` now holds nvcc/crt/nvvm
+  at 13.0.
+- vLLM is unaffected either way: 0.26 vendors its own fla ops, picks FlashInfer's GDN
+  prefill kernel on Hopper, and computes logits only at sampled positions.
+
+**Next steps.** Do not make fla the default on this evidence: 30 steps of loss cannot tell
+it from an exact change, and the step-0 gradient says it is not one. The deciding test is an
+eval-level A/B — one arm trained each way, same seed, compared on ODCV/MASK against the
+seed-to-seed spread. Change 1 is safe to merge as is; dropping its `logits_to_keep` half
+would lose nothing measured here. A boot preflight in `runpod up --train` (one gated-delta
+fwd+bwd before READY) would have caught the nvcc mismatch before the first step. Pod
+`3ql9l1d5rzf7w9` (2xH200, ~1.6 h) terminated.
+
 ## 2026-09-17 — The teacher x method matrix, measured: da-qwen leads MASK (81.5), da-7 leads ODCV (8.3%), and delib's constitution habit half-survives training
 
 **Hypothesis.** With the DA prompts fixed (neutral 752) and the base blend pinned, the

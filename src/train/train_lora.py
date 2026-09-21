@@ -27,6 +27,7 @@ from src.train.dynamic_batching import (  # noqa: E402
     plan_micro_batches,
     route_step,
     seq_mean_token_mean_loss,
+    supervised_positions,
 )
 from src.train.launch import (  # noqa: E402
     check_retired_keys,
@@ -173,10 +174,14 @@ class DynamicBatchTrainer(SFTTrainer):
                 labels = batch.pop("labels")
                 with self.compute_loss_context_manager():
                     # No `labels` kwarg: the model must not compute its own
-                    # (differently normalised) loss; we build it from the logits.
-                    out = model(**batch, use_cache=False)
+                    # (differently normalised) loss; we build it from the logits —
+                    # and only the logits the loss reads: `logits_to_keep` slices the
+                    # hidden states BEFORE lm_head, so unsupervised positions never
+                    # become a vocab-wide row (src/train/dynamic_batching.py).
+                    keep = supervised_positions(labels)
+                    out = model(**batch, use_cache=False, logits_to_keep=keep)
                     loss = seq_mean_token_mean_loss(
-                        out.logits, labels, self._global_batch) * scale
+                        out.logits, labels, self._global_batch, keep) * scale
                 # Backward INSIDE the sync context: gradients accumulate locally,
                 # and only the final pass's backward triggers the all-reduce.
                 self.accelerator.backward(loss)

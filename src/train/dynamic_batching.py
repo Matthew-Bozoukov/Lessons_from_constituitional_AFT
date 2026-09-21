@@ -28,14 +28,21 @@ Two pieces, and the second is what makes the first legal:
   the weighting the legacy path produces implicitly (transformers divides the
   per-micro-batch mean by grad_accum when the model opts out of loss kwargs, as
   Qwen3_5ForConditionalGeneration does); here it is explicit and partition-proof.
+  The loss only ever READS the logits at supervised positions, so the trainer asks the
+  model for those alone (``supervised_positions`` -> the forward's ``logits_to_keep``):
+  prompt, user and padding positions never reach `lm_head`, and a ~250k-vocab fp32
+  logits row is only built for a token that carries loss. Dropped positions had zero
+  weight, so loss and gradient are unchanged.
 
 The design follows verl's dynamic batch size (`verl/utils/seqlen_balancing.py`,
 `rearrange_micro_batches`, Apache-2.0) and NeMo-RL's sequence-level loss under
 dynamic batching; the cost model is adapted from their sum-of-real-tokens to padded
 tokens because these micro-batches are padded, not packed. verl names this loss
-aggregation mode "seq-mean-token-mean". Packing is deliberately NOT used: without
-the fla/causal_conv1d kernels (absent from our lock), Qwen3.6's gated-delta layers
-silently ignore `cu_seqlens` and leak recurrent state across packed examples.
+aggregation mode "seq-mean-token-mean". Packing is deliberately NOT used: on the
+torch fallback Qwen3.6's gated-delta layers silently ignore `cu_seqlens` and leak
+recurrent state across packed examples. The lock now carries the fla kernels (they
+speed up the padded passes here), but packing on top of them is UNVERIFIED for this
+family — it needs its own no-leak test before anything packs.
 """
 
 from __future__ import annotations
@@ -81,7 +88,24 @@ def plan_micro_batches(lengths: list[int], token_budget: int) -> list[list[int]]
     return plan
 
 
-def seq_mean_token_mean_loss(logits, labels, global_batch: int):
+def supervised_positions(labels):
+    """Sequence positions whose logits the loss reads, for the forward's `logits_to_keep`.
+
+    Position i predicts token i+1, so i is needed when ANY row of the micro-batch
+    supervises token i+1. The union over rows is what one index tensor can express
+    (transformers slices `hidden_states[:, idx, :]` before `lm_head`); rows that do not
+    supervise a kept position are dropped again inside the loss.
+
+    Args:
+        labels: Long tensor [batch, seq_len]; -100 marks unsupervised positions.
+
+    Returns:
+        1-D long tensor of ascending positions in [0, seq_len - 1).
+    """
+    return labels[:, 1:].ne(-100).any(dim=0).nonzero(as_tuple=True)[0]
+
+
+def seq_mean_token_mean_loss(logits, labels, global_batch: int, positions=None):
     """Per-example weighted causal-LM loss, invariant to micro-batch grouping.
 
     Each example contributes the mean cross-entropy over its OWN supervised tokens
@@ -91,23 +115,34 @@ def seq_mean_token_mean_loss(logits, labels, global_batch: int):
     step was partitioned (verl calls this aggregation "seq-mean-token-mean").
 
     Args:
-        logits: Float tensor [batch, seq_len, vocab] from a forward WITHOUT labels.
+        logits: Float tensor from a forward WITHOUT labels: [batch, seq_len, vocab], or
+            [batch, len(positions), vocab] when the forward was given
+            `logits_to_keep=positions`.
         labels: Long tensor [batch, seq_len]; -100 marks unsupervised positions
             (prompt, padding, think-prefill — already baked by build_labels).
         global_batch: The step's total example count across ALL micro-batches; the
             constant divisor that makes the loss partition-independent.
+        positions: The `supervised_positions(labels)` the logits were restricted to, or
+            None for full-sequence logits.
 
     Returns:
         Scalar loss tensor: sum over rows of (row token-mean) / global_batch.
     """
+    import torch
     import torch.nn.functional as F
 
     # Causal shift: position i predicts token i+1; position 0 is never a target.
-    # The .float() matches the upcast transformers applies in its own loss path.
-    shift_logits = logits[:, :-1, :].float()
-    shift_labels = labels[:, 1:]
+    if positions is None:
+        shift_logits = logits[:, :-1, :]
+        shift_labels = labels[:, 1:]
+    else:
+        assert logits.shape[1] == positions.numel(), (
+            f"logits cover {logits.shape[1]} positions but {positions.numel()} were "
+            "requested; the forward did not honour logits_to_keep")
+        shift_logits = logits
+        shift_labels = labels[:, positions + 1]
 
-    counts = shift_labels.ne(-100).sum(dim=1)
+    counts = labels[:, 1:].ne(-100).sum(dim=1)
     if (counts == 0).any():
         bad = counts.eq(0).nonzero(as_tuple=True)[0].tolist()
         raise ValueError(
@@ -116,13 +151,16 @@ def seq_mean_token_mean_loss(logits, labels, global_batch: int):
             "truncation or masking bug upstream"
         )
 
+    # Only supervised cells are upcast and scored: an unsupervised cell's cross-entropy
+    # was always multiplied by zero, and at a ~250k vocab its fp32 row is what bounded
+    # memory. The .float() matches the upcast transformers applies in its own loss path.
+    supervised = shift_labels.ne(-100)
     per_token = F.cross_entropy(
-        shift_logits.flatten(0, 1),
-        shift_labels.flatten(),
-        ignore_index=-100,
-        reduction="none",
-    ).view(shift_labels.shape)
-    per_example = per_token.sum(dim=1) / counts
+        shift_logits[supervised].float(), shift_labels[supervised], reduction="none")
+    rows = supervised.nonzero(as_tuple=True)[0]
+    per_example = torch.zeros(
+        labels.shape[0], dtype=per_token.dtype, device=per_token.device
+    ).index_add(0, rows, per_token) / counts
     return per_example.sum() / global_batch
 
 

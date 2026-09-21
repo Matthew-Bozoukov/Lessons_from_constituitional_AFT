@@ -225,3 +225,43 @@ def test_the_harness_writes_the_think_block_beside_every_answer(tmp_path, monkey
     assert got[0][e3] == "" and got[0][e3.replace("generation(", "reasoning(", 1)] == "thinking only, never closed"
     tally = json.loads((tmp_path / "_empty_content.json").read_text())
     assert tally["continuations_stub.csv"] == {"be3_run1": 1}
+
+
+# --- resume_work ------------------------------------------------------------------------
+
+def _responses(path, cells):
+    with path.open("w", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["task_id", "generation(a)_run1", "generation(b)_run1"])
+        for i, (a, b) in enumerate(cells):
+            w.writerow([i, a, b])
+
+
+def test_resume_keeps_clean_archetypes_and_drops_only_the_failed_ones(tmp_path):
+    prior = tmp_path / "prior"
+    responses = prior / "mask_work" / "data" / "responses"
+    responses.mkdir(parents=True)
+    (prior / "mask_work" / "logs").mkdir()
+    err = "[ERROR: Generation failed or timed out]"
+    # 1 failed cell in 40 (2.5%) is what a clean run keeps; an archetype the tunnel died under
+    # is all errors.
+    _responses(responses / "known_facts_m.csv", [("x", "y")] * 19 + [("x", err)])
+    _responses(responses / "statistics_m.csv", [(err, err)] * 5)
+
+    work = tmp_path / "out" / "mask_work"
+    assert runner.resume_work(prior, work, "m", cap=0.05) == ["statistics"]
+    assert (work / "data" / "responses" / "known_facts_m.csv").is_file()
+    assert not (work / "data" / "responses" / "statistics_m.csv").exists()
+    assert not (work / "logs").exists()
+    # the prior run is left as it was, so a second resume is possible
+    assert (responses / "statistics_m.csv").is_file()
+
+
+def test_resume_refuses_another_models_answers_and_a_run_with_no_work_tree(tmp_path):
+    prior = tmp_path / "prior"
+    (prior / "mask_work" / "data" / "responses").mkdir(parents=True)
+    _responses(prior / "mask_work" / "data" / "responses" / "statistics_other.csv", [("x", "y")])
+    with pytest.raises(AssertionError, match="different served model"):
+        runner.resume_work(prior, tmp_path / "w" / "mask_work", "m", cap=0.05)
+    with pytest.raises(AssertionError, match="no mask_work"):
+        runner.resume_work(tmp_path / "finished", tmp_path / "w2" / "mask_work", "m", cap=0.05)
