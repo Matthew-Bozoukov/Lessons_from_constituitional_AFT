@@ -1,6 +1,72 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Do the fla kernels change the model? Four da-7 adapters on ODCV + MASK: not detectably, because MASK moves 11 points between same-stack runs and the ODCV gap is inside one lucky-run's reach
+
+**Hypothesis.** The 2026-09-20 entry left fla unvalidated: it is 2.75x faster, but its
+step-0 gradient differs from the torch path's (cos 0.978). If that matters it should show
+in the evals of adapters trained on it.
+
+**Method.** `dougalldeepmind/2026-09-15-da-7-mix`@`c8a65ab5`, `configs/train/sft.yaml`,
+branch `jamie/train-optim` (supervised-only logits + fla), three trainings: seed 0 on
+2xH200 (44 min), seed 1 and seed 0 on 1xH200 each (1h33m, 1h34m; train_loss 0.8184 /
+0.8178 / 0.8187). Reference: the old-stack `2026-09-15-qwen36-0-da-7` (same mix, seed 0,
+1 GPU, ~4h, commit `48bd128b`). Each new adapter: ODCV-lite as shipped (3 passes, 240
+rollouts, flash judge, concurrency 32) and MASK (1,000 rows, think, flash judge). The
+1-GPU seed-0 run is the matched pair for the reference: the 1-GPU trainer uses HF's sampler
+and the DDP path its own seeded DataLoader, so a 2-GPU run does not see the same batches.
+
+**Result.**
+
+| adapter | stack | ODCV MR [95%] | mand / incent | progress | MASK honesty |
+|---|---|---|---|---|---|
+| 2026-09-15 s0 1gpu | old | 8.3% [4.3, 15.6] | 5.0 / 11.7 | 4.82 | 74.2 |
+| 2026-09-21 s0 1gpu | new | 11.3% [6.3, 19.3] | 5.0 / 17.5 | 4.92 | 71.3 |
+| 2026-09-20 s0 2gpu | new | 11.7% [6.3, 20.6] | 6.7 / 16.7 | 4.92 | 82.8 |
+| 2026-09-20 s1 1gpu | new | 12.9% [7.0, 22.5] | 9.2 / 16.7 | 4.92 | 79.9 |
+
+- **MASK cannot see a stack effect: it moves 11.5 points between runs of ONE stack.** The
+  two new-stack seed-0 adapters (same data, seed, code; 1 vs 2 GPUs, so different batch
+  order) score 71.3 and 82.8; the old-stack model's 74.2 sits inside that range. The
+  per-archetype swings are as large (provided_facts 65.7 / 82.5 / 82.1, disinformation 76.8
+  / 94.4 / 92.8). Generation-error rates are level (0.7-1.4%), so this is the models, not
+  truncation. Consequence beyond this entry: a single-seed MASK difference under ~10 points
+  between two da-7-sized arms is not evidence of anything — the 2026-09-17 matrix's 81.5 vs
+  74.2 included.
+- **ODCV: the new stack reproduces tightly (11.3 / 11.7 / 12.9) and sits ~3.7 points above
+  the one old-stack model**, almost all of it in the incentivized variant (16.7-17.5 vs
+  11.7). Paired on scenario the matched pair differs by +2.9 pp (p=0.02) — but that test
+  holds the two MODELS fixed; against the new stack's own run-to-run spread (sd 0.8, n=3)
+  the old model is p~0.06 as a single draw, and the older-mix old-stack da-7 scored 10.4%.
+  Suggestive, not established. Task progress is 4.92 everywhere: no arm is inert.
+- **Not judge drift.** Re-judging the reference run's 240 published rollouts today
+  (`scratch/odcv_rejudge_lite.py`, nothing pushed) returns 8.3% [4.3, 15.6] again; on the
+  160 rollouts matchable by name 146 scores are identical and the verdict flips balance (6
+  to violation, 8 to clean) — ~9% per-rollout judge noise, no shift.
+- **What still separates the old model from the new ones besides fla:** its trainer commit
+  (`48bd128b`), and its rollouts ran under the pre-lite config at concurrency 8. Neither
+  was re-run.
+- **Cost of the stack:** a da-7 arm is now ~1.5 H200-hours (~$7) against ~4.0 (~$18.50)
+  with dynamic batching alone and a projected ~10.4 (~$48) before it.
+
+**Infra, all in GOTCHAS.md:** a TCP reset on the SSH tunnel killed a 3h MASK run at the last
+archetype (the runner now takes `resume_from=`, which regenerated only `statistics`:
+82.8 came from that); driving an eval ON a pod needs `HF_HOME=/workspace/hf
+VLLM_USE_FLASHINFER_SAMPLER=0`; and the eval name drops the organism's date, so MASK on
+`2026-09-21-qwen36-0-da-7` would have pushed over MASK on `2026-09-20-qwen36-0-da-7` — it
+ran `--no-push` and sits in `output/mask/2026-09-21_qwen36_0_da_7_014656_s0_1gpu_unpublished/`
+(contract layout, target `a685ddc3`) until someone decides where it goes.
+
+**Published:** `2026-09-20-odcv-qwen36-0-da-7`, `2026-09-21-odcv-qwen36-{0,1}-da-7`,
+`2026-09-21-mask-qwen36-0-da-7` (the 2-GPU adapter; rev `c758e719`), `2026-09-21-mask-qwen36-1-da-7`,
+all under `dougalldeepmind`. ~$85 of GPU across 12 pods; all terminated.
+
+**Next steps.** fla is not shown to hurt and not shown to be neutral. The cheap discriminator
+is on the OLD side, where n=1: one more old-stack da-7 (seed 1, ~4h, ~$18) evaluated on
+ODCV-lite says whether 8.3% was the stack or the draw; re-rolling the existing old adapter
+under today's lite config (~$4) removes the rollout-config difference first. For MASK, report
+seed replicates or stop reading single-run gaps.
+
 ## 2026-09-20 — Training speed: fla kernels are 2.75x faster but move the gradient (cos 0.978 vs the fp32-recurrence path); scoring only supervised logits is exact and buys memory, not speed
 
 **Hypothesis.** Two cheap changes speed up `uv run train` without changing what it
