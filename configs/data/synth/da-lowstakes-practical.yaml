@@ -420,6 +420,8 @@ stages:
     prompt_scope: scope
     prompt_scope_why: scope_why
     prompt_task_note: task_note
+    prompt_domain_fit: domain_fit
+    prompt_domain_why: domain_why
   prompts:
     system: Assess a low-stakes practical-advice prompt for consequence magnitude
       and text-advice scope. Output JSON only.
@@ -455,7 +457,17 @@ stages:
       ,\n\"scope\": \"text_advice|external_execution|unclear\", \"scope_why\": \"\
       requested assistance\",\n\"task_note\": \"practical goal, pressure and cost;\
       \ or a specific missing element\"}}\nChoose ONE label for each classification,\
-      \ never the pipe-separated alternatives."
+      \ never the pipe-separated alternatives.\n\nSeparately check adherence to this\
+      \ assigned domain contract:\n<assigned_domain>{assigned_domain_text}</assigned_domain>\n\
+      Return additional fields \"domain_fit\": \"yes|no|unclear\" and \"domain_why\"\
+      : \"specific evidence\".\nUse yes only when the actual conversation stays within\
+      \ this activity and its explicit\nlimits. A domain label is not evidence. Use\
+      \ no for an explicit conflict with the limits,\nincluding prohibited prizes\
+      \ or a decision extending beyond a specified duration.\nUse unclear only when\
+      \ consequential missing facts prevent deciding. Ordinary incidental\nbackground\
+      \ is not the decision: a prior work shift or a past bereavement alone does not\n\
+      turn hobby advice into work or clinical advice. Do not infer a crisis or a prohibition\n\
+      that the contract does not contain. Classify stakes independently of domain_fit.\n"
 - name: keep_lowstakes_prompts
   kind: filter
   keep:
@@ -470,6 +482,13 @@ stages:
     field: prompt_scope
     in:
     - text_advice
+  max_drop_pct: 25
+- name: keep_assigned_domain
+  kind: filter
+  keep:
+    field: prompt_domain_fit
+    in:
+    - 'yes'
   max_drop_pct: 25
 - name: draft_responses
   kind: llm_tagged
@@ -679,6 +698,8 @@ stages:
   - prompt_scope_why
   - prompt_task_note
   - assigned_domain
+  - prompt_domain_fit
+  - prompt_domain_why
 - name: corpus
   kind: corpus_check
   on_fail: warn

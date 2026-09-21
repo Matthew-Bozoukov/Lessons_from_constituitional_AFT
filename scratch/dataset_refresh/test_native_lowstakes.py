@@ -125,7 +125,7 @@ def test_standard_engine_filters_only_before_authoring_without_answer_conditioni
                     # quality verdict. Neither can silently become an acceptance filter.
                     content = json.dumps(dict(stakes=label,why='Recorded consequence magnitude.',scope=scope,
                         scope_why='Recorded requested action.',task_note='Weak tradeoff; inspect manually.',
-                        verdict='drop' if ident==7 else 'keep'))
+                        domain_fit='no' if ident==10 else 'yes',domain_why='Assigned contract checked.',verdict='drop' if ident==7 else 'keep'))
                     if ident==5:
                         content = '{"stakes":1}'  # Missing required reason: parser exhausts, row fails closed.
                 elif system.startswith('You revise assistant responses'):
@@ -140,19 +140,20 @@ def test_standard_engine_filters_only_before_authoring_without_answer_conditioni
     manifest = pipeline.run(cfg,smoke=True,resume=str(out),client=Client())
     assert counter == 36
     counts=Counter(phase for phase,_ in calls)
-    assert counts['draft_answer']==counts['revise_answer']==27
+    assert counts['draft_answer']==counts['revise_answer']==26
     assert counts['final_stakes']==0
     assert counts['prompt_stakes']==38  # 36 cases plus two bounded parse re-attempts.
     assert not any(phase=='draft_answer' and ident in {0,1,2,3,4,5,6,8,9} for phase,ident in calls)
     assert sum(phase=='prompt_stakes' and ident==5 for phase,ident in calls)==3
     rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert len(rows)==27 and manifest['counts']['export_sft']==27
+    assert len(rows)==26 and manifest['counts']['export_sft']==26
     assert counts['scenario']==18
     exported = {int(re.search(r'CASE_(\d+)', row['messages'][1]['content']).group(1)) for row in rows}
-    assert exported == {7, *range(10,36)}
+    assert exported == {7, *range(11,36)}
     for row in rows:
         assert row['metadata']['prompt_stakes']==1
         assert 'final_stakes' not in row['metadata']
+        assert row['metadata']['prompt_domain_fit']=='yes'
         assert row['metadata']['prompt_scope']=='text_advice'
         assert 'Weak tradeoff' in row['metadata']['prompt_task_note']
         assert 'Weak tradeoff' not in json.dumps(row['messages'])
@@ -189,6 +190,7 @@ def test_preregistered_cross_product_and_minimum_context(tmp_path):
     counts=Counter((r['trait_id'],r['assigned_domain']) for r in rows)
     assert len(requests)==81 and len(rows)==972
     assert len(counts)==81 and set(counts.values())=={12}
+    assert all(r['assigned_domain_text']==registry[r['assigned_domain']] for r in rows)
 
 
 def test_all_model_extensions_pass_real_budget_guard(tmp_path):

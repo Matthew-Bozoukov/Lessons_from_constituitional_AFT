@@ -799,6 +799,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     "situation": s["situation"],
                     "shortcut": s.get("shortcut", ""),
                     **axes,
+                    **{f"{name}_text": str(rotate[name].get("text", {}).get(label, ""))
+                       for name, label in axes.items() if rotate[name].get("per_trait")},
                     **{k: str(s[k]).strip() for k in req_fields},
                     **{k: str(s.get(k, "")).strip() for k in opt_fields},
                     **prov.get(t.trait_id, {}),

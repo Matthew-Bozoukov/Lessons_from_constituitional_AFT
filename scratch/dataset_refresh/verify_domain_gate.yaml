@@ -1,0 +1,8 @@
+# ABOUTME: One bounded judge verification on the existing 36-case domain smoke.
+# ABOUTME: No scenario, prompt or answer generation; cumulative spending guard stays $20.
+run_root: output/2026-09-21_da_lowstakes_practical_guarded_smoke/20260921_144723
+recipe: configs/data/synth/da-lowstakes-practical.yaml
+expected_candidates: 36
+campaign_budget_root: output/2026-09-21_lowstakes_pipeline_campaign/budget
+ceiling_usd: 20
+max_physical_calls: 108
