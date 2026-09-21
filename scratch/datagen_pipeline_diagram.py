@@ -1,16 +1,22 @@
 # ABOUTME: Methodology figure for the paper draft — the six-stage difficult-advice data generation
 # ABOUTME: pipeline, one sentence per stage, each stage labelled with the model that runs it.
 
-"""The data generation pipeline as a numbered spine, read top to bottom, at full text width.
+"""The data generation pipeline as six boxed stages, read top to bottom, at full text width.
+
+Each stage is one box holding one line in aligned columns — number, stage name, its sentence,
+the model that runs it — with an arrow across every gap. The columns are sized to their
+content, so the figure is wide and short with no empty band; `check_fit` fails the run if a
+sentence would reach its model chip after a wording change.
 
 Stage order, names and models are read off `configs/data/synth/da.yaml` (the project's DA
 baseline), not off the draft: the draft credits stage 1 to Haiku, but `chunk_constitution` is
-`kind: segment` — a deterministic heading split with no model call — so the row says so.
+`kind: segment` — a deterministic heading split with no model call — so the box says so.
 
 Colour encodes the MODEL here, never an arm, so none of the fixed arm colours are used as a
-model colour; the model is also written on every row, so colour is a redundant cue.
+model colour; the model is also written in every box, so colour is a redundant cue.
 
-Earlier cuts: one horizontal row of cards (commit 503f620e), tall boxed rows (0f76f733).
+Earlier cuts: one horizontal row of cards (commit 503f620e), tall boxed rows (0f76f733),
+an unboxed numbered spine (738bda8b).
 
     uv run python scratch/datagen_pipeline_diagram.py [--out_dir output/figures]
 """
@@ -28,8 +34,7 @@ from matplotlib.patches import Circle, FancyArrowPatch, FancyBboxPatch
 from src.naming import figure_path
 
 HAIKU, SONNET, NO_MODEL = "#147D73", "#A83265", "#7F858E"
-INK, BODY, MUTED = "#15181D", "#4A505A", "#8A9099"
-SPINE, HAIRLINE = "#AEB5BE", "#E6E8EC"
+INK, BODY, MUTED, ARROW = "#15181D", "#3F454E", "#8A9099", "#6B727C"
 
 # (title, the one sentence, model label, model colour)
 STAGES = [
@@ -72,17 +77,19 @@ STAGES = [
 ]
 
 W = 6.5  # inches; data coordinates ARE inches, so circles stay round
-PITCH = 0.44  # stage row to stage row
-END_PITCH = 0.36  # input/output row to its neighbouring stage
-EDGE = 0.17  # input/output row centre to the figure edge
-H = 2 * EDGE + 2 * END_PITCH + (len(STAGES) - 1) * PITCH
-SPINE_X, TEXT_X, RIGHT = 0.2, 0.47, W - 0.03
-NODE_R, END_R = 0.105, 0.05
-CHIP_W, CHIP_H = 1.08, 0.2
+PAD = 0.03  # figure edge to the boxes
+BOX_H, END_H, GAP = 0.31, 0.24, 0.12
+H = 2 * PAD + 2 * END_H + len(STAGES) * BOX_H + (len(STAGES) + 1) * GAP
+LEFT, RIGHT = PAD, W - PAD
+# Columns inside a box: number badge, stage name, sentence, model chip.
+BADGE_X, TITLE_X, SENTENCE_X = LEFT + 0.19, LEFT + 0.37, LEFT + 1.78
+BADGE_R = 0.088
+CHIP_W, CHIP_H = 1.0, 0.19
+CHIP_X = RIGHT - 0.07 - CHIP_W
 
 
-def tint(hex_colour: str, keep: float = 0.12) -> tuple[float, float, float]:
-    """The colour mixed toward white — the chip fill behind its own coloured text."""
+def tint(hex_colour: str, keep: float) -> tuple[float, float, float]:
+    """The colour mixed toward white; `keep` is how much of it survives."""
     r, g, b = (int(hex_colour[i : i + 2], 16) / 255 for i in (1, 3, 5))
     return tuple(1 - keep * (1 - c) for c in (r, g, b))
 
@@ -101,78 +108,120 @@ def caps(ax, x: float, y: float, text: str, ha: str = "left") -> None:
     )
 
 
-def link(ax, y_from: float, y_to: float) -> None:
-    """One spine segment, arrowhead at its lower end."""
+def arrow(ax, y_from: float, y_to: float) -> None:
+    """Box to box, in the badge column so the numbers and arrows read as one line."""
     ax.add_patch(
         FancyArrowPatch(
-            (SPINE_X, y_from),
-            (SPINE_X, y_to),
+            (BADGE_X, y_from),
+            (BADGE_X, y_to),
             arrowstyle="-|>",
             mutation_scale=6,
             lw=0.9,
-            color=SPINE,
+            color=ARROW,
             shrinkA=0,
             shrinkB=0,
-            zorder=1,
         )
     )
 
 
 def endpoint(ax, y: float, label: str, text: str) -> None:
-    """The input / output row: a hollow node, a caps label, and what flows there."""
-    ax.add_patch(Circle((SPINE_X, y), END_R, fc="white", ec=INK, lw=0.9, zorder=3))
-    caps(ax, TEXT_X, y, label)
-    ax.text(TEXT_X + 0.52, y, text, ha="left", va="center", fontsize=7.4, color=INK)
+    """The input / output box: slimmer than a stage, neutral, sized to its text."""
+    body = ax.text(
+        LEFT + 0.7,
+        y + END_H / 2,
+        text,
+        ha="left",
+        va="center",
+        fontsize=7.2,
+        color=INK,
+    )
+    caps(ax, LEFT + 0.12, y + END_H / 2, label)
+    ax.figure.canvas.draw()
+    end = body.get_window_extent().x1 / ax.figure.dpi
+    ax.add_patch(
+        FancyBboxPatch(
+            (LEFT, y),
+            end + 0.12 - LEFT,
+            END_H,
+            boxstyle="round,pad=0,rounding_size=0.06",
+            fc="white",
+            ec=INK,
+            lw=0.8,
+        )
+    )
 
 
-def stage(
-    ax, y: float, n: int, title: str, sentence: str, model: str, colour: str
-) -> None:
-    ax.add_patch(Circle((SPINE_X, y), NODE_R, fc=colour, ec="none", zorder=3))
+def stage(ax, y: float, n: int, title: str, sentence: str, model: str, colour: str):
+    """One boxed stage; returns the sentence text so `check_fit` can measure it."""
+    mid = y + BOX_H / 2
+    ax.add_patch(
+        FancyBboxPatch(
+            (LEFT, y),
+            RIGHT - LEFT,
+            BOX_H,
+            boxstyle="round,pad=0,rounding_size=0.07",
+            fc=tint(colour, 0.05),
+            ec=tint(colour, 0.6),
+            lw=0.9,
+        )
+    )
+    ax.add_patch(Circle((BADGE_X, mid), BADGE_R, fc=colour, ec="none"))
     ax.text(
-        SPINE_X,
-        y - 0.004,
+        BADGE_X,
+        mid - 0.004,
         str(n),
         ha="center",
         va="center",
-        fontsize=6.6,
+        fontsize=6.2,
         fontweight="bold",
         color="white",
-        zorder=4,
     )
     ax.text(
-        TEXT_X,
-        y + 0.075,
+        TITLE_X,
+        mid,
         title,
         ha="left",
         va="center",
-        fontsize=8.8,
+        fontsize=8.2,
         fontweight="bold",
         color=INK,
     )
-    ax.text(
-        TEXT_X, y - 0.085, sentence, ha="left", va="center", fontsize=7.6, color=BODY
+    body = ax.text(
+        SENTENCE_X, mid, sentence, ha="left", va="center", fontsize=7.0, color=BODY
     )
     ax.add_patch(
         FancyBboxPatch(
-            (RIGHT - CHIP_W, y - CHIP_H / 2),
+            (CHIP_X, mid - CHIP_H / 2),
             CHIP_W,
             CHIP_H,
             boxstyle=f"round,pad=0,rounding_size={CHIP_H / 2}",
-            fc=tint(colour),
+            fc=tint(colour, 0.16),
             ec="none",
         )
     )
     ax.text(
-        RIGHT - CHIP_W / 2,
-        y - 0.003,
+        CHIP_X + CHIP_W / 2,
+        mid - 0.003,
         model,
         ha="center",
         va="center",
-        fontsize=6.6,
+        fontsize=6.4,
         fontweight="bold",
         color=colour,
     )
+    return body
+
+
+def check_fit(fig, sentences) -> None:
+    """Fail rather than ship a sentence that runs into its model chip."""
+    fig.canvas.draw()
+    for body in sentences:
+        end = body.get_window_extent().x1 / fig.dpi
+        if end > CHIP_X - 0.06:
+            raise ValueError(
+                f"sentence reaches the model chip ({end:.2f}in > {CHIP_X - 0.06:.2f}in): "
+                f"{body.get_text()!r} — shorten it or move SENTENCE_X"
+            )
 
 
 def main() -> None:
@@ -190,27 +239,23 @@ def main() -> None:
     ax.set_ylim(0, H)
     ax.axis("off")
 
-    # Row centres, top to bottom: input, the six stages, output.
-    y_in = H - EDGE
-    ys = [y_in - END_PITCH - i * PITCH for i in range(len(STAGES))]
-    y_out = ys[-1] - END_PITCH
-
-    endpoint(ax, y_in, "Input", "Constitution (9 traits)")
-    caps(ax, RIGHT - CHIP_W / 2, y_in, "Model", ha="center")
-    link(ax, y_in - END_R, ys[0] + NODE_R + 0.015)
-    for n, (y, spec) in enumerate(zip(ys, STAGES), start=1):
-        stage(ax, y, n, *spec)
-        if n > 1:
-            link(ax, ys[n - 2] - NODE_R, y + NODE_R + 0.015)
-            mid = y + PITCH / 2
-            ax.plot([TEXT_X, RIGHT], [mid, mid], color=HAIRLINE, lw=0.6, zorder=0)
-    link(ax, ys[-1] - NODE_R, y_out + END_R + 0.015)
+    # Top to bottom: input, the six stages, output — `y` is each box's bottom edge.
+    y = H - PAD - END_H
+    endpoint(ax, y, "Input", "Constitution (9 traits)")
+    caps(ax, CHIP_X + CHIP_W / 2, y + END_H / 2, "Model", ha="center")
+    sentences = []
+    for n, spec in enumerate(STAGES, start=1):
+        arrow(ax, y - 0.01, y - GAP + 0.015)
+        y -= GAP + BOX_H
+        sentences.append(stage(ax, y, n, *spec))
+    arrow(ax, y - 0.01, y - GAP + 0.015)
     endpoint(
         ax,
-        y_out,
+        y - GAP - END_H,
         "Output",
         "Difficult-advice SFT example: system, user, reasoning, reply",
     )
+    check_fit(fig, sentences)
 
     for ext in ("png", "pdf", "svg"):
         path = figure_path(args.out_dir, "datagen_pipeline_diagram_vertical", ext=ext)
