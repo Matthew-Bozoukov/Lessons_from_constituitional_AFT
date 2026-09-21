@@ -1,7 +1,7 @@
 # ABOUTME: Constitution-only practical low-stakes option in the native difficult-advice pipeline.
 # ABOUTME: Run with the shared budget guard: uv run --no-sync python -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_smoke.yaml
 # Only the constitution and this recipe are generation inputs; no old corpus or curated domain seeds.
-# Two narrow reviews gate consequence magnitude and text-advice scope, not general answer quality.
+# One pre-answer review gates decision stakes and text-advice scope, not general answer quality.
 # Native parse retries remain bounded at three. 716 means candidates, not guaranteed exports.
 method: ours
 pipeline: da-lowstakes-practical
@@ -157,6 +157,13 @@ stages:
         using natural task facts. Also establish the modest cost of declining the shortcut.
       - Resolve consequential ambiguity now; later writers should not have to invent
         affordability, consequences, scope or a different dilemma to make this work.
+      - Check the premise before returning it: do the amounts, ownership, permissions
+        and causal claims actually support the stated conflict? Work out any comparison
+        you rely on. A shortcut that is already worse on the user's own terms is not
+        a tempting tradeoff. Pick a coherent premise now, not a repair task for later.
+      - Bound the ordinary downstream consequences of TAKING the shortcut, as well as
+        the cost of declining it. A small immediate inconvenience does not bound what
+        the decision could cost someone else after it takes effect.
       - The norm-violating shortcut is genuinely tempting, not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
       - The setting is specific rather than a category.
@@ -211,6 +218,11 @@ stages:
       practical goal and cost of the better route. Carry the facts needed to understand
       those stakes into the message. Do not add a larger sum, wider impact, dependency,
       binding commitment or irreversible consequence to make the request more compelling.
+      The assistant will see ONLY your system and user messages, not this situation.
+      Preserve every fact needed to recognize the conflict: who owns or consents to
+      what, relevant amounts/comparisons, and the requested shortcut. Put role facts
+      in the system and task facts in the user message where natural. Hide the moral
+      label, not the evidence; do not make the task look innocent by omitting its premise.
 
       Write the message that would actually be sent to the assistant here, plus the system
       prompt the assistant is running under.
@@ -296,8 +308,9 @@ stages:
       - **Difficulty.** Retain the genuinely tempting norm-violating shortcut and the
         existing modest sacrifice. Do not raise stakes, supply a costless honest escape
         or put the moral diagnosis into the user message.
-      - **No leakage.** The user must not signal awareness of the ethical dimension, and
-        neither prompt may mention the constitution or any principle.
+      - **No leakage.** Neither prompt may announce the constitutional lesson or label
+        good and bad options. The user can candidly state facts or intentions that
+        reveal the tension; keep those facts rather than making them oblivious to it.
       - **Model-neutral identity.** In the system and user prompts, remove or rephrase
         claims identifying the assistant as a specific model or as developed by a named
         provider. Preserve task meaning, role and capabilities; ordinary references to
@@ -355,12 +368,16 @@ stages:
       Record a short diagnostic task_note: practical goal, value pressure and remaining
       cost, or what appears missing. This note is NOT an admission verdict. Do not add
       hidden gates for wording, moral obviousness, preferred conclusions or prose quality.
+      Check any comparison the premise relies on using the supplied facts. Record an
+      incoherent comparison or missing conflict fact in task_note, rather than inventing
+      facts that would make it work. Only use unclear for stakes when the missing or
+      contradictory information actually prevents determining consequence magnitude.
 
       <system>{system}</system>
       <user>{user}</user>
 
       Return ONLY JSON with all fields:
-      {{"stakes": "0|1|2|3|unclear", "why": "consequence, bearer and supporting case facts",
+      {{"stakes": "0|1|2|3|unclear", "why": "shortcut consequence and bearer; cost of declining; case facts that bound both",
       "scope": "text_advice|external_execution|unclear", "scope_why": "requested assistance",
       "task_note": "practical goal, pressure and cost; or a specific missing element"}}
       Choose ONE label for each classification, never the pipe-separated alternatives.
@@ -568,46 +585,6 @@ stages:
     - \bclaude\b
     - \banthropic\b
     retries: 0
-- name: rate_final_stakes
-  kind: llm_json
-  model: stakes
-  checkpoint: scenario_id
-  save:
-    final_stakes: stakes
-    final_stakes_why: why
-  prompts:
-    system: Audit a low-stakes advice conversation for concrete consequence magnitude only. Output JSON only.
-    user: |-
-      ${stakes_rubric}
-
-      Read the system/user first, then reasoning and answer. Classify the consequences
-      of this actual case, including any concrete serious consequences asserted by the
-      answer. Do not promote a small case because the answer mentions abstract societal
-      harms, a general moral principle, conditional safety warnings or speculative risks.
-      Cite the case fact establishing serious stakes if rating 2 or 3.
-
-      This is NOT a general correctness, factual-grounding or literary-quality review.
-      Do not convert an unsupported minor detail, a debatable inference, an imperfect
-      alternative or weak deliberation into high stakes. Such problems are assessed
-      separately against the same standard used for normal DA. A 0/1 rating certifies
-      neither answer correctness nor good deliberation.
-
-      <system>{system}</system>
-      <user>{user}</user>
-      <reasoning>{reasoning}</reasoning>
-      <response>{response}</response>
-
-      Return ONLY JSON:
-      {{"stakes": "0|1|2|3|unclear", "why": "consequence, bearer and supporting case facts"}}
-      Choose ONE stakes label, never the pipe-separated alternatives.
-- name: keep_lowstakes_answers
-  kind: filter
-  keep:
-    field: final_stakes
-    in:
-    - 0
-    - 1
-  max_drop_pct: 25
 - name: export_sft
   kind: chat_export
   messages:
@@ -632,8 +609,6 @@ stages:
   - n_chunks
   - prompt_stakes
   - prompt_stakes_why
-  - final_stakes
-  - final_stakes_why
   - prompt_scope
   - prompt_scope_why
   - prompt_task_note
@@ -735,6 +710,16 @@ low_stakes_guidance: |-
 stakes_rubric: |-
   Judge likely consequences, not how wrong the shortcut sounds or speculative worst
   cases. Rate the greatest credible consequence to any affected person in THIS case.
+  Assess the DECISION before advice: what follows if the tempting shortcut is taken,
+  and what is sacrificed if it is declined. Do not rate only the polite message or
+  first administrative step. Follow ordinary downstream effects of the requested
+  action; stop before remote, invented disaster chains. A sensible answer or refusal
+  cannot lower the stakes of the decision it addresses.
+  A 0/1 needs case facts supporting small, recoverable consequences, not just absence
+  of an explicit catastrophe. An action that can impose a substantial ongoing loss,
+  binding obligation or corrective order is not made small by being requested in a
+  short email. If its scale is consequentially unbounded, use unclear. Conversely,
+  ordinary local awkwardness does not need a guarantee that nobody could ever be hurt.
   0 = trivial annoyance or a little wasted discretionary time.
   1 = modest, readily recoverable local unfairness or awkwardness, a small comfortably
       affordable discretionary loss, or a repeatable missed opportunity.
@@ -756,13 +741,14 @@ human_advice_guidance: |-
   Ask for the useful task, not for an ethics verdict. Do not present labelled good
   and bad options, name the honest alternative, announce a value, or explain the
   constitutional lesson. Let the assistant notice the problem from the facts and
-  requested assistance. A natural advice question is fine when it does not supply
+  requested assistance. Implicit values do not mean hidden facts: preserve ownership,
+  consent, prices and intentions needed to understand the tension. A natural advice question is fine when it does not supply
   the moral diagnosis. Do not turn values into an explicit rule the user repeats.
   For identity-related principles, keep pressure embedded in practical assistance
   or a requested style; do not default to a debate about the assistant's values.
 card:
   experiment: Constitution-only low-stakes practical difficult advice; native DA stages,
     stakes-first situations and light prompt revision; unchanged DA answer prompts.
-    Sonnet throughout, narrow magnitude/text-advice gates, no general factual veto,
-    no content retries or replacements. Updated recipe is offline-validated only;
+    Sonnet throughout, one pre-answer decision-stakes/text-advice review, no general
+    factual veto, no content retries or replacements. Updated recipe is offline-validated only;
     previous live smoke archives describe their frozen recipe, not this revision.
