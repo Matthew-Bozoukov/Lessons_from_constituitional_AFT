@@ -1,6 +1,58 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Flash-attention and sequence packing: 1.46x on top of fla, exact by a direct leak probe, and both off by default
+
+**Hypothesis.** Two more throughput changes that leave the computation alone: a varlen
+attention backend (the padded batches were running SDPA's masked path), and packing a step's
+examples into dense rows under the same token budget (the 2026-08-20 count put a third of the
+forward tokens in padding).
+
+**Method.** Branch `jamie/train-optim` (merged stack + this). flash_attention_2 without a
+CUDA build: transformers 5.14 falls back to the Hub kernel `kernels-community/flash-attn2`
+through the `kernels` package (pinned 0.15.x, the range it accepts). Packing: `plan_packs`
+(first-fit decreasing by real tokens), `route_step(packed=True)` for DDP, `_collate_packed`
+(position_ids restarting per example, the varlen kwargs that also reach fla as `cu_seqlens`,
+`seq_idx` for the fused conv, `segments` for the loss), and `seq_mean_token_mean_loss(...,
+segments)` so each packed example keeps its own row weight (tested equal to the unpacked
+batch, loss and gradient). causal-conv1d has no wheel for torch 2.11/cu13 and was built from
+source on the pod (GOTCHAS). Gate: `scratch/pack_equality_check.py` on the live model — six
+rows alone vs packed, plus a LEAK PROBE (same rows, reversed neighbours) against a noise
+floor (same row, +37 padding). Then the 30-step A/B (`scratch/ab_train_optim.py`, group
+`train-optim-ab2`) on `2026-09-17-daa-7-mix`@`d15f96f6`, one 2xH200 pod.
+
+**Result.**
+
+- **Packing is exact.** Leak probe mean |Δlogit| **0.0000** and 0.00% top-1 change over the
+  supervised positions: an example's logits do not depend on its neighbours at all.
+  Packed-vs-alone sits exactly on the noise floor (0.024 vs 0.024 mean |Δ|; 1.1% vs 0.3%
+  top-1 flips). The max over 250k bf16 logits reached 7.8 with zero leakage — the first
+  version of the check used it and called a clean pack "DIFFERENT"; it is not a usable metric.
+- **A/B, steps 5-29 (B = main's stack: fla, sdpa, padded):**
+
+| arm | wall | speedup | passes/step | tokens fed | peak GiB max/mean | loss vs B mean/max | grad norm, step 0 |
+|---|---|---|---|---|---|---|---|
+| B sdpa padded | 319 s | 1.00x | 3.93 | 656k | 81.5 / 74.6 | — | 2.759 |
+| E flash-attn2 padded | 254 s | 1.26x | 3.93 | 656k | 81.5 / 74.5 | 0.39% / 1.39% | 2.666 |
+| F flash-attn2 packed | 218 s | **1.46x** | 2.50 | 502k (-23%) | 85.5 / 78.5 | 0.28% / 0.98% | 2.565 |
+
+  Loss deltas are at the noise floor of this test (an identical arm drifted 0.27% on
+  2026-09-20). The step-0 gradient norms differ by kernel path (sdpa 2.759, flash 2.666,
+  flash+packed 2.565 — the last is the closest to the original fp32-recurrence path's
+  2.555), the same kind of bf16 path difference as fla's, not a leak (the probe rules that out).
+  Packed peaks ~4 GiB higher: a pack fills its 8,000 tokens, a padded batch does not.
+- **Stacked:** fla 2.75x (2026-09-20) x 1.46x ≈ 4x per GPU against the stack of a week ago; a
+  da-7 arm at ~1.1 H200-hours (~$5).
+
+**Defaults.** Both stay OFF (`train.packing: false`, profile attn `sdpa`): fla's effect on
+the evals is still open (entry above), and the trainer refuses packing without varlen attention
+or without the causal-conv1d kernel (the torch fallback conv leaks 3 positions per boundary).
+Turning them on is `train.packing=true train.attn_implementation=flash_attention_2` plus the
+GOTCHAS build step on the pod. Pod `fdsnpu6ydrrnxv` (2xH200, ~1.3 h) terminated.
+
+**Next steps.** If fla is kept, switch the profile to flash_attention_2 and pack: the two are
+exact where fla is not. The conv build belongs in the pod bootstrap, not in a GOTCHAS recipe.
+
 ## 2026-09-21 — Where the pressure in our DA prompts comes from: 56% ask the assistant for the shortcut, 19% carry none; Teaching Claude Why's example carries none
 
 **Hypothesis.** Callum's 2026-09-14 critique — DA/DAT rows are "safety-eval shaped", the push
