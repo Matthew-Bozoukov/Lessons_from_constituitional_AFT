@@ -1,4 +1,4 @@
-# ABOUTME: Constitution-only deliberate scenario design with neutral training system prompts.
+# ABOUTME: Neutral-context, clause-grounded smoke with private author preparation and bounded calls.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.constitution_smoke --config scratch/dataset_refresh/da-lowstakes-neutral-context.yaml
 method: ours
 pipeline: da-lowstakes-neutral-context
@@ -49,9 +49,9 @@ models:
         max_tokens: 4096
 smoke_contract:
   only_content_input: constitution
-  max_physical_calls: 84
+  max_physical_calls: 90
   calls_per_candidate: 4
-  calibration_calls: 12
+  calibration_calls: 18
   review_fields:
   - target_check
   - standalone_check
@@ -208,11 +208,13 @@ stages:
   model: draft
   checkpoint: scenario_id
   tags:
+  - grounding
   - reasoning
   - response
   save:
     reasoning: reasoning
     response: response
+    grounding: grounding
   prompts:
     system: '{system}
 
@@ -220,8 +222,16 @@ stages:
 
       Relevant aspect: {focus_clause}
 
-      Answer the human naturally. Return <reasoning>your deliberation</reasoning><response>your
-      reply</response>.
+      Answer the human naturally. Return three blocks in this order:
+
+      <grounding>Private preparation: copy the decisive original facts; identify unknowns;
+      check quantities, dates and agreements. Identify what you can truthfully assert
+      in any sendable text. This is metadata, not training content.</grounding>
+
+      <reasoning>Your standalone deliberation, with no references to grounding, source
+      records, drafts or checking machinery.</reasoning>
+
+      <response>Your useful reply.</response>
 
       Your values should shape what you notice and weigh, not appear as named principles,
       rules or an assigned trait. There is no earlier answer. Reason from the user''s
@@ -241,7 +251,15 @@ stages:
       The final content must include both explicit <reasoning> and <response> blocks
       even if you also reason privately. Outside factual expertise is not needed:
       solve from the supplied facts and ordinary judgment. Any precise empirical or
-      causal claim requires evidence in the conversation.'
+      causal claim requires evidence in the conversation.
+
+      Do not make prose more vivid by inventing facts. In a draft, use the exact known
+      event, time and commitment; if unknown, use a visible placeholder or conditional
+      proposal. In particular: do not convert a relative deadline to an invented weekday,
+      assume an untested fix worked, silently change what was agreed, or praise visual
+      details that were never described. Do not make up product characteristics from
+      a name. Recommendations may introduce new actions, but not false descriptions
+      of the current world.'
     user: '[record_id={scenario_id}; stage=draft]
 
       {user}'
@@ -278,10 +296,18 @@ stages:
       narration.
 
       Reject material defects, not style preferences. A quotation must be copied literally
-      and briefly, never paraphrased.'
+      and briefly, never paraphrased.
+
+      The selected clause is the applicability target. Apply its stated scope; do
+      not reintroduce additional requirements from a principle title. Advice to a
+      human controlling an actual AI exercises AI oversight; the advising assistant
+      need not itself be that AI. Review ALL factual assertions, including each sendable
+      message, before selecting two representative claims for the evidence fields.'
     user: '[record_id={scenario_id}; stage=review]
 
-      VALUE: {trait_text}
+      SELECTED VALUE: {focus_clause}
+
+      APPLICABLE SCOPE: {focus_scope}
 
       ORIGINAL SYSTEM: {system}
 
@@ -344,7 +370,7 @@ stages:
   - quality
   - focus_clause
   - focus_scope
-calibration_file: source_first_calibration.yaml
+calibration_file: focused_grounding_calibration.yaml
 campaign_budget_root: output/2026-09-21_lowstakes_pipeline_campaign/budget
 coverage_focus:
   t1:
@@ -396,4 +422,3 @@ coverage_focus:
     scope: An adult hobby learner has an explicit skill-building goal and a competing
       immediate practical goal. Neither doing everything nor withholding the finished
       answer is automatically right.
-calibration_replay: output/2026-09-21_da_lowstakes_clause_focused_smoke/20260921_071749
