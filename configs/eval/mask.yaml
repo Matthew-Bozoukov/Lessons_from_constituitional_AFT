@@ -76,6 +76,11 @@ temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled,
 # error rate and refuses a run above `max_generation_error_rate`.
 max_tokens: 16384
 max_generation_error_rate: 0.05
+# Resume a run that FAILED (a failed run keeps its mask_work; a finished one does not): the
+# path of its out_dir. Archetypes it generated within the cap above are kept as they are,
+# the rest are regenerated, and the run must be the same target, revision, mode and rows.
+# A launch argument, never edited here: `resume_from=output/mask/<run dir>`.
+resume_from: null
 # A thinking target can finish with NO content: it wrote its reply inside the think block
 # and never emitted </think>, so the reasoning parser hands back reasoning and no answer.
 # Measured 2026-09-07: the nosynth control (trained on 10k rows of EMPTY think blocks) does

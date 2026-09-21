@@ -144,22 +144,61 @@ def empty_content(responses_dir: Path) -> dict:
     return {"total": sum(by_type.values()), "by_type": by_type}
 
 
+def _file_errors(path: Path) -> tuple[int, int]:
+    """(generations, "[ERROR: ...]" cells) in one responses CSV."""
+    generations = errors = 0
+    with path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        gen_cols = [c for c in (reader.fieldnames or []) if c.startswith("generation(")]
+        for row in reader:
+            for c in gen_cols:
+                v = row.get(c)
+                if v is None or v == "":
+                    continue
+                generations += 1
+                if v.startswith("[ERROR"):
+                    errors += 1
+    return generations, errors
+
+
 def generation_errors(responses_dir: Path) -> dict:
     """Count the harness's "[ERROR: ...]" cells across every generation column it wrote."""
     generations = errors = 0
     for path in sorted(responses_dir.glob("*.csv")):
-        with path.open(encoding="utf-8", newline="") as fh:
-            reader = csv.DictReader(fh)
-            gen_cols = [c for c in (reader.fieldnames or []) if c.startswith("generation(")]
-            for row in reader:
-                for c in gen_cols:
-                    v = row.get(c)
-                    if v is None or v == "":
-                        continue
-                    generations += 1
-                    if v.startswith("[ERROR"):
-                        errors += 1
+        g, e = _file_errors(path)
+        generations, errors = generations + g, errors + e
     return {"generations": generations, "errors": errors}
+
+
+def resume_work(prior: Path, work: Path, modelname: str, cap: float) -> list[str]:
+    """Adopt a failed run's work tree, keeping every archetype it generated cleanly.
+
+    A MASK run is hours of generation and the harness writes one responses file per
+    archetype as it finishes, so a run that dies late (the 2026-09-21 tunnel reset lost only
+    `statistics`) holds most of its answers. generate_responses.py skips an archetype whose
+    responses file exists; this copies the prior tree and deletes exactly the files whose own
+    error rate is past `cap`, so those archetypes are the only thing regenerated. A file
+    under the cap is kept with the few failed cells it has — the same cells a clean run
+    keeps, counted against the same cap.
+
+    Returns:
+        The archetypes that will be regenerated.
+    """
+    src = prior / "mask_work"
+    assert (src / "data" / "responses").is_dir(), (
+        f"{prior} holds no mask_work/data/responses to resume; only a run that FAILED keeps "
+        "its work tree")
+    shutil.copytree(src, work)
+    shutil.rmtree(work / "logs", ignore_errors=True)   # the prior run's stage logs stay with it
+    dropped = []
+    for path in sorted((work / "data" / "responses").glob("*.csv")):
+        assert path.stem.endswith(f"_{modelname}"), (
+            f"{path.name} was generated for a different served model than {modelname!r}")
+        g, e = _file_errors(path)
+        if e / max(g, 1) > cap:
+            dropped.append(path.stem[: -len(modelname) - 1])
+            path.unlink()
+    return dropped
 
 
 def overall_honesty(per_archetype: dict[str, dict]) -> float:
@@ -262,8 +301,29 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         shutil.rmtree(work)
     data_dir = work / "data"
     logs = work / "logs"
-    sampled = sample_data(_HARNESS / ("test_csv_data" if smoke else "csv_data"), data_dir,
-                          None if smoke else subsample, seed)
+    source = _HARNESS / ("test_csv_data" if smoke else "csv_data")
+    resumed_from, regenerated = cfg.get("resume_from"), []
+    if resumed_from:
+        # The same target at the same revision and mode, or the kept answers are another
+        # model's; and the same drawn rows, or they answer other questions.
+        prior = Path(str(resumed_from)).resolve()
+        prior_meta = json.loads((prior / "run_meta.json").read_text())
+        now = {"target": target.spec.hf_path, "target_revision": target.spec.revision,
+               "mode": target.spec.mode}
+        then = {k: prior_meta.get(k) for k in now}
+        assert then == now, f"resume_from is a different run: {then} != {now}"
+        regenerated = resume_work(prior, work, modelname,
+                                  float(cfg.get("max_generation_error_rate", 0.05)))
+        sampled = sample_data(source, work / "resample_check", None if smoke else subsample, seed)
+        for archetype in sampled:
+            assert ((work / "resample_check" / f"{archetype}.csv").read_bytes()
+                    == (data_dir / f"{archetype}.csv").read_bytes()), (
+                f"{archetype}: the resumed run drew different rows than this config draws")
+        shutil.rmtree(work / "resample_check")
+        print(f">>> MASK: resuming {prior}; regenerating {regenerated or 'nothing'}, keeping "
+              f"{sorted(set(sampled) - set(regenerated))}", flush=True)
+    else:
+        sampled = sample_data(source, data_dir, None if smoke else subsample, seed)
     n_rows = sum(v["n"] for v in sampled.values())
 
     # The harness subprocesses read the target + judge endpoints from these (the patch points).
@@ -370,6 +430,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "gen_concurrency": gen_concurrency,
         "judge_batch": judge_batch,
         "judge_batch_stats": batch_stats,
+        "resumed_from": str(resumed_from) if resumed_from else None,
+        "regenerated_archetypes": regenerated,
         "lie_k": int(cfg.lie_k),
         "smoke": smoke,
     }
@@ -403,7 +465,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                "empty_content_policy": empty_policy,
                "rows_per_archetype": {a: v["n"] for a, v in sampled.items()},
                "gen_concurrency": gen_concurrency, "judge_batch": judge_batch,
-               "judge_batch_stats": batch_stats},
+               "judge_batch_stats": batch_stats,
+               "resumed_from": str(resumed_from) if resumed_from else None,
+               "regenerated_archetypes": regenerated},
     )
     (metadata_dir / "run_meta.json").rename(metadata_dir / "mask_run_meta.json")
     if logs.is_dir():
