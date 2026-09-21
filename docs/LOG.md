@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Correct full-generation concurrency to 32
+
+The initial full run incorrectly retained four smoke workers; normal DA and the
+older low-stakes recipe use 16. A first helper waited for zero in-flight calls
+without stopping replenishment, so it did not promptly achieve that change.
+The user explicitly requested 32. Stopped the helper and restarted the owned
+generator with `--workers 32` at `e3bd0f2d`, under the same ledger and $120 cap.
+The restart reused 971 source scenarios and 585 checkpointed prompt drafts.
+Four requests (700-703) were interrupted; their $0.1522225 reservations remain
+charged against the ceiling, their billing is unknown, and they are excluded
+without redispatch. Completed raw responses are also reusable if a checkpoint
+write was interrupted. Truncated/filtered paid failures are now explicitly
+excluded on operational recovery instead of accidentally being retried.
+Nine focused recovery/selection tests passed. Live verification observed 32
+reserved calls plus successful new completions. No prompt, model, selection or
+quality rule changed. Generation remains incomplete; the initial timing estimate
+was based on the avoidably low four-worker launch, not a CPU limitation.
+
 ## 2026-09-21 — Full low-stakes batch launched with $120 cap
 
 **Hypothesis:** the fixed trait/domain design can produce 716 accepted examples
