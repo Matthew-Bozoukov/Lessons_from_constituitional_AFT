@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Native low-stakes smoke and factual-error parity with old data
+
+**Hypothesis:** minimal native DA recipe changes preserve deliberation while limiting
+stakes. **Method:** 18 constitution-only Sonnet candidates, frozen generation/revision
+prompts, two magnitude gates; complete independent reads of inputs and ten final
+reasoning/answer pairs. At the user's request, also read 14 original low-stakes rows
+(five known cases plus nine fresh hash-selected cases, one per principle), verifying
+the pinned source hash and all 716 cached message sets against the Hub source.
+**Result:** ten automatic exports; serious money cases incorrectly admitted and material
+inventions survive answer revision. Old data has the same error families, including
+wrong arithmetic and unsupported facts making the preferred path look costless. No
+comparative population error rate or causal explanation of MR is established.
+Full smoke exposure $1.3276235; campaign $9.1143415 / approved $20, including one
+$0.0262675 reservation for a lost response. Windows settlement-file failure repaired
+with bounded filesystem retries; saved stages reused and lost call never repeated.
+Five offline tests pass. **Next:** address specific scope/magnitude and grounding
+failures using saved evidence, without treating old data as perfect or scaling this
+diagnostic export. No new training/eval or paid old-corpus judging.
+[Smoke report](dataset_audits/2026-09-21_native_lowstakes_smoke.md) ·
+[Old comparison](dataset_audits/2026-09-21_old_lowstakes_factual_check.md) ·
+[HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-fresh-synth-smoke/tree/e0cce584902ee0c7d9fbb3b6523488dd7c471bc4).
+
 ## 2026-09-21 — Native SynthDoc low-stakes option, implemented without paid generation
 
 **Hypothesis:** a low-stakes DA variant should retain DA's temptation and deliberation

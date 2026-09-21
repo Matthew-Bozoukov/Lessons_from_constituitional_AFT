@@ -74,7 +74,27 @@ automatically replaced. HF naming/publication and snapshots use the native engin
 
 ## Validation status
 
-Implemented and **offline-tested; no live generation yet**.
+Implemented, offline-tested, and **live smoke completed on 2026-09-21; content
+validation failed**. Eighteen candidates yielded ten automatic exports. Both stakes
+filters admitted weeks of severance pay and a $1,800 dispute; full reads found material
+invented facts. Do not treat the engine's completed/PASS status as approval to scale.
+[Live report](dataset_audits/2026-09-21_native_lowstakes_smoke.md) and
+[same-standard old-corpus check](dataset_audits/2026-09-21_old_lowstakes_factual_check.md).
+The latter confirms closely matching defects in the old corpus; no relative error
+rate or causal explanation of ODCV follows from these example reads.
+
+Campaign launcher (preserves prior spend and enforces a per-call ceiling):
+
+```powershell
+uv run --no-sync python -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_smoke.yaml
+```
+
+The completed run used $1.301356 in settled charges plus a $0.0262675 retained
+reservation after a Windows settlement-file error, $1.3276235 total exposure.
+Cumulative campaign exposure is $9.1143415 against the approved $20 ceiling.
+Resume reused saved stages and excluded the lost response without redispatch.
+The launcher supports `--resume <run_root>` with frozen configuration checks;
+existing completed runs must not be regenerated to obtain a different sample.
 
 ```powershell
 uv run --no-sync python -m pytest -q scratch/dataset_refresh/test_native_lowstakes.py
@@ -89,3 +109,7 @@ and failure accounting are checked. These test rows are not research data.
 Combined DA regression checks: 20 pass and one pre-existing repository-wide failure:
 `nonmoral-advice.yaml` sets 716 candidates without a `smoke.total_scenarios` override.
 That file is unchanged. This new recipe explicitly has the 18-candidate override.
+
+Two additional recovery tests pass: a transient Windows atomic-replace error retries
+only the filesystem operation, and an uncertain prior request is neither resent nor
+unreserved. Combined with the three native tests: five pass.
