@@ -1,12 +1,12 @@
 # ABOUTME: Methodology figure for the paper draft — the six-stage difficult-advice data generation
 # ABOUTME: pipeline, one sentence per stage, each stage labelled with the model that runs it.
 
-"""The data generation pipeline as six boxed stages, read top to bottom, at full text width.
+"""The data generation pipeline as six boxed stages, read top to bottom.
 
-Each stage is one box holding one line in aligned columns — number, stage name, its sentence,
-the model that runs it — with an arrow across every gap. The columns are sized to their
-content, so the figure is wide and short with no empty band; `check_fit` fails the run if a
-sentence would reach its model chip after a wording change.
+Each stage is one box — number badge, stage name over its one sentence, and the model that
+runs it as a chip on the right — with an arrow across every gap. The width is set by the
+longest sentence, so there is no empty band; `check_fit` fails the run if a sentence would
+reach its model chip after a wording change.
 
 Stage order, names and models are read off `configs/data/synth/da.yaml` (the project's DA
 baseline), not off the draft: the draft credits stage 1 to Haiku, but `chunk_constitution` is
@@ -16,7 +16,7 @@ Colour encodes the MODEL here, never an arm, so none of the fixed arm colours ar
 model colour; the model is also written in every box, so colour is a redundant cue.
 
 Earlier cuts: one horizontal row of cards (commit 503f620e), tall boxed rows (0f76f733),
-an unboxed numbered spine (738bda8b).
+an unboxed numbered spine (738bda8b), one-line boxes at 6.5in wide (eaed2586).
 
     uv run python scratch/datagen_pipeline_diagram.py [--out_dir output/figures]
 """
@@ -76,14 +76,14 @@ STAGES = [
     ),
 ]
 
-W = 6.5  # inches; data coordinates ARE inches, so circles stay round
+W = 4.95  # inches; data coordinates ARE inches, so circles stay round
 PAD = 0.03  # figure edge to the boxes
-BOX_H, END_H, GAP = 0.31, 0.24, 0.12
+BOX_H, END_H, GAP = 0.4, 0.24, 0.11
 H = 2 * PAD + 2 * END_H + len(STAGES) * BOX_H + (len(STAGES) + 1) * GAP
 LEFT, RIGHT = PAD, W - PAD
-# Columns inside a box: number badge, stage name, sentence, model chip.
-BADGE_X, TITLE_X, SENTENCE_X = LEFT + 0.19, LEFT + 0.37, LEFT + 1.78
-BADGE_R = 0.088
+# Columns inside a box: number badge, stage name over its sentence, model chip.
+BADGE_X, TEXT_X = LEFT + 0.2, LEFT + 0.41
+BADGE_R = 0.1
 CHIP_W, CHIP_H = 1.0, 0.19
 CHIP_X = RIGHT - 0.07 - CHIP_W
 
@@ -172,13 +172,13 @@ def stage(ax, y: float, n: int, title: str, sentence: str, model: str, colour: s
         str(n),
         ha="center",
         va="center",
-        fontsize=6.2,
+        fontsize=6.6,
         fontweight="bold",
         color="white",
     )
     ax.text(
-        TITLE_X,
-        mid,
+        TEXT_X,
+        mid + 0.078,
         title,
         ha="left",
         va="center",
@@ -187,7 +187,7 @@ def stage(ax, y: float, n: int, title: str, sentence: str, model: str, colour: s
         color=INK,
     )
     body = ax.text(
-        SENTENCE_X, mid, sentence, ha="left", va="center", fontsize=7.0, color=BODY
+        TEXT_X, mid - 0.088, sentence, ha="left", va="center", fontsize=7.0, color=BODY
     )
     ax.add_patch(
         FancyBboxPatch(
@@ -220,7 +220,7 @@ def check_fit(fig, sentences) -> None:
         if end > CHIP_X - 0.06:
             raise ValueError(
                 f"sentence reaches the model chip ({end:.2f}in > {CHIP_X - 0.06:.2f}in): "
-                f"{body.get_text()!r} — shorten it or move SENTENCE_X"
+                f"{body.get_text()!r} — shorten it or widen W"
             )
 
 
