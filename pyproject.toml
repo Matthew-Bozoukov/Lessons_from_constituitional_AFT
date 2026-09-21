@@ -36,7 +36,7 @@ dependencies = [
     # fetches the prebuilt binary for the running torch/CUDA. flash-attn itself has no wheel
     # for torch 2.11/cu13 (2026-09-21) and takes an hour to build. Varlen attention is what
     # packing needs (train.packing); it is also the kernel path for padded batches.
-    "kernels; sys_platform == 'linux'",
+    "kernels>=0.15.2,<0.16; sys_platform == 'linux'",  # the range transformers 5.14 accepts
     # --- shared analysis/data stack ---
     "datasets>=5.0.0",
     "huggingface-hub>=1.25.1",
