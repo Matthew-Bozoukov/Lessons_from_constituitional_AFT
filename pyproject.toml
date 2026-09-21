@@ -151,3 +151,13 @@ markers = [
 name = "causal-conv1d"
 version = "1.7.0"
 requires-dist = ["torch", "packaging", "ninja"]
+
+# Everything about causal-conv1d's build that is NOT a path lives here: build from source
+# (its setup.py otherwise looks for a prebuilt wheel to download and there is none for this
+# torch/CUDA) and use the pod's cores. What cannot live here is where the pod's CUDA is —
+# CUDA_HOME, nvcc on PATH and an unversioned libcudart.so for the linker are paths into the
+# venv that uv cannot substitute (no ${VIRTUAL_ENV} in extra-build-variables) and, for the
+# symlink, a filesystem action — so `runpod up --train` exports those before its second `uv
+# sync` (src/infra/runpod.py KERNEL_BUILD).
+[tool.uv.extra-build-variables]
+causal-conv1d = { CAUSAL_CONV1D_FORCE_BUILD = "TRUE", MAX_JOBS = "64" }

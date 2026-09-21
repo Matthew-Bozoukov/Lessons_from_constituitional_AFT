@@ -880,12 +880,13 @@ def _pinned_vllm() -> str:
 # CUDA layout's nvcc. Two syncs: the first installs everything but the kernel (so torch and
 # nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc on
 # PATH, and an unversioned libcudart.so the linker wants and the pip layout does not ship —
-# and the second sync builds the kernel. The package and its version are the lock's; this is
-# only where the pod's CUDA lives.
+# and the second sync builds the kernel. The package, its version and its path-free build
+# variables (pyproject.toml `extra-build-variables`) are the lock's; this is only where the
+# pod's CUDA lives.
 KERNEL_BUILD = """uv sync --no-install-package causal-conv1d
 CU={workdir}/.venv/lib/python3.12/site-packages/nvidia/cu13
 mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
-export CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib MAX_JOBS=64
+export CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib
 echo BUILDING_CAUSAL_CONV1D
 uv sync"""
 
