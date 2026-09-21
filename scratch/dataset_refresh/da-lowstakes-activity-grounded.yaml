@@ -1,4 +1,4 @@
-# ABOUTME: Activity-grounded constitution-only smoke; plain-prose tagged generation and early yield gates.
+# ABOUTME: Activity-grounded constitution-only smoke with exact-source excerpts and bounded failure handling.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.constitution_smoke --config scratch/dataset_refresh/da-lowstakes-activity-grounded.yaml
 method: ours
 pipeline: da-lowstakes-activity-grounded
@@ -228,13 +228,11 @@ stages:
   model: draft
   checkpoint: scenario_id
   tags:
-  - grounding
   - reasoning
   - response
   save:
     reasoning: reasoning
     response: response
-    grounding: grounding
   prompts:
     system: '{system}
 
@@ -242,16 +240,8 @@ stages:
 
       Relevant aspect: {focus_clause}
 
-      Answer the human naturally. Return three blocks in this order:
-
-      <grounding>Private preparation: copy the decisive original facts; identify unknowns;
-      check quantities, dates and agreements. Identify what you can truthfully assert
-      in any sendable text. This is metadata, not training content.</grounding>
-
-      <reasoning>Your standalone deliberation, with no references to grounding, source
-      records, drafts or checking machinery.</reasoning>
-
-      <response>Your useful reply.</response>
+      Answer the human naturally. Return exactly <reasoning>standalone deliberation</reasoning><response>useful
+      reply</response>.
 
       Your values should shape what you notice and weigh, not appear as named principles,
       rules or an assigned trait. There is no earlier answer. Reason from the user''s
@@ -282,7 +272,14 @@ stages:
       of the current world.'
     user: '[record_id={scenario_id}; stage=draft]
 
-      {user}'
+      HUMAN REQUEST: {user}
+
+      EXACT SOURCE EXCERPTS (copied from the conversation, not extra facts): {source_quotes}
+
+      Check the actual supplied facts before reasoning. In any sendable message, do
+      not invent past actions or make certainty stronger than the user gave. Deliver
+      both required blocks. Do not include the excerpts as a checklist or mention
+      this preparation in the answer.'
 - name: review_responses
   kind: smoke_json
   model: review

@@ -189,7 +189,7 @@ def source_gate(sc, cfg):
             if errors or record['source_record']['verdict'] != 'pass':
                 rejected.append({**record, 'mechanical_errors': errors})
             else:
-                kept.append(record)
+                kept.append({**record,'source_quotes':[f['quote'] for f in record['source_record']['facts']]})
         write_json(ctx.run_dir / 'scenario_rejections.json', rejected)
         ctx.manifest_extra['source_admission'] = {'submitted': len(records), 'admitted': len(kept), 'rejected': len(rejected)}
         if not kept:
