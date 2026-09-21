@@ -2,6 +2,14 @@
 <!-- ABOUTME: Records scientific differences, operational limits and offline validation. -->
 # Low-stakes difficult advice
 
+**Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml`, a native
+configuration variant emphasizing practical requests, implicit values, retained
+tradeoffs and material factual review. It uses the same constitution without old
+source rows. See the [prospective plan and live report](dataset_audits/2026-09-21_practical_lowstakes_smoke.md).
+The guarded launcher below now selects this candidate; older frozen launch configs
+preserve the preceding run. The rest of this document describes the initial minimal
+variant and its historical validation, not the practical variant's current status.
+
 SynthDoc selects a document type through a YAML configuration. The new option is
 `configs/data/synth/da-lowstakes-fresh.yaml`, using only the existing native operators.
 The historical `da-lowstakes.yaml` still rewrites a saved corpus; this option does not.

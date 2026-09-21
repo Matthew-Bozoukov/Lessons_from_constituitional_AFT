@@ -1,4 +1,4 @@
-# ABOUTME: Runs the unchanged native DA low-stakes recipe with the shared per-call budget ledger.
+# ABOUTME: Runs the selected native DA low-stakes recipe with the shared per-call budget ledger.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_smoke.yaml
 import argparse
 from collections import Counter
@@ -26,6 +26,7 @@ class GuardedClient(BudgetClient):
         self.count = len(prior)
         self.unavailable = {e['request_sha256'] for e in prior if e['status'] != 'settled'}
         self.limit = cfg['max_physical_calls']
+        self.arm = Path(cfg.get('recipe', 'da-lowstakes-fresh.yaml')).stem
 
     def chat(self, **kw):
         if digest(kw) in self.unavailable:
@@ -34,7 +35,7 @@ class GuardedClient(BudgetClient):
             if self.stop.is_set() or self.count >= self.limit:
                 raise BudgetStop('Smoke dispatch stopped; no new requests permitted')
             self.count += 1
-        self.local.arm = 'da-lowstakes-fresh'
+        self.local.arm = self.arm
         self.local.run_root = self.run_root
         self.local.candidate_id = 'request:' + hashlib.sha256(json.dumps(kw['messages']).encode()).hexdigest()[:16]
         self.local.stage = kw['messages'][0]['content'].splitlines()[0][:100]
@@ -63,7 +64,7 @@ def main():
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
     cfg=OmegaConf.to_container(OmegaConf.load(launch['recipe']),resolve=True)
     assert cfg['smoke']['total_scenarios']==18 and launch['ceiling_usd']<=20
-    assert cfg['pipeline']=='da-lowstakes-fresh' and not cfg.get('batch')
+    assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical'} and not cfg.get('batch')
     cfg['budget_usd']=launch['ceiling_usd']  # Soft native guard; shared ledger is authoritative.
     root=Path(args.resume) if args.resume else Path('output')/to_local(artifact_name(cfg['pipeline']+' guarded smoke'))/timestamp()
     if args.resume:
@@ -88,7 +89,7 @@ def main():
         shutil.copy2(source,target)
     write_json((archive/'launch_meta.json' if args.resume else root/'launch_meta.json'),dict(git_sha=git_sha(),launch=launch,recipe=cfg,
         hashes={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},
-        note='Native prompts/stages unchanged; transport retries disabled by shared BudgetClient; native parse attempts remain bounded.'))
+        note='Selected native recipe frozen before dispatch; transport retries disabled by shared BudgetClient; native parse attempts remain bounded.'))
     load_dotenv()
     client=GuardedClient(Path(launch['campaign_budget_root']),launch,root)
     print('SMOKE_ROOT='+str(root.resolve()),flush=True)

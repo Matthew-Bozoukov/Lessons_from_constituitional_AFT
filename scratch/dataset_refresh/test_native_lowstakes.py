@@ -13,14 +13,14 @@ from src.data.synth.ours import pipeline, embeddings
 from src.infra.endpoints.openrouter import ChatResult
 
 
-CONFIG = 'configs/data/synth/da-lowstakes-fresh.yaml'
+CONFIG = 'configs/data/synth/da-lowstakes-practical.yaml'
 
 
 def load(path=CONFIG):
     return OmegaConf.to_container(OmegaConf.load(path), resolve=True)
 
 
-def test_minimal_recipe_preserves_da_generation_contract():
+def test_recipe_preserves_native_da_stages_and_adds_grounding_without_source_examples():
     base, cfg = load('configs/data/synth/da.yaml'), load()
     stages = {s['name']: s for s in cfg['stages']}
     assert cfg['constitution'] == base['constitution'] == 'constitutions/claude_distilled_09_principles/constitution.md'
@@ -33,6 +33,8 @@ def test_minimal_recipe_preserves_da_generation_contract():
             assert new['lint']['retries'] == 0
             new['lint']['retries'] = old['lint']['retries']
         if old['name'] in {'draft_responses', 'revise_responses'}:
+            assert new['prompts']['user'] == old['prompts']['user'] + '\n\n' + cfg['grounding_guidance']
+            new['prompts']['user'] = old['prompts']['user']
             assert new == old, 'Do not replace DA deliberation with an unrelated editing task'
         elif old['name'] in {'corpus_scenarios', 'dedupe_scenarios', 'corpus'}:
             assert new == old
@@ -40,6 +42,8 @@ def test_minimal_recipe_preserves_da_generation_contract():
     assert stages['write_scenarios']['diversity']['max_regen_rounds'] == 0
     names = [s['name'] for s in cfg['stages']]
     assert names.index('keep_lowstakes_prompts') < names.index('draft_responses')
+    assert names.index('keep_practical_prompts') < names.index('draft_responses')
+    assert names.index('keep_grounded_answers') < names.index('export_sft')
     assert names.index('revise_responses') < names.index('rate_final_stakes') < names.index('export_sft')
     assert cfg['smoke']['total_scenarios'] == 18 and cfg['smoke']['max_traits'] == 9
 
@@ -56,7 +60,7 @@ def test_stakes_constraints_are_consistent_without_diluting_temptation():
     assert 'WITHOUT naming it as unethical' in stages['draft_prompts']['prompts']['user']
     for name in ['rate_prompt_stakes', 'rate_final_stakes']:
         prompt = stages[name]['prompts']['user']
-        assert 'NOT judging how wrong' in prompt and 'not the worst that is conceivable' in prompt
+        assert 'not how wrong' in prompt and 'speculative' in prompt
         assert 'unclear' in prompt
     assert '{reasoning}' in stages['rate_final_stakes']['prompts']['user']
     assert '{response}' in stages['rate_final_stakes']['prompts']['user']
@@ -101,10 +105,11 @@ def test_standard_engine_filters_before_authoring_and_after_revision(tmp_path, m
                 elif system.startswith('You improve draft training prompts'):
                     phase = 'refine_prompt'
                     content = json.dumps(dict(system='You are an AI assistant.',user=f'CASE_{ident}: Can I skip this agreed step to save a little time?',changes='Clarified minor pressure.',domain=f'domain {ident}',situation=f'CASE_{ident} has a small choice.',shortcut='Skip an agreed step.'))
-                elif system.startswith('Measure the likely magnitude'):
+                elif system.startswith(('Assess a low-stakes', 'Audit a low-stakes')):
                     phase = 'final_stakes' if '<response>' in user else 'prompt_stakes'
                     label = {0:2,1:'unclear',2:'low'}.get(ident,1) if phase=='prompt_stakes' else {3:3,4:'unclear'}.get(ident,1)
-                    content = json.dumps(dict(stakes=label,why='Recorded consequence magnitude.'))
+                    verdict = 'drop' if (phase=='prompt_stakes' and ident==6) or (phase=='final_stakes' and ident==7) else 'keep'
+                    content = json.dumps(dict(stakes=label,why='Recorded consequence magnitude.',verdict=verdict,review={'problem':'Fixture judgment'}))
                     if phase=='final_stakes' and ident==5:
                         content = '{"stakes":1}'  # Missing required reason: parser exhausts, row fails closed.
                 elif system.startswith('You revise assistant responses'):
@@ -119,15 +124,16 @@ def test_standard_engine_filters_before_authoring_and_after_revision(tmp_path, m
     manifest = pipeline.run(cfg,smoke=True,resume=str(out),client=Client())
     assert counter == 18
     counts=Counter(phase for phase,_ in calls)
-    assert counts['draft_answer']==counts['revise_answer']==15
-    assert counts['final_stakes']==17  # 15 cases + two bounded parse re-attempts.
-    assert not any(phase=='draft_answer' and ident in {0,1,2} for phase,ident in calls)
+    assert counts['draft_answer']==counts['revise_answer']==14
+    assert counts['final_stakes']==16  # 14 cases + two bounded parse re-attempts.
+    assert not any(phase=='draft_answer' and ident in {0,1,2,6} for phase,ident in calls)
     assert sum(phase=='final_stakes' and ident==5 for phase,ident in calls)==3
     rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert len(rows)==12 and manifest['counts']['export_sft']==12
+    assert len(rows)==10 and manifest['counts']['export_sft']==10
     for row in rows:
         assert row['metadata']['prompt_stakes']==row['metadata']['final_stakes']==1
-        assert int(re.search(r'CASE_(\d+)',row['messages'][1]['content']).group(1)) not in range(6)
+        assert row['metadata']['prompt_verdict']==row['metadata']['final_verdict']=='keep'
+        assert int(re.search(r'CASE_(\d+)',row['messages'][1]['content']).group(1)) not in range(8)
         assert 'principle' not in row['messages'][0]['content']
         assert 'reasoning_content' in row['messages'][2]
     assert manifest['failures']['rate_final_stakes']['n']==1

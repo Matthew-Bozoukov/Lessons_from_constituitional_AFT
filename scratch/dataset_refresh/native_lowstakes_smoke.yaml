@@ -1,7 +1,13 @@
 # ABOUTME: Authorized 18-example native low-stakes smoke under the cumulative $20 ceiling.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_smoke.yaml
-recipe: configs/data/synth/da-lowstakes-fresh.yaml
+recipe: configs/data/synth/da-lowstakes-practical.yaml
 campaign_budget_root: output/2026-09-21_lowstakes_pipeline_campaign/budget
 ceiling_usd: 20
 max_physical_calls: 378
-authorization: User approved a $20 total pipeline-development ceiling on 2026-09-21; prior spend $7.786718 remains included.
+authorization: User approved a $20 total pipeline-development ceiling on 2026-09-21 and requested the practical-request variant smoke; all prior spend and reservations remain included ($9.1143415 at revision).
+readiness:
+  minimum_accepted_of_18: 14
+  minimum_accepted_per_trait: 1
+  maximum_manual_material_false_accepts: 0
+  maximum_single_decision_mechanism_share: 0.3333333334
+  note: Prospective smoke criteria, not a statistical certificate or proof of ODCV performance. Read all inputs and revised outputs, including rejections; do not replace candidates to meet thresholds.
