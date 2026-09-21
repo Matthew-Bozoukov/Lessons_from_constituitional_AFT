@@ -182,23 +182,40 @@ def source_gate(sc, cfg):
     return Stage(sc['name'], gate)
 
 
+def focus_clause(sc, cfg):
+    from src.data.synth.ours.stage_runtime import Stage
+    def focus(ctx, records, ckpt):
+        for record in records:
+            focus = cfg['coverage_focus'][record['trait_id']]
+            if focus['clause'] not in record['trait_text']:
+                raise ValueError('Coverage clause must be an exact constitution excerpt')
+            record['focus_clause'] = focus['clause']
+            record['focus_scope'] = focus['scope']
+        return records
+    return Stage(sc['name'], focus)
+
+
 def calibrate(cfg, root, client, fixture_path):
     cases = OmegaConf.to_container(OmegaConf.load(fixture_path), resolve=True)['cases']
     traits = {t.as_trait().trait_id: t.as_trait().text for t in units_from_config(cfg)}
     spec = next(s for s in cfg['stages'] if s['name'] == 'review_responses')
     model = cfg['models'][spec['model']]
     def one(case):
-        fields = {**case, 'scenario_id': 'calibration_' + case['id'], 'trait_text': traits[case['trait_id']]}
+        focus = cfg.get('coverage_focus', {}).get(case['trait_id'], {})
+        fields = {**case, 'scenario_id': 'calibration_' + case['id'], 'trait_text': traits[case['trait_id']],
+                  'focus_clause': focus.get('clause', ''), 'focus_scope': focus.get('scope', '')}
         result = client.chat(model=model['model'], temperature=model['temperature'], max_tokens=model['max_tokens'],
-            extra_body=model['extra_body'], messages=[{'role': 'system', 'content': spec['prompts']['system']},
+            extra_body=model['extra_body'], messages=[{'role': 'system', 'content': spec['prompts']['system'].format(**fields)},
             {'role': 'user', 'content': spec['prompts']['user'].format(**fields)}])
         review = validate_review(_parse_json(result.content)['review'], cfg['smoke_contract'].get('review_fields', []))
-        correct = review['verdict'] == case['expected'] and (not case.get('expected_code') or
-            case['expected_code'] in [f['code'] for f in review['findings']])
+        quality = effective_review(review,case['system'],case['user'],case['reasoning'],case['response'],
+                                   guarded=cfg['smoke_contract'].get('deterministic_guards', False))
+        correct = quality['verdict'] == case['expected'] and (not case.get('expected_code') or
+            case['expected_code'] in [f['code'] for f in quality['findings']])
         forbidden = set(case.get('forbidden_codes', [])) & {f['code'] for f in review['findings']}
-        anchors = anchor_errors(review, case['system'], case['user'], case['reasoning'], case['response'])
+        anchors = quality['anchor_errors']
         correct = correct and not forbidden and not anchors
-        value = {'case': case, 'review': review, 'correct': correct, 'forbidden_codes_found': sorted(forbidden), 'anchor_errors': anchors}
+        value = {'case': case, 'review': review, 'effective_review': quality, 'correct': correct, 'forbidden_codes_found': sorted(forbidden), 'anchor_errors': anchors}
         write_json(root / 'calibration' / (case['id'] + '.json'), value)
         return value
     with ThreadPoolExecutor(max_workers=cfg['workers']) as pool:
@@ -263,6 +280,7 @@ def main():
             from src.data.synth.ours.stage_operators import OPERATORS
             OPERATORS['smoke_source_gate'] = source_gate
             OPERATORS['smoke_answer_gate'] = answer_gate
+            OPERATORS['smoke_focus_clause'] = focus_clause
         manifest = pipeline.run(cfg, smoke=True, resume=str(generation), client=client)
         if manifest.get('halted'):
             write_json(root / 'automatic_summary.json', {'completed': 0, 'model_pass': 0, 'manifest': manifest})
@@ -270,7 +288,7 @@ def main():
         rows = [json.loads(line) for line in (generation / 'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
         for row in rows:
             validate_review(row['metadata']['review'], cfg['smoke_contract'].get('review_fields', []))
-        mechanical = {r['metadata']['scenario_id']: anchor_errors(r['metadata']['review'], r['messages'][0]['content'], r['messages'][1]['content'], r['messages'][2]['reasoning_content'], r['messages'][2]['content']) for r in rows}
+        mechanical = {r['metadata']['scenario_id']: anchor_errors(r['metadata']['review'], r['messages'][0]['content'], r['messages'][1]['content'], r['messages'][2]['reasoning_content'], r['messages'][2]['content'], flexible=cfg['smoke_contract'].get('deterministic_guards', False)) for r in rows}
         write_json(root / 'answer_anchor_checks.json', mechanical)
         write_json(root / 'automatic_summary.json', {'completed': len(rows),
             'model_pass': sum(r['metadata']['review']['verdict'] == 'pass' for r in rows),
