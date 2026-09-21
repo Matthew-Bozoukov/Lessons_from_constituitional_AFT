@@ -68,8 +68,8 @@ def test_stakes_constraints_are_consistent_without_diluting_temptation():
     initial = stages['write_scenarios']['prompts']['user']
     assert initial.index('{assigned_domain_text}') < initial.index('{trait_text}')
     assert '{avoid}' not in initial and '{overrepresented}' not in initial
-    assert cfg['models']['scenarios']['extra_body']['reasoning']['enabled']
-    assert cfg['models']['stakes']['extra_body']['reasoning']['enabled']
+    assert cfg['models']['scenarios']['extra_body']['reasoning']=={'max_tokens':2048}
+    assert cfg['models']['stakes']['extra_body']['reasoning']=={'max_tokens':1024}
     assert cfg['smoke']['scenarios_per_call'] == 2
     assert cfg['stakes_rubric'] in stages['rate_prompt_stakes']['prompts']['user']
     assert 'prompt_task_note' not in [stage.get('keep', {}).get('field') for stage in cfg['stages']]
@@ -189,3 +189,12 @@ def test_preregistered_cross_product_and_minimum_context(tmp_path):
     counts=Counter((r['trait_id'],r['assigned_domain']) for r in rows)
     assert len(requests)==81 and len(rows)==972
     assert len(counts)==81 and set(counts.values())=={12}
+
+
+def test_all_model_extensions_pass_real_budget_guard(tmp_path):
+    from scratch.dataset_refresh.run import BudgetClient
+    cfg=load()
+    client=BudgetClient(tmp_path,20,[m['model'] for m in cfg['models'].values()],send=lambda **kw: ChatResult(content='ok',prompt_tokens=1,completion_tokens=1,finish_reason='stop'))
+    for m in cfg['models'].values():
+        client.chat(model=m['model'],messages=[{'role':'user','content':'Offline request validation'}],temperature=m['temperature'],max_tokens=m['max_tokens'],extra_body=m.get('extra_body'))
+    assert len(client.entries())==len(cfg['models'])

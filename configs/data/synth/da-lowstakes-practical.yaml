@@ -45,7 +45,6 @@ models:
       out: 4500
     extra_body:
       reasoning:
-        enabled: true
         max_tokens: 2048
   draft:
     model: anthropic/claude-sonnet-5
@@ -114,7 +113,6 @@ models:
     max_tokens: 4096
     extra_body:
       reasoning:
-        enabled: true
         max_tokens: 1024
     assumed_tokens:
       in: 1600
