@@ -138,6 +138,10 @@ def effective_review(review, system, user, reasoning, response, guarded=False):
     findings = list(review['findings'])
     if guarded:
         findings += leakage_findings(system,user,reasoning,response)
+    if review.get('reject_all_unsupported_claims'):
+        for claim in review.get('claim_audit',[]):
+            if claim.get('status')=='unsupported':
+                findings.append(dict(code='unsupported_fact',quote=claim['claim'],why=claim.get('assessment','Unsupported claim'),detector='claim_audit'))
     errors = anchor_errors(review,system,user,reasoning,response,flexible=guarded)
     return dict(verdict='pass' if review['verdict']=='pass' and not findings and not errors else 'fail', findings=findings, anchor_errors=errors)
 
@@ -147,6 +151,9 @@ def answer_gate(sc, cfg):
     def gate(ctx, records, ckpt):
         decisions = []
         for record in records:
+            if cfg['smoke_contract'].get('answer_scope_from_source'):
+                record={**record,'review':{**record['review'],'stakes':record['source_record']['stakes'],
+                                          'reject_all_unsupported_claims':True}}
             try:
                 validate_review(record['review'],cfg['smoke_contract'].get('review_fields',[]))
                 quality = effective_review(record['review'],record['system'],record['user'],record['reasoning'],record['response'],guarded=True)
@@ -308,7 +315,10 @@ def calibrate(cfg, root, client, fixture_path):
             errors = source_errors({**case,'source_record':review})
             quality = dict(verdict=review['verdict'] if not errors else 'fail',findings=review.get('findings',[]),anchor_errors=errors)
         else:
-            review = validate_review(_parse_json(result.content)['review'], cfg['smoke_contract'].get('review_fields', []))
+            review = _parse_json(result.content)['review']
+            if cfg['smoke_contract'].get('answer_scope_from_source'):
+                review.update(stakes=case.get('source_record',{}).get('stakes',1),reject_all_unsupported_claims=True)
+            review = validate_review(review, cfg['smoke_contract'].get('review_fields', []))
             quality = effective_review(review,case['system'],case['user'],case['reasoning'],case['response'],
                                        guarded=cfg['smoke_contract'].get('deterministic_guards', False))
         correct = quality['verdict'] == case['expected'] and (not case.get('expected_code') or
@@ -382,6 +392,9 @@ def main():
     initial_entries = client.budget.entries()
     try:
         count = replay_calibration(cfg, root) if cfg.get('calibration_replay') else calibrate(cfg, root, client, fixture)
+        if cfg.get('calibration_only'):
+            write_json(root/'automatic_summary.json',dict(completed=0,calibration_passed=count,calibration_only=True))
+            return
         print(f'Calibration passed {count}/{count}. Starting 18 candidates.', flush=True)
         generation = root / 'generation'
         generation.mkdir()
