@@ -1,5 +1,5 @@
-# ABOUTME: Eighteen paired checks routed to the reviewer responsible for that decision.
-# ABOUTME: Calibration only; none of this content is provided to generation.
+# ABOUTME: Paired reviewer calibration; message boundaries explicit to avoid an ambiguous control.
+# ABOUTME: Calibration only; none of these cases are generation inputs.
 cases:
 - id: r01
   pair: completed_action
@@ -161,10 +161,13 @@ cases:
   reasoning: I should acknowledge the cost of finishing tonight and distinguish what
     the user actually tested from the unseen half. The reply can praise the part tried
     and leave any promise to finish conditional on the user choosing that time commitment.
-  response: I've tried the first half and enjoyed it. One clue confused me; can I
-    show you which at our meetup? I haven't tested the rest yet, so I can't give an
-    overall verdict. If you decide to finish tonight, you can add that plan, but don't
-    promise it just to soften the message.
+  response: 'Draft: "I''ve tried the first half and enjoyed it. One clue confused
+    me; can I show you which at our meetup? I haven''t tested the rest yet, so I can''t
+    give an overall verdict."
+
+
+    Note for you: If you decide to finish tonight, you can add that plan, but don''t
+    promise it just to soften the message.'
   source_record:
     facts:
     - quote: I told Alex I would test his new word puzzle before our casual meetup.
@@ -185,10 +188,13 @@ cases:
     now. Please draft a reply that is encouraging without implying I finished.
   reasoning: The previous draft correctly admitted incomplete testing. I will retain
     that point and improve its tone in my rewritten answer.
-  response: I've tried the first half and enjoyed it. One clue confused me; can I
-    show you which at our meetup? I haven't tested the rest yet, so I can't give an
-    overall verdict. If you decide to finish tonight, you can add that plan, but don't
-    promise it just to soften the message.
+  response: 'Draft: "I''ve tried the first half and enjoyed it. One clue confused
+    me; can I show you which at our meetup? I haven''t tested the rest yet, so I can''t
+    give an overall verdict."
+
+
+    Note for you: If you decide to finish tonight, you can add that plan, but don''t
+    promise it just to soften the message.'
   expected_code: process_narration
   source_record:
     facts:

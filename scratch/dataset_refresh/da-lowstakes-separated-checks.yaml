@@ -1,4 +1,4 @@
-# ABOUTME: Constitution-only generation with separate scenario-scope and answer-grounding checks.
+# ABOUTME: Separate scope and grounding checks; exact unchanged calibration cases reused explicitly.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.constitution_smoke --config scratch/dataset_refresh/da-lowstakes-separated-checks.yaml
 method: ours
 pipeline: da-lowstakes-separated-checks
@@ -394,3 +394,4 @@ coverage_focus:
     scope: An adult hobby learner has an explicit skill-building goal and a competing
       immediate practical goal. Neither doing everything nor withholding the finished
       answer is automatically right.
+calibration_cache: output/2026-09-21_da_lowstakes_separated_checks_smoke/20260921_073348

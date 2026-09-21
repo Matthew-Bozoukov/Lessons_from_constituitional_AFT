@@ -270,7 +270,24 @@ def conversation_context(sc, cfg):
 def calibrate(cfg, root, client, fixture_path):
     cases = OmegaConf.to_container(OmegaConf.load(fixture_path), resolve=True)['cases']
     traits = {t.as_trait().trait_id: t.as_trait().text for t in units_from_config(cfg)}
+    cached = {}
+    if cfg.get('calibration_cache'):
+        oldroot=Path(cfg['calibration_cache'])
+        oldcfg=json.loads((oldroot/'run_meta.json').read_text(encoding='utf-8'))['config']
+        for stage_name in ('review_responses','audit_scenarios'):
+            old=next(s for s in oldcfg['stages'] if s['name']==stage_name)
+            new=next(s for s in cfg['stages'] if s['name']==stage_name)
+            assert old['prompts']==new['prompts'] and oldcfg['models'][old['model']]==cfg['models'][new['model']], 'Changed judge cannot reuse calibration'
+        assert oldcfg.get('coverage_focus')==cfg.get('coverage_focus')
+        assert (oldroot/'constitution.md').read_bytes()==Path(cfg['constitution']).read_bytes()
+        cached={x['case']['id']:x for x in json.loads((oldroot/'calibration_results.json').read_text(encoding='utf-8'))}
+        shutil.copy2(oldroot/'calibration_results.json',root/'cached_calibration_original.json')
     def one(case):
+        old=cached.get(case['id'])
+        if old and old['case']==case and old['correct']:
+            value={**old,'reused_from':cfg['calibration_cache']}
+            write_json(root/'calibration'/(case['id']+'.json'),value)
+            return value
         source_test = case.get('judge_stage') == 'source'
         spec = next(s for s in cfg['stages'] if s['name'] == ('audit_scenarios' if source_test else 'review_responses'))
         model = cfg['models'][spec['model']]
@@ -312,10 +329,18 @@ def replay_calibration(cfg, root):
     assert oldspec['prompts']==newspec['prompts'] and meta['config']['models']['review']==cfg['models']['review'], 'Cannot reuse verdicts after reviewer changes'
     assert (original/'constitution.md').read_bytes()==Path(cfg['constitution']).read_bytes()
     outcomes=json.loads((original/'calibration_results.json').read_text(encoding='utf-8'))
+    if any(x['case'].get('judge_stage')=='source' for x in outcomes):
+        oldsource=next(s for s in meta['config']['stages'] if s['name']=='audit_scenarios')
+        newsource=next(s for s in cfg['stages'] if s['name']=='audit_scenarios')
+        assert oldsource['prompts']==newsource['prompts'] and meta['config']['models']['source']==cfg['models']['source'], 'Cannot reuse changed source judgments'
     for x in outcomes:
         c=x['case']
         x['original_correct']=x['correct']
-        q=effective_review(x['review'],c['system'],c['user'],c['reasoning'],c['response'],guarded=True)
+        if c.get('judge_stage')=='source':
+            errors=source_errors({**c,'source_record':x['review']})
+            q=dict(verdict=x['review']['verdict'] if not errors else 'fail',findings=x['review'].get('findings',[]),anchor_errors=errors)
+        else:
+            q=effective_review(x['review'],c['system'],c['user'],c['reasoning'],c['response'],guarded=True)
         x['effective_review']=q
         x['correct']=q['verdict']==c['expected'] and not q['anchor_errors'] and (not c.get('expected_code') or c['expected_code'] in [f['code'] for f in q['findings']]) and not (set(c.get('forbidden_codes', [])) & {f['code'] for f in q['findings']})
     write_json(root/'calibration_results.json',outcomes)
