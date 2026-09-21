@@ -392,3 +392,42 @@ def test_packed_loss_equals_the_unpacked_loss_and_gradient():
     assert torch.allclose(loss, ref, atol=1e-6)
     ref_grad = torch.cat([ref_in.grad[r, :lens[r]] for r in range(4)])[None]
     assert torch.allclose(packed_in.grad, ref_grad, atol=1e-6)
+
+
+# ------------------------------------------------------------------------ token weighting
+
+
+def test_token_mean_is_the_plain_mean_over_the_step_and_partition_invariant():
+    """token_mean_loss with the STEP total as divisor: the micro-batch pieces add up to the
+    one number a single full-batch token mean would give, whichever way the step is cut."""
+    torch = pytest.importorskip("torch")
+    import torch.nn.functional as F
+    from src.train.dynamic_batching import token_mean_loss
+
+    logits, labels = _random_case(seed=11)
+    sl, tl = logits[:, :-1, :].float().flatten(0, 1), labels[:, 1:].flatten()
+    step_tokens = int(tl.ne(-100).sum())
+    plain = F.cross_entropy(sl, tl, ignore_index=-100, reduction="sum") / step_tokens
+    whole = token_mean_loss(logits, labels, step_tokens)
+    parts = [[0], [1, 2, 3, 4, 5, 6], [7, 8], list(range(9, 16))]
+    split = sum(token_mean_loss(logits[p], labels[p], step_tokens) for p in parts)
+    assert torch.allclose(whole, plain, atol=1e-5) and torch.allclose(split, plain, atol=1e-5)
+    # and it is NOT the per-example weighting: a short row counts for less, not the same
+    assert not torch.allclose(whole, seq_mean_token_mean_loss(logits, labels, 16), atol=1e-3)
+
+
+def test_token_mean_restricted_and_packed_paths_agree_with_full_logits():
+    torch = pytest.importorskip("torch")
+    from src.train.dynamic_batching import token_mean_loss
+
+    logits, labels = _random_case(seed=12, batch=4)
+    step_tokens = int(labels[:, 1:].ne(-100).sum())
+    ref = token_mean_loss(logits, labels, step_tokens)
+    keep = supervised_positions(labels)
+    assert torch.allclose(token_mean_loss(logits[:, keep, :], labels, step_tokens, keep), ref, atol=1e-6)
+    lens = [int((labels[r] != -100).nonzero().max()) + 1 for r in range(4)]
+    ids = torch.cat([logits[r, :lens[r]] for r in range(4)])[None]
+    lab = torch.cat([labels[r, :lens[r]] for r in range(4)])[None]
+    seg = torch.cat([torch.full((lens[r],), r) for r in range(4)])[None]
+    keep = supervised_positions(lab)
+    assert torch.allclose(token_mean_loss(ids[:, keep, :], lab, step_tokens, keep, seg), ref, atol=1e-6)

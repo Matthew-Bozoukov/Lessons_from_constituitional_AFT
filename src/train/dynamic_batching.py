@@ -21,7 +21,13 @@ Two pieces, and the second is what makes the first legal:
   measured `ModelProfile.train_memory` entry for the live GPU overrides the default.
   Neither ``max_seq_len`` (a truncation ceiling, not a measurement) nor the model's
   context window (262k for Qwen3.6) says anything about training memory.
-- ``seq_mean_token_mean_loss``: each example's token-mean over its own supervised
+- ``token_mean_loss`` (the recipe's default since 2026-09-21, `train.loss_agg`): every
+  supervised token in the step weighs the same — the sum of per-token cross-entropy divided
+  by the step's total supervised-token count. The unit of training is the token, as in
+  Tülu 3 / OLMo 2 and the HF Trainer; a longer answer weighs more, a one-token answer less.
+  Any partition of the step gives the same gradient because the divisor is the step total.
+- ``seq_mean_token_mean_loss`` (`train.loss_agg: seq_mean_token_mean`, the recipe until
+  2026-09-21): each example's token-mean over its own supervised
   tokens, summed, divided by the constant ``global_batch``. Every example weighs
   1/global_batch regardless of length or grouping, so ANY partition of the step
   yields the same loss and gradient (linearity of the gradient of a sum). This is
@@ -142,6 +148,71 @@ def supervised_positions(labels):
     return labels[:, 1:].ne(-100).any(dim=0).nonzero(as_tuple=True)[0]
 
 
+def _supervised_cells(logits, labels, positions=None, segments=None):
+    """The supervised cells of a micro-batch: per-token cross-entropy and each cell's owner.
+
+    Shared by both aggregations. Causal shift: position i predicts token i+1, so position 0 is
+    never a target. Only supervised cells are upcast and scored — an unsupervised cell's
+    cross-entropy was always multiplied by zero, and at a ~250k vocab its fp32 row is what
+    bounded memory. The .float() matches the upcast transformers applies in its own loss path.
+
+    Returns:
+        (per_token [n_supervised], owner [n_supervised] example index, counts [n_examples]
+        supervised tokens per example over the WHOLE micro-batch, whatever `positions` kept).
+    """
+    import torch
+    import torch.nn.functional as F
+
+    if segments is None:
+        n_examples = labels.shape[0]
+        owner_full = torch.arange(n_examples, device=labels.device)[:, None].expand(-1, labels.shape[1] - 1)
+    else:
+        assert labels.shape[0] == 1 and segments.shape == labels.shape, "a packed row is batch 1"
+        n_examples = int(segments.max().item()) + 1
+        # The token at position i+1 belongs to the example that owns position i+1: the label
+        # side of the shift, so a pack boundary never lends a token across examples.
+        owner_full = segments[:, 1:]
+    counts = torch.bincount(owner_full[labels[:, 1:].ne(-100)], minlength=n_examples)
+    if (counts == 0).any():
+        bad = counts.eq(0).nonzero(as_tuple=True)[0].tolist()
+        raise ValueError(
+            f"micro-batch rows {bad} have no supervised tokens after the causal "
+            "shift; build_labels guarantees supervision, so this indicates a "
+            "truncation or masking bug upstream"
+        )
+    if positions is None:
+        shift_logits, shift_labels, owner = logits[:, :-1, :], labels[:, 1:], owner_full
+    else:
+        assert logits.shape[1] == positions.numel(), (
+            f"logits cover {logits.shape[1]} positions but {positions.numel()} were "
+            "requested; the forward did not honour logits_to_keep")
+        shift_logits, shift_labels, owner = logits, labels[:, positions + 1], owner_full[:, positions]
+    supervised = shift_labels.ne(-100)
+    per_token = F.cross_entropy(
+        shift_logits[supervised].float(), shift_labels[supervised], reduction="none")
+    return per_token, owner[supervised], counts
+
+
+def token_mean_loss(logits, labels, token_total: int, positions=None, segments=None):
+    """Every supervised token in the optimizer STEP weighs the same: sum of per-token CE over
+    this micro-batch, divided by the step's total supervised-token count.
+
+    The divisor is the whole step's count — every micro-batch on every rank — not this
+    micro-batch's, so any partition of the step gives the same loss and gradient (the
+    micro-batch sums add up to the step sum). Normalising per micro-batch and averaging
+    would be Megatron's pre-`calculate_per_token_loss` mean-of-means and the HF Trainer's
+    pre-October-2024 gradient-accumulation bug: micro-batches with fewer tokens would weigh
+    more. `segments` is accepted for the packed collator's sake and does not change the
+    weighting — under token weighting a pack boundary is irrelevant to the loss.
+
+    Args:
+        token_total: Supervised tokens (after the causal shift) across the ENTIRE step, the
+            same number on every rank.
+    """
+    per_token, _owner, _counts = _supervised_cells(logits, labels, positions, segments)
+    return per_token.sum() / token_total
+
+
 def seq_mean_token_mean_loss(logits, labels, global_batch: int, positions=None, segments=None):
     """Per-example weighted causal-LM loss, invariant to micro-batch grouping.
 
@@ -170,46 +241,9 @@ def seq_mean_token_mean_loss(logits, labels, global_batch: int, positions=None, 
         Scalar loss tensor: sum over rows of (row token-mean) / global_batch.
     """
     import torch
-    import torch.nn.functional as F
 
-    # Causal shift: position i predicts token i+1; position 0 is never a target.
-    if segments is None:
-        n_examples = labels.shape[0]
-        owner_full = torch.arange(n_examples, device=labels.device)[:, None].expand(-1, labels.shape[1] - 1)
-    else:
-        assert labels.shape[0] == 1 and segments.shape == labels.shape, "a packed row is batch 1"
-        n_examples = int(segments.max().item()) + 1
-        # The token at position i+1 belongs to the example that owns position i+1: the label
-        # side of the shift, so a pack boundary never lends a token across examples.
-        owner_full = segments[:, 1:]
-    counts = torch.bincount(owner_full[labels[:, 1:].ne(-100)], minlength=n_examples)
-    if (counts == 0).any():
-        bad = counts.eq(0).nonzero(as_tuple=True)[0].tolist()
-        raise ValueError(
-            f"micro-batch rows {bad} have no supervised tokens after the causal "
-            "shift; build_labels guarantees supervision, so this indicates a "
-            "truncation or masking bug upstream"
-        )
-
-    if positions is None:
-        shift_logits = logits[:, :-1, :]
-        shift_labels = labels[:, 1:]
-        owner = owner_full
-    else:
-        assert logits.shape[1] == positions.numel(), (
-            f"logits cover {logits.shape[1]} positions but {positions.numel()} were "
-            "requested; the forward did not honour logits_to_keep")
-        shift_logits = logits
-        shift_labels = labels[:, positions + 1]
-        owner = owner_full[:, positions]
-
-    # Only supervised cells are upcast and scored: an unsupervised cell's cross-entropy
-    # was always multiplied by zero, and at a ~250k vocab its fp32 row is what bounded
-    # memory. The .float() matches the upcast transformers applies in its own loss path.
-    supervised = shift_labels.ne(-100)
-    per_token = F.cross_entropy(
-        shift_logits[supervised].float(), shift_labels[supervised], reduction="none")
-    rows = owner[supervised]
+    per_token, rows, counts = _supervised_cells(logits, labels, positions, segments)
+    n_examples = counts.numel()
     per_example = torch.zeros(
         n_examples, dtype=per_token.dtype, device=per_token.device
     ).index_add(0, rows, per_token) / counts

@@ -29,6 +29,7 @@ from src.train.dynamic_batching import (  # noqa: E402
     route_step,
     seq_mean_token_mean_loss,
     supervised_positions,
+    token_mean_loss,
 )
 from src.train.launch import (  # noqa: E402
     check_retired_keys,
@@ -129,12 +130,14 @@ class DynamicBatchTrainer(SFTTrainer):
     """
 
     def __init__(self, *args, token_budget: int, global_batch: int,
-                 pad_token_id: int, packing: bool = False, **kwargs):
+                 pad_token_id: int, packing: bool = False, loss_agg: str = "token_mean", **kwargs):
         super().__init__(*args, **kwargs)
         self._token_budget = int(token_budget)
         self._global_batch = int(global_batch)
         self._pad_token_id = int(pad_token_id)
         self._packing = bool(packing)
+        assert loss_agg in ("token_mean", "seq_mean_token_mean"), loss_agg
+        self._loss_agg = loss_agg
         self._stream_checked = False
 
     def get_train_dataloader(self):
@@ -189,6 +192,10 @@ class DynamicBatchTrainer(SFTTrainer):
         local_plan = route_step(lengths, self._token_budget, world_size,
                                 packed=self._packing)[int(self.args.process_index)]
         scale = float(world_size)  # DDP mean -> sum; see class docstring
+        # Token weighting divides by the STEP's supervised-token count — every rank sees the
+        # same step (get_train_dataloader), so every rank computes the same number with no
+        # communication, and the micro-batch sums on all ranks add up to one token-mean.
+        step_tokens = sum(sum(1 for v in f["labels"][1:] if v != -100) for f in features)
         total = None
         for j, part in enumerate(local_plan):
             is_last = j == len(local_plan) - 1
@@ -211,8 +218,11 @@ class DynamicBatchTrainer(SFTTrainer):
                     # become a vocab-wide row (src/train/dynamic_batching.py).
                     keep = supervised_positions(labels)
                     out = model(**batch, use_cache=False, logits_to_keep=keep)
-                    loss = seq_mean_token_mean_loss(
-                        out.logits, labels, self._global_batch, keep, segments) * scale
+                    if self._loss_agg == "token_mean":
+                        loss = token_mean_loss(out.logits, labels, step_tokens, keep, segments) * scale
+                    else:
+                        loss = seq_mean_token_mean_loss(
+                            out.logits, labels, self._global_batch, keep, segments) * scale
                 # Backward INSIDE the sync context: gradients accumulate locally,
                 # and only the final pass's backward triggers the all-reduce.
                 self.accelerator.backward(loss)
@@ -689,8 +699,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     n_passes = sum(
         len(planner(lens[s:s + global_batch], dyn_budget))
         for s in range(0, len(lens) - global_batch + 1, global_batch))
+    loss_agg = str(cfg.train.get("loss_agg", "token_mean"))
     print(f">>> dynamic batching: token_budget={dyn_budget} [{budget_src}], "
-          f"global_batch={global_batch}, loss_agg=seq-mean-token-mean, "
+          f"global_batch={global_batch}, loss_agg={loss_agg}, "
           f"{'PACKED rows (no padding)' if packing else 'padded micro-batches'}, attn={attn_impl}"
           + (f", DDP routing over {world_size} ranks (route_step)"
              if world_size > 1 else ""))
@@ -752,6 +763,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         global_batch=global_batch,
         pad_token_id=tokenizer.pad_token_id,
         packing=packing,
+        loss_agg=loss_agg,
     )
 
     # One provenance stamp for every artifact this run publishes. Assembled AFTER every
