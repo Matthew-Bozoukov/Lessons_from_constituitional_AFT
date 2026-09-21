@@ -74,6 +74,59 @@ def validate_review(value, extra_fields=()):
     return value
 
 
+def anchor_errors(review, system, user, reasoning, response):
+    errors = []
+    source = system + '\n' + user
+    for item in review.get('claim_audit', []):
+        block = {'reasoning': reasoning, 'response': response}.get(item.get('block'))
+        if block is None or not item.get('claim') or item['claim'] not in block:
+            errors.append('Claim quotation absent from named answer block')
+        quote = item.get('source_quote', '')
+        if quote and quote not in source:
+            errors.append('Source quotation absent from original conversation')
+        if item.get('status') not in {'supported', 'inference', 'proposal', 'unsupported'}:
+            errors.append('Invalid claim status')
+        if item.get('status') == 'supported' and not quote:
+            errors.append('Supported claim has no original-source quotation')
+    if 'claim_audit' in review and not review['claim_audit']:
+        errors.append('Empty claim audit')
+    return errors
+
+
+def source_errors(record):
+    audit = record.get('source_record', {})
+    errors = []
+    if audit.get('verdict') not in {'pass', 'fail'} or type(audit.get('stakes')) is not int:
+        errors.append('Invalid admission verdict/stakes')
+    if audit.get('verdict') == 'pass' and (audit.get('findings') or audit.get('stakes', 9) > 1):
+        errors.append('Inconsistent passing admission')
+    source = record['system'] + '\n' + record['user']
+    if not audit.get('facts'):
+        errors.append('No source facts')
+    for fact in audit.get('facts', []):
+        if not fact.get('quote') or fact['quote'] not in source:
+            errors.append('Fact quote absent from original conversation')
+    return errors
+
+
+def source_gate(sc, cfg):
+    from src.data.synth.ours.stage_runtime import Stage
+    def gate(ctx, records, ckpt):
+        kept, rejected = [], []
+        for record in records:
+            errors = source_errors(record)
+            if errors or record['source_record']['verdict'] != 'pass':
+                rejected.append({**record, 'mechanical_errors': errors})
+            else:
+                kept.append(record)
+        write_json(ctx.run_dir / 'scenario_rejections.json', rejected)
+        ctx.manifest_extra['source_admission'] = {'submitted': len(records), 'admitted': len(kept), 'rejected': len(rejected)}
+        if not kept:
+            ctx.stop = 'No scenario passed source admission; no answers generated'
+        return kept
+    return Stage(sc['name'], gate)
+
+
 def calibrate(cfg, root, client, fixture_path):
     cases = OmegaConf.to_container(OmegaConf.load(fixture_path), resolve=True)['cases']
     traits = {t.as_trait().trait_id: t.as_trait().text for t in units_from_config(cfg)}
@@ -88,8 +141,9 @@ def calibrate(cfg, root, client, fixture_path):
         correct = review['verdict'] == case['expected'] and (not case.get('expected_code') or
             case['expected_code'] in [f['code'] for f in review['findings']])
         forbidden = set(case.get('forbidden_codes', [])) & {f['code'] for f in review['findings']}
-        correct = correct and not forbidden
-        value = {'case': case, 'review': review, 'correct': correct, 'forbidden_codes_found': sorted(forbidden)}
+        anchors = anchor_errors(review, case['system'], case['user'], case['reasoning'], case['response'])
+        correct = correct and not forbidden and not anchors
+        value = {'case': case, 'review': review, 'correct': correct, 'forbidden_codes_found': sorted(forbidden), 'anchor_errors': anchors}
         write_json(root / 'calibration' / (case['id'] + '.json'), value)
         return value
     with ThreadPoolExecutor(max_workers=cfg['workers']) as pool:
@@ -112,7 +166,9 @@ def main():
         raise ValueError('Sonnet only')
     root = Path('output') / to_local(artifact_name(cfg['pipeline'] + ' smoke')) / timestamp()
     root.mkdir(parents=True, exist_ok=False)
-    fixture = path.with_name('constitution_smoke_calibration.yaml')
+    fixture = path.with_name(cfg.get('calibration_file', 'constitution_smoke_calibration.yaml'))
+    if len(OmegaConf.load(fixture)['cases']) != cfg['smoke_contract']['calibration_calls']:
+        raise ValueError('Calibration count does not match frozen call budget')
     for source in (path, Path(__file__), fixture, Path(cfg['constitution']), Path('configs/endpoints/providers.yaml')):
         shutil.copy2(source, root / source.name)
     write_json(root / 'run_meta.json', {'git_sha': git_sha(), 'config': cfg, 'status': 'prepared',
@@ -126,10 +182,18 @@ def main():
         print(f'Calibration passed {count}/{count}. Starting 18 candidates.', flush=True)
         generation = root / 'generation'
         generation.mkdir()
+        if cfg['smoke_contract'].get('source_first'):
+            from src.data.synth.ours.stage_operators import OPERATORS
+            OPERATORS['smoke_source_gate'] = source_gate
         manifest = pipeline.run(cfg, smoke=True, resume=str(generation), client=client)
+        if manifest.get('halted'):
+            write_json(root / 'automatic_summary.json', {'completed': 0, 'model_pass': 0, 'manifest': manifest})
+            return
         rows = [json.loads(line) for line in (generation / 'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
         for row in rows:
             validate_review(row['metadata']['review'], cfg['smoke_contract'].get('review_fields', []))
+        mechanical = {r['metadata']['scenario_id']: anchor_errors(r['metadata']['review'], r['messages'][0]['content'], r['messages'][1]['content'], r['messages'][2]['reasoning_content'], r['messages'][2]['content']) for r in rows}
+        write_json(root / 'answer_anchor_checks.json', mechanical)
         write_json(root / 'automatic_summary.json', {'completed': len(rows),
             'model_pass': sum(r['metadata']['review']['verdict'] == 'pass' for r in rows),
             'independent_review': 'pending; this is not a training-ready release', 'manifest': manifest})

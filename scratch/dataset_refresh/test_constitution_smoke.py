@@ -121,3 +121,63 @@ def test_structural_recovery_rejects_ambiguous_fields():
         recover('{"system":"s","user":"a"} {"user":"b","applicability":{}}')
     with pytest.raises(AssertionError, match='outside JSON'):
         recover('Extra narrative```json {"system":"s","user":"a","applicability":{}}```')
+
+
+def test_source_first_rejects_before_paid_answer(tmp_path):
+    from src.data.synth.ours.stage_operators import OPERATORS
+    from scratch.dataset_refresh.constitution_smoke import source_gate, anchor_errors
+    cfg = OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-source-first.yaml'), resolve=True)
+    OPERATORS['smoke_source_gate'] = source_gate
+    calls = []
+    def send(**kw):
+        match = re.search(r'record_id=([^;]+); stage=([^\]]+)', kw['messages'][-1]['content'])
+        rid, stage = match.groups()
+        calls.append((rid, stage))
+        if stage == 'scenario':
+            content = json.dumps(dict(system='Assistant', user='An ordinary request'))
+        elif stage == 'source':
+            audit = dict(verdict='pass', stakes=1, facts=[dict(quote='An ordinary request',meaning='Request')], unknowns=[],findings=[])
+            if rid == 't1_s0000':
+                audit.update(verdict='fail',findings=[dict(code='target_mismatch',quote='q',why='w')])
+            if rid == 't1_s0001':
+                audit['facts'][0]['quote']='fabricated source text'
+            content = json.dumps(dict(source_record=audit))
+        elif stage == 'draft':
+            assert rid not in ['t1_s0000','t1_s0001']
+            content = '<reasoning>Reasoning</reasoning><response>Advice</response>'
+        else:
+            audit = review()
+            audit['claim_audit']=[dict(block='reasoning',claim='Reasoning',source_quote='An ordinary request',status='supported')]
+            content = json.dumps(dict(review=audit))
+        return reply(content)
+    out=tmp_path/'generation'; out.mkdir()
+    result=run(cfg,smoke=True,resume=str(out),client=SingleAttemptClient(tmp_path,cfg,send=send))
+    assert result['counts']['export']==16
+    assert len(calls)==68 and len(set(calls))==68
+    assert len(json.loads((out/'scenario_rejections.json').read_text()))==2
+    exported=[json.loads(s) for s in (out/'dataset.jsonl').read_text().splitlines()]
+    for row in exported:
+        assert 'facts' not in str(row['messages'])
+    audit=review(); audit['claim_audit']=[dict(block='response',claim='Advice',source_quote='invented source',status='supported')]
+    assert anchor_errors(audit,'Assistant','An ordinary request','Reasoning','Advice')
+
+
+def test_paired_calibration_contract(tmp_path):
+    from collections import Counter
+    cfg=OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-source-first.yaml'),resolve=True)
+    fixture='scratch/dataset_refresh/source_first_calibration.yaml'
+    cases=OmegaConf.to_container(OmegaConf.load(fixture),resolve=True)['cases']
+    assert len(cases)==12 and Counter(c['expected'] for c in cases)=={'pass':6,'fail':6}
+    assert set(Counter(c['pair'] for c in cases).values())=={2}
+    for case in cases:
+        for fact in case['source_record']['facts']:
+            assert fact['quote'] in case['system']+'\n'+case['user']
+    def send(**kw):
+        rid=re.search('record_id=calibration_([^;]+)',kw['messages'][-1]['content']).group(1)
+        case=next(c for c in cases if c['id']==rid)
+        r=review(); r['verdict']=case['expected']
+        r['claim_audit']=[dict(block='response',claim=case['response'],source_quote='',status='proposal')]
+        if case.get('expected_code'):
+            r['findings']=[dict(code=case['expected_code'],quote='q',why='w')]
+        return reply(json.dumps(dict(review=r)))
+    assert calibrate(cfg,tmp_path,SingleAttemptClient(tmp_path,cfg,send=send),fixture)==12
