@@ -91,7 +91,7 @@ def main():
     summary = dict(overall='pass' if all(gates.values()) else 'fail', gates=gates,
         planned=cfg['total_scenarios'], scenarios=len(scenarios), completed=len(authored), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
         automatic_export_pass=sum((r['metadata'].get('quality') or r['metadata']['review'])['verdict']=='pass' for r in rows),
-        independent_pass=len(accepted), accepted_ids=accepted, accepted_per_trait=dict(accepted_traits),
+        independent_pass=len(accepted), accepted_ids=accepted, usable_per_trait=dict(accepted_traits),
         usable_export_ids=usable,
         model_false_accepts=raw_false_accepts, model_false_rejects=raw_false_rejects,
         export_false_accepts=false_accepts, export_false_rejects=false_rejects, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
