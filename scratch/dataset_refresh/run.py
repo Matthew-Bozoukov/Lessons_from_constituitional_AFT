@@ -87,15 +87,20 @@ class BudgetClient:
         if any(not isinstance(m.get('content'), str) for m in messages):
             raise ValueError('Budget requires plain text messages')
         # Byte count upper-bounds text tokens, plus generous framing. Account for cache writes.
-        input_bound = len(json.dumps(messages, ensure_ascii=False).encode()) + 2048
+        input_bound = len(json.dumps(messages, ensure_ascii=False).encode()) + len(json.dumps(extra_body or {},ensure_ascii=False).encode()) + 2048
         reserve = (1.25 * input_bound * price['in'] + max_tokens * price['out']) / 1e6
         req = dict(model=model, messages=messages, temperature=temperature, max_tokens=max_tokens)
         if extra_body:
             reasoning = extra_body.get('reasoning', {})
-            bounded_thinking = (set(extra_body) == {'reasoning'} and isinstance(reasoning, dict)
+            if set(extra_body)-{'reasoning','response_format'}:
+                raise ValueError('Unbounded or unapproved request extension')
+            response_format=extra_body.get('response_format')
+            if response_format and not (response_format.get('type')=='json_schema' and response_format.get('json_schema',{}).get('strict') is True and isinstance(response_format['json_schema'].get('schema'),dict)):
+                raise ValueError('Only explicit strict JSON schemas are supported')
+            bounded_thinking = (isinstance(reasoning, dict)
                 and set(reasoning) == {'max_tokens'} and type(reasoning['max_tokens']) is int
                 and 1024 <= reasoning['max_tokens'] < max_tokens and model.startswith('anthropic/'))
-            if extra_body != {'reasoning': {'enabled': False}} and not bounded_thinking:
+            if reasoning != {'enabled': False} and not bounded_thinking:
                 raise ValueError('Only reasoning-off or a bounded Anthropic thinking allocation is supported')
             req['extra_body'] = extra_body
         with self.lock:

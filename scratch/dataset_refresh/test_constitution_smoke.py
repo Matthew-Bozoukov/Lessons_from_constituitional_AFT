@@ -268,3 +268,12 @@ def test_evidence_ids_preserve_words_and_reject_unknown_references():
     assert fixed['claim']=='Both acted independently.' and fixed['source_quote2']==source['u2']
     with pytest.raises(KeyError):
         resolve_evidence_ids({'review':{'claim_audit':[{'answer_id':'a99','source_ids':[]}],'findings':[]}},row)
+
+
+def test_strict_schema_source_enum_excludes_answer_ids():
+    from scratch.dataset_refresh.constitution_smoke import evidence_schema
+    r=dict(system='Assistant.',user='Known fact.',reasoning='Interpretation.',response='Proposed action.')
+    schema=evidence_schema(r)['json_schema']['schema']['properties']['review']
+    fields=schema['properties']['claim_audit']['items']['properties']
+    assert fields['source_ids']['items']['enum']==['s1','u1']
+    assert fields['answer_id']['enum']==['r1','a1']

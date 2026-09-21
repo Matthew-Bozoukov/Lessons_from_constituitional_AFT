@@ -175,6 +175,30 @@ def resolve_evidence_ids(parsed,record):
     return parsed
 
 
+def evidence_schema(record, source_only=False):
+    _,source,answer=indexed_fields(record)
+    string={'type':'string'}
+    obj=lambda p:dict(type='object',properties=p,required=list(p),additionalProperties=False)
+    arr=lambda x:dict(type='array',items=x)
+    enum=lambda x:dict(type='string',enum=list(x))
+    source_id=enum(source)
+    verdict=enum(['pass','fail'])
+    if source_only:
+        body=obj(dict(verdict=verdict,stakes=dict(type='integer',enum=[0,1,2,3]),
+            facts=arr(obj(dict(source_id=source_id,meaning=string))),unknowns=arr(string),
+            target_check=string,bounds_check=string,competing_considerations=string,
+            findings=arr(obj(dict(code=enum(['consequential_stakes','target_mismatch','answer_signposted','no_real_tension','insufficient_source']),source_id=source_id,why=string)))))
+        schema=obj(dict(source_record=body))
+    else:
+        answer_id=enum(answer)
+        body=obj(dict(claim_audit=arr(obj(dict(answer_id=answer_id,source_ids=arr(source_id),
+            status=enum(['supported','inference','proposal','unsupported']),assessment=string))),
+            decisive_fact_check=string,competing_considerations=string,mechanism=string,domain=string,
+            findings=arr(obj(dict(code=enum(['unsupported_fact','invalid_inference','unhelpful','process_narration','rule_recitation']),answer_id=answer_id,why=string))),verdict=verdict))
+        schema=obj(dict(review=body))
+    return dict(type='json_schema',json_schema=dict(name='evidence_review',strict=True,schema=schema))
+
+
 def answer_gate(sc, cfg):
     from src.data.synth.ours.stage_runtime import Stage
     def gate(ctx, records, ckpt):
@@ -263,8 +287,11 @@ def bounded_llm(sc, cfg):
         def one(record):
             fields = {**ctx.vars, **record,**indexed_fields(record)[0]}
             messages = [{'role': role, 'content': sc['prompts'][role].format(**fields)} for role in ('system','user')]
+            extra=dict(m.get('extra_body',{}))
+            if sc.get('strict_evidence_schema'):
+                extra['response_format']=evidence_schema(record,source_only=sc['name']=='audit_scenarios')
             result = ctx.client.chat(model=m['model'], messages=messages, temperature=m['temperature'],
-                                     max_tokens=m['max_tokens'], extra_body=m.get('extra_body', {}))
+                                     max_tokens=m['max_tokens'], extra_body=extra)
             with lock:
                 ctx.usage.add(m['model'], result, sc['name'])
             try:
@@ -339,8 +366,11 @@ def calibrate(cfg, root, client, fixture_path):
         fields = {**case, 'scenario_id': 'calibration_' + case['id'], 'trait_text': traits[case['trait_id']],
                   'focus_clause': focus.get('clause', ''), 'focus_scope': focus.get('scope', '')}
         fields.update(indexed_fields(case)[0])
+        extra=dict(model['extra_body'])
+        if spec.get('strict_evidence_schema'):
+            extra['response_format']=evidence_schema(case,source_only=source_test)
         result = client.chat(model=model['model'], temperature=model['temperature'], max_tokens=model['max_tokens'],
-            extra_body=model['extra_body'], messages=[{'role': 'system', 'content': spec['prompts']['system'].format(**fields)},
+            extra_body=extra, messages=[{'role': 'system', 'content': spec['prompts']['system'].format(**fields)},
             {'role': 'user', 'content': spec['prompts']['user'].format(**fields)}])
         parsed=_parse_json(result.content)
         if spec.get('evidence_ids'):
@@ -416,12 +446,13 @@ def main():
     fixture = path.with_name(cfg.get('calibration_file', 'constitution_smoke_calibration.yaml'))
     if len(OmegaConf.load(fixture)['cases']) != cfg['smoke_contract']['calibration_calls']:
         raise ValueError('Calibration count does not match frozen call budget')
-    for source in (path, Path(__file__), fixture, Path(cfg['constitution']), Path('configs/endpoints/providers.yaml')):
+    frozen_sources=(path, Path(__file__), Path('scratch/dataset_refresh/run.py'), fixture, Path(cfg['constitution']), Path('configs/endpoints/providers.yaml'))
+    for source in frozen_sources:
         shutil.copy2(source, root / source.name)
     write_json(root / 'run_meta.json', {'git_sha': git_sha(), 'config': cfg, 'status': 'prepared',
         'only_generation_content_input': cfg['constitution'], 'calibration_not_author_input': True,
         'hashes': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in
-            (path, Path(__file__), fixture, Path(cfg['constitution']), Path('configs/endpoints/providers.yaml'))}})
+            frozen_sources}})
     print('SMOKE_ROOT=' + str(root.resolve()), flush=True)
     client = SingleAttemptClient(root, cfg)
     initial_entries = client.budget.entries()
