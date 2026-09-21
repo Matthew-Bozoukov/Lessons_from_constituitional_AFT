@@ -1143,3 +1143,30 @@ anything that walks the turns by iteration (actions.py does) must drop `phase ==
 These are verified campaign lessons, implemented in `scratch/da_supervision/`,
 not assertions that the reusable pipeline has incorporated every workaround.
 See the [operational record](../scratch/da_supervision/archive/operations.md).
+
+## Driving an eval ON a pod needs two env vars the SSH path sets for you (2026-09-21)
+
+`uv run evals --server <pod>` starts vLLM through `SshExec`, whose `base_env` carries two
+facts about our pods: `HF_HOME=/workspace/hf` (where `runpod up --eval` pre-pulled the
+weights) and `VLLM_USE_FLASHINFER_SAMPLER=0`. Plain `uv run evals` ON the pod (the
+`--clone-repo` shape) goes through `LocalExec`, which inherits the shell's environment and
+sets neither. Without the second, vLLM's engine dies at start-up: flashinfer JIT-compiles its
+sampler with `/usr/local/cuda/bin/nvcc`, which the pod image does not have ("Ninja build
+failed ... nvcc: not found", surfaced only as "Engine core initialization failed" in the
+eval's own log — the cause is in `output/<eval>/server_8000/vllm.log`). Launch as:
+
+    HF_HOME=/workspace/hf VLLM_USE_FLASHINFER_SAMPLER=0 uv run evals --name <eval> --target <hf>
+
+The pod also needs `OPENROUTER_API_KEY` in `/root/work/.env` for judging (`--push_env`
+carries only the HF and W&B keys), and nothing tears the pod down for you: `--terminate-pod`
+needs the RunPod key, which should not be on the box.
+
+## A multi-hour eval over the SSH tunnel can lose everything to one TCP reset (2026-09-21)
+
+A MASK run (~3 h at 16k think tokens, 32 in flight) driven with `--server` died at 00:32 UTC
+to "Connection reset by peer" on the tunnel. `run_eval` opens the tunnel once and never
+reopens it, so every later generation failed, the run crossed `max_generation_error_rate`
+and refused to score, `--terminate-pod` released the pod, and the MASK runner cannot resume
+(it clears `mask_work` on start). The first four archetypes were intact (1.4% errors); all
+384 `statistics` generations were lost. ODCV-lite (~1 h) has not hit this. Until the tunnel
+reconnects by itself, drive MASK on the box (entry above).
