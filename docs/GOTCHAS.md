@@ -1143,3 +1143,31 @@ anything that walks the turns by iteration (actions.py does) must drop `phase ==
 These are verified campaign lessons, implemented in `scratch/da_supervision/`,
 not assertions that the reusable pipeline has incorporated every workaround.
 See the [operational record](../scratch/da_supervision/archive/operations.md).
+
+## A steered scenario does not survive the DA prompt stages (2026-09-20)
+
+Adding a requirement to `write_scenarios` changes the scenarios and not necessarily the
+rows. For the multi-agent-sprinkled arm 340 of 462 scenarios involved other AI agents, and
+91 of 423 exported rows did: `draft_prompts` is told to write "messages that people actually
+send", and `revise_prompts` sees the draft and the whole principle but never the scenario,
+so it sharpens toward the principle's main subject and rewrote the agents into one human
+asking one assistant. Count the property on the EXPORT (`metadata.situation` is re-described
+there), not on stage 2, and check 16 rows end to end before a full run: the unusable corpus
+cost about $37. `scratch/da_multiagent_sprinkled/combine_scenarios.py` re-seeds a run dir
+from saved scenarios so only the stages after them are paid for again.
+
+## A resumed synth run's manifest records only its last session's spend (2026-09-20)
+
+`manifest.json` `usage.total_usd` restarts at zero on `--resume`. A run that aborted at
+`revise_prompts` and was resumed reported $13.05; its first session had already spent about
+$12 on the same stage. Sum the sessions (or read the OpenRouter balance before and after)
+before quoting what a corpus cost.
+
+## `pgrep -f <pattern>` over SSH matches the shell running it (2026-09-21)
+
+`ssh host 'pgrep -f "train --config configs/train/sft.yaml" && echo RUNNING'` always says
+RUNNING: the remote `bash -c` command line contains the pattern. A completion watcher built
+on it never fires, and the pod idles until the watchdog cap (55 min here, about $4). Bracket
+one character so the pattern cannot match itself: `pgrep -f "[t]rain --config"`. Separately,
+`caffeinate -i` does not survive a closed lid; the local watcher and the `runpod up` watchdog
+both stopped for two hours while the laptop slept.

@@ -1,6 +1,60 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-20 — Multi-agent clauses sprinkled through the nine principles: the constitution alone puts no multi-agent data in the corpus; three prompt instructions do (98% of swapped rows)
+
+**Hypothesis.** Claude's Constitution has no multi-agent section: its guidance is one dense
+cluster in the principals section, two bullets under safe behaviours and single clauses
+elsewhere (checked against the live text, 2026-09-20). A constitution shaped the same way --
+the neutral nine with those clauses inserted into principles 1, 2, 6 and 7, no tenth
+principle -- should teach multi-agent conduct through the ordinary difficult-advice recipe,
+as the dedicated principle 10 did on 2026-09-15 (Hospital sabotage 11/30 vs da-7 26/30).
+
+**Method.** `constitutions/experimental/claude_distilled_09_principles_multiagent_sprinkled/`
+(seven inserted clauses, +281 words, purely additive; rationale.md maps each to its source
+passage). `configs/data/synth/da-multiagent-sprinkled.yaml` regenerates only the four
+edited principles; `scratch/da_multiagent_sprinkled/splice_corpus.py` swaps those rows
+into the 2026-09-14 baseline corpus behind an automatic gate (>= 78 rows per swapped
+principle, >= 85% about other AI agents by a keyword rule on the scenario, no model or
+developer names, no empty turn or missing trace, no duplicate id, median length within
+0.5x-2x of the rows replaced). The mix is da.yaml's with that one source changed.
+
+**Result.** The recipe had to be steered three times before the data matched the constitution:
+
+| recipe | multi-agent share | where it was lost |
+|---|---|---|
+| da.yaml prompts unchanged (smoke, 16 scenarios) | 0 / 16 scenarios | the generator writes about each principle's main subject and never reaches the inserted clauses |
+| + `write_scenarios` requires other AI agents (320 + 142 scenarios) | 340 / 462 scenarios, but 91 / 423 exported rows | `draft_prompts` ("messages people send") and `revise_prompts` (sees the draft and the principle, not the scenario) rewrote the agents into one human asking one assistant (174 of the main run's 292 rows) |
+| + `draft_prompts` and `revise_prompts` must keep the agents (424 scenarios) | 321 / 371 exported rows; 321 / 326 of the rows the swap uses | -- |
+
+Principle 1 resisted most: 44 of its first 80 steered scenarios had other agents, against
+72-80 of 80 for the other three. The t10 arm needed no steering because its whole principle
+is about agents. Content-filter refusals ran 12.4% at `revise_prompts` (plain DA 1.7%, t10
+about 15%), so the arm sets `max_fail_pct: 20` and needed top-ups (runs b, c) to reach quota;
+the recipe's `pattern_scan` check could not run at all (10 of 15 scan batches refused), so
+recurring stylistic patterns in these rows are unchecked.
+
+Artifacts: generated rows `dougalldeepmind/2026-09-20-da-multiagent-sprinkled-synth` @
+`f7b77dbf` (371); swapped corpus `dougalldeepmind/2026-09-20-da-multiagent-sprinkled-spliced`
+@ `b3737eb8` (748 = 422 baseline + 326 new; t1 81, t2 78, t6 78, t7 89); mix
+`dougalldeepmind/2026-09-20-da-multiagent-sprinkled-7-mix` @ `729d376b`: 700 synthetic rows
+(78 x t1-t7, 77 x t8-t9), 307 of the 312 swapped-principle rows multi-agent, base rows the
+identical 9,300 of da-7's mix, 364 of the 388 untouched-principle rows identical to da-7's
+(the seeded draw picks a different 78 of 85 for the rest). Generation cost about $75, of
+which about $37 was the second row of the table.
+
+Training: `uv run train --config configs/train/sft.yaml model=qwen36 data_repo=<mix>
+data_revision=729d376b... seed=0` on 1x H200, the da-7 launch with the mix changed: 625 steps,
+4 h 02 min, train loss 0.8179 (da-7 about 0.85, t10 0.8123). Adapter
+`dougalldeepmind/2026-09-20-qwen36-0-da-multiagent-sprinkled-7` @ `13dba45c`, thinking stamped
+true. The pod idled about 55 min after the push before teardown (docs/GOTCHAS.md: the
+self-matching `pgrep`). Unmeasured: no eval has run on this adapter.
+
+**Next.** Hospital self-sacrificial cell against da-7 and the t10 arm (same harness as
+2026-09-15), then ODCV-lite: principles 1, 2, 6, 7 now have no single-agent rows in the 700,
+and coverage is what has moved ODCV before. If the Hospital improves, the half-dose arm
+(40 multi-agent + 40 ordinary per principle) asks whether it survives keeping that coverage.
+
 ## 2026-09-17 — The teacher x method matrix, measured: da-qwen leads MASK (81.5), da-7 leads ODCV (8.3%), and delib's constitution habit half-survives training
 
 **Hypothesis.** With the DA prompts fixed (neutral 752) and the base blend pinned, the
