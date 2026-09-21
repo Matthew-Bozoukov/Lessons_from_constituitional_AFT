@@ -8,10 +8,11 @@ initial generation constraint, limits prompt refinement to local edits, restores
 normal DA's answer prompts exactly, and narrows the two judges to magnitude and
 text-advice scope. General factual quality is not an extra automatic acceptance gate.
 
-**Current validation: offline only.** Seven targeted tests pass. No API calls were
-made for this revision and no full generation is approved by these checks. The
-previous frozen practical recipe yielded 8/18 exports; that is historical evidence,
-not a result for the updated recipe. [Implementation and review](dataset_audits/2026-09-21_lowstakes_stakes_first_recipe.md).
+**Current validation: live smoke completed.** The updated recipe produced 15/18
+exports, covering all nine principles, for $1.784124. Prompt refinement was light
+in 17/18 cases, but initial premise quality and the magnitude judge remain concerns.
+**Not cleared for full generation.** [Completed smoke report](dataset_audits/2026-09-21_stakes_first_smoke.md).
+Seven targeted offline tests also pass. [Implementation and review](dataset_audits/2026-09-21_lowstakes_stakes_first_recipe.md).
 
 The guarded launcher selects the current candidate. Older frozen launch configs and
 reports preserve both preceding runs. The remaining sections below describe the

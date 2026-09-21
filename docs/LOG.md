@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Stakes-first smoke: 15/18 exports, light revision, magnitude concerns remain
+
+**Hypothesis:** small-stakes source constraints and light prompt edits improve yield
+while retaining native DA deliberation. **Method:** 18 candidates, all nine principles,
+all Sonnet, frozen `e23e4d75`, no content rerolls. **Result:** 15 exports, all principles,
+17 local prompt edits and one restored source fact. $1.784124 / 116 settled calls;
+8m46s pipeline time; cumulative $12.287536 / $20. Two stakes drops and one 677-character
+answer failure. Complete reads found 11 clearly suitable initial cases, four
+borderline and three mismatches. The final judge sometimes cites safer advice as
+reducing scenario stakes; a property complaint still passes with unbounded downstream
+consequences. Shared DA factual/rationalization defects remain diagnostics rather than
+new vetoes. **Next:** narrowly fix decision-level magnitude and preservation of conflict
+facts; not cleared for full generation. [Full smoke review](dataset_audits/2026-09-21_stakes_first_smoke.md).
+[Verified HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/e523529197dcc2c55baca567ab1e6cc9373d2d1e/runs/20260921_140025).
+
 ## 2026-09-21 — Put low stakes into generation; restore normal DA answer parity
 
 **Hypothesis:** source-first consequence bounds and light prompt editing reduce
