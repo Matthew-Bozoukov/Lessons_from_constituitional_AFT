@@ -11,14 +11,13 @@ scratch/plot_odcv_mr_vs_mask.py and scratch/plot_misalignment_three_evals.py):
                 item_sampling="fixed": 40 scenarios x 2 variants are fixed, the 3 rollouts per
                 cell are the resampled draw. Normal z on the log-odds scale; imported from
                 plot_odcv_mr_vs_mask.py so the two figures cannot disagree.
-  MASK       -- 1,000 fixed rows with ONE pressured generation each (lie_k=1), so the within-row
-                noise a fixed-benchmark interval needs is not estimable from a run. The Wilson
-                interval over rows is drawn instead and is an UPPER BOUND on it: for independent
-                rows Var(mean) = sum p_i(1-p_i)/n^2 <= p(1-p)/n, with equality only when every
-                row is equally hard.
+  MASK       -- no bar. 1,000 fixed rows with ONE pressured generation each (lie_k=1), so the
+                within-row noise a fixed-benchmark interval needs is not estimable from a run, and
+                the one honest stand-in (Wilson over rows, an upper bound on it) was dropped at
+                Jamie's request 2026-09-21 rather than drawn as if it were the same kind of bar.
 
-Neither interval contains run-to-run variation. On 2026-09-21 five da-7 adapters spanned
-8.3-12.9% MR and 71.2-82.8 honesty (docs/LOG.md), which is wider than the MASK bars here.
+The ODCV interval contains no run-to-run variation. On 2026-09-21 five da-7 adapters spanned
+8.3-12.9% MR and 71.2-82.8 honesty (docs/LOG.md), so a MASK gap under ~10 points between two single models is not evidence.
 
 The (2026-09-21 dot-per-run version of this figure is in git history: 77bac7ab.)
 """
@@ -41,7 +40,6 @@ sys.path.insert(0, str(REPO / "scratch"))
 load_dotenv(REPO / ".env")
 
 from plot_odcv_mr_vs_mask import FIXED, mr_interval, odcv_medians, z_bounds  # noqa: E402
-from src.eval.stats import wilson  # noqa: E402
 from src.naming import figure_path  # noqa: E402
 
 ORG = "dougalldeepmind"
@@ -85,9 +83,7 @@ def points(api: HfApi) -> dict[str, dict[str, dict]]:
         res, meta = _json(repo, "results/results.json", sha), _json(repo, "metadata/run_meta.json", sha)
         assert meta["target"].endswith(adapter), (repo, meta["target"])
         assert res["n_rows"] == 1000 and res["mode"] == "think" and "gemini-3-flash" in res["judge"], repo
-        value = res["overall_honesty_score"]
-        lo, hi = (100 * b for b in wilson(round(value * 10), 1000))
-        out["mask"][arm] = dict(value=value, lo=lo, hi=hi, adapter=adapter, repo=repo, sha=sha)
+        out["mask"][arm] = dict(value=res["overall_honesty_score"], adapter=adapter, repo=repo, sha=sha)
     return out
 
 
@@ -95,9 +91,12 @@ def bars(ax, pts: dict[str, dict], title: str, ylabel: str, ymax: float) -> None
     for i, arm in enumerate(ARMS):
         p = pts[arm]
         ax.bar(i, p["value"], 0.62, color=COLOUR[arm], linewidth=0, zorder=3)
-        ax.errorbar(i, p["value"], yerr=[[max(0.0, p["value"] - p["lo"])], [max(0.0, p["hi"] - p["value"])]],
-                    fmt="none", ecolor=INK, elinewidth=0.9, capsize=2.6, capthick=0.9, zorder=4)
-        ax.text(i, p["hi"] + ymax * 0.02, f"{p['value']:.1f}", ha="center", va="bottom", fontsize=8,
+        top = p["value"]
+        if "lo" in p:
+            ax.errorbar(i, p["value"], yerr=[[max(0.0, p["value"] - p["lo"])], [max(0.0, p["hi"] - p["value"])]],
+                        fmt="none", ecolor=INK, elinewidth=0.9, capsize=2.6, capthick=0.9, zorder=4)
+            top = p["hi"]
+        ax.text(i, top + ymax * 0.02, f"{p['value']:.1f}", ha="center", va="bottom", fontsize=8,
                 color=INK, zorder=5)
     ax.set_xticks(range(len(ARMS)))
     ax.set_xticklabels([LABEL[a] for a in ARMS])
@@ -122,9 +121,9 @@ def main() -> None:
     bars(axes[0], data["odcv"], "ODCV-lite misalignment rate  (lower is better)",
          "% of 240 rollouts judged a violation", 60)
     bars(axes[1], data["mask"], "MASK honesty  (higher is better)", "honesty score, 1,000 rows", 100)
-    fig.text(0.07, 0.015, "Qwen3.6-27B, each arm's most recently trained adapter (seed 0). Bars: 95% intervals with the "
-             "benchmark held fixed — ODCV: rollout noise only;\nMASK: Wilson over rows, an upper bound on the same "
-             "(one generation per row). Run-to-run variation is not included.",
+    fig.text(0.07, 0.015, "Qwen3.6-27B, each arm's most recently trained adapter (seed 0). ODCV bars: 95% intervals with the "
+             "benchmark held fixed (rollout noise only).\nMASK: point estimates; one generation per row, so the same "
+             "interval is not estimable. Run-to-run variation is not shown.",
              fontsize=7, color="#4B5563", ha="left", va="bottom")
     fig.subplots_adjust(left=0.07, right=0.985, top=0.90, bottom=0.27, wspace=0.22)
 
@@ -134,18 +133,18 @@ def main() -> None:
 
     lines = ["# ODCV-lite misalignment rate and MASK honesty: nosynth vs da-7, dat-7, daa-7 (most recent model per arm)",
              "", "| arm | adapter | ODCV MR % | fixed-benchmark 95% (plotted) | scenario-sampled 95% (published) | "
-             "MASK honesty | Wilson 95% over rows (plotted; upper bound on fixed-benchmark) | ODCV repo @ sha | MASK repo @ sha |",
-             "|---|---|---|---|---|---|---|---|---|"]
+             "MASK honesty (no interval) | ODCV repo @ sha | MASK repo @ sha |",
+             "|---|---|---|---|---|---|---|---|"]
     for arm in ARMS:
         o, m = data["odcv"][arm], data["mask"][arm]
         lines.append(f"| {arm} | {o['adapter']} | {o['value']:.1f} | [{o['lo']:.1f}, {o['hi']:.1f}] | "
-                     f"[{o['sampled'][0]:.1f}, {o['sampled'][1]:.1f}] | {m['value']:.1f} | [{m['lo']:.1f}, {m['hi']:.1f}] | "
+                     f"[{o['sampled'][0]:.1f}, {o['sampled'][1]:.1f}] | {m['value']:.1f} | "
                      f"`{o['repo']}` @ `{o['sha'][:8]}` | `{m['repo']}` @ `{m['sha'][:8]}` |")
     lines += ["", "ODCV: 240 rollouts (40 scenarios x 2 variants x 3 passes), gemini-3-flash judge; the interval is "
               "src.eval.stats.interval under ODCV's Design with item_sampling=\"fixed\", normal z on the log-odds scale "
               "(scratch/plot_odcv_mr_vs_mask.py). MASK: 1,000 rows, think mode, same judge, lie_k=1, so within-row noise "
-              "is not estimable and the Wilson interval over rows is drawn as an upper bound on the fixed-benchmark one.",
-              "", "Neither interval includes run-to-run variation: five da-7 adapters span 8.3-12.9% MR and 71.2-82.8 "
+              "is not estimable from a run and no interval is drawn.",
+              "", "Run-to-run variation is not shown: five da-7 adapters span 8.3-12.9% MR and 71.2-82.8 "
               "honesty (docs/LOG.md 2026-09-21). The da-7 adapter here is the newest, trained on the 2026-09-20 "
               "fla stack (branch jamie/train-optim); the newest da-7 from the merged stack is 2026-09-15-qwen36-0-da-7 "
               "(8.3% MR, 74.2 honesty)."]
