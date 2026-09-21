@@ -15,6 +15,7 @@ import random
 import re
 import subprocess
 import threading
+import time
 
 from filelock import FileLock
 from huggingface_hub import hf_hub_download
@@ -43,7 +44,14 @@ def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + '.tmp')
     temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
-    temp.replace(path)
+    for attempt in range(6):
+        try:
+            temp.replace(path)
+            break
+        except PermissionError:
+            if attempt == 5:
+                raise
+            time.sleep(0.05 * 2 ** attempt)
 
 
 def write_rows(path, rows):

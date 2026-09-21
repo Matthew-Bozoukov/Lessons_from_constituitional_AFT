@@ -60,14 +60,15 @@ automatically replaced. HF naming/publication and snapshots use the native engin
   unrestricted DA changes actor scope as well as stakes; that is not a pure stakes effect.
 - Diversity replacement rounds and content-lint re-rolls are disabled. Substantive
   lint criteria and corpus checks are retained. Native JSON/tag parse attempts remain
-  bounded at three, with up to six shared transport attempts per transient request
-  failure. This is not zero-retry physical dispatch. Do not enable batch mop-up/topup.
+  bounded at three. The guarded campaign launcher disables transport retries.
+  Do not enable batch mop-up/topup.
 - The 25% filter-drop alarm is an operational threshold, not a validated quality bar.
   The existing filter applies it only at 20 or more inputs; inspect smoke yield directly.
-- Native `budget_usd` is checked between stages. Before this campaign's live run,
-  inject the existing shared `BudgetClient` through `pipeline.run(..., client=...)`.
-  Keep the cumulative ledger. The YAML's $8 is neither a fresh allowance nor a strict
-  per-call ceiling. Existing spend is $7.786718; the $20 total request is pending.
+- Native `budget_usd` is checked between stages. This campaign uses the shared
+  per-call ledger through `scratch/dataset_refresh/run_native_smoke.py` and
+  `scratch/dataset_refresh/native_lowstakes_smoke.yaml`. The user approved $20 total,
+  including $7.786718 already spent. The launcher's ceiling overrides the recipe's
+  soft $8 setting; neither constitutes a fresh allowance on resume.
 - Estimates use assumptions and can price corpus scans that small-sample checks skip.
   They are not actual spending or cost reservations.
 
