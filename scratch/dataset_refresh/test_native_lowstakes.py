@@ -44,13 +44,13 @@ def test_recipe_preserves_da_answers_without_extra_quality_veto_or_source_exampl
     assert 'keep_grounded_answers' not in names and 'keep_practical_prompts' not in names
     assert sum(stage['model'] == 'stakes' for stage in cfg['stages'] if 'model' in stage) == 1
     assert 'rate_final_stakes' not in names and 'keep_lowstakes_answers' not in names
-    assert cfg['smoke']['total_scenarios'] == 18 and cfg['smoke']['max_traits'] == 9
+    assert cfg['smoke']['total_scenarios'] == 36 and cfg['smoke']['max_traits'] == 9
 
 
 def test_stakes_constraints_are_consistent_without_diluting_temptation():
     cfg = load()
     stages = {s['name']: s for s in cfg['stages']}
-    for name in ['write_scenarios', 'draft_prompts', 'revise_prompts']:
+    for name in ['draft_prompts', 'revise_prompts']:
         prompt = stages[name]['prompts']['user']
         assert cfg['low_stakes_guidance'] in prompt
         assert cfg['human_advice_guidance'] in prompt
@@ -66,7 +66,10 @@ def test_stakes_constraints_are_consistent_without_diluting_temptation():
     assert '{trait_text}' not in judge
     assert 'Assess the DECISION before advice' in judge
     initial = stages['write_scenarios']['prompts']['user']
-    assert initial.index(cfg['low_stakes_guidance']) < initial.index('{trait_text}')
+    assert initial.index('{assigned_domain_text}') < initial.index('{trait_text}')
+    assert '{avoid}' not in initial and '{overrepresented}' not in initial
+    assert cfg['models']['scenarios']['extra_body']['reasoning']['enabled']
+    assert cfg['models']['stakes']['extra_body']['reasoning']['enabled']
     assert cfg['smoke']['scenarios_per_call'] == 2
     assert cfg['stakes_rubric'] in stages['rate_prompt_stakes']['prompts']['user']
     assert 'prompt_task_note' not in [stage.get('keep', {}).get('field') for stage in cfg['stages']]
@@ -135,18 +138,18 @@ def test_standard_engine_filters_only_before_authoring_without_answer_conditioni
             return ChatResult(content=content,prompt_tokens=1,completion_tokens=1,finish_reason='stop')
     out=tmp_path/'run'; out.mkdir()
     manifest = pipeline.run(cfg,smoke=True,resume=str(out),client=Client())
-    assert counter == 18
+    assert counter == 36
     counts=Counter(phase for phase,_ in calls)
-    assert counts['draft_answer']==counts['revise_answer']==9
+    assert counts['draft_answer']==counts['revise_answer']==27
     assert counts['final_stakes']==0
-    assert counts['prompt_stakes']==20  # 18 cases plus two bounded parse re-attempts.
+    assert counts['prompt_stakes']==38  # 36 cases plus two bounded parse re-attempts.
     assert not any(phase=='draft_answer' and ident in {0,1,2,3,4,5,6,8,9} for phase,ident in calls)
     assert sum(phase=='prompt_stakes' and ident==5 for phase,ident in calls)==3
     rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert len(rows)==9 and manifest['counts']['export_sft']==9
-    assert counts['scenario']==9
+    assert len(rows)==27 and manifest['counts']['export_sft']==27
+    assert counts['scenario']==18
     exported = {int(re.search(r'CASE_(\d+)', row['messages'][1]['content']).group(1)) for row in rows}
-    assert exported == {7,10,11,12,13,14,15,16,17}
+    assert exported == {7, *range(10,36)}
     for row in rows:
         assert row['metadata']['prompt_stakes']==1
         assert 'final_stakes' not in row['metadata']
@@ -159,3 +162,30 @@ def test_standard_engine_filters_only_before_authoring_without_answer_conditioni
     assert manifest['failures']['rate_prompt_stakes']['n']==1
     assert len(list(out.glob('stage_*rate_prompt_stakes.jsonl')))==1
     assert len(list(out.glob('stage_*revise_responses.jsonl')))==1
+
+
+def test_preregistered_cross_product_and_minimum_context(tmp_path):
+    cfg=load()
+    assert cfg['total_scenarios']==972 and cfg['scenarios_per_call']==12
+    cfg['hf_push']=False
+    cfg['stages']=[x for x in cfg['stages'] if x['name'] in {'chunk_constitution','write_scenarios'}]
+    sc=cfg['stages'][1]
+    sc['diversity']={}
+    registry=sc['rotate']['assigned_domain']['text']
+    requests=[]
+    class Client:
+        def chat(self, model, messages, **kw):
+            user=messages[-1]['content']
+            domain=re.search(r'<domain id="([^"]+)">',user).group(1)
+            n=int(re.search(r'Generate (\d+) DISTINCT',user).group(1))
+            assert sum(text in user for text in registry.values())==1
+            assert user.count('<principle name=')==1
+            assert 'These situations already exist' not in user
+            requests.append(domain)
+            return ChatResult(content=json.dumps([dict(domain=domain,situation=f'Unique setting {domain} {i}',shortcut='Save one hour.') for i in range(n)]),prompt_tokens=1,completion_tokens=1,finish_reason='stop')
+    out=tmp_path/'factorial';out.mkdir()
+    pipeline.run(cfg,smoke=False,resume=str(out),client=Client())
+    rows=[json.loads(x) for x in (out/'stage_2_write_scenarios.jsonl').read_text().splitlines()]
+    counts=Counter((r['trait_id'],r['assigned_domain']) for r in rows)
+    assert len(requests)==81 and len(rows)==972
+    assert len(counts)==81 and set(counts.values())=={12}

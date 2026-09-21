@@ -92,7 +92,8 @@ def main():
     launch_path=Path(args.config)
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
     cfg=OmegaConf.to_container(OmegaConf.load(launch['recipe']),resolve=True)
-    assert cfg['smoke']['total_scenarios']==18 and launch['ceiling_usd']<=20
+    assert cfg['smoke']['total_scenarios']==launch.get('expected_candidates',18)
+    assert 0 < cfg['smoke']['total_scenarios'] <= 36 and launch['ceiling_usd']<=20
     assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical'} and not cfg.get('batch')
     cfg['budget_usd']=launch['ceiling_usd']  # Soft native guard; shared ledger is authoritative.
     root=Path(args.resume) if args.resume else Path('output')/to_local(artifact_name(cfg['pipeline']+' guarded smoke'))/timestamp()
