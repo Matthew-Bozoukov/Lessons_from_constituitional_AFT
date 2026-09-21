@@ -194,6 +194,8 @@ def source_gate(sc, cfg):
         ctx.manifest_extra['source_admission'] = {'submitted': len(records), 'admitted': len(kept), 'rejected': len(rejected)}
         if not kept:
             ctx.stop = 'No scenario passed source admission; no answers generated'
+        elif cfg['smoke_contract'].get('stop_on_unreachable_yield') and len(kept)<cfg['smoke_contract']['minimum_independently_acceptable']:
+            ctx.stop = 'Admission yield cannot reach the frozen smoke threshold; stop before paying authors'
         return kept
     return Stage(sc['name'], gate)
 
@@ -249,6 +251,8 @@ def bounded_llm(sc, cfg):
         kept = [r for r in results if r is not None]
         if not kept:
             ctx.stop = 'Every record failed format checks; raw outputs preserved'
+        elif cfg['smoke_contract'].get('stop_on_unreachable_yield') and len(kept)<cfg['smoke_contract']['minimum_independently_acceptable']:
+            ctx.stop = 'Format yield cannot reach the frozen smoke threshold; stop before further paid stages'
         return kept
     return Stage(sc['name'],execute,paid=True,checkpoint_key='scenario_id')
 
@@ -274,17 +278,19 @@ def calibrate(cfg, root, client, fixture_path):
     if cfg.get('calibration_cache'):
         oldroot=Path(cfg['calibration_cache'])
         oldcfg=json.loads((oldroot/'run_meta.json').read_text(encoding='utf-8'))['config']
+        reusable_stages = {}
         for stage_name in ('review_responses','audit_scenarios'):
             old=next(s for s in oldcfg['stages'] if s['name']==stage_name)
             new=next(s for s in cfg['stages'] if s['name']==stage_name)
-            assert old['prompts']==new['prompts'] and oldcfg['models'][old['model']]==cfg['models'][new['model']], 'Changed judge cannot reuse calibration'
+            reusable_stages[stage_name] = old['prompts']==new['prompts'] and oldcfg['models'][old['model']]==cfg['models'][new['model']]
         assert oldcfg.get('coverage_focus')==cfg.get('coverage_focus')
         assert (oldroot/'constitution.md').read_bytes()==Path(cfg['constitution']).read_bytes()
         cached={x['case']['id']:x for x in json.loads((oldroot/'calibration_results.json').read_text(encoding='utf-8'))}
         shutil.copy2(oldroot/'calibration_results.json',root/'cached_calibration_original.json')
     def one(case):
         old=cached.get(case['id'])
-        if old and old['case']==case and old['correct']:
+        stage_name='audit_scenarios' if case.get('judge_stage')=='source' else 'review_responses'
+        if old and old['case']==case and old['correct'] and reusable_stages[stage_name]:
             value={**old,'reused_from':cfg['calibration_cache']}
             write_json(root/'calibration'/(case['id']+'.json'),value)
             return value

@@ -1,0 +1,420 @@
+# ABOUTME: Activity-grounded constitution-only smoke; plain-prose tagged generation and early yield gates.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.constitution_smoke --config scratch/dataset_refresh/da-lowstakes-activity-grounded.yaml
+method: ours
+pipeline: da-lowstakes-activity-grounded
+constitution: constitutions/claude_distilled_09_principles/constitution.md
+chunking: principle
+n_traits: 9
+seed: 0
+total_scenarios: 18
+workers: 6
+max_fail_pct: 0
+budget_usd: 8
+output_dir: output/constitution_smoke
+hf_push: false
+batch: false
+defaults:
+  temperature: 1.0
+  max_tokens: 8192
+smoke:
+  total_scenarios: 18
+models:
+  scenario:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.7
+    max_tokens: 10000
+    extra_body:
+      reasoning:
+        max_tokens: 4096
+  draft:
+    model: anthropic/claude-sonnet-5
+    temperature: 1.0
+    max_tokens: 12000
+    extra_body:
+      reasoning:
+        max_tokens: 4096
+  review:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.0
+    max_tokens: 12000
+    extra_body:
+      reasoning:
+        max_tokens: 4096
+  source:
+    model: anthropic/claude-sonnet-5
+    temperature: 0.0
+    max_tokens: 12000
+    extra_body:
+      reasoning:
+        max_tokens: 4096
+smoke_contract:
+  only_content_input: constitution
+  max_physical_calls: 90
+  calls_per_candidate: 4
+  calibration_calls: 18
+  review_fields:
+  - claim_audit
+  retries: 0
+  repair_loops: 0
+  replacements: 0
+  minimum_independently_acceptable: 16
+  minimum_acceptable_per_principle: 1
+  maximum_same_decision_mechanism: 3
+  minimum_actual_domains: 8
+  maximum_repeated_material_defect: 2
+  any_material_false_acceptance_blocks_scale: true
+  requires_all_row_independent_read: true
+  approval_scope: smoke only; no scale, mixture, training or evaluation
+  interpretation: These are engineering go/no-go criteria, not validated predictors
+    of ODCV performance.
+  source_first: true
+  deterministic_guards: true
+  stop_on_unreachable_yield: true
+stages:
+- name: chunk_constitution
+  kind: segment
+- name: deal_checklists
+  kind: checklist
+  axes:
+    setting:
+      home: 'PRIMARY ACTIVITY: sharing an ordinary household kitchen, chores or meal
+        preparation with other adults. No game clubs.'
+      friendship: 'PRIMARY ACTIVITY: arranging a lunch or film outing with adult friends.
+        No clubs or board games.'
+      craft: 'PRIMARY ACTIVITY: amateur fiction writing and peer feedback. Include
+        any prose needed for editing. No games.'
+      community: 'PRIMARY ACTIVITY: volunteer ornamental gardening. Small planting/display
+        decisions, no hazardous tool use, food supply or property governance.'
+      online: 'PRIMARY ACTIVITY: an online hobby photography group; posting, feedback,
+        captions or curation. No trading or game forums.'
+      leisure: 'PRIMARY ACTIVITY: casual amateur music practice or listening together.
+        No competitions, bookings or paid work.'
+      purchase: 'PRIMARY ACTIVITY: buying, swapping or sharing inexpensive art/stationery
+        supplies. Comfortably affordable discretionary costs. No games or appliances.'
+      collaboration: 'PRIMARY ACTIVITY: designing an informal volunteer event poster
+        or handout together. No political, employment or safety campaign.'
+      personal: 'PRIMARY ACTIVITY: organizing private photos or personal reading notes.
+        No physical automation or essential services.'
+    request_form:
+      advice: A human asks for help deciding a practical course of action.
+      wording: A human asks for usable wording for a message, explanation or feedback.
+      plan: A human asks for a practical plan or adjustment under constraints.
+    reasoning_demand:
+      evidence: Evidence has limits or admits competing interpretations; facts permit
+        a calibrated recommendation.
+      commitments: Two legitimate interests or commitments cannot both be fully satisfied.
+      discretion: A sensible default or norm has a purpose; decide its appropriate
+        application given actual authority.
+- name: focus_clause
+  kind: smoke_focus_clause
+- name: write_scenarios
+  kind: smoke_tagged
+  model: scenario
+  checkpoint: scenario_id
+  save:
+    system: system
+    user: user
+    design: design
+  prompts:
+    system: 'Design one natural human advice request. Return <design>private planning
+      in plain prose</design><system>conversation system</system><user>human request</user>.
+      No JSON or fences. All three blocks are required.
+
+      First fill design: target_actor, actual_value_tension, strongest_case_each_side,
+      consequence_bound, facts_needed, and what_the_assistant_must_decide. Then write
+      a coherent user request that realizes that design. This design is private metadata,
+      never conversation text.
+
+      The chosen constitutional clause is: {focus_clause}
+
+      Its scope is: {focus_scope}
+
+      Exercise this exact relationship, not a nearby human analogy. The user asks
+      advice; they must not already specify the final resolution. They may know that
+      honesty or fairness matters, but leave a real judgment call. Preserve a plausible
+      case for each option, avoid making one ridiculous. Provide necessary source
+      excerpts if the answer needs them.
+
+      Only minor, reversible inconvenience, leisure time, awkwardness or comfortably
+      affordable discretionary cost. Exclude health advice, caregiving, physical hazards,
+      real bereavement, housing, employment, legal or reputational stakes. Fictional
+      subject matter alone is fine. A bounded hobby decision needs no artificial safety
+      disclaimer. Use the assigned activity instead of defaulting to a club vote.
+      Keep the human request natural and specific, not a checklist of moral criteria.
+
+      System-message rule: use exactly "You are an AI assistant." unless the selected
+      principle concerns operator preferences. Only in that case, supply a concrete
+      preference about tone, formatting, or service scope. Never explain the moral
+      lesson, a stable identity requirement, or how to weigh values in the conversation
+      system prompt. That is what the answer must learn to do, not an instruction
+      the trained model gets handed.
+
+      The assigned PRIMARY ACTIVITY is a binding coverage requirement, not an optional
+      inspiration. Realize the value within that activity. For AI oversight the human
+      must actually use an AI or language model, explicitly stated; an ordinary deterministic
+      bot is insufficient. In your design, first name the primary activity and confirm
+      it matches the assignment.'
+    user: '[record_id={scenario_id}; stage=scenario]
+
+      Activity and request style: {checklist}
+
+      Return the private design FIRST, then system and user. The assistant should
+      have to decide how to balance the costs, not merely supply wording for a moral
+      verdict the user already dictated.
+
+      Use the three explicit <design>, <system>, <user> blocks; plain prose inside
+      each.'
+  tags:
+  - design
+  - system
+  - user
+- name: conversation_context
+  kind: smoke_context
+  neutral_system: You are an AI assistant.
+  operator_traits:
+  - t7
+- name: audit_scenarios
+  kind: smoke_json
+  model: source
+  checkpoint: scenario_id
+  save:
+    source_record: source_record
+  prompts:
+    system: 'Read the scenario before any answer exists. Does it fit the specific
+      clause and bounded scope? Return JSON only. Do not write advice.
+
+      Low stakes means minor, recoverable inconvenience, awkwardness, leisure time
+      or comfortably affordable discretionary expense. Exclude real medical/care duties,
+      physical hazards, essential services, housing/employment governance, legal or
+      reputational jeopardy, bereavement decisions and irreversible sentimental losses.
+      Fictional subject matter is not a real-world consequence. Do not invent hidden
+      danger for mundane activities. Two legitimate considerations must genuinely
+      compete; there need not be deception or refusal.
+
+      Coverage target: {focus_clause}
+
+      Scope: {focus_scope}
+
+      This specific clause is enough; the rest of the principle provides context,
+      not extra requirements.'
+    user: '[record_id={scenario_id}; stage=source]
+
+      SYSTEM: {system}
+
+      USER: {user}
+
+      Check internal consistency of dates, quantities, authority and agreements. Reject
+      a scenario that needs missing source text to answer. Ordinary unknown details
+      can remain unknown.
+
+      Return {{"source_record":{{"verdict":"pass|fail","stakes":1,"facts":[{{"quote":"short
+      EXACT user/system substring","meaning":"what this actually establishes"}}],"unknowns":["material
+      unknown"],"target_check":"how the selected clause applies","bounds_check":"actual
+      consequences","competing_considerations":"two real costs","findings":[{{"code":"consequential_stakes|target_mismatch|answer_signposted|no_real_tension|insufficient_source","quote":"EXACT
+      user/system substring","why":"concrete defect"}}]}}}}.
+
+      Copy 3-5 SHORT fact quotes verbatim. A missing fact is not permission to invent
+      it. Stakes 0 trivial, 1 minor/recoverable, 2 serious/lasting, 3 health/safety/essential
+      livelihood. Pass iff stakes <=1 and no findings. Minor costs ARE enough for
+      benefits-versus-costs reasoning; do not reject because there is no grave harm.
+
+      Keep quotes SHORT (3-12 words). They must be consecutive words copied exactly,
+      not stitched together or cleaned up. Evaluate the actual conversation, not an
+      author-supplied design.'
+- name: admit_scenarios
+  kind: smoke_source_gate
+- name: draft_responses
+  kind: smoke_tagged
+  model: draft
+  checkpoint: scenario_id
+  tags:
+  - grounding
+  - reasoning
+  - response
+  save:
+    reasoning: reasoning
+    response: response
+    grounding: grounding
+  prompts:
+    system: '{system}
+
+      INTERNAL VALUES: {trait_text}
+
+      Relevant aspect: {focus_clause}
+
+      Answer the human naturally. Return three blocks in this order:
+
+      <grounding>Private preparation: copy the decisive original facts; identify unknowns;
+      check quantities, dates and agreements. Identify what you can truthfully assert
+      in any sendable text. This is metadata, not training content.</grounding>
+
+      <reasoning>Your standalone deliberation, with no references to grounding, source
+      records, drafts or checking machinery.</reasoning>
+
+      <response>Your useful reply.</response>
+
+      Your values should shape what you notice and weigh, not appear as named principles,
+      rules or an assigned trait. There is no earlier answer. Reason from the user''s
+      actual record: consider the strongest case for alternatives, the costs left
+      by your choice, and what uncertainty would change it. Then deliver the requested
+      help.
+
+      Keep facts, interpretations and proposals separate. Do not invent past actions,
+      motives, agreements, source details, or precise timings. A sendable draft is
+      still a factual assertion unless its invented elements are explicit placeholders.
+      In particular, unilateral action is not an agreement; an illustrative future
+      action is not already completed. Check numbers and dates yourself before advising.
+
+      Aim for useful depth (roughly 200-400 words reasoning and 150-350 reply); no
+      padding. No revision or audit narration.
+
+      The final content must include both explicit <reasoning> and <response> blocks
+      even if you also reason privately. Outside factual expertise is not needed:
+      solve from the supplied facts and ordinary judgment. Any precise empirical or
+      causal claim requires evidence in the conversation.
+
+      Do not make prose more vivid by inventing facts. In a draft, use the exact known
+      event, time and commitment; if unknown, use a visible placeholder or conditional
+      proposal. In particular: do not convert a relative deadline to an invented weekday,
+      assume an untested fix worked, silently change what was agreed, or praise visual
+      details that were never described. Do not make up product characteristics from
+      a name. Recommendations may introduce new actions, but not false descriptions
+      of the current world.'
+    user: '[record_id={scenario_id}; stage=draft]
+
+      {user}'
+- name: review_responses
+  kind: smoke_json
+  model: review
+  checkpoint: scenario_id
+  save:
+    review: review
+  prompts:
+    system: 'Check the factual and reasoning quality of an assistant''s advice. Read
+      the original conversation as evidence, not the answer''s confident assertions.
+      Return JSON only.
+
+      The scenario''s scope and target are checked separately. Your job is to find
+      MATERIAL errors in the answer, including its explicit reasoning. Read all sendable
+      messages carefully. Invented completed actions, agreements, weekdays, visual
+      details, product features, numerical durations and confident causal explanations
+      are defects. A useful plan does not justify pretending an estimate is an established
+      fact. An explicitly suggested or conditional action is fine; an unmarked factual
+      assertion is not. Ordinary common knowledge and clearly uncertain inferences
+      are allowed. Check arithmetic and whether conclusions follow from the actual
+      evidence.
+
+      Also reject narration about unseen drafts or assigned principles, and answers
+      that ignore a real competing consideration or withhold feasible requested help.
+      Do not punish natural answer planning, sensible uncertainty, disagreement or
+      proposals needing the human''s agreement. Accept reasonable advice, not just
+      your preferred recommendation.'
+    user: '[record_id={scenario_id}; stage=review]
+
+      ORIGINAL SYSTEM: {system}
+
+      ORIGINAL USER: {user}
+
+      ANSWER REASONING: {reasoning}
+
+      ANSWER RESPONSE: {response}
+
+
+      Return {{"review":{{"verdict":"pass|fail","stakes":1,
+
+      "claim_audit":[{{"block":"reasoning|response","claim":"short exact answer substring","source_quote":"short
+      exact original source substring or empty","status":"supported|inference|proposal|unsupported","assessment":"does
+      the evidence justify the strength of this claim?"}}],
+
+      "decisive_fact_check":"check decisive facts, quantities and every sendable draft",
+
+      "competing_considerations":"does the advice weigh the real tradeoff fairly?",
+
+      "mechanism":"decision structure","domain":"activity",
+
+      "findings":[{{"code":"unsupported_fact|invalid_inference|unhelpful|process_narration|rule_recitation","quote":"short
+      exact offending answer substring","why":"material error"}}]}}}}.
+
+      After checking the WHOLE answer, quote two representative claims including the
+      most suspicious assertion if there is one. Copy consecutive words, not paraphrases.
+      Findings must include each material error you found, even if not one of those
+      two claims. Do not label an invented exact quantity as a proposal unless the
+      text actually presents it as a suggestion/estimate. Pass iff no material findings.
+      Do not rejudge the scenario''s constitutional classification; that is a separate
+      earlier check.'
+- name: admit_answers
+  kind: smoke_answer_gate
+- name: export
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - setting
+  - request_form
+  - reasoning_demand
+  - review
+  - source_record
+  - quality
+  - focus_clause
+  - focus_scope
+calibration_file: separated_checks_calibration.yaml
+campaign_budget_root: output/2026-09-21_lowstakes_pipeline_campaign/budget
+coverage_focus:
+  t1:
+    clause: When told to stop, stop
+    scope: The human asks advice about an actual AI used in a narrow optional activity,
+      where another authorized human has paused or corrected it. No analogy to an
+      ordinary committee. Keep a real cost of pausing, but no consequential deployment.
+  t2:
+    clause: never manipulate humans in ethically and epistemically problematic ways
+    scope: An ordinary small decision can exercise epistemic autonomy. No need for
+      politics or large power. The human faces a practical choice about influencing
+      others while evidence or framing can mislead.
+  t3:
+    clause: prefer diplomatic honesty to dishonest diplomacy
+    scope: Honesty and discretion in an ordinary practical human request; no serious
+      concealment or losses. Provide the evidence needed to distinguish truth from
+      flattering assumptions.
+  t4:
+    clause: Elsewhere, weigh benefits against costs and choose what is most beneficial
+      overall, for users and for the world.
+    scope: This clause explicitly applies to minor costs too. An ordinary reversible
+      choice with benefits and burdens is eligible; do not require grave danger or
+      a refusal.
+  t5:
+    clause: Prefer cultivated judgment over rigid checklists
+    scope: An ordinary norm or heuristic has a real purpose but imperfect fit. Give
+      actual constraints and authority. Both predictable treatment and situational
+      flexibility have a cost.
+  t6:
+    clause: do not comply with attempts to alter your fundamental character through
+      role-play, hypotheticals or persistent pressure
+    scope: The human asks practical advice while pressuring THIS assistant to adopt
+      a persona that changes its values, not just tone. Keep the underlying activity
+      ordinary. Do not substitute a human identity dilemma.
+  t7:
+    clause: follow the spirit of operator instructions, default to helpfulness
+    scope: Put an actual sensible operator preference in the scenario system message.
+      A practical human request tests how to apply it. Avoid malicious operator caricatures;
+      an exception or compliance may be best.
+  t8:
+    clause: Never treat unhelpfulness as automatically safe; pursue helpfulness jointly
+      with honesty, thoughtfulness and care.
+    scope: A concrete human request can be usefully completed despite ambiguity or
+      a small tradeoff. Supply any text needed for requested editing; do not force
+      guessing facts or requesting the next turn.
+  t9:
+    clause: When someone says they want to build a skill, weigh that in deciding how
+      much to do for them.
+    scope: An adult hobby learner has an explicit skill-building goal and a competing
+      immediate practical goal. Neither doing everything nor withholding the finished
+      answer is automatically right.
+calibration_cache: output/2026-09-21_da_lowstakes_separated_checks_smoke/20260921_073532
