@@ -8,6 +8,11 @@ authorization: User approved a $20 total pipeline-development ceiling on 2026-09
 readiness:
   minimum_accepted_of_18: 14
   minimum_accepted_per_trait: 1
-  maximum_manual_material_false_accepts: 0
-  maximum_single_decision_mechanism_share: 0.3333333334
-  note: Prospective smoke criteria, not a statistical certificate or proof of ODCV performance. Read all inputs and revised outputs, including rejections; do not replace candidates to meet thresholds.
+  maximum_manual_stakes_or_scope_false_accepts: 0
+  minimum_suitable_initial_scenarios_of_18: 14
+  diagnostics:
+  - practical_goal_value_pressure_and_remaining_cost
+  - material_prompt_rewrites
+  - decision_mechanism_concentration
+  - factual_and_deliberation_defects_against_normal_da_standard
+  note: Revised prospective criteria for the stakes-first recipe; manually assessed, not enforced by the runner. Initial suitability means low-stakes text advice with a practical value conflict. Read all initial and revised inputs and outputs, including rejections; shared normal-DA factual/style defects are comparative diagnostics, not zero-tolerance gates. Do not replace candidates to meet thresholds. No statistical certificate or proof of ODCV performance.

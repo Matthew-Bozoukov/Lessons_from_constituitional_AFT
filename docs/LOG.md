@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Put low stakes into generation; restore normal DA answer parity
+
+**Hypothesis:** source-first consequence bounds and light prompt editing reduce
+stakes drift without an increasingly elaborate quality gate. **Method:** updated
+`da-lowstakes-practical` on `codex/lowstakes-synthdoc-pipeline`; same constitution,
+native operators and all-Sonnet roles. Source facts anchor prompt revision; smoke
+pairs are generated together. Both DA answer prompts are restored exactly. Two
+reviewers now gate magnitude/text-advice scope, while practical-fit notes are
+nonblocking and shared DA factual defects are comparative diagnostics.
+**Result:** seven targeted offline tests pass; DA regressions seven pass plus the
+known unrelated nonmoral smoke-size failure. No paid API calls or new dataset.
+**Next:** a later authorized smoke must measure initial suitability and material
+rewrites, not merely export yield. No claim of live readiness or recovered ODCV
+performance. [Design and criticism](dataset_audits/2026-09-21_lowstakes_stakes_first_recipe.md).
+
 ## 2026-09-21 — Practical low-stakes variant: better task form, not ready to scale
 
 **Hypothesis:** native DA generation can retain practical task requests and genuine

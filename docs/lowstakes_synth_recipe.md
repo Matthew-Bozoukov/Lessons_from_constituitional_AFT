@@ -2,16 +2,20 @@
 <!-- ABOUTME: Records scientific differences, operational limits and offline validation. -->
 # Low-stakes difficult advice
 
-**Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml`, a native
-configuration variant emphasizing practical requests, implicit values, retained
-tradeoffs and material factual review. It uses the same constitution without old
-source rows. Its live smoke produced eight exports from 18 candidates and failed
-the readiness criteria: missing principles, admission inconsistencies and material
-false accepts. **Not ready for full generation.** See the
-[prospective plan and live report](dataset_audits/2026-09-21_practical_lowstakes_smoke.md).
-The guarded launcher below now selects this candidate; older frozen launch configs
-preserve the preceding run. The rest of this document describes the initial minimal
-variant and its historical validation, not the practical variant's current status.
+**Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml`, updated on
+2026-09-21 on `codex/lowstakes-synthdoc-pipeline`. This revision makes low stakes the
+initial generation constraint, limits prompt refinement to local edits, restores
+normal DA's answer prompts exactly, and narrows the two judges to magnitude and
+text-advice scope. General factual quality is not an extra automatic acceptance gate.
+
+**Current validation: offline only.** Seven targeted tests pass. No API calls were
+made for this revision and no full generation is approved by these checks. The
+previous frozen practical recipe yielded 8/18 exports; that is historical evidence,
+not a result for the updated recipe. [Implementation and review](dataset_audits/2026-09-21_lowstakes_stakes_first_recipe.md).
+
+The guarded launcher selects the current candidate. Older frozen launch configs and
+reports preserve both preceding runs. The remaining sections below describe the
+initial minimal variant and its historical validation, not the current candidate.
 
 SynthDoc selects a document type through a YAML configuration. The new option is
 `configs/data/synth/da-lowstakes-fresh.yaml`, using only the existing native operators.

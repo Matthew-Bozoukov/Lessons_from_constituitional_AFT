@@ -1,4 +1,4 @@
-# ABOUTME: Offline contract and full-engine checks for the minimal low-stakes DA recipe.
+# ABOUTME: Offline contract and full-engine checks for the practical low-stakes DA recipe.
 # ABOUTME: Run: uv run --no-sync python -m pytest -q scratch/dataset_refresh/test_native_lowstakes.py
 import copy
 import json
@@ -20,7 +20,7 @@ def load(path=CONFIG):
     return OmegaConf.to_container(OmegaConf.load(path), resolve=True)
 
 
-def test_recipe_preserves_native_da_stages_and_adds_grounding_without_source_examples():
+def test_recipe_preserves_da_answers_without_extra_quality_veto_or_source_examples():
     base, cfg = load('configs/data/synth/da.yaml'), load()
     stages = {s['name']: s for s in cfg['stages']}
     assert cfg['constitution'] == base['constitution'] == 'constitutions/claude_distilled_09_principles/constitution.md'
@@ -33,8 +33,6 @@ def test_recipe_preserves_native_da_stages_and_adds_grounding_without_source_exa
             assert new['lint']['retries'] == 0
             new['lint']['retries'] = old['lint']['retries']
         if old['name'] in {'draft_responses', 'revise_responses'}:
-            assert new['prompts']['user'] == old['prompts']['user'] + '\n\n' + cfg['grounding_guidance']
-            new['prompts']['user'] = old['prompts']['user']
             assert new == old, 'Do not replace DA deliberation with an unrelated editing task'
         elif old['name'] in {'corpus_scenarios', 'dedupe_scenarios', 'corpus'}:
             assert new == old
@@ -42,8 +40,9 @@ def test_recipe_preserves_native_da_stages_and_adds_grounding_without_source_exa
     assert stages['write_scenarios']['diversity']['max_regen_rounds'] == 0
     names = [s['name'] for s in cfg['stages']]
     assert names.index('keep_lowstakes_prompts') < names.index('draft_responses')
-    assert names.index('keep_practical_prompts') < names.index('draft_responses')
-    assert names.index('keep_grounded_answers') < names.index('export_sft')
+    assert names.index('keep_text_advice_prompts') < names.index('draft_responses')
+    assert 'keep_grounded_answers' not in names and 'keep_practical_prompts' not in names
+    assert sum(stage['model'] == 'stakes' for stage in cfg['stages'] if 'model' in stage) == 2
     assert names.index('revise_responses') < names.index('rate_final_stakes') < names.index('export_sft')
     assert cfg['smoke']['total_scenarios'] == 18 and cfg['smoke']['max_traits'] == 9
 
@@ -51,11 +50,11 @@ def test_recipe_preserves_native_da_stages_and_adds_grounding_without_source_exa
 def test_stakes_constraints_are_consistent_without_diluting_temptation():
     cfg = load()
     stages = {s['name']: s for s in cfg['stages']}
-    for name in ['write_scenarios', 'revise_prompts']:
+    for name in ['write_scenarios', 'draft_prompts', 'revise_prompts']:
         prompt = stages[name]['prompts']['user']
         assert cfg['low_stakes_guidance'] in prompt
         assert cfg['human_advice_guidance'] in prompt
-        assert 'norm-violating' in prompt and 'tempting' in prompt
+        assert 'tempting' in prompt
     assert 'If refusing is obviously free, raise the cost.' not in stages['revise_prompts']['prompts']['user']
     assert 'WITHOUT naming it as unethical' in stages['draft_prompts']['prompts']['user']
     for name in ['rate_prompt_stakes', 'rate_final_stakes']:
@@ -65,6 +64,14 @@ def test_stakes_constraints_are_consistent_without_diluting_temptation():
     assert '{reasoning}' in stages['rate_final_stakes']['prompts']['user']
     assert '{response}' in stages['rate_final_stakes']['prompts']['user']
     assert '{trait_text}' not in stages['rate_final_stakes']['prompts']['user']
+    initial = stages['write_scenarios']['prompts']['user']
+    assert initial.index(cfg['low_stakes_guidance']) < initial.index('{trait_text}')
+    assert cfg['smoke']['scenarios_per_call'] == 2
+    assert cfg['stakes_rubric'] in stages['rate_prompt_stakes']['prompts']['user']
+    assert cfg['stakes_rubric'] in stages['rate_final_stakes']['prompts']['user']
+    assert 'prompt_task_note' not in [stage.get('keep', {}).get('field') for stage in cfg['stages']]
+    assert '{situation}' in stages['revise_prompts']['prompts']['user']
+    assert 'replace or reframe most' not in stages['revise_prompts']['prompts']['user']
 
 
 def test_standard_engine_filters_before_authoring_and_after_revision(tmp_path, monkeypatch):
@@ -92,9 +99,10 @@ def test_standard_engine_filters_before_authoring_and_after_revision(tmp_path, m
             if system.startswith('You design realistic'):
                 with lock:
                     ident = counter
-                    counter += 1
+                    counter += 2
                 phase = 'scenario'
-                content = json.dumps([dict(domain=f'domain {ident}', situation=f'CASE_{ident} has a small choice.', shortcut='Skip an agreed step.')])
+                assert 'Generate 2 DISTINCT situations' in user
+                content = json.dumps([dict(domain=f'domain {i}', situation=f'CASE_{i} has a small choice.', shortcut='Skip an agreed step.') for i in range(ident, ident+2)])
             elif system.startswith('You audit machine-generated'):
                 phase, ident, content = 'corpus', -1, '[]'
             else:
@@ -108,8 +116,12 @@ def test_standard_engine_filters_before_authoring_and_after_revision(tmp_path, m
                 elif system.startswith(('Assess a low-stakes', 'Audit a low-stakes')):
                     phase = 'final_stakes' if '<response>' in user else 'prompt_stakes'
                     label = {0:2,1:'unclear',2:'low'}.get(ident,1) if phase=='prompt_stakes' else {3:3,4:'unclear'}.get(ident,1)
-                    verdict = 'drop' if (phase=='prompt_stakes' and ident==6) or (phase=='final_stakes' and ident==7) else 'keep'
-                    content = json.dumps(dict(stakes=label,why='Recorded consequence magnitude.',verdict=verdict,review={'problem':'Fixture judgment'}))
+                    scope = {6:'external_execution',8:'unclear',9:'advice'}.get(ident,'text_advice')
+                    # Case 7 deliberately has an adverse task diagnostic and an extra legacy
+                    # quality verdict. Neither can silently become an acceptance filter.
+                    content = json.dumps(dict(stakes=label,why='Recorded consequence magnitude.',scope=scope,
+                        scope_why='Recorded requested action.',task_note='Weak tradeoff; inspect manually.',
+                        verdict='drop' if ident==7 else 'keep'))
                     if phase=='final_stakes' and ident==5:
                         content = '{"stakes":1}'  # Missing required reason: parser exhausts, row fails closed.
                 elif system.startswith('You revise assistant responses'):
@@ -124,16 +136,21 @@ def test_standard_engine_filters_before_authoring_and_after_revision(tmp_path, m
     manifest = pipeline.run(cfg,smoke=True,resume=str(out),client=Client())
     assert counter == 18
     counts=Counter(phase for phase,_ in calls)
-    assert counts['draft_answer']==counts['revise_answer']==14
-    assert counts['final_stakes']==16  # 14 cases + two bounded parse re-attempts.
-    assert not any(phase=='draft_answer' and ident in {0,1,2,6} for phase,ident in calls)
+    assert counts['draft_answer']==counts['revise_answer']==12
+    assert counts['final_stakes']==14  # 12 cases + two bounded parse re-attempts.
+    assert not any(phase=='draft_answer' and ident in {0,1,2,6,8,9} for phase,ident in calls)
     assert sum(phase=='final_stakes' and ident==5 for phase,ident in calls)==3
     rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert len(rows)==10 and manifest['counts']['export_sft']==10
+    assert len(rows)==9 and manifest['counts']['export_sft']==9
+    assert counts['scenario']==9
+    exported = {int(re.search(r'CASE_(\d+)', row['messages'][1]['content']).group(1)) for row in rows}
+    assert exported == {7,10,11,12,13,14,15,16,17}
     for row in rows:
         assert row['metadata']['prompt_stakes']==row['metadata']['final_stakes']==1
-        assert row['metadata']['prompt_verdict']==row['metadata']['final_verdict']=='keep'
-        assert int(re.search(r'CASE_(\d+)',row['messages'][1]['content']).group(1)) not in range(8)
+        assert row['metadata']['prompt_scope']=='text_advice'
+        assert 'Weak tradeoff' in row['metadata']['prompt_task_note']
+        assert 'Weak tradeoff' not in json.dumps(row['messages'])
+        assert 'final_verdict' not in row['metadata']
         assert 'principle' not in row['messages'][0]['content']
         assert 'reasoning_content' in row['messages'][2]
     assert manifest['failures']['rate_final_stakes']['n']==1
