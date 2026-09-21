@@ -72,3 +72,16 @@ def test_explicit_provider_block_is_row_failure_but_unknown_failure_stops(tmp_pa
     monkeypatch.setattr(run.BudgetClient,'chat',unknown)
     with pytest.raises(EmptyCompletionError): client.chat(**request)
     assert client.stop.is_set()
+
+
+def test_settled_truncated_response_is_not_retried_on_operational_resume(tmp_path, monkeypatch):
+    root = tmp_path / 'run'
+    request = dict(model='anthropic/claude-sonnet-5', messages=[{'role':'user','content':'test'}], temperature=0, max_tokens=100)
+    entry = dict(call_id=0,run_root=str(root.resolve()),request_sha256=run.digest(request),status='settled',charged_or_reserved_usd=0.01)
+    run.write_json(tmp_path/'spend.json',[entry])
+    run.write_json(tmp_path/'raw_calls/000000.json',dict(request=request,response=dict(content='truncated',prompt_tokens=2,completion_tokens=100,finish_reason='length')))
+    original=run.BudgetClient.__init__
+    monkeypatch.setattr(run.BudgetClient,'__init__',lambda self,*a,**k: original(self,*a,send=lambda **_: pytest.fail('Repaid for truncated failure'),**k))
+    client=GuardedClient(tmp_path,{'ceiling_usd':120,'max_physical_calls':6000},root)
+    with pytest.raises(ValueError, match='without redispatch'):
+        client.chat(**request)

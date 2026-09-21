@@ -37,6 +37,8 @@ class GuardedClient(BudgetClient):
             if raw_path.exists():
                 raw = json.loads(raw_path.read_text(encoding='utf-8'))
                 response = raw.get('response')
+                if response and response.get('finish_reason') in {'length', 'content_filter'}:
+                    self.unavailable.add(entry['request_sha256'])
                 if (response and response.get('finish_reason') not in {'length', 'content_filter'}
                         and digest(raw['request']) == entry['request_sha256']):
                     self.saved[entry['request_sha256']] = response
@@ -112,8 +114,8 @@ def main():
     cfg=OmegaConf.to_container(OmegaConf.load(launch['recipe']),resolve=True)
     mode = validate_launch(launch, cfg)
     if args.workers is not None:
-        if not 1 <= args.workers <= 16:
-            raise ValueError('Operational concurrency must be between 1 and 16')
+        if not 1 <= args.workers <= 32:
+            raise ValueError('Operational concurrency must be between 1 and 32')
         cfg['workers'] = args.workers
     cfg['budget_usd']=launch['ceiling_usd']  # Soft native guard; shared ledger is authoritative.
     root=Path(args.resume) if args.resume else Path('output')/to_local(artifact_name(cfg['pipeline']+' guarded '+mode))/timestamp()
