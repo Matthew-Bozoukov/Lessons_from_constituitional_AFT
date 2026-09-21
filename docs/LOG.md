@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Mixtures declare their synthetic share in SUPERVISED TOKENS; da-15-mix is the first, and it is the old da-7 in composition
+
+**Change.** `share_unit: supervised_tokens` (src/data/mixture/token_share.py; now set in every
+base-blend arm config, da-dat's 100% mix excepted): the published nosynth mixture is the size
+of every arm (4,877,400 supervised tokens); base rows leave in a seeded order that is
+proportional across sources and nested across shares (5% removes a prefix of 7%'s removals)
+until `synthetic_pct` of that total is freed; synthetic rows refill it round-robin over
+traits, plus one closest-fit row. Every count is `build_labels` on the row under ITS
+supervise mode (`all`/`final`/`cot`/`answer`, `mask_spans`), so a cot-only arm is a share of
+the tokens its mask keeps (tested against the real tokenizer: all > final = cot + answer).
+Under `train.loss_agg: token_mean` this share IS the source's share of the gradient.
+`total_examples` is gone from those configs; `all: true` loads a synthetic pool whole; stats
+carry supervised-token shares and the swap report; the name's pct is asserted against the
+realised token share (±1).
+
+**Why.** Row shares stopped meaning anything once tokens were the unit: da-7 by rows was
+15.4% of supervised tokens (2026-09-15-da-7-mix: 822,897 of 5,341,647), tulu3_if 30.9%,
+longalign 0.6%.
+
+**Result.** `dougalldeepmind/2026-09-21-da-15-mix`: 15.0% realised, 9,136 rows, 4,877,278
+supervised tokens (within 122 of the base); 1,487 base rows out (6.8% of every source), 623
+da rows in (69-70 per trait). Its per-source token shares match the old da-7 mix to within
+0.2 pp on every source — so the old 7% arms were 15%-by-tokens arms, and this is their
+composition at the base's size (9% fewer tokens from every source: the old mix added its
+700 rows on top of a 9,300-row base). A token-share da-7 (built, not pushed) is 293 da rows
+at 7.04%: less than half the dose of any existing 7% arm.
+
+**Naming.** The law writes `<date>-da-15-mix` for either unit; the cut-over is this entry and
+`share_unit` in mixture_stats/the card. Every mixture dated before 2026-09-21 is a row share.
+
+**Next.** Train `2026-09-21-da-15-mix` on the new stack (token_mean, packing, fla) and eval it
+beside the 09-15 da-7 adapter: same composition, new weighting and kernels — the cleanest
+pair the project has for "did the training stack move the numbers".
+
 ## 2026-09-21 — Recipe defaults: token weighting, packing and flash-attention on; the kernel in the lock
 
 **Change.** `configs/train/sft.yaml` now trains with `loss_agg: token_mean` — every supervised
