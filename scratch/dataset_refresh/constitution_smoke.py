@@ -80,15 +80,17 @@ def anchored(quote, text):
     norm = lambda s: ' '.join(s.split()).casefold()
     text = norm(text)
     pos = 0
+    seen = False
     for part in re.split(r'\.\.\.|…', quote):
         part = norm(part)
         if not part:
             continue
+        seen = True
         index = text.find(part, pos)
         if index < 0:
             return False
         pos = index + len(part)
-    return bool(quote.strip())
+    return seen
 
 
 def leakage_findings(system, user, reasoning, response):
@@ -141,7 +143,11 @@ def answer_gate(sc, cfg):
     def gate(ctx, records, ckpt):
         decisions = []
         for record in records:
-            quality = effective_review(record['review'],record['system'],record['user'],record['reasoning'],record['response'],guarded=True)
+            try:
+                validate_review(record['review'],cfg['smoke_contract'].get('review_fields',[]))
+                quality = effective_review(record['review'],record['system'],record['user'],record['reasoning'],record['response'],guarded=True)
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                quality = dict(verdict='fail',findings=[],anchor_errors=[],technical_error=str(exc))
             decisions.append({**record,'quality':quality})
         write_json(ctx.run_dir / 'answer_decisions.json',decisions)
         kept=[r for r in decisions if r['quality']['verdict']=='pass']
@@ -172,7 +178,10 @@ def source_gate(sc, cfg):
     def gate(ctx, records, ckpt):
         kept, rejected = [], []
         for record in records:
-            errors = source_errors(record)
+            try:
+                errors = source_errors(record)
+            except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                errors = ['Malformed source audit: '+str(exc)]
             if errors or record['source_record']['verdict'] != 'pass':
                 rejected.append({**record, 'mechanical_errors': errors})
             else:
@@ -238,6 +247,20 @@ def bounded_llm(sc, cfg):
             ctx.stop = 'Every record failed format checks; raw outputs preserved'
         return kept
     return Stage(sc['name'],execute,paid=True,checkpoint_key='scenario_id')
+
+
+def conversation_context(sc, cfg):
+    """Build the conversation input without revealing its training target."""
+    from src.data.synth.ours.stage_runtime import Stage
+    def build(ctx, records, ckpt):
+        output=[]
+        for record in records:
+            r=dict(record)
+            r['authored_system']=r['system']
+            r['system']=r['system'] if r['trait_id'] in sc['operator_traits'] else sc['neutral_system']
+            output.append(r)
+        return output
+    return Stage(sc['name'],build)
 
 
 def calibrate(cfg, root, client, fixture_path):
@@ -328,6 +351,7 @@ def main():
             OPERATORS['smoke_focus_clause'] = focus_clause
             OPERATORS['smoke_json'] = bounded_llm
             OPERATORS['smoke_tagged'] = bounded_llm
+            OPERATORS['smoke_context'] = conversation_context
         manifest = pipeline.run(cfg, smoke=True, resume=str(generation), client=client)
         if manifest.get('halted'):
             write_json(root / 'automatic_summary.json', {'completed': 0, 'model_pass': 0, 'manifest': manifest})

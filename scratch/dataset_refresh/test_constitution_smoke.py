@@ -240,3 +240,19 @@ def test_one_malformed_output_does_not_retry_or_discard_its_peer(tmp_path):
     assert len(calls)==2 and [r['scenario_id'] for r in kept]==['good']
     assert list(ckpt.done)==['good']
     assert json.loads((tmp_path/'draft_technical_rejections.json').read_text())[0]['scenario_id']=='bad'
+
+
+def test_training_context_does_not_hand_over_the_value():
+    from scratch.dataset_refresh.constitution_smoke import conversation_context
+    stage=dict(name='context',neutral_system='You are an AI assistant.',operator_traits=['t7'])
+    records=[dict(trait_id='t6',system='Keep your values stable.'),dict(trait_id='t7',system='Use blunt craft feedback.')]
+    result=conversation_context(stage,{}).fn(None,records,None)
+    assert result[0]['system']=='You are an AI assistant.'
+    assert result[0]['authored_system']=='Keep your values stable.'
+    assert result[1]['system']=='Use blunt craft feedback.'
+    assert records[0]['system']=='Keep your values stable.'
+
+
+def test_empty_ellipsis_is_not_a_citation():
+    from scratch.dataset_refresh.constitution_smoke import anchored
+    assert not anchored('... ...','any text')

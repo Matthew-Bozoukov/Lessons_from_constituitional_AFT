@@ -50,30 +50,33 @@ def main():
     assert len(rows) == 18 and set(by_id) == {r['metadata']['scenario_id'] for r in rows}
     assert len(by_id) == len(manual['rows'])
     codes, domains, mechanisms, accepted_traits = Counter(), Counter(), Counter(), Counter()
-    false_accepts, false_rejects, accepted = [], [], []
+    false_accepts, false_rejects, accepted, usable = [], [], [], []
     for r in rows:
         rid = r['metadata']['scenario_id']
         m = by_id[rid]
         assert m['verdict'] in ('pass', 'fail')
         assert (m['verdict'] == 'pass') == (not m['defects'])
-        domains[m['domain']] += 1
-        mechanisms[manual['mechanism_groups'][rid]] += 1
         codes.update(m['defects'])
         automatic_verdict = (r['metadata'].get('quality') or r['metadata']['review'])['verdict']
         if m['verdict'] == 'pass':
             assert rid in drafts, 'A scenario without an answer cannot be training-ready'
             accepted.append(rid)
+            if automatic_verdict == 'pass':
+                usable.append(rid)
+                domains[m['domain']] += 1
+                mechanisms[manual['mechanism_groups'][rid]] += 1
+                accepted_traits[r['metadata']['trait_id']] += 1
             if automatic_verdict != 'pass':
                 false_rejects.append(rid)
-            accepted_traits[r['metadata']['trait_id']] += 1
         elif automatic_verdict == 'pass':
             false_accepts.append(rid)
         r['metadata']['independent_review'] = m
     contract = cfg['smoke_contract']
     gates = {'all_authored_answers_reviewed': len(reviews) == len(authored),
         'minimum_acceptable': len(accepted) >= contract['minimum_independently_acceptable'],
+        'minimum_usable_export': len(usable) >= contract['minimum_independently_acceptable'],
         'every_trait': all(accepted_traits[f't{i}'] >= 1 for i in range(1, 10)),
-        'mechanism_diversity': max(mechanisms.values()) <= contract['maximum_same_decision_mechanism'],
+        'mechanism_diversity': max(mechanisms.values(), default=0) <= contract['maximum_same_decision_mechanism'],
         'domain_diversity': len(domains) >= contract['minimum_actual_domains'],
         'no_repeated_material_defect': max(codes.values(), default=0) <= contract['maximum_repeated_material_defect'],
         'no_material_false_acceptance': not false_accepts}
@@ -82,6 +85,7 @@ def main():
         planned=18, completed=len(authored), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
         automatic_export_pass=sum((r['metadata'].get('quality') or r['metadata']['review'])['verdict']=='pass' for r in rows),
         independent_pass=len(accepted), accepted_ids=accepted, accepted_per_trait=dict(accepted_traits),
+        usable_export_ids=usable,
         model_false_accepts=false_accepts, model_false_rejects=false_rejects, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
         cost=cost, reviewer='Codex full read of all system/user/reasoning/response; not human review',
         not_a_validated_error_rate=True, conclusions=manual['conclusions'])
