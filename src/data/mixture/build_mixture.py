@@ -571,6 +571,12 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
         "render_chat), tools included")
     gen = {"seed": int(cfg.seed), "max_seq_len": int(cfg.max_seq_len),
            "budget_tokenizer": str(cfg.tokenizer)}
+    if cfg.get("synthetic_pct") is not None:
+        # The unit the share in the NAME is declared in: rows until 2026-09-21, supervised
+        # tokens after (src/data/mixture/token_share.py). Same name shape either way, so the
+        # card has to say which.
+        gen["synthetic_pct"] = int(cfg.synthetic_pct)
+        gen["share_unit"] = str(cfg.get("share_unit") or "examples")
     if cfg.get("base_mixture"):
         gen["base_mixture"] = OmegaConf.to_container(cfg.base_mixture, resolve=True)
     if traces:
