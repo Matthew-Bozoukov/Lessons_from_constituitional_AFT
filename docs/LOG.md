@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Normal DA also has grounding and rationalization defects
+
+**Question:** does the newest normal difficult-advice source share the problems
+found in low-stakes data? **Method:** verified the 752-row September 14 source at
+HF revision `013886238fca238c4d54ace96530f444bb2b2f02`; full-corpus literal and
+structure checks, complete reads of 18 hash-selected rows (two per principle),
+plus inspection of 35 draft/training-text screen contexts. No paid model calls.
+**Result:** invented case facts and completed actions, distorted requests,
+unsupported outcome/permission claims and cost-erasing rationalization are present.
+Substantive deliberation is also present. No exact prompt/answer duplicates,
+missing reasoning, residual export tags or Claude/Anthropic names in training text.
+Final corpus check was ablated and the general quality filter disabled. This is
+not a prevalence estimate or a causal explanation of the ODCV difference.
+**Next:** apply the same material-error standard to baseline and candidate data;
+preserve real tradeoffs and separately enforce low-stakes magnitude/actor scope.
+See [full checklist](dataset_audits/2026-09-21_normal_da_quality_check.md) and
+[sample/census archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-fresh-synth-smoke/tree/main/normal_da_audit).
+
 ## 2026-09-21 — Native low-stakes smoke and factual-error parity with old data
 
 **Hypothesis:** minimal native DA recipe changes preserve deliberation while limiting
