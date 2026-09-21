@@ -76,48 +76,65 @@ def main(data_repo: str, data_revision: str | None = None, model: str = "qwen36"
     trainable = [p for p in net.parameters() if p.requires_grad]
     gb = 16
 
-    # --- alone: one padded pass per example (batch 1, no padding at all) --------------------
-    alone_logits, alone_loss = [], torch.zeros((), device="cuda")
-    net.zero_grad(set_to_none=True)
-    for f in feats:
-        b = {k: v.to("cuda") for k, v in _collate_padded([f], tokenizer.pad_token_id).items()}
-        labels = b.pop("labels")
-        out = net(**b, use_cache=False).logits
-        alone_logits.append(out[0].detach().float())
-        loss = seq_mean_token_mean_loss(out, labels, gb)
-        loss.backward()
-        alone_loss += loss.detach()
-    alone_grad = torch.cat([p.grad.flatten().float() for p in trainable]).clone()
+    def run(feats_in, packed: bool, pad_extra: int = 0):
+        """Per-example float logits at every position (list, in feats_in order) and the LoRA grad."""
+        net.zero_grad(set_to_none=True)
+        outs = []
+        if packed:
+            b = _collate_packed(feats_in)
+            b = {k: (v.to("cuda") if isinstance(v, torch.Tensor) else v) for k, v in b.items()}
+            labels, segments = b.pop("labels"), b.pop("segments")
+            full = net(**b, use_cache=False).logits[0].detach().float()
+            off = 0
+            for f in feats_in:
+                outs.append(full[off:off + len(f["input_ids"])]); off += len(f["input_ids"])
+            keep = supervised_positions(labels)
+            net.zero_grad(set_to_none=True)
+            loss = seq_mean_token_mean_loss(net(**b, use_cache=False, logits_to_keep=keep).logits,
+                                            labels, gb, keep, segments)
+            loss.backward()
+        else:
+            loss = torch.zeros((), device="cuda")
+            for f in feats_in:
+                f2 = f if not pad_extra else {"input_ids": f["input_ids"] + [tokenizer.pad_token_id] * pad_extra,
+                                              "labels": f["labels"] + [-100] * pad_extra}
+                b = {k: v.to("cuda") for k, v in _collate_padded([f2], tokenizer.pad_token_id).items()}
+                if pad_extra:
+                    b["attention_mask"][:, -pad_extra:] = 0
+                labels = b.pop("labels")
+                out = net(**b, use_cache=False).logits
+                outs.append(out[0, : len(f["input_ids"])].detach().float())
+                l = seq_mean_token_mean_loss(out, labels, gb); l.backward(); loss = loss + l.detach()
+        grad = torch.cat([p.grad.flatten().float() for p in trainable]).clone()
+        return outs, float(loss), grad
 
-    # --- packed: the same examples end to end, through the trainer's collator -----------------
-    net.zero_grad(set_to_none=True)
-    b = _collate_packed(feats)
-    b = {k: (v.to("cuda") if isinstance(v, torch.Tensor) else v) for k, v in b.items()}
-    labels, segments = b.pop("labels"), b.pop("segments")
-    out = net(**b, use_cache=False).logits[0].detach().float()
-    keep = supervised_positions(labels)
-    net.zero_grad(set_to_none=True)
-    out_k = net(**b, use_cache=False, logits_to_keep=keep).logits
-    packed_loss = seq_mean_token_mean_loss(out_k, labels, gb, keep, segments)
-    packed_loss.backward()
-    packed_grad = torch.cat([p.grad.flatten().float() for p in trainable])
+    def compare(name, A, B, feats_a, feats_b):
+        """Mean |dlogit| and top-1 disagreement over each example's SUPERVISED positions."""
+        rows = []
+        for k, f in enumerate(feats_a):
+            kb = feats_b.index(f)
+            sup = torch.tensor([i for i, v in enumerate(f["labels"][1:]) if v != -100], device="cuda")
+            a, b = A[k][sup], B[kb][sup]
+            rows.append((float((a - b).abs().mean()), float((a.argmax(-1) != b.argmax(-1)).float().mean()),
+                         float((a - b).abs().max())))
+        print(f"{name:52s} mean|d| {np.mean([r[0] for r in rows]):.4f}  top1 disagree {100*np.mean([r[1] for r in rows]):.2f}%  max|d| {max(r[2] for r in rows):.2f}")
+        return rows
 
-    # --- report ------------------------------------------------------------------------------
-    print(f"\nloss   alone {float(alone_loss):.6f}   packed {float(packed_loss):.6f}   "
-          f"rel {abs(float(alone_loss - packed_loss)) / float(alone_loss):.2e}")
-    cos = float((alone_grad @ packed_grad) / (alone_grad.norm() * packed_grad.norm()))
-    print(f"LoRA grad   cosine {cos:.6f}   rel diff {float((packed_grad - alone_grad).norm() / alone_grad.norm()):.2e}")
-    print(f"\n{'example':>7} {'len':>5} | max|dlogit| all positions | positions 0-2 | positions 3+  (bf16 noise ~1e-2..1e-1 on logits of scale ~10)")
-    off = 0
-    worst = 0.0
-    for k, (f, a) in enumerate(zip(feats, alone_logits)):
-        L = lens[k]
-        p = out[off:off + L]
-        d = (p - a).abs()
-        worst = max(worst, float(d.max()))
-        print(f"{k:7d} {L:5d} | {float(d.max()):12.4f}          | {float(d[:3].max()):11.4f} | {float(d[3:].max()):11.4f}")
-        off += L
-    print(f"\n>>> verdict: {'PACKED == ALONE (differences at bf16 noise)' if worst < 0.5 and cos > 0.999 else 'DIFFERENT — a boundary leaks; see the position bands'}")
+    alone, alone_loss, alone_grad = run(feats, packed=False)
+    alone_pad, _, _ = run(feats, packed=False, pad_extra=37)         # NOISE FLOOR: same example, other shape
+    pack1, pack_loss, pack_grad = run(feats, packed=True)              # the trainer's pack
+    shuffled = feats[::-1]                                             # LEAK PROBE: every example gets new neighbours
+    pack2, _, _ = run(shuffled, packed=True)
+
+    print(f"\nloss  alone {alone_loss:.6f}  packed {pack_loss:.6f}  rel {abs(alone_loss - pack_loss) / alone_loss:.2e}")
+    cos = float((alone_grad @ pack_grad) / (alone_grad.norm() * pack_grad.norm()))
+    print(f"LoRA grad, packed vs alone: cosine {cos:.6f}  rel diff {float((pack_grad - alone_grad).norm() / alone_grad.norm()):.2e}\n")
+    floor = compare("noise floor: alone vs alone+37 pad (kernel shape only)", alone, alone_pad, feats, feats)
+    leak = compare("LEAK PROBE: packed vs packed with reversed neighbours", pack1, pack2, feats, shuffled)
+    compare("packed vs alone", pack1, alone, feats, feats)
+    f_m, l_m = np.mean([r[0] for r in floor]), np.mean([r[0] for r in leak])
+    print(f"\n>>> verdict: {'NO LEAK — neighbours change nothing beyond kernel-shape noise' if l_m <= 2 * f_m + 1e-6 else 'LEAK — an example depends on its neighbours'}"
+          f"  (leak probe mean|d| {l_m:.4f} vs noise floor {f_m:.4f})")
 
 
 if __name__ == "__main__":
