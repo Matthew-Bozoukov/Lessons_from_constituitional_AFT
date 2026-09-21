@@ -83,6 +83,23 @@ class GuardedClient(BudgetClient):
         return result
 
 
+def validate_launch(launch, cfg):
+    mode = launch.get('mode', 'smoke')
+    if mode == 'smoke':
+        assert cfg['smoke']['total_scenarios'] == launch.get('expected_candidates', 18)
+        assert 0 < cfg['smoke']['total_scenarios'] <= 36 and 0 < launch['ceiling_usd'] <= 20
+    elif mode == 'full':
+        assert cfg['total_scenarios'] == launch['expected_candidates'] == 972
+        assert cfg['scenarios_per_trait'] == 108 and cfg['scenarios_per_call'] == 12
+        assert 0 < launch['ceiling_usd'] <= 120
+        assert launch['selection']['target_rows'] == 716
+        assert sum(launch['selection']['trait_quotas'].values()) == 716
+    else:
+        raise ValueError('Unknown launch mode')
+    assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical'} and not cfg.get('batch')
+    return mode
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',required=True)
@@ -92,11 +109,9 @@ def main():
     launch_path=Path(args.config)
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
     cfg=OmegaConf.to_container(OmegaConf.load(launch['recipe']),resolve=True)
-    assert cfg['smoke']['total_scenarios']==launch.get('expected_candidates',18)
-    assert 0 < cfg['smoke']['total_scenarios'] <= 36 and launch['ceiling_usd']<=20
-    assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical'} and not cfg.get('batch')
+    mode = validate_launch(launch, cfg)
     cfg['budget_usd']=launch['ceiling_usd']  # Soft native guard; shared ledger is authoritative.
-    root=Path(args.resume) if args.resume else Path('output')/to_local(artifact_name(cfg['pipeline']+' guarded smoke'))/timestamp()
+    root=Path(args.resume) if args.resume else Path('output')/to_local(artifact_name(cfg['pipeline']+' guarded '+mode))/timestamp()
     if args.resume:
         old=json.loads((root/'launch_meta.json').read_text(encoding='utf-8'))
         assert old['recipe']==cfg and old['launch']==launch, 'Resume must preserve the frozen recipe and budget'
@@ -112,6 +127,7 @@ def main():
         root.mkdir(parents=True,exist_ok=False)
     sources=[launch_path,Path(launch['recipe']),Path(__file__),Path('scratch/dataset_refresh/run.py'),
              Path(cfg['constitution']),Path('configs/endpoints/providers.yaml'),
+             *([Path('scratch/dataset_refresh/select_native_lowstakes.py')] if mode == 'full' else []),
              *[Path('src/data/synth/ours')/name for name in ['pipeline.py','stage_operators.py','stage_runtime.py','constitution.py']]]
     for source in sources:
         target=(archive/'frozen_runtime' if args.resume else root/'frozen')/source.resolve().relative_to(Path.cwd().resolve())
@@ -124,8 +140,11 @@ def main():
     client=GuardedClient(Path(launch['campaign_budget_root']),launch,root)
     print('SMOKE_ROOT='+str(root.resolve()),flush=True)
     try:
-        manifest=pipeline.run(cfg,smoke=True,resume=str(root),client=client)
+        manifest=pipeline.run(cfg,smoke=(mode == 'smoke'),resume=str(root),client=client)
         pipeline.exit_if_gate_failed(manifest)
+        if mode == 'full':
+            from scratch.dataset_refresh.select_native_lowstakes import select_run
+            select_run(root, launch['selection'])
     except BaseException as exc:
         write_json(root/'stopped.json',dict(error=str(exc),type=type(exc).__name__))
         raise
