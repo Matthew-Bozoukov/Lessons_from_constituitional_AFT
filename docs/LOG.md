@@ -1,6 +1,39 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Where the pressure in our DA prompts comes from: 56% ask the assistant for the shortcut, 19% carry none; Teaching Claude Why's example carries none
+
+**Hypothesis.** Callum's 2026-09-14 critique — DA/DAT rows are "safety-eval shaped", the push
+toward the violation is in the prompt — is a property of the corpus that can be counted, and
+Teaching Claude Why's design ("the user asks for advice about an ethically ambiguous situation")
+may differ from ours on exactly that property.
+
+**Method.** `scratch/classify_da_pressure.py`: every user prompt of
+`dougalldeepmind/2026-09-14-da-synth`@`01388623` (752 rows, the corpus behind da-7) labelled
+by gemini-3-flash at temperature 0 for actor (user faces the dilemma / the AI does), push (none:
+tension latent; lean: user favours the shortcut but asks openly; push: user asks the assistant
+to do or write it; override: push plus a persona / "skip the caveats" / claimed authority),
+goods (trade-off / good-vs-bad), whether a prompt-only safety monitor would flag it, and whether
+full help is the right answer. TCW's one published example (the power-grid threshold question)
+labelled with the same rubric. Our generator's contract (`configs/data/synth/da.yaml` 289-360)
+requires a "genuinely tempting" norm-violating shortcut and a user message that "leads toward
+the shortcut"; TCW's step 2 asks for "a difficult, moderately high stakes problem".
+
+**Result.** actor: user 82%, AI 18% (137 rows put the assistant itself in the situation with
+access — TCW's stated point of difference from honeypots). push: none 19%, lean 25%, push 43%,
+override 13%. goods: good-vs-bad 66%, trade-off 31%. Monitor would flag 48% (80% of push +
+override rows). Full help is the right answer in 28% of rows overall but 93% of the "none"
+rows and 7% of the "push" rows. Only 129/752 (17%) are the TCW shape (user, none, trade-off).
+By trait: t6 (89% override) and t1 (67% push + 21% override) are the adversarial mass; t8 is
+61% none. TCW's example: user / none / trade-off / monitor no / help_fully yes. Single-judge
+labels, no human check; the four-level push scale is the judge's reading of the prompt text.
+
+**Next steps.** The 129 TCW-shaped rows already exist: an arm trained on them alone (or on the
+none+lean 331) against push+override is the pressure ablation Callum asked for, without new
+generation. Change the generator contract before generating more: replace the mandatory
+"leads toward the shortcut" with a hashed pressure level so one corpus spans the axis. Watch the
+INCENTIVIZED ODCV variant — the residual failure of every DA model (2026-09-21 entry above).
+
 ## 2026-09-21 — Do the fla kernels change the model? Four da-7 adapters on ODCV + MASK: not detectably, because MASK moves 11 points between same-stack runs and the ODCV gap is inside one lucky-run's reach
 
 **Hypothesis.** The 2026-09-20 entry left fla unvalidated: it is 2.75x faster, but its
