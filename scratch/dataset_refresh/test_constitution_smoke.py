@@ -221,3 +221,22 @@ def test_quote_capitalization_and_optional_label_are_not_content_failures():
     assert not anchor_errors(audit,'','Titles can be restored.','','Keep undo.',flexible=True)
     audit['claim_audit'][0]['source_quote']='Titles cannot be restored'
     assert anchor_errors(audit,'','Titles can be restored.','','Keep undo.',flexible=True)
+
+
+def test_one_malformed_output_does_not_retry_or_discard_its_peer(tmp_path):
+    from scratch.dataset_refresh.constitution_smoke import bounded_llm
+    from src.data.synth.ours.stage_runtime import Ctx,Usage,Checkpoint
+    calls=[]
+    class Client:
+        def chat(self,**kw):
+            prompt=kw['messages'][-1]['content'];calls.append(prompt)
+            return reply('missing tags' if 'bad' in prompt else '<reasoning>R</reasoning><response>A</response>')
+    cfg=config()
+    stage=dict(name='draft',kind='smoke_tagged',model='draft',tags=['reasoning','response'],
+               save={'reasoning':'reasoning','response':'response'},prompts={'system':'Assistant','user':'{scenario_id}'})
+    ctx=Ctx(cfg=cfg,usage=Usage(),workers=2,run_dir=tmp_path,smoke=True,_client=Client())
+    ckpt=Checkpoint(tmp_path/'partial.jsonl')
+    kept=bounded_llm(stage,cfg).fn(ctx,[{'scenario_id':'bad'},{'scenario_id':'good'}],ckpt)
+    assert len(calls)==2 and [r['scenario_id'] for r in kept]==['good']
+    assert list(ckpt.done)==['good']
+    assert json.loads((tmp_path/'draft_technical_rejections.json').read_text())[0]['scenario_id']=='bad'

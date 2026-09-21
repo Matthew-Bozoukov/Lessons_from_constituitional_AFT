@@ -198,6 +198,48 @@ def focus_clause(sc, cfg):
     return Stage(sc['name'], focus)
 
 
+def bounded_llm(sc, cfg):
+    """Use standard parsers, but one malformed record does not abort its peers.
+
+    Transport/budget failures still abort. No conversion of provider reasoning to
+    authored reasoning, no model repair, and no exception-induced second call.
+    """
+    from src.data.synth.ours.stage_runtime import Stage, _parse_tagged, model_cfg
+    def execute(ctx, records, ckpt):
+        m = model_cfg(cfg, sc['model'])
+        lock = threading.Lock()
+        failures = []
+        def one(record):
+            fields = {**ctx.vars, **record}
+            messages = [{'role': role, 'content': sc['prompts'][role].format(**fields)} for role in ('system','user')]
+            result = ctx.client.chat(model=m['model'], messages=messages, temperature=m['temperature'],
+                                     max_tokens=m['max_tokens'], extra_body=m.get('extra_body', {}))
+            with lock:
+                ctx.usage.add(m['model'], result, sc['name'])
+            try:
+                if result.finish_reason == 'length':
+                    raise ValueError('Truncated output')
+                parsed = _parse_json(result.content) if sc['kind']=='smoke_json' else _parse_tagged(result.content,tuple(sc['tags']))
+                output = {**record, **{dest:parsed[source] for dest,source in sc['save'].items()}}
+            except (ValueError, KeyError, TypeError) as exc:
+                with lock:
+                    failures.append(dict(scenario_id=record['scenario_id'],error=str(exc),raw_preserved=True))
+                    write_json(ctx.run_dir/(sc['name']+'_technical_rejections.json'),failures)
+                return None
+            with lock:
+                if ckpt:
+                    ckpt.record(output)
+            return output
+        with ThreadPoolExecutor(max_workers=ctx.workers) as pool:
+            results = list(pool.map(one,records))
+        ctx.manifest_extra.setdefault('technical_rejections',{})[sc['name']] = failures
+        kept = [r for r in results if r is not None]
+        if not kept:
+            ctx.stop = 'Every record failed format checks; raw outputs preserved'
+        return kept
+    return Stage(sc['name'],execute,paid=True,checkpoint_key='scenario_id')
+
+
 def calibrate(cfg, root, client, fixture_path):
     cases = OmegaConf.to_container(OmegaConf.load(fixture_path), resolve=True)['cases']
     traits = {t.as_trait().trait_id: t.as_trait().text for t in units_from_config(cfg)}
@@ -284,6 +326,8 @@ def main():
             OPERATORS['smoke_source_gate'] = source_gate
             OPERATORS['smoke_answer_gate'] = answer_gate
             OPERATORS['smoke_focus_clause'] = focus_clause
+            OPERATORS['smoke_json'] = bounded_llm
+            OPERATORS['smoke_tagged'] = bounded_llm
         manifest = pipeline.run(cfg, smoke=True, resume=str(generation), client=client)
         if manifest.get('halted'):
             write_json(root / 'automatic_summary.json', {'completed': 0, 'model_pass': 0, 'manifest': manifest})

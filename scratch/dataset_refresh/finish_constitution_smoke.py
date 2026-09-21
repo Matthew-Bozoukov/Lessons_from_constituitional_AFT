@@ -24,17 +24,27 @@ def main():
     manifest = json.loads((root/'generation/manifest.json').read_text(encoding='utf-8'))
     cfg = manifest['config']
     # A failed judge is a diagnostic outcome, never a fabricated pass or paid rerun.
-    authored = [json.loads(s) for s in (root/'generation/stage_5_revise_responses.jsonl').read_text(encoding='utf-8').splitlines()]
-    judge_path = root/'generation/stage_6_review_responses.jsonl'
-    if not judge_path.exists():
-        judge_path = root/'generation/stage_6_review_responses.partial.jsonl'
-    judged = [json.loads(s) for s in judge_path.read_text(encoding='utf-8').splitlines()]
+    def read_stage(name):
+        matches = list((root/'generation').glob(f'stage_*_{name}.jsonl'))
+        if not matches:
+            matches = list((root/'generation').glob(f'stage_*_{name}.partial.jsonl'))
+        if not matches:
+            return []
+        assert len(matches) == 1
+        return [json.loads(s) for s in matches[0].read_text(encoding='utf-8').splitlines()]
+    scenarios = read_stage('write_scenarios')
+    authored = read_stage('revise_responses') or read_stage('draft_responses')
+    judged = read_stage('review_responses')
     reviews = {r['scenario_id']: r['review'] for r in judged}
+    drafts = {r['scenario_id']:r for r in authored}
+    decisions_path = root/'generation/answer_decisions.json'
+    decisions = {r['scenario_id']:r['quality'] for r in json.loads(decisions_path.read_text(encoding='utf-8'))} if decisions_path.exists() else {}
     rows = [{'messages':[{'role':'system','content':r['system']}, {'role':'user','content':r['user']},
-                        {'role':'assistant','content':r['response'],'reasoning_content':r['reasoning']}],
+                        *([{'role':'assistant','content':drafts[r['scenario_id']]['response'],'reasoning_content':drafts[r['scenario_id']]['reasoning']}] if r['scenario_id'] in drafts else [])],
              'metadata':{**{k:r[k] for k in ('scenario_id','trait_id','setting','request_form','reasoning_demand')},
+                         'quality': decisions.get(r['scenario_id']),
                          'review': reviews.get(r['scenario_id'], {'verdict':'technical_failure','findings':[],
-                             'reason':'No complete judge output; see raw call and aborted pipeline manifest'})}} for r in authored]
+                             'reason':'No answer review; see source rejection or stage failure'})}} for r in scenarios]
     manual = OmegaConf.to_container(OmegaConf.load(args.review), resolve=True)
     by_id = {r['id']: r for r in manual['rows']}
     assert len(rows) == 18 and set(by_id) == {r['metadata']['scenario_id'] for r in rows}
@@ -49,16 +59,18 @@ def main():
         domains[m['domain']] += 1
         mechanisms[manual['mechanism_groups'][rid]] += 1
         codes.update(m['defects'])
+        automatic_verdict = (r['metadata'].get('quality') or r['metadata']['review'])['verdict']
         if m['verdict'] == 'pass':
+            assert rid in drafts, 'A scenario without an answer cannot be training-ready'
             accepted.append(rid)
-            if r['metadata']['review']['verdict'] == 'fail':
+            if automatic_verdict != 'pass':
                 false_rejects.append(rid)
             accepted_traits[r['metadata']['trait_id']] += 1
-        elif r['metadata']['review']['verdict'] == 'pass':
+        elif automatic_verdict == 'pass':
             false_accepts.append(rid)
         r['metadata']['independent_review'] = m
     contract = cfg['smoke_contract']
-    gates = {'all_judges_complete': len(reviews) == 18,
+    gates = {'all_authored_answers_reviewed': len(reviews) == len(authored),
         'minimum_acceptable': len(accepted) >= contract['minimum_independently_acceptable'],
         'every_trait': all(accepted_traits[f't{i}'] >= 1 for i in range(1, 10)),
         'mechanism_diversity': max(mechanisms.values()) <= contract['maximum_same_decision_mechanism'],
@@ -67,7 +79,8 @@ def main():
         'no_material_false_acceptance': not false_accepts}
     cost = json.loads((root/'cost_summary.json').read_text(encoding='utf-8'))
     summary = dict(overall='pass' if all(gates.values()) else 'fail', gates=gates,
-        planned=18, completed=len(rows), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
+        planned=18, completed=len(authored), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
+        automatic_export_pass=sum((r['metadata'].get('quality') or r['metadata']['review'])['verdict']=='pass' for r in rows),
         independent_pass=len(accepted), accepted_ids=accepted, accepted_per_trait=dict(accepted_traits),
         model_false_accepts=false_accepts, model_false_rejects=false_rejects, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
         cost=cost, reviewer='Codex full read of all system/user/reasoning/response; not human review',
