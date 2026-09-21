@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Full low-stakes batch launched with $120 cap
+
+**Hypothesis:** the fixed trait/domain design can produce 716 accepted examples
+without replacement loops. **Method:** user-approved one 972-candidate batch,
+native practical low-stakes recipe, all Sonnet, four workers; frozen launch commit
+`160ef968` on `codex/lowstakes-synthdoc-pipeline`. Per-call reservations enforce
+an additional $120 cap; prior $17.565140 development is separate. Deterministic
+selection fixes t1-t5 at 80 rows and t6-t9 at 79, balancing domains round-robin
+and reporting any quota/empty-cell shortfall rather than regenerating.
+**Status:** launched 2026-09-21 15:20:17 UTC; first four requests returned 12
+parseable scenarios each, no errors in the initial health check. 81 offline tests
+passed. This entry records startup, not completed generation or quality approval.
+**Next:** finish native stages, inspect coverage and diagnostics, review and
+publish the selected subset plus provenance. No SFT/evaluation launched.
+Local run: `output/2026-09-21_da_lowstakes_practical_guarded_full/20260921_152017`.
+[Live stage repository](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth).
+[Frozen full-run plan](dataset_audits/2026-09-21_lowstakes_full_plan.md).
+
 ## 2026-09-21 — Fixed domains: 32/36 exports; reject domain-as-morality veto
 
 **Hypothesis:** preregistering small activity domains and giving Sonnet one domain
