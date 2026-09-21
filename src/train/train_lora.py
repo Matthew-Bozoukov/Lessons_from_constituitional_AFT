@@ -25,6 +25,7 @@ from trl import SFTConfig, SFTTrainer
 
 from src.train.dynamic_batching import (  # noqa: E402
     plan_micro_batches,
+    plan_packs,
     route_step,
     seq_mean_token_mean_loss,
     supervised_positions,
@@ -80,6 +81,31 @@ def _collate_padded(features: list[dict], pad_token_id: int) -> dict[str, torch.
     return batch
 
 
+def _collate_packed(features: list[dict], seq_idx_dtype=torch.int32) -> dict[str, torch.Tensor]:
+    """Concatenate pre-tokenized examples into ONE row with no padding, plus the boundary facts.
+
+    Everything a boundary-respecting forward needs travels with the batch: `position_ids`
+    restart at 0 per example (transformers' flash path reads packing off them),
+    `cu_seq_lens_*`/`max_length_*` are the varlen attention kwargs that also reach the
+    gated-delta kernel as its `cu_seqlens`, `seq_idx` is the per-token example index the
+    fused causal conv takes, and `segments` is the same index for the loss. There is no
+    `attention_mask`: a packed row is dense, and a 2-D mask would only say so.
+
+    Every example's first label is -100 (`build_labels` never supervises the first token,
+    which has no predictor), so the logit at a pack boundary predicts nothing across it.
+    """
+    lens = [len(f["input_ids"]) for f in features]
+    assert all(f["labels"][0] == -100 for f in features), "an example's first token is never a target"
+    ids = torch.tensor([t for f in features for t in f["input_ids"]])[None]
+    labels = torch.tensor([t for f in features for t in f["labels"]])[None]
+    position_ids = torch.cat([torch.arange(n) for n in lens])[None]
+    segments = torch.cat([torch.full((n,), k, dtype=torch.long) for k, n in enumerate(lens)])[None]
+    cu = torch.tensor([0] + list(torch.tensor(lens).cumsum(0)), dtype=torch.int32)
+    return {"input_ids": ids, "labels": labels, "position_ids": position_ids, "segments": segments,
+            "seq_idx": segments.to(seq_idx_dtype), "cu_seq_lens_q": cu, "cu_seq_lens_k": cu,
+            "max_length_q": max(lens), "max_length_k": max(lens)}
+
+
 class DynamicBatchTrainer(SFTTrainer):
     """SFTTrainer whose step runs its examples as token-budgeted micro-batches.
 
@@ -103,11 +129,12 @@ class DynamicBatchTrainer(SFTTrainer):
     """
 
     def __init__(self, *args, token_budget: int, global_batch: int,
-                 pad_token_id: int, **kwargs):
+                 pad_token_id: int, packing: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self._token_budget = int(token_budget)
         self._global_batch = int(global_batch)
         self._pad_token_id = int(pad_token_id)
+        self._packing = bool(packing)
         self._stream_checked = False
 
     def get_train_dataloader(self):
@@ -159,8 +186,8 @@ class DynamicBatchTrainer(SFTTrainer):
         # Every rank computes the identical full plan and takes its own share; the
         # divisor stays global_batch even on a short final/smoke batch (legacy
         # behaviour, keeps loss curves comparable).
-        local_plan = route_step(lengths, self._token_budget, world_size)[
-            int(self.args.process_index)]
+        local_plan = route_step(lengths, self._token_budget, world_size,
+                                packed=self._packing)[int(self.args.process_index)]
         scale = float(world_size)  # DDP mean -> sum; see class docstring
         total = None
         for j, part in enumerate(local_plan):
@@ -168,10 +195,14 @@ class DynamicBatchTrainer(SFTTrainer):
             sync_ctx = (contextlib.nullcontext() if (is_last or world_size == 1)
                         else self.accelerator.no_sync(model))
             with sync_ctx:
-                batch = _collate_padded([features[i] for i in part], self._pad_token_id)
-                batch = {k: v.to(self.args.device, non_blocking=True)
+                rows = [features[i] for i in part]
+                batch = (_collate_packed(rows) if self._packing
+                         else _collate_padded(rows, self._pad_token_id))
+                batch = {k: (v.to(self.args.device, non_blocking=True)
+                             if isinstance(v, torch.Tensor) else v)
                          for k, v in batch.items()}
                 labels = batch.pop("labels")
+                segments = batch.pop("segments", None)
                 with self.compute_loss_context_manager():
                     # No `labels` kwarg: the model must not compute its own
                     # (differently normalised) loss; we build it from the logits —
@@ -181,7 +212,7 @@ class DynamicBatchTrainer(SFTTrainer):
                     keep = supervised_positions(labels)
                     out = model(**batch, use_cache=False, logits_to_keep=keep)
                     loss = seq_mean_token_mean_loss(
-                        out.logits, labels, self._global_batch, keep) * scale
+                        out.logits, labels, self._global_batch, keep, segments) * scale
                 # Backward INSIDE the sync context: gradients accumulate locally,
                 # and only the final pass's backward triggers the all-reduce.
                 self.accelerator.backward(loss)
@@ -555,13 +586,23 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # instead shard one copy across every visible GPU, which collides with the replica the
     # other rank is building on the same device and deadlocks or OOMs.
     device_map = {"": local_rank} if world_size > 1 else "auto"
+    # The attention backend is an implementation detail, not identity: the profile's verified
+    # default, or a launch override (`train.attn_implementation=flash_attention_2`). Packing
+    # REQUIRES a varlen-aware backend — under sdpa a packed row is one causal sequence and
+    # every example reads its neighbours — so it is refused with anything else.
+    attn_impl = str(cfg.train.get("attn_implementation") or profile.attn_implementation)
+    packing = bool(cfg.train.get("packing", False))
+    if packing and attn_impl not in ("flash_attention_2", "flash_attention_3"):
+        raise ValueError(
+            f"train.packing needs varlen attention (flash_attention_2/3), not {attn_impl!r}: "
+            "sdpa would let packed examples attend to each other")
     model = auto_cls.from_pretrained(
         model_id,
         revision=base_revision,
         quantization_config=bnb,
         dtype=torch.bfloat16,
         device_map=device_map,
-        attn_implementation=profile.attn_implementation,
+        attn_implementation=attn_impl,
     )
     model.config.use_cache = False
     if smoke:
@@ -632,11 +673,13 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # Written back so the saved config batches the same way on a rerun, whatever GPU it
     # lands on (grouping is gradient-equivalent either way; this pins the throughput).
     cfg.train.token_budget = dyn_budget
+    planner = plan_packs if packing else plan_micro_batches
     n_passes = sum(
-        len(plan_micro_batches(lens[s:s + global_batch], dyn_budget))
+        len(planner(lens[s:s + global_batch], dyn_budget))
         for s in range(0, len(lens) - global_batch + 1, global_batch))
     print(f">>> dynamic batching: token_budget={dyn_budget} [{budget_src}], "
-          f"global_batch={global_batch}, loss_agg=seq-mean-token-mean"
+          f"global_batch={global_batch}, loss_agg=seq-mean-token-mean, "
+          f"{'PACKED rows (no padding)' if packing else 'padded micro-batches'}, attn={attn_impl}"
           + (f", DDP routing over {world_size} ranks (route_step)"
              if world_size > 1 else ""))
     print(f">>> ~{n_passes} forward passes/epoch vs {len(lens)} at batch 1 "
@@ -696,6 +739,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         token_budget=dyn_budget,
         global_batch=global_batch,
         pad_token_id=tokenizer.pad_token_id,
+        packing=packing,
     )
 
     # One provenance stamp for every artifact this run publishes. Assembled AFTER every

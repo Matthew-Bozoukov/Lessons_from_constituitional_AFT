@@ -30,6 +30,13 @@ dependencies = [
     # so this alone moves the expensive op; the short conv1d before it stays on torch's
     # conv until causal-conv1d (a CUDA build, not in this lock) is added.
     "flash-linear-attention>=0.2.2; sys_platform == 'linux'",
+    # FlashAttention-2 without a CUDA build: transformers >= 5 resolves
+    # attn_implementation="flash_attention_2" to the Hub kernel kernels-community/flash-attn2
+    # when the `flash_attn` package is absent (FLASH_ATTN_KERNEL_FALLBACK), and `kernels`
+    # fetches the prebuilt binary for the running torch/CUDA. flash-attn itself has no wheel
+    # for torch 2.11/cu13 (2026-09-21) and takes an hour to build. Varlen attention is what
+    # packing needs (train.packing); it is also the kernel path for padded batches.
+    "kernels; sys_platform == 'linux'",
     # --- shared analysis/data stack ---
     "datasets>=5.0.0",
     "huggingface-hub>=1.25.1",
