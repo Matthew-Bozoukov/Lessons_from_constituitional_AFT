@@ -94,9 +94,9 @@ def tint(hex_colour: str, keep: float) -> tuple[float, float, float]:
     return tuple(1 - keep * (1 - c) for c in (r, g, b))
 
 
-def caps(ax, x: float, y: float, text: str, ha: str = "left") -> None:
-    """The small letterspaced label used for INPUT / OUTPUT / MODEL."""
-    ax.text(
+def caps(ax, x: float, y: float, text: str, ha: str = "left"):
+    """The small letterspaced label used for INPUT / OUTPUT."""
+    return ax.text(
         x,
         y,
         " ".join(text.upper()),
@@ -109,11 +109,11 @@ def caps(ax, x: float, y: float, text: str, ha: str = "left") -> None:
 
 
 def arrow(ax, y_from: float, y_to: float) -> None:
-    """Box to box, in the badge column so the numbers and arrows read as one line."""
+    """Box to box, down the centre line the input and output boxes sit on."""
     ax.add_patch(
         FancyArrowPatch(
-            (BADGE_X, y_from),
-            (BADGE_X, y_to),
+            (W / 2, y_from),
+            (W / 2, y_to),
             arrowstyle="-|>",
             mutation_scale=6,
             lw=0.9,
@@ -125,23 +125,21 @@ def arrow(ax, y_from: float, y_to: float) -> None:
 
 
 def endpoint(ax, y: float, label: str, text: str) -> None:
-    """The input / output box: slimmer than a stage, neutral, sized to its text."""
-    body = ax.text(
-        LEFT + 0.7,
-        y + END_H / 2,
-        text,
-        ha="left",
-        va="center",
-        fontsize=7.2,
-        color=INK,
-    )
-    caps(ax, LEFT + 0.12, y + END_H / 2, label)
+    """The input / output box: slimmer than a stage, neutral, sized to its text, centred."""
+    mid = y + END_H / 2
+    tag = caps(ax, 0, mid, label)
+    body = ax.text(0, mid, text, ha="left", va="center", fontsize=7.2, color=INK)
     ax.figure.canvas.draw()
-    end = body.get_window_extent().x1 / ax.figure.dpi
+    tag_w, body_w = (t.get_window_extent().width / ax.figure.dpi for t in (tag, body))
+    inset, between = 0.12, 0.16
+    width = inset + tag_w + between + body_w + inset
+    x0 = (W - width) / 2
+    tag.set_x(x0 + inset)
+    body.set_x(x0 + inset + tag_w + between)
     ax.add_patch(
         FancyBboxPatch(
-            (LEFT, y),
-            end + 0.12 - LEFT,
+            (x0, y),
+            width,
             END_H,
             boxstyle="round,pad=0,rounding_size=0.06",
             fc="white",
@@ -242,7 +240,6 @@ def main() -> None:
     # Top to bottom: input, the six stages, output — `y` is each box's bottom edge.
     y = H - PAD - END_H
     endpoint(ax, y, "Input", "Constitution (9 traits)")
-    caps(ax, CHIP_X + CHIP_W / 2, y + END_H / 2, "Model", ha="center")
     sentences = []
     for n, spec in enumerate(STAGES, start=1):
         arrow(ax, y - 0.01, y - GAP + 0.015)
