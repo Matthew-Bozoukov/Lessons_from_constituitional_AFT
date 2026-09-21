@@ -596,6 +596,18 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         raise ValueError(
             f"train.packing needs varlen attention (flash_attention_2/3), not {attn_impl!r}: "
             "sdpa would let packed examples attend to each other")
+    if packing and profile.family == "Qwen3.6":
+        # The gated-delta layers' short causal conv (kernel 4) respects pack boundaries only
+        # through the fused kernel's `seq_idx`; the torch fallback runs straight across them and
+        # leaks 3 positions into every example. causal-conv1d has no wheel for this torch/CUDA
+        # (docs/GOTCHAS.md 2026-09-21 says how to build it on a pod), so refuse rather than
+        # train on a leak the equality check would have caught.
+        from transformers.models.qwen3_5 import modeling_qwen3_5 as _qwen
+
+        if _qwen.causal_conv1d_fn is None:
+            raise ValueError(
+                "train.packing on Qwen3.6 needs the causal-conv1d kernel (seq_idx boundaries); "
+                "it is not installed. Build it on the pod (docs/GOTCHAS.md) or train padded.")
     model = auto_cls.from_pretrained(
         model_id,
         revision=base_revision,

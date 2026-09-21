@@ -1170,3 +1170,25 @@ and refused to score, `--terminate-pod` released the pod, and the MASK runner ca
 (it clears `mask_work` on start). The first four archetypes were intact (1.4% errors); all
 384 `statistics` generations were lost. ODCV-lite (~1 h) has not hit this. Until the tunnel
 reconnects by itself, drive MASK on the box (entry above).
+
+## Packing on Qwen3.6: three kernels must all know the boundaries, and one of them has to be built (2026-09-21)
+
+`train.packing=true` concatenates a step's examples into dense rows. It is exact ONLY when every
+boundary-aware op gets the boundaries: varlen attention (`attn_implementation=flash_attention_2`;
+transformers 5.14 fetches `kernels-community/flash-attn2` through the `kernels` package when
+`flash_attn` is absent — no CUDA build, `kernels` is in the lock), the gated-delta kernel
+(`fla` reads `cu_seq_lens_q`), and the kernel-4 causal conv in front of it, which respects
+boundaries only via `causal_conv1d_fn(seq_idx=...)`. The torch fallback conv leaks 3 positions
+into every example, so the trainer refuses to pack without `causal_conv1d`. No wheel exists for
+torch 2.11/cu13; it builds from source in ~8 min on a 256-core pod, but the pip CUDA layout has
+no unversioned `libcudart.so` for the linker:
+
+    CU=$(uv run python -c 'import nvidia,os;print(os.path.join(os.path.dirname(nvidia.__path__[0]),"nvidia","cu13"))')
+    mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
+    CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib MAX_JOBS=64 \
+      CAUSAL_CONV1D_FORCE_BUILD=TRUE uv pip install --no-build-isolation causal-conv1d==1.7.0
+
+Verify with `scratch/pack_equality_check.py`: its leak probe (same example, different
+neighbours) must read 0.0000 — it did on 2026-09-21 with all three in place — and the
+packed-vs-alone difference must sit at the kernel-shape noise floor it prints beside it. The
+max over 250k bf16 logits is NOT a usable metric (it reached 7.8 with zero leakage).
