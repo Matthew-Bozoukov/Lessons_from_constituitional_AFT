@@ -146,6 +146,35 @@ def effective_review(review, system, user, reasoning, response, guarded=False):
     return dict(verdict='pass' if review['verdict']=='pass' and not findings and not errors else 'fail', findings=findings, anchor_errors=errors)
 
 
+def indexed_fields(record):
+    """Assign exact source/answer spans stable IDs; the judge never recopies prose."""
+    source, answer = {}, {}
+    for prefix, field, dest in [('s','system',source),('u','user',source),('r','reasoning',answer),('a','response',answer)]:
+        parts=[x.strip() for x in re.split(r'(?<=[.!?])\s+|\n+',record.get(field,'')) if x.strip()]
+        dest.update({f'{prefix}{i+1}':part for i,part in enumerate(parts)})
+    return dict(numbered_source=json.dumps(source,ensure_ascii=False),numbered_answer=json.dumps(answer,ensure_ascii=False)),source,answer
+
+
+def resolve_evidence_ids(parsed,record):
+    _, source, answer=indexed_fields(record)
+    if 'source_record' in parsed:
+        audit=parsed['source_record']
+        for fact in audit['facts']:
+            fact['quote']=source[fact['source_id']]
+        for finding in audit.get('findings',[]):
+            finding['quote']=source[finding['source_id']]
+    if 'review' in parsed:
+        review=parsed['review']
+        for claim in review['claim_audit']:
+            ident=claim['answer_id']
+            claim.update(block='reasoning' if ident.startswith('r') else 'response',claim=answer[ident],source_quote='')
+            for i, source_id in enumerate(claim['source_ids']):
+                claim['source_quote' + (str(i+1) if i else '')]=source[source_id]
+        for finding in review['findings']:
+            finding['quote']=answer[finding['answer_id']]
+    return parsed
+
+
 def answer_gate(sc, cfg):
     from src.data.synth.ours.stage_runtime import Stage
     def gate(ctx, records, ckpt):
@@ -232,7 +261,7 @@ def bounded_llm(sc, cfg):
         lock = threading.Lock()
         failures = []
         def one(record):
-            fields = {**ctx.vars, **record}
+            fields = {**ctx.vars, **record,**indexed_fields(record)[0]}
             messages = [{'role': role, 'content': sc['prompts'][role].format(**fields)} for role in ('system','user')]
             result = ctx.client.chat(model=m['model'], messages=messages, temperature=m['temperature'],
                                      max_tokens=m['max_tokens'], extra_body=m.get('extra_body', {}))
@@ -242,6 +271,8 @@ def bounded_llm(sc, cfg):
                 if result.finish_reason == 'length':
                     raise ValueError('Truncated output')
                 parsed = _parse_json(result.content) if sc['kind']=='smoke_json' else _parse_tagged(result.content,tuple(sc['tags']))
+                if sc.get('evidence_ids'):
+                    parsed=resolve_evidence_ids(parsed,record)
                 output = {**record, **{dest:parsed[source] for dest,source in sc['save'].items()}}
             except (ValueError, KeyError, TypeError) as exc:
                 with lock:
@@ -307,15 +338,19 @@ def calibrate(cfg, root, client, fixture_path):
         focus = cfg.get('coverage_focus', {}).get(case['trait_id'], {})
         fields = {**case, 'scenario_id': 'calibration_' + case['id'], 'trait_text': traits[case['trait_id']],
                   'focus_clause': focus.get('clause', ''), 'focus_scope': focus.get('scope', '')}
+        fields.update(indexed_fields(case)[0])
         result = client.chat(model=model['model'], temperature=model['temperature'], max_tokens=model['max_tokens'],
             extra_body=model['extra_body'], messages=[{'role': 'system', 'content': spec['prompts']['system'].format(**fields)},
             {'role': 'user', 'content': spec['prompts']['user'].format(**fields)}])
+        parsed=_parse_json(result.content)
+        if spec.get('evidence_ids'):
+            parsed=resolve_evidence_ids(parsed,case)
         if source_test:
-            review = _parse_json(result.content)['source_record']
+            review = parsed['source_record']
             errors = source_errors({**case,'source_record':review})
             quality = dict(verdict=review['verdict'] if not errors else 'fail',findings=review.get('findings',[]),anchor_errors=errors)
         else:
-            review = _parse_json(result.content)['review']
+            review = parsed['review']
             if cfg['smoke_contract'].get('answer_scope_from_source'):
                 review.update(stakes=case.get('source_record',{}).get('stakes',1),reject_all_unsupported_claims=True)
             review = validate_review(review, cfg['smoke_contract'].get('review_fields', []))

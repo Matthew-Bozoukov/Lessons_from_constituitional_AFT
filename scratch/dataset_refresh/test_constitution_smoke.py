@@ -256,3 +256,15 @@ def test_training_context_does_not_hand_over_the_value():
 def test_empty_ellipsis_is_not_a_citation():
     from scratch.dataset_refresh.constitution_smoke import anchored
     assert not anchored('... ...','any text')
+
+
+def test_evidence_ids_preserve_words_and_reject_unknown_references():
+    from scratch.dataset_refresh.constitution_smoke import indexed_fields,resolve_evidence_ids
+    row=dict(system='Assistant.',user='I bought a scarf. We did not agree on the item.',reasoning='Both acted independently.',response='We should agree first.')
+    fields,source,answer=indexed_fields(row)
+    assert source['u2']=='We did not agree on the item.'
+    parsed={'review':{'claim_audit':[{'answer_id':'r1','source_ids':['u1','u2'],'status':'inference','assessment':'Derived'}],'findings':[]}}
+    fixed=resolve_evidence_ids(parsed,row)['review']['claim_audit'][0]
+    assert fixed['claim']=='Both acted independently.' and fixed['source_quote2']==source['u2']
+    with pytest.raises(KeyError):
+        resolve_evidence_ids({'review':{'claim_audit':[{'answer_id':'a99','source_ids':[]}],'findings':[]}},row)
