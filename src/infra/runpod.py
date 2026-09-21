@@ -875,8 +875,21 @@ def _pinned_vllm() -> str:
     return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
 
 
+# Built on every TRAIN pod after `uv sync`: the fused causal conv the packed trainer needs
+# (docs/GOTCHAS.md 2026-09-21). No wheel exists for the lock's torch/CUDA; the source build
+# takes ~8 min on a 256-core pod and needs the pip CUDA layout's nvcc on PATH and an
+# unversioned libcudart.so for the linker. `|| true` so a failed build cannot hide the READY
+# line: the trainer refuses `train.packing` without the kernel and says why.
+KERNEL_BUILD = """echo BUILDING_CAUSAL_CONV1D
+CU=$(uv run python -c 'import nvidia,os;print(os.path.join(os.path.dirname(nvidia.__path__[0]),"nvidia","cu13"))')
+mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
+CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib MAX_JOBS=64 \\
+  CAUSAL_CONV1D_FORCE_BUILD=TRUE uv pip install --no-build-isolation causal-conv1d==1.7.0 \\
+  > /workspace/causal_conv1d_build.log 2>&1 && echo CAUSAL_CONV1D_OK || echo CAUSAL_CONV1D_FAILED"""
+
+
 def _bootstrap(clone: tuple[str, str, str] | None,
-               weights: tuple[list[str], str | None] | None = None) -> str:
+               weights: tuple[list[str], str | None] | None = None, build_kernels: bool = False) -> str:
     """Pod startup script: sshd and a log server first, then uv, then the slow halves.
 
     Order is the lesson from every other bootstrap in this repo (see
@@ -913,6 +926,8 @@ cd {WORKDIR}
 # failure this whole path exists to remove.
 git checkout --detach {sha}
 uv sync""")
+        if build_kernels:
+            blocks.append(KERNEL_BUILD)
         ready.append(sha)
     if weights:
         repos, hf_token = weights
@@ -1270,7 +1285,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     print(f">>> cloning {clone[0]} @ {clone[1]} {clone[2][:8]}" if clone
           else ">>> no repo: the driver runs where you are")
 
-    script = _bootstrap(clone, weights)
+    script = _bootstrap(clone, weights, build_kernels=bool(train))
     _check_bash(script)
     deadline = time.time() + max_hours * 3600
     pod_id = provision_runpod(

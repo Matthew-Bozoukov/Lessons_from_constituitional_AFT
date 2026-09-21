@@ -33,8 +33,8 @@ def test_the_recipe_carries_no_arm_identity_and_no_retired_key():
     assert "lora" in cfg and "train" in cfg
     for gone in ("dynamic_batching", "assistant_only_loss", "loss_type"):
         assert gone not in cfg.train, gone
-    # the recipe's batching/loss knobs are declared, off / at the 2026-09-21 default
-    assert cfg.train.packing is False and cfg.train.loss_agg == "token_mean"
+    # the recipe's batching/loss knobs are declared at the 2026-09-21 defaults
+    assert cfg.train.packing is True and cfg.train.loss_agg == "token_mean"
 
 
 def test_every_train_config_is_a_recipe_and_reports_nowhere_by_default():

@@ -73,7 +73,11 @@ train:
   # The hybrid linear-attention layers are not reliably quantised by bitsandbytes, so this
   # family trains as plain bf16 LoRA, never 4-bit QLoRA.
   load_in_4bit: false
-  attn_implementation: sdpa
+  # flash_attention_2 resolves to the Hub kernel kernels-community/flash-attn2 (no CUDA
+  # build; `kernels` is in the lock) and is the varlen backend packing needs. 1.26x over sdpa
+  # on padded batches, curves at the noise floor (docs/LOG.md 2026-09-21). Serving is vLLM's
+  # own business and reads none of this.
+  attn_implementation: flash_attention_2
   # MEASURED training-memory ceilings by GPU (key = substring of torch's device name). Each
   # entry is the largest fwd+bwd padded-token footprint (batch x padded_len) that a
   # scratch/probe_batch_memory.py run demonstrated under the recipe (bf16, gradient
