@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Recover full low-stakes batch from inherited 2% failure alarm
+
+At the user's progress check, found the 32-worker process had halted around
+16:34 UTC at answer drafting, with 845 successes / 899 inputs (54 lint failures,
+6.0%). The full recipe inherited the engine's 2% batch-level failure alarm;
+the smoke had explicitly used 20%. This setup mismatch was missed at launch.
+Failure review found 40 answers below the native 700-character minimum and 14
+native rule-vocabulary violations. All 81 trait/domain cells remain covered and
+draft trait counts (87,94,103,86,101,90,85,99,100) exceed selection quotas.
+Counts upstream: 971 sources, 966 prompt drafts, 965 refined/judged prompts,
+913 stakes passes, 899 text-advice passes. Ledger exposure $58.956922,
+including four interrupted reservations and one explicit provider content block.
+
+Recovered at `ab436d64` with recorded `--workers 32 --max-fail-pct 20`, preserving
+the original failed manifest and frozen runtime in the interruption archive.
+This changes the batch abort threshold, not any individual row check; all 54
+failed rows remain excluded. Re-evaluated their saved raw answers locally with
+zero new API calls and saved the 845-success stage snapshot. Verified the first
+32 new calls are exclusively final response revision. Same $120 ledger and
+selection policy, no replacements. Final generation/selection remains pending.
+
 ## 2026-09-21 — Correct full-generation concurrency to 32
 
 The initial full run incorrectly retained four smoke workers; normal DA and the
