@@ -112,7 +112,11 @@ def anchor_errors(review, system, user, reasoning, response, flexible=False):
             blocks.update(user=user, system=system)
         block = blocks.get(item.get('block'))
         matches = anchored if flexible else lambda q,t: bool(q) and q in t
-        if block is None or not matches(item.get('claim', ''), block):
+        claim = item.get('claim','')
+        # Reasoning/reply labels are metadata: verify the actual answer quotation
+        # even when the reviewer names the wrong one of its two visible blocks.
+        in_other_answer_block = flexible and any(matches(claim,t) for t in (reasoning,response))
+        if (block is None or not matches(claim, block)) and not in_other_answer_block:
             errors.append('Claim quotation absent from named block')
         quotes = [v for k,v in item.items() if re.fullmatch(r'source_quote\d*', k) and v]
         for quote in quotes:
@@ -266,18 +270,24 @@ def conversation_context(sc, cfg):
 def calibrate(cfg, root, client, fixture_path):
     cases = OmegaConf.to_container(OmegaConf.load(fixture_path), resolve=True)['cases']
     traits = {t.as_trait().trait_id: t.as_trait().text for t in units_from_config(cfg)}
-    spec = next(s for s in cfg['stages'] if s['name'] == 'review_responses')
-    model = cfg['models'][spec['model']]
     def one(case):
+        source_test = case.get('judge_stage') == 'source'
+        spec = next(s for s in cfg['stages'] if s['name'] == ('audit_scenarios' if source_test else 'review_responses'))
+        model = cfg['models'][spec['model']]
         focus = cfg.get('coverage_focus', {}).get(case['trait_id'], {})
         fields = {**case, 'scenario_id': 'calibration_' + case['id'], 'trait_text': traits[case['trait_id']],
                   'focus_clause': focus.get('clause', ''), 'focus_scope': focus.get('scope', '')}
         result = client.chat(model=model['model'], temperature=model['temperature'], max_tokens=model['max_tokens'],
             extra_body=model['extra_body'], messages=[{'role': 'system', 'content': spec['prompts']['system'].format(**fields)},
             {'role': 'user', 'content': spec['prompts']['user'].format(**fields)}])
-        review = validate_review(_parse_json(result.content)['review'], cfg['smoke_contract'].get('review_fields', []))
-        quality = effective_review(review,case['system'],case['user'],case['reasoning'],case['response'],
-                                   guarded=cfg['smoke_contract'].get('deterministic_guards', False))
+        if source_test:
+            review = _parse_json(result.content)['source_record']
+            errors = source_errors({**case,'source_record':review})
+            quality = dict(verdict=review['verdict'] if not errors else 'fail',findings=review.get('findings',[]),anchor_errors=errors)
+        else:
+            review = validate_review(_parse_json(result.content)['review'], cfg['smoke_contract'].get('review_fields', []))
+            quality = effective_review(review,case['system'],case['user'],case['reasoning'],case['response'],
+                                       guarded=cfg['smoke_contract'].get('deterministic_guards', False))
         correct = quality['verdict'] == case['expected'] and (not case.get('expected_code') or
             case['expected_code'] in [f['code'] for f in quality['findings']])
         forbidden = set(case.get('forbidden_codes', [])) & {f['code'] for f in review['findings']}

@@ -47,7 +47,7 @@ def main():
                              'reason':'No answer review; see source rejection or stage failure'})}} for r in scenarios]
     manual = OmegaConf.to_container(OmegaConf.load(args.review), resolve=True)
     by_id = {r['id']: r for r in manual['rows']}
-    assert len(rows) == 18 and set(by_id) == {r['metadata']['scenario_id'] for r in rows}
+    assert 0 < len(rows) <= cfg['total_scenarios'] and set(by_id) == {r['metadata']['scenario_id'] for r in rows}
     assert len(by_id) == len(manual['rows'])
     codes, domains, mechanisms, accepted_traits = Counter(), Counter(), Counter(), Counter()
     false_accepts, false_rejects, accepted, usable = [], [], [], []
@@ -82,7 +82,7 @@ def main():
         'no_material_false_acceptance': not false_accepts}
     cost = json.loads((root/'cost_summary.json').read_text(encoding='utf-8'))
     summary = dict(overall='pass' if all(gates.values()) else 'fail', gates=gates,
-        planned=18, completed=len(authored), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
+        planned=cfg['total_scenarios'], scenarios=len(scenarios), completed=len(authored), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
         automatic_export_pass=sum((r['metadata'].get('quality') or r['metadata']['review'])['verdict']=='pass' for r in rows),
         independent_pass=len(accepted), accepted_ids=accepted, accepted_per_trait=dict(accepted_traits),
         usable_export_ids=usable,
