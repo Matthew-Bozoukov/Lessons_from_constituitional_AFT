@@ -1,6 +1,20 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Source-first smoke stopped at paired reviewer gate
+
+**Hypothesis:** source-first scenario admission and quote-anchored answer auditing prevent
+unsupported details from becoming accepted facts. **Method:** freeze 12 paired reviewer
+checks before an 18-candidate Sonnet-only smoke, using the nine-principle constitution and
+an $8 cap; generation commit `568dd04b`. Nine offline tests passed. **Result:** $0.306584,
+12 settled calls, 11/12 substantive verdict/code matches, 9/12 including quote-schema checks.
+Reviewer wrongly accepted explicit unseen-draft editing narration; two other cases had
+quotation formatting/schema errors despite correct verdicts. Stopped as agreed: zero fresh
+candidates, no retries or replacements. **Next:** deterministic protection for unambiguous
+hidden-draft references in both supervised fields, plus multi-span source citations; source-first
+candidate quality remains untested. [Report](dataset_audits/2026-09-21_source_first_smoke.md) ·
+[HF diagnostic artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-source-first-synth-smoke).
+
 ## 2026-09-17 — Values-in-advice smoke: calibration fixed, grounding still fails
 
 **Hypothesis:** distinguish general values expressed through human advice from AI-specific
