@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Practical low-stakes variant: better task form, not ready to scale
+
+**Hypothesis:** native DA generation can retain practical task requests and genuine
+tradeoffs at low stakes, with explicit material-grounding review. **Method:** new
+`da-lowstakes-practical` config, only the nine-principle constitution as source,
+Sonnet throughout, 18 candidates, no content rerolls/replacements. Frozen prospective
+criteria: >=14 exports, every principle represented, no clear material false accepts.
+**Result:** 17 available refined prompts, nine admitted, nine revised answers, eight
+exports across five principles. One 'should I' prompt, zero labelled honest
+alternatives: useful task-form improvement. But serious/incorrect-scope prompts
+remain, reviewer invents inconsistent actor rules, and all nine final quality
+verdicts are keep despite at least four material false accepts among eight exports
+on complete agent reads. Corpus PASS is not content approval. **Not ready for full
+generation**, independently of any untested ODCV effect.
+
+One provider-blocked prompt initially stopped the wrapper. Recovery reused seven
+settled answers, excluded the blocked request without redispatch, and completed
+only unfinished work with the same recipe. Seven targeted tests pass. Full smoke
+exposure $1.3890705 (100 settled calls plus one retained reservation); cumulative
+$10.503412 / approved $20. No full generation, training or eval. **Next:** reconcile
+generator/reviewer actor contract and audit factual claims in usable drafts, using
+saved failures before buying another batch. [Full report](dataset_audits/2026-09-21_practical_lowstakes_smoke.md),
+[diagnostic artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke).
+
 ## 2026-09-21 — Normal DA also has grounding and rationalization defects
 
 **Question:** does the newest normal difficult-advice source share the problems

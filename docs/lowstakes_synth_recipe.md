@@ -5,7 +5,10 @@
 **Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml`, a native
 configuration variant emphasizing practical requests, implicit values, retained
 tradeoffs and material factual review. It uses the same constitution without old
-source rows. See the [prospective plan and live report](dataset_audits/2026-09-21_practical_lowstakes_smoke.md).
+source rows. Its live smoke produced eight exports from 18 candidates and failed
+the readiness criteria: missing principles, admission inconsistencies and material
+false accepts. **Not ready for full generation.** See the
+[prospective plan and live report](dataset_audits/2026-09-21_practical_lowstakes_smoke.md).
 The guarded launcher below now selects this candidate; older frozen launch configs
 preserve the preceding run. The rest of this document describes the initial minimal
 variant and its historical validation, not the practical variant's current status.
