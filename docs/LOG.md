@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Native SynthDoc low-stakes option, implemented without paid generation
+
+**Hypothesis:** a low-stakes DA variant should retain DA's temptation and deliberation
+machinery. **Method:** add `configs/data/synth/da-lowstakes-fresh.yaml` using only existing
+operators and the nine-principle constitution. Bound stakes in scenario creation and
+prompt refinement, keep response prompts unchanged, use Sonnet throughout, and rate/filter
+magnitude before authoring and export. No replacement rounds or content-lint re-rolls.
+**Result:** three new offline tests pass, including a full mocked 18-candidate native
+engine run with 12 eligible exports and preserved rejections. Combined checks: 20 pass;
+one pre-existing failure concerns `nonmoral-advice.yaml` missing a smoke-size override.
+No model API calls, new datasets, mixtures, training or evaluation. **Next:** bounded live
+validation after budget approval; existing $7.786718 campaign spending is unchanged.
+[Recipe and instructions](lowstakes_synth_recipe.md). This option supersedes the proposed
+custom draft-audit-edit-audit recipe as the next implementation to test.
+
 ## 2026-09-21 — Low-stakes pipeline development: interface fixed, content quality still fails
 
 **Hypothesis:** constitution-only generation can retain real deliberation with small

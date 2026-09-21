@@ -18,6 +18,12 @@ uv run scripts/data/synth/build_dataset.py --config <cfg> --estimate [--measured
 (`uv run synth run|topup|check|estimate|segment|chunkings` remains as the console script
 for the auxiliary verbs; `run`/`estimate` are the same functions `build_dataset.py` calls.)
 
+For constitution-only low-stakes difficult advice, select
+`configs/data/synth/da-lowstakes-fresh.yaml`. It preserves DA's answer generation and
+revision, bounds consequences during prompt construction, and filters by stakes before
+authoring and export. See [recipe, limits and validation status](../../../../docs/lowstakes_synth_recipe.md).
+The older `da-lowstakes.yaml` instead rewrites an existing corpus.
+
 ## Architecture
 
 Every module is named for what it does. A `check_*` module answers "is this good?",
