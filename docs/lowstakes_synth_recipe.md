@@ -2,25 +2,33 @@
 <!-- ABOUTME: Records scientific differences, operational limits and offline validation. -->
 # Low-stakes difficult advice
 
-**Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml`, updated on
-2026-09-21 on `codex/lowstakes-synthdoc-pipeline`. This revision makes low stakes the
-initial generation constraint, limits prompt refinement to local edits, preserves
-normal DA's answer prompts exactly, and uses one pre-answer decision-stakes/text-advice
-judge. The final-answer stakes judge was removed. General factual quality is not an
-extra automatic acceptance gate.
+**Current candidate:** `configs/data/synth/da-lowstakes-practical.yaml` on
+`codex/lowstakes-synthdoc-pipeline`. Nine preregistered hobby domains are crossed
+with the nine full constitutional principles; each source call sees only one
+trait/domain pair. Source and judge reasoning are enabled with bounded allocations.
+Native DA answer prompts remain unchanged. Admission checks decision stakes and
+text-advice scope; domain adherence is diagnostic, not a behavioral veto.
 
-**Current validation: live smoke completed.** The updated recipe produced 13/18
-exports, covering all nine principles, for $1.454662 in 6m58s. No replacement rounds;
-91 calls settled. Prompt refinement was local in 16/18 cases, with one scope adjustment
-and one source-fact restoration. Initial suitability and magnitude interpretation
-miss the prospective readiness criteria. Cumulative development spend: $13.742198/$20.
-**Not cleared for full generation.** [Completed smoke report](dataset_audits/2026-09-21_decision_stakes_smoke.md).
-Seven targeted offline tests also pass. [Alternatives and minimal design](dataset_audits/2026-09-21_decision_stakes_plan.md).
-[Verified complete archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/aa34302e44f826bd7a2a1d461d5acd1b9431ea57/runs/20260921_142500).
+**Current recommendation: proceed with one bounded full-generation batch.** The
+36-case smoke exported 32 rows across all nine traits and domains. All were fully
+read; no clear high-stakes decisions were found in the exported prompts. The stricter
+preregistered domain criteria did not pass unchanged: a tested domain veto reduced
+this to 27 and erroneously rejected intended dishonesty/oversight conflicts. That
+veto was removed, with the explicit policy change documented rather than called a
+preregistered pass. The final policy was checked on saved real outputs; no third
+paid generation followed. Shared normal-DA factual/rationalization defects remain.
 
-The guarded launcher selects the current candidate. Older frozen launch configs and
-reports preserve preceding runs. The remaining sections below describe the
-initial minimal variant and its historical validation, not the current candidate.
+Cost: $3.822942 for generation plus the same-input judge experiment; cumulative
+$17.565140/$20. Offline: 77 tests pass. Full config produces 972 candidates
+(9 traits x 9 domains x 12), not a guaranteed 716 accepted rows. Full-run budget and
+deterministic 716-row selection must be set before launch; no full generation/SFT ran.
+[Full report](dataset_audits/2026-09-21_domain_smoke.md).
+[Preregistration](dataset_audits/2026-09-21_domain_preregistration.md).
+[Verified complete archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/febfd68c1f2e24d0a10a1f50264849329a588d15/runs/20260921_144723).
+
+The guarded launcher selects the current candidate. Older frozen configs and reports
+preserve earlier versions. The remaining sections describe the original historical
+variant, including its now-removed final-answer stakes judge, not today's candidate.
 
 SynthDoc selects a document type through a YAML configuration. The new option is
 `configs/data/synth/da-lowstakes-fresh.yaml`, using only the existing native operators.

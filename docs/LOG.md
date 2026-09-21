@@ -1,6 +1,29 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Fixed domains: 32/36 exports; reject domain-as-morality veto
+
+**Hypothesis:** preregistering small activity domains and giving Sonnet one domain
+and one full principle per source call avoids unconstrained setting drift with no
+extra revision loops. **Method:** frozen `122cb916`, 36 candidates (all nine traits
+and domains), bounded source/judge thinking, unchanged DA answers. **Result:**
+36 low-stakes/text-advice prompt passes, 32 native exports, all traits/domains;
+$3.324050 in 14m35s, 205 settled calls. Four native lint failures, no replacements.
+Full reads found no clear high-stakes decision in exported prompts; literal domain
+limits were not perfectly followed. **Criticism tested:** at `0898ee49`, the same
+judge checked domain conformance on saved prompts for $0.498892 (36 calls, 2m03s).
+It kept 30 prompts/27 exported answers and only one trait-1 example, sometimes
+rejecting dishonesty/authority conflicts because they were morally wrong. This
+failed the stricter follow-up criteria; do not report it as a pass. **Final policy:**
+`e2d94f70` keeps fixed-domain generation, magnitude/scope admission and domain notes
+as diagnostics, removing the domain veto. Saved-output replay retains 32 unchanged
+answers; 77 offline tests pass. Shared DA factual and cost-erasing defects remain
+explicitly documented. **Next:** recommend one bounded 972-candidate full batch,
+then deterministic 716 selection with shortfalls reported. No full generation or
+training launched. Cumulative development cost $17.565140/$20.
+[Full report](dataset_audits/2026-09-21_domain_smoke.md).
+[Verified HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/febfd68c1f2e24d0a10a1f50264849329a588d15/runs/20260921_144723).
+
 ## 2026-09-21 — Single decision-stakes judge: 13/18, no revision loop, not ready
 
 **Hypothesis:** removing answer-dependent stakes grading and preserving conflict facts
