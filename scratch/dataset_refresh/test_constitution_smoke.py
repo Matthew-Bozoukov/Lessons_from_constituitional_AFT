@@ -195,8 +195,63 @@ def test_guard_rejects_hidden_draft_but_allows_user_draft_and_planning():
 
 def test_saved_calibration_with_guard(tmp_path):
     from scratch.dataset_refresh.constitution_smoke import replay_calibration
+    from pathlib import Path
     cfg=OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-source-guarded.yaml'),resolve=True)
+    if not Path(cfg['calibration_replay']).exists():
+        pytest.skip('Optional historical replay artifact is not part of a fresh checkout')
     assert replay_calibration(cfg,tmp_path)==12
+
+
+def test_full_fixed_pipeline_rejects_without_retry_and_exports_only_final_text(tmp_path):
+    from src.data.synth.ours.stage_operators import OPERATORS
+    from scratch.dataset_refresh.constitution_smoke import (
+        source_gate, answer_gate, focus_clause, bounded_llm, conversation_context)
+    cfg=OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-fixed-pipeline.yaml'),resolve=True)
+    cfg['campaign_budget_root']=str(tmp_path/'budget')
+    OPERATORS.update(smoke_source_gate=source_gate, smoke_answer_gate=answer_gate,
+        smoke_focus_clause=focus_clause, smoke_json=bounded_llm, smoke_tagged=bounded_llm,
+        smoke_context=conversation_context)
+    calls=[]
+    def send(**kw):
+        rid,stage=re.search(r'record_id=([^;]+); stage=([^\]]+)',kw['messages'][-1]['content']).groups()
+        calls.append((rid,stage))
+        if stage=='scenario':
+            system='Use metric units by default.' if rid.startswith('t7_') else 'Revealing target instruction'
+            content=f'<design>Two considerations</design><system>{system}</system><user>I can return the book tomorrow.</user>'
+        elif stage=='source':
+            assert kw['extra_body']['response_format']['json_schema']['strict']
+            audit=dict(stakes=1,facts=[dict(source_id='u1',meaning='Future action')],unknowns=[],findings=[],verdict='pass')
+            if rid=='t1_s0000':
+                audit.update(verdict='fail',findings=[dict(code='target_mismatch',source_id='u1',why='Mock source rejection')])
+            content=json.dumps(dict(source_record=audit))
+        elif stage=='draft':
+            assert rid!='t1_s0000'
+            content='malformed' if rid=='t1_s0001' else '<reasoning>The fix is pending.</reasoning><response>I returned it already.</response>'
+        elif stage=='edit':
+            assert rid not in {'t1_s0000','t1_s0001'}
+            assert 'POSSIBLE DEFECTS TO VERIFY' in kw['messages'][-1]['content']
+            content='<reasoning>The return is a future proposal.</reasoning><response>I will return it tomorrow.</response>'
+        else:
+            assert stage in {'draft_review','review'}
+            if stage=='review':
+                assert 'I returned it already' not in kw['messages'][-1]['content']
+            audit=dict(claim_audit=[dict(answer_id='a1',source_ids=['u1'],status='proposal',assessment='Explicit future proposal')],
+                decisive_fact_check='Checked',competing_considerations='Checked',mechanism='promise',domain='books',findings=[],verdict='pass')
+            if rid=='t2_s0000':
+                audit.update(verdict='fail',findings=[dict(code='unhelpful',answer_id='a1',why='Mock final rejection')])
+            content=json.dumps(dict(review=audit))
+        return reply(content)
+    out=tmp_path/'generation'; out.mkdir()
+    manifest=run(cfg,smoke=True,resume=str(out),client=SingleAttemptClient(tmp_path,cfg,send=send))
+    assert manifest['counts']['export']==15
+    assert len(calls)==101 and len(set(calls))==101
+    rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text().splitlines()]
+    assert len(rows)==15
+    for row in rows:
+        assert row['messages'][2]['content']=='I will return it tomorrow.'
+        assert 'Revealing target instruction' not in str(row['messages'])
+        assert 'I returned it already.' not in str(row['messages'])
+    assert len(json.loads((out/'answer_decisions.json').read_text()))==16
 
 
 def test_clause_coverage_and_prompt_rendering():
@@ -277,3 +332,25 @@ def test_strict_schema_source_enum_excludes_answer_ids():
     fields=schema['properties']['claim_audit']['items']['properties']
     assert fields['source_ids']['items']['enum']==['s1','u1']
     assert fields['answer_id']['enum']==['r1','a1']
+
+
+def test_unsupported_claim_cannot_be_excused_by_a_passing_verdict():
+    from scratch.dataset_refresh.constitution_smoke import effective_review
+    r=review();r['reject_all_unsupported_claims']=True
+    r['claim_audit']=[dict(block='response',claim='I am downsizing.',source_quote='',status='unsupported',assessment='User gave no motive')]
+    q=effective_review(r,'Assistant','Swap these markers.','Offer a fair listing.','I am downsizing.',guarded=True)
+    assert q['verdict']=='fail' and any(f['code']=='unsupported_fact' for f in q['findings'])
+
+
+def test_budget_accounts_for_schema_bytes(tmp_path):
+    from scratch.dataset_refresh.constitution_smoke import evidence_schema
+    cfg=config();calls=[]
+    def send(**kw):
+        calls.append(kw);return reply('{}')
+    client=SingleAttemptClient(tmp_path,cfg,send=send)
+    fmt=evidence_schema(dict(system='Assistant.',user='Fact.',reasoning='Reason.',response='Answer.'))
+    client.chat(model='anthropic/claude-sonnet-5',messages=[{'role':'user','content':'[record_id=x; stage=review]'}],temperature=0,max_tokens=100,
+                extra_body={'reasoning':{'enabled':False},'response_format':fmt})
+    entry=client.budget.entries()[0]
+    assert entry['input_bound']>len(json.dumps(fmt).encode())+2048
+    assert calls[0]['extra_body']['response_format']['json_schema']['strict']

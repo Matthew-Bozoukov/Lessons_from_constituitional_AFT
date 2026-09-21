@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Low-stakes pipeline development: interface fixed, content quality still fails
+
+**Hypothesis:** constitution-only generation can retain real deliberation with small
+stakes and grounded, standalone advice under bounded costs. **Method:** successive
+frozen Sonnet-only smoke/calibration runs; source admission, neutral input context,
+concrete activity coverage, exact evidence IDs and strict review schemas. One
+fixed-editor probe on two known failures; no quota-filling replacements or training.
+**Result:** $7.786718 total, 416 settled calls, including the preceding $0.306584 run.
+Latest full batch: 18 scenarios, 17 answers, 15 raw judge passes, five effective
+exports, eight independent passes; all quality gates not met. Strict-schema
+calibration: 22/22 structurally valid, 21/22 expected verdicts; remaining control
+was ambiguous. Blind editing retained a fabricated duration. Twenty-one offline
+tests pass, including full pipeline wiring. **Next:** fixed draft-audit-edit-audit
+recipe with findings-specific editing and 24 revised development controls; live
+validation pending the requested $20 total ceiling (existing hard cap $8).
+No production dataset or performance claim. [Report](dataset_audits/2026-09-21_lowstakes_pipeline_iteration.md).
+
 ## 2026-09-21 — Source-first smoke stopped at paired reviewer gate
 
 **Hypothesis:** source-first scenario admission and quote-anchored answer auditing prevent

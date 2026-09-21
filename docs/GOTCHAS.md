@@ -3,6 +3,25 @@
 
 # GOTCHAS
 
+## Calibrated synthesis reviewers can still fail on generated prose (2026-09-21)
+
+In the constitution-only low-stakes smoke, a reviewer passed all short paired
+checks yet accepted invented personal details in full answers. Of 17 authored
+examples in the activity-grounded run, the raw judge passed 15; an independent
+read accepted eight. Citation guards happened to block the seven false passes,
+which must not be reported as reliable semantic detection. Report raw reviewer,
+effective export, and independent decisions separately.
+
+Exact-quote transcription was a separate failure: use numbered original-source
+and answer spans with disjoint schema enums, then retrieve quotations in code.
+This proves evidence exists, not that it supports the claim. A blind "remove
+unsupported facts" editing pass also retained an invented one-day duration.
+Audit specific claims before editing, then independently audit the final text;
+that fixed sequence is proposed and still needs fresh live validation. Preserve
+failed fixtures and runs when correcting ambiguous calibration controls.
+
+See [campaign report](dataset_audits/2026-09-21_lowstakes_pipeline_iteration.md).
+
 ## Name-only RunPod updates restart containers (2026-09-16)
 
 A REST `PATCH /pods/{id}` containing only `name` incremented the pod version,

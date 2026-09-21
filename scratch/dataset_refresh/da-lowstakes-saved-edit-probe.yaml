@@ -1,0 +1,5 @@
+# ABOUTME: Two known hallucination cases test the fixed editor; not fresh generation.
+# ABOUTME: Shares the existing campaign budget and makes at most four physical calls.
+recipe: scratch/dataset_refresh/da-lowstakes-structured-evidence.yaml
+source: output/2026-09-21_da_lowstakes_activity_grounded_smoke/20260921_074041/generation/stage_8_draft_responses.jsonl
+ids: [t2_s0000, t2_s0001]

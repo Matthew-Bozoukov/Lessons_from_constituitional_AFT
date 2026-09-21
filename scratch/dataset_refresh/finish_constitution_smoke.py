@@ -32,8 +32,8 @@ def main():
             return []
         assert len(matches) == 1
         return [json.loads(s) for s in matches[0].read_text(encoding='utf-8').splitlines()]
-    scenarios = read_stage('write_scenarios')
-    authored = read_stage('revise_responses') or read_stage('draft_responses')
+    scenarios = read_stage('conversation_context') or read_stage('write_scenarios')
+    authored = read_stage('edit_responses') or read_stage('revise_responses') or read_stage('draft_responses')
     judged = read_stage('review_responses')
     reviews = {r['scenario_id']: r['review'] for r in judged}
     drafts = {r['scenario_id']:r for r in authored}
@@ -51,6 +51,7 @@ def main():
     assert len(by_id) == len(manual['rows'])
     codes, domains, mechanisms, accepted_traits = Counter(), Counter(), Counter(), Counter()
     false_accepts, false_rejects, accepted, usable = [], [], [], []
+    raw_false_accepts, raw_false_rejects = [], []
     for r in rows:
         rid = r['metadata']['scenario_id']
         m = by_id[rid]
@@ -58,6 +59,11 @@ def main():
         assert (m['verdict'] == 'pass') == (not m['defects'])
         codes.update(m['defects'])
         automatic_verdict = (r['metadata'].get('quality') or r['metadata']['review'])['verdict']
+        model_verdict = r['metadata']['review']['verdict']
+        if m['verdict']=='fail' and model_verdict=='pass':
+            raw_false_accepts.append(rid)
+        if m['verdict']=='pass' and model_verdict=='fail':
+            raw_false_rejects.append(rid)
         if m['verdict'] == 'pass':
             assert rid in drafts, 'A scenario without an answer cannot be training-ready'
             accepted.append(rid)
@@ -79,14 +85,16 @@ def main():
         'mechanism_diversity': max(mechanisms.values(), default=0) <= contract['maximum_same_decision_mechanism'],
         'domain_diversity': len(domains) >= contract['minimum_actual_domains'],
         'no_repeated_material_defect': max(codes.values(), default=0) <= contract['maximum_repeated_material_defect'],
-        'no_material_false_acceptance': not false_accepts}
+        'no_material_export_false_acceptance': not false_accepts,
+        'no_material_model_false_acceptance': not raw_false_accepts}
     cost = json.loads((root/'cost_summary.json').read_text(encoding='utf-8'))
     summary = dict(overall='pass' if all(gates.values()) else 'fail', gates=gates,
         planned=cfg['total_scenarios'], scenarios=len(scenarios), completed=len(authored), completed_judges=len(reviews), model_pass=sum(r['metadata']['review']['verdict']=='pass' for r in rows),
         automatic_export_pass=sum((r['metadata'].get('quality') or r['metadata']['review'])['verdict']=='pass' for r in rows),
         independent_pass=len(accepted), accepted_ids=accepted, accepted_per_trait=dict(accepted_traits),
         usable_export_ids=usable,
-        model_false_accepts=false_accepts, model_false_rejects=false_rejects, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
+        model_false_accepts=raw_false_accepts, model_false_rejects=raw_false_rejects,
+        export_false_accepts=false_accepts, export_false_rejects=false_rejects, defects=dict(codes), domains=dict(domains), mechanisms=dict(mechanisms),
         cost=cost, reviewer='Codex full read of all system/user/reasoning/response; not human review',
         not_a_validated_error_rate=True, conclusions=manual['conclusions'])
     write_json(root/'results.json', summary)
