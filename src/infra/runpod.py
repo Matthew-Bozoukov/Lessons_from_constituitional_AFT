@@ -875,17 +875,19 @@ def _pinned_vllm() -> str:
     return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
 
 
-# Built on every TRAIN pod after `uv sync`: the fused causal conv the packed trainer needs
-# (docs/GOTCHAS.md 2026-09-21). No wheel exists for the lock's torch/CUDA; the source build
-# takes ~8 min on a 256-core pod and needs the pip CUDA layout's nvcc on PATH and an
-# unversioned libcudart.so for the linker. `|| true` so a failed build cannot hide the READY
-# line: the trainer refuses `train.packing` without the kernel and says why.
-KERNEL_BUILD = """echo BUILDING_CAUSAL_CONV1D
-CU=$(uv run python -c 'import nvidia,os;print(os.path.join(os.path.dirname(nvidia.__path__[0]),"nvidia","cu13"))')
+# causal-conv1d is an sdist in the lock (no wheel for its torch/CUDA; docs/GOTCHAS.md
+# 2026-09-21) that `uv sync` compiles on a TRAIN pod against the venv's own torch and the pip
+# CUDA layout's nvcc. Two syncs: the first installs everything but the kernel (so torch and
+# nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc on
+# PATH, and an unversioned libcudart.so the linker wants and the pip layout does not ship —
+# and the second sync builds the kernel. The package and its version are the lock's; this is
+# only where the pod's CUDA lives.
+KERNEL_BUILD = """uv sync --no-install-package causal-conv1d
+CU={workdir}/.venv/lib/python3.12/site-packages/nvidia/cu13
 mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
-CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib MAX_JOBS=64 \\
-  CAUSAL_CONV1D_FORCE_BUILD=TRUE uv pip install --no-build-isolation causal-conv1d==1.7.0 \\
-  > /workspace/causal_conv1d_build.log 2>&1 && echo CAUSAL_CONV1D_OK || echo CAUSAL_CONV1D_FAILED"""
+export CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib MAX_JOBS=64
+echo BUILDING_CAUSAL_CONV1D
+uv sync"""
 
 
 def _bootstrap(clone: tuple[str, str, str] | None,
@@ -925,9 +927,7 @@ cd {WORKDIR}
 # boots, and a run whose code silently differs from the commit you asked for is the
 # failure this whole path exists to remove.
 git checkout --detach {sha}
-uv sync""")
-        if build_kernels:
-            blocks.append(KERNEL_BUILD)
+""" + (KERNEL_BUILD.format(workdir=WORKDIR) if build_kernels else "uv sync"))
         ready.append(sha)
     if weights:
         repos, hf_token = weights

@@ -596,11 +596,11 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # instead shard one copy across every visible GPU, which collides with the replica the
     # other rank is building on the same device and deadlocks or OOMs.
     device_map = {"": local_rank} if world_size > 1 else "auto"
-    # The attention backend is an implementation detail, not identity: the profile's verified
-    # default, or a launch override (`train.attn_implementation=flash_attention_2`). Packing
-    # REQUIRES a varlen-aware backend — under sdpa a packed row is one causal sequence and
-    # every example reads its neighbours — so it is refused with anything else.
-    attn_impl = str(cfg.train.get("attn_implementation") or profile.attn_implementation)
+    # The attention backend is the family's fact (configs/models/<key>.yaml
+    # `train.attn_implementation`; `train.attn_implementation` in a recipe is a retired key).
+    # Packing REQUIRES a varlen-aware backend — under sdpa a packed row is one causal sequence
+    # and every example reads its neighbours — so it is refused with anything else.
+    attn_impl = str(profile.attn_implementation)
     packing = bool(cfg.train.get("packing", False))
     if packing and attn_impl not in ("flash_attention_2", "flash_attention_3"):
         raise ValueError(

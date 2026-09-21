@@ -15,6 +15,11 @@ constraints = [
     { name = "nvidia-nvvm", specifier = ">=13.0,<13.1" },
 ]
 
+[[manifest.dependency-metadata]]
+name = "causal-conv1d"
+version = "1.7.0"
+requires-dist = ["torch", "packaging", "ninja"]
+
 [[package]]
 name = "accelerate"
 version = "1.14.0"
@@ -232,6 +237,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/70/d2/47e8bc06fe2a06d3f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e4/d8/767faeda872075724b95dd675466a645f1b92aadcdcf2d1429dcfd76c176/cachetools-7.1.7-py3-none-any.whl", hash = "sha256:ef98ef375ad188819ef2f9b3645e3987f4b8c5b7550e436ad998c2de78296df0", size = 16830, upload-time = "2026-08-01T21:20:38.977Z" },
 ]
+
+[[package]]
+name = "causal-conv1d"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ninja" },
+    { name = "packaging" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/d1/eba27735f31bd5527d39a3c7f693e6ded7b844cab275db719a15ad37b6cd/causal_conv1d-1.7.0.tar.gz", hash = "sha256:3202758494eaa7b597ce1c282dfa188889506bfcb92cad3c407d26736bfcd32b", size = 30328, upload-time = "2026-08-20T10:54:15.808Z" }
 
 [[package]]
 name = "cbor2"
@@ -2962,6 +2978,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "beautifulsoup4" },
     { name = "bitsandbytes", marker = "sys_platform == 'linux'" },
+    { name = "causal-conv1d", marker = "sys_platform == 'linux'" },
     { name = "datasets" },
     { name = "fire" },
     { name = "flash-linear-attention", marker = "sys_platform == 'linux'" },
@@ -3004,6 +3021,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.120.2" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "bitsandbytes", marker = "sys_platform == 'linux'" },
+    { name = "causal-conv1d", marker = "sys_platform == 'linux'", specifier = "==1.7.0" },
     { name = "datasets", specifier = ">=5.0.0" },
     { name = "fire", specifier = ">=0.7.1" },
     { name = "flash-linear-attention", marker = "sys_platform == 'linux'", specifier = ">=0.2.2" },

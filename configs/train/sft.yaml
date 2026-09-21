@@ -74,8 +74,8 @@ train:
   # micro-batches: the same 16 examples per step, the same loss, no padding — 1.46x over the
   # padded path on 2026-09-21, exact by scratch/pack_equality_check.py's leak probe. It needs
   # varlen attention (the profile's `train.attn_implementation`, flash_attention_2 for
-  # Qwen3.6) and the causal-conv1d kernel, which `runpod up --train` builds on the pod; the
-  # trainer refuses to pack without either. `packing: false` is the padded path.
+  # Qwen3.6) and the causal-conv1d kernel (in the lock; `uv sync` on a train pod compiles it);
+  # the trainer refuses to pack without either. `packing: false` is the padded path.
   packing: true
   # Durable checkpoints in the run directory (named for the organism, so a relaunch of the
   # same arm on the same day resumes from them).
