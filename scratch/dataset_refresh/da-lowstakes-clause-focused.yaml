@@ -1,4 +1,4 @@
-# ABOUTME: Clause-focused constitution-only smoke with one author attempt and blind source/answer checks.
+# ABOUTME: Clause-focused constitution-only smoke; saved identical reviewer calibration replayed explicitly.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.constitution_smoke --config scratch/dataset_refresh/da-lowstakes-clause-focused.yaml
 method: ours
 pipeline: da-lowstakes-clause-focused
@@ -374,3 +374,4 @@ coverage_focus:
     scope: An adult hobby learner has an explicit skill-building goal and a competing
       immediate practical goal. Neither doing everything nor withholding the finished
       answer is automatically right.
+calibration_replay: output/2026-09-21_da_lowstakes_clause_focused_smoke/20260921_071749

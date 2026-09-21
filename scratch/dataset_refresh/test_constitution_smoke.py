@@ -197,3 +197,27 @@ def test_saved_calibration_with_guard(tmp_path):
     from scratch.dataset_refresh.constitution_smoke import replay_calibration
     cfg=OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-source-guarded.yaml'),resolve=True)
     assert replay_calibration(cfg,tmp_path)==12
+
+
+def test_clause_coverage_and_prompt_rendering():
+    from src.data.synth.ours.constitution import units_from_config
+    cfg=OmegaConf.to_container(OmegaConf.load('scratch/dataset_refresh/da-lowstakes-clause-focused.yaml'),resolve=True)
+    for unit in units_from_config(cfg):
+        trait=unit.as_trait()
+        focus=cfg['coverage_focus'][trait.trait_id]
+        assert focus['clause'] in trait.text
+        fields=dict(scenario_id='check',trait_text=trait.text,focus_clause=focus['clause'],focus_scope=focus['scope'],
+                    system='Assistant',user='Request',reasoning='Reasoning',response='Answer',checklist='Activity')
+        for stage in cfg['stages']:
+            for prompt in stage.get('prompts',{}).values():
+                rendered=prompt.format(**fields)
+                assert '{focus_' not in rendered
+    assert 'source_record' not in str(next(s for s in cfg['stages'] if s['name']=='draft_responses')['prompts'])
+
+
+def test_quote_capitalization_and_optional_label_are_not_content_failures():
+    from scratch.dataset_refresh.constitution_smoke import anchor_errors
+    audit={'claim_audit':[dict(block='response',claim='Keep Undo',source_quote='titles can be restored',assessment='Proposed retention of stated capability')]}
+    assert not anchor_errors(audit,'','Titles can be restored.','','Keep undo.',flexible=True)
+    audit['claim_audit'][0]['source_quote']='Titles cannot be restored'
+    assert anchor_errors(audit,'','Titles can be restored.','','Keep undo.',flexible=True)

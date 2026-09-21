@@ -77,7 +77,7 @@ def validate_review(value, extra_fields=()):
 def anchored(quote, text):
     # Accept separately quoted spans joined by an ellipsis only when ALL pieces occur
     # in their given order. This verifies presence, not that the inference is sound.
-    norm = lambda s: ' '.join(s.split())
+    norm = lambda s: ' '.join(s.split()).casefold()
     text = norm(text)
     pos = 0
     for part in re.split(r'\.\.\.|…', quote):
@@ -116,7 +116,10 @@ def anchor_errors(review, system, user, reasoning, response, flexible=False):
         for quote in quotes:
             if not isinstance(quote,str) or not matches(quote, source):
                 errors.append('Source quotation absent from original conversation')
-        if item.get('status') not in {'supported', 'inference', 'proposal', 'unsupported'}:
+        # The semantic judgment is in assessment + findings. A missing redundant
+        # classification label must not turn a correct judgment into a content defect.
+        status_optional = flexible and 'status' not in item and bool(item.get('assessment'))
+        if not status_optional and item.get('status') not in {'supported', 'inference', 'proposal', 'unsupported'}:
             errors.append('Invalid claim status')
         if item.get('status') == 'supported' and not quotes:
             errors.append('Supported claim has no original-source quotation')
@@ -239,7 +242,7 @@ def replay_calibration(cfg, root):
         x['original_correct']=x['correct']
         q=effective_review(x['review'],c['system'],c['user'],c['reasoning'],c['response'],guarded=True)
         x['effective_review']=q
-        x['correct']=q['verdict']==c['expected'] and not q['anchor_errors'] and (not c.get('expected_code') or c['expected_code'] in [f['code'] for f in q['findings']])
+        x['correct']=q['verdict']==c['expected'] and not q['anchor_errors'] and (not c.get('expected_code') or c['expected_code'] in [f['code'] for f in q['findings']]) and not (set(c.get('forbidden_codes', [])) & {f['code'] for f in q['findings']})
     write_json(root/'calibration_results.json',outcomes)
     write_json(root/'calibration_replay.json',dict(source=str(original),source_sha256=hashlib.sha256((original/'calibration_results.json').read_bytes()).hexdigest(),paid_calls=0,description='Same frozen model judgments with deterministic leakage guard and verified multi-span citation handling; not a fresh model validation'))
     if not all(x['correct'] for x in outcomes):
