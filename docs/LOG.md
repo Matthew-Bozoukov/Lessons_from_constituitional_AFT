@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-21 — Recipe defaults: token weighting, packing and flash-attention on; the kernel in the lock
+
+**Change.** `configs/train/sft.yaml` now trains with `loss_agg: token_mean` — every supervised
+token in an optimizer step weighs the same (the micro-batch's summed cross-entropy over the
+STEP's supervised-token count, identical on every rank, so padded passes, packs and ranks add
+up to one token mean; tested) — and `packing: true`; `configs/models/qwen36.yaml` names
+`flash_attention_2` (the Hub kernel via `kernels`) as the family's training backend.
+`causal-conv1d` is a linux dependency in the lock (sdist metadata declared, build variables in
+`extra-build-variables`); `runpod up --train` syncs twice, exporting the pip CUDA layout's
+nvcc and an unversioned `libcudart.so` between, so the second sync compiles it. The trainer
+refuses to pack without varlen attention or that kernel. `train.attn_implementation` stays a
+retired recipe key: the backend is the profile's fact.
+
+**Why token weighting.** Callum, 2026-09-21: the unit of training is the token; a long answer
+is many lessons and a one-token answer one; and an ablation that removes 20% of a row's tokens
+should remove 20% of its weight instead of concentrating the row's weight on what is left.
+Tülu 3 / OLMo 2 (`reduce_loss=sum`) and the HF Trainer since PR #34191 weigh tokens the same
+way; our per-example weighting was inherited from the batch-1 x grad_accum path (2026-08-10),
+not chosen. Consequence on `2026-09-15-da-7-mix`: da's share of the gradient rises from 7.0%
+(rows) to 15.4% (supervised tokens; 822,897 of 5,341,647), tulu3_if to 30.9%, self_oss_instruct
+to 24.0%; longalign, 17.6% of rendered tokens, is 0.6% of supervised ones. **Every adapter
+before this commit was trained with per-example weighting; results across the change are not
+comparable.** `train.loss_agg=seq_mean_token_mean` restores it.
+
+**Smoke (2xH200 DDP, 8 rows, per-step logging).** token_mean: 1.315 padded, 1.314 packed;
+seq_mean_token_mean: 0.5212 padded, 0.5211 packed — each within 1e-3 of the same losses
+computed outside the trainer on the base model (1.3142 / 1.0426, the seq-mean halved because a
+smoke step has 8 rows against the constant 16 divisor, as documented). The `train_loss` a run
+with logging_steps > max_steps reports (0.72 / 2.43 / 0.128 across earlier smokes) is not a
+loss: HF's end-of-run average over an unlogged run. Pod `qrstrhhu7ncd9d` terminated.
+
 ## 2026-09-21 — Flash-attention and sequence packing: 1.46x on top of fla, exact by a direct leak probe, and both off by default
 
 **Hypothesis.** Two more throughput changes that leave the computation alone: a varlen
