@@ -104,17 +104,25 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',required=True)
     parser.add_argument('--resume')
+    parser.add_argument('--workers', type=int, help='Explicit operational concurrency override; prompts and budget stay frozen')
     parser.add_argument('--resume-reason', default='Operational recovery; reuse saved responses and exclude unavailable requests without redispatch')
     args=parser.parse_args()
     launch_path=Path(args.config)
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
     cfg=OmegaConf.to_container(OmegaConf.load(launch['recipe']),resolve=True)
     mode = validate_launch(launch, cfg)
+    if args.workers is not None:
+        if not 1 <= args.workers <= 16:
+            raise ValueError('Operational concurrency must be between 1 and 16')
+        cfg['workers'] = args.workers
     cfg['budget_usd']=launch['ceiling_usd']  # Soft native guard; shared ledger is authoritative.
     root=Path(args.resume) if args.resume else Path('output')/to_local(artifact_name(cfg['pipeline']+' guarded '+mode))/timestamp()
     if args.resume:
         old=json.loads((root/'launch_meta.json').read_text(encoding='utf-8'))
-        assert old['recipe']==cfg and old['launch']==launch, 'Resume must preserve the frozen recipe and budget'
+        prior_cfg = dict(old['recipe'])
+        if args.workers is not None:
+            prior_cfg['workers'] = args.workers
+        assert prior_cfg==cfg and old['launch']==launch, 'Resume must preserve the frozen recipe and budget, apart from explicit workers override'
         for source in [launch['recipe'], cfg['constitution']]:
             assert hashlib.sha256(Path(source).read_bytes()).hexdigest()==old['hashes'][str(Path(source))]
         archive=root/'interruption_archive'/timestamp()
@@ -122,7 +130,8 @@ def main():
         for name in ['manifest.json','stopped.json','cost_summary.json']:
             if (root/name).exists():
                 shutil.copy2(root/name,archive/name)
-        write_json(archive/'resume_meta.json',dict(reason=args.resume_reason, git_sha=git_sha()))
+        write_json(archive/'resume_meta.json',dict(reason=args.resume_reason, git_sha=git_sha(),
+            original_workers=old['recipe']['workers'], effective_workers=cfg['workers']))
     else:
         root.mkdir(parents=True,exist_ok=False)
     sources=[launch_path,Path(launch['recipe']),Path(__file__),Path('scratch/dataset_refresh/run.py'),
