@@ -11,6 +11,7 @@ import threading
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 from src.data.synth.ours import pipeline
+from src.infra.endpoints.openrouter import ChatResult, EmptyCompletionError
 from src.naming import artifact_name, to_local
 from src.utils import timestamp, git_sha
 from scratch.dataset_refresh.run import BudgetClient, BudgetStop, write_json, digest
@@ -27,10 +28,30 @@ class GuardedClient(BudgetClient):
         self.unavailable = {e['request_sha256'] for e in prior if e['status'] != 'settled'}
         self.limit = cfg['max_physical_calls']
         self.arm = Path(cfg.get('recipe', 'da-lowstakes-fresh.yaml')).stem
+        self.reused = 0
+        self.saved = {}
+        for entry in prior:
+            if entry['status'] != 'settled':
+                continue
+            raw_path = self.root / 'raw_calls' / f"{entry['call_id']:06d}.json"
+            if raw_path.exists():
+                raw = json.loads(raw_path.read_text(encoding='utf-8'))
+                response = raw.get('response')
+                if (response and response.get('finish_reason') not in {'length', 'content_filter'}
+                        and digest(raw['request']) == entry['request_sha256']):
+                    self.saved[entry['request_sha256']] = response
 
     def chat(self, **kw):
-        if digest(kw) in self.unavailable:
+        request_hash = digest(kw)
+        if request_hash in self.unavailable:
             raise ValueError('Prior dispatched request has no saved response; excluded without redispatch')
+        if request_hash in self.saved:
+            result = ChatResult(**self.saved[request_hash])
+            if result.response_model and result.response_model != kw['model']:
+                raise RuntimeError('Saved response model mismatch')
+            with self.count_lock:
+                self.reused += 1
+            return result
         with self.count_lock:
             if self.stop.is_set() or self.count >= self.limit:
                 raise BudgetStop('Smoke dispatch stopped; no new requests permitted')
@@ -41,6 +62,13 @@ class GuardedClient(BudgetClient):
         self.local.stage = kw['messages'][0]['content'].splitlines()[0][:100]
         try:
             result = super().chat(**kw)
+        except EmptyCompletionError as exc:
+            if not any(c.get('finish_reason') == 'content_filter'
+                       for c in (exc.diagnostics or {}).get('choices', [])):
+                self.stop.set()
+            # A recorded content-filter refusal excludes the row, never reroutes it.
+            # Unknown/transport failures still stop all new paid dispatches.
+            raise
         except ValueError as exc:
             # Incomplete text is a failed row, with its settled receipt preserved.
             if not str(exc).startswith('Excluded incomplete/provider-filtered output:'):
@@ -59,6 +87,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',required=True)
     parser.add_argument('--resume')
+    parser.add_argument('--resume-reason', default='Operational recovery; reuse saved responses and exclude unavailable requests without redispatch')
     args=parser.parse_args()
     launch_path=Path(args.config)
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
@@ -77,7 +106,7 @@ def main():
         for name in ['manifest.json','stopped.json','cost_summary.json']:
             if (root/name).exists():
                 shutil.copy2(root/name,archive/name)
-        write_json(archive/'resume_meta.json',dict(reason='Windows atomic replacement sharing failure; no prior dispatched request replayed', git_sha=git_sha()))
+        write_json(archive/'resume_meta.json',dict(reason=args.resume_reason, git_sha=git_sha()))
     else:
         root.mkdir(parents=True,exist_ok=False)
     sources=[launch_path,Path(launch['recipe']),Path(__file__),Path('scratch/dataset_refresh/run.py'),
@@ -103,7 +132,8 @@ def main():
         entries=client.entries()
         own=[e for e in entries if e.get('run_root')==str(root.resolve())]
         write_json(root/'cost_summary.json',dict(campaign_total_usd=sum(e['charged_or_reserved_usd'] for e in entries),
-            run_usd=sum(e['charged_or_reserved_usd'] for e in own),physical_calls=len(own),statuses=dict(Counter(e['status'] for e in own))))
+            run_usd=sum(e['charged_or_reserved_usd'] for e in own),physical_calls=len(own),
+            reused_saved_responses_this_session=client.reused,statuses=dict(Counter(e['status'] for e in own))))
         shutil.copytree(client.root,root/'campaign_budget_snapshot',dirs_exist_ok=True)
         print('SMOKE_ROOT='+str(root.resolve()),flush=True)
 
