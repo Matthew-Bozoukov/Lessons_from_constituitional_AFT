@@ -304,6 +304,12 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     source = _HARNESS / ("test_csv_data" if smoke else "csv_data")
     resumed_from, regenerated = cfg.get("resume_from"), []
     if resumed_from:
+        # Recorded in the published run_meta: a repo-relative path, not this machine's.
+        try:
+            resumed_from = str(Path(str(resumed_from)).resolve().relative_to(Path.cwd().resolve()))
+        except ValueError:
+            resumed_from = str(resumed_from)
+    if resumed_from:
         # The same target at the same revision and mode, or the kept answers are another
         # model's; and the same drawn rows, or they answer other questions.
         prior = Path(str(resumed_from)).resolve()

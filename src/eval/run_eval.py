@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from contextlib import nullcontext
 from dataclasses import replace
@@ -42,6 +43,34 @@ def _preflight(name: str, args: argparse.Namespace, cfg=None) -> None:
                               f"with {spec.networks_per_scenario} networks")
             print(f">>> docker address pools hold {have or 'an unknown number of'} "
                   f"networks; this run holds up to {need} at once")
+
+
+def public_command(argv: list[str], cwd: Path | None = None) -> str:
+    """The launch command as the PUBLISHED record carries it: reproducible, never private.
+
+    A card's `provenance` and `metadata/run_meta.json` go to a public Hub page, so the
+    command they hold is the `uv run evals ...` a colleague would type, not this machine's
+    venv path, and never a host's live SSH endpoint: `--server root@1.2.3.4:5678` is written
+    as `--server <pod>` (which pod is in the run's pod fields, by id). Absolute paths under
+    the working directory become relative, so a `resume_from=` or config path names the
+    repo file, not the home directory it sat in. Nothing else about the command changes.
+    """
+    cwd = (cwd or Path.cwd()).resolve()
+    out: list[str] = ["uv", "run", "evals"]
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--server" and i + 1 < len(argv):
+            out += ["--server", "<pod>"]
+            i += 2
+            continue
+        if arg.startswith("--server="):
+            out.append("--server=<pod>")
+            i += 1
+            continue
+        out.append(re.sub(r"(?<![\w/])" + re.escape(str(cwd)) + r"/?", "", arg))
+        i += 1
+    return " ".join(out)
 
 
 def derive_run_kwargs(run_fn, unknown_argv: list[str]) -> dict:
@@ -238,7 +267,7 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             if value in targets:
                 targets.remove(value)
             targets.insert(0, value)
-    command = " ".join(sys.argv)
+    command = public_command(sys.argv)
 
     executor = None
     if args.server:
