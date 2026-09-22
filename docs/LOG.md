@@ -1,6 +1,58 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — MASK serving swept on H100 and H200: the profile's 32-sequence cap, not the card, was the bottleneck; H200 at 192 in flight is 3.5x faster and half the cost, and is now the default
+
+**Hypothesis.** A MASK run held its H100 at 32 running sequences 89% of the time with the
+KV cache 40% used and ~950 gen tok/s — a batch far below what the card carries. The 32 is
+`ModelProfile.serving.max_num_seqs`, a boot-feasibility cap written when the hybrid Mamba
+arch failed to start "above a low cap" (that was the 65k agentic window). Sweep the cap on
+both cards at MASK's 20,480 window and pick the fastest/cheapest.
+
+**Method.** `scratch/bench_mask_serving.py`: one eval pod per card
+(`runpod up --eval dougalldeepmind/2026-09-22-qwen36-0-da-15 [--gpu "NVIDIA H200"]`), the
+server started through `VllmServer` exactly as `uv run evals --name mask` starts it (LoRA,
+pinned think template, qwen3 reasoning parser) with `serving_params` patched per cap; 384
+real MASK prompts (same set and seeds every cap) at temperature 1.0, max_tokens 16384,
+concurrency = cap. Throughput read from the server's own log while the batch was ≥90% full
+(the fixed-count aggregate is dominated by the drain of a few 16k-token think blocks, which
+is why the H200's aggregates ranked BELOW the H100's — it cleared the bulk sooner and idled
+longer). A full MASK run is ~7.2M generated tokens (86% think; median 1,184/cell, p90 2,509).
+
+**Result** (steady gen tok/s; minutes of generation and $/run incl. 20 min judging):
+
+| cap | H100 $3.49/h | H200 $4.59/h |
+|---|---|---|
+| 32 | 873 — 137 min, $9.16 | 1,131 — 106 min, $9.65 |
+| 64 | 1,406 — 85 min, $6.13 | 1,753 — 68 min, $6.77 |
+| 96 | 1,699 — 71 min, $5.27 | 2,150 — 56 min, $5.80 |
+| 128 | 1,702 — 71 min, $5.26 | 2,593 — 46 min, $5.07 |
+| 192 | (128 boots; 192 untested) | 3,076 — 39 min, $4.51 |
+
+- **H100**: 18.8 GiB of KV (263k tokens). Cap 64 runs at 51% KV; at 96 the cache hits 100%
+  with up to 13 waiting and the batch settles at ~84 running; 128 never exceeds 95 running
+  (44 waiting). Ceiling ~1,700 tok/s at 96. No preemptions logged at any cap.
+- **H200**: 75.8 GiB of KV (1.08M tokens); monotone to 192 with KV ≤55% and no queue. Not
+  saturated — 256 untested.
+- **Boot**: 64/96/128 start on the H100 and 32-192 on the H200 in ~3 min each (the ~6.5 min
+  first boot is the one-off compile). The "architectural low cap" note is retracted.
+- **Chosen default: H200 at 192** — fastest AND cheapest for MASK (39 min / $4.51 vs today's
+  137 min / $9.16 on H100@32). `configs/models/qwen36.yaml`: `gpu.inference: NVIDIA H200`,
+  `serving.max_num_seqs: 192`; `configs/eval/mask.yaml`: `serving.concurrency: 192`,
+  `gen_concurrency: 192`. Consequence for the OTHER evals: their pods are H200 too (+$1.10/h;
+  ODCV is bound by its 32 scenarios, so that is +~$2.75 per ODCV run for an unmeasured
+  speed-up — `runpod up --gpu "NVIDIA H100 80GB HBM3"` if that matters). Every MASK number
+  before today was at 32 on an H100; generation settings are unchanged, so scores are
+  comparable.
+- **Two losses the cap does not fix**: (1) MASK generates archetype by archetype and drains
+  each to its last long-think row before starting the next — ~9% of a run under-filled at
+  cap 32, proportionally more at 192; a cross-archetype queue in the harness would reclaim
+  it. (2) Judging (~20 min) is serial after generation; judging finished archetypes while
+  later ones generate would hide most of it.
+
+**Next.** A MASK run on the new default to confirm the 39 min end to end; cap 256 on the
+H200; the cross-archetype queue.
+
 ## 2026-09-22 — The spec-filtered nosynth base is the default; the ladder re-trained on it (nosynth, da-15, delib-15, delib-sonnet-15) — the filter moves nothing, and at equal token share the ranking is da > delib-sonnet > delib
 
 **Hypothesis.** (1) The published nosynth base carried 452 rows a constitution judge rejects

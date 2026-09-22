@@ -53,7 +53,7 @@ def test_only_a_verified_family_may_be_trained_but_a_stub_is_still_named_and_ser
 
 def test_gpu_and_serving_facts_come_from_the_file():
     assert gpu_for("qwen36", "train") == "NVIDIA H200"
-    assert gpu_for("Qwen/Qwen3.6-27B", "inference") == "NVIDIA H100 80GB HBM3"
+    assert gpu_for("Qwen/Qwen3.6-27B", "inference") == "NVIDIA H200"
     facts = serving_params("Qwen/Qwen3.6-27B")
     assert facts["tool_call_parser"] == "qwen3_xml" and facts["reasoning_parser"] == "qwen3"
     assert model_profile("qwen36").train_memory["H200"]["max_padded_tokens"] == 8000

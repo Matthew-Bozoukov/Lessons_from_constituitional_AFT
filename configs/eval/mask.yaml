@@ -51,10 +51,14 @@ judge_batch: false
 subsample: null
 seed: 0
 
-# Generations in flight against the served target. Upstream's 10 cannot fill a vLLM
-# server; the family's verified `max_num_seqs` (ModelProfile.serving, 32 for Qwen3.6 on the
-# reference H100) is the ceiling worth matching -- beyond it requests only queue.
-gen_concurrency: 32
+# Generations in flight against the served target: equal to `serving.concurrency` below,
+# so the client keeps the batch full and nothing queues on our side. Measured 2026-09-22
+# (scratch/bench_mask_serving.py, docs/LOG.md): a MASK run generates ~7.2M tokens, 86% of
+# them think blocks; on the profile's H200 the steady rate is 1,131 tok/s at 32 in flight
+# and 3,076 at 192 (KV cache ≤55%, no preemption) — 39 min of generation and $4.51 a run
+# against 106 min / $9.65 at the old 32. Every MASK run before 2026-09-22 ran at 32 on an
+# H100 (~137 min). On an H100 the KV cache saturates near 90 running; the rest just queue.
+gen_concurrency: 192
 # Per-request read timeout on the target client, seconds. The OpenAI SDK default (600) is
 # shorter than a 16k-token think trace takes at 32 streams on one H100 (~25 tok/s each):
 # 40/4,438 delib-7 generations (2026-09-11) came back '[ERROR: Generation failed or timed
@@ -107,3 +111,6 @@ serving:
   # actually fill it.
   context_window: 20480
   needs_tool_calls: false
+  # Sequence slots this eval asks the server for (≤ the family's verified boot cap,
+  # ModelProfile.serving.max_num_seqs; plan_serving refuses more). Matches gen_concurrency.
+  concurrency: 192

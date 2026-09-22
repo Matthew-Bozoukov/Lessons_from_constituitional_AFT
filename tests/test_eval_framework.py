@@ -146,7 +146,7 @@ def test_plan_serving_validates_requirements_against_facts():
                     "prefix_caching": False, "hf_overrides": None, "warnings": ()}
     # No concurrency request: serve at the family cap.
     assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
-                        "think")["max_num_seqs"] == 32
+                        "think")["max_num_seqs"] == 192  # the profile's verified boot cap (2026-09-22 sweep)
     # Unprofiled family: no ceiling/cap to violate, no parser.
     plan = plan_serving({"max_num_seqs": None}, {"context_window": 13312}, "m", "think")
     assert plan["max_num_seqs"] is None and plan["reasoning_parser"] is None

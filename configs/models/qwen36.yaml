@@ -17,18 +17,27 @@ family: "Qwen3.6"
 # is a property of the run and is chosen at launch (`runpod up --count`).
 # train: H200 (141GB) and NOT H100 80GB. The negative bound under train.memory is a measured
 #   OOM, 7.36 GiB short on a 1x~8k fwd+bwd, so the 8k-token arms cannot train on H100.
-# inference: H100 80GB is enough. vLLM holds bf16 weights (~54GB) plus KV, with no optimizer
-#   state, no activations and no fp32 logits, and every eval to date has served it on one.
+# inference: H200, measured 2026-09-22 (scratch/bench_mask_serving.py, docs/LOG.md): the H100
+#   fits the bf16 weights (~54GB) but leaves only ~19GB of KV cache (263k tokens), which binds
+#   the batch at ~90 sequences and 1,700 gen tok/s; the H200's 76GB cache (1.08M tokens) was
+#   still scaling at 192 sequences, 3,076 tok/s. Per MASK run that is 39 min / $4.51 against
+#   the H100's best 71 min / $5.27 — faster AND cheaper, so it is the default card. Every
+#   eval before 2026-09-22 served on an H100 (cap 32); `runpod up --gpu` still overrides.
 gpu:
   train: "NVIDIA H200"
-  inference: "NVIDIA H100 80GB HBM3"
+  inference: "NVIDIA H200"
 
 # Verified serving FACTS: what the family is and what it has been measured to do, never what
 # an eval wants. Eval configs cannot write these (plan_serving, src/infra/endpoints/vllm.py).
 # tool_call_parser: the template emits XML tool calls (`<tool_call><function=NAME>...`), NOT
 #   Hermes JSON, so `hermes` would parse none and score a clean 0% (docs/LOG.md 2026-07-29).
 #   Confirmed live on the swebench pilot 2026-08-05: no_tool_call_rate 0.0 over 115 turns.
-# max_num_seqs: architectural. The hybrid Mamba arch fails at startup above a low cap.
+# max_num_seqs: the boot-feasibility CAP (Mamba state slots are preallocated at startup), a
+#   verified fact, not a tuning knob: 192 boots on the H200 and 128 on the H100 at a 20,480
+#   window (2026-09-22 sweep; the earlier "fails above a low cap" was at the 65k agentic
+#   window). An eval requests `serving.concurrency` up to this; vLLM queues what the KV
+#   cache cannot hold (the H100 saturates near 90 running), it never fails. Throughput on
+#   the H200 rose monotonically to 192 (1,131 -> 3,076 gen tok/s, KV ≤55%, no preemption).
 # supports_prefix_caching: TRUE, measured. The 2026-07-29 note ("vLLM forces it off on this
 #   hybrid Mamba arch") was a misread of a 0.6% hit rate taken at 96% KV usage; the
 #   2026-08-07 A/B on the pinned vLLM 0.26 (docs/LOG.md) shows 77-78% hits and ~3.5x
@@ -37,7 +46,7 @@ gpu:
 #   size concurrency so usage stays well under ~50%, and read `Prefix cache hit rate` in the
 #   server log rather than assuming. Throughput only.
 serving:
-  max_num_seqs: 32
+  max_num_seqs: 192
   reasoning_parser: qwen3
   tool_call_parser: qwen3_xml
   supports_prefix_caching: true
