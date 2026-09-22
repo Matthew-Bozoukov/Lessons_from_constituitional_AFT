@@ -1,11 +1,11 @@
-# ABOUTME: The supervised-token share (src/data/mixture/token_share.py): proportional, nested removal;
+# ABOUTME: The supervised-token share (build_mixture.py's token planners): proportional, nested removal;
 # ABOUTME: balanced token fill; the swap's realised share; and counts that follow the row's supervise mode.
 
 from __future__ import annotations
 
 import pytest
 
-from src.data.mixture.token_share import fill_tokens, plan_swap, remove_until, removal_order
+from src.data.mixture.build_mixture import fill_tokens, plan_swap, remove_until, removal_order
 
 
 def _base(spec: dict[str, list[int]]) -> list[dict]:
@@ -79,7 +79,7 @@ def test_supervised_tokens_follow_the_rows_supervise_mode():
         tok = transformers.AutoTokenizer.from_pretrained(MODEL, local_files_only=True)
     except Exception:
         pytest.skip(f"{MODEL} tokenizer not in the local HF cache (tests are no-network)")
-    from src.data.mixture.token_share import supervised_tokens
+    from src.data.mixture.build_mixture import supervised_tokens
     from src.model_profile import model_profile
 
     profile = model_profile(MODEL)

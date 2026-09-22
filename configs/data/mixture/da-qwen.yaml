@@ -24,7 +24,7 @@ base_mixture:
   revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
 
 synthetic_pct: 7
-# The synthetic share is a share of SUPERVISED TOKENS (src/data/mixture/token_share.py,
+# The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
 # 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
 # seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
 # tokens are freed, and synthetic rows refill them trait-balanced. Under token weighting
