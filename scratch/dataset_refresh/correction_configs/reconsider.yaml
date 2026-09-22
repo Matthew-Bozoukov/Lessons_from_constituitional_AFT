@@ -1,0 +1,7 @@
+# ABOUTME: Apply reviewed exclusion corrections without changing author text or spending money.
+# ABOUTME: Run uv run --no-sync python -m scratch.dataset_refresh.reconsider_exclusions --config scratch/dataset_refresh/correction_configs/reconsider.yaml [--apply].
+{
+  "manifest": "C:\\Users\\nikak\\source\\repos\\LASR\\teaching_claude_why_replication_dataset_refresh\\output\\2026-09-15_dataset_refresh_correction_review\\root_correction_manifest_20260915.json",
+  "manifest_sha256": "d75e5f5b81204103cb7830c01c451f6db33a43807587a6839849ff8c131d61f4",
+  "output": "C:\\Users\\nikak\\source\\repos\\LASR\\teaching_claude_why_replication_dataset_refresh\\output\\2026-09-15_dataset_refresh_correction_review\\applied_corrections_20260915.json"
+}

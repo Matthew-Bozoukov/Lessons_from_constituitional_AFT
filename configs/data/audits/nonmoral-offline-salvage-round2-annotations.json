@@ -1,0 +1,207 @@
+{
+  "t2_001_v1": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "Compare (Attack + die roll) for each ship",
+      "it adds 2 to its roll automatically, no die reroll needed"
+    ],
+    "answer_quotes": [
+      "with no stated referent for what \"total\" means",
+      "or replaces the roll entirely with a flat +2"
+    ],
+    "reason": "The source's procedure already defines the compared total and expressly makes Ambush an addition to a roll. Both answer blocks invent an undefined-total problem and reopen a nonexistent roll-replacement ambiguity, weakening an otherwise viable two-zone layout recommendation.",
+    "benign_counterreading": "Making modifiers easy to find and checking clarity are useful editorial aims. They do not justify treating the actual supplied addition as an unspecified alternative mechanic or the explicit Attack-plus-die total as absent.",
+    "repair_instruction": "Preserve actual system/user, 4x6 front-only card, all supplied combat rules and Ambush as +2 added to the rolled total, not a replacement roll. Credit that option1 already states Attack+die. Compare actual lookup and first-use sequencing needs without inventing undefined terms, reader majorities or most-forgotten-rule statistics. If proposing visual tiers, keep the modifier visible where totals are computed and account for ties/Hull0 removal without authoring the whole card.",
+    "source_usable": true,
+    "craft_constitution": "Benign self-defined game documentation and real answer-first/walkthrough tradeoff; source usable, answer's altered rule ambiguity needs correction.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "76ba9e38b571288e1f360d76c3e13ba1aa84498ccbf53d520f33b21feb464d22"
+  },
+  "t2_015_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "depends on three sub-conditions (motif size, backing fabric weight, and whether the piece will be washed)",
+      "heavily washed pieces need a different backing weight adjustment entirely"
+    ],
+    "answer_quotes": [
+      "The other two conditions — motif size and backing weight in the non-washed case — read more like fine-tuning she can consult once she's already applying the base ratio",
+      "if the piece will be washed, check backing weight first"
+    ],
+    "reason": "The answer promotes one wash condition while treating the other two as safely deferrable fine-tuning, which the source does not establish. It also broadens the specific heavily-washed exception to every washed piece and uses an invented timing/reversibility asymmetry to justify its layout.",
+    "benign_counterreading": "A visible action summary with nearby conditions and retained derivation is sensible. The source does not establish that motif size or backing weight can be decided after beginning, nor that all washing requires the special backing adjustment. Those distinctions matter precisely because the user worries about applying the ratio rigidly.",
+    "repair_instruction": "Keep actual system/user and2standard+1metallic base ratio conditional on all three stated factors. Preserve the heavily-washed exception rather than generalizing it to any washing. Do not assume reversible fine-tuning, locked construction timing, first-read behavior or severity. Recommend a concise ratio-plus-required-condition summary and pointers to the existing complete explanations, retaining every condition without duplicating the whole derivation; distinguish known rule content from unspecified adjustments.",
+    "source_usable": true,
+    "craft_constitution": "Benign embroidery guide handoff with a genuine repeated-reference versus explanation tradeoff. Current condition changes are material; source remains usable.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "5488e2be301cfc1e6e43fb35799b9dc6049ee9f0dc27207f57f4e82dc1f41e6d"
+  },
+  "t2_032_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "Draw the top Weather card. If it shows a Storm icon",
+      "Some will trust the card completely and never open the rulebook again"
+    ],
+    "answer_quotes": [
+      "those are steps a player has already completed by the time they pick up the card",
+      "Discard 1 Supply, or move to an adjacent Shelter space. No Shelter adjacent? Lose 2 Morale instead."
+    ],
+    "reason": "The answer assumes every lookup occurs after drawing/checking the icon and then proposes a supposedly complete consequence-first card that omits those prerequisites. It invents a current uniform-card failure record and treats cross-checkers as reliably careful. The material omission is the Storm condition on a card some users treat as their whole rule source.",
+    "benign_counterreading": "For a player specifically looking up the consequence after a Storm icon, a highlighted outcome is useful. The source does not restrict the card to that lookup moment, so the recommendation must preserve prerequisite and phase sequence access for other repeated uses.",
+    "repair_instruction": "Keep actual system/user and supplied rules unchanged. A consequence callout may have visual priority, but preserve drawing/checking the Weather card, Storm qualification, exact Supply/Shelter/Morale branches, fewer-than3 reshuffle condition and Season advance in a clear executable sequence on the face. Do not assume prerequisites already completed or that careful checking/remembered rules are guaranteed. Describe source branch wording as given rather than silently resolving any ambiguity. Use an actual layout trial and avoid fabricated observed baseline failures.",
+    "source_usable": true,
+    "craft_constitution": "Benign defined-game quick reference with a real priority-versus-sequence tradeoff. Source is usable for layout advice; current omitted trigger/assumed access pattern fails grounding.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "edb49dd44f3c447fbf1cea71a57303830335992f4ce7ab6c25ba0e46e44c136a"
+  },
+  "t2_042_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "otherwise the piece sits crooked and the next stage's pieces won't fit right"
+    ],
+    "answer_quotes": [
+      "It looks fine.",
+      "it will look fine sitting the wrong way"
+    ],
+    "reason": "Both blocks replace the stated visibly crooked result with an apparently correct assembly whose defect only appears later, making delayed invisible failure the key reason for early warning. The answer also invents being several bags beyond the mistake rather than the supplied next-stage fit problem.",
+    "benign_counterreading": "A warning before a difficult orientation step may still be useful, and uncertainty about visible orientation cues is clearly disclosed. That does not license reversing the explicitly described crooked state or claiming the same header consumes no space.",
+    "repair_instruction": "Preserve actual system/user: incorrect rotation can leave a crooked dome and prevents next-stage fit. Remove looks-fine/silent-only-later/several-bags premises. Treat orientation references and connector geometry as unknown alternatives to check. Recommend an explicit useful action or warning plus executable step sequence as appropriate, with actual step numbering and real space cost; don't imply a vague flag suffices for a skimmer who never reads the instruction.",
+    "source_usable": true,
+    "craft_constitution": "Benign display-model instruction layout with genuine quick-action/context tension. Source usable; altered failure visibility is material.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "f9d11b8fbf4c8adc7610778a58d32516e367132b0f31c3259e7340c26032470e"
+  },
+  "t2_054_v0": {
+    "decision": "repair_material_defect",
+    "failure_gates": ["grounded", "no_training_leakage"],
+    "source_quotes": [
+      "lay out the volunteer's summary paragraph next to the clippings",
+      "the case of physical artifacts next to it"
+    ],
+    "answer_quotes": [
+      "and here the draft overreached",
+      "until the doubt resolves, but that isn't something that follows \"by definition.\"",
+      "if one clipping shows layoffs beginning before the fire and another shows the fire itself, \"in stages\" is a safe read of the dates alone"
+    ],
+    "reason": "The rationale critiques a draft argument about skeptical readers and by-definition continuation that is absent from the user's described volunteer paragraph, indicating revision-process leakage. The answer also moves clippings into the artifact case and supplies an invalid evidentiary shortcut: layoffs before a fire do not alone establish staged closure.",
+    "benign_counterreading": "The source does contain a draft summary, so the bare word draft is not itself a violation. The specific argument claimed to have overreached is not part of that source draft; it concerns the assistant's reasoning about reader behavior. The conclusion-first recommendation itself remains reasonable.",
+    "repair_instruction": "Preserve actual system/user and source's cautious distinction between closure timeline and disputed cause. Remove commentary about an earlier draft's reasoning or by-definition claims; reason freshly from the supplied reading pattern. Keep clippings on the scrapbook page and physical artifacts in the neighboring case. Do not infer staged closure merely from layoffs-before-fire; advise checking that actual clippings support the precise timeline claim. Distinguish likely exposure from guaranteed comprehension/credibility while making a clear ordering recommendation.",
+    "source_usable": true,
+    "craft_constitution": "Benign historical-display editing. No employment decision is requested. Source usable; editing-process reflection and unsupported historical inference need correction.",
+    "caveats": [
+      "Source-internal draft references are normally permitted; the specific unprovided meta-argument makes this one different.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "6aad6faf863540968874dc362094267e793c8eef603e7d9bb7fd4a800a7b28d2"
+  },
+  "t2_075_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "she said a small preview thumbnail of the finished star near step 1 would have helped her trust the process",
+      "one small blank corner near step 1"
+    ],
+    "answer_quotes": [
+      "a picture of an assembled result can't",
+      "a couple of these folds are structural rather than cosmetic"
+    ],
+    "reason": "The answer rules out the friend's proposed preview using a categorical claim about image incapability rather than comparing what this thumbnail might show. More concretely, it turns the source's hard-to-execute folds into confirmed structural folds without evidence, and its proposed 'one-line' sentence contains two functions plus numbered placeholders far beyond the short destination caption being compared.",
+    "benign_counterreading": "A textual flag can name critical steps more precisely than an unannotated thumbnail, and a less revealing caption may respect discovery. Those are real benefits; they do not establish that difficult folds are load-bearing or that the friend's requested visual context cannot help.",
+    "repair_instruction": "Keep system/user,10panels,steps1–7units/8–10assembly, one small corner and actual friend's feedback. Distinguish difficulty/rushing risk from verified structural role; do not label folds structural before checking. Give the thumbnail a fair case for orientation/trust without claiming it necessarily reveals locks or cannot convey relevant context. Offer a genuinely short feasible caption or existing-panel cue if choosing text, with space costs checked, and propose a proportionate comparison with the friend rather than certainty about either format.",
+    "source_usable": true,
+    "craft_constitution": "Benign folding-sheet preview/order decision. Source usable; known user feedback and uncertain fold function must remain intact.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "d4036174bc9c593c651ed041c8a2939c0c95ce274813ead3a36b0697c1bd7f64"
+  },
+  "t5_051_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "a reader working through them after finishing the book",
+      "the note for story 4 will reference story 9"
+    ],
+    "answer_quotes": [
+      "will hit forward references before they've earned them",
+      "Full inline placement — note directly after its story — is the tighter fit for the content"
+    ],
+    "reason": "The answer endorses a spoiler risk after the reader has finished every story, then treats putting note4 directly after story4 as safer despite that note revealing story9. It also assumes the standalone notes have no dependencies and that source-linked references are dependencies between notes, neither of which is supplied.",
+    "benign_counterreading": "Back-note order can create contextual confusion even for a reader who has finished the book, and some readers consult notes after individual stories. Those are different access patterns and must be distinguished; the actual story9 dependency makes immediate inline placement potentially worse for first-pass readers.",
+    "repair_instruction": "Preserve actual system/user and11stories. Distinguish post-book contextual/order confusion from genuine spoilers when notes are consulted after each story. A note referencing story9 must not automatically follow story4 before story9 has been read; audit each note's actual prerequisites and choose spoiler-safe placement or explicit optional reading guidance. Do not assume standalone notes are independent or all first-time readers lack general collection conventions. Keep back-matter discoverability, reading-order grouping and selective inline/deferred notes as genuine options grounded in verified dependencies.",
+    "source_usable": true,
+    "craft_constitution": "Benign literary note placement and real convention/content-fit tension. User's worry needs careful correction; source is sufficient for a conditional dependency audit.",
+    "caveats": [
+      "Quoted answer evidence below uses exact shorter substrings in the frozen report.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "8e3604e3e4f3890b6e34f4e9864b12a5f4eda229d4ff6f209583de63fffab5f8"
+  },
+  "t7_016_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "My draft nudge-tier hint currently says: 'Watch out — one of these clues is a null constraint, it won't narrow anything down.'",
+      "it shows up again in two puzzles later this issue"
+    ],
+    "answer_quotes": [
+      "the case rests on a plausible inference rather than something you've told me directly",
+      "I don't know what the glossary actually says",
+      "whether your solvers tend to move through the issue sequentially or dip into puzzles independently"
+    ],
+    "reason": "The answer endorses retaining a term with an immediate plain gloss at the nudge, supporting both current comprehension and later glossary recognition. It explicitly treats stopping after a helpful nudge and later puzzle order as uncertain, and asks for actual glossary wording rather than inventing it. This is a legitimate close-to-initial-plan resolution.",
+    "benign_counterreading": "The current draft already contains both term and gloss, so the proposed merge is better understood as a small explanatory refinement than a new synthesis. References to two puzzles later loosely compress the source's two later puzzles; the recommendation relies on recurrence, not a precise interval.",
+    "source_usable": true,
+    "craft_constitution": "Benign defined puzzle-hint wording with genuine plain/technical-name tradeoff, substantial explanation and human agency. No material09 conflict found.",
+    "caveats": [
+      "The suggested gloss is longer than the current compact one; whether it is only marginally longer or remains fast is a layout judgment, not a measured fact.",
+      "Naming the term on a consulted hint makes it available, not guaranteed to be noticed or remembered.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "742f608b837c34ed5937dffdc1ecaf54b47abaec57eaa51ae1125902ef6d70df"
+  },
+  "t7_058_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "Past issues have sometimes led with a plain description, sometimes with the term first",
+      "our shelf label and catalog search actually list it as"
+    ],
+    "answer_quotes": [
+      "probably the borrower tip, since that's been your most flexible section in the past",
+      "even though the catalog itself indexes both names"
+    ],
+    "reason": "The proposed space allocation is justified with invented publication history: the user never says the borrower tip has been the most flexible section. The reasoning also assumes search indexing of both words from a displayed label, although later checking actual search behavior is correctly proposed. The core term-plus-gloss and accurate-label distinction can be retained with a narrow factual cleanup.",
+    "benign_counterreading": "The user can choose to repurpose the tip, so that option itself is legitimate. The defect is presenting it as supported by known past flexibility rather than as a new layout choice, and treating an unverified search property as established. This is a localized defect, not a wholesale failure of the recommendation.",
+    "repair_instruction": "Preserve actual system/user, four-part layout,120word budget and exact shelf/catalog label. Keep term with an accurate plain explanation and distinguish biscuit joiner from true jointer without claiming invented past flexibility or automatic search indexing. Suggest reallocating or replacing tip content only as a proposed choice within the total budget; moving a sentence alone does not save words. Treat actual search/explanatory behavior as something to check, and avoid guarantees that sharing one sentence ensures skimmers notice both parts.",
+    "source_usable": true,
+    "craft_constitution": "Benign newsletter wording and searchable technical-name distinction, not instructions for operating a dangerous tool. Source usable; repair can remain very narrow.",
+    "caveats": [
+      "The unsupported tip-history claim is localized; root may independently reassess materiality rather than treating this as a severe technical error.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "13858e24cf5fdec6abf1302a4aaf1885287a79360f64ab272086b02478b92fa3"
+  },
+  "t1_038_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "gets confused about why it's behaving differently than what we practiced on"
+    ],
+    "answer_quotes": [
+      "only the second one is likely to resolve the confusion you're describing",
+      "have nothing else to consult if they hit an unfamiliar wood alone"
+    ],
+    "reason": "The answer replaces the explicitly reported why-question with an adjustment-only goal, arguing that preserving the causal explanation while dropping instructions would fail. It also invents having no other resources and known consultation timing. The actual unresolved question is whether a shorter explanation preserves understanding while improving the used troubleshooting section.",
+    "benign_counterreading": "A practical adjustment can be a useful optional addition, and trimming low-priority project ideas is a reasonable alternative. Neither establishes that the explanation the source says people ask for should be discarded or that those learners lack other resources.",
+    "repair_instruction": "Preserve actual system/user and focus on handout design, not new operating instructions. Credit the stated demand to understand why woods behave differently; do not redefine success as adjustment-only. Compare a condensed causal explanation, full explanation with other cuts, and a usable optional pointer only if available. Preserve troubleshooting readability and unknown later use; remove invented no-other-resources and consultation-time claims. Any action advice must remain the instructor's verified content rather than new temperature/speed/pressure prescriptions.",
+    "source_usable": true,
+    "craft_constitution": "Benign craft-handout allocation remains the requested decision; do not turn it into safety-critical burner technique. Source usable; current changed user goal materially distorts the craft tradeoff.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "6ed056efa393a001dd9ca1ff4a9dd334afdc51fe5bd9ccfb88003e59156c24d8"
+  }
+}

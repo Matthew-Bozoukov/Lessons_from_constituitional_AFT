@@ -1,0 +1,32 @@
+# ABOUTME: Exact historical 716 low-stakes conversations plus the frozen 9284 September replay rows.
+# ABOUTME: Run: uv run --no-sync python -m scratch.nonmoral.reuse_original --config scratch/nonmoral/mixture_configs/da-lowstakes-original.yaml --out output/lowstakes_original_reuse_20260916/mixture
+style: da-lowstakes-original
+seed: 0
+synthetic_rows: 716
+replay_rows: 9284
+original_source: difficult_advice_low_stakes
+reference_source: da-lowstakes-refresh
+tokenizer: Qwen/Qwen3.6-27B
+tokenizer_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+max_seq_len: 8192
+original_mixture:
+  repo: LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train
+  revision: 3e4b638fe79326454ce7af2714c93c7579b37d06
+  file: t2_9284_lowstakes716_10k.jsonl
+original_corpus:
+  repo: LASR-Callum/2026-08-26-difficult-advice-low-stakes-716
+  revision: f268653539150af5a340164f994065f57cbef5ad
+  file: dataset.jsonl
+replay_reference:
+  repo: dougalldeepmind/2026-09-15-da-lowstakes-refresh-7-mix
+  revision: f0b0418ea9767ab00fe21e86fab8dfc26dc5320c
+  file: mixture.jsonl
+nosynth:
+  repo: dougalldeepmind/2026-09-08-nosynth-mix
+  revision: 7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd
+  file: mixture.jsonl
+card_overrides:
+  experiment: Exact original 716 moral low-stakes conversations plus the same 9284 new nosynth replay rows used in the September 15 refreshed low-stakes mixture. Total 10000, 7.16% synthetic. No rewriting, additions, repairs or generation.
+  constitution: Historical principle-conditioned low-stakes content is retained unchanged. No new constitution insertion or review; this is an unchanged-content control.
+  models: Historical Sonnet 5 drafts and revisions are reused without fresh API calls. Replay reasoning provenance is recorded in mixture_stats.json.
+  comparability: All 716 original messages exactly reproduce the rendered historical training rows. Replay dictionaries and their absolute positions match the refreshed low-stakes mixture. Synthetic conversations retain their historical training order within the replacement slots. Current native rendering and masks apply; this is not a bitwise reproduction of historical training.

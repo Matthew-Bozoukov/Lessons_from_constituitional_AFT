@@ -1,6 +1,7 @@
 # ABOUTME: Exercises real training-output archives and corruption/missing-artifact teardown gates offline.
 # ABOUTME: No GPU rental or network access; fixtures include full adapter provenance and partial checkpoints.
 import json
+import hashlib
 from pathlib import Path
 import subprocess
 import sys
@@ -63,6 +64,69 @@ def test_full_backup_retains_logs_checkpoint_and_required_adapter(tmp_path):
     assert result['verified_completed_arms'] == 1
     assert result['files'] == 9  # Six adapter files, run metadata, full log, checkpoint.
     assert may_terminate_training({'training_started':True, 'local_backup':result})
+
+
+def test_transfer_has_closed_stdin_and_preserves_complete_archive(tmp_path, monkeypatch):
+    from scratch.nonmoral import result_backup as backup
+    arms = fixture(tmp_path)
+    archive, manifest = pack(tmp_path)
+    remote = SimpleNamespace(host='unused', identity='', _ssh=lambda *a, **kw: json.dumps(manifest))
+    child = ('import sys; from pathlib import Path; '
+             'assert sys.stdin.buffer.read() == b""; '
+             f'sys.stdout.buffer.write(Path({str(archive)!r}).read_bytes())')
+    monkeypatch.setattr(backup, 'ssh_argv', lambda *a: ([sys.executable, '-c', child], 'unused'))
+    real_run = subprocess.run
+    observed = {}
+
+    def capture(argv, **kwargs):
+        observed.update(kwargs)
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(backup.subprocess, 'run', capture)
+    out = tmp_path/'local'
+    out.mkdir()
+    receipt = backup.fetch_training_outputs(remote, out, arms, timeout=15)
+    assert observed['stdin'] == subprocess.DEVNULL
+    assert receipt['verified_completed_arms'] == 1
+    assert Path(receipt['archive']).read_bytes() == archive.read_bytes()
+
+
+def test_adapter_first_archive_preserves_provenance_without_resume_checkpoints(tmp_path):
+    arms = fixture(tmp_path)
+    script = pack_script(str(tmp_path), exclude_checkpoints=True, archive_name='adapter-first.tar')
+    process = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True, check=True)
+    manifest = json.loads(process.stdout)
+    receipt = verify_archive(manifest['path'], manifest, arms)
+    assert receipt['verified_completed_arms'] == 1
+    with tarfile.open(manifest['path']) as tar:
+        assert 'output/train/run1/run_meta.json' in tar.getnames()
+        assert not any('/checkpoint-' in p for p in tar.getnames())
+    # A fast adapter-only backup must not satisfy the full-output teardown gate.
+    assert not may_terminate_training({'training_started': True, 'adapter_backup': receipt})
+
+
+def test_publication_checks_real_archive_bytes_and_rejects_remote_hash_mismatch(tmp_path, monkeypatch):
+    from scratch.nonmoral.result_backup import verify_publication
+    from src.infra import huggingface
+    arms = fixture(tmp_path)
+    root = tmp_path / 'output/train/run1'
+    meta = json.loads((root / 'run_meta.json').read_text())
+    meta.update(world_size=2, n_examples=10000,
+                log_history=[{'step': 625, 'epoch': 1, 'train_loss': 0.8}])
+    (root / 'run_meta.json').write_text(json.dumps(meta))
+    stamp = dict(meta, organism='test-organism', thinking=True, supervise_counts={'all': 10000})
+    (root / 'adapter/training_meta.json').write_text(json.dumps(stamp))
+    siblings = [SimpleNamespace(rfilename=p.name, size=p.stat().st_size,
+                 lfs=SimpleNamespace(sha256=hashlib.sha256(p.read_bytes()).hexdigest()))
+                for p in (root / 'adapter').iterdir()]
+    api = SimpleNamespace(model_info=lambda *a, **kw: SimpleNamespace(id='test/model', sha='c'*40, siblings=siblings))
+    monkeypatch.setattr(huggingface, 'hf_api', lambda: api)
+    monkeypatch.setattr(huggingface, 'hf_org', lambda: 'test')
+    path, _ = pack(tmp_path)
+    assert verify_publication(path, arms, steps=625, world_size=2)['verified']
+    siblings[0].lfs.sha256 = '0'*64
+    with pytest.raises(AssertionError):
+        verify_publication(path, arms, steps=625, world_size=2)
 
 
 def test_transfer_corruption_blocks_teardown(tmp_path):

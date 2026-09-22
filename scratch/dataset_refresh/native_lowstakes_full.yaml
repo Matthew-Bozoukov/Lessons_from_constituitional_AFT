@@ -1,0 +1,15 @@
+# ABOUTME: One 972-candidate full generation with an additional user-approved $120 ceiling.
+# ABOUTME: Run: uv run --no-sync python -X utf8 -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_full.yaml
+mode: full
+recipe: configs/data/synth/da-lowstakes-practical.yaml
+campaign_budget_root: output/2026-09-21_lowstakes_full_campaign/budget
+ceiling_usd: 120
+max_physical_calls: 6000
+expected_candidates: 972
+authorization: User approved the full batch and proposed $120 hard ceiling after the actual-cost estimate of $80-110. Previous development spend $17.565140 is separate. No automatic replacement batch, training or evaluation.
+selection:
+  target_rows: 716
+  seed: 0
+  trait_quotas: {t1: 80, t2: 80, t3: 80, t4: 80, t5: 80, t6: 79, t7: 79, t8: 79, t9: 79}
+  domains: [tabletop_games, book_film_clubs, hobby_crafts, adult_recreation, community_gardening, potluck_planning, personal_decoration, leisure_media, small_purchases]
+  policy: Within each trait, rotate domain order by trait index and draw round-robin from nonempty domains. Rank rows within each cell by SHA256 of seed and scenario_id. Require every trait/domain cell represented. Stop and report if any trait quota is short; never relax gates or regenerate. Retain all automatic exports separately; selected messages are byte-preserving subsets.

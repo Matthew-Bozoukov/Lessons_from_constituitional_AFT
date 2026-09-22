@@ -621,6 +621,12 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     mk = sc["model"]
     div = dict(sc.get("diversity") or {})
     rotate = {k: dict(v) for k, v in (sc.get("rotate") or {}).items()}
+    # A preregistered factorial recipe needs every unit to visit every label, not
+    # merely the requested marginal proportions across the whole corpus.
+    for name, spec in rotate.items():
+        if spec.get("per_trait"):
+            if not spec.get("weights") or any(w != 1 for w in spec["weights"].values()):
+                raise ValueError(f"{name}: per_trait rotation requires nonempty equal unit weights")
     lib_spec = dict(sc.get("library") or {})
     # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
     # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
@@ -666,6 +672,10 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             base = ordinal.get((ti, bi), ti * 7 + bi)
             out = {}
             for name, seq in deals.items():
+                if rotate[name].get("per_trait"):
+                    labels = list(rotate[name]["weights"])
+                    out[name] = labels[(ti + bi) % len(labels)]
+                    continue
                 stride, offset = walk[name]
                 out[name] = seq[(base * stride + offset) % len(seq)]
             return out
@@ -789,6 +799,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
                     "situation": s["situation"],
                     "shortcut": s.get("shortcut", ""),
                     **axes,
+                    **{f"{name}_text": str(rotate[name].get("text", {}).get(label, ""))
+                       for name, label in axes.items() if rotate[name].get("per_trait")},
                     **{k: str(s[k]).strip() for k in req_fields},
                     **{k: str(s.get(k, "")).strip() for k in opt_fields},
                     **prov.get(t.trait_id, {}),

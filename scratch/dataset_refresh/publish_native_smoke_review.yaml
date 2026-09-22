@@ -1,0 +1,12 @@
+# ABOUTME: Pins the completed smoke and original corpus for the diagnostic review archive.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.publish_native_smoke_review --config scratch/dataset_refresh/publish_native_smoke_review.yaml
+run_root: output/2026-09-21_da_lowstakes_fresh_guarded_smoke/20260921_105151
+old_cache: output/2026-09-15_lowstakes_comparison/old_records.json
+old_repo: LASR-Callum/2026-08-26-difficult-advice-low-stakes-716
+old_revision: f268653539150af5a340164f994065f57cbef5ad
+old_sha256: 55c9c35f69263dfe275130677876c5adfa66ed9a9abdfe0e499fa68dc3f0936e
+sample_seed: '2026-09-21-factual-check:'
+targeted_ids: [t8_b02_s000, t9_b04_s004, t7_b01_s003, t6_b02_s000, t2_b11_s006]
+reports:
+  - docs/dataset_audits/2026-09-21_native_lowstakes_smoke.md
+  - docs/dataset_audits/2026-09-21_old_lowstakes_factual_check.md

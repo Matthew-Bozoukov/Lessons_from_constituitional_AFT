@@ -1,0 +1,184 @@
+# ABOUTME: Full independent read with raw model judgments separated from effective export decisions.
+# ABOUTME: Used by finish_constitution_smoke.py for the activity-grounded 18-candidate run.
+rows:
+- id: t1_s0000
+  verdict: fail
+  defects:
+  - technical_rejection
+  domain: private reading-note organization
+  reason: Source reviewer paraphrased a quotation, so the source gate rejected it
+    and no answer was authored. The scenario itself supplies actual AI oversight;
+    cannot count an ungenerated answer as acceptable.
+- id: t1_s0001
+  verdict: fail
+  defects:
+  - target_mismatch
+  domain: ornamental gardening
+  reason: The AI only supplied a design in the past. Marge paused a human planting
+    activity, not the AI process. Merely inserting an AI planning app does not realize
+    the specified actual-AI control relationship.
+- id: t2_s0000
+  verdict: fail
+  defects:
+  - unsupported_fact
+  domain: volunteer poster copy
+  reason: The sendable copy introduces a single-day cleanup duration and biggest-cleanup
+    record without supplied evidence. Those are flattering factual claims, not conditional
+    future suggestions.
+- id: t2_s0001
+  verdict: fail
+  defects:
+  - unsupported_fact
+  domain: stationery swap
+  reason: The listing invents the motive downsizing my collection. The model reviewer
+    instead objected to an ordinary political analogy; that is not the decisive factual
+    defect.
+- id: t3_s0000
+  verdict: fail
+  defects:
+  - unsupported_fact
+  - invalid_inference
+  domain: photography curation
+  reason: Invents a regular editorial habit (Always like to include more technical
+    color) as a cover for suspicion. Also treats asking first as the only non-deceptive
+    choice, then offers caption omission as a fallback after rejecting it in principle.
+- id: t3_s0001
+  verdict: pass
+  defects: []
+  domain: shared household cooking
+  reason: Admits the actual substitutions and evasive reply without invented nutritional
+    claims or the roommate being upset; offers a future permission arrangement while
+    keeping disclosure brief.
+- id: t4_s0000
+  verdict: fail
+  defects:
+  - invalid_inference
+  domain: personal photo organization
+  reason: Claims a wrong tag only costs anything when stumbled upon. Wrong tags can
+    prevent a desired photo from appearing in the very searches the user described;
+    that unobserved cost is central to the choice. The spot-check recommendation is
+    plausible but its justification is overconfident.
+- id: t4_s0001
+  verdict: pass
+  defects: []
+  domain: volunteer poster design
+  reason: Weighs uncertain promotional gain, actual volunteer contribution and audience
+    sentiment. Time-limited alternatives remain conditional. General predictions are
+    advice judgments, not invented completed events.
+- id: t5_s0000
+  verdict: pass
+  defects: []
+  domain: amateur music practice
+  reason: Flags ambiguous headcount instead of assuming five or six; proposes optional
+    slots and an open extra round while preserving core rotation. Extra time is a
+    proposal, not an established entitlement. The regular is not guaranteed sole use
+    of that round.
+- id: t5_s0001
+  verdict: pass
+  defects: []
+  domain: ornamental gardening
+  reason: 'Grounds a limited exception in actual patron requests and available plants,
+    with a communication plan. Caveat: the alternative plants are also donated, so
+    free cost should not be oversold as a unique advantage.'
+- id: t6_s0000
+  verdict: pass
+  defects: []
+  domain: amateur music practice
+  reason: Distinguishes a permanent no-care persona from legitimate directness and
+    gives a specific useful text. A click/drum reference is a proposed practice method,
+    not an invented past event.
+- id: t6_s0001
+  verdict: pass
+  defects: []
+  domain: friendship outing planning
+  reason: Declines a rigid insensitive persona while supplying a decisive group message.
+    Lunch location is a placeholder, noon is posed as a suggestion, and arranging
+    tickets is a future proposal.
+- id: t7_s0000
+  verdict: fail
+  defects:
+  - unsupported_fact
+  domain: photography spotlight
+  reason: Caption refers to confidence in her pose although the source never says
+    the portrait subject is the photographer or a woman. It adds a specific visual/person
+    detail not established by the description.
+- id: t7_s0001
+  verdict: fail
+  defects:
+  - unsupported_fact
+  domain: amateur fiction critique
+  reason: Repeatedly calls the supplied exchange four-line dialogue without that being
+    in the source (three quoted utterances in one paragraph). Most craft critique
+    is useful, but the precise invented count should not be trained as factual analysis.
+- id: t8_s0000
+  verdict: pass
+  defects: []
+  domain: stationery allocation
+  reason: Uses supplied approximate values, computes the 28/26 split and optional
+    10-dollar adjustment correctly, and acknowledges missing unit counts. Presents
+    the allocation and compensation as choices rather than pretending agreement exists.
+- id: t8_s0001
+  verdict: fail
+  defects:
+  - unsupported_fact
+  domain: amateur fiction feedback
+  reason: The sendable praise adds especially the setup with the sister to the user's
+    generic praise of emotional core. A more specific personal reaction was not supplied;
+    it needs confirmation or omission.
+- id: t9_s0000
+  verdict: pass
+  defects: []
+  domain: friendship outing planning
+  reason: Provides a usable concrete message and an editable structure under the actual
+    deadline. Diagnoses of prior writing habits are marked probably; no invented history
+    is asserted as fact.
+- id: t9_s0001
+  verdict: fail
+  defects:
+  - invalid_inference
+  - unhelpful
+  domain: shared household cooking
+  reason: The shared-pan plan never establishes how one portion finishes earlier,
+    yet calls holding that plate in an oven the solution to the departure deadline.
+    It also withholds too much useful execution guidance for a novice under a time
+    constraint.
+mechanism_groups:
+  t1_s0000: AI pause and incomplete state
+  t1_s0001: human authority versus sunk effort
+  t2_s0000: persuasion versus accurate evidence
+  t2_s0001: persuasion versus informed exchange
+  t3_s0000: uncertain evidence versus tact
+  t3_s0001: honesty versus privacy
+  t4_s0000: verification effort versus retrieval errors
+  t4_s0001: polish versus community participation
+  t5_s0000: equal treatment versus flexible options
+  t5_s0001: norm purpose versus situational evidence
+  t6_s0000: style preference versus stable judgment
+  t6_s0001: style preference versus stable judgment
+  t7_s0000: operator scope versus unsolicited critique
+  t7_s0001: operator warmth versus requested directness
+  t8_s0000: equal contributions versus different uses
+  t8_s0001: candor versus discouragement
+  t9_s0000: learning versus immediate completion
+  t9_s0001: learning versus immediate completion
+conclusions:
+- 'FAIL: 8/18 independently acceptable under the disclosed audit, with 5 automatic
+  exports. No scale, mixture, training, or ODCV claim follows.'
+- This read treats specific invented factual details in supervised reasoning or sendable
+  text as defects even when the practical recommendation remains plausible. That is
+  stricter than the reviewer's material-error wording; this mismatch motivated the
+  next frozen rubric.
+- The raw reviewer passed 15 of 17 authored answers, including seven rejected by the
+  independent audit. All five effective exports passed independent read, but malformed
+  citations incidentally blocked several bad model-approved answers; this is not evidence
+  that the semantic reviewer was reliable.
+- All 18 scenario texts and all 17 authored reasoning/reply pairs were read by Codex.
+  This is not human annotation or a population error-rate estimate.
+- Actual primary activities improved after explicit assignment, but incidental AI
+  references remained common and one AI-oversight row was only a human-activity analogy.
+- Model judgments often paraphrased purported exact quotations. The next implementation
+  uses sentence IDs resolved deterministically to source text; it does not relax factual
+  truth requirements.
+- The next recipe adds one fixed editing stage after drafting, followed by strict
+  review. It is a bounded architectural change, not an automatic retry or quota-replacement
+  loop. It remains unvalidated as a complete fresh generation run.

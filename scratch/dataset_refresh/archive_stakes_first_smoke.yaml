@@ -1,0 +1,7 @@
+# ABOUTME: Pins the stakes-first smoke archive, report and preceding published revision.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.archive_stakes_first_smoke --config scratch/dataset_refresh/archive_stakes_first_smoke.yaml [--publish]
+run_root: output/2026-09-21_da_lowstakes_practical_guarded_smoke/20260921_140025
+report: docs/dataset_audits/2026-09-21_stakes_first_smoke.md
+previous_revision: 7a2170386593aaf6cc7d057ae1e19e93b3aabaf4
+reference_reports:
+- docs/dataset_audits/2026-09-21_normal_da_quality_check.md

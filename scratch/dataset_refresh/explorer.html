@@ -1,0 +1,101 @@
+<!-- ABOUTME: Search and read immutable published synthetic conversations and clearly labeled inspection notes. -->
+<!-- ABOUTME: All filtering and review notes stay local; this viewer never changes datasets or calls a model. -->
+<div id="dataset-explorer">
+  <div class="viz-row"><h2>Dataset reading room</h2><span class="viz-badge" id="scope"></span></div>
+  <div class="viz-row text-small" id="totals"></div>
+  <div class="viz-controls">
+    <label class="form-label">Dataset<select id="arm" class="form-select"><option value="">Both datasets</option><option value="low">Moral low stakes</option><option value="non">Nonmoral deliberation</option></select></label>
+    <label class="form-label">Category<select id="family" class="form-select"></select></label>
+    <label class="form-label">Principle / craft tension<select id="trait" class="form-select"></select></label>
+    <label class="form-label">Inspection filter<select id="flag" class="form-select"><option value="">All entries</option><option value="curated">Specific inspection notes</option><option value="factual">Factual / premise concerns</option><option value="style">Style / comparability concerns</option><option value="ai">AI / tool wording (keyword)</option><option value="prompt">Prompt over 400 words</option><option value="answer">Final answer over 650 words</option><option value="numbers">6+ numerical details in prompt</option><option value="marked">My marked entries</option></select></label>
+    <label class="form-label">Search full text, domain or ID<input id="query" type="search" class="form-control" placeholder="e.g. potluck, puzzle, oversight, t4_"></label>
+    <label class="form-label">Order<select id="sort" class="form-select"><option value="inspection">Specific inspection notes first</option><option value="source">Published order</option><option value="prompt">Longest prompt</option><option value="answer">Longest final answer</option></select></label>
+  </div>
+  <div class="viz-row"><button class="btn" id="reset" type="button">Reset filters</button><button class="btn" id="export" type="button">Save my review notes</button><span id="match" role="status" aria-live="polite"></span></div>
+  <div id="reading-layout">
+    <section aria-label="Matching entries"><div id="entries"></div><div class="viz-row"><button class="btn" id="prev" type="button">Previous page</button><span id="page"></span><button class="btn" id="next" type="button">Next page</button></div></section>
+    <section id="detail" aria-label="Selected conversation"></section>
+  </div>
+  <details><summary>Sources, category definitions and flag rules</summary><div id="sources"></div></details>
+</div>
+<style>
+#dataset-explorer {color:var(--foreground); overflow-wrap:anywhere}
+#dataset-explorer #reading-layout {display:grid;grid-template-columns:minmax(190px,0.75fr) minmax(0,2fr);gap:24px;margin:20px 0}
+#dataset-explorer .entry {margin:0 0 18px}
+#dataset-explorer .entry p {margin:6px 0}
+#dataset-explorer .conversation {white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 22px}
+#dataset-explorer .entry-meta {margin:6px 0}
+#dataset-explorer .inspect {margin:14px 0;padding-left:12px;border-left:3px solid var(--border)}
+#dataset-explorer .inspect blockquote {margin:8px 0;font-style:italic}
+#dataset-explorer details {margin:16px 0}
+#dataset-explorer summary {cursor:pointer}
+#dataset-explorer #detail:empty {display:none}
+@media(max-width:640px){#dataset-explorer #reading-layout {grid-template-columns:minmax(0,1fr);gap:16px}}
+</style>
+<script type="application/json" id="explorer-data">__PAYLOAD__</script>
+<script>
+(()=>{
+ const root=document.getElementById('dataset-explorer'), $=id=>root.querySelector('#'+id);
+ const payload=JSON.parse(document.getElementById('explorer-data').textContent), rows=payload.rows;
+ const armName={low:'Moral low stakes',non:'Nonmoral deliberation'};
+ const search=new Map(rows.map(r=>[r.id,[r.id,r.domain,r.family,r.trait,r.system,r.user,r.reasoning,r.answer,...r.notes.map(n=>n.concern+' '+n.rationale)].join(' ').toLowerCase()]));
+ let filtered=[],page=0,selected=null; const pageSize=5, marks=new Map();
+ const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
+ function option(parent,value,label){const o=el('option',label);o.value=value;parent.append(o)}
+ function choices(){
+   const arm=$('arm').value, source=rows.filter(r=>!arm||r.arm===arm);
+   for(const [id,fn,label] of [['family',r=>r.family,'All categories'],['trait',r=>r.arm+'|'+r.traitId,'All principles / tensions']]){
+     const old=$(id).value;$(id).replaceChildren();option($(id),'',label);const counts=new Map();
+     source.forEach(r=>{const k=fn(r);const v=counts.get(k)||{count:0,label:id==='trait'?armName[r.arm]+' · '+r.traitId+' · '+r.trait:k};v.count++;counts.set(k,v)});
+     [...counts].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([k,v])=>option($(id),k,v.label+' ('+v.count+')'));
+     if(counts.has(old))$(id).value=old;
+   }
+ }
+ function matches(r){const a=$('arm').value,f=$('family').value,t=$('trait').value,q=$('query').value.toLowerCase().trim(),flag=$('flag').value;
+   return (!a||a===r.arm)&&(!f||f===r.family)&&(!t||t===r.arm+'|'+r.traitId)&&(!q||search.get(r.id).includes(q))&&(!flag||(flag==='curated'?r.notes.length>0:flag==='factual'?r.notes.some(n=>n.severity==='possible_error'):flag==='style'?r.notes.some(n=>n.severity!=='possible_error'):flag==='marked'?marks.has(r.id):r.markers.includes(flag)));
+ }
+ function refresh(reset=true){if(reset)page=0;filtered=rows.filter(matches);const order=$('sort').value;
+   filtered.sort((a,b)=>order==='prompt'?b.words.user-a.words.user:order==='answer'?b.words.response-a.words.response:order==='inspection'?(b.notes.length>0)-(a.notes.length>0)||a.rank-b.rank:a.rank-b.rank);
+   page=Math.max(0,Math.min(page,Math.ceil(filtered.length/pageSize)-1));
+   const visible=filtered.slice(page*pageSize,(page+1)*pageSize);
+   if(!visible.some(r=>r.id===selected))selected=visible[0]?.id||null;
+   $('match').textContent=filtered.length+' of '+rows.length+' entries · '+marks.size+' marked';
+   const list=$('entries');list.replaceChildren();
+   for(const r of filtered.slice(page*pageSize,(page+1)*pageSize)){
+     const article=el('article',undefined,'entry');const button=el('button',r.shortId,'btn');button.type='button';button.setAttribute('aria-pressed',String(r.id===selected));
+     button.onclick=()=>{selected=r.id;renderDetail();refresh(false)};article.append(button,el('p',armName[r.arm]+' · '+r.family,'text-small'),el('p',r.user.slice(0,160)+(r.user.length>160?'…':'')));
+     if(r.notes.length)article.append(el('span','Inspect: '+r.notes[0].concern,'text-small'));
+     if(marks.has(r.id))article.append(el('p','Marked for discussion','text-small'));
+     list.append(article);
+   }
+   if(!filtered.length)list.append(el('p','No entries match these filters.'));
+   $('prev').disabled=page===0;$('next').disabled=(page+1)*pageSize>=filtered.length;$('page').textContent=filtered.length?(page+1)+' / '+Math.ceil(filtered.length/pageSize):'0 / 0';
+   renderDetail();
+ }
+ function renderDetail(){const box=$('detail');box.replaceChildren();const r=rows.find(x=>x.id===selected);if(!r)return;
+   box.append(el('h3',r.family),el('p',armName[r.arm]+' · '+r.traitId+' — '+r.trait),el('p',r.shortId+' · published row '+(r.index+1),'text-small'));
+   box.append(el('p',r.words.user+' prompt words · '+r.words.reasoning+' reasoning words · '+r.words.response+' final words · '+r.tokens+' supervised tokens','text-small'));
+   for(const n of r.notes){const section=el('div',undefined,'inspect');section.append(el('strong',n.concern+' · '+n.severity.replace('_',' ')),el('p',n.rationale));if(n.quote)section.append(el('blockquote',n.quote));box.append(section)}
+   if(r.markers.length){const d=el('details'),s=el('summary','Search markers ('+r.markers.length+')');d.append(s);const names={ai:'AI/tool wording in the user prompt. Keyword match only; not a defect finding.',prompt:'Prompt exceeds 400 whitespace-delimited words. Length marker only.',answer:'Final answer exceeds 650 whitespace-delimited words. Length marker only.',numbers:'At least six numeric occurrences in the prompt. This can indicate heavy scaffolding; repeated numbers are counted.'};r.markers.forEach(m=>d.append(el('p',names[m],'text-small')));box.append(d)}
+   box.append(el('h3','Human asks'),el('div',r.user,'conversation'));
+   const reasoning=el('details');reasoning.append(el('summary','Reasoning trace · '+r.words.reasoning+' words'),el('div',r.reasoning,'conversation'));box.append(reasoning);
+   box.append(el('h3','Assistant advises'),el('div',r.answer,'conversation'));
+   const meta=el('details');meta.append(el('summary','System prompt, category and identity'),el('div',r.system,'conversation'),el('p','Exact assigned domain: '+r.domain),el('p','Stable ID: '+r.id),el('p','Review route: '+r.route));
+   const link=el('a','Published synthetic corpus');link.href=payload.sources[r.arm].url;link.target='_blank';link.rel='noreferrer';meta.append(link);box.append(meta);
+   const review=el('div',undefined,'viz-row');const mark=el('button',marks.has(r.id)?'Unmark entry':'Mark for discussion','btn');mark.type='button';mark.onclick=()=>{if(marks.has(r.id))marks.delete(r.id);else marks.set(r.id,'');refresh(false)};review.append(mark);box.append(review);
+   if(marks.has(r.id)){const label=el('label','Your note (saved in this session until exported)','form-label'),input=el('textarea',undefined,'form-control');input.rows=3;input.value=marks.get(r.id);input.oninput=()=>marks.set(r.id,input.value);label.append(input);box.append(label)}
+ }
+ $('scope').textContent=payload.sample?'Category-spanning preview · '+rows.length+' entries':'Complete synthetic corpora · 1,432 entries';
+ $('totals').textContent=rows.filter(r=>r.arm==='low').length+' low stakes · '+rows.filter(r=>r.arm==='non').length+' nonmoral · '+rows.filter(r=>r.notes.length).length+' specifically flagged · replay excluded';
+ for(const id of ['family','trait','flag','sort'])$(id).onchange=()=>{selected=null;refresh()};$('query').oninput=()=>refresh();$('arm').onchange=()=>{choices();refresh()};
+ $('prev').onclick=()=>{page--;refresh(false)};$('next').onclick=()=>{page++;refresh(false)};
+ $('reset').onclick=()=>{$('arm').value='';$('family').value='';$('trait').value='';$('flag').value='';$('query').value='';$('sort').value='inspection';choices();refresh()};
+ $('export').onclick=()=>{const data={sources:payload.sources,notes:[...marks].map(([id,note])=>({id,note}))};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='dataset-review-notes.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+ const src=$('sources');src.append(el('p',payload.sample?'This is a purposive category-spanning sample, with inspected examples overrepresented. Filters and counts here describe the sample. The complete companion viewer contains all 1,432 entries.':'This viewer contains all 716 + 716 published synthetic entries; the shared 9,284 replay rows are not shown.'));
+ src.append(el('p','Categories use the recorded low-stakes activity families and the documented nonmoral family mapping. Exact assigned domains remain searchable. Principle IDs have different meanings in the two arms.'));
+ src.append(el('p','Specific inspection notes are qualitative suggestions from reading selected entries, not a new exhaustive audit. Search markers are deterministic text/length screens, not error labels. Absence of a flag is not certification. Notes and marks are local and are lost on reload unless exported.'));
+ src.append(el('p','Low stakes uses the new09 constitution as the moral target. Nonmoral retains nine craft tensions; new09 is used for compatibility review. Mean supervised tokens: low 975, nonmoral 1,518, full DA export 1,175. Equal row counts do not establish equal domains, difficulty or token exposure.'));
+ for(const [a,s] of Object.entries(payload.sources)){const link=el('a',armName[a]+' · '+s.revision);link.href=s.url;link.target='_blank';link.rel='noreferrer';const p=el('p');p.append(link);src.append(p)}
+ choices();refresh();root.dataset.ready='true';
+})();
+</script>

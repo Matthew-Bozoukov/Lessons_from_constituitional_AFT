@@ -1,0 +1,8 @@
+# ABOUTME: Pinned normal DA corpus and deterministic sample for the same-standard issue checklist.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.audit_latest_da --config scratch/dataset_refresh/audit_latest_da.yaml
+repo: dougalldeepmind/2026-09-14-da-synth
+revision: 013886238fca238c4d54ace96530f444bb2b2f02
+dataset_sha256: 77507baa3f115e4c1756cb286942a5201d88e1435405e6e4cf8f2897cbcf0e9a
+output: output/2026-09-21_da_quality_audit
+sample_seed: '2026-09-21-da-checklist:'
+per_trait: 2

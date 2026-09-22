@@ -1,0 +1,8 @@
+# ABOUTME: Normalize the two batch16 holds without changing their independent findings.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.normalize_second_pass_reviews --config configs/data/audits/nonmoral-second-pass-batch16-normalization.yaml
+campaign: output/2026-09-15_nonmoral_saved_input_completion
+proposal: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_batch16_proposal.json
+instructions: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_batch16_instructions.json
+output: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_batch16_normalized
+max_tokens: 8192
+candidates: [t3_049_v0, t4_072_v0]

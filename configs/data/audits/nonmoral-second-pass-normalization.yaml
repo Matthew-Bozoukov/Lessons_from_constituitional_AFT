@@ -1,0 +1,10 @@
+# ABOUTME: Normalize eight needed independent reviews and write nonexecuting draft root decisions.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.normalize_second_pass_reviews --config configs/data/audits/nonmoral-second-pass-normalization.yaml
+campaign: output/2026-09-15_nonmoral_saved_input_completion
+proposal: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_proposal.json
+instructions: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_instructions.json
+output: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_normalized
+max_tokens: 8192
+candidates: [t2_032_v0, t2_054_v0, t3_010_v0, t3_058_v0, t8_026_v0, t8_032_v0, t9_045_v0, t9_034_v0]
+review_overrides:
+  t9_034_v0: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/t9_034_materiality_adjudication.json

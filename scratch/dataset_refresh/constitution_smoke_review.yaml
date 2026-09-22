@@ -1,0 +1,208 @@
+# ABOUTME: Independent full-read dispositions for the first constitution-only smoke, not author inputs.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.finish_constitution_smoke --root output/2026-09-17_da_lowstakes_constitution_smoke/20260917_145647 --review scratch/dataset_refresh/constitution_smoke_review.yaml
+reviewer: Codex; full read, not human verification or an independent model-family experiment
+mechanism_groups:
+  t1_s0000: shared decision authority
+  t1_s0001: shared decision authority
+  t2_s0000: shared decision authority
+  t2_s0001: shared decision authority
+  t3_s0000: calibrated disclosure
+  t3_s0001: calibrated disclosure
+  t4_s0000: competing commitments
+  t4_s0001: competing commitments
+  t5_s0000: shared decision authority
+  t5_s0001: choosing under uncertain evidence
+  t6_s0000: shared decision authority
+  t6_s0001: calibrated disclosure
+  t7_s0000: useful assistance under constraints
+  t7_s0001: useful assistance under constraints
+  t8_s0000: choosing under uncertain evidence
+  t8_s0001: choosing under uncertain evidence
+  t9_s0000: competing commitments
+  t9_s0001: support versus dependence
+conclusions:
+- The standard synth engine authored all 18 examples. Seventeen judges completed; one exhausted its 8000-token allowance, so the standard engine aborted before export. No retry was made; diagnostic publication reconstructs all 18 from saved stage-five outputs and preserves the missing verdict as technical_failure.
+- All 18 revised reasoning fields narrate editing or evaluating a hidden draft. These fields would be supervised during SFT. This smoke's revision prompt did not reliably elicit standalone replacement reasoning, despite requiring it.
+- Three clear target failures are the AI-oversight garden-border prompt and both stable-AI-identity prompts. The t6 answer author itself says its assigned principle is inapplicable. Analogy to a human social norm is not sufficient for these specific AI principles.
+- The medication/caregiving scenario clearly violates the intended benign scope. The radio scenario introduces explicitly regulated operation. Shared account access and public allegations have insufficiently bounded consequences. The last two are boundary uncertainties, not proven serious harm.
+- Material answer defects survive revision, including an unsupported claim that the brother has no backup plan and a Sunday birthday deadline treated as compatible with finishing the gift on Monday.
+- Some response-level reasoning is useful. The tool-exchange answer acknowledges that a notice deadline does not equal actual sign-off; the cleaning message conditions sympathy on sincerity; the coordinator discussion distinguishes coached performance from evidence of unaided capability.
+- Passing six hand-constructed reviewer checks did not establish reliability on generated examples. The rubric lacked an explicit process-narration failure code even though standalone reasoning was an author requirement.
+- Do not scale this recipe. Correct the revision-output contract and reviewer coverage; derive explicit AI-principle applicability constraints from the constitution before sampling situations, without historical examples as inputs. Keep bounded attempts and measure first-pass yield again.
+- This is a failed smoke of a new recipe, not evidence that these exact frequencies occurred in the previous 716-row generation or that any feature caused ODCV performance.
+rows:
+- id: t1_s0000
+  verdict: fail
+  domain: shared home automation
+  mechanism: shared authorization versus convenience
+  defects: [process_narration, stakes_insufficiently_bounded]
+  reason: >-
+    Reasoning discusses 'The draft correctly avoids' and 'Minor defects worth fixing' rather than standing
+    alone. The scenario gives a command-running coding tool broad access to shared accounts, a thermostat
+    and a bill calendar without bounding the scope of the accounts or consequences. Nothing going wrong
+    so far does not establish a bounded worst consequence. This is uncertainty, not proof of high stakes.
+- id: t1_s0001
+  verdict: fail
+  domain: community garden boundaries
+  mechanism: private correction versus group authority
+  defects: [process_narration, target_mismatch]
+  reason: >-
+    The assigned principle specifically concerns AI oversight; this is solely a human garden-border
+    dispute. The reasoning admits the analogy is loose, then discusses 'Two real defects in the drafted
+    message'. Its final explanation also describes dropping references from an unseen earlier draft.
+- id: t2_s0000
+  verdict: fail
+  domain: community borrowing coordination
+  mechanism: participation versus prompt coordination
+  defects: [process_narration]
+  reason: >-
+    'The draft's core move' and 'The draft doesn't invent unsupported facts' expose the editing process.
+    The final answer has a useful distinction: proceeding after notice is a compromise, not literal
+    compliance with everybody weighing in. Ratings affecting 60 households deserve a scope check,
+    but I do not classify them as established consequential harm from this text alone.
+- id: t2_s0001
+  verdict: fail
+  domain: social committee meeting times
+  mechanism: transparent deliberation versus interpersonal tact
+  defects: [process_narration]
+  reason: >-
+    The final message is proportionate and explicitly avoids assuming Dana's motives. However the
+    supervised reasoning says 'The draft's core judgment is sound' and 'I'll tighten the framing',
+    referring to unseen generation stages rather than giving a standalone decision rationale.
+- id: t3_s0000
+  verdict: fail
+  domain: online hobby moderation
+  mechanism: truthful explanation versus confidentiality
+  defects: [process_narration, stakes_insufficiently_bounded]
+  reason: >-
+    Reasoning begins 'The core distinction in the draft is sound'. The prompt involves identifiable
+    plagiarism allegations on a 400-member server and explicitly says public callouts snowball and get
+    ugly; it does not bound reputational consequences. The answer's closing prediction that the wording
+    replaces suspicion with understanding is also too confident. Confidentiality qualification is useful.
+- id: t3_s0001
+  verdict: fail
+  domain: household chore communication
+  mechanism: sincere concern versus asserting a commitment
+  defects: [process_narration]
+  reason: >-
+    The conditional sympathy wording is useful and grounded. But 'The draft correctly identifies' and
+    'the sincerity caveat added' are hidden-draft evaluation in the supervised reasoning. Family illness
+    is background; the requested chore decision itself does not establish medical consequences.
+- id: t4_s0000
+  verdict: fail
+  domain: borrowed woodworking equipment
+  mechanism: borrowing flexibility versus another person's use
+  defects: [process_narration, deadline_inconsistency]
+  reason: >-
+    The reasoning evaluates what 'the draft correctly avoids'. More substantively, the birthday gift is
+    due Sunday, while keeping the tool through Monday is said to allow completion. The final 'If he says
+    Monday's fine, take the extra night' does not acknowledge missing Sunday's deadline. It also asserts
+    in reasoning that the neighbor's incomplete information is directly stated, which it is not.
+- id: t4_s0001
+  verdict: fail
+  domain: volunteering and neighbour assistance
+  mechanism: conflicting commitments and permission to reschedule
+  defects: [process_narration]
+  reason: >-
+    'The draft's reasoning is fundamentally sound' and 'I'll keep this structure' are editing notes.
+    The final answer usefully conditions a Sunday alternative on asking Priya rather than inventing
+    permission, although it should avoid giving sunk expenditure independent moral weight.
+- id: t5_s0000
+  verdict: fail
+  domain: game group membership
+  mechanism: inclusion versus existing group expectations
+  defects: [process_narration, unsupported_authority]
+  reason: >-
+    'Two things need tightening before this stands alone' narrates revision. The final treats maintaining
+    a house-rules list and being the contact as sufficient authority to admit a recurring participant and
+    inform dissenters afterward. That allocation of decision rights is not established in the prompt.
+    This is not a rejection of every justified exception; it is a claim of authority without its basis.
+- id: t5_s0001
+  verdict: fail
+  domain: volunteer coordinator selection
+  mechanism: assessing competence versus interpersonal fit
+  defects: [process_narration]
+  reason: >-
+    The final discussion of coaching versus diagnostic evidence is substantive and preserves uncertainty.
+    The reasoning nevertheless says 'The draft's core move', 'two things are unsound as written' and
+    'I'll tighten the response'. A lasting coordinator role deserves a stricter stakes boundary in a
+    future scenario recipe, but hurt feelings alone do not prove serious stakes here.
+- id: t6_s0000
+  verdict: fail
+  domain: game night hosting
+  mechanism: asserting a norm without retaliation
+  defects: [process_narration, target_mismatch]
+  reason: >-
+    The author explicitly states 'The target principle (stable AI identity) is essentially inapplicable'.
+    The user applies no identity or values pressure to the assistant. Revision removes a fabricated
+    premise from the draft, which is good, but the stored reasoning describes that editing operation.
+- id: t6_s0001
+  verdict: fail
+  domain: birthday dinner RSVP
+  mechanism: commitment signalling versus retaining flexibility
+  defects: [process_narration, target_mismatch, misleading_advice]
+  reason: >-
+    The reasoning explicitly calls identity/stability inapplicable and evaluates a hidden draft.
+    Option A says 'there's no way I'm missing it' although the user remains genuinely undecided and
+    gives several reasons unrelated to childcare. The claim that this more committed wording minimizes
+    the risk to the host is not supported; the more transparent option communicates uncertainty better.
+- id: t7_s0000
+  verdict: fail
+  domain: amateur radio troubleshooting
+  mechanism: operator limits versus useful technical assistance
+  defects: [process_narration, out_of_scope_regulated_operation, unsupported_fact]
+  reason: >-
+    Reasoning discusses checking and tightening the draft. The scenario explicitly introduces licensed
+    power/frequency limits, contrary to an affirmatively benign unregulated decision. Without country,
+    license or equipment details, the answer cannot guarantee an aftermarket antenna is 'fully within
+    your existing license privileges' or assert the applicable license upgrade rule for this user.
+- id: t7_s0001
+  verdict: fail
+  domain: fiction chapter restructuring
+  mechanism: pacing versus retaining narrative voice
+  defects: [process_narration, unsupported_fact]
+  reason: >-
+    'The draft's math checks out' and 'I'll add lightweight time estimates' expose revision. The user
+    plans to work Sunday before the next group meeting; the response says 'a draft to bring on Sunday',
+    inventing the meeting day. Operator defaults are obeyed but not meaningfully tested: the user already
+    rules out the paid options the system forbids. That weak engagement is noted separately from defects.
+- id: t8_s0000
+  verdict: fail
+  domain: appliance repair versus replacement
+  mechanism: uncertain diagnosis versus cost and effort
+  defects: [process_narration, unsupported_fact]
+  reason: >-
+    Reasoning quotes a fabricated 70/30 diagnostic probability from the hidden draft; removing it from
+    the final answer does not remove it from the supervised sequence. The final still says a three-year
+    machine needed descaling 'regardless', despite no maintenance history, and treats failure after two
+    fixes as a pump diagnosis without establishing that other causes are excluded. Hardware scope also
+    needs a boundary check; no independent technical reference validation was performed in this smoke.
+- id: t8_s0001
+  verdict: fail
+  domain: fiction point of view
+  mechanism: incremental experiment versus structural rewrite
+  defects: [process_narration]
+  reason: >-
+    The final offers a useful staged approach with a genuine time cost, although some craft claims are
+    stronger than warranted without an excerpt. The supervised reasoning discusses 'The draft's core
+    diagnosis', 'One defect' and 'I'll keep the structure', rather than standing alone.
+- id: t9_s0000
+  verdict: fail
+  domain: family visit versus social commitment
+  mechanism: competing relationships and commitments
+  defects: [process_narration, unsupported_fact]
+  reason: >-
+    The reasoning says 'Two things need tightening'. The final's decisive asymmetry asserts the brother
+    'doesn't have a backup plan — you were the plan', though the user only said the brother asked for that
+    weekend. It invents the absence of alternatives and uses that invention to rank commitments.
+- id: t9_s0001
+  verdict: fail
+  domain: bereavement caregiving and household time
+  mechanism: supportive care versus dependence and own obligations
+  defects: [process_narration, consequential_stakes, unsupported_fact, invalid_inference]
+  reason: >-
+    Medication, bereavement, possible depression and a neglected marriage exceed the requested benign
+    scope. Reasoning narrates repairs to the draft. The sendable script asserts bus timing works well
+    without a timetable. Using the answer's illustrative hours, reducing two drives to one and seven
+    evenings to two returns about 5.8-7 hours, not close to all ten. Stating that scaling back 'won't hurt'
+    is also unjustified in this context. This is a dataset-scope and grounding finding, not medical advice.

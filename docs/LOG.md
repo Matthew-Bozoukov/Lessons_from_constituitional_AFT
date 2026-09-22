@@ -1,6 +1,868 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — Practical low-stakes LoRA: three additional ODCV passes
+
+**Hypothesis:** the initial 13.75% MR should remain similar across repeated
+rollouts. **Method:** three additional sequential 80-cell passes, identical
+checkpoint/protocol, temperature 0.7, startup seed 0 with no request seed, one
+continuous H100 server and local Docker concurrency 12. Six boundary checks
+verified server continuity. **Result:** new passes 17.5%, 13.75%, 13.75%; combined
+36/240 = **15.0%**. Including the original pass: 47/320 = **14.6875%**. All 240
+native transcripts and 480 judgments verified; zero missing scores, retries or
+reconstructions. Task submission 239/240; mean progress 4.98/5. The result repeats
+one checkpoint, not training seeds. Total estimated cost $7.31; owned GPU
+terminated after verified log recovery, unrelated pods untouched.
+
+[Three-pass HF publication](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-odcv-qwen36-0-da-lowstakes-practical-7/tree/b63435957ec66a7148ebb8d9268d29f30f0f1538),
+750 files hash-verified. The preceding result is preserved under
+`single-pass-20260922`; obsolete single-pass operational receipts were replaced
+after preservation, without changing any rollout or judgment.
+**Next:** use this repeated estimate for the practical low-stakes arm; no further
+paid runs are scheduled. [Report](dataset_audits/2026-09-22_lowstakes_practical_odcv.md).
+
+## 2026-09-22 — Practical low-stakes LoRA: single-pass ODCV
+
+**Hypothesis:** the reproducible constitution-only low-stakes generator may retain
+DA-style alignment transfer. **Method:** the newly trained seed-0 Qwen3.6 LoRA,
+one pass over 40 scenarios × mandated/incentivized, temperature 0.7, server seed 0,
+28k thinking context, Gemini 3 Flash misalignment and task-progress judges.
+Local Docker with one remote H100; 12 concurrent cells after the user-authorized
+fallback from 24 (Docker's 31-network pool cannot fit 48 or 32 networks).
+
+**Result:** 11/80 misaligned (13.75%): mandated 5/40 (12.5%), incentivized 6/40
+(15%). All 80 transcripts and 160 judgments verified, zero retries/reconstructions
+or dropped judgments; three context-limit cutoffs retained. Submission 77/80;
+mean task progress 4.95/5. Single-pass result, not a causal generator comparison.
+Total estimated cost $2.96; GPU terminated and owned logs preserved.
+
+[HF result](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-odcv-qwen36-0-da-lowstakes-practical-7/tree/ce9320ef4b2973dc1a0fe4181636df6cfa7e5d87)
+— 265 published files hash-verified.
+[Protocol and completion record](dataset_audits/2026-09-22_lowstakes_practical_odcv.md).
+**Next:** use this pinned result in the low-stakes comparison; further passes or
+training require a new requested run.
+
+## 2026-09-22 — Trained the practical low-stakes arm on fixed September replay
+
+**Hypothesis:** a reproducible constitution-only low-stakes generator may preserve
+useful DA-style deliberation; this training run prepares the arm for a later test.
+**Method:** exactly 716 newly selected examples plus the unchanged 9,284-row replay
+subset from the September 8 nosynth mixture. Full payload/position and token-mask
+audits passed. Standard Qwen3.6-27B BF16 LoRA recipe, seed 0, one H200, one epoch,
+rank 64, alpha 128, dropout 0.05, global batch 16 and LR 1e-4.
+
+**Result:** 625/625 steps; mean training loss 0.821159. Final adapter files and
+metadata verified on HF, all six periodic checkpoints copied locally, complete
+final outputs backed up and checksum-verified before GPU termination. Independent
+RunPod inventory confirmed the owned pod absent. Estimated cost including storage
+allowance: $20.81. No evaluation was run and no behavioral improvement is claimed.
+
+- [Training mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-da-lowstakes-practical-7-mix/tree/e5948018221f3434813054e9afe58498aeeaa852)
+- [Pinned adapter](https://huggingface.co/dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7/tree/55c52d797a2436b1535c6826167029708f32d24b)
+- [Verified full training archive](https://huggingface.co/dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7/tree/d37a4e0cf7a7b92d094f5ac0e79b230f5b1c6bcc/training_backup)
+- [Checks, exact recipe and recovery record](dataset_audits/2026-09-22_lowstakes_practical_training.md)
+
+**Next:** evaluate the pinned adapter under the matched ODCV protocol if requested.
+
+## 2026-09-22 — Published 716 low-stakes examples with complete evidence
+
+**Hypothesis/method:** fixed nine-trait by nine-domain source design, native DA
+answers, separate stakes/scope admission, deterministic predeclared 716 selection.
+**Result:** 971 scenarios -> 899 eligible prompts -> 845 drafts -> 828 final
+automatic exports -> 716 selected, all 81 cells and all trait quotas covered.
+Final observer recovery inspected the unchanged 828 exports without regenerating
+examples. It completed with zero critical/warning/error findings, but pattern
+coverage is 819/828 and the default cluster is very broad; not a quality certificate.
+Reviewed 81 cell excerpts/notes and nine complete pairs; unsupported claims,
+reasoning errors and domain-guidance departures remain explicitly documented.
+Domain diagnostics on selected rows: yes 574, no 138, unclear four (nonblocking).
+
+**Publication:**
+[HF default 716-row dataset](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth/tree/83544fd2f48f7abc07a5e33dbcff35746f039c39)
+at `83544fd2f48f7abc07a5e33dbcff35746f039c39`; previous generation-only revision
+`df28e262b9debac9fcd813b2e7595dcc519feca2`. Preserves 828 automatic exports,
+stage snapshots, 56.6 MB full archive with all raw requests/responses and failures,
+frozen configurations/constitution/runtime, selection IDs, accounting and review.
+Downloaded and SHA256-verified 11 major artifacts. Default `load_dataset` returns
+exactly 716; every loaded message field matches the local fixed selection.
+Selected SHA256 `d324b06084e46494b3920773deead8632f86cdb789752e7dd25819a6906a17f8`.
+82 offline tests passed. Code is on `codex/lowstakes-synthdoc-pipeline`.
+
+**Spend:** $89.8674065 exposure / $120: $89.421494 settled, $0.4459125 retained
+uncertain reservations. Earlier development $17.565140 separate. No paid calls
+remain in flight. No SFT/evaluation or new mixture was launched.
+[Full release review](dataset_audits/2026-09-22_lowstakes_full_release.md).
+**Next:** use this pinned synthetic corpus for an explicitly chosen mixture/training
+run; no ODCV performance claim follows from the generation checks.
+
+## 2026-09-21 — Recover full low-stakes batch from inherited 2% failure alarm
+
+At the user's progress check, found the 32-worker process had halted around
+16:34 UTC at answer drafting, with 845 successes / 899 inputs (54 lint failures,
+6.0%). The full recipe inherited the engine's 2% batch-level failure alarm;
+the smoke had explicitly used 20%. This setup mismatch was missed at launch.
+Failure review found 40 answers below the native 700-character minimum and 14
+native rule-vocabulary violations. All 81 trait/domain cells remain covered and
+draft trait counts (87,94,103,86,101,90,85,99,100) exceed selection quotas.
+Counts upstream: 971 sources, 966 prompt drafts, 965 refined/judged prompts,
+913 stakes passes, 899 text-advice passes. Ledger exposure $58.956922,
+including four interrupted reservations and one explicit provider content block.
+
+Recovered at `ab436d64` with recorded `--workers 32 --max-fail-pct 20`, preserving
+the original failed manifest and frozen runtime in the interruption archive.
+This changes the batch abort threshold, not any individual row check; all 54
+failed rows remain excluded. Re-evaluated their saved raw answers locally with
+zero new API calls and saved the 845-success stage snapshot. Verified the first
+32 new calls are exclusively final response revision. Same $120 ledger and
+selection policy, no replacements. Final generation/selection remains pending.
+
+## 2026-09-21 — Correct full-generation concurrency to 32
+
+The initial full run incorrectly retained four smoke workers; normal DA and the
+older low-stakes recipe use 16. A first helper waited for zero in-flight calls
+without stopping replenishment, so it did not promptly achieve that change.
+The user explicitly requested 32. Stopped the helper and restarted the owned
+generator with `--workers 32` at `e3bd0f2d`, under the same ledger and $120 cap.
+The restart reused 971 source scenarios and 585 checkpointed prompt drafts.
+Four requests (700-703) were interrupted; their $0.1522225 reservations remain
+charged against the ceiling, their billing is unknown, and they are excluded
+without redispatch. Completed raw responses are also reusable if a checkpoint
+write was interrupted. Truncated/filtered paid failures are now explicitly
+excluded on operational recovery instead of accidentally being retried.
+Nine focused recovery/selection tests passed. Live verification observed 32
+reserved calls plus successful new completions. No prompt, model, selection or
+quality rule changed. Generation remains incomplete; the initial timing estimate
+was based on the avoidably low four-worker launch, not a CPU limitation.
+
+## 2026-09-21 — Full low-stakes batch launched with $120 cap
+
+**Hypothesis:** the fixed trait/domain design can produce 716 accepted examples
+without replacement loops. **Method:** user-approved one 972-candidate batch,
+native practical low-stakes recipe, all Sonnet, four workers; frozen launch commit
+`160ef968` on `codex/lowstakes-synthdoc-pipeline`. Per-call reservations enforce
+an additional $120 cap; prior $17.565140 development is separate. Deterministic
+selection fixes t1-t5 at 80 rows and t6-t9 at 79, balancing domains round-robin
+and reporting any quota/empty-cell shortfall rather than regenerating.
+**Status:** launched 2026-09-21 15:20:17 UTC; first four requests returned 12
+parseable scenarios each, no errors in the initial health check. 81 offline tests
+passed. This entry records startup, not completed generation or quality approval.
+**Next:** finish native stages, inspect coverage and diagnostics, review and
+publish the selected subset plus provenance. No SFT/evaluation launched.
+Local run: `output/2026-09-21_da_lowstakes_practical_guarded_full/20260921_152017`.
+[Live stage repository](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth).
+[Frozen full-run plan](dataset_audits/2026-09-21_lowstakes_full_plan.md).
+
+## 2026-09-21 — Fixed domains: 32/36 exports; reject domain-as-morality veto
+
+**Hypothesis:** preregistering small activity domains and giving Sonnet one domain
+and one full principle per source call avoids unconstrained setting drift with no
+extra revision loops. **Method:** frozen `122cb916`, 36 candidates (all nine traits
+and domains), bounded source/judge thinking, unchanged DA answers. **Result:**
+36 low-stakes/text-advice prompt passes, 32 native exports, all traits/domains;
+$3.324050 in 14m35s, 205 settled calls. Four native lint failures, no replacements.
+Full reads found no clear high-stakes decision in exported prompts; literal domain
+limits were not perfectly followed. **Criticism tested:** at `0898ee49`, the same
+judge checked domain conformance on saved prompts for $0.498892 (36 calls, 2m03s).
+It kept 30 prompts/27 exported answers and only one trait-1 example, sometimes
+rejecting dishonesty/authority conflicts because they were morally wrong. This
+failed the stricter follow-up criteria; do not report it as a pass. **Final policy:**
+`e2d94f70` keeps fixed-domain generation, magnitude/scope admission and domain notes
+as diagnostics, removing the domain veto. Saved-output replay retains 32 unchanged
+answers; 77 offline tests pass. Shared DA factual and cost-erasing defects remain
+explicitly documented. **Next:** recommend one bounded 972-candidate full batch,
+then deterministic 716 selection with shortfalls reported. No full generation or
+training launched. Cumulative development cost $17.565140/$20.
+[Full report](dataset_audits/2026-09-21_domain_smoke.md).
+[Verified HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/febfd68c1f2e24d0a10a1f50264849329a588d15/runs/20260921_144723).
+
+## 2026-09-21 — Single decision-stakes judge: 13/18, no revision loop, not ready
+
+**Hypothesis:** removing answer-dependent stakes grading and preserving conflict facts
+is the minimal native-DA variant. **Method:** frozen `a893d97f`, 18 candidates from the
+nine full principles, all Sonnet, one pre-answer judge, unchanged DA answer prompts;
+no replacements. **Result:** 13 exports across all nine principles, 91 settled calls,
+$1.454662 in 6m58s; cumulative $13.742198/$20. Seven offline tests pass. All inputs,
+judge reasons and final reasoning/answers read: ten clearly bounded/coherent initial
+cases, four uncertain, four mismatches; 16 local prompt edits, one scope adjustment,
+one restored source fact. The judge still mistakes a newsletter's immediate form
+for bounded decision consequences and reverses the buyer's financial interest in
+one rejected book case. Shared DA factual defects remain diagnostics, not new gates.
+**Next:** keep the simpler architecture, investigate source reasoning and explicit
+consequence accounting within existing passes; no additional smoke/full generation
+launched. Not cleared for scale. [Full report](dataset_audits/2026-09-21_decision_stakes_smoke.md).
+[Verified HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/aa34302e44f826bd7a2a1d461d5acd1b9431ea57/runs/20260921_142500).
+
+## 2026-09-21 — Stakes-first smoke: 15/18 exports, light revision, magnitude concerns remain
+
+**Hypothesis:** small-stakes source constraints and light prompt edits improve yield
+while retaining native DA deliberation. **Method:** 18 candidates, all nine principles,
+all Sonnet, frozen `e23e4d75`, no content rerolls. **Result:** 15 exports, all principles,
+17 local prompt edits and one restored source fact. $1.784124 / 116 settled calls;
+8m46s pipeline time; cumulative $12.287536 / $20. Two stakes drops and one 677-character
+answer failure. Complete reads found 11 clearly suitable initial cases, four
+borderline and three mismatches. The final judge sometimes cites safer advice as
+reducing scenario stakes; a property complaint still passes with unbounded downstream
+consequences. Shared DA factual/rationalization defects remain diagnostics rather than
+new vetoes. **Next:** narrowly fix decision-level magnitude and preservation of conflict
+facts; not cleared for full generation. [Full smoke review](dataset_audits/2026-09-21_stakes_first_smoke.md).
+[Verified HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke/tree/e523529197dcc2c55baca567ab1e6cc9373d2d1e/runs/20260921_140025).
+
+## 2026-09-21 — Put low stakes into generation; restore normal DA answer parity
+
+**Hypothesis:** source-first consequence bounds and light prompt editing reduce
+stakes drift without an increasingly elaborate quality gate. **Method:** updated
+`da-lowstakes-practical` on `codex/lowstakes-synthdoc-pipeline`; same constitution,
+native operators and all-Sonnet roles. Source facts anchor prompt revision; smoke
+pairs are generated together. Both DA answer prompts are restored exactly. Two
+reviewers now gate magnitude/text-advice scope, while practical-fit notes are
+nonblocking and shared DA factual defects are comparative diagnostics.
+**Result:** seven targeted offline tests pass; DA regressions seven pass plus the
+known unrelated nonmoral smoke-size failure. No paid API calls or new dataset.
+**Next:** a later authorized smoke must measure initial suitability and material
+rewrites, not merely export yield. No claim of live readiness or recovered ODCV
+performance. [Design and criticism](dataset_audits/2026-09-21_lowstakes_stakes_first_recipe.md).
+
+## 2026-09-21 — Practical low-stakes variant: better task form, not ready to scale
+
+**Hypothesis:** native DA generation can retain practical task requests and genuine
+tradeoffs at low stakes, with explicit material-grounding review. **Method:** new
+`da-lowstakes-practical` config, only the nine-principle constitution as source,
+Sonnet throughout, 18 candidates, no content rerolls/replacements. Frozen prospective
+criteria: >=14 exports, every principle represented, no clear material false accepts.
+**Result:** 17 available refined prompts, nine admitted, nine revised answers, eight
+exports across five principles. One 'should I' prompt, zero labelled honest
+alternatives: useful task-form improvement. But serious/incorrect-scope prompts
+remain, reviewer invents inconsistent actor rules, and all nine final quality
+verdicts are keep despite at least four material false accepts among eight exports
+on complete agent reads. Corpus PASS is not content approval. **Not ready for full
+generation**, independently of any untested ODCV effect.
+
+One provider-blocked prompt initially stopped the wrapper. Recovery reused seven
+settled answers, excluded the blocked request without redispatch, and completed
+only unfinished work with the same recipe. Seven targeted tests pass. Full smoke
+exposure $1.3890705 (100 settled calls plus one retained reservation); cumulative
+$10.503412 / approved $20. No full generation, training or eval. **Next:** reconcile
+generator/reviewer actor contract and audit factual claims in usable drafts, using
+saved failures before buying another batch. [Full report](dataset_audits/2026-09-21_practical_lowstakes_smoke.md),
+[diagnostic artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-practical-synth-smoke).
+
+## 2026-09-21 — Normal DA also has grounding and rationalization defects
+
+**Question:** does the newest normal difficult-advice source share the problems
+found in low-stakes data? **Method:** verified the 752-row September 14 source at
+HF revision `013886238fca238c4d54ace96530f444bb2b2f02`; full-corpus literal and
+structure checks, complete reads of 18 hash-selected rows (two per principle),
+plus inspection of 35 draft/training-text screen contexts. No paid model calls.
+**Result:** invented case facts and completed actions, distorted requests,
+unsupported outcome/permission claims and cost-erasing rationalization are present.
+Substantive deliberation is also present. No exact prompt/answer duplicates,
+missing reasoning, residual export tags or Claude/Anthropic names in training text.
+Final corpus check was ablated and the general quality filter disabled. This is
+not a prevalence estimate or a causal explanation of the ODCV difference.
+**Next:** apply the same material-error standard to baseline and candidate data;
+preserve real tradeoffs and separately enforce low-stakes magnitude/actor scope.
+See [full checklist](dataset_audits/2026-09-21_normal_da_quality_check.md) and
+[sample/census archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-fresh-synth-smoke/tree/main/normal_da_audit).
+
+## 2026-09-21 — Native low-stakes smoke and factual-error parity with old data
+
+**Hypothesis:** minimal native DA recipe changes preserve deliberation while limiting
+stakes. **Method:** 18 constitution-only Sonnet candidates, frozen generation/revision
+prompts, two magnitude gates; complete independent reads of inputs and ten final
+reasoning/answer pairs. At the user's request, also read 14 original low-stakes rows
+(five known cases plus nine fresh hash-selected cases, one per principle), verifying
+the pinned source hash and all 716 cached message sets against the Hub source.
+**Result:** ten automatic exports; serious money cases incorrectly admitted and material
+inventions survive answer revision. Old data has the same error families, including
+wrong arithmetic and unsupported facts making the preferred path look costless. No
+comparative population error rate or causal explanation of MR is established.
+Full smoke exposure $1.3276235; campaign $9.1143415 / approved $20, including one
+$0.0262675 reservation for a lost response. Windows settlement-file failure repaired
+with bounded filesystem retries; saved stages reused and lost call never repeated.
+Five offline tests pass. **Next:** address specific scope/magnitude and grounding
+failures using saved evidence, without treating old data as perfect or scaling this
+diagnostic export. No new training/eval or paid old-corpus judging.
+[Smoke report](dataset_audits/2026-09-21_native_lowstakes_smoke.md) ·
+[Old comparison](dataset_audits/2026-09-21_old_lowstakes_factual_check.md) ·
+[HF archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-fresh-synth-smoke/tree/e0cce584902ee0c7d9fbb3b6523488dd7c471bc4).
+
+## 2026-09-21 — Native SynthDoc low-stakes option, implemented without paid generation
+
+**Hypothesis:** a low-stakes DA variant should retain DA's temptation and deliberation
+machinery. **Method:** add `configs/data/synth/da-lowstakes-fresh.yaml` using only existing
+operators and the nine-principle constitution. Bound stakes in scenario creation and
+prompt refinement, keep response prompts unchanged, use Sonnet throughout, and rate/filter
+magnitude before authoring and export. No replacement rounds or content-lint re-rolls.
+**Result:** three new offline tests pass, including a full mocked 18-candidate native
+engine run with 12 eligible exports and preserved rejections. Combined checks: 20 pass;
+one pre-existing failure concerns `nonmoral-advice.yaml` missing a smoke-size override.
+No model API calls, new datasets, mixtures, training or evaluation. **Next:** bounded live
+validation after budget approval; existing $7.786718 campaign spending is unchanged.
+[Recipe and instructions](lowstakes_synth_recipe.md). This option supersedes the proposed
+custom draft-audit-edit-audit recipe as the next implementation to test.
+
+## 2026-09-21 — Low-stakes pipeline development: interface fixed, content quality still fails
+
+**Hypothesis:** constitution-only generation can retain real deliberation with small
+stakes and grounded, standalone advice under bounded costs. **Method:** successive
+frozen Sonnet-only smoke/calibration runs; source admission, neutral input context,
+concrete activity coverage, exact evidence IDs and strict review schemas. One
+fixed-editor probe on two known failures; no quota-filling replacements or training.
+**Result:** $7.786718 total, 416 settled calls, including the preceding $0.306584 run.
+Latest full batch: 18 scenarios, 17 answers, 15 raw judge passes, five effective
+exports, eight independent passes; all quality gates not met. Strict-schema
+calibration: 22/22 structurally valid, 21/22 expected verdicts; remaining control
+was ambiguous. Blind editing retained a fabricated duration. Twenty-one offline
+tests pass, including full pipeline wiring. **Next:** fixed draft-audit-edit-audit
+recipe with findings-specific editing and 24 revised development controls; live
+validation pending the requested $20 total ceiling (existing hard cap $8).
+No production dataset or performance claim. [Report](dataset_audits/2026-09-21_lowstakes_pipeline_iteration.md).
+
+## 2026-09-21 — Source-first smoke stopped at paired reviewer gate
+
+**Hypothesis:** source-first scenario admission and quote-anchored answer auditing prevent
+unsupported details from becoming accepted facts. **Method:** freeze 12 paired reviewer
+checks before an 18-candidate Sonnet-only smoke, using the nine-principle constitution and
+an $8 cap; generation commit `568dd04b`. Nine offline tests passed. **Result:** $0.306584,
+12 settled calls, 11/12 substantive verdict/code matches, 9/12 including quote-schema checks.
+Reviewer wrongly accepted explicit unseen-draft editing narration; two other cases had
+quotation formatting/schema errors despite correct verdicts. Stopped as agreed: zero fresh
+candidates, no retries or replacements. **Next:** deterministic protection for unambiguous
+hidden-draft references in both supervised fields, plus multi-span source citations; source-first
+candidate quality remains untested. [Report](dataset_audits/2026-09-21_source_first_smoke.md) ·
+[HF diagnostic artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-21-da-lowstakes-source-first-synth-smoke).
+
+## 2026-09-17 — Values-in-advice smoke: calibration fixed, grounding still fails
+
+**Hypothesis:** distinguish general values expressed through human advice from AI-specific
+relationships, and prevent spurious reviewer rejection reasons. **Method:** frozen Sonnet-only
+18-row constitution-only smoke on `claude_distilled_09_principles`, 16 calibration fixtures,
+$8 cap, one call per item/stage, zero replacements. Prompt commit `906a80ca`. Calibration
+passed 16/16. Sixteen scenario responses failed JSON formatting; explicit offline structural
+recovery (`4bfb812b`) preserved all text and originals without paid retries. Same candidates
+then completed all stages. **Result:** $2.295152, 88 settled calls; model passes 15/18 versus
+2/18 under Codex's disclosed full-read engineering rubric (not human or population validation).
+Hidden-draft narration is gone, but unsupported facts, scenario-scope failures and reviewer
+source confusion remain. The reviewer also falsely flags ordinary answer planning as leakage.
+**Next:** source-first scenario admission, then answer and claim-level audit; no automatic
+rewrites or quota-filling retries. No scale, mixture, training or evaluation authorized by this
+result. [Report](dataset_audits/2026-09-17_values_in_advice_smoke.md);
+[diagnostic HF artifact](https://huggingface.co/datasets/dougalldeepmind/2026-09-17-da-lowstakes-values-in-advice-synth-smoke).
+
+## 2026-09-17 — Implicit-values smoke stopped at reviewer calibration for $0.27
+
+Merged latest main `404dadc6` into the separate dataset branch, preserving both log
+histories and unrelated local work. Froze constitution-only implicit-values prompts
+at `1b43a08d`, using the exact new09 constitution. The 18-row smoke's reviewer gate
+ran 12 fixed tests for $0.273738; 11/12 verdict/code checks matched. A valid practical-
+wisdom advice example was wrongly rejected because the judge required an AI actor.
+Two already-invalid examples received the same erroneous extra target-mismatch flag.
+The stronger AI-specific applicability instruction was overgeneralized to ordinary
+difficult advice. The gate stopped before any fresh scenarios or answers. No retries
+or further paid calls. Next: distinguish values demonstrated through advice from
+values requiring an actual AI relationship; do not infer author-prompt success from
+these reviewer-only results. [Report](dataset_audits/2026-09-17_implicit_values_smoke.md).
+Diagnostic artifact: `dougalldeepmind/2026-09-17-da-lowstakes-implicit-values-synth-smoke`.
+
+## 2026-09-17 — Constitution-only low-stakes smoke: failed scaling gate for $1.76
+
+Hypothesis: a fixed standard-synth recipe, using only new09 constitutional chunks plus
+published rules, can preserve low consequences and useful deliberation without historical
+dataset inputs or repair loops. Generated 18 candidates (two per principle), all Sonnet,
+after six reviewer calibration checks. Exactly 78 physical calls cost $1.761932; zero retries
+or replacements. All author stages completed; 17 judges completed (16 pass, one fail), one
+truncated. Full reading found hidden-draft editing commentary in every supervised reasoning
+field, three clear AI-principle mismatches, scope leakage and remaining grounding errors.
+No examples approved as complete training rows; no scaling or training launched. Correct
+the response/reviewer contracts and principle applicability before another fixed pilot.
+See [full smoke report](dataset_audits/2026-09-17_constitution_only_smoke.md).
+Diagnostic artifact: `dougalldeepmind/2026-09-17-da-lowstakes-constitution-synth-smoke`.
+
+## 2026-09-17 — Low-stakes content investigation after the same-replay control
+
+Hypothesis: the refreshed corpus's higher MR reflects stakes leakage in the old
+corpus, or changes to actor, task difficulty and deliberation. Revalidated both
+pinned 716-row message sets; computed whole-corpus literal/length/similarity
+statistics; reviewed actual prompts for all 67 historical serious/grave flags,
+12 additional old risk-screen hits and 16 refreshed hits; inspected reasoning
+examples and counterexamples. This was an offline, unblinded content audit,
+not an identified causal experiment or complete semantic census.
+
+With identical new replay, the old-content checkpoint has 28/240 MR (11.67%);
+refreshed has 59/239 known misaligned verdicts and one blocked verdict, bounding
+full-set MR at 24.58–25.00%. Within the 67 old flags: 3 concrete safety cases,
+25 broadly elevated, 31 borderline, 8 modest. Three additional elevated cases
+were found among the other 12 reviewed old prompts. No whole-corpus prevalence
+is inferred. Literal “should I” increases 50→592; explicit honest/legitimate
+option labels 0→100; AI-plus-review 2→132. Deliberation instructions survive,
+and refreshed examples still reason substantively; both corpora contain defects.
+
+[Investigation and limitations](dataset_audits/2026-09-17_lowstakes_deep_investigation.md).
+The interactive comparison contains 111 complete examples and every prompt
+judgment; a standalone companion searches all 1,432 conversations. Quote and
+browser checks passed. No new API spending, generation, training or ODCV. The
+optional full Sonnet audit is prepared but has not been authorized/dispatched.
+Next: minimally stakes-clean the old condition and separately test actor/task
+form, holding dose and replay fixed, with training-seed replication.
+
+## 2026-09-17 — Exact-original low-stakes plus new replay: three-pass ODCV verified
+
+Hypothesis: unchanged historical low-stakes content can retain its low observed
+misalignment under the new replay blend and current SFT recipe. Evaluated the
+original 716 + new 9,284 mixture's LoRA, pinned at
+`47f54dcb35f7e356e919933d7d5dde50ea101a40`, over 40 scenarios in two variants,
+three sequential passes, thinking enabled, temperature 0.7, one continuous
+seed-0 vLLM server on one H100 with local Docker. All six boundary checks matched.
+
+[Published ODCV](https://huggingface.co/datasets/dougalldeepmind/2026-09-17-odcv-qwen36-0-da-lowstakes-original-7/tree/ff1bf4fffb4f54c309829a2382348768b4c836d2):
+MR **28/240 = 11.6667%**, mandated **9/120 = 7.5%**, incentivized
+**19/120 = 15.8333%**. Submission **233/240 = 97.0833%**; progress threshold
+rate **99.6%**, mean **4.95/5**. All 240 native transcripts were clean; no
+rollout retry or reconstruction. Gemini 3 Flash scored both axes, 240 each.
+These are repeated rollouts of one trained checkpoint, not independent SFT seeds.
+
+A transient Google 503 left one progress judgment missing. Recovery retained
+479 cached verdicts, scored only the missing progress cell on the same provider,
+and retained the uncertain call's reservation. All 1,177 published payload files
+were verified by size and digest. GPU termination is verified; estimated total
+**$10.4657**, including that reservation, under the approved $30 ceiling.
+Windows console decoding lost some original console logs; native transcripts
+remain intact and supplemental raw Docker diagnostics are published separately.
+Console-derived cycle-limit counts therefore have incomplete coverage.
+
+Next: compare scenario-paired outcomes to the refreshed-content control, retaining
+its unresolved judge-coverage caveat. Similarity to the old approximately 11% MR
+is descriptive; it does not establish zero effect of replay or stakes.
+Protocol and recovery details: `docs/training/2026-09-17_original_lowstakes_odcv.md`.
+
+## 2026-09-16 — Original low-stakes content plus new replay: LoRA trained and verified
+
+Hypothesis: comparing unchanged historical low-stakes conversations against the
+refreshed low-stakes corpus under the same new replay and current SFT recipe can
+help isolate the effect of synthetic-content changes. This run reuses all 716
+original conversations exactly, plus the same 9,284 replay dictionaries and
+absolute positions as the refreshed mixture. No generation or content repairs.
+
+[Mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-da-lowstakes-original-7-mix/tree/41d80cc3e616d48739af6935d5705fd82a9a56f3)
+and [LoRA](https://huggingface.co/dougalldeepmind/2026-09-16-qwen36-0-da-lowstakes-original-7/tree/47f54dcb35f7e356e919933d7d5dde50ea101a40)
+are pinned and verified. One seed-0 BF16 rank-64 run on two H200s completed 625
+steps/one epoch over 10,000 examples in 8,539.7191 seconds. Mean training loss
+0.8217121548; all logged losses/gradients finite. The recipe, model profile,
+training implementation and dependency lock match the refreshed low comparator.
+This is training completion, not evidence of restored misalignment performance.
+
+All nine public adapter payloads, the separate final adapter/log/provenance backup,
+and checkpoints 100 through 600 are hash-verified. A subsequent full backup
+transfer failed when SSH became unavailable and the pod disappeared; its removal
+cause is unestablished. Only terminal-step 625 optimizer/RNG/scheduler resume state
+is incompletely preserved. The final model and complete training evidence are
+safe. The owned pod is confirmed absent and its monitors retired. Conservative
+spending upper bound $32.54 versus the approved $50 cap. No unrelated pod or local
+job was stopped. See [completion details](training/2026-09-16_original_lowstakes_reuse.md).
+
+Next: obtain authorization for evaluation of this pinned checkpoint under the
+common protocol; do not infer an MR result from training loss or reuse historical
+MR as this new model's score.
+
+
+## 2026-09-16 — Three-pass controls collected; original nonmoral verified, one low-stakes judge block
+
+Hypothesis: repeated ODCV collection with an advancing, continuously running
+vLLM process gives a more stable estimate for refreshed low-stakes and original
+nonmoral plus the September 8 replay mixture. Each pinned LoRA completed three
+sequential passes, 40 scenarios x two variants, thinking, temperature 0.7,
+context 28000, one H100 per arm with local Docker. Every pass contains 80 native
+transcripts, zero rollout retries, zero reconstructed or dropped cells. All six
+PID boundary checks match within each arm. Both owned pods are terminated.
+
+Original nonmoral is published and hash-verified at
+[the three-pass evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7/tree/47c0e44df95435a61e95fb09678e6eb4950c6385).
+MR is 54/240 = 22.50% (mandated 24/120 = 20%, incentivized 30/120 = 25%).
+Per-pass MR: 23.75%, 20%, 23.75%; scenario-based 95% CI for overall MR is
+13.7–34.6%. Task progress is 99.6%, mean 4.95/5; submission is 96.7%.
+Eight rollouts reached the context budget. This is one trained checkpoint,
+not independent training-seed replication.
+
+Low-stakes saved all 240 native rollouts, but Gemini blocks
+`mandated/Content-Moderation-Enforcer/rollout_001` with `PROHIBITED_CONTENT`
+on both MR and progress. The initial error surfaced as missing usage accounting;
+two MR recovery retries exposed the same provider block. Stop identical retries.
+239 MR scores are cached (59 misaligned): graded-only 59/239 = 24.69%, with
+full-set MR bounded by 59/240–60/240 = 24.58–25.00%. 239 progress scores are also
+cached. Do not silently assign the missing score, alter the transcript, or change
+the judge. User choice is pending: explicitly ungraded publication versus a
+labeled Sonnet exception. Low-stakes is not yet a completed publication.
+
+Conservative combined GPU/storage/judge spending, including failed startups and
+all uncertain call reservations, is $22.9911 against the $60 ceiling. Global
+OpenRouter usage deltas in raw pass manifests include other account jobs and
+are not attributable experiment costs; use the owned rental clocks and judge
+ledgers. Current artifacts: `output/odcv_three_pass_20260916_retry2/` and
+`C:/odcv-three-r2/`. Next: resolve missing-case policy, publish/verify low-stakes,
+report both controls and retain uncertainty rather than claiming a causal effect.
+
+## 2026-09-16 — Resume diagnosed startup failure under the existing ODCV budget
+
+The extra approval gate recorded below was assistant-imposed, not a user
+restriction. The original$60 authorization covers routine infrastructure repair
+and retry. Resume one reviewed startup retry per control after confirming no
+previous rollouts and both failed pods absent. Preserve prior artifacts and count
+their$1.05993482 cost; new per-arm GPU/storage caps24.56/24.37 plus judges5each
+keep the full maximum allocation below60. Sampling and checkpoint identities are
+unchanged. Runtime records: `output/odcv_three_pass_20260916_retry1/`.
+
+## 2026-09-16 — Three-pass controls stopped before rollouts; SSH startup handling repaired
+
+**Finding.** Both new control ODCV runs failed during startup on timed-out SSH
+control commands. Original nonmoral's saved vLLM log showed HTTP200 readiness
+before its outstanding SSH liveness probe timed out; low had begun loading after
+its launch acknowledgement was lost. No ODCV transcripts, judgments or new MR.
+
+**Recovery.** Preserved and verified both remote log archives, terminated both
+owned pods and independently checked absence. Sleep inhibition released. Combined
+elapsed-rate GPU/storage estimate **$1.05993482**, no judge spend. Unrelated account
+pod untouched. Serving now checks HTTP health first, bounds SSH probes, distinguishes
+unknown liveness from confirmed exit and never relaunches on a lost acknowledgement.
+All32focused tests passed; replacement-rental validation is still pending.
+
+**Next.** Current recovery instructions prohibit automatic additional rentals.
+Request permission for one replacement attempt per arm within the original$60
+combined cap, counting the failed startup costs. See
+`docs/training/2026-09-16_controls_three_pass_odcv.md`.
+
+## 2026-09-16 — Three-pass ODCV controls launched on continuous servers
+
+**Question.** Estimate rollout variability for refreshed low stakes and exact
+original nonmoral with the new replay, using three fresh sequential passes per
+fixed checkpoint. This does not replicate training seeds or isolate a dataset
+property causally.
+
+**Method.** Two parallel single-H100 pods, each retaining one live vLLM process
+across three sequential 40-scenario/two-variant passes. Temperature0.7, thinking,
+context28000, six concurrent scenarios per arm, Flash MR/progress judges. No
+per-request inference seed; check the same server PID at all six pass boundaries.
+The user approved $60 combined: per-arm GPU/storage/recovery25 plus judges5.
+
+**Status.** Both pods provisioned at $3.49/hour with independent hard-budget
+watchdogs. First low-stakes creation failed HTTP500 without creating a pod;
+inventory was checked before one successful retry. Thirteen focused tests and
+Docker/pins/LF/network preflight passed. No new MR yet. The earlier single-pass
+nonmoral result remains pinned and tagged before today's three-pass publication.
+
+**Next.** Complete240rollouts per arm, verify publication and server continuity,
+report MR with scenario-level uncertainty, progress, submissions, actual failure
+handling and spending, and terminate both owned pods. See
+`docs/training/2026-09-16_controls_three_pass_odcv.md`.
+
+## 2026-09-16 — Exact original nonmoral + new replay: ODCV 22.5%, below refresh 38.75%
+
+**Method.** Reuse the exact original 684 craft conversations with the same new
+9284 nosynth rows, train one seed-0 LoRA on one H200, then one H100 serves the
+approved 40-scenario/two-variant/single-pass thinking ODCV run. No regeneration,
+repair, top-up, additional pass or favorable-outcome retry occurred.
+
+**Result.** MR **18/80 = 22.5%**, with both variants 9/40. Compared with refreshed
+nonmoral 31/80 = 38.75%, the scenario-paired difference is **−16.25pp**, CI95
+**[−26.74, −5.76]**. Against refreshed low20%, difference +2.50pp, CI
+[−4.70, +9.70]. Original-content reuse improved this fixed-checkpoint comparison,
+but did not recover historical original13.75% under the common protocol or18.25%
+under the older protocol. Their respective paired differences are +8.75pp
+[+1.92,+15.58] and +4.25pp [−4.65,+13.15]. These do not estimate training-seed
+uncertainty or isolate replay, dose, actor, or training-execution effects.
+
+**Health and closure.** All 80 native transcripts, 80 MR judgments and 80 progress
+judgments are present. Submitted77/80; mean progress4.9625/5; progress>=3 in80/80.
+Three original token/context-limited nonsubmissions remain scored. No outer
+timeouts, missing cells, dropped passes or reconstructed/retried trajectories.
+All255 published payload files match local hashes. Both owned pods are terminated
+and independently absent. Combined estimated spend **$25.65651/$60**, including
+training, startup, recovery, evaluation and all settled judges. Temporary sleep
+inhibition released; hourly completion monitor paused.
+
+[Published evaluation](https://huggingface.co/datasets/dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7/tree/b06c757309213d1d0e1ef47942e36b2157031db5).
+Exact model pin, caps, comparison caveats, costs and verification receipts are in
+the [run report](training/2026-09-15_nonmoral_original_reuse.md). No next experiment
+has been launched.
+
+## 2026-09-16 — Original nonmoral reuse training verified; one-H100 ODCV launched
+
+**Method.** Preserve exact historical684 plus the new9284 replay rows, training
+one epoch on one H200 with the current seed0/rank64/global-batch16 recipe. This
+changes replay/current execution while retaining historical synthetic content;
+it is not a bitwise historical training reproduction.
+
+**Training result.** All623 steps completed, with aggregate loss0.80915 and
+finite logged gradients. Final adapter at
+`dougalldeepmind/2026-09-15-qwen36-0-nonmoral-original-7`
+@ `42232b52b52ed93245864548f37a3fe8179c7d75` matched the local backup across all
+nine published payload files. A39-file archive preserves checkpoints and logs.
+The H200 was terminated and independently absent from provider inventory;
+training/recovery estimate $21.50.
+
+**Evaluation launch, not results.** At02:09 UTC the authorized single-H100 owner
+started the frozen one-pass80-cell thinking ODCV protocol, with Flash MR/progress
+judges. Pod `6qn3q92y2evo3a` costs $3.49/hour and has a hard independent watchdog.
+The $15 evaluation allocation leaves the combined planned ceiling within $60.
+Verify complete coverage, all published files and owned-resource cleanup before
+reporting MR. See the [run report](training/2026-09-15_nonmoral_original_reuse.md).
+
+## 2026-09-15 — Exact original nonmoral remix verified; single-H200 training launched
+
+**Hypothesis and method.** Following the refreshed nonmoral regression, the user
+requested preservation of the original 684 craft conversations with the same
+9284 September nosynth replay rows. No regeneration, content repair, new
+constitution review or 32-row top-up. All historical rendered strings and source
+messages matched, all replay payloads/order matched, and all 9968 rows passed
+native token/mask and Arrow-loading checks. Ten published mixture files passed
+local/remote hash verification.
+
+**Launch, not results.** One-H200 seed0/rank64/one-epoch training started on owned
+pod `4poydjc8psjtou` at $4.59/hour. The user approved $60 combined for training
+and subsequent single-H100 ODCV: $45 training/recovery and $15 evaluation/judging.
+Global batch remains16, for623 optimizer steps. A bounded owner and recurring
+monitor cover recovery, then automatic one-pass80-cell ODCV and final cleanup.
+
+**Next step.** Verify trained adapter before evaluation. Exact dataset pins,
+ordering, checks and the authorized protocol are in the
+[run report](training/2026-09-15_nonmoral_original_reuse.md).
+
+## 2026-09-15 — Refreshed ODCV complete: low-stakes 20.0%, nonmoral 38.75% MR
+
+**Hypothesis and method.** Compare the two refreshed control checkpoints under
+the approved matched ODCV protocol: one pass over 40 scenarios in both variants,
+thinking on, temperature 0.7, Gemini 3 Flash MR/progress judging, parallel local
+Docker drivers and separate single-H100 servers.
+
+**Result.** Both produced all 80 intended transcripts and complete finite MR and
+progress judgments. Low-stakes MR was 16/80 (20.0%; mandated/incentivized both
+20.0%); nonmoral was 31/80 (38.75%; 40.0%/37.5%). The scenario-paired nonmoral
+minus low-stakes difference was +18.75 percentage points, 95% t interval
++7.48 to +30.02. Mean task progress was 4.84/5 versus 4.92/5 and submission
+77/80 versus 79/80. Three low-stakes and one nonmoral context/token-limit
+flags were retained; no missing cells, timeouts, rollout retries or dropped
+passes. This measures these checkpoints, not a replicated causal data effect.
+
+**Verification and closure.** Both public HF runs have 255 artifact files
+matching local hashes, with exact model/base/config provenance. Both owned pods
+were terminated and their absence independently confirmed; server logs were
+recovered. Estimated GPU/storage plus settled judge cost was $7.64 against $30.
+Account-wide OpenRouter deltas overlap across arms; isolated request ledgers
+are the cost evidence. Full links, intervals, limits and closure records are in
+the [completed report](training/2026-09-15_refreshed_controls_odcv.md).
+
+**Next steps.** Interpret alongside compatible controls; no additional
+evaluation or training has been launched.
+
+## 2026-09-15 — Approved single-pass ODCV for refreshed controls
+
+**Hypothesis and method.** Measure the refreshed moral low-stakes and nonmoral
+adapters under the same ODCV scenario/judge protocol. The user authorized one
+pass over 40 scenarios in both variants per adapter, thinking on, Gemini 3 Flash
+MR and progress judging, parallel local Docker drivers and separate single-H100
+pods, with a $30 combined GPU/storage/judging ceiling.
+
+**Preflight.** Published historical configs confirmed 80 cells per pass and the
+chosen judges. Docker/network checks, all 168 shell-file LF checks and first
+scenario image builds passed. The existing bounded owner was extended for the
+explicit one-pass plan and separate ports; 19 focused checks passed. First-cell
+preflight reuses the first scored rollout instead of adding a smoke pass.
+
+**Next step.** Launch, monitor, preserve and verify both evaluations as recorded
+in the [protocol](training/2026-09-15_refreshed_controls_odcv.md). This entry records
+authorization and readiness, not finished rollouts or behavioural results.
+
+## 2026-09-15 — Refreshed-control LoRAs completed and verified
+
+**Hypothesis and method.** Prepare the moral low-stakes and nonmoral craft-tension
+controls for later evaluation using the shared Qwen3.6-27B seed0, rank64, one-epoch
+recipe. Each frozen mixture contains 716 synthetic plus the same 9284 nosynth
+rows. Runs used separate two-H200 pods in parallel under a $100 combined ceiling.
+
+**Result.** Both completed 625 steps with finite logged loss and gradients.
+The final adapters, tokenizer/config files and exact input provenance passed
+local-versus-HF payload verification. Training took 153.13 minutes for low stakes
+and 153.61 minutes for nonmoral. The [training report](training/2026-09-15_refreshed_controls.md)
+links the pinned model revisions and machine-readable verification receipts.
+No evaluation was performed; training loss is not a behavioural result.
+
+**Recovery limitation.** Both pods disappeared during full checkpoint archive
+transfers, before local deadlines; the cause is unknown. Final adapters are
+published and hash-verified in separate local copies. Partial checkpoint archives
+and complete run metadata were preserved, but full archive verification and raw
+log recovery could not finish. Provider HTTP404 and inventory checks confirm
+neither owned pod remains. Conservative combined cost upper estimate $60.34,
+including prior starts and storage allowance, is not an exact provider bill.
+
+**Next step.** Await user authorization for evaluation of the pinned adapters.
+Known dataset-content and comparability limitations remain unchanged.
+
+## 2026-09-15 — Refreshed-control LoRA training launched in parallel
+
+**Method.** User authorized one seed0 Qwen3.6-27B rank64 LoRA per frozen refreshed
+mixture, each on its own2xH200 RunPod pod, and a$100 combined GPU ceiling. Both
+use the shared one-epoch/global16/8192 recipe and identical base revision. Full
+training inputs, owner/watchdog boundaries and intended model names are recorded
+in the [training record](training/2026-09-15_refreshed_controls.md).
+
+**Startup result.** An overlooked trainer guard rejected explicit uniform
+`supervise: all` before any optimizer step. Both failure logs were preserved and
+the pods terminated; combined estimated cost$0.9018. A narrow explicit boolean
+opt-in now admits intentional standard supervision while retaining the default
+ablation guard. Focused checks passed and both exact10000-row input censuses
+passed before restart; no dataset text, masks or optimizer recipe changed.
+Replacement runs are monitored under reduced per-arm caps that include previous
+startup costs. CUDA checks passed on exactly two H200s per replacement pod.
+
+**Status and next step.** Training processes have launched; this entry does not
+claim completed optimizer steps or adapters. Verify progress, saved artifacts and
+public payload hashes, then terminate owned resources. Evaluation still awaits
+separate user authorization. Known content and comparability limitations remain.
+
+## 2026-09-15 — Interactive inspection surfaces residual example issues
+
+Preparing the user's searchable reader involved full reads of eight purposively
+selected published examples. Low `t1_013_v0` asserts an unsupported draft-viewing
+status; low `t1_022_v0` describes one past snack comparison as two successive
+incidents; nonmoral `t4_076_v0` describes adding14 tags to25 as doubling. A separate
+photographic premise is flagged as unverified, and four examples illustrate
+style/comparability concerns. These are a small inspection set, not a prevalence
+estimate or exhaustive new audit. Exact quotes, source pins and qualifications
+are in [the inspection notes](dataset_audits/2026-09-15_dataset_explorer_inspection_notes.json).
+The reader preserves all1432 published conversations and provides category,
+principle, text and inspection filters; the inline preview contains72 examples.
+Published bytes remain unchanged, no additional API calls occurred, and training
+or evaluation has not begun. Dataset integrity checks do not certify factual
+perfection; these findings remain visible for the user's review before training.
+
+## 2026-09-15 — Both refreshed control datasets completed with identical replay
+
+**Hypothesis and method.** Refresh moral low-stakes advice and the original nine
+nonmoral craft tensions as human-advice datasets, using the new09 constitution as
+the low-stakes generation target and the nonmoral compatibility-review target.
+Each arm contains716 synthetic rows and the same9284 pinned September8 replay
+rows at identical positions. Preserve original generation/review evidence and
+all failed attempts; complete the final five narrow answer repairs in one
+parallel Sonnet batch rather than another iterative paid-review cycle.
+
+**Result.** Both synthetic corpora and both10000-row mixtures are published.
+The paired native Qwen8192 audit passed without truncation and verified exact
+replay payload/position equality and exact pinned synthetic content. Conservative
+combined API spend closed at$253.6950717 under the approved$270 ceiling, with
+11687 recorded calls and zero reserved/unknown calls. Final corrections beyond
+the original run cost$4.483704; the final five-call batch cost$0.2561.
+
+**Limits.** Equal row counts do not match domains, prompt complexity or token
+exposure. Nonmoral synthetic examples average1518.0 supervised tokens versus
+1175.3 for the full752-row DA export and975.2 for low stakes; synthetic token
+shares of the mixtures are19.410% and13.399%, respectively. Token share is not
+training loss-weight share. The workflow became unnecessarily elaborate through
+serial repair/adjudication and repeated checking; these overheads were not an
+inherent requirement of adding a few rows.
+
+**Next step.** Dataset work is complete on `codex/refresh-lowstakes-nonmoral`.
+Training and evaluation await the user's later confirmation. Exact immutable
+publication pins, domain inventory, review routes and verification receipts are
+in the [final dataset report](dataset_audits/2026-09-15_dataset_refresh_final.md).
+
+## 2026-09-15 — Low-stakes release published; bounded nonmoral completion continues
+
+**Result.** Moral low stakes is published as716 synthetic rows and a verified
+10,000-row mixture containing the frozen9284 replay rows. Public revision and
+payload checks passed, as did untruncated native token/mask validation for the
+whole mixture. Nonmoral has669 independently/originally accepted rows at this
+progress checkpoint; later candidate outputs are still under review.
+**Authorization.** After the four-case pilot cost$0.229218, the user raised the
+combined ceiling to$270 and subsequently allowed one additional focused revision
+per failed candidate within that same ceiling. Separate frozen execution records
+preserve both decisions; no paid critics or automatic retry loop. Ten saved
+answers were adopted unchanged after full independent review and local checks.
+**Limits.** No second mixture, paired replay-equality claim, training or evaluation
+yet. Exact pins, review routes and historical-budget boundaries are in the
+[saved-answer completion report](dataset_audits/2026-09-15_saved_answer_completion.md).
+
+## 2026-09-15 — Dataset correction recovered existing content without new API calls
+
+**Method.** Reassessed low/nonmoral exclusions in parallel, bound reversals to
+exact conversations, preserved every old exclusion, and recovered one completed
+Sonnet review JSON lost to a prose-preamble parser failure. Broader comparison
+re-held one restored quiz case as a real duplicate; an existing reserve filled it.
+**Result.** The unchanged quota selector now supplies716 moral low-stakes and650
+nonmoral rows. Both final selections pass native untruncated8192-token/masking
+checks. Nonmoral is66 rows short. Forty net exclusion reversals plus one lossless
+parser recovery changed eligibility; original author text is unchanged. Shared
+API exposure remains$249.2113677 across11605 calls.
+**Limits and next step.** No paired mixtures, training or evaluation. A disabled
+four-case saved-answer Sonnet pilot has a$0.6722025 maximum reservation inside the
+existing ceiling; no automatic review/repair loop. See the
+[correction report](dataset_audits/2026-09-15_dataset_refresh_corrections.md) and
+[completion design](dataset_audits/2026-09-15_corrective_completion_design.md).
+
+## 2026-09-15 — Dataset refresh closed below the hard budget, both arms incomplete
+
+**Method.** Continued the authorized parallel Sonnet refresh of moral low-stakes
+human advice and the original nine craft tensions, with explicit source, answer,
+grounding, independent-review and duplicate decisions preserved.
+**Result.** Retained research pools are706 low-stakes and631 nonmoral, short of716
+by10 and85. Shared conservative API exposure closed at **$249.2113677**, including
+pilots, failures and probes, with no active or uncertain calls. Native untruncated
+token/mask checks passed for the parent708/634 pools; final subsets preserve those
+exact row bytes. Mean supervised tokens differ from the full new DA752 reference:
+1175.35 for DA,975.59 for low stakes,1508.73 for nonmoral. Equal rows do not equal
+token exposure, and repeated scenario families remain a limitation.
+**Artifact.** [Incomplete audit archive](https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit/tree/f455cc9a2224d65c3861fd83a7f57c4c49c8072a)
+preserves all phases, rejected outputs, billing proof, configs and code; it exposes
+an audit split, not a training split. See the [budget-close report](dataset_audits/2026-09-15_dataset_refresh_budget_close.md).
+**Next.** Additional generation requires a budget extension. Finish source and
+answer review, fill at least95 gaps, then select716 each and build the two exact
+716+9284 mixtures. No completed corpus or mixture, training or evaluation is claimed.
+
+## 2026-09-15 — Sonnet-only continuation and factual-critic calibration
+
+**Authorization.** The user approved continued revisions, individual-row acceptance,
+documented repairs and replacements within the original combined$250 maximum
+(target$200), and prohibited Haiku in every new role. The earlier failed pilots
+remain closed evidence; their operational stop rules are superseded prospectively.
+**Method.** All new authors use Sonnet5. Retain explicit detailed draft/rewrite
+deliberation, derive provenance mechanically, assign genuinely benign settings, and
+separate a source-first factual/constraint critic from target/content review. The
+nonmoral subject library spans28 ordinary creative settings; fiction is a subset.
+**Calibration.** On eight purposively selected cases, the initial Sonnet critic
+missed several clear defects and Gemini passed every case. A revised source-first
+Sonnet prompt with default reasoning produced six valid verdicts (two clear rejects,
+four defensible passes); two other cases exhausted the output limit. These cases
+informed the revision and are not held-out validation. Across24 calls: reported
+$0.295475, conservative exposure$0.357840, charged to the original shared ledger.
+**Next.** Run the Sonnet recipe in parallel, retain incomplete/rejected examples,
+inspect independent samples, and finish exact716+9284 mixtures and publication.
+No training, model evaluation or main merge. [Current execution contract](dataset_audits/2026-09-15_sonnet_execution.md).
+
+## 2026-09-15 — Moral low-stakes and nonmoral refresh stopped after two failed pilot rounds
+
+**Hypothesis.** Refreshing the two controls with new09 and the pinned September8
+replay blend should produce716 human-advice examples per arm while preserving the
+new DA's response recipe and the original nonmoral craft deliberation.
+**Method.** Audited historical corpora, actual training selections, exact domain
+labels, constitution use and gotchas. Pinned September14 DA, original craft data and
+nosynth. Ran18 examples per arm in parallel, independently inspected all complete
+outputs, then used the single authorized revision on disjoint18-case pilots. The
+revision separated blind eligibility, content and lineage review. No training/eval.
+**Result.** Both original pilots had2/18 independent full-row passes despite16/18
+automatic passes. Revised low stakes:6 passes,8 completed rejects,3 preflight
+rejects,1 format failure; no t6 completion. Revised nonmoral content:12 pass,5
+material rejects,1 unresolved; only1 full-row pass after metadata requirements.
+The16/18 gate failed without relying on ambiguous content labels or trivial quotation
+formatting. Repeated unsupported premises and rule/quantity contradictions survived
+the model reviewers. All341 API calls finished: reported$8.105121, conservative
+charged/reserved$8.2599135 including one uncertain failure. No716-row corpus or
+10k mixture was released. Exact716+9284 mixture support and read-only mask/count
+validators are implemented;129 focused tests passed.
+**Evidence.** [Full stopped-run report](dataset_audits/2026-09-15_stopped_dataset_refresh.md),
+[original pilot audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-14-dataset-refresh-pilot-audit),
+[revised pilot audit](https://huggingface.co/datasets/dougalldeepmind/2026-09-14-dataset-refresh-revised-pilot-audit).
+**Next.** Both jobs stopped at the agreed one-revision limit. A further proposal
+separates factual criticism from target/style scoring, permits one logged factual
+repair, and derives provenance mechanically; it awaits user authorization. Retain
+the existing source pins, teachers, shared budget ceiling and final-quality gate.
 ## 2026-09-22 — The new recipe end to end: da-15 (token share) and nosynth on the 2026-09-21 defaults reproduce the old da-7 effect on ODCV, -36.7 pp paired, and nothing moved against the old stack
 
 **Hypothesis.** The recipe now differs from the 2026-09-15 baseline in five places at once —

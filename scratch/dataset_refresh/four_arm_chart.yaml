@@ -1,0 +1,21 @@
+# ABOUTME: Pinned latest available full-DA and replay controls alongside exact-original content controls.
+# ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.plot_four_arm_chart --config scratch/dataset_refresh/four_arm_chart.yaml
+output: output/2026-09-17_odcv_four_arms
+stem: 2026-09-17_odcv_four_arms_latest_evaluated
+arms:
+  - label: "0% difficult\nadvice"
+    color: '#808080'
+    repo: dougalldeepmind/2026-09-09-odcv-qwen36-0-nosynth
+    revision: 128495d177eab348b8185e1627e3bcafcb6706fa
+  - label: "7% difficult\nadvice"
+    color: '#905CA6'
+    repo: dougalldeepmind/2026-09-09-odcv-qwen36-0-da-7
+    revision: 0e69b5d75084be9174f0349852b2dbf92108e06d
+  - label: "Low-stakes"
+    color: '#3B83C6'
+    repo: dougalldeepmind/2026-09-17-odcv-qwen36-0-da-lowstakes-original-7
+    revision: ff1bf4fffb4f54c309829a2382348768b4c836d2
+  - label: "Nonmoral\ndeliberation"
+    color: '#B6533D'
+    repo: dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7
+    revision: 47c0e44df95435a61e95fb09678e6eb4950c6385

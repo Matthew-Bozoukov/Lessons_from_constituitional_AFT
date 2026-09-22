@@ -1,0 +1,283 @@
+{
+  "repo": "dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit",
+  "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit/tree/f455cc9a2224d65c3861fd83a7f57c4c49c8072a",
+  "revision": "f455cc9a2224d65c3861fd83a7f57c4c49c8072a",
+  "verified_at_utc": "2026-09-15T05:21:52.822008+00:00",
+  "status": "verified",
+  "public_read_access_without_token": true,
+  "remote_files": 25,
+  "local_snapshot_files": 24,
+  "only_extra_remote_file": ".gitattributes",
+  "files_manifest_sha256": "a10da071c9cdbf6def2717535207b762feded1cc1e5270c788dd6d75e3554012",
+  "large_and_binary_lfs_files": 14,
+  "small_git_files_freshly_downloaded": 11,
+  "checks": [
+    {
+      "path": "README.md",
+      "size": 12917,
+      "sha256": "f37ddc8b49f54eb3fc249cafb946bf2d00211d82231349b01531808611cd7561",
+      "blob_id": "5738871ec068fe420a2c75fb201c328ff423d384",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "archive_inventory.json",
+      "size": 6937797,
+      "sha256": "5c5e823c1278cf22003e31884bce26053228bc673ae074c74adf1c87ae00bcf0",
+      "blob_id": "a7ac646f752cf5b3beac2f6ba1c3174531e33607",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_00.tar.gz",
+      "size": 18214786,
+      "sha256": "8499982cec75ef16a2d150c19524dd4b2f8320db44a3a361a93de437299c7f8d",
+      "blob_id": "80fe95389ab4f411a9d9dc978c89a7a701d374ef",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_01.tar.gz",
+      "size": 18458783,
+      "sha256": "4cbc0aa7a03af507f4b23fa4f9bb2dbb6133c552b4f9f8133f65144c69b598f6",
+      "blob_id": "5441a868080c7a111c97360609e951699e9e8537",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_02.tar.gz",
+      "size": 5326546,
+      "sha256": "b0fab1053eb9d3b3d21291189c61823cae2ebc056b40d24d46c5b8771be8127f",
+      "blob_id": "dfc086c552e981cd166488a06d8451dcdf0a47d5",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_03.tar.gz",
+      "size": 90612,
+      "sha256": "f5693e22f13ba284fdea6dcf8f0cb414b5c4c7ff13fb0de87d1e54282a61f11a",
+      "blob_id": "42e19a1631c5b23f3df19e85005f2dd5f23f923a",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_04.tar.gz",
+      "size": 25956759,
+      "sha256": "640ad554421e2044c32c79136a62867198fb38bf7251b43a2892d41390273316",
+      "blob_id": "c55195c2e72a7cd0a9ed690f157f1971ee7a4a69",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_05.tar.gz",
+      "size": 69494,
+      "sha256": "9824e182da006b372f3e17a6c08ce2bad61fbd4b1ac33f07115e6a487b29fa55",
+      "blob_id": "44b4a1e380fa573749e0cd897cf45e3cdd3d9a7d",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/evidence_06.tar.gz",
+      "size": 240761,
+      "sha256": "88731342338cc339ae6fba0c19802677bfbf5c44d2af202785ad95283615712c",
+      "blob_id": "24c1958b67d01040bd8caf01fd2522644f766c2f",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/origin_00.tar.gz",
+      "size": 16993796,
+      "sha256": "23e9a7de58e69ef1ad643275617336d531bda6363ac2bc994bfb1e6401e3c784",
+      "blob_id": "d33ff41372179d1e908c97bfc5b46b1254b6aedd",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/origin_01.tar.gz",
+      "size": 17027826,
+      "sha256": "8b43205b03d7eff512adffa837975b75ee27561264869e8db96682b6f68de69b",
+      "blob_id": "6370eb9757e88645caba1beb0ec766eef5bf984b",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/origin_02.tar.gz",
+      "size": 32794296,
+      "sha256": "1736c6e2c2a99f7bf8fb4ec1bde578e26229900a013632eb6cde4cd548a08a74",
+      "blob_id": "d7c5200b21a1dd768ca332396afca4bda61cd953",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/origin_03.tar.gz",
+      "size": 45825431,
+      "sha256": "1a23e519d4dad56802c773eaf2763b22d4213fe281a62c4716bbacf16492bccd",
+      "blob_id": "3897708f5b3c2321389f95a9700e6c68784cde50",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/origin_04.tar.gz",
+      "size": 28739259,
+      "sha256": "5897006a0fcb6edd15240f6db9c6f92dbe13ec5020930d3a3daeceee56445848",
+      "blob_id": "00258e429da5c9afc9c98742de40c87d0f3cd1f4",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "archives/shared_budget.tar.gz",
+      "size": 69625118,
+      "sha256": "79f81612d1309dac2a4ad268081b93fe3bda59782318c7c8355578f67cadac8d",
+      "blob_id": "285bf64d75ef44483c7e3b7d8a9a01e8074bb17a",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "audit_index.jsonl",
+      "size": 5225,
+      "sha256": "0fcd108b4eb65d9bf8062de774fba9c37ce7e8769e35a5827a26be95240c1ffe",
+      "blob_id": "fef3387228abf8c0732813e82b46921ff4d844c3",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "card_fields.json",
+      "size": 13737,
+      "sha256": "8f6539dd0108e35a2ea0caf7e68da0e8ba1e2d2c017fa51c05306ab227a2d67f",
+      "blob_id": "7ae62f58d7b0ad09f4006a1adb79c57efdf0b6ec",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "card_front_matter.json",
+      "size": 303,
+      "sha256": "3cc9ebcf57533fe49546c4f459f2400876fe57833784c0aa881fba9b5f1d88d7",
+      "blob_id": "35875ade4ff81d7471bb0bcf6aa778f647962799",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "files_manifest.json",
+      "size": 2251,
+      "sha256": "a10da071c9cdbf6def2717535207b762feded1cc1e5270c788dd6d75e3554012",
+      "blob_id": "3d4dfc0ff39c4c87626e50fd470ec26bca542d96",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "phase_recipes.json",
+      "size": 581256,
+      "sha256": "a54867045b9f53d6d0a61e88ea65119e7007d37ea125aa705b4e4d79a3abc77a",
+      "blob_id": "a35ce937b6316058ead7c3359da52f8d1ecca48a",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "preparation_receipt.json",
+      "size": 599,
+      "sha256": "971e10a77f47a3809c7752c61b2b619cc16f17e88d7826c7a5f30ee13bcda450",
+      "blob_id": "628461c17a66552c7d08a7c6146f69b342165d19",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "readiness.json",
+      "size": 8599,
+      "sha256": "b7a9e0dc9d2eb02b5402657dc89639dc51a475345dac899b2f4b49986853a7a7",
+      "blob_id": "f8a9cda1ae03c58a9caab6cb85bf86b9b1ac0737",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    },
+    {
+      "path": "source_code.tar.gz",
+      "size": 26748689,
+      "sha256": "241e2252a327040d56856de9db7b99261f91139cbfebd6046c33bfaf8fa36f4b",
+      "blob_id": "1589ee5b9eff0d69c3eb03de355335138e1ebe03",
+      "method": "remote LFS SHA256 equals local bytes and manifest",
+      "verified": true
+    },
+    {
+      "path": "source_manifest.json",
+      "size": 23046,
+      "sha256": "7f75cc3e054e3d57a4e49a826148216f63a1583e22b271b772f6c7bb56f3a565",
+      "blob_id": "85433b41d7f387afb5fbad2b12f8663ceb9a87d5",
+      "method": "remote Git blob SHA1 equals local bytes",
+      "verified": true
+    }
+  ],
+  "fresh_public_downloads": {
+    "archive_inventory.json": {
+      "bytes": 6937797,
+      "sha256": "5c5e823c1278cf22003e31884bce26053228bc673ae074c74adf1c87ae00bcf0"
+    },
+    "audit_index.jsonl": {
+      "bytes": 5225,
+      "sha256": "0fcd108b4eb65d9bf8062de774fba9c37ce7e8769e35a5827a26be95240c1ffe"
+    },
+    "card_fields.json": {
+      "bytes": 13737,
+      "sha256": "8f6539dd0108e35a2ea0caf7e68da0e8ba1e2d2c017fa51c05306ab227a2d67f"
+    },
+    "card_front_matter.json": {
+      "bytes": 303,
+      "sha256": "3cc9ebcf57533fe49546c4f459f2400876fe57833784c0aa881fba9b5f1d88d7"
+    },
+    "files_manifest.json": {
+      "bytes": 2251,
+      "sha256": "a10da071c9cdbf6def2717535207b762feded1cc1e5270c788dd6d75e3554012"
+    },
+    "phase_recipes.json": {
+      "bytes": 581256,
+      "sha256": "a54867045b9f53d6d0a61e88ea65119e7007d37ea125aa705b4e4d79a3abc77a"
+    },
+    "preparation_receipt.json": {
+      "bytes": 599,
+      "sha256": "971e10a77f47a3809c7752c61b2b619cc16f17e88d7826c7a5f30ee13bcda450"
+    },
+    "readiness.json": {
+      "bytes": 8599,
+      "sha256": "b7a9e0dc9d2eb02b5402657dc89639dc51a475345dac899b2f4b49986853a7a7"
+    },
+    "README.md": {
+      "bytes": 12917,
+      "sha256": "f37ddc8b49f54eb3fc249cafb946bf2d00211d82231349b01531808611cd7561"
+    },
+    "source_manifest.json": {
+      "bytes": 23046,
+      "sha256": "7f75cc3e054e3d57a4e49a826148216f63a1583e22b271b772f6c7bb56f3a565"
+    },
+    ".gitattributes": {
+      "bytes": 2504,
+      "sha256": "9e75dd981de037ec3769f24f790e126bc5a160b6871f510214e68dc70649aeeb"
+    }
+  },
+  "card_configs": [
+    {
+      "config_name": "audit",
+      "default": true,
+      "data_files": [
+        {
+          "split": "audit",
+          "path": "audit_index.jsonl"
+        }
+      ]
+    }
+  ],
+  "readiness_flags": {
+    "train_ready": false,
+    "mixture_ready": false
+  },
+  "no_train_config_or_split": true,
+  "interpretation": "All24 payload files match local inventory. LFS content-addressed server hashes match local full bytes; all10 non-LFS payload files and auto.gitattributes were freshly downloaded unauthenticated and verified. Large archives were not downloaded again.",
+  "original_publication_receipt": {
+    "repo": "dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit",
+    "url": "https://huggingface.co/datasets/dougalldeepmind/2026-09-15-dataset-refresh-incomplete-audit",
+    "revision": "f455cc9a2224d65c3861fd83a7f57c4c49c8072a",
+    "snapshot_path": "C:\\Users\\nikak\\source\\repos\\LASR\\teaching_claude_why_replication_dataset_refresh\\output\\2026-09-15_dataset_refresh_incomplete_archive_retry01",
+    "source_commit": "2db7929fcb43d141057a77c71d88e66c1c3788ac",
+    "files_manifest_sha256": "a10da071c9cdbf6def2717535207b762feded1cc1e5270c788dd6d75e3554012",
+    "status": "uploaded_awaiting_remote_hash_verification"
+  },
+  "original_publication_receipt_sha256": "45f50f42a033a78ebdf3cd9b907df28324efbd602f69e6654d0c78dfe8ea29d7",
+  "remote_writes_performed": false
+}

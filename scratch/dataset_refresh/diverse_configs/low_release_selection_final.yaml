@@ -1,0 +1,9 @@
+# ABOUTME: Final low-stakes selection permits up to28 qualified rows per trait after independent addition review.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.select_release --config scratch/dataset_refresh/diverse_configs/low_release_selection_final.yaml --output <release-directory>.
+arm: da-lowstakes-refresh
+seed: 20260915
+phases:
+- root: output/2026-09-15_dataset_refresh_sonnet_qualified
+  max_per_trait: 28
+- root: output/2026-09-15_dataset_refresh_diverse
+  max_per_trait: 80

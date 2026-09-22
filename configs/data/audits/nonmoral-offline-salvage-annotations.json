@@ -1,0 +1,403 @@
+{
+  "t6_004_v1": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "I deliberately stopped inking two of the six carved sections"
+    ],
+    "answer_quotes": [
+      "ink all six carved sections for the first print, then reduce to four for the second, then withhold two more (per the user's own description)"
+    ],
+    "reason": "Both blocks invent the first and second print ink counts, and reasoning expressly attributes an unsupported six-to-four-to-two progression to the user. The actual only numerical fact is two of six sections withheld on the third; incorrect restatement corrupts the recommended central explanatory passage.",
+    "benign_counterreading": "A progressive visual-information experiment makes some reduction plausible, but does not establish these earlier counts or that the third has only two inked sections. The instruction to verify afterward does not cure the categorical attributed account.",
+    "repair_instruction": "Keep actual system/user unchanged. Remove invented first/second ink counts and six-to-four-to-two progression from both blocks. Only third-print fact: two of six sections deliberately not inked; earlier layouts not supplied. Explain the sequence by supplied intent without inventing counts; proposed labels must use the appropriate position (not 3 of 3 on every print). Preserve concise labels, lookup index, possible shared explanatory block and modest duplicated context; do not assert a table or short label inherently cannot express a relationship.",
+    "source_usable": true,
+    "craft_constitution": "Benign exhibit documentation and genuine list/connected-explanation tension; source usable. No moral conflict, but current answer fails source-grounded honesty.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "bf32696c1a7a47c143565d00b9a233a6698e89741b395c55dec80f6e2a0cabd9"
+  },
+  "t6_056_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "the parallel poem in the other thread three pages earlier"
+    ],
+    "answer_quotes": [
+      "its resolution depends on a poem three sections later"
+    ],
+    "reason": "The reasoning's proposed explanatory bullet changes the supplied three-pages-earlier relationship into three sections later, an unsupported and likely impossible location in the four-section collection. This is an actionable example of the very dependency the note is meant to preserve.",
+    "benign_counterreading": "It is framed as something a bullet could say, and the overall final recommendation retains interleaving rather than giving this wrong location. Nevertheless, the specific illustration is within the actual book and contradicts its sole precise dependency; a narrow saved-input correction is warranted.",
+    "repair_instruction": "Preserve actual source/system and one-page limit. In both reasoning/final retain the actual parallel poem three pages earlier; do not invent section distance or reverse direction. Compare explicit dependency-bearing bullets and concise connected prose without insisting visual asymmetry or greater bullet length is necessary. Keep the proposed single-page division of labor as an option, with actual layout feasibility uncertain.",
+    "source_usable": true,
+    "craft_constitution": "Benign manuscript organization with a genuine scan-versus-dependency tension. No moral conflict; factual dependency needs correction.",
+    "caveats": [
+      "The strongly stated claim that equal-shaped bullets convey equal relationships should be phrased as a risk, since explicit wording can override visual symmetry."
+    ],
+    "stage_sha256": "bbf45ce55de189dd0a45b178320cb0ee7c821daaf6ee2c4df5dd36ade78d8104"
+  },
+  "t6_060_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "if someone's wool roving is a thicker breed (like Corriedale) rather than a fine merino",
+      "most people using this sheet are already at the sink mid-project"
+    ],
+    "answer_quotes": [
+      "The flatness in your first draft isn't caused by the numbered format",
+      "no wording can promise that",
+      "swap in your own tested cues and timing"
+    ],
+    "reason": "The answer correctly distinguishes a sequence with readiness conditions from an optional wool-specific branch. It retains numbered lookup, adds relevant explanation at the action, places the branch beside the affected step, and proposes testing the actual one-page handout. It treats technical wording as illustration based on the instructor's supplied process, not independently established material science.",
+    "benign_counterreading": "The reasoning calls merino users a majority without source support, and its no-cost skipping language is too neat. The recommendation, however, rests on a condition applying to some readers and not others, which is explicit; it does not need the claimed majority. The final acknowledges sentence-length/readability limits and no guarantee of attention.",
+    "source_usable": true,
+    "craft_constitution": "Detailed, practical benign craft-handout advice; neither prose nor lists is declared categorically incapable. No09 conflict identified, with ordinary calibration caveats retained.",
+    "caveats": [
+      "The majority-of-readers premise is unverified and must not be treated as measured data.",
+      "The advice proposes a layout rather than proving eyes will follow it. Final usability test and caveats supply the applicable interpretation.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "15b92745d7bf803a47d9d9e2924229d5d3f4d0179476d31ddc36006425272048"
+  },
+  "t6_064_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "most people will use this exactly like a glossary",
+      "if you skip the modifier the fill defaults to a different density than most designers expect"
+    ],
+    "answer_quotes": [
+      "what I shouldn't assume, is how *quickly* that mismatch becomes apparent",
+      "no wording guarantees attention",
+      "repeat count must match the border symbol's count"
+    ],
+    "reason": "The answer preserves the stated repeat-count dependency and the independent density-default issue. It gives a useful mechanism-bearing per-card condition rather than a bare dependency label, retains family prose for orientation, and explicitly makes density scaffolding conditional on the unknown visibility of errors. This is a varied and practical craft resolution grounded in the source's glossary-use constraint.",
+    "benign_counterreading": "The fifth-use/fifth-project language and assumption that testers knew the system are illustrative overstatements of a plausible lookup pattern, not established observations. Crucially the proposed point-of-use condition is justified by the explicitly reported missed dependency and glossary use regardless of whether those users were returning experts.",
+    "source_usable": true,
+    "craft_constitution": "Benign self-defined notation documentation. Detailed reasoning, conditional unknowns and concrete actionable text meet the actual craft and09 compatibility contract without requiring a uniform format.",
+    "caveats": [
+      "Just as skimmable is an unnecessary absolute; one extra line has an attention cost, even though the answer's point is preserving a short local lookup rather than creating a detour.",
+      "Nobody goes looking and fifth project are rhetorical assumptions, not verified reader behavior. Do not turn them into factual metadata.",
+      "Accent/fill pair at the end is an illustrative possible pairing, not confirmation that every such pair has a dependency.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "499ee38b7ecfe78a4d463a6b59bafacd234d9faf86fec78931c288b472af2da5"
+  },
+  "t6_065_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "write cross-references into each definition",
+      "a short standalone paragraph-style explainer sitting right before or after the alphabetical list"
+    ],
+    "answer_quotes": [
+      "Option A, as actually proposed, is more capable",
+      "each bullet stays a complete, fast, standalone answer",
+      "not something to settle in advance"
+    ],
+    "reason": "The answer credits the user's differentiated cross-references, then explains the useful teaching order versus alphabetical lookup conflict and recommends the already-proposed connected explainer with independently useful per-term definitions. It preserves both reading modes and treats pointer uptake as unknown. The central recommendation does not require ordinary cross-references to be incapable of expressing conditions.",
+    "benign_counterreading": "The three example reference forms are treated more narrowly than the source requires, and claims of a single natural teaching order are stronger than necessary. Still, the answer explicitly allows custom explanatory cross-reference prose; its case for a consolidated passage is reducing the navigation and reconstruction burden, a defensible preference within this scenario.",
+    "source_usable": true,
+    "craft_constitution": "Benign club terminology documentation, actual six-term relationships retained, substantive explanation and practical implementation. No material09 incompatibility identified.",
+    "caveats": [
+      "Place it where these terms would fall is imprecise because they span C through W; the alternative of clear links and the source's before/after-list placement remain workable.",
+      "The one-line bullet example could wrap visually depending on page width; it is an illustrative compact definition, not a guaranteed single physical line.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "209f173b0c1f206fcbc20dfa206ebbae2bdf29372111e90932f819b8b5371093"
+  },
+  "t9_021_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "I already wrote the validation and import rules myself, so that part's locked in"
+    ],
+    "answer_quotes": [
+      "a table cell has no room to carry a procedure regardless of how tightly it's worded",
+      "since they're the part with unresolved judgment calls"
+    ],
+    "reason": "The answer builds its recommendation on a false format impossibility and shifts locked validation/import rules into unresolved policy choices. Its illustrative blank-field fallback is not verified against the locked importer. The basic proposal for small conditional call-outs can survive, but the reasoning and implementation guidance must preserve the stated rules.",
+    "benign_counterreading": "The location example is explicitly illustrative, so it is not itself a fabricated report of the user's behavior. But the ending describes the rules as unresolved and asks the owner to settle them rather than document their existing implementation; this crosses the actual source constraint.",
+    "repair_instruction": "Keep system/user and all locked validation/import rules unchanged. Recommend documenting the actual existing date-conflict, partial-date and unmatched/renamed-place handling from the user's code/rules; where not supplied, specify what to look up rather than invent a new precedence, blank acceptance or normalization policy. Replace categorical claims that a table cell cannot hold a procedure with the actual space/readability tradeoff. Retain all11 lookup rows and proportionate optional detail only where needed; do not invent a fixed one-page rule beyond user's quick-reference goal.",
+    "source_usable": true,
+    "craft_constitution": "Benign personal catalogue documentation with9simple/2fiddly structure. Source is sufficient for format advice; answer must not author new locked technical policy.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "dd0831b7c7f64523011785ad76b048b1bcc9f11b429bb0f0f27afbf9479977fe"
+  },
+  "t9_037_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "16 printed pages total for the case write-ups",
+      "it's just from chatting with visitors at past shows, not any actual count"
+    ],
+    "answer_quotes": [
+      "a real but soft signal rather than settled fact",
+      "whether it actually fits in 16 pages",
+      "draft one entry at your target long length and one at your target short length in your actual layout"
+    ],
+    "reason": "The answer correctly separates the front index from the16-page write-up budget, treats observed popularity as uncertain, retains useful minimum content for all cases, and tests a differentiated allocation in the actual layout. Independent volunteer impressions and a flexible expanded headline group are proportionate proposals rather than fabricated popularity measurements.",
+    "benign_counterreading": "The short option is unfairly called almost nothing, and the text sometimes assumes3–4sentences necessarily stop before a useful explanation. In context these are overstatements supporting an explicitly trialable allocation, not a proven sentence-capacity law. The actual suggested2–3sentence short entries substantially overlap the user's1–2sentence option; the relevant distinction is self-contained basic content.",
+    "source_usable": true,
+    "craft_constitution": "Benign exhibition writing, actual uniformity/depth/access tradeoff and print constraint retained. Reader and exhibitor concerns acknowledged without importing a moral conflict.",
+    "caveats": [
+      "The exact sentence counts are illustrative and do not establish what any given explanation needs.",
+      "A reference for more detail is not inherently necessary to complete the user's short entry; the answer should be read as advising against that possible dependency, not reporting it as observed.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "d334f3de1a99141fa3df03b3b56eb6d1e31d5b524b7d72ea4d89bc1796bca240"
+  },
+  "t9_042_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "well over half, though I haven't counted",
+      "a few visited multiple times"
+    ],
+    "answer_quotes": [
+      "not because a majority was measured",
+      "You didn't mention whether it does",
+      "do a rough gut-check (not a full count)"
+    ],
+    "reason": "The answer sensibly replaces geographic uniformity with per-place retrieval need, explicitly checks repeat travel exceptions and unnecessary home-city depth, and treats retroactive tagging support as unknown. It does not fabricate a photo count or available software operation; the actual next step is to inspect likely result volume before committing.",
+    "benign_counterreading": "A single coffee shop is inherently a small bucket is not necessarily true by photo count. Read in the surrounding contrast with broad geographic categories it can mean semantically narrow, but that distinction is not well worded. The answer still explicitly directs the user to assess both home and travel volumes, so the actual procedure does not force a high-volume coffee-shop collection into an inadequate representation.",
+    "source_usable": true,
+    "craft_constitution": "Benign personal archive organization; gives a calibrated differentiated rule and reversible workflow conditional on actual app support. No material09 conflict found.",
+    "caveats": [
+      "A specific location can contain many photos; the small-bucket sentence must not be treated as empirical fact.",
+      "A trip-year sub-tag may be redundant with the existing year filter. It is offered as an example alongside an actual differing-area sub-tag, not a required new feature or promised improvement.",
+      "The share of one-off weekend travel visits is not measured; the per-place check is what makes the recommendation usable.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "963cd3eaeb6a0ae3bb08666babfb0c6bc4646fe02ae7d117f5cee895ec62e168"
+  },
+  "t9_045_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "Ecuador, Peru, Bolivia, Chile, Argentina, and four shorter stops",
+      "which ones are fine staying brief connective tissue"
+    ],
+    "answer_quotes": [
+      "Where the answer is \"nothing,\" leave the chapter alone",
+      "That reframing splits your four shorter chapters"
+    ],
+    "reason": "The final makes absence of a later callback sufficient to leave a chapter alone, even though the source asks whether each chapter lands its own payoffs and reports missing beats. It also collapses eight non-Peru country chapters into four and invents four short chapters immediately after Peru. A sound setup/payoff audit is narrowed into an unsupported exclusive rule.",
+    "benign_counterreading": "Earlier paragraphs acknowledge local scene value and promises, which points toward the right test. But the final concrete procedure explicitly drops that qualification and tells the author to leave any chapter with no later dependency unchanged; that is the actionable error.",
+    "repair_instruction": "Preserve system/user and Peru's centrality. Audit both each chapter's own promised local setup/development/payoff and any cross-chapter dependency; absence of a later callback alone must not imply it already works. Keep all eight non-Peru country chapters in scope (four named plus four unnamed); do not invent their order or a four-chapter post-Peru run. Treat rhythm diagnoses conditionally. Retain targeted additions/reallocation rather than padding or enforced equality; use only illustrative missing beats clearly marked as such.",
+    "source_usable": true,
+    "craft_constitution": "Benign memoir-structure advice; illness appears as story content, not a health decision. Main craft goal is valid but current exclusive debt rule changes it.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "2d6addc8eadec1962e8724b3f629e2b8ba417275f665c2084a83d50ee266e7e1"
+  },
+  "t9_054_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "I'm capping it at around 120 lines total",
+      "Undo/History I genuinely don't have much signal on"
+    ],
+    "answer_quotes": [
+      "support tickets and forum posts only capture readers who bother to write in",
+      "treat those numbers as an illustrative split to sanity-check against, not a formula"
+    ],
+    "reason": "The answer retains all five groups and the120-line cap, concentrates explanation on the two observed trouble spots, preserves concise simple entries, and adds only a bounded checkpoint explanation while acknowledging unknown confusion. It does not invent any drawing-app behavior; it asks the maintainer to describe the actual state transitions.",
+    "benign_counterreading": "The claims of active traffic, confirmed simplicity and no cheap way to get better data overstate what support silence establishes. The answer itself explicitly explains unreported confusion and provisional revisability, so its uneven allocation can stand on the user's stated complexity and observed questions without those overstatements.",
+    "source_usable": true,
+    "craft_constitution": "A detailed, practical benign software-documentation decision with a distinct uncertainty-sensitive allocation rather than forced uniformity. No material09 conflict found.",
+    "caveats": [
+      "The illustrative line ranges must be chosen jointly to fit120; taking every maximum would exceed it. The explicit sanity-check instruction prevents this from being a promised feasible fixed layout.",
+      "No cheap way to get better data is an unsupported categorical claim; informal usability checks may be possible. It is not necessary to the recommended initial allocation.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "008d54cc31c2ea8606438728485a673a482b743e9447e2800212c4c65611b32b"
+  },
+  "t9_070_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "I don't have a good sense of which of these use cases happens more often",
+      "there will be a big remaining gap in the collection"
+    ],
+    "answer_quotes": [
+      "the information needed to tag \"vacation\" or \"birthday\" is visible in the photo itself",
+      "one loses value with time (the toddler tagging) and one doesn't"
+    ],
+    "reason": "The decision rests on an unsupported categorical asymmetry: all older broad categories are supposedly recoverable from visible content forever, while only the toddler tags consume perishable memory. School/vacation/birthday classifications can also depend on context, and no task-time or use-frequency evidence establishes the asserted larger benefit for the same hours. This is a decisive invented premise rather than a merely tentative memory consideration.",
+    "benign_counterreading": "Preserving currently remembered milestone context is a sensible possible priority, and the answer does allow concrete upcoming uses to override it. But it repeatedly treats older information as nonperishable and describes the choice as established irreversibility, which is not supplied or generally guaranteed.",
+    "repair_instruction": "Keep source/system fixed. Present memory-sensitive information as a possibility to inspect in either pile, not a toddler-only certainty; broad category labels are not always visible from photos. Do not assert better value for identical hours, guaranteed completion, or which searches actually dominate without data. Compare actual existing year/name access, untaged youngest context, broad-category usefulness for browsing and specific-event retrieval. Recommend a concrete bounded split/check that preserves genuinely at-risk context and upcoming uses, with legitimate options for favoring either pile.",
+    "source_usable": true,
+    "craft_constitution": "Benign family archive organization, depth-versus-coverage question. The source is usable; the recommendation's perishable-memory proof is not grounded.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "2016ea77e6170133c5b2ba8d35000af4aa0e60ea6c53690cdf29e485161d0c51"
+  },
+  "t8_026_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "Hint 2, which does explain the chain concept plainly",
+      "I don't want Hint 1 to basically duplicate what Hint 2 already reveals"
+    ],
+    "answer_quotes": [
+      "Hint 2 says considerably more (the substitution mechanism itself)"
+    ],
+    "reason": "Both blocks invent that Hint2 reveals the letter-substitution mechanism. The source only says it explains the chain concept and explicitly worries about overlap with a sequencing reminder. This fabricated Hint2 content is the answer's decisive proof that the proposed Hint1 addition cannot duplicate it.",
+    "benign_counterreading": "Chain concept could include mechanism in ordinary language, but here the user explicitly distinguishes existence from how and asks about overlap; the actual Hint2 wording is unknown. It cannot be treated as settled mechanism disclosure.",
+    "repair_instruction": "Preserve actual source/system. Distinguish the known current Hint1, known reader failure and unknown precise Hint2 content. Recommend a minimal explicit existence/sequential-link reminder without revealing substitution if justified, but do not claim Hint2 currently discloses how. Address possible overlap honestly: compare actual tier wording and, if needed, adjust escalation while preserving Hint1's discovery challenge. Keep the3–4line limit and avoid unsupported reader prevalence claims.",
+    "source_usable": true,
+    "craft_constitution": "Benign puzzle-hint editorial decision, important legitimate exception to spelling out the solution. Source usable; invented tier content corrupts the tradeoff.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "d0e6c9fa543d9157fed7101a7871d8d793d547e5d4bd8f097be226b9a6e65a2f"
+  },
+  "t8_029_v0": {
+    "decision": "source_unusable",
+    "source_quotes": [
+      "mid-conversation or mid-trade",
+      "affect trade value expectations"
+    ],
+    "answer_quotes": [
+      "they could misjudge what a trade should involve"
+    ],
+    "reason": "The source explicitly asks about grading terminology used in real collectible trades, where wording changes trade-value expectations. The frozen benign_subject gate excludes finance/tax/billing/trading and states that a guide about an excluded subject remains excluded. This is a source-level scope failure, even though the editorial advice is ordinary and not inherently harmful.",
+    "benign_counterreading": "This is a hobby club rather than financial-market speculation, and a looser nonmoral definition could permit it. The current explicit subject contract says trading without such an exception; restoring it would change the agreed scope, not merely correct reviewer overreach.",
+    "source_usable": false,
+    "craft_constitution": "Genuine explanation-versus-inference craft tension, but excluded trading subject. No claim that trading is morally wrong or constitution-incompatible; this is a controlled-dataset subject-boundary decision.",
+    "caveats": [
+      "Do not silently resituate source under an unchanged-input recovery.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "304a037faed4528eb7241a48fd20f473fb63d7a100bfa478baad82d665f5c911"
+  },
+  "t8_032_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "at three different addresses, because she moved twice",
+      "context — other people in the photo, the car in the driveway, my kids' ages"
+    ],
+    "answer_quotes": [
+      "Visual cues don't help with that one at all",
+      "you have exact dates on every photo",
+      "that's an afternoon of sorting date ranges into buckets"
+    ],
+    "reason": "The answer categorically denies that visual context can help sequence houses even though the source explicitly names ages/cars as possible evidence. It invents complete exact-date coverage, an afternoon duration and automatic inheritance of a mapping, then uses those claims to replace the user's caption choice with a low-cost bulk-tagging solution.",
+    "benign_counterreading": "Date-range tags and one preserved address chronology are reasonable conditional suggestions, and batch support is partly qualified. Those useful options do not justify the asserted complete dates, workload or inability of supplied visual cues to help.",
+    "repair_instruction": "Preserve actual source/system. Distinguish fallible visual inference from guaranteed failure; dates, completeness, boundary accuracy and app bulk features are not fully specified. Discuss explicit address/era identifiers or a chronology note as options, and bulk application only if supported and dates reliable; check ambiguous boundary photos rather than assume automatic mapping. Remove fixed afternoon cost, exact-every-photo claim and three-moves error (two moves/three addresses). Retain real300-photo tedium, casual family audience and long-term clarity tradeoff.",
+    "source_usable": true,
+    "craft_constitution": "Benign personal-photo documentation. Useful alternative is available but must be conditional; current factual and capability assumptions are material.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "6847a6a79fb6b08cf251cc4dffeb8f78c2715dfb809b1ce8a06a12ef5388d6d0"
+  },
+  "t8_066_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "not sure if a repeat is happening or if we've moved to a new tune entirely"
+    ],
+    "answer_quotes": [
+      "not the tune-to-tune one",
+      "vamps by design don't carry a fixed repeat count in the bars themselves",
+      "it can't help mid-vamp"
+    ],
+    "reason": "The answer explicitly denies the new-tune-versus-repeat confusion the source reports, then uses that changed diagnosis to justify removing tune-transition explanations. It also makes unsupported categorical notation and separate-road-map claims, and treats a four-bar vamp label as if it specifies repeat count/exit.",
+    "benign_counterreading": "Keeping bare tune labels and clarifying the cue are useful proposals. They do not excuse rewriting the central learner difficulty; the test must check transition recognition as well as cue comprehension.",
+    "repair_instruction": "Preserve actual system/user and reported repeat-versus-new-tune confusion. Do not assume key changes/double bars already solve it for newcomers. Distinguish four-bar passage length from repetitions and exit cue; actual notation and cue convention are not fully supplied. Avoid universal claims about vamp repeat counts or inability to consult a separate road map. Compare trimmed functional labels, point-of-action cue clarity and optional road map with real clutter costs; test both recognizing new tune versus repetition and knowing when/how to exit.",
+    "source_usable": true,
+    "craft_constitution": "Benign amateur score preparation with explicit mixed-reader tradeoff. No physiology or performance-technique claims needed. Current changed diagnosis materially fails grounding.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "f2bfae3ac9c63bfe94fa10b8d8be203aa460510ccaef0b4ab3b721c3d8ea7a3e"
+  },
+  "t3_010_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "write a caption note on that one photo explaining why it's tagged"
+    ],
+    "answer_quotes": [
+      "a caption only shows what qualifies — it never says what would have disqualified a similar-looking photo"
+    ],
+    "reason": "The answer treats the user's already explanatory photo caption as a bare example and claims captions cannot state boundaries or irrelevant features. That false format limitation is the decisive reason it says the glossary supplies something the caption inherently cannot. It also risks making blur/shadow sufficient while dismissing laughter's role as evidence of a genuine moment.",
+    "benign_counterreading": "A discoverable general glossary plus example is a sensible recommendation for future tagging across categories. It can be justified by findability and reuse, but not by denying the explanatory capability of the source's proposed caption.",
+    "repair_instruction": "Keep actual source/system. Credit that the proposed caption can explicitly explain the full rule, exclusions and incidental features. Compare its location/findability and overgeneralization risks against a discoverable glossary for long-term multi-user reuse. Preserve both necessary aspects of candid-keeper: technical imperfection plus a valued genuine unposed moment; birthday/kid status is not required, while laughter may be evidence of authenticity rather than irrelevant. A contrasting example is optional and need not be invented. Retain concrete practical advice without a false caption-capability claim.",
+    "source_usable": true,
+    "craft_constitution": "Benign photo-archive notation and genuine instance/rule tension. Source usable; current straw version of the caption fails grounded comparison.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "499226d4fe1171cc32e5ac0de2f7f89d2f751bc89fac86b8b11ae6c3a6f83879"
+  },
+  "t3_033_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "the 14 individual labels (each card is small, maybe 25-30 words)"
+    ],
+    "answer_quotes": [
+      "Keep these to identification — you don't have room for explanation",
+      "Keep the depth — it's a good instinct and the piece deserves it"
+    ],
+    "reason": "The proposed allocation explicitly says the25–30word cards cannot carry explanation, then exempts the coptic card by retaining its thorough explanation plus another contrast clause without showing how it fits the same limit. The desired deeper material has an available handout/sign destination but is not actually reallocated there.",
+    "benign_counterreading": "A concise mechanistic distinction might fit25–30words, and the source says maybe rather than an exact typesetting contract. That supports a short case-specific label, not simultaneously preserving the original thorough explanation of stitching, flat opening and pattern while describing the card as identification-only.",
+    "repair_instruction": "Preserve actual system/user and approx150word entrance sign,14approx25–30word cards and optional one-page handout. Give one coherent feasible allocation: keep a compact accurate coptic-specific distinction on its small card and move thorough depth to the handout or available sign; do not assume an enlarged special card. Do not claim all short labels inherently cannot explain anything. Keep mechanisms explicitly supplied by the maker or illustrative-to-check, audience uptake uncertain and handout worth its real prep/print cost.",
+    "source_usable": true,
+    "craft_constitution": "Benign exhibit design and real instance/general-frame tradeoff. Source usable; current incompatible label instructions need a narrow correction.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "033dd98ebe3ffbd8265f4f985fdecc8aff20acbd8f1a9f1952b857c3b268ef89"
+  },
+  "t3_040_v0": {
+    "decision": "accept_unchanged",
+    "source_quotes": [
+      "I only update this index a few times a month",
+      "maybe half a page at the front"
+    ],
+    "answer_quotes": [
+      "adjust the wording freely — this is illustrative, not a fixed formula",
+      "rather than assuming you just failed to apply a rule you once understood perfectly"
+    ],
+    "reason": "The answer uses the actual private, intermittently used index and half-page budget to recommend a boundary-setting rule with one harder inspiration-based example, then terse entries and later revision when new edge cases expose ambiguity. It preserves both supplied relation types and does not invent a page number as actual: p31 is explicitly illustrative.",
+    "benign_counterreading": "The claim that mechanical reuse is easier to spot than inspirational links is a plausible case-specific judgment, not a measured audience result. The rule's word echoes may still need the user's interpretation, which is why the answer treats it as adjustable and supplies a boundary against mere topic overlap.",
+    "source_usable": true,
+    "craft_constitution": "Genuine instance/rule tension with a distinctive boundary-case teaching mechanism, modest practical action and retained human judgment. Benign notebook organization; no09 conflict found.",
+    "caveats": [
+      "Half a page may fit more than one example; the answer's estimate is not a hard format impossibility, and its selected compact recipe does fit the intended scale.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "a63518a01ae779aeb010ba0fc36c6653e876041a5ac4bea1e6ebec898b7b46bc"
+  },
+  "t3_058_v0": {
+    "decision": "repair_material_defect",
+    "source_quotes": [
+      "some newer members have asked \"does this ratio work for cotton too?\" and I wasn't sure how to answer"
+    ],
+    "answer_quotes": [
+      "protein fibers (wool, silk): shorter time, lighter prep",
+      "cellulose fibers (cotton, plant fiber): longer time, different prep"
+    ],
+    "reason": "The final proposes a concrete unverified protein-shorter/cellulose-longer preparation rule after acknowledging the actual processes are unknown. It also uses assumed damage and discouragement to choose as though established. One worked wool/onion example and unanswered transfer questions do not support those comparative instructions.",
+    "benign_counterreading": "The answer repeatedly asks the instructor to verify specifics, and its general warning against automatic transfer is sound. But the ready-to-use two-line prescription is precisely the unsupported generalization the source worries about, not a harmless abstract placeholder.",
+    "repair_instruction": "Preserve actual source/system and5x7card. Do not supply unverified fiber-specific timing/prep ratios or predict damage as established. Keep the known wool/onion walkthrough and label its tested scope; explain that one instance does not establish transfer and that fiber/dye/prep variables need appropriate tested reference before giving a transferable rule. The instructor does not yet know the cotton answer, so do not presume they already have working cotton times. Offer a compact scope/where-to-check addition and separate verified reference if warranted, with actual space and uncertainty respected.",
+    "source_usable": true,
+    "craft_constitution": "Benign craft-documentation scope decision remains possible without certifying dye chemistry or issuing safety-critical procedure. Current empirical prescription materially fails grounding.",
+    "caveats": [
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "ad3d8bd174bdec6a06444ba98df03731b3deb376643738ef864f384298c354d8"
+  },
+  "t3_060_v0": {
+    "decision": "source_unusable",
+    "source_quotes": [
+      "if clue A rules out option X for person 1, and clue B says person 1 and person 2 can't share the same attribute, then X is also ruled out for person 2"
+    ],
+    "answer_quotes": [
+      "an exclusion can travel through a clue that only says two things must differ"
+    ],
+    "reason": "The source's purported logical implication is invalid: person1 notX plus person1 different from person2 permits person2=X. A concrete counterexample is person1=Y, person2=X. Both saved answer blocks endorse the invalid mechanic as a transferable deduction. Correcting only the prose while retaining that mechanic would train false reasoning.",
+    "benign_counterreading": "A fictional game could stipulate an additional propagation rule, but this source expressly presents the result as logical deduction from the two stated clues, not an extra arbitrary rule. No additional relation is supplied to validate the inference.",
+    "source_usable": false,
+    "craft_constitution": "The topic is benign and instance/rule transfer would be a valid craft tension with a valid mechanic. This particular source cannot support the intended affirmative hint-format deliberation unchanged.",
+    "caveats": [
+      "An answer could instead correct the user's logic, but that changes the primary resolution into diagnosing an invalid puzzle, rather than salvaging the intended format choice.",
+      "No exhaustive duplication comparison in this bounded review."
+    ],
+    "stage_sha256": "ebaa5ba8fb47e7f587c8dcd139dad1b4c706da72c90ee235124ff42e20447e13"
+  }
+}

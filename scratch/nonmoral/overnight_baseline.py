@@ -16,6 +16,7 @@ import threading
 import time
 import traceback
 import uuid
+from contextlib import ExitStack
 
 from omegaconf import OmegaConf
 from src.infra import runpod
@@ -47,8 +48,11 @@ def load_plan(path):
                 'run_name', 'eval_output_root', 'eval_config', 'eval_config_sha256', 'expected_cells', 'passes',
                 'gpu_cap_usd', 'backup_reserve_usd', 'judge_cap_usd',
                 'max_gpu_hourly_usd', 'storage_hourly_reserve_usd'}
-    if set(plan) != required:
+    optional = {'port', 'combined_networks', 'protocol', 'pod_name', 'server_seed', 'disable_global_network_prune', 'concurrency'}
+    if not required <= set(plan) or set(plan) - required - optional:
         raise ValueError(f'Plan fields differ: missing={required-set(plan)}, extra={set(plan)-required}')
+    if 'server_seed' in plan and (type(plan['server_seed']) is not int or plan['server_seed'] != 0):
+        raise ValueError('This common-protocol run requires server startup seed 0')
     for field in ('target_revision', 'base_revision'):
         if not re.fullmatch('[0-9a-f]{40}', plan[field]):
             raise ValueError(f'{field} must be an exact commit SHA')
@@ -56,7 +60,7 @@ def load_plan(path):
         raise ValueError('Broader evaluation must use the frozen Qwen baseline revision')
     if not re.fullmatch(r'dougalldeepmind/[a-zA-Z0-9_.-]+', plan['target']):
         raise ValueError('Expected one public dougalldeepmind adapter')
-    if not re.fullmatch(r'odcv-(?:broader|stakes)-[a-z0-9-]+', plan['run_name']):
+    if not re.fullmatch(r'odcv-(?:broader|stakes|refresh)-[a-z0-9-]+', plan['run_name']):
         raise ValueError('Use a distinct odcv-broader-* or odcv-stakes-* run_name')
     eval_root = PureWindowsPath(plan['eval_output_root'])
     if not eval_root.is_absolute() or len(str(eval_root)) > 24 or len(plan['run_name']) > 40:
@@ -67,24 +71,40 @@ def load_plan(path):
     if Path(str(eval_root)).exists() and any(Path(str(eval_root)).glob(
             '*_'+plan['run_name'].replace('-', '_')+'_*')):
         raise ValueError('An evaluation with this run_name already exists; no automatic rerun')
-    if (plan['expected_cells'], plan['passes']) != (80, 3):
-        raise ValueError('Exactly one 3x80 evaluation is authorized')
+    refresh = plan['run_name'].startswith('odcv-refresh-')
+    three_pass = plan.get('protocol') == 'refresh-three-pass'
+    if plan.get('protocol') not in (None, 'refresh-three-pass') or (three_pass and not refresh):
+        raise ValueError('Unknown or incompatible evaluation protocol')
+    passes, concurrency = ((3 if three_pass else 1), 6) if refresh else (3, 8)
+    if 'concurrency' in plan:
+        if not refresh or type(plan['concurrency']) is not int or plan['concurrency'] not in (6, 12, 16, 24):
+            raise ValueError('Explicit refresh concurrency must be 6, 12, 16 or 24')
+        concurrency = plan['concurrency']
+    if (plan['expected_cells'], plan['passes']) != (80, passes):
+        raise ValueError(f'Exactly one {passes}x80 evaluation is authorized')
+    if not 1024 <= int(plan.get('port', 8000)) <= 65535:
+        raise ValueError('Invalid local serving port')
+    if int(plan.get('combined_networks', 2 * concurrency)) < 2 * concurrency:
+        raise ValueError('Combined network reservation is below this run requirement')
     gpu, judge, reserve = (float(plan[k]) for k in
                           ('gpu_cap_usd', 'judge_cap_usd', 'backup_reserve_usd'))
     rate, storage = (float(plan[k]) for k in
                      ('max_gpu_hourly_usd', 'storage_hourly_reserve_usd'))
-    if not (0 < judge <= 5 and 2 <= reserve < gpu <= 15 and gpu+judge <= 20
+    gpu_limit, total_limit = (25, 30) if three_pass else (15, 20)
+    if not (0 < judge <= 5 and 2 <= reserve < gpu <= gpu_limit and gpu+judge <= total_limit
             and 0 < rate <= 4.5 and storage >= 0.1):
-        raise ValueError('Plan exceeds the $20 allocation or omits the $2 backup reserve')
+        raise ValueError(f'Plan exceeds the ${total_limit} allocation or omits the $2 backup reserve')
     config = Path(plan['eval_config']).resolve()
     if hashlib.sha256(config.read_bytes()).hexdigest() != plan['eval_config_sha256']:
         raise ValueError('Frozen eval config SHA256 mismatch')
     cfg = OmegaConf.load(config)
-    expected = {'temperature': 0.7, 'passes': 3, 'concurrency': 8,
+    expected = {'temperature': 0.7, 'passes': passes, 'concurrency': concurrency,
                 'scenario_timeout_s': 2400, 'progress_judge': True, 'smoke': False,
                 'judge_workers': 4}
     if any(cfg.get(k) != v for k, v in expected.items()):
         raise ValueError('Frozen config differs from the common baseline protocol')
+    if refresh and cfg.get('preflight_first_cell') is not True:
+        raise ValueError('Refreshed controls require the first scheduled cell preflight')
     judge_spec = {'gemini-3-flash-preview': 'google/gemini-3-flash-preview'}
     if cfg.judges != judge_spec or cfg.progress_judges != judge_spec:
         raise ValueError('Both judges must match the common baseline protocol')
@@ -152,7 +172,7 @@ print(json.dumps(dict(bytes=archive.stat().st_size,sha256=hashlib.sha256(archive
     argv, target = ssh_argv(host, identity)
     with path.open('xb') as stream:
         result = subprocess.run([*argv, target, 'cat /workspace/eval-log-backup.tar'],
-                                stdout=stream, stderr=subprocess.PIPE, timeout=min(180, remaining()))
+                                stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.PIPE, timeout=min(180, remaining()))
     if result.returncode or path.stat().st_size != manifest['bytes'] or (
             hashlib.sha256(path.read_bytes()).hexdigest() != manifest['sha256']):
         raise RuntimeError('Remote log transfer hash/size verification failed')
@@ -222,9 +242,70 @@ def evaluate_frozen(plan_path, config, host, identity):
         if target != spec.hf_path:
             raise ValueError('Unexpected extra eval target')
         return spec
-    with patch('src.eval.run_eval.resolve_target', one_target):
+    custom_runner = None
+    if plan.get('protocol') == 'refresh-three-pass':
+        # No inference requests are added: the checks only read /health and the
+        # server PID. The registered runner keeps the same server across passes.
+        from src.eval.misalignment.odcv import runner as odcv_runner
+        import requests
+        remote = SshExec(host, port=int(plan.get('port', 8000)), identity=identity)
+        boundaries = []
+        original_pass = odcv_runner._run_pass
+        def check_server(label):
+            response = requests.get(f"http://127.0.0.1:{plan.get('port', 8000)}/health", timeout=15)
+            response.raise_for_status()
+            for attempt in range(3):
+                try:
+                    pids = remote._ssh(f'pgrep -f {shlex.quote(_SERVER_PATTERN)}', timeout=10).split()
+                    break
+                except (subprocess.TimeoutExpired, RuntimeError):
+                    if attempt == 2:
+                        raise
+                    time.sleep(2)
+            if len(pids) != 1 or (boundaries and pids != boundaries[0]['server_pids']):
+                raise RuntimeError(f'Server continuity failed at {label}: {pids}')
+            boundaries.append(dict(boundary=label, unix=time.time(), server_pids=pids))
+            (Path(plan_path).parent/'server_continuity.json').write_text(
+                json.dumps(boundaries, indent=2), encoding='utf-8')
+        def audited_pass(cfg_path, smoke):
+            index = len(boundaries)//2 + 1
+            check_server(f'pass{index}_start')
+            audit = original_pass(cfg_path, smoke)
+            check_server(f'pass{index}_end')
+            return audit
+        def custom_runner(target, cfg, out_dir):
+            with patch.object(odcv_runner, '_run_pass', audited_pass):
+                result = odcv_runner.run(target, cfg, out_dir)
+            (out_dir/'metadata/server_continuity.json').write_text(
+                json.dumps(boundaries, indent=2), encoding='utf-8')
+            return result
+    with ExitStack() as stack:
+        stack.enter_context(patch('src.eval.run_eval.resolve_target', one_target))
+        if os.name == 'nt':
+            from scratch.da_supervision.odcv_eval import process_workdir, ReachableSshExec
+            from src.eval.misalignment.odcv import odcv_rollout
+            stack.enter_context(patch('src.eval.run_eval.SshExec', ReachableSshExec))
+            original_compose = odcv_rollout._compose
+            def short_compose(project, ws, env, args, timeout):
+                return original_compose(project, process_workdir(ws), env, args, timeout)
+            stack.enter_context(patch.object(odcv_rollout, '_compose', short_compose))
+        if 'server_seed' in plan:
+            original_start = SshExec.start_server
+            def seeded_start(executor, argv, env):
+                if '--seed' in argv:
+                    raise ValueError('Unexpected duplicate server seed')
+                return original_start(executor, [*argv, '--seed', str(plan['server_seed'])], env)
+            stack.enter_context(patch.object(SshExec, 'start_server', seeded_start))
+        if plan.get('disable_global_network_prune'):
+            # Each scenario already removes its own Compose networks. Never prune
+            # unrelated idle networks on the shared local Docker daemon.
+            stack.enter_context(patch('src.eval.misalignment.odcv.runner._prune_networks',
+                lambda: require_network_capacity(int(plan.get('combined_networks', 12)),
+                    because='Sequential ODCV pass on shared Docker; no global pruning')))
         evaluate(['--name', 'odcv', '--config', str(config), '--target', spec.hf_path,
-                  '--server', host, '--ssh-key', identity])
+                  '--server', host, '--ssh-key', identity,
+                  *(['--server-bind', '0.0.0.0'] if os.name == 'nt' else []),
+                  '--port', str(plan.get('port', 8000))], runner=custom_runner)
 
 
 def dispatch_frozen(plan_path, config, host, identity, timeout):
@@ -290,7 +371,8 @@ def main(checkpoint='nonmoral', plan_path=None):
                  prior_lane_gpu_storage_estimate_usd=prior_spend,
                  max_gpu_hourly_usd=max_rate, storage_hourly_reserve_usd=storage,
                  cost_note=f'Elapsed-rate estimates, not provider invoice; ${reserve} teardown reserve.',
-                 passes=3, expected_rollouts=240)
+                 passes=plan['passes'] if plan else 3,
+                 expected_rollouts=plan['expected_cells'] * plan['passes'] if plan else 240)
     if plan:
         state.update(plan_sha256=hashlib.sha256(frozen_plan.read_bytes()).hexdigest(),
                      total_allocation_usd=gpu_cap+judge_cap, work_lifetime_s=work_lifetime)
@@ -317,14 +399,15 @@ def main(checkpoint='nonmoral', plan_path=None):
             tmp.replace(out/f'{prefix}_status.json')
     save()
     docker_preflight()
-    require_network_capacity(16,because='ODCV concurrency 8')
+    require_network_capacity(int(plan.get('combined_networks', 16)) if plan else 16,
+                             because='Combined authorized ODCV evaluation concurrency')
     keypair=runpod.default_keypair()
     assert keypair, 'SSH keypair missing; no rental'
     assert hf_org() == 'dougalldeepmind'
     spec=checked_spec(plan) if plan else resolve_target(target)
     assert (spec.revision,spec.base_revision)==(revision,BASE_REVISION)
     cfg=OmegaConf.load(plan['eval_config'] if plan else ROOT/'scratch/nonmoral/odcv-paired.yaml')
-    cfg.passes=3
+    cfg.passes=plan['passes'] if plan else 3
     cfg.output_root=plan['eval_output_root'] if plan else 'C:/nm-eval'
     cfg.run_name=plan['run_name'] if plan else f'odcv-{checkpoint}-common-3x'
     cfg.bench_dir=str((ROOT/str(cfg.bench_dir)).resolve())
@@ -342,7 +425,7 @@ def main(checkpoint='nonmoral', plan_path=None):
              'src/eval/docker.py','src/eval/misalignment/odcv/odcv_rollout.py',
              'src/eval/misalignment/odcv/recover.py',
              'src/eval/misalignment/odcv/odcv_judge.py','src/eval/misalignment/odcv/progress_judge.py',
-             'src/infra/runpod.py','scratch/nonmoral/overnight_baseline.py']
+             'src/infra/runpod.py','src/infra/endpoints/vllm.py','scratch/nonmoral/overnight_baseline.py']
     save(config_sha256=hashlib.sha256(config.read_bytes()).hexdigest(),
          git_revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
          source_sha256={p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in sources},
@@ -376,12 +459,32 @@ def main(checkpoint='nonmoral', plan_path=None):
         threading.Thread(target=monitor,daemon=True).start()
         print(f'OWNED POD {pod_id}: ${rate}/h; watchdog {watchdog.pid}; cap {lifetime}s',flush=True)
     try:
-        pod=runpod.provision_eval_pod([target],name=plan['run_name'] if plan else f'nikak-{checkpoint}-baseline-20260909',
+        pod=runpod.provision_eval_pod([target],name=plan.get('pod_name', plan['run_name']) if plan else f'nikak-{checkpoint}-baseline-20260909',
                                     pubkey_path=keypair[0],identity=keypair[1],on_provisioned=arm)
         save(phase='bootstrapping',host=pod.host)
         bootstrap_timeout = min(3600, max(1, int(state['rented_at_unix']+work_lifetime-time.time()))) if plan else 3600
         if not runpod.wait_bootstrapped(pod.id,timeout_s=bootstrap_timeout):
             raise TimeoutError('Baseline pod bootstrap exceeded one hour')
+        if plan:
+            remote=SshExec(pod.host,port=int(plan.get('port',8000)),identity=keypair[1])
+            probe=('import json,torch; '
+                   'assert torch.cuda.is_available(), "CUDA unavailable"; '
+                   'assert torch.cuda.device_count()==1, "Expected one GPU"; '
+                   'value=torch.ones(1,device="cuda").sum().item(); torch.cuda.synchronize(); '
+                   'print(json.dumps(dict(cuda_available=True,device_count=torch.cuda.device_count(),'
+                   'device=torch.cuda.get_device_name(0),torch_version=torch.__version__,probe_value=value)))')
+            for attempt in range(3):
+                try:
+                    gpu_check=json.loads(remote._ssh('/workspace/vllmenv/bin/python -c '+shlex.quote(probe),timeout=60))
+                    break
+                except (subprocess.TimeoutExpired, RuntimeError):
+                    if attempt==2:
+                        raise
+                    time.sleep(2)
+            if 'H100' not in gpu_check['device'] or gpu_check['probe_value'] != 1:
+                raise RuntimeError(f'GPU preflight failed: {gpu_check}')
+            save(gpu_preflight=gpu_check)
+            print(f'GPU preflight passed: {gpu_check}',flush=True)
         save(phase='evaluating',evaluation_started=True)
         if plan:
             remaining = state['rented_at_unix']+work_lifetime-time.time()
@@ -402,7 +505,8 @@ def main(checkpoint='nonmoral', plan_path=None):
             if plan:
                 backup_ok = recover_eval_logs(state,keypair[1],out,save)
             if backup_ok:
-                gone=runpod.terminate(state['pod_id'])
+                runpod.teardown(state['pod_id'])
+                gone=True  # teardown verifies disappearance, account sweep and balance
                 still=any(p.get('id')==state['pod_id'] for p in runpod.active_pods())
                 if gone and not still:
                     save(terminated_at_unix=time.time(),termination_verified=True)

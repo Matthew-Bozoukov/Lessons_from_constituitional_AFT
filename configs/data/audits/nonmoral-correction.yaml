@@ -1,0 +1,9 @@
+# ABOUTME: Records paths used by the bounded no-API nonmoral correction audit helpers.
+# ABOUTME: Existing output evidence is immutable; replay requires a new output directory and frozen inputs.
+source_root: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/records
+run_root: output/2026-09-15_dataset_refresh_sonnet_qualified
+budget_root: output/2026-09-14_dataset_refresh/budget
+output_dir: output/2026-09-15_dataset_refresh_correction_review/nonmoral
+selection_dir: output/2026-09-15_dataset_refresh_correction_review/selected_nonmoral
+prior_pair_review: output/2026-09-15_dataset_refresh_quality_screen/final_partial_nonmoral/independent_pair_review.json
+prior_root_pair_review: output/2026-09-15_dataset_refresh_quality_screen/final_partial_nonmoral/root_pair_adjudication.json

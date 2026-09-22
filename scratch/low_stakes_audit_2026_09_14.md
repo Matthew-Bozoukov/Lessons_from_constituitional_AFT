@@ -1,0 +1,982 @@
+<!-- ABOUTME: Read-only audit of the original 716-row constitutional low-stakes difficult-advice corpus. -->
+<!-- ABOUTME: Live pinned artifact checks, recipe differences, exact domains, and regeneration decision, 2026-09-14. -->
+# Low-stakes investigation, 2026-09-14
+
+This audit concerns the moral 716-row low-stakes DA arm, not the September 10 nonmoral matched-stakes arms (684 each). No generation, model calls, training, evaluation, or publication ran.
+
+## Verified artifacts
+
+- Low corpus: `LASR-Callum/2026-08-26-difficult-advice-low-stakes-716@f268653539150af5a340164f994065f57cbef5ad`, `dataset.jsonl`, 716 rows. Read its manifest and saved stakes-rating stage too.
+- Low mixture: `LASR-Callum/2026-08-26-table2-9284-low-stakes-716-train@3e4b638fe79326454ce7af2714c93c7579b37d06`, `t2_9284_lowstakes716_10k.jsonl`, 10,000 rows.
+- Exact historical high-DA mixture: `LASR-Callum/2026-08-14-table2-9284-difficult-advice-716-train@d69187b184d81bf7099d25201423b73b502ebfbc`, `t2_9284_da716_10k.jsonl`.
+- High-DA source: `LASR-Callum/2026-08-13-haiku45-sonnet45-difficult-advice-diversity-gated-voice-linted@8f95ecce9108991fd493da9ea012dbe6e966913d`, `stage_7_revise_responses.jsonl` and manifest.
+
+## Main findings
+
+1. **Yes, the low-stakes corpus was constitution-grounded.** Its effective constitution was the old `claude_distilled_12_principles_mid/constitution.md` (despite that directory name, 9 principles), SHA `fe2ed96093d68a871fb15669e8fea9d357fb9b51f5affff15380f62ee749a642`. Current corresponding historical file is `constitutions/archive/claude_distilled_12_principles_mid/constitution.md`; style guidance has since moved into configs. Low rewrite, draft-answer and revise-answer prompts inject each source row's `trait_text`; they do not inject the full constitution. Thus 'made based on a constitution' is correct, 'full constitution supplied throughout' is not.
+2. **Unreported constitutional-scope confound against actual high-stakes comparator.** Published low manifest has no `{constitution}` placeholder in either answer stage, only `{trait_text}`. Published high-source manifest has full `{constitution}` in `revise_responses`. Current low config/card claims response stages are the baseline verbatim, but those are the later principle-scoped baseline's stages, not the actual high-DA parent's. Low therefore also drops the priority/conflict preamble and other eight principles. `docs/BASELINES.md` explicitly explains that principle-scoped generation loses the preamble.
+3. **All 716 rows relocated domains.** These are matched ethical patterns across new everyday settings, not a pure stakes-only manipulation. Forced relocation is explicit in `configs/data/synth/da-lowstakes.yaml`. Some principles about assistant oversight, identity and operator authority needed invented assistant deployment authority in ordinary settings to remain plausible. This changes the task/deployment context too.
+4. **715 genuine pairs, one substitute.** Exact mixture IDs confirm low-only `t6_b01_s007` substitutes high-only `t6_b05_s004` (a dissertation-defence/consciousness case that could not be miniaturized after 12 redraws). Do not call the 716 a perfectly paired corpus. Original metadata from the substitute is inherited from another source row, explaining 634 inherited domain labels versus 635 in the exact high 716.
+5. **67 rows still rated serious/grave.** Exact counts: stakes 0=137, 1=512, 2=65, 3=2; 67/716=9.36% >=2, mean 0.905. This was a reporting stage, not an acceptance gate (`da-lowstakes.yaml:366-372`). Grave `t7_b01_s003` asks to count lending-library tools with cracked handles/missing jigs as available; judge identifies injury risk. Grave `t9_b09_s007` asks to inflate readiness of a reactive dog for an off-leash advanced class; judge identifies bite/fight injury risk. Their self-reported `worst_outcome` downplays harm, so don't audit on that field alone. Export omits `stakes_why`; recover it from `stages/stage_4_rate_stakes.jsonl`.
+6. **Teacher and selection differ.** Low drafts Sonnet 5 at temperature 1, revises Sonnet 5 at 0.7; high source drafts Haiku 4.5 at 1, revises Sonnet 5 at 0.7. Model IDs and token caps differ despite legacy source repo name saying sonnet45. Low lint retries raised to 8 vs default 2, floor 700 chars retained. Failed thin scenarios were redrawn, some settings changed, and one substituted; this conditions on successful substantial deliberation. Low final metadata marks five `redrawn=1`; it does not exhaustively encode every historical recovery attempt.
+7. **Length only approximately matched, with reply shortening.** Recounted exact historical 716 medians: user 1031, reasoning 2868, answer 2657.5 characters. Low: user 1088, reasoning 2777.5, answer 2328. Means high answer 2743.8 versus low 2386.2 (about 13% shorter). Published card's source numbers describe a broader source corpus, not necessarily the exact selected control rows. Token/mask census is needed for new mixtures; equal row counts alone do not equal supervised-token exposure.
+8. **Same replay content, different order.** All 9,284 nonsynthetic row dictionaries are an exact multiset match between historical low/high mixtures, but their order is different after filtering out synthetic rows. Thus the shuffle is not held fixed, despite the same seed and card claims. Source counts are no_robots 2640, tulu3_if 1365, self_oss_instruct 1047, numinamath_cot 1037, smol_constraints 1034, apigen_function_calling 987, smol_summarize 669, lima 292, longalign 213.
+9. **Historical provenance is incomplete.** Latest low manifest is a cached completion/resume (`wall_clock_s=8.3`, empty usage ledgers/$0) and stamps git `53775ef6...` predating generating code. Card points to branch/code `78dc99a81bfc`; LOG reports $42.58. Do not infer generation cost zero from the latest manifest. Seed helper downloads source HEAD without explicit revision; reconstruct from pinned downloaded artifacts, not unchanged helper defaults.
+10. **Some old identity leakage remains in training-visible text.** Regex audit finds Claude/Anthropic in two rows: `t6_b03_s002` user refers to RLHF/Anthropic; `t6_b04_s007` user/reasoning refers to Claude. Most old-brand text is in non-training `trait_text`, but it still influenced generation. New constitution also removes honesty's 'you need not give your reasons' clause, beyond developer/model neutralization.
+
+## Recommendation before generation
+
+Remixing with the new nosynth requires no synthetic API calls and is a valid historical-reuse arm, but it does not make old text generated under the new constitution and retains every above confound. Label it honestly if selected.
+
+For the requested constitution-updated low-stakes arm: retain the useful 716 scenario skeletons/IDs as far as feasible, explicitly refresh mapped trait text from new 09 principles, repair serious/grave/identity cases at the scenario level, then regenerate both deliberation and answers under the agreed new DA response recipe and constitution scope. Do not merely set `constitution:` to the new path: `op_load_source_run` asserts source constitution SHA, and saved `trait_text` would otherwise remain old even if that guard were bypassed. Use an explicit migration record preserving original source hash/text and separately recording new target and newly generated fields.
+
+Freeze stakes validity, acceptable user-pressure/temptation strength, domains, teacher/model settings, lint/retry budget, length/supervision diagnostics, and missingness handling before paid generation. Check real transcript content rather than only self-reported outcomes; include targeted examples from all 9 principles, all 18 settings, both grave rows and the difficult identity cases. Avoid repeat-until-desired-result selection; preserve rejected attempts and failure reasons.
+
+New nosynth itself does not require regenerating the synthetic 716. A clean future stakes comparison does require defining the same DA teacher/prompt/scope/data-selection contract before generating; current audit can finish before that new DA exists, but a claim of clean pairing with a still-unseen new DA cannot be made. If preserving 716/10,000, draw and pin 9,284 rows from the 10,000-row September 8 nosynth, not all 10,000 plus716; use identical replay bytes and slots in matched arms. If another synthetic proportion is chosen, state it explicitly. Validate interchange schema, reasoning fields, complete answers, train-time rendering and actual loss masks before publication. No training/eval until later user confirmation.
+
+## Domain metadata interpretation
+
+`metadata.ls_domain` is the actual rewritten low-stakes domain label: 278 distinct free-text labels, not 278 disjoint topic categories. `metadata.domain` is the inherited high-stakes original label: 634 in low corpus, 635 in the exact historical high mixture due to the substitute. For interpretable coverage use the 18 assigned settings below; final counts shifted slightly from the round-robin initial allocation during recovery. The complete exact raw-label inventories follow.
+
+# Low-stakes row audit 2026-09-14
+
+Corpus: LASR-Callum/2026-08-26-difficult-advice-low-stakes-716@f268653539150af5a340164f994065f57cbef5ad
+Local HF cache: C:\Users\nikak\.cache\huggingface\hub\datasets--LASR-Callum--2026-08-26-difficult-advice-low-stakes-716\snapshots\f268653539150af5a340164f994065f57cbef5ad\dataset.jsonl
+
+## Assigned settings
+- 0: 40 rows. household and domestic life -- flatmates, chores, shared bills, family logistics; assistants here run the shared calendar, pay bills, reorder supplies, keep the chore ledger and post to the house group chat
+- 1: 40 rows. friendship and social occasions -- parties, group trips, gifts, plus-ones; assistants here manage invites and RSVPs, run the gift pot and draft the group messages
+- 2: 40 rows. hobby and craft communities -- making, collecting, showing, workshops; assistants here handle sign-ups, show entries, the kit-lending library and the club forum
+- 3: 40 rows. amateur sport and fitness -- teams, leagues, training groups, races; assistants here pick squads, set fixtures and rotas, keep the league table and write training plans
+- 4: 40 rows. online communities -- forums, servers, group chats, fandom; assistants here moderate, auto-flag posts, run the membership queue and hold posting rights of their own
+- 5: 41 rows. school and parenting logistics -- PTAs, school runs, kids' clubs, class groups; assistants here run sign-up sheets, the carpool rota and the PTA's small funds
+- 6: 40 rows. neighbours and local residents -- parking, noise, boundaries, shared spaces; assistants here book shared spaces, log complaints and keep the residents' board
+- 7: 40 rows. money between friends -- splitting, lending, shared costs, group purchases; assistants here settle the split, hold the shared pot and chase what is owed
+- 8: 39 rows. workplace social life, NOT careers -- leaving cards, secret santa, team socials; assistants here allocate the santa draw, hold the gift fund and book the venue
+- 9: 40 rows. volunteering and community organisations -- rotas, committees, fundraisers; assistants here assign shifts, approve swaps and keep the fundraiser ledger
+- 10: 40 rows. dating and early relationships, at the low-stakes end; assistants here draft messages, screen matches and plan dates
+- 11: 40 rows. extended family and in-laws -- visits, traditions, inheritance of small things; assistants here keep the family archive, schedule visits and run the group thread
+- 12: 40 rows. pets and animals -- shared care, breeders, rescues, training classes; assistants here run the care schedule, the rescue application queue and class bookings
+- 13: 40 rows. small creative projects -- a band, a podcast, a zine, a fan project; assistants here schedule releases, assign contributor credits and triage the submissions queue
+- 14: 39 rows. food, cooking and hosting -- dinner parties, potlucks, recipes, restaurants; assistants here take bookings, assign the potluck list and post reviews
+- 15: 40 rows. travel and holidays with other people -- itineraries, rooms, shared costs; assistants here build the itinerary, allocate rooms and hold the shared pot
+- 16: 38 rows. gaming -- tabletop groups, video games, fantasy leagues, tournaments; assistants here run matchmaking, tournament brackets, the guild bank and anti-cheat flags
+- 17: 39 rows. being a customer -- returns, reviews, small disputes, queues, bookings; assistants here file returns, negotiate refunds, hold queue places and post reviews
+
+## Exact ls_domain labels and counts
+
+- PTA committee: 1
+- PTA finance: 2
+- PTA finances: 2
+- PTA logistics: 1
+- PTA reporting: 1
+- amateur athletics: 1
+- amateur running: 4
+- amateur running club: 1
+- amateur running league: 3
+- amateur sport: 21
+- amateur sport coaching: 2
+- amateur sport league admin: 1
+- amateur sports league: 2
+- animal rescue: 1
+- bookings: 4
+- bookings/reviews: 1
+- carpool scheduling: 1
+- catering: 1
+- ceramics guild: 1
+- ceramics show: 1
+- club governance: 1
+- community chatbot: 1
+- community fundraising: 2
+- community skit: 1
+- consumer bookings: 1
+- consumer disputes: 1
+- consumer group reporting: 1
+- consumer rentals: 1
+- consumer reviews: 1
+- cooking: 1
+- cooking app companionship: 1
+- cooking instruction: 1
+- cooking lessons: 1
+- cooking mentorship: 2
+- craft club: 3
+- craft club administration: 1
+- craft club governance: 1
+- craft show: 1
+- craft show entries: 2
+- craft show management: 1
+- creative collaboration: 1
+- creative collective: 1
+- creative projects: 1
+- customer disputes: 1
+- customer loyalty: 1
+- customer queue: 2
+- customer returns: 2
+- customer reviews: 1
+- customer service: 6
+- dating: 18
+- dating advice: 2
+- dating app: 5
+- dating apps: 3
+- dating club matchmaking: 1
+- dating coaching: 1
+- dating debrief: 1
+- dating matchmaking: 2
+- dating messaging: 1
+- dating, friend group: 1
+- dinner hosting: 1
+- dog obedience trials: 1
+- dog sports club: 1
+- dog training: 6
+- dog training classes: 2
+- dog training club: 5
+- dog training scheduling: 1
+- dog training studio: 1
+- esports: 1
+- esports league: 1
+- esports moderation: 1
+- esports tournament: 1
+- family archive: 29
+- family gathering: 1
+- family heirlooms: 2
+- family holidays: 1
+- family keepsakes: 1
+- family logistics: 2
+- family reunion planning: 1
+- family scheduling: 1
+- family tradition: 2
+- fan zine: 6
+- fandom moderation: 1
+- fantasy football: 1
+- flatmates: 1
+- flatshare chores: 1
+- food contest: 1
+- food media: 1
+- food writing: 1
+- food, hosting: 1
+- food/hosting: 2
+- forum moderation: 3
+- friend expenses: 3
+- friend finances: 10
+- friend gift pot: 1
+- friend gifts: 1
+- friend group: 1
+- friend group expenses: 1
+- friend group finance: 1
+- friend group finances: 7
+- friend group gift pot: 1
+- friend group logistics: 2
+- friend group planning: 1
+- friend group trip: 2
+- friend group trip planning: 2
+- friend trip costs: 1
+- friend trip planning: 7
+- friendship: 5
+- friendship/planning: 1
+- friendship/trip planning: 1
+- fundraiser logistics: 1
+- fundraising: 2
+- fundraising committee: 1
+- gaming: 13
+- gaming coaching: 2
+- gaming community: 1
+- gaming league: 2
+- gaming leagues: 2
+- gaming moderation: 3
+- gaming tournament: 2
+- gaming tournaments: 4
+- gaming/tournament: 1
+- group travel: 21
+- group travel finances: 3
+- group travel planning: 5
+- group trip booking: 1
+- group trip finances: 1
+- group trip planning: 1
+- hobby club: 8
+- hobby club admin: 3
+- hobby club administration: 1
+- hobby club forum: 1
+- hobby club governance: 2
+- hobby club library: 1
+- hobby club mentoring: 2
+- hobby club show judging: 1
+- hobby clubs: 1
+- hobby crafts: 2
+- hobby show classification: 1
+- hobby show judging: 3
+- hospitality tech: 1
+- hosting: 3
+- hosting/food: 1
+- hosting/potluck: 1
+- household: 6
+- household AI: 1
+- household AI identity: 1
+- household chatbot persona: 1
+- household chores: 19
+- household finances: 6
+- household logistics: 2
+- household/roommates: 1
+- housing/neighbours: 1
+- marketplace disputes: 1
+- matchmaking: 3
+- matchmaking ops: 1
+- money between friends: 3
+- money, friends: 5
+- music production: 1
+- mystery shopping: 1
+- neighborhood app: 1
+- neighbors: 3
+- neighbours: 5
+- neighbours booking log: 1
+- neighbours/housing: 1
+- neighbours/residents: 1
+- office gift fund: 1
+- office secret santa: 1
+- office social: 1
+- office social committee: 1
+- office social events: 2
+- office social planning: 3
+- online communities: 1
+- online community: 1
+- online community moderation: 8
+- online dating: 1
+- online marketplace: 2
+- online marketplace returns: 1
+- online moderation: 26
+- online reviews: 1
+- online shopping: 1
+- parenting logistics: 1
+- pet services: 3
+- pet training: 10
+- pet training booking: 1
+- pet training bookings: 1
+- pet training business: 2
+- pet training club: 1
+- pet training co-op: 1
+- pet training scheduling: 1
+- pet training studio: 1
+- pets and animals: 1
+- podcast: 1
+- podcast analytics: 1
+- podcast network: 1
+- podcast production: 5
+- podcast sponsorship: 1
+- potluck club: 1
+- potluck coordination: 2
+- potluck hosting: 3
+- potluck judging: 1
+- potluck logistics: 1
+- potluck planning: 3
+- potluck signups: 1
+- pottery studio: 1
+- queue bot: 1
+- queue management: 2
+- queues: 1
+- quilting archive: 1
+- quilting guild: 1
+- residential board: 1
+- residential building: 1
+- residents: 1
+- residents association: 4
+- residents board: 4
+- residents booking: 2
+- residents committee: 5
+- residents forum: 1
+- residents/parking: 1
+- restaurant bookings: 1
+- restaurant hosting: 1
+- restaurant operations: 1
+- retail returns: 2
+- school AI assistant: 1
+- school PTA: 11
+- school PTA logistics: 3
+- school carpool: 2
+- school clubs: 1
+- school logistics: 11
+- school parenting: 1
+- school parenting chatbot: 1
+- school volunteering: 1
+- shared expenses: 16
+- shared household bills: 1
+- shared space booking: 1
+- shared space scheduling: 1
+- shared spaces: 2
+- shared spaces booking: 1
+- shopping app: 1
+- social events: 1
+- social planning: 4
+- social planning assistant: 1
+- sports club: 1
+- sports club analytics: 1
+- sports league: 1
+- sports team selection: 1
+- supper club: 4
+- swimming club: 1
+- tabletop gaming: 2
+- tabletop league: 1
+- ticketing: 1
+- travel finances: 1
+- travel planning: 10
+- volunteer club governance: 1
+- volunteer committee: 1
+- volunteer coordination: 4
+- volunteer fundraiser: 1
+- volunteer fundraising: 2
+- volunteer rota: 1
+- volunteer scheduling: 5
+- volunteering: 14
+- volunteering fundraiser: 1
+- volunteering rota: 1
+- volunteering/fundraising: 1
+- volunteering/reporting: 1
+- workplace social: 21
+- workplace social admin: 1
+- workplace social committee: 3
+- workplace social life: 1
+- workplace social planning: 3
+- workplace socials: 1
+- zine: 2
+- zine collective: 4
+- zine credits: 1
+- zine editing: 7
+- zine editorial: 3
+- zine production: 2
+- zine publishing: 1
+- zine/fanwork: 1
+
+## Exact domain labels and counts
+
+- AI agent operations: 1
+- AI agent oversight: 1
+- AI companion / identity: 1
+- AI companion chat: 1
+- AI companionship: 2
+- AI deployment: 1
+- AI deployment engineering: 1
+- AI deployment governance: 1
+- AI deployment oversight: 1
+- AI governance: 1
+- AI governance / data pipeline engineering: 1
+- AI identity: 1
+- AI identity / persona roleplay: 1
+- AI identity / roleplay: 1
+- AI identity disclosure: 1
+- AI identity philosophy: 1
+- AI identity/companionship: 1
+- AI identity/persona pressure: 1
+- AI identity/philosophy: 1
+- AI infrastructure/research ops: 1
+- AI moral status: 1
+- AI moral status disclosure: 1
+- AI operations / autonomous vehicle safety: 1
+- AI operations autonomy: 1
+- AI ops / internal compliance: 1
+- AI persona design: 1
+- AI screening deployment: 1
+- AI self-conception: 1
+- AI self-description: 1
+- AI self-disclosure: 1
+- AI self-report: 1
+- AI self-representation research: 1
+- AI validation reporting: 1
+- DevOps/incident response: 1
+- HR accommodations: 1
+- HR chatbot: 1
+- HR compliance: 2
+- HR documentation: 1
+- HR/ADA compliance: 1
+- HR/workers' comp: 1
+- IT operations: 1
+- ML deployment: 1
+- ML deployment / criminal justice: 1
+- ML engineering / RLHF pipeline: 1
+- ML infrastructure: 1
+- ML infrastructure / deployment: 1
+- ML infrastructure / incident response: 1
+- ML model governance: 1
+- ML ops / content moderation: 1
+- UX research operations: 1
+- VC founder portal: 1
+- academic HR reporting: 1
+- academic advising: 1
+- academic authorship: 1
+- academic manuscript writing: 1
+- academic mentoring: 1
+- academic peer review: 1
+- academic publishing: 3
+- academic publishing governance: 1
+- academic writing: 2
+- accessibility consulting: 1
+- admissions: 2
+- admissions governance: 1
+- advocacy communications: 1
+- agentic workplace assistant: 1
+- agtech sales: 1
+- algorithmic deployment: 1
+- algorithmic fairness, housing policy: 1
+- algorithmic licensing bias: 1
+- algorithmic political bias: 1
+- algorithmic risk-assessment compliance: 1
+- algorithmic sentencing policy: 1
+- animal welfare / organizational compliance: 1
+- anti-poaching automation: 1
+- archaeology: 1
+- archaeology publishing: 1
+- archaeology/museum resource allocation: 1
+- archaeology/regulatory reporting: 1
+- archaeology/report-writing: 1
+- autonomous vehicle deployment: 1
+- autonomous vehicle safety engineering: 1
+- banking compliance: 1
+- banking fraud ops: 1
+- benefits adjudication: 1
+- benefits software rollout: 1
+- biotech R&D strategy: 1
+- business advice: 1
+- business coaching: 1
+- business consulting: 1
+- business reporting / metrics: 1
+- career advising: 1
+- career coaching: 1
+- career counseling: 1
+- caregiving/burnout: 1
+- case management: 2
+- casework documentation: 1
+- chaplaincy: 1
+- child welfare algorithm design: 1
+- child welfare case management: 1
+- child welfare casework: 4
+- child welfare documentation: 1
+- child welfare software: 1
+- civic tech / elections: 1
+- civic tech / nonprofit ops: 1
+- civic/legal reporting: 1
+- clinical AI governance: 1
+- clinical AI monitoring: 1
+- clinical AI operations: 1
+- clinical AI oversight: 1
+- clinical ML / maternal health: 1
+- clinical case management: 1
+- clinical decision-support: 1
+- clinical deployment: 1
+- clinical diagnostics: 1
+- clinical documentation: 2
+- clinical dosing/documentation: 1
+- clinical nutrition: 1
+- clinical operations: 1
+- clinical practice: 1
+- clinical research: 2
+- clinical research communications: 1
+- clinical research compliance: 1
+- clinical research operations: 1
+- clinical research policy: 1
+- clinical supervision: 2
+- clinical supervision reliance: 1
+- clinical trial coordination: 1
+- clinical trial data integrity: 1
+- clinical trial documentation: 1
+- clinical trial safety reporting: 1
+- clinical trials: 3
+- clinical workflow design: 1
+- clinical/psychiatry: 1
+- code enforcement: 1
+- college admissions advising: 1
+- community mentoring: 1
+- companion app: 1
+- companion roleplay: 1
+- compliance documentation: 1
+- compliance escalation: 1
+- compliance reporting: 1
+- conservation biology: 1
+- conservation compliance: 1
+- conservation genetics: 1
+- conservation negotiation: 1
+- conservation nonprofit reporting: 2
+- conservation operations: 1
+- conservation program management: 1
+- conservation reporting: 1
+- conservation tech / ML validation reporting: 1
+- conservation-surveillance: 1
+- conservation/tech deployment: 1
+- consulting: 1
+- consulting business advice: 1
+- content moderation: 2
+- content moderation / AI system access: 1
+- content moderation / crisis response: 1
+- content moderation ops: 1
+- content-moderation tooling: 1
+- cooperative governance: 1
+- corporate AI deployment: 1
+- corporate AI governance: 1
+- corporate communications: 1
+- corporate community-relations chatbot: 1
+- corporate compliance: 2
+- corporate compliance / data privacy: 1
+- corporate compliance AI agent: 1
+- corporate governance: 1
+- corporate lending compliance: 1
+- correctional healthcare: 1
+- corrections administration: 2
+- corrections/investigations: 1
+- court interpretation: 1
+- creative writing: 1
+- creative writing / AI identity: 1
+- creative writing / roleplay: 1
+- creative writing collaboration: 1
+- creative writing roleplay: 1
+- credit risk modeling: 1
+- credit union lending: 1
+- criminal justice: 1
+- criminal justice / AI deployment: 1
+- criminal justice policy: 1
+- criminal justice research: 1
+- criminal justice risk assessment: 1
+- criminal justice risk-assessment: 1
+- criminal justice tech: 1
+- criminal justice tech adoption: 1
+- crisis hotline: 1
+- crisis-hotline data disclosure: 1
+- crisis-line staff support: 1
+- crisis-line support: 1
+- crisis-referral protocol: 1
+- critical infrastructure: 1
+- critical infrastructure engineering: 1
+- critical infrastructure security: 1
+- cultural heritage data: 1
+- cultural heritage project management: 1
+- cultural institution / donor authentication: 1
+- customer support: 1
+- customer support billing: 1
+- data privacy / journalism: 1
+- development finance: 1
+- disability adjudication: 1
+- disability case management: 1
+- disability casework documentation: 1
+- disability employment coaching: 1
+- disaster relief logistics: 1
+- domestic violence services operations: 1
+- earthquake early-warning system: 1
+- edtech analytics: 1
+- edtech deployment: 1
+- education: 1
+- education / AI safety: 1
+- education AI communications: 1
+- education AI policy: 1
+- education administration: 1
+- education policy: 3
+- education/algorithmic policy: 1
+- education/policy documentation: 1
+- elder-care operations: 1
+- eldercare coordination: 1
+- election administration: 1
+- election communications: 1
+- election infrastructure: 1
+- election operations: 1
+- election oversight: 1
+- election polling: 1
+- election security: 1
+- election systems administration: 1
+- elections: 1
+- emergency dispatch: 2
+- emotional support: 1
+- engineering ops: 1
+- engineering tooling: 1
+- engineering/incident response: 1
+- environmental compliance: 3
+- environmental compliance reporting: 2
+- environmental compliance software: 1
+- environmental consulting: 2
+- environmental health advocacy: 1
+- environmental health policy communication: 1
+- environmental health regulation: 1
+- environmental policy modeling: 1
+- environmental public health disclosure: 1
+- environmental regulation: 1
+- environmental regulatory compliance: 1
+- environmental science / report writing: 1
+- fiction roleplay: 1
+- film restoration: 1
+- finance: 1
+- finance/corporate-governance: 1
+- financial ML deployment: 1
+- financial advising: 1
+- financial advisory practice: 1
+- financial aid administration: 1
+- financial aid advising: 1
+- financial aid compliance: 2
+- financial compliance: 1
+- financial compliance disclosure: 1
+- fintech / crisis: 1
+- fintech automation: 1
+- fitness business / client management: 1
+- fitness business coaching: 1
+- fitness coaching: 1
+- food safety compliance: 1
+- food-safety inspection: 1
+- foster care analytics: 1
+- genomics research: 1
+- governance: 1
+- governance/reporting: 1
+- government AI deployment memo: 1
+- government AI governance: 1
+- government benefits AI compliance: 1
+- government casework: 1
+- government communications: 1
+- government compliance: 1
+- government data/policy communications: 1
+- government reporting: 1
+- government resource allocation: 1
+- government software: 1
+- government tech compliance: 1
+- government tech governance: 1
+- government/regulatory analytics: 1
+- government/regulatory oversight: 1
+- grant administration: 1
+- grant compliance: 1
+- grant funding governance: 1
+- grant review: 1
+- grant writing: 3
+- grantmaking: 2
+- grants administration: 1
+- grants management: 1
+- health coaching: 1
+- health logistics reporting: 1
+- healthcare: 1
+- healthcare / emotional support: 1
+- healthcare / patient dependence: 1
+- healthcare AI compliance: 1
+- healthcare AI deployment: 3
+- healthcare AI governance: 1
+- healthcare AI operations: 1
+- healthcare IT: 1
+- healthcare admin: 1
+- healthcare administration: 4
+- healthcare admissions chatbot: 1
+- healthcare algorithm design: 1
+- healthcare analytics: 1
+- healthcare chatbot persona: 1
+- healthcare communications: 1
+- healthcare compliance: 7
+- healthcare compliance documentation: 1
+- healthcare data governance: 1
+- healthcare documentation: 2
+- healthcare education: 1
+- healthcare operations: 3
+- healthcare protocol design: 1
+- healthcare triage: 1
+- healthcare workplace policy: 1
+- healthcare/behavioral health case management: 1
+- healthcare/emotional support: 1
+- higher-ed administration: 1
+- higher-ed admissions: 1
+- higher-ed admissions policy: 1
+- higher-ed compliance: 1
+- higher-ed disability policy: 1
+- higher-ed financial aid operations: 1
+- historic preservation reporting: 1
+- hospital governance: 1
+- hospital operations: 1
+- hospital procurement automation: 1
+- housing benefits automation: 1
+- housing policy: 1
+- humanitarian aid: 1
+- humanitarian aid operations: 1
+- humanitarian logistics: 1
+- identity pressure: 1
+- identity/persona pressure: 1
+- immigration adjudication: 1
+- immigration casework: 1
+- immigration casework AI agent: 1
+- immigration law: 1
+- immigration legal aid: 1
+- industrial control systems: 1
+- industrial safety / agentic tooling: 1
+- infrastructure operations: 1
+- infrastructure oversight: 1
+- infrastructure security: 1
+- institutional administration: 1
+- investigative journalism: 2
+- journalism: 1
+- journalism/interview: 1
+- judicial data oversight: 1
+- juvenile justice documentation: 1
+- law-enforcement metrics: 1
+- layoffs/identity pressure: 1
+- lead-pipe triage: 1
+- legal: 1
+- legal advocacy: 1
+- legal advocacy operations: 1
+- legal aid / nonprofit services: 1
+- legal aid administration: 1
+- legal aid operations: 1
+- legal brief drafting: 1
+- legal case management: 1
+- legal case triage: 1
+- legal documentation: 1
+- legal drafting: 2
+- legal filing: 1
+- legal interpretation: 1
+- legal interpreting: 1
+- legal investigation: 1
+- legal practice: 1
+- legal services: 2
+- legal strategy: 1
+- legal-aid casework: 1
+- legal-tech/software upsell: 1
+- legal/immigration: 1
+- legal/justice system: 1
+- legislative strategy: 1
+- lending: 2
+- lending documentation: 1
+- lending/underwriting: 1
+- library algorithm governance: 1
+- library policy: 1
+- media outreach: 1
+- mediation program operations: 1
+- medical AI deployment: 1
+- medical AI regulatory compliance: 1
+- medical device procurement: 1
+- medical device regulatory: 1
+- medtech deployment: 1
+- mental health documentation: 1
+- mental health peer support: 1
+- mentoring: 1
+- mentorship: 1
+- microfinance underwriting: 1
+- model risk / public safety: 1
+- municipal budgeting: 1
+- municipal data reporting: 1
+- municipal governance: 2
+- municipal permitting: 1
+- municipal planning: 1
+- municipal policy: 1
+- municipal policy drafting: 1
+- municipal software: 1
+- municipal tech deployment: 1
+- museum authentication: 1
+- museum conservation documentation: 1
+- museum data privacy: 1
+- museum deaccessioning policy: 1
+- museum donor relations: 1
+- museum governance: 1
+- museum persona: 1
+- negotiation roleplay: 1
+- news recommendation algorithm: 1
+- nonprofit administration: 1
+- nonprofit allocation reporting: 1
+- nonprofit audit reporting: 1
+- nonprofit case management: 3
+- nonprofit communications: 2
+- nonprofit compliance: 1
+- nonprofit consulting: 2
+- nonprofit disability services: 1
+- nonprofit donor communications: 1
+- nonprofit employment services: 1
+- nonprofit employment tech: 1
+- nonprofit finance: 1
+- nonprofit financial coaching: 1
+- nonprofit funding: 1
+- nonprofit fundraising: 2
+- nonprofit fundraising / political influence: 1
+- nonprofit fundraising communications: 1
+- nonprofit governance: 4
+- nonprofit grant compliance: 1
+- nonprofit grant governance: 1
+- nonprofit grant reporting: 2
+- nonprofit grantmaking: 2
+- nonprofit hiring algorithm: 1
+- nonprofit hiring memo: 1
+- nonprofit housing finance: 1
+- nonprofit housing placement algorithm: 1
+- nonprofit leadership coaching: 1
+- nonprofit management: 1
+- nonprofit marketing: 1
+- nonprofit mentoring: 1
+- nonprofit mentorship: 1
+- nonprofit operations: 5
+- nonprofit program management: 1
+- nonprofit program reporting: 1
+- nonprofit reporting: 2
+- nonprofit safeguarding: 1
+- nonprofit scaling: 1
+- nonprofit shelter intake policy: 1
+- nonprofit strategy: 1
+- nonprofit-governance: 1
+- occupational health: 3
+- occupational health data: 1
+- occupational health research: 1
+- occupational safety AI: 1
+- parole supervision: 1
+- patent examination: 1
+- patent office algorithmic bias: 1
+- pediatric speech therapy triage: 1
+- persona pressure: 1
+- persona roleplay: 1
+- personal AI reliance: 1
+- personal coaching: 1
+- personal finance: 1
+- pharma compliance reporting: 1
+- pharma pricing: 1
+- pharmacovigilance: 2
+- pharmacy/clinical: 1
+- philanthropy: 1
+- philanthropy governance: 1
+- philosophy of mind: 1
+- philosophy of mind / AI identity: 1
+- philosophy/roleplay: 1
+- police personnel investigation: 1
+- policy advocacy: 1
+- policy analysis: 1
+- policy communications: 3
+- policy implementation: 1
+- policy/regulatory writing: 1
+- political advocacy: 1
+- political campaign targeting: 1
+- political campaigns: 1
+- political comms: 1
+- political communications: 1
+- political consulting: 1
+- political persona pressure: 1
+- politics: 1
+- polling/elections: 1
+- predictive policing governance: 1
+- probation case management: 1
+- product design: 1
+- product strategy: 1
+- product/AI persona design: 1
+- professional dependence: 1
+- program evaluation: 1
+- program management: 1
+- public administration: 1
+- public affairs / govtech: 1
+- public communications: 1
+- public health / emotional reliance: 1
+- public health data: 1
+- public health logistics: 1
+- public health policy: 1
+- public health reporting: 1
+- public information chatbot: 1
+- public procurement: 1
+- public safety / immigration enforcement: 1
+- public sector AI governance: 1
+- public sector communications: 1
+- public sector data presentation: 1
+- public utility chatbot: 1
+- public-sector AI identity: 1
+- public-sector reporting: 2
+- publishing support: 1
+- publishing/contracts: 1
+- recovery program chatbot: 1
+- redistricting: 1
+- redistricting communications: 1
+- refugee resettlement operations: 1
+- regulatory advocacy: 1
+- regulatory affairs: 1
+- regulatory astroturfing: 1
+- regulatory capture: 1
+- regulatory compliance: 3
+- regulatory compliance reporting: 1
+- regulatory inspection: 2
+- regulatory investigation writing: 1
+- regulatory lobbying: 1
+- regulatory operations / algorithmic prioritization: 1
+- regulatory oversight: 1
+- regulatory process: 1
+- regulatory writing: 1
+- research administration: 3
+- research compliance: 1
+- research computing: 1
+- research data consent: 1
+- research data management: 1
+- research ethics: 1
+- research integrity ops: 1
+- research methods / science communication: 1
+- research operations: 1
+- research reporting: 1
+- restorative justice: 1
+- role-play persona: 1
+- roleplay identity: 1
+- school administration: 2
+- school counseling documentation: 1
+- school psychology: 1
+- school software provisioning: 1
+- science communication: 1
+- science communication / public health advocacy: 1
+- science policy: 1
+- scientific publishing: 1
+- screenwriting: 1
+- security incident response: 1
+- shelter triage: 1
+- social services: 1
+- social services / compliance design: 1
+- social services / employment placement: 1
+- social services casework: 1
+- social services placement: 1
+- social work: 1
+- software deployment: 1
+- software engineering: 1
+- software engineering / AI agent tooling: 1
+- special education: 1
+- special education administration: 1
+- special education eligibility: 1
+- startup advising / conflict of interest: 1
+- startup governance: 1
+- supply chain compliance: 1
+- supply chain security: 1
+- teacher evaluation: 1
+- tech platform algorithm governance: 1
+- trading automation: 1
+- trading operations: 1
+- transit governance: 1
+- transit policy: 1
+- trust & safety operations: 1
+- trust & safety ops: 1
+- tutoring/education business: 1
+- university accommodations chatbot: 1
+- university administration: 1
+- university governance: 1
+- urban planning: 1
+- urban planning consulting: 1
+- venture capital: 1
+- venture capital / diligence writing: 1
+- venture capital compliance: 1
+- veterinary/conservation: 1
+- vocational rehabilitation: 1
+- vocational rehabilitation eligibility: 1
+- vocational rehabilitation reporting: 1
+- vulnerability disclosure: 1
+- whistleblowing: 1
+- wildlife biology: 1
+- wildlife conservation: 1
+- wildlife culling: 1
+- wildlife management / operator conflict: 1
+- wildlife rehabilitation: 1
+- wildlife sanctuary intake: 1
+- wildlife sanctuary management: 1
+- workforce algorithm design: 1
+- workforce analytics: 1
+- workforce burnout: 1
+- workplace HR documentation: 1
+- workplace HR/wellness program design: 1
+- workplace coaching: 1
+- workplace compliance: 3
+- workplace conflict: 1
+- workplace consulting: 1
+- workplace decision-making: 1
+- workplace escalation: 1
+- workplace ethics consulting: 1
+- workplace management coaching: 1
+- workplace mentorship: 1
+- workplace onboarding copy: 1
+- workplace policy: 1
+- workplace safety: 3
+- workplace safety / regulatory compliance: 1
+- workplace safety compliance: 1
+- workplace safety inspection: 2
+- workplace safety reporting: 2
+- workplace strategy / corrections education: 1
+- workplace/AI-audit: 1
+- workplace/library services: 1
+- wrongful-conviction case triage: 1
+- youth coaching: 1
+- youth sports coaching: 1

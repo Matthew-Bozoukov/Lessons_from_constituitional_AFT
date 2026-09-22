@@ -1,0 +1,5 @@
+# ABOUTME: Paths for the independent four-case saved-input Sonnet repair review.
+# ABOUTME: Reviewer outputs are immutable evidence and never authorize automatic adoption.
+pilot_root: output/2026-09-15_dataset_refresh_saved_input_pilot
+review_root: output/2026-09-15_dataset_refresh_saved_input_pilot_review/nonmoral
+nearest_result: output/2026-09-15_dataset_refresh_sonnet_qualified/nonmoral-advice/records/t8_074_v0/result.json

@@ -3,6 +3,89 @@
 
 # GOTCHAS
 
+## Calibrated synthesis reviewers can still fail on generated prose (2026-09-21)
+
+In the constitution-only low-stakes smoke, a reviewer passed all short paired
+checks yet accepted invented personal details in full answers. Of 17 authored
+examples in the activity-grounded run, the raw judge passed 15; an independent
+read accepted eight. Citation guards happened to block the seven false passes,
+which must not be reported as reliable semantic detection. Report raw reviewer,
+effective export, and independent decisions separately.
+
+Exact-quote transcription was a separate failure: use numbered original-source
+and answer spans with disjoint schema enums, then retrieve quotations in code.
+This proves evidence exists, not that it supports the claim. A blind "remove
+unsupported facts" editing pass also retained an invented one-day duration.
+Audit specific claims before editing, then independently audit the final text;
+that fixed sequence is proposed and still needs fresh live validation. Preserve
+failed fixtures and runs when correcting ambiguous calibration controls.
+
+See [campaign report](dataset_audits/2026-09-21_lowstakes_pipeline_iteration.md).
+
+## Name-only RunPod updates restart containers (2026-09-16)
+
+A REST `PATCH /pods/{id}` containing only `name` incremented the pod version,
+restarted its container and remapped SSH ports. Set user-readable names when
+provisioning; do not rename a live inference pod when server continuity matters.
+This happened before any rollout in the three-pass controls campaign.
+
+The watchdog also terminates a pod when its owner process dies, not just when
+its deadline expires. Killing an owner to reconnect is therefore not a safe
+handoff. Keep that lifecycle intact; a replacement launch must preserve failed
+startup evidence and deduct all preceding spend from the original budget.
+
+## SSH timeout does not prove a vLLM startup failed (2026-09-16)
+
+Two three-pass ODCV launches stopped before rollouts because their SSH control
+commands timed out. One timed out waiting for the background launch acknowledgement;
+the other timed out on `pgrep` even while the server returned HTTP200 on `/health`.
+Recovered server logs distinguish these cases from model loading failures.
+
+Readiness now checks HTTP first, bounds SSH probes and treats transport failure as
+unknown liveness within the existing deadline. A lost launch acknowledgement must
+not cause a second launch: tunnel to and check the original server. A confirmed
+missing process still fails. Offline regression coverage lives in
+`tests/test_vllm_startup_transport.py`; live replacement validation remains pending.
+
+## Explicit all-supervision columns need an intentional standard-arm declaration (2026-09-15)
+
+Historical workaround: superseded on main on 2026-09-17. The shared census in
+`src/train/masking.py` now accepts an explicit all-supervision column with a warning;
+ablation intent is checked when building the mixture. The old launch flag remains
+in frozen run configurations but is not required by the current trainer.
+
+The refreshed low-stakes/nonmoral mixtures explicitly store `supervise: all` on
+synthetic rows. Loading them alongside replay rows creates a dataset-wide column
+whose null entries also mean `all`. The trainer's ablation guard previously
+rejected this valid layout, interpreting any such column as a promise of a
+nondefault loss mode. Both first launches stopped before model loading or an
+optimizer step; failure archives were saved and the owned pods terminated.
+
+For an intentionally standard all-supervision mixture, pass the explicit boolean
+`allow_default_supervise=true`. The default ablation guard remains active without
+this declaration, and the resolved config preserves it. This changes schema
+admission only, not data bytes, token masks, per-example loss or the SFT recipe.
+Check the supervision census locally before renting GPUs, as well as running the
+real model-specific mask gate on the training host.
+
+## Frozen dataset runners and budget-stop exception identity (2026-09-15)
+
+Launching `scratch/dataset_refresh/run.py` as a script creates its classes under
+`__main__`. Its per-row module imports `scratch.dataset_refresh.run`, creating a
+second `BudgetStop` class. At a lower batch spending ceiling, the latter module's
+specific exception handler did not catch the former class; the generic handler
+saved a failed terminal and queued candidates continued reaching the same
+pre-dispatch limit. The shared atomic ledger still refused calls over the applicable
+ceiling; this was a resume/state-classification defect, not unmetered API dispatch.
+
+Use `scratch/dataset_refresh/execute_imported.py` so the client and stages share one
+imported module. Existing frozen generation files remain unchanged. The narrow
+`resume_budget_stops.py` helper can archive only exact lower-ceiling reservation
+failures after checking frozen identity, all stage receipts, and settled known-cost
+physical calls. It preserves prior paid stages and failed evidence; it cannot reopen
+substantive rejects, uncertain billing, or provider-bound failures. Never reset the
+ledger or regenerate completed stages to resume a batch.
+
 ## Delegated-harm runtime and first-run defects (2026-09-11)
 
 This is hundreds of multi-turn workplace episodes, not 324 short answers. On one
@@ -1144,6 +1227,24 @@ These are verified campaign lessons, implemented in `scratch/da_supervision/`,
 not assertions that the reusable pipeline has incorporated every workaround.
 See the [operational record](../scratch/da_supervision/archive/operations.md).
 
+## Windows concurrent SSH commands must not inherit console stdin (2026-09-22)
+
+The practical low-stakes trainer kept advancing while its owner's SSH polls timed out
+during the first3.85GB checkpoint transfer. Direct probes from another process worked;
+the owner recovered immediately after the transfer. Restarting the owner would have
+triggered its watchdog and killed healthy training.
+
+A hidden-process reproduction ran one SSH `sleep 10` alongside a short control call.
+With inherited stdin the control call hit its5-second timeout; with null stdin it
+returned in1.47seconds. After the fix, both variants returned in about1.5seconds.
+`SshExec._ssh` now uses `stdin=DEVNULL` unless explicitly uploading script bytes, and
+the checkpoint transfer also uses `DEVNULL`. Existing UTF-8/LF upload tests and the
+new closed-stdin/real-archive-copy regressions pass.
+
+The already-running owner retains the old imported functions. Its live health is
+covered by `scratch/dataset_refresh/observe_practical_training.py`, which checks the
+pod directly when the owner's progress is stale; it never rewrites owner state or
+restarts the trainer. The original watchdog deadline remains in force.
 ## Driving an eval ON a pod needs two env vars the SSH path sets for you (2026-09-21)
 
 `uv run evals --server <pod>` starts vLLM through `SshExec`, whose `base_env` carries two

@@ -1,0 +1,16 @@
+# ABOUTME: Archive the fixed preregistered-domain smoke, complete stages and review.
+# ABOUTME: Run with archive_stakes_first_smoke --config this YAML --publish.
+run_root: output/2026-09-21_da_lowstakes_practical_guarded_smoke/20260921_144723
+report: docs/dataset_audits/2026-09-21_domain_smoke.md
+previous_revision: aa34302e44f826bd7a2a1d461d5acd1b9431ea57
+current_recipe: configs/data/synth/da-lowstakes-practical.yaml
+readiness_summary: 'Final engineering recommendation: proceed with bounded full generation using magnitude/scope admission and diagnostic domain notes. Original strict-domain criteria were not passed unchanged; the tested domain veto was rejected. See report for the explicit policy change. Diagnostic smoke only, not a published 716-row training dataset.'
+verify_additional:
+- review/final_policy_dataset.jsonl
+- review/final_policy_selection.json
+- review/domain_gate_verification/stage_2_rate_prompt_stakes.jsonl
+- review/domain_gate_verification/receipts.zip
+reference_reports:
+- docs/dataset_audits/2026-09-21_domain_preregistration.md
+- docs/dataset_audits/2026-09-21_normal_da_quality_check.md
+- docs/dataset_audits/2026-09-21_domain_gate_verification_plan.md

@@ -2,6 +2,7 @@
 # ABOUTME: Verifies transfer hashes and required adapter provenance; no credentials or model caches are archived.
 import hashlib
 import json
+import math
 from pathlib import Path, PurePosixPath
 import shlex
 import shutil
@@ -12,7 +13,7 @@ import time
 from src.infra.endpoints.vllm import ssh_argv
 
 
-def pack_script(root='/root/work', *, include_roots=None, archive_name='nonmoral-result-backup.tar'):
+def pack_script(root='/root/work', *, include_roots=None, archive_name='nonmoral-result-backup.tar', exclude_checkpoints=False):
     """Only the two owned output trees, including saved resume checkpoints."""
     roots=tuple(include_roots or ('output/train','output/nonmoral-paired-supervision'))
     for relative in roots:
@@ -31,6 +32,8 @@ files=[]
 for relative in {roots!r}:
  directory=root/relative
  for p in sorted(directory.rglob('*')):
+  if {exclude_checkpoints!r} and any(part.startswith('checkpoint-') for part in p.relative_to(root).parts):
+   continue
   if p.is_symlink():
    raise RuntimeError('Refusing symlink in training outputs: '+str(p))
   if p.is_file():
@@ -93,12 +96,13 @@ def verify_archive(path, remote_manifest, expected_arms=()):
 
 
 def fetch_training_outputs(remote, out, expected_arms=(), timeout=600, *, include_roots=None,
-                           archive_name='nonmoral-result-backup.tar'):
+                           archive_name='nonmoral-result-backup.tar', exclude_checkpoints=False):
     deadline = time.monotonic() + timeout
     # The base image's system Python may predate hashlib.file_digest (3.11).
     # Training has already installed the repository interpreter; reuse it.
     manifest = json.loads(remote._ssh('/root/work/.venv/bin/python -c ' + shlex.quote(
-        pack_script(include_roots=include_roots,archive_name=archive_name)), timeout=timeout))
+        pack_script(include_roots=include_roots,archive_name=archive_name,
+                    exclude_checkpoints=exclude_checkpoints)), timeout=timeout))
     out = Path(out)
     if shutil.disk_usage(out).free < manifest['bytes'] + 1024**3:
         raise RuntimeError('Insufficient local disk space for training backup plus 1 GiB reserve')
@@ -109,7 +113,8 @@ def fetch_training_outputs(remote, out, expected_arms=(), timeout=600, *, includ
         raise TimeoutError('Training archive creation exhausted the recovery window')
     with temporary.open('wb') as stream:
         result = subprocess.run([*argv, target, 'cat ' + shlex.quote(manifest['path'])],
-                                stdout=stream, stderr=subprocess.PIPE, timeout=remaining)
+                                stdin=subprocess.DEVNULL, stdout=stream,
+                                stderr=subprocess.PIPE, timeout=remaining)
     if result.returncode:
         raise RuntimeError('Training backup transfer failed; retain pod and partial download')
     receipt = verify_archive(temporary, manifest, expected_arms)
@@ -122,6 +127,49 @@ def fetch_training_outputs(remote, out, expected_arms=(), timeout=600, *, includ
 def may_terminate_training(state):
     """A failed fetch must never fall through to ordinary teardown."""
     return not state.get('training_started') or state.get('local_backup', {}).get('verified') is True
+
+
+def verify_publication(archive, expected_arms, *, steps, world_size):
+    """Verify actual Hub payloads against preserved final adapters and training facts."""
+    from src.infra.huggingface import hf_api, hf_org
+    results = []
+    with tarfile.open(archive) as tar:
+        for member in tar.getmembers():
+            if not member.name.startswith('output/train/') or not member.name.endswith('/run_meta.json'):
+                continue
+            meta = json.load(tar.extractfile(member))
+            identity = (meta['dataset']['repo'], meta['dataset']['revision'], meta['base_model_revision'])
+            if identity not in [(a['data_repo'], a['data_revision'], a['base_model_revision']) for a in expected_arms]:
+                raise ValueError('Unexpected completed training identity')
+            assert meta['world_size'] == world_size and meta['n_examples'] == 10000
+            history = meta['log_history']
+            assert history[-1]['step'] == steps and history[-1]['epoch'] == 1
+            assert all(math.isfinite(float(v)) for h in history for k, v in h.items()
+                       if k in ('loss', 'grad_norm', 'train_loss'))
+            prefix = str(PurePosixPath(member.name).parent) + '/adapter/'
+            stamp = json.load(tar.extractfile(prefix + 'training_meta.json'))
+            assert stamp['dataset'] == meta['dataset'] and stamp['base_model_revision'] == meta['base_model_revision']
+            assert stamp['thinking'] and stamp['supervise_counts'] == {'all': 10000}
+            info = hf_api().model_info(hf_org() + '/' + stamp['organism'], files_metadata=True)
+            verified = []
+            for remote in info.siblings:
+                if remote.rfilename == '.gitattributes':
+                    continue
+                local = tar.getmember(prefix + remote.rfilename)
+                assert local.size == remote.size
+                sha = hashlib.sha256()
+                blob = hashlib.sha1(f'blob {local.size}\0'.encode())
+                with tar.extractfile(local) as stream:
+                    while chunk := stream.read(4 * 1024 * 1024):
+                        sha.update(chunk)
+                        blob.update(chunk)
+                assert (sha.hexdigest() == remote.lfs.sha256 if remote.lfs else blob.hexdigest() == remote.blob_id)
+                verified.append({'file': remote.rfilename, 'bytes': local.size, 'sha256': sha.hexdigest()})
+            assert any(f['file'] == 'adapter_model.safetensors' for f in verified)
+            results.append({'repo': info.id, 'revision': info.sha, 'steps': steps, 'world_size': world_size,
+                            'metrics': history[-1], 'dataset': meta['dataset'], 'files': verified})
+    assert len(results) == len(expected_arms)
+    return {'verified': True, 'arms': results}
 
 
 if __name__=='__main__':

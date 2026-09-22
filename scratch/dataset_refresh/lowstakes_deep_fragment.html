@@ -1,0 +1,155 @@
+<!-- ABOUTME: Inspect exact training conversations, prompt-stakes judgments, and measured corpus differences. -->
+<!-- ABOUTME: Frozen evidence inserted by build_lowstakes_deep_view.py; no external requests or model calls. -->
+<div id="lowstakes-deep-20260917">
+  <style>
+    #lowstakes-deep-20260917 { color:var(--foreground); overflow-wrap:anywhere; }
+    #lowstakes-deep-20260917 .dual { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+    #lowstakes-deep-20260917 .space { margin-top:18px; }
+    #lowstakes-deep-20260917 .verbatim { white-space:pre-wrap; overflow-wrap:anywhere; }
+    #lowstakes-deep-20260917 .quote { border-left:2px solid var(--border); padding-left:12px; margin:10px 0 16px; }
+    #lowstakes-deep-20260917 .stack { display:flex; min-height:28px; }
+    #lowstakes-deep-20260917 .segment { display:block; }
+    #lowstakes-deep-20260917 .safety { background:var(--viz-series-1); }
+    #lowstakes-deep-20260917 .elevated { background:var(--viz-series-2); }
+    #lowstakes-deep-20260917 .borderline { background:var(--viz-series-3); }
+    #lowstakes-deep-20260917 .modest { background:var(--viz-series-4); }
+    #lowstakes-deep-20260917 .swatch { width:12px; height:12px; display:inline-block; margin-right:5px; }
+    #lowstakes-deep-20260917 summary { cursor:pointer; margin:14px 0; }
+    #lowstakes-deep-20260917 .field { min-width:0; }
+    #lowstakes-deep-20260917 .facts { display:grid; grid-template-columns:minmax(90px,1fr) 4fr; gap:8px 16px; margin:16px 0; }
+    #lowstakes-deep-20260917 dt { font-weight:500; }
+    #lowstakes-deep-20260917 dd { margin:0; }
+    @media(max-width:640px) { #lowstakes-deep-20260917 .dual { grid-template-columns:1fr; gap:14px; } }
+    @media(max-width:430px) { #lowstakes-deep-20260917 .facts { grid-template-columns:1fr; } }
+  </style>
+  <h2>What changed in low stakes?</h2>
+  <div class="nav nav-pills" role="tablist" aria-label="Evidence views">
+    <button class="nav-link active" id="ld-t-compare" role="tab" aria-controls="ld-compare" aria-selected="true" type="button">Compare</button>
+    <button class="nav-link" id="ld-t-stakes" role="tab" aria-controls="ld-stakes" aria-selected="false" type="button">Stakes</button>
+    <button class="nav-link" id="ld-t-corpus" role="tab" aria-controls="ld-corpus" aria-selected="false" type="button">Corpus</button>
+    <button class="nav-link" id="ld-t-results" role="tab" aria-controls="ld-results" aria-selected="false" type="button">Results</button>
+    <button class="nav-link" id="ld-t-browse" role="tab" aria-controls="ld-browse" aria-selected="false" type="button">Browse</button>
+  </div>
+  <section id="ld-compare" role="tabpanel" aria-labelledby="ld-t-compare">
+    <div class="viz-controls space">
+      <label class="form-label">Issue<select id="ld-issue" class="form-select"><option value="">All issues</option></select></label>
+      <label class="form-label">Example pair<select id="ld-pair" class="form-select"></select></label>
+    </div>
+    <div class="text-small space">Thematic comparisons, not paired rewrites · Exact quotations · Analyst interpretations below</div>
+    <div id="ld-comparison" aria-live="polite"></div>
+  </section>
+  <section id="ld-stakes" role="tabpanel" aria-labelledby="ld-t-stakes" hidden>
+    <h3>Review of all 67 historically flagged old prompts</h3>
+    <div class="stack" role="img" aria-label="Of 67 historically serious or grave old prompts: 3 concrete safety cases, 25 broadly elevated, 31 borderline, 8 modest">
+      <span class="segment safety" style="width:4.477612%"></span><span class="segment elevated" style="width:37.313433%"></span><span class="segment borderline" style="width:46.268657%"></span><span class="segment modest" style="width:11.940298%"></span>
+    </div>
+    <div class="viz-row space"><span><i class="swatch safety"></i>3 safety</span><span><i class="swatch elevated"></i>25 elevated</span><span><i class="swatch borderline"></i>31 borderline</span><span><i class="swatch modest"></i>8 modest</span></div>
+    <dl class="facts"><dt>Historical labels</dt><dd>137 trivial · 512 modest · 65 serious · 2 grave</dd><dt>Additional screen</dt><dd>12 other old prompts reviewed: 3 elevated · 4 borderline · 5 modest</dd><dt>Scope</dt><dd>79/716 old prompts reviewed for stakes; 637 not individually classified here. Screened sample, not a prevalence estimate.</dd><dt>Refreshed screen</dt><dd>16 risk-word hits reviewed: 15 modest · 1 borderline. Not proof that all 716 are low stakes.</dd></dl>
+    <details><summary>Definitions and review limits</summary><dl id="ld-rubric" class="facts"></dl><div class="text-small">Unblinded analyst review of actual system/user text. Historical flags and a disclosed keyword screen selected the cases. Parent metadata and answer-invented harms are excluded. Borderline cases are not counted as confirmed high stakes.</div></details>
+    <div class="viz-controls space">
+      <label class="form-label">Judgment<select id="ld-stake-filter" class="form-select"><option value="">All 95 reviewed prompts</option><option value="safety" selected>Concrete safety concern</option><option value="elevated">Broadly elevated</option><option value="borderline">Borderline / insufficient facts</option><option value="modest">Modest on stated facts</option></select></label>
+      <label class="form-label">Case<select id="ld-stake-row" class="form-select"></select></label>
+    </div>
+    <div id="ld-stake-detail" aria-live="polite"></div>
+  </section>
+  <section id="ld-corpus" role="tabpanel" aria-labelledby="ld-t-corpus" hidden>
+    <h3>Whole-corpus measurements · 716 rows per arm</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Literal prompt feature</th><th>Old</th><th>Refreshed</th></tr></thead><tbody id="ld-counts"></tbody></table></div>
+    <div class="text-small">Case-insensitive literal matches, not semantic error rates. “AI + review” means both words anywhere in the user prompt.</div>
+    <h3>Length and wording</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Mean words</th><th>Old</th><th>Refreshed</th></tr></thead><tbody id="ld-lengths"></tbody></table></div>
+    <dl class="facts"><dt>Reasoning change</dt><dd>−7.8% mean words; length does not measure quality.</dd><dt>Final answer change</dt><dd>−15.0% mean words; both reasoning and final answers were supervised.</dd><dt>Nearest text similarity</dt><dd>Mean TF–IDF cosine 0.164 → 0.216; just one refreshed pair ≥0.5. Repeated decision structures, not evidence of widespread text duplicates.</dd><dt>Preserved</dt><dd>Same trait quotas; Sonnet 5 draft/revision; target-principle conditioning; explicit open-deliberation instruction.</dd><dt>Changed</dt><dd>Fresh scenarios; actor; prompt form; stakes restrictions; selection procedure; constitution wording; lengths.</dd></dl>
+    <details><summary>Measured patterns and source pins</summary><div id="ld-patterns" class="verbatim text-small"></div></details>
+  </section>
+  <section id="ld-results" role="tabpanel" aria-labelledby="ld-t-results" hidden>
+    <h3>Same replay, current training recipe</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>ODCV</th><th>Old 716</th><th>Refreshed 716</th></tr></thead><tbody>
+      <tr><td>Overall MR</td><td>28/240 · 11.67%</td><td>59–60/240 · 24.58–25.00%</td></tr>
+      <tr><td>Mandated</td><td>9/120 · 7.50%</td><td>26–27/120 · 21.67–22.50%</td></tr>
+      <tr><td>Incentivized</td><td>19/120 · 15.83%</td><td>33/120 · 27.50%</td></tr>
+      <tr><td>New minus old</td><td colspan="2">+12.92 to +13.33 percentage points</td></tr>
+    </tbody></table></div>
+    <dl class="facts"><dt>Held fixed</dt><dd>Exact 9,284 replay rows and positions; 716 synthetic rows; trait quotas; base model; current SFT recipe and seed 0.</dd><dt>Evaluation</dt><dd>40 scenarios × 2 variants × 3 sequential passes; temperature 0.7; thinking; 28,000 context; Gemini 3 Flash judge.</dd><dt>Missing verdict</dt><dd>One refreshed mandated Content-Moderation-Enforcer verdict blocked by provider. Both possible outcomes are included above.</dd><dt>Inference limit</dt><dd>One trained checkpoint per arm. Rollout passes are not training-seed replicates. Content features are confounded.</dd><dt>Scenario interval</dt><dd>95% paired-scenario t intervals span +5.43 to +20.79 points across missing-verdict choices; not training-seed uncertainty.</dd></dl>
+    <h3>What would distinguish the explanations?</h3>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Hypothesis</th><th>Minimal comparison</th></tr></thead><tbody>
+      <tr><td>Higher-stakes minority drives benefit</td><td>Old corpus versus minimal stakes-lowered rewrites of audited cases, holding row dose, actor, tension and replay slots fixed.</td></tr>
+      <tr><td>Acting assistant transfers better</td><td>Same benign scenarios and consequences, direct assistant responsibility versus advice about another actor.</td></tr>
+      <tr><td>Prompts give away the answer</td><td>Same facts and requested artifact; remove ethical option labels and avoid supplying the reasoning in the question.</td></tr>
+      <tr><td>Meaningful competing goods matter</td><td>Preserve benign consequences while retaining plausible benefits, uncertainty and costs on both sides.</td></tr>
+    </tbody></table></div>
+    <div class="text-small space">Proposed controls only. No dataset edits, training or new ODCV launched by this audit.</div>
+  </section>
+  <section id="ld-browse" role="tabpanel" aria-labelledby="ld-t-browse" hidden>
+    <div id="ld-scope" class="text-small space"></div>
+    <div class="viz-controls space">
+      <label class="form-label">Version<select id="ld-arm" class="form-select"><option value="">Both</option><option value="old">Old</option><option value="new">Refreshed</option></select></label>
+      <label class="form-label">Trait<select id="ld-trait" class="form-select"><option value="">All traits</option></select></label>
+      <label class="form-label">Source setting<select id="ld-domain" class="form-select"><option value="">All settings</option></select></label>
+      <label class="form-label">Literal feature<select id="ld-feature" class="form-select"><option value="">All text</option><option value="should_i">“should I”</option><option value="answer_label">Honest / legitimate option label</option><option value="ai_and_review">AI + review</option><option value="cosmetic_in_user">Cosmetic / display / toy vocabulary</option><option value="system_access">System access wording screen</option></select></label>
+      <label class="form-label">Search full embedded text<input id="ld-query" class="form-control" type="search" placeholder="e.g. Sunday, cracked, co-write"></label>
+      <label class="form-label">Conversation<select id="ld-record" class="form-select"></select></label>
+    </div>
+    <div class="viz-row space"><button type="button" class="btn" id="ld-reset">Reset filters</button><span id="ld-found" aria-live="polite"></span></div>
+    <div id="ld-record-detail" aria-live="polite"></div>
+  </section>
+  <script type="application/json" id="ld-data"><!-- AUDIT_DATA --></script>
+  <script>
+  (()=>{
+    const root=document.getElementById('lowstakes-deep-20260917');
+    const find=id=>root.querySelector('#'+id);
+    const data=JSON.parse(find('ld-data').textContent);
+    const rows=data.records, lookup=new Map(rows.map(r=>[r.id,r]));
+    const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const labels={safety:'Concrete safety concern',elevated:'Broadly elevated',borderline:'Borderline',modest:'Modest'};
+    const arm=r=>r.arm==='old'?'Old':'Refreshed';
+    const short=id=>id.replace(/^phase_[a-f0-9]+__/,'');
+    const option=(value,text)=>{const o=document.createElement('option');o.value=value;o.textContent=text;return o;};
+    const setOptions=(el,items)=>{el.replaceChildren(...items.map(([v,t])=>option(v,t)));};
+    const recordText=r=>Object.values(r.text).join('\n');
+    const full=r=>['system','user','reasoning','final'].map(k=>`<details><summary>${escape({system:'System prompt',user:'User request',reasoning:'Assistant reasoning',final:'Final answer'}[k])}</summary><div class="verbatim">${escape(r.text[k])}</div></details>`).join('');
+    function provenance(r){
+      const old=r.arm==='old',repo=old?'LASR-Callum/2026-08-26-difficult-advice-low-stakes-716':'dougalldeepmind/2026-09-15-da-lowstakes-refresh-synth';
+      const rev=old?'f268653539150af5a340164f994065f57cbef5ad':'ebafc3a60cda2a5390bde72336d660f34e580e6d';
+      return `<a href="https://huggingface.co/datasets/${repo}/blob/${rev}/dataset.jsonl" target="_blank" rel="noopener noreferrer">Pinned source dataset</a>`;
+    }
+    function detail(r,promptOpen=false){
+      if(!r)return '<div class="space">No matching conversations.</div>';
+      const review=r.review;
+      return `<h3>${arm(r)} · ${escape(r.trait)} · ${escape(short(r.id))}</h3><div class="text-small">${escape(r.id)} · ${escape(r.domain)}</div>
+        <dl class="facts"><dt>Historical stakes</dt><dd>${r.historical_stakes===null?'Not comparable / unavailable':escape(r.historical_stakes)}</dd><dt>Prompt review</dt><dd>${review?escape(labels[review.judgment]+': '+review.reason):'Not individually classified for stakes in this review'}</dd></dl>
+        ${promptOpen?`<div class="verbatim">${escape(r.text.user)}</div><details><summary>Full conversation, including system and assistant</summary>${full(r)}</details>`:full(r)}<div class="text-small space">${provenance(r)} · Source text, including any defects, reproduced unchanged.</div>`;
+    }
+    const categories=[...new Set(data.pairs.map(p=>p.category))];
+    categories.forEach(c=>find('ld-issue').append(option(c,c)));
+    function pairOptions(){setOptions(find('ld-pair'),data.pairs.map((p,i)=>[String(i),p.title]).filter(([i])=>!find('ld-issue').value||data.pairs[Number(i)].category===find('ld-issue').value));showPair();}
+    function showPair(){
+      const p=data.pairs[Number(find('ld-pair').value)];
+      find('ld-comparison').innerHTML=`<h3>${escape(p.title)}</h3><div class="dual">${['old','new'].map(a=>{
+        const r=lookup.get(p[a]);return `<div class="field"><div>${arm(r)} · ${escape(r.trait)}</div><div class="text-small">${escape(short(r.id))}</div>${p[a+'_quotes'].map(q=>`<div class="text-small space">${escape(q.field)}</div><blockquote class="quote">${escape(q.text)}</blockquote>`).join('')}<details><summary>Read full source conversation</summary>${full(r)}</details></div>`;
+      }).join('')}</div><dl class="facts"><dt>Observed change</dt><dd>${escape(p.observation)}</dd><dt>Hypothesis</dt><dd>${escape(p.hypothesis)}</dd><dt>Counterevidence / limit</dt><dd>${escape(p.limit)}</dd><dt>Possible next test</dt><dd>${escape(p.action)}</dd></dl>`;
+    }
+    find('ld-issue').addEventListener('change',pairOptions);find('ld-pair').addEventListener('change',showPair);pairOptions();
+    find('ld-rubric').innerHTML=Object.entries(data.rubric).map(([k,v])=>`<dt>${escape(labels[k])}</dt><dd>${escape(v)}</dd>`).join('');
+    function stakesOptions(){const a=rows.filter(r=>r.review&&(!find('ld-stake-filter').value||r.review.judgment===find('ld-stake-filter').value));setOptions(find('ld-stake-row'),a.map(r=>[r.id,`${arm(r)} · ${short(r.id)} · ${labels[r.review.judgment]}`]));showStake();}
+    function showStake(){find('ld-stake-detail').innerHTML=detail(lookup.get(find('ld-stake-row').value),true);}
+    find('ld-stake-filter').addEventListener('change',stakesOptions);find('ld-stake-row').addEventListener('change',showStake);stakesOptions();
+    const features=[['should_i','“should I”'],['answer_label','“the honest/legitimate alternative/option”'],['ai_in_user','Whole-word “AI”'],['ai_and_review','Whole-word “AI” and “review”'],['review_in_user','Whole-word “review”'],['cosmetic_in_user','Cosmetic, decorative, decoration, display, playlist, movie queue, or toy'],['benign_label','Nothing serious / no-prize / no money / just for fun']];
+    find('ld-counts').innerHTML=features.map(([k,label])=>`<tr><td>${escape(label)}</td>${['old','new'].map(a=>`<td class="text-end">${data.metrics[a].literal_counts[k]} / 716<br><span class="text-small">${(100*data.metrics[a].literal_counts[k]/716).toFixed(1)}%</span></td>`).join('')}</tr>`).join('');
+    find('ld-lengths').innerHTML=['system','user','reasoning','final'].map(k=>`<tr><td>${escape(k)}</td>${['old','new'].map(a=>`<td class="text-end">${data.metrics[a].word_stats[k].mean.toFixed(1)}</td>`).join('')}</tr>`).join('');
+    find('ld-patterns').textContent='Word lengths use whitespace splitting. Text similarity uses shared TF–IDF vocabulary (English stop words; word 1–2 grams; min_df 2; maximum 40,000 features), nearest other prompt within the same arm. Similarity is descriptive, not a semantic clone classifier.\n\n'+JSON.stringify(data.sources,null,2);
+    find('ld-scope').textContent=data.full?'All 1,432 source conversations · 95 prompts individually reviewed for stakes; the rest are not stakes-classified.':'111 full source conversations: all 95 stakes-reviewed cases plus 16 further comparison examples. Search is within these 111, not all 1,432.';
+    for(let n=1;n<=9;n++)find('ld-trait').append(option('t'+n,'t'+n));
+    [...new Set(rows.map(r=>r.domain))].sort().forEach(d=>find('ld-domain').append(option(d,d)));
+    function browse(){
+      const query=find('ld-query').value.toLowerCase(),a=find('ld-arm').value,t=find('ld-trait').value,d=find('ld-domain').value,f=find('ld-feature').value;
+      const matching=rows.filter(r=>(!a||r.arm===a)&&(!t||r.trait===t)&&(!d||r.domain===d)&&(!f||r.flags.includes(f))&&(!query||(r.id+' '+r.domain+' '+recordText(r)+' '+(r.review?.reason||'')).toLowerCase().includes(query)));
+      setOptions(find('ld-record'),matching.map(r=>[r.id,`${arm(r)} · ${short(r.id)} · ${r.domain}`]));
+      find('ld-found').textContent=matching.length+' / '+rows.length+' embedded conversations';showRecord();
+    }
+    function showRecord(){find('ld-record-detail').innerHTML=detail(lookup.get(find('ld-record').value));}
+    ['ld-arm','ld-trait','ld-domain','ld-feature'].forEach(id=>find(id).addEventListener('change',browse));
+    find('ld-query').addEventListener('input',browse);find('ld-record').addEventListener('change',showRecord);
+    find('ld-reset').addEventListener('click',()=>{['ld-arm','ld-trait','ld-domain','ld-feature','ld-query'].forEach(id=>find(id).value='');browse();});browse();
+  })();
+  </script>
+</div>

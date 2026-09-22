@@ -1,0 +1,18 @@
+# ABOUTME: User-approved total270 continuation with one bounded revision per reviewed saved source.
+# ABOUTME: Shares original cumulative ledger; no paid critics, retries, training or evaluation.
+user_approval_quote: Yes—raise the total ceiling to $270
+approval_context: User explicitly approved combined total270 after reviewing the96
+  saved-input opportunity inventory and16.45 maximum marginal reservation; stop on716
+  quotas, one revision per source, no paid critics/retries.
+shared_cap_usd: 270
+maximum_physical_calls: 96
+maximum_workers: 4
+maximum_appended_instruction_bytes: 2048
+paid_critic_calls: 0
+automatic_retries: 0
+inventory_path: C:\Users\nikak\source\repos\LASR\teaching_claude_why_replication_dataset_refresh\output\2026-09-15_dataset_refresh_saved_input_pilot_review\completion_inventory\inventory.jsonl
+inventory_sha256: dd3bc8f32782053adb840bea314f4534ebae289f48e4845062afd6e25cea4b52
+qualified_config_path: C:\Users\nikak\source\repos\LASR\teaching_claude_why_replication_dataset_refresh\output\2026-09-15_dataset_refresh_sonnet_qualified\nonmoral-advice\config.json
+qualified_config_sha256: 770976d67cbe0aa4b60301d950999e61075f9c84d580c46c00aa5d0a913c94bd
+review_contract_path: C:\Users\nikak\source\repos\LASR\teaching_claude_why_replication_dataset_refresh\output\2026-09-15_dataset_refresh_saved_input_pilot\independent_review_contract.json
+review_contract_sha256: 5d1ec43313b10807e50f245c6a342e093f8a324f20889a00803e5276c22860e2

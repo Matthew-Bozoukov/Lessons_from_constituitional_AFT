@@ -32,6 +32,7 @@ import os
 import random
 from collections import defaultdict
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 from datasets import load_dataset
@@ -443,8 +444,8 @@ def _base_sources(base_config: str) -> dict[str, dict]:
     return base["sources"]
 
 
-def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
-          total_examples: int) -> dict[str, dict]:
+def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int | None,
+          total_examples: int, *, synthetic_examples: int | None = None) -> dict[str, dict]:
     """Scale a fixed non-synthetic blend around a synthetic share (pure; unit-tested).
 
     THE mechanism that makes an arm ladder a dose-response curve. Earlier arms replaced
@@ -460,24 +461,55 @@ def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
             Their declared budgets set the RATIO between them, not the totals.
         synthetic_pct: Percentage of rows that must be synthetic — the number in the name.
         total_examples: Rows in the finished mixture.
+        synthetic_examples: Optional exact synthetic count, with largest-remainder
+            source allocation. A percentage also supplied must match the exact count's
+            rounded percentage (the name). Omit to preserve historical allocation.
 
     Returns:
         The same specs with `examples` rewritten to the scaled counts, synthetic sources
         marked `synthetic: true` so they join after the filter stage.
     """
-    assert 0 <= synthetic_pct <= 100, f"synthetic_pct out of range: {synthetic_pct}"
-    assert bool(synthetic) == (synthetic_pct > 0), (
-        f"a {synthetic_pct}% synthetic share and {len(synthetic)} synthetic source(s) do "
+    exact = synthetic_examples is not None
+    if exact:
+        assert not base.keys() & synthetic.keys(), "base and synthetic source names overlap"
+        assert type(total_examples) is int and total_examples > 0, (
+            "synthetic_examples requires a positive integer total_examples")
+        assert type(synthetic_examples) is int and 0 <= synthetic_examples <= total_examples, (
+            "synthetic_examples must be an integer between 0 and total_examples")
+        named_pct = round(100 * synthetic_examples / total_examples)
+        assert synthetic_pct is None or (
+            type(synthetic_pct) is int and synthetic_pct == named_pct), (
+            f"synthetic_pct={synthetic_pct} conflicts with synthetic_examples="
+            f"{synthetic_examples}/{total_examples} (rounded percentage {named_pct})")
+        synth_budget = synthetic_examples
+    else:
+        assert synthetic_pct is not None and 0 <= synthetic_pct <= 100, (
+            f"synthetic_pct out of range: {synthetic_pct}")
+        synth_budget = round(total_examples * synthetic_pct / 100)
+    assert bool(synthetic) == (synth_budget > 0), (
+        f"a {synth_budget}-row synthetic share and {len(synthetic)} synthetic source(s) do "
         "not agree — 0% means no synthetic sources, and any share needs at least one.")
 
     def share(specs: dict[str, dict], budget: int) -> dict[str, dict]:
+        if exact:
+            assert specs or budget == 0, "no sources to fill an exact row budget"
+            weights = {n: Fraction(str(s.get("examples") or s.get("tokens") or 0))
+                       for n, s in specs.items()}
+            assert all(w > 0 for w in weights.values()), "source weights must be positive"
+            total_w = sum(weights.values())
+            quotas = {n: budget * w / total_w for n, w in weights.items()}
+            counts = {n: int(q) for n, q in quotas.items()}
+            # Largest remainder; source name breaks ties, independent of YAML ordering.
+            order = sorted(quotas, key=lambda n: (-(quotas[n] - counts[n]), n))
+            for n in order[:budget - sum(counts.values())]:
+                counts[n] += 1
+            return {n: {**specs[n], "examples": counts[n]} for n in sorted(specs)}
         weights = {n: float(s.get("examples") or s.get("tokens") or 0) for n, s in specs.items()}
         total_w = sum(weights.values())
         assert total_w > 0 or not specs, "every source needs a budget to weight it by"
         return {n: {**s, "examples": round(budget * weights[n] / total_w)}
                 for n, s in specs.items()}
 
-    synth_budget = round(total_examples * synthetic_pct / 100)
     # A base source scaled to zero rows is dropped rather than carried as `examples: 0`:
     # `_budget` rejects a non-positive budget (rightly, for a source someone DECLARED), and
     # at synthetic_pct=100 every base source scales to zero -- the synthetic-only mixture
@@ -485,7 +517,8 @@ def blend(base: dict[str, dict], synthetic: dict[str, dict], synthetic_pct: int,
     out = {n: s for n, s in share(base, total_examples - synth_budget).items()
            if s["examples"] > 0}
     out.update({n: {**s, "synthetic": True}
-                for n, s in share(synthetic, synth_budget).items()})
+                for n, s in share(synthetic, synth_budget).items()
+                if not exact or s["examples"] > 0})
     return out
 
 
@@ -750,6 +783,9 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
         gen["share_unit"] = str(cfg.get("share_unit") or "examples")
     if cfg.get("base_mixture"):
         gen["base_mixture"] = OmegaConf.to_container(cfg.base_mixture, resolve=True)
+    if cfg.get("synthetic_examples") is not None:
+        gen["synthetic_examples"] = int(cfg.synthetic_examples)
+        gen["total_examples"] = int(cfg.total_examples)
     if traces:
         gen["reasoning_traces"] = traces
     if filter_cfg is not None:
@@ -925,6 +961,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         "`tulu3: {repo: allenai/tulu-3-sft-mixture, tokens: N, shuffle_buffer: 10000}`")
     scale = _SMOKE_SCALE if smoke else 1
     seed = int(cfg.seed)
+    exact_synthetic = cfg.get("synthetic_examples")
+    if exact_synthetic is not None:
+        assert cfg.get("base"), "synthetic_examples requires a base config"
+        assert not cfg.get("filter"), "synthetic_examples cannot be combined with a filter"
+        assert (cfg.get("share_unit") or "examples") == "examples", (
+            "synthetic_examples counts rows and requires share_unit: examples")
     # THE mixture's name (src/naming.py): this config's stem — its styles and any variant,
     # the parts a human chose — with the synthetic share spliced BETWEEN them, and today's
     # date in front. `da` + `cot` at 7% is `<date>-da-7-cot-mix`. The
@@ -979,7 +1021,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         sources = {**_base_sources(str(cfg.base)), **synth_pool}
     elif cfg.get("base"):
         sources = blend(_base_sources(str(cfg.base)), sources,
-                        int(cfg.synthetic_pct), int(cfg.total_examples))
+                        cfg.get("synthetic_pct") if exact_synthetic is not None else int(cfg.synthetic_pct),
+                        cfg.total_examples if exact_synthetic is not None else int(cfg.total_examples),
+                        synthetic_examples=exact_synthetic)
     # ... and it applies to the SYNTHETIC share only. The base blend is the control every
     # arm shares, sampled verbatim from its published mixture, so an override there
     # would change the control itself -- and _load_published_base would not even apply
@@ -1158,6 +1202,14 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         kinds |= synth_kinds
         random.Random(seed).shuffle(rows)
 
+    if exact_synthetic is not None:
+        # Smoke divides each source quota, as other example budgets do; the production
+        # quotas sum to exactly total_examples and synthetic_examples by construction.
+        expected = {name: _budget(name, spec, scale)[1] for name, spec in sources.items()}
+        actual = {name: sum(r["source"] == name for r in rows) for name in sources}
+        assert actual == expected, f"exact source counts changed: {actual} != {expected}"
+        assert len(rows) == sum(expected.values()), "exact mixture total changed"
+
     # The name says 20%; the rows had better be 20% — in the unit the share was declared
     # in. Rounding is the only slack allowed, because everything trained on this mixture
     # inherits the number from its name.
@@ -1189,6 +1241,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
              "token_share": ({k: v for k, v in swap.items() if k not in ("keep", "insert")}
                              if swap else None),
              "by_source": _source_stats(rows),
+             "synthetic_examples": sum(r["source"] in synth_specs for r in rows),
              # every source as sampled, revision pins included
              "sources": sources,
              # whose traces the base blend carries (the family this mixture is on-policy

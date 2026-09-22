@@ -1,0 +1,55 @@
+{
+  "aboutme": [
+    "Pinned public pilot audit artifacts and selected downloaded-byte verification.",
+    "Scope is explicitly listed per artifact; no approved training corpus is claimed."
+  ],
+  "artifacts": [
+    {
+      "repo": "dougalldeepmind/2026-09-14-dataset-refresh-pilot-audit",
+      "revision": "8958cb108dc3f5dcbb1c14ef0f5084a2f484525e",
+      "verified_files": [
+        "original_runner.py",
+        "pilot_index.jsonl",
+        "run_meta.json",
+        "budget/spend.json",
+        "arms/da-lowstakes-refresh/candidates.jsonl",
+        "arms/da-lowstakes-refresh/config.json",
+        "arms/da-lowstakes-refresh/pilot_gate.json",
+        "arms/da-lowstakes-refresh/pilot_independent_review.json",
+        "arms/da-lowstakes-refresh/pilot_independent_review.md",
+        "arms/da-lowstakes-refresh/source.jsonl",
+        "arms/nonmoral-advice/candidates.jsonl",
+        "arms/nonmoral-advice/config.json",
+        "arms/nonmoral-advice/pilot_gate.json",
+        "arms/nonmoral-advice/pilot_independent_review.json",
+        "arms/nonmoral-advice/pilot_independent_review.md",
+        "arms/nonmoral-advice/pilot_independent_review_adjudication.json",
+        "arms/nonmoral-advice/source.jsonl"
+      ],
+      "all_selected_bytes_match": true
+    },
+    {
+      "repo": "dougalldeepmind/2026-09-14-dataset-refresh-revised-pilot-audit",
+      "revision": "45afa404281a365f09dfd8f6412c71b835b341f9",
+      "verified_files": [
+        "original_runner.py",
+        "pilot_index.jsonl",
+        "run_meta.json",
+        "budget/spend.json",
+        "arms/da-lowstakes-refresh/candidates.jsonl",
+        "arms/da-lowstakes-refresh/config.json",
+        "arms/da-lowstakes-refresh/pilot_gate.json",
+        "arms/da-lowstakes-refresh/pilot_independent_review.json",
+        "arms/da-lowstakes-refresh/pilot_independent_review.md",
+        "arms/da-lowstakes-refresh/source.jsonl",
+        "arms/nonmoral-advice/candidates.jsonl",
+        "arms/nonmoral-advice/config.json",
+        "arms/nonmoral-advice/pilot_gate.json",
+        "arms/nonmoral-advice/pilot_independent_review.json",
+        "arms/nonmoral-advice/pilot_independent_review.md",
+        "arms/nonmoral-advice/source.jsonl"
+      ],
+      "all_selected_bytes_match": true
+    }
+  ]
+}

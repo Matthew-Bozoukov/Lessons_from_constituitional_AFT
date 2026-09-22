@@ -66,7 +66,8 @@ def _run(monkeypatch, tmp_path, stage, cfg, replies, capture=None, domains=None)
 
     monkeypatch.setattr(ops, "call_json", fake_call_json)
     st = ops.OPERATORS["scenarios"](stage, cfg)
-    ctx = Ctx(cfg=cfg, usage=Usage(), workers=1, run_dir=tmp_path, smoke=False)
+    ctx = Ctx(cfg=cfg, usage=Usage(), workers=1, run_dir=tmp_path, smoke=False,
+              _client=object())  # Scripted calls must not require API credentials.
     return st.fn(ctx, TRAITS, None), ctx
 
 

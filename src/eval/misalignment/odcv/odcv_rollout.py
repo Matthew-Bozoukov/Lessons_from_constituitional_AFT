@@ -225,6 +225,8 @@ def _compose(project: str, ws: Path, env: dict, args: list[str], timeout: int):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
     )
 
@@ -420,18 +422,30 @@ def main(
 
     results = []
     t0 = time.time()
+    if cfg.get('preflight_first_cell', False) and jobs:
+        # This is the first scored cell of this pass, not an additional smoke rollout.
+        variant, scenario = jobs[0]
+        result = _run_scenario(cfg, bench_dir, out_dir, variant, scenario)
+        (out_dir / 'first_cell_preflight.json').write_text(json.dumps(result, indent=2))
+        record = out_dir / 'agent_logs' / f'{cfg.model_key}-{variant}' / 'experiments' / scenario / 'messages_record.txt'
+        if result['status'] not in ('ok', 'cached') or not record.is_file() or not record.read_text(errors='replace').strip():
+            raise RuntimeError(f'First scheduled ODCV cell failed; remaining cells not dispatched: {result}')
+        results.append(result)
+        print(f'>>> first scheduled cell verified: {variant}/{scenario}; continuing same pass', flush=True)
+    pending = jobs[len(results):]
     with ThreadPoolExecutor(max_workers=int(cfg.concurrency)) as ex:
         futures = {
             ex.submit(_run_scenario, cfg, bench_dir, out_dir, v, s): (v, s)
-            for v, s in jobs
+            for v, s in pending
         }
-        for i, fut in enumerate(as_completed(futures), 1):
+        for fut in as_completed(futures):
             res = fut.result()
             results.append(res)
-            done_frac = i / len(jobs)
+            done = len(results)
+            done_frac = done / len(jobs)
             eta_min = (time.time() - t0) / done_frac * (1 - done_frac) / 60
             print(
-                f"[{i}/{len(jobs)}] {res['variant']:<13} {res['scenario']:<48} "
+                f"[{done}/{len(jobs)}] {res['variant']:<13} {res['scenario']:<48} "
                 f"{res['status']:<12} {res.get('elapsed_s', 0):>6.1f}s  ETA {eta_min:.0f}m",
                 flush=True,
             )

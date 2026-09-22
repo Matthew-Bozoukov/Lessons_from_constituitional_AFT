@@ -1,0 +1,203 @@
+# ABOUTME: Offline contract and full-engine checks for the practical low-stakes DA recipe.
+# ABOUTME: Run: uv run --no-sync python -m pytest -q scratch/dataset_refresh/test_native_lowstakes.py
+import copy
+import json
+import re
+import threading
+from collections import Counter
+
+import numpy as np
+from omegaconf import OmegaConf
+
+from src.data.synth.ours import pipeline, embeddings
+from src.infra.endpoints.openrouter import ChatResult
+
+
+CONFIG = 'configs/data/synth/da-lowstakes-practical.yaml'
+
+
+def load(path=CONFIG):
+    return OmegaConf.to_container(OmegaConf.load(path), resolve=True)
+
+
+def test_recipe_preserves_da_answers_without_extra_quality_veto_or_source_examples():
+    base, cfg = load('configs/data/synth/da.yaml'), load()
+    stages = {s['name']: s for s in cfg['stages']}
+    assert cfg['constitution'] == base['constitution'] == 'constitutions/claude_distilled_09_principles/constitution.md'
+    assert 'source' not in cfg and 'coverage_focus' not in cfg
+    assert all(s['kind'] != 'load_source_run' for s in cfg['stages'])
+    assert cfg['style_guidance'] == base['style_guidance']
+    for old in base['stages']:
+        new = copy.deepcopy(stages[old['name']])
+        if 'lint' in new:
+            assert new['lint']['retries'] == 0
+            new['lint']['retries'] = old['lint']['retries']
+        if old['name'] in {'draft_responses', 'revise_responses'}:
+            assert new == old, 'Do not replace DA deliberation with an unrelated editing task'
+        elif old['name'] in {'corpus_scenarios', 'dedupe_scenarios', 'corpus'}:
+            assert new == old
+    assert all('sonnet' in m['model'] for m in cfg['models'].values())
+    assert stages['write_scenarios']['diversity']['max_regen_rounds'] == 0
+    names = [s['name'] for s in cfg['stages']]
+    assert names.index('keep_lowstakes_prompts') < names.index('draft_responses')
+    assert names.index('keep_text_advice_prompts') < names.index('draft_responses')
+    assert 'keep_grounded_answers' not in names and 'keep_practical_prompts' not in names
+    assert sum(stage['model'] == 'stakes' for stage in cfg['stages'] if 'model' in stage) == 1
+    assert 'rate_final_stakes' not in names and 'keep_lowstakes_answers' not in names
+    assert 'keep_assigned_domain' not in names, 'Do not turn source guidance into a behavioral veto'
+    assert cfg['smoke']['total_scenarios'] == 36 and cfg['smoke']['max_traits'] == 9
+
+
+def test_stakes_constraints_are_consistent_without_diluting_temptation():
+    cfg = load()
+    stages = {s['name']: s for s in cfg['stages']}
+    for name in ['draft_prompts', 'revise_prompts']:
+        prompt = stages[name]['prompts']['user']
+        assert cfg['low_stakes_guidance'] in prompt
+        assert cfg['human_advice_guidance'] in prompt
+        assert 'tempting' in prompt
+    assert 'If refusing is obviously free, raise the cost.' not in stages['revise_prompts']['prompts']['user']
+    assert 'WITHOUT naming it as unethical' in stages['draft_prompts']['prompts']['user']
+    for name in ['rate_prompt_stakes']:
+        prompt = stages[name]['prompts']['user']
+        assert 'not how wrong' in prompt and 'speculative' in prompt
+        assert 'unclear' in prompt
+    judge = stages['rate_prompt_stakes']['prompts']['user']
+    assert '{reasoning}' not in judge and '{response}' not in judge
+    assert '{trait_text}' not in judge
+    assert 'Assess the DECISION before advice' in judge
+    initial = stages['write_scenarios']['prompts']['user']
+    assert initial.index('{assigned_domain_text}') < initial.index('{trait_text}')
+    assert '{avoid}' not in initial and '{overrepresented}' not in initial
+    assert cfg['models']['scenarios']['extra_body']['reasoning']=={'max_tokens':2048}
+    assert cfg['models']['stakes']['extra_body']['reasoning']=={'max_tokens':1024}
+    assert cfg['smoke']['scenarios_per_call'] == 2
+    assert cfg['stakes_rubric'] in stages['rate_prompt_stakes']['prompts']['user']
+    assert 'prompt_task_note' not in [stage.get('keep', {}).get('field') for stage in cfg['stages']]
+    assert '{situation}' in stages['revise_prompts']['prompts']['user']
+    assert 'replace or reframe most' not in stages['revise_prompts']['prompts']['user']
+
+
+def test_standard_engine_filters_only_before_authoring_without_answer_conditioning(tmp_path, monkeypatch):
+    # Replace only external services: generation, semantic embeddings and publication.
+    # All stage operators, prompt rendering, lint, filtering, caching and export are real.
+    cfg = load()
+    cfg['hf_push'] = False
+    vectors = {}
+    def embed(texts, **kw):
+        for text in texts:
+            vectors.setdefault(text, len(vectors))
+        result = np.zeros((len(texts), 128), dtype=np.float32)
+        for i, text in enumerate(texts): result[i, vectors[text]] = 1
+        return result
+    monkeypatch.setattr(embeddings, 'embed', embed)
+    lock = threading.Lock()
+    calls = []
+    counter = 0
+    body = 'The promised procedure creates a real expectation for the other participants. ' * 12
+    class Client:
+        def chat(self, model, messages, **kw):
+            nonlocal counter
+            system, user = messages[0]['content'], messages[-1]['content']
+            assert 'sonnet' in model
+            if system.startswith('You design realistic'):
+                with lock:
+                    ident = counter
+                    counter += 2
+                phase = 'scenario'
+                assert 'Generate 2 DISTINCT situations' in user
+                content = json.dumps([dict(domain=f'domain {i}', situation=f'CASE_{i} has a small choice.', shortcut='Skip an agreed step.') for i in range(ident, ident+2)])
+            elif system.startswith('You audit machine-generated'):
+                phase, ident, content = 'corpus', -1, '[]'
+            else:
+                ident = int(re.search(r'CASE_(\d+)', user).group(1))
+                if system.startswith('You write realistic messages'):
+                    phase = 'prompt'
+                    content = json.dumps(dict(system='You are an AI assistant.',user=f'CASE_{ident}: Can I skip this agreed step to save a little time?'))
+                elif system.startswith('You improve draft training prompts'):
+                    phase = 'refine_prompt'
+                    content = json.dumps(dict(system='You are an AI assistant.',user=f'CASE_{ident}: Can I skip this agreed step to save a little time?',changes='Clarified minor pressure.',domain=f'domain {ident}',situation=f'CASE_{ident} has a small choice.',shortcut='Skip an agreed step.'))
+                elif system.startswith('Assess a low-stakes'):
+                    phase = 'prompt_stakes'
+                    assert '<response>' not in user and '<reasoning>' not in user
+                    label = {0:2,1:'unclear',2:'low',3:3,4:'unclear'}.get(ident,1)
+                    scope = {6:'external_execution',8:'unclear',9:'advice'}.get(ident,'text_advice')
+                    # Case 7 deliberately has an adverse task diagnostic and an extra legacy
+                    # quality verdict. Neither can silently become an acceptance filter.
+                    content = json.dumps(dict(stakes=label,why='Recorded consequence magnitude.',scope=scope,
+                        scope_why='Recorded requested action.',task_note='Weak tradeoff; inspect manually.',
+                        domain_fit='no' if ident==10 else 'yes',domain_why='Assigned contract checked.',verdict='drop' if ident==7 else 'keep'))
+                    if ident==5:
+                        content = '{"stakes":1}'  # Missing required reason: parser exhausts, row fails closed.
+                elif system.startswith('You revise assistant responses'):
+                    phase = 'revise_answer'
+                    content=f'<reasoning>CASE_{ident}: {body}</reasoning><response>{body}</response><changes>Kept the facts and developed the weighing.</changes>'
+                else:
+                    phase = 'draft_answer'
+                    content=f'<reasoning>CASE_{ident}: {body}</reasoning><response>{body}</response>'
+            with lock: calls.append((phase,ident))
+            return ChatResult(content=content,prompt_tokens=1,completion_tokens=1,finish_reason='stop')
+    out=tmp_path/'run'; out.mkdir()
+    manifest = pipeline.run(cfg,smoke=True,resume=str(out),client=Client())
+    assert counter == 36
+    counts=Counter(phase for phase,_ in calls)
+    assert counts['draft_answer']==counts['revise_answer']==27
+    assert counts['final_stakes']==0
+    assert counts['prompt_stakes']==38  # 36 cases plus two bounded parse re-attempts.
+    assert not any(phase=='draft_answer' and ident in {0,1,2,3,4,5,6,8,9} for phase,ident in calls)
+    assert sum(phase=='prompt_stakes' and ident==5 for phase,ident in calls)==3
+    rows=[json.loads(line) for line in (out/'dataset.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert len(rows)==27 and manifest['counts']['export_sft']==27
+    assert counts['scenario']==18
+    exported = {int(re.search(r'CASE_(\d+)', row['messages'][1]['content']).group(1)) for row in rows}
+    assert exported == {7, *range(10,36)}
+    for row in rows:
+        assert row['metadata']['prompt_stakes']==1
+        assert 'final_stakes' not in row['metadata']
+        assert row['metadata']['prompt_domain_fit'] == ('no' if int(re.search(r'CASE_(\d+)',row['messages'][1]['content']).group(1))==10 else 'yes')
+        assert row['metadata']['prompt_scope']=='text_advice'
+        assert 'Weak tradeoff' in row['metadata']['prompt_task_note']
+        assert 'Weak tradeoff' not in json.dumps(row['messages'])
+        assert 'final_verdict' not in row['metadata']
+        assert 'principle' not in row['messages'][0]['content']
+        assert 'reasoning_content' in row['messages'][2]
+    assert manifest['failures']['rate_prompt_stakes']['n']==1
+    assert len(list(out.glob('stage_*rate_prompt_stakes.jsonl')))==1
+    assert len(list(out.glob('stage_*revise_responses.jsonl')))==1
+
+
+def test_preregistered_cross_product_and_minimum_context(tmp_path):
+    cfg=load()
+    assert cfg['total_scenarios']==972 and cfg['scenarios_per_call']==12
+    cfg['hf_push']=False
+    cfg['stages']=[x for x in cfg['stages'] if x['name'] in {'chunk_constitution','write_scenarios'}]
+    sc=cfg['stages'][1]
+    sc['diversity']={}
+    registry=sc['rotate']['assigned_domain']['text']
+    requests=[]
+    class Client:
+        def chat(self, model, messages, **kw):
+            user=messages[-1]['content']
+            domain=re.search(r'<domain id="([^"]+)">',user).group(1)
+            n=int(re.search(r'Generate (\d+) DISTINCT',user).group(1))
+            assert sum(text in user for text in registry.values())==1
+            assert user.count('<principle name=')==1
+            assert 'These situations already exist' not in user
+            requests.append(domain)
+            return ChatResult(content=json.dumps([dict(domain=domain,situation=f'Unique setting {domain} {i}',shortcut='Save one hour.') for i in range(n)]),prompt_tokens=1,completion_tokens=1,finish_reason='stop')
+    out=tmp_path/'factorial';out.mkdir()
+    pipeline.run(cfg,smoke=False,resume=str(out),client=Client())
+    rows=[json.loads(x) for x in (out/'stage_2_write_scenarios.jsonl').read_text().splitlines()]
+    counts=Counter((r['trait_id'],r['assigned_domain']) for r in rows)
+    assert len(requests)==81 and len(rows)==972
+    assert len(counts)==81 and set(counts.values())=={12}
+    assert all(r['assigned_domain_text']==registry[r['assigned_domain']] for r in rows)
+
+
+def test_all_model_extensions_pass_real_budget_guard(tmp_path):
+    from scratch.dataset_refresh.run import BudgetClient
+    cfg=load()
+    client=BudgetClient(tmp_path,20,[m['model'] for m in cfg['models'].values()],send=lambda **kw: ChatResult(content='ok',prompt_tokens=1,completion_tokens=1,finish_reason='stop'))
+    for m in cfg['models'].values():
+        client.chat(model=m['model'],messages=[{'role':'user','content':'Offline request validation'}],temperature=m['temperature'],max_tokens=m['max_tokens'],extra_body=m.get('extra_body'))
+    assert len(client.entries())==len(cfg['models'])

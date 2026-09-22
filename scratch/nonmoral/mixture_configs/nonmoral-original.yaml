@@ -1,0 +1,25 @@
+# ABOUTME: Exact historical 684 craft conversations plus the frozen 9284 September replay rows.
+# ABOUTME: Run: uv run --no-sync python scratch/nonmoral/reuse_original.py --config scratch/nonmoral/mixture_configs/nonmoral-original.yaml --out output/nonmoral_original_reuse/mixture
+style: nonmoral-original
+seed: 0
+synthetic_rows: 684
+replay_rows: 9284
+tokenizer: Qwen/Qwen3.6-27B
+tokenizer_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+max_seq_len: 8192
+original_mixture:
+  repo: dougalldeepmind/2026-09-02-table2-9284-nonmoral-deliberation-684-train-mixture
+  revision: 6364505df02b0020b030bf379bd42285a14de6a5
+  file: t2_9284_nonmoral_684.jsonl
+original_corpus:
+  repo: dougalldeepmind/2026-09-02-craft-tensions-nonmoral-deliberation
+  revision: fed726d2db33bddb698ca349a6d76a4e7df7a7e9
+  file: dataset.jsonl
+replay_reference:
+  repo: dougalldeepmind/2026-09-15-nonmoral-advice-7-mix
+  revision: 588783fb079d0bbe5c9eb568418fcff2aad4cecb
+  file: mixture.jsonl
+nosynth:
+  repo: dougalldeepmind/2026-09-08-nosynth-mix
+  revision: 7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd
+  file: mixture.jsonl

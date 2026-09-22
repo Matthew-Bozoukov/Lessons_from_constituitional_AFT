@@ -1,0 +1,20 @@
+# ABOUTME: Fixed 36-example preregistered-domain smoke under the cumulative $20 cap.
+# ABOUTME: Run with scratch.dataset_refresh.run_native_smoke --config this file.
+recipe: configs/data/synth/da-lowstakes-practical.yaml
+campaign_budget_root: output/2026-09-21_lowstakes_pipeline_campaign/budget
+ceiling_usd: 20
+max_physical_calls: 378
+authorization: User requested the preregistered-domain variant and another bounded
+  smoke. Preserve cumulative $20 ceiling; previous spend $13.742198.
+readiness:
+  minimum_accepted_of_36: 28
+  minimum_accepted_per_trait: 2
+  minimum_accepted_per_domain: 2
+  maximum_manual_stakes_or_scope_false_accepts: 0
+  minimum_suitable_initial_scenarios_of_36: 28
+  maximum_out_of_assigned_domain: 0
+  note: Manual full reads, no replacements or mid-run edits. Borderline stakes remain
+    disclosed. Shared normal-DA factual/style flaws are diagnostics, not extra vetoes.
+    The native 25% drop alarm remains enabled. This smoke samples two domains per
+    trait; it does not exercise all 81 pairs.
+expected_candidates: 36

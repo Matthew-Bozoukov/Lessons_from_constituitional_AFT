@@ -1,0 +1,18 @@
+# ABOUTME: Freeze minimal cleanup proposals with unchanged first-review materiality judgments.
+# ABOUTME: Run uv run python -m scratch.dataset_refresh.freeze_second_pass_proposals --config configs/data/audits/nonmoral-second-pass-proposals.yaml
+campaign: output/2026-09-15_nonmoral_saved_input_completion
+output: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_proposal.json
+instructions: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/nonmoral_instructions.json
+reference_proposal: output/2026-09-15_nonmoral_saved_input_completion/campaign_reviews/second_revision_proposals_2026_09_15/proposal.json
+cases:
+  - {batch: batch_source_02, index: 0}
+  - {batch: batch_source_02, index: 2}
+  - {batch: batch_source_07, index: 1}
+  - {batch: batch_source_07, index: 2}
+  - {batch: batch_source_08, index: 0}
+  - {batch: batch_source_08, index: 1}
+  - {batch: batch_source_08, index: 3}
+  - {batch: batch_source_09, index: 1}
+  - batch: batch_source_03
+    index: 2
+    original_full_review: output/2026-09-15_dataset_refresh_saved_input_pilot_review/nonmoral_offline_salvage_round2/t5_051_v0.review.json
