@@ -54,7 +54,7 @@ finite loss/gradient norms and its remaining recovery window. It backs up saved 
 while training and verifies625 completed steps and HF adapter payload hashes before normal
 teardown. Status and receipts live in `output/lowstakes_practical_training/` until publication.
 
-At this record's creation the pod was provisioning; no completed model is claimed.
+Training completed successfully. The final adapter is published and verified, and the owned pod is terminated. See the completion record below.
 
 ## First-hour checks
 
@@ -73,3 +73,35 @@ observer covers subsequent transfer windows. Read `live_observer_status.json` fo
 progress when the owner's snapshot is stale. Reproduction receipts are in
 `output/lowstakes_practical_training/ssh_stdin_probe_before_fix.json` and
 `ssh_stdin_probe.json`.
+
+
+## Completion (2026-09-22)
+
+- Model: [2026-09-22-qwen36-0-da-lowstakes-practical-7](https://huggingface.co/dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7/tree/55c52d797a2436b1535c6826167029708f32d24b).
+  Adapter-only revision `55c52d797a2436b1535c6826167029708f32d24b` is the revision to pin for inference.
+- Completed 625/625 optimizer steps, one epoch, 10,000 examples, seed 0,
+  world size 1 on one H200. Mean training loss: 0.8211592617; optimization
+  runtime: 13,940.2612 seconds (3 h 52 min). Loss and gradient reports were finite.
+- Published adapter payload hashes match the locally recovered files, including
+  weights, tokenizer, resolved config and provenance. The pinned dataset/base,
+  thinking stamp, supervision counts, step count and world size all passed checks.
+- Checkpoints 100, 200, 300, 400, 500 and 600 were copied and verified during training.
+  The complete final output archive includes the retained checkpoints 600 and 625,
+  final adapter, configuration, metrics and driver logs: 8,986,900,480 bytes, 39 files,
+  SHA256 `c102a620572440af0a24949c2403cd147c63c3c3f4e94cf025c4ffe5981e7c54`.
+- Pod `42zqsg5dbpkr0z` was terminated only after adapter publication and full local
+  backup verification. A fresh provider inventory independently confirmed it absent;
+  no pods remained at that check. Its watchdog exited after observing teardown.
+- Total owned-pod lifetime: 15,969.7766 seconds (4 h 26 min). Conservative cost
+  estimate including the storage allowance: **$20.81**, below the $40 operating stop.
+  This is not the shared account's balance change.
+- No evaluation was run. Training completion does not establish ODCV performance.
+
+Local receipts: `output/lowstakes_practical_training/run/publication.json`,
+`run/local_backup.json`, `run/status.json`, and `teardown_verification.json`.
+
+Full [training archive and verification receipts](https://huggingface.co/dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7/tree/d37a4e0cf7a7b92d094f5ac0e79b230f5b1c6bcc/training_backup) are published at
+`d37a4e0cf7a7b92d094f5ac0e79b230f5b1c6bcc`. HF's file size and LFS SHA256 match the verified local archive.
+This archive commit follows the adapter-only revision above; use the adapter-only
+revision for inference downloads. Final local receipt:
+`output/lowstakes_practical_training/final_release_receipt.json`.

@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — Trained the practical low-stakes arm on fixed September replay
+
+**Hypothesis:** a reproducible constitution-only low-stakes generator may preserve
+useful DA-style deliberation; this training run prepares the arm for a later test.
+**Method:** exactly 716 newly selected examples plus the unchanged 9,284-row replay
+subset from the September 8 nosynth mixture. Full payload/position and token-mask
+audits passed. Standard Qwen3.6-27B BF16 LoRA recipe, seed 0, one H200, one epoch,
+rank 64, alpha 128, dropout 0.05, global batch 16 and LR 1e-4.
+
+**Result:** 625/625 steps; mean training loss 0.821159. Final adapter files and
+metadata verified on HF, all six periodic checkpoints copied locally, complete
+final outputs backed up and checksum-verified before GPU termination. Independent
+RunPod inventory confirmed the owned pod absent. Estimated cost including storage
+allowance: $20.81. No evaluation was run and no behavioral improvement is claimed.
+
+- [Training mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-da-lowstakes-practical-7-mix/tree/e5948018221f3434813054e9afe58498aeeaa852)
+- [Pinned adapter](https://huggingface.co/dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7/tree/55c52d797a2436b1535c6826167029708f32d24b)
+- [Verified full training archive](https://huggingface.co/dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7/tree/d37a4e0cf7a7b92d094f5ac0e79b230f5b1c6bcc/training_backup)
+- [Checks, exact recipe and recovery record](dataset_audits/2026-09-22_lowstakes_practical_training.md)
+
+**Next:** evaluate the pinned adapter under the matched ODCV protocol if requested.
+
 ## 2026-09-22 — Published 716 low-stakes examples with complete evidence
 
 **Hypothesis/method:** fixed nine-trait by nine-domain source design, native DA
