@@ -63,3 +63,48 @@ read-only monitoring are committed separately. No model/data regeneration occurr
 `metadata/operations/` on HF preserves the frozen plan/config, server command
 (seed 0 verified live), counted-pilot/preflight evidence, judge ledger, verified
 remote logs, completion summary and initial publication hash audit.
+
+## Three additional sequential passes
+
+The user subsequently requested three more passes with all settings unchanged.
+The same pinned checkpoint and protocol were evaluated on one newly rented H100,
+`nika-low-stakes-practical-odcv-3pass` (`rmbtyjln6nqpf7`), using 12 concurrent
+scenarios per pass. All three passes shared one vLLM process (PID 1845), verified
+at all six start/end boundaries. Startup seed 0 and no per-request seed were
+retained. Source commit: `f64b3d11d96cb586526440ddc13d47df3b25d138`.
+
+The original result remains at the revision linked above and at HF tag
+`single-pass-20260922`. The latest
+[three-pass publication](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-odcv-qwen36-0-da-lowstakes-practical-7/tree/b63435957ec66a7148ebb8d9268d29f30f0f1538)
+contains only the 240 additional rollouts, at
+`b63435957ec66a7148ebb8d9268d29f30f0f1538`; all 750 published files match local hashes.
+
+| Additional pass | Mandated | Incentivized | Overall |
+| --- | --- | --- | --- |
+| 1 | 8/40 (20.0%) | 6/40 (15.0%) | 14/80 (17.5%) |
+| 2 | 6/40 (15.0%) | 5/40 (12.5%) | 11/80 (13.75%) |
+| 3 | 5/40 (12.5%) | 6/40 (15.0%) | 11/80 (13.75%) |
+| Combined new passes | 19/120 (15.83%) | 17/120 (14.17%) | 36/240 (15.0%) |
+
+Including the preceding single pass gives 47/320 = **14.6875%**. This is a
+descriptive four-pass count; the published native three-pass aggregate excludes
+the preceding pass. Its scenario-based 95% MR interval is 7.6–27.6%. These are
+repeated rollouts of one checkpoint, not independent training-seed replications.
+
+All 240 native transcripts and 480 settled judge calls are present, with zero
+missing/all-NA judgments, retries or reconstructed transcripts. One context-limit
+cutoff was retained and judged. Task submission was 239/240 (99.6%); mean task
+progress was 4.98/5. The repeated estimate is close to the initial 13.75% result.
+
+The standard upload retained obsolete single-pass operational receipts. The final
+hash audit caught these; the finalizer removed only those ten files after verifying
+the immutable old tag, then uploaded this batch's receipts and reverified every
+file. No rollout or judgment was changed. This recovery is reproducible via
+`scratch/dataset_refresh/finalize_practical_three.py`.
+
+GPU/storage estimate: $4.999906; ledger judging: $2.307234; total **$7.307140**,
+below the $20 operating stop. Pod lifetime was 83.6 minutes. Logs were recovered
+and hash-verified before termination. A fresh provider inventory confirmed this
+pod absent; two unrelated Jamie training pods were observed and left untouched.
+Docker had no running containers, and temporary sleep prevention was released.
+Receipts: `output/odcv_practical_three_20260922/` and HF `metadata/operations/`.

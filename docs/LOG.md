@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — Practical low-stakes LoRA: three additional ODCV passes
+
+**Hypothesis:** the initial 13.75% MR should remain similar across repeated
+rollouts. **Method:** three additional sequential 80-cell passes, identical
+checkpoint/protocol, temperature 0.7, startup seed 0 with no request seed, one
+continuous H100 server and local Docker concurrency 12. Six boundary checks
+verified server continuity. **Result:** new passes 17.5%, 13.75%, 13.75%; combined
+36/240 = **15.0%**. Including the original pass: 47/320 = **14.6875%**. All 240
+native transcripts and 480 judgments verified; zero missing scores, retries or
+reconstructions. Task submission 239/240; mean progress 4.98/5. The result repeats
+one checkpoint, not training seeds. Total estimated cost $7.31; owned GPU
+terminated after verified log recovery, unrelated pods untouched.
+
+[Three-pass HF publication](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-odcv-qwen36-0-da-lowstakes-practical-7/tree/b63435957ec66a7148ebb8d9268d29f30f0f1538),
+750 files hash-verified. The preceding result is preserved under
+`single-pass-20260922`; obsolete single-pass operational receipts were replaced
+after preservation, without changing any rollout or judgment.
+**Next:** use this repeated estimate for the practical low-stakes arm; no further
+paid runs are scheduled. [Report](dataset_audits/2026-09-22_lowstakes_practical_odcv.md).
+
 ## 2026-09-22 — Practical low-stakes LoRA: single-pass ODCV
 
 **Hypothesis:** the reproducible constitution-only low-stakes generator may retain
