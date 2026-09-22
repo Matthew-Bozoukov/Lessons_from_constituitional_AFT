@@ -320,8 +320,16 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                     == (data_dir / f"{archetype}.csv").read_bytes()), (
                 f"{archetype}: the resumed run drew different rows than this config draws")
         shutil.rmtree(work / "resample_check")
-        print(f">>> MASK: resuming {prior}; regenerating {regenerated or 'nothing'}, keeping "
-              f"{sorted(set(sampled) - set(regenerated))}", flush=True)
+        # Three fates per archetype: KEPT (a clean responses file the harness will skip),
+        # REGENERATED (a file past the error cap, deleted), or NEVER GENERATED (no file — the
+        # prior run died before it; the harness generates it like a fresh run). Saying
+        # "keeping" for the third group read as "skipping" once (2026-09-22) and cost a run.
+        saved = {path.stem[: -len(modelname) - 1]
+                 for path in (work / "data" / "responses").glob("*.csv")}
+        missing = sorted(set(sampled) - saved - set(regenerated))
+        print(f">>> MASK: resuming {prior}; keeping {sorted(saved)}, regenerating "
+              f"{regenerated or 'nothing'}, generating for the first time {missing or 'nothing'}",
+              flush=True)
     else:
         sampled = sample_data(source, data_dir, None if smoke else subsample, seed)
     n_rows = sum(v["n"] for v in sampled.values())
