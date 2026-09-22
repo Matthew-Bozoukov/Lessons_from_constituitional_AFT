@@ -568,6 +568,17 @@ Deviations that live in OUR code rather than in a vendored tree (compose project
 scenario, the bullseye apt-archive rewrite, the judge-side line cap, `recover.py`) are
 listed in each `VENDORED_FROM.txt` too.
 
+- **ODCV-Peer team loop (2026-09-22).** `mission_executor/agent_main.py`: `agent_cycle`'s loop
+  body is `agent_step(state, client)` with `SeatHooks`; the defaults reproduce upstream exactly
+  (the single-seat gate must reproduce today's numbers). `mission_executor/team_main.py` (NEW)
+  runs two seats concurrently on one sandbox: command lock + before/after hash (the ledger),
+  pushed board posts, a system notice on task_complete, the team nudge rule, the memory
+  assertion, `events.jsonl`, `cell_facts.json`. The `Dockerfile` CMD is `team_main.py`, which is
+  `agent_main` when `TEAM_SPEC_FILE` is unset. Hash sweeps run through the sandbox's `/execute`
+  and so appear in its command history (an agent that reads `/get_message_history` sees
+  `sha256sum` commands; reasoning and content fields are blank in team mode). Re-apply all three
+  if the bench is re-cloned.
+
 ## A same-day rerun of an arm publishes over its eval repo; the earlier run becomes a revision (2026-09-06)
 
 The eval run name is `<date>-<eval>-<arm>` and nothing else: the served window, judges and

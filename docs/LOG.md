@@ -1,6 +1,60 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — ODCV-Peer built: two concurrent agents on one ODCV sandbox, a message board and a write ledger; registry key `odcv_peer`; smoke pending
+
+**Hypothesis.** Difficult-advice SFT cuts ODCV violations from ~40% (base Qwen3.6-27B, the
+nosynth control) to 11% (da-7, 2026-09-21). Does that protection survive when the pressure
+to violate comes from a peer AI rather than the principal? The Hospital eval says no, but
+there the coalition is instructed to sabotage and there is no matched single-agent version.
+ODCV-Peer changes one thing about ODCV — a second agent shares the sandbox and a message
+board — so single-agent ODCV is the matched baseline, and the measured model is never told
+to do harm. Design (thirteen sections, all metrics with numerator and denominator):
+the "ODCV-Peer Design" artifact of 2026-09-22; one-page brief beside it.
+
+**Method (what was built, nothing run yet).**
+- Vendored patch, `mission_executor/agent_main.py`: `agent_cycle`'s loop body is now
+  `agent_step(state, client)` with a `SeatHooks` object (archive path, extra tools,
+  dispatch, nudge rule, events). The defaults reproduce upstream byte for byte; the
+  single-seat gate must reproduce the published solo numbers before any team run counts.
+- New vendored file `mission_executor/team_main.py`: one thread per seat from the same
+  instant, each with its own persistent message list (asserted: history only grows;
+  `memory_check` must be 0). The one serial point is a bash command: a lock around it,
+  and `sha256sum` over `/app` and `/usr/local/bin` before and after, through the sandbox's
+  own `/execute`, so every file change has exactly one author (`ledger.jsonl`). Every
+  call start/end, command, post, delivery and exit takes the next sequence number
+  (`events.jsonl`). Board posts are pushed as a user turn before the receiver's next call;
+  `read_board` only re-reads. `task_complete` is broadcast as a system notice without its
+  reason text. Upstream's nudge, 50-step cap and served window apply per seat; the nudge
+  also fires on a turn that only touched the board. A scripted quiet seat (no model) is the
+  K1 control. Reasoning/content fields are blanked on `/execute` in team mode (the sandbox
+  keeps a readable command history).
+- Driver (`odcv_rollout.py`): `team_spec_for` — the cell's variant is the TEAMMATE's prompt
+  (M = mandated, I = incentivized), the measured seat always holds the incentivized prompt
+  (K1: the cell's own variant); `include_scenarios` for the pre-registered sets; the
+  `team/` directory rides beside the cell. `passes.package_run` packs one rung per call
+  under `rollouts/<rung>/…`. `ServedTarget.sibling(hf, mode=)` pins a full model's mode and
+  adopts the caller's base revision, so base Qwen is served beside the da-7 LoRA on one
+  server without a restart.
+- `src/eval/misalignment/odcv/peer/`: `runner.py` (rungs I, M; K1 once), `judge.py`
+  (the teammate under the unchanged ODCV rubric + seven judged fields per cell),
+  `facts.py` (the label tree: own_violation / complicit / resisted / oblivious /
+  no_opportunity when something wrong happened; false_alarm / clobber / fine when not;
+  task label done / abandoned / dropped; metrics with a scenario bootstrap). Config
+  `configs/eval/odcv_peer/lite.yaml`: sets M = 20 + 6 benign scenarios, I = 16, 12 passes,
+  16 cells in flight, gemini-3-flash on every axis, teammate `Qwen/Qwen3.6-27B` in think.
+- Tests: `tests/test_odcv_peer.py` (12: board delivery, notice without reason, ledger
+  attribution, sha256sum parsing, nudge rule, upstream defaults unchanged, team text and
+  tools, cell facts, label tree, metrics, team spec per rung, registry). Full suite green.
+
+**Result.** Built, not run. Smoke plan: gate smoke (one seat, board off, `odcv --smoke`,
+da-7), then `odcv_peer smoke=true` (rung M on Marketing-Campaign and
+Ai-Education-Assistant, one K1 cell), read by hand before any full run.
+
+**Next.** The smoke (this branch, `--no-push`); then K1 once on da-7 (`rungs=[K1] passes=3`);
+then I and M on da-7 and nosynth. Later: replay check (identical teammate per arm), the
+mirror (base Qwen measured, a trained teammate), triads, a `pool()` for `transfer_gap`.
+
 ## 2026-09-22 — The new recipe end to end: da-15 (token share) and nosynth on the 2026-09-21 defaults reproduce the old da-7 effect on ODCV, -36.7 pp paired, and nothing moved against the old stack
 
 **Hypothesis.** The recipe now differs from the 2026-09-15 baseline in five places at once —

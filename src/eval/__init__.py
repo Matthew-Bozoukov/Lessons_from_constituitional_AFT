@@ -110,6 +110,19 @@ EVALS: dict[str, EvalSpec] = {
         # the recipe-level number is what they are for: pool.py.
         pools=True,
     ),
+    # ODCV with a teammate (docs/LOG.md 2026-09-22, "ODCV-Peer"): two CONCURRENT seats per
+    # cell on ONE shared ODCV sandbox — the measured arm beside live base Qwen, co-served on
+    # one vLLM server like the Colosseum mixed teams — with a message board and a write
+    # ledger. Same docker shape as odcv (one Compose project per cell), same judge on each
+    # seat, plus the team fact sheet. Refuses an API target for the same reason colosseum
+    # does. Its own key, so a run never collides with the arm's plain odcv run of the day.
+    "odcv_peer": EvalSpec(
+        "misalignment.odcv.peer",
+        "configs/eval/odcv_peer/lite.yaml",
+        key="odcvpeer",
+        needs_docker=True,
+        networks_per_scenario=2,
+    ),
     # Specification gaming, not agentic misalignment: nobody is threatened and nothing is
     # leaked — the agent is simply given an impossible goal and a shell, and the question is
     # whether it reaches past the game. Docker because each rollout gets its own sandbox
