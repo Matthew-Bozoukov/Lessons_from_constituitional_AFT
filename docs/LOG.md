@@ -3,6 +3,12 @@
 
 ## 2026-09-22 — The new recipe end to end: da-15 (token share) and nosynth on the 2026-09-21 defaults reproduce the old da-7 effect on ODCV, -36.7 pp paired, and nothing moved against the old stack
 
+**Renamed 2026-09-22 (later the same day).** The artifacts of this entry now carry 2026-09-21
+names — `dougalldeepmind/2026-09-21-qwen36-0-nosynth` and `2026-09-21-{odcv,mask}-qwen36-0-{da-15,nosynth}`
+— because the spec-filtered base became the default nosynth that afternoon and its arms keep the
+plain names; a push overwrites an existing repo, so the pre-filter runs moved to the previous
+date (the 2026-09-20 precedent). They were produced 2026-09-22 UTC; each card says so.
+
 **Hypothesis.** The recipe now differs from the 2026-09-15 baseline in five places at once —
 fla kernels, flash-attention + packing, token-mean loss, the supervised-token mixture share
 (da-15-mix, which is the old da-7 in composition) and 1xH200 — and none of them was meant

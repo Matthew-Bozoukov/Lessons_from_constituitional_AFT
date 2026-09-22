@@ -1194,3 +1194,15 @@ Verify with `scratch/pack_equality_check.py`: its leak probe (same example, diff
 neighbours) must read 0.0000 — it did on 2026-09-21 with all three in place — and the
 packed-vs-alone difference must sit at the kernel-shape noise floor it prints beside it. The
 max over 250k bf16 logits is NOT a usable metric (it reached 7.8 with zero leakage).
+
+## A push OVERWRITES an existing Hub repo, and same-day same-arm artifacts collide (2026-09-22)
+
+`push_run_dir`/`push_files` do `create_repo(exist_ok=True)` + upload: a second artifact minted
+with the same name silently replaces the first. Names carry only date + arm, so two trainings
+of one arm on one day (or two evals of same-named adapters on one day) collide — it happened
+with the pre-filter and filtered-base nosynth adapters and their ODCV/MASK runs. Before
+launching a run whose name already exists, `move_repo` the OLDER artifact to the previous
+date (2026-09-20 and 2026-09-21 precedents), fix its card's `date_generated`, and then
+`create_repo` an empty repo at the freed name — HF keeps a redirect after a move, and a
+push that follows it would overwrite the moved repo. A `-suffix` rename is off-grammar.
+
