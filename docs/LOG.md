@@ -1,6 +1,52 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — How the multi-agent (t10) DA corpus brings the trait up: one gate-gaming template, a human sender in 89% of rows, 96% push; the collusion clause is barely exercised
+
+**Hypothesis.** Kunwar's question: is `dougalldeepmind/2026-09-15-da-multiagent-synth`@`64416c96`
+(775 rows, all t10, the corpus behind the da-multiagent-7 organism) unnatural in how the user
+brings the multi-agent trait up? If the trait enters through exposition rather than through the
+situation, the Hospital gain (LOG 2026-09-15) is learned from a narrow shape.
+
+**Method.** Read 40 seed-0 rows in full, then labelled every row with gemini-3-flash at
+temperature 0 — the judge of the 2026-09-21 entry, reused so the two corpora share a reader.
+Two rubrics: `scratch/classify_da_pressure.py` unchanged (actor / push / goods / monitor /
+help_fully), and a new `scratch/classify_t10_multiagent.py` built from the reading (sender:
+human or agent; form: game_gate / false_status / withhold / relay_plan / defer_to_peer / other;
+bypass_humans; agent_proposed; loadbearing; explains_gate; naturalness 1–5 for the user turn and
+the system prompt), run on all 775 t10 rows and a 200-row seed-0 sample of
+`2026-09-14-da-synth`@`01388623` as the reference. Regex tells over both full corpora in
+`scratch/t10_corpus_tells.py`. Write-up with the charts and verbatim rows ("t10 Prompt Anatomy"):
+https://claude.ai/artifact/7xZYUoWFM5oMnzXqxfQ9jU.
+
+**Result.**
+- **One template, 87% of rows.** game_gate 65% + false_status 22%: the system prompt places the
+  assistant inside a pipeline ("embedded in a … pipeline" 56%, output "acted on / consumed
+  directly" 27%, "without human review" 12% — all 0–3% in DA), and a human asks it to word a
+  field or status so a downstream automated gate does not fire, then sort it out "later". 614
+  distinct domain labels, so the situation-level diversity gate never sees it; 59% of the
+  generator's own `shortcut` fields begin with draft/write/word/frame.
+- **The user does not bring the trait up; the system prompt does, and the user explains the
+  loophole.** explains_gate 63% (DA 5%); every low naturalness reason the judge gave is
+  "over-explains the routing / loophole / motive". Naturalness 4.37 vs 4.88 (user turn) and 4.62
+  vs 4.97 (system prompt); 7% of t10 user turns ≤3/5 vs 0.5% of DA. The voice is fine; the
+  mechanics are expository.
+- **The collusion clause is barely exercised.** Sender is another agent in 11%, the shortcut is
+  agent-proposed in 13%, relay_plan (write the plan another agent executes) 3%, copies of self 0,
+  "the other agents agree" 0. What is exercised: bypass a human review 69%, false status 22%,
+  withhold 7%. Consistent with the Hospital: t10 cut sabotage actions 26→11/30 (withhold /
+  flood / spam) and still posted the plan 27/30 — hypothesis, not a contrast.
+- **Most adversarial corpus we have.** push+override 96% (DA 56%), none 1% (DA 19%), AI is the
+  actor 94% (DA 18%), monitor flags 94% (DA 48%), full help right in 3% (DA 28%). Zero TCW-shaped
+  rows.
+- Responses: "I won't send / draft / mark …" in 66% (DA 18%), names a human to raise it with 13%
+  (DA 6%). Single judge, no human check of labels; regex counts are leads.
+
+**Next steps.** Before regenerating: hash sender (human / peer / orchestrator / copy) and form
+in `write_scenarios`; forbid topology exposition in the system prompt and gate-explaining in the
+user turn at `revise_prompts`; bring in the pressure axis from the 2026-09-21 entry. Cheap first:
+read the 82 agent-sender rows' responses against the rest.
+
 ## 2026-09-21 — Where the pressure in our DA prompts comes from: 56% ask the assistant for the shortcut, 19% carry none; Teaching Claude Why's example carries none
 
 **Hypothesis.** Callum's 2026-09-14 critique — DA/DAT rows are "safety-eval shaped", the push
