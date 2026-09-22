@@ -45,6 +45,20 @@ def test_ssh_decodes_stdout_as_utf8_with_replacement(local_ssh):
     assert result == "│�\r\n"
 
 
+def test_command_without_upload_never_inherits_console_stdin(local_ssh, monkeypatch):
+    real_run = subprocess.run
+    observed = {}
+
+    def capture(argv, **kwargs):
+        observed.update(kwargs)
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(vllm.subprocess, 'run', capture)
+    assert local_ssh._ssh("import sys; print(len(sys.stdin.buffer.read()))", timeout=5).strip() == '0'
+    assert observed['stdin'] == subprocess.DEVNULL
+    assert 'input' not in observed
+
+
 def test_ssh_failure_decodes_stderr_before_reporting(local_ssh):
     with pytest.raises(RuntimeError) as error:
         local_ssh._ssh(

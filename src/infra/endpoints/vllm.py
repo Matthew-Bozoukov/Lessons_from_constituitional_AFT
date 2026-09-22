@@ -740,9 +740,12 @@ class SshExec:
         # to CRLF. Decode explicitly so non-ASCII or malformed remote logs remain readable
         # without subprocess reader-thread failures under the driver's locale.
         argv, target = ssh_argv(self.host, self.identity)
+        # Concurrent OpenSSH children must not contend for an inherited Windows
+        # console input handle. Script uploads still get their explicit byte pipe.
+        input_options = ({"input": stdin_text.encode("utf-8")} if stdin_text is not None
+                         else {"stdin": subprocess.DEVNULL})
         r = subprocess.run([*argv, target, cmd], capture_output=True,
-                           timeout=timeout,
-                           input=stdin_text.encode("utf-8") if stdin_text is not None else None)
+                           timeout=timeout, **input_options)
         stdout = r.stdout.decode("utf-8", errors="replace")
         stderr = r.stderr.decode("utf-8", errors="replace")
         if r.returncode != 0:

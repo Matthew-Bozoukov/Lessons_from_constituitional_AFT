@@ -55,3 +55,21 @@ while training and verifies625 completed steps and HF adapter payload hashes bef
 teardown. Status and receipts live in `output/lowstakes_practical_training/` until publication.
 
 At this record's creation the pod was provisioning; no completed model is claimed.
+
+## First-hour checks
+
+The pod passed a real CUDA allocation check, the64-row decode/mask gate, and reproduced
+the full local token census exactly. At step100, loss was0.8138 and gradient norm0.391.
+The saved checkpoint was copied off-pod while training continued:3845775360bytes,
+11files, SHA256 `2530d613da746eb99a695c66b219f2f42d0243ba7e9f806fdc083e28602f7cfc`.
+
+Owner polling timed out during that transfer and resumed after it. A direct independent
+probe verified that optimizer steps continued throughout. A hidden-process test isolated
+inherited Windows stdin as the cause: a concurrent SSH control call timed out at5seconds
+before the fix and returned in1.485seconds afterward. The shared SSH helper and backup
+transfer now close stdin when not explicitly uploading bytes.22 focused tests pass.
+These source changes do not alter the already-running trainer or owner; the independent
+observer covers subsequent transfer windows. Read `live_observer_status.json` for current
+progress when the owner's snapshot is stale. Reproduction receipts are in
+`output/lowstakes_practical_training/ssh_stdin_probe_before_fix.json` and
+`ssh_stdin_probe.json`.

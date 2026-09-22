@@ -113,7 +113,8 @@ def fetch_training_outputs(remote, out, expected_arms=(), timeout=600, *, includ
         raise TimeoutError('Training archive creation exhausted the recovery window')
     with temporary.open('wb') as stream:
         result = subprocess.run([*argv, target, 'cat ' + shlex.quote(manifest['path'])],
-                                stdout=stream, stderr=subprocess.PIPE, timeout=remaining)
+                                stdin=subprocess.DEVNULL, stdout=stream,
+                                stderr=subprocess.PIPE, timeout=remaining)
     if result.returncode:
         raise RuntimeError('Training backup transfer failed; retain pod and partial download')
     receipt = verify_archive(temporary, manifest, expected_arms)

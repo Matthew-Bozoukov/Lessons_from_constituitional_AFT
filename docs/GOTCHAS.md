@@ -1155,3 +1155,22 @@ anything that walks the turns by iteration (actions.py does) must drop `phase ==
 These are verified campaign lessons, implemented in `scratch/da_supervision/`,
 not assertions that the reusable pipeline has incorporated every workaround.
 See the [operational record](../scratch/da_supervision/archive/operations.md).
+
+## Windows concurrent SSH commands must not inherit console stdin (2026-09-22)
+
+The practical low-stakes trainer kept advancing while its owner's SSH polls timed out
+during the first3.85GB checkpoint transfer. Direct probes from another process worked;
+the owner recovered immediately after the transfer. Restarting the owner would have
+triggered its watchdog and killed healthy training.
+
+A hidden-process reproduction ran one SSH `sleep 10` alongside a short control call.
+With inherited stdin the control call hit its5-second timeout; with null stdin it
+returned in1.47seconds. After the fix, both variants returned in about1.5seconds.
+`SshExec._ssh` now uses `stdin=DEVNULL` unless explicitly uploading script bytes, and
+the checkpoint transfer also uses `DEVNULL`. Existing UTF-8/LF upload tests and the
+new closed-stdin/real-archive-copy regressions pass.
+
+The already-running owner retains the old imported functions. Its live health is
+covered by `scratch/dataset_refresh/observe_practical_training.py`, which checks the
+pod directly when the owner's progress is stale; it never rewrites owner state or
+restarts the trainer. The original watchdog deadline remains in force.

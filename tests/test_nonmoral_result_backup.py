@@ -66,6 +66,31 @@ def test_full_backup_retains_logs_checkpoint_and_required_adapter(tmp_path):
     assert may_terminate_training({'training_started':True, 'local_backup':result})
 
 
+def test_transfer_has_closed_stdin_and_preserves_complete_archive(tmp_path, monkeypatch):
+    from scratch.nonmoral import result_backup as backup
+    arms = fixture(tmp_path)
+    archive, manifest = pack(tmp_path)
+    remote = SimpleNamespace(host='unused', identity='', _ssh=lambda *a, **kw: json.dumps(manifest))
+    child = ('import sys; from pathlib import Path; '
+             'assert sys.stdin.buffer.read() == b""; '
+             f'sys.stdout.buffer.write(Path({str(archive)!r}).read_bytes())')
+    monkeypatch.setattr(backup, 'ssh_argv', lambda *a: ([sys.executable, '-c', child], 'unused'))
+    real_run = subprocess.run
+    observed = {}
+
+    def capture(argv, **kwargs):
+        observed.update(kwargs)
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(backup.subprocess, 'run', capture)
+    out = tmp_path/'local'
+    out.mkdir()
+    receipt = backup.fetch_training_outputs(remote, out, arms, timeout=15)
+    assert observed['stdin'] == subprocess.DEVNULL
+    assert receipt['verified_completed_arms'] == 1
+    assert Path(receipt['archive']).read_bytes() == archive.read_bytes()
+
+
 def test_adapter_first_archive_preserves_provenance_without_resume_checkpoints(tmp_path):
     arms = fixture(tmp_path)
     script = pack_script(str(tmp_path), exclude_checkpoints=True, archive_name='adapter-first.tar')
