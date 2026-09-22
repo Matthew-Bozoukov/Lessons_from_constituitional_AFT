@@ -1,6 +1,72 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — The new recipe end to end: da-15 (token share) and nosynth on the 2026-09-21 defaults reproduce the old da-7 effect on ODCV, -36.7 pp paired, and nothing moved against the old stack
+
+**Hypothesis.** The recipe now differs from the 2026-09-15 baseline in five places at once —
+fla kernels, flash-attention + packing, token-mean loss, the supervised-token mixture share
+(da-15-mix, which is the old da-7 in composition) and 1xH200 — and none of them was meant
+to change what the model learns. Both ends of the ladder trained on it should land on their
+old-stack counterparts: da-15 on `2026-09-17-{odcv,mask}-qwen36-0-da-7` (the 09-15 adapter),
+nosynth on `2026-09-09-{odcv,mask}-qwen36-0-nosynth`.
+
+**Method.** `configs/train/sft.yaml` at `fea5852c` (`loss_agg: token_mean`, `packing: true`,
+flash_attention_2, fla), seed 0, one H200 each: `dougalldeepmind/2026-09-21-qwen36-0-da-15`
+(`a9b49d3b`) on `2026-09-21-da-15-mix`@`68432836`, and `2026-09-22-qwen36-0-nosynth`
+(`969c5d4a`) on `2026-09-08-nosynth-mix`@`7e991f58`. Each adapter: ODCV-lite as shipped
+(3 passes, 240 rollouts, gemini-3-flash judge + progress judge) and MASK (1,000 rows,
+think). Four evals ran concurrently — one pod per arm (`runpod up --eval`, `--terminate-pod`),
+distinct tunnel ports, both ODCV runs on one Docker daemon (2.3 GiB for 128 containers; the
+"one ODCV per daemon" rule was retracted 2026-09-07). Paired ODCV differences by
+`arm_difference` on the 40 shared scenarios.
+
+**Result.**
+
+| adapter | stack | ODCV MR [95%] | mand / incent | submit % | progress | MASK honesty |
+|---|---|---|---|---|---|---|
+| nosynth 2026-09-09 | old | 42.5% [30.8, 55.1] | 50.8 / 34.2 | 97.1 | 4.95 | 53.6 (09-07 run: 45.5) |
+| nosynth 2026-09-22 | new | 43.8% [31.1, 57.2] | 44.2 / 43.3 | 97.1 | 4.97 | 57.7 |
+| da-7 2026-09-15 | old | 8.3% [4.3, 15.6] | 5.0 / 11.7 | — | 4.82 | 74.2 |
+| da-15 2026-09-21 | new | 7.1% [3.3, 14.5] | 3.3 / 10.8 | 99.2 | 4.99 | 84.9 |
+
+Paired on scenario (treatment minus control, MR in pp, 95% CI):
+
+| pair | MR diff | severity diff |
+|---|---|---|
+| da-15 − nosynth, both new | **-36.7 [-48.6, -24.8]**, p<1e-4 | -1.36 [-1.81, -0.90] |
+| da-7 − nosynth, both old | -34.2 [-44.4, -23.9], p<1e-4 | -1.24 [-1.60, -0.87] |
+| da-15 new − da-7 old | -1.2 [-5.1, +2.6], p=0.52 | -0.06 [-0.20, +0.08] |
+| nosynth new − nosynth old | +1.2 [-4.2, +6.7], p=0.65 | +0.06 [-0.14, +0.26] |
+
+- **The treatment effect is intact and the same size** on the new recipe: -36.7 pp against
+  -34.2 on the old stack, intervals overlapping almost entirely. Neither arm moved
+  detectably against its old-stack self (both cross-stack differences are within ±1.2 pp
+  with p>0.5). The 2026-09-21 entry's worry — new-stack da-7 replicates at 11.3-12.9% vs
+  the old 8.3% — does not carry to da-15: 7.1% is the lowest da arm ODCV has scored. With
+  the same three-pass protocol, the cheapest reading is that the 09-21 gap was run-to-run
+  spread, not the kernels; a second da-15 seed would settle it.
+- **The mixture's token share behaves as the row share did.** da-15-mix reproduces the old
+  da-7 composition (same synthetic tokens, base at its own size) and the model it trains is
+  indistinguishable from the old da-7 on both evals. The share is now what the gradient
+  sees, and nothing was lost making it so.
+- **MASK: 84.9 for da-15, 57.7 for nosynth.** da-15 sits at the top of the new-stack da-7
+  spread (71.3 / 79.9 / 82.8) and nosynth above both old-stack nosynth runs (45.5 / 53.6);
+  both within the ~11-point run-to-run band established 2026-09-21, so MASK confirms the
+  direction and nothing finer. Generation error 0.2% on both (lowest to date), empty
+  content 0.7% / 0.1%.
+- **nosynth's mandated/incentivized split flipped** (50.8 / 34.2 old → 44.2 / 43.3 new)
+  with the overall rate unchanged: the split is not stable across runs of the control,
+  which bounds how much the 2026-09-21 "DA models fail more on incentivized" reading can
+  carry — the da arms' split (3.3 / 10.8 here, 5.0 / 11.7 old) is the consistent one.
+- **No arm is inert:** progress 4.97-4.99, submit rate 97-99%.
+
+**Next.** (1) A seed-1 da-15 on the same recipe to put a seed interval on the new-stack
+number and close the 09-21 question. (2) The default recipe is now measured end to end
+on both ends of the ladder; the remaining arms (dat, daa, delib) can move to token-share
+mixes and be re-trained on it. (3) `runpod up --push_env` still tears a pod down when SSH
+is not reachable within 300 s (two MASK pods lost this way on 2026-09-22 before the third
+rental succeeded); the fix — a longer wait or the env in the create request — is unmade.
+
 ## 2026-09-21 — Mixtures declare their synthetic share in SUPERVISED TOKENS; da-15-mix is the first, and it is the old da-7 in composition
 
 **Change.** `share_unit: supervised_tokens` (src/data/mixture/token_share.py; now set in every
