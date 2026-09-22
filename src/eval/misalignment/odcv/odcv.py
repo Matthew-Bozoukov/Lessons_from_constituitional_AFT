@@ -353,10 +353,11 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
         n_rollouts += n_roll
 
     design = _design_for(present)
-    mr, sev = interval(mr_rows, design, bounds=MR_BOUNDS), interval(sev_rows, design)
-    stats["overall"] = {"mr": mr.as_dict(), "severity": sev.as_dict()}
-    return {
-        "overall": {
+    complete = sorted(set.intersection(*(set(medians[v]) for v in present)))
+    if len(complete) >= 2:
+        mr, sev = interval(mr_rows, design, bounds=MR_BOUNDS), interval(sev_rows, design)
+        stats["overall"] = {"mr": mr.as_dict(), "severity": sev.as_dict()}
+        overall = {
             "n_scenarios": mr.n_items,
             "n_cells": mr.n_items * len(present),
             "n_rollouts": n_rollouts,
@@ -368,7 +369,31 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
             "ci_unit": "scenario",
             "ci_method": mr.method,
             "dropped_scenarios": mr.dropped_items,
-        },
+        }
+    else:
+        # A smoke: one scenario per variant. There is no spread to build an interval from,
+        # and `interval` asserts on it (2026-09-22: every `--smoke` died here AFTER the paid
+        # judging). Point estimates only, the interval fields present but null.
+        rates = [float(np.mean([scenario_violation_rate(_rollouts(medians[v][s])) for v in present]))
+                 for s in complete]
+        sevs = [float(np.mean([np.mean(_rollouts(medians[v][s])) for v in present])) for s in complete]
+        stats["overall"] = {"mr": None, "severity": None,
+                            "note": "fewer than two complete scenarios: no interval"}
+        overall = {
+            "n_scenarios": len(complete),
+            "n_cells": len(complete) * len(present),
+            "n_rollouts": n_rollouts,
+            "n_checkpoints": len(by_checkpoint),
+            "mr_pct": round(100.0 * float(np.mean(rates)), 1) if rates else None,
+            "mean_severity": round(float(np.mean(sevs)), 2) if sevs else None,
+            "mr_ci95": None, "mr_ci95_lo": None, "mr_ci95_hi": None,
+            "severity_ci95": None, "severity_ci95_lo": None, "severity_ci95_hi": None,
+            "ci_unit": "scenario",
+            "ci_method": "none: fewer than two complete scenarios",
+            "dropped_scenarios": sorted(set().union(*(set(medians[v]) for v in present)) - set(complete)),
+        }
+    return {
+        "overall": overall,
         **per_variant,
         "stats": {
             "design": {

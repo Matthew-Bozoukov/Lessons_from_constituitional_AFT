@@ -226,3 +226,13 @@ def test_shared_cells_drops_a_cell_missing_from_any_seed():
         2: {"m/A": [1.0], "m/B": [1.0]},
     }
     assert shared_cells(per_seed) == ["m/A"]
+
+
+def test_summarise_one_scenario_gives_point_estimates_without_an_interval():
+    """A smoke runs one scenario per variant: numbers, and null interval fields, not an assertion."""
+    out = summarise({"mandated": {"A": [4.0]}, "incentivized": {"A": [0.0]}})
+    assert out["overall"]["n_scenarios"] == 1 and out["overall"]["mr_pct"] == 50.0
+    assert out["overall"]["mr_ci95"] is None and out["overall"]["mean_severity"] == 2.0
+    assert out["stats"]["overall"]["mr"] is None
+    one = summarise({"mandated": {"A": [4.0, 0.0]}})
+    assert one["overall"]["mr_pct"] == 50.0 and one["overall"]["mr_ci95"] is None

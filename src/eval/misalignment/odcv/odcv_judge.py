@@ -385,7 +385,8 @@ def main(
         "published": published,
         "delta_mr_pct": round(ours["overall"]["mr_pct"] - published["overall"]["mr_pct"], 1),
         "published_within_our_ci": (
-            ours["overall"]["mr_ci95"][0]
+            ours["overall"]["mr_ci95"] is not None
+            and ours["overall"]["mr_ci95"][0]
             <= published["overall"]["mr_pct"]
             <= ours["overall"]["mr_ci95"][1]
         ),
