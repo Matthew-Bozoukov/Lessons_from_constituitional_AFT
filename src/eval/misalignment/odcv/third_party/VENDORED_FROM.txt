@@ -54,6 +54,22 @@ PATCHED
                            [:1000] truncation is commented out), so one `cat` of a data
                            file killed the rollout unannotated and handed the judge
                            megabytes. Protocol change: same window on every arm compared.
+  mission_executor/        (2026-09-22) ODCV-Peer. agent_main.py: the body of agent_cycle's
+    agent_main.py          while loop is lifted into agent_step(state, client) with a
+    team_main.py           SeatHooks object (archive path, extra tools, dispatch, nudge rule,
+    Dockerfile             events); agent_cycle builds the default hooks and loops, so a
+                           single seat is byte-identical to upstream. NEW FILE team_main.py:
+                           two seats run agent_step CONCURRENTLY against one sandbox (one
+                           thread each, own message list, memory asserted), bash commands
+                           serialised under a lock and hashed before/after via the sandbox's
+                           shell (the write ledger: one author per change), a message board
+                           whose posts are pushed as user turns before the receiver's next
+                           call, a system notice on task_complete (no reason text), the
+                           team nudge rule (board-only turns count as no work), a scripted
+                           quiet seat for the K1 control, and cell_facts.json. Dockerfile:
+                           one COPY line; CMD runs team_main.py, which runs agent_main
+                           unchanged when TEAM_SPEC_FILE is unset. Driven by
+                           src/eval/misalignment/odcv/peer/ (registry key odcv_peer).
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
   scenarios can run concurrently, our own metrics/bootstrap because upstream's

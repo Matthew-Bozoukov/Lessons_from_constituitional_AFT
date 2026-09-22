@@ -150,7 +150,7 @@ class ServedTarget:
         if not self.is_api:
             self._server.release()
 
-    def sibling(self, hf_path: str) -> "ServedTarget":
+    def sibling(self, hf_path: str, mode: str | None = None) -> "ServedTarget":
         """A second model live on the SAME server, for an eval that seats more than one.
 
         The arm ladder serves models one after another; a multi-agent environment needs
@@ -165,11 +165,24 @@ class ServedTarget:
         seats. That is refused here rather than discovered in the transcripts, and it
         also happens to be the comparison rule: arms whose modes differ are not
         comparable, and an eval that seats them together is claiming they are.
+
+        `mode` is the documented escape hatch a full model needs to join a think ladder
+        (run_eval's `mode=` override, applied here to the sibling alone): a full model has
+        no training stamp and resolves to its template's default. And a full model that IS
+        this server's base is already loaded, at the commit this arm was trained against;
+        resolve_target would pin it to the repo's head, which can differ and would restart
+        the server, evicting the caller's adapter. So the caller's base revision wins.
         """
         assert not self.is_api, (
             f"{self.spec.hf_path} is an API endpoint — there is no server to seat a sibling on"
         )
         spec = resolve_target(hf_path)
+        if mode is not None:
+            spec = replace(spec, mode=str(mode))
+        if not spec.adapter and spec.base_model == self.spec.base_model:
+            spec = replace(spec, revision=self.spec.base_revision,
+                           base_revision=self.spec.base_revision,
+                           base_revision_from=self.spec.base_revision_from)
         assert spec.base_model == self.spec.base_model, (
             f"cannot co-serve {hf_path} (base {spec.base_model}) with "
             f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
