@@ -163,3 +163,32 @@ def test_first_cell_is_scored_once_or_stops_dispatch(tmp_path, monkeypatch, heal
         with pytest.raises(RuntimeError,match='remaining cells not dispatched'):
             rollout.main(str(config))
         assert len(calls)==1
+
+
+@pytest.mark.parametrize('concurrency', [12, 16, 24])
+def test_explicit_refresh_concurrency_checks_config_and_networks(tmp_path, concurrency):
+    cfg = OmegaConf.load('configs/eval/odcv/lite.yaml')
+    cfg.passes = 1
+    cfg.judge_workers = 4
+    cfg.preflight_first_cell = True
+    cfg.concurrency = concurrency
+    config = tmp_path/'frozen.yaml'
+    OmegaConf.save(cfg, config)
+    plan = OmegaConf.create(dict(
+        target='dougalldeepmind/2026-09-22-qwen36-0-da-lowstakes-practical-7',
+        target_revision='a'*40, base_model='Qwen/Qwen3.6-27B', base_revision=owner.BASE_REVISION,
+        run_name='odcv-refresh-practical-test', eval_output_root='C:/odcv-test',
+        expected_cells=80, passes=1, gpu_cap_usd=15, judge_cap_usd=5,
+        backup_reserve_usd=2, max_gpu_hourly_usd=3.5, storage_hourly_reserve_usd=.1))
+    plan.concurrency = concurrency
+    plan.combined_networks = 2 * concurrency
+    plan.output_dir = str(tmp_path/'fresh')
+    plan.eval_config = str(config)
+    plan.eval_config_sha256 = hashlib.sha256(config.read_bytes()).hexdigest()
+    path = tmp_path/'plan.yaml'
+    OmegaConf.save(plan, path)
+    assert owner.load_plan(path)['concurrency'] == concurrency
+    plan.combined_networks -= 1
+    OmegaConf.save(plan, path)
+    with pytest.raises(ValueError, match='network reservation'):
+        owner.load_plan(path)

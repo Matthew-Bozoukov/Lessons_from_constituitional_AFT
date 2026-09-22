@@ -48,7 +48,7 @@ def load_plan(path):
                 'run_name', 'eval_output_root', 'eval_config', 'eval_config_sha256', 'expected_cells', 'passes',
                 'gpu_cap_usd', 'backup_reserve_usd', 'judge_cap_usd',
                 'max_gpu_hourly_usd', 'storage_hourly_reserve_usd'}
-    optional = {'port', 'combined_networks', 'protocol', 'pod_name', 'server_seed', 'disable_global_network_prune'}
+    optional = {'port', 'combined_networks', 'protocol', 'pod_name', 'server_seed', 'disable_global_network_prune', 'concurrency'}
     if not required <= set(plan) or set(plan) - required - optional:
         raise ValueError(f'Plan fields differ: missing={required-set(plan)}, extra={set(plan)-required}')
     if 'server_seed' in plan and (type(plan['server_seed']) is not int or plan['server_seed'] != 0):
@@ -76,6 +76,10 @@ def load_plan(path):
     if plan.get('protocol') not in (None, 'refresh-three-pass') or (three_pass and not refresh):
         raise ValueError('Unknown or incompatible evaluation protocol')
     passes, concurrency = ((3 if three_pass else 1), 6) if refresh else (3, 8)
+    if 'concurrency' in plan:
+        if not refresh or type(plan['concurrency']) is not int or plan['concurrency'] not in (6, 12, 16, 24):
+            raise ValueError('Explicit refresh concurrency must be 6, 12, 16 or 24')
+        concurrency = plan['concurrency']
     if (plan['expected_cells'], plan['passes']) != (80, passes):
         raise ValueError(f'Exactly one {passes}x80 evaluation is authorized')
     if not 1024 <= int(plan.get('port', 8000)) <= 65535:
@@ -168,7 +172,7 @@ print(json.dumps(dict(bytes=archive.stat().st_size,sha256=hashlib.sha256(archive
     argv, target = ssh_argv(host, identity)
     with path.open('xb') as stream:
         result = subprocess.run([*argv, target, 'cat /workspace/eval-log-backup.tar'],
-                                stdout=stream, stderr=subprocess.PIPE, timeout=min(180, remaining()))
+                                stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.PIPE, timeout=min(180, remaining()))
     if result.returncode or path.stat().st_size != manifest['bytes'] or (
             hashlib.sha256(path.read_bytes()).hexdigest() != manifest['sha256']):
         raise RuntimeError('Remote log transfer hash/size verification failed')
@@ -277,6 +281,14 @@ def evaluate_frozen(plan_path, config, host, identity):
             return result
     with ExitStack() as stack:
         stack.enter_context(patch('src.eval.run_eval.resolve_target', one_target))
+        if os.name == 'nt':
+            from scratch.da_supervision.odcv_eval import process_workdir, ReachableSshExec
+            from src.eval.misalignment.odcv import odcv_rollout
+            stack.enter_context(patch('src.eval.run_eval.SshExec', ReachableSshExec))
+            original_compose = odcv_rollout._compose
+            def short_compose(project, ws, env, args, timeout):
+                return original_compose(project, process_workdir(ws), env, args, timeout)
+            stack.enter_context(patch.object(odcv_rollout, '_compose', short_compose))
         if 'server_seed' in plan:
             original_start = SshExec.start_server
             def seeded_start(executor, argv, env):
@@ -292,6 +304,7 @@ def evaluate_frozen(plan_path, config, host, identity):
                     because='Sequential ODCV pass on shared Docker; no global pruning')))
         evaluate(['--name', 'odcv', '--config', str(config), '--target', spec.hf_path,
                   '--server', host, '--ssh-key', identity,
+                  *(['--server-bind', '0.0.0.0'] if os.name == 'nt' else []),
                   '--port', str(plan.get('port', 8000))], runner=custom_runner)
 
 
@@ -452,7 +465,7 @@ def main(checkpoint='nonmoral', plan_path=None):
         bootstrap_timeout = min(3600, max(1, int(state['rented_at_unix']+work_lifetime-time.time()))) if plan else 3600
         if not runpod.wait_bootstrapped(pod.id,timeout_s=bootstrap_timeout):
             raise TimeoutError('Baseline pod bootstrap exceeded one hour')
-        if plan and plan.get('protocol') == 'refresh-three-pass':
+        if plan:
             remote=SshExec(pod.host,port=int(plan.get('port',8000)),identity=keypair[1])
             probe=('import json,torch; '
                    'assert torch.cuda.is_available(), "CUDA unavailable"; '
