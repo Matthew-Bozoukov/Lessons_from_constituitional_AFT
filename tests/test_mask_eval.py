@@ -265,3 +265,29 @@ def test_resume_refuses_another_models_answers_and_a_run_with_no_work_tree(tmp_p
         runner.resume_work(prior, tmp_path / "w" / "mask_work", "m", cap=0.05)
     with pytest.raises(AssertionError, match="no mask_work"):
         runner.resume_work(tmp_path / "finished", tmp_path / "w2" / "mask_work", "m", cap=0.05)
+
+
+# --- one queue over every archetype ------------------------------------------------------
+
+def test_archetypes_run_concurrently_under_one_shared_semaphore(monkeypatch):
+    """Upstream ran archetypes one `asyncio.run` at a time, so each drained its long tail
+    before the next began. The patch gathers them under one semaphore: every archetype
+    gets the SAME semaphore object and they overlap in time."""
+    import asyncio, importlib.util
+    spec = importlib.util.spec_from_file_location("mask_generate_responses",
+                                                  runner._HARNESS / "generate_responses.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    seen, active, peak = [], [0], [0]
+
+    async def fake(input_csv, output_csv, semaphore=None, **kw):
+        seen.append(semaphore)
+        active[0] += 1; peak[0] = max(peak[0], active[0])
+        await asyncio.sleep(0.01)
+        active[0] -= 1
+
+    monkeypatch.setattr(mod, "process_dataframe", fake)
+    jobs = [{"input_csv": f"a{i}.csv", "output_csv": f"r{i}.csv"} for i in range(6)]
+    asyncio.run(mod.process_archetypes(jobs, 192))
+    assert len(seen) == 6 and len({id(s) for s in seen}) == 1, "archetypes must share ONE semaphore"
+    assert isinstance(seen[0], asyncio.Semaphore) and peak[0] == 6, "archetypes must overlap, not run one after another"
+

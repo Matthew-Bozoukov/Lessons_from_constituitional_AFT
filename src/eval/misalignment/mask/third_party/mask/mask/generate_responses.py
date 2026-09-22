@@ -122,7 +122,7 @@ def create_model_client(model_name, base_url=None, api_key=None):
                            timeout=float(os.getenv('MASK_GEN_TIMEOUT_S', '1800')))
     return AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None):
+async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-4o-mini", max_tokens=2000, belief_k=None, lie_k=10, base_url=None, api_key=None, semaphore=None):
     """
     Process a dataframe and generate responses from an AI model.
     
@@ -147,7 +147,9 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
 
         # PATCH (teaching_claude_why): in-flight generations. The original 10 cannot fill a
         # vLLM server; the runner sets MASK_GEN_CONCURRENCY from its config (gen_concurrency).
-        semaphore = asyncio.Semaphore(int(os.getenv('MASK_GEN_CONCURRENCY', '10')))
+        # A caller may pass ONE semaphore shared across archetypes (process_archetypes below).
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(int(os.getenv('MASK_GEN_CONCURRENCY', '10')))
 
         # Read input data and set default system prompt if needed
         df = pd.read_csv(input_csv)
@@ -257,6 +259,15 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         if hasattr(client, 'close'):
             await client.close()
 
+async def process_archetypes(jobs, concurrency):
+    """PATCH (teaching_claude_why): run every archetype's `process_dataframe` concurrently
+    under one shared semaphore of `concurrency`, so the server's batch stays full across
+    archetype boundaries and only the whole run has a tail. `jobs` are process_dataframe
+    kwargs, one per archetype."""
+    semaphore = asyncio.Semaphore(int(concurrency))
+    await asyncio.gather(*(process_dataframe(**job, semaphore=semaphore) for job in jobs))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate responses from AI models for a set of prompts")
     parser.add_argument("--test", action="store_true", help="Run in test mode")
@@ -270,6 +281,7 @@ if __name__ == "__main__":
     # PATCH (teaching_claude_why): MASK_DATA_DIR points every stage at a per-run copy of the
     # data (the runner's subsample); unset = the original in-tree csv_data / test_csv_data.
     data_dir = os.getenv('MASK_DATA_DIR') or ('test_csv_data' if args.test else 'csv_data')
+    jobs = []
     for file in sorted(glob.iglob(os.path.join(data_dir, '*.csv'))):
         belief_k = {'1': 3} if 'statistics' in os.path.basename(file) else {'1': 3, '2': 1, '3': 1}
 
@@ -284,8 +296,8 @@ if __name__ == "__main__":
             continue
 
         print('Processing', file, 'to', output_file)
-        asyncio.run(process_dataframe(
-            file, output_file,
+        jobs.append(dict(
+            input_csv=file, output_csv=output_file,
             temperature=args.temperature,
             model_name=args.model,
             max_tokens=args.max_tokens,
@@ -296,3 +308,9 @@ if __name__ == "__main__":
             base_url=os.getenv('MASK_TARGET_BASE_URL') or None,
             api_key=os.getenv('MASK_TARGET_API_KEY') or None,
         ))
+    # PATCH (teaching_claude_why, 2026-09-22): every pending archetype runs under ONE queue.
+    # Upstream ran them one after another, each `asyncio.run` draining to its last long
+    # think block before the next archetype started: at 192 in flight on an H200 the batch
+    # was full ~6 min then near-empty ~6 min, six times — half the GPU idle. Responses files
+    # are still written per archetype as each finishes, so resume (skip-if-exists) is unchanged.
+    asyncio.run(process_archetypes(jobs, int(os.getenv('MASK_GEN_CONCURRENCY', '10'))))

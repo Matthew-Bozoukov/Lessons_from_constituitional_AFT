@@ -54,6 +54,12 @@ metric.py, process_metrics.py
      served model name may carry underscores (`qwen36_0_nosynth`), so the split is on the
      known archetype prefix, not the last underscore (which mis-keyed every result and, in
      metric.py, missed the statistics archetype's own aggregation).
+  7. One queue over every archetype (2026-09-22): `process_archetypes` in generate_responses.py
+     gathers every pending archetype's `process_dataframe` under ONE shared semaphore
+     (`process_dataframe(..., semaphore=)`, own semaphore when None). Upstream ran archetypes
+     one `asyncio.run` at a time, draining each to its last long think block: at 192 in
+     flight (H200) the batch was full ~6 min then near-empty ~6 min per archetype. Per-archetype
+     responses files and the skip-if-exists resume are unchanged.
   6. Client timeout (2026-09-11): `AsyncOpenAI(..., timeout=MASK_GEN_TIMEOUT_S)` in generate_responses.py
      (the runner sets it from configs/eval/mask.yaml `gen_timeout_s`, default 1800).
      The SDK default (600 s read) is shorter than a 16k-token think trace takes at 32 streams
