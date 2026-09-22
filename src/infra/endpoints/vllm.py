@@ -46,7 +46,7 @@ WANDB_ENV = ("WANDB_API_KEY", "WANDB_PROJECT", "WANDB_ENTITY")
 
 _HEALTH_TIMEOUT_S = 1800  # first start downloads weights; a 32B pull can take a while
 
-# The vLLM venv on an eval pod: `uv run runpod up --eval <hf>` builds it at boot, SshExec
+# The vLLM venv on an eval pod: `uv run runpod up --eval <eval> --target <hf>` builds it at boot, SshExec
 # launches the server with its interpreter. ONE constant for both halves — a pod that put
 # vLLM anywhere else is a pod this module cannot serve from, and `check_ready` says so
 # before any weights move. Deliberately NOT the repo's own env: serving needs vLLM, not
@@ -695,8 +695,9 @@ def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
 
 
 class SshExec:
-    """Run the vLLM server on a remote GPU host (one `uv run runpod up --eval <hf>` leaves
-    ready: a vLLM venv and the weights pulled), with an owned SSH tunnel so the driver
+    """Run the vLLM server on a remote GPU host (one `uv run runpod up --eval <eval>
+    --target <hf>` leaves ready: a vLLM venv and the weights pulled), with an owned SSH
+    tunnel so the driver
     still talks to localhost. `bind` is the local tunnel address — 127.0.0.1 normally; a
     docker-bridge address (e.g. 172.17.0.1) when local containers must reach the endpoint
     (ODCV).
@@ -811,7 +812,8 @@ class SshExec:
         """Fast fail-with-remedy preflight: is this host prepared to serve?
 
         Checks reachability and the vLLM venv — the two ways a fresh instance fails
-        confusingly later, and exactly what `uv run runpod up --eval <hf>` leaves behind.
+        confusingly later, and exactly what `uv run runpod up --eval <eval> --target <hf>`
+        leaves behind.
         A host still installing says so in its boot log; this only reports what is there
         now, before any weights move.
         """
@@ -827,7 +829,7 @@ class SshExec:
             raise SystemExit(
                 f"\n--server preflight: {self.host} has no vLLM at {POD_VENV}.\n"
                 "  Rent a host that serves this target with:\n"
-                "    uv run runpod up --name <name> --eval <hf_path>\n"
+                "    uv run runpod up --name <name> --eval <eval> --target <hf_path>\n"
                 "  (installs vLLM and pre-pulls the weights; it starts no server —\n"
                 "  run_eval does that). If the pod is still booting, its :8080 boot log\n"
                 "  says READY when the venv is in.")

@@ -50,8 +50,12 @@ class ModelProfile:
         match: Squeezed substring (letters and digits, lowercased) that identifies the
             model in any id, path or served name. Defaults to the key.
         family: Display name (`Qwen3.6`), used in messages only.
-        gpu: `{"train": <card>, "inference": <card>}` as RunPod catalogue ids. TYPE only,
-            never a count: how many GPUs a job wants is a property of the run.
+        gpu: `{"train": <card>, "inference": <card> | {"default": <card>, <eval>: <card>}}`
+            as RunPod catalogue ids. The inference card is a MODEL x EVAL fact (MASK on
+            Qwen3.6-27B is 3.5x faster on an H200 than an H100; ODCV is unmeasured
+            there), so it may be a mapping keyed by eval name with a required `default`;
+            a bare string is the legacy one-card form. TYPE only, never a count: how
+            many GPUs a job wants is a property of the run.
         serving: Verified vLLM-facing facts (`max_num_seqs`, `reasoning_parser`,
             `tool_call_parser`, `supports_prefix_caching`); None on a stub, where
             `serving_params` falls back to DEFAULT_SERVING.
@@ -345,7 +349,21 @@ def train_memory_entry(profile: ModelProfile, device_name: str) -> dict | None:
     return None
 
 
-def gpu_for(model_name: str, role: str) -> str | None:
+def _gpu_lookup(p: ModelProfile, role: str, eval: str | None) -> tuple[str | None, str]:
+    """`(card, entry)` for one profile: the card and the `gpu` field that stated it."""
+    stated = p.gpu.get(role)
+    if role == "inference" and isinstance(stated, dict):
+        assert "default" in stated, (
+            f"model profile {p.key!r}: gpu.inference is keyed by eval name and must carry "
+            f"a `default` card (has {sorted(stated)})")
+        key = eval if eval in stated else "default"
+        return stated[key], f"{role}[{key}]"
+    assert stated is None or isinstance(stated, str), (
+        f"model profile {p.key!r}: gpu.{role} must be a catalogue id, got {stated!r}")
+    return stated, role
+
+
+def gpu_for(model_name: str, role: str, eval: str | None = None) -> str | None:
     """The RunPod GPU type this family needs for `role`, or None when it states none.
 
     One place per model, read by both provisioning paths: `uv run runpod up`
@@ -356,14 +374,27 @@ def gpu_for(model_name: str, role: str) -> str | None:
     Args:
         model_name: A profile key or base model id (e.g. "Qwen/Qwen3.6-27B").
         role: "train" or "inference".
+        eval: The registered eval name the card will serve (`mask`), for a profile
+            whose `gpu.inference` is keyed by eval; an eval it does not list, or None,
+            gets `default`. Ignored for "train" and for a legacy one-card profile.
+    """
+    return gpu_entry(model_name, role, eval)[0]
+
+
+def gpu_entry(model_name: str, role: str, eval: str | None = None) -> tuple[str | None, str]:
+    """`gpu_for` plus WHICH profile field named the card, for the provisioning print.
+
+    Returns:
+        `(card, entry)`: `entry` is `"train"`, `"inference"` (legacy one-card form) or
+        `"inference[<eval>]"` / `"inference[default]"` for the eval-keyed mapping.
     """
     assert role in ("train", "inference"), f"role must be train|inference, got {role!r}"
     p = find_profile(model_name)
-    return p.gpu.get(role) if p else None
+    return _gpu_lookup(p, role, eval) if p else (None, role)
 
 
 # VRAM per RunPod catalogue id, in GB: the one axis on which "big enough" is decided when
-# SEVERAL models have to share a pod (an eval ladder — `uv run runpod up --eval a b c`).
+# SEVERAL models have to share a pod (an eval ladder — `uv run runpod up --eval <eval> --target a b c`).
 # Written out rather than parsed off the id, because "NVIDIA H100 80GB HBM3" carries its
 # size and "NVIDIA H200" does not, and a regex that guesses would silently under-rent on
 # exactly the card whose name has no number in it. Add a row when a profile names a card.

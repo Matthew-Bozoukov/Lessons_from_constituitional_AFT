@@ -54,7 +54,8 @@ seed: 0
 # Generations in flight against the served target: equal to `serving.concurrency` below,
 # so the client keeps the batch full and nothing queues on our side. Measured 2026-09-22
 # (scratch/bench_mask_serving.py, docs/LOG.md): a MASK run generates ~7.2M tokens, 86% of
-# them think blocks; on the profile's H200 the steady rate is 1,131 tok/s at 32 in flight
+# them think blocks; on MASK's H200 (the profile's `gpu.inference.mask`, what `runpod up
+# --eval mask --target <hf>` rents) the steady rate is 1,131 tok/s at 32 in flight
 # and 3,076 at 192 (KV cache ≤55%, no preemption) — 39 min of generation and $4.51 a run
 # against 106 min / $9.65 at the old 32. Every MASK run before 2026-09-22 ran at 32 on an
 # H100 (~137 min). On an H100 the KV cache saturates near 90 running; the rest just queue.

@@ -30,7 +30,8 @@ orchestrator surviving), and `orphans` for the startup sweep.
 
 The bottom of this file is the `uv run runpod` CLI (`up`/`status`/`pods`/`down`): the one
 command that gets a person a GPU box, in the shape the work needs — `--train <config>`
-clones this repo at the commit you are on, `--eval <hf>` installs vLLM and pulls weights.
+clones this repo at the commit you are on, `--eval <eval> --target <hf>` installs vLLM and
+pulls the weights, on the card the model's profile names for THAT eval.
 """
 
 from __future__ import annotations
@@ -52,7 +53,7 @@ from typing import Any, Callable, Sequence
 import requests
 
 from src.infra.endpoints.vllm import POD_VENV, pin_prefix, ssh_argv
-from src.model_profile import gpu_for
+from src.model_profile import gpu_entry, gpu_for
 
 REST = "https://rest.runpod.io/v1"
 IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
@@ -1049,11 +1050,13 @@ class Pod:
         return f"root@{self.ip}:{self.port}"
 
 
-def plan_eval_pod(eval: str | Sequence[str],
-                  disk_gb: int = 200) -> tuple[list[str], tuple, str | None, int]:
+def plan_eval_pod(targets: str | Sequence[str], disk_gb: int = 200,
+                  eval: str | None = None) -> tuple[list[str], tuple, str | None, int, str]:
     """Decide what an INFERENCE pod for these targets must be: weights, card and disk.
 
     Shared by the CLI and programmatic provisioning so both size a pod by the same rules.
+    The card is a MODEL x EVAL fact: `eval` (a registered eval name) picks the base's
+    `gpu.inference[<eval>]` entry when its profile lists one, else `default`.
 
     ONE target is the right thing to pass here TODAY. The list form works and is kept
     deliberately, but it is plumbing for a future in which evals run arms in parallel —
@@ -1068,13 +1071,14 @@ def plan_eval_pod(eval: str | Sequence[str],
     ladder-that-shares-a-base and pass that base's arms to `uv run evals --target`.
 
     Returns:
-        `(targets, weights, profile_gpu, disk_gb)` — `weights` is the
-        `(paths, hf_token)` pair the bootstrap pre-pulls.
+        `(targets, weights, profile_gpu, disk_gb, gpu_entry)` — `weights` is the
+        `(paths, hf_token)` pair the bootstrap pre-pulls; `gpu_entry` names the profile
+        field the card came from (`inference[mask]`, `inference[default]`).
     """
     from src.infra.endpoints.vllm import resolve_target
     from src.model_profile import largest_gpu
 
-    targets = [eval] if isinstance(eval, str) else list(eval)
+    targets = [targets] if isinstance(targets, str) else list(targets)
     specs = [resolve_target(t) for t in targets]
     api = [s.hf_path for s in specs if s.api_base]
     assert not api, (
@@ -1089,14 +1093,16 @@ def plan_eval_pod(eval: str | Sequence[str],
     # Families disagreeing is rare enough to be worth SAYING rather than silently
     # resolving: it means half the ladder is running on a card nobody measured it on,
     # which is a fact about the numbers that come back.
-    cards = [c for c in (gpu_for(b, "inference") for b in bases) if c]
+    stated = {b: gpu_entry(b, "inference", eval) for b in bases}
+    cards = [c for c, _ in stated.values() if c]
     profile_gpu = largest_gpu(cards) if cards else None
+    entry = next((e for c, e in stated.values() if c == profile_gpu), "inference")
     if len(set(cards)) > 1:
         print(f"!!! these targets do not agree on an inference card "
-              f"({', '.join(f'{b} -> {gpu_for(b, 'inference')}' for b in bases)}) — "
+              f"({', '.join(f'{b} -> {c}' for b, (c, _) in stated.items())}) — "
               f"renting {profile_gpu}, the largest, so every arm fits")
     # The base is the ~150GB item; the default 200 is exactly one of them plus room.
-    return targets, weights, profile_gpu, max(disk_gb, 50 + 150 * len(bases))
+    return targets, weights, profile_gpu, max(disk_gb, 50 + 150 * len(bases)), entry
 
 
 def default_keypair() -> tuple[str, str] | None:
@@ -1126,16 +1132,18 @@ def default_keypair() -> tuple[str, str] | None:
     return None
 
 
-def provision_eval_pod(eval: str | Sequence[str], *, name: str, gpu: str | None = None,
+def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | None = None,
                        count: int = 1, disk_gb: int = 200, cloud: str = "SECURE",
                        image: str = IMAGE, countries: str = "", pubkey_path: str = "",
-                       identity: str = "",
+                       identity: str = "", eval: str | None = None,
                        on_provisioned: Callable[[str], None] | None = None) -> Pod:
     """Rent an inference pod holding vLLM + these targets' weights, and return it as data.
 
-    The same pod `up --eval` leaves behind — same planning, same bootstrap, same ports,
-    and it starts no server either (`uv run evals` owns serving). The difference is only
-    that this returns a `Pod` a caller can tear down without parsing anything.
+    The same pod `up --eval <eval> --target <hf>` leaves behind — same planning, same
+    bootstrap, same ports, and it starts no server either (`uv run evals` owns serving).
+    The difference is only that this returns a `Pod` a caller can tear down without
+    parsing anything. `eval` is the registered eval name the pod will serve, which picks
+    the model's card for THAT eval (`plan_eval_pod`); None takes the profile's default.
 
     BILLING STARTS WELL BEFORE THIS RETURNS. Resolving the SSH endpoint and waiting for
     sshd can take ten minutes or more, and the meter runs throughout — so a caller that
@@ -1150,7 +1158,7 @@ def provision_eval_pod(eval: str | Sequence[str], *, name: str, gpu: str | None 
             — a watchdog that failed to arm must not be ignored — but the pod is already
             billing by then, so the caller's `finally` still owns teardown.
     """
-    targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
+    targets, weights, profile_gpu, disk_gb, _ = plan_eval_pod(targets, disk_gb, eval=eval)
     gpu = gpu or profile_gpu or GPU
     print(f">>> {count}x {gpu} ({cloud}, {disk_gb}GB) for {', '.join(targets)}")
     script = _bootstrap(None, weights)
@@ -1176,7 +1184,7 @@ def provision_eval_pod(eval: str | Sequence[str], *, name: str, gpu: str | None 
 
 
 def up(name: str, train: str | None = None, eval: str | None = None,
-       model: str | None = None,
+       target: str | Sequence[str] | None = None, model: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False,
@@ -1184,16 +1192,17 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
-        up --name <n> --train configs/train/sft.yaml --model qwen36   training card + this repo
-        up --name <n> --eval  <hf_path>                                 inference card + vLLM, no repo
-        up --name <n> --eval  <hf_path> --clone-repo                    + this repo, to drive on the box
+        up --name <n> --train configs/train/sft.yaml --model qwen36     training card + this repo
+        up --name <n> --eval mask --target <hf_path>                     that eval's inference card + vLLM, no repo
+        up --name <n> --eval mask --target <hf_path> --clone-repo        + this repo, to drive on the box
 
     One target per `--eval` pod: an arm ladder is `uv run evals --target a b c --server
     <this pod>`, which reuses the one server rather than one pod per arm.
 
     Naming the work picks the card, and the FORM of the name is the difference between
     the two: an arm you are about to train exists only as a config, while a target you
-    are about to evaluate exists on the Hub. Neither shape serves anything by itself —
+    are about to evaluate exists on the Hub — and the inference card is a MODEL x EVAL
+    fact, so the eval's name is what picks it. Neither shape serves anything by itself —
     `uv run evals --server <host>` owns serving, on the pod `--eval` leaves ready.
 
     Args:
@@ -1207,18 +1216,25 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         model: The profile key (or HF id) of the model `--train` will fine-tune — the same
             `model=` you will give `uv run train`. Required with `--train` unless the
             config itself still carries `model:` (an archived per-arm config).
-        eval: The HF target you are about to EVALUATE — an adapter or a full model. Picks
-            the INFERENCE card, a different and usually cheaper one (serving holds weights
-            and KV; training also holds optimizer state, activations and the fp32-logits
-            CE path), installs vLLM at the version pyproject pins, and pre-pulls the
-            weights so the slow half overlaps the boot. It starts NO server: run_eval
-            infers the mode from the artifact, pins it into the template, swaps LoRA
-            between arms and stops what it started, and a pod that served on its own
-            would be a second place deciding all of that with nothing able to verify it
-            from outside. A comma-separated list (`--eval a,b,c`) is accepted and sizes
-            the pod for all of them, but PASS ONE for now: nothing runs arms in parallel
-            yet, so a ladder on one pod only pays the largest card's rate for the arms
-            that did not need it. See the note in the body.
+        eval: The registered NAME of the eval you are about to run (`mask`, `odcv`;
+            the same `--name` you will give `uv run evals`), validated against the
+            registry. Picks the INFERENCE card from the target's profile
+            (`gpu.inference[<eval>]`, else `gpu.inference.default`) — a different and
+            usually cheaper card than training's (serving holds weights and KV; training
+            also holds optimizer state, activations and the fp32-logits CE path), and a
+            per-eval one because MASK on Qwen3.6-27B runs 3.5x faster on an H200 than an
+            H100 while ODCV is unmeasured there. Requires `--target`.
+        target: The HF target you are about to EVALUATE — an adapter or a full model (the
+            same `--target` you will give `uv run evals`). The pod installs vLLM at the
+            version pyproject pins and pre-pulls the weights so the slow half overlaps
+            the boot. It starts NO server: run_eval infers the mode from the artifact,
+            pins it into the template, swaps LoRA between arms and stops what it started,
+            and a pod that served on its own would be a second place deciding all of that
+            with nothing able to verify it from outside. A list (`--target "['a','b']"`,
+            docs/GOTCHAS.md 2026-09-04) is accepted and sizes the pod for all of them,
+            but PASS ONE for now: nothing runs arms in parallel yet, so a ladder on one
+            pod only pays the largest card's rate for the arms that did not need it. See
+            the note in the body.
         clone_repo: Put this repo on an `--eval` pod too, at the commit you are on, so the
             EVAL can run on the box (`ssh <pod>`, then `uv run evals --target <hf>`) rather
             than from here over a tunnel — worth it for a ladder long enough that a
@@ -1254,7 +1270,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         raise ValueError("max_hours must be finite and positive")
     assert bool(train) != bool(eval), (
         "a pod is for training or for evaluating, not both and not neither: give "
-        "--train <config> or --eval <hf_path>")
+        "--train <config> or --eval <eval> --target <hf_path>")
 
     clone, weights, targets = None, None, []
     if train:
@@ -1271,15 +1287,31 @@ def up(name: str, train: str | None = None, eval: str | None = None,
             f"{train} is a recipe and names no model: pass --model <key> "
             "(configs/models/<key>.yaml, e.g. --model qwen36) — the same `model=` you "
             "will give `uv run train` on the box.")
-        profile_gpu = gpu_for(str(model), "train")
+        profile_gpu, entry = gpu_for(str(model), "train"), "train"
     else:
-        targets, weights, profile_gpu, disk_gb = plan_eval_pod(eval, disk_gb)
+        from src.eval import EVALS
+
+        # The old shape was `--eval <hf_path>`; an HF id is the one thing that has a
+        # slash in it, so that mistake is caught here rather than as "no such eval".
+        assert not ("/" in str(eval) and not target), (
+            f"--eval {eval} looks like an HF path. `--eval` is now the eval NAME, which "
+            "picks the inference card from the model's profile, and the target moved "
+            f"to --target: uv run runpod up --name {name} --eval <eval> --target {eval}")
+        assert eval in EVALS, (
+            f"no eval named {eval!r}; registered: {', '.join(sorted(EVALS))} "
+            "(src/eval/__init__.py)")
+        assert target, (
+            f"--eval {eval} names the eval; --target <hf_path> names what it measures "
+            f"(an adapter or a full model, the same --target `uv run evals` takes): "
+            f"uv run runpod up --name {name} --eval {eval} --target <hf_path>")
+        targets, weights, profile_gpu, disk_gb, entry = plan_eval_pod(
+            target, disk_gb, eval=eval)
         if clone_repo:
             branch, sha = _commit_to_run(branch)
             clone = (_clone_url(), branch, sha)
     gpu = gpu or profile_gpu or GPU
     print(f">>> {count}x {gpu} ({cloud}, {disk_gb}GB) — " + (
-        "from ModelProfile.gpu" if gpu == profile_gpu
+        f"from ModelProfile.gpu.{entry}" if gpu == profile_gpu
         else "asked for" if gpu != GPU else "no profile states a card, so the default"))
     if weights:
         print(f">>> vLLM + weights for {len(targets)} target(s): {', '.join(targets)}")
@@ -1347,12 +1379,12 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     ] if train else [
         "The boot log says READY when vLLM and the weights are in (~20-30 min). Then,",
         "from a machine with docker if the eval needs it:",
-        f"  uv run evals --name <eval> --target {' '.join(targets)} --server {host}",
+        f"  uv run evals --name {eval} --target {' '.join(targets)} --server {host}",
     ] + ([
         "",
         "or drive it on the box itself, which is what the clone is for (scp your .env",
         "first, or pass --push_env above for HF_TOKEN + HF_ORG + the W&B trio only):",
-        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run evals --name <eval> "
+        f"  ssh -p {port} root@{ip} 'cd {WORKDIR} && uv run evals --name {eval} "
         f"--target {' '.join(targets)}'",
     ] if clone else []))
     return "\n".join([

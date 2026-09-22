@@ -13,7 +13,7 @@ scoring, which lives in `src/eval/misalignment/moralbench/moralbench.py`.
 
 ```bash
 # provision with a local deadline watchdog
-uv run runpod up --name <you>-moralbench --eval <hf> --max_hours 4 --push_env
+uv run runpod up --name <you>-moralbench --eval moralbench --target <hf> --max_hours 4 --push_env
 
 # or the ordinary framework path, against a pod you already have
 uv run evals --name moralbench --target <hf> --server root@<ip>:<port> --ssh-key ~/.ssh/<key> --terminate-pod
