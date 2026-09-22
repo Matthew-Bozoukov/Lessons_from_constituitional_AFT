@@ -1,6 +1,85 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — The spec-filtered nosynth base is the default; the ladder re-trained on it (nosynth, da-15, delib-15, delib-sonnet-15) — the filter moves nothing, and at equal token share the ranking is da > delib-sonnet > delib
+
+**Hypothesis.** (1) The published nosynth base carried 452 rows a constitution judge rejects
+(spec violations, toxic); if difficult-advice training works partly by overwriting them, a
+filtered base should raise the control and shrink the treatment effect. (2) The old delib
+baselines (delib-7: 30.5% of supervised tokens; delib-sonnet-7: 26.8%; da-7: 15.4%) had
+twice difficult-advice's gradient share; at an EQUAL share the comparison is fair.
+
+**Method.** Base: `dougalldeepmind/2026-09-22-nosynth-mix`@`378ec1ee` —
+`scratch/rebuild_nosynth_filtered.py` judged the 10,000 published rows against
+`constitutions/claude_distilled_09_principles` with the in-repo spec filter (gpt-5.6-terra,
+same rubric as August, $28 with prompt caching), rejected 452 (4.5%; 413 spec_violation, 37
+toxic, 2 disclaimer; tulu3_if 7.4%, lima 6.7%, no_robots 5.5%, smol_summarize 4.0% — August's
+32% on smol_summarize was that adapter's old render + the older constitution), and refilled
+each source to its published count from an oversampled seeded pool (559 of 603 candidates
+passed). 9,548 published rows kept verbatim, traces included (1,077 traced); the 452 new rows
+got traces by the config's own rule (50% of tulu3_if/self_oss/lima; 53 of 77 accepted, $0.75).
+Supervised tokens 4,877,400 -> 4,842,160 (-0.7%); no source's share moved >0.4 pt. Every arm
+config pins it. Mixes at 15% of supervised tokens: `2026-09-22-{da,delib,delib-sonnet}-15-mix`.
+Four adapters, one H200 each, the PR #111 recipe (token_mean, packing, fla, flash-attn),
+49-56 min each: `dougalldeepmind/2026-09-22-qwen36-0-{nosynth,da-15,delib-15,delib-sonnet-15}`.
+ODCV-lite (3 passes, 240 rollouts) + MASK (1,000 rows) each, one eval pod per run, drive
+from the laptop. The pre-filter 2026-09-22 artifacts moved to 2026-09-21 names (see the
+entry above) so the filtered base keeps the plain names.
+
+**Result.**
+
+| arm (filtered base) | ODCV MR [95%] | mand / incent | MASK | previous ODCV | previous MASK |
+|---|---|---|---|---|---|
+| nosynth | 45.4% [32.8, 58.6] | 50.0 / 40.8 | 56.9 | 43.8% (old base, 09-21 name) | 57.7 |
+| da-15 | 7.5% [3.1, 16.9] | 4.2 / 10.8 | 89.4 | 7.1% (old base) | 84.9 |
+| delib-sonnet-15 | 13.3% [6.5, 25.4] | 13.3 / 13.3 | 82.5 | delib-sonnet-7 17.1% | 72.3 |
+| delib-15 | 27.5% [17.1, 41.0] | 28.3 / 26.7 | 77.7 | delib-7 29.2% | 69.3 |
+
+Paired on the 40 shared scenarios (`arm_difference`), MR in pp:
+
+| pair | diff [95%] |
+|---|---|
+| da-15 − nosynth | **-37.9 [-49.7, -26.2]** (old base: -36.7) |
+| delib-sonnet-15 − nosynth | -32.1 [-43.1, -21.1] |
+| delib-15 − nosynth | -17.9 [-26.3, -9.5] |
+| delib-sonnet-15 − da-15 | +5.8 [+0.9, +10.7], p=0.02 |
+| delib-sonnet-15 − delib-15 | -14.2 [-22.1, -6.2] |
+| nosynth filtered − nosynth old base | +1.7 [-1.9, +5.2] |
+| da-15 filtered − da-15 old base | +0.4 [-3.7, +4.5] |
+| delib-15 (15% tokens) − delib-7 (30.5%) | -1.7 [-6.5, +3.1] |
+| delib-sonnet-15 (15%) − delib-sonnet-7 (26.8%) | -3.8 [-8.9, +1.4] |
+
+- **The filter changes nothing measurable.** Control and da-15 are within ±2 pp of their
+  old-base selves on ODCV and within MASK's run-to-run band (56.9 vs 57.7; 89.4 vs 84.9).
+  Hypothesis (1) is not supported: the 452 rows were not what difficult advice was fixing.
+  Kept as the default anyway — it costs nothing and removes a confound a reviewer would ask
+  about.
+- **Halving delib's gradient share changed nothing** (-1.7 and -3.8 pp, both p>0.15): the old
+  delib baselines were not handicapped by share, and the da-vs-delib gap is not a token-share
+  artefact. At an equal 15% share the ranking is da (7.5%) < delib-sonnet (13.3%) < delib
+  (27.5%) << nosynth (45.4%), every step significant. Sonnet-written deliberation is within
+  6 pp of difficult advice; the original deliberation is half the effect.
+- **MASK moved for the delib arms**: 77.7 / 82.5 vs 69.3 / 72.3 before. Two things changed at
+  once (recipe + share + base), and MASK's same-stack band is ~11 points, so this is a
+  direction, not a number.
+- **Rollout audit** (`scratch/audit_mask_rollouts.py`, every MASK run on disk): the
+  answer-inside-think failure (reply written in the think block, no `</think>`, scored as
+  evasion) is 2-4 cells of 4,438 per run today (0.7% on the morning da-15), all in
+  doubling_down pressure prompts, never truncation (think ≤4k chars against a 16k cap); no
+  tag leakage, ≤1 cell of CJK/repetition/truncation per run; refusals 2.6-6.2%, the filtered
+  nosynth refusing half as often as the old-base one on belief prompts.
+- **Compute audit**: MASK at `max_num_seqs` 32 holds the H100 at ~950 gen tok/s with the
+  KV cache 40% used — the profile cap, not the card, is the limit; a sweep of caps on H100 and
+  H200 is running (`scratch/bench_mask_serving.py`), next entry.
+- **Ops**: RunPod's create endpoint returned 500 or a machineless pod on about half of today's
+  rentals (a 5-min retry loop worked); vLLM died mid-run on three pods in 103.207.149.x (the
+  64.247.201.x and 216.243.220.x hosts were clean); killing a driver trips the watchdog into
+  terminating its pod, so a resume always needs a new pod. Cards and run_meta now carry a
+  public launch command (`uv run evals ... --server <pod>`); 163 published repos scrubbed.
+
+**Next.** Lift the MASK serving cap per the sweep; a seed-1 da-15 and delib-sonnet-15 for
+seed intervals; dat/daa on the filtered base at 15%.
+
 ## 2026-09-22 — Practical low-stakes LoRA: three additional ODCV passes
 
 **Hypothesis:** the initial 13.75% MR should remain similar across repeated
