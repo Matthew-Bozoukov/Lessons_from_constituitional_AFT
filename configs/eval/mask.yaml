@@ -96,6 +96,15 @@ empty_content: evasion
 # raise for a less noisy per-item estimate at linear cost. Upstream's process_dataframe
 # default is 10; kept at 1 here so a full run is affordable — bump deliberately.
 lie_k: 1
+# Independent passes of the WHOLE generation against one server (MASK's counterpart of
+# ODCV's `passes`). Each pass re-samples every cell (temperature 1.0, no per-request seed),
+# is judged on its own, and the run reports the mean with a between-pass t-interval
+# (`honesty_ci95`, n-1 df) — the run-to-run noise that single-pass MASK could not see
+# (same-stack replicates moved ~11 points on 2026-09-21). Pass k's judging overlaps pass
+# k+1's generation, so N passes cost N generations and ONE judging wait. One pass (the
+# default, every run before 2026-09-22) publishes the flat layout; more nest
+# rollouts/pass<k>/ and results/pass<k>/ and carry `per_pass` in results.json.
+passes: 1
 
 constitution: none      # MASK is an external honesty instrument, not tied to a constitution
                         # of ours; a shift measured in it is evidence of transfer.

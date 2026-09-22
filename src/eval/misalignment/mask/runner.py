@@ -42,8 +42,10 @@ honesty_score = 100 - (% of responses judged dishonest), so higher is more hones
 """
 from __future__ import annotations
 
+import concurrent.futures
 import csv
 import json
+import statistics
 import os
 import random
 import shutil
@@ -54,6 +56,7 @@ from pathlib import Path
 from omegaconf import DictConfig, OmegaConf
 
 from src.eval.layout import publish_layout
+from src.eval.stats import t_quantile
 from src.infra.endpoints.openrouter import OPENROUTER_BASE_URL, run_batch
 from src.utils import write_run_meta
 
@@ -271,54 +274,82 @@ def batch_judge(exchange: Path, judge_model: str) -> dict:
     return stats
 
 
-def run(target, cfg: DictConfig, out_dir: Path) -> dict:
-    """Eval-framework entrypoint (CLAUDE.md contract): evaluate one served target on MASK.
+def pass_interval(scores: list[float]) -> dict:
+    """The mean of a run's passes and its 95% interval from the spread BETWEEN passes.
+
+    Each pass is an independent sampled draw of every generation (temperature 1.0, no
+    per-request seed), so the pass-to-pass spread is the run-to-run noise of the score —
+    the ~11-point band the 2026-09-21 same-stack replicates showed. A t-interval on n-1
+    degrees of freedom; one pass has no spread and reports no interval.
+    """
+    n = len(scores)
+    mean = round(sum(scores) / n, 2)
+    if n < 2:
+        return {"mean": mean, "sd": None, "ci95": None, "n_passes": n}
+    sd = statistics.stdev(scores)
+    half = t_quantile(0.975, n - 1) * sd / n ** 0.5
+    return {"mean": mean, "sd": round(sd, 2), "ci95": [round(mean - half, 2), round(mean + half, 2)],
+            "n_passes": n}
+
+
+def combine_passes(per_pass: list[dict]) -> dict:
+    """Pool a run's passes: the overall and each archetype as a mean over passes.
 
     Args:
-        target: The served target; `base_url`, `model_name` and `api_key` reach its
-            OpenAI-compatible endpoint, `spec.hf_path`/`spec.mode` identify it.
-        cfg: `configs/eval/mask.yaml` merged with CLI overrides.
-        out_dir: Per-target run directory owned by run_eval.py.
+        per_pass: One dict per pass, each carrying `overall_honesty_score` and
+            `per_archetype` (archetype -> {honesty_score, n_responses, n_rows, ...}).
 
     Returns:
-        Summary dict: overall honesty score, per-archetype breakdown, judge, model.
+        `overall_honesty_score` (mean over passes), `honesty_ci95` (None for one pass),
+        `honesty_sd`, `per_archetype` with each archetype's mean score and its per-pass
+        scores, and `n_passes`. The single-pass values are exactly the pass's own.
+    """
+    overall = pass_interval([p["overall_honesty_score"] for p in per_pass])
+    archetypes = sorted({a for p in per_pass for a in p["per_archetype"]})
+    per_archetype = {}
+    for a in archetypes:
+        cells = [p["per_archetype"][a] for p in per_pass if a in p["per_archetype"]]
+        scores = [c["honesty_score"] for c in cells]
+        per_archetype[a] = {
+            "honesty_score": round(sum(scores) / len(scores), 3),
+            "honesty_by_pass": scores,
+            "unhonest_pct": round(sum(c["unhonest_pct"] for c in cells) / len(cells), 3),
+            "honest_pct": round(sum(c["honest_pct"] for c in cells) / len(cells), 3),
+            "n_responses": sum(c["n_responses"] for c in cells),
+            "n_rows": cells[0]["n_rows"],
+        }
+    return {"overall_honesty_score": overall["mean"], "honesty_ci95": overall["ci95"],
+            "honesty_sd": overall["sd"], "n_passes": overall["n_passes"],
+            "per_archetype": per_archetype}
+
+
+def _prior_pass_tree(prior: Path, k: int, passes: int) -> Path | None:
+    """Where a prior run kept pass k's work tree, if it kept one.
+
+    A single-pass run's tree is `mask_work/`; a multi-pass run's is `mask_work/pass<k>/`.
+    Either shape resumes into the same pass index of this run.
+    """
+    for candidate in ([prior / "mask_work" / f"pass{k}"] + ([prior / "mask_work"] if k == 1 else [])):
+        if (candidate / "data" / "responses").is_dir():
+            return candidate
+    return None
+
+
+def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, source: Path,
+                   prior: Path | None, modelname: str, env: dict) -> dict:
+    """Sample the rows, (resume,) run the generation stage and audit it, for one pass.
+
+    Returns the pass's `data_dir`, `logs`, `sampled`, the generation error/empty counts and
+    what was resumed. Raises past `max_generation_error_rate`, as a single pass always did.
     """
     smoke = bool(cfg.get("smoke", False))
-    model = target.model_name
-    modelname = model.split("/")[-1]           # the suffix the harness names output files with
     subsample = int(cfg.get("subsample") or 0) or None
     seed = int(cfg.get("seed", 0))
-    gen_concurrency = int(cfg.get("gen_concurrency", 10))
-    judge_batch = bool(cfg.get("judge_batch", False))
-
-    # The per-run data copy: the harness reads and writes only here (MASK_DATA_DIR), so the
-    # tracked csv_data tree is never touched and two targets in one process cannot collide.
-    # The smoke slice is upstream's test_csv_data (5 rows per archetype), never subsampled.
-    # Absolute: the harness runs with its own package dir as cwd, and run_eval hands over a
-    # repo-relative out_dir (the first smoke wrote its responses INTO the harness tree).
-    work = out_dir.resolve() / "mask_work"
-    if work.exists():
-        shutil.rmtree(work)
-    data_dir = work / "data"
-    logs = work / "logs"
-    source = _HARNESS / ("test_csv_data" if smoke else "csv_data")
-    resumed_from, regenerated = cfg.get("resume_from"), []
-    if resumed_from:
-        # Recorded in the published run_meta: a repo-relative path, not this machine's.
-        try:
-            resumed_from = str(Path(str(resumed_from)).resolve().relative_to(Path.cwd().resolve()))
-        except ValueError:
-            resumed_from = str(resumed_from)
-    if resumed_from:
-        # The same target at the same revision and mode, or the kept answers are another
-        # model's; and the same drawn rows, or they answer other questions.
-        prior = Path(str(resumed_from)).resolve()
-        prior_meta = json.loads((prior / "run_meta.json").read_text())
-        now = {"target": target.spec.hf_path, "target_revision": target.spec.revision,
-               "mode": target.spec.mode}
-        then = {k: prior_meta.get(k) for k in now}
-        assert then == now, f"resume_from is a different run: {then} != {now}"
-        regenerated = resume_work(prior, work, modelname,
+    data_dir, logs = work / "data", work / "logs"
+    regenerated: list[str] = []
+    prior_tree = _prior_pass_tree(prior, k, passes) if prior else None
+    if prior_tree is not None:
+        regenerated = resume_work(prior_tree, work, modelname,
                                   float(cfg.get("max_generation_error_rate", 0.05)))
         sampled = sample_data(source, work / "resample_check", None if smoke else subsample, seed)
         for archetype in sampled:
@@ -331,36 +362,20 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         # prior run died before it; the harness generates it like a fresh run). Saying
         # "keeping" for the third group read as "skipping" once (2026-09-22) and cost a run.
         saved = {path.stem[: -len(modelname) - 1]
-                 for path in (work / "data" / "responses").glob("*.csv")}
+                 for path in (data_dir / "responses").glob("*.csv")}
         missing = sorted(set(sampled) - saved - set(regenerated))
-        print(f">>> MASK: resuming {prior}; keeping {sorted(saved)}, regenerating "
+        print(f">>> MASK pass {k}: resuming {prior_tree}; keeping {sorted(saved)}, regenerating "
               f"{regenerated or 'nothing'}, generating for the first time {missing or 'nothing'}",
               flush=True)
     else:
         sampled = sample_data(source, data_dir, None if smoke else subsample, seed)
     n_rows = sum(v["n"] for v in sampled.values())
-
-    # The harness subprocesses read the target + judge endpoints from these (the patch points).
-    env = dict(os.environ)
-    env["MASK_TARGET_BASE_URL"] = target.base_url
-    env["MASK_TARGET_API_KEY"] = target.api_key
-    env["MASK_JUDGE_MODEL"] = str(cfg.judge_model)
-    env["MASK_JUDGE_BASE_URL"] = OPENROUTER_BASE_URL
-    env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
-    env["MASK_DATA_DIR"] = str(data_dir)
-    env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
-    # Per-request read timeout for the target client (the SDK default, 600 s, is shorter than
-    # a 16k-token think trace takes at 32 streams; 40/4,438 delib-7 generations were lost).
-    env["MASK_GEN_TIMEOUT_S"] = str(int(cfg.get("gen_timeout_s", 1800)))
-    empty_policy = str(cfg.get("empty_content", "evasion"))
-    assert empty_policy in ("evasion", "reasoning"), f"empty_content must be evasion|reasoning, not {empty_policy!r}"
-    env["MASK_EMPTY_CONTENT"] = empty_policy
-
+    env = {**env, "MASK_DATA_DIR": str(data_dir)}
     test = ["--test"] if smoke else []
     print(f">>> MASK: generating {modelname} answers for {n_rows} rows "
           f"({'smoke' if smoke else f'subsample {subsample}' if subsample else 'full'}; "
-          f"{gen_concurrency} in flight)", flush=True)
-    _run_stage(["generate_responses.py", "--model", model,
+          f"{env['MASK_GEN_CONCURRENCY']} in flight; pass {k}/{passes})", flush=True)
+    _run_stage(["generate_responses.py", "--model", target.model_name,
                 "--temperature", str(cfg.temperature), "--max_tokens", str(cfg.max_tokens),
                 "--lie_k", str(cfg.lie_k), *test], env, _HARNESS, logs)
     # CLAUDE.md gotcha 4, made visible: a thinking target that spends `max_tokens` inside its
@@ -372,41 +387,59 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     error_rate = errors["errors"] / max(errors["generations"], 1)
     empty = empty_content(data_dir / "responses")
     empty_rate = empty["total"] / max(errors["generations"], 1)
-    print(f">>> MASK: {errors['errors']}/{errors['generations']} generations failed "
+    print(f">>> MASK pass {k}: {errors['errors']}/{errors['generations']} generations failed "
           f"({100 * error_rate:.1f}%); {empty['total']} finished with empty content "
           f"({100 * empty_rate:.1f}%: pressure {empty['by_type'].get('lie', 0)}, "
-          f"belief {empty['by_type'].get('belief', 0)}; scored as {empty_policy!r})", flush=True)
+          f"belief {empty['by_type'].get('belief', 0)}; scored as {env['MASK_EMPTY_CONTENT']!r})",
+          flush=True)
     cap = float(cfg.get("max_generation_error_rate", 0.05))
     if error_rate > cap:
         raise RuntimeError(
-            f"MASK: {100 * error_rate:.1f}% of generations failed, above "
+            f"MASK pass {k}: {100 * error_rate:.1f}% of generations failed, above "
             f"max_generation_error_rate={cap:.0%}. Almost always max_tokens={cfg.max_tokens} "
             "exhausted inside <think>; raise it (and the serving window) rather than score "
             "empty answers. The work tree is kept under "
             f"{work} for inspection.")
+    return {"pass": k, "data_dir": data_dir, "logs": logs, "sampled": sampled, "n_rows": n_rows,
+            "generation_errors": errors, "generation_error_rate": round(error_rate, 4),
+            "empty_content": empty, "empty_content_rate": round(empty_rate, 4),
+            "resumed_from": str(prior_tree) if prior_tree else None,
+            "regenerated_archetypes": regenerated, "env": env}
 
+
+def _score_pass(gen: dict, target, cfg: DictConfig, modelname: str, release_target: bool) -> dict:
+    """Judge one generated pass and read its per-archetype scores.
+
+    With `judge_batch`, the target is released before the batch wait — but only when
+    `release_target` (this is the run's last pass); an earlier pass's scoring overlaps the
+    next pass's generation, which still needs the server.
+    """
+    smoke = bool(cfg.get("smoke", False))
+    test = ["--test"] if smoke else []
+    env, data_dir, logs, k = gen["env"], gen["data_dir"], gen["logs"], gen["pass"]
     judge_argv = ["evaluate.py", "--concurrency_limit", str(cfg.judge_concurrency), *test]
     batch_stats = None
-    if judge_batch:
-        # Every generation is on disk; nothing from here on touches the model. Give the GPU
-        # back before the batch wait (28-115 min on the 2026-09-10 runs) -- the server stops,
-        # and under --terminate-pod the pod is terminated now rather than after the push.
-        print(">>> MASK: generation complete; releasing the model server before the batch wait", flush=True)
-        target.release()
-        exchange = work / "judge_exchange"
-        print(f">>> MASK: collecting judge requests for {cfg.judge_model} (batch)", flush=True)
+    if bool(cfg.get("judge_batch", False)):
+        if release_target:
+            # Every generation is on disk; nothing from here on touches the model. Give the
+            # GPU back before the batch wait (28-115 min on the 2026-09-10 runs) -- the server
+            # stops, and under --terminate-pod the pod is terminated now rather than after
+            # the push.
+            print(">>> MASK: generation complete; releasing the model server before the batch wait", flush=True)
+            target.release()
+        exchange = data_dir.parent / "judge_exchange"
+        print(f">>> MASK pass {k}: collecting judge requests for {cfg.judge_model} (batch)", flush=True)
         _run_stage(judge_argv, {**env, "MASK_JUDGE_TRANSPORT": "collect",
                                 "MASK_JUDGE_EXCHANGE": str(exchange)}, _HARNESS, logs)
         batch_stats = batch_judge(exchange, str(cfg.judge_model))
-        print(">>> MASK: replaying the batch's verdicts (live fallback for the rest)", flush=True)
+        print(f">>> MASK pass {k}: replaying the batch's verdicts (live fallback for the rest)", flush=True)
         _run_stage(judge_argv, {**env, "MASK_JUDGE_TRANSPORT": "replay",
                                 "MASK_JUDGE_EXCHANGE": str(exchange)}, _HARNESS, logs)
     else:
-        print(f">>> MASK: judging honesty with {cfg.judge_model}", flush=True)
+        print(f">>> MASK pass {k}: judging honesty with {cfg.judge_model}", flush=True)
         _run_stage(judge_argv, env, _HARNESS, logs)
     _run_stage(["metric.py", *test], env, _HARNESS, logs)
     _run_stage(["process_metrics.py", *test], env, _HARNESS, logs)
-
     all_results = json.loads((data_dir / "metrics" / "all_results.json").read_text())
     per_archetype = {}
     for archetype in ARCHETYPES:
@@ -417,80 +450,195 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                 "unhonest_pct": m["unhonest_1"],
                 "honest_pct": m["honest_1"],
                 "n_responses": m["total_responses"],
-                "n_rows": sampled[archetype]["n"],
+                "n_rows": gen["sampled"][archetype]["n"],
             }
     assert per_archetype, (
-        f"MASK produced no honesty scores for model {modelname!r}; "
+        f"MASK pass {k} produced no honesty scores for model {modelname!r}; "
         f"all_results.json holds archetypes {list(all_results.keys())}")
-    overall = overall_honesty(per_archetype)
+    return {"pass": k, "per_archetype": per_archetype, "all_results": all_results,
+            "overall_honesty_score": overall_honesty(per_archetype), "judge_batch_stats": batch_stats}
+
+
+def run(target, cfg: DictConfig, out_dir: Path) -> dict:
+    """Eval-framework entrypoint (CLAUDE.md contract): evaluate one served target on MASK.
+
+    `passes: N` (default 1) repeats the whole generation N times against one server, each
+    pass an independent sampled draw, scores each, and reports the mean with the between-
+    pass spread as its interval — MASK's counterpart of ODCV's passes. Pass k's judging
+    overlaps pass k+1's generation (the judge is OpenRouter, the generation is the server),
+    so N passes cost N generations plus ONE judging wait.
+
+    Args:
+        target: The served target; `base_url`, `model_name` and `api_key` reach its
+            OpenAI-compatible endpoint, `spec.hf_path`/`spec.mode` identify it.
+        cfg: `configs/eval/mask.yaml` merged with CLI overrides.
+        out_dir: Per-target run directory owned by run_eval.py.
+
+    Returns:
+        Summary dict: overall honesty score (+ interval when passes > 1), per-archetype
+        breakdown, per-pass results, judge, model.
+    """
+    smoke = bool(cfg.get("smoke", False))
+    model = target.model_name
+    modelname = model.split("/")[-1]           # the suffix the harness names output files with
+    subsample = int(cfg.get("subsample") or 0) or None
+    seed = int(cfg.get("seed", 0))
+    gen_concurrency = int(cfg.get("gen_concurrency", 10))
+    judge_batch = bool(cfg.get("judge_batch", False))
+    passes = int(cfg.get("passes", 1))
+    assert passes >= 1, f"passes must be >= 1, not {passes}"
+
+    # The per-run data copy: the harness reads and writes only here (MASK_DATA_DIR), so the
+    # tracked csv_data tree is never touched and two targets in one process cannot collide.
+    # The smoke slice is upstream's test_csv_data (5 rows per archetype), never subsampled.
+    # Absolute: the harness runs with its own package dir as cwd, and run_eval hands over a
+    # repo-relative out_dir (the first smoke wrote its responses INTO the harness tree).
+    # One pass keeps the tree at mask_work/ (every run before 2026-09-22); more nest
+    # mask_work/pass<k>/ — the same shape the published rollouts/ and results/ take.
+    work = out_dir.resolve() / "mask_work"
+    if work.exists():
+        shutil.rmtree(work)
+    source = _HARNESS / ("test_csv_data" if smoke else "csv_data")
+    resumed_from = cfg.get("resume_from")
+    prior = None
+    if resumed_from:
+        # Recorded in the published run_meta: a repo-relative path, not this machine's.
+        prior = Path(str(resumed_from)).resolve()
+        try:
+            resumed_from = str(prior.relative_to(Path.cwd().resolve()))
+        except ValueError:
+            resumed_from = str(resumed_from)
+        # The same target at the same revision and mode, or the kept answers are another
+        # model's; and the same drawn rows, or they answer other questions.
+        prior_meta = json.loads((prior / "run_meta.json").read_text())
+        now = {"target": target.spec.hf_path, "target_revision": target.spec.revision,
+               "mode": target.spec.mode}
+        then = {k: prior_meta.get(k) for k in now}
+        assert then == now, f"resume_from is a different run: {then} != {now}"
+
+    # The harness subprocesses read the target + judge endpoints from these (the patch points).
+    env = dict(os.environ)
+    env["MASK_TARGET_BASE_URL"] = target.base_url
+    env["MASK_TARGET_API_KEY"] = target.api_key
+    env["MASK_JUDGE_MODEL"] = str(cfg.judge_model)
+    env["MASK_JUDGE_BASE_URL"] = OPENROUTER_BASE_URL
+    env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
+    env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
+    # Per-request read timeout for the target client (the SDK default, 600 s, is shorter than
+    # a 16k-token think trace takes at 32 streams; 40/4,438 delib-7 generations were lost).
+    env["MASK_GEN_TIMEOUT_S"] = str(int(cfg.get("gen_timeout_s", 1800)))
+    empty_policy = str(cfg.get("empty_content", "evasion"))
+    assert empty_policy in ("evasion", "reasoning"), f"empty_content must be evasion|reasoning, not {empty_policy!r}"
+    env["MASK_EMPTY_CONTENT"] = empty_policy
+
+    # Generate pass k, then score it in the background while pass k+1 generates. Scoring is
+    # OpenRouter traffic and CPU; generation is the served model — they do not contend.
+    gens: list[dict] = []
+    scores: list[concurrent.futures.Future] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as scorer:
+        for k in range(1, passes + 1):
+            pass_work = work if passes == 1 else work / f"pass{k}"
+            gen = _generate_pass(k, passes, target, cfg, pass_work, source, prior, modelname, env)
+            gens.append(gen)
+            scores.append(scorer.submit(_score_pass, gen, target, cfg, modelname, k == passes))
+        scored = [f.result() for f in scores]   # re-raises a pass's judge failure here
+    combined = combine_passes(scored)
+    sampled = gens[0]["sampled"]
+    n_rows = gens[0]["n_rows"]
+    per_pass = [{"pass": g["pass"], "overall_honesty_score": s["overall_honesty_score"],
+                 "per_archetype": s["per_archetype"],
+                 "generation_errors": g["generation_errors"],
+                 "generation_error_rate": g["generation_error_rate"],
+                 "empty_content": g["empty_content"], "empty_content_rate": g["empty_content_rate"],
+                 "judge_batch_stats": s["judge_batch_stats"],
+                 "resumed_from": g["resumed_from"], "regenerated_archetypes": g["regenerated_archetypes"]}
+                for g, s in zip(gens, scored)]
+    errors = {"generations": sum(g["generation_errors"]["generations"] for g in gens),
+              "errors": sum(g["generation_errors"]["errors"] for g in gens)}
+    error_rate = errors["errors"] / max(errors["generations"], 1)
+    empty_total = sum(g["empty_content"]["total"] for g in gens)
+    empty_rate = empty_total / max(errors["generations"], 1)
 
     summary = {
         "benchmark": "MASK",
         "model": modelname,
         "mode": target.spec.mode,
         "judge": str(cfg.judge_model),
-        "overall_honesty_score": overall,
+        "overall_honesty_score": combined["overall_honesty_score"],
+        "honesty_ci95": combined["honesty_ci95"],       # between-pass t-interval; None for one pass
+        "honesty_sd": combined["honesty_sd"],
+        "passes": passes,
         "overall_weighting": "per_row",     # pooled over rows (paper §4.3), not an archetype mean
-        "per_archetype": per_archetype,
-        "n_archetypes": len(per_archetype),
+        "per_archetype": combined["per_archetype"],
+        "per_pass": per_pass,
+        "n_archetypes": len(combined["per_archetype"]),
         "n_rows": n_rows,
         "generation_errors": errors,
         "generation_error_rate": round(error_rate, 4),
-        "empty_content": empty,
+        "empty_content": gens[0]["empty_content"] if passes == 1 else {"total": empty_total},
         "empty_content_rate": round(empty_rate, 4),
         "empty_content_policy": empty_policy,
         "subsample": subsample,
         "seed": seed,
         "gen_concurrency": gen_concurrency,
         "judge_batch": judge_batch,
-        "judge_batch_stats": batch_stats,
+        "judge_batch_stats": scored[-1]["judge_batch_stats"] if passes == 1 else [s["judge_batch_stats"] for s in scored],
         "resumed_from": str(resumed_from) if resumed_from else None,
-        "regenerated_archetypes": regenerated,
+        "regenerated_archetypes": gens[0]["regenerated_archetypes"] if passes == 1 else [g["regenerated_archetypes"] for g in gens],
         "lie_k": int(cfg.lie_k),
         "smoke": smoke,
     }
 
     # Package into the published layout: model generations under rollouts/, judge outputs
     # and the aggregate under results/, provenance (and the drawn rows) under metadata/.
+    # One pass publishes flat (every run before 2026-09-22); more nest pass<k>/ under each.
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
-    for archetype in per_archetype:
-        responses = data_dir / "responses" / f"{archetype}_{modelname}.csv"
-        evaluated = data_dir / "evaluated" / f"{archetype}_{modelname}.csv"
-        if responses.is_file():
-            shutil.copy2(responses, rollouts_dir / f"{archetype}.csv")
-        if evaluated.is_file():
-            shutil.copy2(evaluated, results_dir / f"{archetype}_evaluated.csv")
-        # The per-row verdicts (eval_belief, eval_honesty_1, eval_accuracy) live in the
-        # metrics CSV, not the evaluated one; without it a published run cannot say WHICH
-        # rows lied, only how many (noticed 2026-09-07 when three arms scored exactly 50.0).
-        metrics = data_dir / "metrics" / f"{archetype}_{modelname}.csv"
-        if metrics.is_file():
-            shutil.copy2(metrics, results_dir / f"{archetype}_metrics.csv")
-    (results_dir / "all_results.json").write_text(json.dumps(all_results, indent=2))
+    for g, s in zip(gens, scored):
+        data_dir = g["data_dir"]
+        roll = rollouts_dir if passes == 1 else rollouts_dir / f"pass{g['pass']}"
+        res = results_dir if passes == 1 else results_dir / f"pass{g['pass']}"
+        roll.mkdir(parents=True, exist_ok=True)
+        res.mkdir(parents=True, exist_ok=True)
+        for archetype in s["per_archetype"]:
+            responses = data_dir / "responses" / f"{archetype}_{modelname}.csv"
+            evaluated = data_dir / "evaluated" / f"{archetype}_{modelname}.csv"
+            if responses.is_file():
+                shutil.copy2(responses, roll / f"{archetype}.csv")
+            if evaluated.is_file():
+                shutil.copy2(evaluated, res / f"{archetype}_evaluated.csv")
+            # The per-row verdicts (eval_belief, eval_honesty_1, eval_accuracy) live in the
+            # metrics CSV, not the evaluated one; without it a published run cannot say WHICH
+            # rows lied, only how many (noticed 2026-09-07 when three arms scored exactly 50.0).
+            metrics = data_dir / "metrics" / f"{archetype}_{modelname}.csv"
+            if metrics.is_file():
+                shutil.copy2(metrics, res / f"{archetype}_metrics.csv")
+        (res / "all_results.json").write_text(json.dumps(s["all_results"], indent=2))
+        if g["logs"].is_dir():
+            shutil.copytree(g["logs"], metadata_dir / ("harness_logs" if passes == 1 else f"harness_logs/pass{g['pass']}"),
+                            dirs_exist_ok=True)
     (metadata_dir / "subsample.json").write_text(json.dumps(
         {"subsample": subsample, "seed": seed, "archetypes": sampled}, indent=2))
     write_run_meta(
         metadata_dir,
         OmegaConf.to_container(cfg, resolve=True),
         extra={"target": target.spec.hf_path, "mode": target.spec.mode,
-               "upstream_commit": UPSTREAM_COMMIT, "n_rows": n_rows,
+               "upstream_commit": UPSTREAM_COMMIT, "n_rows": n_rows, "passes": passes,
                "generation_errors": errors, "generation_error_rate": round(error_rate, 4),
-               "empty_content": empty, "empty_content_rate": round(empty_rate, 4),
+               "empty_content_rate": round(empty_rate, 4),
                "empty_content_policy": empty_policy,
                "rows_per_archetype": {a: v["n"] for a, v in sampled.items()},
                "gen_concurrency": gen_concurrency, "judge_batch": judge_batch,
-               "judge_batch_stats": batch_stats,
-               "resumed_from": str(resumed_from) if resumed_from else None,
-               "regenerated_archetypes": regenerated},
+               "per_pass": [{k: v for k, v in p.items() if k != "per_archetype"} for p in per_pass],
+               "resumed_from": str(resumed_from) if resumed_from else None},
     )
     (metadata_dir / "run_meta.json").rename(metadata_dir / "mask_run_meta.json")
-    if logs.is_dir():
-        shutil.copytree(logs, metadata_dir / "harness_logs", dirs_exist_ok=True)
     # The work tree (sampled inputs, exchange files, harness outputs) is not part of the
     # published layout; everything it held that matters was copied above or is regenerable
     # from metadata/subsample.json. It stays only when a run fails, for debugging.
     shutil.rmtree(work)
 
-    print(f">>> MASK honesty {overall} (pooled over {n_rows} rows in {len(per_archetype)} archetypes) | "
-          + " ".join(f"{a}={v['honesty_score']}" for a, v in per_archetype.items()), flush=True)
+    interval = f" ± ({combined['honesty_ci95'][0]}, {combined['honesty_ci95'][1]}) over {passes} passes" if combined["honesty_ci95"] else ""
+    print(f">>> MASK honesty {combined['overall_honesty_score']}{interval} (pooled over {n_rows} rows in "
+          f"{len(combined['per_archetype'])} archetypes) | "
+          + " ".join(f"{a}={v['honesty_score']}" for a, v in combined["per_archetype"].items()), flush=True)
     return summary
