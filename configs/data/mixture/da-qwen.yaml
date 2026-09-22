@@ -19,9 +19,9 @@ max_seq_len: 8192
 
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
   file: mixture.jsonl
-  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+  revision: "5bbf1ecb1d78ccf6cfd24f78b873532f984d2342"
 
 synthetic_pct: 7
 # The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,

@@ -81,6 +81,9 @@ sources:
 # 2026-09-08-nosynth-mix was built with these settings by the scratch predecessor (two
 # passes: 50% of each source's final turns, then every untraced turn of the multi-turn rows;
 # 1,135 traced turns, ~$8 of Qwen + judge); one pass here covers both.
+# 2026-09-22-nosynth-mix, THE base every arm pins from 2026-09-22, is that mixture with every row
+# passed through the spec filter (scratch/rebuild_nosynth_filtered.py: 452 rejected rows replaced
+# at the same per-source counts, surviving traces kept, replacements traced by this block's rule).
 reasoning_backfill:
   model: "qwen/qwen3.6-27b"            # OpenRouter id; pinned to alibaba in providers.yaml
   judge: "google/gemini-3-flash-preview"
