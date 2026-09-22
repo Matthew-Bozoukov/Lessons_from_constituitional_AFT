@@ -17,7 +17,7 @@ bypass_humans; agent_proposed; loadbearing; explains_gate; naturalness 1–5 for
 the system prompt), run on all 775 t10 rows and a 200-row seed-0 sample of
 `2026-09-14-da-synth`@`01388623` as the reference. Regex tells over both full corpora in
 `scratch/t10_corpus_tells.py`. Write-up with the charts and verbatim rows ("t10 Prompt Anatomy"):
-https://claude.ai/artifact/7xZYUoWFM5oMnzXqxfQ9jU.
+https://claude.ai/artifact/H8KrSMS6MPyTfbRVyiX1Qd.
 
 **Result.**
 - **One template, 87% of rows.** game_gate 65% + false_status 22%: the system prompt places the
