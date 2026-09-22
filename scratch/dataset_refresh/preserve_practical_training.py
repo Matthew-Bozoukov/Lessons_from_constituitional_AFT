@@ -2,6 +2,8 @@
 # ABOUTME: Run after the training owner finishes: uv run --no-sync python -m scratch.dataset_refresh.preserve_practical_training
 import hashlib
 import json
+import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -53,4 +55,13 @@ def main():
 
 
 if __name__ == '__main__':
+    if '--wait' in sys.argv:
+        deadline = time.monotonic() + 9 * 3600
+        while True:
+            state = json.loads(Path('output/lowstakes_practical_training/run/status.json').read_text(encoding='utf-8'))
+            if state.get('terminated'):
+                break
+            if time.monotonic() >= deadline:
+                raise TimeoutError('Owner did not finish within its bounded training/recovery window')
+            time.sleep(30)
     main()
