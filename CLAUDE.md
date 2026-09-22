@@ -81,7 +81,11 @@ a model under measurement is served, and it is the same code either way.
   For a driver that has its own GPU — and, on a pod rented with `uv run runpod up --eval
   <hf> --clone-repo` (both of those are `runpod up` args, not `evals` ones), the way to
   run the whole eval ON the box: `ssh <pod>`, then plain `uv run evals` there, with the
-  pod's own `.env` for judging and the push. Not available to ODCV (see below).
+  pod's own `.env` for judging and the push. Not available to ODCV (see below). Use it
+  when the driver cannot stay up for the run (a laptop that must close): the pod then
+  needs `OPENROUTER_API_KEY` in its `.env` (never carried by `--push_env`) and the serving
+  env `HF_HOME=/workspace/hf VLLM_USE_FLASHINFER_SAMPLER=0`, and you tear the pod down
+  yourself — details in `docs/GOTCHAS.md` (2026-09-21).
 - **Serve on a pod, drive here** — the normal shape, and THE one for ODCV (docker must
   run where you are, the model must not):
 
