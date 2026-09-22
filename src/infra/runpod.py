@@ -875,8 +875,24 @@ def _pinned_vllm() -> str:
     return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
 
 
+# causal-conv1d is an sdist in the lock (no wheel for its torch/CUDA; docs/GOTCHAS.md
+# 2026-09-21) that `uv sync` compiles on a TRAIN pod against the venv's own torch and the pip
+# CUDA layout's nvcc. Two syncs: the first installs everything but the kernel (so torch and
+# nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc on
+# PATH, and an unversioned libcudart.so the linker wants and the pip layout does not ship —
+# and the second sync builds the kernel. The package, its version and its path-free build
+# variables (pyproject.toml `extra-build-variables`) are the lock's; this is only where the
+# pod's CUDA lives.
+KERNEL_BUILD = """uv sync --no-install-package causal-conv1d
+CU={workdir}/.venv/lib/python3.12/site-packages/nvidia/cu13
+mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
+export CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib
+echo BUILDING_CAUSAL_CONV1D
+uv sync"""
+
+
 def _bootstrap(clone: tuple[str, str, str] | None,
-               weights: tuple[list[str], str | None] | None = None) -> str:
+               weights: tuple[list[str], str | None] | None = None, build_kernels: bool = False) -> str:
     """Pod startup script: sshd and a log server first, then uv, then the slow halves.
 
     Order is the lesson from every other bootstrap in this repo (see
@@ -912,7 +928,7 @@ cd {WORKDIR}
 # boots, and a run whose code silently differs from the commit you asked for is the
 # failure this whole path exists to remove.
 git checkout --detach {sha}
-uv sync""")
+""" + (KERNEL_BUILD.format(workdir=WORKDIR) if build_kernels else "uv sync"))
         ready.append(sha)
     if weights:
         repos, hf_token = weights
@@ -1270,7 +1286,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     print(f">>> cloning {clone[0]} @ {clone[1]} {clone[2][:8]}" if clone
           else ">>> no repo: the driver runs where you are")
 
-    script = _bootstrap(clone, weights)
+    script = _bootstrap(clone, weights, build_kernels=bool(train))
     _check_bash(script)
     deadline = time.time() + max_hours * 3600
     pod_id = provision_runpod(

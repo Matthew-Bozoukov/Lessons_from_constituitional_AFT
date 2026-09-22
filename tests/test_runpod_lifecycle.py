@@ -95,7 +95,7 @@ def test_bad_deadlines_fail_before_provision(hours):
 def test_up_arms_deadline_before_ssh(monkeypatch, failure):
     events = []
     monkeypatch.setattr(runpod, "plan_eval_pod", lambda *a: (["org/model"], None, None, 200))
-    monkeypatch.setattr(runpod, "_bootstrap", lambda *a: "true")
+    monkeypatch.setattr(runpod, "_bootstrap", lambda *a, **kw: "true")
     def provision(spec, **kwargs):
         assert kwargs["env"]["LASR_POD_OWNER"] == runpod.POD_OWNER
         assert float(kwargs["env"]["LASR_POD_DEADLINE"]) > runpod.time.time()

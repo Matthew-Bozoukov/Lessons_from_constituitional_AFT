@@ -18,9 +18,9 @@ max_seq_len: 8192
 
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
   file: mixture.jsonl
-  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
 
 synthetic_pct: 100
 total_examples: 1400

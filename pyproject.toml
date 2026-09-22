@@ -30,6 +30,21 @@ dependencies = [
     # so this alone moves the expensive op; the short conv1d before it stays on torch's
     # conv until causal-conv1d (a CUDA build, not in this lock) is added.
     "flash-linear-attention>=0.2.2; sys_platform == 'linux'",
+    # FlashAttention-2 without a CUDA build: transformers >= 5 resolves
+    # attn_implementation="flash_attention_2" to the Hub kernel kernels-community/flash-attn2
+    # when the `flash_attn` package is absent (FLASH_ATTN_KERNEL_FALLBACK), and `kernels`
+    # fetches the prebuilt binary for the running torch/CUDA. flash-attn itself has no wheel
+    # for torch 2.11/cu13 (2026-09-21) and takes an hour to build. Varlen attention is what
+    # packing needs (train.packing); it is also the kernel path for padded batches.
+    "kernels>=0.15.2,<0.16; sys_platform == 'linux'",  # the range transformers 5.14 accepts
+    # The fused causal conv in front of Qwen3.6's gated-delta layers: with it, `fla` respects
+    # pack boundaries (`seq_idx`); without it the torch fallback conv leaks 3 positions into
+    # every packed example, so the trainer refuses train.packing. No wheel exists for the
+    # lock's torch/CUDA, so this is an sdist that `uv sync` compiles on the pod (~8 min on 256
+    # cores) with the pip CUDA layout's nvcc — `runpod up --train` exports what the build needs
+    # (src/infra/runpod.py) — and whose metadata is declared below so `uv lock` never has to
+    # build it (a darwin driver could not).
+    "causal-conv1d==1.7.0; sys_platform == 'linux'",
     # --- shared analysis/data stack ---
     "datasets>=5.0.0",
     "huggingface-hub>=1.25.1",
@@ -101,6 +116,10 @@ dev = [
 # known gradient precision errors (fla-org/flash-linear-attention#640) — failing to compile
 # on the H200. Raise these together with torch's CUDA minor.
 [tool.uv]
+# causal-conv1d's setup.py imports torch, so it cannot build in an isolated env; and its
+# sdist metadata (torch, packaging, ninja) is declared statically so resolving the lock never
+# runs that setup.py (it would need CUDA, which the macOS driver has no way to provide).
+no-build-isolation-package = ["causal-conv1d"]
 constraint-dependencies = [
     "nvidia-cuda-nvcc>=13.0,<13.1",
     "nvidia-cuda-crt>=13.0,<13.1",
@@ -127,3 +146,18 @@ testpaths = ["tests"]
 markers = [
     "tokenizer: verifies against a real HF tokenizer from the local cache; skips when absent",
 ]
+
+[[tool.uv.dependency-metadata]]
+name = "causal-conv1d"
+version = "1.7.0"
+requires-dist = ["torch", "packaging", "ninja"]
+
+# Everything about causal-conv1d's build that is NOT a path lives here: build from source
+# (its setup.py otherwise looks for a prebuilt wheel to download and there is none for this
+# torch/CUDA) and use the pod's cores. What cannot live here is where the pod's CUDA is —
+# CUDA_HOME, nvcc on PATH and an unversioned libcudart.so for the linker are paths into the
+# venv that uv cannot substitute (no ${VIRTUAL_ENV} in extra-build-variables) and, for the
+# symlink, a filesystem action — so `runpod up --train` exports those before its second `uv
+# sync` (src/infra/runpod.py KERNEL_BUILD).
+[tool.uv.extra-build-variables]
+causal-conv1d = { CAUSAL_CONV1D_FORCE_BUILD = "TRUE", MAX_JOBS = "64" }

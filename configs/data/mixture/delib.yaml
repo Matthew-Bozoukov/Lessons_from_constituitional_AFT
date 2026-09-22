@@ -28,13 +28,19 @@ max_seq_len: 8192
 
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-08-nosynth-mix"
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
   file: mixture.jsonl
-  revision: "7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd"
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
 
 synthetic_pct: 7
-total_examples: 10000
-
+# The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
+# 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
+# seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
+# tokens are freed, and synthetic rows refill them trait-balanced. Under token weighting
+# (`train.loss_agg: token_mean`) that share IS the source's share of the gradient. Mixtures
+# built before 2026-09-22 (`total_examples: 10000`, no `share_unit`) declared a share of ROWS
+# — da-7 by rows was 15.4% of supervised tokens — and are not comparable at equal numbers.
+share_unit: supervised_tokens
 sources:
   delib:
     dataset: "${oc.env:HF_ORG}/2026-09-16-delib-synth"

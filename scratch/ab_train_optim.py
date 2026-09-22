@@ -46,12 +46,15 @@ from src.train.train_lora import _collate_padded
 from src.utils import timestamp
 
 GLOBAL_BATCH = 16
-# arm -> (W&B run name, supervised-only logits?, fla kernels expected?). A and B are the
-# comparison; C and D change one thing each, to say WHICH change moved a curve.
-ARMS = {"baseline": ("A-baseline-main", False, False),
-        "optim": ("B-optim-train-optim", True, True),
-        "logits": ("C-logits-only", True, False),
-        "kernels": ("D-fla-only", False, True)}
+# arm -> (W&B run name, supervised-only logits?, fla kernels expected?, attention backend, packed?).
+# A-D are the 2026-09-20 fla A/B; E and F are the 2026-09-21 attention/packing A/B against the
+# merged stack (B's shape, which main now trains with).
+ARMS = {"baseline": ("A-baseline-main", False, False, "sdpa", False),
+        "optim": ("B-optim-train-optim", True, True, "sdpa", False),
+        "logits": ("C-logits-only", True, False, "sdpa", False),
+        "kernels": ("D-fla-only", False, True, "sdpa", False),
+        "fa2": ("E-flash-attn2-padded", True, True, "flash_attention_2", False),
+        "packed": ("F-flash-attn2-packed", True, True, "flash_attention_2", True)}
 
 
 def _stream(rows_path: str, tokenizer, profile, max_len: int, steps: int) -> list[dict]:
@@ -69,12 +72,11 @@ def _stream(rows_path: str, tokenizer, profile, max_len: int, steps: int) -> lis
     return feats
 
 
-def _build_model(model_id: str, profile, recipe):
+def _build_model(model_id: str, profile, recipe, attn: str):
     from peft import LoraConfig, get_peft_model
 
     model = AutoModelForImageTextToText.from_pretrained(
-        model_id, dtype=torch.bfloat16, device_map={"": 0},
-        attn_implementation=profile.attn_implementation)
+        model_id, dtype=torch.bfloat16, device_map={"": 0}, attn_implementation=attn)
     model.config.use_cache = False
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     torch.manual_seed(0)  # the LoRA init is the only RNG draw that must match across arms
@@ -96,7 +98,7 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
             "causal_conv1d": qwen.causal_conv1d_fn is not None}
     # Each arm must be running on the stack it claims — a baseline with fla installed, or an
     # optim arm silently on the torch fallback, would make the comparison a lie.
-    run_name, slim_logits, wants_fla = ARMS[arm]
+    run_name, slim_logits, wants_fla, attn, packed = ARMS[arm]
     assert fast["fla_gated_delta"] == wants_fla, (
         f"arm {arm!r} found fla_gated_delta={fast['fla_gated_delta']}; wrong venv for this arm")
 
@@ -115,7 +117,7 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
         budget = int(measured["max_padded_tokens"]) if measured else max(
             len(f["input_ids"]) for f in feats)
 
-    net = _build_model(model_id, profile, cfg)
+    net = _build_model(model_id, profile, cfg, attn)
     trainable = [p for p in net.parameters() if p.requires_grad]
     init_checksum = float(sum(p.detach().double().abs().sum() for p in trainable))
     opt = torch.optim.AdamW(trainable, lr=float(cfg.train.lr))
@@ -125,33 +127,38 @@ def main(arm: str, data_repo: str, data_revision: str | None = None, model: str 
                "steps": steps, "budget": int(budget), "lr": float(cfg.train.lr),
                "global_batch": GLOBAL_BATCH, "gpu": gpu, "lora_r": int(cfg.lora.r),
                "lora_dropout": 0.0, "lora_init_checksum": init_checksum,
-               "torch": torch.__version__, **fast}
+               "torch": torch.__version__, "attn": attn, "packed": packed, **fast}
     run = wandb.init(group=group, name=run_name, config=run_cfg)  # project/entity: env
     print(f">>> [{arm}] {git_sha[:8]} budget={budget} kernels={fast} "
           f"lora_init_checksum={init_checksum:.6f}", flush=True)
 
     if slim_logits:
         from src.train.dynamic_batching import supervised_positions
+    if packed:
+        from src.train.dynamic_batching import plan_packs
+        from src.train.train_lora import _collate_packed
 
     history, total_wall = [], 0.0
     for s in range(steps):
         step_feats = feats[s * GLOBAL_BATCH:(s + 1) * GLOBAL_BATCH]
         lens = [len(f["input_ids"]) for f in step_feats]
-        plan = plan_micro_batches(lens, budget)
+        plan = plan_packs(lens, budget) if packed else plan_micro_batches(lens, budget)
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
         t0 = time.perf_counter()
         net.zero_grad(set_to_none=True)
         loss_total, padded, logit_rows = 0.0, 0, 0
         for part in plan:
-            mb = _collate_padded([step_feats[i] for i in part], tokenizer.pad_token_id)
-            mb = {k: v.to("cuda") for k, v in mb.items()}
+            rows = [step_feats[i] for i in part]
+            mb = _collate_packed(rows) if packed else _collate_padded(rows, tokenizer.pad_token_id)
+            mb = {k: (v.to("cuda") if isinstance(v, torch.Tensor) else v) for k, v in mb.items()}
             labels = mb.pop("labels")
+            segments = mb.pop("segments", None)
             padded += int(mb["input_ids"].numel())
             if slim_logits:
                 keep = supervised_positions(labels)
                 logits = net(**mb, use_cache=False, logits_to_keep=keep).logits
-                loss = seq_mean_token_mean_loss(logits, labels, GLOBAL_BATCH, keep)
+                loss = seq_mean_token_mean_loss(logits, labels, GLOBAL_BATCH, keep, segments)
             else:
                 logits = net(**mb, use_cache=False).logits
                 loss = seq_mean_token_mean_loss(logits, labels, GLOBAL_BATCH)

@@ -31,8 +31,10 @@ def test_the_recipe_carries_no_arm_identity_and_no_retired_key():
     for k in LAUNCH_ARGS:
         assert k not in cfg, f"{k} is a launch argument, not a recipe field"
     assert "lora" in cfg and "train" in cfg
-    for gone in ("dynamic_batching", "packing", "assistant_only_loss", "loss_type"):
+    for gone in ("dynamic_batching", "assistant_only_loss", "loss_type"):
         assert gone not in cfg.train, gone
+    # the recipe's batching/loss knobs are declared at the 2026-09-21 defaults
+    assert cfg.train.packing is True and cfg.train.loss_agg == "token_mean"
 
 
 def test_every_train_config_is_a_recipe_and_reports_nowhere_by_default():
@@ -59,7 +61,7 @@ def test_launch_args_are_required_and_the_error_names_them_all():
 
 
 @pytest.mark.parametrize("key, value", [
-    ("train.dynamic_batching", {}), ("train.packing", False), ("train.assistant_only_loss", True),
+    ("train.dynamic_batching", {}), ("train.assistant_only_loss", True),
     ("train.loss_type", "nll"), ("train.mask_empty_think", True), ("train.load_in_4bit", False),
     ("train.report_to", ["wandb"]),
     ("model_class", "image_text_to_text"), ("lora.target_modules", "q_proj"),

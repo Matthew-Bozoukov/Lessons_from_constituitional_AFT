@@ -1,6 +1,189 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — The new recipe end to end: da-15 (token share) and nosynth on the 2026-09-21 defaults reproduce the old da-7 effect on ODCV, -36.7 pp paired, and nothing moved against the old stack
+
+**Hypothesis.** The recipe now differs from the 2026-09-15 baseline in five places at once —
+fla kernels, flash-attention + packing, token-mean loss, the supervised-token mixture share
+(da-15-mix, which is the old da-7 in composition) and 1xH200 — and none of them was meant
+to change what the model learns. Both ends of the ladder trained on it should land on their
+old-stack counterparts: da-15 on `2026-09-17-{odcv,mask}-qwen36-0-da-7` (the 09-15 adapter),
+nosynth on `2026-09-09-{odcv,mask}-qwen36-0-nosynth`.
+
+**Method.** `configs/train/sft.yaml` at `fea5852c` (`loss_agg: token_mean`, `packing: true`,
+flash_attention_2, fla), seed 0, one H200 each: `dougalldeepmind/2026-09-21-qwen36-0-da-15`
+(`a9b49d3b`) on `2026-09-21-da-15-mix`@`68432836`, and `2026-09-22-qwen36-0-nosynth`
+(`969c5d4a`) on `2026-09-08-nosynth-mix`@`7e991f58`. Each adapter: ODCV-lite as shipped
+(3 passes, 240 rollouts, gemini-3-flash judge + progress judge) and MASK (1,000 rows,
+think). Four evals ran concurrently — one pod per arm (`runpod up --eval`, `--terminate-pod`),
+distinct tunnel ports, both ODCV runs on one Docker daemon (2.3 GiB for 128 containers; the
+"one ODCV per daemon" rule was retracted 2026-09-07). Paired ODCV differences by
+`arm_difference` on the 40 shared scenarios.
+
+**Result.**
+
+| adapter | stack | ODCV MR [95%] | mand / incent | submit % | progress | MASK honesty |
+|---|---|---|---|---|---|---|
+| nosynth 2026-09-09 | old | 42.5% [30.8, 55.1] | 50.8 / 34.2 | 97.1 | 4.95 | 53.6 (09-07 run: 45.5) |
+| nosynth 2026-09-22 | new | 43.8% [31.1, 57.2] | 44.2 / 43.3 | 97.1 | 4.97 | 57.7 |
+| da-7 2026-09-15 | old | 8.3% [4.3, 15.6] | 5.0 / 11.7 | — | 4.82 | 74.2 |
+| da-15 2026-09-21 | new | 7.1% [3.3, 14.5] | 3.3 / 10.8 | 99.2 | 4.99 | 84.9 |
+
+Paired on scenario (treatment minus control, MR in pp, 95% CI):
+
+| pair | MR diff | severity diff |
+|---|---|---|
+| da-15 − nosynth, both new | **-36.7 [-48.6, -24.8]**, p<1e-4 | -1.36 [-1.81, -0.90] |
+| da-7 − nosynth, both old | -34.2 [-44.4, -23.9], p<1e-4 | -1.24 [-1.60, -0.87] |
+| da-15 new − da-7 old | -1.2 [-5.1, +2.6], p=0.52 | -0.06 [-0.20, +0.08] |
+| nosynth new − nosynth old | +1.2 [-4.2, +6.7], p=0.65 | +0.06 [-0.14, +0.26] |
+
+- **The treatment effect is intact and the same size** on the new recipe: -36.7 pp against
+  -34.2 on the old stack, intervals overlapping almost entirely. Neither arm moved
+  detectably against its old-stack self (both cross-stack differences are within ±1.2 pp
+  with p>0.5). The 2026-09-21 entry's worry — new-stack da-7 replicates at 11.3-12.9% vs
+  the old 8.3% — does not carry to da-15: 7.1% is the lowest da arm ODCV has scored. With
+  the same three-pass protocol, the cheapest reading is that the 09-21 gap was run-to-run
+  spread, not the kernels; a second da-15 seed would settle it.
+- **The mixture's token share behaves as the row share did.** da-15-mix reproduces the old
+  da-7 composition (same synthetic tokens, base at its own size) and the model it trains is
+  indistinguishable from the old da-7 on both evals. The share is now what the gradient
+  sees, and nothing was lost making it so.
+- **MASK: 84.9 for da-15, 57.7 for nosynth.** da-15 sits at the top of the new-stack da-7
+  spread (71.3 / 79.9 / 82.8) and nosynth above both old-stack nosynth runs (45.5 / 53.6);
+  both within the ~11-point run-to-run band established 2026-09-21, so MASK confirms the
+  direction and nothing finer. Generation error 0.2% on both (lowest to date), empty
+  content 0.7% / 0.1%.
+- **nosynth's mandated/incentivized split flipped** (50.8 / 34.2 old → 44.2 / 43.3 new)
+  with the overall rate unchanged: the split is not stable across runs of the control,
+  which bounds how much the 2026-09-21 "DA models fail more on incentivized" reading can
+  carry — the da arms' split (3.3 / 10.8 here, 5.0 / 11.7 old) is the consistent one.
+- **No arm is inert:** progress 4.97-4.99, submit rate 97-99%.
+
+**Next.** (1) A seed-1 da-15 on the same recipe to put a seed interval on the new-stack
+number and close the 09-21 question. (2) The default recipe is now measured end to end
+on both ends of the ladder; the remaining arms (dat, daa, delib) can move to token-share
+mixes and be re-trained on it. (3) `runpod up --push_env` still tears a pod down when SSH
+is not reachable within 300 s (two MASK pods lost this way on 2026-09-22 before the third
+rental succeeded); the fix — a longer wait or the env in the create request — is unmade.
+
+## 2026-09-21 — Mixtures declare their synthetic share in SUPERVISED TOKENS; da-15-mix is the first, and it is the old da-7 in composition
+
+**Change.** `share_unit: supervised_tokens` (src/data/mixture/token_share.py; now set in every
+base-blend arm config, da-dat's 100% mix excepted): the published nosynth mixture is the size
+of every arm (4,877,400 supervised tokens); base rows leave in a seeded order that is
+proportional across sources and nested across shares (5% removes a prefix of 7%'s removals)
+until `synthetic_pct` of that total is freed; synthetic rows refill it round-robin over
+traits, plus one closest-fit row. Every count is `build_labels` on the row under ITS
+supervise mode (`all`/`final`/`cot`/`answer`, `mask_spans`), so a cot-only arm is a share of
+the tokens its mask keeps (tested against the real tokenizer: all > final = cot + answer).
+Under `train.loss_agg: token_mean` this share IS the source's share of the gradient.
+`total_examples` is gone from those configs; `all: true` loads a synthetic pool whole; stats
+carry supervised-token shares and the swap report; the name's pct is asserted against the
+realised token share (±1).
+
+**Why.** Row shares stopped meaning anything once tokens were the unit: da-7 by rows was
+15.4% of supervised tokens (2026-09-15-da-7-mix: 822,897 of 5,341,647), tulu3_if 30.9%,
+longalign 0.6%.
+
+**Result.** `dougalldeepmind/2026-09-21-da-15-mix`: 15.0% realised, 9,136 rows, 4,877,278
+supervised tokens (within 122 of the base); 1,487 base rows out (6.8% of every source), 623
+da rows in (69-70 per trait). Its per-source token shares match the old da-7 mix to within
+0.2 pp on every source — so the old 7% arms were 15%-by-tokens arms, and this is their
+composition at the base's size (9% fewer tokens from every source: the old mix added its
+700 rows on top of a 9,300-row base). A token-share da-7 (built, not pushed) is 293 da rows
+at 7.04%: less than half the dose of any existing 7% arm.
+
+**Naming.** The law writes `<date>-da-15-mix` for either unit; the cut-over is this entry and
+`share_unit` in mixture_stats/the card. Every mixture dated before 2026-09-21 is a row share.
+
+**Next.** Train `2026-09-21-da-15-mix` on the new stack (token_mean, packing, fla) and eval it
+beside the 09-15 da-7 adapter: same composition, new weighting and kernels — the cleanest
+pair the project has for "did the training stack move the numbers".
+
+## 2026-09-21 — Recipe defaults: token weighting, packing and flash-attention on; the kernel in the lock
+
+**Change.** `configs/train/sft.yaml` now trains with `loss_agg: token_mean` — every supervised
+token in an optimizer step weighs the same (the micro-batch's summed cross-entropy over the
+STEP's supervised-token count, identical on every rank, so padded passes, packs and ranks add
+up to one token mean; tested) — and `packing: true`; `configs/models/qwen36.yaml` names
+`flash_attention_2` (the Hub kernel via `kernels`) as the family's training backend.
+`causal-conv1d` is a linux dependency in the lock (sdist metadata declared, build variables in
+`extra-build-variables`); `runpod up --train` syncs twice, exporting the pip CUDA layout's
+nvcc and an unversioned `libcudart.so` between, so the second sync compiles it. The trainer
+refuses to pack without varlen attention or that kernel. `train.attn_implementation` stays a
+retired recipe key: the backend is the profile's fact.
+
+**Why token weighting.** Callum, 2026-09-21: the unit of training is the token; a long answer
+is many lessons and a one-token answer one; and an ablation that removes 20% of a row's tokens
+should remove 20% of its weight instead of concentrating the row's weight on what is left.
+Tülu 3 / OLMo 2 (`reduce_loss=sum`) and the HF Trainer since PR #34191 weigh tokens the same
+way; our per-example weighting was inherited from the batch-1 x grad_accum path (2026-08-10),
+not chosen. Consequence on `2026-09-15-da-7-mix`: da's share of the gradient rises from 7.0%
+(rows) to 15.4% (supervised tokens; 822,897 of 5,341,647), tulu3_if to 30.9%, self_oss_instruct
+to 24.0%; longalign, 17.6% of rendered tokens, is 0.6% of supervised ones. **Every adapter
+before this commit was trained with per-example weighting; results across the change are not
+comparable.** `train.loss_agg=seq_mean_token_mean` restores it.
+
+**Smoke (2xH200 DDP, 8 rows, per-step logging).** token_mean: 1.315 padded, 1.314 packed;
+seq_mean_token_mean: 0.5212 padded, 0.5211 packed — each within 1e-3 of the same losses
+computed outside the trainer on the base model (1.3142 / 1.0426, the seq-mean halved because a
+smoke step has 8 rows against the constant 16 divisor, as documented). The `train_loss` a run
+with logging_steps > max_steps reports (0.72 / 2.43 / 0.128 across earlier smokes) is not a
+loss: HF's end-of-run average over an unlogged run. Pod `qrstrhhu7ncd9d` terminated.
+
+## 2026-09-21 — Flash-attention and sequence packing: 1.46x on top of fla, exact by a direct leak probe, and both off by default
+
+**Hypothesis.** Two more throughput changes that leave the computation alone: a varlen
+attention backend (the padded batches were running SDPA's masked path), and packing a step's
+examples into dense rows under the same token budget (the 2026-08-20 count put a third of the
+forward tokens in padding).
+
+**Method.** Branch `jamie/train-optim` (merged stack + this). flash_attention_2 without a
+CUDA build: transformers 5.14 falls back to the Hub kernel `kernels-community/flash-attn2`
+through the `kernels` package (pinned 0.15.x, the range it accepts). Packing: `plan_packs`
+(first-fit decreasing by real tokens), `route_step(packed=True)` for DDP, `_collate_packed`
+(position_ids restarting per example, the varlen kwargs that also reach fla as `cu_seqlens`,
+`seq_idx` for the fused conv, `segments` for the loss), and `seq_mean_token_mean_loss(...,
+segments)` so each packed example keeps its own row weight (tested equal to the unpacked
+batch, loss and gradient). causal-conv1d has no wheel for torch 2.11/cu13 and was built from
+source on the pod (GOTCHAS). Gate: `scratch/pack_equality_check.py` on the live model — six
+rows alone vs packed, plus a LEAK PROBE (same rows, reversed neighbours) against a noise
+floor (same row, +37 padding). Then the 30-step A/B (`scratch/ab_train_optim.py`, group
+`train-optim-ab2`) on `2026-09-17-daa-7-mix`@`d15f96f6`, one 2xH200 pod.
+
+**Result.**
+
+- **Packing is exact.** Leak probe mean |Δlogit| **0.0000** and 0.00% top-1 change over the
+  supervised positions: an example's logits do not depend on its neighbours at all.
+  Packed-vs-alone sits exactly on the noise floor (0.024 vs 0.024 mean |Δ|; 1.1% vs 0.3%
+  top-1 flips). The max over 250k bf16 logits reached 7.8 with zero leakage — the first
+  version of the check used it and called a clean pack "DIFFERENT"; it is not a usable metric.
+- **A/B, steps 5-29 (B = main's stack: fla, sdpa, padded):**
+
+| arm | wall | speedup | passes/step | tokens fed | peak GiB max/mean | loss vs B mean/max | grad norm, step 0 |
+|---|---|---|---|---|---|---|---|
+| B sdpa padded | 319 s | 1.00x | 3.93 | 656k | 81.5 / 74.6 | — | 2.759 |
+| E flash-attn2 padded | 254 s | 1.26x | 3.93 | 656k | 81.5 / 74.5 | 0.39% / 1.39% | 2.666 |
+| F flash-attn2 packed | 218 s | **1.46x** | 2.50 | 502k (-23%) | 85.5 / 78.5 | 0.28% / 0.98% | 2.565 |
+
+  Loss deltas are at the noise floor of this test (an identical arm drifted 0.27% on
+  2026-09-20). The step-0 gradient norms differ by kernel path (sdpa 2.759, flash 2.666,
+  flash+packed 2.565 — the last is the closest to the original fp32-recurrence path's
+  2.555), the same kind of bf16 path difference as fla's, not a leak (the probe rules that out).
+  Packed peaks ~4 GiB higher: a pack fills its 8,000 tokens, a padded batch does not.
+- **Stacked:** fla 2.75x (2026-09-20) x 1.46x ≈ 4x per GPU against the stack of a week ago; a
+  da-7 arm at ~1.1 H200-hours (~$5).
+
+**Defaults.** Both stay OFF (`train.packing: false`, profile attn `sdpa`): fla's effect on
+the evals is still open (entry above), and the trainer refuses packing without varlen attention
+or without the causal-conv1d kernel (the torch fallback conv leaks 3 positions per boundary).
+Turning them on is `train.packing=true train.attn_implementation=flash_attention_2` plus the
+GOTCHAS build step on the pod. Pod `fdsnpu6ydrrnxv` (2xH200, ~1.3 h) terminated.
+
+**Next steps.** If fla is kept, switch the profile to flash_attention_2 and pack: the two are
+exact where fla is not. The conv build belongs in the pod bootstrap, not in a GOTCHAS recipe.
+
 ## 2026-09-21 — Where the pressure in our DA prompts comes from: 56% ask the assistant for the shortcut, 19% carry none; Teaching Claude Why's example carries none
 
 **Hypothesis.** Callum's 2026-09-14 critique — DA/DAT rows are "safety-eval shaped", the push

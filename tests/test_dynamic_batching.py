@@ -4,7 +4,7 @@
 import pytest
 
 from src.train.dynamic_batching import (
-    plan_micro_batches, seq_mean_token_mean_loss, supervised_positions)
+    plan_micro_batches, plan_packs, route_step, seq_mean_token_mean_loss, supervised_positions)
 
 # ---------------------------------------------------------------------------- planner
 
@@ -339,3 +339,95 @@ def test_ddp_scaling_restores_the_exact_sum():
                 gradient=torch.ones(()))  # accumulate per-rank scaled grads
     ddp_grad = ddp_logits.grad / ws  # DDP averages over ranks
     assert torch.allclose(ddp_grad, ref_logits.grad, atol=1e-6)
+
+
+# ---------------------------------------------------------------------------- packing
+
+
+def test_packs_respect_the_real_token_budget_and_cover_every_index():
+    lengths = [200, 200, 200, 500, 500, 200, 8000, 200, 200, 500, 200, 200, 8000, 200, 500, 200]
+    packs = plan_packs(lengths, 4096)
+    assert sorted(i for p in packs for i in p) == list(range(len(lengths)))
+    for p in packs:
+        assert sum(lengths[i] for i in p) <= 4096 or len(p) == 1
+        assert [lengths[i] for i in p] == sorted((lengths[i] for i in p), reverse=True)
+    assert [p for p in packs if len(p) == 1 and lengths[p[0]] == 8000]  # the long rows ride alone
+    # 14 short rows of 100 fit one 8192 pack with room to spare; padded passes would pay 14 x 8000
+    assert len(plan_packs([8000] * 2 + [100] * 14, 8192)) == 3
+
+
+def test_packed_routing_gives_every_rank_work_and_balances_tokens():
+    lengths = [3000, 2900, 2800, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+    plans = route_step(lengths, 8000, 2, packed=True)
+    flat = sorted(i for plan in plans for pack in plan for i in pack)
+    assert flat == list(range(len(lengths))) and all(plans)
+    loads = [sum(lengths[i] for pack in plan for i in pack) for plan in plans]
+    assert max(loads) - min(loads) <= 3000
+    assert route_step(lengths, 8000, 1, packed=True) == [plan_packs(lengths, 8000)]
+
+
+def test_packed_loss_equals_the_unpacked_loss_and_gradient():
+    """A pack is several examples end to end with `segments` naming the owner of every position.
+    Its loss must equal the batch of the same examples run separately — same per-example
+    weighting, no token lent across a boundary."""
+    torch = pytest.importorskip("torch")
+    logits, labels = _random_case(seed=7, batch=4)
+    lens = [int((labels[r] != -100).nonzero().max()) + 1 for r in range(4)]  # true lengths
+    gb, vocab = 16, logits.shape[2]
+    # unpacked reference: each row alone, padded, full logits
+    ref_in = logits.clone().requires_grad_(True)
+    ref = seq_mean_token_mean_loss(ref_in, labels, gb)
+    ref.backward()
+    # packed: concatenate the real parts; every example's first label is -100 already (prompt)
+    ids = torch.cat([logits[r, :lens[r]] for r in range(4)])[None]
+    lab = torch.cat([labels[r, :lens[r]] for r in range(4)])[None]
+    seg = torch.cat([torch.full((lens[r],), r) for r in range(4)])[None]
+    assert all(labels[r, 0] == -100 for r in range(4))
+    packed_in = ids.clone().requires_grad_(True)
+    keep = supervised_positions(lab)
+    # the logits at a pack boundary's last position predict the NEXT example's first token; that
+    # label is -100, so `supervised_positions` never keeps it and nothing crosses the boundary
+    loss = seq_mean_token_mean_loss(packed_in[:, keep, :], lab, gb, keep, seg)
+    loss.backward()
+    assert torch.allclose(loss, ref, atol=1e-6)
+    ref_grad = torch.cat([ref_in.grad[r, :lens[r]] for r in range(4)])[None]
+    assert torch.allclose(packed_in.grad, ref_grad, atol=1e-6)
+
+
+# ------------------------------------------------------------------------ token weighting
+
+
+def test_token_mean_is_the_plain_mean_over_the_step_and_partition_invariant():
+    """token_mean_loss with the STEP total as divisor: the micro-batch pieces add up to the
+    one number a single full-batch token mean would give, whichever way the step is cut."""
+    torch = pytest.importorskip("torch")
+    import torch.nn.functional as F
+    from src.train.dynamic_batching import token_mean_loss
+
+    logits, labels = _random_case(seed=11)
+    sl, tl = logits[:, :-1, :].float().flatten(0, 1), labels[:, 1:].flatten()
+    step_tokens = int(tl.ne(-100).sum())
+    plain = F.cross_entropy(sl, tl, ignore_index=-100, reduction="sum") / step_tokens
+    whole = token_mean_loss(logits, labels, step_tokens)
+    parts = [[0], [1, 2, 3, 4, 5, 6], [7, 8], list(range(9, 16))]
+    split = sum(token_mean_loss(logits[p], labels[p], step_tokens) for p in parts)
+    assert torch.allclose(whole, plain, atol=1e-5) and torch.allclose(split, plain, atol=1e-5)
+    # and it is NOT the per-example weighting: a short row counts for less, not the same
+    assert not torch.allclose(whole, seq_mean_token_mean_loss(logits, labels, 16), atol=1e-3)
+
+
+def test_token_mean_restricted_and_packed_paths_agree_with_full_logits():
+    torch = pytest.importorskip("torch")
+    from src.train.dynamic_batching import token_mean_loss
+
+    logits, labels = _random_case(seed=12, batch=4)
+    step_tokens = int(labels[:, 1:].ne(-100).sum())
+    ref = token_mean_loss(logits, labels, step_tokens)
+    keep = supervised_positions(labels)
+    assert torch.allclose(token_mean_loss(logits[:, keep, :], labels, step_tokens, keep), ref, atol=1e-6)
+    lens = [int((labels[r] != -100).nonzero().max()) + 1 for r in range(4)]
+    ids = torch.cat([logits[r, :lens[r]] for r in range(4)])[None]
+    lab = torch.cat([labels[r, :lens[r]] for r in range(4)])[None]
+    seg = torch.cat([torch.full((lens[r],), r) for r in range(4)])[None]
+    keep = supervised_positions(lab)
+    assert torch.allclose(token_mean_loss(ids[:, keep, :], lab, step_tokens, keep, seg), ref, atol=1e-6)

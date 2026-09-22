@@ -82,7 +82,7 @@ def test_training_arms_callback_before_waiting_for_ssh(monkeypatch):
     monkeypatch.setattr(runpod, "teardown", lambda *a: None)
     monkeypatch.setattr(runpod, "_commit_to_run", lambda branch: ("fake", "abc"))
     monkeypatch.setattr(runpod, "_clone_url", lambda: "https://example.com/repo.git")
-    monkeypatch.setattr(runpod, "_bootstrap", lambda *args: "true")
+    monkeypatch.setattr(runpod, "_bootstrap", lambda *args, **kw: "true")
     monkeypatch.setattr(runpod, "_check_bash", lambda script: None)
     monkeypatch.setattr(runpod, "gpu_for", lambda *args: "NVIDIA H200")
     monkeypatch.setattr(runpod, "provision_runpod", lambda *args, **kwargs: "owned-test-pod")

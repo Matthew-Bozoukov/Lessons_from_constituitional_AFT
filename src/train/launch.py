@@ -50,7 +50,6 @@ LAUNCH_ARGS = ("model", "data_repo")
 RETIRED_KEYS = {
     "train.dynamic_batching": "dynamic batching is always on; `train.token_budget: N` "
                               "overrides the resolved budget (cite a probe run)",
-    "train.packing": "always off — dynamic batching pads, it never packs",
     "train.assistant_only_loss": "always on — the in-repo mask (CLAUDE.md gotcha 3)",
     "train.loss_type": "the loss is seq-mean-token-mean, computed by DynamicBatchTrainer",
     "train.mask_empty_think": "the generation-boundary rule masks a whole empty marker, "

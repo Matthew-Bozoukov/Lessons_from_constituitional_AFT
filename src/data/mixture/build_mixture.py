@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import random
+from collections import defaultdict
 import sys
 from pathlib import Path
 
@@ -47,7 +48,8 @@ load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture import reasoning_backfill as rb  # noqa: E402
 from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
-from src.model_profile import model_profile, render_chat  # noqa: E402
+from src.model_profile import ModelProfile, model_profile, render_chat  # noqa: E402
+from src.train.masking import build_labels  # noqa: E402
 from src.naming import (  # noqa: E402
     NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
 )
@@ -80,6 +82,12 @@ def _budget(name: str, spec: dict, scale: int) -> tuple[str, int]:
     mixtures (e.g. the Table-2 counts). Both divide by the smoke scale so `--smoke`
     exercises the same path.
     """
+    if spec.get("all"):
+        # The whole pool: what a supervised-token share fills from (`plan_swap` picks
+        # the rows), never a sampling budget of its own.
+        assert not any(spec.get(k) for k in ("tokens", "examples")), (
+            f"source {name!r}: `all: true` takes the whole pool; drop `tokens:`/`examples:`")
+        return "all", 0
     declared = [k for k in ("tokens", "examples") if spec.get(k) is not None]
     if len(declared) != 1:
         raise ValueError(
@@ -302,6 +310,12 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
                     f"source {name!r}: row missing balance_by field {bkey!r}"
                 groups.setdefault(str(g), []).append(p)
         assert rows, f"no usable rows in {spec.get('dataset') or spec['path']}"
+        if budget[0] == "all":
+            if bkey:  # the group rides the row so the token-share fill can balance on it
+                for g, members in groups.items():
+                    for p in members:
+                        p["balance_group"] = g
+            return rows, kind
         if bkey:
             b_kind, want = budget
             assert b_kind == "examples", \
@@ -312,6 +326,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     repo = spec.get("repo") or (adapter.repo if adapter else None)
     if not repo:
         raise ValueError(f"source {name!r}: needs `source:` (registry), `repo:` or `path:`")
+    assert budget[0] != "all", f"source {name!r}: `all: true` needs the whole pool (`dataset:`/`path:`), not a stream"
     hf_config = spec.get("config") or (adapter.hf_config if adapter else None)
     split = spec.get("split") or (adapter.split if adapter else "train")
     args = [repo] + ([hf_config] if hf_config else [])
@@ -491,6 +506,177 @@ def declared_synthetic_pct(sources: dict) -> int:
     return round(100 * synth / total) if total else 0
 
 
+# --------------------------------------------------------------------------------------
+# The supervised-token share (`share_unit: supervised_tokens`)
+# --------------------------------------------------------------------------------------
+# A mixture whose synthetic share is a share of supervised tokens, not of rows.
+#
+# Under token weighting (`train.loss_agg: token_mean`, 2026-09-21) a source's share of the
+# gradient is its share of SUPERVISED tokens — the assistant tokens the mask leaves in the loss
+# — and a row share says nothing about that: 7% of rows was 15.4% of supervised tokens on
+# `2026-09-15-da-7-mix`, because difficult-advice answers are long. The planners below build the
+# share in the unit that matters:
+#
+#   * the published nosynth mixture is the size of every arm — its supervised-token total is
+#     the budget, and nothing is added on top;
+#   * base rows are REMOVED in a seeded order that takes from every source in proportion and
+#     is nested across percentages (the 5% arm's removals are the first part of the 7% arm's),
+#     until the removed tokens reach the declared share of the budget;
+#   * synthetic rows are INSERTED, round-robin over the balance groups (traits) so the share is
+#     trait-balanced in tokens, until the freed tokens are refilled — greedy, then one
+#     closest-fitting row to close the gap;
+#   * every count is `build_labels` on the row as the trainer will render and mask it, under
+#     the row's OWN supervision mode (`all` / `final` / `cot` / `answer`, and any `mask_spans`),
+#     so a cot-only arm and its control get the token shares their masks give them, not the
+#     ones their rows would have.
+#
+# The planners are pure and unit-tested on fake counts (tests/test_token_share.py);
+# `supervised_tokens` is the one that touches a tokenizer. `blend` above is the row-unit
+# counterpart (`share_unit: examples`).
+
+SHARE_UNITS = ("examples", "supervised_tokens")
+
+
+def supervised_tokens(tok, profile: ModelProfile, row: dict, max_seq_len: int) -> int:
+    """How many of this row's tokens the trainer will supervise, under the row's own mode.
+
+    Renders with the family's preserve kwargs and masks with `build_labels`, exactly as
+    `uv run train` does (src/train/train_lora.py), so `supervise: final` counts one turn,
+    `cot` counts one turn's reasoning and truncates after it, and `mask_spans` remove what
+    they remove. The row's `supervise` field is whatever the mixture assigned it — a
+    source-level override included — so this is the count the arm will train on.
+    """
+    text = render_chat(tok, row["messages"], row.get("tools"), render_kwargs=profile.render_kwargs)
+    labels = build_labels(text, tok, max_seq_len, profile,
+                          supervise=row.get("supervise") or "all",
+                          mask_spans=row.get("mask_spans"))["labels"]
+    # The causal shift: position 0 is never a target, and the trainer's loss counts
+    # labels[1:] (src/train/dynamic_batching.py). Label 0 is -100 anyway (a prompt token).
+    return sum(1 for v in labels[1:] if v != -100)
+
+
+def removal_order(rows: list[dict], seed: int) -> list[int]:
+    """The order in which base rows leave, proportional across sources and nested across shares.
+
+    Each source's rows are shuffled with their own seeded stream and given the key
+    (rank + 0.5) / size; the global order sorts by that key. After the first k removals
+    every source has lost about k x (its row share) — the base blend keeps its proportions,
+    the way `blend()` kept them for row shares — and the order does not depend on the share
+    asked for, so a larger share removes a superset of what a smaller one removes.
+
+    Returns:
+        Indices into `rows`, first to leave first.
+    """
+    by_source: dict[str, list[int]] = defaultdict(list)
+    for i, r in enumerate(rows):
+        by_source[r["source"]].append(i)
+    keyed = []
+    for name in sorted(by_source):
+        idx = list(by_source[name])
+        random.Random(f"{seed}:{name}").shuffle(idx)
+        n = len(idx)
+        keyed += [((rank + 0.5) / n, name, rank, i) for rank, i in enumerate(idx)]
+    keyed.sort()
+    return [i for _k, _s, _r, i in keyed]
+
+
+def remove_until(rows: list[dict], order: list[int], target: int) -> list[int]:
+    """The first rows of `order` whose supervised tokens reach `target` (the last one may
+    overshoot; the closest-fit is decided on the insert side, where the pool is larger)."""
+    removed, total = [], 0
+    for i in order:
+        if total >= target:
+            break
+        removed.append(i)
+        total += rows[i]["n_supervised"]
+    return removed
+
+
+def fill_tokens(pool: list[dict], budget: int, seed: int, balance_key: str | None) -> list[int]:
+    """Choose synthetic rows whose supervised tokens refill `budget`, balanced across groups.
+
+    Round-robin over the balance groups (seeded order, each group seeded-shuffled): a
+    group's next row is taken when it fits, skipped for this round when it would overshoot.
+    When no group can add a row without overshooting, one more row — the one that brings
+    the total closest to the budget, from any group — is added if it reduces the gap.
+
+    Returns:
+        Indices into `pool`.
+    """
+    if budget <= 0:
+        return []
+    groups: dict[str, list[int]] = defaultdict(list)
+    for i, r in enumerate(pool):
+        groups[str(r.get(balance_key, "")) if balance_key else ""].append(i)
+    names = sorted(groups)
+    random.Random(f"{seed}:groups").shuffle(names)
+    for name in names:
+        random.Random(f"{seed}:{name}").shuffle(groups[name])
+    cursor = {name: 0 for name in names}
+    chosen, total = [], 0
+    progress = True
+    while progress:
+        progress = False
+        for name in names:
+            idx = groups[name]
+            while cursor[name] < len(idx):
+                i = idx[cursor[name]]
+                if total + pool[i]["n_supervised"] <= budget:
+                    chosen.append(i)
+                    total += pool[i]["n_supervised"]
+                    cursor[name] += 1
+                    progress = True
+                    break
+                cursor[name] += 1  # too big for what is left; the next one may fit
+    gap = budget - total
+    remaining = [i for name in names for i in groups[name] if i not in set(chosen)]
+    if gap > 0 and remaining:
+        best = min(remaining, key=lambda i: (abs(gap - pool[i]["n_supervised"]), i))
+        if abs(gap - pool[best]["n_supervised"]) < gap:
+            chosen.append(best)
+    return chosen
+
+
+def plan_swap(base: list[dict], synth: list[dict], pct: int, seed: int,
+              balance_key: str | None) -> dict:
+    """Which base rows leave and which synthetic rows enter for a `pct` share of supervised tokens.
+
+    Args:
+        base: The whole published base mixture, each row with `n_supervised` and `source`.
+        synth: The synthetic pool, each row with `n_supervised` (+ the balance field).
+        pct: The declared synthetic share, in percent of the base's supervised tokens.
+        seed: The mixture seed.
+        balance_key: Field to balance the inserted rows over (e.g. `trait_id`), or None.
+
+    Returns:
+        {"keep": base indices kept, "insert": synth indices, "budget", "removed_tokens",
+         "inserted_tokens", "removed_by_source", "inserted_by_group", "realised_pct"}.
+    """
+    assert 0 <= pct <= 100, pct
+    budget = sum(r["n_supervised"] for r in base)
+    target = round(budget * pct / 100)
+    order = removal_order(base, seed)
+    removed = remove_until(base, order, target)
+    removed_set = set(removed)
+    freed = sum(base[i]["n_supervised"] for i in removed)
+    inserted = fill_tokens(synth, freed, seed, balance_key) if pct else []
+    ins_tokens = sum(synth[i]["n_supervised"] for i in inserted)
+    kept_tokens = budget - freed
+    by_source: dict[str, int] = defaultdict(int)
+    for i in removed:
+        by_source[base[i]["source"]] += 1
+    by_group: dict[str, int] = defaultdict(int)
+    for i in inserted:
+        by_group[str(synth[i].get(balance_key, "")) if balance_key else ""] += 1
+    total = kept_tokens + ins_tokens
+    return {"keep": [i for i in range(len(base)) if i not in removed_set], "insert": inserted,
+            "budget": budget, "target": target, "removed_tokens": freed, "inserted_tokens": ins_tokens,
+            "removed_by_source": dict(sorted(by_source.items())),
+            "inserted_by_group": dict(sorted(by_group.items())),
+            "realised_pct": round(100 * ins_tokens / total, 2) if total else 0.0,
+            "total_supervised_tokens": total}
+
+
 def _source_stats(rows: list[dict]) -> dict[str, dict]:
     """Per-source composition of the built mixture, with BOTH share definitions.
 
@@ -505,9 +691,16 @@ def _source_stats(rows: list[dict]) -> dict[str, dict]:
         b = by_source.setdefault(r["source"], {"examples": 0, "tokens": 0})
         b["examples"] += 1
         b["tokens"] += r["n_tokens"]
+    grand_sup = sum(r.get("n_supervised", 0) for r in rows)
+    for r in rows:
+        if "n_supervised" in r:
+            by_source[r["source"]]["supervised_tokens"] = (
+                by_source[r["source"]].get("supervised_tokens", 0) + r["n_supervised"])
     for b in by_source.values():
         b["share_pct_examples"] = round(100 * b["examples"] / len(rows), 2)
         b["share_pct_tokens"] = round(100 * b["tokens"] / grand_tok, 2)
+        if grand_sup:
+            b["share_pct_supervised_tokens"] = round(100 * b.get("supervised_tokens", 0) / grand_sup, 2)
     return by_source
 
 
@@ -549,6 +742,12 @@ def _card_fields(cfg, config_path: str, stage_desc: str, files_desc: str,
         "render_chat), tools included")
     gen = {"seed": int(cfg.seed), "max_seq_len": int(cfg.max_seq_len),
            "budget_tokenizer": str(cfg.tokenizer)}
+    if cfg.get("synthetic_pct") is not None:
+        # The unit the share in the NAME is declared in: rows until 2026-09-21, supervised
+        # tokens after (`plan_swap` below). Same name shape either way, so the
+        # card has to say which.
+        gen["synthetic_pct"] = int(cfg.synthetic_pct)
+        gen["share_unit"] = str(cfg.get("share_unit") or "examples")
     if cfg.get("base_mixture"):
         gen["base_mixture"] = OmegaConf.to_container(cfg.base_mixture, resolve=True)
     if traces:
@@ -761,7 +960,24 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         assert sup is None or sup in ("all", "final", "cot", "answer"), (
             f"source {sname!r}: `supervise: {sup}` is not a mode src/train/masking.py "
             "knows (all | final | cot | answer)")
-    if cfg.get("base"):
+    share_unit = str(cfg.get("share_unit") or "examples")
+    assert share_unit in SHARE_UNITS, f"share_unit must be one of {SHARE_UNITS}, not {share_unit!r}"
+    if share_unit == "supervised_tokens":
+        # The published nosynth mixture IS the size of this arm: the whole base pool comes
+        # in (blend() is not applied), synthetic sources come in whole (`all`), and
+        # plan_swap decides which base rows leave and which synthetic rows
+        # enter so the swap is `synthetic_pct` percent of the base's SUPERVISED tokens.
+        assert cfg.get("base") and cfg.get("base_mixture"), (
+            "share_unit: supervised_tokens swaps rows out of a published base: it needs "
+            "`base:` (the blend) and `base_mixture:` (the published rows)")
+        assert cfg.get("total_examples") is None, (
+            "share_unit: supervised_tokens takes the base mixture's size; drop `total_examples`")
+        assert cfg.get("filter") is None, "share_unit: supervised_tokens has no filter stage"
+        synth_pool = {n: {**s, "all": True, "synthetic": True,
+                          **{k: None for k in ("examples", "tokens")}}
+                      for n, s in sources.items()}
+        sources = {**_base_sources(str(cfg.base)), **synth_pool}
+    elif cfg.get("base"):
         sources = blend(_base_sources(str(cfg.base)), sources,
                         int(cfg.synthetic_pct), int(cfg.total_examples))
     # ... and it applies to the SYNTHETIC share only. The base blend is the control every
@@ -827,7 +1043,8 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # the first checkpoint push — so it comes from the share the config designs, and the
     # share the built rows actually carry is asserted against it at stage 3. A mixture
     # cannot be published under a percentage its own rows disagree with.
-    declared_pct = declared_synthetic_pct(sources)
+    declared_pct = (int(cfg.synthetic_pct) if share_unit == "supervised_tokens"
+                    else declared_synthetic_pct(sources))
     repo = mix_name(style if style != NOSYNTH else "", declared_pct, variant)
 
     # --- stage 1: the base mixture ----------------------------------------------------
@@ -910,31 +1127,68 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             print(f">>> stratified downsample to {keep_n:,} rows (quota: {quota})")
 
     # --- stage 3: synthetic sources join, final artifact ------------------------------
-    if synth_specs:
+    swap = None
+    if synth_specs and share_unit == "supervised_tokens":
+        synth_rows, synth_kinds = _load_all(tok, cfg, synth_specs, scale, seed,
+                                            render_kwargs)
+        kinds |= synth_kinds
+        profile = model_profile(str(cfg.tokenizer))
+        # Count what the trainer will supervise on each row under ITS mode — the base rows
+        # as published, the synthetic rows under any source-level override — so a cot-only
+        # arm is 7% of the tokens its mask leaves in, not of the tokens its rows would have.
+        for r in rows + synth_rows:
+            r["n_supervised"] = supervised_tokens(tok, profile, r, int(cfg.max_seq_len))
+        keys = {s.get("balance_by") for s in synth_specs.values()}
+        assert len(keys) == 1, f"synthetic sources must share one balance_by, got {keys}"
+        balance_key = "balance_group" if keys.pop() else None
+        swap = plan_swap(rows, synth_rows, declared_pct, seed, balance_key)
+        kept = [rows[i] for i in swap["keep"]]
+        inserted = [synth_rows[i] for i in swap["insert"]]
+        print(f">>> token-share swap: base {swap['budget']:,} supervised tokens; removed "
+              f"{len(rows) - len(kept):,} rows / {swap['removed_tokens']:,} tokens "
+              f"{swap['removed_by_source']}; inserted {len(inserted):,} rows / "
+              f"{swap['inserted_tokens']:,} tokens {swap['inserted_by_group']}; "
+              f"realised {swap['realised_pct']}% of {swap['total_supervised_tokens']:,}")
+        rows = kept + inserted
+        random.Random(seed).shuffle(rows)
+    elif synth_specs:
         synth_rows, synth_kinds = _load_all(tok, cfg, synth_specs, scale, seed,
                                             render_kwargs)
         rows += synth_rows
         kinds |= synth_kinds
         random.Random(seed).shuffle(rows)
 
-    # The name says 20%; the rows had better be 20%. Rounding is the only slack allowed,
-    # because everything trained on this mixture inherits the number from its name.
-    built_pct = synthetic_pct(rows, {n for n in synth_specs})
-    assert abs(built_pct - declared_pct) <= 1, (
-        f"this mixture is named for a {declared_pct}% synthetic share but its rows are "
-        f"{built_pct}% ({sum(r['source'] in synth_specs for r in rows):,} of {len(rows):,}). "
-        "The name would be wrong, and every arm trained on it would inherit the wrong "
-        "number. Fix the source budgets, or the config stem.")
+    # The name says 20%; the rows had better be 20% — in the unit the share was declared
+    # in. Rounding is the only slack allowed, because everything trained on this mixture
+    # inherits the number from its name.
+    if swap is not None:
+        built_pct = swap["realised_pct"]
+        assert abs(built_pct - declared_pct) <= 1, (
+            f"this mixture is named for a {declared_pct}% synthetic share of supervised "
+            f"tokens but realised {built_pct}%: the synthetic pool could not fill the freed "
+            f"tokens ({swap['inserted_tokens']:,} of {swap['removed_tokens']:,}).")
+    else:
+        built_pct = synthetic_pct(rows, {n for n in synth_specs})
+        assert abs(built_pct - declared_pct) <= 1, (
+            f"this mixture is named for a {declared_pct}% synthetic share but its rows are "
+            f"{built_pct}% ({sum(r['source'] in synth_specs for r in rows):,} of {len(rows):,}). "
+            "The name would be wrong, and every arm trained on it would inherit the wrong "
+            "number. Fix the source budgets, or the config stem.")
 
     out_path = out_dir / "mixture.jsonl"
     _write_rows(out_path, rows)
     _validate_written(out_path, rows, kinds)
     if cfg.get("base_mixture"):
         written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").splitlines()]
-        assert written == [{k: v for k, v in r.items() if k != "n_tokens"} for r in rows], (
+        assert written == [{k: v for k, v in r.items()
+                            if k not in ("n_tokens", "n_supervised", "balance_group")} for r in rows], (
             "serialization changed published-base payloads")
-    stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows)},
-             "synthetic_pct": built_pct, "by_source": _source_stats(rows),
+    stats = {"total": {"examples": len(rows), "tokens": sum(r["n_tokens"] for r in rows),
+                       **({"supervised_tokens": sum(r["n_supervised"] for r in rows)} if swap else {})},
+             "synthetic_pct": built_pct, "share_unit": share_unit,
+             "token_share": ({k: v for k, v in swap.items() if k not in ("keep", "insert")}
+                             if swap else None),
+             "by_source": _source_stats(rows),
              # every source as sampled, revision pins included
              "sources": sources,
              # whose traces the base blend carries (the family this mixture is on-policy

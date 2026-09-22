@@ -60,6 +60,23 @@ train:
   # A truncation ceiling, NOT the batching budget: 8192 truncates nothing in the Table-2
   # mixtures (longest row 8,191 tokens; LongAlign is capped to it at build time).
   max_seq_len: 8192
+  # What one unit of training signal is. `token_mean`: every supervised token in an optimizer
+  # step weighs the same (sum of per-token loss / the step's supervised-token count) — the
+  # convention in Tülu 3 / OLMo 2 and the HF Trainer, and Callum's recommendation
+  # (2026-09-21): a long answer is many lessons, a one-token answer is one, and an ablation
+  # that removes 20% of a row's tokens removes 20% of its weight instead of concentrating the
+  # row's weight on what is left. `seq_mean_token_mean` is the recipe until 2026-09-21: every
+  # EXAMPLE weighs 1/global_batch whatever its length (inherited from the batch-1 x grad_accum
+  # path, see docs/LOG.md 2026-08-10). Every adapter before 2026-09-21 was trained with it.
+  loss_agg: token_mean
+  # Batching is throughput, not identity (src/train/dynamic_batching.py). `packing: true`
+  # concatenates a step's examples into dense rows under the token budget instead of padded
+  # micro-batches: the same 16 examples per step, the same loss, no padding — 1.46x over the
+  # padded path on 2026-09-21, exact by scratch/pack_equality_check.py's leak probe. It needs
+  # varlen attention (the profile's `train.attn_implementation`, flash_attention_2 for
+  # Qwen3.6) and the causal-conv1d kernel (in the lock; `uv sync` on a train pod compiles it);
+  # the trainer refuses to pack without either. `packing: false` is the padded path.
+  packing: true
   # Durable checkpoints in the run directory (named for the organism, so a relaunch of the
   # same arm on the same day resumes from them).
   save_strategy: "steps"
