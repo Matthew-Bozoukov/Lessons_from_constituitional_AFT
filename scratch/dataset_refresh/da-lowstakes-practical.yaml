@@ -1,0 +1,22 @@
+# ABOUTME: Exact716 low-stakes practical examples plus identical9284 September8 replay rows.
+# ABOUTME: Run: uv run mix --config scratch/dataset_refresh/da-lowstakes-practical.yaml
+seed: 0
+tokenizer: Qwen/Qwen3.6-27B
+max_seq_len: 8192
+base: scratch/dataset_refresh/replay-proportions.yaml
+base_mixture:
+  repo: dougalldeepmind/2026-09-08-nosynth-mix
+  file: mixture.jsonl
+  revision: 7e991f58e86eff0b0a9f15a54ebeddfffb5b14dd
+synthetic_examples: 716
+synthetic_pct: 7
+total_examples: 10000
+sources:
+  da-lowstakes-practical:
+    dataset: dougalldeepmind/2026-09-21-da-lowstakes-practical-synth
+    revision: 83544fd2f48f7abc07a5e33dbcff35746f039c39
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+    supervise: all
+output_dir: output/lowstakes_practical_training/mixture

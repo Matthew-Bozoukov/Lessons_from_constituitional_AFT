@@ -1,0 +1,30 @@
+# ABOUTME: Frozen proportions for the September8 replay pool.
+# ABOUTME: Consumed by uv run mix --config scratch/dataset_refresh/da-lowstakes-practical.yaml
+sources:
+  no_robots:
+    examples: 2779
+    reasoning: none
+  tulu3_if:
+    examples: 1471
+    reasoning: none
+  numinamath_cot:
+    examples: 1063
+    reasoning: none
+  self_oss_instruct:
+    examples: 1064
+    reasoning: none
+  smol_constraints:
+    examples: 1055
+    reasoning: none
+  apigen_function_calling:
+    examples: 1054
+    reasoning: none
+  smol_summarize:
+    examples: 984
+    reasoning: none
+  lima:
+    examples: 314
+    reasoning: none
+  longalign:
+    examples: 216
+    reasoning: none
