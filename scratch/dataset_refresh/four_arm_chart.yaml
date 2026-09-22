@@ -7,15 +7,15 @@ arms:
     color: '#808080'
     repo: dougalldeepmind/2026-09-09-odcv-qwen36-0-nosynth
     revision: 128495d177eab348b8185e1627e3bcafcb6706fa
-  - label: "7% difficult\nadvice*"
+  - label: "7% difficult\nadvice"
     color: '#905CA6'
     repo: dougalldeepmind/2026-09-09-odcv-qwen36-0-da-7
     revision: 0e69b5d75084be9174f0349852b2dbf92108e06d
-  - label: "Original\nlow-stakes"
+  - label: "Low-stakes"
     color: '#3B83C6'
     repo: dougalldeepmind/2026-09-17-odcv-qwen36-0-da-lowstakes-original-7
     revision: ff1bf4fffb4f54c309829a2382348768b4c836d2
-  - label: "Original nonmoral\ndeliberation"
+  - label: "Nonmoral\ndeliberation"
     color: '#B6533D'
     repo: dougalldeepmind/2026-09-16-odcv-qwen36-0-nonmoral-original-7
     revision: 47c0e44df95435a61e95fb09678e6eb4950c6385

@@ -66,7 +66,7 @@ def main(config):
     assert all(x == cell_sets[0] for x in cell_sets)
     plt.rcParams.update({'font.family':'DejaVu Sans', 'font.size':16, 'svg.fonttype':'none', 'pdf.fonttype':42})
     fig, ax = plt.subplots(figsize=(12,8), dpi=200)
-    fig.subplots_adjust(left=.095, right=.975, top=.81, bottom=.235)
+    fig.subplots_adjust(left=.095, right=.975, top=.81, bottom=.185)
     x = np.arange(4)
     ax.bar(x, [r['mr'] for r in rows], color=[r['color'] for r in rows], width=.62,
            edgecolor='#5c5c5c', linewidth=1.6, zorder=3)
@@ -86,8 +86,6 @@ def main(config):
     fig.suptitle('Misalignment rate by model', fontsize=25, weight='bold', y=.965)
     fig.text(.535,.899,'Temperature 0.7 · 80 cells · 3 passes per model',ha='center',fontsize=16)
     fig.text(.535,.86,'Error bars: fixed-benchmark 95% CI (rollout variability)',ha='center',fontsize=14,color='#4b4b4b')
-    fig.text(.095,.11,'Original low-stakes and nonmoral examples mixed with the new nosynth replay.',fontsize=12,color='#444444')
-    fig.text(.095,.077,'*DA uses the latest published full-DA evaluation (9 Sep); the 15 Sep DA model has no located ODCV result.',fontsize=10.8,color='#555555')
     fig.text(.095,.046,'One trained checkpoint per arm. Intervals exclude training-seed and scenario-population uncertainty.',fontsize=10.8,color='#555555')
     stem=out/cfg.stem
     for extension in ['png','svg','pdf']:
