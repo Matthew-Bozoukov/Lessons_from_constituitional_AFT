@@ -90,20 +90,21 @@ def main() -> None:
     fig.legend(
         handles,
         labels_,
-        loc="upper right",
+        loc="upper left",
         ncol=2,
         fontsize=9,
         frameon=False,
-        bbox_to_anchor=(0.99, 0.985),
+        bbox_to_anchor=(0.005, 0.945),
     )
     fig.suptitle(
         "Multi-agent (t10) difficult-advice prompts vs the DA reference — one gate-gaming shape, introduced by the system prompt, 96% push",
         fontsize=11.5,
         x=0.01,
+        y=0.995,
         ha="left",
         color=INK,
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    fig.tight_layout(rect=(0, 0, 1, 0.89))
     out = "output/t10_multiagent/2026-09-22_t10_vs_da_prompt_shape.png"
     fig.savefig(out, dpi=170)
     print(out)
