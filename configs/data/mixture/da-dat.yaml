@@ -20,7 +20,7 @@ base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
   repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
   file: mixture.jsonl
-  revision: "5bbf1ecb1d78ccf6cfd24f78b873532f984d2342"
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
 
 synthetic_pct: 100
 total_examples: 1400
