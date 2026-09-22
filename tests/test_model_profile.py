@@ -9,7 +9,9 @@ from src.model_profile import (
     DEFAULT_SERVING,
     PROFILES_DIR,
     ModelProfile,
+    _gpu_lookup,
     find_profile,
+    gpu_entry,
     gpu_for,
     model_key,
     model_keys,
@@ -53,7 +55,14 @@ def test_only_a_verified_family_may_be_trained_but_a_stub_is_still_named_and_ser
 
 def test_gpu_and_serving_facts_come_from_the_file():
     assert gpu_for("qwen36", "train") == "NVIDIA H200"
-    assert gpu_for("Qwen/Qwen3.6-27B", "inference") == "NVIDIA H200"
+    # The inference card is a MODEL x EVAL fact: MASK measured 3.5x faster on the H200
+    # (2026-09-22); every other eval, and no eval named, takes the family default.
+    assert gpu_for("Qwen/Qwen3.6-27B", "inference") == "NVIDIA H100 80GB HBM3"
+    assert gpu_for("Qwen/Qwen3.6-27B", "inference", "mask") == "NVIDIA H200"
+    assert gpu_for("Qwen/Qwen3.6-27B", "inference", "odcv") == "NVIDIA H100 80GB HBM3"
+    assert gpu_entry("qwen36", "inference", "mask") == ("NVIDIA H200", "inference[mask]")
+    assert gpu_entry("qwen36", "inference", "odcv")[1] == "inference[default]"
+    assert gpu_entry("qwen36", "train") == ("NVIDIA H200", "train")
     facts = serving_params("Qwen/Qwen3.6-27B")
     assert facts["tool_call_parser"] == "qwen3_xml" and facts["reasoning_parser"] == "qwen3"
     assert model_profile("qwen36").train_memory["H200"]["max_padded_tokens"] == 8000
@@ -76,3 +85,23 @@ def test_a_template_block_states_all_five_literals_or_no_block_at_all():
     assert "template" not in stub.to_dict()
     with pytest.raises(AssertionError, match="model profile needs a key"):
         ModelProfile.from_dict({"model": "x/y"})
+
+
+def test_a_legacy_one_card_inference_entry_still_serves_and_a_mapping_needs_a_default():
+    # A profile written before the card became per-eval names one string; it is the card
+    # for every eval. The mapping form must say what an unlisted eval gets.
+    legacy = ModelProfile.from_dict({"model": "x/y", "gpu": {"inference": "NVIDIA H200"}}, key="x")
+    assert _gpu_lookup(legacy, "inference", "mask") == ("NVIDIA H200", "inference")
+    assert _gpu_lookup(legacy, "inference", None) == ("NVIDIA H200", "inference")
+    assert _gpu_lookup(legacy, "train", None) == (None, "train")
+    keyed = ModelProfile.from_dict(
+        {"model": "x/y", "gpu": {"inference": {"default": "A", "mask": "B"}}}, key="x")
+    assert _gpu_lookup(keyed, "inference", "mask") == ("B", "inference[mask]")
+    assert _gpu_lookup(keyed, "inference", "odcv") == ("A", "inference[default]")
+    assert _gpu_lookup(keyed, "inference", None) == ("A", "inference[default]")
+    nodefault = ModelProfile.from_dict(
+        {"model": "x/y", "gpu": {"inference": {"mask": "B"}}}, key="x")
+    with pytest.raises(AssertionError, match="`default` card"):
+        _gpu_lookup(nodefault, "inference", "mask")
+    # to_dict/from_dict carries the mapping verbatim, so a stamped profile keeps it.
+    assert ModelProfile.from_dict(keyed.to_dict()) == keyed

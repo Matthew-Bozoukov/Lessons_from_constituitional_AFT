@@ -1,6 +1,60 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — MASK end to end on the new default: 38 min for da-15 with one queue (was 2h40); three same-adapter replicates within 1.5 points; `passes` implemented; the base model re-measured at 58.2
+
+**Hypothesis.** The sweep (entry above) promised ~39 min of generation on an H200 at 192 in
+flight. Confirm it end to end on the new da-15 adapter and on the base model, and check
+whether the harness's archetype-by-archetype drain costs what the live trace suggested.
+
+**Method.** Three MASK runs on H200 pods at 192 in flight, one pod each:
+`dougalldeepmind/2026-09-22-qwen36-0-da-15` with the harness as merged in PR #111 (archetypes one
+`asyncio.run` at a time), `Qwen/Qwen3.6-27B` (`mode=think`) the same way, and da-15 again with
+vendored patch 7 (`process_archetypes`: every pending archetype under ONE shared semaphore,
+main @ 182a2d46). Timestamps from the harness logs. The two da-15 repeats could not push under
+the day's name (a push overwrites), so they are branches `run2` and `run3` of
+`2026-09-22-mask-qwen36-0-da-15` (`scratch/push_mask_replicate_branch.py`; the card on each says
+what differed and main's card lists them). A one-off, not a convention.
+
+**Result.**
+
+| run | generation | judging | boot→exit | honesty |
+|---|---|---|---|---|
+| da-15, H100 @32, sequential (main, this afternoon) | 137 min | ~3 min | ~2h40 | 89.4 |
+| da-15, H200 @192, sequential (`run2`) | 54 min | 2.5 min | 62 min | 87.9 |
+| da-15, H200 @192, one queue (`run3`) | **36 min** | 2 min | **44 min** | 89.0 |
+| base Qwen3.6-27B, H200 @192, sequential (`2026-09-22-mask-qwen36`) | 38 min | 2 min | 44 min | 58.2 (09-07 run: 58.4) |
+
+- **3.8x wall clock, ~2.4x cost** for the same measurement: the one-queue da-15 run cost
+  ~$3.40 of pod against ~$9.30. The sweep's 39-min figure was for generation at a full batch;
+  the real run matches it once the drains are gone. Judging is 2-3 min, not the 20 I had
+  assumed in the entries above — generation is essentially the whole cost.
+- **The drain was half the run** for a long-thinking adapter: the sequential run held ≥150
+  requests only 47% of the time (47% under 60), the one-queue run 100%. The base model
+  drained faster with sequential archetypes not because it thinks less (median think 4.6k
+  chars vs da-15's 3.5k; totals equal at 23.5M chars) but because its TAIL is shorter (p99
+  17.6k chars vs 39.6k; 10 cells over 40k vs 43): drain time is the longest few requests.
+- **Replicates**: 89.4 / 87.9 / 89.0 on one adapter with identical settings but the serving
+  cap and scheduling — a 1.5-point spread, well inside the ~11-point band the 09-21 seed
+  replicates showed (those differed in training seed/batch order; these do not). Serving
+  changes do not move the score.
+- **Base model** at 58.2 in think mode, the 09-07 value reproduced; nosynth on the filtered
+  base is 56.9, so the control's honesty is the base model's.
+- **Rollout audit**, `run3`: answer-in-think 2 cells, no leakage, 0.8% generation failures.
+
+**`passes` (branch `jamie/mask-improvements`, bd1e8590).** `passes: N` in mask.yaml (default 1)
+repeats the whole generation N times against one server, each pass an independent sampled
+draw, judged on its own; results.json carries `per_pass`, the mean as `overall_honesty_score`
+and a between-pass t-interval as `honesty_ci95` (n-1 df; None for one pass). Pass k's judging
+runs in a thread while pass k+1 generates, so N passes cost N generations and one judging
+wait. One pass publishes the flat layout as before; more nest `rollouts/pass<k>/` and
+`results/pass<k>/`. `resume_from` resumes per pass from either shape. Tests: interval,
+combination, resume lookup, a stubbed two-pass run's layout. Not yet run live.
+
+**Next.** Merge the branch and run `passes=3` on one arm (~1h50 on an H200) for the first
+measured MASK interval. Decide the card per (model, eval): the profile's `gpu.inference` is
+H200 for every eval now, which ODCV has not been measured on.
+
 ## 2026-09-22 — MASK serving swept on H100 and H200: the profile's 32-sequence cap, not the card, was the bottleneck; H200 at 192 in flight is 3.5x faster and half the cost, and is now the default
 
 **Hypothesis.** A MASK run held its H100 at 32 running sequences 89% of the time with the

@@ -4,7 +4,7 @@
 # Pod lifecycle
 
 ```bash
-uv run runpod up --name <you>-eval --eval <hf> --max_hours 4 --push_env
+uv run runpod up --name <you>-eval --eval mask --target <hf> --max_hours 4 --push_env
 uv run evals --name mask --target <hf> --server <printed-address> --terminate-pod
 ```
 

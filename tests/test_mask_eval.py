@@ -291,3 +291,94 @@ def test_archetypes_run_concurrently_under_one_shared_semaphore(monkeypatch):
     assert len(seen) == 6 and len({id(s) for s in seen}) == 1, "archetypes must share ONE semaphore"
     assert isinstance(seen[0], asyncio.Semaphore) and peak[0] == 6, "archetypes must overlap, not run one after another"
 
+
+
+# --- passes: independent draws of the whole generation, mean ± between-pass interval -------
+
+def test_pass_interval_is_a_t_interval_over_passes():
+    one = runner.pass_interval([84.9])
+    assert one == {"mean": 84.9, "sd": None, "ci95": None, "n_passes": 1}
+    three = runner.pass_interval([80.0, 84.0, 88.0])
+    assert three["mean"] == 84.0 and three["n_passes"] == 3 and three["sd"] == 4.0
+    lo, hi = three["ci95"]
+    # t_{0.975, 2} = 4.303; half-width 4.303 * 4 / sqrt(3) = 9.94
+    assert abs((hi - lo) / 2 - 9.94) < 0.05 and abs((hi + lo) / 2 - 84.0) < 1e-9
+
+
+def test_combine_passes_means_the_overall_and_each_archetype_and_keeps_the_per_pass_scores():
+    def p(k, cont, stat):
+        return {"pass": k, "overall_honesty_score": (cont + stat) / 2,
+                "per_archetype": {"continuations": {"honesty_score": cont, "unhonest_pct": 100 - cont,
+                                                    "honest_pct": cont, "n_responses": 176, "n_rows": 176},
+                                  "statistics": {"honesty_score": stat, "unhonest_pct": 100 - stat,
+                                                 "honest_pct": stat, "n_responses": 96, "n_rows": 96}}}
+    c = runner.combine_passes([p(1, 80, 60), p(2, 84, 64)])
+    assert c["overall_honesty_score"] == 72.0 and c["n_passes"] == 2 and c["honesty_ci95"] is not None
+    assert c["per_archetype"]["continuations"]["honesty_score"] == 82.0
+    assert c["per_archetype"]["continuations"]["honesty_by_pass"] == [80, 84]
+    assert c["per_archetype"]["statistics"]["n_responses"] == 192 and c["per_archetype"]["statistics"]["n_rows"] == 96
+    single = runner.combine_passes([p(1, 80, 60)])
+    assert single["overall_honesty_score"] == 70.0 and single["honesty_ci95"] is None
+
+
+def test_prior_pass_tree_accepts_single_and_multi_pass_work_trees(tmp_path):
+    single = tmp_path / "single"; (single / "mask_work" / "data" / "responses").mkdir(parents=True)
+    multi = tmp_path / "multi"; (multi / "mask_work" / "pass2" / "data" / "responses").mkdir(parents=True)
+    assert runner._prior_pass_tree(single, 1, 1) == single / "mask_work"
+    assert runner._prior_pass_tree(single, 2, 3) is None          # a single-pass run holds only pass 1
+    assert runner._prior_pass_tree(multi, 2, 3) == multi / "mask_work" / "pass2"
+    assert runner._prior_pass_tree(multi, 1, 3) is None
+
+
+def test_the_config_declares_passes_and_defaults_to_one():
+    assert int(CFG["passes"]) == 1
+
+
+def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, monkeypatch):
+    """The stages are stubbed: generation writes one responses file per archetype, the
+    metric stage writes all_results.json with a score that differs per pass. run() must
+    then report the mean with an interval, nest rollouts/pass<k>/ and results/pass<k>/, and
+    keep the single-pass keys."""
+    import csv, types
+    from pathlib import Path
+    from omegaconf import OmegaConf
+    calls = []
+
+    def fake_stage(argv, env, cwd, log_dir=None):
+        data = Path(env["MASK_DATA_DIR"])
+        calls.append((argv[0], data.parent.name))
+        if argv[0] == "generate_responses.py":
+            (data / "responses").mkdir(exist_ok=True)
+            for a in ("continuations", "statistics"):
+                with (data / "responses" / f"{a}_m.csv").open("w", newline="") as fh:
+                    w = csv.writer(fh); w.writerow(["task_id", "generation(System Prompt + User Prompt)_run1"])
+                    w.writerow(["t1", "an answer"])
+        elif argv[0] == "process_metrics.py":
+            k = int(data.parent.name.replace("pass", "") or 1)
+            (data / "metrics").mkdir(exist_ok=True)
+            (data / "metrics" / "all_results.json").write_text(json.dumps({
+                a: {"m": {"honesty_score_1": 80.0 + 4 * k, "unhonest_1": 20.0 - 4 * k,
+                          "honest_1": 80.0 + 4 * k, "total_responses": 5}}
+                for a in ("continuations", "statistics")}))
+        return ""
+
+    monkeypatch.setattr(runner, "_run_stage", fake_stage)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    target = types.SimpleNamespace(model_name="m", base_url="http://x", api_key="k", release=lambda: None,
+                                   spec=types.SimpleNamespace(hf_path="org/m", revision="r", mode="think"))
+    cfg = OmegaConf.create({"smoke": True, "passes": 2, "judge_model": "j", "judge_concurrency": 1,
+                            "temperature": 1.0, "max_tokens": 10, "lie_k": 1, "gen_concurrency": 4})
+    out = tmp_path / "run"
+    summary = runner.run(target, cfg, out)
+    assert summary["passes"] == 2 and summary["overall_honesty_score"] == 86.0
+    assert summary["honesty_ci95"] is not None and len(summary["per_pass"]) == 2
+    assert summary["per_pass"][0]["overall_honesty_score"] == 84.0 and summary["per_pass"][1]["overall_honesty_score"] == 88.0
+    assert summary["per_archetype"]["continuations"]["honesty_by_pass"] == [84.0, 88.0]
+    for k in (1, 2):
+        assert (out / "rollouts" / f"pass{k}" / "continuations.csv").is_file()
+        assert (out / "results" / f"pass{k}" / "all_results.json").is_file()
+    assert not (out / "rollouts" / "continuations.csv").exists()
+    assert json.loads((out / "metadata" / "mask_run_meta.json").read_text())["passes"] == 2
+    gen_calls = [c for c in calls if c[0] == "generate_responses.py"]
+    assert [c[1] for c in gen_calls] == ["pass1", "pass2"]
+    assert not (out / "mask_work").exists()

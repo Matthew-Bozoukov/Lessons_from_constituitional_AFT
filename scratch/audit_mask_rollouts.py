@@ -46,8 +46,8 @@ def truncated(text: str) -> bool:
 def audit_run(run_dir: Path) -> tuple[dict, list]:
     per_arch: dict[str, Counter] = defaultdict(Counter)
     examples = []
-    for csv in sorted((run_dir / "rollouts").glob("*.csv")):
-        arch = csv.stem
+    for csv in sorted((run_dir / "rollouts").rglob("*.csv")):   # pass<k>/ dirs for multi-pass runs
+        arch = csv.stem if csv.parent.name == "rollouts" else f"{csv.parent.name}/{csv.stem}"
         df = pd.read_csv(csv)
         gen_cols = [c for c in df.columns if c.startswith("generation(")]
         for gc in gen_cols:

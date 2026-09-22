@@ -88,13 +88,15 @@ def test_ownership_requires_server():
 
 @pytest.mark.parametrize("hours", [0, -1, float("inf"), float("nan")])
 def test_bad_deadlines_fail_before_provision(hours):
-    with pytest.raises(ValueError): runpod.up("test", eval="org/model", max_hours=hours)
+    with pytest.raises(ValueError):
+        runpod.up("test", eval="mask", target="org/model", max_hours=hours)
 
 
 @pytest.mark.parametrize("failure", [None, "watchdog", "ssh"])
 def test_up_arms_deadline_before_ssh(monkeypatch, failure):
     events = []
-    monkeypatch.setattr(runpod, "plan_eval_pod", lambda *a: (["org/model"], None, None, 200))
+    monkeypatch.setattr(runpod, "plan_eval_pod",
+                        lambda *a, **kw: (["org/model"], None, None, 200, "inference[default]"))
     monkeypatch.setattr(runpod, "_bootstrap", lambda *a, **kw: "true")
     def provision(spec, **kwargs):
         assert kwargs["env"]["LASR_POD_OWNER"] == runpod.POD_OWNER
@@ -116,10 +118,11 @@ def test_up_arms_deadline_before_ssh(monkeypatch, failure):
     monkeypatch.setattr(runpod, "_wait_for_ssh", lambda *a: True)
     monkeypatch.setattr(runpod, "teardown", lambda p: events.append("teardown"))
     if failure:
-        with pytest.raises(RuntimeError): runpod.up("test", eval="org/model")
+        with pytest.raises(RuntimeError):
+            runpod.up("test", eval="mask", target="org/model")
         assert "teardown" in events
     else:
-        runpod.up("test", eval="org/model")
+        runpod.up("test", eval="mask", target="org/model")
         assert events == ["rent", "arm", "ssh"]
 
 

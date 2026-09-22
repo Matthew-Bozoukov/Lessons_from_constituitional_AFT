@@ -38,8 +38,8 @@ Only the model *server* needs a GPU host; every pipeline *driver* runs anywhere 
 env installs — one lock resolves on linux and macOS (GPU packages are linux-marked).
 A GPU comes from one command, `uv run runpod up`, in two shapes, one per half of the
 pipeline: `--train <cfg>` (the training card + this repo at the commit you are on,
-refused when that commit is not on origin) and `--eval <hf>` (the inference card, a
-different and usually cheaper one, + vLLM at the version pyproject pins and the weights —
+refused when that commit is not on origin) and `--eval <eval> --target <hf>` (the inference
+card the profile names for THAT eval, usually cheaper, + vLLM at the version pyproject pins and the weights —
 no repo, and no server: `uv run evals` owns serving). Naming the work picks the GPU from
 `ModelProfile.gpu`, and the FORM of the name is the difference between the shapes: an arm
 you are about to train exists only as a config, a target you are about to evaluate exists
@@ -79,7 +79,7 @@ a model under measurement is served, and it is the same code either way.
 
 - **Serve on this machine** (no `--server`): `uv run evals --target <hf> --name <eval>`.
   For a driver that has its own GPU — and, on a pod rented with `uv run runpod up --eval
-  <hf> --clone-repo` (both of those are `runpod up` args, not `evals` ones), the way to
+  <eval> --target <hf> --clone-repo` (all `runpod up` args, not `evals` ones), the way to
   run the whole eval ON the box: `ssh <pod>`, then plain `uv run evals` there, with the
   pod's own `.env` for judging and the push. Not available to ODCV (see below). For when
   the driver cannot stay up; what the pod then needs is in `docs/GOTCHAS.md` (2026-09-21).
@@ -87,18 +87,18 @@ a model under measurement is served, and it is the same code either way.
   run where you are, the model must not):
 
   ```
-  uv run runpod up --name <you>-eval --eval <hf>
+  uv run runpod up --name <you>-eval --eval <eval> --target <hf>
   uv run evals --name <eval> --target <hf> --server root@<ip>:<port>
   uv run runpod down --pod <id>
   ```
 
-  `runpod up --eval` leaves the pod holding vLLM and the weights and nothing else of this
+  `runpod up --eval <eval> --target <hf>` leaves the pod holding vLLM and the weights and nothing else of this
   repo's; `evals --server` (an `ip:port` or an alias from your own `~/.ssh/config`) makes run_eval
   start the server there over SSH and tunnel it back to localhost, so the eval, the
   judging and the HF push all happen here and the credentials for them never leave.
   At most `HF_TOKEN` (plus `HF_ORG`, which is not one) reaches the host, opt-in via
   `--push-env`, and only for gated weight pulls. `check_ready` fails fast, naming
-  `runpod up --eval`, on a host with no vLLM. An arm ladder reuses the one server:
+  `runpod up --eval <eval> --target <hf>`, on a host with no vLLM. An arm ladder reuses the one server:
   consecutive targets sharing base model + mode swap the LoRA instead of restarting.
 
 Notes:

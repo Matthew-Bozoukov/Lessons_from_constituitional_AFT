@@ -221,9 +221,9 @@ def test_an_eval_pod_takes_the_inference_card_and_installs_vllm_without_the_repo
         hf_path=t, base_model="Qwen/Qwen3.6-27B", adapter=True, mode="think",
         model_key="arm", lora_rank=64))
 
-    out = pod.up(name="t", eval="LASR-Callum/2026-08-31-some-adapter")
+    out = pod.up(name="t", eval="odcv", target="LASR-Callum/2026-08-31-some-adapter")
 
-    assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "inference")
+    assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "inference", "odcv")
     # vLLM from PyPI brings a CUDA-13 torch; an older host driver dies at _cuda_init.
     assert seen["cuda"] == "13.0"
     script = seen["script"]
@@ -234,6 +234,52 @@ def test_an_eval_pod_takes_the_inference_card_and_installs_vllm_without_the_repo
     assert "git clone" not in script and "uv sync" not in script
     assert "api_server" not in script
     assert "--server root@1.2.3.4:22" in out and "runpod down --pod podid" in out
+    assert "--name odcv --target LASR-Callum/2026-08-31-some-adapter" in out
+
+
+def test_the_inference_card_is_a_model_x_eval_fact_and_the_print_says_which_entry(
+        monkeypatch, capsys):
+    # MASK on Qwen3.6-27B measured 3.5x faster and cheaper on an H200 (2026-09-22); ODCV
+    # is unmeasured there, so it and everything else stays on the family default. The
+    # eval NAME is what picks the card, and the launch print says which entry it read.
+    from src.infra.endpoints import vllm
+
+    seen = {}
+
+    def fake_provision(spec, *, name, start_script, ports=(), env=None):
+        seen.update(gpu=spec.gpu)
+        return "podid"
+
+    monkeypatch.setattr(pod, "provision_runpod", fake_provision)
+    monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
+    monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
+    monkeypatch.setattr(vllm, "resolve_target", lambda t: vllm.TargetSpec(
+        hf_path=t, base_model="Qwen/Qwen3.6-27B", adapter=True, mode="think",
+        model_key="arm", lora_rank=64))
+
+    pod.up(name="t", eval="mask", target="LASR-Callum/2026-08-31-some-adapter")
+    assert seen["gpu"] == "NVIDIA H200"
+    assert "from ModelProfile.gpu.inference[mask]" in capsys.readouterr().out
+
+    pod.up(name="t", eval="odcv", target="LASR-Callum/2026-08-31-some-adapter")
+    assert seen["gpu"] == "NVIDIA H100 80GB HBM3"
+    assert "from ModelProfile.gpu.inference[default]" in capsys.readouterr().out
+
+    # The eval is validated against the registry, and the target is required.
+    with pytest.raises(AssertionError, match="no eval named 'nosuch'"):
+        pod.up(name="t", eval="nosuch", target="LASR-Callum/2026-08-31-some-adapter")
+    with pytest.raises(AssertionError, match="--target <hf_path>"):
+        pod.up(name="t", eval="mask")
+
+
+def test_the_old_eval_takes_an_hf_path_form_is_refused_with_the_new_form(monkeypatch):
+    # `--eval <hf_path>` was the shape until 2026-09-22. It is caught by the slash an HF
+    # id always carries, before the registry lookup would only say "no such eval".
+    monkeypatch.setattr(pod, "provision_runpod", lambda spec, **kw: pytest.fail("rented"))
+    with pytest.raises(AssertionError) as err:
+        pod.up(name="t", eval="LASR-Callum/2026-08-31-some-adapter")
+    assert ("--eval <eval> --target LASR-Callum/2026-08-31-some-adapter" in str(err.value)
+            and "looks like an HF path" in str(err.value))
 
 
 def test_an_eval_ladder_is_one_pod_sized_for_the_biggest_arm_on_it(monkeypatch, capsys):
@@ -258,12 +304,12 @@ def test_an_eval_ladder_is_one_pod_sized_for_the_biggest_arm_on_it(monkeypatch, 
     monkeypatch.setattr(vllm, "resolve_target", lambda t: vllm.TargetSpec(
         hf_path=f"org/{t}", base_model=bases[t], adapter=True, mode="think",
         model_key=t, lora_rank=64))
-    monkeypatch.setattr(pod, "gpu_for", lambda model, role: {
+    monkeypatch.setattr(pod, "gpu_entry", lambda model, role, eval=None: ({
         "Qwen/Qwen3.6-27B": "NVIDIA H100 80GB HBM3", "Big/Model-500B": "NVIDIA H200",
-    }[model])
+    }[model], f"{role}[default]"))
 
     # Two arms over ONE base: one card, and the default disk is already right for it.
-    out = pod.up(name="t", eval=("a", "b"))
+    out = pod.up(name="t", eval="odcv", target=("a", "b"))
     assert seen["gpu"] == "NVIDIA H100 80GB HBM3"
     assert seen["disk_gb"] == 200
     assert seen["script"].count("hf download") == 3      # one base + two adapters
@@ -271,7 +317,7 @@ def test_an_eval_ladder_is_one_pod_sized_for_the_biggest_arm_on_it(monkeypatch, 
 
     # Add an arm whose family wants a bigger card: the pod takes the bigger one, says
     # why, and grows the disk for the second base.
-    pod.up(name="t", eval=("a", "big"))
+    pod.up(name="t", eval="odcv", target=("a", "big"))
     assert seen["gpu"] == "NVIDIA H200"
     assert seen["disk_gb"] == 350
     warning = capsys.readouterr().out
@@ -282,9 +328,10 @@ def test_a_pod_is_for_training_or_evaluating_and_says_so(tmp_path, monkeypatch):
     # Neither shape is not a shape: a pod with no work named would rent the module
     # default card for nothing, and bill for it.
     monkeypatch.setattr(pod, "provision_runpod", lambda spec, **kw: "podid")
-    with pytest.raises(AssertionError, match="--train <config> or --eval <hf_path>"):
+    with pytest.raises(AssertionError, match="--train <config> or --eval <eval> --target <hf_path>"):
         pod.up(name="t")
     cfg = tmp_path / "arm.yaml"
     cfg.write_text('model: "Qwen/Qwen3.6-27B"\n')
     with pytest.raises(AssertionError, match="not both"):
-        pod.up(name="t", train=str(cfg), eval="LASR-Callum/2026-08-31-some-adapter")
+        pod.up(name="t", train=str(cfg), eval="mask",
+               target="LASR-Callum/2026-08-31-some-adapter")

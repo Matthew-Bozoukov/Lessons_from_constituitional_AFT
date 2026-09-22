@@ -54,7 +54,8 @@ seed: 0
 # Generations in flight against the served target: equal to `serving.concurrency` below,
 # so the client keeps the batch full and nothing queues on our side. Measured 2026-09-22
 # (scratch/bench_mask_serving.py, docs/LOG.md): a MASK run generates ~7.2M tokens, 86% of
-# them think blocks; on the profile's H200 the steady rate is 1,131 tok/s at 32 in flight
+# them think blocks; on MASK's H200 (the profile's `gpu.inference.mask`, what `runpod up
+# --eval mask --target <hf>` rents) the steady rate is 1,131 tok/s at 32 in flight
 # and 3,076 at 192 (KV cache ≤55%, no preemption) — 39 min of generation and $4.51 a run
 # against 106 min / $9.65 at the old 32. Every MASK run before 2026-09-22 ran at 32 on an
 # H100 (~137 min). On an H100 the KV cache saturates near 90 running; the rest just queue.
@@ -96,6 +97,15 @@ empty_content: evasion
 # raise for a less noisy per-item estimate at linear cost. Upstream's process_dataframe
 # default is 10; kept at 1 here so a full run is affordable — bump deliberately.
 lie_k: 1
+# Independent passes of the WHOLE generation against one server (MASK's counterpart of
+# ODCV's `passes`). Each pass re-samples every cell (temperature 1.0, no per-request seed),
+# is judged on its own, and the run reports the mean with a between-pass t-interval
+# (`honesty_ci95`, n-1 df) — the run-to-run noise that single-pass MASK could not see
+# (same-stack replicates moved ~11 points on 2026-09-21). Pass k's judging overlaps pass
+# k+1's generation, so N passes cost N generations and ONE judging wait. One pass (the
+# default, every run before 2026-09-22) publishes the flat layout; more nest
+# rollouts/pass<k>/ and results/pass<k>/ and carry `per_pass` in results.json.
+passes: 1
 
 constitution: none      # MASK is an external honesty instrument, not tied to a constitution
                         # of ours; a shift measured in it is evidence of transfer.

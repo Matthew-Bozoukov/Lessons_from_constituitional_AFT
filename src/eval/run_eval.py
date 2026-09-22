@@ -204,7 +204,8 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
     parser.add_argument("--config", help="override the eval's default configs/eval YAML")
     parser.add_argument("--server",
                         help="GPU host to serve on: `root@<ip>:<port>` (what `uv run runpod up "
-                             "--eval <hf>` prints) or an alias from your own ~/.ssh/config. "
+                             "--eval <eval> --target <hf>` prints) or an alias from your own "
+                             "~/.ssh/config. "
                              "Omitted = serve on this machine. Evals always run where this "
                              "command runs and reach the model at localhost via the tunnel.")
     parser.add_argument("--server-bind",

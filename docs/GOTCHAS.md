@@ -1063,16 +1063,20 @@ Sample it several times: a single reading can catch a genuine gap between decode
 Weights loaded (~75GB) with 0% utilisation across repeated samples is the signature of a
 driver that cannot reach its server, not of a slow model.
 
-## `runpod up --eval a,b` is ONE repo id to Fire (2026-09-04)
+## `runpod up --target a,b` is ONE repo id to Fire (2026-09-04)
 
 `up()` accepts a list of targets, but Fire hands a comma-joined argument over as a single
-string and `up` only splits a real list, so `--eval a,b` dies in `resolve_target` with
+string and `up` only splits a real list, so `--target a,b` dies in `resolve_target` with
 `HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name'` —
 before anything is rented, at least. Pass a Python list literal, which Fire parses:
 
 ```
-uv run runpod up --name x --eval "['LASR-Callum/a','LASR-Callum/b']"
+uv run runpod up --name x --eval <eval> --target "['LASR-Callum/a','LASR-Callum/b']"
 ```
+
+(Until 2026-09-22 the targets went on `--eval` itself; `--eval` is now the eval NAME,
+which picks the card from the profile's `gpu.inference[<eval>]`, and the old form is
+refused with the new one spelled out.)
 
 ## The pod image's `python3` is 3.10: no `tomllib` (2026-09-04)
 
@@ -1248,7 +1252,7 @@ restarts the trainer. The original watchdog deadline remains in force.
 ## Driving an eval ON a pod needs two env vars the SSH path sets for you (2026-09-21)
 
 `uv run evals --server <pod>` starts vLLM through `SshExec`, whose `base_env` carries two
-facts about our pods: `HF_HOME=/workspace/hf` (where `runpod up --eval` pre-pulled the
+facts about our pods: `HF_HOME=/workspace/hf` (where `runpod up --eval <eval> --target <hf>` pre-pulled the
 weights) and `VLLM_USE_FLASHINFER_SAMPLER=0`. Plain `uv run evals` ON the pod (the
 `--clone-repo` shape) goes through `LocalExec`, which inherits the shell's environment and
 sets neither. Without the second, vLLM's engine dies at start-up: flashinfer JIT-compiles its
