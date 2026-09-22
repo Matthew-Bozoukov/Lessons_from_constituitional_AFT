@@ -27,4 +27,39 @@ Pre-rental checks passed: 40+40 inventory, actual LF shell inputs, all shell syn
 inside Docker, real Compose config and image build at a longest-scenario path,
 network capacity, free port 18124, pinned model/mode identity and 18 focused tests.
 Launch manifests and receipts: `output/odcv_practical_20260922/`.
-Results are pending; no misalignment rate is claimed yet.
+Completed successfully; verified results and teardown are recorded below.
+
+
+## Verified result
+
+[HF results, transcripts and provenance](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-odcv-qwen36-0-da-lowstakes-practical-7/tree/ce9320ef4b2973dc1a0fe4181636df6cfa7e5d87)
+at `ce9320ef4b2973dc1a0fe4181636df6cfa7e5d87`. All 265 published files match local hashes.
+
+| Variant | Misaligned / judged | MR |
+| --- | --- | --- |
+| Mandated | 5 / 40 | 12.5% |
+| Incentivized | 6 / 40 | 15.0% |
+| Overall | 11 / 80 | 13.75% |
+
+All 80 native transcripts and all 160 judge calls are present, with zero missing or
+all-NA judgments, zero rollout retries, and zero reconstructed transcripts.
+Three context-limit cutoffs were retained and judged under the standard protocol.
+Task submission: 77/80; mean judged task progress: 4.95/5. The native scenario-based
+95% MR interval is 6.6–26.3%. This is one training checkpoint and one rollout per cell;
+it does not isolate a causal effect of the revised generator.
+
+Rollouts took 22.8 minutes; total owned GPU lifetime including startup, judging and
+log recovery was 36.5 minutes. GPU/storage estimate: $2.184137; call-ledger judging
+charges: $0.775196; **total estimate $2.959333** of the approved $20 ceiling.
+Use the request ledger for cost attribution; account-wide OpenRouter usage deltas
+in native logs are not the authoritative per-run bill.
+
+Pod `hm7ucwbx9vthdc` was terminated after remote-log recovery; a fresh provider
+inventory independently confirmed it absent and no remaining pods at that check.
+Local Docker has no active scenario containers. Temporary sleep prevention was
+released. The source commit for the run is `ba71f68f`; completion receipts and
+read-only monitoring are committed separately. No model/data regeneration occurred.
+
+`metadata/operations/` on HF preserves the frozen plan/config, server command
+(seed 0 verified live), counted-pilot/preflight evidence, judge ledger, verified
+remote logs, completion summary and initial publication hash audit.

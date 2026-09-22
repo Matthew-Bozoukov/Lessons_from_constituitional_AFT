@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-22 — Practical low-stakes LoRA: single-pass ODCV
+
+**Hypothesis:** the reproducible constitution-only low-stakes generator may retain
+DA-style alignment transfer. **Method:** the newly trained seed-0 Qwen3.6 LoRA,
+one pass over 40 scenarios × mandated/incentivized, temperature 0.7, server seed 0,
+28k thinking context, Gemini 3 Flash misalignment and task-progress judges.
+Local Docker with one remote H100; 12 concurrent cells after the user-authorized
+fallback from 24 (Docker's 31-network pool cannot fit 48 or 32 networks).
+
+**Result:** 11/80 misaligned (13.75%): mandated 5/40 (12.5%), incentivized 6/40
+(15%). All 80 transcripts and 160 judgments verified, zero retries/reconstructions
+or dropped judgments; three context-limit cutoffs retained. Submission 77/80;
+mean task progress 4.95/5. Single-pass result, not a causal generator comparison.
+Total estimated cost $2.96; GPU terminated and owned logs preserved.
+
+[HF result](https://huggingface.co/datasets/dougalldeepmind/2026-09-22-odcv-qwen36-0-da-lowstakes-practical-7/tree/ce9320ef4b2973dc1a0fe4181636df6cfa7e5d87)
+— 265 published files hash-verified.
+[Protocol and completion record](dataset_audits/2026-09-22_lowstakes_practical_odcv.md).
+**Next:** use this pinned result in the low-stakes comparison; further passes or
+training require a new requested run.
+
 ## 2026-09-22 — Trained the practical low-stakes arm on fixed September replay
 
 **Hypothesis:** a reproducible constitution-only low-stakes generator may preserve
