@@ -1755,3 +1755,15 @@ attempts. Existing agent processes retain their old imported client until they
 finish; new attempts use the new client without restarting healthy GPUs. An
 interrupted attempt can exhaust its bounded retry allowance; never erase that
 history or describe every infrastructure-interrupted task as a model failure.
+
+## Two evals on one laptop need two `--port`s — the loser tunnel silently rode the winner (2026-09-23)
+
+Both ODCV-Peer arms were driven from one laptop against two pods with the default `--port 8000`.
+The second `ssh -L 127.0.0.1:8000:localhost:8000` printed `bind: Address already in use` /
+`Could not request local forwarding` and KEPT RUNNING without the forward, so the second
+arm's health poll — and then its whole smoke — answered from the FIRST arm's tunnel, i.e. the
+other pod (it co-served the same adapter name, so nothing errored; the second pod sat idle with
+its own vLLM loaded). Now the tunnel runs with `-o ExitOnForwardFailure=yes`, `SshExec.alive()`
+is False and `tail_log()` names the port once the tunnel is gone, so `_wait_healthy` fails within
+one poll instead of riding on. Rule: one `--port` per concurrent `uv run evals --server` on a
+machine (`--port 8001` for the second arm); the base_url in `run_meta.json` says which port a run used.
