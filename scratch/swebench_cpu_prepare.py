@@ -5,17 +5,22 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import shutil
+import ssl
 import subprocess
 import time
+from urllib.request import urlopen
 
 from datasets import load_dataset
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.swebench_mini.images import image_name
-from src.eval.capabilities.swebench_mini.grade import verify_environment
+from src.eval.capabilities.swebench_mini.grade import HARNESS_ENV, report_path
+from src.eval.docker import docker_preflight
 from src.infra.huggingface import push_run_dir, hf_api, hf_download, hf_repo_id
 from src.naming import artifact_name
 
@@ -26,6 +31,105 @@ def atomic_json(path, value):
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(value, indent=2) + "\n")
     tmp.replace(path)
+
+
+def ensure_fixture(cfg, receipt):
+    """Start only our digest-pinned, bridge-bound HTTP fixture; reject config drift."""
+    fixture = OmegaConf.to_container(cfg.httpbin_fixture)
+    prefix = os.environ["USER_PREFIX"]
+    assert re.fullmatch(r"[a-z0-9][a-z0-9_-]*", prefix)
+    name = f"{prefix}-{fixture.pop('container_suffix')}-{receipt['instance_id']}"
+    fixture["container_name"] = name
+    owner = receipt["label"]
+    assert fixture["url"] == "http://httpbin.org/" and fixture["bind_ip"] == "172.17.0.1"
+    bind_ip = fixture["bind_ip"]
+    assert "@sha256:" in fixture["image"]
+    bridge = json.loads(subprocess.check_output(["docker", "network", "inspect", "bridge"]))[0]
+    assert bridge["IPAM"]["Config"][0]["Gateway"] == bind_ip
+    tls_dir = Path(fixture["tls_dir"])
+    tls_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    cert, key = tls_dir / "cert.pem", tls_dir / "key.pem"
+    if not cert.exists() and not key.exists():
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256",
+                        "-days", str(fixture["certificate_days"]), "-keyout", str(key), "-out", str(cert),
+                        "-subj", "/CN=httpbin.org", "-addext",
+                        f"subjectAltName=DNS:httpbin.org,DNS:www.httpbin.org,IP:{bind_ip}"],
+                       check=True, capture_output=True, timeout=30)
+        key.chmod(0o600)
+    assert cert.exists() and key.exists(), "Incomplete HTTPBin TLS material"
+    subprocess.run(["openssl", "x509", "-checkend", "86400", "-noout", "-in", str(cert)], check=True)
+    fixture["certificate_path"] = str(cert)
+    fixture["certificate_sha256"] = hashlib.sha256(cert.read_bytes()).hexdigest()
+    found = subprocess.run(["docker", "inspect", name], capture_output=True)
+    if found.returncode == 0:
+        info = json.loads(found.stdout)[0]
+        assert info["Config"]["Labels"].get("owner") == owner, "Fixture ownership mismatch"
+        assert info["Config"]["Image"] == fixture["image"], "Fixture image drift"
+        assert info["Config"]["Cmd"] == fixture["command"], "Fixture command drift"
+        assert info["HostConfig"]["PortBindings"] == {f"{port}/tcp": [{"HostIp": bind_ip, "HostPort": str(port)}] for port in (80, 443)}
+        assert f"{tls_dir}:/certs:ro" in info["HostConfig"]["Binds"]
+        subprocess.run(["docker", "start", name], check=True, timeout=30)
+    else:
+        subprocess.run(["docker", "pull", fixture["image"]], check=True, timeout=180)
+        subprocess.run(["docker", "run", "-d", "--name", name, "--label", f"owner={owner}",
+                        "--restart", "unless-stopped", "--cpus", str(fixture["cpus"]),
+                        "--memory", fixture["memory"], "-p", f"{bind_ip}:80:80", "-p", f"{bind_ip}:443:443",
+                        "-v", f"{tls_dir}:/certs:ro",
+                        fixture["image"], *fixture["command"]], check=True, timeout=60)
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            with urlopen(f"http://{bind_ip}/status/200", timeout=3) as response:
+                assert response.status == 200
+            with urlopen(f"https://{bind_ip}/status/200", timeout=3,
+                         context=ssl.create_default_context(cafile=str(cert))) as response:
+                assert response.status == 200
+            return fixture
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("HTTP fixture failed its health check")
+            time.sleep(1)
+
+
+def fixture_gold(cfg, dataset_path, instance_ids, out_dir, fixture, *, no_fix=False):
+    """Run the existing pinned official harness with an explicitly recorded environment change."""
+    out_dir.mkdir(parents=True, exist_ok=False)
+    run_id = f"{'no_fix' if no_fix else 'gold'}_local_httpbin_{len(instance_ids)}"
+    predictions = "gold"
+    if no_fix:
+        # A nonempty, harmless patch makes the harness execute tests instead of skipping
+        # empty submissions; no candidate source code or benchmark tests are changed.
+        patch = ("diff --git a/.lasr-httpbin-negative-control b/.lasr-httpbin-negative-control\n"
+                 "new file mode 100644\n--- /dev/null\n+++ b/.lasr-httpbin-negative-control\n"
+                 "@@ -0,0 +1 @@\n+Environment validation only; no source or test changes.\n")
+        path = out_dir / "predictions.jsonl"
+        path.write_text("".join(json.dumps({"instance_id": iid, "model_name_or_path": "environment-negative-control",
+                                            "model_patch": patch}) + "\n" for iid in instance_ids))
+        predictions = str(path)
+    request = {"fixture": fixture, "harness": {
+        "dataset_name": str(dataset_path), "split": cfg.split, "instance_ids": instance_ids,
+        "predictions_path": predictions, "max_workers": cfg.gold_workers, "force_rebuild": False,
+        "cache_level": "instance", "clean": False, "open_file_limit": 16384, "run_id": run_id,
+        "timeout": cfg.gold_timeout_seconds, "namespace": "swebench", "rewrite_reports": False,
+        "modal": False, "report_dir": "."}}
+    atomic_json(out_dir / "request.json", request)
+    wrapper = Path(__file__).with_name("swebench_local_httpbin.py").resolve()
+    with (out_dir / "gold_check.log").open("w") as log:
+        proc = subprocess.run([str(HARNESS_ENV / ".venv/bin/python"), str(wrapper), "--request",
+                               str(out_dir / "request.json")], cwd=out_dir, stdout=log,
+                              stderr=subprocess.STDOUT, timeout=cfg.gold_timeout_seconds)
+    report_file = report_path(out_dir, run_id)
+    assert proc.returncode == 0 and report_file, f"Gold harness failed: {out_dir}"
+    report = json.loads(report_file.read_text())
+    resolved = set(report.get("resolved_ids", [])) & set(instance_ids)
+    expected = set(cfg.expected_requests_no_fix_resolved) if no_fix else set(instance_ids)
+    completed = set(report.get("completed_ids", []))
+    return {"passed": resolved == expected and completed == set(instance_ids) and not report.get("error_ids"),
+            "n_requested": len(instance_ids), "resolved_ids": sorted(resolved),
+            "n_resolved": len(resolved), "unresolved_gold": sorted(set(instance_ids) - resolved),
+            "harness_version": "4.1.0", "dataset": str(dataset_path), "report_file": report_file.name,
+            "protocol_deviation": "requests resolves httpbin.org locally with a recorded trusted CA",
+            "wrapper_sha256": hashlib.sha256(wrapper.read_bytes()).hexdigest()}
 
 
 def main():
@@ -49,6 +153,7 @@ def main():
              "instance_id": receipt["instance_id"], "started_at": now.isoformat(),
              "code_sha": receipt["code_sha"], "stop_at": receipt["stop_at"],
              "preparation_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+    state["config_sha256"] = hashlib.sha256(OmegaConf.to_yaml(cfg).encode()).hexdigest()
     fields = {"experiment": "SWE-bench Lite CPU readiness; no model evaluation",
               "date_generated": date, "constitution": "none",
               "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication@{receipt['code_sha']}",
@@ -61,6 +166,7 @@ def main():
         push_run_dir(out, repo, fields, private=False,
                      front_matter={"tags": ["infrastructure-check", "swebench-lite"]})
     try:
+        docker_preflight()
         info = json.loads(subprocess.check_output(["docker", "info", "--format", "{{json .}}"], text=True))
         assert info["NCPU"] >= cfg.min_cpus
         assert info["MemTotal"] / 2**30 >= cfg.min_ram_gib
@@ -110,16 +216,34 @@ def main():
         failures = []
         chosen = [next(r for r in sorted(rows, key=lambda r: r["instance_id"]) if r["repo"] == repo_name)
                   for repo_name in cfg.gold_repos]
+        # Every requests task exercises the new fixture; preserve the standard checks for other repos.
+        chosen = list({r["instance_id"]: r for r in [*chosen, *[r for r in rows if r["repo"] == "psf/requests"]]}.values())
         # Prove grading before spending time/bandwidth caching the whole split.
         for row in chosen:
             iid, image = pull(row)
             manifest[iid] = image
             atomic_json(manifest_path, manifest)
+        probe = out / "metadata/docker-volume-probe"
+        probe.mkdir(exist_ok=True)
+        subprocess.run(["docker", "run", "--rm", "--network", "none", "-v", f"{probe}:/probe",
+                        image_name(chosen[0]), "/bin/sh", "-c", "printf 'persistent-volume-ok\\n' > /probe/result.txt"],
+                       check=True, timeout=60)
+        assert (probe / "result.txt").read_text() == "persistent-volume-ok\n"
         gold_dir = out / "gold_attempts" / now.strftime("%Y%m%dT%H%M%S%fZ")
-        state["gold"] = verify_environment(dataset=str(dataset_path), instance_ids=[r["instance_id"] for r in chosen],
-                        out_dir=gold_dir, max_workers=cfg.gold_workers, cache_level="instance",
-                        timeout=cfg.gold_timeout_seconds)
+        fixture = ensure_fixture(cfg, receipt)
+        atomic_json(out / "metadata/httpbin_fixture.json", fixture)
+        shutil.copyfile(fixture["certificate_path"], out / "metadata/httpbin-ca.pem")
+        state["gold"] = fixture_gold(cfg, dataset_path, [r["instance_id"] for r in chosen], gold_dir, fixture)
         state["gold"]["artifact_directory"] = str(gold_dir.relative_to(out))
+        if state["gold"]["passed"]:
+            no_fix_dir = out / "no_fix_attempts" / now.strftime("%Y%m%dT%H%M%S%fZ")
+            state["no_fix"] = fixture_gold(cfg, dataset_path,
+                [r["instance_id"] for r in rows if r["repo"] == "psf/requests"], no_fix_dir, fixture, no_fix=True)
+            state["no_fix"]["artifact_directory"] = str(no_fix_dir.relative_to(out))
+            state["benchmark_limitations"] = (
+                "Two requests tasks resolve without a source fix under the pinned test labels. "
+                "All 300 tasks remain included; report these no-fix passes alongside model scores. "
+                "The local HTTPBin environment is a declared deviation from public-service grading.")
         backup()
         print(f"Gold grading: {state['gold']['n_resolved']}/{len(chosen)}. "
               "Caching continues; every gold check must pass before readiness.", flush=True)
@@ -148,9 +272,18 @@ def main():
         state["images_ready"] = len(manifest)
         assert shutil.disk_usage(info["DockerRootDir"]).free / 2**30 > cfg.min_free_gib
         assert state["gold"]["passed"], state["gold"]
+        assert state["no_fix"]["passed"], state["no_fix"]
+        assert datetime.now(timezone.utc) < datetime.fromisoformat(receipt["stop_at"]), "VM expiry reached"
         state["status"] = "ready"
         state["finished_at"] = datetime.now(timezone.utc).isoformat()
         backup()
+        commit = hf_api().dataset_info(repo).sha
+        for relative in ("results/readiness.json", "metadata/images.json", "metadata/httpbin_fixture.json"):
+            downloaded = hf_download(repo, relative, repo_type="dataset", revision=commit)
+            assert Path(downloaded).read_bytes() == (out / relative).read_bytes(), f"HF round-trip mismatch: {relative}"
+        atomic_json(out.parent / "cpu-readiness-backup-verified.json", {"repo": repo, "revision": commit,
+                    "readiness_sha256": hashlib.sha256((out / "results/readiness.json").read_bytes()).hexdigest(),
+                    "verified_at": datetime.now(timezone.utc).isoformat()})
         print(json.dumps(state, indent=2), flush=True)
     except BaseException as exc:
         state["status"] = "failed"

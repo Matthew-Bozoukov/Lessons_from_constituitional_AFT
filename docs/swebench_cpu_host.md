@@ -22,10 +22,13 @@ After the user funded Vast and asked to proceed, VM **52229744** was created as
 advertised but above the required floor. Docker browser device login succeeded after
 the user purchased Pro, clearing the anonymous download block. The user's read-only
 Docker token was subsequently verified and installed without logging its value.
-A four-repository gold check first resolved 3/4: requests-1963 received HTTP 502 from
-its external httpbin endpoint. The failed attempt is preserved; the fresh unchanged
-gold attempt passed **4/4**. Image preparation is running. RunPod rentals remain
-forbidden until all readiness checks pass.
+All **300/300 images are cached**, using about 195 GiB of disk with about 290 GiB
+free. Public-httpbin gold checks alternated 3/4, 4/4, 3/4 due to HTTP 502 failures.
+A pinned local HTTP/HTTPS fixture now passes **9/9 gold checks**, covering every
+requests task plus Django, SymPy and scikit-learn. This is a declared environment
+deviation, detailed below. Six no-fix checks found two upstream scoring quirks;
+both also pass with the unmodified grader and public service. No tasks are dropped.
+RunPod rentals remain forbidden until the final readiness and backup checks pass.
 
 Connect from this Windows account:
 
@@ -222,6 +225,9 @@ dataset and protocol hashes; a manually written READY file is insufficient.
    fixed selection spanning multiple repositories. Require every gold case to
    resolve. The existing `swebench_mini_check_env.py` is the starting point; its
    default is Verified, so explicitly use Lite and the pinned snapshot.
+   The deployed preparation now checks nine gold patches plus six no-fix requests
+   cases using the documented local HTTPBin protocol below. Verify the expected
+   baseline outcomes as well as the gold successes.
 6. **Durability:** upload a small real preparation artifact through the HF contract
    (rollouts/results/metadata + card/tags), read it back and verify its hash. Save
    dataset/image/lock manifests and the CPU receipt off-host. HF_ORG from .env is
@@ -333,6 +339,62 @@ treat a cached report as a fresh check. The initial two-repository gold check pa
 502 is an infrastructure failure, not evidence of model incapability. Downloads may
 continue while diagnosing it, but no GPU-ready marker may be produced on failed gold.
 
+## Local HTTPBin protocol and known scoring limitations
+
+The public service returned intermittent 502 errors. Do not rerun until a lucky
+pass or count those errors as model failures. The preparation uses the original
+HTTPBin image, pinned to
+`kennethreitz/httpbin@sha256:599fe5e5073102dbb0ee3dbb65f049dab44fa9fc251f6835c9990f8fb196a72b`.
+HTTP and HTTPS bind only to the Docker bridge address `172.17.0.1:80/443`.
+The container name derives from USER_PREFIX and the receipted instance ID; startup
+checks its ownership, image, command and bindings and refuses drift.
+
+`scratch/swebench_local_httpbin.py` runs the pinned official 4.1.0 harness. For
+requests grading only, it maps httpbin.org inside the task container to the local
+service, sets the supported HTTPBIN_URL (including its required trailing slash),
+and adds the fixture's public CA to the existing trust store. Certificate checks
+remain enabled. Historical PreparedRequest/Session.send calls bypass environment
+CA settings, so the wrapper also appends the public CA to requests' active bundle
+immediately before tests; original and updated bundle hashes are logged. Task
+patches, test patches and scoring labels remain unchanged. This is an explicit
+grading environment deviation and must be recorded for every later model result;
+compare control and DA using exactly the same fixture and wrapper.
+
+The certificate and image/command provenance are backed up. The private TLS key
+stays outside artifacts in `/srv/lasr/httpbin-tls/`, as do provider and Docker
+credentials. A replacement host generates a new local certificate and records its
+hash. Do not copy this override into agent rollouts silently; their existing
+network-disabled environment remains a separate, recorded part of the scaffold.
+
+The first PSF image experiment stalled; the HTTP-only original-image experiment
+could not satisfy HTTPS tests. Both diagnostic attempts and failures are preserved.
+The final HTTP/HTTPS setup passed all nine gold checks. A harmless marker-file
+patch, leaving buggy source unchanged, resolved **2/6 requests cases**:
+`psf__requests-2674` and `psf__requests-863`. Each also resolved without a source fix
+under the unmodified official harness against public httpbin.org. These are
+observed limitations of this pinned Lite protocol, not evidence that the model
+fixed those issues. Keep all 300 tasks in the requested score and explicitly report
+these no-fix passes; do not silently change the denominator or scoring tests.
+
+The preparation script checks this six-case baseline on subsequent preparations;
+an unexpected change fails readiness. This is an environment regression check,
+not a substitute for the model's own 300-task score. No model run has happened yet.
+Final readiness, image manifest and fixture metadata are downloaded from a pinned
+HF commit and compared byte for byte; the verification receipt is
+`/srv/lasr/runs/cpu-readiness-backup-verified.json`.
+
+To resume preparation after fixing a failure:
+
+```bash
+cd /srv/lasr/repo
+systemctl reset-failed lasr-swebench-prepare.service
+systemctl start --no-block lasr-swebench-prepare.service
+tail -f /srv/lasr/runs/prepare.log
+```
+
+Do not change the recorded STOP deadline merely to rerun preparation. Reusing a
+host after expiry requires a new user-authorized deadline, as described above.
+
 The inference fleet launcher, robust per-task resume/checkpoint queue and automatic
 final grading/publication still need implementation. The code audit is
 `scratch/swebench_lite_audit_2026_09_23.md`; finish its pipeline fixes before scale-up.
@@ -342,3 +404,4 @@ References checked 2026-09-23:
 - https://docs.vast.ai/sdk/python/reference/search-offers
 - https://docs.vast.ai/sdk/python/reference/create-instance
 - https://github.com/vast-ai/docs/blob/main/guides/pricing.mdx
+- https://github.com/postmanlabs/httpbin

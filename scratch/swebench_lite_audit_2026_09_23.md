@@ -206,5 +206,6 @@ Recalibrate after any protocol change; do not reuse August's control.
 - Lite definition and 300-task test split: https://www.swebench.com/lite.html
 - Advertised GPU rates: https://www.runpod.io/pricing
 
-Status: audit and plan complete; no benchmark run, paid rental, or production code
-change made in this task yet.
+Initial audit status (before provisioning): no benchmark run or paid rental yet.
+Subsequent CPU provisioning, cached images, grading diagnostics and live connection
+details are maintained in `docs/swebench_cpu_host.md`. No model score exists yet.

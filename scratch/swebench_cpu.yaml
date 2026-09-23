@@ -1,5 +1,6 @@
 # ABOUTME: CPU-only readiness protocol for the full pinned SWE-bench Lite test split.
 # ABOUTME: No inference rentals are permitted until every readiness check succeeds.
+# Run: uv run --project scratch/swebench_cpu_env --frozen python -m scratch.swebench_cpu_prepare
 dataset: princeton-nlp/SWE-bench_Lite
 revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
 split: test
@@ -13,5 +14,17 @@ pull_attempts: 2
 gold_repos: [django/django, sympy/sympy, psf/requests, scikit-learn/scikit-learn]
 gold_workers: 4
 gold_timeout_seconds: 3600
+# Observed no-fix passes: retained in the 300-task score and explicitly reported.
+expected_requests_no_fix_resolved: [psf__requests-2674, psf__requests-863]
 out_dir: /srv/lasr/runs/cpu-readiness
 receipt: /srv/lasr/receipt.json
+httpbin_fixture:
+  image: kennethreitz/httpbin@sha256:599fe5e5073102dbb0ee3dbb65f049dab44fa9fc251f6835c9990f8fb196a72b
+  url: http://httpbin.org/
+  bind_ip: 172.17.0.1
+  tls_dir: /srv/lasr/httpbin-tls
+  certificate_days: 30
+  container_suffix: swebench-httpbin
+  cpus: 2
+  memory: 512m
+  command: [sh, -c, 'gunicorn -b 0.0.0.0:80 httpbin:app -k gevent & exec gunicorn -b 0.0.0.0:443 httpbin:app -k gevent --certfile /certs/cert.pem --keyfile /certs/key.pem --ciphers ECDHE+AESGCM:ECDHE+AES']
