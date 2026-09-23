@@ -1311,3 +1311,46 @@ date (2026-09-20 and 2026-09-21 precedents), fix its card's `date_generated`, an
 `create_repo` an empty repo at the freed name — HF keeps a redirect after a move, and a
 push that follows it would overwrite the moved repo. A `-suffix` rename is off-grammar.
 
+
+## SWE-bench Lite recovery: checkpoints, deadlines and rental accounting (2026-09-23)
+
+- **HF availability must not determine inference liveness.** Streamed `upload_folder`
+  produced multiple commits per snapshot and hit commit-rate limits. The old
+  ten-minute freshness breaker then interrupted 40 expensive conversations despite
+  healthy persistent CPU storage. Use one atomic `create_commit` per snapshot,
+  verify the saved revision, and retry failed uploads while workers keep running.
+  Verify a backup before renting; after launch, HF lag neither blocks claims nor
+  kills agents. Local disk/RAM and infrastructure-failure safeguards still apply.
+  Local grading must proceed even when the end-of-inference upload fails.
+- **An emergency rental expiry is not a target completion time.** Startup consumed
+  the previous fixed deadline; late replicas started tasks they could not finish.
+  Reserve boot time, a complete task allowance and teardown time before renting,
+  and stop admitting tasks one full task allowance before expiry. Drain existing
+  tasks and release idle GPUs immediately. Keep detached watchdogs and provider
+  expiry as last-resort spending bounds, not ordinary task cancellation. The
+  recovery config allows 150 minutes, including startup, and keeps each task's
+  existing 90-minute limit. Cold bootstrap now times out after 15 minutes rather
+  than spending 30 minutes on a slow package download.
+- **Reservations are not spend.** Explicitly rejected creates retained $34.35 of
+  phantom reservations. Release only after an explicit provider rejection and two
+  owned-inventory checks find no allocation. Preserve the original records and
+  add reconciliation evidence. A late observed allocation stays charged at its
+  conservative elapsed ceiling; an ambiguous network timeout keeps its full TTL
+  reservation. Never infer campaign cost from a shared account's balance delta.
+- **CPU quotas do not hide host CPU count.** Django saw 61 CPUs within a two-CPU
+  container and spawned enough test workers to hit its 4 GiB limit even while
+  host RAM was plentiful. Set quota-derived Django/BLAS thread limits. A timeout
+  of the Docker client alone leaves test descendants alive: enforce the command
+  deadline inside the container and kill its process group after the grace period.
+  Record cgroup memory events, not just host RAM.
+- **Preserve model outcomes across infrastructure recovery.** At the second
+  cutoff, 253 tasks were graded (118 resolved); 32 were interrupted and 15 had
+  never started. Retry just those 47. Empty submissions, token/step limits and
+  context exhaustion are completed model outcomes and must not be rerolled.
+  Raising the infrastructure attempt allowance to three covers the two twice-
+  interrupted tasks; archive state, configuration and sources before migration.
+- **A resumed run is not proof of a uniform fresh-run recipe.** This campaign has
+  mixed GPU types, interrupted attempts and a resource-policy transition. Preserve
+  those limitations with the final score. A pinned, prebuilt serving image would
+  remove much of cold package installation; it remains future work, not an
+  optimization already demonstrated by this run.

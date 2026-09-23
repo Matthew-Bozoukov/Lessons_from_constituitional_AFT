@@ -1,6 +1,33 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Resume only unfinished Lite tasks with nonfatal backups and audited reservations
+
+**Hypothesis.** Completing the 47 remaining no-DA tasks needs corrected orchestration,
+not a rerun of the 253 completed outcomes. HF commit throttling, a short shared
+expiry and rejected-rental reservations caused avoidable interruptions.
+
+**Method.** Preserve previous sources/state/results; use six independent 96 GiB
+RTX PRO 6000 replicas with four workers each, delayed H100 NVL fallback, a full
+task admission/drain window, and 15-minute bootstrap timeout. Remove HF freshness
+from claim/agent/coordinator cancellation. Release explicit rejected reservations
+only with two inventory checks; retain charges for observed late pods and full
+reservations for ambiguous timeouts. User relaxed $100; set a bounded $120
+cumulative backstop. Infrastructure retry allowance becomes three. Model, dataset,
+token budgets, valid outcomes and grading stay unchanged.
+
+**Validation.** 34 Linux tests pass, including a running agent during stale HF
+backup, exclusive claims, drain admission, completed-outcome preservation,
+reconciled rejection versus ambiguous/late allocation, and independent replica
+retries. Before launch there were 253 graded outcomes, 118 resolved, zero grading
+errors, and no owned GPUs. This is an incomplete, heterogeneous campaign, not a
+validated uniform-fleet performance measurement.
+
+**Next.** Verify CPU readiness and real HF snapshot/readback, resume only the
+47 eligible tasks, then grade, publish/read back and verify owned GPU cleanup.
+The chat heartbeat remains paused. See the runbook and GOTCHAS for the incident
+details and the remaining prebuilt-image optimization.
+
 ## 2026-09-23 — Bound Lite test parallelism and clean up timed-out commands
 
 **Finding.** At 40 active agents, the CPU host averaged 7.4% utilization and retained

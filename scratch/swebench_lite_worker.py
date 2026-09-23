@@ -46,13 +46,19 @@ def stop_process(proc):
             proc.wait(timeout=10)
 
 
-def consume(endpoint, model, cfg, worker, allowed):
+def attempt_deadline(cfg, state, expires):
+    return min(time.time() + cfg.task_seconds, state['deadline'] - cfg.cleanup_reserve_seconds,
+               expires - cfg.cleanup_reserve_seconds)
+
+
+def consume(endpoint, model, cfg, worker, allowed, expires):
     state = State(cfg.root)
     meta = read(state.root / 'metadata/manifest.json')
     rows = {r['instance_id']: r for r in read(state.root / 'metadata/swebench_lite_test.json')}
     images = read(state.root / 'metadata/images.json')
     while lease := state.claim(worker, allowed, cfg.max_infrastructure_attempts,
-                               cfg.max_infrastructure_failures, cfg.upload_stale_seconds):
+                               cfg.max_infrastructure_failures,
+                               latest_start=expires - cfg.cleanup_reserve_seconds - cfg.task_seconds):
         iid, aid = lease
         out = state.root / 'rollouts' / iid / aid
         out.mkdir(parents=True)
@@ -78,12 +84,11 @@ def consume(endpoint, model, cfg, worker, allowed):
                                          '--request', str(out / 'request.json')], env=env,
                                         stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 atomic(out / 'process.json', {'pid': proc.pid, 'started': time.time()})
-                until = min(time.time() + cfg.task_seconds, read(state.path)['deadline'] - cfg.cleanup_reserve_seconds)
+                until = attempt_deadline(cfg, read(state.path), expires)
                 while proc.poll() is None:
                     live = read(state.path)
-                    if (time.time() > until or live.get('halt') or
-                            time.time() - live.get('last_upload', 0) > cfg.upload_stale_seconds):
-                        raise TimeoutError('deadline, backup lag, or campaign circuit breaker')
+                    if time.time() > until or live.get('halt'):
+                        raise TimeoutError('task deadline or campaign circuit breaker')
                     time.sleep(2)
                 rc = proc.returncode
         except Exception as exc:
@@ -140,7 +145,7 @@ def runner(target, cfg, out_dir, **kwargs):
     try:
         with ThreadPoolExecutor(max_workers=campaign.workers_per_replica) as pool:
             futures = [pool.submit(consume, endpoint, 'hosted_vllm/' + target.model_name, campaign,
-                                   str(cfg.replica) + '-' + str(i), list(cfg.allowed))
+                                   str(cfg.replica) + '-' + str(i), list(cfg.allowed), cfg.expires)
                        for i in range(campaign.workers_per_replica)]
             for future in futures:
                 future.result()
@@ -157,6 +162,7 @@ def main():
     parser.add_argument('--server', required=True)
     parser.add_argument('--replica', type=int, required=True)
     parser.add_argument('--allowed', required=True)
+    parser.add_argument('--expires', required=True, type=float)
     args = parser.parse_args()
     cfg = OmegaConf.load(args.config)
     output = Path(cfg.root) / 'metadata' / 'replicas' / str(args.replica)
@@ -165,7 +171,7 @@ def main():
                      'dataset': cfg.dataset, 'revision': cfg.dataset_revision,
                      'frozen_dataset': str(Path(cfg.root) / 'metadata/swebench_lite_test.json'),
                      'campaign_config': str(Path(args.config).resolve()), 'replica': args.replica,
-                     'allowed': read(args.allowed), 'output_root': str(output / 'eval')}
+                     'allowed': read(args.allowed), 'expires': args.expires, 'output_root': str(output / 'eval')}
     OmegaConf.save(OmegaConf.create(worker_config), output / 'eval.yaml')
     from src.eval.run_eval import main as evaluate
     evaluate(['--target', cfg.target, '--name', 'swebench_mini', '--config', str(output / 'eval.yaml'),

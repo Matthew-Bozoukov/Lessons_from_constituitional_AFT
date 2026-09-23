@@ -14,6 +14,7 @@ from unittest.mock import Mock, patch
 from omegaconf import OmegaConf
 from scratch.swebench_lite_state import State, atomic, classify, read, lock
 from scratch import swebench_lite as fleet
+from scratch import swebench_lite_worker as worker
 from src.infra import runpod
 from scratch.swebench_lite_task import install_token_limits, resource_shell
 
@@ -110,7 +111,7 @@ class LeaseTests(unittest.TestCase):
                                 'deadline': time.time() + 600, 'last_upload': time.time(), 'halt': None})
 
     def claim(self, worker=0):
-        return self.state.claim(str(worker), [str(i) for i in range(20)], 2, 6, 600)
+        return self.state.claim(str(worker), [str(i) for i in range(20)], 2, 6)
 
     def test_concurrent_claims_are_exclusive(self):
         with ThreadPoolExecutor(max_workers=24) as pool:
@@ -143,11 +144,23 @@ class LeaseTests(unittest.TestCase):
         self.assertEqual(self.claim()[0], iid)
         self.assertEqual(len(read(self.state.path)['tasks'][iid]['attempts']), 2)
 
-    def test_backup_outage_stops_claims(self):
+    def test_backup_outage_does_not_stop_claims(self):
         with self.state.edit() as data:
             data['last_upload'] = 0
-        with self.assertRaisesRegex(RuntimeError, 'stale'):
-            self.claim()
+        self.assertIsNotNone(self.claim())
+        self.assertIsNone(read(self.state.path)['halt'])
+
+    def test_drain_rejects_new_claim_without_mutating_tasks(self):
+        before = read(self.state.path)['tasks']
+        self.assertIsNone(self.state.claim('worker', ['0'], 3, 6, latest_start=time.time() - 1))
+        self.assertEqual(read(self.state.path)['tasks'], before)
+
+    def test_expanded_infrastructure_retry_preserves_completed_outcomes(self):
+        with self.state.edit() as data:
+            data['tasks']['0'] = {'status': 'valid', 'attempts': [{'id': 'done', 'valid': True}]}
+            data['tasks']['1'] = {'status': 'invalid', 'attempts': [{'id': str(i), 'valid': False} for i in range(2)]}
+        self.assertEqual(self.state.claim('worker', ['0', '1'], 3, 6)[0], '1')
+        self.assertEqual(read(self.state.path)['tasks']['0']['attempts'], [{'id': 'done', 'valid': True}])
 
     def test_explicit_resume_resets_breaker_but_retains_attempts(self):
         with self.state.edit() as data:
@@ -168,6 +181,30 @@ class LeaseTests(unittest.TestCase):
 
 
 class RentalTests(unittest.TestCase):
+    def test_backup_outage_does_not_interrupt_running_agent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+            cfg.root, cfg.task_seconds = temp, 30
+            root = Path(temp)
+            atomic(root / 'metadata/manifest.json', {'campaign': 'test'})
+            atomic(root / 'metadata/swebench_lite_test.json', [{'instance_id': 'one'}])
+            atomic(root / 'metadata/images.json', {'one': {'digest': 'sha256:test'}})
+            atomic(root / 'metadata/state.json', {'tasks': {'one': {'status': 'pending', 'attempts': []}},
+                'deadline': time.time() + 600, 'last_upload': 0, 'halt': None})
+            def agent(args, **kwargs):
+                request = read(args[-1])
+                out = Path(request['out'])
+                atomic(out / 'one/one.traj.json', {'info': {'exit_status': 'Submitted'}})
+                atomic(out / 'preds.json', {'one': {'model_patch': 'patch'}})
+                return Mock(pid=123, returncode=0, poll=Mock(side_effect=[None, 0]))
+            with patch.object(worker.subprocess, 'Popen', side_effect=agent), \
+                 patch.object(worker.subprocess, 'check_output', return_value=''), \
+                 patch.object(worker, 'stop_process'), patch.object(worker.time, 'sleep'):
+                worker.consume('http://localhost/v1', 'hosted_vllm/test', cfg, '1-0', ['one'], time.time() + 600)
+            state = read(root / 'metadata/state.json')
+            self.assertEqual(state['tasks']['one']['status'], 'valid')
+            self.assertIsNone(state['halt'])
+
     def test_hf_snapshot_and_graded_publish_keep_same_identity(self):
         with tempfile.TemporaryDirectory() as temp:
             root, remote = Path(temp) / 'run', Path(temp) / 'hub'
@@ -276,7 +313,34 @@ class RentalTests(unittest.TestCase):
             records = read(Path(temp) / 'metadata/state.json')['pods']
             self.assertEqual(records[0]['status'], 'rejected-reconciled')
             self.assertIn('ended', records[0])
+            self.assertTrue(records[0]['reservation_released'])
+            self.assertEqual(fleet.reserved_cost({'pods': [records[0]]}), 0)
             self.assertNotIn('ended', records[1])
+            self.assertGreater(fleet.reserved_cost({'pods': [records[1]]}), 0)
+
+    def test_late_allocation_still_charged_after_reconciliation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+            cfg.root = temp
+            record = {'created': time.time() - 120, 'expires': time.time() + 300, 'ceiling_hourly': 5,
+                      'id': None, 'status': 'allocation-unconfirmed', 'slot': 0, 'name': 'late',
+                      'error': 'RunPod GraphQL rejected the request; provider error'}
+            atomic(Path(temp) / 'metadata/state.json', {'pods': [record]})
+            late = {'id': 'real-pod', 'name': 'late',
+                    'env': {'LASR_POD_OWNER': runpod.POD_OWNER, 'LASR_CAMPAIGN': 'ours'}}
+            with patch.object(runpod, 'active_pods', side_effect=[[late], []]), patch.object(runpod, 'teardown') as stop:
+                fleet.reconcile_rejections(cfg, {'campaign': 'ours'})
+            stop.assert_called_once_with('real-pod')
+            data = read(Path(temp) / 'metadata/state.json')
+            self.assertEqual(data['pods'][0]['id'], 'real-pod')
+            self.assertGreater(fleet.reserved_cost(data), 0)
+
+    def test_release_flag_cannot_erase_real_or_ambiguous_rental(self):
+        record = {'created': 0, 'ended': 3600, 'expires': 3600, 'ceiling_hourly': 5,
+                  'reservation_released': True, 'status': 'rejected-reconciled',
+                  'reconciliation_inventory_checks': 2, 'error': 'RunPod GraphQL rejected the request; x'}
+        self.assertEqual(fleet.reserved_cost({'pods': [record | {'id': 'real'}]}), 5)
+        self.assertEqual(fleet.reserved_cost({'pods': [record | {'id': None, 'error': 'Timeout'}]}), 5)
 
     def test_missing_slot_retries_while_healthy_replica_keeps_working(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -284,9 +348,10 @@ class RentalTests(unittest.TestCase):
             cfg.root = temp
             cfg.allocation_retry_seconds = 0.01
             cfg.allocation_retry_max_seconds = 0.01
+            cfg.allocation_min_remaining_seconds = 900
             state = State(temp)
             atomic(state.path, {'pods': [], 'tasks': {'one': {'status': 'pending', 'attempts': []}},
-                'halt': None, 'deadline': time.time() + 3600, 'last_upload': time.time()})
+                'halt': None, 'deadline': time.time() + 3600, 'last_upload': 0})
             retried = threading.Event()
             seen = []
             def replica(cfg, path, slot, allowed, expires, manifest):
@@ -303,7 +368,7 @@ class RentalTests(unittest.TestCase):
             real_sleep = time.sleep
             with patch.object(fleet, 'replica', side_effect=replica), \
                  patch.object(fleet, 'price_ceiling', return_value=3.35), \
-                 patch.object(fleet, 'checkpoint', return_value=True), \
+                 patch.object(fleet, 'checkpoint', return_value=False), \
                  patch.object(fleet, 'reconcile_rejections'), \
                  patch.object(fleet.shutil, 'disk_usage', return_value=Mock(free=200 * 2**30)), \
                  patch.object(fleet.time, 'sleep', side_effect=lambda _: real_sleep(0.01)):
@@ -315,6 +380,7 @@ class RentalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             cfg = OmegaConf.load('scratch/swebench_lite.yaml')
             cfg.root = temp
+            cfg.allocation_min_remaining_seconds = 900
             manifest = {'campaign': 'only-ours', 'budget_usd': 100}
             atomic(Path(temp) / 'metadata/state.json', {'pods': [], 'halt': None})
             live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'costPerHr': 4.59,

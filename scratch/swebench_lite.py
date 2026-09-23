@@ -313,30 +313,43 @@ def checkpoint(cfg, config_path, *, required=False):
 
 
 def reserved_cost(state):
-    return sum(p['ceiling_hourly'] * (p.get('ended', p['expires']) - p['created']) / 3600 for p in state['pods'])
+    return sum(p['ceiling_hourly'] * (p.get('ended', p['expires']) - p['created']) / 3600
+               for p in state['pods'] if not (
+                   p.get('reservation_released') and p.get('status') == 'rejected-reconciled'
+                   and p.get('id') is None and p.get('reconciliation_inventory_checks') == 2
+                   and 'RunPod GraphQL rejected the request;' in p.get('error', '')))
 
 
 def reconcile_rejections(cfg, manifest):
     """Reconcile explicit provider rejections; transport timeouts keep their TTL reserve."""
     state = State(cfg.root)
     candidates = [p for p in read(state.path)['pods']
-                  if p['status'] == 'allocation-unconfirmed' and p.get('id') is None
+                  if p['status'] in ('allocation-unconfirmed', 'rejected-reconciled')
+                  and not p.get('reservation_released') and p.get('id') is None
                   and 'RunPod GraphQL rejected the request;' in p.get('error', '')
                   and time.time() - p['created'] >= cfg.allocation_reconcile_seconds]
     if not candidates:
         return
     live = runpod.active_pods()
+    late = {}
     # Any late create is fenced before releasing a reservation. Never adopt a pod
     # whose create response was lost: it has no confirmed watchdog callback.
     for pod in live:
         if owned(pod, manifest) and pod.get('name') in {p['name'] for p in candidates}:
+            late[pod['name']] = pod['id']
             runpod.teardown(pod['id'])
     present = {p.get('name') for p in runpod.active_pods() if owned(p, manifest)}
     with state.edit() as data:
         for p in data['pods']:
             if p['slot'] in {p['slot'] for p in candidates} and p['name'] not in present:
-                p.update(status='rejected-reconciled', ended=min(time.time(), p['expires']),
-                         reconciliation='Explicit GraphQL rejection; two provider inventory sweeps; late creates reaped')
+                if p['name'] in late:
+                    p.update(status='terminated', id=late[p['name']], ended=time.time(),
+                             reconciliation='Late create observed and reaped; elapsed ceiling remains charged')
+                else:
+                    p.setdefault('ended', min(time.time(), p['expires']))
+                    p.update(status='rejected-reconciled', reservation_released=True,
+                             reservation_released_at=time.time(), reconciliation_inventory_checks=2,
+                             reconciliation='Explicit GraphQL rejection; absent in two provider inventory sweeps; no late create observed')
 
 
 def pending_tasks(data, allowed, cfg):
@@ -435,7 +448,8 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
         log_path = Path(cfg.root) / 'metadata' / f'replica-{slot}.log'
         with log_path.open('w') as log:
             proc = subprocess.Popen([sys.executable, '-m', 'scratch.swebench_lite_worker', '--config', str(config_path),
-                                     '--server', pod.host, '--replica', str(slot), '--allowed', str(allowed_path)],
+                                     '--server', pod.host, '--replica', str(slot), '--allowed', str(allowed_path),
+                                     '--expires', str(expires)],
                                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             update(worker_pid=proc.pid)
             while proc.poll() is None:
@@ -449,7 +463,7 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
     except BaseException as exc:
         update(error=type(exc).__name__ + ': ' + str(exc))
         # A missing replica must not cancel healthy replicas. Global budget,
-        # deadline, backup and task-failure breakers remain coordinator-owned.
+        # deadline and task-failure breakers remain coordinator-owned.
         raise
     finally:
         cleanup_error = None
@@ -496,9 +510,9 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     data = read(state.path)
     remaining = manifest['budget_usd'] - reserved_cost(data)
     seconds = min(seconds, int(remaining * 3600 / (count * price_ceiling(cfg, cfg.gpu))))
-    assert seconds > cfg.cleanup_reserve_seconds + 300, 'Remaining budget too small to allocate safely'
+    assert seconds > cfg.allocation_min_remaining_seconds, 'Remaining budget cannot cover boot plus a full task; no rental'
     expires = min(time.time() + seconds, data['deadline'])
-    assert expires - time.time() > cfg.cleanup_reserve_seconds + 300
+    assert expires - time.time() > cfg.allocation_min_remaining_seconds
     allowed = Path(cfg.root) / 'metadata' / f'allowed-{len(data["pods"])}.json'
     atomic(allowed, ids)
     next_slot = max((p['slot'] for p in data['pods']), default=-1) + 1
@@ -543,9 +557,9 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                 reconcile_rejections(cfg, manifest)
                 last_reconcile = time.time()
             live = read(state.path)
-            if time.time() - live['last_upload'] > cfg.upload_stale_seconds or time.time() > expires:
+            if time.time() > expires:
                 with state.edit() as data:
-                    data['halt'] = 'Backup stale or campaign deadline'
+                    data['halt'] = 'Campaign deadline'
             if shutil.disk_usage('/var/lib/docker').free / 2**30 < cfg.min_free_gib:
                 with state.edit() as data:
                     data['halt'] = 'CPU disk reserve reached'
@@ -553,7 +567,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                 with state.edit() as data:
                     data['halt'] = 'CPU memory reserve reached'
             time.sleep(2)
-    checkpoint(cfg, config_path, required=True)
+    checkpoint(cfg, config_path)  # A remote outage must not prevent local grading.
 
 
 def grade(cfg):

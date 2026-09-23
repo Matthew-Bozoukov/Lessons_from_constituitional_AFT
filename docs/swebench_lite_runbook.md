@@ -36,7 +36,7 @@ this experimental campaign completes all 300 graded tasks.
    ```
 
    The current VM stops, retaining disk, at **2026-09-24 12:37:16 UTC**.
-   The preflight requires at least four hours remaining. Do not extend its deadline
+   The recovery preflight requires at least 4.5 hours remaining (150-minute inference backstop plus two hours for CPU finishing). Do not extend its deadline
    or create replacement infrastructure silently. If it expired, use the CPU-host
    guide to restart/requalify with a newly authorized lifetime before inference.
    The plan verifies 300 local image digests AND the grader's matching cached tags,
@@ -86,6 +86,36 @@ this experimental campaign completes all 300 graded tasks.
    Do not claim an estimate is an invoiced bill or a model result is established
    by the synthetic integration test.
 
+## Recovery of the final 47 tasks (2026-09-23)
+
+This section supersedes the historical fleet/deadline rules below. The user
+authorized only the 47 unfinished tasks: preserve all 253 graded model outcomes.
+Six independent RTX PRO 6000 Blackwell Server Edition replicas each consume four
+tasks from one shared queue. After repeated capacity rejections over ten minutes,
+try H100 NVL; no healthy replica waits for another. The original $100 cumulative
+GPU cap was relaxed by the user; use $120 as the new hard backstop, not a target
+spend. CPU cost remains separate. Keep the chat heartbeat PAUSED.
+
+Before launch, archive old state/manifest/config/source files, record the exact
+47-task allowlist and hashes of completed outcomes, and document the migration
+in `metadata/remaining-47-recovery.json`. Reconcile explicit rejected reservations
+without deleting ledger entries. Keep model, dataset, token/step limits and scoring
+unchanged. Max infrastructure attempts becomes three; completed model failures
+remain immutable. Verify CPU caches, expiry, empty owned GPU inventory, code/config
+identity, and a real atomic HF snapshot/readback before any rental.
+
+The 150-minute fleet expiry is an emergency bound, not an ETA. Allow at least
+108 minutes before allocating a new pod (15-minute bootstrap, full 90-minute task,
+three-minute cleanup). Workers stop claiming tasks 93 minutes before pod expiry
+and let existing tasks finish. All six release independently when idle. A cold
+bootstrap fails after 15 minutes; do not keep buying slow downloads indefinitely.
+HF outages do not interrupt agents or prevent CPU grading; snapshots keep retrying,
+and final publication must be verified separately from local completion.
+
+See `docs/GOTCHAS.md` for the observed failure modes and their fixes. The run is
+heterogeneous across its earlier phases; completion alone does not establish a
+clean, uniform six-GPU performance benchmark.
+
 ## Resumption, grading and backup
 
 For an interrupted run, inspect the saved reason/logs, repair the infrastructure,
@@ -107,7 +137,7 @@ Submitted, step-limited and context-limited outcomes
 are never retried to improve their score.
 
 Snapshots upload every two minutes. A verified initial HF upload is required before
-any rental. A backup gap above ten minutes stops inference. The same repository gets
+any rental. After launch, backup lag is reported and retried without stopping inference. The same repository gets
 final official reports and results. Credentials, SSH/TLS private keys and Docker login
 are outside the artifact tree. Uploads copy a consistent state snapshot, then verify
 the uploaded state by reading it from an immutable HF commit.
@@ -329,8 +359,8 @@ Lite checkpoints now request `push_run_dir(..., atomic_commit=True)`, using one
 `create_commit` transaction for the snapshot and card, followed by the existing
 revision-pinned state readback. Other publishers retain their existing defaults.
 This prevents partially committed ledgers from being mistaken for full backups
-and reduces commit traffic; it does not bypass HF rate limits or loosen the
-backup breaker. Verify an actual upload/readback before resuming paid inference.
+and reduces commit traffic; it does not bypass HF rate limits or guarantee HF availability. The later recovery removes HF freshness as an
+inference breaker; persistent local checkpoints remain authoritative until upload succeeds. Verify an actual upload/readback before resuming paid inference.
 Archive prior sources and manifest in `metadata/pre-atomic-upload`, and record
 the deployment and recovery calculation in `metadata/atomic-upload-migration.json`.
 
@@ -358,7 +388,7 @@ LITE_BUDGET_USD=100
 ```
 
 Start `lasr-swebench-lite.service`. The service and independent reaper read the same
-config. The ten target replicas are requested at the outset without a pilot;
+config. The configured target replicas are requested at the outset without a pilot;
 ready replicas work while missing slots retry using the fixed fallback policy.
 Only one campaign may occupy this service at a time. Use `resume` with the same
 config after inspecting an interruption; it never resets the cumulative budget.

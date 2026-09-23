@@ -75,22 +75,22 @@ def main():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'synthetic', [iid])
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'synthetic', [iid], time.time() + 600)
         state = read(root / 'metadata/state.json')
         assert state['tasks'][iid]['status'] == 'valid', str(root)
         attempt = state['tasks'][iid]['attempts'][0]
         assert attempt['prediction']['model_patch'].strip() == row['patch'].strip()
         # Repeating the work request must not send another API request.
-        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'resume-check', [iid])
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'resume-check', [iid], time.time() + 600)
         assert calls == [0, 1, 2]
         capped_iid = next(r['instance_id'] for r in rows if r['repo'] == 'astropy/astropy')
         with State(root).edit() as data:
             data['tasks'][capped_iid] = {'status': 'pending', 'attempts': []}
-        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-check', [capped_iid])
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-check', [capped_iid], time.time() + 600)
         capped = read(root / 'metadata/state.json')['tasks'][capped_iid]
         assert capped['status'] == 'valid' and capped['attempts'][0]['exit_status'] == 'LimitsExceeded'
         assert capped['attempts'][0]['prediction']['model_patch'] == ''
-        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-resume', [capped_iid])
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-resume', [capped_iid], time.time() + 600)
         assert capped_calls == [0], 'Truncated response must never be retried'
     finally:
         server.shutdown()
