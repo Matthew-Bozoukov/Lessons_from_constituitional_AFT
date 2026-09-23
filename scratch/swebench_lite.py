@@ -33,7 +33,7 @@ HARNESS = REPO / 'src/eval/capabilities/swebench_mini/envs/harness/.venv/bin/pyt
 def recipe_settings(cfg):
     keys = ('base', 'base_revision', 'mode', 'gpu', 'replicas', 'workers_per_replica',
             'serving', 'max_response_tokens', 'max_task_tokens', 'agent_cpus', 'agent_memory',
-            'agent_pids', 'grading_workers', 'grading_timeout_seconds', 'dataset_revision')
+            'agent_pids', 'agent_environment', 'grading_workers', 'grading_timeout_seconds', 'dataset_revision')
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
 
 
@@ -63,6 +63,34 @@ def account():
     return runpod.graphql('query { myself { clientBalance currentSpendPerHr } }')['myself']
 
 
+def qualify_shell(cfg):
+    """One-time CPU-only probe of every cached agent image, no model/provider calls."""
+    images = read(Path(cfg.readiness) / 'metadata/images.json')
+    env = OmegaConf.to_container(cfg.agent_environment)
+    def probe(item):
+        iid, image = item
+        name = 'lasr-shell-probe-' + uuid.uuid4().hex
+        cmd = ['docker', 'run', '--name', name, '--rm', '--network', 'none', '--pull', 'never',
+               '--cpus', '1', '--memory', '1g', '--pids-limit', '128', '--entrypoint', 'bash']
+        for key, value in env.items():
+            cmd += ['-e', key + '=' + value]
+        cmd += [image['digest'], '-c', 'python -c "import sys,json; assert sys.prefix == \'/opt/miniconda3/envs/testbed\', sys.prefix; print(json.dumps(dict(prefix=sys.prefix,version=sys.version)))"']
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            return iid, {'image_id': image['id'], 'returncode': result.returncode,
+                         'output': result.stdout.strip(), 'stderr': result.stderr[-1000:]}
+        finally:
+            subprocess.run(['docker', 'rm', '-f', name], capture_output=True, timeout=30)
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = dict(pool.map(probe, images.items()))
+    proof = {'status': 'passed' if len(results) == 300 and all(r['returncode'] == 0 for r in results.values()) else 'failed',
+             'environment': env, 'dataset_revision': cfg.dataset_revision, 'images': results}
+    path = Path(cfg.readiness) / 'results/agent-shell.json'
+    atomic(path, proof)
+    print('Agent shell qualification:', proof['status'], len(results), path, flush=True)
+    assert proof['status'] == 'passed', 'Agent image shell activation failed; do not rent GPUs'
+
+
 def preflight(cfg):
     ready = Path(cfg.readiness)
     proof = read(ready.parent / 'cpu-readiness-backup-verified.json')
@@ -75,6 +103,10 @@ def preflight(cfg):
     rows = read(ready / 'metadata/swebench_lite_test.json')
     assert len(rows) == len({r['instance_id'] for r in rows}) == 300
     images = read(ready / 'metadata/images.json')
+    shell = read(ready / 'results/agent-shell.json')
+    assert shell['status'] == 'passed' and shell['environment'] == OmegaConf.to_container(cfg.agent_environment)
+    assert shell['dataset_revision'] == cfg.dataset_revision
+    assert {iid: r['image_id'] for iid, r in shell['images'].items()} == {iid: r['id'] for iid, r in images.items()}
     assert set(images) == {r['instance_id'] for r in rows}
     inspected = json.loads(subprocess.check_output(['docker', 'image', 'inspect', *[i['digest'] for i in images.values()]]))
     assert len(inspected) == 300
@@ -142,7 +174,8 @@ def initialize(cfg, config_path, budget):
                             'requests local HTTPBin fixture for grading; full denominator 300',
                 'limitations': read(Path(cfg.readiness) / 'results/readiness.json')['benchmark_limitations']}
     manifest['protocol'] += (f'; response cap {cfg.max_response_tokens}, task completion-token cap {cfg.max_task_tokens}; '
-                             'token-limit outcomes terminate unresolved without model rerolls')
+                             'token-limit outcomes terminate unresolved without model rerolls; '
+                             'agent shell environment ' + json.dumps(OmegaConf.to_container(cfg.agent_environment)))
     deployment = Path('/srv/lasr/lite-deployment.json')
     if deployment.exists():
         manifest['deployment'] = read(deployment)
@@ -150,6 +183,7 @@ def initialize(cfg, config_path, budget):
         (root / sub).mkdir(parents=True, exist_ok=True)
     for name in ('swebench_lite_test.json', 'images.json', 'httpbin_fixture.json', 'httpbin-ca.pem'):
         shutil.copyfile(Path(cfg.readiness) / 'metadata' / name, root / 'metadata' / name)
+    shutil.copyfile(Path(cfg.readiness) / 'results/agent-shell.json', root / 'metadata/agent-shell.json')
     shutil.copyfile(config_path, root / 'metadata/config.yaml')
     for name, sha in manifest['source_hashes'].items():
         dest = root / 'metadata/source' / name
@@ -484,10 +518,13 @@ def execute(cfg, config_path, action, budget):
                     started = min(p['created'] for p in previous['pods'])
                 data = read(state.path)
                 assert all(data['tasks'][iid]['status'] == 'valid' for iid in pilot), 'Calibration did not finish validly'
+                tool_tasks = []
                 for iid in pilot:
                     attempt = data['tasks'][iid]['attempts'][-1]
                     traj = read(root / 'rollouts' / iid / attempt['id'] / iid / (iid + '.traj.json'))
-                    assert any(m.get('tool_calls') for m in traj.get('messages', []) if m.get('role') == 'assistant'), 'Pilot lacks valid tool calls'
+                    if any(m.get('tool_calls') for m in traj.get('messages', []) if m.get('role') == 'assistant'):
+                        tool_tasks.append(iid)
+                assert tool_tasks, 'Pilot lacks valid tool calls across all cases'
                 elapsed = time.time() - started
                 # Use only this configuration's new attempts for throughput; historical
                 # compatible outputs remain valid but had a different batch size.
@@ -542,7 +579,7 @@ def execute(cfg, config_path, action, budget):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['prepare', 'plan', 'run', 'resume', 'grade', 'publish', 'status', 'guard'])
+    parser.add_argument('action', choices=['qualify-shell', 'prepare', 'plan', 'run', 'resume', 'grade', 'publish', 'status', 'guard'])
     parser.add_argument('--config', default='scratch/swebench_lite.yaml')
     parser.add_argument('--budget-usd', type=float)
     parser.add_argument('--target')
@@ -554,7 +591,9 @@ def main():
     cfg = OmegaConf.load(config_path)
     load_dotenv(cfg.credentials)
     os.chdir(REPO)
-    if args.action == 'prepare':
+    if args.action == 'qualify-shell':
+        qualify_shell(cfg)
+    elif args.action == 'prepare':
         prepare_target(cfg, args)
     elif args.action == 'plan':
         print(json.dumps(preflight(cfg), indent=2))

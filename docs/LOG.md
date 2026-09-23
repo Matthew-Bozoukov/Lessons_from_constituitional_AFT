@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Corrected Lite agent shell before fleet expansion
+
+**Finding.** During eight-worker calibration, requests reproduction commands used
+`/opt/miniconda3/bin/python` (3.11.5), while the cached task image supplies a separate
+`testbed` environment. Stock mini-SWE-agent 2.2.1's benchmark config uses `bash -c`,
+which does not source the image's Conda activation in `/root/.bashrc` by default.
+This can waste model work on irrelevant dependency errors and distort scores.
+
+**Correction.** Set `BASH_ENV=/root/.bashrc` for every agent command. A CPU-only
+qualification checked `sys.prefix` in all 300 digest-pinned images: all passed with
+`/opt/miniconda3/envs/testbed`. Add that cached qualification to every rental gate.
+The real-agent synthetic smoke now explicitly asserts the active Python environment.
+Preserve all earlier trajectories/configs as superseded calibration diagnostics;
+restart scored coverage uniformly at 0/300, keeping all historical rental costs
+inside the same $100 GPU cap. No DA model or unrelated pod is touched.
+
+**Performance evidence.** Eight simultaneous agents reached roughly 250 generated
+tokens/s on one H200, with low cache pressure and no preemptions. This is an early
+serving measurement, not a completed-task throughput or final cost estimate.
+
+**Next.** Finish corrected-shell calibration and grading before the four-GPU fleet.
+
 ## 2026-09-23 — Lite concurrency calibration and bounded protocol
 
 **Hypothesis.** Higher per-GPU batching and explicit generation budgets should

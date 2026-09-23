@@ -140,10 +140,13 @@ Every replica serves the same BF16 LoRA. Individual trajectories remain sequenti
 The initial three-worker pilot demonstrated working prefix caching (94.9% cumulative
 hit rate), zero cache preemptions and low active KV occupancy, but one uncapped
 response continued for many minutes. Its GPU was terminated before retuning. The
-five completed trajectories remain saved; an explicit migration checks every
-recorded response and total completion usage against the new limits before retaining
-them. Their original configs are preserved and they are excluded from the new
-throughput measurement. The interrupted attempt remains in the audit trail.
+initial trajectories remain saved. A later shell audit discovered that upstream's
+`bash -c` did not activate the images' `testbed` Conda environment. All attempts from
+before that correction, including the five initially retained compatible submissions,
+were superseded together and archived under `metadata/uncorrected-shell/`.
+They are calibration diagnostics, excluded from the final score. All 300 scored
+tasks run afresh with the same corrected environment. Historical rental costs remain
+in the cumulative ledger; no budget is reset.
 
 The protocol now caps each response at 16,384 completion tokens and each task at
 65,536 completion tokens (reasoning included), in addition to 250 agent steps.
@@ -195,7 +198,8 @@ as such. `src/eval/run_eval.py` still owns vLLM serving, with 131,072 context,
 concurrency eight, prefix caching, and the pinned thinking template/base/adapter.
 
 Declared environment changes: no agent-container networking; cached images by
-digest; agent caps of two CPUs, 4 GiB RAM and 512 PIDs; local HTTPBin only during
+digest; `BASH_ENV=/root/.bashrc` activates each image's existing `testbed` environment
+for every command; agent caps of two CPUs, 4 GiB RAM and 512 PIDs; local HTTPBin only during
 requests grading. The two known requests no-fix passes remain in the denominator.
 Record these settings identically for later DA comparisons.
 
@@ -253,6 +257,7 @@ The CPU-generated SSH private key stays on that CPU host. Then:
 ```bash
 bash /srv/lasr/repo/scratch/swebench_lite_install.sh
 scratch/swebench_cpu_env/.venv/bin/python -m unittest scratch.test_swebench_lite -v
+scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite qualify-shell
 scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite plan
 ```
 
@@ -263,6 +268,12 @@ with a skipped mutation that cannot allocate. Actual timed termination and vLLM
 serving remain to be exercised by the first paid pilot; they are not proven by the
 CPU-only tests. Cleanup failures leave watchdogs active. CPU loss still relies on
 the provider expiry, which is why it is mandatory for this fleet.
+
+`qualify-shell` is CPU-only and verifies Python's prefix is the image's `testbed`
+environment in all 300 cached images. It writes `results/agent-shell.json` in the
+CPU readiness directory. Subsequent preflight checks reuse that qualification only
+when image IDs, dataset revision and shell environment still match; they do not
+repeat 300 container probes on each model. The proof is copied into every run.
 
 ## Validation record
 

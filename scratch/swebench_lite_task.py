@@ -70,6 +70,7 @@ def main():
     config['model']['model_name'] = request['model']
     config['model']['model_kwargs']['api_base'] = request['endpoint']
     config['model']['model_kwargs']['max_tokens'] = request['max_response_tokens']
+    config['environment']['env'].update(request['environment'])
     assert 0 < request['max_response_tokens'] <= request['max_task_tokens']
     install_token_limits(LitellmModel, LimitsExceeded, request['max_response_tokens'], request['max_task_tokens'])
     config['environment']['run_args'] = ['--rm', '--network', 'none', '--pull', 'never',

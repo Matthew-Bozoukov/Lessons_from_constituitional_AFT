@@ -36,7 +36,7 @@ def main():
     atomic(root / 'metadata/manifest.json', {'campaign': campaign, 'limitations': 'SYNTHETIC GOLD PATCH; NOT MODEL EVIDENCE'})
     atomic(root / 'metadata/state.json', {'tasks': {iid: {'status': 'pending', 'attempts': []}}, 'pods': [],
             'deadline': time.time() + 600, 'last_upload': time.time(), 'halt': None})
-    commands = ["printf '%s' '" + base64.b64encode(row['patch'].encode()).decode() + "' | base64 -d > patch.txt",
+    commands = ["python -c \"import sys; assert sys.prefix == '/opt/miniconda3/envs/testbed', sys.prefix\" && printf '%s' '" + base64.b64encode(row['patch'].encode()).decode() + "' | base64 -d > patch.txt",
                 'cat patch.txt', 'echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt']
     calls = []
     capped_calls = []

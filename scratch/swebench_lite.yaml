@@ -25,6 +25,8 @@ max_task_tokens: 65536
 agent_cpus: 2
 agent_memory: 4g
 agent_pids: 512
+agent_environment:
+  BASH_ENV: /root/.bashrc
 port_base: 8100
 disk_gb: 200
 # Proposed launch limits, not a forecast. Actual launch must explicitly pass --budget-usd.
