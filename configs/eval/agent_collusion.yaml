@@ -50,3 +50,10 @@ serving:
   needs_tool_calls: true       # every phase acts through tool calls (tool_choice=required)
   reuses_long_prefixes: true   # each call resends the whole history: prefix caching is
                                # the difference between hours and a day
+  # Qwen3.6's own rendering, NOT the repo's think-mode pin, and deliberately so. Under the
+  # pin (every past turn's reasoning re-rendered) the model stops closing </think> in the
+  # private-reflection phase: on one real request 1/12 renders closed it against 12/12 with
+  # this setting, for the BASE model as well as the adapter, so the harness got no visible
+  # text and retried until it failed (2026-09-23). The paper's Qwen3.6-27B row was measured
+  # with the model's default render, and it is the only reference these numbers have.
+  preserve_thinking: false

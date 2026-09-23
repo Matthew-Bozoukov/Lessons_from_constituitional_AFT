@@ -380,7 +380,8 @@ def resolve_target(hf_path: str) -> TargetSpec:
     return spec
 
 
-def pin_template(template_text: str, mode: str) -> str:
+def pin_template(template_text: str, mode: str,
+                 preserve_thinking: bool | None = None) -> str:
     """Pin thinking mode into a chat template (pure; unit-tested offline).
 
     A top-level Jinja `set` executes after the render context is built, so it shadows any
@@ -390,13 +391,16 @@ def pin_template(template_text: str, mode: str) -> str:
     2026-08-04): training data carries reasoning on every assistant turn, so inference
     context must too — prior-turn `reasoning_content` sent back by a client is kept in
     the render rather than stripped by the template's default. Nothink pins it false:
-    a nothink arm's history carries no reasoning to preserve.
+    a nothink arm's history carries no reasoning to preserve. `preserve_thinking` given
+    explicitly overrides that policy — an eval's own `serving.preserve_thinking`, via
+    plan_serving — and is otherwise left to the mode.
     """
-    return pin_prefix(mode) + template_text
+    return pin_prefix(mode, preserve_thinking) + template_text
 
 
-def pin_prefix(mode: str) -> str:
-    """The two Jinja lines `pin_template` prepends. Depends on `mode` ALONE, not the template.
+def pin_prefix(mode: str, preserve_thinking: bool | None = None) -> str:
+    """The two Jinja lines `pin_template` prepends. Depends on `mode` (and an explicit
+    `preserve_thinking` override) ALONE, not the template.
 
     Split out because the RunPod bootstrap pins the template ON the pod, where the text is
     only available at boot from the tokenizer -- but the prefix is decidable here. One
@@ -405,8 +409,9 @@ def pin_prefix(mode: str) -> str:
     """
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
+    preserve = flag if preserve_thinking is None else str(preserve_thinking).lower()
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\n")
+            f"{{%- set preserve_thinking = {preserve} -%}}\n")
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
@@ -452,6 +457,7 @@ _EVAL_REQUIREMENT_KEYS = {
     "needs_tool_calls",
     "reuses_long_prefixes",
     "rope_scaling",
+    "preserve_thinking",
 }
 
 
@@ -481,7 +487,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
 
     Returns:
         The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
-        `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`, and
+        `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`,
+        `preserve_thinking` (None = the mode's pin, else the eval's explicit choice), and
         `warnings` — operator-facing notes to print at serve time.
 
     Raises:
@@ -603,6 +610,21 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # client-side splitting — see docs/TODO.md.
     reasoning_parser = facts.get("reasoning_parser") if mode == "think" else None
 
+    # The repo pins preserve_thinking with the mode (pin_template). An eval may declare the
+    # model's own default instead, where the thing it reproduces was measured that way:
+    # agent_collusion under the pin re-renders every past turn's reasoning into long agentic
+    # histories and the model stops closing </think> (1/12 vs 12/12 on the same request,
+    # base model too, 2026-09-23). A departure from the repo policy, so it is reported.
+    preserve_thinking = requirements.get("preserve_thinking")
+    if preserve_thinking is not None:
+        if not isinstance(preserve_thinking, bool):
+            raise SystemExit(f"\nserving.preserve_thinking must be true or false; "
+                             f"got {preserve_thinking!r}.")
+        if mode == "think" and not preserve_thinking:
+            warnings.append(
+                "preserve_thinking: false, declared by this eval — past turns' reasoning is "
+                "dropped from the render (the model's default), not kept as the repo pins it.")
+
     return {
         "context_window": int(window),
         "max_num_seqs": int(seqs) if seqs else None,
@@ -610,6 +632,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
         "tool_call_parser": tool_call_parser,
         "prefix_caching": prefix_caching,
         "hf_overrides": hf_overrides,
+        "preserve_thinking": preserve_thinking,
         "warnings": tuple(warnings),
     }
 
@@ -967,13 +990,15 @@ class VllmServer:
             self._load_lora(spec, adapter_dir)
         return self.base_url
 
-    def _pinned_template_path(self, base_model: str, mode: str) -> str | None:
+    def _pinned_template_path(self, base_model: str, mode: str,
+                              preserve_thinking: bool | None = None) -> str | None:
+        """Write the mode-pinned chat template the server loads; None for mode=default."""
         if mode == "default":
             return None
         with open(hf_download(base_model, "tokenizer_config.json")) as f:
             template = json.load(f)["chat_template"]
         return self.executor.write_file(f"chat_template_{mode}.jinja",
-                                        pin_template(template, mode))
+                                        pin_template(template, mode, preserve_thinking))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
         # Facts come from two places, both authoritative and neither overridable: the
@@ -1007,7 +1032,8 @@ class VllmServer:
             argv += ["--enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
-        template = self._pinned_template_path(spec.base_model, spec.mode)
+        template = self._pinned_template_path(spec.base_model, spec.mode,
+                                              plan["preserve_thinking"])
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:

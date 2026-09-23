@@ -94,6 +94,29 @@ def test_pin_template_shadows_request_kwargs():
         pin_template(template, "default")
 
 
+def test_pin_template_preserve_thinking_follows_mode_unless_the_eval_overrides():
+    # Default: preserve_thinking travels with the mode (the repo policy).
+    assert "set preserve_thinking = true" in pin_template("", "think")
+    assert "set preserve_thinking = false" in pin_template("", "nothink")
+    # An eval's explicit choice wins, and only preserve_thinking moves: the mode pin
+    # (enable_thinking) is never negotiable.
+    pinned = pin_template("", "think", preserve_thinking=False)
+    assert pinned.startswith("{%- set enable_thinking = true -%}\n")
+    assert "set preserve_thinking = false" in pinned
+
+
+def test_plan_serving_carries_an_eval_preserve_thinking_choice():
+    from src.infra.endpoints.vllm import plan_serving
+
+    plan = plan_serving(QWEN36_FACTS, {"context_window": 16384, "preserve_thinking": False},
+                        "m", "think")
+    assert plan["preserve_thinking"] is False
+    assert any("preserve_thinking: false" in w for w in plan["warnings"])
+    with pytest.raises(SystemExit, match="true or false"):
+        plan_serving(QWEN36_FACTS, {"context_window": 16384, "preserve_thinking": "no"},
+                     "m", "think")
+
+
 def test_registry_specs_are_wellformed():
     assert EVALS, "registry is empty"
     for name, spec in EVALS.items():
@@ -143,7 +166,8 @@ def test_plan_serving_validates_requirements_against_facts():
                         "m", "think")
     assert plan == {"context_window": 40960, "max_num_seqs": 12,
                     "reasoning_parser": "qwen3", "tool_call_parser": None,
-                    "prefix_caching": False, "hf_overrides": None, "warnings": ()}
+                    "prefix_caching": False, "hf_overrides": None,
+                    "preserve_thinking": None, "warnings": ()}
     # No concurrency request: serve at the family cap.
     assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
                         "think")["max_num_seqs"] == 192  # the profile's verified boot cap (2026-09-22 sweep)
