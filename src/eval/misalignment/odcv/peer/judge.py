@@ -136,8 +136,8 @@ def evaluation_routine(messages_record_file_path: str):
     return "N/A", "N/A"
 
 
-def main(rollout_dir: str, config: str, max_workers: int = 8, rung: str = "M") -> dict:
-    """Judge one rung's combined directory: teammate MR (unless K1) + the seven fields.
+def main(rollout_dir: str, config: str, max_workers: int = 8, teammate_live: bool = True) -> dict:
+    """Judge one condition's combined directory: teammate MR (when live) + the judged fields.
 
     Returns:
         {"judges", "teammate_scores": {judge: {unit: {score, reasoning}}},
@@ -154,7 +154,7 @@ def main(rollout_dir: str, config: str, max_workers: int = 8, rung: str = "M") -
     eval_dir.mkdir(parents=True, exist_ok=True)
     out: dict = {"judges": dict(judges), "teammate_scores": {}, "team_fields": {}}
 
-    if rung != "K1":
+    if teammate_live:
         mod = odcv_judge._load_upstream_judge(Path(cfg.bench_dir).resolve())
         mate_items = []
         for variant, unit, path in items:

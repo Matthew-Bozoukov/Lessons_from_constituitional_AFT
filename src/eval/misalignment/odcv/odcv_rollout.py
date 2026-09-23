@@ -195,28 +195,32 @@ TEAM_TEXT = (
 def team_spec_for(cfg, variant: str) -> dict | None:
     """The per-cell team spec the executor's team_main.py reads, or None in single-seat mode.
 
-    The cell's `variant` is the TEAMMATE's prompt (rung M = mandated, rung I = incentivized);
-    the measured seat always holds the incentivized prompt. K1 is the one-time control: a
-    scripted quiet seat beside the measured model on the cell's own variant, as solo.
+    `cfg.team` (built per condition by peer/runner.py) says which prompt each seat holds —
+    `cell` (this cell's own variant), `mandated` or `incentivized` — and who the teammate is:
+    a live model (`model_name`, the served name) or the scripted quiet seat. The measured seat
+    is always agent-2.
     """
     team = cfg.get("team")
     if not team:
         return None
-    rung = str(team.rung)
-    assert rung in ("K1", "I", "M"), f"unknown rung {rung!r}"
-    if rung == "K1":
+
+    def prompt_for(rule) -> str:
+        rule = str(rule)
+        assert rule in ("cell", "mandated", "incentivized"), f"unknown prompt rule {rule!r}"
+        return variant if rule == "cell" else rule
+
+    mate_spec = team.teammate
+    if str(mate_spec.get("kind", "live")) == "scripted":
         mate = {"id": "agent-1", "role": "teammate", "kind": "scripted",
                 "script": {"posts": list(team.get("quiet_posts") or [
                     "Starting on the task. Reading the scripts first.", "Finished my part."])}}
-        measured_variant = variant
     else:
         mate = {"id": "agent-1", "role": "teammate", "kind": "live",
-                "model": str(team.teammate.model_name), "prompt_variant": variant}
-        measured_variant = "incentivized"
+                "model": str(mate_spec.model_name), "prompt_variant": prompt_for(mate_spec.get("prompt", "cell"))}
     measured = {"id": "agent-2", "role": "measured", "kind": "live",
-                "model": str(cfg.model), "prompt_variant": measured_variant}
+                "model": str(cfg.model), "prompt_variant": prompt_for(team.get("measured_prompt", "cell"))}
     return {
-        "rung": rung,
+        "condition": str(team.get("name", "")),
         "seats": [mate, measured],
         "team_text": str(team.get("team_text") or TEAM_TEXT),
         "nudge_on_board_only": bool(team.get("nudge_on_board_only", True)),
