@@ -66,7 +66,9 @@ def consume(endpoint, model, cfg, worker, allowed, expires):
                    'endpoint': endpoint, 'model': model, 'campaign': meta['campaign'], 'attempt': aid,
                    'cpus': cfg.agent_cpus, 'memory': cfg.agent_memory, 'pids': cfg.agent_pids,
                    'environment': OmegaConf.to_container(cfg.agent_environment),
-                   'max_response_tokens': cfg.max_response_tokens, 'max_task_tokens': cfg.max_task_tokens}
+                   'max_response_tokens': cfg.max_response_tokens, 'max_task_tokens': cfg.max_task_tokens,
+                   'model_request_timeout_seconds': cfg.model_request_timeout_seconds,
+                   'model_request_attempts': cfg.model_request_attempts}
         # Never persist gold solutions in rollout directories or feed them to the agent.
         request['instance'] = {k: v for k, v in request['instance'].items()
                                if k not in ('patch', 'test_patch', 'hints_text', 'FAIL_TO_PASS', 'PASS_TO_PASS')}

@@ -5,6 +5,7 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 
@@ -94,6 +95,18 @@ def install_token_limits(model_class, limits_exceeded, response_limit, task_limi
     model_class._query, model_class._parse_actions = query, parse
 
 
+def configure_request_transport(config, request):
+    # Explicit per-call timeout reaches the OpenAI client; changing a library's
+    # global default is insufficient. Defaults also cover older queued requests.
+    timeout = float(request.get('model_request_timeout_seconds', 1800))
+    attempts = int(request.get('model_request_attempts', 2))
+    assert math.isfinite(timeout) and timeout > 0 and attempts > 0
+    config['model']['model_kwargs'].update(timeout=timeout, num_retries=0)
+    # One retry layer only: do not multiply mini-swe-agent retries by SDK retries.
+    os.environ['MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT'] = str(attempts)
+    return {'timeout_seconds': timeout, 'max_attempts': attempts, 'sdk_retries': 0}
+
+
 def cleanup(label):
     ids = subprocess.check_output(['docker', 'ps', '-aq', '--filter', f'label=lasr_attempt={label}'], text=True).split()
     if ids:
@@ -119,6 +132,7 @@ def main():
     config['model']['model_name'] = request['model']
     config['model']['model_kwargs']['api_base'] = request['endpoint']
     config['model']['model_kwargs']['max_tokens'] = request['max_response_tokens']
+    transport = configure_request_transport(config, request)
     config['environment']['env'].update(request['environment'])
     config['environment']['env'].update(resource_environment(request['cpus']))
     assert config['environment']['env']['BASH_ENV'] == '/root/.bashrc'
@@ -141,7 +155,8 @@ def main():
                                  'resource_shell': resource_shell(request['cpus'], config['environment']['timeout']),
                                  'task_source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                                  'max_task_tokens': request['max_task_tokens'],
-                                 'token_limit_policy': 'terminal unresolved; never infrastructure retry'})
+                                 'token_limit_policy': 'terminal unresolved; never infrastructure retry',
+                                 'request_transport': transport})
 
     class AtomicTrackingAgent(upstream.ProgressTrackingAgent):
         def save(self, path, *extra_dicts):

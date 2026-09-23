@@ -35,6 +35,9 @@ recipe_path: /srv/lasr/recipes/qwen36-h100nvl-lite.json
 pilot_tasks_per_repo: 3
 max_response_tokens: 16384
 max_task_tokens: 65536
+# A 16k-token response needs ~14 minutes at the observed ~20 tokens/s.
+model_request_timeout_seconds: 1800
+model_request_attempts: 2
 agent_cpus: 2
 agent_memory: 4g
 agent_pids: 512

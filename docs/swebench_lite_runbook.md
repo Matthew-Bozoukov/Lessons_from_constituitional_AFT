@@ -116,6 +116,25 @@ See `docs/GOTCHAS.md` for the observed failure modes and their fixes. The run is
 heterogeneous across its earlier phases; completion alone does not establish a
 clean, uniform six-GPU performance benchmark.
 
+## Request-timeout correction (2026-09-23)
+
+The recovery exposed LiteLLM hosted_vllm's 600-second HTTP read default. At the
+observed 19-22 tokens/second this can cancel a response before its unchanged
+16,384-token cap. New attempts explicitly use 1,800 seconds per request, no
+LiteLLM/SDK retries, and at most two mini-swe-agent attempts. Token/step budgets
+and scoring are unchanged. Old Python processes retain their original timeout;
+source deployment alone cannot change an in-flight client.
+
+`metadata/request-timeout-migration.json` records which attempts were still active
+at deployment and which completed outcomes must remain immutable. The single
+`lasr-swebench-timeout-recovery.service` waits for the active job to finish normally,
+checks that its owned GPUs are gone and submits one resume through the existing
+coordinator. It cannot rent directly, reset the $120 cumulative cap or restart
+after a recorded halt. The coordinator sizes this final fleet to at most six pods
+and four workers per pod; eight remaining tasks need at most two pods. No chat
+monitor is enabled. Cancel a queued continuation explicitly with
+`systemctl stop lasr-swebench-timeout-recovery.service`.
+
 ## Resumption, grading and backup
 
 For an interrupted run, inspect the saved reason/logs, repair the infrastructure,

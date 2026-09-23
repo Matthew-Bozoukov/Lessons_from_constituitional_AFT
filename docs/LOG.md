@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Correct the Lite inference-request timeout without restarting the active fleet
+
+**Finding.** At 290 completed tasks, eight of nine active attempts had logged
+600-second LiteLLM request timeouts. Server logs showed ~19-22 tokens/second per
+request, making a full 16k-token response longer than the client deadline. Most
+affected checkpoints stopped advancing while inference repeatedly regenerated
+the same turn. Two conversations subsequently completed; their outcomes remain.
+
+**Method.** Set an explicit 1,800-second request timeout for new agents and bound
+retries to one layer with two attempts. Preserve the active cohort and all completed
+results. Stage a one-shot continuation after normal drain and verified GPU cleanup;
+keep the cumulative $120 cap, model/token limits, and paused chat heartbeat.
+
+**Validation.** The installed LiteLLM hosted_vllm path, with only HTTP sends mocked,
+reproduced 600-second default and 1,800-second overridden read timeouts. Unit tests
+cover the explicit transport settings and continuation refusing user stops and
+expanded scope. This fixes future attempts; already-running clients retain their
+old setting. Exact transition evidence travels with the campaign on HF.
+
+**Next.** Finish and grade the current cohort, retry only eligible unfinished tasks
+with the corrected transport, and verify final HF publication and GPU teardown.
+
 ## 2026-09-23 — Resume only unfinished Lite tasks with nonfatal backups and audited reservations
 
 **Hypothesis.** Completing the 47 remaining no-DA tasks needs corrected orchestration,

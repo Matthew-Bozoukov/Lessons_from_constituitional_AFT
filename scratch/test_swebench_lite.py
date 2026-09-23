@@ -16,7 +16,7 @@ from scratch.swebench_lite_state import State, atomic, classify, read, lock
 from scratch import swebench_lite as fleet
 from scratch import swebench_lite_worker as worker
 from src.infra import runpod
-from scratch.swebench_lite_task import install_token_limits, resource_shell
+from scratch.swebench_lite_task import install_token_limits, resource_shell, configure_request_transport
 
 
 class ResourceLimitTests(unittest.TestCase):
@@ -45,6 +45,15 @@ class ResourceLimitTests(unittest.TestCase):
 
 
 class TokenBudgetTests(unittest.TestCase):
+    def test_explicit_request_timeout_and_single_retry_layer(self):
+        config = {'model': {'model_kwargs': {'temperature': 0, 'max_tokens': 16384}}}
+        with patch.dict(os.environ, {}, clear=False):
+            policy = configure_request_transport(config, {})
+            self.assertEqual(config['model']['model_kwargs'],
+                             {'temperature': 0, 'max_tokens': 16384, 'timeout': 1800.0, 'num_retries': 0})
+            self.assertEqual(os.environ['MSWEA_MODEL_RETRY_STOP_AFTER_ATTEMPT'], '2')
+            self.assertEqual(policy['max_attempts'], 2)
+
     def model(self):
         class Stop(Exception):
             def __init__(self, *messages):
@@ -181,6 +190,20 @@ class LeaseTests(unittest.TestCase):
 
 
 class RentalTests(unittest.TestCase):
+    def test_continuation_refuses_user_stop_and_preserves_valid_outcomes(self):
+        from scratch.swebench_timeout_recovery import eligible
+        cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+        state = {'pods': [], 'halt': 'signal 15', 'tasks': {
+            'done': {'status': 'valid', 'attempts': []}, 'retry': {'status': 'invalid', 'attempts': [{}]}}}
+        manifest = {'source_hashes': {}, 'config': OmegaConf.to_container(cfg), 'budget_usd': 120}
+        with self.assertRaisesRegex(RuntimeError, 'halted'):
+            eligible(state, manifest, cfg, {'unfinished_ids': ['retry']})
+        state['halt'] = None
+        with patch('scratch.swebench_timeout_recovery.sources', return_value={}):
+            self.assertEqual(eligible(state, manifest, cfg, {'unfinished_ids': ['retry']}), ['retry'])
+            with self.assertRaisesRegex(AssertionError, 'scope expanded'):
+                eligible(state, manifest, cfg, {'unfinished_ids': []})
+
     def test_backup_outage_does_not_interrupt_running_agent(self):
         with tempfile.TemporaryDirectory() as temp:
             cfg = OmegaConf.load('scratch/swebench_lite.yaml')

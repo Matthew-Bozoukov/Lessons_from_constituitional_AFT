@@ -1354,3 +1354,33 @@ push that follows it would overwrite the moved repo. A `-suffix` rename is off-g
   those limitations with the final score. A pinned, prebuilt serving image would
   remove much of cold package installation; it remains future work, not an
   optimization already demonstrated by this run.
+
+## SWE-bench long generations can exceed the inference client's default timeout (2026-09-23)
+
+The pinned mini-swe-agent 2.2.1 passes `model.model_kwargs` to LiteLLM. Without
+an explicit timeout, its `hosted_vllm` HTTPX path used 600 seconds in the installed
+agent environment. This is separate from the Docker command timeout, the 90-minute
+task limit and the pod expiry. At 19-22 tokens/second, 16,384 output tokens take
+12-14 minutes before prefill overhead. Repeated 10-minute request aborts discarded
+work and regenerated the same turn; seven tasks had checkpoints stalled for
+13-76 minutes while the servers were still decoding. Eight active attempts had
+logged timeouts, although two conversations continued making progress.
+
+Set an explicit per-call `timeout: 1800` in `model.model_kwargs`; do not rely on
+`litellm.request_timeout`, whose displayed global default did not match this
+provider path. Keep one bounded retry layer (`num_retries: 0` in LiteLLM, maximum
+two mini-swe-agent attempts). The installed-client test intercepts HTTPX sends
+and verifies the baseline 600-second and corrected 1,800-second read timeouts.
+Record the effective settings in each attempt's scaffold and campaign config.
+
+Editing Python/YAML does not change clients already constructed in running Python
+processes. Do not restart healthy GPU servers or reroll completed outcomes to
+apply it. Let the active cohort drain, then retry only infrastructure-invalid or
+unattempted tasks with the corrected client. The one-shot
+`lasr-swebench-timeout-recovery.service` waits for the existing coordinator to
+finish normally and verifies cleanup, scope, code/config and remaining budget
+before submitting one resume. It refuses a recorded user stop or safety halt.
+It is a job continuation, not a chat heartbeat; the latter remains paused. To
+cancel this queued continuation, stop that service as well as the coordinator.
+Evidence: `metadata/request-timeout-migration.json` and
+`metadata/timeout-httpx-proof.json`; earlier attempts remain preserved.

@@ -38,6 +38,7 @@ def recipe_settings(cfg):
             'agent_pids', 'agent_environment', 'grading_workers', 'grading_timeout_seconds', 'dataset_revision',
             'fallback_gpus', 'cuda_versions', 'cpu_worker_limit', 'allocation_fallback_after_seconds',
             'allocation_fallback_after_attempts')
+    keys += ('model_request_timeout_seconds', 'model_request_attempts')
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
 
 
@@ -159,7 +160,7 @@ def sources():
                                'src/model_profile.py', 'configs/models/qwen36.yaml', 'src/naming.py',
                                'src/infra/huggingface.py', 'src/utils.py', 'pyproject.toml',
                                'src/eval/capabilities/swebench_mini/agent.py', 'src/eval/capabilities/stats.py',
-                               'scratch/swebench_local_httpbin.py', 'scratch/swebench_cpu_env/uv.lock',
+                               'scratch/swebench_local_httpbin.py', 'scratch/swebench_timeout_recovery.py', 'scratch/swebench_cpu_env/uv.lock',
                                'src/eval/capabilities/swebench_mini/envs/agent/uv.lock',
                                'src/eval/capabilities/swebench_mini/envs/harness/uv.lock']]
     return {str(p.relative_to(REPO)): digest(p) for p in paths}
