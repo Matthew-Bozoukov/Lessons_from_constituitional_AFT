@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,7 +13,6 @@ import time
 from datasets import load_dataset
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
-import psutil
 
 from src.eval.capabilities.swebench_mini.images import image_name
 from src.eval.capabilities.swebench_mini.grade import verify_environment
@@ -39,6 +37,10 @@ def main():
     out = Path(cfg.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     receipt = json.loads(Path(cfg.receipt).read_text())
+    old_meta = out / "metadata/run_meta.json"
+    if old_meta.exists():
+        previous = json.loads(old_meta.read_text())
+        assert (previous["dataset"], previous["revision"]) == (cfg.dataset, cfg.revision), "Resume dataset changed"
     now = datetime.now(timezone.utc)
     assert now < datetime.fromisoformat(receipt["stop_at"]), "VM expiry reached"
     date = receipt["created_at"][:10]
@@ -86,6 +88,7 @@ def main():
             # Resume only if the saved immutable digest is still present locally.
             old = manifest.get(row["instance_id"])
             if old and subprocess.run(["docker", "image", "inspect", old["digest"]], capture_output=True).returncode == 0:
+                subprocess.run(["docker", "tag", old["digest"], name], check=True)
                 return row["instance_id"], old
             log = out / "pull_logs" / (row["instance_id"] + ".log")
             log.parent.mkdir(exist_ok=True)
@@ -104,9 +107,25 @@ def main():
                     time.sleep(5)
             raise RuntimeError(f"Image pull failed: {name}; see {log}")
         failures = []
+        chosen = [next(r for r in sorted(rows, key=lambda r: r["instance_id"]) if r["repo"] == repo_name)
+                  for repo_name in cfg.gold_repos]
+        # Prove grading before spending time/bandwidth caching the whole split.
+        for row in chosen:
+            iid, image = pull(row)
+            manifest[iid] = image
+            atomic_json(manifest_path, manifest)
+        state["gold"] = verify_environment(dataset=str(dataset_path), instance_ids=[r["instance_id"] for r in chosen],
+                        out_dir=out / "gold", max_workers=cfg.gold_workers, cache_level="instance",
+                        timeout=cfg.gold_timeout_seconds)
+        assert state["gold"]["passed"], state["gold"]
+        backup()
+        print(f"Gold grading passed: {state['gold']['n_resolved']}/{len(chosen)}", flush=True)
+        last_backed_up = 0
         with ThreadPoolExecutor(max_workers=cfg.pull_workers) as pool:
             pending = [pool.submit(pull, row) for row in rows]
             for future in as_completed(pending):
+                if future.cancelled():
+                    continue
                 try:
                     iid, image = future.result()
                     manifest[iid] = image
@@ -115,19 +134,16 @@ def main():
                 except Exception as exc:
                     failures.append(str(exc))
                     print(f"Image failure: {exc}", flush=True)
-                if len(manifest) % 25 == 0:
+                    for queued in pending:
+                        queued.cancel()
+                if len(manifest) >= last_backed_up + 25:
                     state["images_ready"] = len(manifest)
                     backup()
+                    last_backed_up = len(manifest)
         assert not failures, failures
         assert len(manifest) == len(rows)
         state["images_ready"] = len(manifest)
         assert shutil.disk_usage(info["DockerRootDir"]).free / 2**30 > cfg.min_free_gib
-        chosen = [next(r["instance_id"] for r in sorted(rows, key=lambda r: r["instance_id"]) if r["repo"] == repo_name)
-                  for repo_name in cfg.gold_repos]
-        state["gold"] = verify_environment(dataset=str(dataset_path), instance_ids=chosen,
-                        out_dir=out / "gold", max_workers=cfg.gold_workers, cache_level="instance",
-                        timeout=cfg.gold_timeout_seconds)
-        assert state["gold"]["passed"], state["gold"]
         state["status"] = "ready"
         state["finished_at"] = datetime.now(timezone.utc).isoformat()
         backup()

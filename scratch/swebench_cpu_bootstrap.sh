@@ -8,7 +8,7 @@ test "$(ps -p 1 -o comm=)" = systemd
 chmod 600 /srv/lasr/credentials.env /srv/lasr/receipt.json
 mkdir -p /srv/lasr/runs /srv/lasr/cache
 if ! command -v uv >/dev/null; then
-  curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/0.11.0/install.sh -o /srv/lasr/install-uv.sh
+  curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/0.12.0/install.sh -o /srv/lasr/install-uv.sh
   env UV_INSTALL_DIR=/usr/local/bin sh /srv/lasr/install-uv.sh
 fi
 export UV_CACHE_DIR=/srv/lasr/cache/uv
@@ -42,6 +42,9 @@ systemctl start lasr-vast-expiry.service
 
 uv sync --frozen --project src/eval/capabilities/swebench_mini/envs/agent
 uv sync --frozen --project src/eval/capabilities/swebench_mini/envs/harness
+if ! test -f /root/.ssh/id_ed25519; then
+  ssh-keygen -q -t ed25519 -N "" -C swebench-cpu-to-runpod -f /root/.ssh/id_ed25519
+fi
 cat > /etc/systemd/system/lasr-swebench-prepare.service <<'EOF'
 [Unit]
 Description=Prepare pinned SWE-bench Lite images and prove CPU readiness
@@ -58,7 +61,10 @@ ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.sw
 TimeoutStartSec=6h
 StandardOutput=append:/srv/lasr/runs/prepare.log
 StandardError=append:/srv/lasr/runs/prepare.log
+[Install]
+WantedBy=multi-user.target
 EOF
 systemctl daemon-reload
+systemctl enable lasr-swebench-prepare.service
 systemctl start --no-block lasr-swebench-prepare.service
 systemctl list-timers lasr-vast-expiry.timer --no-pager

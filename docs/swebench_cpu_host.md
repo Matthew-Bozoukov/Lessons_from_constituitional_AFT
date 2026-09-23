@@ -16,10 +16,30 @@ disk without a later instruction. Explicitly report ongoing storage charges.
 No RunPod inference GPU may be rented until the CPU readiness gate below passes.
 Aim to scale inference to eight independent single-GPU replicas after calibration.
 
-No instance has been created yet. Live discovery found a negative Vast balance
-($-1.11 rounded), and all matching VM offers bundle GPUs. Await funding and the
-user's answer on accepting unused bundled GPUs. Do not quietly substitute another
-account, provider, or an ordinary container rental.
+After the user funded Vast and asked to proceed, VM **52229744** was created as
+`nika-swebench-cpu-20260923T123716Z`. SSH and Docker work. The guest has **61 vCPUs,
+197 GiB RAM, 485 GiB filesystem** (477 GiB initially free), less RAM than the offer
+advertised but above the required floor. CPU preparation is currently blocked by
+Docker Hub's anonymous pull quota; RunPod rentals remain forbidden until ready.
+
+Connect from this Windows account:
+
+```powershell
+ssh -i "$HOME/.ssh/msm_audit" -p 47579 root@184.144.154.180
+```
+
+Refresh IP/port from Vast before reconnecting after a restart. SSH is key-only.
+The absolute STOP deadline is **2026-09-24 12:37:16 UTC (13:37 London)**. This stops
+compute and retains the disk; storage still costs approximately **$3.33/day**.
+External Windows task `nika-swebench-cpu-52229744-expiry` checks every five minutes;
+guest `lasr-vast-expiry.timer` checks every minute. Both have completed live checks.
+The provider scheduler rejected requests (SDK float timestamp and then endpoint
+validation errors); **there is no provider-scheduled expiry**. Guest timer requires
+a working guest/network; the external task requires this PC to be running.
+
+HF round-trip upload/download checksum passed. Readiness artifacts:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-cpu-readiness-52229744
+These are infrastructure checks, not model evaluation scores.
 
 Use the isolated `codex/swebench-cheap` worktree, based on main `4e13cb71`. Do not
 change the user's parallel checkout, Docker configuration, or existing rentals.
@@ -46,8 +66,9 @@ directions are $0.01953125/GB in the offer. About $12.93 for 24h plus transfers;
 300 GB downloaded would add about $5.86. Stopped disk is about $3.33/day.
 These are offer arithmetic, not an invoice or a promise of available capacity.
 
-Existing stopped instance `50075064` / `sn-rewardhack` was observed on the account.
-It belongs to other work. Do not start, stop, destroy, or reuse it.
+Existing stopped instance `50075064` / `sn-rewardhack` was observed during the first
+audit, but was absent at provisioning. We did not change it. Never operate on
+unrelated resources; only the exact receipted VM ID belongs to this task.
 
 ## Tools and credentials
 
@@ -255,10 +276,34 @@ if capacity permits. Release each GPU as soon as its remaining work is zero.
 
 ## Implementation status
 
-This document records the required procedure and verified discovery. It is NOT
-evidence that the watchdogs, one-command launcher, readiness receipts, checkpoint
-queue or host have been installed. No CPU or RunPod instance was rented while
-the balance and bundled-GPU question were unresolved. The previous code audit is
+Implemented and deployed: `scratch/swebench_cpu_bootstrap.sh`, CPU-only pinned
+environments, `scratch/swebench_cpu_watchdog.py`, and
+`scratch/swebench_cpu_prepare.py` with `scratch/swebench_cpu.yaml`. Preparation
+freezes all 300 dataset rows, verifies Docker and off-host HF backup, records image
+digests atomically, checks disk reserve, and tests reference patches. Run it as
+`lasr-swebench-prepare.service`; progress is `/srv/lasr/runs/prepare.log`. The service
+survives SSH disconnects. Restart it explicitly after fixing an infrastructure
+failure; completed image records are reused. A failure must never open the GPU gate.
+
+Provisioning receipt is local `output/swebench_cpu/receipt.json` and remote
+`/srv/lasr/receipt.json`. Credentials are remote `/srv/lasr/credentials.env`, root-only,
+with only HF_TOKEN, HF_ORG, USER_PREFIX, VAST_API_KEY. No RunPod credential has been
+sent and no RunPod pod created. A separate CPU-to-RunPod SSH key exists on the guest;
+the existing RunPod provisioner will embed its public key when GPUs are authorized
+by the readiness gate. Never copy its private key into an artifact.
+
+Docker Hub is a cold-start dependency: the live anonymous response advertised
+`100;w=3600` and reached its quota before 300 pulls. The public Google mirror returned
+404 for the four tested SWE images, so it cannot presently replace authentication.
+Use a Docker Hub read-only token via `docker login --password-stdin` on this VM.
+Load DOCKERHUB_USERNAME and DOCKERHUB_TOKEN from the original .env only when supplied;
+never print the token. Docker Pro currently advertises $11/month with unlimited
+standard pull rate; free access is possible but must honor rate-limit waits.
+Do not repeatedly retry a quota error, rent extra hosts to rotate IPs, or rent GPUs
+while waiting. Warm cached images avoid paying this setup cost on every model.
+
+The inference fleet launcher, robust per-task resume/checkpoint queue and automatic
+final grading/publication still need implementation. The code audit is
 `scratch/swebench_lite_audit_2026_09_23.md`; finish its pipeline fixes before scale-up.
 
 References checked 2026-09-23:
