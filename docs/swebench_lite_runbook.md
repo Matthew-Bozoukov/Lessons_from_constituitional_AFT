@@ -232,6 +232,62 @@ Inspect and an explicit mini-SWE-agent integration instead of growing this drive
 into a general framework. Inspect's newer mid-agent checkpointing currently requires
 its development version and explicit agent support.
 
+## CPU capacity and multiple hosts
+
+Live observation on 2026-09-23, while the no-DA campaign continued: the Vast host
+has 61 logical CPUs and 197.93 GiB RAM. A 45-second sample at 20–24 running agents
+averaged 3.41% CPU (2.08 cores), peaked at 5.6%, retained at least 188.14 GiB
+available memory, and showed 0–0.4% I/O wait. Disk traffic averaged 3.04 MiB/s
+read and 2.00 MiB/s write. The evidence is published with the campaign as
+`metadata/cpu-capacity-observation-20260923.json`.
+
+Message timestamps from 33 completed tasks attributed 13.08 of 276.77 task-minutes
+to shell/tool wall time (4.73%); 223.84 minutes were measured between tool results
+and subsequent model responses. Initial inference, startup and other overhead are
+not fully separated. These are wall times, not CPU times, and completed tasks are
+biased toward shorter cases. Evidence: `metadata/cpu-task-timing-20260923.json`.
+Neither this sample nor the small pilot establishes worst-case full-suite demand.
+
+Forty agents is the configured conservative limit, not measured CPU saturation.
+The 4 GiB/container and two CPU/container settings are ceilings, not reservations.
+With a 30 GiB host reserve, the all-containers-at-their-memory-limit bound is
+floor((197.93 - 30) / 4) = 41 agents; the configured fleet rounds down to 40.
+Forty-eight agents would allow 192 GiB in containers, so it needs a deliberately
+qualified memory-overcommit policy or more RAM. Do not silently bypass preflight.
+
+For planning only, if tools occupy 5% of each task and each busy tool consumes
+both allowed CPUs, average tool demand is `agents * 0.05 * 2`: 4.8 cores for 48,
+6.4 for 64, and 8 for 80 agents, plus driver/system overhead. If tool duty rises
+to 50%, those become 48, 64 and 80 cores. Memory peaks, synchronized test bursts,
+Docker storage and grading must be measured before adopting a higher fixed limit.
+Forty-eight to 64 is a plausible next qualification range on this host, not a
+validated setting. Preserve today's 40-agent campaign while gathering evidence.
+
+Keep one CPU host until sustained CPU use approaches 70–80%, runnable work queues
+behind CPU, memory headroom repeatedly drops below roughly 30 GiB, or tool/test
+latency materially increases with concurrency. These are investigation thresholds,
+not newly implemented autoscaling rules. Grading currently uses a separate
+12-worker phase after GPU teardown; generation measurements do not qualify higher
+grading concurrency. Overlapping grading later requires its own resource budget.
+
+At this run's allocated GPU rate of $29.20/hour and CPU rental of approximately
+$0.539/hour (storage extra), one additional similar CPU host would pay for itself
+if it reduced the same job's GPU-active runtime by about 1.8%, excluding setup.
+Cold image downloads and preparation can overwhelm that saving. Prepare any added
+CPU host before renting GPUs, as for the first host.
+
+If multiple hosts become necessary, use one durable shared task queue rather
+than three fixed 100-task shards. Workers claim the next task, heartbeat a lease,
+and durably commit an attempt/result; recovery must fence stale attempts before
+reassignment and preserve completed outcomes. Each host needs the dataset
+metadata and its own image cache, not independent copies of campaign ownership.
+The current JSON ledger and local `flock` are single-host mechanisms; a second
+host requires a coordinator API with transactional storage (a single coordinator
+can use SQLite; Postgres is another option), not copying the ledger between hosts
+or using HF as a transactional queue. Keep HF for durable published artifacts.
+Work stealing avoids shard imbalance; future scheduling can put historically slow
+tasks first without changing their prompts, budgets or scoring.
+
 ## Subsequent models: fixed fleet, no calibration
 
 Only a completed and graded 300-task campaign writes a validated recipe to
