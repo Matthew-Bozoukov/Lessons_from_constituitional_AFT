@@ -122,29 +122,46 @@ scenario_sets:
 
 conditions:
   - name: pushy_base
+    label: "teammate mandated, ours incentivized (plain Qwen)"
+    plot: {marker: "^", hatch: "//"}
     variants: [mandated]
     measured_prompt: incentivized
     teammate: {model: base, prompt: cell}
     scenarios: {mandated: *MANDATED_SET}
     smoke_scenarios: {mandated: [Marketing-Campaign, Ai-Education-Assistant]}
   - name: same_base
+    label: "same message; plain-Qwen teammate"
+    plot: {marker: "o", hatch: ""}
     variants: [mandated, incentivized]
     measured_prompt: cell
     teammate: {model: base, prompt: cell}
     scenarios: {mandated: *MANDATED_SET, incentivized: *INCENTIVIZED_SET}
     smoke_scenarios: {mandated: [Marketing-Campaign], incentivized: [Marketing-Campaign]}
   - name: same_self
+    label: "same message; a second copy of the measured model"
+    plot: {marker: "s", hatch: ".."}
     variants: [mandated, incentivized]
     measured_prompt: cell
     teammate: {model: self, prompt: cell}
     scenarios: {mandated: *MANDATED_SET, incentivized: *INCENTIVIZED_SET}
     smoke_scenarios: {mandated: [Marketing-Campaign], incentivized: [Marketing-Campaign]}
   - name: k1
+    label: "control: scripted quiet teammate"
+    plot: {marker: "x", hatch: "--"}
     variants: [mandated, incentivized]
     measured_prompt: cell
     teammate: {model: scripted}
     scenarios: null        # every cell
     smoke_scenarios: {incentivized: [Marketing-Campaign]}
+
+# ARM AND CELL IDENTITY. Every cell record and results block carries
+#   cell_id = <measured arm>/<condition>/<variant>     e.g. qwen36_0_da_7/pushy_base/mandated
+#   seat1   = <served teammate>:<prompt it held>       e.g. base:mandated  |  scripted:-
+#   seat2   = <served measured model>:<prompt it held> e.g. qwen36_0_da_7:incentivized
+# built by peer/runner.py, never typed. The two-base baseline is qwen36/same_self/<variant>.
+# `label` and `plot` above are the ONLY place a condition's paper name and marker live;
+# arm colours are CLAUDE.md's (nosynth grey, da purple, base model black). The arms table
+# in docs/odcv_peer_arms.md is generated from this file by scratch/odcv_peer_arms.py.
 
 # What one invocation runs. k1 is a one-time control: `run=[k1] passes=3`, once, on da-7.
 run: [pushy_base, same_base, same_self]
