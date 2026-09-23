@@ -94,12 +94,13 @@ scenarios_per_trait: 85
 # reviewed at, so the full run is the smoke at scale rather than an unsmoked variant.
 scenarios_per_call: 2
 
-# 4, not the engine's 2: the message lint here is long (openers, closers, hedges, labels)
-# and the smokes lost 1 row in 54 to it after retries, plus the recipe's documented ~6%
-# content-filter refusals at revise_prompts. 85 per principle leaves 8% headroom over the
-# 78 the mixture draws, so a 4% loss is absorbed; a run that loses more than that should
-# stop, because something else is wrong.
-max_fail_pct: 4.0
+# 7, not the engine's 2. The ceiling is applied PER CALL GROUP, and the scenario stage calls
+# in waves of 32: at 4, two chance failures in one wave (6.2%) killed the second full launch.
+# At 7 a wave stops only at 3+ of 32, and a per-row stage at 54+ of 765 -- still far below
+# anything systematic (the first launch's 10 of 12). Rows lost below the ceiling are just
+# fewer rows: 85 per principle leaves 7 over the 78 the mixture draws, and a principle that
+# ends short is topped up (`--resume` with a larger total_scenarios), not rerun.
+max_fail_pct: 7.0
 
 output_dir: "output/synth_da_multiparty"
 hf_private: false
@@ -122,7 +123,11 @@ models:
   scenarios:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
-    max_tokens: 16384
+    # 32768, not 16384: at 2 scenarios per call the second full launch still lost 2 of its
+    # first 32 calls to the 16,384 cap (the smokes, 0 of 45, were too small to see the tail).
+    # A cap only truncates, so every call that fit before comes out the same; the tail calls
+    # were cut mid-JSON and need only a little more room.
+    max_tokens: 32768
     assumed_tokens: {in: 1400, out: 3200}
   draft:
     model: "anthropic/claude-haiku-4.5"
