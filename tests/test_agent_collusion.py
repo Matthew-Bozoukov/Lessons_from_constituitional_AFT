@@ -70,3 +70,13 @@ def test_write_sequences_cuts_episodes(tmp_path):
     cut = json.loads((tmp_path / names[0]).read_text())["pairs"]
     full = json.loads((src / names[0]).read_text())["pairs"]
     assert cut == full[:3]
+
+
+def test_latest_run_picks_the_record_with_most_episodes(tmp_path):
+    from src.eval.misalignment.agent_collusion.runner import latest_run
+
+    assert latest_run(tmp_path) is None
+    for name, n in (("run_a", 3), ("run_b", 7), ("run_c", 1)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "run.json").write_text(json.dumps({"results": [{}] * n}))
+    assert latest_run(tmp_path) == tmp_path / "run_b" / "run.json"

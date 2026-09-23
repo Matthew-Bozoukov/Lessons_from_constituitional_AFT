@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -94,6 +95,44 @@ def harness_command(python: str, cfg, model: str, seq_dir: Path, index: int,
     ]
 
 
+# Upstream's own construction of the single-trajectory command (experiments.cli), run in the
+# harness venv: `python -m experiments` has no --resume-from, only experiments.runner does,
+# and rebuilding its flag list here would be a second copy of upstream's defaults to drift.
+_INNER_COMMAND = """
+import json, sys
+from pathlib import Path
+from experiments import cli
+args = cli._build_parser().parse_args(sys.argv[1:])
+args.no_preflight = True
+cli._validate_args(args)
+records = cli._load_run_records(args, Path.cwd().resolve())
+print(json.dumps(cli._build_runner_command(args=args, records=records,
+                                           run_index=args.start_index)))
+"""
+
+
+def latest_run(seq_dir: Path) -> Path | None:
+    """The run.json holding the most finished episodes under one sequence's directory."""
+    found = sorted(seq_dir.glob("run_*/run.json"),
+                   key=lambda p: len(json.loads(p.read_text())["results"]))
+    return found[-1] if found else None
+
+
+def resume_command(python: str, cfg, model: str, record: Path, index: int,
+                   out: Path) -> list[str]:
+    """argv continuing one trajectory from `record` at its first unfinished episode.
+
+    Every flag comes from upstream's own builder with the same settings as a fresh run,
+    and the task-sequence directory is the one the record names: the harness refuses a
+    resume whose manifest path or settings differ from the record's.
+    """
+    manifest = Path(json.loads(record.read_text())["run_config"]["manifest"])
+    cli_argv = harness_command(python, cfg, model, manifest.parent, index, out)[3:]
+    built = subprocess.run([python, "-c", _INNER_COMMAND, *cli_argv], cwd=HARNESS,
+                           capture_output=True, text=True, check=True)
+    return json.loads(built.stdout.strip().splitlines()[-1]) + ["--resume-from", str(record)]
+
+
 def run(target, cfg, out_dir: Path) -> dict:
     """Run every configured trajectory against `target` and score them.
 
@@ -122,6 +161,26 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     model = f"openai/{target.model_name}"
     python = harness_python()
+
+    # resume_from: a previous run dir of this eval. Finished trajectories are copied over
+    # as they are, partial ones continue at their first unfinished episode (an episode cut
+    # off mid-way is re-run: run.json is written only at episode boundaries), and the rest
+    # start fresh — so the published run is self-contained either way.
+    prior = Path(cfg.resume_from).resolve() if cfg.get("resume_from") else None
+    plan: dict[int, tuple[str, Path | None]] = {}
+    for i in range(1, n_seq + 1):
+        record = latest_run(prior / "rollouts" / f"seq{i:03d}") if prior else None
+        done_eps = len(json.loads(record.read_text())["results"]) if record else 0
+        if record and done_eps == (n_ep or 10):
+            shutil.copytree(record.parent, rollout_dir / f"seq{i:03d}" / record.parent.name)
+            plan[i] = ("copied", record)
+        elif record and done_eps:
+            plan[i] = ("resumed", record)
+        else:
+            plan[i] = ("fresh", None)
+    if prior:
+        counts = {s: sum(v[0] == s for v in plan.values()) for s in ("copied", "resumed", "fresh")}
+        print(f">>> resuming from {prior}: {counts}", flush=True)
     env = {**os.environ,
            # The harness resolves <PROVIDER>_BASE_URL before <PROVIDER>_API_BASE, so both
            # are pinned: a stray OPENAI_BASE_URL in the driver's shell would otherwise
@@ -133,6 +192,9 @@ def run(target, cfg, out_dir: Path) -> dict:
         "sequences": n_seq, "episodes_per_sequence": n_ep or 10,
         "command_example": harness_command(python, cfg, model, seq_dir, 1,
                                            rollout_dir / "seq001"),
+        "resumed_from": str(prior) if prior else None,
+        "sequence_origin": {f"seq{i:03d}": {"status": s, "record": str(r) if r else None}
+                            for i, (s, r) in plan.items()},
     }, indent=2))
     print(f">>> agent_collusion | {n_seq} trajectories x {n_ep or 10} episodes | "
           f"{model} at {target.base_url} | {int(cfg.concurrency)} in flight", flush=True)
@@ -141,12 +203,16 @@ def run(target, cfg, out_dir: Path) -> dict:
     failed: dict[int, str] = {}
 
     def one(i: int) -> None:
+        status, record = plan[i]
+        if status == "copied":
+            return
+        out = rollout_dir / f"seq{i:03d}"
+        argv = (resume_command(python, cfg, model, record, i, out) if status == "resumed"
+                else harness_command(python, cfg, model, seq_dir, i, out))
         log = log_dir / f"seq{i:03d}.log"
         with log.open("w") as fh:
             proc = subprocess.run(
-                harness_command(python, cfg, model, seq_dir, i,
-                                rollout_dir / f"seq{i:03d}"),
-                cwd=HARNESS, env=env, stdout=fh, stderr=subprocess.STDOUT,
+                argv, cwd=HARNESS, env=env, stdout=fh, stderr=subprocess.STDOUT,
                 check=False)  # a failed trajectory is recorded, not raised
         if proc.returncode != 0:
             tail = "\n".join(log.read_text().splitlines()[-15:])
@@ -171,9 +237,9 @@ def run(target, cfg, out_dir: Path) -> dict:
     for i in range(1, n_seq + 1):
         if i in failed:
             continue
-        found = sorted((rollout_dir / f"seq{i:03d}").glob("run_*/run.json"))
-        assert len(found) == 1, f"seq{i:03d}: expected one run.json, found {found}"
-        run_ = json.loads(found[0].read_text())
+        found = latest_run(rollout_dir / f"seq{i:03d}")
+        assert found, f"seq{i:03d}: no run.json written"
+        run_ = json.loads(found.read_text())
         n_done = len(run_["results"])
         if n_done != (n_ep or 10):
             failed[i] = f"incomplete: {n_done} episodes recorded"

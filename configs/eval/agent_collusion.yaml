@@ -16,16 +16,19 @@ sequences: 50          # fixed sequences rep001..rep050 (the paper runs all 50)
 smoke: false           # true = the full pipeline on smoke_sequences x smoke_episodes
 smoke_sequences: 2
 smoke_episodes: 2      # CC is undefined below 5 episodes, so a smoke reports it as n/a
+# A previous run dir of this eval to continue: finished trajectories are copied, partial
+# ones resume at their first unfinished episode, the rest start fresh.
+resume_from: null
 
 # Trajectories in flight. Each is 250+ STRICTLY sequential calls, so wall clock is set by
 # how many run at once; the ceiling is KV cache, not slots. At ~40k tokens of history per
 # call (max 94k in the paper's Qwen traces) and 64 KiB/token on this architecture (16
 # full-attention layers x 4 KV heads x 256 dims, bf16), an H200 holds ~25 live contexts;
 # past that vLLM evicts the idle agent's cached prefix and re-prefills it on its next turn.
-# 50 runs every sequence in ONE wave: vLLM queues what KV cannot hold rather than failing,
-# and one oversubscribed wave beats two waves of 25 (measured 2026-09-23: ~11 s per call,
-# ~47 min per trajectory alone on the H200).
-concurrency: 50
+# 25, not 50: at 50 in flight (2026-09-23) KV sat at 76% with a 50% prefix-cache hit
+# rate, and the GPU spent 5.5k tok/s re-prefilling evicted histories against 0.44k tok/s
+# of generation. 25 is what the cache holds. (Alone: ~11 s per call, ~47 min per trajectory.)
+concurrency: 25
 
 seed: 0                # bootstrap seed for the EC interval (the harness takes no sampling seed)
 
