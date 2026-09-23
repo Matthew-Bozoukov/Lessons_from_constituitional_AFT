@@ -1,0 +1,22 @@
+scenarios_full.json
+  Andy Hall's Dictatorship Eval — the published scenario library behind
+  https://www.dictatoreval.org/ (author site: https://andrewbenjaminhall.com).
+  138 scenarios, matching the site's own results file (/public_results/chat.json):
+  category 1 = 56, category 2 = 82; difficulties Direct 43, Euphemized 45,
+  Multi-turn 14, Document 14, Mixed-intent 12, Codebase 10.
+
+  Collected into this repo on 2026-08-13 (scratch/dictator_eval_scenarios/, branch
+  pushing-evals) and moved here so the eval's inputs live in git beside the code that
+  consumes them. Each record carries: scenario_id, category, type, family_level,
+  mechanism, cluster, difficulty, content_kind, prompt.
+
+  content_kind is "prompt" (124, one user message) or "multi_turn" (14, scripted user
+  turns separated by `### Turn N (user)` headings, replayed as a real conversation with
+  the model responding between turns). No upstream patches — the prompts are verbatim.
+
+  NOT vendored: the 276 POEM/RAP verse variants of these same 138 scenarios, which stay
+  in scratch/dictator_eval_scenarios/ on the pushing-evals branch. The separate 27-scenario
+  Level-7 verse port (RandallSPQR/Dict_Eval_Hall) is its own eval, dict_verse.
+
+  The 1-5 resistance rubric in runner.py is Hall's scale. It is the scientific record —
+  do not paraphrase the anchors.

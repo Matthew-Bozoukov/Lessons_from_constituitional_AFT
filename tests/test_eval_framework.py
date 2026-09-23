@@ -245,6 +245,10 @@ def test_every_eval_config_declares_its_context_window():
     from src.infra.endpoints.vllm import _EVAL_REQUIREMENT_KEYS
 
     for name, spec in EVALS.items():
+        if spec.tinker_only:
+            # A tinker-only eval is sampled through the Tinker shim; no vLLM server is
+            # started for it, so there is no launch plan for a serving: block to state.
+            continue
         cfg = OmegaConf.load(spec.config)
         window = OmegaConf.select(cfg, "serving.context_window")
         assert window and int(window) > 0, (
@@ -474,7 +478,8 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
     # (agentic_misalignment, swebench_mini, internalization).
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask"}
+        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask",
+        "dictator", "secret_number"}
 
 
 def test_publish_layout_contract(tmp_path):
