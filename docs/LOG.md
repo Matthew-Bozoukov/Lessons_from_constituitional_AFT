@@ -1,6 +1,29 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — SWE-bench Lite CPU host provisioned; inference blocked on image readiness
+
+**Method.** Isolated branch `codex/swebench-cheap`; Vast VM 52229744 with retained
+500 GB disk and user-selected 24-hour STOP deadline. Added a pinned CPU-only uv
+environment, systemd preparation, frozen 300-task Lite dataset, atomic image digest
+records and Hugging Face round-trip verification. Guest and Windows Task Scheduler
+watchdogs target only the receipted VM; six offline watchdog tests pass. Provider
+scheduled-job API requests were rejected, so expiry relies on the two installed
+watchdogs rather than a provider-side schedule.
+
+**Result.** SSH, Docker container execution and HF checksum verification passed.
+Actual guest allocation: 61 vCPUs, 197 GiB RAM, 485 GiB filesystem. Cached 97/300
+images before the anonymous Docker Hub quota blocked further downloads. Preparation
+is paused awaiting authenticated access or quota reset. Two cached gold-patch checks
+were launched separately; their final report is pending. No RunPod GPU was rented;
+no model capability score exists. Artifacts and current status:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-cpu-readiness-52229744
+
+**Next.** Finish all image and reference-patch checks before inference provisioning.
+The reusable procedure and connection details are in `docs/swebench_cpu_host.md`.
+The planned first checkpoint remains the matched no-DA control, revision
+`633908b72a9799fb3e6b101b0a8a82aec3c3d642`; fleet resume/publication fixes are pending.
+
 ## 2026-09-22 — MASK end to end on the new default: 38 min for da-15 with one queue (was 2h40); three same-adapter replicates within 1.5 points; `passes` implemented; the base model re-measured at 58.2
 
 **Hypothesis.** The sweep (entry above) promised ~39 min of generation on an H200 at 192 in
