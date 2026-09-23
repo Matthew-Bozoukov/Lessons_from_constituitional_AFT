@@ -323,11 +323,17 @@ def _repo_sha(hf_path: str, repo_type: str = "model") -> str:
 def resolve_target(hf_path: str) -> TargetSpec:
     """Resolve a --target into a TargetSpec.
 
-    Two forms: `<provider>:<model-id>` (an API endpoint, see API_PROVIDERS) or an HF path
+    Three forms: `tinker://<sampler-checkpoint>` (sampled by Tinker through a local
+    OpenAI-compatible shim, src/infra/endpoints/tinker.py — no weights move and no vLLM
+    starts), `<provider>:<model-id>` (an API endpoint, see API_PROVIDERS) or an HF path
     (adapter or full model). HF repo ids never contain a colon, so the scheme is
     unambiguous. For HF paths only metadata files are downloaded here; weights are pulled
     by vLLM (base) and `fetch_adapter` (adapter), on whichever machine serves.
     """
+    from src.infra.endpoints.tinker import is_tinker_target, resolve_tinker_target
+
+    if is_tinker_target(hf_path):
+        return resolve_tinker_target(hf_path)
     scheme, sep, rest = hf_path.partition(":")
     if sep and scheme in API_PROVIDERS:
         assert rest, f"API target {hf_path!r} names no model (expected {scheme}:<model-id>)"

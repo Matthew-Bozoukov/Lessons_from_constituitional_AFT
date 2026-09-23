@@ -24,6 +24,25 @@ from src.naming import today, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
+def _tinker_endpoint(spec, cfg):
+    """Hold the Tinker shim open for one arm, or do nothing for any other target.
+
+    A `tinker://` spec already carries the shim's localhost base_url (resolve_tinker_target);
+    this is what makes something answer there. Settings come from the eval config's optional
+    `tinker:` block — reasoning effort is a property of how the checkpoint is sampled, so it
+    belongs in the scientific record with the rest of the config, not in a flag.
+    """
+    from src.infra.endpoints.tinker import is_tinker_target, tinker_shim
+
+    if not is_tinker_target(spec.hf_path):
+        return nullcontext()
+    t = cfg.get("tinker") or {}
+    return tinker_shim(spec.hf_path, base_model=spec.base_model,
+                       reasoning=str(t.get("reasoning", "medium")),
+                       max_tokens=int(t.get("max_tokens", 8192)),
+                       log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
+
+
 def _preflight(name: str, args: argparse.Namespace, cfg=None) -> None:
     spec = EVALS[name]
     if spec.needs_docker:
@@ -309,6 +328,14 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     # here, and `resolve_target` is the same call the loop would make.
     specs = []
     for hf_path in targets:
+        from src.infra.endpoints.tinker import is_tinker_target
+
+        if EVALS[args.name].tinker_only and not is_tinker_target(hf_path):
+            raise SystemExit(
+                f"!!! {args.name} takes Tinker checkpoints only ({hf_path} is not one): "
+                "it is sampled through the Tinker shim and has no vLLM launch plan, so "
+                "serving it any other way would run it against an endpoint it was never "
+                "written against. Give it tinker://<run>:<phase>/sampler_weights/<name>.")
         spec = resolve_target(hf_path)
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(
@@ -363,7 +390,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                                   "base_model": spec.base_model, "mode": spec.mode,
                                   **run_kwargs})
 
-            summary = run_fn(served, cfg, out_dir, **run_kwargs)
+            # A tinker target is sampled by Tinker through a local OpenAI-compatible shim,
+            # which lives exactly as long as the arm that needs it: one shim serves one
+            # checkpoint, so an arm ladder restarts it rather than swapping weights.
+            with _tinker_endpoint(spec, cfg):
+                summary = run_fn(served, cfg, out_dir, **run_kwargs)
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
             launch_meta = json.loads(launch_meta_path.read_text())
