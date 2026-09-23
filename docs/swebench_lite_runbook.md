@@ -9,6 +9,15 @@ at `633908b72a9799fb3e6b101b0a8a82aec3c3d642`, on Qwen3.6-27B base revision
 dataset revision `6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2`.
 No DA model is included. The old expensive evaluation is not the matched control.
 
+**Operating preference, 2026-09-23:** this is the initial experimental calibration.
+The user authorized beginning the no-DA job with the proposed $100 GPU ceiling.
+The final reusable pipeline must use a measured, frozen execution recipe for a
+compatible base model and LoRA: rent its chosen fleet concurrently at the outset,
+without repeating per-model GPU-count discovery or gradual scale-up. Save this
+run's timing, cost and concurrency evidence to select that recipe. Recalibration
+belongs to explicit experiments or material serving/hardware changes, not every
+new adapter. The current experimental launcher is not yet that final interface.
+
 ## What to do when Nika says “run SWE-bench Lite for the no-DA control”
 
 1. Read this guide and `docs/swebench_cpu_host.md`. Work on `codex/swebench-cheap`,

@@ -301,7 +301,13 @@ def graphql(query: str, variables: dict | None = None) -> dict:
         raise RuntimeError(f"RunPod GraphQL HTTP {response.status_code}")
     payload = response.json()
     if payload.get("errors") or "data" not in payload:
-        raise RuntimeError("RunPod GraphQL rejected the request; allocation may be ambiguous")
+        detail = "; ".join(str(e.get("message", "provider error")) for e in payload.get("errors", []))
+        # Variable-validation errors can echo request values. Keep useful provider
+        # diagnostics while redacting credentials before anything reaches a log.
+        for key, value in os.environ.items():
+            if value and any(marker in key.upper() for marker in ("TOKEN", "API_KEY", "PASSWORD")):
+                detail = detail.replace(value, "[REDACTED]")
+        raise RuntimeError("RunPod GraphQL rejected the request; allocation may be ambiguous: " + detail[:600])
     return payload["data"]
 
 
