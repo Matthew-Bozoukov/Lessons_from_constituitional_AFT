@@ -1,0 +1,17 @@
+# ABOUTME: CPU-only readiness protocol for the full pinned SWE-bench Lite test split.
+# ABOUTME: No inference rentals are permitted until every readiness check succeeds.
+dataset: princeton-nlp/SWE-bench_Lite
+revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
+split: test
+expected_tasks: 300
+min_cpus: 32
+min_ram_gib: 115
+min_free_gib: 50
+pull_workers: 4
+pull_timeout_seconds: 1800
+pull_attempts: 2
+gold_repos: [django/django, sympy/sympy, psf/requests, scikit-learn/scikit-learn]
+gold_workers: 4
+gold_timeout_seconds: 3600
+out_dir: /srv/lasr/runs/cpu-readiness
+receipt: /srv/lasr/receipt.json
