@@ -28,7 +28,12 @@ A pinned local HTTP/HTTPS fixture now passes **9/9 gold checks**, covering every
 requests task plus Django, SymPy and scikit-learn. This is a declared environment
 deviation, detailed below. Six no-fix checks found two upstream scoring quirks;
 both also pass with the unmodified grader and public service. No tasks are dropped.
-RunPod rentals remain forbidden until the final readiness and backup checks pass.
+The final committed preparation passed at **2026-09-23 13:38:45 UTC**: 9/9 gold,
+the expected 2/6 no-fix baseline, 300 cached images, Docker/network/volume checks,
+and byte-for-byte HF backup verification. This warm readiness run took about two
+minutes. CPU status is **ready**; the inference coordinator still needs the fixes
+listed below before any RunPod rental. Verified infrastructure backup commit:
+`347fcb010e6cf0df5dcb6e914537d90a89679b7a`.
 
 Connect from this Windows account:
 

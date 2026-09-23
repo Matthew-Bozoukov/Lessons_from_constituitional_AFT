@@ -1,6 +1,38 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Full Lite image cache and reproducible CPU grading environment
+
+**Hypothesis.** Warming a persistent CPU/Docker host and removing the public HTTP
+test-service dependency can prevent infrastructure failures from consuming GPU
+time or looking like capability regressions.
+
+**Method.** Vast VM 52229744, isolated `codex/swebench-cheap` branch, all 300 tasks
+from Lite revision `6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2`, harness 4.1.0.
+Authenticated Docker pulls completed the cache. The public HTTPBin gold check
+alternated 3/4, 4/4, 3/4 with HTTP 502 errors. Added a digest-pinned local HTTP/HTTPS
+fixture, per-container hostname mapping and recorded CA trust configuration; kept
+task patches, test patches and scoring labels unchanged. This is a declared
+grading-environment deviation, not an unchanged leaderboard protocol.
+
+**Result.** All 300 images cached, approximately 290 GiB free. Nine reference
+patches passed, including all six requests tasks. Six no-source-fix controls
+resolved two tasks (`psf__requests-2674`, `psf__requests-863`); both also resolved
+under the unmodified official harness against public HTTPBin. Preserve all 300
+tasks and report these baseline scoring limitations, rather than silently removing
+them. CPU preparation now checks both gold outcomes and this no-fix baseline,
+resumes cached digests, and verifies final HF artifact bytes by download. Failed
+attempts and diagnostics are preserved in the infrastructure dataset:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-cpu-readiness-52229744
+Final qualification from code commit `e79d274c` completed successfully at
+13:38:45 UTC, including Docker network/volume checks and verified backup commit
+`347fcb010e6cf0df5dcb6e914537d90a89679b7a`. The warm run took approximately two minutes.
+
+**Next.** Implement the resumable single-model inference coordinator and bounded
+calibration before RunPod scale-up. No inference GPU was rented and no model score
+exists. Connection, repeat setup, protocol details and the retained-disk STOP
+deadline are documented in `docs/swebench_cpu_host.md`.
+
 ## 2026-09-23 — SWE-bench Lite CPU host provisioned; inference blocked on image readiness
 
 **Method.** Isolated branch `codex/swebench-cheap`; Vast VM 52229744 with retained
