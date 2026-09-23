@@ -929,7 +929,12 @@ cd {WORKDIR}
 # boots, and a run whose code silently differs from the commit you asked for is the
 # failure this whole path exists to remove.
 git checkout --detach {sha}
-""" + (KERNEL_BUILD.format(workdir=WORKDIR) if build_kernels else "uv sync"))
+""" + (KERNEL_BUILD.format(workdir=WORKDIR) if build_kernels
+       # Only a TRAIN pod builds the packing kernel. Without the toolchain KERNEL_BUILD
+       # exports, the forced source build fails, `set -e` exits the container, and every
+       # restart then dies on `git clone` into the existing workdir: a pod that bills
+       # while its IP flaps and SSH never answers (2026-09-23, --eval --clone-repo).
+       else "uv sync --no-install-package causal-conv1d"))
         ready.append(sha)
     if weights:
         repos, hf_token = weights

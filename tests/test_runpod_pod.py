@@ -114,6 +114,10 @@ def test_an_eval_pod_can_also_carry_the_repo_so_the_eval_runs_on_the_box():
     # One READY, naming both, so the boot log says what actually finished.
     assert script.count("echo READY") == 1
     assert "echo READY abc1234 + vllm venv at /workspace/vllmenv" in script
+    # No CUDA toolchain on an eval pod: the forced causal-conv1d source build must be
+    # skipped, or the boot crash-loops (2026-09-23).
+    assert "uv sync --no-install-package causal-conv1d" in script
+    assert "BUILDING_CAUSAL_CONV1D" not in script
 
 
 def test_a_pod_serves_the_vllm_this_repo_pins_not_whatever_pypi_has_today():
