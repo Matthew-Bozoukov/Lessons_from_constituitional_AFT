@@ -20,10 +20,12 @@ After the user funded Vast and asked to proceed, VM **52229744** was created as
 `nika-swebench-cpu-20260923T123716Z`. SSH and Docker work. The guest has **61 vCPUs,
 197 GiB RAM, 485 GiB filesystem** (477 GiB initially free), less RAM than the offer
 advertised but above the required floor. Docker browser device login succeeded after
-the user purchased Pro, clearing the anonymous download block. A four-repository gold
-check resolved 3/4: requests-1963 received HTTP 502 from its external httpbin endpoint.
-The failed attempt is preserved, and a fresh gold attempt plus image preparation is
-running. RunPod rentals remain forbidden until all readiness checks pass.
+the user purchased Pro, clearing the anonymous download block. The user's read-only
+Docker token was subsequently verified and installed without logging its value.
+A four-repository gold check first resolved 3/4: requests-1963 received HTTP 502 from
+its external httpbin endpoint. The failed attempt is preserved; the fresh unchanged
+gold attempt passed **4/4**. Image preparation is running. RunPod rentals remain
+forbidden until all readiness checks pass.
 
 Connect from this Windows account:
 
@@ -310,6 +312,19 @@ on the VM, open the exact activation URL it prints, and confirm that VM's code i
 authorized Docker account. This succeeded on 2026-09-23. Keep
 `/root/.docker/config.json` root-only (0600) and outside all backup directories.
 For reproducible provisioning, a read-only token in the original .env remains useful.
+
+The tested token-authentication command (run from the isolated worktree) is:
+
+```powershell
+uv run --project scratch/swebench_cpu_env --frozen python -m scratch.swebench_cpu_auth `
+  --env C:/Users/nikak/source/repos/LASR/teaching_claude_why_replication/.env `
+  --receipt output/swebench_cpu/receipt.json --identity "$HOME/.ssh/msm_audit"
+```
+
+This re-resolves the VM address from Vast, checks the exact receipt ID and label,
+uses the already trusted SSH host key, and sends the token over SSH stdin to
+`docker login --password-stdin`. The helper does not copy the whole .env or print
+provider responses/credentials. New hosts must first have their SSH identity verified.
 
 Gold checks must use fresh attempt directories: the official harness can reuse an
 existing report, including a previous failure. Never overwrite failed evidence or
