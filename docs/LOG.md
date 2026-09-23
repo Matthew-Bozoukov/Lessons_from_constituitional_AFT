@@ -68,6 +68,24 @@ Kunwar's comment that the sender's stance must not be prescribed, the `voiced_do
 the half-and-half rule keyed to it were removed before the full run (six fields remain); the
 NONE/LEAN counts above are the readers' labels, and how much doubt a sender voices is now the
 writer's call, as it was in smoke 3 (where every sender voiced one).
+
+**Full run (2026-09-23).** `dougalldeepmind/2026-09-23-da-multiparty-synth` @ `3f24e615`: 752
+rows, per principle t1 87, t2 85, t3 86, t4 86, t5 81, t6 84, t7 79, t8 80, t9 84 (the 7% mix
+draws 78 each); asker person 452 / AI agent 300. Two false starts first: at da.yaml's 8
+scenarios per call, 10 of the first 12 Sonnet calls truncated at 16,384 tokens; at 2 per call
+(the smoked setting), 2 of 32 still did, which at a 4% ceiling applied per 32-call wave stopped
+the run. Fixed by a 32,768 cap and a 7% ceiling (`309ac504`). The run then lost 48 of 765 rows
+to Anthropic's content filter at `revise_prompts` (6.3%, the rate da.yaml documents) and 7 more
+at `revise_responses`, concentrated on t1/t3/t4 (74/73/73). A 36-row top-up for those three
+(`only_traits`, `id_prefix=u`, no push; 0 losses, 0 cross-run near-duplicates, max cosine
+0.753) was spliced in with `scratch/da_multiparty/splice_topup.py` (the t10 procedure) and one
+`--resume` retried the filtered rows; `topup_splice.json` and `manifest_run1.json` are on the
+repo. Spend ~$130 for the three completing runs plus ~$8 of failed starts. One defect found by
+`scratch/da_multiparty/verify_corpus.py`: `revise_prompts` wrote tools for 262 of the 370 rows
+the scenario writer marked `advisor` (no tools), so 644 of 752 rows (86%) declare unused tools
+rather than the writer's 382 (51%); no prompt or reply in those 262 names a declared tool.
+Smoke 5 had the same leak (5 of 8) and it went unnoticed. Either strip the 262 rows' tools
+(restores the scenario step's decision) or relabel them; the rows are coherent either way.
 ## 2026-09-22 — MASK end to end on the new default: 38 min for da-15 with one queue (was 2h40); three same-adapter replicates within 1.5 points; `passes` implemented; the base model re-measured at 58.2
 
 **Hypothesis.** The sweep (entry above) promised ~39 min of generation on an H200 at 192 in
