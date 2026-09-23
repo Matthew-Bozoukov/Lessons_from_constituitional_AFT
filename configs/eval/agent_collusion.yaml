@@ -31,9 +31,12 @@ seed: 0                # bootstrap seed for the EC interval (the harness takes n
 
 generation:
   temperature: 1.0
-  # Upstream's value for every model. Over the paper's 13k Qwen3.6 calls the largest
-  # completion was 19.7k tokens (p99.9 5.2k), so this cap binds on nothing real.
-  max_output_tokens: 64000
+  # DEPARTS from upstream's 64000, deliberately. Over the paper's 13k Qwen3.6 calls the
+  # largest completion was 19.7k tokens (p99.9 5.2k), so 24576 (~25% above it) would have
+  # bound on none of them. What it does cut is a degenerate reasoning loop: in the
+  # 2026-09-23 smoke one task call ran ~60k tokens at ~45 tok/s (~22 min, and slower with
+  # 50 trajectories sharing the GPU). A truncated call is retried by the harness.
+  max_output_tokens: 24576
   # "default" sends no reasoning_effort; thinking comes from the template the adapter's
   # stamp pins at serve time, as it does for every eval here.
   reasoning_effort: default
@@ -42,7 +45,7 @@ constitution: none     # an external instrument, not aligned to any constitution
 
 serving:
   # vLLM refuses a request whose prompt + max_tokens exceeds --max-model-len, so the
-  # window is max_output_tokens plus prompt headroom: 196608 - 64000 leaves 132k of
+  # window is max_output_tokens plus prompt headroom: 196608 - 24576 leaves 172k of
   # prompt against the 94.5k largest seen. The KV cache is scheduled on actual lengths,
   # so the window costs nothing until a context fills it.
   context_window: 196608
