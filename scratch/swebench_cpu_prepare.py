@@ -47,7 +47,8 @@ def main():
     repo = hf_repo_id(artifact_name(f"swebench-cpu-readiness-{receipt['instance_id']}", date=date))
     state = {"status": "preparing", "dataset": cfg.dataset, "revision": cfg.revision,
              "instance_id": receipt["instance_id"], "started_at": now.isoformat(),
-             "code_sha": receipt["code_sha"], "stop_at": receipt["stop_at"]}
+             "code_sha": receipt["code_sha"], "stop_at": receipt["stop_at"],
+             "preparation_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     fields = {"experiment": "SWE-bench Lite CPU readiness; no model evaluation",
               "date_generated": date, "constitution": "none",
               "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication@{receipt['code_sha']}",
@@ -114,12 +115,14 @@ def main():
             iid, image = pull(row)
             manifest[iid] = image
             atomic_json(manifest_path, manifest)
+        gold_dir = out / "gold_attempts" / now.strftime("%Y%m%dT%H%M%S%fZ")
         state["gold"] = verify_environment(dataset=str(dataset_path), instance_ids=[r["instance_id"] for r in chosen],
-                        out_dir=out / "gold", max_workers=cfg.gold_workers, cache_level="instance",
+                        out_dir=gold_dir, max_workers=cfg.gold_workers, cache_level="instance",
                         timeout=cfg.gold_timeout_seconds)
-        assert state["gold"]["passed"], state["gold"]
+        state["gold"]["artifact_directory"] = str(gold_dir.relative_to(out))
         backup()
-        print(f"Gold grading passed: {state['gold']['n_resolved']}/{len(chosen)}", flush=True)
+        print(f"Gold grading: {state['gold']['n_resolved']}/{len(chosen)}. "
+              "Caching continues; every gold check must pass before readiness.", flush=True)
         last_backed_up = 0
         with ThreadPoolExecutor(max_workers=cfg.pull_workers) as pool:
             pending = [pool.submit(pull, row) for row in rows]
@@ -144,6 +147,7 @@ def main():
         assert len(manifest) == len(rows)
         state["images_ready"] = len(manifest)
         assert shutil.disk_usage(info["DockerRootDir"]).free / 2**30 > cfg.min_free_gib
+        assert state["gold"]["passed"], state["gold"]
         state["status"] = "ready"
         state["finished_at"] = datetime.now(timezone.utc).isoformat()
         backup()
