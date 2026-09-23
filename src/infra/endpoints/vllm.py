@@ -886,10 +886,24 @@ class SshExec:
             f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
             f"echo started"), timeout=60)
         argv, target = ssh_argv(self.host, self.identity)
+        # ExitOnForwardFailure: a forward that cannot bind (another eval's tunnel on the
+        # same --port) ends the ssh instead of leaving a connection with no forward, whose
+        # health poll then answers from the OTHER tunnel (2026-09-23: two arms, one laptop).
         self.tunnel = subprocess.Popen(
-            [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
+            [*argv, "-o", "ExitOnForwardFailure=yes", "-N",
+             "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
+
+    def tunnel_failure(self) -> str | None:
+        """Why the tunnel is gone, or None while it runs (or before it was started)."""
+        if self.tunnel is None or self.tunnel.poll() is None:
+            return None
+        return (f"ssh tunnel to {self.host} exited ({self.tunnel.returncode}): the local forward "
+                f"{self.bind}:{self.port} could not be bound or was lost — another eval's tunnel "
+                f"probably holds the port; pass a different --port")
 
     def alive(self) -> bool:
+        if self.tunnel_failure():
+            return False
         try:
             return self._ssh(f"pgrep -f '{_SERVER_PATTERN}' >/dev/null && echo up || echo down"
                              ).strip().endswith("up")
@@ -897,6 +911,9 @@ class SshExec:
             return False
 
     def tail_log(self, n: int = 15) -> str:
+        failure = self.tunnel_failure()
+        if failure:
+            return failure
         try:
             return self._ssh(f"tail -n {n} {self.remote_dir}/vllm.log 2>/dev/null")
         except RuntimeError as e:
@@ -1034,7 +1051,7 @@ class VllmServer:
         url = f"http://{self.executor.endpoint_host}:{self.port}/health"
         while time.time() < deadline:
             if not self.executor.alive():
-                raise RuntimeError(f"vLLM exited; last log lines:\n{self.executor.tail_log()}")
+                raise RuntimeError(f"vLLM (or its tunnel) exited; last log lines:\n{self.executor.tail_log()}")
             try:
                 if requests.get(url, timeout=5).status_code == 200:
                     return
