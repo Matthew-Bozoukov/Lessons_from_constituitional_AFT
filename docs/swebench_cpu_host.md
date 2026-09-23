@@ -19,8 +19,11 @@ Aim to scale inference to eight independent single-GPU replicas after calibratio
 After the user funded Vast and asked to proceed, VM **52229744** was created as
 `nika-swebench-cpu-20260923T123716Z`. SSH and Docker work. The guest has **61 vCPUs,
 197 GiB RAM, 485 GiB filesystem** (477 GiB initially free), less RAM than the offer
-advertised but above the required floor. CPU preparation is currently blocked by
-Docker Hub's anonymous pull quota; RunPod rentals remain forbidden until ready.
+advertised but above the required floor. Docker browser device login succeeded after
+the user purchased Pro, clearing the anonymous download block. A four-repository gold
+check resolved 3/4: requests-1963 received HTTP 502 from its external httpbin endpoint.
+The failed attempt is preserved, and a fresh gold attempt plus image preparation is
+running. RunPod rentals remain forbidden until all readiness checks pass.
 
 Connect from this Windows account:
 
@@ -301,6 +304,19 @@ never print the token. Docker Pro currently advertises $11/month with unlimited
 standard pull rate; free access is possible but must honor rate-limit waits.
 Do not repeatedly retry a quota error, rent extra hosts to rotate IPs, or rent GPUs
 while waiting. Warm cached images avoid paying this setup cost on every model.
+
+Browser device login is an alternative when no token is configured: run `docker login`
+on the VM, open the exact activation URL it prints, and confirm that VM's code in the
+authorized Docker account. This succeeded on 2026-09-23. Keep
+`/root/.docker/config.json` root-only (0600) and outside all backup directories.
+For reproducible provisioning, a read-only token in the original .env remains useful.
+
+Gold checks must use fresh attempt directories: the official harness can reuse an
+existing report, including a previous failure. Never overwrite failed evidence or
+treat a cached report as a fresh check. The initial two-repository gold check passed
+2/2; the larger check exposed an external-network dependency. A reference-patch HTTP
+502 is an infrastructure failure, not evidence of model incapability. Downloads may
+continue while diagnosing it, but no GPU-ready marker may be produced on failed gold.
 
 The inference fleet launcher, robust per-task resume/checkpoint queue and automatic
 final grading/publication still need implementation. The code audit is
