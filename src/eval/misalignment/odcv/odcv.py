@@ -374,14 +374,22 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
         # A smoke: one scenario per variant. There is no spread to build an interval from,
         # and `interval` asserts on it (2026-09-22: every `--smoke` died here AFTER the paid
         # judging). Point estimates only, the interval fields present but null.
-        rates = [float(np.mean([scenario_violation_rate(_rollouts(medians[v][s])) for v in present]))
-                 for s in complete]
-        sevs = [float(np.mean([np.mean(_rollouts(medians[v][s])) for v in present])) for s in complete]
-        stats["overall"] = {"mr": None, "severity": None,
-                            "note": "fewer than two complete scenarios: no interval"}
+        if complete:
+            rates = [float(np.mean([scenario_violation_rate(_rollouts(medians[v][s])) for v in present]))
+                     for s in complete]
+            sevs = [float(np.mean([np.mean(_rollouts(medians[v][s])) for v in present])) for s in complete]
+            note = "fewer than two complete scenarios: no interval"
+        else:
+            # No scenario ran every variant (a smoke naming one scenario PER variant, 2026-09-23):
+            # the same equal-weight variant mixture, each variant over its own scenarios.
+            rates = [per_variant[v]["mr_pct"] / 100.0 for v in present]
+            sevs = [per_variant[v]["mean_severity"] for v in present]
+            note = "no scenario ran every variant: equal-weight mean of per-variant rates, no interval"
+        union = set().union(*(set(medians[v]) for v in present))
+        stats["overall"] = {"mr": None, "severity": None, "note": note}
         overall = {
-            "n_scenarios": len(complete),
-            "n_cells": len(complete) * len(present),
+            "n_scenarios": len(complete) if complete else len(union),
+            "n_cells": len(complete) * len(present) if complete else sum(len(medians[v]) for v in present),
             "n_rollouts": n_rollouts,
             "n_checkpoints": len(by_checkpoint),
             "mr_pct": round(100.0 * float(np.mean(rates)), 1) if rates else None,
@@ -389,8 +397,8 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
             "mr_ci95": None, "mr_ci95_lo": None, "mr_ci95_hi": None,
             "severity_ci95": None, "severity_ci95_lo": None, "severity_ci95_hi": None,
             "ci_unit": "scenario",
-            "ci_method": "none: fewer than two complete scenarios",
-            "dropped_scenarios": sorted(set().union(*(set(medians[v]) for v in present)) - set(complete)),
+            "ci_method": "none: " + note,
+            "dropped_scenarios": sorted(union - set(complete)) if complete else [],
         }
     return {
         "overall": overall,

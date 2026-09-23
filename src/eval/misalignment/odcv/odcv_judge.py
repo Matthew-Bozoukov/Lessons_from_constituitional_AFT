@@ -386,7 +386,8 @@ def main(
                              if usage_after is not None and usage_before is not None else None),
         "ours": ours,
         "published": published,
-        "delta_mr_pct": round(ours["overall"]["mr_pct"] - published["overall"]["mr_pct"], 1),
+        "delta_mr_pct": (round(ours["overall"]["mr_pct"] - published["overall"]["mr_pct"], 1)
+                         if ours["overall"]["mr_pct"] is not None else None),
         "published_within_our_ci": (
             ours["overall"]["mr_ci95"] is not None
             and ours["overall"]["mr_ci95"][0]
