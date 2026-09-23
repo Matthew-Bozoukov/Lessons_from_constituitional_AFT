@@ -1,0 +1,43 @@
+# ABOUTME: The multi-party difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `da-multiparty` share. Publishes as `<date>-da-multiparty-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-multiparty.yaml [synthetic_pct=7]
+#
+# configs/data/mixture/da.yaml with ONE change: the synthetic source is the multi-party corpus
+# (configs/data/synth/da-multiparty.yaml; docs/LOG.md 2026-09-23) in place of the 2026-09-14
+# difficult-advice corpus. Same pinned base blend, same share unit, same trait balancing, so
+# an arm trained on this mixture differs from da-7 only in the synthetic rows.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend, pinned exactly as in configs/data/mixture/da.yaml.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  file: mixture.jsonl
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+
+# Percentage of the mixture's supervised tokens that are synthetic -- the number in its name.
+synthetic_pct: 7
+# A share of SUPERVISED TOKENS, as configs/data/mixture/da.yaml (plan_swap in
+# src/data/mixture/build_mixture.py): at equal numbers this arm and da-7 give the synthetic
+# rows the same share of the gradient under token_mean loss.
+share_unit: supervised_tokens
+sources:
+  da-multiparty:
+    # The 2026-09-23 full run, 752 rows (t1 87, t2 85, t3 86, t4 86, t5 81, t6 84, t7 79, t8 80,
+    # t9 84), at the revision where the 262 stray tool schemas on advisor-labelled rows were
+    # removed (strip_advisor_tools.json in the repo): 382 rows declare unused tools, 370 do not.
+    dataset: "${oc.env:HF_ORG}/2026-09-23-da-multiparty-synth"
+    revision: "8a53f84f2aacceb3938967f16a5f69d74b975171"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_multiparty"
+
+hf:
+  experiment: "multi-party difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic share of difficult advice whose person is one of several parties (human or AI) sharing the decision"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
