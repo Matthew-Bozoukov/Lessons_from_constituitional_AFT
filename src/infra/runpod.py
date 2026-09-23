@@ -45,6 +45,8 @@ import sys
 import tempfile
 import time
 import socket
+import shlex
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from pathlib import Path
 from dataclasses import dataclass, fields
@@ -202,6 +204,7 @@ class ProvisionSpec:
     image: str = IMAGE
     max_hours: float = 6.0
     pubkey_path: str = "~/.ssh/id_ed25519.pub"
+    terminate_at: str = ""      # absolute provider-side expiry, atomically set at creation
 
     @classmethod
     def from_config(cls, cfg: Any | None) -> "ProvisionSpec":
@@ -241,6 +244,24 @@ def provision_runpod(
         pubkey = pubkey_file.read_text().strip()
         assert pubkey.startswith("ssh-"), f"not an ssh public key: {pubkey_file}"
         env["PUBLIC_KEY"] = pubkey
+    if spec.terminate_at:
+        deadline = datetime.fromisoformat(spec.terminate_at.replace("Z", "+00:00"))
+        if deadline.tzinfo is None or deadline <= datetime.now(timezone.utc):
+            raise ValueError("terminate_at must be a future timezone-aware timestamp")
+        if spec.countries:
+            raise ValueError("Scheduled provisioning does not support country lists")
+        payload = {
+            "name": name, "imageName": spec.image, "gpuTypeId": spec.gpu,
+            "gpuCount": spec.count, "containerDiskInGb": spec.disk_gb, "volumeInGb": 0,
+            "cloudType": spec.cloud, "ports": ",".join(ports), "startSsh": True,
+            "dockerArgs": shlex.join(["bash", "-lc", start_script]),
+            "env": [{"key": k, "value": v} for k, v in env.items()],
+            "terminateAfter": spec.terminate_at,
+            **({"allowedCudaVersions": spec.cuda.split(",")} if spec.cuda else {}),
+        }
+        result = graphql("mutation($input: PodFindAndDeployOnDemandInput!) { "
+                         "podFindAndDeployOnDemand(input: $input) { id } }", {"input": payload})
+        return str(result["podFindAndDeployOnDemand"]["id"])
     pod = call(
         "POST",
         "/pods",
@@ -269,6 +290,26 @@ def provision_runpod(
         ),
     )
     return str(pod.get("id") or pod.get("podId", ""))
+
+
+def graphql(query: str, variables: dict | None = None) -> dict:
+    """Provider GraphQL transport; never include credentials or request bodies in errors."""
+    response = requests.post("https://api.runpod.io/graphql",
+                             headers={"Authorization": "Bearer " + _key()},
+                             json={"query": query, "variables": variables or {}}, timeout=60)
+    if response.status_code != 200:
+        raise RuntimeError(f"RunPod GraphQL HTTP {response.status_code}")
+    payload = response.json()
+    if payload.get("errors") or "data" not in payload:
+        raise RuntimeError("RunPod GraphQL rejected the request; allocation may be ambiguous")
+    return payload["data"]
+
+
+def validate_scheduled_provision() -> None:
+    """Validate the provider's expiry input WITHOUT executing a rental resolver."""
+    graphql('mutation { podFindAndDeployOnDemand(input: {name: "schema-check", '
+            'imageName: "unused", gpuTypeId: "unused", gpuCount: 1, '
+            'terminateAfter: "2099-01-01T00:00:00Z"}) @skip(if: true) { id } }')
 
 
 def bootstrap_script(
@@ -490,7 +531,14 @@ def active_pods() -> list[dict]:
 
 def gpu_price(gpu: str = GPU, cloud: str = "SECURE") -> float | None:
     """$/hour for a GPU type, or None if the catalogue does not list it."""
-    rows = call("GET", "/gputypes")
+    try:
+        rows = call("GET", "/gputypes")
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code not in (400, 404):
+            raise
+        # The REST catalogue route is unavailable on some account/API versions.
+        # Use the provider's typed catalogue, never an assumed advertised price.
+        rows = graphql("query { gpuTypes { id securePrice communityPrice } }")["gpuTypes"]
     rows = rows if isinstance(rows, list) else rows.get("data", [])
     field = "securePrice" if cloud.upper() == "SECURE" else "communityPrice"
     for g in rows:
@@ -893,7 +941,8 @@ uv sync"""
 
 
 def _bootstrap(clone: tuple[str, str, str] | None,
-               weights: tuple[list[str], str | None] | None = None, build_kernels: bool = False) -> str:
+               weights: tuple[list[str], str | None] | None = None, build_kernels: bool = False,
+               weight_revisions: dict[str, str] | None = None) -> str:
     """Pod startup script: sshd and a log server first, then uv, then the slow halves.
 
     Order is the lesson from every other bootstrap in this repo (see
@@ -938,8 +987,10 @@ git checkout --detach {sha}
         # proxy on :8080, so anything xtrace echoes lands in a world-readable boot log.
         token_block = (f"set +x\nexport HF_TOKEN={hf_token}\nset -x" if hf_token
                        else "echo 'no HF token: public repos only'")
-        downloads = "\n".join(f"{POD_VENV}/bin/hf download {repo} >/dev/null"
-                              for repo in repos)
+        downloads = "\n".join(
+            f"{POD_VENV}/bin/hf download {shlex.quote(repo)}"
+            + (f" --revision {shlex.quote(weight_revisions[repo])}" if weight_revisions else "")
+            + " >/dev/null" for repo in repos)
         # Python 3.12, not the image's 3.10, and `ninja` alongside vllm: both are
         # flashinfer constraints, spelled out in `bootstrap_script`'s docstring.
         blocks.append(f"""echo INSTALLING_VLLM
@@ -1051,7 +1102,7 @@ class Pod:
 
 
 def plan_eval_pod(targets: str | Sequence[str], disk_gb: int = 200,
-                  eval: str | None = None) -> tuple[list[str], tuple, str | None, int, str]:
+                  eval: str | None = None, revisions: dict[str, str] | None = None) -> tuple[list[str], tuple, str | None, int, str]:
     """Decide what an INFERENCE pod for these targets must be: weights, card and disk.
 
     Shared by the CLI and programmatic provisioning so both size a pod by the same rules.
@@ -1079,7 +1130,7 @@ def plan_eval_pod(targets: str | Sequence[str], disk_gb: int = 200,
     from src.model_profile import largest_gpu
 
     targets = [targets] if isinstance(targets, str) else list(targets)
-    specs = [resolve_target(t) for t in targets]
+    specs = [resolve_target(t, revision=revisions[t]) if revisions else resolve_target(t) for t in targets]
     api = [s.hf_path for s in specs if s.api_base]
     assert not api, (
         f"{api} are API endpoints served by somebody else; there is no pod to rent "
@@ -1136,6 +1187,8 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
                        count: int = 1, disk_gb: int = 200, cloud: str = "SECURE",
                        image: str = IMAGE, countries: str = "", pubkey_path: str = "",
                        identity: str = "", eval: str | None = None,
+                       revisions: dict[str, str] | None = None, terminate_at: str = "",
+                       env: dict[str, str] | None = None,
                        on_provisioned: Callable[[str], None] | None = None) -> Pod:
     """Rent an inference pod holding vLLM + these targets' weights, and return it as data.
 
@@ -1158,19 +1211,20 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
             — a watchdog that failed to arm must not be ignored — but the pod is already
             billing by then, so the caller's `finally` still owns teardown.
     """
-    targets, weights, profile_gpu, disk_gb, _ = plan_eval_pod(targets, disk_gb, eval=eval)
+    targets, weights, profile_gpu, disk_gb, _ = plan_eval_pod(targets, disk_gb, eval=eval, revisions=revisions)
     gpu = gpu or profile_gpu or GPU
     print(f">>> {count}x {gpu} ({cloud}, {disk_gb}GB) for {', '.join(targets)}")
-    script = _bootstrap(None, weights)
+    script = _bootstrap(None, weights, weight_revisions=revisions)
     _check_bash(script)
     pod_id = provision_runpod(
         # vLLM brings a torch built for CUDA 13, which dies at `_cuda_init` on an older
         # host driver — same constraint `up --eval` applies.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="13.0", countries=countries,
+                      cuda="13.0", countries=countries, terminate_at=terminate_at,
                       **({"pubkey_path": pubkey_path} if pubkey_path else {})),
         name=name,
         start_script=script,
+        env=env,
         ports=("8080/http", "22/tcp"),
     )
     print(f">>> pod {pod_id} — BILLING NOW")

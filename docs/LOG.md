@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Prepared no-DA Lite coordinator, synthetic integration checked
+
+**Hypothesis.** Retaining the existing pinned mini-SWE-agent and official grader,
+while separating a persistent CPU queue from bounded GPU replicas, can make the
+full 300-task control cheaper and recoverable without changing the task selection.
+
+**Method.** Added frozen model/base/dataset/image pins; atomic per-step trajectory
+checkpoints and exclusive per-task leases; bounded infrastructure retries; periodic
+HF snapshots; calibration-based fleet sizing up to eight H200 replicas; immediate
+watchdog registration, independent CPU reaper and atomic provider expiry request.
+The CPU readiness gate precedes every rental. Grading happens after verified GPU
+release. Agent containers add declared 2 CPU/4 GiB/512 PID caps. Serving remains
+owned by run_eval. Extended existing core interfaces only for explicit revision
+pins, scheduled provisioning and the provider's alternate catalogue API.
+
+**Result.** A synthetic endpoint drove the real pinned agent through three bash
+tool calls, submitted a public reference patch, passed official Docker grading,
+skipped the task on a repeated queue request, and uploaded/read back its artifacts:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-lite-infrastructure
+This is infrastructure evidence, not a model score or throughput measurement.
+The live preflight validates all 300 cached images and the frozen no-DA control.
+The CPU service is installed but inference is not started. No RunPod GPU was rented.
+
+**Next.** On explicit launch, run the bounded single-replica calibration, verify
+real vLLM/LoRA serving and cleanup, and expand only if observed cost fits the cap.
+Eight GPUs and the provisional 1.5–3 hour / $40–90 range are unmeasured planning
+assumptions, not established performance. Inspect already supplies much of the
+generic evaluation lifecycle; do not grow this experiment driver into another
+general framework. Exact launch/recovery/expiry instructions and cost exclusions
+are in `docs/swebench_lite_runbook.md`.
+
 ## 2026-09-23 — Full Lite image cache and reproducible CPU grading environment
 
 **Hypothesis.** Warming a persistent CPU/Docker host and removing the public HTTP

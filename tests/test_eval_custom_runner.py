@@ -12,11 +12,13 @@ from src.infra.endpoints.vllm import TargetSpec
 
 
 @pytest.mark.parametrize("push", [False, True])
-def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path, push):
+@pytest.mark.parametrize("revision", [None, "adapter-pin"])
+def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path, push, revision):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HF_ORG", "example")
     cfg_path = tmp_path / "config.yaml"
     OmegaConf.save(OmegaConf.create({"output_root": str(tmp_path / "runs"),
+                                    "target_revision": revision,
                                     "generation": {"temperature": 0.6}}), cfg_path)
     spec = TargetSpec(hf_path="org/qwen36-da-0", base_model="Qwen/Qwen3.6-27B",
                       adapter=True, mode="think", model_key="qwen36_da_0", lora_rank=64,
@@ -53,7 +55,10 @@ def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path
         return "https://huggingface.co/datasets/" + repo
 
     monkeypatch.setattr(run_eval, "VllmServer", Server)
-    monkeypatch.setattr(run_eval, "resolve_target", lambda _: spec)
+    def resolve_pinned(target, **kwargs):
+        assert kwargs == ({"revision": revision} if revision else {})
+        return spec
+    monkeypatch.setattr(run_eval, "resolve_target", resolve_pinned)
     monkeypatch.setattr(run_eval, "push_run_dir", publish)
     monkeypatch.setattr(run_eval, "resolve", lambda _: pytest.fail("Custom runner was ignored"))
     args = ["--name", "mmlu", "--target", spec.hf_path, "--config", str(cfg_path)]

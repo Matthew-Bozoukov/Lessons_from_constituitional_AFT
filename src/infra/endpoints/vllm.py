@@ -320,7 +320,7 @@ def _repo_sha(hf_path: str, repo_type: str = "model") -> str:
     return hf_api().repo_info(hf_path, repo_type=repo_type).sha
 
 
-def resolve_target(hf_path: str) -> TargetSpec:
+def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
     """Resolve a --target into a TargetSpec.
 
     Two forms: `<provider>:<model-id>` (an API endpoint, see API_PROVIDERS) or an HF path
@@ -339,7 +339,7 @@ def resolve_target(hf_path: str) -> TargetSpec:
             f"unknown API provider {scheme!r} in target {hf_path!r} "
             f"(known: {', '.join(sorted(API_PROVIDERS))}); an HF path has no scheme.")
     try:
-        with open(hf_download(hf_path, "adapter_config.json")) as f:
+        with open(hf_download(hf_path, "adapter_config.json", **({"revision": revision} if revision else {}))) as f:
             adapter_config = json.load(f)
     except EntryNotFoundError:
         # No adapter config: either a full model, or a PRIOR RUN of this eval whose
@@ -349,16 +349,16 @@ def resolve_target(hf_path: str) -> TargetSpec:
         spec = resolve_answers_target(hf_path)
         if spec:
             return replace(spec, revision=_repo_sha(hf_path, "dataset"))
-        sha = _repo_sha(hf_path)
+        sha = revision or _repo_sha(hf_path)
         return replace(_spec_from_files(hf_path, None, None), revision=sha,
                        base_revision=sha, base_revision_from="target")
     try:
-        with open(hf_download(hf_path, "training_meta.json")) as f:
+        with open(hf_download(hf_path, "training_meta.json", **({"revision": revision} if revision else {}))) as f:
             training_meta = json.load(f)
     except EntryNotFoundError:
         training_meta = None
     spec = replace(_spec_from_files(hf_path, adapter_config, training_meta),
-                   revision=_repo_sha(hf_path))
+                   revision=revision or _repo_sha(hf_path))
     if not name_date(hf_path.split("/")[-1]) or not check_mix_subject_ok(undated(hf_path)):
         # A pre-law organism keeps its Hub name; the run built from it is named from the
         # curated table (src/infra/legacy_names.yaml), never from that name.
@@ -414,7 +414,7 @@ _FAMILY_FACT_KEYS = {"native_context_window", "max_num_seqs", "reasoning_parser"
                      "tool_call_parser", "supports_prefix_caching"}
 
 
-def native_context_window(base_model: str) -> int | None:
+def native_context_window(base_model: str, revision: str | None = None) -> int | None:
     """The window `base_model` was trained at, read from its own config.json.
 
     `max_position_embeddings` is the number of positions the weights have embeddings
@@ -430,7 +430,7 @@ def native_context_window(base_model: str) -> int | None:
     backstop.
     """
     try:
-        with open(hf_download(base_model, "config.json")) as f:
+        with open(hf_download(base_model, "config.json", **({"revision": revision} if revision else {}))) as f:
             config = json.load(f)
     except Exception:            # offline, gated repo, unusual layout — not fatal
         return None
@@ -961,10 +961,10 @@ class VllmServer:
             self._load_lora(spec, adapter_dir)
         return self.base_url
 
-    def _pinned_template_path(self, base_model: str, mode: str) -> str | None:
+    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None) -> str | None:
         if mode == "default":
             return None
-        with open(hf_download(base_model, "tokenizer_config.json")) as f:
+        with open(hf_download(base_model, "tokenizer_config.json", **({"revision": revision} if revision else {}))) as f:
             template = json.load(f)["chat_template"]
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
@@ -973,7 +973,7 @@ class VllmServer:
         # Facts come from two places, both authoritative and neither overridable: the
         # family's measured/architectural profile, and the model's own config.json.
         facts = dict(serving_params(spec.base_model),
-                     native_context_window=native_context_window(spec.base_model))
+                     native_context_window=native_context_window(spec.base_model, spec.base_revision))
         plan = plan_serving(facts, self.serve_requirements, spec.base_model, spec.mode)
         for warning in plan["warnings"]:
             print(f"!!! {warning}")
@@ -1001,7 +1001,7 @@ class VllmServer:
             argv += ["--enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
-        template = self._pinned_template_path(spec.base_model, spec.mode)
+        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision)
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:

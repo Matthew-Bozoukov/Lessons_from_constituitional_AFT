@@ -400,9 +400,10 @@ tail -f /srv/lasr/runs/prepare.log
 Do not change the recorded STOP deadline merely to rerun preparation. Reusing a
 host after expiry requires a new user-authorized deadline, as described above.
 
-The inference fleet launcher, robust per-task resume/checkpoint queue and automatic
-final grading/publication still need implementation. The code audit is
-`scratch/swebench_lite_audit_2026_09_23.md`; finish its pipeline fixes before scale-up.
+The inference coordinator and its launch/resume/grading/publication procedure are
+now in [swebench_lite_runbook.md](swebench_lite_runbook.md). The service is installed
+but has not been started. CPU-only integration checks passed; the first authorized
+model run still begins with a bounded paid calibration before fleet expansion.
 
 References checked 2026-09-23:
 - https://docs.vast.ai/guides/instances/virtual-machines

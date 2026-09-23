@@ -309,7 +309,10 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     # here, and `resolve_target` is the same call the loop would make.
     specs = []
     for hf_path in targets:
-        spec = resolve_target(hf_path)
+        revision = cfg.get("target_revision")
+        if revision and len(targets) != 1:
+            raise ValueError("target_revision requires exactly one target")
+        spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(
                 f"!!! {args.name} does not support an API-endpoint target "
