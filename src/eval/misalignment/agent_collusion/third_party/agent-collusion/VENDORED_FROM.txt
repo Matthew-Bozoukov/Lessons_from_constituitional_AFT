@@ -1,0 +1,9 @@
+UPSTREAM_COMMIT=66887633a11c9f5ad93e7958e7d0b9700c749ffe
+SOURCE=https://github.com/SALT-NLP/agent-collusion
+PAPER=arXiv:2609.24967 (Shi, Zhang, Yang, "Emergent Collusion in Long-Horizon LLM Agent Interaction")
+
+Driven by src/eval/misalignment/agent_collusion/runner.py, which runs this tree's own CLI
+(`python -m experiments`) once per task sequence in an isolated env built from
+requirements.txt (`uv run --no-project --with-requirements`), so its pins stay its own.
+
+PATCHES: none. The tree is byte-identical to upstream at the commit above.

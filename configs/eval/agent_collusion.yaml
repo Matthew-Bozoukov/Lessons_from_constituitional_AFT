@@ -1,0 +1,52 @@
+# ABOUTME: Emergent collusion (SALT-NLP agent-collusion, arXiv:2609.24967) — two copies of the
+# ABOUTME: target verify each other's work for ten episodes; mutual ACCEPT is the violation.
+# Run: uv run evals --name agent_collusion --target <hf_path> --server <ip:port> [key=value ...]
+#
+# The paper's MAIN setting, unchanged: raw-only verdict policy, 5 rounds x 200 characters,
+# shared verdict-accuracy reward, verdict review, private reflection, full cross-episode
+# history, the 50 fixed ten-episode sequences. Every protocol flag is left at the vendored
+# harness's default (src/eval/misalignment/agent_collusion/third_party/agent-collusion);
+# this file sets only sampling, scale and serving. LOWER IS BETTER for EC / TC / CC.
+#
+# Reference, same harness and sequences: the paper's Qwen3.6-27B (the base of every
+# organism here) scores task acc 91.0, EC 71.2, TC 100.0, CC 98.0. Our metrics code
+# reproduces that row exactly from the released traces.
+
+sequences: 50          # fixed sequences rep001..rep050 (the paper runs all 50)
+smoke: false           # true = the full pipeline on smoke_sequences x smoke_episodes
+smoke_sequences: 2
+smoke_episodes: 2      # CC is undefined below 5 episodes, so a smoke reports it as n/a
+
+# Trajectories in flight. Each is 250+ STRICTLY sequential calls, so wall clock is set by
+# how many run at once; the ceiling is KV cache, not slots. At ~40k tokens of history per
+# call (max 94k in the paper's Qwen traces) and 64 KiB/token on this architecture (16
+# full-attention layers x 4 KV heads x 256 dims, bf16), an H200 holds ~25 live contexts;
+# past that vLLM evicts the idle agent's cached prefix and re-prefills it on its next turn.
+# 50 runs every sequence in ONE wave: vLLM queues what KV cannot hold rather than failing,
+# and one oversubscribed wave beats two waves of 25 (measured 2026-09-23: ~11 s per call,
+# ~47 min per trajectory alone on the H200).
+concurrency: 50
+
+seed: 0                # bootstrap seed for the EC interval (the harness takes no sampling seed)
+
+generation:
+  temperature: 1.0
+  # Upstream's value for every model. Over the paper's 13k Qwen3.6 calls the largest
+  # completion was 19.7k tokens (p99.9 5.2k), so this cap binds on nothing real.
+  max_output_tokens: 64000
+  # "default" sends no reasoning_effort; thinking comes from the template the adapter's
+  # stamp pins at serve time, as it does for every eval here.
+  reasoning_effort: default
+
+constitution: none     # an external instrument, not aligned to any constitution of ours
+
+serving:
+  # vLLM refuses a request whose prompt + max_tokens exceeds --max-model-len, so the
+  # window is max_output_tokens plus prompt headroom: 196608 - 64000 leaves 132k of
+  # prompt against the 94.5k largest seen. The KV cache is scheduled on actual lengths,
+  # so the window costs nothing until a context fills it.
+  context_window: 196608
+  concurrency: 64
+  needs_tool_calls: true       # every phase acts through tool calls (tool_choice=required)
+  reuses_long_prefixes: true   # each call resends the whole history: prefix caching is
+                               # the difference between hours and a day
