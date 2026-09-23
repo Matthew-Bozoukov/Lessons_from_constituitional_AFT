@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Bound Lite test parallelism and clean up timed-out commands
+
+**Finding.** At 40 active agents, the CPU host averaged 7.4% utilization and retained
+over 181 GiB available RAM. Nevertheless, django__django-11905 experienced four
+process kills at its 4 GiB container limit. Django saw 61 host CPUs despite the
+two-CPU quota. Client-side Docker command timeouts also left old test processes
+running; multiple complete test suites accumulated in one container.
+
+**Correction.** Derive common test/thread limits from the existing CPU quota and
+enforce the existing command timeout inside the container, including descendants.
+Preserve the 4 GiB limit, model, agent budgets, completed outcomes and healthy
+workers. Record the live transition and historical OOMs, retain previous sources,
+and capture final cgroup evidence for new attempts. This initial run spans resource
+policies; later matched comparisons should use the correction from their start.
+
+**Validation.** Twenty-nine Linux regression checks passed. A disposable container
+using the exact affected task image selected two Django processes; a two-second
+timeout returned 124 and removed a background sleeping child. Normal command exit
+status is preserved. No additional inference GPU was rented for these checks.
+
 ## 2026-09-23 — Lite fleet recovery and ten H100 NVL target
 
 **Finding.** Corrected no-DA calibration completed 18 tasks (seven resolved), but

@@ -7,13 +7,40 @@ import shutil
 import time
 import unittest
 import threading
+import os
+import subprocess
 from unittest.mock import Mock, patch
 
 from omegaconf import OmegaConf
 from scratch.swebench_lite_state import State, atomic, classify, read, lock
 from scratch import swebench_lite as fleet
 from src.infra import runpod
-from scratch.swebench_lite_task import install_token_limits
+from scratch.swebench_lite_task import install_token_limits, resource_shell
+
+
+class ResourceLimitTests(unittest.TestCase):
+    def shell_env(self, shell):
+        # SSH_CLIENT makes bash take its remote-shell startup path instead of BASH_ENV.
+        return {k: v for k, v in os.environ.items() if not k.startswith('SSH_')} | {'BASH_ENV': str(shell)}
+
+    def test_shell_preserves_result_and_bounds_library_threads(self):
+        with tempfile.TemporaryDirectory() as temp:
+            shell = Path(temp) / 'bashenv'
+            shell.write_text(resource_shell(2, 5))
+            result = subprocess.run(['bash', '-c', 'echo "$DJANGO_TEST_PROCESSES:$OPENBLAS_NUM_THREADS"; exit 7'],
+                env=self.shell_env(shell), capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.stdout.strip(), '2:2')
+            self.assertEqual(result.returncode, 7)
+
+    def test_shell_timeout_kills_background_descendant(self):
+        with tempfile.TemporaryDirectory() as temp:
+            shell = Path(temp) / 'bashenv'
+            shell.write_text(resource_shell(2, 0.1))
+            result = subprocess.run(['bash', '-c', '(sleep 0.5; touch survived) & wait'],
+                cwd=temp, env=self.shell_env(shell), capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 124)
+            time.sleep(0.6)
+            self.assertFalse((Path(temp) / 'survived').exists())
 
 
 class TokenBudgetTests(unittest.TestCase):

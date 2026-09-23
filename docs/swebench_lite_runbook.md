@@ -234,6 +234,33 @@ its development version and explicit agent support.
 
 ## CPU capacity and multiple hosts
 
+Resource correction, 2026-09-23: Docker CPU quotas do not change Python's host CPU
+count. Django's test runner therefore saw 61 CPUs inside a two-CPU container.
+One observed task (`django__django-11905`) had four cgroup OOM process kills at its
+4 GiB cap. In addition, mini-SWE-agent's client-side `docker exec` timeout left
+commands running in the container; several old complete Django test runs overlapped.
+The host itself retained over 181 GiB available RAM with 40 agents active.
+
+`swebench_lite_task.py` now derives Django, BLAS/OpenMP and joblib/Loky thread
+limits from the configured CPU quota. It installs a guarded `BASH_ENV` block that
+runs each command under GNU timeout inside the container, using the existing
+command deadline and a five-second kill grace for descendants. It preserves the
+shell's exit status and working directory. This bounds common automatic parallelism;
+it does not falsify `os.cpu_count()` or prevent explicitly requested process creation.
+The memory cap stays 4 GiB. New attempts record effective policy and source hash in
+`scaffold.json`, plus final cgroup peak memory/OOM/throttling evidence in
+`resources.json` before container cleanup.
+
+For the live campaign, preserve old source snapshots and the manifest before a
+hot deployment. Record completed and running attempts at the boundary, apply the
+same shell block to campaign-owned live containers, and terminate only old command
+trees already beyond their recorded command timeout plus cleanup grace. Do not
+restart agents, reroll outcomes, edit testbed source, or change model/token budgets.
+The transition is published as `metadata/resource-policy-migration.json`.
+Historical OOMs cannot be undone: this first run spans resource policies and must
+be reported as such, rather than treated as a pristine uniformly configured control.
+Later matched comparisons should use the corrected policy from the start.
+
 Live observation on 2026-09-23, while the no-DA campaign continued: the Vast host
 has 61 logical CPUs and 197.93 GiB RAM. A 45-second sample at 20–24 running agents
 averaged 3.41% CPU (2.08 cores), peaked at 5.6%, retained at least 188.14 GiB

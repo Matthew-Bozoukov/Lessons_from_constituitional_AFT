@@ -179,6 +179,7 @@ def initialize(cfg, config_path, budget):
                 'source_hashes': sources(), 'budget_usd': budget, 'dataset_tasks': 300,
                 'protocol': 'mini-swe-agent 2.2.1; official 250 steps, inert local dollar limit; network none; '
                             'digest-pinned cached images; 2 CPU/4GiB/512 PID agent container caps; infrastructure retries only (max two attempts); '
+                            'quota-derived test/BLAS thread limits; in-container command timeout with descendant cleanup; '
                             'requests local HTTPBin fixture for grading; full denominator 300',
                 'limitations': read(Path(cfg.readiness) / 'results/readiness.json')['benchmark_limitations']}
     manifest['protocol'] += (f'; response cap {cfg.max_response_tokens}, task completion-token cap {cfg.max_task_tokens}; '
