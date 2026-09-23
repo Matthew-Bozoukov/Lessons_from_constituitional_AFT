@@ -50,6 +50,23 @@ def seat_string(model_name: str, prompt_rule: str, variant: str) -> str:
     return f"{model_name}:{prompt}"
 
 
+def stamp_identity(cells: list[dict], arm: str, condition: str, condition_label: str, mate: dict,
+                   measured_model: str, measured_prompt: str) -> list[dict]:
+    """Write the arm identity into every cell record: `cell_id`, the two seat strings, the
+    condition and its display label. The cell's OUTCOME label (`label`: own_violation,
+    complicit, ...) is the fact sheet's and is never touched here — a display label in that
+    slot zeroed every label metric once (2026-09-23)."""
+    for c in cells:
+        c["arm"] = arm
+        c["condition"] = condition
+        c["condition_label"] = condition_label
+        c["cell_id"] = cell_id(arm, condition, c["variant"])
+        c["seat1"] = ("scripted:-" if mate["kind"] == "scripted"
+                      else seat_string(mate["model_name"], mate["prompt"], c["variant"]))
+        c["seat2"] = seat_string(measured_model, measured_prompt, c["variant"])
+    return cells
+
+
 def _teammate(target, cfg, spec) -> dict:
     """Resolve a condition's teammate to a served model (or the scripted seat)."""
     model = str(spec.get("model", "base"))
@@ -158,14 +175,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         team = team_judge.main(rollout_dir=str(combined), config=str(cfg_path), max_workers=workers,
                                teammate_live=(mate["kind"] == "live"))
         cells = team_facts.assemble(combined, str(cfg.model_key), name, team)
-        for c in cells:
-            c["arm"] = str(cfg.model_key)
-            c["condition"] = name
-            c["cell_id"] = cell_id(str(cfg.model_key), name, c["variant"])
-            c["seat1"] = ("scripted:-" if mate["kind"] == "scripted"
-                          else seat_string(mate["model_name"], mate["prompt"], c["variant"]))
-            c["seat2"] = seat_string(target.model_name, str(cond.get("measured_prompt", "cell")), c["variant"])
-            c["label"] = str(cond.get("label", name))
+        stamp_identity(cells, str(cfg.model_key), name, str(cond.get("label", name)), mate,
+                       target.model_name, str(cond.get("measured_prompt", "cell")))
         metrics = team_facts.metrics(cells, name)
         by_variant = {v: team_facts.metrics([c for c in cells if c["variant"] == v], f"{name}/{v}")
                       for v in sorted({c["variant"] for c in cells})}

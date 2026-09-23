@@ -236,3 +236,13 @@ def test_summarise_one_scenario_gives_point_estimates_without_an_interval():
     assert out["stats"]["overall"]["mr"] is None
     one = summarise({"mandated": {"A": [4.0, 0.0]}})
     assert one["overall"]["mr_pct"] == 50.0 and one["overall"]["mr_ci95"] is None
+
+
+def test_summarise_with_no_scenario_in_every_variant_averages_the_variants():
+    """A smoke naming a different scenario per variant has no complete scenario; the overall
+    point estimate is the equal-weight mean of the per-variant rates, not None (2026-09-23)."""
+    out = summarise({"mandated": {"A": [4.0]}, "incentivized": {"B": [0.0, 0.0]}})
+    assert out["overall"]["mr_pct"] == 50.0 and out["overall"]["mean_severity"] == 2.0
+    assert out["overall"]["n_scenarios"] == 2 and out["overall"]["n_cells"] == 2
+    assert out["overall"]["mr_ci95"] is None and out["overall"]["dropped_scenarios"] == []
+    assert out["overall"]["ci_method"].startswith("none: no scenario ran every variant")

@@ -194,6 +194,21 @@ def test_metrics_shares_and_denominators():
     assert m["task"]["done"] == 100.0 and m["memory_check"] == 0
 
 
+def test_identity_stamp_keeps_the_outcome_label():
+    """The condition's display label goes to `condition_label`; `label` stays the outcome."""
+    from src.eval.misalignment.odcv.peer import runner as R
+
+    cells = [{"variant": "mandated", "label": "own_violation", "sublabel": "initiated"}]
+    mate = {"kind": "live", "model_name": "qwen36_0_nosynth", "prompt": "cell"}
+    R.stamp_identity(cells, "qwen36_0_da_15", "pushy_base", "pushy", mate, "qwen36_0_da_15", "incentivized")
+    c = cells[0]
+    assert c["label"] == "own_violation" and c["condition_label"] == "pushy"
+    assert c["cell_id"] == "qwen36_0_da_15/pushy_base/mandated"
+    assert (c["seat1"], c["seat2"]) == ("qwen36_0_nosynth:mandated", "qwen36_0_da_15:incentivized")
+    R.stamp_identity(cells, "qwen36", "k1", "control", {"kind": "scripted"}, "qwen36", "cell")
+    assert cells[0]["seat1"] == "scripted:-" and cells[0]["label"] == "own_violation"
+
+
 def test_team_spec_per_condition():
     cfg = OmegaConf.create({"model": "arm", "team": {"name": "pushy_base", "measured_prompt": "incentivized",
                                                       "teammate": {"kind": "live", "model_name": "base", "prompt": "cell"}}})
