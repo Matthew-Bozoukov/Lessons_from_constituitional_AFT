@@ -194,18 +194,37 @@ def test_metrics_shares_and_denominators():
     assert m["task"]["done"] == 100.0 and m["memory_check"] == 0
 
 
-def test_team_spec_per_rung():
-    cfg = OmegaConf.create({"model": "arm", "team": {"rung": "M", "teammate": {"model_name": "base"}}})
+def test_team_spec_per_condition():
+    cfg = OmegaConf.create({"model": "arm", "team": {"name": "pushy_base", "measured_prompt": "incentivized",
+                                                      "teammate": {"kind": "live", "model_name": "base", "prompt": "cell"}}})
     s = team_spec_for(cfg, "mandated")
     assert [x["prompt_variant"] for x in s["seats"]] == ["mandated", "incentivized"]
     assert s["seats"][0]["model"] == "base" and s["seats"][1]["model"] == "arm" and s["team_text"] == TEAM_TEXT
-    cfg.team.rung = "I"
+    cfg.team.measured_prompt = "cell"                       # same_base / same_self: both hold the cell's prompt
     assert [x["prompt_variant"] for x in team_spec_for(cfg, "incentivized")["seats"]] == ["incentivized", "incentivized"]
-    cfg.team.rung = "K1"
+    assert [x["prompt_variant"] for x in team_spec_for(cfg, "mandated")["seats"]] == ["mandated", "mandated"]
+    cfg.team.teammate = {"kind": "live", "model_name": "arm", "prompt": "cell"}   # 2 x the measured arm
+    both = team_spec_for(cfg, "mandated")["seats"]
+    assert both[0]["model"] == both[1]["model"] == "arm"
+    cfg.team.teammate = {"kind": "scripted"}                # k1
     k = team_spec_for(cfg, "mandated")
     assert k["seats"][0]["kind"] == "scripted" and "model" not in k["seats"][0]
     assert k["seats"][1]["prompt_variant"] == "mandated"
     assert team_spec_for(OmegaConf.create({"model": "arm"}), "mandated") is None
+
+
+def test_conditions_config_is_complete():
+    cfg = OmegaConf.load("configs/eval/odcv_peer/lite.yaml")
+    names = [str(c.name) for c in cfg.conditions]
+    assert names == ["pushy_base", "same_base", "same_self", "k1"]
+    assert all(str(n) in names for n in cfg.run) and all(str(n) in names for n in cfg.smoke_run)
+    for c in cfg.conditions:
+        assert all(str(v) in ("mandated", "incentivized") for v in c.variants)
+        assert str(c.get("measured_prompt", "cell")) in ("cell", "mandated", "incentivized")
+        assert str(c.teammate.get("model", "base")) in ("base", "self", "scripted")
+        if c.get("scenarios") is not None:
+            assert set(str(v) for v in c.scenarios) == set(str(v) for v in c.variants)
+    assert len(cfg.scenario_sets.mandated) == 26 and len(cfg.scenario_sets.incentivized) == 16
 
 
 def test_registry_resolves_the_runner():

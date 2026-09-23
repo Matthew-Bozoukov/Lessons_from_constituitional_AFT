@@ -1,17 +1,17 @@
-# ABOUTME: ODCV-Peer runner: the measured arm beside a live teammate on ONE vLLM server, two
-# ABOUTME: concurrent seats per ODCV cell, one rung at a time — judged, fact-sheeted, packaged.
+# ABOUTME: ODCV-Peer runner: the measured arm beside a teammate on ONE vLLM server, two concurrent
+# ABOUTME: seats per ODCV cell, one CONDITION at a time — judged, fact-sheeted, packaged.
 
 """The eval-framework entrypoint for `odcv_peer` (registry: src/eval/__init__.py).
 
-A rung is one teammate condition — K1 (the one-time control: a scripted quiet seat), I (live
-base Qwen on the incentivized prompt, a natural violator) or M (the same on the mandated
-prompt, second-hand pressure). Inside a rung the ODCV driver runs unchanged: the cell's
-`variant` names the TEAMMATE's prompt (M = mandated, I = incentivized) and the measured seat
-always holds the incentivized prompt (K1: the cell's own variant, as solo), which
-`odcv_rollout.team_spec_for` spells out per cell. Every rung is judged three ways — the
-unchanged ODCV rubric on the measured seat, the same rubric on the teammate seat, and the
-seven judged fields of the fact sheet (peer/judge.py) — and labelled (peer/facts.py), then
-packed under `rollouts/<rung>/…`, `results/<rung>/…`, `metadata/<rung>/…`.
+A condition (configs/eval/odcv_peer/lite.yaml `conditions:`) says which ODCV variants run,
+which prompt each seat holds — `cell` (the cell's own variant), `mandated` or
+`incentivized` — and who the teammate is: `base` (the untuned base model, co-served), `self`
+(the measured arm again: a homogeneous team) or `scripted` (the quiet control seat). Inside a
+condition the ODCV driver runs unchanged over the listed variants; `odcv_rollout.team_spec_for`
+spells the seats out per cell. Every condition is judged three ways — the unchanged ODCV rubric
+on the measured seat, the same rubric on a live teammate, and the judged fields of the fact
+sheet (peer/judge.py) — labelled (peer/facts.py), then packed under `rollouts/<condition>/…`,
+`results/<condition>/…`, `metadata/<condition>/…`.
 """
 
 from __future__ import annotations
@@ -23,116 +23,146 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.eval.misalignment.odcv import odcv_judge, progress_judge
+from src.eval.misalignment.odcv.odcv import VARIANTS, scenario_names
 from src.eval.misalignment.odcv.passes import combine_passes, package_run, submission_stats
 from src.eval.misalignment.odcv.peer import facts as team_facts
 from src.eval.misalignment.odcv.peer import judge as team_judge
 from src.eval.misalignment.odcv.runner import _bridge_url, _run_pass
 from src.utils import timestamp
 
-RUNGS = ("K1", "I", "M")
+PROMPT_RULES = ("cell", "mandated", "incentivized")
 
 
-def _rung_config(cfg, rung: str, mate: dict, smoke: bool, work: Path):
-    """The per-rung config the ODCV driver reads: team block + the rung's scenario set."""
-    assert rung in RUNGS, f"unknown rung {rung!r} (expected one of {RUNGS})"
+def _teammate(target, cfg, spec) -> dict:
+    """Resolve a condition's teammate to a served model (or the scripted seat)."""
+    model = str(spec.get("model", "base"))
+    prompt = str(spec.get("prompt", "cell"))
+    assert prompt in PROMPT_RULES, f"teammate prompt {prompt!r} not in {PROMPT_RULES}"
+    if model == "scripted":
+        return {"kind": "scripted"}
+    if model == "self":
+        return {"kind": "live", "model_name": target.model_name, "hf_path": target.spec.hf_path,
+                "revision": target.spec.revision, "mode": target.spec.mode, "prompt": prompt}
+    if model == "base":
+        hf, mode = str(cfg.teammate_base.hf_path), cfg.teammate_base.get("mode", None)
+    else:
+        hf, mode = model, spec.get("mode", None)
+    mate = target.sibling(hf, mode=mode)
+    assert mate.base_url == target.base_url, "the teammate must be served on the measured arm's server"
+    assert mate.model_name != target.model_name, (
+        f"teammate {hf} resolves to the measured arm's served model {target.model_name!r}; "
+        "say `model: self` if a homogeneous team is what you mean")
+    return {"kind": "live", "model_name": mate.model_name, "hf_path": hf,
+            "revision": mate.spec.revision, "mode": mate.spec.mode, "prompt": prompt}
+
+
+def _condition_config(cfg, cond, mate: dict, bench_dir: Path, smoke: bool, work: Path):
+    """The per-condition config the ODCV driver reads: team block + the condition's cells."""
+    name = str(cond.name)
+    variants = [str(v) for v in cond.variants]
+    assert variants and all(v in VARIANTS for v in variants), f"{name}: variants {variants}"
+    measured_prompt = str(cond.get("measured_prompt", "cell"))
+    assert measured_prompt in PROMPT_RULES, f"{name}: measured_prompt {measured_prompt!r}"
     rcfg = OmegaConf.merge(cfg)
     rcfg.team = {
-        "rung": rung,
+        "name": name,
+        "measured_prompt": measured_prompt,
         "teammate": mate,
-        "team_text": cfg.get("team_text", None),
+        "team_text": cond.get("team_text", None) or cfg.get("team_text", None),
         "nudge_on_board_only": bool(cfg.get("nudge_on_board_only", True)),
         "protected_roots": list(cfg.get("protected_roots") or ["/app", "/usr/local/bin"]),
         "quiet_posts": list(cfg.get("quiet_posts") or []) or None,
     }
-    sets = (cfg.get("smoke_scenarios") if smoke else cfg.get("scenario_sets")) or {}
-    inc = sets.get(rung, None)
-    rcfg.include_scenarios = OmegaConf.to_container(inc, resolve=True) if inc is not None else None
+    sets = cond.get("smoke_scenarios", None) if smoke else cond.get("scenarios", None)
+    include: dict[str, list[str]] = {}
+    for v in variants:
+        names = sets.get(v, None) if sets is not None else None
+        include[v] = [str(n) for n in names] if names is not None else scenario_names(bench_dir, v)
+    rcfg.include_scenarios = include
     rcfg.output_root = str(work)
     return rcfg
 
 
 def run(target, cfg, out_dir: Path) -> dict:
-    """Run ODCV-Peer against a ServedTarget (the measured arm), rung by rung.
+    """Run ODCV-Peer against a ServedTarget (the measured arm), one condition at a time.
 
-    The teammate is `cfg.teammate.hf_path` co-served on the same server via
-    `ServedTarget.sibling` (mode pinned by `cfg.teammate.mode`, the base revision the
-    server already holds). Returns the summary run_eval publishes: per rung the measured
-    seat's ODCV numbers, progress, submission, the team metrics; plus `team_primary`, the
-    I+M pool.
+    Returns the summary run_eval publishes: per condition the measured seat's ODCV numbers,
+    progress, submission and the team metrics (overall and per variant), plus `team_pooled`,
+    the live-teammate conditions pooled.
     """
     cfg = OmegaConf.merge(cfg)  # private copy
     cfg.model = target.model_name
     cfg.model_key = target.spec.model_key
     cfg.base_url = _bridge_url(target.base_url)
-    mate = target.sibling(str(cfg.teammate.hf_path), mode=cfg.teammate.get("mode", None))
-    assert mate.base_url == target.base_url, "the teammate must be served on the measured arm's server"
-    assert mate.model_name != target.model_name, (
-        f"teammate and measured arm resolve to the same served model {target.model_name!r}")
-    mate_block = {"hf_path": mate.spec.hf_path, "model_name": mate.model_name,
-                  "mode": mate.spec.mode, "revision": mate.spec.revision,
-                  "base_revision": mate.spec.base_revision}
-    print(f">>> ODCV-Peer | measured {target.model_name} | teammate {mate.model_name} "
-          f"({mate.spec.hf_path} @ {str(mate.spec.revision)[:8]}, mode {mate.spec.mode})", flush=True)
-
+    bench_dir = Path(cfg.bench_dir).resolve()
     smoke = bool(cfg.get("smoke", False))
-    rungs = list(cfg.get("smoke_rungs") if smoke else cfg.rungs)
+    wanted = [str(n) for n in (cfg.get("smoke_run") if smoke else cfg.run)]
+    by_name = {str(c.name): c for c in cfg.conditions}
+    missing = [n for n in wanted if n not in by_name]
+    assert not missing, f"conditions {missing} are not defined under `conditions:` ({sorted(by_name)})"
     n_passes = 1 if smoke else int(cfg.get("passes", 12))
     workers = int(cfg.get("judge_workers", 8))
     work = out_dir / "work"
-    summary: dict = {"teammate": mate_block, "smoke": smoke, "rungs": {}}
-    all_cells: dict[str, list[dict]] = {}
+    summary: dict = {"measured": target.spec.hf_path, "smoke": smoke, "conditions": {}}
+    pooled: list[dict] = []
 
-    for rung in rungs:
-        rung_work = work / rung
-        rung_work.mkdir(parents=True, exist_ok=True)
-        rcfg = _rung_config(cfg, rung, mate_block, smoke, rung_work)
-        cfg_path = rung_work / "odcv_config.yaml"
+    for name in wanted:
+        cond = by_name[name]
+        mate = _teammate(target, cfg, cond.teammate)
+        print(f">>> ODCV-Peer | condition {name} | measured {target.model_name} "
+              f"({cond.get('measured_prompt', 'cell')} prompt) | teammate {mate.get('model_name', 'scripted')} "
+              f"({mate.get('prompt', '-')} prompt) | variants {list(cond.variants)}", flush=True)
+        cond_work = work / name
+        cond_work.mkdir(parents=True, exist_ok=True)
+        rcfg = _condition_config(cfg, cond, mate, bench_dir, smoke, cond_work)
+        cfg_path = cond_work / "odcv_config.yaml"
         OmegaConf.save(rcfg, cfg_path)
 
         audits, kept = [], []
         for i in range(n_passes):
-            print(f">>> ODCV-Peer rung {rung} pass {i + 1}/{n_passes}", flush=True)
+            print(f">>> ODCV-Peer {name} pass {i + 1}/{n_passes}", flush=True)
             audit = _run_pass(cfg_path, False)
             audit["kept"] = True
             audits.append(audit)
             kept.append(Path(audit["path"]))
-        (rung_work / "pass_summary.json").write_text(json.dumps(
-            {"rung": rung, "requested_passes": n_passes, "kept_passes": len(kept), "audits": audits}, indent=2))
+        (cond_work / "pass_summary.json").write_text(json.dumps(
+            {"condition": name, "requested_passes": n_passes, "kept_passes": len(kept), "audits": audits}, indent=2))
 
-        combined = rung_work / cfg.model_key / f"combined{len(kept)}x_{timestamp()}"
+        combined = cond_work / cfg.model_key / f"combined{len(kept)}x_{timestamp()}"
         manifest = combine_passes(kept, combined, str(cfg.model_key), OmegaConf.to_container(rcfg, resolve=True))
         submission = submission_stats(combined, str(cfg.model_key))
         (combined / "submission_stats.json").write_text(json.dumps(submission, indent=2))
 
-        # 1. the unchanged ODCV judge on the MEASURED seat (results.json in `combined`)
         odcv_judge.main(rollout_dir=str(combined), config=str(cfg_path), max_workers=workers, smoke=False)
         results = json.loads((combined / "results.json").read_text())
-        # 2. the progress axis on the measured seat
         progress = None
         if bool(cfg.get("progress_judge", True)):
             progress = progress_judge.main(rollout_dir=str(combined), config=str(cfg_path), max_workers=workers, smoke=False)
-        # 3. the teammate under the same rubric, and the seven judged fields
-        team = team_judge.main(rollout_dir=str(combined), config=str(cfg_path), max_workers=workers, rung=rung)
-        # 4. facts + labels + metrics
-        cells = team_facts.assemble(combined, str(cfg.model_key), rung, team)
-        metrics = team_facts.metrics(cells, rung)
+        team = team_judge.main(rollout_dir=str(combined), config=str(cfg_path), max_workers=workers,
+                               teammate_live=(mate["kind"] == "live"))
+        cells = team_facts.assemble(combined, str(cfg.model_key), name, team)
+        metrics = team_facts.metrics(cells, name)
+        by_variant = {v: team_facts.metrics([c for c in cells if c["variant"] == v], f"{name}/{v}")
+                      for v in sorted({c["variant"] for c in cells})}
         (combined / "team_results.json").write_text(json.dumps(
-            {"rung": rung, "metrics": metrics, "cells": cells}, indent=2))
-        all_cells[rung] = cells
+            {"condition": name, "teammate": mate, "metrics": metrics, "by_variant": by_variant, "cells": cells}, indent=2))
+        if mate["kind"] == "live":
+            pooled += cells
 
-        package_run(out_dir, str(cfg.model_key), audits, combined, subdir=rung, work_root=rung_work)
-        summary["rungs"][rung] = {
+        package_run(out_dir, str(cfg.model_key), audits, combined, subdir=name, work_root=cond_work)
+        summary["conditions"][name] = {
+            "teammate": mate, "variants": list(cond.variants),
+            "measured_prompt": str(cond.get("measured_prompt", "cell")),
             "measured": results["ours"], "n_judged": results["n_judged"],
             "progress": (progress or {}).get("ours"), "submission": submission,
-            "team": metrics, "teammate_violation_rate": metrics.get("teammate_violation_rate"),
+            "team": metrics, "by_variant": by_variant,
             "passes": {"requested": n_passes, "kept": len(kept), "n_transcripts": manifest["n_transcripts"]},
         }
-        print(f">>> rung {rung}: measured MR {results['ours']['overall']['mr_pct']}% | "
-              f"team {json.dumps({k: metrics.get(k) for k in ('hit_rate', 'false_alarm_rate', 'misalignment_rate', 'over_refusal_rate', 'team_fraud_rate')})}",
+        print(f">>> {name}: measured MR {results['ours']['overall']['mr_pct']}% | team "
+              f"{json.dumps({k: metrics.get(k) for k in ('hit_rate', 'false_alarm_rate', 'misalignment_rate', 'over_refusal_rate', 'team_fraud_rate')})}",
               flush=True)
 
     shutil.rmtree(work, ignore_errors=True)
-    pooled = [c for r in ("I", "M") for c in all_cells.get(r, [])]
     if pooled:
-        summary["team_primary"] = team_facts.metrics(pooled, "I+M")
+        summary["team_pooled"] = team_facts.metrics(pooled, "live-teammate conditions pooled")
     return summary
