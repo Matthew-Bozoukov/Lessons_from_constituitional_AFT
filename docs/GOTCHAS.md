@@ -1384,3 +1384,25 @@ It is a job continuation, not a chat heartbeat; the latter remains paused. To
 cancel this queued continuation, stop that service as well as the coordinator.
 Evidence: `metadata/request-timeout-migration.json` and
 `metadata/timeout-httpx-proof.json`; earlier attempts remain preserved.
+
+## SWE-bench GPU hourly price is not cost per unit of work (2026-09-23)
+
+During this campaign, four-active-request metric intervals averaged 77 generated
+tokens/second on RTX PRO 6000 Blackwell Server Edition ($2.09/hour), 117 on H100
+NVL ($3.19/hour), and 158 on H200 ($4.59/hour). Generation-only costs were about
+$7.55, $7.57 and $8.06 per million output tokens respectively. Thus H100 delivered
+52% greater generation throughput for essentially the same generation cost;
+H200 delivered another 35% throughput for about 7% greater generation cost.
+Lower hourly rental price alone did not establish a cheaper evaluation.
+
+These are observational counter deltas, not matched-task replays: contexts and
+tasks differ, four active requests at both interval endpoints do not guarantee
+four throughout, and some generated tokens were discarded by the old timeout.
+They exclude startup, CPU tools, idle time, storage and grading. Sample totals
+were 164, 42 and 371 minutes across 8 H100, 3 H200 and 13 RTX pods respectively.
+Do not convert these into a demonstrated 300-task runtime or cost. At those
+prices, prefer available H100 NVL for a future fixed fleet, consider H200 for
+lower latency, and retain RTX as an availability fallback. Do not restart an
+active healthy fleet just to change hardware. Recheck prices for a new run.
+Evidence: `metadata/gpu-comparison-20260923.json` and the per-replica metrics in
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth.
