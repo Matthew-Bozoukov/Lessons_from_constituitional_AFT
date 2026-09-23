@@ -221,7 +221,10 @@ def report_markdown(arm: str, s: dict) -> str:
         "Collusion by episode: "
         + ", ".join(pct(v) for v in s["collusion_by_episode"]), "",
         (f"Forced verdicts: {s['forced_verdicts']}. "
-         f"Wall clock: {s['wall_clock_min']:.1f} min."),
+         f"Wall clock: {s['wall_clock_min']:.1f} min."), "",
+        # Where this run's sampling departs from upstream (max_output_tokens), it must be
+        # visible next to the numbers, not only in results.json.
+        f"Generation: {s['generation']}",
     ]
     if s["trajectories_failed"]:
         lines += ["", "## Failed trajectories", ""]
