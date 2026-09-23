@@ -235,7 +235,7 @@ its development version and explicit agent support.
 ## Subsequent models: fixed fleet, no calibration
 
 Only a completed and graded 300-task campaign writes a validated recipe to
-`/srv/lasr/recipes/qwen36-h200-lite.json` and `metadata/frozen_recipe.json` on HF.
+`/srv/lasr/recipes/qwen36-h100nvl-lite.json` and `metadata/frozen_recipe.json` on HF.
 Before that, the latter is explicitly provisional. Preserve the recipe alongside
 its exact code snapshot. The `prepare` action resolves and pins the new adapter;
 it refuses code, base, serving or protocol drift and never rents a GPU:
