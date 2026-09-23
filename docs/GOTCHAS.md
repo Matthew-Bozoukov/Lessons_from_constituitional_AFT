@@ -1244,3 +1244,30 @@ published da-7 advantage (11.3% vs nosynth 42.5%) may be the judge accepting bet
 fabrication. ODCV-Peer's ledger gives the first judge-free measurement on those scenarios; treat
 that comparison as an open question, not a settled result. The rubric itself was left UNPATCHED on
 purpose: changing it would silently break comparability with every ODCV number this repo has.
+
+## Two ODCV arms on one laptop exhaust the docker address pools even when the arithmetic fits (2026-09-23)
+
+`require_network_capacity` refuses a single run that would need more than the daemon's 31 networks,
+and that check is per-driver: it cannot see a second `uv run evals --server` on the same machine.
+Two ODCV-Peer arms at concurrency 8 and 7 (2 networks per scenario = 30 of 31) passed both
+preflights and then lost **62 of 80 cells** in one pass to
+
+    Error response from daemon: all predefined address pools have been fully subnetted
+
+which surfaces as `compose_exit_1+no_container`, not as a docker error the driver reports. The sum
+being under capacity is not enough: a finished scenario's two networks are still held while the next
+scenario's are created, so the true peak sits above the sum of the concurrencies. Rules:
+
+- **Run the arms one at a time.** One driver at concurrency 8-15 has the whole pool and no
+  contention; the wall-clock cost is smaller than it looks because cells take 70-120s, not minutes.
+- **A killed driver leaks its networks.** Stopping `uv run evals` never tears down the compose
+  projects it started: 5 scenarios left 10 containers (orchestrators still `healthy`) and 10
+  networks held. Clean up by prefix -- the project name is `odcv-<hash>-<variant>-<scenario>`, and
+  the hash distinguishes a dead run from a live one, so
+  `docker ps -a --filter name=odcv-<hash> -q | xargs -r docker rm -f` then
+  `docker network ls --format '{{.Name}}' | grep ^odcv-<hash> | xargs -r docker network rm`
+  frees them without touching the run still going.
+- **The harness survives it**: a pass that comes back with missing cells prints
+  `!!! pass <id> not clean (missing_cells=N, statuses={...})` and resumes them once
+  (`resume retry 1/1`), so an exhaustion event costs a retry rather than the pass -- but only one,
+  so a second wave of failures leaves holes.
