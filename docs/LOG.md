@@ -86,6 +86,22 @@ the scenario writer marked `advisor` (no tools), so 644 of 752 rows (86%) declar
 rather than the writer's 382 (51%); no prompt or reply in those 262 names a declared tool.
 Smoke 5 had the same leak (5 of 8) and it went unnoticed. Either strip the 262 rows' tools
 (restores the scenario step's decision) or relabel them; the rows are coherent either way.
+
+**Stripped, mixed, handed off (2026-09-23).** Kunwar chose strip:
+`scratch/da_multiparty/strip_advisor_tools.py` emptied `tools` on the 262 rows, nothing else
+changed; corpus @ `8a53f84f` (382 rows declare unused tools, 370 do not;
+`strip_advisor_tools.json` in the repo lists every row). Mix at 15% of supervised tokens, the
+current ladder's share (da-15 / delib-15 / delib-sonnet-15; da-7 by rows was 15.4%):
+`dougalldeepmind/2026-09-23-da-multiparty-15-mix` @ `ba8390da`, 731 synthetic rows, per
+principle 82/82/82/82/81/82/79/80/81 (the builder balances rows; t7 and t8 gave every row),
+15.08% of 4,841,805 supervised tokens, 372 of the 731 with tools. These rows are 15% shorter
+than DA's (994 vs 1,171 supervised tokens), so the arm carries ~731 rows at the share da-15
+reached with fewer. Training was handed to someone else after RunPod's create endpoint
+returned 500 on 11 of 12 2xH200 SECURE rentals in 15 min; the one success died on the
+worktree's missing `.env` (docs/GOTCHAS.md, 2026-09-23) and was torn down after ~2 min. The
+command to run, comparable with `dougalldeepmind/2026-09-22-qwen36-0-da-15`:
+`uv run torchrun --nproc_per_node=2 scripts/train/train_lora.py --config configs/train/sft.yaml
+model=qwen36 data_repo=dougalldeepmind/2026-09-23-da-multiparty-15-mix seed=0`.
 ## 2026-09-22 — MASK end to end on the new default: 38 min for da-15 with one queue (was 2h40); three same-adapter replicates within 1.5 points; `passes` implemented; the base model re-measured at 58.2
 
 **Hypothesis.** The sweep (entry above) promised ~39 min of generation on an H200 at 192 in

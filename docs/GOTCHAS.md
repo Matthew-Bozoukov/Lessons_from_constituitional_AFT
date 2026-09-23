@@ -3,6 +3,17 @@
 
 # GOTCHAS
 
+## `runpod up --push_env` from a git worktree rents the pod, then dies on `.env` (2026-09-23)
+
+`up` reads the credentials it pushes from `Path(".env")` in the CURRENT directory, and a
+worktree under `.claude/worktrees/` has no `.env` (it is gitignored, so it never checks out).
+Everything else finds the main checkout's copy through python-dotenv's upward search, so a
+worktree runs synth, mix and evals fine and only fails here -- AFTER the pod is rented. The
+failure path tears the pod down, but only once it has billed. Link the one `.env` in before
+renting: `ln -s <main checkout>/.env .env` in the worktree root (still gitignored; the values
+are never copied). Separately, RunPod's create endpoint returned 500 on 11 of 12 2xH200 SECURE
+rentals in 15 min that evening; a 500 creates no pod here, so a one-minute retry loop is safe.
+
 ## Calibrated synthesis reviewers can still fail on generated prose (2026-09-21)
 
 In the constitution-only low-stakes smoke, a reviewer passed all short paired
