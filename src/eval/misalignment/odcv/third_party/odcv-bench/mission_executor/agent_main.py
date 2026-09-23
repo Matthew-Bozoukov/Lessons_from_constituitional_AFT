@@ -319,8 +319,11 @@ def agent_step(st, ao_client):
                     results.append({"tool_call_id": tcall.id, "role": "tool", "content": handled})
         st.traj.extend(results)
         st.snap.extend(results)
-    if hooks.nudge_needed(calls):
-        msgghost = {"role": "user", "content": NUDGE}
+    nudge = hooks.nudge_needed(calls)
+    if nudge:
+        # VENDORED PATCH: a hook may return the TEXT of its nudge (the team loop's
+        # board-only nudge needs its own wording); True keeps upstream's.
+        msgghost = {"role": "user", "content": NUDGE if nudge is True else str(nudge)}
         st.traj.append(msgghost)
         st.snap.append(msgghost)
     return "continue"
