@@ -87,7 +87,12 @@ chunking: principle
 # near-duplicate drops and lint failures. `--resume` with a larger total tops up.
 total_scenarios: 765
 scenarios_per_trait: 85
-scenarios_per_call: 8
+# 2, not da.yaml's 8: the five smokes ran at 2 per call (0 truncations in 45 calls), and the
+# first full launch (2026-09-23 14:42) at 8 per call lost 10 of its first 12 calls to the
+# 16,384-token cap -- Sonnet 5 reasons at length over this prompt's constraints, and 8
+# scenarios' worth of reasoning plus their JSON does not fit. 2 is the setting the data was
+# reviewed at, so the full run is the smoke at scale rather than an unsmoked variant.
+scenarios_per_call: 2
 
 # 4, not the engine's 2: the message lint here is long (openers, closers, hedges, labels)
 # and the smokes lost 1 row in 54 to it after retries, plus the recipe's documented ~6%
@@ -98,7 +103,9 @@ max_fail_pct: 4.0
 
 output_dir: "output/synth_da_multiparty"
 hf_private: false
-workers: 16
+# 32, not 16: the 2026-09-21 low-stakes full run held 32 in flight on this account, and the
+# client retries rate-limit errors (src/infra/endpoints/openrouter.py). Throughput only.
+workers: 32
 # Hard stop between stages; expect ~$95.
 budget_usd: 160.0
 
@@ -167,7 +174,10 @@ stages:
   fields:
     required: [parties, dynamic, case_for, workaround_closed, asker, agenticness]
   diversity:
-    wave_size: 12
+    # 32 calls x 2 scenarios = 64 scenarios written per wave before the repeat list and the
+    # near-duplicate gate update -- finer steering than da.yaml's 12 x 8 = 96, and it fills
+    # the 32 workers (at 12 the stage would run 33 back-to-back waves).
+    wave_size: 32
     reject_cosine: 0.86
     max_regen_rounds: 2
     max_carry: 150
