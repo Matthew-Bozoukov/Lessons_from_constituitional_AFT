@@ -56,7 +56,8 @@ def consume(endpoint, model, cfg, worker, allowed):
         out.mkdir(parents=True)
         request = {'instance': rows[iid], 'image': images[iid]['digest'], 'out': str(out),
                    'endpoint': endpoint, 'model': model, 'campaign': meta['campaign'], 'attempt': aid,
-                   'cpus': cfg.agent_cpus, 'memory': cfg.agent_memory, 'pids': cfg.agent_pids}
+                   'cpus': cfg.agent_cpus, 'memory': cfg.agent_memory, 'pids': cfg.agent_pids,
+                   'max_response_tokens': cfg.max_response_tokens, 'max_task_tokens': cfg.max_task_tokens}
         # Never persist gold solutions in rollout directories or feed them to the agent.
         request['instance'] = {k: v for k, v in request['instance'].items()
                                if k not in ('patch', 'test_patch', 'hints_text', 'FAIL_TO_PASS', 'PASS_TO_PASS')}

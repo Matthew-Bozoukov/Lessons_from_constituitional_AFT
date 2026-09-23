@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Lite concurrency calibration and bounded protocol
+
+**Hypothesis.** Higher per-GPU batching and explicit generation budgets should
+reduce cost and long completion tails while retaining all 300 Lite tasks.
+
+**Method.** After five completed submissions on a three-worker H200 pilot, stopped
+the owned GPU to retune to eight workers. Added 16,384-token response and 65,536-token
+task budgets; token exhaustion is a terminal unresolved outcome, never a model
+reroll. The candidate full fleet is four independent H200s/32 CPU containers.
+Record the stopped attempt and original source/config/ledger; retain the five
+completed outputs only after checking all recorded token usage fits both limits.
+An 18-case pilot measures the new batching. A complete graded run exports a
+versioned recipe; future `prepare --target ...` configs launch that fixed fleet
+without calibration, rejecting incompatible code/base/protocol drift.
+
+**Result so far.** Initial live server: 94.9% prefix-cache hits, zero preemptions;
+five submitted trajectories used at most 1,299 tokens/response and 12,862 tokens/task.
+These submissions are not yet graded and do not establish performance or optimal
+fleet size. Cumulative campaign GPU cap remains $100; the revised calibration
+reservation allowance is $20 within that cap. No unrelated pod was terminated.
+
+**Next.** Verify bounded-agent integration, run eight-worker calibration and the
+budget-gated fleet, then publish official results and measured elapsed time/cost to
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth.
+
 ## 2026-09-23 — Prepared no-DA Lite coordinator, synthetic integration checked
 
 **Hypothesis.** Retaining the existing pinned mini-SWE-agent and official grader,

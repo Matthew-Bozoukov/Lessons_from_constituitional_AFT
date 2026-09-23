@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf
 from src.infra.huggingface import hf_api, hf_download, hf_repo_id, push_run_dir
 from src.naming import artifact_name, today
-from scratch.swebench_lite_state import atomic, read
+from scratch.swebench_lite_state import State, atomic, read
 from scratch.swebench_lite_worker import consume
 from scratch.swebench_lite import grade
 
@@ -39,6 +39,7 @@ def main():
     commands = ["printf '%s' '" + base64.b64encode(row['patch'].encode()).decode() + "' | base64 -d > patch.txt",
                 'cat patch.txt', 'echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt']
     calls = []
+    capped_calls = []
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -46,10 +47,11 @@ def main():
 
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            assert request['model'] == 'synthetic'
+            assert request['model'] in ('synthetic', 'synthetic-capped')
+            assert request['max_tokens'] == cfg.max_response_tokens
             index = sum(m['role'] == 'assistant' for m in request['messages'])
             assert index < 3, 'Unexpected agent loop'
-            calls.append(index)
+            (capped_calls if request['model'] == 'synthetic-capped' else calls).append(index)
             response = {'id': 'synthetic-' + str(index), 'object': 'chat.completion', 'created': int(time.time()),
                         'model': 'synthetic', 'choices': [{'index': 0, 'finish_reason': 'tool_calls', 'message': {
                             'role': 'assistant', 'content': 'Synthetic infrastructure test; public reference patch.',
@@ -57,6 +59,11 @@ def main():
                             'tool_calls': [{'id': 'call_' + str(index), 'type': 'function', 'function': {
                                 'name': 'bash', 'arguments': json.dumps({'command': commands[index]})}}]}}],
                         'usage': {'prompt_tokens': 100, 'completion_tokens': 50, 'total_tokens': 150}}
+            if request['model'] == 'synthetic-capped':
+                response['choices'][0] = {'index': 0, 'finish_reason': 'length',
+                                          'message': {'role': 'assistant', 'content': 'Truncated synthetic response'}}
+                response['usage']['completion_tokens'] = cfg.max_response_tokens
+                response['usage']['total_tokens'] = cfg.max_response_tokens + 100
             payload = json.dumps(response).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -76,6 +83,15 @@ def main():
         # Repeating the work request must not send another API request.
         consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'resume-check', [iid])
         assert calls == [0, 1, 2]
+        capped_iid = next(r['instance_id'] for r in rows if r['repo'] == 'astropy/astropy')
+        with State(root).edit() as data:
+            data['tasks'][capped_iid] = {'status': 'pending', 'attempts': []}
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-check', [capped_iid])
+        capped = read(root / 'metadata/state.json')['tasks'][capped_iid]
+        assert capped['status'] == 'valid' and capped['attempts'][0]['exit_status'] == 'LimitsExceeded'
+        assert capped['attempts'][0]['prediction']['model_patch'] == ''
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-resume', [capped_iid])
+        assert capped_calls == [0], 'Truncated response must never be retried'
     finally:
         server.shutdown()
     grade(cfg)

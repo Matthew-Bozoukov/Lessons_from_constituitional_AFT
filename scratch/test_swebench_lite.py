@@ -12,6 +12,65 @@ from omegaconf import OmegaConf
 from scratch.swebench_lite_state import State, atomic, classify, read, lock
 from scratch import swebench_lite as fleet
 from src.infra import runpod
+from scratch.swebench_lite_task import install_token_limits
+
+
+class TokenBudgetTests(unittest.TestCase):
+    def model(self):
+        class Stop(Exception):
+            def __init__(self, *messages):
+                self.messages = messages
+
+        class Model:
+            def _query(self, messages, **kwargs):
+                return kwargs
+
+            def _parse_actions(self, response):
+                return ['execute']
+
+        install_token_limits(Model, Stop, 10, 15)
+        return Model(), Stop
+
+    def response(self, used, reason='tool_calls'):
+        return Mock(model_dump=lambda: {'usage': {'completion_tokens': used},
+                    'choices': [{'finish_reason': reason, 'message': {'content': 'kept'}}]})
+
+    def test_remaining_budget_bounds_next_request(self):
+        model, stop = self.model()
+        self.assertEqual(model._query([])['max_tokens'], 10)
+        self.assertEqual(model._parse_actions(self.response(8)), ['execute'])
+        self.assertEqual(model._query([])['max_tokens'], 7)
+        with self.assertRaises(stop) as caught:
+            model._parse_actions(self.response(7))
+        self.assertEqual(caught.exception.messages[-1]['extra']['limit_reason'], 'task_token_limit')
+
+    def test_truncation_keeps_response_and_exits_without_actions(self):
+        model, stop = self.model()
+        with self.assertRaises(stop) as caught:
+            model._parse_actions(self.response(10, 'length'))
+        messages = caught.exception.messages
+        self.assertEqual(messages[0]['content'], 'kept')
+        self.assertEqual(messages[0]['extra']['actions'], [])
+        self.assertEqual(messages[-1]['extra']['submission'], '')
+        self.assertTrue(classify({'info': {'exit_status': 'LimitsExceeded'}}, 0)['valid'])
+
+    def test_model_budgets_are_not_shared_between_tasks(self):
+        first, _ = self.model()
+        second = first.__class__()
+        first._parse_actions(self.response(8))
+        self.assertEqual(second._query([])['max_tokens'], 10)
+
+    def test_unvalidated_or_changed_recipe_rejected(self):
+        cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+        recipe = {'validated_full_run': False, 'settings': fleet.recipe_settings(cfg), 'source_hashes': {}}
+        with self.assertRaisesRegex(AssertionError, 'complete graded'):
+            fleet.validate_recipe(cfg, recipe)
+        recipe['validated_full_run'] = True
+        with patch.object(fleet, 'sources', return_value={}):
+            fleet.validate_recipe(cfg, recipe)
+            cfg.workers_per_replica = 16
+            with self.assertRaisesRegex(AssertionError, 'mismatch'):
+                fleet.validate_recipe(cfg, recipe)
 
 
 class LeaseTests(unittest.TestCase):

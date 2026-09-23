@@ -14,9 +14,14 @@ root: /srv/lasr/runs/lite-nosynth
 credentials: /srv/lasr/credentials.env
 ssh_key: /root/.ssh/id_ed25519
 gpu: NVIDIA H200
-replicas: 8
+replicas: 4
 target_generation_seconds: 3600
-workers_per_replica: 3
+workers_per_replica: 8
+calibrate: true
+recipe_path: /srv/lasr/recipes/qwen36-h200-lite.json
+pilot_tasks_per_repo: 3
+max_response_tokens: 16384
+max_task_tokens: 65536
 agent_cpus: 2
 agent_memory: 4g
 agent_pids: 512
@@ -25,7 +30,7 @@ disk_gb: 200
 # Proposed launch limits, not a forecast. Actual launch must explicitly pass --budget-usd.
 recommended_budget_usd: 100
 max_hourly_usd: 5.50
-calibration_budget_usd: 10
+calibration_budget_usd: 20
 calibration_seconds: 3600
 campaign_seconds: 7200
 boot_seconds: 1800
@@ -43,6 +48,6 @@ grading_timeout_seconds: 1800
 pilot_repos: [django/django, sympy/sympy, scikit-learn/scikit-learn, astropy/astropy, matplotlib/matplotlib, psf/requests]
 serving:
   context_window: 131072
-  concurrency: 4
+  concurrency: 8
   needs_tool_calls: true
   reuses_long_prefixes: true

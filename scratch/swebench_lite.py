@@ -30,6 +30,35 @@ REPO = Path(__file__).resolve().parents[1]
 HARNESS = REPO / 'src/eval/capabilities/swebench_mini/envs/harness/.venv/bin/python'
 
 
+def recipe_settings(cfg):
+    keys = ('base', 'base_revision', 'mode', 'gpu', 'replicas', 'workers_per_replica',
+            'serving', 'max_response_tokens', 'max_task_tokens', 'agent_cpus', 'agent_memory',
+            'agent_pids', 'grading_workers', 'grading_timeout_seconds', 'dataset_revision')
+    return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
+
+
+def validate_recipe(cfg, recipe):
+    assert recipe.get('validated_full_run'), 'Recipe needs a complete graded 300-task run first'
+    assert recipe['settings'] == recipe_settings(cfg), 'Frozen recipe mismatch; explicit recalibration required'
+    # New target/base artifacts are parameters; implementation changes require review.
+    assert recipe['source_hashes'] == sources(), 'Frozen recipe code drift'
+    return recipe
+
+
+def prepare_target(cfg, args):
+    assert args.target and args.write_config and args.root, 'prepare requires --target, --root, --write-config'
+    assert not Path(args.write_config).exists(), 'Refusing to overwrite an existing configuration'
+    revision = hf_api().model_info(args.target, revision=args.target_revision).sha
+    target = resolve_target(args.target, revision=revision)
+    cfg.target, cfg.target_revision = args.target, revision
+    cfg.base, cfg.base_revision, cfg.mode = target.base_model, target.base_revision, target.mode
+    cfg.root, cfg.calibrate = str(Path(args.root).resolve()), False
+    validate_recipe(cfg, read(cfg.recipe_path))
+    assert not (Path(cfg.root) / 'metadata/manifest.json').exists(), 'Choose a fresh run directory'
+    OmegaConf.save(cfg, args.write_config)
+    print('Prepared fixed-fleet config (no rental):', args.write_config)
+
+
 def account():
     return runpod.graphql('query { myself { clientBalance currentSpendPerHr } }')['myself']
 
@@ -56,6 +85,11 @@ def preflight(cfg):
     assert [i['Id'] for i in tags] == [i['id'] for i in images.values()]
     assert shutil.disk_usage('/var/lib/docker').free / 2**30 >= cfg.min_free_gib
     assert psutil.cpu_count() >= 32 and psutil.virtual_memory().total >= 115 * 2**30
+    assert cfg.replicas * cfg.workers_per_replica <= 32, 'Qualified CPU host supports at most 32 active agents'
+    assert 0 < cfg.max_response_tokens <= cfg.max_task_tokens
+    assert cfg.serving.concurrency >= cfg.workers_per_replica
+    if not cfg.calibrate:
+        validate_recipe(cfg, read(cfg.recipe_path))
     receipt = read(cfg.receipt)
     available = datetime.fromisoformat(receipt['stop_at']).timestamp() - time.time()
     assert available > cfg.campaign_seconds + cfg.cpu_finish_reserve_seconds, 'CPU expiry too close; do not rent GPUs'
@@ -76,7 +110,7 @@ def preflight(cfg):
             'replicas': cfg.replicas, 'workers': cfg.replicas * cfg.workers_per_replica,
             'gpu_quote_usd_hour': quote, 'balance': balance, 'cpu_stop_at': receipt['stop_at'],
             'recommended_budget_usd': cfg.recommended_budget_usd,
-            'paid_gpu_test': 'pending; first launch begins with one calibration replica'}
+            'paid_gpu_test': 'one calibration replica' if cfg.calibrate else 'validated fixed fleet; no calibration'}
 
 
 def sources():
@@ -107,6 +141,8 @@ def initialize(cfg, config_path, budget):
                             'digest-pinned cached images; 2 CPU/4GiB/512 PID agent container caps; infrastructure retries only (max two attempts); '
                             'requests local HTTPBin fixture for grading; full denominator 300',
                 'limitations': read(Path(cfg.readiness) / 'results/readiness.json')['benchmark_limitations']}
+    manifest['protocol'] += (f'; response cap {cfg.max_response_tokens}, task completion-token cap {cfg.max_task_tokens}; '
+                             'token-limit outcomes terminate unresolved without model rerolls')
     deployment = Path('/srv/lasr/lite-deployment.json')
     if deployment.exists():
         manifest['deployment'] = read(deployment)
@@ -122,7 +158,7 @@ def initialize(cfg, config_path, budget):
         assert digest(dest) == sha
     atomic(root / 'metadata/manifest.json', manifest)
     atomic(root / 'metadata/state.json', {'tasks': {r['instance_id']: {'status': 'pending', 'attempts': []} for r in rows},
-           'pods': [], 'deadline': 0, 'last_upload': 0, 'phase': 'prepared', 'calibrated': False, 'halt': None})
+           'pods': [], 'deadline': 0, 'last_upload': 0, 'phase': 'prepared', 'calibrated': not cfg.calibrate, 'halt': None})
     return manifest
 
 
@@ -434,7 +470,8 @@ def execute(cfg, config_path, action, budget):
         try:
             if not read(state.path)['calibrated']:
                 rows = read(root / 'metadata/swebench_lite_test.json')
-                pilot = [next(r['instance_id'] for r in rows if r['repo'] == repo) for repo in cfg.pilot_repos]
+                pilot = [r['instance_id'] for repo in cfg.pilot_repos
+                         for r in [r for r in rows if r['repo'] == repo][:cfg.pilot_tasks_per_repo]]
                 previous = read(state.path)
                 pending = [iid for iid in pilot if previous['tasks'][iid]['status'] != 'valid']
                 assert all(len(previous['tasks'][iid]['attempts']) < cfg.max_infrastructure_attempts for iid in pending), 'Pilot infrastructure retry allowance exhausted'
@@ -452,15 +489,20 @@ def execute(cfg, config_path, action, budget):
                     traj = read(root / 'rollouts' / iid / attempt['id'] / iid / (iid + '.traj.json'))
                     assert any(m.get('tool_calls') for m in traj.get('messages', []) if m.get('role') == 'assistant'), 'Pilot lacks valid tool calls'
                 elapsed = time.time() - started
-                attempts = [data['tasks'][iid]['attempts'][-1] for iid in pilot]
+                # Use only this configuration's new attempts for throughput; historical
+                # compatible outputs remain valid but had a different batch size.
+                measured_ids = pending or pilot
+                attempts = [data['tasks'][iid]['attempts'][-1] for iid in measured_ids]
                 # Active attempt time excludes downtime between explicit resumes.
-                gpu_seconds_per_task = sum(a['finished'] - a['started'] for a in attempts) / (len(pilot) * cfg.workers_per_replica)
+                gpu_seconds_per_task = sum(a['finished'] - a['started'] for a in attempts) / (len(attempts) * cfg.workers_per_replica)
                 # Charge cold boot once PER replica, not once per six-task batch.
                 boot_seconds = max(0, min(a['started'] for a in attempts) - started)
-                proposed_replicas = min(cfg.replicas, max(1, math.ceil((300 - len(pilot)) * gpu_seconds_per_task / cfg.target_generation_seconds)))
+                proposed_replicas = cfg.replicas
                 projected = ((300 - len(pilot)) * gpu_seconds_per_task + proposed_replicas * boot_seconds) / 3600 * cfg.max_hourly_usd
                 atomic(root / 'metadata/calibration.json', {'tasks': pilot, 'elapsed_seconds': elapsed,
                        'gpu_seconds_per_task': gpu_seconds_per_task,
+                       'measured_tasks': measured_ids, 'workers_per_replica': cfg.workers_per_replica,
+                       'observed_batch_seconds': max(a['finished'] for a in attempts) - min(a['started'] for a in attempts),
                        'boot_seconds': boot_seconds, 'proposed_replicas': proposed_replicas,
                        'projected_remaining_gpu_usd': projected, 'estimate_only': True})
                 assert projected + reserved_cost(data) <= manifest['budget_usd'], 'Pilot projects over budget; stop before fleet'
@@ -469,12 +511,16 @@ def execute(cfg, config_path, action, budget):
                 with state.edit() as data:
                     data['calibrated'] = True
                     data['phase'] = 'fleet'
+                atomic(root / 'metadata/frozen_recipe.json', {'settings': recipe_settings(cfg),
+                       'source_hashes': sources(), 'calibration': read(root / 'metadata/calibration.json'),
+                       'validated_full_run': False, 'source_hf_repo': manifest['repo']})
             data = read(state.path)
             todo = [iid for iid, t in data['tasks'].items() if t['status'] != 'valid' and len(t['attempts']) < cfg.max_infrastructure_attempts]
             if todo:
-                measured = read(root / 'metadata/calibration.json')['gpu_seconds_per_task']
-                count = min(cfg.replicas, math.ceil(len(todo) / cfg.workers_per_replica),
-                            max(1, math.ceil(len(todo) * measured / cfg.target_generation_seconds)))
+                recipe = (read(root / 'metadata/frozen_recipe.json') if cfg.calibrate
+                          else validate_recipe(cfg, read(cfg.recipe_path)))
+                measured = recipe['calibration']['gpu_seconds_per_task']
+                count = min(cfg.replicas, math.ceil(len(todo) / cfg.workers_per_replica))
                 atomic(root / 'metadata/fleet_plan.json', {'replicas': count, 'ceiling': cfg.replicas,
                        'inference_seconds_estimate': len(todo) * measured / count, 'estimate_only': True})
                 phase(cfg, config_path, todo, count, cfg.campaign_seconds, manifest)
@@ -483,21 +529,34 @@ def execute(cfg, config_path, action, budget):
             checkpoint(cfg, config_path)
         try:
             grade(cfg)
+            if read(root / 'results/results.json')['status'] == 'complete':
+                recipe_path = root / 'metadata/frozen_recipe.json'
+                recipe = read(recipe_path) if recipe_path.exists() else read(cfg.recipe_path)
+                recipe['validated_full_run'] = True
+                recipe['validation_hf_repo'] = manifest['repo']
+                atomic(recipe_path, recipe)
+                atomic(cfg.recipe_path, recipe)
         finally:
             checkpoint(cfg, config_path, required=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['plan', 'run', 'resume', 'grade', 'publish', 'status', 'guard'])
+    parser.add_argument('action', choices=['prepare', 'plan', 'run', 'resume', 'grade', 'publish', 'status', 'guard'])
     parser.add_argument('--config', default='scratch/swebench_lite.yaml')
     parser.add_argument('--budget-usd', type=float)
+    parser.add_argument('--target')
+    parser.add_argument('--target-revision')
+    parser.add_argument('--root')
+    parser.add_argument('--write-config')
     args = parser.parse_args()
     config_path = Path(args.config).resolve()
     cfg = OmegaConf.load(config_path)
     load_dotenv(cfg.credentials)
     os.chdir(REPO)
-    if args.action == 'plan':
+    if args.action == 'prepare':
+        prepare_target(cfg, args)
+    elif args.action == 'plan':
         print(json.dumps(preflight(cfg), indent=2))
     elif args.action == 'publish':
         publish(cfg)

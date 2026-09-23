@@ -17,8 +17,9 @@ Type=simple
 WorkingDirectory=/srv/lasr/repo
 Environment=PYTHONUNBUFFERED=1
 Environment=HF_HOME=/srv/lasr/cache/huggingface
+Environment=LITE_CONFIG=scratch/swebench_lite.yaml
 EnvironmentFile=/srv/lasr/lite-launch.env
-ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite ${LITE_ACTION} --config scratch/swebench_lite.yaml --budget-usd ${LITE_BUDGET_USD}
+ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite ${LITE_ACTION} --config ${LITE_CONFIG} --budget-usd ${LITE_BUDGET_USD}
 Restart=no
 TimeoutStopSec=240
 KillMode=control-group
@@ -33,7 +34,9 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/srv/lasr/repo
-ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite guard --config scratch/swebench_lite.yaml
+Environment=LITE_CONFIG=scratch/swebench_lite.yaml
+EnvironmentFile=/srv/lasr/lite-launch.env
+ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite guard --config ${LITE_CONFIG}
 TimeoutStartSec=240
 UNIT
 cat > /etc/systemd/system/lasr-swebench-gpu-reaper.timer <<'UNIT'

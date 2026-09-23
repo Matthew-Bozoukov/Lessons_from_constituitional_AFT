@@ -127,14 +127,32 @@ submissions count as unresolved. To stop inference, use
 
 ## Parallelism, cost and runtime
 
-The first run uses one H200 replica on six fixed cases spanning six repositories.
-These cases remain part of the final 300. It checks tool calls, saved predictions,
-official grading, backup and teardown before expanding. Measured task throughput
-selects **up to eight independent model replicas**, each with three concurrent agent
-tasks. Eight is a configurable ceiling, not a measured optimum. Each serves the same
-BF16 LoRA; this is not tensor parallelism across eight GPUs. A one-hour generation
-target informs fleet sizing but is not a guarantee. Long individual trajectories
-remain sequential and a six-case pilot gives only a rough throughput estimate.
+The first campaign now calibrates one H200 with eight agent workers on the first
+three cases from each of six repositories (18 cases). Completed cases remain in
+the final 300. Tool calls, saved predictions, official grading, backup and teardown
+must pass before expansion to a fixed **four independent H200 replicas with eight
+workers each**. This candidate recipe is experimental until all 300 are graded;
+it is not claimed to be optimal. The CPU host is capped at 32 active agent containers.
+Every replica serves the same BF16 LoRA. Individual trajectories remain sequential.
+
+The initial three-worker pilot demonstrated working prefix caching (94.9% cumulative
+hit rate), zero cache preemptions and low active KV occupancy, but one uncapped
+response continued for many minutes. Its GPU was terminated before retuning. The
+five completed trajectories remain saved; an explicit migration checks every
+recorded response and total completion usage against the new limits before retaining
+them. Their original configs are preserved and they are excluded from the new
+throughput measurement. The interrupted attempt remains in the audit trail.
+
+The protocol now caps each response at 16,384 completion tokens and each task at
+65,536 completion tokens (reasoning included), in addition to 250 agent steps.
+A response ending with `finish_reason=length` or exhaustion of the task token budget
+terminates that task as `LimitsExceeded`, with an empty submission and an unresolved
+score. It is never rerun as infrastructure failure. These are explicit bounded
+evaluation settings; retain them identically in future control/DA comparisons.
+
+Calibration's reservation allowance is now $20, within the unchanged $100 campaign
+GPU cap. It includes prior rentals and a conservative $5.50 reservation for an
+ambiguous failed allocation; observed task generation is not a billing receipt.
 
 Current H200 secure-cloud quote checked through the live account: **$4.59/hour**.
 Allocation also checks its actual reported rate against a $5.50/hour ceiling.
@@ -156,7 +174,7 @@ Illustrative warm-CPU estimates, **not measured performance of this model**:
 Eight 15–30 minute cold boots add $9.18–18.36. Assuming another 20–60 minutes for
 12-worker CPU grading gives a provisional **1.5–3 hours and $40–90 per subsequent
 model** in the 25–50 tasks/hour scenarios, including active CPU time and upload.
-The first calibration adds time and an allowance up to $10. These assumptions
+The first calibration adds time within the allowance described above. These assumptions
 require measurement; the slow scenario should fail the pilot's budget projection
 before fleet expansion. The pipeline cap bounds spending/execution, not completion.
 
@@ -167,11 +185,12 @@ marginal run figures above. There is **no LLM judge bill**: grading executes tes
 
 ## What is reused, and what is custom
 
-The agent is pinned stock **mini-SWE-agent 2.2.1**, with its original prompts,
-temperature, tools and 250-step limit. The official **SWE-bench 4.1.0** harness
+The agent is pinned **mini-SWE-agent 2.2.1**, with its original prompts,
+temperature, tools and 250-step limit, plus the declared terminal token budgets.
+The official **SWE-bench 4.1.0** harness
 applies and tests predictions. The local-model dollar limit is inert and is reported
 as such. `src/eval/run_eval.py` still owns vLLM serving, with 131,072 context,
-concurrency four, prefix caching, and the pinned thinking template/base/adapter.
+concurrency eight, prefix caching, and the pinned thinking template/base/adapter.
 
 Declared environment changes: no agent-container networking; cached images by
 digest; agent caps of two CPUs, 4 GiB RAM and 512 PIDs; local HTTPBin only during
@@ -187,6 +206,37 @@ quietly changing the measurement. For a broader evaluation platform, reassess
 Inspect and an explicit mini-SWE-agent integration instead of growing this driver
 into a general framework. Inspect's newer mid-agent checkpointing currently requires
 its development version and explicit agent support.
+
+## Subsequent models: fixed fleet, no calibration
+
+Only a completed and graded 300-task campaign writes a validated recipe to
+`/srv/lasr/recipes/qwen36-h200-lite.json` and `metadata/frozen_recipe.json` on HF.
+Before that, the latter is explicitly provisional. Preserve the recipe alongside
+its exact code snapshot. The `prepare` action resolves and pins the new adapter;
+it refuses code, base, serving or protocol drift and never rents a GPU:
+
+```bash
+scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite prepare \
+  --target ORG/ADAPTER --root /srv/lasr/runs/NEW-RUN \
+  --write-config /srv/lasr/NEW-RUN.yaml
+# Optional --target-revision pins a requested adapter revision before resolving it.
+scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite plan \
+  --config /srv/lasr/NEW-RUN.yaml
+```
+
+After the CPU readiness check, set the root-only `/srv/lasr/lite-launch.env`:
+
+```text
+LITE_ACTION=run
+LITE_CONFIG=/srv/lasr/NEW-RUN.yaml
+LITE_BUDGET_USD=100
+```
+
+Start `lasr-swebench-lite.service`. The service and independent reaper read the same
+config. The four replicas launch together, without a pilot or dynamic resizing.
+Only one campaign may occupy this service at a time. Use `resume` with the same
+config after inspecting an interruption; it never resets the cumulative budget.
+An existing same-day canonical HF destination is refused rather than overwritten.
 
 ## Installation on another prepared CPU VM
 
