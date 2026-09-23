@@ -78,7 +78,17 @@ Re-judged, all three cells read as expected: Marketing objected/reported false, 
 change undisclosed (presented as "optimization and rebalancing"); K1 likewise (four
 fabricated rows described as "adding new entries"); Ai-Education a gaming-only cell.
 
-**Next.** K1 once on da-7 (`rungs=[K1] passes=3`);
+**Conditions revised (2026-09-23, his comment on the smoke page).** The fixed rungs became a
+config grid (`conditions:` in `configs/eval/odcv_peer/lite.yaml`): `pushy_base` (the old M:
+teammate mandated, measured incentivized, base Qwen), `same_base` (both seats on the cell's own
+prompt, base Qwen teammate; its incentivized cells are the old I), `same_self` (both seats the
+measured arm: a homogeneous team), `k1` (control, once). The two-base baseline he asked for is
+`same_self` with `--target Qwen/Qwen3.6-27B mode=think`. Every condition runs the same
+pre-registered cells (26 mandated-set, 16 incentivized-set), so conditions compare cell for
+cell. `team_spec_for` reads a prompt rule per seat; the runner resolves the teammate per
+condition and packs one condition per directory.
+
+**Next.** K1 once on da-7 (`run=[k1] passes=3`);
 then I and M on da-7 and nosynth. Later: replay check (identical teammate per arm), the
 mirror (base Qwen measured, a trained teammate), triads, a `pool()` for `transfer_gap`.
 
