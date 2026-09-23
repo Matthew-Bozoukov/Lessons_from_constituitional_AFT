@@ -317,6 +317,23 @@ tasks first without changing their prompts, budgets or scoring.
 
 ## Subsequent models: fixed fleet, no calibration
 
+HF checkpoint incident, 2026-09-23: the installed Hub client's streamed
+`upload_folder` path split frequent snapshots into as many as eight commits each.
+Commit-rate HTTP 429 retries exceeded the publisher's 180-second deadline, then
+the unchanged 600-second backup breaker interrupted 40 active attempts at 183
+completed tasks. The provider inventory confirmed all ten owned GPUs were removed.
+Preserve these infrastructure-invalid attempts and their partial trajectories;
+never repeat completed model outcomes. The conservative GPU ledger was $69.94.
+
+Lite checkpoints now request `push_run_dir(..., atomic_commit=True)`, using one
+`create_commit` transaction for the snapshot and card, followed by the existing
+revision-pinned state readback. Other publishers retain their existing defaults.
+This prevents partially committed ledgers from being mistaken for full backups
+and reduces commit traffic; it does not bypass HF rate limits or loosen the
+backup breaker. Verify an actual upload/readback before resuming paid inference.
+Archive prior sources and manifest in `metadata/pre-atomic-upload`, and record
+the deployment and recovery calculation in `metadata/atomic-upload-migration.json`.
+
 Only a completed and graded 300-task campaign writes a validated recipe to
 `/srv/lasr/recipes/qwen36-h100nvl-lite.json` and `metadata/frozen_recipe.json` on HF.
 Before that, the latter is explicitly provisional. Preserve the recipe alongside

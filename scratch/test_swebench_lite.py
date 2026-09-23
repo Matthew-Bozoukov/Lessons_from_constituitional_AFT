@@ -183,6 +183,7 @@ class RentalTests(unittest.TestCase):
             destinations = []
 
             def push(snapshot, repo, *a, **kw):
+                self.assertTrue(kw['atomic_commit'])
                 destinations.append(repo)
                 shutil.copytree(snapshot, remote, dirs_exist_ok=True)
 

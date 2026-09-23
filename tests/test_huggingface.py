@@ -178,3 +178,23 @@ def test_push_run_dir_qualifies_a_bare_name_before_the_gate(tmp_path, monkeypatc
         url = hf.push_run_dir(tmp_path, name, fields, private=True, repo_type="model")
         assert url == f"https://huggingface.co/{org}/2026-09-05-qwen36-0-nosynth"
     assert {r for _, r in calls} == {f"{org}/2026-09-05-qwen36-0-nosynth"}
+
+
+def test_atomic_run_checkpoint_uses_one_commit_with_card_and_artifacts(tmp_path, monkeypatch):
+    import src.infra.huggingface as hf
+    from unittest.mock import Mock
+
+    api = Mock()
+    monkeypatch.setattr(hf, "hf_api", lambda: api)
+    (tmp_path / "metadata").mkdir()
+    (tmp_path / "metadata/state.json").write_text('{"completed": 1}')
+    (tmp_path / ".cache").mkdir()
+    (tmp_path / ".cache/private").write_text("not an artifact")
+    fields = {k: "x" for k in hf.REQUIRED_FIELDS}
+    fields['date_generated'] = '20260905'
+    hf.push_run_dir(tmp_path, '2026-09-05-qwen36-0-nosynth', fields,
+                    atomic_commit=True)
+    api.upload_folder.assert_not_called()
+    api.create_commit.assert_called_once()
+    operations = api.create_commit.call_args.kwargs['operations']
+    assert {op.path_in_repo for op in operations} == {'README.md', 'metadata/state.json'}

@@ -327,7 +327,8 @@ def resolve_run_dir(repo_id: str, revision: str | None = None,
 
 
 def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = False,
-                 repo_type: str = "dataset", front_matter: dict | None = None) -> str:
+                 repo_type: str = "dataset", front_matter: dict | None = None,
+                 atomic_commit: bool = False) -> str:
     """Upload a run directory (with its card) to an HF repo.
 
     Args:
@@ -340,6 +341,9 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
         fields: Card fields; all REQUIRED_FIELDS must be present and non-empty.
         private: PUBLIC by default (2026-08-24: the dashboard reads eval repos token-less); pass private=True deliberately for anything sensitive.
         repo_type: "dataset" (default) or "model" (adapters).
+        atomic_commit: Commit a bounded checkpoint in one transaction. Avoids the
+            streamed upload_folder path splitting a ledger and its artifacts across
+            commits, and consuming many commit requests per frequent checkpoint.
 
     Returns:
         The repo URL.
@@ -355,7 +359,17 @@ def push_run_dir(out_dir: Path, repo_id: str, fields: dict, private: bool = Fals
     # surfaces from deep inside huggingface_hub — after create_repo has already run, which
     # leaves an empty repo behind and reads as a hub problem rather than an encoding one.
     (out_dir / "README.md").write_text(card, encoding="utf-8")
-    api.upload_folder(folder_path=str(out_dir), repo_id=repo_id, repo_type=repo_type)
+    if atomic_commit:
+        from huggingface_hub import CommitOperationAdd
+        operations = [CommitOperationAdd(path_in_repo=p.relative_to(out_dir).as_posix(),
+                                        path_or_fileobj=str(p))
+                      for p in sorted(out_dir.rglob("*")) if p.is_file()
+                      and not any(part in {".git", ".cache", "__pycache__"}
+                                  for part in p.relative_to(out_dir).parts)]
+        api.create_commit(repo_id=repo_id, repo_type=repo_type, operations=operations,
+                          commit_message="Atomic run checkpoint")
+    else:
+        api.upload_folder(folder_path=str(out_dir), repo_id=repo_id, repo_type=repo_type)
     prefix = "datasets/" if repo_type == "dataset" else ""
     return f"https://huggingface.co/{prefix}{repo_id}"
 

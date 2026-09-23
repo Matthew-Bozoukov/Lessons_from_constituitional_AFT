@@ -289,7 +289,7 @@ def publish(cfg):
                   'generation_config': json.dumps(manifest['config']),
                   'schema': 'rollouts/: every attempt JSON and readable transcript; results/: official reports and score; metadata/: pins, ledger, code',
                   'provenance': manifest['protocol'] + '; ' + manifest['limitations']}
-        push_run_dir(snapshot, repo, fields, front_matter={'tags': ['eval-run', 'eval:swebench_mini',
+        push_run_dir(snapshot, repo, fields, atomic_commit=True, front_matter={'tags': ['eval-run', 'eval:swebench_mini',
                      'model:' + manifest['model_key'], 'mode:' + cfg.mode, 'swebench-lite']})
         commit = api.dataset_info(repo).sha
         saved = read(hf_download(repo, 'metadata/state.json', repo_type='dataset', revision=commit))
