@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Audit actual Lite CPU demand before expanding infrastructure
+
+**Question.** Does the 40-agent admission ceiling reflect actual CPU/RAM demand,
+and do 60-80 conversations require a larger or second CPU host?
+
+**Method.** Read-only inspection of 161 completed-task cgroup records, historical
+host telemetry, eight live agent processes, Docker storage and current Vast offers.
+No concurrency, resource limits, model outcomes or active services were changed.
+
+**Result.** Post-fix container peak RAM: median 75 MiB, p95 224 MiB, maximum
+632 MiB; zero OOM kills in those records. Live agent processes add about 170 MiB
+each. Fifty sampled 30-second buckets with approximately 36-40 post-fix agents
+averaged 5.0% host CPU and retained at least 184.23 GiB available RAM. Coverage is
+incomplete and brief bursts may be missed. The 4 GiB cap is not a reservation;
+320 GiB for 80 agents was worst-case sizing, not measured required memory.
+
+**Next.** Qualify 60, then 80 conversations using bounded CPU-only representative
+tool replay after the live run; do not infer equal safety from linear averages.
+Prefer the existing host before buying capacity. Two hosts require coordinated
+leases and publication; their duplicate cache is disk storage, not per-agent RAM.
+See `docs/swebench_cpu_capacity.md`. Raw audit round-trip verified at HF revision
+`e4c3e8507449d3d23c648da2ba492bd4c99e35e9`:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth/blob/e4c3e8507449d3d23c648da2ba492bd4c99e35e9/metadata/cpu-capacity-audit-20260923.json.
+
 ## 2026-09-23 — Correct the Lite inference-request timeout without restarting the active fleet
 
 **Finding.** At 290 completed tasks, eight of nine active attempts had logged

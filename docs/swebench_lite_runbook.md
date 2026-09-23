@@ -366,6 +366,12 @@ tasks first without changing their prompts, budgets or scoring.
 
 ## Subsequent models: fixed fleet, no calibration
 
+Before selecting a larger fleet, read `docs/swebench_cpu_capacity.md`: 40 CPU
+workers is the current conservative admission policy, not a measured saturation
+point. The 4 GiB container cap is not a RAM reservation. Higher concurrency needs
+one explicit qualification and an updated frozen recipe, not repeated per-LoRA
+GPU calibration. The audit did not change the ongoing campaign.
+
 HF checkpoint incident, 2026-09-23: the installed Hub client's streamed
 `upload_folder` path split frequent snapshots into as many as eight commits each.
 Commit-rate HTTP 429 retries exceeded the publisher's 180-second deadline, then
