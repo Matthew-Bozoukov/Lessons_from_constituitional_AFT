@@ -275,6 +275,14 @@ if capacity permits. Release each GPU as soon as its remaining work is zero.
 
 ## Expiry, stop, resume, recovery
 
+On Windows, run the scheduled expiry backstop with the CPU environment's
+`Scripts/pythonw.exe` and `scratch/swebench_cpu_watchdog_windowless.pyw`, passing
+the normal `--receipt` and `--env` arguments. The wrapper uses `CREATE_NO_WINDOW`
+for the watchdog child, logs to `expiry-watchdog.log` beside the receipt, and
+propagates its exit code. Direct interactive `python.exe` tasks flash a console
+every five minutes. Preserve the expiry trigger; verify a manual scheduled run
+has exit code zero after installation. The guest systemd expiry remains enabled.
+
 - At the chosen deadline, cancel new work and STOP the owned CPU instance through
   the provider. GPU deadlines must already have expired and teardown been checked.
   Keep the disk. Confirm actual stopped state via the provider, not an SSH failure.

@@ -10,6 +10,8 @@ import subprocess
 import sys
 import time
 import psutil
+import threading
+import requests
 
 from omegaconf import OmegaConf
 from src.eval.capabilities.swebench_mini.agent import AGENT_ENV, rollout_env, write_cost_registry
@@ -116,12 +118,35 @@ def runner(target, cfg, out_dir, **kwargs):
     assert target.spec.revision == campaign.target_revision
     assert target.spec.base_revision == campaign.base_revision and target.spec.mode == campaign.mode
     endpoint = target.base_url
-    with ThreadPoolExecutor(max_workers=campaign.workers_per_replica) as pool:
-        futures = [pool.submit(consume, endpoint, 'hosted_vllm/' + target.model_name, campaign,
-                               str(cfg.replica) + '-' + str(i), list(cfg.allowed))
-                   for i in range(campaign.workers_per_replica)]
-        for future in futures:
-            future.result()
+    stop = threading.Event()
+    def observe():
+        path = Path(campaign.root) / 'metadata' / f'metrics-{cfg.replica}.jsonl'
+        while not stop.is_set():
+            try:
+                response = requests.get(endpoint.removesuffix('/v1').rstrip('/') + '/metrics', timeout=10)
+                response.raise_for_status()
+                metrics = [line for line in response.text.splitlines() if line.startswith('vllm:')
+                           and any(key in line for key in ('kv_cache_usage', 'prefix_cache_', 'num_preemptions',
+                                                           'num_requests_', 'generation_tokens_total', 'prompt_tokens_total'))]
+                row = {'time': time.time(), 'metrics': metrics, 'cpu_percent': psutil.cpu_percent(),
+                       'available_memory_gib': psutil.virtual_memory().available / 2**30}
+            except Exception as exc:
+                row = {'time': time.time(), 'error': type(exc).__name__}
+            with path.open('a') as stream:
+                stream.write(json.dumps(row) + '\n')
+            stop.wait(30)
+    observer = threading.Thread(target=observe, daemon=True)
+    observer.start()
+    try:
+        with ThreadPoolExecutor(max_workers=campaign.workers_per_replica) as pool:
+            futures = [pool.submit(consume, endpoint, 'hosted_vllm/' + target.model_name, campaign,
+                                   str(cfg.replica) + '-' + str(i), list(cfg.allowed))
+                       for i in range(campaign.workers_per_replica)]
+            for future in futures:
+                future.result()
+    finally:
+        stop.set()
+        observer.join(timeout=15)
     (out_dir / 'metadata').mkdir(exist_ok=True)
     return {'status': 'replica finished; canonical campaign owns scoring and publication'}
 

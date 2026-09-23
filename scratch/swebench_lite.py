@@ -14,26 +14,30 @@ import sys
 import tempfile
 import time
 import uuid
+import threading
 
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 import psutil
 
 from src.infra import runpod
-from src.infra.endpoints.vllm import resolve_target
+from src.infra.endpoints.vllm import resolve_target, SshExec, POD_VENV
 from src.infra.huggingface import hf_api, hf_download, hf_repo_id, push_run_dir
 from src.naming import eval_name, today
 from scratch.swebench_lite_state import State, atomic, digest, lock, read
 from scratch.swebench_lite_worker import stop_process
 
 REPO = Path(__file__).resolve().parents[1]
+ALLOCATION_LOCK = threading.Lock()
 HARNESS = REPO / 'src/eval/capabilities/swebench_mini/envs/harness/.venv/bin/python'
 
 
 def recipe_settings(cfg):
     keys = ('base', 'base_revision', 'mode', 'gpu', 'replicas', 'workers_per_replica',
             'serving', 'max_response_tokens', 'max_task_tokens', 'agent_cpus', 'agent_memory',
-            'agent_pids', 'agent_environment', 'grading_workers', 'grading_timeout_seconds', 'dataset_revision')
+            'agent_pids', 'agent_environment', 'grading_workers', 'grading_timeout_seconds', 'dataset_revision',
+            'fallback_gpus', 'cuda_versions', 'cpu_worker_limit', 'allocation_fallback_after_seconds',
+            'allocation_fallback_after_attempts')
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
 
 
@@ -117,7 +121,11 @@ def preflight(cfg):
     assert [i['Id'] for i in tags] == [i['id'] for i in images.values()]
     assert shutil.disk_usage('/var/lib/docker').free / 2**30 >= cfg.min_free_gib
     assert psutil.cpu_count() >= 32 and psutil.virtual_memory().total >= 115 * 2**30
-    assert cfg.replicas * cfg.workers_per_replica <= 32, 'Qualified CPU host supports at most 32 active agents'
+    workers = cfg.replicas * cfg.workers_per_replica
+    assert workers <= cfg.cpu_worker_limit <= 40, 'CPU worker safety limit exceeded'
+    assert cfg.agent_memory == '4g', 'Requalify CPU RAM sizing when changing per-agent memory'
+    assert workers * 4 + cfg.cpu_memory_reserve_gib <= psutil.virtual_memory().total / 2**30
+    assert cfg.agent_cpus * workers <= psutil.cpu_count() * 1.5, 'Excessive CPU oversubscription'
     assert 0 < cfg.max_response_tokens <= cfg.max_task_tokens
     assert cfg.serving.concurrency >= cfg.workers_per_replica
     if not cfg.calibrate:
@@ -238,10 +246,12 @@ def guard(cfg):
     manifest = read(path)
     active = subprocess.run(['systemctl', 'is-active', '--quiet', 'lasr-swebench-lite.service']).returncode == 0
     state = read(Path(cfg.root) / 'metadata/state.json')
+    rejected_names = {p['name'] for p in state.get('pods', [])
+                      if p['status'] in ('allocation-unconfirmed', 'rejected-reconciled')}
     for pod in runpod.active_pods():
         if owned(pod, manifest):
             deadline = float((pod.get('env') or {}).get('LASR_POD_DEADLINE', 0))
-            if not active or time.time() >= min(deadline, state['deadline']):
+            if not active or pod.get('name') in rejected_names or time.time() >= min(deadline, state['deadline']):
                 runpod.teardown(pod['id'])
     if not active:
         try:
@@ -305,14 +315,60 @@ def reserved_cost(state):
     return sum(p['ceiling_hourly'] * (p.get('ended', p['expires']) - p['created']) / 3600 for p in state['pods'])
 
 
+def reconcile_rejections(cfg, manifest):
+    """Reconcile explicit provider rejections; transport timeouts keep their TTL reserve."""
+    state = State(cfg.root)
+    candidates = [p for p in read(state.path)['pods']
+                  if p['status'] == 'allocation-unconfirmed' and p.get('id') is None
+                  and 'RunPod GraphQL rejected the request;' in p.get('error', '')
+                  and time.time() - p['created'] >= cfg.allocation_reconcile_seconds]
+    if not candidates:
+        return
+    live = runpod.active_pods()
+    # Any late create is fenced before releasing a reservation. Never adopt a pod
+    # whose create response was lost: it has no confirmed watchdog callback.
+    for pod in live:
+        if owned(pod, manifest) and pod.get('name') in {p['name'] for p in candidates}:
+            runpod.teardown(pod['id'])
+    present = {p.get('name') for p in runpod.active_pods() if owned(p, manifest)}
+    with state.edit() as data:
+        for p in data['pods']:
+            if p['slot'] in {p['slot'] for p in candidates} and p['name'] not in present:
+                p.update(status='rejected-reconciled', ended=min(time.time(), p['expires']),
+                         reconciliation='Explicit GraphQL rejection; two provider inventory sweeps; late creates reaped')
+
+
+def pending_tasks(data, allowed, cfg):
+    return any(iid in allowed and t['status'] in ('pending', 'invalid')
+               and len(t['attempts']) < cfg.max_infrastructure_attempts for iid, t in data['tasks'].items())
+
+
+def allocation_gpu(cfg, failures, elapsed):
+    if failures < cfg.allocation_fallback_after_attempts or elapsed < cfg.allocation_fallback_after_seconds:
+        return cfg.gpu
+    options = list(cfg.fallback_gpus) + [cfg.gpu]
+    return options[(failures - cfg.allocation_fallback_after_attempts) % len(options)]
+
+
+def price_ceiling(cfg, gpu):
+    price = runpod.gpu_price(gpu)
+    if not price or price > cfg.max_hourly_usd:
+        raise RuntimeError('GPU quote unavailable or exceeds authorized hourly ceiling: ' + gpu)
+    return min(cfg.max_hourly_usd, price * cfg.gpu_price_margin)
+
+
 def replica(cfg, config_path, slot, allowed_path, expires, manifest):
     state = State(cfg.root)
     name = f"{os.environ['USER_PREFIX']}-swe-lite-{manifest['campaign'][:8]}-{slot}"
-    record = {'slot': slot, 'name': name, 'created': time.time(), 'expires': expires,
-              'ceiling_hourly': cfg.max_hourly_usd, 'id': None, 'status': 'allocating'}
+    ceiling = price_ceiling(cfg, cfg.gpu)
+    record = {'slot': slot, 'name': name, 'created': time.time(), 'expires': expires, 'gpu': cfg.gpu,
+              'ceiling_hourly': ceiling, 'id': None, 'status': 'allocating'}
     with state.edit() as data:
+        reserve = ceiling * (expires - record['created']) / 3600
+        if reserved_cost(data) + reserve > manifest['budget_usd']:
+            raise RuntimeError('Allocation deferred: cumulative budget reservation unavailable')
         data['pods'].append(record)
-    guard = proc = None
+    guard = proc = executor = None
     pod_id = None
 
     def update(**values):
@@ -327,21 +383,53 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
                                       Path(cfg.root) / 'metadata' / f'watchdog-{slot}.log')
         actual = next(p for p in runpod.active_pods() if p['id'] == identifier)
         cost = actual.get('costPerHr')
-        if cost is None or float(cost) > cfg.max_hourly_usd:
+        if cost is None or float(cost) > ceiling:
             raise RuntimeError('Allocated hourly cost missing or over ceiling')
         update(actual_hourly=float(cost))
 
+    def provisioned(identifier):
+        # Serialize only the create request, never SSH, weight download or serving.
+        # Avoid simultaneous creates; the observed provider failures may be a scheduler race.
+        ALLOCATION_LOCK.release()
+        allocated(identifier)
+
     try:
-        pod = runpod.provision_eval_pod(cfg.target, name=name, gpu=cfg.gpu, disk_gb=cfg.disk_gb,
-            pubkey_path=cfg.ssh_key + '.pub', identity=cfg.ssh_key, eval='swebench_mini',
-            revisions={cfg.target: cfg.target_revision, cfg.base: cfg.base_revision},
-            terminate_at=datetime.fromtimestamp(expires, timezone.utc).isoformat(),
-            env={'LASR_POD_OWNER': runpod.POD_OWNER, 'LASR_POD_DEADLINE': str(expires),
-                 'LASR_CAMPAIGN': manifest['campaign']}, on_provisioned=allocated)
+        released = False
+        def on_created(identifier):
+            nonlocal released
+            released = True
+            provisioned(identifier)
+        ALLOCATION_LOCK.acquire()
+        try:
+            if read(state.path).get('halt') or time.time() >= expires - cfg.allocation_min_remaining_seconds:
+                update(status='not-requested', ended=record['created'])
+                raise RuntimeError('Allocation cancelled before provider request')
+            pod = runpod.provision_eval_pod(cfg.target, name=name, gpu=cfg.gpu, disk_gb=cfg.disk_gb,
+                pubkey_path=cfg.ssh_key + '.pub', identity=cfg.ssh_key, eval='swebench_mini',
+                revisions={cfg.target: cfg.target_revision, cfg.base: cfg.base_revision},
+                terminate_at=datetime.fromtimestamp(expires, timezone.utc).isoformat(),
+                cuda_versions=cfg.cuda_versions,
+                env={'LASR_POD_OWNER': runpod.POD_OWNER, 'LASR_POD_DEADLINE': str(expires),
+                     'LASR_CAMPAIGN': manifest['campaign']}, on_provisioned=on_created)
+        finally:
+            if not released:
+                ALLOCATION_LOCK.release()
         assert pod.reachable, 'SSH failed'
         assert runpod.wait_bootstrapped(pod.id, timeout_s=min(cfg.boot_seconds, max(1, int(expires - time.time()))))
         if read(state.path).get('halt') or time.time() >= expires - cfg.cleanup_reserve_seconds:
             raise RuntimeError('Campaign stopped during boot')
+        executor = SshExec(pod.host, port=cfg.port_base + slot, identity=cfg.ssh_key)
+        runtime = executor._ssh(f'{POD_VENV}/bin/python -', timeout=90, stdin_text='''
+import json, torch, importlib.metadata
+assert torch.cuda.is_available(), 'CUDA runtime unavailable'
+p = torch.cuda.get_device_properties(0)
+assert p.total_memory >= 85 * 2**30, 'Unexpected GPU memory capacity'
+x = torch.ones((32, 32), device='cuda', dtype=torch.bfloat16)
+assert torch.isfinite(x @ x).all().item()
+print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
+                  'torch': torch.__version__, 'vllm': importlib.metadata.version('vllm')}))
+''')
+        atomic(Path(cfg.root) / 'metadata' / f'gpu-runtime-{slot}.json', json.loads(runtime.strip().splitlines()[-1]))
         update(status='serving')
         log_path = Path(cfg.root) / 'metadata' / f'replica-{slot}.log'
         with log_path.open('w') as log:
@@ -359,12 +447,32 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
                 raise RuntimeError(f'Replica process failed ({proc.returncode}); see {log_path}')
     except BaseException as exc:
         update(error=type(exc).__name__ + ': ' + str(exc))
-        with state.edit() as data:
-            data['halt'] = f'replica {slot} failed; inspect saved logs before resume'
+        # A missing replica must not cancel healthy replicas. Global budget,
+        # deadline, backup and task-failure breakers remain coordinator-owned.
         raise
     finally:
+        cleanup_error = None
         if proc:
-            stop_process(proc)
+            try:
+                stop_process(proc)
+                data = read(state.path)
+                for task in data.get('tasks', {}).values():
+                    if task['status'] == 'running' and task['attempts'][-1]['worker'].startswith(f'{slot}-'):
+                        aid = task['attempts'][-1]['id']
+                        ids = subprocess.check_output(['docker', 'ps', '-aq', '--filter', 'label=lasr_attempt=' + aid], text=True).split()
+                        if ids:
+                            subprocess.run(['docker', 'rm', '-f', *ids], check=True, timeout=90)
+                state.recover(worker_prefix=f'{slot}-')
+            except Exception as exc:
+                cleanup_error = exc
+                with state.edit() as data:
+                    data['halt'] = 'Replica process/container cleanup failed; GPU teardown still attempted'
+        if executor:
+            try:
+                log = executor._ssh('cat /workspace/output/serve/vllm.log', timeout=15)
+                (Path(cfg.root) / 'metadata' / f'vllm-{slot}.log').write_text(log)
+            except Exception as exc:
+                update(log_capture_error=type(exc).__name__)
         # Includes the ambiguous POST case: reconcile only this nonce AND exact name.
         matches = [p['id'] for p in runpod.active_pods() if owned(p, manifest) and p.get('name') == name]
         if pod_id and pod_id not in matches:
@@ -373,31 +481,66 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
             runpod.teardown(identifier)
         if matches:
             update(status='terminated', ended=time.time())
-        else:
+        elif next(p for p in read(state.path)['pods'] if p['slot'] == slot)['status'] != 'not-requested':
             # A timed-out create may appear later: reserve its entire provider TTL.
             update(status='allocation-unconfirmed')
         if guard:
             guard.terminate()  # only after verified teardown and account/balance sweep
+        if cleanup_error:
+            raise cleanup_error
 
 
 def phase(cfg, config_path, ids, count, seconds, manifest):
     state = State(cfg.root)
     data = read(state.path)
     remaining = manifest['budget_usd'] - reserved_cost(data)
-    seconds = min(seconds, int(remaining * 3600 / (count * cfg.max_hourly_usd)))
+    seconds = min(seconds, int(remaining * 3600 / (count * price_ceiling(cfg, cfg.gpu))))
     assert seconds > cfg.cleanup_reserve_seconds + 300, 'Remaining budget too small to allocate safely'
     expires = min(time.time() + seconds, data['deadline'])
     assert expires - time.time() > cfg.cleanup_reserve_seconds + 300
     allowed = Path(cfg.root) / 'metadata' / f'allowed-{len(data["pods"])}.json'
     atomic(allowed, ids)
-    first_slot = len(data['pods'])
+    next_slot = max((p['slot'] for p in data['pods']), default=-1) + 1
     last_upload = 0
+    last_reconcile = 0
+    retry_at = {i: 0 for i in range(count)}
+    attempts = {i: 0 for i in range(count)}
+    failures = {i: 0 for i in range(count)}
+    started = time.time()
     with ThreadPoolExecutor(max_workers=count) as pool:
-        futures = [pool.submit(replica, cfg, config_path, first_slot + i, allowed, expires, manifest) for i in range(count)]
-        while not all(f.done() for f in futures):
+        futures = {}
+        while True:
+            live = read(state.path)
+            for lane, future in list(futures.items()):
+                if not future.done():
+                    continue
+                del futures[lane]
+                if future.exception():
+                    failures[lane] += 1
+                    print(f'Fleet slot {lane}: {future.exception()}; peers continue', flush=True)
+                    retry_at[lane] = time.time() + min(cfg.allocation_retry_max_seconds,
+                        cfg.allocation_retry_seconds * 2 ** min(attempts[lane] - 1, 4))
+            if (not live.get('halt') and pending_tasks(live, ids, cfg)
+                    and expires - time.time() > cfg.allocation_min_remaining_seconds):
+                for lane in range(count):
+                    if lane in futures or time.time() < retry_at[lane]:
+                        continue
+                    attempts[lane] += 1
+                    selected = allocation_gpu(cfg, failures[lane], time.time() - started)
+                    replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
+                    replica_cfg.gpu = selected
+                    print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
+                    futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)
+                    next_slot += 1
+            if not futures and (live.get('halt') or not pending_tasks(live, ids, cfg)
+                               or expires - time.time() <= cfg.allocation_min_remaining_seconds):
+                break
             if time.time() - last_upload >= cfg.upload_every_seconds:
                 checkpoint(cfg, config_path)
                 last_upload = time.time()
+            if time.time() - last_reconcile >= cfg.allocation_reconcile_seconds:
+                reconcile_rejections(cfg, manifest)
+                last_reconcile = time.time()
             live = read(state.path)
             if time.time() - live['last_upload'] > cfg.upload_stale_seconds or time.time() > expires:
                 with state.edit() as data:
@@ -405,10 +548,10 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
             if shutil.disk_usage('/var/lib/docker').free / 2**30 < cfg.min_free_gib:
                 with state.edit() as data:
                     data['halt'] = 'CPU disk reserve reached'
+            if psutil.virtual_memory().available / 2**30 < cfg.min_available_memory_gib:
+                with state.edit() as data:
+                    data['halt'] = 'CPU memory reserve reached'
             time.sleep(2)
-        failures = [str(f.exception()) for f in futures if f.exception()]
-    if failures:
-        raise RuntimeError('; '.join(failures))
     checkpoint(cfg, config_path, required=True)
 
 
@@ -489,6 +632,7 @@ def execute(cfg, config_path, action, budget):
                 assert budget == manifest['budget_usd'], 'Resume cannot silently reset the cumulative budget'
         state = State(root)
         fence(cfg, manifest)
+        reconcile_rejections(cfg, manifest)
         with state.edit() as data:
             data['halt'] = None
             data['breaker_failures_baseline'] = sum(a.get('valid') is False for t in data['tasks'].values() for a in t['attempts'])
@@ -556,10 +700,13 @@ def execute(cfg, config_path, action, budget):
             if todo:
                 recipe = (read(root / 'metadata/frozen_recipe.json') if cfg.calibrate
                           else validate_recipe(cfg, read(cfg.recipe_path)))
-                measured = recipe['calibration']['gpu_seconds_per_task']
+                calibration = recipe['calibration']
+                measured = (calibration['gpu_seconds_per_task'] * calibration['workers_per_replica']
+                            / cfg.workers_per_replica)
                 count = min(cfg.replicas, math.ceil(len(todo) / cfg.workers_per_replica))
                 atomic(root / 'metadata/fleet_plan.json', {'replicas': count, 'ceiling': cfg.replicas,
-                       'inference_seconds_estimate': len(todo) * measured / count, 'estimate_only': True})
+                       'inference_seconds_estimate': len(todo) * measured / count, 'estimate_only': True,
+                       'assumption': 'Historical mean task duration held constant; new GPU throughput unmeasured'})
                 phase(cfg, config_path, todo, count, cfg.campaign_seconds, manifest)
         finally:
             fence(cfg, manifest)

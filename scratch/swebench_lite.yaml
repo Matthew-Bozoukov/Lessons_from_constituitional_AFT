@@ -13,12 +13,24 @@ receipt: /srv/lasr/receipt.json
 root: /srv/lasr/runs/lite-nosynth
 credentials: /srv/lasr/credentials.env
 ssh_key: /root/.ssh/id_ed25519
-gpu: NVIDIA H200
-replicas: 4
+gpu: NVIDIA H100 NVL
+replicas: 10
 target_generation_seconds: 3600
-workers_per_replica: 8
+workers_per_replica: 4
+allocation_retry_seconds: 30
+allocation_retry_max_seconds: 120
+allocation_reconcile_seconds: 60
+allocation_min_remaining_seconds: 900
+allocation_fallback_after_seconds: 600
+allocation_fallback_after_attempts: 5
+fallback_gpus: [NVIDIA H200, NVIDIA RTX PRO 6000 Blackwell Server Edition]
+cuda_versions: '13.0,13.1,13.2'
+cpu_worker_limit: 40
+cpu_memory_reserve_gib: 30
+min_available_memory_gib: 16
+gpu_price_margin: 1.05
 calibrate: true
-recipe_path: /srv/lasr/recipes/qwen36-h200-lite.json
+recipe_path: /srv/lasr/recipes/qwen36-h100nvl-lite.json
 pilot_tasks_per_repo: 3
 max_response_tokens: 16384
 max_task_tokens: 65536

@@ -1194,6 +1194,7 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
                        image: str = IMAGE, countries: str = "", pubkey_path: str = "",
                        identity: str = "", eval: str | None = None,
                        revisions: dict[str, str] | None = None, terminate_at: str = "",
+                       cuda_versions: str = "13.0",
                        env: dict[str, str] | None = None,
                        on_provisioned: Callable[[str], None] | None = None) -> Pod:
     """Rent an inference pod holding vLLM + these targets' weights, and return it as data.
@@ -1226,7 +1227,7 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
         # vLLM brings a torch built for CUDA 13, which dies at `_cuda_init` on an older
         # host driver — same constraint `up --eval` applies.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="13.0", countries=countries, terminate_at=terminate_at,
+                      cuda=cuda_versions, countries=countries, terminate_at=terminate_at,
                       **({"pubkey_path": pubkey_path} if pubkey_path else {})),
         name=name,
         start_script=script,

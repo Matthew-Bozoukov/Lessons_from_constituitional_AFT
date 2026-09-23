@@ -129,13 +129,31 @@ submissions count as unresolved. To stop inference, use
 
 ## Parallelism, cost and runtime
 
-The first campaign now calibrates one H200 with eight agent workers on the first
-three cases from each of six repositories (18 cases). Completed cases remain in
-the final 300. Tool calls, saved predictions, official grading, backup and teardown
-must pass before expansion to a fixed **four independent H200 replicas with eight
-workers each**. This candidate recipe is experimental until all 300 are graded;
-it is not claimed to be optimal. The CPU host is capped at 32 active agent containers.
+The corrected H200 pilot finished and graded 18 cases: seven resolved. Those cases
+remain in the final 300. On 2026-09-23 the user authorized a fixed target of **ten
+independent H100 NVL replicas with four workers each** for the remaining 282 tasks.
+This candidate recipe is experimental until all 300 are graded. It is not claimed
+to be optimal. The CPU host is capped at 40 active agent containers: 160 GiB summed
+memory limits, with at least 30 GiB reserved on this 198 GiB host.
 Every replica serves the same BF16 LoRA. Individual trajectories remain sequential.
+
+Ready replicas immediately consume the shared queue. Missing slots retry every
+30 seconds, backing off to 120 seconds; one allocation failure never halts healthy
+replicas. Only after both ten minutes and five failures may a slot try H200 or RTX
+PRO 6000 Blackwell Server Edition, while subsequent attempts also retry H100 NVL.
+No fallback changes model precision, context, token limits or Docker resource caps.
+Provider creates are serialized briefly; SSH, downloads and serving proceed in
+parallel. Startup checks real CUDA/BF16 execution and at least 85 GiB device RAM;
+run_eval owns vLLM health and adapter setup. Per-replica KV/cache/preemption metrics
+are saved every 30 seconds. Missing slots stop requesting pods with less than
+15 minutes remaining; ready GPUs keep working until their cleanup deadline.
+
+Explicit GraphQL rejections are reconciled after a grace period and two provider
+inventory sweeps. Any late matching pod is terminated. Reserved cost retains the
+possible elapsed charge through reconciliation; transport timeouts retain their
+full provider-TTL reservation. The independent reaper also cleans late rejected
+creates while other replicas work. Neither reconciliation nor an explicit resume
+resets cumulative spending or finished tasks.
 
 The initial three-worker pilot demonstrated working prefix caching (94.9% cumulative
 hit rate), zero cache preemptions and low active KV occupancy, but one uncapped
@@ -159,8 +177,9 @@ Calibration's reservation allowance is now $20, within the unchanged $100 campai
 GPU cap. It includes prior rentals and a conservative $5.50 reservation for an
 ambiguous failed allocation; observed task generation is not a billing receipt.
 
-Current H200 secure-cloud quote checked through the live account: **$4.59/hour**.
-Allocation also checks its actual reported rate against a $5.50/hour ceiling.
+H100 NVL secure-cloud quote checked 2026-09-23: **$3.19/hour**; H200 $4.59 and RTX
+PRO 6000 Server $2.09. Each rental reserves its fresh quote plus 5%, bounded by the
+absolute $5.50/hour ceiling, and verifies the allocated rate before boot continues.
 Disk charges and quote variation are covered provisionally by that margin, not
 measured by a billing integration. Resource reservations use the ceiling rate and
 provider TTL; completed verified teardown releases unused reserved time. Every
@@ -239,7 +258,8 @@ LITE_BUDGET_USD=100
 ```
 
 Start `lasr-swebench-lite.service`. The service and independent reaper read the same
-config. The four replicas launch together, without a pilot or dynamic resizing.
+config. The ten target replicas are requested at the outset without a pilot;
+ready replicas work while missing slots retry using the fixed fallback policy.
 Only one campaign may occupy this service at a time. Use `resume` with the same
 config after inspecting an interruption; it never resets the cumulative budget.
 An existing same-day canonical HF destination is refused rather than overwritten.

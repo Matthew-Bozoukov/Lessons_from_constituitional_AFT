@@ -1,6 +1,29 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Lite fleet recovery and ten H100 NVL target
+
+**Finding.** Corrected no-DA calibration completed 18 tasks (seven resolved), but
+two attempts to allocate a four-H200 fleet each obtained only one pod. The old
+all-or-nothing failure handling stopped that healthy allocation. The user requested
+ten independent H100 NVLs, four agents each, with immediate work on ready replicas,
+independent retries, and delayed compatible GPU fallback.
+
+**Method.** Serialize only provider create calls; retry missing slots with 30–120s
+backoff, allowing fallback only after ten minutes and five failures. Preserve BF16,
+131k context, model/dataset revisions, agent budgets and all 18 completed outcomes.
+Raise the CPU worker cap to 40 with summed 4 GiB limits and 30 GiB host reserve.
+Require real CUDA/BF16 startup, retain provider TTLs, detached watchdogs, independent
+reaper, HF backup freshness and the cumulative $100 cap. Reconcile rejected creates
+without touching unrelated pods; unknown transport outcomes retain full reservations.
+Capture per-replica KV/preemption telemetry and preserve original deployment snapshots.
+
+**Validation.** Focused Linux tests exercise healthy-peer continuation during retries,
+delayed fallback, isolated failed-worker recovery, accounting and watchdog teardown.
+The complete 300-task result and an H100 throughput measurement remain pending.
+The Windows expiry backstop now runs windowlessly with a durable log; its scheduled
+test exited zero, preserving the original CPU stop deadline.
+
 ## 2026-09-23 — Corrected Lite agent shell before fleet expansion
 
 **Finding.** During eight-worker calibration, requests reproduction commands used

@@ -89,13 +89,15 @@ class State:
             task['attempts'][-1].update(result, finished=time.time())
             task['status'] = 'valid' if result['valid'] else 'invalid'
 
-    def recover(self):
-        """Only after all prior workers/owned pods have been fenced by the caller."""
+    def recover(self, worker_prefix=None):
+        """Only after the selected workers and their containers have been fenced."""
         with self.edit() as data:
             for iid, task in data['tasks'].items():
                 if task['status'] != 'running':
                     continue
                 attempt = task['attempts'][-1]
+                if worker_prefix is not None and not str(attempt['worker']).startswith(worker_prefix):
+                    continue
                 done = self.root / 'rollouts' / iid / attempt['id'] / 'done.json'
                 result = read(done) if done.exists() else {'valid': False, 'exit_status': 'InterruptedInfrastructure'}
                 attempt.update(result, finished=time.time())

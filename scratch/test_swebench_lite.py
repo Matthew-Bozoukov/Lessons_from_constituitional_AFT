@@ -6,6 +6,7 @@ import tempfile
 import shutil
 import time
 import unittest
+import threading
 from unittest.mock import Mock, patch
 
 from omegaconf import OmegaConf
@@ -216,11 +217,77 @@ class RentalTests(unittest.TestCase):
     def test_ambiguous_allocation_reserves_whole_lifetime(self):
         self.assertEqual(fleet.reserved_cost({'pods': [{'created': 100, 'expires': 3700, 'ceiling_hourly': 5}]}), 5)
 
+    def test_fallback_requires_both_elapsed_time_and_repeated_failures(self):
+        cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+        self.assertEqual(fleet.allocation_gpu(cfg, 20, 599), cfg.gpu)
+        self.assertEqual(fleet.allocation_gpu(cfg, 4, 1200), cfg.gpu)
+        self.assertEqual(fleet.allocation_gpu(cfg, 5, 600), cfg.fallback_gpus[0])
+
+    def test_replica_recovery_leaves_other_live_workers_alone(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state = State(temp)
+            atomic(state.path, {'tasks': {
+                'a': {'status': 'running', 'attempts': [{'id': 'aa', 'worker': '1-0'}]},
+                'b': {'status': 'running', 'attempts': [{'id': 'bb', 'worker': '2-0'}]}}})
+            state.recover(worker_prefix='1-')
+            data = read(state.path)
+            self.assertEqual(data['tasks']['a']['status'], 'invalid')
+            self.assertEqual(data['tasks']['b']['status'], 'running')
+
+    def test_rejected_create_is_reconciled_but_transport_timeout_stays_reserved(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+            cfg.root = temp
+            base = {'created': time.time() - 120, 'expires': time.time() + 300,
+                    'ceiling_hourly': 5, 'id': None, 'status': 'allocation-unconfirmed'}
+            atomic(Path(temp) / 'metadata/state.json', {'pods': [
+                base | {'slot': 0, 'name': 'rejected', 'error': 'RunPod GraphQL rejected the request; provider error'},
+                base | {'slot': 1, 'name': 'timeout', 'error': 'requests.Timeout'}]})
+            with patch.object(runpod, 'active_pods', return_value=[]):
+                fleet.reconcile_rejections(cfg, {'campaign': 'ours'})
+            records = read(Path(temp) / 'metadata/state.json')['pods']
+            self.assertEqual(records[0]['status'], 'rejected-reconciled')
+            self.assertIn('ended', records[0])
+            self.assertNotIn('ended', records[1])
+
+    def test_missing_slot_retries_while_healthy_replica_keeps_working(self):
+        with tempfile.TemporaryDirectory() as temp:
+            cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+            cfg.root = temp
+            cfg.allocation_retry_seconds = 0.01
+            cfg.allocation_retry_max_seconds = 0.01
+            state = State(temp)
+            atomic(state.path, {'pods': [], 'tasks': {'one': {'status': 'pending', 'attempts': []}},
+                'halt': None, 'deadline': time.time() + 3600, 'last_upload': time.time()})
+            retried = threading.Event()
+            seen = []
+            def replica(cfg, path, slot, allowed, expires, manifest):
+                seen.append(slot)
+                if slot == 0:
+                    self.assertTrue(retried.wait(5), 'Healthy replica was stopped or missing slot never retried')
+                    self.assertIsNone(read(state.path)['halt'])
+                elif slot == 1:
+                    raise RuntimeError('provider capacity unavailable')
+                else:
+                    with state.edit() as data:
+                        data['tasks']['one']['status'] = 'valid'
+                    retried.set()
+            real_sleep = time.sleep
+            with patch.object(fleet, 'replica', side_effect=replica), \
+                 patch.object(fleet, 'price_ceiling', return_value=3.35), \
+                 patch.object(fleet, 'checkpoint', return_value=True), \
+                 patch.object(fleet, 'reconcile_rejections'), \
+                 patch.object(fleet.shutil, 'disk_usage', return_value=Mock(free=200 * 2**30)), \
+                 patch.object(fleet.time, 'sleep', side_effect=lambda _: real_sleep(0.01)):
+                fleet.phase(cfg, Path(temp) / 'config', ['one'], 2, 3600, {'budget_usd': 100})
+            self.assertEqual(seen, [0, 1, 2])
+            self.assertIsNone(read(state.path)['halt'])
+
     def exercise_failure(self, watchdog_failure=False, cleanup_failure=False):
         with tempfile.TemporaryDirectory() as temp:
             cfg = OmegaConf.load('scratch/swebench_lite.yaml')
             cfg.root = temp
-            manifest = {'campaign': 'only-ours'}
+            manifest = {'campaign': 'only-ours', 'budget_usd': 100}
             atomic(Path(temp) / 'metadata/state.json', {'pods': [], 'halt': None})
             live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'costPerHr': 4.59,
                     'env': {'LASR_POD_OWNER': runpod.POD_OWNER, 'LASR_CAMPAIGN': 'only-ours'}}
@@ -231,14 +298,16 @@ class RentalTests(unittest.TestCase):
                 raise RuntimeError('SSH failed')
 
             with patch.dict('os.environ', {'USER_PREFIX': 'nika'}), \
+                 patch.object(fleet, 'price_ceiling', return_value=5.5), \
                  patch.object(runpod, 'provision_eval_pod', side_effect=allocate), \
                  patch.object(runpod, 'active_pods', return_value=[live]), \
                  patch.object(runpod, 'start_watchdog', side_effect=RuntimeError('guard failed') if watchdog_failure else None,
                               return_value=guard), \
                  patch.object(runpod, 'teardown', side_effect=RuntimeError('delete failed') if cleanup_failure else None) as teardown:
                 with self.assertRaises(RuntimeError):
-                    fleet.replica(cfg, Path(temp) / 'config.yaml', 0, Path(temp) / 'allowed.json', time.time() + 600, manifest)
+                    fleet.replica(cfg, Path(temp) / 'config.yaml', 0, Path(temp) / 'allowed.json', time.time() + 1800, manifest)
             teardown.assert_called_once_with('ours')
+            self.assertIsNone(read(Path(temp) / 'metadata/state.json')['halt'])
             if cleanup_failure or watchdog_failure:
                 guard.terminate.assert_not_called()
             else:
