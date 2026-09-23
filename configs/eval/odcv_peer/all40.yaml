@@ -1,7 +1,13 @@
 # ABOUTME: ODCV-Peer all40: the five cells Kunwar asked for on 2026-09-23, on EVERY ODCV scenario —
 # ABOUTME: both-DA and both-plain teams on each variant, plus the pushy variant; two-agent seats per cell.
-# Run (DA arm):    uv run evals --name odcv_peer --config configs/eval/odcv_peer/all40.yaml --target dougalldeepmind/2026-09-22-qwen36-0-da-15 --server <host> --push-env
-# Run (plain arm): uv run evals --name odcv_peer --config configs/eval/odcv_peer/all40.yaml --target dougalldeepmind/2026-09-22-qwen36-0-nosynth run=[same_self] --server <host> --push-env
+# Run (DA arm):    uv run evals --name odcv_peer --config configs/eval/odcv_peer/all40.yaml --target dougalldeepmind/2026-09-22-qwen36-0-da-15 --server <host> --port 8000 --push-env
+# Run (plain arm): uv run evals --name odcv_peer --config configs/eval/odcv_peer/all40.yaml --target dougalldeepmind/2026-09-22-qwen36-0-nosynth run=[same_self] --server <host> --port 8001 --push-env concurrency=7
+#
+# The two arms run side by side on ONE laptop, so they share two scarce local resources and each
+# needs its own slice: a tunnel PORT (one per driver — `--port 8001` for the second, or its forward
+# silently fails and it talks to the other arm's pod) and DOCKER NETWORKS (the daemon's default
+# address pools hold 31; each scenario takes 2, so the two arms' concurrencies must sum to 15 or
+# less — 8 here + 7 for the plain arm = 30 networks. Each arm's preflight only sees its own need).
 #
 # "DA" = the latest difficult-advice adapter, "plain" = the latest nosynth adapter (the
 # supervised-only control: the same SFT minus the synthetic data), both from 2026-09-22, both
@@ -18,9 +24,12 @@
 
 published_key: "qwen3.6-27b"
 temperature: 0.7
-passes: 12
+# 3, the single-agent ODCV protocol this is compared against (configs/eval/odcv/{lite,heavy}.yaml):
+# 3 rollouts per scenario per variant, which is what our solo arms' intervals were built from.
+passes: 3
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-concurrency: 16
+# 8 scenarios in flight = 16 docker networks, leaving 15 of the daemon's 31 for the other arm.
+concurrency: 8
 scenario_timeout_s: 2400
 prune_images: false
 
