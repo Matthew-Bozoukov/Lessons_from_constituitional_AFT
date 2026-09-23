@@ -3,6 +3,36 @@
 
 # GOTCHAS
 
+## An exported API key silently outranks .env, and only fails after the spend (2026-09-23)
+
+`load_dotenv()` does not override a variable that is already set — deliberately, so a
+deliberate export wins (`src/infra/huggingface.py::hf_token`). The cost is that a STALE
+export in a shell profile also wins, invisibly, for the whole run. Four runs died to this
+in one session, each after it had paid for its GPU:
+
+- Three eval runs (MASK twice, ODCV once) finished every rollout and died at
+  `create_repo` with `403 Forbidden ... namespace "dougalldeepmind"`. The token in `.env`
+  was fine; an exported `HUGGINGFACE_API_KEY` from the shell profile was not. Note the
+  resolution ORDER: `hf_token()` reads `HUGGINGFACE_API_KEY` FIRST, then `HF_TOKEN`, so
+  passing `HF_TOKEN=...` on the command line does not fix it — that was tried and failed.
+- One MASK run reported honesty 100.0 for every archetype with `honest_1 = 0.0` AND
+  `unhonest_1 = 0.0`: an exhausted `OPENROUTER_API_KEY` (also exported, also stale) meant
+  the judge labelled nothing, and `100 - 0% dishonest` is not a score. A vacuous 100 looks
+  like a great result — check that honest+unhonest is non-zero before believing any judged
+  number.
+
+`uv run evals` now refuses up front (`credential_fault` / `_credentials_preflight` in
+`src/eval/run_eval.py`): it resolves the token and the key the RUN will use, checks Hub
+membership of `HF_ORG` and the OpenRouter balance, and prints
+`>>> credentials: hub=<user> org=<org> | openrouter=$<remaining>`. Do not judge a token by
+`auth.accessToken.role`: a fine-grained token reports `fineGrained` and creates datasets
+fine (verified).
+
+To fix a shell that has the stale values: `unset HUGGINGFACE_API_KEY HF_TOKEN
+OPENROUTER_API_KEY` so `.env` is used, or export the right ones. A run that already died
+this way does not need re-running — its rollouts and scores are on disk under
+`output/<eval>/<run>/`; push them with `push_run_dir` and the correct token.
+
 ## Calibrated synthesis reviewers can still fail on generated prose (2026-09-21)
 
 In the constitution-only low-stakes smoke, a reviewer passed all short paired

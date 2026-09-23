@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from contextlib import nullcontext
@@ -41,6 +42,81 @@ def _tinker_endpoint(spec, cfg):
                        reasoning=str(t.get("reasoning", "medium")),
                        max_tokens=int(t.get("max_tokens", 8192)),
                        log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
+
+
+def credential_fault(whoami: dict | None, org: str, or_remaining: float | None) -> str:
+    """The reason this invocation cannot finish, or "" when its credentials will hold.
+
+    Checked BEFORE anything is served, because both halves of a run's cost are paid long
+    before either credential is used: the Hub token only at the push, after every GPU hour,
+    and the OpenRouter key only at judging, after every generation. On 2026-09-23 three
+    consecutive runs died at `create_repo` with 403 and one produced a vacuous MASK 100
+    (an exhausted key meant the judge labelled nothing, and 100 - 0% dishonest is not a
+    score) — all four had already spent their GPU time.
+
+    The cause is worth naming because it is invisible from `.env`: `load_dotenv` does not
+    override an existing variable (deliberately — see `hf_token`), so a stale
+    HUGGINGFACE_API_KEY or OPENROUTER_API_KEY exported by a shell profile silently
+    outranks the file for the whole run. Reading the RESOLVED values here is the only
+    check that sees what the run will actually use.
+
+    Args:
+        whoami: `HfApi.whoami()` for the resolved Hub token, or None if it failed. Its
+            `auth.accessToken.role` is deliberately NOT read: a fine-grained token reports
+            "fineGrained" and still creates datasets (verified 2026-09-23), so the role
+            would refuse a token that works.
+        org: The org runs publish under (`HF_ORG`).
+        or_remaining: OpenRouter credits left, or None when the balance is unknown.
+
+    Returns:
+        A message naming the fault and its fix, or "" if there is none.
+    """
+    if whoami is None:
+        return ("the resolved Hub token is invalid or unset (HUGGINGFACE_API_KEY, then "
+                "HF_TOKEN — src/infra/huggingface.py::hf_token)")
+    orgs = [o.get("name") for o in (whoami.get("orgs") or [])]
+    if org and org not in orgs:
+        return (f"the Hub token for {whoami.get('name')!r} is not a member of {org!r} "
+                f"(it has {orgs or 'no orgs'}), so creating the run's dataset will 403")
+    if or_remaining is not None and or_remaining <= 0:
+        return (f"the resolved OpenRouter key has {or_remaining:.2f} credits left; the "
+                "judge would label nothing and the run would report a vacuous score")
+    return ""
+
+
+def _credentials_preflight(push: bool) -> None:
+    """Refuse a run whose resolved credentials cannot finish it (see `credential_fault`)."""
+    import requests
+
+    from src.infra.huggingface import hf_org, hf_token
+
+    token = hf_token()
+    whoami = None
+    if token:
+        from huggingface_hub import HfApi
+        try:
+            whoami = HfApi(token=token).whoami()
+        except Exception:  # noqa: BLE001 — an unusable token is the fault, not a crash
+            whoami = None
+    remaining = None
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if key:
+        try:
+            d = requests.get("https://openrouter.ai/api/v1/credits",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=20).json()["data"]
+            remaining = float(d["total_credits"]) - float(d["total_usage"])
+        except Exception:  # noqa: BLE001 — unknown balance is not a fault; judging will say
+            remaining = None
+    fault = credential_fault(whoami, hf_org() if push else "", remaining)
+    if fault:
+        raise SystemExit(
+            f"\n!!! credentials preflight: {fault}.\n"
+            "  Fix: export the right value for THIS shell (an exported "
+            "HUGGINGFACE_API_KEY / OPENROUTER_API_KEY outranks .env — load_dotenv does not\n"
+            "  override), or unset the stale export so .env is used, then re-run.")
+    who = (whoami or {}).get("name", "?")
+    print(f">>> credentials: hub={who} org={hf_org() if push else '(no push)'}"
+          + (f" | openrouter=${remaining:.2f}" if remaining is not None else ""))
 
 
 def _preflight(name: str, args: argparse.Namespace, cfg=None) -> None:
@@ -370,6 +446,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         planned = [_run_repo(args.name, s.model_key, str(cfg.get("run_name") or ""))
                    for s in specs]
         check_distinct(planned, what=f"{args.name} runs of {len(specs)} targets")
+
+    # Before the pod, the server and the first rollout — but after the names are checked,
+    # since a collision is the cheaper refusal. A credential that only fails at the push or
+    # at judging fails after the whole run has been paid for.
+    _credentials_preflight(push=not args.no_push)
 
     summaries: dict[str, dict] = {}
     published: list[dict] = []
