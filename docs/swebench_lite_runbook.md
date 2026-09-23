@@ -16,7 +16,8 @@ compatible base model and LoRA: rent its chosen fleet concurrently at the outset
 without repeating per-model GPU-count discovery or gradual scale-up. Save this
 run's timing, cost and concurrency evidence to select that recipe. Recalibration
 belongs to explicit experiments or material serving/hardware changes, not every
-new adapter. The current experimental launcher is not yet that final interface.
+new adapter. The fixed-fleet interface is implemented below; it stays gated until
+this experimental campaign completes all 300 graded tasks.
 
 ## What to do when Nika says “run SWE-bench Lite for the no-DA control”
 
@@ -43,8 +44,9 @@ new adapter. The current experimental launcher is not yet that final interface.
    local HTTP fixture, disk/RAM/CPU, model/base/mode/rank, SSH key and provider quote.
 
 3. **Only after the user requests the model run**, choose the explicit spend cap.
-   Recommended initial GPU allowance: **$100 maximum, including up to $10 calibration**.
-   This is a proposed ceiling, not a cost forecast or approval already granted.
+   Current authorized campaign allowance: **$100 maximum, including up to $20
+   calibration reservations**. A future model run still needs its own user request;
+   these numbers are ceilings, not a cost forecast.
    The CPU costs about $0.54/hour separately. Confirm the live shared account has
    sufficient credit and report spend above $20. Existing teammate pods are unrelated.
 
