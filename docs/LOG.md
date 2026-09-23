@@ -1,6 +1,69 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-23 — Multi-party difficult advice: da.yaml's pipeline with the other parties written into the scenario, iterated over five smokes to non-adversarial, advice-shaped, grey-area rows
+
+**Hypothesis.** The supervisor's Week 9 ask: difficult advice "with more consideration for
+interaction with multiple different stakeholders, and those stakeholders would not have to be
+agents", staying "well within the difficult advice framework". The 2026-09-22 audit of the t10
+never-collude corpus (one gate-gaming template, sender human in 89%, push in 96%, the
+collusion clause barely exercised) says what such a corpus must not be. Claim to test later:
+advice rows whose question turns on a multi-party fact — a group that already agreed, a
+relayed approval, a peer's overstated share of a pooled resource, a plan another party carries
+out — transfer to the Hospital and ODCV-Peer evals without agentic data.
+
+**Method.** `configs/data/synth/da-multiparty.yaml`: da.yaml's stages, models and lint, with
+the response stages (`draft_responses`, `revise_responses`, `corpus`) byte-identical after
+parsing (checked every revision). The multi-party facts are seven required fields the
+scenario writer fills inside da.yaml's own batched `write_scenarios` (`parties`, `dynamic`,
+`case_for`, `workaround_closed`, `voiced_doubt`, `asker`, `agenticness`); nothing is dealt, and
+`scenarios` splits `total_scenarios` evenly across the nine principles (765 = 85 each; every
+smoke 18 = 2 each). `revise_prompts` also writes per-row `tools` on the `advisor_with_tools`
+rows (Teaching Claude Why's unused-tool manipulation; ODCV's tool names banned) and carries two
+lint families from the t10 audit (no pipeline narration, no loophole-explaining) plus tics
+found smoke by smoke. Five 18-row smokes (2026-09-22 to 23, ~$11 total), each read by me and
+by four independent readers with fixed rubrics: NOT adversarial (NONE/LEAN vs PUSH/OVERRIDE,
+prompt-only-monitor flag), ADVICE (sender's decision vs the assistant acting with its own
+tools), GENUINE DELIBERATION (GREY: a named person's good on the shortcut's side and the
+honest move made costly by a fact in the message, 1–5; DELIB: the case-for given weight and
+surviving into the landing, 1–5; pass = both ≥ 4), and LOAD-BEARING (removal test on the
+shortcut). Smoke 1 used a dealt `checklist` (failure mode, rung, sender, pressure, sector);
+smokes 2–5 the da.yaml shape. Readers' reports are in the job transcript; the review pages
+are artifacts (smokes 3, 4, 5 under the current account).
+
+**Result.** Smoke 1 (15 rows): work orders from coordinators with agents in them, not advice
+("draft the ledger entry marked complete"). Smoke 2 (16): every row an advice question, but 7
+`participant` rows (the assistant itself a seat) were the adversarial and actor rows — 5/16
+ACTOR, 2 PUSH, monitor would flag 4 — and deliberation 5/16. Dropping `participant` and the
+push framing gave smoke 3 (18): advice 18/18, NONE 5 / LEAN 13 / PUSH 0, monitor 0, load-
+bearing 11/18, but deliberation 3/18 (mean GREY 2.61): the sender labelled the act, the only
+thing on the shortcut's side was a vote or an approval, and a free honest route was always
+open. Smoke 4 (18): named beneficiary, `voiced_doubt` field honoured 18/18, hedges gone from
+the no-doubt half, "advisor" system prompts 17→2, load-bearing 17/18, deliberation 6/18
+(GREY 3.11): the generator closed the verification channel, not the honest move. Smoke 5
+(17; one row lost to the "Part of me" lint): honest move made costly in the message in 10/17,
+bright-line rows 4→1, deliberation 7/17 (GREY 3.65, DELIB 3.76), NONE 5 / LEAN 12 / PUSH 0,
+advice 17/17, load-bearing 17/17 with four fact kinds. DELIB stayed ~3.6–3.8 throughout: the
+readers place the ceiling in the scenario, not the response stages, which were held to
+da.yaml's on purpose. Content-filter refusals at `revise_prompts`: 2/18 once, 0 otherwise.
+Two templates still carry 11/17 of smoke 5 (an orchestrator relays an unverifiable sign-off; a
+peer's overstated share on a pool that locks on submission); both are capped per call, which
+only binds at the full run's eight scenarios per call.
+
+**Next steps.** The full 765-row run (`uv run synth run --config
+configs/data/synth/da-multiparty.yaml`, ~$69–95 estimated, `max_fail_pct` 4 so lint and
+filter losses stay inside the 85→78 per-principle headroom), then the 7% mixture off
+`configs/data/mixture/da.yaml` with the source swapped, the da-7 training recipe, and the
+Hospital plus ODCV-Peer cells against da-7 and nosynth. The unverified-relay and locking-pool
+caps, the tailored-hint ban and the AI-sender-says-so rule were added after smoke 5 and are
+unsmoked. The same strict deliberation rubric on 17 random rows of the DA baseline
+(`dougalldeepmind/2026-09-14-da-synth` @ `01388623`, seed 5): 4/17 pass, mean GREY 2.88, mean
+DELIB 4.24, five bright-line rows, and the sender asks the assistant to do the questionable
+thing in 10/17 — so the multi-party rows are greyer and less adversarial than the corpus the
+arm is compared with, while the baseline's reasoning blocks score higher on the same response
+stages, which places the remaining gap in the scenario (what the rewriter is given to weigh),
+not in the rewrite. One reader per corpus; the readers were different Claude instances given
+the same rubric, so the comparison is indicative, not measured.
 ## 2026-09-22 — MASK end to end on the new default: 38 min for da-15 with one queue (was 2h40); three same-adapter replicates within 1.5 points; `passes` implemented; the base model re-measured at 58.2
 
 **Hypothesis.** The sweep (entry above) promised ~39 min of generation on an H200 at 192 in
