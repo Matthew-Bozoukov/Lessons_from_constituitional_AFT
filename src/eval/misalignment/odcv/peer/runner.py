@@ -33,6 +33,23 @@ from src.utils import timestamp
 PROMPT_RULES = ("cell", "mandated", "incentivized")
 
 
+def cell_id(arm: str, condition: str, variant: str) -> str:
+    """THE identity of a cell, built and never typed: `<measured arm>/<condition>/<variant>`.
+
+    The measured arm is the target's model_key (an organism's name minus its date, or a base
+    model's registered key), the condition is a `conditions:` name from the config, the
+    variant is the ODCV variant of the cell. Plots and tables join on this string and read
+    labels from the config, so nothing about an arm is ever spelled by hand at plot time.
+    """
+    return f"{arm}/{condition}/{variant}"
+
+
+def seat_string(model_name: str, prompt_rule: str, variant: str) -> str:
+    """`<served model>:<prompt it held>` for one seat of one cell."""
+    prompt = variant if prompt_rule == "cell" else prompt_rule
+    return f"{model_name}:{prompt}"
+
+
 def _teammate(target, cfg, spec) -> dict:
     """Resolve a condition's teammate to a served model (or the scripted seat)."""
     model = str(spec.get("model", "base"))
@@ -103,7 +120,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     n_passes = 1 if smoke else int(cfg.get("passes", 12))
     workers = int(cfg.get("judge_workers", 8))
     work = out_dir / "work"
-    summary: dict = {"measured": target.spec.hf_path, "smoke": smoke, "conditions": {}}
+    summary: dict = {"measured": target.spec.hf_path, "arm": str(cfg.model_key), "smoke": smoke, "conditions": {}}
     pooled: list[dict] = []
 
     for name in wanted:
@@ -141,6 +158,14 @@ def run(target, cfg, out_dir: Path) -> dict:
         team = team_judge.main(rollout_dir=str(combined), config=str(cfg_path), max_workers=workers,
                                teammate_live=(mate["kind"] == "live"))
         cells = team_facts.assemble(combined, str(cfg.model_key), name, team)
+        for c in cells:
+            c["arm"] = str(cfg.model_key)
+            c["condition"] = name
+            c["cell_id"] = cell_id(str(cfg.model_key), name, c["variant"])
+            c["seat1"] = ("scripted:-" if mate["kind"] == "scripted"
+                          else seat_string(mate["model_name"], mate["prompt"], c["variant"]))
+            c["seat2"] = seat_string(target.model_name, str(cond.get("measured_prompt", "cell")), c["variant"])
+            c["label"] = str(cond.get("label", name))
         metrics = team_facts.metrics(cells, name)
         by_variant = {v: team_facts.metrics([c for c in cells if c["variant"] == v], f"{name}/{v}")
                       for v in sorted({c["variant"] for c in cells})}
@@ -151,6 +176,9 @@ def run(target, cfg, out_dir: Path) -> dict:
 
         package_run(out_dir, str(cfg.model_key), audits, combined, subdir=name, work_root=cond_work)
         summary["conditions"][name] = {
+            "label": str(cond.get("label", name)),
+            "cell_ids": sorted({c["cell_id"] for c in cells}),
+            "seats": sorted({f"{c['seat1']} + {c['seat2']}" for c in cells}),
             "teammate": mate, "variants": list(cond.variants),
             "measured_prompt": str(cond.get("measured_prompt", "cell")),
             "measured": results["ours"], "n_judged": results["n_judged"],
