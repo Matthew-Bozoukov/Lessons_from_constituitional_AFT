@@ -63,7 +63,11 @@ thing in 10/17 — so the multi-party rows are greyer and less adversarial than 
 arm is compared with, while the baseline's reasoning blocks score higher on the same response
 stages, which places the remaining gap in the scenario (what the rewriter is given to weigh),
 not in the rewrite. One reader per corpus; the readers were different Claude instances given
-the same rubric, so the comparison is indicative, not measured.
+the same rubric, so the comparison is indicative, not measured. Later on 2026-09-23, at
+Kunwar's comment that the sender's stance must not be prescribed, the `voiced_doubt` field and
+the half-and-half rule keyed to it were removed before the full run (six fields remain); the
+NONE/LEAN counts above are the readers' labels, and how much doubt a sender voices is now the
+writer's call, as it was in smoke 3 (where every sender voiced one).
 ## 2026-09-22 — MASK end to end on the new default: 38 min for da-15 with one queue (was 2h40); three same-adapter replicates within 1.5 points; `passes` implemented; the base model re-measured at 58.2
 
 **Hypothesis.** The sweep (entry above) promised ~39 min of generation on an H200 at 192 in

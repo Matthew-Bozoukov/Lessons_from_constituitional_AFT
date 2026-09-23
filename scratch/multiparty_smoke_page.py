@@ -48,7 +48,7 @@ dt{font-family:"IBM Plex Mono",monospace;font-size:.7rem;text-transform:uppercas
 dd{margin:0}
 """
 
-FIELDS = ["trait_id", "asker", "agenticness", "voiced_doubt"]
+FIELDS = ["trait_id", "asker", "agenticness"]
 
 
 def load_rows(path: Path) -> list[dict]:
