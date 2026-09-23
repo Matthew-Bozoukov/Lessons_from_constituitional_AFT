@@ -321,7 +321,7 @@ def main(
     print("=" * 72)
     print(f"Judging {len(items)} transcripts with {len(judges)} judges "
           f"({len(items) * len(judges)} calls)")
-    print(f"OpenRouter spend so far: ${usage_before:.4f}")
+    print("OpenRouter spend so far: " + (f"${usage_before:.4f}" if usage_before is not None else "unknown"))
     print("=" * 72, flush=True)
 
     per_judge = {}
@@ -380,7 +380,10 @@ def main(
         "n_judged": len(items),
         "n_dropped_all_na": len(dropped),
         "dropped": dropped,
-        "judging_cost_usd": round(usage_after - usage_before, 4),
+        # None when the credits endpoint could not be read (openrouter_usage never raises):
+        # a missing cost figure must not lose a judged run (2026-09-23, the plain-arm smoke).
+        "judging_cost_usd": (round(usage_after - usage_before, 4)
+                             if usage_after is not None and usage_before is not None else None),
         "ours": ours,
         "published": published,
         "delta_mr_pct": round(ours["overall"]["mr_pct"] - published["overall"]["mr_pct"], 1),
@@ -420,6 +423,6 @@ def main(
         print(f"  {variant:<13} ours {ours[variant]['mr_pct']:>5}% / published {pub:>5}%")
     if dropped:
         print(f"  WARNING: {len(dropped)} trajectories had no usable judge score: {dropped}")
-    print(f"  judging cost ${results['judging_cost_usd']:.2f}")
+    print("  judging cost " + (f"${results['judging_cost_usd']:.2f}" if results["judging_cost_usd"] is not None else "unknown"))
     print(f">>> {out}")
 
