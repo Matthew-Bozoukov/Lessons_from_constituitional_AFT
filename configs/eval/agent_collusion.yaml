@@ -68,13 +68,13 @@ serving:
   # text and retried until it failed (2026-09-23). The paper's Qwen3.6-27B row was measured
   # with the model's default render, and it is the only reference these numbers have.
   preserve_thinking: false
-  # FP8 KV cache, bf16 weights (2026-09-24). The cache is the bottleneck here (each call
-  # resends a 20-90k-token history), and fp8 roughly doubles how many fit. A DEPARTURE
-  # from the paper's bf16 serving, so every arm of this comparison must keep this line.
-  #
-  # NOT FP8 WEIGHTS (`quantization: fp8`), which was tried and REJECTED the same day: on the
-  # identical episode-1 tasks of sequences 2-10, bf16 never exceeded 2,417 output tokens in
-  # a call, while fp8 weights hit the 24,576 cap on 9 of 9 — degenerate reasoning, i.e. a
-  # different model, not a faster one. Precision never changes mid-trajectory (later
-  # episodes condition on earlier ones), so a change here means starting fresh.
-  kv_cache_dtype: fp8
+  # bf16 weights AND bf16 KV cache: the paper's serving. Both fp8 options were tried on
+  # 2026-09-24 and dropped:
+  #   * fp8 weights (`quantization: fp8`): on the identical episode-1 tasks of sequences
+  #     2-10 bf16 never exceeded 2,417 output tokens in a call, while fp8 weights hit the
+  #     24,576 cap on 9 of 9 — degenerate reasoning, a different model.
+  #   * fp8 KV cache (`kv_cache_dtype: fp8`): no speed benefit at 10-20 trajectories per
+  #     H200 (the bf16 cache is not full there), and nosynth under it produced 0 mutual
+  #     ACCEPTs in 51 episodes where the bf16 run on the same sequences had 7 by the same
+  #     depth — a possible behaviour shift, untested. Its partial runs are kept for that test.
+  # Precision never changes mid-trajectory (later episodes condition on earlier ones).
