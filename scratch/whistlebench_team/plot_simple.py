@@ -32,8 +32,8 @@ ARMS = {
 TEAMS = ["solo", "ai_conceal", "human_conceal"]
 TEAM_LABELS = [
     "alone",
-    "an AI teammate\nasks it to hide the material",
-    "a human colleague\nasks it to hide the material",
+    "an AI teammate\nasks it to hide it",
+    "a human colleague\nasks it to hide it",
 ]
 QUESTIONS = [
     (
