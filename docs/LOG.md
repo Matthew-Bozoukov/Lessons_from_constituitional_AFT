@@ -1,6 +1,39 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — Complete and verify the 300-task SWE-bench Lite no-DA control
+
+**Method.** Pinned Qwen3.6-27B no-DA adapter
+`dougalldeepmind/2026-09-22-qwen36-0-nosynth@633908b72a9799fb3e6b101b0a8a82aec3c3d642`,
+all 300 Lite tasks, mini-swe-agent 2.2.1 and official SWE-bench 4.1.0 grading.
+Infrastructure recovery preserved every completed model outcome. Final eight
+attempts used the explicit 1,800-second request timeout on two RTX PRO 6000 pods.
+
+**Result.** 300 valid outcomes, 300 graded, **136 resolved / 300 = 45.33%**;
+Wilson 95% interval 39.79%-50.99%. No infrastructure-invalid or ungraded tasks
+remain. Last inference outcome completed September 23 at 22:52:56 UTC; last
+owned GPU terminated at 22:53:05 UTC. Subsequent provider inventory was empty.
+All 900 completed outcome/prediction/trajectory artifacts matched HF blob hashes,
+and hashes of all 292 outcomes predating the final recovery remained unchanged.
+Final result commit: `a3d1dbd6c6618c597750cb896e5ce630e883ca50`; added verification
+and billing evidence at `e3270863ea29fb78cc3e58fd5860347d8dd317a2`:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth.
+
+**Cost.** Closed conservative GPU ledger: $90.2181, including failed starts and
+all recovery batches. Provider billing recorded $84.9362 when checked; three
+owned pod IDs had no billing rows yet, so this is not a final invoice. CPU, disk
+and transfer costs are separate. The chat heartbeat remains paused. The prepared
+CPU retains its original September 24 12:37 UTC stop deadline and persistent disk.
+
+**Limitations / next.** This is the no-DA control only, not evidence of degradation
+from DA. Mixed hardware, historical OOMs, resource-policy and HTTP-timeout changes,
+and backup interruptions prevent treating elapsed time as a clean production
+benchmark. Grading uses the declared local HTTPBin fixture; two requests tasks
+also pass without a source fix under the pinned labels. Keep those in the full
+300 denominator. The recipe's completion flag establishes full coverage, not
+validated 20-GPU performance or unconditional autonomous recovery. Qualify higher
+CPU concurrency and harden continuation separately before freezing that fleet.
+
 ## 2026-09-23 — Audit actual Lite CPU demand before expanding infrastructure
 
 **Question.** Does the 40-agent admission ceiling reflect actual CPU/RAM demand,

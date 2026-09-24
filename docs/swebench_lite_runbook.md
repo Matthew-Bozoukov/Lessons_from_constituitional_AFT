@@ -3,6 +3,16 @@
 
 # SWE-bench Lite: one model, all 300 tasks
 
+**Completion verified September 24, 2026:** the no-DA campaign now has 300 valid
+outcomes and 300 graded tasks, with 136 resolved (45.33%). All owned inference
+GPUs are terminated; the chat heartbeat remains paused. Final HF verification is
+`metadata/final-verification-20260924.json`, published at
+`e3270863ea29fb78cc3e58fd5860347d8dd317a2`. The closed conservative GPU ledger is
+$90.22; CPU/storage/transfer costs are separate. The CPU's existing stop deadline
+remains September 24 12:37 UTC. Historical preparation/recovery sections below
+describe the experiment as it evolved, not unfinished work. Full coverage does
+not validate a uniform-fleet performance estimate or a 20-GPU recipe.
+
 The prepared campaign evaluates only `dougalldeepmind/2026-09-22-qwen36-0-nosynth`
 at `633908b72a9799fb3e6b101b0a8a82aec3c3d642`, on Qwen3.6-27B base revision
 `6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`. It uses all 300 Lite test cases at
