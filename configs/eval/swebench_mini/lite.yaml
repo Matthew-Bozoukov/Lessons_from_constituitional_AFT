@@ -7,6 +7,13 @@ base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
 dataset: princeton-nlp/SWE-bench_Lite
 dataset_revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
 dataset_sha256: 6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222
+# Longest observed valid duration across the completed control and DA runs.
+# Frozen runtime-only prior, all 300 tasks; never uses correctness labels.
+task_scheduling:
+  repo: dougalldeepmind/2026-09-24-swebench-lite-infrastructure
+  revision: d913be458b1af3645ad5a37b6f1f8fd0f25175f4
+  path: metadata/runtime-priority.json
+  sha256: d970a9695f974734aa8b51d3352321d49a3334b405b2dff829844af340d21eda
 mode: think
 readiness: /srv/lasr/runs/cpu-readiness
 receipt: /srv/lasr/receipt.json

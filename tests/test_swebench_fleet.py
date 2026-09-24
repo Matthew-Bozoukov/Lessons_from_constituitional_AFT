@@ -461,3 +461,58 @@ class HostRoutingTests(unittest.TestCase):
         for failures in (5, 6, 7, 25):
             self.assertEqual(fleet.allocation_gpu(cfg, failures, 601, 0), cfg.fallback_gpus[0])
         self.assertEqual(fleet.allocation_gpu(cfg, 26, 650, 1), cfg.fallback_gpus[1])
+
+
+class RuntimeSchedulingTests(unittest.TestCase):
+    def profile(self):
+        return {'policy': 'historical-longest-first-v1', 'dataset_revision': 'pinned',
+                'seconds_by_instance': {'a': 5, 'b': 20, 'c': 20, 'd': 1, 'e': 2}}
+
+    def test_long_tasks_first_ties_stable_and_all_tasks_preserved(self):
+        rows = [{'instance_id': i} for i in 'edcba']
+        self.assertEqual(fleet.priority_order(rows, self.profile(), 'pinned'), list('bcaed'))
+        self.assertEqual(rows[0]['instance_id'], 'e')  # Frozen dataset itself is untouched.
+
+    def test_bad_profile_is_rejected_instead_of_dropping_tasks(self):
+        rows = [{'instance_id': i} for i in 'abcde']
+        for value in (float('nan'), float('inf'), -1, 0, True, '20'):
+            profile = self.profile()
+            profile['seconds_by_instance']['a'] = value
+            with self.assertRaises(AssertionError):
+                fleet.priority_order(rows, profile, 'pinned')
+        with self.assertRaises(AssertionError):
+            fleet.priority_order(rows[:-1], self.profile(), 'pinned')
+        with self.assertRaises(AssertionError):
+            fleet.priority_order(rows, self.profile(), 'different-dataset')
+
+    def test_download_is_revision_and_checksum_pinned(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d)/'profile.json'
+            atomic(path, self.profile())
+            cfg = OmegaConf.create({'dataset_revision': 'pinned', 'task_scheduling': {
+                'repo': 'org/profile', 'revision': 'frozen-sha', 'path': 'metadata/timing.json',
+                'sha256': fleet.digest(path)}})
+            with patch.object(fleet, 'hf_download', return_value=str(path)) as download:
+                plan = fleet.scheduling_plan(cfg, [{'instance_id': i} for i in 'abcde'])
+                download.assert_called_once_with('org/profile', 'metadata/timing.json', repo_type='dataset', revision='frozen-sha')
+                self.assertEqual(plan['instance_ids'], list('bcaed'))
+                cfg.task_scheduling.sha256 = 'wrong'
+                with self.assertRaises(AssertionError):
+                    fleet.scheduling_plan(cfg, [{'instance_id': i} for i in 'abcde'])
+
+    def test_free_worker_refills_while_three_peers_still_run(self):
+        from src.eval.capabilities.swebench_mini.fleet_state import State
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, 'metadata').mkdir()
+            state = State(d)
+            atomic(state.path, {'deadline': None, 'tasks': {
+                i: {'status': 'pending', 'attempts': []} for i in 'abcde'}})
+            leases = [state.claim(f'gpu-{w}', list('abcde'), 3, 6) for w in range(4)]
+            iid, aid = leases[0]
+            state.finish(iid, aid, {'valid': True, 'exit_status': 'Submitted'})
+            # Reopen durable state to exercise actual serialized ordering, not a local list.
+            next_task = State(d).claim('gpu-0', list('abcde'), 3, 6)
+            self.assertEqual(next_task[0], 'e')
+            current = read(state.path)['tasks']
+            self.assertTrue(all(current[i]['status'] == 'running' for i in 'bcde'))
+            self.assertIsNone(state.claim('gpu-0', list('abcde'), 3, 6))

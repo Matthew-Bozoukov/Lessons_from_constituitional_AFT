@@ -26,6 +26,15 @@ under new source hashes.
   independently. Retry missing capacity; only after both ten minutes and five failures
   try H200/RTX PRO 6000. Release idle pods independently. A small remaining queue
   uses fewer pods. No per-adapter concurrency sweep.
+- New campaigns take historically long tasks first. The pinned timing profile uses
+  the maximum final valid attempt duration for each task across the completed
+  control and DA runs. All 300 tasks remain; no correctness labels affect priority.
+  Ties use instance ID. Profile bytes, source revisions and the exact queue are
+  archived in `metadata/task-schedule.json` and its hash is recorded in the manifest.
+  Each of four independent GPU workers claims its next task immediately: A/B/C/D
+  becomes E/B/C/D as soon as A finishes, provided the GPU still admits new tasks.
+  Existing campaign queues/outcomes are preserved. Historical durations are a prior,
+  so unfamiliar models can still produce an unexpectedly long tail.
 - The existing CPU passed two GPU-free 40/60/80-workload exercises. The final one
   used the production file-lock admission gate: 526 real test commands, zero failed
   commands/OOMs, minimum available RAM 177.58 GiB. This qualifies the tested workload

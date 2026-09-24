@@ -1,6 +1,22 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 - Schedule historically longer Lite tasks first
+
+**Question / method.** Reduce end-of-run stragglers without changing model budgets
+or dropping benchmark tasks. New campaigns sort the full task queue by the maximum
+final valid duration across the completed control and DA runs; ties use instance
+ID. The runtime-only profile is frozen on HF at infrastructure revision
+`d913be458b1af3645ad5a37b6f1f8fd0f25175f4`, metadata/runtime-priority.json.
+Each campaign archives the profile and exact ordering with a manifest checksum.
+Workers already refill independently, rather than waiting for all four tasks.
+
+**Validation / limit.** Regression tests cover deterministic ordering, exact task
+coverage, invalid timing rejection, pinned download/checksum, and one worker taking
+a fifth task while its three peers remain running. Existing results and queues
+are not rewritten. This timing prior uses mixed-GPU historical wall times and does
+not guarantee runtimes or remove every tail on a new adapter. No GPU rental needed.
+
 ## 2026-09-24 - Persistent CPU and discoverable SWE-bench Lite workflow
 
 **Question / method.** Make a new main-branch conversation able to run a specified

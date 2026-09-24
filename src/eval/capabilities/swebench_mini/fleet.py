@@ -41,7 +41,7 @@ def recipe_settings(cfg):
             'fallback_gpus', 'cuda_versions', 'cpu_worker_limit', 'allocation_fallback_after_seconds',
             'allocation_fallback_after_attempts')
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
-    keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path') if k in cfg)
+    keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
 
 
@@ -54,6 +54,31 @@ def validate_recipe(cfg, recipe):
     # New target/base artifacts are parameters; implementation changes require review.
     assert recipe['source_hashes'] == sources(), 'Frozen recipe code drift'
     return recipe
+
+
+def priority_order(rows, profile, dataset_revision):
+    """Freeze a runtime-only prior; no tasks are added, dropped or scored here."""
+    ids = [r['instance_id'] for r in rows]
+    assert len(ids) == len(set(ids)), 'Duplicate dataset task IDs'
+    assert profile['policy'] == 'historical-longest-first-v1', 'Unknown scheduling policy'
+    assert profile['dataset_revision'] == dataset_revision, 'Timing profile dataset mismatch'
+    seconds = profile['seconds_by_instance']
+    assert set(seconds) == set(ids), 'Timing profile must cover exactly the requested tasks'
+    assert all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+               for v in seconds.values()), 'Invalid historical task duration'
+    return sorted(ids, key=lambda iid: (-seconds[iid], iid))
+
+
+def scheduling_plan(cfg, rows):
+    reference = cfg.get('task_scheduling')
+    if not reference:  # Preserve historical configurations and their queue order.
+        return {'policy': 'dataset-order', 'instance_ids': [r['instance_id'] for r in rows]}
+    path = hf_download(reference.repo, reference.path, repo_type='dataset', revision=reference.revision)
+    assert digest(path) == reference.sha256, 'Timing profile checksum mismatch'
+    profile = read(path)
+    order = priority_order(rows, profile, cfg.dataset_revision)
+    return {'policy': profile['policy'], 'reference': OmegaConf.to_container(reference),
+            'profile': profile, 'instance_ids': order}
 
 
 def prepare_target(cfg, args):
@@ -113,6 +138,7 @@ def preflight(cfg):
     assert digest(REPO / 'scratch/swebench_local_httpbin.py') == result['gold']['wrapper_sha256']
     rows = read(ready / 'metadata/swebench_lite_test.json')
     assert len(rows) == len({r['instance_id'] for r in rows}) == 300
+    scheduling_plan(cfg, rows)  # Validate/download before any inference rental.
     images = read(ready / 'metadata/images.json')
     shell = read(ready / 'results/agent-shell.json')
     assert shell['status'] == 'passed' and shell['environment'] == OmegaConf.to_container(cfg.agent_environment)
@@ -195,6 +221,7 @@ def initialize(cfg, config_path, budget):
     assert not hf_api().repo_exists(repo, repo_type='dataset'), 'HF destination exists; refusing to overwrite another campaign'
     campaign = uuid.uuid4().hex
     rows = read(Path(cfg.readiness) / 'metadata/swebench_lite_test.json')
+    schedule = scheduling_plan(cfg, rows)
     manifest = {'campaign': campaign, 'repo': repo, 'created': datetime.now(timezone.utc).isoformat(),
                 'date': today(), 'model_key': spec.model_key, 'config': OmegaConf.to_container(cfg),
                 'source_hashes': sources(), 'budget_usd': budget, 'dataset_tasks': 300,
@@ -212,6 +239,8 @@ def initialize(cfg, config_path, budget):
         manifest['deployment'] = read(deployment)
     for sub in ('metadata', 'rollouts', 'results'):
         (root / sub).mkdir(parents=True, exist_ok=True)
+    atomic(root / 'metadata/task-schedule.json', schedule)
+    manifest['task_schedule_sha256'] = digest(root / 'metadata/task-schedule.json')
     for name in ('swebench_lite_test.json', 'images.json', 'httpbin_fixture.json', 'httpbin-ca.pem'):
         shutil.copyfile(Path(cfg.readiness) / 'metadata' / name, root / 'metadata' / name)
     shutil.copyfile(Path(cfg.readiness) / 'results/agent-shell.json', root / 'metadata/agent-shell.json')
@@ -222,7 +251,7 @@ def initialize(cfg, config_path, budget):
         shutil.copyfile(REPO / name, dest)
         assert digest(dest) == sha
     atomic(root / 'metadata/manifest.json', manifest)
-    atomic(root / 'metadata/state.json', {'tasks': {r['instance_id']: {'status': 'pending', 'attempts': []} for r in rows},
+    atomic(root / 'metadata/state.json', {'tasks': {iid: {'status': 'pending', 'attempts': []} for iid in schedule['instance_ids']},
            'pods': [], 'deadline': 0, 'last_upload': 0, 'phase': 'prepared', 'calibrated': not cfg.calibrate, 'halt': None})
     return manifest
 
