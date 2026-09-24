@@ -60,12 +60,17 @@ dependencies = [
     # vllm 0.26's numba pins numpy<2.5; the analysis code needs nothing newer.
     "numpy>=2.2,<2.5",
     "omegaconf>=2.3.1",
-    "openai>=2.48.0",
+    # inspect-ai 0.3.268 refuses every OpenAI-client provider (vllm, openai-api, openrouter) below 3.1.
+    "openai>=3.1.0",
     "pandas>=3.0.5",
     "plotly>=6.9.0",
     "pyarrow>=25.0.0",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
+    # Inspect AI: the framework WhistleBench (src/eval/misalignment/whistlebench_team) is built on;
+    # its agent loop, tool execution and scorers run in-process against the vLLM endpoint
+    # run_eval serves (model "openai-api/vllm/<name>"). Pure python; no GPU dependency.
+    "inspect-ai>=0.3.250",
     "requests>=2.31.0",
     "tenacity>=9.0.0",
     # Arena-Hard computes its style-control `token_len` feature with the gpt-4o encoder.
