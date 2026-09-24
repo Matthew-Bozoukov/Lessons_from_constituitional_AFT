@@ -1,6 +1,33 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 - Isolate DA-5 replica failures and stop automatic systemic rerentals
+
+**Finding.** Two isolated serving-connection losses on slots 55 and 120
+interrupted four tasks each. The six-task breaker treated these as eight failures,
+stopped the healthy fleet, and the supervisor started another batch. CPU replay
+of the recorded attempts confirms eight task failures but only two failed
+replicas. No tokenizer mismatch or recorded container OOM occurred; the underlying
+HTTP disconnect remains unproven. The captured vLLM log has no CUDA/OOM exception.
+
+**Fix and validation.** Count distinct failed replicas per reviewed recovery
+cycle; retain per-task histories and record breaker evidence. A global breaker
+requires diagnosis before more rentals. Fencing also closes known pod IDs already
+removed by the reaper at a conservative provider-absence observation time, retaining
+spent cost and ambiguous-create reservations. All 88 fleet/session/admission/Lite
+tests and the timeout transport test pass. The real-agent/Docker synthetic smoke
+passes official grading for normal and forced patches, with its empty truncated
+case unresolved. No GPUs were rented for this qualification.
+
+**Campaign state.** All 27 completed DA-5 outcomes are preserved and officially
+graded (6 resolved); 39 interrupted tasks and 234 unattempted tasks remain.
+This longest-first partial subset is not a full benchmark score. All campaign GPUs
+were verified absent before migration. The conservative reconciled GPU ledger is
+$40.20618, leaving $139.79382 under the unchanged $180 cap. Transition evidence is
+`metadata/replica-breaker-replay.json`, `replica-breaker-accounting.json` and the
+archived prior source/state. Continue DA-5 only under unchanged model budgets and
+the ten-GPU ceiling; do not reset spend, attempts or recovery cycles.
+
 ## 2026-09-24 - Repair DA-5 multi-turn tokenizer admission
 
 **Finding.** The first expanded-budget DA-5 launch acquired two H200s and one
