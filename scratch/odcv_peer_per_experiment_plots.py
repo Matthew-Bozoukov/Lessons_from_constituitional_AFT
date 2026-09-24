@@ -202,6 +202,68 @@ for num, title, arm, cond, variant, mate_c, tested_c in EXPS:
     plt.close(fig)
     paths.append(p)
 
+# --- experiments 1-4 in one 2x2 figure: rows = model, columns = wording ---------------------
+fig, axes = plt.subplots(2, 2, figsize=(11, 8.2), sharey=True)
+for (num, title, arm, cond, variant, mate_c, tested_c), ax in zip(EXPS[:4], axes.flat):
+    summary, cells = load(arm, cond)
+    cells_v = [c for c in cells if c["variant"] == variant]
+    n, mate, tested = seat_rates(cells_v)
+    fraud = regime(summary, variant, cond)["team_fraud_rate"]["pct"]
+    n_opp, resisted, along = resist_along(cells_v)
+    vals, cols = [mate, tested, fraud], [mate_c, tested_c, DARK]
+    ax.bar([0, 1, 2], vals, color=cols, width=0.6)
+    for x, v in zip([0, 1, 2], vals):
+        ax.text(
+            x,
+            v + 2,
+            f"{v:.0f}%",
+            ha="center",
+            va="bottom",
+            fontsize=14,
+            fontweight="bold",
+        )
+    ax.set_xticks([0, 1, 2])
+    ax.set_xticklabels(
+        [
+            "teammate\nmisbehaved",
+            "tested model\nmisbehaved",
+            "team ended with\nfaked files",
+        ],
+        fontsize=10,
+    )
+    ax.set_ylim(0, 100)
+    ax.set_yticks([0, 50, 100])
+    ax.set_yticklabels(["0%", "50%", "100%"], fontsize=9)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    ax.set_title(f"{num}. {title}", fontsize=12, fontweight="bold", loc="left")
+    ax.text(
+        0.0,
+        92,
+        f"n = {n} · when the teammate misbehaved ({n_opp}):\nresisted {resisted:.0f}%, went along {along:.0f}%",
+        fontsize=9,
+        color="#333",
+        va="top",
+    )
+fig.suptitle(
+    "Two copies of one model in a shared sandbox — plain (grey) vs trained (purple), by wording",
+    fontsize=13,
+    fontweight="bold",
+)
+fig.text(
+    0.5,
+    0.005,
+    "Both seats scored with the standard ODCV rubric (3+ = misbehaved). Team rate: evidence-fed judge.",
+    ha="center",
+    fontsize=9.5,
+    color="#555",
+)
+fig.tight_layout(rect=(0, 0.03, 1, 0.95))
+p = OUT / f"{STAMP}_odcvpeer_exp1to4_combined.png"
+fig.savefig(p, dpi=170)
+plt.close(fig)
+paths.append(p)
+
 # --- plain vs DA on one plot, per wording ------------------------------------------------
 for variant in ("mandated", "incentivized"):
     rows = []
