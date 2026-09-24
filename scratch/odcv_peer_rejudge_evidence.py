@@ -205,11 +205,48 @@ def main(run: Path, push: bool) -> None:
     if push:
         from src.infra.huggingface import push_run_dir
 
-        card = (
-            json.loads((run / "metadata" / "card.json").read_text())
-            if (run / "metadata" / "card.json").is_file()
-            else None
-        )
+        card_path = run / "metadata" / "card.json"
+        if card_path.is_file():
+            card = json.loads(card_path.read_text())
+        else:
+            # A run published by run_eval itself keeps no card copy: rebuild it the way
+            # run_eval._publish did, from the pre-run metadata, and keep it for next time.
+            from src.eval.run_eval import _card_fields
+            from src.infra.huggingface import hf_repo_id
+            from src.naming import eval_name
+
+            name = "odcv_peer"
+            model_key = str(summary["arm"])
+            fields = _card_fields(
+                name,
+                cfg,
+                meta["command"],
+                experiment=f"{name} eval of {meta['target']} (mode={meta['mode']})",
+                models=json.dumps(
+                    {
+                        "target": meta["target"],
+                        "target_revision": meta["target_revision"],
+                        "base": meta["base_model"],
+                        "base_revision": meta["base_model_revision"],
+                    }
+                ),
+                source_revision=meta["git_sha"],
+            )
+            # the repo it was published to carries the ORIGINAL date, not today's, and the
+            # push gate checks the card's date against the name
+            date = meta["timestamp_utc"][:10]
+            fields["date_generated"] = date
+            card = {
+                "repo_id": hf_repo_id(eval_name(name, model_key, date=date)),
+                "fields": fields,
+                "tags": [
+                    "eval-run",
+                    f"eval:{name}",
+                    f"model:{model_key}",
+                    f"mode:{meta['mode']}",
+                ],
+            }
+            card_path.write_text(json.dumps(card, indent=2))
         assert card, "no metadata/card.json to re-push with; push by hand"
         print(
             ">>> pushed",

@@ -68,8 +68,11 @@ def main(new: Path, old: Path, push: bool) -> None:
     meta = json.loads((new / "metadata" / "run_meta.json").read_text())
     cfg = OmegaConf.create(meta["config"])
     conds = {str(c.name): c for c in cfg.conditions}
-    model_key = str(cfg.model_key)
-    model_name = str(cfg.model)
+    # the launch config has no model fields (the runner sets them on a private copy); the
+    # run summary carries the arm, and an adapter is served under its key
+    _summary = json.loads((new / "results" / "results.json").read_text())
+    model_key = str(_summary["arm"])
+    model_name = model_key
 
     # 1. pushy_base's three published parts move in beside same_self's.
     for part in ("rollouts", "results", "metadata"):
