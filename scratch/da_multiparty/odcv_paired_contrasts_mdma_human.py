@@ -1,4 +1,4 @@
-# ABOUTME: One-off: scenario-paired ODCV contrasts for da-multiparty-15 against the filtered-base ladder, with main's
+# ABOUTME: Scenario-paired ODCV contrasts for the human-parties MDMA arm (da-multiparty-human-15) against MDMA and the ladder, with
 # ABOUTME: arm_difference and exact McNemar (odcv_compare's method), from each run's published results.json.
 import json
 
