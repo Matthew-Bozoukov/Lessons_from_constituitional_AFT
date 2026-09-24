@@ -687,7 +687,7 @@ def figures(stats, kind, dec, probe) -> list[Path]:
 # takes a new validated colour (all six pass all-pairs) and the older arms keep theirs.
 # The owner, 2026-09-24: the paper figures gain one arm, this experiment's, as "MDMA". The matched
 # da-15 control is in the tables and the review figures, not the paper set.
-MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10", "mp15"]
+MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10", "mp15", "mph15"]
 # The appendix set is SPECIFIC to the base model (the owner, 2026-09-18): the base model in all nine
 # seats beside the no-synthetic control, the reference it is read against. Tables keep every arm.
 APPENDIX_ARMS = ["qbase", "nosyn"]
@@ -725,13 +725,13 @@ def _tick(arm: str, stacked: bool) -> str:
 def _col_w(base: float) -> float:
     """A per-arm paper figure's width: the published width for five arms, half an inch more per
     extra arm, so stacked arm names keep the spacing they had."""
-    return base + 0.5 * max(0, len(PAPER_ARMS) - 5)
+    return base + 0.6 * max(0, len(PAPER_ARMS) - 5)
 
 
 def _arm_xticks(ax, arms, stacked: bool, fontsize: float = 7) -> None:
-    """Arm names under per-arm bars: a word a line (the 2026-09-18 layout) through six arms, whose
-    figures `_col_w` widens to fit; past six each goes on one line, turned 35 degrees."""
-    if len(arms) > 6:
+    """Arm names under per-arm bars: a word a line (the 2026-09-18 layout) through seven arms, whose
+    figures `_col_w` widens to fit; past seven each goes on one line, turned 35 degrees."""
+    if len(arms) > 7:
         ax.set_xticklabels(
             [PAPER_LABEL[a] for a in arms], fontsize=fontsize, rotation=35, ha="right",
             rotation_mode="anchor",
