@@ -168,7 +168,7 @@ hf_private: false
 
 # 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
 # rate limiting, not the code, is the ceiling above this.
-workers: 16
+workers: 64
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts.
 # The baseline measured $234 for 2,000 records end to end. This arm is strictly CHEAPER:

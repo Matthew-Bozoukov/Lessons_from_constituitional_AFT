@@ -54,7 +54,7 @@ source:
 
 output_dir: output/verbose-cot
 
-workers: 24
+workers: 64
 # Hard ceiling, and it aborts into a resumable run rather than overshooting. Projected
 # spend for 716 records at this configuration is ~$66 (1.25 expand calls/row at 6,630
 # output tokens each, plus two judge calls; ~$8 of that is the judges). Set below the $80

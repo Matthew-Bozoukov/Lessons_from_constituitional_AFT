@@ -75,7 +75,7 @@ hf_private: false
 # call). [revise_verdict] trains on the un-revised drafts.
 ablate: []
 
-workers: 16
+workers: 64
 # Re-price with `--estimate --measured <smoke manifest>` and reset this before the
 # full run -- assumed priors have run low before. Headroom for retries, not a target.
 budget_usd: 500.0
