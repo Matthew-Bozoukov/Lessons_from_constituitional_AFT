@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 - Prepare expanded-budget DA-5 SWE-bench Lite
+
+**Question.** Prior scores conflate coding with an unvalidated 16k response/65k
+task generation budget: 88 control and 105 DA-15 outcomes hit token/step limits.
+**Method.** Authorized DA-5 only, 300 tasks; 64k response, 256k task and context,
+500 steps. Four conversations per GPU share measured token-capacity reservations
+with bounded bypass and crash fencing. Ten mixed-fleet lanes prefer two H200s and
+eight H100 NVLs. Remove the agent's hidden two-hour Docker lifetime, allow two-hour
+HTTP requests, and preserve tracked-source patches at terminal limits. Historical
+runtime and prompt size guide placement, never correctness. Preserve the $180 cap.
+**Qualification.** 82 GPU-free fleet/admission/session tests and the real-agent
+transport check passed. Synthetic Docker/agent smoke preserved a patch despite a
+truncated reset tool call, passed official grading, and verified HF publication
+at infrastructure revision `236d5130d22b2476efe1e72521288831e671fa47`.
+**Next.** Launch the pinned DA-5 adapter after committed-source qualification and
+fresh CPU/provider checks; DA-25 deferred. No new model result or paid performance
+claim yet. v3 results require separate reporting from the stricter old protocol.
+
 ## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
 
 **Question / method.** Evaluate two upcoming adapters without paying for two cold

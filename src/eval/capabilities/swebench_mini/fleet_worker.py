@@ -61,7 +61,7 @@ def latest_admission(cfg, expires):
     return expires - cfg.cleanup_reserve_seconds - allowance
 
 
-def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
+def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admission=None):
     state = State(cfg.root)
     meta = read(state.root / 'metadata/manifest.json')
     rows = {r['instance_id']: r for r in read(state.root / 'metadata/swebench_lite_test.json')}
@@ -77,6 +77,8 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
                    'cpus': cfg.agent_cpus, 'memory': cfg.agent_memory, 'pids': cfg.agent_pids,
                    'environment': OmegaConf.to_container(cfg.agent_environment),
                    'max_response_tokens': cfg.max_response_tokens, 'max_task_tokens': cfg.max_task_tokens,
+                   'step_limit': cfg.get('step_limit', 250), 'context_window': cfg.serving.context_window,
+                   'token_admission': admission,
                    'model_request_timeout_seconds': cfg.model_request_timeout_seconds,
                    'model_request_attempts': cfg.model_request_attempts,
                    'tool_slots_path': str(Path(cfg.get('fleet_owner_root') or cfg.root) / '.tool-slots'),
@@ -162,6 +164,21 @@ def runner(target, cfg, out_dir, **kwargs):
     assert target.spec.revision == campaign.target_revision
     assert target.spec.base_revision == campaign.base_revision and target.spec.mode == campaign.mode
     endpoint = target.base_url
+    admission = None
+    if campaign.get('token_admission'):
+        from src.eval.capabilities.swebench_mini.fleet_admission import cache_capacity
+        capacity = cache_capacity(target._server.executor.tail_log(1000),
+            campaign.token_admission.cache_fraction, campaign.serving.context_window)
+        admission = dict(capacity,
+            directory=str(Path(owner.root) / '.token-slots' / str(cfg.replica)),
+            expires=cfg.expires - campaign.cleanup_reserve_seconds,
+            fairness_seconds=campaign.token_admission.fairness_seconds)
+        atomic(Path(campaign.root) / 'metadata' / f'token-capacity-{cfg.replica}.json', admission)
+        if capacity['measured_tokens'] >= campaign.token_admission.large_cache_tokens:
+            schedule = read(Path(campaign.root) / 'metadata/task-schedule.json')
+            peaks = schedule.get('profile', {}).get('peak_prompt_tokens_by_instance', {})
+            # Stable sort preserves longest-first within both groups. No task is excluded.
+            allowed.sort(key=lambda iid: peaks.get(iid, 0) < campaign.token_admission.large_prompt_tokens)
     with State(owner.root).edit() as data:
         pod = next(p for p in data['pods'] if p['slot'] == cfg.replica)
         if pod.get('idle_startup_cancellation'):
@@ -176,6 +193,9 @@ def runner(target, cfg, out_dir, **kwargs):
         last_healthy = time.time()
         while not stop.is_set():
             try:
+                if admission and (Path(admission['directory']) / 'poison.json').exists():
+                    unhealthy.set()
+                    return
                 response = requests.get(endpoint.removesuffix('/v1').rstrip('/') + '/metrics', timeout=10)
                 response.raise_for_status()
                 last_healthy = time.time()
@@ -196,7 +216,7 @@ def runner(target, cfg, out_dir, **kwargs):
     try:
         with ThreadPoolExecutor(max_workers=campaign.workers_per_replica) as pool:
             futures = [pool.submit(consume, endpoint, 'hosted_vllm/' + target.model_name, campaign,
-                                   str(cfg.replica) + '-' + str(i), allowed, cfg.expires, unhealthy)
+                                   str(cfg.replica) + '-' + str(i), allowed, cfg.expires, unhealthy, admission)
                        for i in range(campaign.workers_per_replica)]
             for future in futures:
                 future.result()

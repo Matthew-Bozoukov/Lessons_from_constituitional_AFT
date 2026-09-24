@@ -3,6 +3,48 @@
 
 # DA-5 and DA-25 pre-launch plan
 
+## Authorized revision: DA-5 only, expanded protocol (2026-09-24)
+
+The user selected a full DA-5 run first, after reviewing the old token-limit
+failures. This section supersedes the original paired plan below; DA-25 is not
+being launched. Work remains on `codex/swebench-da5-da25`, never the other checkout.
+
+- All 300 tasks, pinned DA-5 revision below. Ten pods, four conversations per pod.
+  Two lanes prefer H200 and eight prefer H100 NVL; delayed availability fallback
+  is H100/H200 then RTX PRO 6000 Blackwell Server. Ready replicas start independently.
+- 262144 context; 65536 output tokens per response; 262144 accumulated completion
+  tokens; 500 steps. HTTP timeout 7200 seconds excludes token admission waiting.
+  Container lifetime is `sleep infinity`, bounded externally by owned-attempt
+  cleanup and the finite GPU watchdog, not a hidden two-hour model cutoff.
+- Before each completion, `/tokenize` uses the serving model/template and bash
+  tool schema. Reserve prompt plus allowed output against 90% of measured cache
+  capacity. Never reduce response allowance to fit concurrent requests. Clamp it
+  only by remaining task tokens and actual context. Oldest waiter stops bypass
+  after 30 seconds. Dead active owners or ambiguous inference errors fence the
+  replica; dead queued owners release reservations without restarting a GPU.
+- Longest-first remains the default. H200-sized caches prefer tasks with >=65536
+  historical peak prompt tokens, then consume the same shared queue. The pinned
+  prior uses runtime and token counts only, never correctness. No task is excluded.
+- Limit exits retain a forced diff of modified tracked source files. Tests,
+  build files, docs, scripts and untracked helper/new files are excluded by the
+  declared `tracked-source-diff-v1` policy. The original limit reason remains a
+  terminal valid outcome; truncated tool calls never execute. This policy may
+  omit a newly created source file and must be reported as a limitation.
+- $180 cumulative GPU backstop, not forecast. Mixed-lane reservations are
+  proportional to quoted prices so preferred H200s get the same initial lease
+  horizon as H100s. Six-hour emergency leases may be shortened by budget;
+  cleanup and budget protections still apply. Persistent CPU has no stop deadline.
+- CPU-only qualification: 82 fleet/admission/session tests and transport check;
+  real Docker/agent synthetic endpoint proves tokenizer admission, forced-patch
+  preservation, no truncated tool execution, official grading and HF readback.
+  Synthetic evidence is not a model result. Live expanded-budget throughput remains
+  unmeasured. Preliminary estimate 4-5 hours/$110-160, not a guaranteed upper bound.
+- Checkpoint locally and publish asynchronously; 15-minute chat updates plus
+  immediate failure/completion. Finish only after 300 valid/graded, HF artifact
+  readback, and verified owned GPU teardown. Leave CPU and unrelated pods alone.
+
+## Original paired proposal (superseded)
+
 Prepared from main `51925bdff180c92518e018f956b7ec0a13a5ee2a` on isolated branch
 `codex/swebench-da5-da25`. The user requested this plan before launch.
 

@@ -69,14 +69,44 @@ def token_limit_reason(response, total, task_limit):
     return None
 
 
-def install_token_limits(model_class, limits_exceeded, response_limit, task_limit):
+def install_token_limits(model_class, limits_exceeded, response_limit, task_limit, request=None):
     original_query, original_parse = model_class._query, model_class._parse_actions
 
     def query(self, messages, **kwargs):
         remaining = task_limit - getattr(self, '_lite_tokens', 0)
         assert remaining > 0, 'Terminal budget outcome must stop the agent'
         kwargs['max_tokens'] = min(response_limit, remaining)
-        return original_query(self, messages, **kwargs)
+        if not request or not request.get('token_admission'):
+            return original_query(self, messages, **kwargs)
+        from minisweagent.models.litellm_model import BASH_TOOL
+        from src.eval.capabilities.swebench_mini.fleet_admission import (
+            prompt_tokens, output_allowance, token_slot, poison)
+        admission = request['token_admission']
+        count = prompt_tokens(request['endpoint'], request['model'], messages, [BASH_TOOL])
+        allowance = output_allowance(count, response_limit, remaining, request['context_window'])
+        if not allowance:
+            raise limits_exceeded({'role': 'exit', 'content': 'context_limit',
+                'extra': {'exit_status': 'LimitsExceeded', 'submission': '', 'limit_reason': 'context_limit'}})
+        kwargs['max_tokens'] = allowance
+        self._lite_context_limited = allowance < min(response_limit, remaining)
+        with token_slot(admission['directory'], count + allowance, admission['budget_tokens'],
+                        expires=admission['expires'], fairness_seconds=admission['fairness_seconds']) as waited:
+            started = time.monotonic()
+            try:
+                response = original_query(self, messages, **kwargs)
+                actual = response.model_dump()['usage']['prompt_tokens']
+                if actual > count:
+                    raise RuntimeError(f'Serving tokenization mismatch: reserved {count}, actual {actual}')
+                return response
+            except Exception as exc:
+                # A timeout/disconnect does not prove the GPU stopped decoding.
+                poison(admission['directory'], 'Ambiguous inference request: ' + type(exc).__name__)
+                raise
+            finally:
+                with (Path(request['out']) / 'inference-timing.jsonl').open('a') as stream:
+                    stream.write(json.dumps({'prompt_tokens': count, 'output_allowance': allowance,
+                        'reserved_tokens': count + allowance, 'queue_seconds': waited,
+                        'request_seconds': time.monotonic()-started, 'time': time.time()}) + '\n')
 
     def parse(self, response):
         raw = response.model_dump()
@@ -84,6 +114,11 @@ def install_token_limits(model_class, limits_exceeded, response_limit, task_limi
         assert isinstance(used, int) and used >= 0, 'Missing completion-token accounting'
         self._lite_tokens = getattr(self, '_lite_tokens', 0) + used
         reason = token_limit_reason(raw, self._lite_tokens, task_limit)
+        if reason == 'response_token_limit':
+            if self._lite_tokens >= task_limit:
+                reason = 'task_token_limit'
+            elif getattr(self, '_lite_context_limited', False):
+                reason = 'context_limit'
         if reason:
             # Preserve even the truncated response before the stock agent's exit.
             message = raw['choices'][0]['message'] | {'role': 'assistant',
@@ -94,6 +129,24 @@ def install_token_limits(model_class, limits_exceeded, response_limit, task_limi
         return original_parse(self, response)
 
     model_class._query, model_class._parse_actions = query, parse
+
+
+def eligible_source(path):
+    """Forced submissions include modified tracked source, never tests or generated helpers."""
+    parts = Path(path).parts
+    return (Path(path).suffix in {'.py', '.pyi', '.pyx', '.pxd', '.c', '.h', '.cpp', '.js', '.ts'}
+            and not any(p.lower() in {'test', 'tests', 'testing', 'docs', 'doc', 'scripts'} for p in parts)
+            and not Path(path).name.startswith('test_')
+            and Path(path).name not in {'setup.py', 'conftest.py'})
+
+
+def forced_patch(container):
+    def git(*args):
+        return subprocess.run(['docker', 'exec', '-w', '/testbed', container, 'git', *args],
+                              capture_output=True, check=True, timeout=30).stdout
+    changed = git('diff', '--name-only', '-z', 'HEAD').decode().split('\0')
+    paths = [p for p in changed if p and eligible_source(p)]
+    return git('diff', '--no-ext-diff', '--no-color', 'HEAD', '--', *paths).decode() if paths else ''
 
 
 def configure_request_transport(config, request):
@@ -133,6 +186,8 @@ def main():
     config['model']['model_name'] = request['model']
     config['model']['model_kwargs']['api_base'] = request['endpoint']
     config['model']['model_kwargs']['max_tokens'] = request['max_response_tokens']
+    config['agent']['step_limit'] = request.get('step_limit', 250)
+    config['environment']['container_timeout'] = 'infinity'
     transport = configure_request_transport(config, request)
     config['environment']['env'].update(request['environment'])
     config['environment']['env'].update(resource_environment(request['cpus']))
@@ -161,23 +216,36 @@ def main():
 
     DockerEnvironment._start_container = bounded_start
     assert 0 < request['max_response_tokens'] <= request['max_task_tokens']
-    install_token_limits(LitellmModel, LimitsExceeded, request['max_response_tokens'], request['max_task_tokens'])
+    install_token_limits(LitellmModel, LimitsExceeded, request['max_response_tokens'], request['max_task_tokens'], request)
     config['environment']['run_args'] = ['--rm', '--network', 'none', '--pull', 'never',
         '--cpus', str(request['cpus']), '--memory', request['memory'], '--pids-limit', str(request['pids']),
         '--label', 'lasr_campaign=' + request['campaign'], '--label', 'lasr_attempt=' + request['attempt']]
     config['agent']['output_path'] = str(out / 'checkpoint.traj.json')
     atomic(out / 'scaffold.json', {'version': '2.2.1', 'official_sha256': hashlib.sha256(official.read_bytes()).hexdigest(),
-                                 'effective_config': config, 'effective_cost_limit': 'inert; step_limit=250',
+                                 'effective_config': config, 'effective_cost_limit': f'inert; step_limit={config["agent"]["step_limit"]}',
                                  'resource_policy': 'quota-derived-thread-limits-and-in-container-timeout-v1',
                                  'resource_shell': resource_shell(request['cpus'], config['environment']['timeout']),
                                  'tool_admission': {key: request.get(key) for key in
                                       ('tool_concurrency', 'tool_queue_timeout_seconds', 'min_available_memory_gib')},
                                  'task_source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                                  'max_task_tokens': request['max_task_tokens'],
-                                 'token_limit_policy': 'terminal unresolved; never infrastructure retry',
+                                 'token_limit_policy': 'terminal; tracked source diff forced submission; never model retry',
+                                 'token_admission': request.get('token_admission'),
                                  'request_transport': transport})
 
     class AtomicTrackingAgent(upstream.ProgressTrackingAgent):
+        def run(self, *args, **kwargs):
+            info = super().run(*args, **kwargs)
+            if info.get('exit_status') == 'LimitsExceeded':
+                patch = forced_patch(self.env.container_id)
+                info.update(submission=patch, forced_submission=True,
+                    forced_submission_policy='tracked-source-diff-v1; excludes tests/build/docs/scripts/untracked',
+                    limit_reason=info.get('limit_reason', 'step_limit'))
+                self.messages[-1]['extra'].update(info)
+                atomic(out / 'forced-submission.json', {k: v for k, v in info.items() if k != 'submission'})
+                (out / 'forced.patch').write_text(patch)
+            return info
+
         def save(self, path, *extra_dicts):
             data = super().save(None, *extra_dicts)
             if path:

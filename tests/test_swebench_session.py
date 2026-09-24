@@ -77,7 +77,7 @@ class SessionTests(unittest.TestCase):
         entered = threading.Barrier(5)
         release = threading.Event()
         errors, seen = [], []
-        def consume(endpoint, model, cfg, worker_id, allowed, expires, unhealthy):
+        def consume(endpoint, model, cfg, worker_id, allowed, expires, unhealthy, admission=None):
             seen.append((cfg.target, worker_id, list(allowed)))
             if cfg.target == 'org/first':
                 entered.wait(5)
@@ -86,7 +86,8 @@ class SessionTests(unittest.TestCase):
             return SimpleNamespace(text='', raise_for_status=lambda: None)
         def target(arm):
             return SimpleNamespace(spec=SimpleNamespace(hf_path=arm.target, revision=arm.target_revision,
-                base_revision=arm.base_revision, mode=arm.mode), base_url='http://synthetic/v1', model_name=arm.target)
+                base_revision=arm.base_revision, mode=arm.mode), base_url='http://synthetic/v1', model_name=arm.target,
+                _server=SimpleNamespace(executor=SimpleNamespace(tail_log=lambda n: 'GPU KV cache size: 503,949 tokens')))
         def run_pair():
             try:
                 for arm in session.members(self.cfg):

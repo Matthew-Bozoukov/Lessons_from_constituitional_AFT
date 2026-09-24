@@ -42,6 +42,7 @@ def recipe_settings(cfg):
             'fallback_gpus', 'cuda_versions', 'cpu_worker_limit', 'allocation_fallback_after_seconds',
             'allocation_fallback_after_attempts')
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
+    keys += tuple(k for k in ('step_limit', 'token_admission', 'preferred_gpus') if k in cfg)
     keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
@@ -227,16 +228,16 @@ def initialize(cfg, config_path, budget):
     manifest = {'campaign': campaign, 'repo': repo, 'created': datetime.now(timezone.utc).isoformat(),
                 'date': today(), 'model_key': spec.model_key, 'config': OmegaConf.to_container(cfg),
                 'source_hashes': sources(), 'budget_usd': budget, 'dataset_tasks': 300,
-                'protocol': 'mini-swe-agent 2.2.1; official 250 steps, inert local dollar limit; network none; '
+                'protocol': f'mini-swe-agent 2.2.1; {cfg.get("step_limit", 250)} steps, inert local dollar limit; network none; '
                             f'digest-pinned cached images; {cfg.agent_cpus} CPU/{cfg.agent_memory}/{cfg.agent_pids} PID agent container caps; infrastructure retries only (max {cfg.max_infrastructure_attempts} attempts); '
                             'quota-derived test/BLAS thread limits; in-container command timeout with descendant cleanup; '
                             'requests local HTTPBin fixture for grading; full denominator 300',
                 'limitations': read(Path(cfg.readiness) / 'results/readiness.json')['benchmark_limitations']}
     manifest['protocol'] += (f'; response cap {cfg.max_response_tokens}, task completion-token cap {cfg.max_task_tokens}; '
                              f'HTTP timeout {cfg.model_request_timeout_seconds}s, request attempts {cfg.model_request_attempts}; '
-                             'token-limit outcomes terminate unresolved without model rerolls; '
+                             'limit outcomes use forced tracked source diff excluding tests/build/docs/scripts/untracked; no model rerolls; '
                              'agent shell environment ' + json.dumps(OmegaConf.to_container(cfg.agent_environment)))
-    manifest['protocol'] += f'; task wall-clock cap {cfg.get("task_seconds")}; finite per-pod emergency lease; token/step limits unchanged'
+    manifest['protocol'] += f'; task wall-clock cap {cfg.get("task_seconds")}; container sleep infinity; finite per-pod emergency lease; token admission {cfg.get("token_admission")}'
     if cfg.get('following_configs') or cfg.get('fleet_owner_root'):
         manifest['shared_fleet'] = {'owner_root': cfg.get('fleet_owner_root') or cfg.root,
             'budget_scope': 'One cumulative fleet budget, not an independent allowance per arm',
@@ -509,10 +510,13 @@ def pending_tasks(data, allowed, cfg):
                and len(t['attempts']) < cfg.max_infrastructure_attempts for iid, t in data['tasks'].items())
 
 
-def allocation_gpu(cfg, failures, elapsed, fallback_failures=None):
+def allocation_gpu(cfg, failures, elapsed, fallback_failures=None, lane=None):
+    preferences = list(cfg.get('preferred_gpus', []))
+    primary = preferences[lane] if lane is not None and lane < len(preferences) else cfg.gpu
     if failures < cfg.allocation_fallback_after_attempts or elapsed < cfg.allocation_fallback_after_seconds:
-        return cfg.gpu
-    options = list(cfg.fallback_gpus) + [cfg.gpu]
+        return primary
+    options = ([cfg.gpu] + [g for g in cfg.fallback_gpus if g != primary] + [primary]
+               if primary != cfg.gpu else list(cfg.fallback_gpus) + [cfg.gpu])
     offset = failures - cfg.allocation_fallback_after_attempts if fallback_failures is None else fallback_failures
     return options[offset % len(options)]
 
@@ -683,7 +687,8 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     state = State(cfg.root)
     data = read(state.path)
     remaining = manifest['budget_usd'] - reserved_cost(data)
-    seconds = min(seconds, int(remaining * 3600 / (count * price_ceiling(cfg, cfg.gpu))))
+    lane_prices = [price_ceiling(cfg, allocation_gpu(cfg, 0, 0, lane=lane)) for lane in range(count)]
+    seconds = min(seconds, int(remaining * 3600 / sum(lane_prices)))
     assert seconds > cfg.allocation_min_remaining_seconds, 'Remaining budget cannot cover boot plus a full task; no rental'
     # `seconds` is a per-rental safety lease, never a shared batch cutoff. Late
     # arrivals and replacements get their own lease, bounded by CPU expiry/cost.
@@ -721,13 +726,13 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                         continue
                     attempts[lane] += 1
                     elapsed = time.time() - started
-                    selected = allocation_gpu(cfg, failures[lane], elapsed, fallback_failures[lane])
+                    selected = allocation_gpu(cfg, failures[lane], elapsed, fallback_failures[lane], lane=lane)
                     fallback_attempt[lane] = (failures[lane] >= cfg.allocation_fallback_after_attempts
                                               and elapsed >= cfg.allocation_fallback_after_seconds)
                     replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
                     replica_cfg.gpu = selected
                     replica_cfg.primary_arm = lane % len(session.members(cfg))
-                    replica_cfg.rental_reservation_usd = remaining / count
+                    replica_cfg.rental_reservation_usd = remaining * lane_prices[lane] / sum(lane_prices)
                     expires = min(time.time() + seconds, deadline_value(live['deadline']))
                     print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
                     futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)

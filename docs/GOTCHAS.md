@@ -1535,3 +1535,22 @@ result directories/HF repositories and never sum duplicated shared-fleet cost to
 A fallback GPU's longer reservation must not consume its peers' shares: shorten
 that pod's safety lease at admission and pass the SAME expiry to the provider,
 watchdog, worker and ledger. Do not alter live expiry components independently.
+# SWE-bench expanded generation budgets (2026-09-24)
+
+- Generation budgets and context are separate. A larger task budget does not
+  reserve a larger KV cache by itself. Count the actual rendered prompt plus
+  allowed output before each request; compare against the startup cache capacity.
+  Four full 256k contexts do not fit H100 NVL/RTX PRO 6000 with BF16 cache.
+- mini-SWE-agent Docker defaults to `sleep 2h`, independently of our outer task
+  timeout. Expanded runs use `sleep infinity` with external owned-container cleanup.
+  Increase HTTP timeout too; 65536 tokens at 20 tokens/s takes about 55 minutes.
+- A worker disappearing during inference does not prove its GPU request stopped.
+  Fence that replica rather than freeing its reservation for another request.
+- The former LimitsExceeded group hid 61 control/83 DA-15 full 16k-response
+  truncations, 20/14 task-budget exits and 7/8 step exits. These are scaffold
+  restrictions, not mandatory SWE-bench rules. Never treat equal capped scores
+  as proof that capability is unchanged on tasks allowed more computation.
+- Forced submissions are explicitly labelled and graded under a new protocol;
+  never execute partial tool calls or reroll completed failures. Current fallback
+  patch extraction includes modified tracked source only, excluding tests/build/
+  docs/scripts/untracked files. Do not silently mix these scores with v2 results.

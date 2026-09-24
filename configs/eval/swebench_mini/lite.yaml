@@ -11,9 +11,9 @@ dataset_sha256: 6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222
 # Frozen runtime-only prior, all 300 tasks; never uses correctness labels.
 task_scheduling:
   repo: dougalldeepmind/2026-09-24-swebench-lite-infrastructure
-  revision: d913be458b1af3645ad5a37b6f1f8fd0f25175f4
-  path: metadata/runtime-priority.json
-  sha256: d970a9695f974734aa8b51d3352321d49a3334b405b2dff829844af340d21eda
+  revision: 515b606b1c5c25e42ed554e4c04b747f8b518549
+  path: metadata/runtime-priority-v3.json
+  sha256: ab477e3c2575c62f9cb8ba0d1bb2ad071901e907644fa7b5701a2ba2249d6a27
 mode: think
 readiness: /srv/lasr/runs/cpu-readiness
 receipt: /srv/lasr/receipt.json
@@ -21,7 +21,9 @@ root: /srv/lasr/runs/unprepared-lite-target
 credentials: /srv/lasr/credentials.env
 ssh_key: /root/.ssh/id_ed25519
 gpu: NVIDIA H100 NVL
-replicas: 20
+replicas: 10
+# First two lanes prefer H200; unavailable lanes fall back without blocking peers.
+preferred_gpus: [NVIDIA H200, NVIDIA H200]
 target_generation_seconds: 3600
 workers_per_replica: 4
 allocation_retry_seconds: 30
@@ -38,12 +40,18 @@ cpu_memory_reserve_gib: 30
 min_available_memory_gib: 16
 gpu_price_margin: 1.05
 calibrate: false
-recipe_path: /srv/lasr/recipes/qwen36-lite-v2.json
+recipe_path: /srv/lasr/recipes/qwen36-lite-v3.json
 pilot_tasks_per_repo: 3
-max_response_tokens: 16384
-max_task_tokens: 65536
-# A 16k-token response needs ~14 minutes at the observed ~20 tokens/s.
-model_request_timeout_seconds: 1800
+max_response_tokens: 65536
+max_task_tokens: 262144
+step_limit: 500
+token_admission:
+  cache_fraction: 0.90
+  fairness_seconds: 30
+  large_cache_tokens: 800000
+  large_prompt_tokens: 65536
+# A 65k-token response needs ~55 minutes at 20 tokens/s, excluding admission wait.
+model_request_timeout_seconds: 7200
 model_request_attempts: 2
 agent_cpus: 2
 agent_memory: 4g
@@ -75,7 +83,7 @@ grading_workers: 12
 grading_timeout_seconds: 1800
 pilot_repos: [django/django, sympy/sympy, scikit-learn/scikit-learn, astropy/astropy, matplotlib/matplotlib, psf/requests]
 serving:
-  context_window: 131072
+  context_window: 262144
   concurrency: 8
   needs_tool_calls: true
   reuses_long_prefixes: true

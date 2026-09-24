@@ -3,6 +3,26 @@
 
 # SWE-bench Lite: all 300 tasks per model
 
+## Expanded-budget DA-5 branch protocol, September 24
+
+On `codex/swebench-da5-da25`, the current `lite.yaml` is the v3 single-model
+protocol: ten replicas (two H200-preferred lanes, eight H100), four conversations,
+256k context, 64k response, 256k task generation and 500 steps. RTX PRO 6000 is an
+availability fallback. This overrides the v2 limits and fleet counts described
+below. See [the revised launch plan](swebench_da5_da25_launch_plan.md).
+
+The standard single-target launch command is unchanged. Qualify the new source
+and `/srv/lasr/recipes/qwen36-lite-v3.json` before rentals. Include
+`tests/test_swebench_admission.py` in the CPU regression command. The expanded
+synthetic smoke also exercises serving-tokenizer admission and forced submission
+of an existing patch after a truncated response. CPU load qualification can be
+reused on the unchanged prepared host. No paid concurrency sweep is needed.
+
+The old 16k/65k/250-step results remain immutable and are not directly comparable
+with this protocol. DA-25 is deferred; do not infer authorization for a paired run
+from the older proposal below. Ten fixed GPU lanes are the DA-5 launch choice,
+not an empirically established optimum for the expanded budgets.
+
 **Latest completion, September 24:** the DA-15 run is fully complete at 134/300
 (44.67%), versus the matched no-DA control's 136/300 (45.33%). All 300 outcomes were
 graded, all 4,867 rollout/result files were verified on HF, and owned GPU inventory

@@ -40,6 +40,10 @@ def main():
                 'cat patch.txt', 'echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt']
     calls = []
     capped_calls = []
+    forced_row = next(r for r in rows if r['repo'] == 'django/django' and r['instance_id'] != iid)
+    forced_calls = []
+    admission = {'directory': str(root / '.token-slots/synthetic'), 'budget_tokens': 450000,
+                 'expires': time.time()+600, 'fairness_seconds': 1}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -47,11 +51,20 @@ def main():
 
         def do_POST(self):
             request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-            assert request['model'] in ('synthetic', 'synthetic-capped')
+            if self.path == '/tokenize':
+                payload = json.dumps({'count': 100}).encode()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            assert request['model'] in ('synthetic', 'synthetic-capped', 'synthetic-forced')
             assert request['max_tokens'] == cfg.max_response_tokens
             index = sum(m['role'] == 'assistant' for m in request['messages'])
             assert index < 3, 'Unexpected agent loop'
-            (capped_calls if request['model'] == 'synthetic-capped' else calls).append(index)
+            (forced_calls if request['model'] == 'synthetic-forced' else
+             capped_calls if request['model'] == 'synthetic-capped' else calls).append(index)
             response = {'id': 'synthetic-' + str(index), 'object': 'chat.completion', 'created': int(time.time()),
                         'model': 'synthetic', 'choices': [{'index': 0, 'finish_reason': 'tool_calls', 'message': {
                             'role': 'assistant', 'content': 'Synthetic infrastructure test; public reference patch.',
@@ -64,6 +77,14 @@ def main():
                                           'message': {'role': 'assistant', 'content': 'Truncated synthetic response'}}
                 response['usage']['completion_tokens'] = cfg.max_response_tokens
                 response['usage']['total_tokens'] = cfg.max_response_tokens + 100
+            if request['model'] == 'synthetic-forced':
+                if index == 0:
+                    command = "printf '%s' '" + base64.b64encode(forced_row['patch'].encode()).decode() + "' | base64 -d | git apply"
+                    response['choices'][0]['message']['tool_calls'][0]['function']['arguments'] = json.dumps({'command': command})
+                else:
+                    response['choices'][0]['finish_reason'] = 'length'
+                    response['choices'][0]['message']['tool_calls'][0]['function']['arguments'] = json.dumps({'command': 'git reset --hard HEAD'})
+                    response['usage']['completion_tokens'] = cfg.max_response_tokens
             payload = json.dumps(response).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -75,7 +96,7 @@ def main():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'synthetic', [iid], time.time() + 600)
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic', cfg, 'synthetic', [iid], time.time() + 600, admission=admission)
         state = read(root / 'metadata/state.json')
         assert state['tasks'][iid]['status'] == 'valid', str(root)
         attempt = state['tasks'][iid]['attempts'][0]
@@ -86,17 +107,28 @@ def main():
         capped_iid = next(r['instance_id'] for r in rows if r['repo'] == 'astropy/astropy')
         with State(root).edit() as data:
             data['tasks'][capped_iid] = {'status': 'pending', 'attempts': []}
-        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-check', [capped_iid], time.time() + 600)
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-check', [capped_iid], time.time() + 600, admission=admission)
         capped = read(root / 'metadata/state.json')['tasks'][capped_iid]
         assert capped['status'] == 'valid' and capped['attempts'][0]['exit_status'] == 'LimitsExceeded'
         assert capped['attempts'][0]['prediction']['model_patch'] == ''
         consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-capped', cfg, 'cap-resume', [capped_iid], time.time() + 600)
         assert capped_calls == [0], 'Truncated response must never be retried'
+        forced_iid = forced_row['instance_id']
+        with State(root).edit() as data:
+            data['tasks'][forced_iid] = {'status': 'pending', 'attempts': []}
+        consume(f'http://127.0.0.1:{server.server_port}/v1', 'hosted_vllm/synthetic-forced', cfg,
+                'forced-check', [forced_iid], time.time()+600, admission=admission)
+        forced = read(root / 'metadata/state.json')['tasks'][forced_iid]['attempts'][0]
+        assert forced['valid'] and forced['exit_status'] == 'LimitsExceeded'
+        def edits(patch):
+            return [line for line in patch.splitlines() if line.startswith(('+', '-')) and not line.startswith(('+++', '---'))]
+        assert edits(forced['prediction']['model_patch']) == edits(forced_row['patch'])
+        assert forced_calls == [0, 1], 'Never execute or retry a truncated tool call'
     finally:
         server.shutdown()
     grade(cfg)
     result = read(root / 'results/results.json')
-    assert result['resolved_ids'] == [iid] and result['pass_at_1'] is None
+    assert set(result['resolved_ids']) == {iid, forced_iid} and result['pass_at_1'] is None
     atomic(root / 'results/infrastructure.json', {'status': 'passed', 'synthetic': True,
            'model_evaluation': False, 'api_calls': len(calls), 'gold_task': iid,
            'resume_sent_additional_requests': False, 'root': str(root)})

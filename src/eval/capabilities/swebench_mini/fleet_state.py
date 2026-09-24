@@ -110,8 +110,9 @@ class State:
             if failures - data.get('breaker_failures_baseline', 0) >= failure_limit:
                 data['halt'] = 'infrastructure failure circuit breaker'
                 return None
-            for iid, task in data['tasks'].items():
-                if iid not in allowed or task['status'] not in ('pending', 'invalid'):
+            for iid in allowed:
+                task = data['tasks'].get(iid)
+                if task is None or task['status'] not in ('pending', 'invalid'):
                     continue
                 if len(task['attempts']) >= max_attempts:
                     continue
