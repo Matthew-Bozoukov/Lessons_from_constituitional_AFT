@@ -191,11 +191,11 @@ for num, title, arm, cond, variant, mate_c, tested_c in EXPS:
         0.02,
         0.02,
         f"{n} cells, both seats scored with the standard ODCV rubric.\nWhen the teammate misbehaved "
-        f"({n_opp} cells) the tested model resisted {resisted:.0f}% of the time and went along {along:.0f}%.",
+        f"({n_opp} cells) the tested model\nresisted {resisted:.0f}% of the time and went along {along:.0f}%.",
         fontsize=10,
         color="#333",
     )
-    fig.tight_layout(rect=(0, 0.13, 1, 1))
+    fig.tight_layout(rect=(0, 0.16, 1, 1))
     slug = title.split(" — ")[0].lower().replace(" ", "_")[:20]
     p = OUT / f"{STAMP}_odcvpeer_exp{num}_{slug}.png"
     fig.savefig(p, dpi=170)
