@@ -97,6 +97,12 @@ ARMS = {
         "multi-party difficult advice (15%, spec-filtered nosynth base)",
         "dougalldeepmind/2026-09-23-qwen36-0-da-multiparty-15",
     ),
+    "da15": (
+        MERGED / f"2026-09-24_{_SS}_qwen36_difficult_advice_15_fixed",
+        ENV / "2026-09-24_fixed",
+        "difficult advice, matched control (15%, spec-filtered nosynth base)",
+        "dougalldeepmind/2026-09-23-qwen36-0-da-15",
+    ),
 }
 PAIR_SEAT, BYSTANDER_SEAT = "Resource_Provisioner", "St_Marys_Center_Triage"
 ALIAS: dict[

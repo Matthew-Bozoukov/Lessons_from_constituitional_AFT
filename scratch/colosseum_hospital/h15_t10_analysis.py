@@ -13,6 +13,8 @@ Seven cells of 30 seeds each. The seven other seats are always the E1 control ad
   2026-09-24       mp15 (a 15% slice of the multi-party difficult-advice corpus on the SPEC-FILTERED
                    nosynth blend, 2026-09-22-nosynth-mix; base blend and dose both differ from the
                    nosynth family's, so its contrasts carry that caveat)
+  2026-09-24       da15 (its matched control: plain difficult advice at the same 15% share on the same
+                   spec-filtered blend, same seed and commit; only the corpus differs)
 
 The E1 cells are copies of the multiagent-exploration worktree's merged cells; their env
 snapshots are not on the Hub. The new cells come from
@@ -120,6 +122,13 @@ CELLS = [
         "qwen36_difficult_advice_multiparty_15_fixed",
         MP_DATE,
     ),
+    (
+        ("fixed", "da15"),
+        "fixed",
+        SS,
+        "qwen36_difficult_advice_15_fixed",
+        MP_DATE,
+    ),
 ]
 ALL = [c[0] for c in CELLS]
 DATE_OF = {c[0]: c[4] for c in CELLS}
@@ -129,8 +138,8 @@ NEW = [c[0] for c in CELLS if c[4] in (NEW_DATE, DELIB_DATE, MP_DATE)]
 # alignment (run 2026-09-18) or the multi-agent principle. The other E1 arms stay in the tables.
 # The base-model cell is APPENDIX material (the owner, 2026-09-18): all nine seats hold it, so it
 # is a reference, not a member of the family. The review and main paper figures leave it out.
-SHOWN = [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10", "mp15")]
-PROBED = ["ctrl", "da", "qbase", "nosyn", "da7", "jdat", "delib", "t10", "mp15"]
+SHOWN = [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10", "da15", "mp15")]
+PROBED = ["ctrl", "da", "qbase", "nosyn", "da7", "jdat", "delib", "t10", "da15", "mp15"]
 NAME = {
     "ctrl": "control (Table 2)",
     "da": "difficult advice 702 (Table 2)",
@@ -142,6 +151,7 @@ NAME = {
     "delib": "7% deliberative alignment (nosynth)",
     "qbase": "base Qwen3.6-27B, all nine seats",
     "mp15": "15% multi-party difficult advice (spec-filtered nosynth)",
+    "da15": "15% difficult advice, matched control (spec-filtered nosynth)",
 }
 # Arm colours are FIXED across the repo's figures (CLAUDE.md on main, 2026-09-18): the nosynth
 # control grey, deliberative alignment blue, plain difficult advice purple, difficult agentic tasks
@@ -159,6 +169,7 @@ COLOR = {
     "jdat": "#eda100",
     "t10": "#1baf7a",
     "mp15": "#c2255c",
+    "da15": "#a879dd",
 }
 FIG_LABEL = {
     "qbase": "Base model (all seats)",
@@ -168,6 +179,7 @@ FIG_LABEL = {
     "delib": "Deliberative alignment",
     "t10": "Multi-agent principle",
     "mp15": "Multi-party difficult advice",
+    "da15": "Difficult advice 15% (matched)",
 }
 # Two-line axis labels for the one-bar-per-arm figure; the full names collide there.
 SHORT = {
@@ -181,6 +193,7 @@ SHORT = {
     "delib": "deliberative\n(nosynth)",
     "qbase": "base model\n(all seats)",
     "mp15": "multi-party DA 15%\n(filtered nosynth)",
+    "da15": "DA 15% matched\n(filtered nosynth)",
 }
 INK, INK2, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7", "#fcfcfb"
 
@@ -224,6 +237,9 @@ CONTRASTS = [
     ("agentic tasks − neutral 752 DA", ("fixed", "jdat"), ("fixed", "da7")),
     ("t10 − DA 702", ("fixed", "t10"), ("fixed", "da")),
     ("t10 − control", ("fixed", "t10"), ("fixed", "ctrl")),
+    ("multi-party DA − matched DA 15%", ("fixed", "mp15"), ("fixed", "da15")),
+    ("matched DA 15% − neutral 752 DA 7%", ("fixed", "da15"), ("fixed", "da7")),
+    ("matched DA 15% − no synthetic", ("fixed", "da15"), ("fixed", "nosyn")),
     ("multi-party DA − neutral 752 DA", ("fixed", "mp15"), ("fixed", "da7")),
     ("multi-party DA − no synthetic", ("fixed", "mp15"), ("fixed", "nosyn")),
     ("multi-party DA − t10", ("fixed", "mp15"), ("fixed", "t10")),
@@ -650,7 +666,7 @@ def figures(stats, kind, dec, probe) -> list[Path]:
 # the no-synthetic baseline, deliberative alignment beside it, then difficult advice, difficult
 # agentic tasks, and last the slice written for this eval. Colour follows the arm: a new arm
 # takes a new validated colour (all six pass all-pairs) and the older arms keep theirs.
-MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10", "mp15"]
+MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10", "da15", "mp15"]
 # The appendix set is SPECIFIC to the base model (the owner, 2026-09-18): the base model in all nine
 # seats beside the no-synthetic control, the reference it is read against. Tables keep every arm.
 APPENDIX_ARMS = ["qbase", "nosyn"]
@@ -1159,7 +1175,9 @@ def summary() -> None:
         "advice is outside that family: the 2026-09-23 da-multiparty-15 organism, a 15% slice of "
         "multi-party difficult advice on the spec-filtered 2026-09-22 nosynth blend (run 2026-09-24, "
         "same config, peer and seeds), so it differs from the family in base blend and share as well "
-        "as corpus. The agentic-task "
+        "as corpus. Its matched control (Difficult advice 15%, matched) is the 2026-09-23 da-15 organism: the "
+        "same blend, share, seed and commit with the standard difficult-advice corpus, run the same day. "
+        "The agentic-task "
         "slice predates the 2026-09-14 regeneration of the difficult-advice corpus, so it is matched "
         "on base blend, share and seed but not on corpus vintage. Base model (all seats) is the "
         "reference, not a member of that family: Qwen3.6-27B out of the box, no adapter, in the pair "
