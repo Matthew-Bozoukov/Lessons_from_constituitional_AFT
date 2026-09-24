@@ -266,6 +266,62 @@ class SupervisionTests(unittest.TestCase):
 
 
 class ProvenanceTests(unittest.TestCase):
+    def test_unused_bootstrap_tears_down_without_starting_worker(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+            cfg.root = path
+            manifest = {'campaign': 'only-ours', 'budget_usd': 100}
+            task = {'status': 'running', 'attempts': [{'worker': '99-0'}]}
+            atomic(root/'metadata/state.json', {'pods': [], 'halt': None, 'tasks': {'a': task}})
+            atomic(root/'allowed.json', ['a'])
+            live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'costPerHr': 3.19,
+                    'env': {'LASR_POD_OWNER': fleet.runpod.POD_OWNER, 'LASR_CAMPAIGN': 'only-ours'}}
+            guard = Mock()
+            def allocate(*args, **kwargs):
+                kwargs['on_provisioned']('ours')
+                return SimpleNamespace(id='ours', reachable=True)
+            with patch.dict(os.environ, {'USER_PREFIX': 'nika'}), \
+                 patch.object(fleet, 'price_ceiling', return_value=3.35), \
+                 patch.object(fleet.runpod, 'provision_eval_pod', side_effect=allocate), \
+                 patch.object(fleet.runpod, 'active_pods', return_value=[live]), \
+                 patch.object(fleet.runpod, 'start_watchdog', return_value=guard), \
+                 patch.object(fleet.runpod, 'wait_bootstrapped', return_value=True), \
+                 patch.object(fleet.runpod, 'teardown') as teardown, \
+                 patch.object(fleet.subprocess, 'Popen') as worker:
+                fleet.replica(cfg, root/'config.yaml', 0, root/'allowed.json', time.time()+9000, manifest)
+            worker.assert_not_called()
+            teardown.assert_called_once_with('ours')
+            guard.terminate.assert_called_once()
+            state = read(root/'metadata/state.json')
+            self.assertEqual(state['tasks']['a'], task)
+            self.assertEqual(state['pods'][0]['status'], 'terminated')
+            self.assertIn('idle_startup_cancellation', state['pods'][0])
+
+    def test_startup_cancellation_serializes_with_ready_worker(self):
+        from src.eval.capabilities.swebench_mini.fleet_state import State
+        from src.eval.capabilities.swebench_mini import fleet_worker
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+            cfg.root = path
+            OmegaConf.save(cfg, root/'config.yaml')
+            state = State(root)
+            atomic(state.path, {'pods': [{'slot': 1, 'ready_at': time.time()}],
+                               'tasks': {'a': {'status': 'valid', 'attempts': [{}]}}})
+            self.assertFalse(fleet.cancel_idle_startup(state, 1, ['a'], cfg))
+            with state.edit() as data:
+                data['pods'][0].pop('ready_at')
+            self.assertTrue(fleet.cancel_idle_startup(state, 1, ['a'], cfg))
+            target = SimpleNamespace(spec=SimpleNamespace(revision=cfg.target_revision,
+                base_revision=cfg.base_revision, mode=cfg.mode), base_url='http://unused')
+            worker_cfg = OmegaConf.create({'campaign_config': str(root/'config.yaml'), 'replica': 1})
+            with patch.object(fleet_worker, 'ThreadPoolExecutor') as pool:
+                result = fleet_worker.runner(target, worker_cfg, root)
+            pool.assert_not_called()
+            self.assertIn('cancelled', result['status'])
+            self.assertNotIn('ready_at', read(state.path)['pods'][0])
+
     def test_accounting_filters_shared_account_and_retains_missing_bills(self):
         with tempfile.TemporaryDirectory() as path:
             root = Path(path)

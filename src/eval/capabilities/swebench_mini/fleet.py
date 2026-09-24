@@ -297,12 +297,8 @@ def publish(cfg):
         # points to a completed attempt absent from this snapshot.
         with lock(root / '.state.lock'):
             for sub in ('rollouts', 'results', 'metadata'):
-                # Freeze file contents, including upstream files written in place.
-                def copy_checkpoint(source, destination):
-                    # Some upstream writers modify JSON/Markdown in place. Copy
-                    # everything: a hard link is not an immutable snapshot there.
-                    return shutil.copy2(source, destination)
-                shutil.copytree(root / sub, snapshot / sub, copy_function=copy_checkpoint,
+                # Copy contents: hard links do not freeze upstream in-place writes.
+                shutil.copytree(root / sub, snapshot / sub, copy_function=shutil.copy2,
                                 ignore=shutil.ignore_patterns('*.tmp', '__pycache__'))
         repo = manifest['repo']
         api = hf_api()
@@ -477,6 +473,16 @@ def allocation_gpu(cfg, failures, elapsed):
     return options[(failures - cfg.allocation_fallback_after_attempts) % len(options)]
 
 
+def cancel_idle_startup(state, slot, allowed, cfg):
+    # Serialize against the worker's ready transition, before it can claim tasks.
+    with state.edit() as data:
+        pod = next(p for p in data['pods'] if p['slot'] == slot)
+        if pod.get('ready_at') or pending_tasks(data, allowed, cfg):
+            return False
+        pod['idle_startup_cancellation'] = {'at': time.time(), 'reason': 'No unleased eligible tasks'}
+        return True
+
+
 def price_ceiling(cfg, gpu):
     price = runpod.gpu_price(gpu)
     if not price or price > cfg.max_hourly_usd:
@@ -548,6 +554,8 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
         assert time.time() < boot_deadline, 'Cold bootstrap exceeded its total allowance'
         if read(state.path).get('halt') or time.time() >= expires - cfg.cleanup_reserve_seconds:
             raise RuntimeError('Campaign stopped during boot')
+        if cancel_idle_startup(state, slot, read(allowed_path), cfg):
+            return  # finally still verifies teardown and closes the reservation.
         executor = SshExec(pod.host, port=cfg.port_base + slot, identity=cfg.ssh_key)
         runtime = executor._ssh(f'{POD_VENV}/bin/python -', timeout=90, stdin_text='''
 import json, torch, importlib.metadata
@@ -572,6 +580,8 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
             while proc.poll() is None:
                 live = read(state.path)
                 own_record = next(p for p in live['pods'] if p['slot'] == slot)
+                if not own_record.get('ready_at') and cancel_idle_startup(state, slot, read(allowed_path), cfg):
+                    return  # Stop only this unready worker; healthy replicas drain.
                 if time.time() >= boot_deadline and not own_record.get('ready_at'):
                     stop_process(proc)
                     raise TimeoutError('Total bootstrap/serving startup allowance exceeded')

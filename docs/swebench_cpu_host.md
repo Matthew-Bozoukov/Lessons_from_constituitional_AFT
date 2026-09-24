@@ -3,7 +3,18 @@
 
 # SWE-bench CPU host on Vast
 
-## Current decision and status (2026-09-23)
+## Current use (2026-09-24)
+
+Both model evaluations are complete. Use [the Lite runbook](swebench_lite_runbook.md)
+for current results, commands and the qualified 20-GPU/four-conversation recipe;
+the eight-GPU calibration notes below are historical. The CPU receipt still expires
+September 24 at 12:37 UTC. A later run needs a newly authorized CPU lifetime and
+matching guest/external expiry guards before reusing this disk; the launch helper
+does not renew these automatically. Retain the cached disk unless asked to destroy it.
+The chat progress monitor was deleted after completion; CPU expiry safeguards are
+separate and remain needed while this host can bill.
+
+## Historical preparation decision and status (2026-09-23)
 
 Run the full 300-task SWE-bench Lite split on ONE checkpoint at a time. The first
 checkpoint is `dougalldeepmind/2026-09-22-qwen36-0-nosynth`, revision

@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — Close the Lite campaign and clean up reusable operations
+
+**Question / change.** Can the next compatible-LoRA launch reuse the completed
+campaign's lessons without old recovery commands or manual idle-pod cancellation?
+Deleted the requested chat heartbeat. Split historical recovery instructions into
+`docs/swebench_lite_history.md`; the current runbook now contains the verified paired
+results, cost/runtime caveats, prelaunch requirements and remaining qualification gaps.
+Updated the CPU guide to distinguish the completed experiment from a future lease.
+
+**Implementation / validation.** Unneeded serving startups now cancel automatically,
+with a state-lock handshake before the worker can become ready and claim tasks.
+Ready workers are never cancelled merely because the queue is empty. Retained the
+canonical coordinator and small scratch compatibility wrappers, and simplified the
+checkpoint copying code without reintroducing hard links. All 56 GPU-free fleet and
+recovery tests passed on Linux, including verified teardown and cancellation/readiness
+races. Completed model outcomes/manifests stay immutable; only the reusable recipe
+receives the reviewed new source hashes and regression evidence.
+
+**Next-run boundaries.** The expired CPU receipt is not automatically renewed by the
+launcher, and deleting the chat monitor means a future run needs a new configured
+monitor. These are explicit prelaunch tasks, not hidden guarantees. GPU availability,
+bounded startup/recovery failures, external outages and budget/lifetime exhaustion
+can still need intervention. No new GPU rental, CPU lifetime extension or model
+rerun was part of this cleanup. Prebuilt images and more efficient uploads remain
+optional improvements rather than prerequisites for another compatible LoRA.
+
 ## 2026-09-24 — DA SWE-bench Lite complete: 134/300 versus control 136/300
 
 **Result.** The pinned September 23 DA-15 adapter has 300 valid, officially graded

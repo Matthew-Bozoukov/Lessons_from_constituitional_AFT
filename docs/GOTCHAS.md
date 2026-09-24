@@ -3,6 +3,20 @@
 
 # GOTCHAS
 
+## Lite cleanup after completed DA evaluation (2026-09-24)
+
+- Removing the chat monitor does not remove the CPU expiry guards. A later model
+  request needs a fresh progress monitor and an authorized CPU lifetime; do not
+  assume either survived a completed campaign. The old heartbeat was deleted.
+- If all eligible tasks are already leased, a not-yet-ready model server has no
+  work. Cancel it automatically and verify teardown. Serialize cancellation with
+  the worker's ready transition under the state lock, or a readiness race can kill
+  a newly accepted task. Never cancel a ready replica just because the queue is empty.
+- Current launch instructions are in `docs/swebench_lite_runbook.md`; old one-off
+  recovery commands and caps are preserved in `docs/swebench_lite_history.md`.
+  Scratch compatibility wrappers remain because historical commands/tests use them;
+  they import the canonical implementation rather than maintain a second coordinator.
+
 ## SWE-bench deadline composition and missing alerts (2026-09-24)
 
 The first DA run stopped at 261/300. A shared 150-minute rental expiry admitted new

@@ -142,6 +142,8 @@ def runner(target, cfg, out_dir, **kwargs):
     endpoint = target.base_url
     with State(campaign.root).edit() as data:
         pod = next(p for p in data['pods'] if p['slot'] == cfg.replica)
+        if pod.get('idle_startup_cancellation'):
+            return {'status': 'Unused startup cancelled before accepting tasks'}
         pod.update(ready_at=time.time(), status='working')
     stop = threading.Event()
     unhealthy = threading.Event()
