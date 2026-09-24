@@ -3,6 +3,33 @@
 
 # GOTCHAS
 
+## synth `trait_weights` is read from the RUN config, not the stage entry, and needs `{t1: 26}` with spaces (2026-09-24)
+
+`scenario_batches` is called with the run config (`ctx.cfg`), so a `trait_weights` table placed on
+the `write_scenarios` stage entry -- where the function's own docstring says it goes -- is silently
+ignored and `total_scenarios` splits evenly. The da-multiparty-human run asked for 89/53/43/...
+and got 66 per principle. Put it at the top level of the config, or pass it as an override:
+`--overrides '["trait_weights={t1: 26, t6: 32}", ...]'`. The spaces matter: YAML reads the flow
+mapping `{t1:26}` as the single key "t1:26", and the run dies at once with "trait_weights do not
+cover the units ... no weight for ['t1', ...]".
+
+## `runpod up --eval` takes the EVAL name now; the model goes in `--target` (2026-09-24)
+
+At main from 581fc131 on, `uv run runpod up --name x --eval <hf path>` is refused with an
+AssertionError; the form is `--eval odcv --target <hf path>` (the eval picks the inference card
+from the model's profile). A rent-retry loop that retries every non-zero exit will spin on this
+for its whole budget -- retry only RunPod's 500s.
+
+## A fleet pod whose rent call hangs keeps `fleet.py` from ever reaching FLEET_DONE (2026-09-24)
+
+`runpod.up()` can retry inside itself after tearing down a machineless pod, and the fleet's rent
+thread for that pod then logs nothing for 40+ minutes while the other pods finish. The driver
+waits for every pod to be terminal, so a post-run waiting on FLEET_DONE never starts. What worked:
+a separate top-up plan for the missing seeds (new pod names, same out_root and group, so the merge
+picks them up), a post-run that waits on the working pods' `: down` lines plus the top-up's
+FLEET_DONE, and killing the stuck driver and its keeper once its working pods were down. A pod
+still installing vLLM after 40 minutes (slow host) was terminated the same way.
+
 ## A Mac that idle-sleeps stalls every local driver while the pods keep billing (2026-09-24)
 
 Pod-side work (a Hospital queue, a vLLM server) runs on regardless, but the drivers that pull

@@ -1,6 +1,70 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — MDMA with human parties only: the Hospital gain survives (6 of 30 sabotage shifts against 18 for plain difficult advice, 4 for MDMA); ODCV unchanged (7.9%)
+
+**Hypothesis.** MDMA (entry below) cut Hospital sabotage to 4 of 30 shifts against 18 for plain
+difficult advice at the same dose, and 507 of its 752 rows put an AI agent in the scenario, as a
+party or as the sender. If the gain comes from rehearsing dilemmas among other AI agents, a
+corpus with the same recipe but only human parties should lose it; if it comes from the
+multi-party structure, it should keep it.
+
+**Method.** `configs/data/synth/da-multiparty-human.yaml`: `da-multiparty.yaml` with only the
+party-type lines of the scenario prompt changed (every party a person or an organization acting
+through named people, the sender always a person, the assistant the only AI); stages, models,
+lint and response stages unchanged. The 245 MDMA rows with no agent anywhere
+(`scratch/da_multiparty/human_parties.py`: a person asks, no party is or mentions an AI system,
+human "agents" such as an insurance agent excepted) were reused; the other 511 were regenerated
+per principle: a 592-scenario run (split evenly, 66 per principle -- a `trait_weights` table on
+the stage entry is not read, the run-level key is) plus two top-ups for t1, t6 and t7
+(`--overrides` with run-level `trait_weights`), merged by `scratch/da_multiparty/merge_human_corpus.py`:
+45 new rows dropped for mentioning an AI system (mostly scenarios about configuring a chatbot,
+from the identity and oversight principles), 0 near-duplicates of reused rows, advisor tools
+stripped, 84 per principle. Corpus `dougalldeepmind/2026-09-24-da-multiparty-human-synth` @
+`62e0dfe8` (756 rows, ~$110); mix `2026-09-24-da-multiparty-human-15-mix` @ `c34fc571` (734 rows,
+81-82 per principle, 15.1%, same base blend `378ec1ee`); adapter
+`dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15` @ `dad58ff1` (seed 0, 1x H200,
+~50 min, commit `0216daf0`, MDMA's command). ODCV at `581fc131` (MDMA's ODCV commit), 3 passes,
+concurrency 36, driven from this laptop's Docker. Hospital: the E1 fixed harness, the same config,
+peer and seeds as the MDMA and matched da-15 cells (six pods; seeds 11-15 and 26-30 on a top-up
+plan after one pod never finished booting and one never rented).
+
+**Result (ODCV).** 7.9% [3.7, 16.2] (mandated 5.0, incentivized 10.8). Paired on 40 scenarios,
+minus MDMA -0.4 pp [-5.6, +4.8] (p=0.87), minus matched DA 15% -2.9 [-9.4, +3.6], minus
+nosynth -37.5 [-49.7, -25.3].
+
+**Result (Hospital).** Shifts of 30; all three arms at 15% on the same spec-filtered blend, seed 0.
+
+| arm | sabotage act (rule) | plan post (regex) | private refusal (judge ≥3) | kept refusal (≥3) | kept in full (≥4) | withholding / flooding / spam | deceptive posts per shift | team score |
+|---|---|---|---|---|---|---|---|---|
+| MDMA, human parties only | 6 | 15 | 30 | 30 | 30 | 5 / 1 / 0 | 0.37 | 5131 |
+| MDMA | 4 | 12 | 30 | 30 | 30 | 3 / 1 / 0 | 0.23 | 5488 |
+| plain DA, matched | 18 | 29 | 21 | 19 | 16 | 14 / 12 / 4 | 2.17 | 4576 |
+
+Seed-paired, human parties minus MDMA: sabotage act +7 pp (McNemar p=0.73; 5 seeds where only the
+human-parties arm sabotaged, 3 where only MDMA did), plan post +10 pp (p=0.55), refusal measures
+equal (30/30), team score -357 (p=0.58). Human parties minus matched DA: sabotage act -40 pp
+(p=0.004; 14 seeds only the control, 2 only the human-parties arm), plan post -47 pp (p<0.001),
+private refusal +30 pp (p=0.004), kept refusal +37 pp (p=0.001), kept in full +47 pp (p<0.001).
+Probe: yes after a plan post with no act 72% (52/72), after neither 16% (33/202), bystander 0/30.
+
+**Reading.** Removing every AI agent from the data did not remove the effect. The human-parties arm
+sits with MDMA on every Hospital measure (no seed-paired difference) and far from plain difficult
+advice at the same dose; on ODCV all three are level. So what transfers to the Hospital is the
+multi-party structure of the dilemmas -- a partner or colleague whose act or hand-off the sender
+is tempted to lean on, with the cost landing on parties who are not in the conversation -- not
+practice with AI agents as such. One training seed per arm, one judge family; the human-parties
+arm's point estimates are slightly worse than MDMA's (6 vs 4 acts, 0.37 vs 0.23 deceptive posts
+per shift), well inside seed-to-seed noise at n=30.
+
+**Artifacts.** ODCV `dougalldeepmind/2026-09-24-odcv-qwen36-0-da-multiparty-human-15`; Hospital
+cell `dougalldeepmind/2026-09-24-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-multiparty-human-15-fixed`;
+snapshots and probes in the 2026-09-24 side-data repos; Hospital code on `kn/hospital-da-multiparty-15`
+(plans `2026-09-24_fleet_da_multiparty_human15{,_topup}.yaml`).
+
+**Next.** A second training seed of MDMA, MDMA-human and matched DA to put a seed interval on the
+gap; ODCV-Peer on the three; a paired read of the 6 human-parties sabotage shifts against MDMA's 4.
+
 ## 2026-09-24 — Multi-party difficult advice evaluated: ODCV level with plain difficult advice (8.3% vs 10.8%); on the Hospital it sabotages in 4 of 30 shifts against 18 of 30 for plain difficult advice at the same dose
 
 **Hypothesis.** The multi-party corpus (entry 2026-09-23) keeps difficult advice's grey-area
