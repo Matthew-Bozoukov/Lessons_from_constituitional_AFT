@@ -23,7 +23,19 @@ def cache_capacity(log, fraction, context):
 
 
 def prompt_tokens(endpoint, model, messages, tools):
-    payload = {'model': model.removeprefix('hosted_vllm/'), 'messages': messages,
+    # vLLM 0.26 ChatCompletionRequest normalizes this legacy alias before
+    # validation; TokenizeChatRequest does not, so otherwise it drops reasoning
+    # from every preceding assistant turn and silently undercounts the prompt.
+    normalized = []
+    for message in messages:
+        message = dict(message)
+        reasoning = message.pop('reasoning_content', None)
+        if reasoning is not None and message.get('reasoning') is None:
+            message['reasoning'] = reasoning
+        if message.get('tool_calls') is not None:
+            message['tool_calls'] = list(message['tool_calls'])
+        normalized.append(message)
+    payload = {'model': model.removeprefix('hosted_vllm/'), 'messages': normalized,
                'tools': tools, 'add_generation_prompt': True}
     request = urllib.request.Request(endpoint.removesuffix('/v1').rstrip('/') + '/tokenize',
         data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})

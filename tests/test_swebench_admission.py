@@ -5,11 +5,14 @@ import unittest
 if os.name != 'posix':
     raise unittest.SkipTest('Linux fleet only')
 import multiprocessing as mp
+import io
+import json
 from pathlib import Path
 import tempfile
 import time
+from unittest.mock import patch
 from src.eval.capabilities.swebench_mini.fleet_admission import (
-    cache_capacity, output_allowance, token_slot, may_admit)
+    cache_capacity, output_allowance, token_slot, may_admit, prompt_tokens)
 from src.eval.capabilities.swebench_mini.fleet_task import eligible_source
 
 
@@ -20,6 +23,28 @@ def reserve(path, tokens, capacity, ready, release):
 
 
 class TokenAdmissionTests(unittest.TestCase):
+    def test_tokenizer_preserves_prior_reasoning_like_chat_completion(self):
+        messages = [{'role': 'user', 'content': 'fix it'},
+                    {'role': 'assistant', 'content': '', 'reasoning_content': 'inspect first',
+                     'tool_calls': [{'id': 'a', 'type': 'function',
+                                     'function': {'name': 'bash', 'arguments': '{"command":"ls"}'}}]},
+                    {'role': 'tool', 'content': 'files', 'tool_call_id': 'a'},
+                    {'role': 'assistant', 'content': '', 'reasoning': 'canonical',
+                     'reasoning_content': 'legacy'}]
+        original = json.loads(json.dumps(messages))
+        def tokenize(request, **kwargs):
+            body = json.loads(request.data)
+            self.assertEqual(request.full_url, 'http://localhost:8100/tokenize')
+            self.assertEqual(body['model'], 'model')
+            self.assertEqual(body['messages'][1]['reasoning'], 'inspect first')
+            self.assertEqual(body['messages'][3]['reasoning'], 'canonical')
+            self.assertNotIn('reasoning_content', body['messages'][1])
+            self.assertEqual(body['messages'][1]['tool_calls'], original[1]['tool_calls'])
+            return io.BytesIO(b'{"count":2150}')
+        with patch('urllib.request.urlopen', side_effect=tokenize):
+            self.assertEqual(prompt_tokens('http://localhost:8100/v1', 'hosted_vllm/model', messages, []), 2150)
+        self.assertEqual(messages, original)
+
     def test_four_short_requests_fit_but_next_waits(self):
         with tempfile.TemporaryDirectory() as path:
             release = mp.Event()

@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 - Repair DA-5 multi-turn tokenizer admission
+
+**Finding.** The first expanded-budget DA-5 launch acquired two H200s and one
+H100 NVL but completed no tasks. On turn two the new admission counter omitted
+legacy `reasoning_content`; vLLM chat normalized and retained it. The guard fenced
+replicas, the infrastructure breaker fired, and all three pods were terminated.
+Eight tasks retain 13 infrastructure-invalid/interrupted attempts; 292 never
+started. The reconciled conservative GPU ledger was $2.05974, not a provider invoice.
+
+**Fix and validation.** Match vLLM 0.26's canonical `reasoning` normalization in
+the tokenizer request without modifying inference messages. Preserve mismatch
+responses for diagnosis. CPU replay with the pinned Qwen tokenizer exactly
+reproduced 2,061 tokens without prior reasoning versus 2,150 with it. All 83 fleet,
+session, admission and Lite tests pass. The strengthened real-agent/Docker smoke
+uses different tokenizer counts when reasoning is omitted: its multi-turn
+submission and forced patch both pass official grading, while the empty truncated
+submission remains unresolved. This is synthetic infrastructure evidence, not a
+model score: `dougalldeepmind/2026-09-24-swebench-lite-infrastructure` at
+`d0673338d1afcf8a05ce2c4f547a571c074e0f05`.
+
+**Recovery.** Resume the same DA-5 campaign with archived prior source/config/state,
+unchanged model limits, ten-GPU ceiling and cumulative $180 cap. Preserve failed
+attempts and spending; allow three additional infrastructure attempts after this
+diagnosed software defect. Check real multi-turn inference after relaunch.
+
 ## 2026-09-24 - Prepare expanded-budget DA-5 SWE-bench Lite
 
 **Question.** Prior scores conflate coding with an unvalidated 16k response/65k

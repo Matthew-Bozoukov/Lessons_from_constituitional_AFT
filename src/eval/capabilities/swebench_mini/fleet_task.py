@@ -96,6 +96,9 @@ def install_token_limits(model_class, limits_exceeded, response_limit, task_limi
                 response = original_query(self, messages, **kwargs)
                 actual = response.model_dump()['usage']['prompt_tokens']
                 if actual > count:
+                    atomic(Path(request['out']) / 'tokenization-mismatch.json',
+                        {'reserved_prompt_tokens': count, 'actual_prompt_tokens': actual,
+                         'messages': messages, 'response': response.model_dump()})
                     raise RuntimeError(f'Serving tokenization mismatch: reserved {count}, actual {actual}')
                 return response
             except Exception as exc:

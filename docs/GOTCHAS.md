@@ -1554,3 +1554,16 @@ watchdog, worker and ledger. Do not alter live expiry components independently.
   never execute partial tool calls or reroll completed failures. Current fallback
   patch extraction includes modified tracked source only, excluding tests/build/
   docs/scripts/untracked files. Do not silently mix these scores with v2 results.
+# SWE-bench token admission: reasoning aliases (2026-09-24)
+
+vLLM 0.26 `ChatCompletionRequest` normalizes `reasoning_content` to `reasoning`
+before schema validation, while `TokenizeChatRequest` does not. Sending the same
+legacy messages to both endpoints undercounts earlier reasoning on turn two and
+later. The first DA-5 v3 launch was fenced by the prompt-count assertion; these
+are infrastructure-invalid attempts, not capability failures. CPU replay of the
+pinned Qwen tokenizer reproduced 2,061 tokens without reasoning versus 2,150 with
+it, exactly matching the live discrepancy. Normalize the alias for `/tokenize`,
+preserve the canonical field when both exist, and keep the inference messages
+unchanged. Test multiple turns with reasoning, not a constant synthetic token
+count. Save any mismatch response and prompt before fencing so diagnosis does
+not lose the triggering evidence.
