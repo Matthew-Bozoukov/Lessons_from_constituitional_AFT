@@ -80,3 +80,26 @@ def test_latest_run_picks_the_record_with_most_episodes(tmp_path):
         (tmp_path / name).mkdir()
         (tmp_path / name / "run.json").write_text(json.dumps({"results": [{}] * n}))
     assert latest_run(tmp_path) == tmp_path / "run_b" / "run.json"
+
+
+def test_selected_sequences_forms():
+    from src.eval.misalignment.agent_collusion.runner import selected_sequences
+
+    assert selected_sequences(None, 4) == [1, 2, 3, 4]
+    assert selected_sequences("26-50", 50) == list(range(26, 51))
+    assert selected_sequences([3, 1], 5) == [1, 3]
+    with pytest.raises(AssertionError, match="outside"):
+        selected_sequences("40-60", 50)
+
+
+def test_resume_dirs_normalises_and_refuses_non_run_dirs(tmp_path):
+    from src.eval.misalignment.agent_collusion.runner import resume_dirs
+
+    a, b = tmp_path / "a", tmp_path / "b"
+    (a / "rollouts").mkdir(parents=True)
+    (b / "rollouts").mkdir(parents=True)
+    assert resume_dirs(None) == []
+    assert resume_dirs(str(a)) == [a]
+    assert resume_dirs([str(a), str(b)]) == [a, b]
+    with pytest.raises(AssertionError, match="no rollouts"):
+        resume_dirs([str(a), str(tmp_path / "nope")])

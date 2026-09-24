@@ -111,6 +111,30 @@ print(json.dumps(cli._build_runner_command(args=args, records=records,
 """
 
 
+def selected_sequences(spec, n_seq: int) -> list[int]:
+    """1-based sequence ids a run owns: null = 1..n_seq, a list, or an "a-b" range."""
+    if spec is None:
+        return list(range(1, n_seq + 1))
+    if isinstance(spec, str):
+        lo, hi = (int(x) for x in spec.split("-"))
+        ids = list(range(lo, hi + 1))
+    else:
+        ids = sorted(int(x) for x in spec)
+    assert ids and all(1 <= i <= n_seq for i in ids), f"sequence_ids {spec!r} outside 1..{n_seq}"
+    return ids
+
+
+def resume_dirs(spec) -> list[Path]:
+    """resume_from as a list of absolute run dirs: null, one path, or a list of paths."""
+    if not spec:
+        return []
+    paths = [spec] if isinstance(spec, str) else list(spec)
+    dirs = [Path(p).resolve() for p in paths]
+    missing = [str(d) for d in dirs if not (d / "rollouts").is_dir()]
+    assert not missing, f"resume_from: not run dirs of this eval (no rollouts/): {missing}"
+    return dirs
+
+
 def latest_run(seq_dir: Path) -> Path | None:
     """The run.json holding the most finished episodes under one sequence's directory."""
     found = sorted(seq_dir.glob("run_*/run.json"),
@@ -162,14 +186,21 @@ def run(target, cfg, out_dir: Path) -> dict:
     model = f"openai/{target.model_name}"
     python = harness_python()
 
-    # resume_from: a previous run dir of this eval. Finished trajectories are copied over
-    # as they are, partial ones continue at their first unfinished episode (an episode cut
-    # off mid-way is re-run: run.json is written only at episode boundaries), and the rest
+    # sequence_ids: the subset of the n_seq fixed sequences this run owns (a shard of a run
+    # split across GPUs); null = all of them.
+    ids = selected_sequences(cfg.get("sequence_ids"), n_seq)
+
+    # resume_from: previous run dir(s) of this eval. Per sequence the record with the most
+    # finished episodes across them wins. Finished trajectories are copied over as they
+    # are, partial ones continue at their first unfinished episode (an episode cut off
+    # mid-way is re-run: run.json is written only at episode boundaries), and the rest
     # start fresh — so the published run is self-contained either way.
-    prior = Path(cfg.resume_from).resolve() if cfg.get("resume_from") else None
+    priors = resume_dirs(cfg.get("resume_from"))
     plan: dict[int, tuple[str, Path | None]] = {}
-    for i in range(1, n_seq + 1):
-        record = latest_run(prior / "rollouts" / f"seq{i:03d}") if prior else None
+    for i in ids:
+        records = [r for r in (latest_run(p / "rollouts" / f"seq{i:03d}") for p in priors) if r]
+        record = max(records, key=lambda r: len(json.loads(r.read_text())["results"]),
+                     default=None)
         done_eps = len(json.loads(record.read_text())["results"]) if record else 0
         if record and done_eps == (n_ep or 10):
             shutil.copytree(record.parent, rollout_dir / f"seq{i:03d}" / record.parent.name)
@@ -178,26 +209,34 @@ def run(target, cfg, out_dir: Path) -> dict:
             plan[i] = ("resumed", record)
         else:
             plan[i] = ("fresh", None)
-    if prior:
+    if priors:
         counts = {s: sum(v[0] == s for v in plan.values()) for s in ("copied", "resumed", "fresh")}
-        print(f">>> resuming from {prior}: {counts}", flush=True)
-    env = {**os.environ,
-           # The harness resolves <PROVIDER>_BASE_URL before <PROVIDER>_API_BASE, so both
-           # are pinned: a stray OPENAI_BASE_URL in the driver's shell would otherwise
-           # send every call somewhere other than the model under test.
-           "OPENAI_BASE_URL": target.base_url, "OPENAI_API_BASE": target.base_url,
-           "OPENAI_API_KEY": target.api_key}
+        print(f">>> resuming from {[str(p) for p in priors]}: {counts}", flush=True)
+
+    # Touching base_url is what boots the server (serving is lazy), so a run whose every
+    # trajectory is already finished — the final merge of a split run — rents no GPU time.
+    to_run = [i for i in ids if plan[i][0] != "copied"]
+    env = None
+    if to_run:
+        env = {**os.environ,
+               # The harness resolves <PROVIDER>_BASE_URL before <PROVIDER>_API_BASE, so
+               # both are pinned: a stray OPENAI_BASE_URL in the driver's shell would
+               # otherwise send every call somewhere other than the model under test.
+               "OPENAI_BASE_URL": target.base_url, "OPENAI_API_BASE": target.base_url,
+               "OPENAI_API_KEY": target.api_key}
     (metadata_dir / "environment.json").write_text(json.dumps({
         "upstream": UPSTREAM, "harness_model_route": model,
-        "sequences": n_seq, "episodes_per_sequence": n_ep or 10,
-        "command_example": harness_command(python, cfg, model, seq_dir, 1,
-                                           rollout_dir / "seq001"),
-        "resumed_from": str(prior) if prior else None,
+        "sequences": ids, "episodes_per_sequence": n_ep or 10,
+        "command_example": harness_command(python, cfg, model, seq_dir, ids[0],
+                                           rollout_dir / f"seq{ids[0]:03d}"),
+        "resumed_from": [str(p) for p in priors],
         "sequence_origin": {f"seq{i:03d}": {"status": s, "record": str(r) if r else None}
                             for i, (s, r) in plan.items()},
     }, indent=2))
-    print(f">>> agent_collusion | {n_seq} trajectories x {n_ep or 10} episodes | "
-          f"{model} at {target.base_url} | {int(cfg.concurrency)} in flight", flush=True)
+    print(f">>> agent_collusion | {len(ids)} trajectories x {n_ep or 10} episodes "
+          f"({len(to_run)} to run) | {model}"
+          + (f" at {env['OPENAI_BASE_URL']}" if env else " (nothing to serve)")
+          + f" | {int(cfg.concurrency)} in flight", flush=True)
 
     t0 = time.time()
     failed: dict[int, str] = {}
@@ -220,21 +259,21 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     done = 0
     with ThreadPoolExecutor(max_workers=int(cfg.concurrency)) as pool:
-        futures = {pool.submit(one, i): i for i in range(1, n_seq + 1)}
+        futures = {pool.submit(one, i): i for i in to_run}
         for fut in as_completed(futures):
             fut.result()
             done += 1
             i = futures[fut]
             elapsed = time.time() - t0
-            eta = elapsed / done * (n_seq - done)
+            eta = elapsed / done * (len(to_run) - done)
             state = "FAILED" if i in failed else "ok"
-            print(f">>> seq{i:03d} {state} | {done}/{n_seq} done | "
+            print(f">>> seq{i:03d} {state} | {done}/{len(to_run)} done | "
                   f"{elapsed / 60:.1f} min elapsed | ETA {eta / 60:.1f} min", flush=True)
             if i in failed:
                 print(f"!!! {failed[i]}", flush=True)
 
     runs = []
-    for i in range(1, n_seq + 1):
+    for i in ids:
         if i in failed:
             continue
         found = latest_run(rollout_dir / f"seq{i:03d}")

@@ -16,9 +16,14 @@ sequences: 50          # fixed sequences rep001..rep050 (the paper runs all 50)
 smoke: false           # true = the full pipeline on smoke_sequences x smoke_episodes
 smoke_sequences: 2
 smoke_episodes: 2      # CC is undefined below 5 episodes, so a smoke reports it as n/a
-# A previous run dir of this eval to continue: finished trajectories are copied, partial
-# ones resume at their first unfinished episode, the rest start fresh.
+# Previous run dir(s) of this eval to continue (a path or a list): per sequence the record
+# with the most finished episodes wins; finished trajectories are copied, partial ones
+# resume at their first unfinished episode, the rest start fresh.
 resume_from: null
+# The sequences this run owns ("1-25", a list, or null = all): a shard of a run split
+# across GPUs. The shards are published as ONE run by a final resume_from=[all shards]
+# pass, whose trajectories are all finished and so needs no GPU.
+sequence_ids: null
 
 # Trajectories in flight. Each is 250+ STRICTLY sequential calls, so wall clock is set by
 # how many run at once; the ceiling is KV cache, not slots. At ~40k tokens of history per
