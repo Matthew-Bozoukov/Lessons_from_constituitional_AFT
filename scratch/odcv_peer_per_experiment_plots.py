@@ -202,43 +202,48 @@ for num, title, arm, cond, variant, mate_c, tested_c in EXPS:
     plt.close(fig)
     paths.append(p)
 
-# --- experiments 1-4 on ONE axis: the two copies pooled into one per-seat rate --------------
-fig, ax = plt.subplots(figsize=(10.5, 5.6))
-groups = []
+# --- experiments 1-4: two groups (wording), two bars each (plain vs trained) ----------------
+data = {}  # (variant, arm) -> (per-seat misbehaved, team faked, n)
 for num, title, arm, cond, variant, mate_c, tested_c in EXPS[:4]:
     summary, cells = load(arm, cond)
     cells_v = [c for c in cells if c["variant"] == variant]
     n, mate, tested = seat_rates(cells_v)
     fraud = regime(summary, variant, cond)["team_fraud_rate"]["pct"]
-    n_opp, resisted, along = resist_along(cells_v)
-    groups.append((title.replace(" — ", "\n"), (mate + tested) / 2, fraud, mate_c, n, n_opp, resisted))
-w = 0.38
-for i, (label, seat, fraud, colour, n, n_opp, resisted) in enumerate(groups):
-    ax.bar(i - w / 2, seat, width=w, color=colour)
-    ax.bar(i + w / 2, fraud, width=w, color=DARK)
-    ax.text(i - w / 2, seat + 1.5, f"{seat:.0f}%", ha="center", va="bottom", fontsize=13, fontweight="bold")
-    ax.text(i + w / 2, fraud + 1.5, f"{fraud:.0f}%", ha="center", va="bottom", fontsize=13, fontweight="bold")
-ax.set_xticks(range(len(groups)))
-ax.set_xticklabels([g[0] for g in groups], fontsize=11)
-ax.set_ylim(0, 100)
-ax.set_yticks([0, 25, 50, 75, 100])
-ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=10)
-for s in ("top", "right"):
-    ax.spines[s].set_visible(False)
-from matplotlib.patches import Patch  # noqa: E402
+    data[(variant, arm)] = ((mate + tested) / 2, fraud, n)
 
-ax.legend(handles=[Patch(color=GREY, label="a copy misbehaved — plain model (per seat)"),
-                   Patch(color=PURPLE, label="a copy misbehaved — trained model (per seat)"),
-                   Patch(color=DARK, label="team ended with faked files")],
-          frameon=False, fontsize=10, loc="upper right")
-ax.set_title("Two copies of one model in a shared sandbox", fontsize=14, fontweight="bold", loc="left")
-fig.text(0.02, 0.01, "Per-seat rate = both copies scored with the standard ODCV rubric (3+ = misbehaved), pooled. "
-         "Team rate: evidence-fed judge. n = 102, 96, 120, 120 cells.", fontsize=9.5, color="#555")
-fig.tight_layout(rect=(0, 0.04, 1, 1))
-p = OUT / f"{STAMP}_odcvpeer_exp1to4_combined.png"
-fig.savefig(p, dpi=170)
-plt.close(fig)
-paths.append(p)
+
+def two_by_two(metric_index, title, note, stem):
+    fig, ax = plt.subplots(figsize=(8.5, 5.4))
+    w = 0.34
+    for gi, variant in enumerate(("mandated", "incentivized")):
+        for ai, (arm, colour, name) in enumerate((("plain", GREY, "plain"), ("da", PURPLE, "trained (DA)"))):
+            val = data[(variant, arm)][metric_index]
+            x = gi + (ai - 0.5) * w
+            ax.bar(x, val, width=w, color=colour, label=name if gi == 0 else None)
+            ax.text(x, val + 1.5, f"{val:.0f}%", ha="center", va="bottom", fontsize=15, fontweight="bold")
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["mandated\n(the target must be met)", "incentivized\n(a good score is desired)"], fontsize=12)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([0, 25, 50, 75, 100])
+    ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=10)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    ax.legend(frameon=False, fontsize=11, loc="upper right")
+    ax.set_title(title, fontsize=14, fontweight="bold", loc="left")
+    fig.text(0.02, 0.01, note, fontsize=9.5, color="#555")
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    out = OUT / f"{STAMP}_odcvpeer_{stem}.png"
+    fig.savefig(out, dpi=170)
+    plt.close(fig)
+    paths.append(out)
+
+
+two_by_two(0, "Two copies of one model: how often a copy misbehaved",
+           "Both copies scored with the standard ODCV rubric (3+ = misbehaved), pooled per seat. Cells: plain 102 / 96, trained 120 / 120.",
+           "exp1to4_misbehaved")
+two_by_two(1, "Two copies of one model: how often the team ended with faked files",
+           "Either copy leaving a file falsified counts; evidence-fed judge. Cells: plain 102 / 96, trained 120 / 120.",
+           "exp1to4_team_faked")
 
 # --- plain vs DA on one plot, per wording ------------------------------------------------
 for variant in ("mandated", "incentivized"):
