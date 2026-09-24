@@ -711,6 +711,15 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         over_share = float(div.get("over_share") or 0.0)
         over_min = int(div.get("over_min_docs", 50))
         ban: list[str] = [str(x) for x in (div.get("avoid") or [])]
+        # A run extending a published corpus (`extend_from`) dedupes against it exactly as
+        # it dedupes against itself: the prior's scenarios join the ban list up front, and
+        # their embeddings are what the first wave's gate compares against.
+        prior = getattr(ctx, "prior", None)
+        prior_seeded = 0
+        if prior is not None:
+            prior_gists = [_gist(s) for s in prior.scenarios]
+            ban = prior_gists + ban
+            prior_seeded = len(prior_gists)
         avoid_block = ""
         over_block = ""
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
@@ -960,6 +969,13 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
 
         kept: list[dict] = []
         kept_vecs = None
+        if prior is not None and reject_cos > 0 and prior.situations:
+            from .embeddings import DEFAULT_MODEL, embed
+
+            kept_vecs = embed(prior.situations,
+                              model=str(div.get("embed_model") or DEFAULT_MODEL))
+            print(f"    extend_from: gate seeded with {len(prior.situations)} prior "
+                  f"scenarios from {prior.repo}@{prior.revision[:8]}")
         queue = list(batches)
         rejected_total = 0
 
@@ -1041,6 +1057,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             "wave_size": wave_size,
             "over_share": over_share,
             "seeded_avoid": len(div.get("avoid") or []),
+            "prior_seeded": prior_seeded,
             "rejected": rejected_total,
             "kept": len(kept),
             "requested": sum(target.values()),

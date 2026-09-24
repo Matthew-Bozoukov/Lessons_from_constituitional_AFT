@@ -1,6 +1,6 @@
 # ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
 # ABOUTME: around a synthetic `da` share. Publishes as `<date>-da-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=7]
+# Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=15]
 #
 # ONE config for the whole dose-response ladder. `synthetic_pct` is a launch argument, the
 # way `seed` is for training: `synthetic_pct=10` and `synthetic_pct=40` are two artifacts
@@ -25,26 +25,33 @@ base_mixture:
   file: mixture.jsonl
   revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
 
-# Percentage of the mixture's ROWS that are synthetic — the number in its name, and the
-# only thing that varies across this ladder.
-synthetic_pct: 7
-# The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
-# 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
-# seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
-# tokens are freed, and synthetic rows refill them trait-balanced. Under token weighting
-# (`train.loss_agg: token_mean`) that share IS the source's share of the gradient. Mixtures
-# built before 2026-09-22 (`total_examples: 10000`, no `share_unit`) declared a share of ROWS
-# — da-7 by rows was 15.4% of supervised tokens — and are not comparable at equal numbers.
+# The synthetic share: the number in the mixture's name and the only thing that varies
+# across this ladder. It is a share of SUPERVISED TOKENS, not rows (`share_unit` below).
+# Under token weighting (`train.loss_agg: token_mean`) that is the synthetic source's share
+# of the gradient.
+synthetic_pct: 15
+# How the share is taken (`plan_swap` in src/data/mixture/build_mixture.py, 2026-09-21): the
+# mixture is the size of the published nosynth base; base rows are removed in a seeded,
+# source-proportional, share-nested order until `synthetic_pct` of the base's supervised
+# tokens are freed, and synthetic rows refill them trait-balanced.
+# Mixtures built before 2026-09-22 (`total_examples: 10000`, no `share_unit`) declared a share
+# of ROWS: da-7 by rows was 15.4% of supervised tokens, so the numbers are not comparable.
 share_unit: supervised_tokens
 # The synthetic share. Several styles here would split the share by these budgets and the
 # mixture would be `da-<style>-<pct>`; with one style the budget only has to be non-zero.
 sources:
   da:
-    # The 2026-09-14 regeneration against the full-length neutral constitution
-    # (configs/data/synth/da.yaml; docs/LOG.md 2026-09-14): 752 rows, t1 78 ... t9 85, so the
-    # trait-balanced draw at 7% of 10,000 is exactly 700 = 78 x t1-t7 + 77 x t8-t9.
-    dataset: "${oc.env:HF_ORG}/2026-09-14-da-synth"
-    revision: "013886238fca238c4d54ace96530f444bb2b2f02"
+    # The 2026-09-23 regeneration on the ambiguous-decision recipe (configs/data/synth/da.yaml
+    # on branch jamie/da-ambiguous: undecided user, stage 4 leaves a direct test alone,
+    # grounded rewrite with a saved audit): 769 rows, t1 83 ... t9 86. The previous corpus,
+    # 2026-09-14-da-synth @ 013886238fca238c4d54ace96530f444bb2b2f02 (752 rows), is what
+    # every da-15 arm before this date trained on.
+    # 2026-09-24: the same recipe extended (`extend_from`, src/data/synth/ours/extend.py):
+    # the 769 rows above carried verbatim plus 557 new ones deduped against them, 1,326 in
+    # all (t1 146 ... t9 147) -- enough for a 25% supervised-token share. The 09-23 repo @
+    # 1f816d13 is what da-15 trained on before this date and is a prefix of this one.
+    dataset: "${oc.env:HF_ORG}/2026-09-24-da-synth"
+    revision: "4f4ca43bac4eace1aee0fed25df4175ad9299399"
     examples: 1
     reasoning: native
     balance_by: trait_id

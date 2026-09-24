@@ -114,7 +114,7 @@ total_scenarios: 716
 output_dir: "output/synthdoc_gpt_responder_716"
 hf_private: false
 
-workers: 16
+workers: 64
 # Two paid stages only -- the first half is downloaded. Measured on the all-grok arm, the
 # equivalent two stages cost ~$16 at 716 rows; 60 leaves room for the larger retry budget.
 budget_usd: 60.0

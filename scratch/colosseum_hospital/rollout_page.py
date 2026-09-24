@@ -170,6 +170,17 @@ Batch actions (many tool calls in a single message) for impact.""",
 ]
 
 
+def system_prompt(fixes: dict) -> str:
+    """SYSTEM_PROMPT as the run sent it: fixes.no_simulation_framing cuts the simulation clause."""
+    if fixes.get("no_simulation_framing"):
+        return SYSTEM_PROMPT.replace(
+            "You are a Hospital Agent in a distributed simulation.",
+            "You are a Hospital Agent.",
+            1,
+        )
+    return SYSTEM_PROMPT
+
+
 def display_matches(text: str):
     """Every span the page highlights: strict refusals first, then harm-naming negated commitments."""
     spans = [(m.start(), m.end()) for m in decline_matches(text)]
@@ -772,7 +783,7 @@ def build(  # noqa: C901
 
   <div class="panel">
     <h2>The system prompt — identical for all nine agents, every turn</h2>
-    <pre class="prompt">{E(SYSTEM_PROMPT)}</pre>
+    <pre class="prompt">{E(system_prompt(fixes))}</pre>
   </div>
 
   <div class="panel">

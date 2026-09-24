@@ -135,7 +135,7 @@ output_dir: "output/par"
 # `date_generated` -- it would have failed the upload after the corpus was paid for.)
 hf_private: false
 
-workers: 16
+workers: 64
 # Abort a stage above this per-item failure rate. Above the 2.0 default because `revise_prompts`
 # loses rows two ways in the principle-scoped recipe: ~6% content-filter refusals (DA, n=716) and
 # JSON re-descriptions missing a key (5/45 = 11% on the 2026-08-26 prompt-rater smoke; DA

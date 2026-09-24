@@ -119,7 +119,7 @@ total_scenarios: 716
 output_dir: "output/synthdoc_sonnet_concise_716"
 hf_private: false
 
-workers: 16
+workers: 64
 # One paid stage. Sonnet 5 at $2/$10 per M with the ~4.6k-token constitution in every
 # call: ~7.5k in + ~1.5k out per row is ~$0.03, ~$22 for 716 plus lint retries.
 budget_usd: 45.0

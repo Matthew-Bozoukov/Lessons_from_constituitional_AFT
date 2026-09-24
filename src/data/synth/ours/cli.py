@@ -42,7 +42,10 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
         overrides: Comma-separated OmegaConf dotlist applied over the YAML, e.g.
             "total_scenarios=144,id_prefix=b" -- keeps a one-off variant (a top-up, a
             different size) as one reproducible command rather than a forked config.
-            Recorded in the run manifest either way.
+            Recorded in the run manifest either way. To GROW a published corpus rather
+            than replace it, add `extend_from=<org>/<repo>@<revision>` with an unused
+            `id_prefix`: the prior's scenarios seed this run's dedupe and its rows ride
+            into dataset.jsonl (src/data/synth/ours/extend.py).
         ablate: Comma-separated stage names to ablate, merged over the config's
             `ablate:` list and recorded in the manifest.
         batch: Route the bulk of every paid stage through OpenRouter's async batch

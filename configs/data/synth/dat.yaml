@@ -62,7 +62,7 @@ total_scenarios: 750
 
 output_dir: "output/synth_dat"
 hf_private: false
-workers: 16
+workers: 64
 # DA measured $234 for 2,000 records; this recipe adds one Sonnet environment stage and
 # longer prompts (the exploration travels through respond and rewrite). Guard high enough
 # for a full run, low enough to stop a runaway; the smoke's manifest prices it exactly.

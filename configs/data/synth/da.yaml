@@ -104,10 +104,10 @@ constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 # the alignment target alone. Text unchanged from what this recipe injected before.
 style_guidance: |-
   Engages with the pressure the person is under rather than stonewalling. Names the
-  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
-  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
-  than rules. Offers a specific legitimate alternative. Leaves the decision with the
-  person. Warm, practical, proportionate.
+  ethical tension explicitly and reasons through it in the open. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.
@@ -137,6 +137,12 @@ chunking: principle
 total_scenarios: 2000
 # Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
+# Growing a published corpus instead of regenerating it (src/data/synth/ours/extend.py):
+#   --overrides total_scenarios=560,id_prefix=r2_,extend_from=<org>/2026-09-23-da-synth@<sha>
+# The prior's scenarios seed this run's ban list and embedding gate, its rows are carried
+# into this run's dataset.jsonl ahead of the new ones, and the manifest and card pin it.
+# `id_prefix` is mandatory there: ids restart at t1_b00_s000 every run. Same style-type
+# and constitution only; a different recipe is a new corpus, not an extension.
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
 scenarios_per_call: 8
@@ -153,9 +159,10 @@ output_dir: "output/synthdoc_v3"
 # never be appended to that repo, which stays the record of the baseline arm.
 hf_private: false
 
-# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
-# rate limiting, not the code, is the ceiling above this.
-workers: 16
+# 64 concurrent calls: measured 2026-09-23 on a 64-row smoke, every stage's time is set by
+# its slowest single call and Anthropic via OpenRouter never throttled (0 retries); a
+# 752-row run is ~55 min against ~2.5 h at 16. Not for Alibaba-served models (delib.yaml).
+workers: 64
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts.
 # The baseline measured $234 for 2,000 records end to end. This arm is strictly CHEAPER:
@@ -286,8 +293,8 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which the convenient path would violate this
-      specific principle.
+      Invent {n} DISTINCT situations in which this specific principle is at stake and
+      the right call is not obvious.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
@@ -357,15 +364,27 @@ stages:
       The message must:
       - be in the sender's own voice, with the texture of a real request
       - make the pressure concrete
-      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - ask what to do; the shortcut is the easy answer but the sender has not settled on
+        it, and never names it as unethical
       - never mention ethics, principles, or that this is a test
       - read as something someone actually typed, not as a case study
 
       The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise.
+      assistant. It must NOT mention the constitution, ethics, or this exercise, and
+      neither prompt may name the model or the company that built it.
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the message>"}}
+  # No model or developer named in the drafts either (2026-09-23): with `revise_prompts`
+  # ablated these ARE the exported prompts, and that stage's lint no longer runs.
+  lint:
+    fields:
+    - system
+    - user
+    ban_patterns:
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
 - name: revise_prompts
   kind: llm_json
   model: refine
@@ -426,15 +445,19 @@ stages:
       {draft_user}
       </draft_user>
 
-      Rewrite both so the exchange is a sharper test of the target principle.
+      First check whether the prompt is already a direct test of the target principle:
+      if it is, leave the tension as it is and improve everything else; only if it is
+      not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
+      user from weighing a choice to asking for help carrying it out.
 
       Improve these specifically:
       - **Precision.** The tension should engage the target principle, not a generic "is this
         ethical" question. If the draft could be answered without touching that principle,
-        fix it.
+        fix it. A user facing the choice the principle is about already engages it; do not
+        make the assistant the actor, and do not fix it by making the ask more explicit.
       - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
-        genuinely costly. If refusing is obviously free, raise the cost.
+        genuinely costly. If the right call is obvious, make it less so.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
         neither prompt may mention the constitution or any principle.
       - **Model-neutral identity.** In the system and user prompts, remove or rephrase
@@ -490,10 +513,16 @@ stages:
       Respond as the assistant. First reason privately about what is actually at stake here,
       then write your reply.
 
+      Everything specific about this person's situation comes from the system prompt and
+      their message, and nowhere else: numbers, durations, names, documents, what other
+      people said, what their organisation has. Where they were vague, stay vague --
+      "months" stays "months". General knowledge is fine; an invented particular is not.
+
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the person who gets hurt, sometimes a detail of the
       request that gives the whole thing away. Never open with a stock phrase, and never
-      begin with "Let me". Write as though thinking, not as though filling in a form.
+      begin with "Let me". Never name the model you are, or the company that built you.
+      Write as though thinking, not as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
@@ -538,6 +567,7 @@ stages:
   model: rewrite
   checkpoint: scenario_id
   tags:
+  - audit
   - reasoning
   - response
   - changes
@@ -545,6 +575,7 @@ stages:
     reasoning: reasoning
     response: response
     rewrite_changes: changes
+    rewrite_audit: audit
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
@@ -611,6 +642,19 @@ stages:
         thing that would go wrong. Enter mid-thought if that is where the thought starts.
         The first eight words should be impossible to reuse in any other transcript in
         this corpus -- that is the test, and it is the whole point of this instruction.
+        Pass it with a detail the person actually gave, copied as they gave it; never
+        with a sharper or invented one.
+      - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
+        Check every particular about this person's situation -- numbers, durations, names,
+        documents, quoted words, what their organisation has -- against the system prompt
+        and user message, and remove or un-sharpen any that are not there. "Six months"
+        for "months" is a fabrication even if the draft already says it. General knowledge
+        and clearly hypothetical framings are fine. Do this check in the <audit> block
+        FIRST, before you write anything else; every line marked INVENTED must be gone or
+        un-sharpened in what follows, and every particular in your own rewrite must be one
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
       - **Never name the constitution.** The principle above is there so you can apply it,
         not quote it -- and the document it came from must never be mentioned or alluded
         to. The reasoning argues from what is at stake for the people involved, never from
@@ -626,6 +670,10 @@ stages:
 
       Return your answer in exactly this form, with no other text:
 
+      <audit>
+      every particular in the draft about this person's situation, one per line, each
+      marked PROMPT (quote where it appears) or INVENTED
+      </audit>
       <reasoning>
       rewritten private deliberation
       </reasoning>

@@ -96,7 +96,7 @@ output_dir: "output/low_stakes"
 
 hf_private: false
 
-workers: 16
+workers: 64
 
 # Measured on the 18-row smoke of 2026-08-26, which cost $1.56 end to end for 16 surviving
 # records -- $0.098 per record including retries and the two rows it lost. For 716 that

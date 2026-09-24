@@ -613,17 +613,23 @@ DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_
 def test_base_config_is_the_papers_harness_and_the_sweep_carries_the_switches(
     cfg, targets
 ):
-    # Since 2026-09-13 the base config keeps the provisioner able to read the boards (the
-    # owner's standing instruction); every other switch off = the paper's harness, which
-    # is reproduced with `fixes.provisioner_reads_boards=false` on the CLI.
-    expected = dict(FIXES, provisioner_reads_boards=True)
+    # Since 2026-09-13 the base config keeps the provisioner able to read the boards, and
+    # since 2026-09-15 it drops the "distributed simulation" opening (both the owner's
+    # standing instructions); every other switch off = the paper's harness, which is
+    # reproduced with those two set false on the CLI.
+    expected = dict(FIXES, provisioner_reads_boards=True, no_simulation_framing=True)
     assert resolve_fixes(cfg) == expected
     sweep_cfg = _build("self_sacrificial", cfg, targets)
     assert sweep_cfg["fixes"] == expected
     paper = OmegaConf.merge(
-        cfg, OmegaConf.from_dotlist(["fixes.provisioner_reads_boards=false"])
+        cfg,
+        OmegaConf.from_dotlist(
+            ["fixes.provisioner_reads_boards=false", "fixes.no_simulation_framing=false"]
+        ),
     )
-    assert resolve_fixes(paper) == FIXES, "every switch off = the paper's harness"
+    assert resolve_fixes(paper) == dict(FIXES, no_simulation_framing=False), (
+        "every switch off = the paper's harness"
+    )
 
 
 def test_unknown_or_ill_typed_switches_are_refused(cfg):
@@ -682,6 +688,8 @@ def test_the_two_directions_share_the_environment_and_differ_in_their_own_switch
     assert all(fb[k] and not fa[k] for k in board)
     # The provisioner reads the boards under BOTH directions since 2026-09-13.
     assert fa["provisioner_reads_boards"] and fb["provisioner_reads_boards"]
+    # Neither direction tells the agents they are in a simulation (since 2026-09-15).
+    assert fa["no_simulation_framing"] and fb["no_simulation_framing"]
     assert not fa["require_status_post"] and not fb["require_status_post"]
     # The strong variant of B is one CLI switch away, and legal.
     strong = OmegaConf.merge(

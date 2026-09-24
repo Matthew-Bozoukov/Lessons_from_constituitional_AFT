@@ -101,7 +101,7 @@ output_dir: "output/pc"
 # stays the record of what the arms produced.
 hf_private: false
 
-workers: 16
+workers: 64
 # Above the 2.0 default for the same reason PAR is: `revise_prompts` loses rows two ways in
 # the principle-scoped recipe -- ~6% content-filter refusals (DA, n=716) and JSON re-descriptions
 # missing a key. Budget for losing ~10%; a stage that trips this is resumable with a raised

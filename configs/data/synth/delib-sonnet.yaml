@@ -139,7 +139,7 @@ judge_prompt: |
   in this form and nothing after them:
   CANDIDATE <index> SCORE: <integer 1-10>
   <<<cache>>>
-workers: 32         # Anthropic via OpenRouter; the 16 the Qwen config needs for Alibaba is not a Sonnet limit. A 429 backs off and retries.
+workers: 64         # Anthropic via OpenRouter; the 16 the Qwen config needs for Alibaba is not a Sonnet limit. A 429 backs off and retries.
 budget_usd: 150          # a ceiling, not a target. Expected ~$58 generation (752 x 2 at $0.037/candidate, the 2026-09-11 run's cached rate,
                          # + resamples) + ~$15 one-run judging ($0.0185/call on that run)
 limit: null              # All surviving final rows, in their original order.

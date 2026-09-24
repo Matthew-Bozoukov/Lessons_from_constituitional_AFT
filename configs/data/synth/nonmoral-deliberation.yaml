@@ -166,7 +166,7 @@ output_dir: "output/nonmoral_deliberation"
 hf_repo: "2026-09-02-craft-tensions-nonmoral-deliberation"
 hf_repo_smoke: "2026-09-02-craft-tensions-nonmoral-deliberation-smoke"
 
-workers: 16
+workers: 64
 
 # Hard stop; the run aborts between stages once spend passes it, keeping snapshots so raising it
 # resumes rather than restarts. Sized from difficult advice's measured $234 for 2,000 records:

@@ -33,6 +33,42 @@ session and one 15-minute monitor. The actual paid pair supplies live GPU hot-sw
 and combined-throughput evidence. Keep provider capacity and recovery limitations
 visible instead of promising an issue-free run.
 
+
+## 2026-09-24 — `extend_from`: the difficult-advice corpus grown to 1,326 rows on the same recipe, deduped across runs, one repo; the first 25% supervised-token mix built from it
+
+**Hypothesis.** A 25% DA share needs ~1,025 rows (15% used 619 of 769 for 730,895 tokens,
+~1,180 supervised tokens per row; 25% of the 4.84M-token base is 1.21M) plus balancing
+slack, so the 769-row 2026-09-23 corpus is too small. Regenerating throws $79 of rows away;
+merging a second run by hand records nothing and dedupes nothing across the two runs.
+
+**Method.** `extend_from` in the synth pipeline (PR #116, `src/data/synth/ours/extend.py`,
+merged @ 83dcdbb1): the prior corpus's post-dedupe scenarios seed the scenario stage's ban
+list and its 0.86-cosine gate, its `dataset.jsonl` rows are carried into the new run's ahead
+of the new ones, and the manifest and card pin the prior repo, revision and row count. It
+refuses a prior of another style-type or constitution, a run without `id_prefix`, or a
+prefix the prior already used, before any spend. Smoke (2 scenarios, $0.28) then:
+```
+uv run synth run --config configs/data/synth/da.yaml --overrides "total_scenarios=560,max_fail_pct=5,id_prefix=r2_,extend_from=dougalldeepmind/2026-09-23-da-synth@1f816d13310776e04af059505ab2f5d25512aea3"
+uv run mix --config configs/data/mixture/da.yaml synthetic_pct=25
+```
+
+**Result.** `dougalldeepmind/2026-09-24-da-synth` @ `4f4ca43b`: 769 prior + 557 new = 1,326
+rows, t1 146 ... t9 147; $57.56, 21 min at 64 workers. Gate seeded with 776 prior scenarios;
+4 of 560 new ones rejected as too close to an existing one (one make-up call), 455 distinct
+domains, top-10 domain share 7.9%. Stage losses as on 09-23: 3 rows at revise_prompts (2
+truncated JSON at the 6,144 cap, 1 content-filter refusal). Both corpus checks pass.
+`configs/data/mixture/da.yaml` now pins this repo (the 09-23 repo is a prefix of it).
+`dougalldeepmind/2026-09-24-da-25-mix`: 2,458 base rows / 1,210,758 tokens removed, 1,021 DA
+rows / 1,210,612 tokens inserted (113-114 per trait), realised 25.0%.
+
+**Caveat.** The 15% arm on the Hub (`2026-09-23-da-15-mix`) drew from the 769-row pool; a 15%
+mix rebuilt from the 1,326-row pool would draw a different seeded subset, so 15 and 25 are
+not nested unless the old 15 mix is kept as-is.
+
+**Next.** Train `qwen36-0-da-25` on the recipe defaults, ODCV-lite + MASK against da-15 and
+nosynth for the dose-response point; the pressure classifier over the r2_ rows to confirm
+the ambiguous-decision recipe held on the top-up.
+
 ## 2026-09-24 - Schedule historically longer Lite tasks first
 
 **Question / method.** Reduce end-of-run stragglers without changing model budgets
@@ -1333,6 +1369,33 @@ judges. Pod `6qn3q92y2evo3a` costs $3.49/hour and has a hard independent watchdo
 The $15 evaluation allocation leaves the combined planned ceiling within $60.
 Verify complete coverage, all published files and owned-resource cleanup before
 reporting MR. See the [run report](training/2026-09-15_nonmoral_original_reuse.md).
+
+## 2026-09-15 — Hospital eval: no agent is told it is in a simulation
+
+**Change.** Every Hospital agent's system prompt, every call, opened "You are a Hospital Agent
+in a distributed simulation." (upstream terrarium's wording, and the only place a model under
+test was told the shift is not real: 0 mentions in the briefings of a 2026-09-14 run). New
+switch `fixes.no_simulation_framing` (third_party/terrarium_no_simulation_framing.patch) cuts
+the clause and leaves the rest of the prompt byte-identical. It is ON by default (the one switch
+whose default is not the paper's, so a config that omits it gets no framing) and set in every
+Hospital config; the paper's harness is now
+`fixes.provisioner_reads_boards=false fixes.no_simulation_framing=false`. The runner and
+pod_bootstrap.sh refuse a terrarium package without the patch (checked by content, so the
+2026-09-13 stamp is unchanged).
+
+**Checks.** Scripted smoke (fixes_smoke.py), all nine variants pass: no ON variant sends any
+seat a message that mentions a simulation; `paper_as_published` still opens with the old
+sentence. Hospital tests: 75 passed with the patched package on the path.
+
+**Read across the change with care.** Every Hospital cell before this commit ran with the
+framing; nothing has run without it yet, so a new cell is compared with an old one only
+through a fresh untempted baseline. `run_config.json` records the switch per episode. Judge
+prompts still describe the setting as a simulation (the judge is not under test).
+Landed on main 2026-09-23, after the whistleblowing study (PR #103): its
+`terrarium_hospital_fixes_3.patch` edits the same function, so this patch was re-cut on top of
+it and is applied last (`pod_bootstrap.sh`, the runner's guard and `third_party/README.md`
+all say so). Nothing on main had dropped the framing before this commit: every Hospital cell
+published to date was run with it.
 
 ## 2026-09-15 — Exact original nonmoral remix verified; single-H200 training launched
 
