@@ -1,7 +1,7 @@
 <!-- ABOUTME: Current launch procedure, measured findings and remaining qualification gaps for SWE-bench Lite. -->
 <!-- ABOUTME: Prepared infrastructure is separate from explicit authorization to start paid inference. -->
 
-# SWE-bench Lite: one model, all 300 tasks
+# SWE-bench Lite: all 300 tasks per model
 
 **Latest completion, September 24:** the DA-15 run is fully complete at 134/300
 (44.67%), versus the matched no-DA control's 136/300 (45.33%). All 300 outcomes were
@@ -20,7 +20,8 @@ template is `configs/eval/swebench_mini/lite.yaml`; the old scratch YAML remains
 immutable historical campaign configuration. Do not resume that completed campaign
 under new source hashes.
 
-- One compatible Qwen3.6-27B rank-64 thinking LoRA at a time, pinned by HF revision.
+- One or two compatible Qwen3.6-27B rank-64 thinking LoRAs, each pinned by HF revision.
+  A pair shares one fleet and cumulative ledger, with separate 300-task results.
 - **Up to 20 independent H100 NVL pods, four conversations each**, with 80 CPU
   conversation slots and **32 simultaneous tool commands**. Start each ready pod
   independently. Retry missing capacity; only after both ten minutes and five failures
@@ -63,9 +64,9 @@ when the shared CPU registry is empty; this submission helper only reuses a host
 
 `180` is a proposed **new-campaign maximum**, not a forecast, a charge or an increase
 to the completed campaign's budget. Pass the allowance authorized for that new run.
-At the observed $3.19/hour H100 quote plus 5% reserve, 20 pods for the full 150-minute
-emergency lifetime reserve $167.48. Earlier completion releases reservations; fallback
-cards can be refused when the remaining allowance is insufficient. Never reset the
+The six-hour per-pod emergency lease is shortened to fit the remaining budget.
+Each lane receives a reservation share; more expensive fallback cards receive shorter
+leases rather than consuming other lanes' shares. Earlier completion releases reservations. Never reset the
 ledger or interpret rejected create reservations as invoices.
 
 The launcher serializes submissions, pins the model, creates a dated target directory,
@@ -79,10 +80,13 @@ reboot recovery after such a stop needs explicit review rather than silently ove
 The supervisor allows at most four recovery cycles and three infrastructure attempts
 per task. Completed model failures are never rerolled. There is **no six-hour job
 cutoff or shared 150-minute batch cutoff**. Each late/replacement GPU gets its own
-150-minute safety lease, bounded by the cumulative budget and actual CPU expiry.
-Vacant slots refill while healthy peers work. New tasks fit their full 90-minute
-allowance before that individual lease expires; a drained pod is replaced when work
-remains. Reserve 30 minutes before CPU shutdown for finishing. Do not manually extend live GPU rentals. Persistent CPU receipts have no host
+six-hour maximum safety lease, shortened by the cumulative budget and actual CPU expiry.
+Vacant slots refill while healthy peers work. There is no wall-clock task timeout:
+`task_seconds: null`. The 65,536 completion-token and 250-step limits remain unchanged.
+Pods stop admitting new tasks only within 30 minutes of emergency cleanup; admitted
+tasks can continue until that cleanup boundary. Exhausting a GPU lease is still an
+infrastructure interruption, never a valid model failure. A drained pod is replaced
+when eligible work remains. Reserve 30 minutes before CPU shutdown for finishing. Do not manually extend live GPU rentals. Persistent CPU receipts have no host
 cutoff; optional expiring receipts still reserve time for grading.
 
 HF snapshots are atomic, checked initially before rentals, and retried asynchronously
@@ -127,6 +131,46 @@ https://huggingface.co/datasets/dougalldeepmind/2026-09-24-swebench-lite-infrast
 The recipe explicitly separates protocol/CPU/recovery qualification from a clean paid
 performance measurement. The first future authorized model run supplies the latter;
 do not buy a redundant full evaluation merely to rename the qualification flag.
+
+## Two LoRAs on one shared fleet
+
+```bash
+uv run --project scratch/swebench_cpu_env --frozen python -m src.eval.run_eval \
+  --name swebench_mini --fleet --target ORG/FIRST ORG/SECOND \
+  --target-revision FIRST_SHA --next-target-revision SECOND_SHA --budget-usd 360
+```
+
+The pair's $360 is the combined maximum of two $180 allowances, not an expected
+bill. Both adapters must have the same pinned base, thinking mode and rank 64,
+with distinct model keys. Both preflights and initial HF checkpoints pass before
+any rental. The first campaign is the fleet owner; `next-arm/launch.yaml` describes
+the second. Invoke status, stop and resume through the owner's launch configuration.
+Never launch the child configuration independently.
+
+Twenty GPUs TOTAL initially split ten per arm. Each pod runs four independent
+conversations against one adapter. After its queue is claimed, it drains all four
+conversations and moves to the other arm if that arm still has queued tasks. There
+is no global barrier: remaining first-arm conversations do not delay second-arm
+work. The existing `run_eval` serving lifecycle loads the second pinned adapter
+into the live base server. A provider failure can still require cold replacement.
+The CPU command gate is shared across both arms, keeping the total at 80
+conversations and 32 active commands. Do not independently launch two 20-pod fleets.
+
+One cumulative ledger survives recovery. Both outcome sets have independent
+manifests, attempt directories, longest-first queues and HF result repositories.
+Shared GPU accounting is explicitly a session total: do not add the copied totals
+from both result repositories. Pods terminate as soon as they have no remaining
+work; all GPUs are verified gone before CPU grading. Both arms are graded, published
+and artifact-verified independently before the session is called complete. Status
+reports must show BOTH arms and the shared fleet/spend. Create one 15-minute monitor
+at actual launch, not while waiting for the adapters.
+
+Offline replay of the completed control/DA durations (ten-minute startup, 30-second
+adapter switch, unchanged historical mixed-GPU task times) predicts: 16 total GPUs,
+118 minutes/$100; 20 GPUs, 100 minutes/$102; 24 GPUs, 100 minutes/$105. These exclude
+CPU grading/publication and are in-sample estimates, not paid performance measurements.
+Twenty-four GPUs would also exceed this host's 80-conversation qualification.
+The initial real pair is the live qualification of hot-swapping on this fleet.
 
 ## Findings and limits to carry into the next run
 

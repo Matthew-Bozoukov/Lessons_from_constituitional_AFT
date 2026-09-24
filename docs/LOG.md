@@ -1,6 +1,38 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
+
+**Question / method.** Evaluate two upcoming adapters without paying for two cold
+fleets or doubling the qualified CPU load. One invocation now accepts a pair:
+twenty pods total, ten initially assigned to each arm, four conversations per pod.
+After draining, a pod loads the other adapter through the existing run_eval/vLLM
+lifecycle while other pods continue. Both queues retain longest-first order,
+separate attempts, official scores and HF repositories. One ledger and CPU command
+gate cover both arms. Failed workers recover both queues without rerolling valid
+outcomes. A session completes only after both result sets verify and GPUs are gone.
+
+The old 90-minute wall-clock task cap is disabled for new runs. Token/step limits
+remain. Six-hour maximum emergency leases are bounded by budget and CPU lifetime;
+admission drains only near emergency expiry. Fallback rentals receive the same
+per-lane dollar reservation, so higher hourly prices shorten their lease instead
+of consuming another lane's allowance. Provider, watchdog, worker and ledger use
+one agreed expiry. Historical manifests/results remain unchanged.
+
+**Evidence / limits.** GPU-free tests exercise concurrent queues, task-ID isolation,
+pinned adapter swaps with one base-server boot, draining, publication failures and
+checkpoint recovery. A real agent/Docker/official-grader synthetic smoke test passes.
+Offline in-sample replay predicts 20 total GPUs at roughly 100 minutes/$102 for both
+models' startup and inference, versus 16 at 118 minutes/$100 and 24 at 100 minutes/$105.
+Historical mixed-GPU durations, ten-minute startup and 30-second swap are assumptions;
+this is not a homogeneous H100 measurement. Twenty-four GPUs also exceed the current
+80-conversation CPU qualification. No GPUs were rented to implement this change.
+
+**Next.** Pin both upcoming adapters, perform readiness checks, launch one paired
+session and one 15-minute monitor. The actual paid pair supplies live GPU hot-swap
+and combined-throughput evidence. Keep provider capacity and recovery limitations
+visible instead of promising an issue-free run.
+
 ## 2026-09-24 - Schedule historically longer Lite tasks first
 
 **Question / method.** Reduce end-of-run stragglers without changing model budgets

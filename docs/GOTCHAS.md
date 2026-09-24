@@ -1514,3 +1514,24 @@ lower latency, and retain RTX as an availability fallback. Do not restart an
 active healthy fleet just to change hardware. Recheck prices for a new run.
 Evidence: `metadata/gpu-comparison-20260923.json` and the per-replica metrics in
 https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth.
+
+
+### 2026-09-24: SWE-bench leases and two-arm fleet ownership
+
+A 150-minute GPU lease combined with a 90-minute task admission allowance stopped
+new claims at pod age 57 minutes (three minutes reserved for cleanup). This can
+force costly replacement bootstraps even when the remaining tasks are short.
+New configurations remove the wall-clock task cap and use a six-hour emergency
+lease bounded by the actual remaining budget. Token/step limits, request/tool
+timeouts and independent watchdogs remain. Do not remove provider expiry merely
+because the CPU has persistent authorization.
+
+A paired run uses ONE owner ledger, ONE fleet ceiling and ONE CPU tool gate. Giving
+each arm its own 20 replicas or 32-command directory silently doubles resource
+admission. Swapping a LoRA while any of the pod's four conversations is active
+risks contamination: drain the pod first, then let run_eval load the revision-pinned
+adapter into the same base server. Other pods need not wait. Preserve separate
+result directories/HF repositories and never sum duplicated shared-fleet cost totals.
+A fallback GPU's longer reservation must not consume its peers' shares: shorten
+that pod's safety lease at admission and pass the SAME expiry to the provider,
+watchdog, worker and ledger. Do not alter live expiry components independently.

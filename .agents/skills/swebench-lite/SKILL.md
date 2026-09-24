@@ -1,6 +1,6 @@
 ---
 name: swebench-lite
-description: Run all 300 SWE-bench Lite tasks for one Qwen3.6 LoRA, or prepare/manage the reusable Vast CPU. Use for “run swebench on this lora”, “prepare the swebench cpu”, and SWE-bench status/recovery requests in this repository.
+description: Run all 300 SWE-bench Lite tasks for one or two Qwen3.6 LoRAs, or prepare/manage the reusable Vast CPU. Use for “run swebench on this lora”, “prepare the swebench cpu”, and SWE-bench status/recovery requests in this repository.
 ---
 
 # Run SWE-bench Lite
@@ -9,12 +9,15 @@ Read `CLAUDE.md`, `docs/swebench_lite_runbook.md`, and
 `docs/swebench_cpu_lifecycle.md` from the repository root. Those files, the committed
 configuration and live receipts replace conversation history. Use this skill from
 main in any new conversation. A request to run the benchmark authorizes preparing
-its CPU and running one model under the defaults below; “prepare CPU” authorizes
+its CPU and running the requested one or two models under the defaults below; “prepare CPU” authorizes
 CPU work only. Do not rent an extra model evaluation for calibration.
 
 ## Fixed operating defaults
 
-- All 300 Lite tasks; one pinned compatible Qwen3.6-27B rank-64 thinking adapter.
+- All 300 Lite tasks per arm; one or two pinned compatible Qwen3.6-27B rank-64 thinking adapters.
+  For two, use the paired command in the runbook: 20 GPUs TOTAL initially ten per
+  arm, both longest-first, then drain-and-swap idle pods. One shared $360 maximum
+  and tool gate; separate scores and HF repositories. Never launch two separate fleets.
 - Up to 20 single-GPU RunPod replicas, four conversations each. Start each ready
   GPU independently. H100 NVL first, delayed H200 fallback, RTX PRO 6000 Blackwell
   Server last. Preserve the configuration's price ceilings and automatic retries.
@@ -25,7 +28,7 @@ CPU work only. Do not rent an extra model evaluation for calibration.
   allowance before launch without asking the user to repeat this standing choice.
   Never reset an existing ledger or silently raise its allowance.
 - CPU is persistent until explicitly stopped. The user selected this on
-  September 24, 2026. Persistence never removes finite GPU watchdogs, task limits,
+  September 24, 2026. Persistence never removes finite GPU watchdogs, token/step limits,
   budget limits or retry bounds. CPU cost is separate, including idle time.
 - Progress every 15 minutes and immediate completion/failure updates. Create one
   Codex heartbeat for the new campaign, verify ACTIVE and a real initial status
@@ -48,7 +51,8 @@ CPU work only. Do not rent an extra model evaluation for calibration.
    excluding secrets, to `/srv/lasr/repo`. Compare recipe source hashes. When code
    changed, run the documented CPU-only qualification; never approve drift by
    merely replacing the hash map. Preserve completed campaign manifests.
-4. Submit via the standard evaluation entrypoint on the ready CPU:
+4. Submit via the standard evaluation entrypoint on the ready CPU (for a pair,
+   pass both targets plus `--next-target-revision` and the shared `--budget-usd 360`):
 
    ```bash
    uv run --project scratch/swebench_cpu_env --frozen python -m src.eval.run_eval \
@@ -66,7 +70,7 @@ CPU work only. Do not rent an extra model evaluation for calibration.
    reroll valid model failures. Later HF outages must not cancel inference.
    Diagnose terminal exit 2 and report its saved reason instead of restarting
    blindly. RunPod rentals only through `src/infra/runpod.py`.
-7. Completion means 300 valid outcomes, 300 officially graded, HF results readback
+7. Completion means 300 valid outcomes PER ARM, 300 officially graded PER ARM, HF results readback
    plus rollout/result hashes verified, and zero campaign-owned GPUs at provider.
    Leave the persistent CPU/cache running. Report score, costs and protocol caveats.
 

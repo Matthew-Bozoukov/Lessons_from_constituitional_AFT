@@ -327,20 +327,27 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
     parser.add_argument("--cpu-key", help="SSH identity for the dedicated CPU host")
     parser.add_argument("--budget-usd", type=float, help="Cumulative GPU spending backstop for this fleet campaign")
     parser.add_argument("--target-revision", help="Optional exact HF target revision for the fleet")
+    parser.add_argument("--next-target-revision", help="Optional pinned revision for the second fleet target")
     parser.add_argument("--run-root", help="Existing campaign to resume, or a fresh absolute CPU-host run directory")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
     if args.fleet:
-        if (args.name != 'swebench_mini' or len(args.target) != 1 or args.server or
+        if (args.name != 'swebench_mini' or len(args.target) not in (1, 2) or args.server or
                 args.no_push or args.terminate_pod or args.push_env or args.overrides or unknown):
-            parser.error('--fleet needs exactly one swebench_mini target, a fleet config, and no ordinary eval overrides')
+            parser.error('--fleet needs one or two swebench_mini targets, a fleet config, and no ordinary eval overrides')
         if args.budget_usd is None or args.budget_usd <= 0:
             parser.error('--fleet requires an explicit positive --budget-usd backstop')
         command = ['launch', '--config', args.config or 'configs/eval/swebench_mini/lite.yaml',
                    '--target', args.target[0], '--budget-usd', str(args.budget_usd)]
         if args.target_revision:
             command += ['--target-revision', args.target_revision]
+        if len(args.target) == 2:
+            command += ['--next-target', args.target[1]]
+            if args.next_target_revision:
+                command += ['--next-target-revision', args.next_target_revision]
+        elif args.next_target_revision:
+            parser.error('--next-target-revision needs two targets')
         if args.run_root:
             command += ['--root', args.run_root]
         if args.cpu_receipt:
@@ -348,7 +355,7 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             return submit(args.cpu_receipt, args.cpu_key, command)
         from src.eval.capabilities.swebench_mini.fleet import main as fleet_main
         return fleet_main(command)
-    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.run_root)):
+    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.next_target_revision, args.run_root)):
         parser.error('CPU/fleet launch options require --fleet')
     if args.terminate_pod and not args.server:
         parser.error("--terminate-pod requires --server")
@@ -440,6 +447,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         revision = cfg.get("target_revision")
         if revision and len(targets) != 1:
             raise ValueError("target_revision requires exactly one target")
+        revisions = cfg.get('target_revisions')
+        if revisions is not None:
+            if revision or set(revisions) != set(targets) or not all(revisions.values()):
+                raise ValueError('target_revisions must pin every target exactly once')
+            revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(

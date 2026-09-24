@@ -48,8 +48,17 @@ def stop_process(proc):
 
 
 def attempt_deadline(cfg, state, expires):
-    return min(time.time() + cfg.task_seconds, deadline_value(state['deadline']) - cfg.cleanup_reserve_seconds,
+    task_limit = cfg.get('task_seconds')
+    return min(time.time() + task_limit if task_limit is not None else float('inf'), deadline_value(state['deadline']) - cfg.cleanup_reserve_seconds,
                expires - cfg.cleanup_reserve_seconds)
+
+
+def latest_admission(cfg, expires):
+    # Wall-clock task limits are optional; tokens/steps still bound model work.
+    allowance = cfg.get('task_seconds')
+    if allowance is None:
+        allowance = cfg.get('task_admission_seconds', 1800)
+    return expires - cfg.cleanup_reserve_seconds - allowance
 
 
 def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
@@ -59,7 +68,7 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
     images = read(state.root / 'metadata/images.json')
     while lease := state.claim(worker, allowed, cfg.max_infrastructure_attempts,
                                cfg.max_infrastructure_failures,
-                               latest_start=expires - cfg.cleanup_reserve_seconds - cfg.task_seconds):
+                               latest_start=latest_admission(cfg, expires)):
         iid, aid = lease
         out = state.root / 'rollouts' / iid / aid
         out.mkdir(parents=True)
@@ -70,7 +79,7 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
                    'max_response_tokens': cfg.max_response_tokens, 'max_task_tokens': cfg.max_task_tokens,
                    'model_request_timeout_seconds': cfg.model_request_timeout_seconds,
                    'model_request_attempts': cfg.model_request_attempts,
-                   'tool_slots_path': str(state.root / '.tool-slots'),
+                   'tool_slots_path': str(Path(cfg.get('fleet_owner_root') or cfg.root) / '.tool-slots'),
                    'tool_concurrency': cfg.get('tool_concurrency', 32),
                    'tool_queue_timeout_seconds': cfg.get('tool_queue_timeout_seconds', 600),
                    'min_available_memory_gib': cfg.min_available_memory_gib}
@@ -137,15 +146,29 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
 
 
 def runner(target, cfg, out_dir, **kwargs):
-    campaign = OmegaConf.load(cfg.campaign_config)
-    assert target.spec.revision == campaign.target_revision
-    assert target.spec.base_revision == campaign.base_revision and target.spec.mode == campaign.mode
-    endpoint = target.base_url
-    with State(campaign.root).edit() as data:
+    from src.eval.capabilities.swebench_mini.fleet_session import members
+    owner = OmegaConf.load(cfg.campaign_config)
+    with State(owner.root).edit() as data:
         pod = next(p for p in data['pods'] if p['slot'] == cfg.replica)
         if pod.get('idle_startup_cancellation'):
             return {'status': 'Unused startup cancelled before accepting tasks'}
-        pod.update(ready_at=time.time(), status='working')
+    arms = members(owner)
+    index, campaign = next((i, c) for i, c in enumerate(arms) if c.target == target.spec.hf_path)
+    allowed = list(cfg.allowed) if len(arms) == 1 else [i.split(':', 1)[1] for i in cfg.allowed if i.startswith(f'{index}:')]
+    snapshot = read(State(campaign.root).path)
+    if not any(i in allowed and t['status'] in ('pending', 'invalid') and
+               len(t['attempts']) < campaign.max_infrastructure_attempts for i, t in snapshot['tasks'].items()):
+        return {'status': 'No queued tasks for this arm; server left untouched'}
+    assert target.spec.revision == campaign.target_revision
+    assert target.spec.base_revision == campaign.base_revision and target.spec.mode == campaign.mode
+    endpoint = target.base_url
+    with State(owner.root).edit() as data:
+        pod = next(p for p in data['pods'] if p['slot'] == cfg.replica)
+        if pod.get('idle_startup_cancellation'):
+            return {'status': 'Unused startup cancelled before accepting tasks'}
+        pod.setdefault('ready_at', time.time())
+        pod.update(status='working', active_target=campaign.target)
+        pod.setdefault('arm_transitions', []).append({'target': campaign.target, 'revision': campaign.target_revision, 'at': time.time()})
     stop = threading.Event()
     unhealthy = threading.Event()
     def observe():
@@ -173,7 +196,7 @@ def runner(target, cfg, out_dir, **kwargs):
     try:
         with ThreadPoolExecutor(max_workers=campaign.workers_per_replica) as pool:
             futures = [pool.submit(consume, endpoint, 'hosted_vllm/' + target.model_name, campaign,
-                                   str(cfg.replica) + '-' + str(i), list(cfg.allowed), cfg.expires, unhealthy)
+                                   str(cfg.replica) + '-' + str(i), allowed, cfg.expires, unhealthy)
                        for i in range(campaign.workers_per_replica)]
             for future in futures:
                 future.result()
@@ -191,18 +214,25 @@ def main():
     parser.add_argument('--replica', type=int, required=True)
     parser.add_argument('--allowed', required=True)
     parser.add_argument('--expires', required=True, type=float)
+    parser.add_argument('--primary-arm', type=int, default=0)
     args = parser.parse_args()
     cfg = OmegaConf.load(args.config)
+    from src.eval.capabilities.swebench_mini.fleet_session import members
+    arms = members(cfg)
     output = Path(cfg.root) / 'metadata' / 'replicas' / str(args.replica)
     output.mkdir(parents=True, exist_ok=True)
-    worker_config = {'target_revision': cfg.target_revision, 'serving': OmegaConf.to_container(cfg.serving),
+    worker_config = {'target_revisions': {c.target: c.target_revision for c in arms}, 'serving': OmegaConf.to_container(cfg.serving),
                      'dataset': cfg.dataset, 'revision': cfg.dataset_revision,
                      'frozen_dataset': str(Path(cfg.root) / 'metadata/swebench_lite_test.json'),
                      'campaign_config': str(Path(args.config).resolve()), 'replica': args.replica,
                      'allowed': read(args.allowed), 'expires': args.expires, 'output_root': str(output / 'eval')}
     OmegaConf.save(OmegaConf.create(worker_config), output / 'eval.yaml')
     from src.eval.run_eval import main as evaluate
-    evaluate(['--target', cfg.target, '--name', 'swebench_mini', '--config', str(output / 'eval.yaml'),
+    # Start equal numbers of replicas on each arm. A drained replica switches
+    # only after all four conversations finish; other replicas need not wait.
+    offset = args.primary_arm % len(arms)
+    targets = [c.target for c in arms[offset:] + arms[:offset]]
+    evaluate(['--target', *targets, '--name', 'swebench_mini', '--config', str(output / 'eval.yaml'),
               '--server', args.server, '--server-bind', '127.0.0.1', '--ssh-key', cfg.ssh_key,
               '--port', str(cfg.port_base + args.replica), '--no-push'], runner=runner)
 
