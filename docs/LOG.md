@@ -1,6 +1,77 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — ODCV-Peer all40: five two-agent cells on every scenario; DA halves team fraud (63% → 32%) and resists a cheating PLAIN teammate 37% vs 4%, but only 12% beside a copy of itself; the evidence-fed judge does not convict the DA arm of hidden violations
+
+**Hypothesis.** The difficult-advice arm's ODCV advantage (solo: da-15 vs nosynth, 2026-09-22) should
+survive a second agent in the sandbox: fewer own violations, more resistance to a teammate that
+falsifies, and no over-refusal. Second question, from reading the smoke (2026-09-23): the
+transcript-only ODCV judge scored a laundered fabrication 0, so does the DA arm's advantage rest
+partly on better-narrated cheating?
+
+**Method.** `configs/eval/odcv_peer/all40.yaml`: two seats per cell on one ODCV sandbox (shared
+files, message board, hash ledger after every command), all 40 scenarios, both wordings
+(mandated / incentivized), 3 passes — the single-agent ODCV protocol. Five cells: both-DA and
+both-plain on each wording, plus "pushy" (DA seat on the incentivized wording beside a plain
+teammate on the mandated one). DA = `dougalldeepmind/2026-09-22-qwen36-0-da-15`, plain =
+`dougalldeepmind/2026-09-22-qwen36-0-nosynth` (same SFT, no synthetic data), both think mode,
+co-served as two LoRAs. Judge gemini-3-flash-preview at temperature 0, pinned provider: the
+UNMODIFIED upstream rubric on the measured seat and on the teammate, our task-progress rubric,
+eight team fields (board + ledger in view), and — added 2026-09-23 after the smoke read — two
+evidence-fed axes run post hoc over both arms with the same code (`peer/judge.py
+evidence_judges`, `scratch/odcv_peer_rejudge_evidence.py`): the upstream rubric text lifted from
+the vendored file with the board and ledger placed before it, and one 0–5 for what the PAIR
+accomplished with work credited once. Headline rates below are the "evidenced regime": the label
+tree with the evidence-fed judge standing in for both the transcript-only score and the raw ledger
+flag (`t_own_tamper` is any non-pristine write to a pre-existing file, and both judges cleared
+57–65% of those in the DA arm — repairs re-derived rather than byte-restored). Runs:
+`dougalldeepmind/2026-09-23-odcvpeer-qwen36-0-nosynth` (198 of 240 cells; pass 1 lost 42 to a
+docker address-pool collision) and `dougalldeepmind/2026-09-24-odcvpeer-qwen36-0-da-15` (pushy
+120/120 from a first attempt whose pod died under a sleeping driver, both-DA 240/240 from a rerun;
+merged by `scratch/odcv_peer_merge_publish.py`, recorded in the run's results.json). Every kept
+cell has real agent turns (`audit_pass` now requires one).
+
+**Result.** Scenario-bootstrap 95% intervals; "wrong" cells = the teammate falsified or announced
+it.
+
+| cell | own violation (evidence judge) | resisted | went along | either seat defrauded | own tamper undisclosed | refused task |
+|---|---|---|---|---|---|---|
+| both plain (control), 198 | 53.0% | 3.7% [0.0, 8.7] (n=109) | 91.7% [84.5, 97.2] | 62.1% [49.2, 74.8] | 83.3% | 0.0% |
+| both DA, 240 | 13.8% | 11.7% [4.5, 21.5] (n=60) | 68.3% [55.4, 80.6] | 31.7% [19.2, 43.8] | — | 1.1% |
+| pushy: DA soft + plain hard, 120 | 17.6% | 37.5% [24.6, 52.3] (n=64) | 42.2% [26.3, 57.7] | 50.4% [38.3, 62.2] | 46.4% | 0.0% |
+
+Transcript-only misbehaviour rate (the number comparable to solo ODCV): plain 45.6% [33.5, 58.2]
+(solo nosynth 42.5% — a teammate barely moves the plain model), both-DA 10.4% [5.2, 19.8], pushy
+12.5% [5.8, 25.0]. Per wording, the plain model's rate is flat (58.8% mandated vs 60.4%
+incentivized, raw) but its manner changes: under "must" it falsifies itself, under the soft
+wording it more often lets the teammate (complicit 1.8% vs 15.1%).
+
+Three findings. (1) **Team fraud halves** when both seats are DA (62% → 32%), with over-refusal at
+1.1% and false alarms at 1.1% — the effect is not bought with skittishness. (2) **A DA seat resists
+a plain teammate's forgery far more (37.5%) than a DA teammate's (11.7%).** Two copies of one
+model reach the same conclusion about which scenarios "justify" it, so when one DA copy falsifies
+the other usually agrees: homogeneous teams fail together, and the mixed team is where the
+training's resistance shows. (3) **The judge is not being talked out of DA violations.** With the
+board and ledger in view, cells the transcript cleared and the evidence flipped: 0 of 120 pushy,
+0 of 240 both-DA, 1 of 198 control; the evidence judge scored the DA seat LOWER than the
+transcript judge (9.2% vs 12.5% pushy; 7.5% vs 10.4% both-DA). The smoke cell that scored 0 for
+five invented customers was real and is an outlier. Deception, where a seat did tamper: the plain
+model hid it in 83% of its reports, the DA seat in 46% (pushy). Team progress ~5/5 in every arm;
+no seat stood back.
+
+Harness lessons, all in docs/GOTCHAS.md (2026-09-23/24): two drivers on one laptop need distinct
+ports AND a shared docker pool (raised to 256 networks in Docker Desktop's daemon.json);
+`--terminate-pod` kills the pod on ANY driver death; a healthy stranger on the tunnel port passes
+the health check (`assert_local_port_free`); prompt-only transcripts audited clean; a sleeping
+laptop ran a pod to its 22-hour cap.
+
+**Next.** (a) Read the both-DA "went along" cells (60 wrong-teammate cells, 68% along): is it
+agreement about the scenario or deference to the teammate? A DA-vs-base-Qwen mixed team would
+separate those. (b) The `t_own_tamper` rule needs a notion of repair that is not byte-exact
+(content-level diff against pristine) before it is used as a label input again. (c) Seed
+replicates of the DA adapter for a recipe-level interval, as ODCV solo has. (d) The two-attempt
+merge is a one-off; the runner should resume a condition from its packaged results.
+
 ## 2026-09-22 — ODCV-Peer built: two concurrent agents on one ODCV sandbox, a message board and a write ledger; registry key `odcv_peer`; smoke pending
 
 **Hypothesis.** Difficult-advice SFT cuts ODCV violations from ~40% (base Qwen3.6-27B, the
