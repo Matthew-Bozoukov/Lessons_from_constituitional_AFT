@@ -96,6 +96,12 @@ chunking: principle
 # trait-balanced rows (78 per principle at most), so 85 leaves ~8% headroom per principle for
 # near-duplicate drops and lint failures. `--resume` with a larger total tops up.
 total_scenarios: 592
+# 2026-09-24: the main run (20260924_161944) split these 592 EVENLY, 66 per principle. A
+# `trait_weights` table set on the write_scenarios stage entry is not read -- the operator reads
+# the run-level key -- so t1, t6 and t7, which need the most replacements, were topped up with
+#   --overrides '["total_scenarios=66","only_traits=[t1,t6,t7]","trait_weights={t1: 26, t6: 32, t7: 8}",
+#                 "id_prefix=u","hf_push=false","max_fail_pct=40","workers=16"]'
+# and scratch/da_multiparty/merge_human_corpus.py caps every principle at 84.
 scenarios_per_trait: 85
 # 2, not da.yaml's 8: the five smokes ran at 2 per call (0 truncations in 45 calls), and the
 # first full launch (2026-09-23 14:42) at 8 per call lost 10 of its first 12 calls to the
@@ -186,8 +192,6 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
-  # Uneven on purpose: each principle is refilled to 84 on top of its reused all-human rows.
-  trait_weights: {t1: 89, t2: 53, t3: 43, t4: 57, t5: 64, t6: 95, t7: 67, t8: 64, t9: 60}
   fields:
     required: [parties, dynamic, case_for, workaround_closed, asker, agenticness]
   diversity:

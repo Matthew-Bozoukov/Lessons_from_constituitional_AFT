@@ -1,0 +1,44 @@
+# ABOUTME: The human-parties MDMA ablation arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: scaled around a synthetic `da-multiparty-human` share. Publishes as `<date>-da-multiparty-human-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-multiparty-human.yaml synthetic_pct=15
+#
+# configs/data/mixture/da-multiparty.yaml with ONE change: the synthetic source is the
+# human-parties corpus (configs/data/synth/da-multiparty-human.yaml; docs/LOG.md 2026-09-24), in
+# which no party is an AI agent, in place of the multi-party corpus. Same pinned base blend, same
+# share unit, same trait balancing, built at the same 15%, so an arm trained on this mixture
+# differs from da-multiparty-15 (MDMA) only in whether the scenarios' other parties can be agents.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend, pinned exactly as in configs/data/mixture/da.yaml.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  file: mixture.jsonl
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+
+# Percentage of the mixture's supervised tokens that are synthetic -- the number in its name.
+synthetic_pct: 7
+# A share of SUPERVISED TOKENS, as configs/data/mixture/da.yaml (plan_swap in
+# src/data/mixture/build_mixture.py): at equal numbers this arm and da-7 give the synthetic
+# rows the same share of the gradient under token_mean loss.
+share_unit: supervised_tokens
+sources:
+  da-multiparty-human:
+    # 245 all-human rows reused from the MDMA corpus @ 8a53f84f plus the 2026-09-24 run's rows,
+    # 84 per principle, advisor tools stripped, at the revision of the merge (human_merge.json in
+    # the repo records every reused, dropped and surplus row).
+    dataset: "${oc.env:HF_ORG}/2026-09-24-da-multiparty-human-synth"
+    revision: "62e0dfe80db545bde0efbfa93ad519560abf4b5e"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_multiparty"
+
+hf:
+  experiment: "multi-party difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic share of difficult advice whose person is one of several parties (human or AI) sharing the decision"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

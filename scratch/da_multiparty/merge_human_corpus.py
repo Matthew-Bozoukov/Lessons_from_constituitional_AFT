@@ -2,11 +2,11 @@
 # ABOUTME: agent-free, advisor tools stripped, cross-run near-duplicates dropped), 84 per principle; can publish it.
 """Merge the reused all-human MDMA rows with a finished da-multiparty-human run.
 
-Run: uv run python scratch/da_multiparty/merge_human_corpus.py <run dir> --config configs/data/synth/da-multiparty-human.yaml [--push <org/repo>]
+Run: uv run python scratch/da_multiparty/merge_human_corpus.py <run dir> [<top-up run dir> ...] --config configs/data/synth/da-multiparty-human.yaml [--push <org/repo>]
 
 1. Reused: the MDMA corpus rows (dougalldeepmind/2026-09-23-da-multiparty-synth @ 8a53f84f) that
    human_parties.agent_free accepts: a person asks, no party is or mentions an AI agent.
-2. New: <run dir>/dataset.jsonl. Every row must pass the same check; one that does not is dropped
+2. New: <run dir>/dataset.jsonl plus each top-up run's dataset.jsonl (same config, id_prefix, no push). Every row must pass the same check; one that does not is dropped
    and listed (the config forbids agents; this verifies it held).
 3. Tools: an `advisor` row's tools are emptied -- revise_prompts writes them anyway (the
    2026-09-23 defect; strip_advisor_tools.py's rule), and the MDMA corpus was stripped the same way.
@@ -42,6 +42,7 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("run_dir")
+    ap.add_argument("topups", nargs="*", help="top-up run dirs of the same config")
     ap.add_argument("--config", required=True)
     ap.add_argument("--push", help="org/repo of the run's Hub dataset")
     args = ap.parse_args()
@@ -61,6 +62,10 @@ def main() -> None:
     if not pre.exists():
         shutil.copy(src, pre)
     new = [json.loads(line) for line in pre.read_text().splitlines() if line.strip()]
+    for d in args.topups:
+        new += [json.loads(line) for line in (Path(d) / "dataset.jsonl").read_text().splitlines() if line.strip()]
+    ids = [r["metadata"]["scenario_id"] for r in new]
+    assert len(ids) == len(set(ids)), "scenario_id collision between the run and its top-ups"
     reused = [r for r in load() if agent_free(r)]
 
     not_free = [r["metadata"]["scenario_id"] for r in new if not agent_free(r)]
@@ -103,6 +108,7 @@ def main() -> None:
         "rule": "every party human (asker a person; no party is or mentions an AI agent); reused all-human "
         f"MDMA rows first, then this run's rows, {PER_PRINCIPLE} per principle",
         "reused_from": {"repo": CORPUS, "revision": REVISION, "rows": len(reused)},
+        "topups": list(args.topups),
         "run_rows": len(new) + len(dup) + len(not_free),
         "dropped_not_agent_free": not_free,
         "dropped_near_duplicates_of_reused": dup,

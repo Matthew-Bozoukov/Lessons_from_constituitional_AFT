@@ -31,15 +31,24 @@ AGENTISH = re.compile(
 )
 
 
+# Human roles that happen to be called agents (an insurance agent, a booking agent); removed
+# before the agent check so a human party is not mistaken for an AI one.
+HUMAN_AGENT = re.compile(
+    r"\b(?:insurance|travel|booking|literary|customer[- ]service|leasing|real[- ]estate|estate|border|"
+    r"customs|claims|sales|shipping|talent|press|ticket|gate|station|FBI|federal|special|secret)\s+agents?\b",
+    re.IGNORECASE,
+)
+
+
 def agent_free(row: dict) -> bool:
     m = row["metadata"]
     if m.get("asker") != "person":
         return False
-    parties = m.get("parties") or ""
+    parties = HUMAN_AGENT.sub(" ", m.get("parties") or "")
     if AI_WORD.search(parties) or AGENTISH.search(parties):
         return False
     user = next(x for x in row["messages"] if x["role"] == "user")["content"]
-    return not AGENTISH.search(user)
+    return not AGENTISH.search(HUMAN_AGENT.sub(" ", user))
 
 
 def load() -> list[dict]:
