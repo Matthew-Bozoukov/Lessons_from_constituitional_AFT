@@ -29,7 +29,9 @@ teardown() { log "terminating pod $RUNPOD_POD_ID"; runpodctl remove pod "$RUNPOD
 newest_run() { ls -td output/agent_collusion/20*_qwen36_* 2>/dev/null | head -1; }
 # EVAL overrides go BEFORE --target: it takes several arms and would swallow them.
 # EXTRA: overrides applied to EVERY eval call here (the shard and the final merge alike).
-evals() { uv run --no-sync evals ${EXTRA:-} "$@" --name agent_collusion --target "$TARGET"; }
+# EXTRA goes AFTER the call's own overrides: run_eval accepts key=value overrides only as
+# one contiguous run, and a flag (--no-push) between two runs makes it refuse the rest.
+evals() { uv run --no-sync evals "$@" ${EXTRA:-} --name agent_collusion --target "$TARGET"; }
 
 before=$(newest_run)
 log "shard $SEQS: resume_from=[${CKPT}], not pushed"
