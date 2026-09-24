@@ -283,7 +283,17 @@ def fence(cfg, manifest):
     for pod in runpod.active_pods():
         if owned(pod, manifest):
             runpod.teardown(pod['id'])
-    assert not any(owned(p, manifest) for p in runpod.active_pods())
+    remaining = runpod.active_pods()
+    assert not any(owned(p, manifest) for p in remaining)
+    # The independent reaper can remove a booting pod before its future records
+    # teardown. Close only confirmed IDs, conservatively at this observation;
+    # ambiguous creates without an ID retain their separate reconciliation rules.
+    present = {p['id'] for p in remaining}
+    with State(cfg.root).edit() as data:
+        for record in data['pods']:
+            if record.get('id') and record['id'] not in present and 'ended' not in record:
+                record.update(status='terminated', ended=time.time(),
+                    termination_evidence='Provider absence verified after fencing; latest observed end bound')
     root = str(Path(cfg.root))
     for proc in psutil.process_iter(['pid', 'cmdline']):
         cmd = proc.info['cmdline'] or []

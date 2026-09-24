@@ -341,6 +341,26 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(result['provider_gpu_recorded_usd'], 3.5)
             self.assertEqual(result['provider_missing_pod_ids'], ['lagged'])
 
+    def test_fence_closes_reaped_known_pods_without_erasing_ambiguous_reservations(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            atomic(root/'metadata/state.json', {'tasks': {}, 'pods': [
+                {'id': 'reaped', 'created': 100, 'expires': 7200, 'status': 'booting', 'ceiling_hourly': 4},
+                {'id': None, 'created': 100, 'expires': 7200, 'status': 'allocation-unconfirmed', 'ceiling_hourly': 4}]})
+            teammate = {'id': 'unrelated', 'env': {}}
+            with patch.object(fleet.runpod, 'active_pods', return_value=[teammate]), \
+                 patch.object(fleet.runpod, 'teardown') as teardown, \
+                 patch.object(fleet.psutil, 'process_iter', return_value=[]), \
+                 patch.object(fleet.subprocess, 'check_output', return_value=''), \
+                 patch.object(fleet.time, 'time', return_value=3700):
+                fleet.fence(OmegaConf.create({'root': path}), {'campaign': 'ours'})
+            teardown.assert_not_called()
+            records = read(root/'metadata/state.json')['pods']
+            self.assertEqual(records[0]['ended'], 3700)
+            self.assertEqual(fleet.reserved_cost({'pods': records[:1]}), 4)
+            self.assertNotIn('ended', records[1])
+            self.assertEqual(records[1]['status'], 'allocation-unconfirmed')
+
     def test_boot_stages_share_one_deadline_and_watchdog_arms_first(self):
         pod = fleet.runpod
         events = []

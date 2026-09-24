@@ -18,6 +18,11 @@ another rental cycle; ordinary isolated replica replacement remains automatic.
 Never infer a CUDA crash from a disconnected HTTP response: the captured server
 log here showed no CUDA/OOM exception, and the underlying disconnect is unproven.
 
+The independent reaper may terminate booting pods before the coordinator saves
+their end time. Fencing must close confirmed pod IDs absent from the provider at
+the observation time, conservatively retaining accrued cost. Do not release
+unknown-create reservations or reset the ledger merely because the fleet stopped.
+
 ## Reusable Lite CPU lifetime (2026-09-24)
 
 The CPU is now explicitly persistent: lifetime=persistent, stop_at=null, with an
