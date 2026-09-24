@@ -3,6 +3,36 @@
 
 # SWE-bench Lite CPU capacity audit, 2026-09-23
 
+## CPU-only qualification update, 2026-09-24
+
+The user authorized testing higher CPU concurrency without inference GPUs, while
+keeping four conversations per GPU. The existing host ran cached base-image tests
+from Django, SymPy, sklearn, matplotlib, Astropy and pytest. Separate Python agent
+processes imported the pinned real agent stack to account for process overhead.
+Two complete load exercises passed. The final exercise used the production tool
+admission lock; its 526 commands produced no failures and no cgroup OOM kills.
+
+| Conversations | Simultaneous tools | Phase time | Median command execution | Minimum available RAM |
+|---|---:|---:|---:|---:|
+| 40 | 40 | 50.05 s | 4.25 s | 185.96 GiB |
+| 60 | 60 | 54.12 s | 6.53 s | 182.03 GiB |
+| 80 | 80 | 56.11 s | 8.01 s | 178.29 GiB |
+| 80 | 32 | 72.15 s | 3.55 s | 177.58 GiB |
+
+Each concurrent phase runs two commands per task, so phase durations across counts
+are not equal-work throughput comparisons. With 80 conversations/32 tools, p95
+command execution was 22.69 seconds and maximum admission wait 19.59 seconds.
+Waiting is recorded separately and does not consume the command execution timeout.
+Agent startup causes CPU spikes; these are not steady inference-cycle utilization.
+
+The selected policy is **80 conversations, 32 admitted commands, 12 grading workers**
+on this host class. A second CPU is unnecessary for this tested workload. This is
+not exhaustive qualification of every possible model-generated test suite. The
+four-GiB per-container cap remains a limit rather than a reservation; global memory
+and disk guards, bounded descendants and OOM evidence still matter. Raw evidence is
+under `metadata/cpu-qualification` in the Sep24 infrastructure HF repository linked
+from the runbook. The original exploratory audit follows unchanged below.
+
 The current 40-agent ceiling is conservative policy, not measured hardware
 capacity. Do not interpret each container's 4 GiB memory / two-CPU cap as a
 reservation or constant use. The previous 320 GiB estimate for 80 agents summed

@@ -3,6 +3,102 @@
 
 # SWE-bench Lite: one model, all 300 tasks
 
+## Current reusable launch procedure (2026-09-24)
+
+This section supersedes the historical launch/recovery examples below. The current
+template is `configs/eval/swebench_lite.yaml`; the old scratch YAML remains the
+immutable historical campaign configuration. Do not resume that completed campaign
+under new source hashes.
+
+- One compatible Qwen3.6-27B rank-64 thinking LoRA at a time, pinned by HF revision.
+- **Up to 20 independent H100 NVL pods, four conversations each**, with 80 CPU
+  conversation slots and **32 simultaneous tool commands**. Start each ready pod
+  independently. Retry missing capacity; only after both ten minutes and five failures
+  try H200/RTX PRO 6000. Release idle pods independently. A small remaining queue
+  uses fewer pods. No per-adapter concurrency sweep.
+- The existing CPU passed two GPU-free 40/60/80-workload exercises. The final one
+  used the production file-lock admission gate: 526 real test commands, zero failed
+  commands/OOMs, minimum available RAM 177.58 GiB. This qualifies the tested workload
+  and host class, not every command a future model could invent. Keep resource caps,
+  descendant cleanup, memory/disk guards and separate 12-worker official grading.
+- H100 NVL remains the selected default. The 20-GPU end-to-end runtime/cost is **not
+  measured yet**. Four conversations are fixed; vLLM's eight allocated sequence slots
+  are serving capacity and do not launch eight benchmark conversations.
+
+On the prepared CPU, from `/srv/lasr/repo`:
+
+```bash
+uv run --project scratch/swebench_cpu_env --frozen python -m src.eval.run_eval \
+  --name swebench_mini --fleet --target ORG/LORA --budget-usd 180
+```
+
+This is the standard eval entrypoint using its CPU-only environment. `uv run evals`
+accepts the same flags wherever the main project environment is already installed.
+From Windows, add `--cpu-receipt PATH/receipt.json --cpu-key C:/Users/nikak/.ssh/msm_audit`
+and load the authorized local `.env` with uv's `--env-file`. The helper checks the
+Vast instance ID/label/deadline, resumes a stopped CPU within its existing authorized
+lifetime, refreshes the provider SSH endpoint, verifies the remote receipt and then
+submits. Unknown SSH host keys, expired CPU lifetime or missing infrastructure require
+repair/review. It never creates a host, extends expiry or copies credentials silently.
+
+`180` is a proposed **new-campaign maximum**, not a forecast, a charge or an increase
+to the completed campaign's budget. Pass the allowance authorized for that new run.
+At the observed $3.19/hour H100 quote plus 5% reserve, 20 pods for the full 150-minute
+emergency lifetime reserve $167.48. Earlier completion releases reservations; fallback
+cards can be refused when the remaining allowance is insufficient. Never reset the
+ledger or interpret rejected create reservations as invoices.
+
+The launcher serializes submissions, pins the model, creates a dated target directory,
+checks all CPU caches/readiness and the qualified recipe, and only then arms systemd.
+Repeat launches of a verified completed campaign do nothing. Active runs are protected
+from replacement. The service survives terminal disconnects and is enabled for the
+authorized job; automatic crash recovery preserves its budget, attempts and absolute
+deadline. Explicit stops remain stopped. A graceful SIGTERM is treated as a stop;
+reboot recovery after such a stop needs explicit review rather than silently overriding it.
+
+The supervisor allows at most four recovery cycles and three infrastructure attempts
+per task. Completed model failures are never rerolled. Rental expiry, the six-hour
+whole-job bound and the CPU expiry are separate safety limits, not ETAs. New tasks
+must fit their full 90-minute allowance plus cleanup; additional cycles drain remaining
+eligible tasks if budget and lifetime allow. Do not manually extend live rentals.
+
+HF snapshots are atomic, checked initially before rentals, and retried asynchronously
+from inference progress. Later backup failure does not cancel agents or prevent grading.
+After GPU teardown, official grading retries up to three times; publication retries
+for up to an hour within the job deadline. Completion requires HF result readback and
+hash verification of every rollout/result file, plus zero owned pods. Exhausted attempts,
+budget, lifetime, resource guards, persistent grading/Hub errors, incompatible LoRAs or
+ownership/key mismatches produce a saved actionable status. No chat scheduler is enabled.
+
+Inspect or stop using the generated `launch.yaml`:
+
+```bash
+scratch/swebench_cpu_env/.venv/bin/python -m src.eval.capabilities.swebench_mini.fleet status --config /srv/lasr/runs/RUN/launch.yaml
+scratch/swebench_cpu_env/.venv/bin/python -m src.eval.capabilities.swebench_mini.fleet stop --config /srv/lasr/runs/RUN/launch.yaml
+```
+
+Read `metadata/supervisor.json` for publication/terminal state and
+`metadata/final-accounting.json` for ledger versus delayed provider billing.
+CPU/storage/transfer charges remain separate. `metadata/cache-audit.json` records actual
+prefix hits and preemptions. The historical serving telemetry had 96.94% prefix hits,
+zero sampled-counter preemptions and maximum KV use 49.43%; that is not a 96.94% speedup.
+
+Prebuilt serving images remain an optional later optimization. Each GPU host still
+downloads image layers and weights; an image packages installation once instead of
+repeating it. The official vLLM 0.26.0 image has a `vllm serve` entrypoint incompatible
+with blindly passing this bootstrap's shell command. Do not switch it into the rental
+path without adapting/publishing the image and validating CUDA. The current Docker Hub
+read token supports pulls, not publishing a custom image. No new image or GPU tuning
+experiment is required for the reliable launch path above.
+
+Infrastructure qualification evidence (synthetic, never a model score):
+https://huggingface.co/datasets/dougalldeepmind/2026-09-24-swebench-lite-infrastructure.
+The recipe explicitly separates protocol/CPU/recovery qualification from a clean paid
+performance measurement. The first future authorized model run supplies the latter;
+do not buy a redundant full evaluation merely to rename the qualification flag.
+
+## Historical campaign and recovery record
+
 **Completion verified September 24, 2026:** the no-DA campaign now has 300 valid
 outcomes and 300 graded tasks, with 136 resolved (45.33%). All owned inference
 GPUs are terminated; the chat heartbeat remains paused. Final HF verification is

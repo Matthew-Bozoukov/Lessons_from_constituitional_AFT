@@ -1195,6 +1195,7 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
                        identity: str = "", eval: str | None = None,
                        revisions: dict[str, str] | None = None, terminate_at: str = "",
                        cuda_versions: str = "13.0",
+                       boot_deadline: float | None = None,
                        env: dict[str, str] | None = None,
                        on_provisioned: Callable[[str], None] | None = None) -> Pod:
     """Rent an inference pod holding vLLM + these targets' weights, and return it as data.
@@ -1239,9 +1240,15 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
         # Before the two blocking network waits below, not after: those can run for ten
         # minutes and the meter is already running.
         on_provisioned(pod_id)
-    ip, port = _ssh_endpoint(pod_id)
+    if boot_deadline is None:
+        ip, port = _ssh_endpoint(pod_id)
+        return Pod(id=pod_id, ip=ip, port=port,
+                   reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity))
+    def remaining(default):
+        return default if boot_deadline is None else max(1, min(default, int(boot_deadline - time.time())))
+    ip, port = _ssh_endpoint(pod_id, timeout_s=remaining(420))
     return Pod(id=pod_id, ip=ip, port=port,
-               reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity))
+               reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity, timeout_s=remaining(300)))
 
 
 def up(name: str, train: str | None = None, eval: str | None = None,

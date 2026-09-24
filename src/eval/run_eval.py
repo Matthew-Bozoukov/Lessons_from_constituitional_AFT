@@ -227,9 +227,34 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
                              "watch this eval process and terminate after publication or failure.")
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
+    parser.add_argument("--fleet", action="store_true", help="Submit one SWE-bench Lite target to its prepared CPU supervisor")
+    parser.add_argument("--cpu-receipt", help="Local Vast CPU receipt; refresh its SSH address and resume if stopped within its existing lifetime")
+    parser.add_argument("--cpu-key", help="SSH identity for the dedicated CPU host")
+    parser.add_argument("--budget-usd", type=float, help="Cumulative GPU spending backstop for this fleet campaign")
+    parser.add_argument("--target-revision", help="Optional exact HF target revision for the fleet")
+    parser.add_argument("--run-root", help="Existing campaign to resume, or a fresh absolute CPU-host run directory")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
+    if args.fleet:
+        if (args.name != 'swebench_mini' or len(args.target) != 1 or args.server or
+                args.no_push or args.terminate_pod or args.push_env or args.overrides or unknown):
+            parser.error('--fleet needs exactly one swebench_mini target, a fleet config, and no ordinary eval overrides')
+        if args.budget_usd is None or args.budget_usd <= 0:
+            parser.error('--fleet requires an explicit positive --budget-usd backstop')
+        command = ['launch', '--config', args.config or 'configs/eval/swebench_lite.yaml',
+                   '--target', args.target[0], '--budget-usd', str(args.budget_usd)]
+        if args.target_revision:
+            command += ['--target-revision', args.target_revision]
+        if args.run_root:
+            command += ['--root', args.run_root]
+        if args.cpu_receipt:
+            from src.eval.capabilities.swebench_mini.fleet_host import submit
+            return submit(args.cpu_receipt, args.cpu_key, command)
+        from src.eval.capabilities.swebench_mini.fleet import main as fleet_main
+        return fleet_main(command)
+    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.run_root)):
+        parser.error('CPU/fleet launch options require --fleet')
     if args.terminate_pod and not args.server:
         parser.error("--terminate-pod requires --server")
     if args.terminate_pod:

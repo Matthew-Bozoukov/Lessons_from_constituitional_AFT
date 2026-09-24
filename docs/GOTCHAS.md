@@ -3,6 +3,32 @@
 
 # GOTCHAS
 
+## SWE-bench fleet qualification and recovery boundaries (2026-09-24)
+
+- Count waiting conversations separately from active CPU commands. Four conversations
+  per GPU stay fixed; 80 CPU environments passed, but 80 simultaneous commands nearly
+  doubled median command duration. Use the qualified 32-command admission gate. A
+  file lock releases on process death; a hand-written persistent counter can leak slots.
+- Test the isolated agent environment, not just the coordinator. A psutil import in
+  shared admission code passed coordinator tests but broke real agent startup. Read
+  Linux MemAvailable directly there; do not drift the pinned model-client environment.
+- HF failure after initial readiness must not stop model generation. Durable local
+  state, atomic uploads and bounded final publication are separate concerns. A successful
+  upload response alone is weaker than final revision readback and file-hash verification.
+- Hard links do not freeze upstream files written in place. Snapshot files by copying,
+  with the task-state pointer protected by its lock, before uploading atomically.
+- Persistent recovery must record attempts/cycles, dollars and deadline before work.
+  Restarting cannot reset them. Only infrastructure-invalid work is eligible; completed
+  model failures and truncated responses are terminal. Stop/reboot semantics must be
+  explicit: this supervisor treats graceful SIGTERM as a stop, while crash recovery is automatic.
+- A complete 300-task run with historical resource/timeout fixes is not a clean uniform
+  fleet speed benchmark. CPU-only stress and synthetic gold-patch integration qualify
+  infrastructure without becoming model capability evidence.
+- A prebuilt image still has to be downloaded. The official vLLM image's server
+  ENTRYPOINT conflicts with a shell bootstrap unless adapted; do not assume a version
+  tag alone is a drop-in RunPod replacement. Keep the known serving bootstrap until
+  a digest-pinned image has been published and CUDA-qualified.
+
 ## Calibrated synthesis reviewers can still fail on generated prose (2026-09-21)
 
 In the constitution-only low-stakes smoke, a reviewer passed all short paired

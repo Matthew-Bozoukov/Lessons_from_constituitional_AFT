@@ -7,10 +7,12 @@ test -x scratch/swebench_cpu_env/.venv/bin/python
 test -f /srv/lasr/credentials.env
 cat > /etc/systemd/system/lasr-swebench-lite.service <<'UNIT'
 [Unit]
-Description=Full SWE-bench Lite no-DA control coordinator (explicit paid launch only)
+Description=Durable SWE-bench Lite supervisor (explicit paid launch only)
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
+StartLimitIntervalSec=3600
+StartLimitBurst=4
 
 [Service]
 Type=simple
@@ -19,13 +21,17 @@ Environment=PYTHONUNBUFFERED=1
 Environment=HF_HOME=/srv/lasr/cache/huggingface
 Environment=LITE_CONFIG=scratch/swebench_lite.yaml
 EnvironmentFile=/srv/lasr/lite-launch.env
-ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite ${LITE_ACTION} --config ${LITE_CONFIG} --budget-usd ${LITE_BUDGET_USD}
-Restart=no
+ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m src.eval.capabilities.swebench_mini.fleet ${LITE_ACTION} --config ${LITE_CONFIG} --budget-usd ${LITE_BUDGET_USD}
+Restart=on-failure
+RestartSec=30
 TimeoutStopSec=240
 KillMode=control-group
 LimitNOFILE=65536
 StandardOutput=append:/srv/lasr/runs/lite-coordinator.log
 StandardError=append:/srv/lasr/runs/lite-coordinator.log
+
+[Install]
+WantedBy=multi-user.target
 UNIT
 cat > /etc/systemd/system/lasr-swebench-gpu-reaper.service <<'UNIT'
 [Unit]
@@ -36,7 +42,7 @@ Type=oneshot
 WorkingDirectory=/srv/lasr/repo
 Environment=LITE_CONFIG=scratch/swebench_lite.yaml
 EnvironmentFile=/srv/lasr/lite-launch.env
-ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m scratch.swebench_lite guard --config ${LITE_CONFIG}
+ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m src.eval.capabilities.swebench_mini.fleet guard --config ${LITE_CONFIG}
 TimeoutStartSec=240
 UNIT
 cat > /etc/systemd/system/lasr-swebench-gpu-reaper.timer <<'UNIT'

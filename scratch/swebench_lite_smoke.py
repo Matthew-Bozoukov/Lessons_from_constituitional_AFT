@@ -19,7 +19,7 @@ from scratch.swebench_lite import grade
 
 
 def main():
-    cfg = OmegaConf.load('scratch/swebench_lite.yaml')
+    cfg = OmegaConf.load('configs/eval/swebench_lite.yaml')
     load_dotenv(cfg.credentials)
     cfg.root = '/srv/lasr/runs/lite-infrastructure-' + uuid.uuid4().hex[:10]
     root = Path(cfg.root)
@@ -107,7 +107,7 @@ def main():
               'generation_config': 'three deterministic bash tool calls; pinned mini-swe-agent 2.2.1',
               'schema': 'rollouts/: synthetic trajectory; results/: official gold grading; metadata/: pinned inputs',
               'provenance': 'python -m scratch.swebench_lite_smoke; not a model capability measurement'}
-    push_run_dir(root, repo, fields, front_matter={'tags': ['infrastructure-check', 'swebench-lite', 'synthetic']})
+    push_run_dir(root, repo, fields, atomic_commit=True, front_matter={'tags': ['infrastructure-check', 'swebench-lite', 'synthetic']})
     sha = hf_api().dataset_info(repo).sha
     assert read(hf_download(repo, 'results/infrastructure.json', repo_type='dataset', revision=sha)) == read(root / 'results/infrastructure.json')
     print(json.dumps({'status': 'passed', 'repo': repo, 'revision': sha, 'root': str(root)}), flush=True)

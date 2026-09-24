@@ -1,6 +1,56 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — Qualify the reusable Lite CPU and recovery path without inference GPUs
+
+**Question.** Can the prepared CPU support 20 independent H100 NVL replicas at
+the user's fixed four conversations each, and can future runs avoid manual
+recovery of known rental, backup and grading failures?
+
+**Method.** Two GPU-free load exercises on the existing 61-logical-CPU/197.93-GiB
+host, using six real repository test workloads in cached Docker images and separate
+Python agent-process overhead. The final exercise used the production cross-process
+tool gate, testing 40/60/80 concurrent environments plus 80 environments/32 commands.
+526 commands passed, zero cgroup OOMs, minimum available RAM 177.58 GiB. At 80/32,
+median execution was 3.55 seconds and p95 22.69 seconds; maximum admission wait was
+19.59 seconds. These are representative workloads, not exhaustive arbitrary-command
+safety or a paid model throughput measurement. Grading remains 12 workers.
+
+**Implementation.** Promote the proven scratch fleet into the existing SWE-bench
+package, retaining compatibility shims and standard `run_eval` serving. Add a
+single-target `--fleet` launch, receipted CPU resume/readiness, shared 32-command
+admission, a durable bounded supervisor, OOM and replica-health evidence, combined
+bootstrap timeout, grading/publication retries, final HF file-hash verification and
+separate conservative/provider/CPU cost reporting. Budget and attempts survive
+restarts; explicit stops and source/protocol drift remain gates. Rentals still go
+only through `src/infra/runpod.py`, with existing watchdog/reaper/provider expiry.
+The production template prefers up to 20 H100 NVLs with four workers each and delayed
+fallbacks; no GPU-count search is repeated for a compatible new adapter.
+
+**Validation.** 159 targeted offline tests passed, one skipped; the all-evaluation
+registry import test was deselected because the CPU driver intentionally lacks
+unrelated plotting dependencies. The isolated real-client transport test also passed.
+The synthetic integration traversed real mini-swe-agent, Docker, official grading,
+atomic HF publication/readback and production artifact hash verification (38 files).
+It exposed and fixed an unintended psutil dependency in the isolated agent; no
+model-client dependency pins changed. Synthetic reference-patch success is not a
+model capability score. Evidence and exact qualified sources:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-24-swebench-lite-infrastructure.
+
+**Cache evidence.** Historical vLLM counters across 26 replicas show 385,946,736 hits
+out of 398,122,793 prefix queries (96.94%), zero counter-delta preemptions and maximum
+sampled KV use 49.43%. Caching was already enabled; hit fraction is not time saved.
+
+**Limits/next use.** No inference GPU rentals for this work; the completed 136/300
+no-DA result remains unchanged. CPU expiry stays September 24 12:37 UTC and the chat
+heartbeat stays off. The selected 20-GPU fleet has CPU/recovery qualification but no
+uniform paid end-to-end speed/cost measurement. Keep the known serving bootstrap;
+a prebuilt image still downloads per host and needs registry publication and CUDA
+qualification before activation. New campaign budget is explicit (template maximum
+$180, not a forecast); the old campaign's ledger/cap are untouched. See the updated
+runbook and CPU-capacity audit for the launch command, bounded failure recovery and
+remaining cases needing human review.
+
 ## 2026-09-24 — Complete and verify the 300-task SWE-bench Lite no-DA control
 
 **Method.** Pinned Qwen3.6-27B no-DA adapter
