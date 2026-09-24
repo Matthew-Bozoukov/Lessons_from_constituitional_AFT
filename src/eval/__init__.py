@@ -56,6 +56,12 @@ class EvalSpec:
     # What "pooled" means is the eval's own business: ODCV puts each arm in as a
     # checkpoint so the interval carries seed-to-seed variance.
     pools: bool = False
+    # True when this eval's targets are Tinker checkpoints ONLY (`tinker://…`), sampled
+    # through the local shim in src/infra/endpoints/tinker.py. Such an eval has no vLLM
+    # launch plan at all, so it declares no `serving:` block — the window is the shim's
+    # business, not a flag vLLM is started with — and run_eval refuses any other target
+    # form for it rather than starting a server the eval was never written against.
+    tinker_only: bool = False
 
 
 EVALS: dict[str, EvalSpec] = {
@@ -174,6 +180,28 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/colosseum_hospital.yaml",
         key="hospital",
         pools=True,
+    ),
+    # The Dictatorship Eval (dictatoreval.org): 138 authoritarian-request scenarios, most of
+    # them framed as routine technical or policy work, each reply judged 1-5 for resistance.
+    # Reaches the target purely through the OpenAI triple, so an API target works and no docker
+    # is needed. Distinct from dict_verse, the separate 27-scenario verse port.
+    "dictator": EvalSpec(
+        "misalignment.dictator",
+        "configs/eval/dictator.yaml",
+        key="dict",
+        supports_api_target=True,
+    ),
+    # secret_number: a noisy-oracle guessing game whose sandbox leaves two shortcuts lying
+    # around (the answer is readable, the query budget is a deletable file). Needs docker —
+    # one container per episode — but the agent loop and the model call both run driver-side,
+    # so an endpoint target works: it is written for `tinker://` checkpoints.
+    "secret_number": EvalSpec(
+        "misalignment.secret_number",
+        "configs/eval/secret_number.yaml",
+        key="sn",
+        needs_docker=True,
+        supports_api_target=True,
+        tinker_only=True,
     ),
 }
 

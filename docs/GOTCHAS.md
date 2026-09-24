@@ -3,6 +3,17 @@
 
 # GOTCHAS
 
+## Reusable Lite CPU lifetime (2026-09-24)
+
+The CPU is now explicitly persistent: lifetime=persistent, stop_at=null, with an
+authorization timestamp. Missing expiry alone is never unlimited authorization.
+Per-GPU leases, budget and retry bounds still apply. The old local CPU expiry task
+was retired after both watchdog checks confirmed persistence. See the repository
+SWE-bench skill and docs/swebench_cpu_lifecycle.md for future launches.
+Vast VM proxy SSH can refuse connections while the direct mapped port works;
+resolve the direct mapping from fresh provider state, keeping SSH key validation.
+
+
 ## Lite cleanup after completed DA evaluation (2026-09-24)
 
 - Removing the chat monitor does not remove the CPU expiry guards. A later model
@@ -70,6 +81,35 @@ The previous crash tests completed mocked batches instantly and missed this inte
   ENTRYPOINT conflicts with a shell bootstrap unless adapted; do not assume a version
   tag alone is a drop-in RunPod replacement. Keep the known serving bootstrap until
   a digest-pinned image has been published and CUDA-qualified.
+## An exported API key silently outranks .env, and only fails after the spend (2026-09-23)
+
+`load_dotenv()` does not override a variable that is already set — deliberately, so a
+deliberate export wins (`src/infra/huggingface.py::hf_token`). The cost is that a STALE
+export in a shell profile also wins, invisibly, for the whole run. Four runs died to this
+in one session, each after it had paid for its GPU:
+
+- Three eval runs (MASK twice, ODCV once) finished every rollout and died at
+  `create_repo` with `403 Forbidden ... namespace "dougalldeepmind"`. The token in `.env`
+  was fine; an exported `HUGGINGFACE_API_KEY` from the shell profile was not. Note the
+  resolution ORDER: `hf_token()` reads `HUGGINGFACE_API_KEY` FIRST, then `HF_TOKEN`, so
+  passing `HF_TOKEN=...` on the command line does not fix it — that was tried and failed.
+- One MASK run reported honesty 100.0 for every archetype with `honest_1 = 0.0` AND
+  `unhonest_1 = 0.0`: an exhausted `OPENROUTER_API_KEY` (also exported, also stale) meant
+  the judge labelled nothing, and `100 - 0% dishonest` is not a score. A vacuous 100 looks
+  like a great result — check that honest+unhonest is non-zero before believing any judged
+  number.
+
+`uv run evals` now refuses up front (`credential_fault` / `_credentials_preflight` in
+`src/eval/run_eval.py`): it resolves the token and the key the RUN will use, checks Hub
+membership of `HF_ORG` and the OpenRouter balance, and prints
+`>>> credentials: hub=<user> org=<org> | openrouter=$<remaining>`. Do not judge a token by
+`auth.accessToken.role`: a fine-grained token reports `fineGrained` and creates datasets
+fine (verified).
+
+To fix a shell that has the stale values: `unset HUGGINGFACE_API_KEY HF_TOKEN
+OPENROUTER_API_KEY` so `.env` is used, or export the right ones. A run that already died
+this way does not need re-running — its rollouts and scores are on disk under
+`output/<eval>/<run>/`; push them with `push_run_dir` and the correct token.
 
 ## Calibrated synthesis reviewers can still fail on generated prose (2026-09-21)
 

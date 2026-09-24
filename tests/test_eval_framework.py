@@ -245,6 +245,10 @@ def test_every_eval_config_declares_its_context_window():
     from src.infra.endpoints.vllm import _EVAL_REQUIREMENT_KEYS
 
     for name, spec in EVALS.items():
+        if spec.tinker_only:
+            # A tinker-only eval is sampled through the Tinker shim; no vLLM server is
+            # started for it, so there is no launch plan for a serving: block to state.
+            continue
         cfg = OmegaConf.load(spec.config)
         window = OmegaConf.select(cfg, "serving.context_window")
         assert window and int(window) > 0, (
@@ -474,7 +478,8 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
     # (agentic_misalignment, swebench_mini, internalization).
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask"}
+        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask",
+        "dictator", "secret_number"}
 
 
 def test_publish_layout_contract(tmp_path):
@@ -596,3 +601,42 @@ def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommi
     with pytest.raises(SystemExit) as e:
         d.require_network_capacity(64, because="ODCV")
     assert "default-address-pools" in str(e.value) or True  # _fail exits with the remedy
+
+
+def who(name="matboz", role="write", orgs=("dougalldeepmind",)):
+    """An HfApi.whoami() payload, in the shape the preflight reads."""
+    return {"name": name, "auth": {"accessToken": {"role": role}},
+            "orgs": [{"name": o} for o in orgs]}
+
+
+def test_credentials_preflight_passes_a_token_that_can_publish():
+    from src.eval.run_eval import credential_fault
+    assert credential_fault(who(), "dougalldeepmind", 279.0) == ""
+
+
+def test_credentials_preflight_catches_the_stale_export_failures_of_20260923():
+    # Each of these cost a full run that had already paid for its GPU before the
+    # credential was first used (push at the end; judge after all generation).
+    from src.eval.run_eval import credential_fault
+
+    # A token whose user is not in the org: create_repo 403 at the push.
+    assert "not a member" in credential_fault(who(orgs=("someone-else",)), "dougalldeepmind", 10.0)
+    # An exhausted judge key: labels nothing, and the eval reports a vacuous 100.
+    assert "vacuous" in credential_fault(who(), "dougalldeepmind", -0.2)
+    # No usable Hub token at all.
+    assert "invalid or unset" in credential_fault(None, "dougalldeepmind", 10.0)
+
+
+def test_credentials_preflight_does_not_judge_a_token_by_its_role():
+    # A fine-grained token reports role "fineGrained" and still creates datasets
+    # (verified against the Hub, 2026-09-23); refusing on the role would block a token
+    # that works, which is worse than the failure this preflight exists to catch.
+    from src.eval.run_eval import credential_fault
+    assert credential_fault(who(role="fineGrained"), "dougalldeepmind", 10.0) == ""
+
+
+def test_credentials_preflight_is_silent_on_what_it_cannot_know():
+    from src.eval.run_eval import credential_fault
+    # Unknown OpenRouter balance is not a fault (the endpoint may be unreachable), and
+    # with --no-push there is no org to check membership against.
+    assert credential_fault(who(orgs=("other",)), "", None) == ""
