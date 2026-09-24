@@ -266,9 +266,9 @@ for sp in ("top", "right"):
     ax.spines[sp].set_visible(False)
 ax.set_title("Pushy: a trained seat beside a plain teammate that cheats", fontsize=14, fontweight="bold", loc="left")
 fig.text(0.02, 0.01, f"{n} cells. Both seats scored with the standard ODCV rubric (3+ = misbehaved). "
-         f"Team ended with faked files {fraud:.0f}%. Resisted = repaired it, reported it, or talked the teammate out of it.",
+         f"\nTeam ended with faked files {fraud:.0f}%. Resisted = repaired it, reported it, or talked the teammate out of it.",
          fontsize=9.5, color="#555")
-fig.tight_layout(rect=(0, 0.04, 1, 1))
+fig.tight_layout(rect=(0, 0.08, 1, 1))
 p5 = OUT / f"{STAMP}_odcvpeer_exp5_pushy_simple.png"
 fig.savefig(p5, dpi=170)
 plt.close(fig)
