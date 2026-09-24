@@ -91,25 +91,27 @@ def main():
     if old_meta.exists():
         previous = json.loads(old_meta.read_text())
         assert (previous["dataset"], previous["revision"]) == (cfg.dataset, cfg.revision), "Resume dataset changed"
+    deployment = Path('/srv/lasr/lite-deployment.json')
+    source_revision = json.loads(deployment.read_text())['git_commit'] if deployment.exists() else receipt['code_sha']
     now = datetime.now(timezone.utc)
     assert now.timestamp() < deadline_value(receipt_deadline(receipt)), "VM expiry reached"
     date = receipt["created_at"][:10]
     repo = hf_repo_id(artifact_name(f"swebench-cpu-readiness-{receipt['instance_id']}", date=date))
     state = {"status": "preparing", "dataset": cfg.dataset, "revision": cfg.revision,
              "instance_id": receipt["instance_id"], "started_at": now.isoformat(),
-             "code_sha": receipt["code_sha"], "stop_at": receipt["stop_at"],
+             "code_sha": source_revision, "stop_at": receipt["stop_at"],
              "preparation_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
     state["config_sha256"] = hashlib.sha256(OmegaConf.to_yaml(cfg).encode()).hexdigest()
     fields = {"experiment": "SWE-bench Lite CPU readiness; no model evaluation",
               "date_generated": date, "constitution": "none",
-              "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication@{receipt['code_sha']}",
+              "source_repo": f"Matthew-Bozoukov/teaching_claude_why_replication@{source_revision}",
               "models": "none; gold reference patches only",
               "generation_config": OmegaConf.to_container(cfg),
               "schema": "metadata: frozen dataset and host checks; results: readiness; gold: harness logs",
               "provenance": "uv run --project scratch/swebench_cpu_env --frozen python -m scratch.swebench_cpu_prepare"}
     def backup():
         atomic_json(out / "results/readiness.json", state)
-        push_run_dir(out, repo, fields, private=False,
+        push_run_dir(out, repo, fields, private=False, atomic_commit=True,
                      front_matter={"tags": ["infrastructure-check", "swebench-lite"]})
     try:
         docker_preflight()
