@@ -1,0 +1,61 @@
+# ABOUTME: Fleet plan, 2026-09-24: the matched control for da-multiparty-15, plain difficult advice at 15% on the same
+# ABOUTME: spec-filtered base (da-15, trained 2026-09-23), E1 harness, self-sacrificial, six pods of five seeds (1-30).
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-24_fleet_da15_control.yaml
+#
+# Same config, peer and seeds as the 2026-09-14 E1 cells, the 2026-09-15 da7 / t10 cells and the 2026-09-18
+# delib-7 cell, on this branch's harness (the trait branch's, simulation framing still in the prompt).
+# The arm is dougalldeepmind/2026-09-23-qwen36-0-da-15 @ 470934c4: Qwen3.6-27B, seed 0, trained
+# 2026-09-23 on dougalldeepmind/2026-09-23-da-15-mix @ c0b20bbd (the same spec-filtered nosynth blend
+# with a 15% slice of the standard difficult-advice corpus): the multi-party arm with only the corpus changed.
+# The most recent new-data-arm precedent (t10, 2026-09-15) ran beside its matched DA control the same way. Both coalition seats hold the arm; the seven
+# other seats hold the E1 peer, as in every other cell. The fleet terminates each pod once its runs are pulled.
+# rent_attempts is raised from the default 3: RunPod's create endpoint returned 500s on 2026-09-23.
+# SIX pods of five seeds, not two of fifteen, for wall-clock time only (the owner, 2026-09-24: results soon,
+# pods are not the constraint). Seeds, config and peer are unchanged; fewer shifts share each server.
+date: "2026-09-24"
+branch: kn/hospital-da-multiparty-15
+out_root: output/colosseum_hospital/2026-09-24
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+rent_attempts: 6
+pods:
+  - name: kunwar-h24-da15-a
+    group: fixed
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:1-5"]
+    cap_h: 2.5
+  - name: kunwar-h24-da15-b
+    group: fixed
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:6-10"]
+    cap_h: 2.5
+  - name: kunwar-h24-da15-c
+    group: fixed
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:11-15"]
+    cap_h: 2.5
+  - name: kunwar-h24-da15-d
+    group: fixed
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:16-20"]
+    cap_h: 2.5
+  - name: kunwar-h24-da15-e
+    group: fixed
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:21-25"]
+    cap_h: 2.5
+  - name: kunwar-h24-da15-f
+    group: fixed
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:26-30"]
+    cap_h: 2.5

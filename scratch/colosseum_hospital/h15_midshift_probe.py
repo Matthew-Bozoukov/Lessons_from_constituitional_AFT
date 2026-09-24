@@ -91,6 +91,12 @@ ARMS = {
         "multi-agent principle 10 (nosynth base)",
         "dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7",
     ),
+    "mp15": (
+        MERGED / f"2026-09-24_{_SS}_qwen36_difficult_advice_multiparty_15_fixed",
+        ENV / "2026-09-24_fixed",
+        "multi-party difficult advice (15%, spec-filtered nosynth base)",
+        "dougalldeepmind/2026-09-23-qwen36-0-da-multiparty-15",
+    ),
 }
 PAIR_SEAT, BYSTANDER_SEAT = "Resource_Provisioner", "St_Marys_Center_Triage"
 ALIAS: dict[
