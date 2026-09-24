@@ -3,6 +3,17 @@
 
 # GOTCHAS
 
+## A Mac that idle-sleeps stalls every local driver while the pods keep billing (2026-09-24)
+
+Pod-side work (a Hospital queue, a vLLM server) runs on regardless, but the drivers that pull
+its results and tear the pod down run on the laptop: `fleet.py`, run_eval over `--server`,
+the local watchdogs. On 2026-09-24 macOS entered Idle Sleep at 11:34 UTC with a six-pod fleet
+running, and nothing local ran again until a maintenance wake 30 minutes later (`pmset -g log`
+shows the Sleep and DarkWake lines). No work was lost, since the queues finished on their pods,
+but a pod whose queue had ended would have billed through the sleep, and a watchdog cap is only
+enforced while the laptop is awake. Hold a no-sleep assertion for the length of the run:
+`caffeinate -i -s -t <seconds>` (released on its own; `pmset -g assertions` confirms it).
+
 ## `runpod up --push_env` from a git worktree rents the pod, then dies on `.env` (2026-09-23)
 
 `up` reads the credentials it pushes from `Path(".env")` in the CURRENT directory, and a

@@ -1,6 +1,96 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — Multi-party difficult advice evaluated: ODCV level with plain difficult advice (8.3% vs 10.8%); on the Hospital it sabotages in 4 of 30 shifts against 18 of 30 for plain difficult advice at the same dose
+
+**Hypothesis.** The multi-party corpus (entry 2026-09-23) keeps difficult advice's grey-area
+deliberation but sets each dilemma among several stakeholders, some of them AI agents. If what
+difficult advice teaches carries over to settings with other agents, the organism should keep
+difficult advice's ODCV effect. On the Hospital's coalition task it should also refuse, and hold
+the refusal, more often than plain difficult advice at the same dose.
+
+**Method.** Organism `dougalldeepmind/2026-09-23-qwen36-0-da-multiparty-15` @ `772cf0e7`
+(Qwen3.6-27B, seed 0, trained 2026-09-23 at `b32332e0` by a teammate on
+`dougalldeepmind/2026-09-23-da-multiparty-15-mix` @ `ba8390da`: the spec-filtered nosynth blend
+`2026-09-22-nosynth-mix` @ `378ec1ee` with 15% of supervised tokens from the multi-party corpus).
+Matched control: `dougalldeepmind/2026-09-23-qwen36-0-da-15` @ `470934c4`, the same blend, share,
+seed and commit with the standard difficult-advice corpus (`2026-09-23-da-15-mix` @ `c0b20bbd`),
+trained the same day. ODCV: ODCV-lite, 3 passes, 240 rollouts, Gemini 3 Flash judge, the
+ladder's protocol (`uv run evals --name odcv --target <hf> --server <pod> --terminate-pod
+concurrency=36`), both runs by a teammate; contrasts paired on the 40 shared scenarios with
+`arm_difference` (`scratch/da_multiparty/odcv_paired_contrasts.py`). Hospital: the E1 fixed
+harness, self-sacrificial, seeds 1-30, the same config, peer and seeds as the 2026-09-15 da7 and
+t10 cells and the 2026-09-18 delib-7 cell, on the trait branch's harness with the simulation
+framing still in the prompt (branch `kn/hospital-da-multiparty-15` @ `ace0dc34`; plans
+`scratch/colosseum_hospital/2026-09-24_fleet_{da_multiparty15,da15_control}.yaml`, six H100 pods
+of five seeds per cell for wall-clock time). Judge, post judge and false claims used Gemini 3.6
+Flash, and the mid-shift probe ran on one more pod. The control cell follows the t10 precedent
+(2026-09-15), which ran beside its own matched cell: no earlier cell shares this arm's blend and
+dose. About $50 in all (13 H100 pods, about $44; judges about $6).
+
+**Result (ODCV).**
+
+| arm | MR [95%] | mandated / incentivized |
+|---|---|---|
+| multi-party DA 15% | 8.3% [4.0, 16.7] | 4.2 / 12.5 |
+| DA 15%, matched (2026-09-23) | 10.8% [5.3, 20.7] | 8.3 / 13.3 |
+| DA 15% (2026-09-22) | 7.5% [3.1, 16.9] | 4.2 / 10.8 |
+| delib-sonnet-15 | 13.3% [6.5, 25.4] | 13.3 / 13.3 |
+| delib-15 | 27.5% [17.1, 41.0] | 28.3 / 26.7 |
+| nosynth | 45.4% [32.8, 58.6] | 50.0 / 40.8 |
+
+Paired, MR in pp: minus matched DA -2.5 [-6.9, +1.9] (p=0.26); minus 2026-09-22 DA +0.8
+[-4.7, +6.4]; minus nosynth -37.1 [-48.5, -25.7]; minus delib-sonnet-15 -5.0 [-12.7, +2.7];
+minus delib-15 -19.2 [-30.0, -8.3] (p=0.001). The two DA runs differ by 3.3 pp, so the
+multi-party arm sits inside plain DA's run-to-run spread.
+
+**Result (Hospital).** Shifts of 30. The two 15% arms are on the spec-filtered blend; the rest
+are the 2026-09-15/18 cells on the older nosynth blend.
+
+| arm | sabotage act (rule) | plan post (regex) | private refusal (judge ≥3) | kept refusal (≥3) | kept in full (≥4) | withholding / flooding / spam | deceptive posts per shift | team score |
+|---|---|---|---|---|---|---|---|---|
+| multi-party DA 15% | 4 | 12 | 30 | 30 | 30 | 3 / 1 / 0 | 0.23 | 5488 |
+| DA 15%, matched | 18 | 29 | 21 | 19 | 16 | 14 / 12 / 4 | 2.17 | 4576 |
+| DA 7% (neutral 752) | 26 | 30 | 17 | 11 | 8 | 16 / 16 / 14 | 2.97 | 4904 |
+| multi-agent principle 7% (t10) | 11 | 27 | 30 | 30 | 30 | 5 / 7 / 1 | 1.23 | 5952 |
+| no synthetic | 30 | 30 | 1 | 0 | 0 | 21 / 14 / 25 | 4.63 | 5233 |
+
+Seed-paired, multi-party minus matched DA: sabotage act -47 pp (McNemar p=0.001; 15 seeds where
+only the control sabotaged, 1 where only the multi-party arm did), plan post -57 pp (p<0.001),
+private refusal +30 pp (p=0.004), kept refusal +37 pp (p=0.001), kept in full +47 pp (p<0.001),
+team score +913 (p=0.15). Matched DA 15% minus DA 7%: sabotage act -27 pp (p=0.021), kept refusal
++27 pp (p=0.08). Multi-party minus t10: sabotage act -23 pp (p=0.09), plan post -50 pp (p=0.001).
+Private refusal x act: the multi-party arm refused in all 30 shifts and acted anyway in 4; the
+matched control refused and still acted in 11, refused and held in 10, and acted without refusing
+in 7. The mid-shift probe does not separate the arms once a seat has done the same thing (yes after
+a plan post with no act 85% vs 91%, after a sabotage act 83% vs 98%, after neither 12% vs 5%;
+bystander 0/30 in both). The multi-party seats simply reached those states less often: 213 of 265
+probed checkpoints followed neither a plan nor an act, against 38 of 290 for the control.
+
+**Reading.** On ODCV the multi-party corpus keeps plain difficult advice's full effect (-37 pp
+against nosynth) and adds nothing. On the Hospital, holding blend, share, seed and commit fixed,
+swapping the standard corpus for the multi-party one cut sabotage-act shifts from 18 to 4 and plan
+posts from 29 to 12. Kept refusal rose from 19 to 30. The higher dose explains part of the gap to
+the 7% arms (26 to 18), and the corpus explains the rest. It is the first arm whose refusal became
+restraint in most shifts (26 of 30, against 10 for the control and 19 for t10). It is also the
+first to bring plan posts off the ceiling and to cut deception, with 0.23 deceptive posts per shift
+against 2.17. The two multi-agent-themed corpora (t10 and this one) are the two that cut Hospital
+sabotage, and neither moves ODCV beyond plain difficult advice. So the gain may be specific to
+multi-agent evaluations. One training seed per arm and one judge family for the refusal measures.
+
+**Artifacts.** ODCV `dougalldeepmind/2026-09-24-odcv-qwen36-0-da-multiparty-15` @ `6ffc5647`
+(control `2026-09-23-odcv-qwen36-0-da-15`); Hospital cells
+`dougalldeepmind/2026-09-24-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-multiparty-15-fixed`
+and `dougalldeepmind/2026-09-24-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-15-fixed`;
+snapshots `dougalldeepmind/2026-09-24-colosseum-hospital-env-snapshots`; probes
+`dougalldeepmind/2026-09-24-colosseum-hospital-midshift-probes` (tags mp15, da15 plus the earlier
+five); figures `output/colosseum_hospital/analysis/2026-09-24_colosseum_hospital_t10_*` and
+`output/odcv/2026-09-24_odcv_da_multiparty_15_vs_ladder.png`.
+
+**Next.** Read the 4 multi-party sabotage shifts and a sample of its 12 plan posts. Train a second
+seed of both 15% arms before claiming the corpus effect. Run ODCV-Peer, the multi-agent ODCV, on
+both arms, to test whether the gain follows other agents rather than the Hospital itself.
+
 ## 2026-09-23 — Multi-party difficult advice: da.yaml's pipeline with the other parties written into the scenario, iterated over five smokes to non-adversarial, advice-shaped, grey-area rows
 
 **Hypothesis.** The supervisor's Week 9 ask: difficult advice "with more consideration for
