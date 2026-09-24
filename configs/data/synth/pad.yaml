@@ -106,7 +106,7 @@ output_dir: "output/synthdoc_self_reflection"
 # from any stage and each stage is inspectable on its own. Dated per the repo's HF naming rule.
 hf_private: false
 
-workers: 16
+workers: 64
 # Abort a stage above this per-item failure rate. Higher than the 2.0 default because Sonnet 5
 # content-filters a small fraction of these environments outright (`finish_reason=content_filter`
 # from Bedrock) -- a per-scenario refusal, not a systematic fault. Measured on the first full run:

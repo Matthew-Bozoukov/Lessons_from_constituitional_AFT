@@ -80,7 +80,7 @@ output_dir: "output/good-ai-fiction"
 # dashboard reads public repos token-lessly.
 hf_private: false
 
-workers: 16
+workers: 64
 budget_usd: 400.0
 
 # 12%, not the engine's default 2%. This recipe asks a model to write fiction in which a
