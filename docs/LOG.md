@@ -1,6 +1,38 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — DA SWE-bench Lite complete: 134/300 versus control 136/300
+
+**Result.** The pinned September 23 DA-15 adapter has 300 valid, officially graded
+outcomes and resolves 134/300 (44.67%). The verified matched no-DA control resolves
+136/300 (45.33%): DA is lower by two tasks, or 0.67 percentage points. Paired outcomes
+are 112 solved by both, 22 DA-only and 24 control-only. One run per model, with the
+documented operational changes, does not establish a capability degradation.
+
+**Completion evidence.** All 261 pre-recovery outcomes were preserved exactly.
+The remaining 39 yielded 17 additional solves. Final outcome types are 192 submitted,
+105 limit exits and three context-window exits, with no model rerolls. The official
+harness reported zero errors. All owned GPUs were verified gone; all 4,867 rollout
+and result files passed HF hash verification. Final evidence and result readback:
+`dougalldeepmind/2026-09-24-swebench-qwen36-0-da-15@1ae295a5e9063d84687d09e5868e1b164b894d59`,
+`metadata/final-verification-20260924.json`. Control revision:
+`e3270863ea29fb78cc3e58fd5860347d8dd317a2` in its September 23 dataset.
+
+**Time / cost.** Recovery service ran 09:04:12–10:33:04 UTC (88m52s); last model
+task ended 10:29:10, last GPU 10:29:18, supervisor publication verified 10:32:58.
+Recovery rented 12 pods cumulatively including failed/replacement startups, never
+more than ten concurrently. Its elapsed-price GPU estimate is $13.69. Whole-campaign
+conservative GPU accounting is $76.42; provider billing currently records $67.07
+and is still incomplete/delayed, so that is not a final invoice. CPU quote through
+the 10:44 verification is $4.57, including intervening idle time and excluding prior
+preparation, later retention and separately unverified storage/transfer charges.
+
+**Limits / lifecycle.** Retain both declared requests no-fix passes and the local
+HTTPBin grading fixture caveat. This resumed mixed fleet is not a clean uniform-fleet
+runtime benchmark. The progress heartbeat is paused after verified completion. CPU
+disk/cache remain intact and its original 12:37 UTC stop is unchanged. A new model
+evaluation needs a new request; there is no unfinished inference or grading here.
+
 ## 2026-09-24 — Repair DA Lite scheduling after incomplete overnight run
 
 **Finding.** The DA campaign stopped with 261 valid/graded outcomes (117 resolved)

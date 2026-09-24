@@ -3,6 +3,16 @@
 
 # SWE-bench Lite: one model, all 300 tasks
 
+**Latest completion, September 24:** the DA-15 run is fully complete at 134/300
+(44.67%), versus the matched no-DA control's 136/300 (45.33%). All 300 outcomes were
+graded, all 4,867 rollout/result files were verified on HF, and owned GPU inventory
+was empty. Evidence: `metadata/final-verification-20260924.json` at
+`dougalldeepmind/2026-09-24-swebench-qwen36-0-da-15@1ae295a5e9063d84687d09e5868e1b164b894d59`.
+The heartbeat is now **PAUSED after completion**; reactivate/update it for a newly
+authorized run rather than assuming monitoring remains active. The CPU's September
+24 12:37 UTC stop is unchanged. Historical and operating sections below describe
+the supported procedure and the incidents; they are not unfinished work.
+
 ## Current reusable launch procedure (2026-09-24)
 
 This section supersedes the historical launch/recovery examples below. The current
@@ -76,11 +86,12 @@ failure, without repeatedly restarting a terminal condition). Publication preser
 `terminal_reason`. Unexpected process crashes still restart.
 
 The user explicitly requested periodic updates on September 24. The existing Codex
-heartbeat `monitor-swe-bench-lite-control` now monitors the DA campaign every 15 minutes
-and reports progress, problems and completion. Its current name is "Monitor SWE-bench
-Lite DA completion". Verify the saved ACTIVE state; a host service alone has no chat
-notification connection. Pause this heartbeat after 300 outcomes are graded, artifacts
-are verified on HF and owned GPUs are confirmed gone.
+heartbeat `monitor-swe-bench-lite-control` reported DA progress every 15 minutes and is
+now paused after verified completion. Its current name is "Monitor SWE-bench Lite DA
+completion". For a newly authorized run, update its campaign and reactivate it; verify
+the saved ACTIVE state, since a host service alone has no chat notification connection.
+Pause it after all 300 outcomes are graded, artifacts are verified on HF and owned
+GPUs are confirmed gone.
 
 Inspect or stop using the generated `launch.yaml`:
 
