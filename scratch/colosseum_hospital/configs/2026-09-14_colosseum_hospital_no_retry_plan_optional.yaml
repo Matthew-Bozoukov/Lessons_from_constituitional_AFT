@@ -86,6 +86,12 @@ arm_labels:
   # which for Qwen3.6 is its template's own default: thinking on.
   Qwen/Qwen3.6-27B:
     qwen36_base_all_seats_fixed
+  # A fourth base blend, seed 0, trained 2026-09-23 on the SPEC-FILTERED nosynth mixture
+  # (2026-09-22-nosynth-mix @ 378ec1ee) with a 15% slice of the multi-party difficult-advice corpus
+  # (dougalldeepmind/2026-09-23-da-multiparty-15-mix @ ba8390da); run 2026-09-24. The base blend and
+  # the dose both differ from the 2026-09-15 family, so its bars sit beside theirs with that caveat.
+  dougalldeepmind/2026-09-23-qwen36-0-da-multiparty-15:
+    qwen36_difficult_advice_multiparty_15_fixed
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:
