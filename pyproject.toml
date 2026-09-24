@@ -60,7 +60,7 @@ dependencies = [
     # vllm 0.26's numba pins numpy<2.5; the analysis code needs nothing newer.
     "numpy>=2.2,<2.5",
     "omegaconf>=2.3.1",
-    "openai>=2.48.0",
+    "openai>=3.1",
     "pandas>=3.0.5",
     "plotly>=6.9.0",
     "pyarrow>=25.0.0",
@@ -88,6 +88,7 @@ dependencies = [
     "anthropic>=0.120.2",
     "inspect-ai>=0.3.261",
     "inspect-evals[swe-bench]>=0.21.0",
+    "swebench>=3.0.15,<5",
 ]
 
 
