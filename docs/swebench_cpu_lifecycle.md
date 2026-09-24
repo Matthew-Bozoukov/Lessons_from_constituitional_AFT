@@ -71,7 +71,10 @@ receipts, preserving the old receipt. `expire --stop-at ISO_UTC` is the optional
 finite-lifetime mode. Both refuse changes during active inference. Deploy the updated
 watchdog first; update any other local receipt used by an external expiry task too.
 The watchdog still bounds failed initial SSH setup, including persistent hosts.
-Run both guest and external `--check` afterward. Null without explicit persistent
+Run guest and any installed external `--check` afterward. The original Windows
+expiry task was removed after persistence was verified; the guest check remains
+enabled and does not stop an authorized persistent host. Reinstall an external
+backstop if selecting finite expiry later. Null without explicit persistent
 authorization is invalid; do not simulate persistence with a far-future date.
 
 ## Cold preparation: agent-operated, no GPU rental
@@ -119,6 +122,16 @@ must carry out these steps when its registry is empty, without requiring old his
    Keep it stopped until an actual model request. Qualify the host and source with
    the commands below. Failed qualification leaves CPU not ready, never bypass
    guards. Register the successful host and show price, SSH and persistent state.
+
+## Long-lived fixture maintenance
+
+Before a later run, the local HTTPBin certificate must have >24 hours remaining.
+If expired/near expiry, while no model or grader is active, archive the fixture
+metadata/certificate, verify ownership before removing only that fixture container,
+and move its cert/key into a root-only archive outside result artifacts. Rerun CPU
+preparation to generate a new certificate, repeat gold/no-fix checks and HF readback,
+then requalify shell/recipe against the new readiness. Preserve every historical
+campaign's copied certificate and manifests. Never disable TLS verification.
 
 ## Qualification on a new host or changed implementation
 

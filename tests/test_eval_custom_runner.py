@@ -54,6 +54,7 @@ def test_custom_runner_keeps_shared_lifecycle_and_metadata(monkeypatch, tmp_path
         events.append("publish")
         return "https://huggingface.co/datasets/" + repo
 
+    monkeypatch.setattr(run_eval, "_credentials_preflight", lambda **kwargs: None)
     monkeypatch.setattr(run_eval, "VllmServer", Server)
     def resolve_pinned(target, **kwargs):
         assert kwargs == ({"revision": revision} if revision else {})
