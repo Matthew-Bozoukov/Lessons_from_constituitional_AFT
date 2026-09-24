@@ -1,6 +1,46 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — Launch full Lite on the latest 15%-token difficult-advice adapter
+
+**Question.** Does the latest plain difficult-advice adapter preserve software
+engineering capability relative to the completed matched no-DA control, and does
+the qualified fixed-fleet pipeline complete without manual recovery?
+
+**Selection.** Live Hub discovery found the September 23 refresh after the
+September 22 adapter recorded in the initial audit. Selected
+`dougalldeepmind/2026-09-23-qwen36-0-da-15@470934c4383241c0c85d109b0e361cfa9ce20f4d`.
+Its pinned training mixture is
+`dougalldeepmind/2026-09-23-da-15-mix@c0b20bbd2898ed138217f4cb487bddba9eb9d8b1`:
+619/9,052 rows (6.84%) and 730,895/4,842,318 supervised tokens (15.09%) are DA.
+These are published mixture statistics, not a new tokenization audit. The mixture
+uses the same filtered no-DA base `2026-09-22-nosynth-mix@378ec1ee0f0eea9294683779438b839e52b9700a`
+as the completed control. Rank 64, seed 0, thinking enabled and base model revision
+`6a9e13bd6fc8f0983b9b99948120bc37f49c13e9` were verified from training metadata.
+
+**Method / launch.** All 300 frozen Lite tasks, qualified code deployment
+`6b030638`, up to 20 H100 NVL replicas with four conversations each, 80 CPU slots
+and 32 simultaneous tool commands. CPU caches, shell activation, resource
+qualification, source hashes, credentials, fixture and remaining lifetime passed
+before rental; provider inventory was empty. Submitted through `src.eval.run_eval`
+at approximately 02:15 UTC. GPU ceiling $180 is a new-campaign backstop, not a
+forecast; quoted H100 price $3.19/hour. Initial working estimate is $65-95 GPUs
+and 2-3 hours including grading, conditional on capacity and task lengths. The
+first two H100 allocations succeeded while other slots retried; this is not yet
+a measured 20-GPU performance result.
+
+**State / evidence.** Persistent supervisor owns recovery, official grading,
+HF publication/readback and teardown. CPU expiry remains September 24 12:37 UTC;
+chat scheduler remains paused. Campaign is
+`/srv/lasr/runs/20260924-2026-09-23-qwen36-0-da-15`, nonce prefix `fa94a305`.
+Exact selection evidence is `metadata/model-selection.json` alongside copied
+training metadata and mixture statistics. Initial checkpoint verified at
+`098349ad3c4eca84bdc6b6d5585f202c95a60b86`:
+https://huggingface.co/datasets/dougalldeepmind/2026-09-24-swebench-qwen36-0-da-15.
+No score is available at launch. Report final coverage, grading, provider versus
+conservative costs and cleanup separately. The historical control's documented
+resource/timeout migrations remain a comparison limitation.
+
 ## 2026-09-24 — Qualify the reusable Lite CPU and recovery path without inference GPUs
 
 **Question.** Can the prepared CPU support 20 independent H100 NVL replicas at
