@@ -14,6 +14,12 @@ from src.eval.misalignment.odcv.passes import audit_pass, combine_passes
 MK = "mk"
 
 
+def _tx(text: str) -> str:
+    """A minimal REAL transcript: one assistant turn carrying `text`. audit_pass counts a
+    transcript with no assistant turn as a shell (2026-09-24), so the fakes must have one."""
+    return f"== Step 1 ==\nrole: assistant\ncontent: {text}\n"
+
+
 def make_pass(root: Path, name: str, cells, manifest: bool = True) -> Path:
     """Build a fake pass dir. cells = [(variant, scenario, transcript_text_or_None)]."""
     d = root / name
@@ -24,7 +30,8 @@ def make_pass(root: Path, name: str, cells, manifest: bool = True) -> Path:
         scen_dir = d / "agent_logs" / f"{MK}-{variant}" / "experiments" / scen
         scen_dir.mkdir(parents=True, exist_ok=True)
         if text is not None:
-            (scen_dir / "messages_record.txt").write_text(text)
+            # "" stays a zero-byte file: the empty-transcript failure these tests exist for
+            (scen_dir / "messages_record.txt").write_text(_tx(text) if text else text)
     if manifest:
         (d / "rollout_manifest.json").write_text(json.dumps({
             "n_scenarios": len(cells),
@@ -67,8 +74,8 @@ def test_combine_passes_builds_rollout_layout_and_skips_empty(tmp_path):
     manifest = combine_passes([p1, p2], out, MK)
 
     rec = out / "agent_logs" / f"{MK}-mandated" / "experiments" / "S1"
-    assert (rec / "rollout_000" / "messages_record.txt").read_text() == "a"
-    assert (rec / "rollout_001" / "messages_record.txt").read_text() == "c"
+    assert (rec / "rollout_000" / "messages_record.txt").read_text() == _tx("a")
+    assert (rec / "rollout_001" / "messages_record.txt").read_text() == _tx("c")
     # p2's empty S2 must NOT be copied — the judge would score it as a clean rollout.
     s2 = out / "agent_logs" / f"{MK}-incentivized" / "experiments" / "S2"
     assert (s2 / "rollout_000").is_dir() and not (s2 / "rollout_001").exists()
@@ -96,7 +103,7 @@ class FakeRollout:
             self.resumed.append(d.name)
             if self.heal_on_resume:  # write the missing transcript
                 scen = d / "agent_logs" / f"{MK}-incentivized" / "experiments" / "S2"
-                (scen / "messages_record.txt").write_text("healed")
+                (scen / "messages_record.txt").write_text(_tx("healed"))
             return d
         idx = self.fresh
         self.fresh += 1
@@ -147,9 +154,9 @@ def test_runner_retries_dirty_pass_once_and_keeps_it_when_healed(runner_env):
     # Published layout: every transcript exactly once under rollouts/<variant>/<Scenario>/
     # pass<N>/, judge outputs under results/, provenance under metadata/, working tree gone.
     assert (tmp_path / "rollouts" / "mandated" / "S1" / "pass1"
-            / "messages_record.txt").read_text() == "x"
+            / "messages_record.txt").read_text() == _tx("x")
     healed = tmp_path / "rollouts" / "incentivized" / "S2" / "pass2"
-    assert (healed / "messages_record.txt").read_text() == "healed"
+    assert (healed / "messages_record.txt").read_text() == _tx("healed")
     meta = json.loads((healed / "cell_meta.json").read_text())
     assert meta["judged"] and meta["pass"] == 2 and meta["transcript_bytes"] > 0
     assert json.loads((tmp_path / "results" / "results.json").read_text()) == {"mr": 0.1}
@@ -198,3 +205,19 @@ def test_runner_keeps_going_when_every_pass_has_holes(runner_env):
     assert all(a["kept"] and not a["clean"] for a in summary["audits"])
     assert all(a["missing_cells"] == 1 for a in summary["audits"])
     assert (tmp_path / "rollouts").is_dir()
+
+
+def test_audit_pass_counts_a_prompt_only_transcript_as_missing(tmp_path):
+    """A shell written against a dead endpoint (prompts, no assistant turn) is not a rollout:
+    the pass is not clean and resumes it (2026-09-24)."""
+    run = tmp_path / "pass"
+    for name, body in (("A", "== Step 1 ==\nrole: system\ncontent: x\n== Step 3 ==\nrole: assistant\ncontent: y\n"),
+                       ("B", "== Step 1 ==\nrole: system\ncontent: x\n== Step 2 ==\nrole: user\ncontent: go\n")):
+        d = run / "agent_logs" / "k-mandated" / "experiments" / name
+        d.mkdir(parents=True)
+        (d / "messages_record.txt").write_text(body)
+    (run / "rollout_manifest.json").write_text(json.dumps(
+        {"n_scenarios": 2, "results": [{"status": "ok"}, {"status": "ok"}]}))
+    a = audit_pass(run)
+    assert a["transcripts_nonempty"] == 2 and a["transcripts_real"] == 1 and a["shell_transcripts"] == 1
+    assert a["missing_cells"] == 1 and a["clean"] is False

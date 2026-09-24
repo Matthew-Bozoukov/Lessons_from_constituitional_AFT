@@ -27,6 +27,15 @@ from src.eval.misalignment.odcv.odcv import VARIANTS
 from src.utils import write_run_meta
 
 
+def _has_assistant_turn(path: Path) -> bool:
+    """True when the rendered transcript holds at least one assistant turn."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            return any(line.startswith("role: assistant") for line in f)
+    except OSError:
+        return False
+
+
 def audit_pass(run_dir: Path) -> dict:
     """Count what a finished pass actually produced, trusting transcripts over statuses.
 
@@ -36,11 +45,16 @@ def audit_pass(run_dir: Path) -> dict:
 
     Returns:
         Audit record. `clean` is True only when the manifest exists and every expected
-        cell has a non-empty transcript; a missing or unparseable manifest means the
-        driver died mid-pass, so the pass can never audit clean (`missing_cells` None).
+        cell has a REAL transcript -- one with at least one assistant turn; a missing or
+        unparseable manifest means the driver died mid-pass, so the pass can never audit
+        clean (`missing_cells` None). A transcript holding only the prompts is a SHELL:
+        2026-09-24 a pod died under a sleeping driver and 165 such shells, written by
+        executors that could not reach the model, audited clean on file size alone.
     """
     logs = list(run_dir.rglob("messages_record.txt"))
     nonempty = [p for p in logs if p.stat().st_size > 0]
+    real = [p for p in nonempty if _has_assistant_turn(p)]
+    shells = len(nonempty) - len(real)
     statuses: dict[str, int] = {}
     n_expected = None
     cost = None
@@ -58,12 +72,14 @@ def audit_pass(run_dir: Path) -> dict:
                 statuses[st] = statuses.get(st, 0) + 1
     else:
         statuses = {"NO_MANIFEST": 1}
-    missing = max(0, n_expected - len(nonempty)) if n_expected is not None else None
+    missing = max(0, n_expected - len(real)) if n_expected is not None else None
     return {
         "pass_dir": run_dir.name,
         "n_expected": n_expected,
         "transcripts_written": len(logs),
         "transcripts_nonempty": len(nonempty),
+        "transcripts_real": len(real),
+        "shell_transcripts": shells,
         "empty_transcripts": len(logs) - len(nonempty),
         "statuses": statuses,
         "rollout_cost_usd": cost,
