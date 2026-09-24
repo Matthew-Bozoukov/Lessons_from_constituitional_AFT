@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from src.naming import artifact_name, check_style, synth_name
+
+from .extend import check_compatible, load_prior, merged_rows
 import sys
 
 from src.utils import git_sha, timestamp
@@ -139,6 +141,19 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
                       f"configs/data/synth/{cfg['pipeline']}.yaml",
     }
     card.update({k: str(v) for k, v in (cfg.get("card") or {}).items()})
+    # `extend_from`: fetch the prior corpus and refuse an incompatible one BEFORE the repo
+    # is created or a call is paid for (src/data/synth/ours/extend.py).
+    constitution_text = full_text(cfg["constitution"])
+    prior = None
+    if cfg.get("extend_from"):
+        prior = load_prior(str(cfg["extend_from"]))
+        check_compatible(prior, cfg,
+                         hashlib.sha256(constitution_text.encode()).hexdigest())
+        card["extends"] = (f"{prior.repo} @ {prior.revision}: its {len(prior.rows)} rows "
+                           "are carried into dataset.jsonl ahead of this run's, and its "
+                           f"scenarios ({prior.scenario_file}) seeded this run's dedupe")
+        print(f">>> extend_from: {prior.repo}@{prior.revision[:8]} — {len(prior.rows)} rows, "
+              f"{len(prior.scenarios)} scenarios to dedupe against")
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),
                        # Hub-indexed discovery tags: the dashboard's /datasets lists every
                        # public repo carrying them (kind, pipeline, constitution, smoke).
@@ -150,7 +165,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
     budget = float(cfg.get("budget_usd", 0)) or None
     usage = Usage()
     ctx = Ctx(cfg=cfg, usage=usage, workers=workers, run_dir=run_dir, smoke=smoke,
-              vars={"constitution": full_text(cfg["constitution"])}, cache=cache,
+              vars={"constitution": constitution_text}, cache=cache, prior=prior,
               _client=client)
 
     stage_list = build_stages(cfg)
@@ -188,6 +203,10 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
             "workers": workers,
             "hf_repo": repo,
             "run_dir": str(run_dir),
+            "extend_from": None if prior is None else {
+                "repo": prior.repo, "revision": prior.revision, "run_id": prior.run_id,
+                "git_sha": prior.git_sha, "rows": len(prior.rows),
+                "scenario_file": prior.scenario_file},
             **ctx.manifest_extra,
             }
 
@@ -251,7 +270,12 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
     # `dataset.jsonl` at the root is the synth->mixture contract; a halted run has no
     # final dataset and leaves only its stages/ snapshots.
     if not ctx.stop and records:
-        cache.publish_final(records)
+        final = merged_rows(prior, records) if prior is not None else records
+        cache.publish_final(final)
+        if prior is not None:
+            counts["dataset"] = len(final)
+            print(f">>> dataset.jsonl: {len(prior.rows)} prior + {len(records)} new = "
+                  f"{len(final)} rows")
 
     manifest = _manifest()
     cache.save_json("manifest.json", manifest)

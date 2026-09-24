@@ -638,6 +638,9 @@ class Ctx:
     # Set by a stage to halt the run after it, keeping everything already produced.
     # The engine writes the manifest and stops; the CLI turns it into an exit code.
     stop: str | None = None
+    # The published corpus this run extends (`extend_from`, src/data/synth/ours/extend.py),
+    # or None: the scenario stage dedupes against it and the run's dataset carries its rows.
+    prior: Any = None
     _client: Any = None
 
     @property
