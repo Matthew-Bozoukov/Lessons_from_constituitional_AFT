@@ -86,6 +86,8 @@ dependencies = [
     "scikit-learn>=1.9.0",
     "umap-learn>=0.5.12",
     "anthropic>=0.120.2",
+    "inspect-ai>=0.3.261",
+    "inspect-evals[swe-bench]>=0.21.0",
 ]
 
 
@@ -136,10 +138,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 # The nested petri-subscription workspace member ships as its own distribution.
-# swebench_mini/envs holds two pinned, independently-locked environments (mini-SWE-agent and
-# the official SWE-bench harness), invoked as subprocesses — never imported from this package.
-exclude = ["src/eval/audits/petri/petri-subscription",
-           "src/eval/capabilities/swebench_mini/envs"]
+exclude = ["src/eval/audits/petri/petri-subscription"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

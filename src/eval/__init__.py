@@ -88,13 +88,18 @@ EVALS: dict[str, EvalSpec] = {
         # published as `<date>-ah-vs-<baseline>`.
         pools=True,
     ),
-    # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
-    # scaffold gets its own registry entry — never fold one into the other.
-    "swebench_mini": EvalSpec(
-        "capabilities.swebench_mini",
-        "configs/eval/swebench_mini.yaml",
-        key="swebench",
+    # SWE-bench Lite through inspect_evals' `swe_bench` task (UK AISI): one docker sandbox
+    # per instance on the DRIVER, the react agent inside inspect, the official harness
+    # grading inside the same sandbox, the model reached through the OpenAI triple. A
+    # different scaffold from the retired mini-SWE-agent runs (git history before
+    # 2026-09-24), so a different eval name and a fresh baseline.
+    "swebench": EvalSpec(
+        "capabilities.swebench",
+        "configs/eval/swebench/lite.yaml",
+        key="swe",
         needs_docker=True,
+        # One Compose project (its default network) per sandbox in flight.
+        networks_per_scenario=1,
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",

@@ -32,6 +32,9 @@ gpu:
   inference:
     default: "NVIDIA H100 80GB HBM3"
     mask: "NVIDIA H200"
+    # Agentic contexts (30-80k tokens each) are KV-bound; the H200's 1.08M-token cache
+    # holds ~4x the H100's concurrent trajectories at the same headroom (2026-09-24).
+    swebench: "NVIDIA H200"
 
 # Verified serving FACTS: what the family is and what it has been measured to do, never what
 # an eval wants. Eval configs cannot write these (plan_serving, src/infra/endpoints/vllm.py).

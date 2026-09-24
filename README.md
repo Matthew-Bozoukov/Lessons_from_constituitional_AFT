@@ -375,11 +375,7 @@ it lives in git history before that date, and its published corpora remain on Hu
 
 ### SWE-bench Lite for a LoRA
 
-Tell a new repository conversation **“run SWE-bench on ORG/LORA”**. The repository
-[skill](.agents/skills/swebench-lite/SKILL.md) defines the complete workflow:
-reuse or prepare a persistent Vast CPU, qualify all 300 cached environments,
-launch up to 20 RunPod GPUs with four conversations each, recover infrastructure
-failures, grade, publish/verify on Hugging Face and terminate owned GPUs.
-**“Spin up and prepare the SWE-bench CPU”** performs only CPU preparation.
-See [CPU lifecycle and sizing](docs/swebench_cpu_lifecycle.md) and
-[the runbook](docs/swebench_lite_runbook.md) for limits and measured findings.
+`uv run evals --name swebench --target ORG/LORA --server <pod>` runs inspect_evals'
+`swe_bench` task against the served adapter: docker sandboxes on this machine (one per
+instance), the model on the pod. `configs/eval/swebench/lite.yaml` is the protocol; the
+instance list it points at is in the same folder.

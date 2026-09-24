@@ -254,7 +254,7 @@ def test_every_eval_config_declares_its_context_window():
         assert window and int(window) > 0, (
             f"{name}: {spec.config} must declare serving.context_window")
         # Keys only, not a full plan_serving call: a config may legitimately declare a
-        # requirement no family has met yet (swebench_mini's 65536 window), and that is
+        # requirement no family has met yet, and that is
         # meant to fail loudly at serve time rather than silently here.
         declared = set(OmegaConf.to_container(cfg.serving, resolve=True))
         assert declared <= _EVAL_REQUIREMENT_KEYS, (
@@ -476,7 +476,7 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # its containers hold a chess engine and a shell while the loop that calls the model
     # runs in the driver. What must stay False is an eval whose containers call the model
     # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
-    # (agentic_misalignment, swebench_mini, internalization).
+    # (agentic_misalignment, swebench, internalization).
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
         "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask",
         "dictator", "secret_number"}

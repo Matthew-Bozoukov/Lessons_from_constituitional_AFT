@@ -1,0 +1,88 @@
+# ABOUTME: SWE-bench Lite through inspect_evals' `swe_bench` task: docker sandboxes on the
+# ABOUTME: driver, the model on a served endpoint. Run: uv run evals --name swebench --target <hf> [--server <pod>]
+#
+# THE PROTOCOL. inspect_evals (UK AISI) owns the dataset pin, one docker sandbox per
+# instance, the react agent (python + bash_session + text_editor tools, `submit` when
+# done), the in-sandbox grading through the official swebench harness (FAIL_TO_PASS +
+# PASS_TO_PASS, resolved = every test passes) and the `.eval` log. This repo owns serving
+# (run_eval + VllmServer), the instance list, the limits below, and the published
+# rollouts/results/metadata layout (src/eval/capabilities/swebench/runner.py).
+#
+# WHERE IT RUNS. The eval runs where you type it (CLAUDE.md "Where code runs"): the
+# sandboxes need a real docker daemon, so a laptop with Docker Desktop or an x86 VM, never
+# a RunPod pod; the model is served on a pod and reached over the tunnel. Sandboxes have
+# no network of their own (`network_mode: none`); only the inspect process talks to the
+# model, so no docker-bridge bind is needed.
+#
+# IMAGES. Prebuilt per-instance images from Epoch's registry
+# (https://epoch.ai/latest/swebench-docker), pulled on demand by docker compose; the
+# template's `{arch}` is auto-detected from the driver. x86_64 covers all 300 Lite ids;
+# arm64 covers 252 (checked 2026-09-24: matplotlib, scikit-learn, xarray and some astropy
+# are missing). The instance list below is the arm64-safe 200; a reported Lite number
+# runs the x86 images on an x86 host, like every published score.
+#
+# A DIFFERENT SCAFFOLD from the retired mini-SWE-agent eval (`swebench_mini`, git history
+# before 2026-09-24: 250 steps, 65,536 tokens per task, temperature 0), so a fresh
+# baseline; nothing here is comparable to those numbers.
+
+# --- instances -----------------------------------------------------------------------
+dataset: princeton-nlp/SWE-bench_Lite
+split: test
+# The Lite test split pinned (SWE-bench datasets are actively maintained).
+revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
+# The instance ids this run attempts, a JSON file beside this config carrying its own
+# selection provenance. `limit: N` takes the first N of them (a smoke); `instance_ids:`
+# on the CLI replaces the file with an explicit list.
+instance_ids_file: configs/eval/swebench/lite-arm64-200.json
+limit: null
+# "auto" reads the driver's CPU; force `x86_64` on an x86 host or to run Epoch's x86
+# images under emulation on a Mac (slow).
+arch: auto
+image_name_template: "ghcr.io/epoch-research/swe-bench.eval.{arch}.{id}:latest"
+# Seconds a single tool call (bash, python, editor) may run inside the sandbox.
+tool_timeout: 300
+
+# --- per-instance budgets (the protocol; every arm must use the same) ------------------
+# Messages in the agent's conversation (a tool call and its result are two). inspect's
+# default is 30; the retired scaffold ran 250 steps. 100 messages is ~50 tool steps.
+message_limit: 100
+# Total tokens (prompt + completion, per inspect's accounting) an instance may spend.
+token_limit: 262144
+# Wall-clock seconds per instance, the terminator that keeps a run's tail bounded: the
+# retired fleet's longest tasks ran 78-90 min at ~25 tok/s and set the run length.
+time_limit: 1800
+epochs: 1
+# Sample errors (a sandbox that died, a decode failure) are retried this many times;
+# past that the sample is recorded as an error, and the run continues.
+retry_on_error: 2
+fail_on_error: 0.05
+
+# --- concurrency -----------------------------------------------------------------------
+# Instances in flight at once: docker sandboxes on this machine AND model connections.
+# Each sandbox is one Compose project (one network): the docker preflight refuses more
+# than the daemon's address pools hold (31 on a default Docker Desktop). The server side
+# is sized by `serving.concurrency` below.
+concurrency: 24
+
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  # Completion tokens per model call; a thinking model spends most of this in <think>.
+  max_tokens: 16384
+  # How much prior reasoning inspect replays in the conversation: `all` keeps every
+  # turn's think block (the repo's preserve-thinking policy at serve time), `last` keeps
+  # only the most recent, `none` drops it. `all` is what the KV cache pays for.
+  reasoning_history: all
+  seed: 0
+
+serving:
+  # Agent contexts grow to 30-80k tokens over a trajectory (measured on the retired
+  # fleet); the family serves 128k. Prefix caching keeps the re-sent history cheap.
+  context_window: 131072
+  needs_tool_calls: true
+  # Server sequence slots. The binding limit for agentic contexts is KV headroom, not
+  # the family's 192 cap: keep the server's KV usage under ~50% (read
+  # `Prefix cache hit rate` and KV usage in the server log) and raise this only when
+  # it holds. 48 on an H200 (1.08M KV tokens) is the starting point; the eval's
+  # `concurrency` above should not exceed it.
+  concurrency: 48
