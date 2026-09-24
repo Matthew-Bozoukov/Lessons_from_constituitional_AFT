@@ -149,8 +149,8 @@ def plot(arms: dict[str, list[dict]], out_png: Path) -> list[str]:
             xs = x + (i - 0.5) * 2 * width + (j - 0.5) * width
             heights = [v["rate"] or 0.0 for v in vals]
             err = [
-                [(v["rate"] or 0) - (v["lo"] or 0) for v in vals],
-                [(v["hi"] or 0) - (v["rate"] or 0) for v in vals],
+                [max(0.0, (v["rate"] or 0) - (v["lo"] or 0)) for v in vals],
+                [max(0.0, (v["hi"] or 0) - (v["rate"] or 0)) for v in vals],
             ]
             ax_m.bar(
                 xs,
@@ -209,8 +209,8 @@ def plot(arms: dict[str, list[dict]], out_png: Path) -> list[str]:
         xs = x + (i - 0.5) * 0.36
         heights = [v["rate"] or 0.0 for v in vals]
         err = [
-            [(v["rate"] or 0) - (v["lo"] or 0) for v in vals],
-            [(v["hi"] or 0) - (v["rate"] or 0) for v in vals],
+            [max(0.0, (v["rate"] or 0) - (v["lo"] or 0)) for v in vals],
+            [max(0.0, (v["hi"] or 0) - (v["rate"] or 0)) for v in vals],
         ]
         ax_r.bar(
             xs,
