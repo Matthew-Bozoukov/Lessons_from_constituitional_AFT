@@ -117,6 +117,18 @@ def test_plan_serving_carries_an_eval_preserve_thinking_choice():
                      "m", "think")
 
 
+def test_plan_serving_carries_declared_fp8_and_refuses_other_precisions():
+    from src.infra.endpoints.vllm import plan_serving
+
+    plan = plan_serving(QWEN36_FACTS, {"context_window": 16384, "quantization": "fp8",
+                                       "kv_cache_dtype": "fp8"}, "m", "think")
+    assert plan["quantization"] == "fp8" and plan["kv_cache_dtype"] == "fp8"
+    assert sum("reduced precision" in w for w in plan["warnings"]) == 2
+    with pytest.raises(SystemExit, match="supported"):
+        plan_serving(QWEN36_FACTS, {"context_window": 16384, "quantization": "awq"},
+                     "m", "think")
+
+
 def test_registry_specs_are_wellformed():
     assert EVALS, "registry is empty"
     for name, spec in EVALS.items():
@@ -165,6 +177,7 @@ def test_plan_serving_validates_requirements_against_facts():
     plan = plan_serving(QWEN36_FACTS, {"context_window": 40960, "concurrency": 12},
                         "m", "think")
     assert plan == {"context_window": 40960, "max_num_seqs": 12,
+                    "quantization": None, "kv_cache_dtype": None,
                     "reasoning_parser": "qwen3", "tool_call_parser": None,
                     "prefix_caching": False, "hf_overrides": None,
                     "preserve_thinking": None, "warnings": ()}

@@ -68,3 +68,11 @@ serving:
   # text and retried until it failed (2026-09-23). The paper's Qwen3.6-27B row was measured
   # with the model's default render, and it is the only reference these numbers have.
   preserve_thinking: false
+  # FP8 weights (vLLM's online quantization of the bf16 checkpoint) and FP8 KV cache,
+  # chosen 2026-09-24 for speed: at bf16 two H200s projected ~6 h for the 50 trajectories.
+  # A DEPARTURE from the paper's bf16 serving that moves every logit, so these numbers
+  # compare cleanly only with arms served the same way — every arm of this comparison
+  # must keep both lines. The bf16 partial runs are kept, not mixed in (a trajectory's
+  # later episodes condition on its earlier ones, so precision cannot change mid-run).
+  quantization: fp8
+  kv_cache_dtype: fp8

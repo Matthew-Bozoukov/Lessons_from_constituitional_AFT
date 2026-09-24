@@ -13,7 +13,8 @@
 #   * If the final publish fails, B holds 2 h so the run dirs can be recovered, then removes itself.
 set -uo pipefail
 TARGET="$1"
-: "${ROLE:?}" "${SEQS:?}" "${REPO:?}" "${CKPT:?}"
+: "${ROLE:?}" "${SEQS:?}" "${REPO:?}"
+CKPT="${CKPT:-}"   # comma-separated run dirs to resume from; empty = start fresh
 WAIT_MIN="${WAIT_MIN:-300}"
 cd /root/work
 
@@ -27,8 +28,8 @@ newest_run() { ls -td output/agent_collusion/20*_qwen36_* 2>/dev/null | head -1;
 evals() { uv run --no-sync evals "$@" --name agent_collusion --target "$TARGET"; }
 
 before=$(newest_run)
-log "shard $SEQS: resume_from=[$CKPT], not pushed"
-evals --no-push "sequence_ids=$SEQS" "resume_from=[$CKPT]"
+log "shard $SEQS: resume_from=[${CKPT}], not pushed"
+evals --no-push "sequence_ids=$SEQS" ${CKPT:+"resume_from=[$CKPT]"}
 rc=$?
 shard=$(newest_run)
 if [ "$shard" = "$before" ]; then shard=""; fi
@@ -49,9 +50,10 @@ fi
 
 # ROLE B: gather A's shard (or go without it), then the final merge publishes one run.
 dirs="$CKPT${shard:+,$(realpath "$shard")}"
+dirs="${dirs#,}"
 if a_dir=$(uv run --no-sync python scratch/agent_collusion_shard_handoff.py download /root/shards A "$REPO" "$WAIT_MIN" | tail -1) \
    && [ -d "$a_dir/rollouts" ]; then
-    dirs="$dirs,$a_dir"
+    dirs="${dirs:+$dirs,}$a_dir"
     log "shard A received: $a_dir"
 else
     log "!!! shard A not received — merging without it; B runs A's unfinished trajectories"

@@ -458,7 +458,13 @@ _EVAL_REQUIREMENT_KEYS = {
     "reuses_long_prefixes",
     "rope_scaling",
     "preserve_thinking",
+    "quantization",
+    "kv_cache_dtype",
 }
+# Precision an eval may declare. fp8 only: it is what the repo has served before (the
+# 2026-07-29 "base fp8" ODCV reference used vLLM's online --quantization fp8), and an
+# unlisted value fails here rather than as a vLLM startup error after the weights load.
+_PRECISION_CHOICES = {"quantization": {"fp8"}, "kv_cache_dtype": {"fp8"}}
 
 
 def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) -> dict:
@@ -488,7 +494,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     Returns:
         The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
         `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`,
-        `preserve_thinking` (None = the mode's pin, else the eval's explicit choice), and
+        `preserve_thinking` (None = the mode's pin, else the eval's explicit choice),
+        `quantization` / `kv_cache_dtype` (None = bf16, else the eval's declared fp8), and
         `warnings` — operator-facing notes to print at serve time.
 
     Raises:
@@ -625,9 +632,24 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
                 "preserve_thinking: false, declared by this eval — past turns' reasoning is "
                 "dropped from the render (the model's default), not kept as the repo pins it.")
 
+    # Precision changes the model under measurement (every logit moves), so it is never a
+    # default: an eval declares it, and every run served that way says so in its warnings.
+    precision = {}
+    for key, allowed in _PRECISION_CHOICES.items():
+        value = requirements.get(key)
+        if value is None:
+            continue
+        if value not in allowed:
+            raise SystemExit(f"\nserving.{key}={value!r}; supported: {sorted(allowed)}.")
+        precision[key] = value
+        warnings.append(f"{key}: {value}, declared by this eval — served at reduced precision, "
+                        "so this run is comparable only with arms served the same way.")
+
     return {
         "context_window": int(window),
         "max_num_seqs": int(seqs) if seqs else None,
+        "quantization": precision.get("quantization"),
+        "kv_cache_dtype": precision.get("kv_cache_dtype"),
         "reasoning_parser": reasoning_parser,
         "tool_call_parser": tool_call_parser,
         "prefix_caching": prefix_caching,
@@ -1032,6 +1054,10 @@ class VllmServer:
             argv += ["--enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
+        if plan["quantization"]:
+            argv += ["--quantization", plan["quantization"]]
+        if plan["kv_cache_dtype"]:
+            argv += ["--kv-cache-dtype", plan["kv_cache_dtype"]]
         template = self._pinned_template_path(spec.base_model, spec.mode,
                                               plan["preserve_thinking"])
         if template:
