@@ -1,0 +1,29 @@
+# ABOUTME: Top-up fleet plan, 2026-09-24: seeds 11-15 and 26-30 of the human-parties MDMA cell, whose pods (c: never
+# ABOUTME: finished booting; f: no pod through RunPod 500s) did not run them; same config, peer and output folder.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-24_fleet_da_multiparty_human15_topup.yaml
+#
+# The arm is dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15: Qwen3.6-27B, seed 0, trained 2026-09-24 on the human-parties corpus at 15% on the
+# spec-filtered nosynth blend. Same config, peer and seeds as the MDMA and matched da-15 cells.
+date: "2026-09-24"
+branch: kn/hospital-da-multiparty-15
+out_root: output/colosseum_hospital/2026-09-24
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+rent_attempts: 6
+pods:
+  - name: kunwar-h24-mph-g
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:11-15"]
+    cap_h: 2.5
+  - name: kunwar-h24-mph-h
+    group: fixed
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
+    jobs: ["self_sacrificial:26-30"]
+    cap_h: 2.5
