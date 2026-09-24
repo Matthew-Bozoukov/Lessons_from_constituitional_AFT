@@ -121,6 +121,7 @@ def push_probes(date: str) -> str:
                     "qbase": "2026-09-18",
                     "mp15": "2026-09-24",
                     "da15": "2026-09-24",
+                    "mph15": "2026-09-24",
                 },
                 "samples_per_seat_and_checkpoint": 3,
             }

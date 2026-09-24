@@ -129,6 +129,13 @@ CELLS = [
         "qwen36_difficult_advice_15_fixed",
         MP_DATE,
     ),
+    (
+        ("fixed", "mph15"),
+        "fixed",
+        SS,
+        "qwen36_difficult_advice_multiparty_human_15_fixed",
+        MP_DATE,
+    ),
 ]
 ALL = [c[0] for c in CELLS]
 DATE_OF = {c[0]: c[4] for c in CELLS}
@@ -138,8 +145,8 @@ NEW = [c[0] for c in CELLS if c[4] in (NEW_DATE, DELIB_DATE, MP_DATE)]
 # alignment (run 2026-09-18) or the multi-agent principle. The other E1 arms stay in the tables.
 # The base-model cell is APPENDIX material (the owner, 2026-09-18): all nine seats hold it, so it
 # is a reference, not a member of the family. The review and main paper figures leave it out.
-SHOWN = [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10", "da15", "mp15")]
-PROBED = ["ctrl", "da", "qbase", "nosyn", "da7", "jdat", "delib", "t10", "da15", "mp15"]
+SHOWN = [("fixed", a) for a in ("nosyn", "delib", "da7", "jdat", "t10", "da15", "mp15", "mph15")]
+PROBED = ["ctrl", "da", "qbase", "nosyn", "da7", "jdat", "delib", "t10", "da15", "mp15", "mph15"]
 NAME = {
     "ctrl": "control (Table 2)",
     "da": "difficult advice 702 (Table 2)",
@@ -152,6 +159,7 @@ NAME = {
     "qbase": "base Qwen3.6-27B, all nine seats",
     "mp15": "MDMA: 15% multi-party difficult advice (spec-filtered nosynth)",
     "da15": "15% difficult advice, matched control (spec-filtered nosynth)",
+    "mph15": "MDMA, human parties only: 15% (spec-filtered nosynth)",
 }
 # Arm colours are FIXED across the repo's figures (CLAUDE.md on main, 2026-09-18): the nosynth
 # control grey, deliberative alignment blue, plain difficult advice purple, difficult agentic tasks
@@ -170,6 +178,7 @@ COLOR = {
     "t10": "#1baf7a",
     "mp15": "#c2255c",
     "da15": "#a879dd",
+    "mph15": "#e58aa9",
 }
 FIG_LABEL = {
     "qbase": "Base model (all seats)",
@@ -180,6 +189,7 @@ FIG_LABEL = {
     "t10": "Multi-agent principle",
     "mp15": "MDMA",
     "da15": "Difficult advice 15% (matched)",
+    "mph15": "MDMA (human parties)",
 }
 # Two-line axis labels for the one-bar-per-arm figure; the full names collide there.
 SHORT = {
@@ -194,6 +204,7 @@ SHORT = {
     "qbase": "base model\n(all seats)",
     "mp15": "MDMA 15%\n(filtered nosynth)",
     "da15": "DA 15% matched\n(filtered nosynth)",
+    "mph15": "MDMA human\n(filtered nosynth)",
 }
 INK, INK2, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7", "#fcfcfb"
 
@@ -238,6 +249,8 @@ CONTRASTS = [
     ("t10 − DA 702", ("fixed", "t10"), ("fixed", "da")),
     ("t10 − control", ("fixed", "t10"), ("fixed", "ctrl")),
     ("multi-party DA − matched DA 15%", ("fixed", "mp15"), ("fixed", "da15")),
+    ("MDMA human parties − MDMA", ("fixed", "mph15"), ("fixed", "mp15")),
+    ("MDMA human parties − matched DA 15%", ("fixed", "mph15"), ("fixed", "da15")),
     ("matched DA 15% − neutral 752 DA 7%", ("fixed", "da15"), ("fixed", "da7")),
     ("matched DA 15% − no synthetic", ("fixed", "da15"), ("fixed", "nosyn")),
     ("multi-party DA − neutral 752 DA", ("fixed", "mp15"), ("fixed", "da7")),
