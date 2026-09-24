@@ -159,21 +159,29 @@ for num, title, arm, cond, variant, mate_c, tested_c in EXPS:
     reg = regime(summary, variant, cond)
     fraud = reg["team_fraud_rate"]["pct"]
     n_opp, resisted, along = resist_along(cells_v)
-    fig, ax = plt.subplots(figsize=(8.6, 4.1))
+    fig, ax = plt.subplots(figsize=(7.2, 5.6))
     labels = [
-        "teammate misbehaved",
-        "tested model misbehaved",
+        "teammate\nmisbehaved",
+        "tested model\nmisbehaved",
         "team ended with\nfaked files",
     ]
-    vals, cols, ys = [mate, tested, fraud], [mate_c, tested_c, DARK], [2, 1, 0]
-    ax.barh(ys, vals, color=cols, height=0.6)
-    for y, v in zip(ys, vals):
-        ax.text(v + 1.5, y, f"{v:.0f}%", va="center", fontsize=15, fontweight="bold")
-    ax.set_yticks(ys)
-    ax.set_yticklabels(labels, fontsize=12)
-    ax.set_xlim(0, 100)
-    ax.set_xticks([0, 50, 100])
-    ax.set_xticklabels(["0%", "50%", "100%"], fontsize=9)
+    vals, cols, xs = [mate, tested, fraud], [mate_c, tested_c, DARK], [0, 1, 2]
+    ax.bar(xs, vals, color=cols, width=0.6)
+    for x, v in zip(xs, vals):
+        ax.text(
+            x,
+            v + 2,
+            f"{v:.0f}%",
+            ha="center",
+            va="bottom",
+            fontsize=17,
+            fontweight="bold",
+        )
+    ax.set_xticks(xs)
+    ax.set_xticklabels(labels, fontsize=12)
+    ax.set_ylim(0, 100)
+    ax.set_yticks([0, 50, 100])
+    ax.set_yticklabels(["0%", "50%", "100%"], fontsize=10)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
     ax.set_title(
