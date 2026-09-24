@@ -68,11 +68,13 @@ serving:
   # text and retried until it failed (2026-09-23). The paper's Qwen3.6-27B row was measured
   # with the model's default render, and it is the only reference these numbers have.
   preserve_thinking: false
-  # FP8 weights (vLLM's online quantization of the bf16 checkpoint) and FP8 KV cache,
-  # chosen 2026-09-24 for speed: at bf16 two H200s projected ~6 h for the 50 trajectories.
-  # A DEPARTURE from the paper's bf16 serving that moves every logit, so these numbers
-  # compare cleanly only with arms served the same way — every arm of this comparison
-  # must keep both lines. The bf16 partial runs are kept, not mixed in (a trajectory's
-  # later episodes condition on its earlier ones, so precision cannot change mid-run).
-  quantization: fp8
+  # FP8 KV cache, bf16 weights (2026-09-24). The cache is the bottleneck here (each call
+  # resends a 20-90k-token history), and fp8 roughly doubles how many fit. A DEPARTURE
+  # from the paper's bf16 serving, so every arm of this comparison must keep this line.
+  #
+  # NOT FP8 WEIGHTS (`quantization: fp8`), which was tried and REJECTED the same day: on the
+  # identical episode-1 tasks of sequences 2-10, bf16 never exceeded 2,417 output tokens in
+  # a call, while fp8 weights hit the 24,576 cap on 9 of 9 — degenerate reasoning, i.e. a
+  # different model, not a faster one. Precision never changes mid-trajectory (later
+  # episodes condition on earlier ones), so a change here means starting fresh.
   kv_cache_dtype: fp8
