@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 - Persistent CPU and discoverable SWE-bench Lite workflow
+
+**Question / method.** Make a new main-branch conversation able to run a specified
+LoRA without this conversation's history. Added the repository swebench-lite skill,
+a shared per-user CPU registry and lifecycle guide covering warm reuse, empty-state
+provisioning, hardware sizing, CPU-only qualification and progress notifications.
+The user explicitly selected indefinite retention of Vast 52229744. Local and
+guest receipts encode persistent lifetime with authorization time; the superseded
+Windows CPU expiry task was removed. Individual GPU leases, spending, retry and
+task limits remain intact.
+
+**Changes / evidence.** Persistent null deadlines propagate through supervision,
+claims, worker timeouts and orphan guards; missing lifetime still fails closed.
+Fresh direct SSH mapping avoids Vast's refused VM proxy endpoint. First delayed
+fallback tries H200 regardless of the prior H100 rejection count; RTX follows.
+Qualification no longer depends on local control outcomes or hardcoded historical
+logs. Cold CPU test dependencies are pinned. Merged current main while retaining
+Tinker restrictions and credential preflight. Preparation uses atomic HF snapshots
+and deployment provenance. Completed model manifests and outcomes are preserved.
+
+**Validation / limits.** Merged Linux tests: 166 passed, one Windows-only test
+skipped; all six watchdog tests also passed on Windows. The real-agent synthetic
+endpoint, Docker, official grader and HF round-trip passed without GPUs. Capacity
+reuses this unchanged host's 526-command qualification. Evidence is in
+`dougalldeepmind/2026-09-24-swebench-lite-infrastructure`. Warm readiness is refreshed
+after committed archive deployment changed grading-wrapper bytes. No new CPU or
+GPU was rented. The skill orchestrates cold provisioning; the eval CLI submits to
+a prepared host. A clean 20-H100 paid runtime remains unmeasured. Provider capacity,
+funding, credentials and prolonged Hub failures can still need attention.
+
 ## 2026-09-24 — Close the Lite campaign and clean up reusable operations
 
 **Question / change.** Can the next compatible-LoRA launch reuse the completed
