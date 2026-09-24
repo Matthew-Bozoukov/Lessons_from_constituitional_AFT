@@ -375,11 +375,11 @@ it lives in git history before that date, and its published corpora remain on Hu
 
 ### SWE-bench Lite for a LoRA
 
-Tell a new repository conversation **ìrun SWE-bench on ORG/LORAî**. The repository
+Tell a new repository conversation **‚Äúrun SWE-bench on ORG/LORA‚Äù**. The repository
 [skill](.agents/skills/swebench-lite/SKILL.md) defines the complete workflow:
 reuse or prepare a persistent Vast CPU, qualify all 300 cached environments,
 launch up to 20 RunPod GPUs with four conversations each, recover infrastructure
 failures, grade, publish/verify on Hugging Face and terminate owned GPUs.
-**ìSpin up and prepare the SWE-bench CPUî** performs only CPU preparation.
+**‚ÄúSpin up and prepare the SWE-bench CPU‚Äù** performs only CPU preparation.
 See [CPU lifecycle and sizing](docs/swebench_cpu_lifecycle.md) and
 [the runbook](docs/swebench_lite_runbook.md) for limits and measured findings.

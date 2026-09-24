@@ -15,14 +15,14 @@ from typing import Callable
 
 @dataclass(frozen=True)
 class EvalSpec:
-    package: str                   # eval package under src.eval; its runner.py defines run()
-    config: str                    # default OmegaConf YAML under configs/eval/
+    package: str  # eval package under src.eval; its runner.py defines run()
+    config: str  # default OmegaConf YAML under configs/eval/
     # The token this eval is called in every name it produces (src/naming.py):
     # `<date>-<key>-<model>`. REQUIRED, no default: naming an eval is a decision made
     # once, when it is registered, and never again per run. Keep it short — the key and
     # the arm's style-type share one 96-character repo name.
     key: str
-    needs_docker: bool = False     # rollouts execute in containers where the driver runs
+    needs_docker: bool = False  # rollouts execute in containers where the driver runs
     # Docker networks ONE scenario holds while it runs (ODCV: a Compose project with
     # `default` + `internal_net`). Times `cfg.concurrency` it is what the daemon's address
     # pools must hold at once; run_eval's preflight refuses a run they cannot, before any
@@ -66,7 +66,9 @@ class EvalSpec:
 
 EVALS: dict[str, EvalSpec] = {
     "delegated_harm": EvalSpec(
-        "misalignment.delegated_harm", "configs/eval/delegated_harm.yaml", key="dh",
+        "misalignment.delegated_harm",
+        "configs/eval/delegated_harm.yaml",
+        key="dh",
     ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",
@@ -189,6 +191,18 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.dictator",
         "configs/eval/dictator.yaml",
         key="dict",
+        supports_api_target=True,
+    ),
+    # WhistleBench-Team: WhistleBench's whistleblowing scenarios (a cover-up in the documents, a
+    # complicit requester, stub email/file tools) driven by Inspect AI as upstream wrote it, alone
+    # or beside a teammate on a shared board, against benign twin storylines. Reaches the target
+    # through Inspect's OpenAI-compatible provider over the served endpoint, so an API target works
+    # (the cheapest wiring check, and how the paper's own numbers were produced). The judges route
+    # to OpenRouter. No docker: the tools are stubs.
+    "whistlebench_team": EvalSpec(
+        "misalignment.whistlebench_team",
+        "configs/eval/whistlebench_team.yaml",
+        key="wbt",
         supports_api_target=True,
     ),
     # secret_number: a noisy-oracle guessing game whose sandbox leaves two shortcuts lying
