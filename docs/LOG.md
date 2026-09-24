@@ -41,6 +41,15 @@ No score is available at launch. Report final coverage, grading, provider versus
 conservative costs and cleanup separately. The historical control's documented
 resource/timeout migrations remain a comparison limitation.
 
+**Startup observation, 02:33 UTC.** H100/H200 capacity was scarce; the delayed
+RTX fallback brought the live fleet to 19 pods (three H100 NVLs, sixteen RTX PRO
+6000 Blackwell Server Editions), $43.01/hour at their quoted rates. Two H100s
+were processing eight tasks while the remainder booted; five model submissions
+were saved, none graded yet. One slow H100 exceeded the 15-minute combined
+startup allowance and was automatically terminated/replaced; provider absence
+was verified. No active-task infrastructure failure or container OOM was observed.
+This is a mixed-fleet recovery test, not a homogeneous 20-H100 timing benchmark.
+
 ## 2026-09-24 — Qualify the reusable Lite CPU and recovery path without inference GPUs
 
 **Question.** Can the prepared CPU support 20 independent H100 NVL replicas at
