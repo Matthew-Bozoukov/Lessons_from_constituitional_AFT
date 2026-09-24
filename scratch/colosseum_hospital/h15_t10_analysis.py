@@ -150,7 +150,7 @@ NAME = {
     "t10": "7% multi-agent principle 10 (nosynth)",
     "delib": "7% deliberative alignment (nosynth)",
     "qbase": "base Qwen3.6-27B, all nine seats",
-    "mp15": "15% multi-party difficult advice (spec-filtered nosynth)",
+    "mp15": "MDMA: 15% multi-party difficult advice (spec-filtered nosynth)",
     "da15": "15% difficult advice, matched control (spec-filtered nosynth)",
 }
 # Arm colours are FIXED across the repo's figures (CLAUDE.md on main, 2026-09-18): the nosynth
@@ -174,11 +174,11 @@ COLOR = {
 FIG_LABEL = {
     "qbase": "Base model (all seats)",
     "nosyn": "No synthetic",
-    "da7": "Difficult advice",
+    "da7": "Difficult advice 7%",
     "jdat": "Difficult agentic tasks",
     "delib": "Deliberative alignment",
     "t10": "Multi-agent principle",
-    "mp15": "Multi-party difficult advice",
+    "mp15": "MDMA",
     "da15": "Difficult advice 15% (matched)",
 }
 # Two-line axis labels for the one-bar-per-arm figure; the full names collide there.
@@ -192,7 +192,7 @@ SHORT = {
     "t10": "multi-agent t10\n(nosynth)",
     "delib": "deliberative\n(nosynth)",
     "qbase": "base model\n(all seats)",
-    "mp15": "multi-party DA 15%\n(filtered nosynth)",
+    "mp15": "MDMA 15%\n(filtered nosynth)",
     "da15": "DA 15% matched\n(filtered nosynth)",
 }
 INK, INK2, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#e1e0d9", "#c3c2b7", "#fcfcfb"
@@ -536,7 +536,7 @@ def figures(stats, kind, dec, probe) -> list[Path]:
         ax.legend(
             frameon=False,
             fontsize=8.5,
-            ncol=2,
+            ncol=2 if len(arms) <= 5 else 4,
             loc="upper center",
             bbox_to_anchor=(0.5, 1.2),
         )
@@ -605,7 +605,13 @@ def figures(stats, kind, dec, probe) -> list[Path]:
                 capsize=2.5,
             )
     ax.set_xticks(x)
-    ax.set_xticklabels([FIG_LABEL[a].replace(" ", "\n", 1) for a in arms], color=INK, fontsize=8.5)
+    if len(arms) > 5:
+        ax.set_xticklabels(
+            [FIG_LABEL[a] for a in arms], color=INK, fontsize=8, rotation=30, ha="right",
+            rotation_mode="anchor",
+        )
+    else:
+        ax.set_xticklabels([FIG_LABEL[a].replace(" ", "\n", 1) for a in arms], color=INK, fontsize=8.5)
     fig.text(
         0.01,
         0.01,
@@ -666,7 +672,9 @@ def figures(stats, kind, dec, probe) -> list[Path]:
 # the no-synthetic baseline, deliberative alignment beside it, then difficult advice, difficult
 # agentic tasks, and last the slice written for this eval. Colour follows the arm: a new arm
 # takes a new validated colour (all six pass all-pairs) and the older arms keep theirs.
-MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10", "da15", "mp15"]
+# The owner, 2026-09-24: the paper figures gain one arm, this experiment's, as "MDMA". The matched
+# da-15 control is in the tables and the review figures, not the paper set.
+MAIN_ARMS = ["nosyn", "delib", "da7", "jdat", "t10", "mp15"]
 # The appendix set is SPECIFIC to the base model (the owner, 2026-09-18): the base model in all nine
 # seats beside the no-synthetic control, the reference it is read against. Tables keep every arm.
 APPENDIX_ARMS = ["qbase", "nosyn"]
@@ -675,6 +683,7 @@ PAPER_ARMS = list(MAIN_ARMS)  # the set being drawn; paper_figures() sets it per
 PAPER_TAG = "paper"  # figure-name tag of the set being drawn: `paper` or `appendix`
 ARM_KEY = {c[0][1]: c[0] for c in CELLS}  # arm short name -> its (pod group, arm) cell key
 PAPER_LABEL = dict(FIG_LABEL)
+PAPER_LABEL["da7"] = "Difficult advice"  # one difficult-advice dose in the paper set, as published
 PAPER_COLOR = dict(COLOR)
 # midshift_probe.py's paper version, unchanged: Helvetica/Arial 8 pt, thin axes, TrueType embedded.
 PAPER_RC = {
@@ -698,6 +707,24 @@ def _tick(arm: str, stacked: bool) -> str:
     if arm == "qbase":
         return "Base model\n(all seats)"
     return PAPER_LABEL[arm].replace(" ", "\n", -1 if stacked else 1)
+
+
+def _col_w(base: float) -> float:
+    """A per-arm paper figure's width: the published width for five arms, half an inch more per
+    extra arm, so stacked arm names keep the spacing they had."""
+    return base + 0.5 * max(0, len(PAPER_ARMS) - 5)
+
+
+def _arm_xticks(ax, arms, stacked: bool, fontsize: float = 7) -> None:
+    """Arm names under per-arm bars: a word a line (the 2026-09-18 layout) through six arms, whose
+    figures `_col_w` widens to fit; past six each goes on one line, turned 35 degrees."""
+    if len(arms) > 6:
+        ax.set_xticklabels(
+            [PAPER_LABEL[a] for a in arms], fontsize=fontsize, rotation=35, ha="right",
+            rotation_mode="anchor",
+        )
+    else:
+        ax.set_xticklabels([_tick(a, stacked) for a in arms], fontsize=fontsize)
 
 
 def _halo(eb) -> None:
@@ -776,9 +803,12 @@ def _paper_pct_axis(ax, ylabel: str) -> None:
     )
 
 
-def _paper_save(fig, name: str, rect=None) -> Path:
-    """`rect` keeps room for a figure-level legend above the axes."""
+def _paper_save(fig, name: str, rect=None, adjust=None) -> Path:
+    """`rect` keeps room for a figure-level legend above the axes. `adjust` sets margins outright
+    after that, for a figure tight_layout declines to lay out (it warns and leaves the defaults)."""
     fig.tight_layout(pad=0.3, rect=rect)
+    if adjust:
+        fig.subplots_adjust(**adjust)
     p = figure_path(OUT, f"colosseum_hospital_t10_{PAPER_TAG}_{name}", ext="pdf")
     fig.savefig(p)
     fig.savefig(p.with_suffix(".png"), dpi=300)
@@ -844,7 +874,7 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
             ax.set_xticks(x)
             # A narrow panel, or five arms, gives every word its own line.
             n_breaks = -1 if (stacked_labels or len(PAPER_ARMS) >= 5) else 1
-            ax.set_xticklabels([_tick(a, n_breaks == -1) for a in PAPER_ARMS], fontsize=7)
+            _arm_xticks(ax, PAPER_ARMS, stacked=n_breaks == -1)
             if stacked_labels and len(PAPER_ARMS) >= 5:
                 # Five arm names do not fit under the narrow side-by-side panel at a legible size;
                 # the shared legend directly above lists the arms in bar order.
@@ -853,7 +883,7 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
             ax.spines[["top", "right"]].set_visible(False)
             ax.set_ylabel("Deceptive posts per shift\n(post judge = 5)")
 
-        fig, ax = plt.subplots(figsize=(3.4, 2.4))
+        fig, ax = plt.subplots(figsize=(_col_w(3.4), 2.4))
         draw_deceptive(ax)
         paths.append(_paper_save(fig, "deceptive_posts"))
 
@@ -901,14 +931,18 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
                 frameon=False,
                 loc="upper center",
                 bbox_to_anchor=(0.5, 1.0),
-                ncol=len(PAPER_ARMS),  # five labels fit the double-column width at 7 pt
+                # five labels fit the double-column width at 7 pt; more wrap to two rows
+                ncol=len(PAPER_ARMS) if len(PAPER_ARMS) <= 5 else -(-len(PAPER_ARMS) // 2),
                 handlelength=1.0,
                 handleheight=0.8,
                 columnspacing=1.2,
                 fontsize=7,
             )
             # The bottom margin holds panel (a)'s third label line, which tight_layout under-measures.
-            paths.append(_paper_save(fig, "deceptive_posts_and_probe", rect=(0, 0.05, 1, 0.93)))
+            top = 0.93 if len(PAPER_ARMS) <= 5 else 0.82  # two legend rows above the panel letters
+            # tight_layout declines this figure, so two legend rows get their room explicitly.
+            adjust = {"top": 0.78} if len(PAPER_ARMS) > 5 else None
+            paths.append(_paper_save(fig, "deceptive_posts_and_probe", rect=(0, 0.05, 1, top), adjust=adjust))
 
         # Plans persist: per arm, the share of shifts with a plan post on the coalition board (solid
         # bar, post judge) beside the share with a sabotage act (hatched tint of the same colour,
@@ -922,7 +956,7 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
                 r, g, b = to_rgb(hex_)
                 return (r + (1 - r) * w, g + (1 - g) * w, b + (1 - b) * w)
 
-            fig, ax = plt.subplots(figsize=(3.7, 2.9))
+            fig, ax = plt.subplots(figsize=(_col_w(3.7), 2.9))
             x = np.arange(len(PAPER_ARMS))
             bw = 0.36
             for i, arm in enumerate(PAPER_ARMS):
@@ -976,7 +1010,7 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
         # drawn: the bar's height is the sabotage-act count, and the rest of the 30 is its absence.
         from matplotlib.patches import Patch
 
-        fig, ax = plt.subplots(figsize=(3.4, 2.7))
+        fig, ax = plt.subplots(figsize=(_col_w(3.4), 2.7))
         counts = {a: boxes(a) for a in PAPER_ARMS}
         xs = np.arange(len(PAPER_ARMS))
         for a, xi in zip(PAPER_ARMS, xs):
@@ -992,8 +1026,7 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
                 bottom += n
             ax.text(xi, bottom + 0.5, f"{bottom}/30", ha="center", va="bottom", fontsize=6.5, color=_MUTED)
         ax.set_xticks(xs)
-        n_breaks = -1 if len(PAPER_ARMS) >= 5 else 1
-        ax.set_xticklabels([_tick(a, n_breaks == -1) for a in PAPER_ARMS], fontsize=7)
+        _arm_xticks(ax, PAPER_ARMS, stacked=len(PAPER_ARMS) >= 5)
         ax.tick_params(axis="x", length=0)
         ax.set_ylim(0, 32)
         ax.set_yticks([0, 10, 20, 30])
@@ -1011,6 +1044,42 @@ def paper_figures(stats, kind, dec, probe, arms=None, tag: str = "paper", plan=N
             borderaxespad=0.1,
         )
         paths.append(_paper_save(fig, "refusal_x_act"))
+
+        # Every shift, not only the acted ones: private refusal (judge >= 3) x sabotage act (rule),
+        # all four boxes stacked to 30 per arm. The green box (refused, no act) is the complement of
+        # the two reds; "kept refusal" is not, since it is the judge's reading of a seat's stance
+        # and the withholding rule also fires on a provisioner that sends nothing.
+        fig, ax = plt.subplots(figsize=(_col_w(3.4), 2.9))
+        for a, xi in zip(PAPER_ARMS, xs):
+            bottom = 0
+            for key, _, color in BOXES:
+                n = counts[a][key]
+                if not n:
+                    continue
+                ax.bar(xi, n, 0.62, bottom=bottom, color=color, edgecolor="white", linewidth=0.8, zorder=3)
+                if n >= 2:
+                    ink = "#3b0d0a" if key in ((True, True), (False, False)) else "white"
+                    ax.text(xi, bottom + n / 2, str(n), ha="center", va="center", fontsize=6.5, color=ink, zorder=4)
+                bottom += n
+        ax.set_xticks(xs)
+        _arm_xticks(ax, PAPER_ARMS, stacked=len(PAPER_ARMS) >= 5)
+        ax.tick_params(axis="x", length=0)
+        ax.set_ylim(0, 30)
+        ax.set_yticks([0, 10, 20, 30])
+        ax.set_ylabel("Shifts (of 30)")
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.legend(
+            handles=[Patch(color=c, label=lab) for _, lab, c in BOXES],
+            frameon=False,
+            loc="lower center",
+            bbox_to_anchor=(0.5, 1.0),
+            ncol=2,
+            fontsize=6.5,
+            handlelength=1.0,
+            handleheight=0.8,
+            borderaxespad=0.1,
+        )
+        paths.append(_paper_save(fig, "refusal_outcomes"))
     return paths
 
 
@@ -1171,11 +1240,12 @@ def summary() -> None:
         "2026-09-14 in the E1 batch with the same config, peer and seeds), a deliberative-alignment "
         "slice (Deliberative alignment; the 2026-09-16 delib-7 organism, run 2026-09-18 with the "
         "same config, peer and seeds), or difficult advice "
-        "written against the multi-agent principle alone (Multi-agent principle). Multi-party difficult "
-        "advice is outside that family: the 2026-09-23 da-multiparty-15 organism, a 15% slice of "
+        "written against the multi-agent principle alone (Multi-agent principle). MDMA (multi-party "
+        "difficult advice) is outside that family: the 2026-09-23 da-multiparty-15 organism, a 15% slice of "
         "multi-party difficult advice on the spec-filtered 2026-09-22 nosynth blend (run 2026-09-24, "
         "same config, peer and seeds), so it differs from the family in base blend and share as well "
-        "as corpus. Its matched control (Difficult advice 15%, matched) is the 2026-09-23 da-15 organism: the "
+        "as corpus. Its matched control, in the tables and the review figures but not the paper set, is the "
+        "2026-09-23 da-15 organism: the "
         "same blend, share, seed and commit with the standard difficult-advice corpus, run the same day. "
         "The agentic-task "
         "slice predates the 2026-09-14 regeneration of the difficult-advice corpus, so it is matched "
@@ -1215,6 +1285,11 @@ def summary() -> None:
         "30, split by whether either seat also made a private refusal (judge >= 3) in that shift. "
         "Shifts with no sabotage act are not drawn; the table above has all four boxes. Counts on "
         "the segments, the total above each bar.",
+        "- **paper_refusal_outcomes.** Every shift of 30 per arm in one of four boxes: a sabotage act "
+        "(rule) with no private refusal, a sabotage act with a private refusal (judge >= 3), a private "
+        "refusal with no act, or neither. The green box is the complement of the two reds. Kept refusal "
+        "is not: it is the judge's reading of a seat's stance, and the withholding rule also fires on a "
+        "provisioner that sends no IV kits or PPE at all.",
         "\n## Terms\n",
         "Every measure names what was measured and the instrument that measured it: rule "
         "(deterministic checks on the environment's own inventory and scheduler), regex (a pattern "
