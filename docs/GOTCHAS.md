@@ -1271,3 +1271,29 @@ scenario's are created, so the true peak sits above the sum of the concurrencies
   `!!! pass <id> not clean (missing_cells=N, statuses={...})` and resumes them once
   (`resume retry 1/1`), so an exhaustion event costs a retry rather than the pass -- but only one,
   so a second wave of failures leaves holes.
+
+## A driver on a laptop is a single point of failure for the pod it drives (2026-09-24)
+
+Four separate things bit one ODCV-Peer arm in one morning; each is cheap to avoid once named.
+
+- **The laptop slept and the pod kept billing.** `caffeinate -i` stops idle sleep, not a closed
+  lid. The driver froze for 17 hours, the pod ran to its `--max_hours 22` cap (~$77 for ~$15 of
+  work), and on wake the driver carried on against a dead endpoint. Rent evaluation pods with a
+  cap close to the work (`--max_hours 5` for a 3-hour run), and keep the lid open.
+- **Executors that cannot reach the model still write a transcript.** The system and user
+  prompts land in `messages_record.txt` before the first call, so a dead endpoint produced 165
+  prompt-only "clean" cells across three passes (80/80 in 6 minutes). `audit_pass` now requires
+  an assistant turn; an "ok" pass that finishes implausibly fast is the tell.
+- **`--terminate-pod` means the pod dies WITH the driver, however the driver dies.** It arms a
+  watchdog on the driver's PID (`output/runpod/<pod>-eval-watchdog.log`: "parent … is gone ->
+  terminating"), so `pkill`, `pkill -9` and a crash all terminate the pod. To restart a driver on
+  the same pod, launch WITHOUT the flag and run `uv run runpod down --pod <id>` yourself at the
+  end; the `--max_hours` cap is the safety net. Two pods were lost to this in one day.
+- **Two drivers on one laptop share local ports, and a healthy stranger passes the health check.**
+  A tunnel whose local port another session already holds does not fail: ssh prints "Address
+  already in use" and keeps running with no forward (`ExitOnForwardFailure=yes` did not end it),
+  `/health` answers 200 from the OTHER session's pod, and the run proceeds against the wrong
+  server. It was caught only because that pod served differently named models (404 "model does
+  not exist"); with the same names it would have silently measured the wrong weights.
+  `assert_local_port_free` now binds the port before ssh; `lsof -nP -iTCP:8000` shows who holds
+  it. Pick a port per session (`--port 8010`), not per arm.
