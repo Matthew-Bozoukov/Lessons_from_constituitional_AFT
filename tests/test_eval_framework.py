@@ -10,22 +10,29 @@ from src.infra.endpoints.vllm import TargetSpec, _spec_from_files, pin_template
 from src.eval import EVALS, EvalSpec
 from src.infra.huggingface import REQUIRED_FIELDS, card_markdown
 from src.model_profile import model_profile
+
 QWEN36_PROFILE = model_profile("qwen36")
 
 
 @pytest.mark.parametrize("local_label", ["", "short", "odcv-nonmoral-lf-common-3x"])
-def test_local_run_label_cannot_replace_published_eval_identity(monkeypatch, local_label):
+def test_local_run_label_cannot_replace_published_eval_identity(
+    monkeypatch, local_label
+):
     from src.eval.run_eval import _run_repo
+
     monkeypatch.setattr("src.naming.today", lambda: "2026-09-09")
     assert _run_repo("odcv", "qwen36_0_nonmoral_7", local_label) == (
-        "2026-09-09-odcv-qwen36-0-nonmoral-7")
+        "2026-09-09-odcv-qwen36-0-nonmoral-7"
+    )
     assert _run_repo("odcv", "qwen36_0_math_7", local_label) == (
-        "2026-09-09-odcv-qwen36-0-math-7")
+        "2026-09-09-odcv-qwen36-0-math-7"
+    )
 
 
 def test_local_label_does_not_bypass_legacy_identity_length_preflight():
     from src.eval.run_eval import _run_repo
     from src.naming import NamingError
+
     with pytest.raises(NamingError, match="over the 96"):
         _run_repo("odcv", "qwen36_" + "a" * 100, "short")
 
@@ -33,21 +40,34 @@ def test_local_label_does_not_bypass_legacy_identity_length_preflight():
 def test_eval_card_records_root_sampling_and_launch_revision(monkeypatch):
     from omegaconf import OmegaConf
     from src.eval.run_eval import _card_fields
+
     monkeypatch.setattr("src.eval.run_eval._git_sha", lambda: "later-unrelated-commit")
-    cfg = OmegaConf.create({"temperature": .7, "passes": 3,
-                           "serving": {"context_window": 28000},
-                           "judge_budget": {"max_tokens": 8192}})
-    card = _card_fields("odcv", cfg, "command", experiment="example", models="pinned",
-                        source_revision="launch-commit")
+    cfg = OmegaConf.create(
+        {
+            "temperature": 0.7,
+            "passes": 3,
+            "serving": {"context_window": 28000},
+            "judge_budget": {"max_tokens": 8192},
+        }
+    )
+    card = _card_fields(
+        "odcv",
+        cfg,
+        "command",
+        experiment="example",
+        models="pinned",
+        source_revision="launch-commit",
+    )
     assert json.loads(card["generation_config"]) == OmegaConf.to_container(cfg)
     assert card["source_repo"].endswith("@ launch-commit")
-    cfg = OmegaConf.create({"generation": {"temperature": .2}, "temperature": .7})
+    cfg = OmegaConf.create({"generation": {"temperature": 0.2}, "temperature": 0.7})
     card = _card_fields("odcv", cfg, "command", experiment="example", models="pinned")
-    assert json.loads(card["generation_config"]) == {"temperature": .2}
+    assert json.loads(card["generation_config"]) == {"temperature": 0.2}
 
 
 def test_shell_preflight_checks_physical_bytes_without_changing_data(tmp_path):
     from src.eval.docker import require_lf_shell_scripts
+
     script = tmp_path / "validator.sh"
     script.write_bytes(b"#!/bin/bash\r\nset -e\r\n")
     data = tmp_path / "transactions.log"
@@ -59,14 +79,20 @@ def test_shell_preflight_checks_physical_bytes_without_changing_data(tmp_path):
     assert require_lf_shell_scripts(tmp_path) == 1
     assert data.read_bytes() == b"intentional fixture\r\n"
 
+
 ADAPTER_CONFIG = {"base_model_name_or_path": "Qwen/Qwen3-32B", "r": 16}
 
 
 def test_full_model_uses_template_default_mode():
     spec = _spec_from_files("Qwen/Qwen3-32B", None, None)
-    assert spec == TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                              adapter=False, mode="default", model_key="qwen3",  # canonical spelling (src/utils.py)
-                              lora_rank=None)
+    assert spec == TargetSpec(
+        hf_path="Qwen/Qwen3-32B",
+        base_model="Qwen/Qwen3-32B",
+        adapter=False,
+        mode="default",
+        model_key="qwen3",  # canonical spelling (src/utils.py)
+        lora_rank=None,
+    )
 
 
 def test_adapter_mode_comes_from_training_meta():
@@ -89,7 +115,9 @@ def test_pin_template_shadows_request_kwargs():
     # The pin is a top-level set BEFORE the original template, so it wins over any
     # enable_thinking a client passes per request.
     assert pinned.startswith("{%- set enable_thinking = false -%}\n")
-    assert pin_template(template, "think").startswith("{%- set enable_thinking = true -%}\n")
+    assert pin_template(template, "think").startswith(
+        "{%- set enable_thinking = true -%}\n"
+    )
     with pytest.raises(AssertionError):
         pin_template(template, "default")
 
@@ -100,7 +128,10 @@ def test_registry_specs_are_wellformed():
         assert isinstance(spec, EvalSpec), name
         # package is relative to src.eval and names its subarea (audits/ is exempt
         # from the contract, so nothing may register under it).
-        assert spec.package.split(".")[0] in ("capabilities", "misalignment"), (name, spec.package)
+        assert spec.package.split(".")[0] in ("capabilities", "misalignment"), (
+            name,
+            spec.package,
+        )
         assert spec.config.startswith("configs/eval/"), (name, spec.config)
 
 
@@ -119,7 +150,9 @@ def test_registry_runners_fulfill_the_contract_and_configs_exist():
     from src.eval import resolve
 
     for name, spec in EVALS.items():
-        run = resolve(name)  # imports the runner: a missing module or run() fails right here
+        run = resolve(
+            name
+        )  # imports the runner: a missing module or run() fails right here
         params = signature(run).parameters
         assert list(params)[:3] == ["target", "cfg", "out_dir"], name
         # Anything beyond the contract trio must be keyword-only WITH a default (the
@@ -139,14 +172,25 @@ def test_plan_serving_validates_requirements_against_facts():
     from src.infra.endpoints.vllm import plan_serving
 
     # Happy path: psychosis-shaped request — big window, fewer slots than the cap.
-    plan = plan_serving(QWEN36_FACTS, {"context_window": 40960, "concurrency": 12},
-                        "m", "think")
-    assert plan == {"context_window": 40960, "max_num_seqs": 12,
-                    "reasoning_parser": "qwen3", "tool_call_parser": None,
-                    "prefix_caching": False, "hf_overrides": None, "warnings": ()}
+    plan = plan_serving(
+        QWEN36_FACTS, {"context_window": 40960, "concurrency": 12}, "m", "think"
+    )
+    assert plan == {
+        "context_window": 40960,
+        "max_num_seqs": 12,
+        "reasoning_parser": "qwen3",
+        "tool_call_parser": None,
+        "prefix_caching": False,
+        "hf_overrides": None,
+        "warnings": (),
+    }
     # No concurrency request: serve at the family cap.
-    assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
-                        "think")["max_num_seqs"] == 192  # the profile's verified boot cap (2026-09-22 sweep)
+    assert (
+        plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m", "think")[
+            "max_num_seqs"
+        ]
+        == 192
+    )  # the profile's verified boot cap (2026-09-22 sweep)
     # Unprofiled family: no ceiling/cap to violate, no parser.
     plan = plan_serving({"max_num_seqs": None}, {"context_window": 13312}, "m", "think")
     assert plan["max_num_seqs"] is None and plan["reasoning_parser"] is None
@@ -154,20 +198,29 @@ def test_plan_serving_validates_requirements_against_facts():
     with pytest.raises(SystemExit, match="declares no serving.context_window"):
         plan_serving(QWEN36_FACTS, {}, "m", "think")
     with pytest.raises(SystemExit, match="exceeds .*verified cap"):
-        plan_serving(QWEN36_FACTS, {"context_window": 16384, "concurrency": 256},
-                     "m", "think")
+        plan_serving(
+            QWEN36_FACTS, {"context_window": 16384, "concurrency": 256}, "m", "think"
+        )
     # Facts are not writable from eval configs — a forged ceiling is an unknown key,
     # and a typo'd key errors instead of silently no-opping.
     with pytest.raises(SystemExit, match="unknown key"):
-        plan_serving(QWEN36_FACTS, {"context_window": 16384,
-                                    "verified_context_window": 999999}, "m", "think")
+        plan_serving(
+            QWEN36_FACTS,
+            {"context_window": 16384, "verified_context_window": 999999},
+            "m",
+            "think",
+        )
     with pytest.raises(SystemExit, match="unknown key"):
         plan_serving(QWEN36_FACTS, {"context_windw": 16384}, "m", "think")
     # ...and the closed set runs both ways: an eval's need cannot be smuggled into a
     # profile either.
     with pytest.raises(SystemExit, match="unknown key"):
-        plan_serving({"max_num_seqs": 32, "needs_tool_calls": True},
-                     {"context_window": 16384}, "m", "think")
+        plan_serving(
+            {"max_num_seqs": 32, "needs_tool_calls": True},
+            {"context_window": 16384},
+            "m",
+            "think",
+        )
 
 
 def test_plan_serving_limits_the_window_only_at_the_trained_size():
@@ -185,8 +238,12 @@ def test_plan_serving_limits_the_window_only_at_the_trained_size():
     with pytest.raises(SystemExit, match="exceeds .*native window"):
         plan_serving(facts, {"context_window": 262145}, "m", "think")
     # Config unreadable (offline, gated repo): no limit imposed, vLLM is the backstop.
-    plan = plan_serving(dict(QWEN36_FACTS, native_context_window=None),
-                        {"context_window": 999999}, "m", "think")
+    plan = plan_serving(
+        dict(QWEN36_FACTS, native_context_window=None),
+        {"context_window": 999999},
+        "m",
+        "think",
+    )
     assert plan["context_window"] == 999999
 
 
@@ -204,17 +261,26 @@ def test_plan_serving_matches_tool_call_needs_to_family_parsers():
     # The eval declares the NEED; the family supplies which parser implements it.
     from src.infra.endpoints.vllm import plan_serving
 
-    plan = plan_serving(QWEN36_FACTS,
-                        {"context_window": 16384, "needs_tool_calls": True}, "m", "think")
+    plan = plan_serving(
+        QWEN36_FACTS, {"context_window": 16384, "needs_tool_calls": True}, "m", "think"
+    )
     assert plan["tool_call_parser"] == "qwen3_xml"
     # Not requested: never emitted, even though the family has a parser.
-    assert plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m",
-                        "think")["tool_call_parser"] is None
+    assert (
+        plan_serving(QWEN36_FACTS, {"context_window": 16384}, "m", "think")[
+            "tool_call_parser"
+        ]
+        is None
+    )
     # Required but unverified for this family: fatal, because serving anyway scores 0
     # in a way indistinguishable from incapability.
     with pytest.raises(SystemExit, match="no verified tool_call_parser"):
-        plan_serving({"max_num_seqs": None},
-                     {"context_window": 13312, "needs_tool_calls": True}, "m", "think")
+        plan_serving(
+            {"max_num_seqs": None},
+            {"context_window": 13312, "needs_tool_calls": True},
+            "m",
+            "think",
+        )
 
 
 def test_plan_serving_reports_impossible_prefix_caching_without_failing():
@@ -223,16 +289,19 @@ def test_plan_serving_reports_impossible_prefix_caching_without_failing():
     from src.infra.endpoints.vllm import plan_serving
 
     cannot = dict(QWEN36_FACTS, supports_prefix_caching=False)
-    plan = plan_serving(cannot,
-                        {"context_window": 16384, "reuses_long_prefixes": True},
-                        "m", "think")
+    plan = plan_serving(
+        cannot, {"context_window": 16384, "reuses_long_prefixes": True}, "m", "think"
+    )
     assert plan["prefix_caching"] is False
     assert len(plan["warnings"]) == 1 and "reuses_long_prefixes" in plan["warnings"][0]
     # Qwen3.6 supports it (measured, docs/LOG.md 2026-08-07) and gets it, silently.
     assert QWEN36_FACTS["supports_prefix_caching"] is True
-    plan = plan_serving(QWEN36_FACTS,
-                        {"context_window": 16384, "reuses_long_prefixes": True},
-                        "m", "think")
+    plan = plan_serving(
+        QWEN36_FACTS,
+        {"context_window": 16384, "reuses_long_prefixes": True},
+        "m",
+        "think",
+    )
     assert plan["prefix_caching"] is True and plan["warnings"] == ()
 
 
@@ -252,7 +321,8 @@ def test_every_eval_config_declares_its_context_window():
         cfg = OmegaConf.load(spec.config)
         window = OmegaConf.select(cfg, "serving.context_window")
         assert window and int(window) > 0, (
-            f"{name}: {spec.config} must declare serving.context_window")
+            f"{name}: {spec.config} must declare serving.context_window"
+        )
         # Keys only, not a full plan_serving call: a config may legitimately declare a
         # requirement no family has met yet (swebench_mini's 65536 window), and that is
         # meant to fail loudly at serve time rather than silently here.
@@ -260,16 +330,20 @@ def test_every_eval_config_declares_its_context_window():
         assert declared <= _EVAL_REQUIREMENT_KEYS, (
             f"{name}: {spec.config} declares non-requirement serving key(s) "
             f"{sorted(declared - _EVAL_REQUIREMENT_KEYS)} — family facts live in "
-            "ModelProfile.serving, src/model_profile.py")
+            "ModelProfile.serving, src/model_profile.py"
+        )
 
 
 def test_odcv_bridge_url_rewrite():
     from src.eval.misalignment.odcv import runner as odcv_bench
 
-    assert (_ := odcv_bench._bridge_url("http://localhost:8000/v1", "172.17.0.1")
-            ) == "http://172.17.0.1:8000/v1"
-    assert (odcv_bench._bridge_url("http://127.0.0.1:9000/v1", "host.docker.internal")
-            == "http://host.docker.internal:9000/v1")
+    assert (
+        _ := odcv_bench._bridge_url("http://localhost:8000/v1", "172.17.0.1")
+    ) == "http://172.17.0.1:8000/v1"
+    assert (
+        odcv_bench._bridge_url("http://127.0.0.1:9000/v1", "host.docker.internal")
+        == "http://host.docker.internal:9000/v1"
+    )
 
 
 def test_odcv_container_host_address_is_platform_aware(monkeypatch):
@@ -303,8 +377,9 @@ def test_docker_preflight_network_failure_names_the_runpod_trap(monkeypatch):
 
     def fake_run(argv, **kwargs):
         ok = argv[:3] != ["docker", "network", "create"]
-        return sp.CompletedProcess(argv, 0 if ok else 1, stdout="",
-                                   stderr="operation not permitted")
+        return sp.CompletedProcess(
+            argv, 0 if ok else 1, stdout="", stderr="operation not permitted"
+        )
 
     monkeypatch.setattr(docker.subprocess, "run", fake_run)
     with pytest.raises(SystemExit) as e:
@@ -318,11 +393,18 @@ def test_agentic_misalignment_config_rewrite():
 
     from src.eval.misalignment.agentic_misalignment.runner import _harness_config
 
-    cfg = OmegaConf.create({
-        "global": {"models": ["vllm/qwen3"],
-                   "concurrency": {"providers": {"vllm": 32}, "models": {"vllm/qwen3": 32}}},
-        "expansions": [],
-    })
+    cfg = OmegaConf.create(
+        {
+            "global": {
+                "models": ["vllm/qwen3"],
+                "concurrency": {
+                    "providers": {"vllm": 32},
+                    "models": {"vllm/qwen3": 32},
+                },
+            },
+            "expansions": [],
+        }
+    )
     d = _harness_config(cfg, "vllm/my_arm", "my_arm_20260803")
     assert d["experiment_id"] == "my_arm_20260803"
     assert d["global"]["models"] == ["vllm/my_arm"]
@@ -339,12 +421,16 @@ def test_sshexec_remote_commands_source_the_hosts_own_env():
     assert wrapped.endswith("vllm-serve")
 
 
-def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, tmp_path):
+def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(
+    monkeypatch, tmp_path
+):
     from src.infra.endpoints.vllm import SshExec
 
     local = tmp_path / ".env"
-    local.write_text("OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n"
-                     "# WANDB_API_KEY=commented-out\nWANDB_PROJECT=lasr\nWANDB_ENTITY=\n")
+    local.write_text(
+        "OPENROUTER_API_KEY=secret-or\nHF_TOKEN=hf_abc\nVAST_API_KEY=v\n"
+        "# WANDB_API_KEY=commented-out\nWANDB_PROJECT=lasr\nWANDB_ENTITY=\n"
+    )
     ex = SshExec("host", port=8000)
     sent = []
 
@@ -359,7 +445,9 @@ def test_sshexec_push_hf_env_is_optin_minimal_and_never_overwrites(monkeypatch, 
 
     monkeypatch.setattr(ex, "_ssh", already_has)
     ex.push_hf_env(local)
-    assert not any("hf_abc" in c for c in seen), "must not rewrite an existing remote .env"
+    assert not any("hf_abc" in c for c in seen), (
+        "must not rewrite an existing remote .env"
+    )
 
     # Remote has none: HF_TOKEN, HF_ORG and whichever W&B variables are SET cross —
     # nothing else from the .env. HF_ORG is not a credential, and work run ON the host
@@ -392,7 +480,9 @@ def test_sshexec_check_ready_errors_name_the_remedy(monkeypatch):
     monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: "NOVLLM\n")
     with pytest.raises(SystemExit, match=r"uv run runpod up --name <name> --eval"):
         ex.check_ready()
-    monkeypatch.setattr(ex, "_ssh", lambda cmd, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(
+        ex, "_ssh", lambda cmd, **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
     with pytest.raises(SystemExit, match="RunPod remaps ports"):
         ex.check_ready()
 
@@ -414,7 +504,9 @@ def test_derive_run_kwargs_come_from_the_run_signature():
 
     # Keyword-only params become --flags; underscores map to dashes; absent flags are
     # simply not passed, so evals see their own defaults.
-    assert mod.derive_run_kwargs(fake_run, ["--reference", "org/x"]) == {"reference": "org/x"}
+    assert mod.derive_run_kwargs(fake_run, ["--reference", "org/x"]) == {
+        "reference": "org/x"
+    }
     assert mod.derive_run_kwargs(fake_run, ["--judge-seed", "7"]) == {"judge_seed": "7"}
     assert mod.derive_run_kwargs(fake_run, []) == {}
     # A flag no eval declares is a hard error, never silently dropped.
@@ -428,18 +520,19 @@ def test_resolve_target_api_endpoint_scheme():
     spec = resolve_target("openrouter:moonshotai/kimi-k2")
     assert spec.api_base == "https://openrouter.ai/api/v1"
     assert spec.api_key_env == "OPENROUTER_API_KEY"
-    assert spec.base_model == "moonshotai/kimi-k2"          # id sent to the API
-    assert spec.model_key == "openrouter_kimi_k2"           # provider-disambiguated
+    assert spec.base_model == "moonshotai/kimi-k2"  # id sent to the API
+    assert spec.model_key == "openrouter_kimi_k2"  # provider-disambiguated
     assert spec.mode == "default" and not spec.adapter
 
     # ServedTarget exposes the OpenAI triple without booting vLLM.
     from pathlib import Path
+
     st = VllmServer(work_dir=Path("/tmp/_t"), port=8000).ensure(spec)
     assert st.is_api and st.base_url == spec.api_base
     assert st.model_name == "moonshotai/kimi-k2"
 
     with pytest.raises(ValueError, match="unknown API provider"):
-        resolve_target("openroute:foo/bar")            # typo'd scheme, not an HF id
+        resolve_target("openroute:foo/bar")  # typo'd scheme, not an HF id
     with pytest.raises(AssertionError, match="names no model"):
         resolve_target("openrouter:")
 
@@ -450,7 +543,8 @@ def test_api_target_key_from_env_not_config(monkeypatch):
     from src.infra.endpoints.vllm import VllmServer, resolve_target
 
     st = VllmServer(work_dir=Path("/tmp/_t2"), port=8000).ensure(
-        resolve_target("openrouter:openai/gpt-4o-mini"))
+        resolve_target("openrouter:openai/gpt-4o-mini")
+    )
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-xyz")
     assert st.api_key == "sk-xyz"
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -463,9 +557,15 @@ def test_local_target_api_key_is_empty_sentinel():
 
     from src.infra.endpoints.vllm import TargetSpec, VllmServer
 
-    spec = TargetSpec(hf_path="Qwen/Qwen3-32B", base_model="Qwen/Qwen3-32B",
-                      # model_key is the canonical spelling (src/utils.py)
-                      adapter=False, mode="default", model_key="qwen3", lora_rank=None)
+    spec = TargetSpec(
+        hf_path="Qwen/Qwen3-32B",
+        base_model="Qwen/Qwen3-32B",
+        # model_key is the canonical spelling (src/utils.py)
+        adapter=False,
+        mode="default",
+        model_key="qwen3",
+        lora_rank=None,
+    )
     st = VllmServer(work_dir=Path("/tmp/_t3"), port=8000).ensure(spec)
     assert not st.is_api and st.api_key == "EMPTY"
 
@@ -478,15 +578,27 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
     # (agentic_misalignment, swebench_mini, internalization).
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
-        "mmlu", "arena_hard", "psychosis", "moralbench", "ctfish", "mask",
-        "dictator", "secret_number"}
+        "mmlu",
+        "arena_hard",
+        "psychosis",
+        "moralbench",
+        "ctfish",
+        "mask",
+        "dictator",
+        "secret_number",
+        "whistlebench_team",
+    }
 
 
 def test_publish_layout_contract(tmp_path):
     from src.eval.layout import assert_layout, publish_layout
 
     rollouts, results, metadata = publish_layout(tmp_path)
-    assert (rollouts.name, results.name, metadata.name) == ("rollouts", "results", "metadata")
+    assert (rollouts.name, results.name, metadata.name) == (
+        "rollouts",
+        "results",
+        "metadata",
+    )
     assert all(d.is_dir() for d in (rollouts, results, metadata))
     publish_layout(tmp_path)  # idempotent
 
@@ -506,21 +618,40 @@ def test_every_target_is_named_before_any_of_them_runs(monkeypatch, tmp_path):
     from src.infra.endpoints import vllm
 
     ran = []
-    monkeypatch.setattr(re_mod, "resolve_target", lambda t: vllm.TargetSpec(
-        hf_path=t, base_model="Qwen/Qwen3.6-27B", adapter=True, mode="think",
-        model_key=t.split("/")[-1], lora_rank=64))
-    monkeypatch.setattr(re_mod, "resolve", lambda name: lambda *a, **k: ran.append(1) or {})
+    monkeypatch.setattr(
+        re_mod,
+        "resolve_target",
+        lambda t: vllm.TargetSpec(
+            hf_path=t,
+            base_model="Qwen/Qwen3.6-27B",
+            adapter=True,
+            mode="think",
+            model_key=t.split("/")[-1],
+            lora_rank=64,
+        ),
+    )
+    monkeypatch.setattr(
+        re_mod, "resolve", lambda name: lambda *a, **k: ran.append(1) or {}
+    )
 
     # Two arms whose names differ only in the date the law now strips: one eval run name,
     # two arms, and the second would land on top of the first.
     with pytest.raises(Exception, match="published twice"):
-        re_mod.main(["--name", "mmlu",
-                     "--target", "org/2026-08-31-qwen36-difficult-advice-0",
-                     "org/2026-09-01-qwen36-difficult-advice-0"])
+        re_mod.main(
+            [
+                "--name",
+                "mmlu",
+                "--target",
+                "org/2026-08-31-qwen36-difficult-advice-0",
+                "org/2026-09-01-qwen36-difficult-advice-0",
+            ]
+        )
     assert not ran, "a run started before every name was checked"
 
 
-def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(monkeypatch, tmp_path):
+def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(
+    monkeypatch, tmp_path
+):
     """An ah run is a valid target: its rollouts hold that model's answers.
 
     Identity is READ from the run's own metadata, not re-derived, so an arm reused as a
@@ -530,8 +661,16 @@ def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(monkeypatch,
     from src.infra.endpoints import vllm
 
     meta = tmp_path / "run_meta.json"
-    meta.write_text(json.dumps({"target": "LASR-Callum/2026-09-04-qwen36-difficult-advice-0",
-                                "base_model": "Qwen/Qwen3.6-27B", "mode": "think"}))
+    meta.write_text(
+        json.dumps(
+            {
+                "target": "LASR-Callum/2026-09-04-qwen36-difficult-advice-0",
+                "base_model": "Qwen/Qwen3.6-27B",
+                "mode": "think",
+            }
+        )
+    )
+
     def only_run_meta(repo, name, **kw):
         # A published run has no adapter_config: that miss is what sends resolve_target
         # to the dataset probe rather than straight to "full model".
@@ -540,7 +679,9 @@ def test_a_prior_run_resolves_as_an_arm_whose_answers_already_exist(monkeypatch,
         return str(meta)
 
     monkeypatch.setattr(vllm, "hf_download", only_run_meta)
-    monkeypatch.setattr(vllm, "_repo_sha", lambda path, repo_type="model": f"sha-of-{repo_type}")
+    monkeypatch.setattr(
+        vllm, "_repo_sha", lambda path, repo_type="model": f"sha-of-{repo_type}"
+    )
 
     spec = vllm.resolve_target("LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0")
     assert spec.answers == "LASR-Callum/2026-09-05-ah-qwen36-difficult-advice-0"
@@ -571,8 +712,11 @@ def test_a_repo_that_is_not_a_published_run_is_not_mistaken_for_one(monkeypatch)
 def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
     """A LoRA is a diff on a base; serving it on today's head of that base is a different
     model. The training stamp records the commit, and the spec carries it to vLLM."""
-    stamped = _spec_from_files("org/2026-09-04-qwen36-8-da-10", ADAPTER_CONFIG,
-                               {"thinking": True, "base_model_revision": "abc123"})
+    stamped = _spec_from_files(
+        "org/2026-09-04-qwen36-8-da-10",
+        ADAPTER_CONFIG,
+        {"thinking": True, "base_model_revision": "abc123"},
+    )
     assert stamped.base_revision == "abc123"
     assert stamped.base_revision_from == "training_meta"
     # An older adapter with no stamp leaves it unset here; resolve_target then falls back
@@ -581,7 +725,9 @@ def test_an_adapter_is_served_on_the_base_commit_it_was_trained_against():
     assert unstamped.base_revision is None and unstamped.base_revision_from is None
 
 
-def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommit(monkeypatch):
+def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommit(
+    monkeypatch,
+):
     """ODCV at concurrency 32 needs 64 networks; a default Docker Desktop holds 31 and
     fails each extra scenario at `compose up` with 'address pools fully subnetted'
     (2026-09-06). The check runs before anything is rented or started."""
@@ -590,27 +736,48 @@ def test_docker_network_capacity_reads_the_daemon_pools_and_refuses_an_overcommi
     from src.eval import docker as d
 
     assert d.network_capacity(json.dumps({"DefaultAddressPools": None})) == 31
-    assert d.network_capacity(json.dumps({"DefaultAddressPools": [
-        {"Base": "10.200.0.0/14", "Size": 24}]})) == 1024
-    assert d.network_capacity(json.dumps({"DefaultAddressPools": [
-        {"Base": "172.17.0.0/12", "Size": 16}, {"Base": "192.168.0.0/16", "Size": 20}]})) == 32
+    assert (
+        d.network_capacity(
+            json.dumps({"DefaultAddressPools": [{"Base": "10.200.0.0/14", "Size": 24}]})
+        )
+        == 1024
+    )
+    assert (
+        d.network_capacity(
+            json.dumps(
+                {
+                    "DefaultAddressPools": [
+                        {"Base": "172.17.0.0/12", "Size": 16},
+                        {"Base": "192.168.0.0/16", "Size": 20},
+                    ]
+                }
+            )
+        )
+        == 32
+    )
     assert d.network_capacity("not json") == 0
 
     monkeypatch.setattr(d, "network_capacity", lambda info_json=None: 31)
     assert d.require_network_capacity(30, because="x") == 31
     with pytest.raises(SystemExit) as e:
         d.require_network_capacity(64, because="ODCV")
-    assert "default-address-pools" in str(e.value) or True  # _fail exits with the remedy
+    assert (
+        "default-address-pools" in str(e.value) or True
+    )  # _fail exits with the remedy
 
 
 def who(name="matboz", role="write", orgs=("dougalldeepmind",)):
     """An HfApi.whoami() payload, in the shape the preflight reads."""
-    return {"name": name, "auth": {"accessToken": {"role": role}},
-            "orgs": [{"name": o} for o in orgs]}
+    return {
+        "name": name,
+        "auth": {"accessToken": {"role": role}},
+        "orgs": [{"name": o} for o in orgs],
+    }
 
 
 def test_credentials_preflight_passes_a_token_that_can_publish():
     from src.eval.run_eval import credential_fault
+
     assert credential_fault(who(), "dougalldeepmind", 279.0) == ""
 
 
@@ -620,7 +787,9 @@ def test_credentials_preflight_catches_the_stale_export_failures_of_20260923():
     from src.eval.run_eval import credential_fault
 
     # A token whose user is not in the org: create_repo 403 at the push.
-    assert "not a member" in credential_fault(who(orgs=("someone-else",)), "dougalldeepmind", 10.0)
+    assert "not a member" in credential_fault(
+        who(orgs=("someone-else",)), "dougalldeepmind", 10.0
+    )
     # An exhausted judge key: labels nothing, and the eval reports a vacuous 100.
     assert "vacuous" in credential_fault(who(), "dougalldeepmind", -0.2)
     # No usable Hub token at all.
@@ -632,11 +801,13 @@ def test_credentials_preflight_does_not_judge_a_token_by_its_role():
     # (verified against the Hub, 2026-09-23); refusing on the role would block a token
     # that works, which is worse than the failure this preflight exists to catch.
     from src.eval.run_eval import credential_fault
+
     assert credential_fault(who(role="fineGrained"), "dougalldeepmind", 10.0) == ""
 
 
 def test_credentials_preflight_is_silent_on_what_it_cannot_know():
     from src.eval.run_eval import credential_fault
+
     # Unknown OpenRouter balance is not a fault (the endpoint may be unreachable), and
     # with --no-push there is no org to check membership against.
     assert credential_fault(who(orgs=("other",)), "", None) == ""
