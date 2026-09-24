@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import time
@@ -707,6 +708,25 @@ def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
     return argv, match["host"]
 
 
+def assert_local_port_free(bind: str, port: int) -> None:
+    """Refuse a tunnel whose local port another process already holds.
+
+    The forward's port must be OURS before ssh tries it: a port another driver's tunnel holds
+    makes ssh print "Address already in use" and carry on with no forward (2026-09-24 —
+    ExitOnForwardFailure did not end it), and the health probe then answers from whatever
+    server that other tunnel reaches: the wrong pod, silently, unless its model names happen
+    to differ. A bind attempt is deterministic.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind((bind, port))
+        except OSError as e:
+            raise RuntimeError(
+                f"local port {bind}:{port} is already taken (another eval's tunnel? `lsof -nP "
+                f"-iTCP:{port}`) — pass a different --port; the health probe would otherwise "
+                f"answer from whatever server that tunnel reaches") from e
+
+
 class SshExec:
     """Run the vLLM server on a remote GPU host (one `uv run runpod up --eval <hf>` leaves
     ready: a vLLM venv and the weights pulled), with an owned SSH tunnel so the driver
@@ -886,9 +906,9 @@ class SshExec:
             f"nohup bash {script} >> {self.remote_dir}/vllm.log 2>&1 < /dev/null & "
             f"echo started"), timeout=60)
         argv, target = ssh_argv(self.host, self.identity)
-        # ExitOnForwardFailure: a forward that cannot bind (another eval's tunnel on the
-        # same --port) ends the ssh instead of leaving a connection with no forward, whose
-        # health poll then answers from the OTHER tunnel (2026-09-23: two arms, one laptop).
+        # The port is checked by binding it, not by trusting ssh to refuse it: see
+        # assert_local_port_free. ExitOnForwardFailure stays as a second line.
+        assert_local_port_free(self.bind, self.port)
         self.tunnel = subprocess.Popen(
             [*argv, "-o", "ExitOnForwardFailure=yes", "-N",
              "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])

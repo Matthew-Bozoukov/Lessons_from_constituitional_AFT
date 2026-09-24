@@ -620,3 +620,24 @@ def test_ssh_tunnel_death_ends_the_run_instead_of_riding_another_tunnel():
     ex.tunnel = Dead()
     assert not ex.alive()
     assert "8001" in ex.tail_log() and "--port" in ex.tail_log()
+
+
+def test_tunnel_refuses_a_local_port_another_process_holds():
+    """Another driver's tunnel on our --port must fail the run before ssh runs, deterministically
+    (2026-09-24: ssh kept going with no forward and the health probe answered from the other pod)."""
+    import socket
+
+    import pytest
+
+    from src.infra.endpoints.vllm import assert_local_port_free
+
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(1)
+    port = holder.getsockname()[1]
+    try:
+        with pytest.raises(RuntimeError, match=f"127.0.0.1:{port} is already taken"):
+            assert_local_port_free("127.0.0.1", port)
+    finally:
+        holder.close()
+    assert_local_port_free("127.0.0.1", port)  # free again: no error
