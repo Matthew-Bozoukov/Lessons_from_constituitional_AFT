@@ -242,7 +242,7 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             parser.error('--fleet needs exactly one swebench_mini target, a fleet config, and no ordinary eval overrides')
         if args.budget_usd is None or args.budget_usd <= 0:
             parser.error('--fleet requires an explicit positive --budget-usd backstop')
-        command = ['launch', '--config', args.config or 'configs/eval/swebench_lite.yaml',
+        command = ['launch', '--config', args.config or 'configs/eval/swebench_mini/lite.yaml',
                    '--target', args.target[0], '--budget-usd', str(args.budget_usd)]
         if args.target_revision:
             command += ['--target-revision', args.target_revision]

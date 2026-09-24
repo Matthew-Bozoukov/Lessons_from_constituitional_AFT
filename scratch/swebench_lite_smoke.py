@@ -19,7 +19,7 @@ from scratch.swebench_lite import grade
 
 
 def main():
-    cfg = OmegaConf.load('configs/eval/swebench_lite.yaml')
+    cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
     load_dotenv(cfg.credentials)
     cfg.root = '/srv/lasr/runs/lite-infrastructure-' + uuid.uuid4().hex[:10]
     root = Path(cfg.root)

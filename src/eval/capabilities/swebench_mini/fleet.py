@@ -875,7 +875,7 @@ def execute(cfg, config_path, action, budget):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['qualify-shell', 'prepare', 'plan', 'run', 'resume', 'grade', 'publish', 'status', 'guard', 'supervise', 'launch', 'stop'])
-    parser.add_argument('--config', default='configs/eval/swebench_lite.yaml')
+    parser.add_argument('--config', default='configs/eval/swebench_mini/lite.yaml')
     parser.add_argument('--budget-usd', type=float)
     parser.add_argument('--target')
     parser.add_argument('--target-revision')

@@ -6,7 +6,7 @@
 ## Current reusable launch procedure (2026-09-24)
 
 This section supersedes the historical launch/recovery examples below. The current
-template is `configs/eval/swebench_lite.yaml`; the old scratch YAML remains the
+template is `configs/eval/swebench_mini/lite.yaml`; the old scratch YAML remains the
 immutable historical campaign configuration. Do not resume that completed campaign
 under new source hashes.
 

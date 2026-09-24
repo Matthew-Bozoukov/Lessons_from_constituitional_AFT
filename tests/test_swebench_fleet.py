@@ -191,7 +191,7 @@ class ProvenanceTests(unittest.TestCase):
         from src.eval.run_eval import main
         with patch.object(fleet, 'main') as launch, patch.object(fleet.runpod, 'provision_eval_pod') as rent:
             main(['--name', 'swebench_mini', '--target', 'org/lora', '--fleet', '--budget-usd', '180'])
-            launch.assert_called_once_with(['launch', '--config', 'configs/eval/swebench_lite.yaml',
+            launch.assert_called_once_with(['launch', '--config', 'configs/eval/swebench_mini/lite.yaml',
                                            '--target', 'org/lora', '--budget-usd', '180.0'])
             rent.assert_not_called()
 

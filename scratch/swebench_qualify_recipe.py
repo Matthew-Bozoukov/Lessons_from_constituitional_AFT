@@ -22,7 +22,7 @@ def main():
     parser.add_argument('--load-dir', type=Path, required=True)
     parser.add_argument('--smoke-root', type=Path, required=True)
     args = parser.parse_args()
-    cfg = OmegaConf.load('configs/eval/swebench_lite.yaml')
+    cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
     load_dotenv(cfg.credentials)
     load = read(args.load_dir/'results.json')
     assert load['status'] == 'finished' and load['model_inference'] is False
