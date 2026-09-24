@@ -1,6 +1,6 @@
 ---
 name: swebench-lite
-description: Run all 300 SWE-bench Lite tasks for one Qwen3.6 LoRA, or prepare/manage the reusable Vast CPU. Use for ìrun swebench on this loraî, ìprepare the swebench cpuî, and SWE-bench status/recovery requests in this repository.
+description: Run all 300 SWE-bench Lite tasks for one Qwen3.6 LoRA, or prepare/manage the reusable Vast CPU. Use for ‚Äúrun swebench on this lora‚Äù, ‚Äúprepare the swebench cpu‚Äù, and SWE-bench status/recovery requests in this repository.
 ---
 
 # Run SWE-bench Lite
@@ -9,7 +9,7 @@ Read `CLAUDE.md`, `docs/swebench_lite_runbook.md`, and
 `docs/swebench_cpu_lifecycle.md` from the repository root. Those files, the committed
 configuration and live receipts replace conversation history. Use this skill from
 main in any new conversation. A request to run the benchmark authorizes preparing
-its CPU and running one model under the defaults below; ìprepare CPUî authorizes
+its CPU and running one model under the defaults below; ‚Äúprepare CPU‚Äù authorizes
 CPU work only. Do not rent an extra model evaluation for calibration.
 
 ## Fixed operating defaults
