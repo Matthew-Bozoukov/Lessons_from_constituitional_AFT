@@ -1,5 +1,6 @@
 # ABOUTME: Persistent, bounded full SWE-bench Lite campaign on a prepared CPU host and RunPod replicas.
 # ABOUTME: Preparation and grading rent nothing; only explicit run/resume can allocate inference GPUs.
+from src.eval.capabilities.swebench_mini.fleet_host import receipt_deadline, deadline_value
 import argparse
 import hashlib
 from concurrent.futures import ThreadPoolExecutor
@@ -150,7 +151,7 @@ def preflight(cfg):
     if not cfg.calibrate:
         validate_recipe(cfg, read(cfg.recipe_path))
     receipt = read(cfg.receipt)
-    available = datetime.fromisoformat(receipt['stop_at']).timestamp() - time.time()
+    available = deadline_value(receipt_deadline(receipt)) - time.time()
     assert available > cfg.allocation_min_remaining_seconds + cfg.cpu_finish_reserve_seconds + 120, 'CPU expiry cannot accommodate boot, one full task and grading; do not rent GPUs'
     assert Path(cfg.ssh_key).is_file() and Path(cfg.ssh_key + '.pub').is_file()
     assert os.environ.get('USER_PREFIX') and os.environ.get('HF_ORG')
@@ -273,7 +274,7 @@ def guard(cfg):
     for pod in runpod.active_pods():
         if owned(pod, manifest):
             deadline = float((pod.get('env') or {}).get('LASR_POD_DEADLINE', 0))
-            if not active or pod.get('name') in rejected_names or time.time() >= min(deadline, state['deadline']):
+            if not active or pod.get('name') in rejected_names or time.time() >= min(deadline, deadline_value(state['deadline'])):
                 runpod.teardown(pod['id'])
     if not active:
         try:
@@ -466,11 +467,12 @@ def pending_tasks(data, allowed, cfg):
                and len(t['attempts']) < cfg.max_infrastructure_attempts for iid, t in data['tasks'].items())
 
 
-def allocation_gpu(cfg, failures, elapsed):
+def allocation_gpu(cfg, failures, elapsed, fallback_failures=None):
     if failures < cfg.allocation_fallback_after_attempts or elapsed < cfg.allocation_fallback_after_seconds:
         return cfg.gpu
     options = list(cfg.fallback_gpus) + [cfg.gpu]
-    return options[(failures - cfg.allocation_fallback_after_attempts) % len(options)]
+    offset = failures - cfg.allocation_fallback_after_attempts if fallback_failures is None else fallback_failures
+    return options[offset % len(options)]
 
 
 def cancel_idle_startup(state, slot, allowed, cfg):
@@ -644,7 +646,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     assert seconds > cfg.allocation_min_remaining_seconds, 'Remaining budget cannot cover boot plus a full task; no rental'
     # `seconds` is a per-rental safety lease, never a shared batch cutoff. Late
     # arrivals and replacements get their own lease, bounded by CPU expiry/cost.
-    assert data['deadline'] - time.time() > cfg.allocation_min_remaining_seconds
+    assert deadline_value(data['deadline']) - time.time() > cfg.allocation_min_remaining_seconds
     allowed = Path(cfg.root) / 'metadata' / f'allowed-{len(data["pods"])}.json'
     atomic(allowed, ids)
     next_slot = max((p['slot'] for p in data['pods']), default=-1) + 1
@@ -653,6 +655,8 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     retry_at = {i: 0 for i in range(count)}
     attempts = {i: 0 for i in range(count)}
     failures = {i: 0 for i in range(count)}
+    fallback_failures = {i: 0 for i in range(count)}
+    fallback_attempt = {}
     started = time.time()
     with ThreadPoolExecutor(max_workers=count) as pool:
         futures = {}
@@ -664,24 +668,29 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                 del futures[lane]
                 if future.exception():
                     failures[lane] += 1
+                    if fallback_attempt.get(lane):
+                        fallback_failures[lane] += 1
                     print(f'Fleet slot {lane}: {future.exception()}; peers continue', flush=True)
                     retry_at[lane] = time.time() + min(cfg.allocation_retry_max_seconds,
                         cfg.allocation_retry_seconds * 2 ** min(attempts[lane] - 1, 4))
             if (not live.get('halt') and pending_tasks(live, ids, cfg)
-                    and live['deadline'] - time.time() > cfg.allocation_min_remaining_seconds):
+                    and deadline_value(live['deadline']) - time.time() > cfg.allocation_min_remaining_seconds):
                 for lane in range(count):
                     if lane in futures or time.time() < retry_at[lane]:
                         continue
                     attempts[lane] += 1
-                    selected = allocation_gpu(cfg, failures[lane], time.time() - started)
+                    elapsed = time.time() - started
+                    selected = allocation_gpu(cfg, failures[lane], elapsed, fallback_failures[lane])
+                    fallback_attempt[lane] = (failures[lane] >= cfg.allocation_fallback_after_attempts
+                                              and elapsed >= cfg.allocation_fallback_after_seconds)
                     replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
                     replica_cfg.gpu = selected
-                    expires = min(time.time() + seconds, live['deadline'])
+                    expires = min(time.time() + seconds, deadline_value(live['deadline']))
                     print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
                     futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)
                     next_slot += 1
             if not futures and (live.get('halt') or not pending_tasks(live, ids, cfg)
-                               or live['deadline'] - time.time() <= cfg.allocation_min_remaining_seconds):
+                               or deadline_value(live['deadline']) - time.time() <= cfg.allocation_min_remaining_seconds):
                 break
             if time.time() - last_upload >= cfg.upload_every_seconds:
                 checkpoint(cfg, config_path)
@@ -698,7 +707,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                 with state.edit() as data:
                     data['halt'] = 'budget cannot fund another complete rental'
                 break
-            if time.time() > live['deadline']:
+            if time.time() > deadline_value(live['deadline']):
                 with state.edit() as data:
                     data['halt'] = 'CPU lifetime exhausted'
             if shutil.disk_usage('/var/lib/docker').free / 2**30 < cfg.min_free_gib:
@@ -798,9 +807,9 @@ def execute(cfg, config_path, action, budget):
             data['breaker_failures_baseline'] = sum(a.get('valid') is False for t in data['tasks'].values() for a in t['attempts'])
             supervisor_path = root / 'metadata/supervisor.json'
             job_deadline = (read(supervisor_path)['deadline'] if supervisor_path.exists()
-                            else datetime.fromisoformat(read(cfg.receipt)['stop_at']).timestamp() - 120)
-            data['deadline'] = job_deadline - cfg.cpu_finish_reserve_seconds
-            assert data['deadline'] - time.time() >= cfg.allocation_min_remaining_seconds, 'Insufficient authorized time for a full task and cleanup'
+                            else receipt_deadline(read(cfg.receipt)))
+            data['deadline'] = job_deadline - cfg.cpu_finish_reserve_seconds if job_deadline is not None else None
+            assert deadline_value(data['deadline']) - time.time() >= cfg.allocation_min_remaining_seconds, 'Insufficient authorized time for a full task and cleanup'
             data['phase'] = 'calibration' if not data['calibrated'] else 'fleet'
 
         def halted(signum, frame):
@@ -866,10 +875,10 @@ def execute(cfg, config_path, action, budget):
                           else validate_recipe(cfg, read(cfg.recipe_path)))
                 calibration = recipe['calibration']
                 measured = (calibration['gpu_seconds_per_task'] * calibration['workers_per_replica']
-                            / cfg.workers_per_replica)
+                            / cfg.workers_per_replica) if calibration.get('gpu_seconds_per_task') is not None else None
                 count = min(cfg.replicas, math.ceil(len(todo) / cfg.workers_per_replica))
                 atomic(root / 'metadata/fleet_plan.json', {'replicas': count, 'ceiling': cfg.replicas,
-                       'inference_seconds_estimate': len(todo) * measured / count, 'estimate_only': True,
+                       'inference_seconds_estimate': len(todo) * measured / count if measured is not None else None, 'estimate_only': True,
                        'assumption': 'Historical mean task duration held constant; new GPU throughput unmeasured'})
                 phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest)
         finally:

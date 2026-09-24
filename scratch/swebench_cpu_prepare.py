@@ -1,5 +1,6 @@
 # ABOUTME: Persist and back up CPU readiness checks before renting any inference GPU.
 # ABOUTME: Reuses the existing image naming and official grading wrappers with frozen data.
+from src.eval.capabilities.swebench_mini.fleet_host import receipt_deadline, deadline_value
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -91,7 +92,7 @@ def main():
         previous = json.loads(old_meta.read_text())
         assert (previous["dataset"], previous["revision"]) == (cfg.dataset, cfg.revision), "Resume dataset changed"
     now = datetime.now(timezone.utc)
-    assert now < datetime.fromisoformat(receipt["stop_at"]), "VM expiry reached"
+    assert now.timestamp() < deadline_value(receipt_deadline(receipt)), "VM expiry reached"
     date = receipt["created_at"][:10]
     repo = hf_repo_id(artifact_name(f"swebench-cpu-readiness-{receipt['instance_id']}", date=date))
     state = {"status": "preparing", "dataset": cfg.dataset, "revision": cfg.revision,
@@ -218,7 +219,7 @@ def main():
         assert shutil.disk_usage(info["DockerRootDir"]).free / 2**30 > cfg.min_free_gib
         assert state["gold"]["passed"], state["gold"]
         assert state["no_fix"]["passed"], state["no_fix"]
-        assert datetime.now(timezone.utc) < datetime.fromisoformat(receipt["stop_at"]), "VM expiry reached"
+        assert datetime.now(timezone.utc).timestamp() < deadline_value(receipt_deadline(receipt)), "VM expiry reached"
         state["status"] = "ready"
         state["finished_at"] = datetime.now(timezone.utc).isoformat()
         backup()

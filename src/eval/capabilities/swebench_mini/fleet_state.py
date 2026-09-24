@@ -1,5 +1,6 @@
 # ABOUTME: Durable task leases and append-only attempt directories for the Lite coordinator.
 # ABOUTME: Linux advisory locks serialize claims; atomic records preserve outcomes across crashes.
+from src.eval.capabilities.swebench_mini.fleet_host import deadline_value
 from contextlib import contextmanager
 import fcntl
 import hashlib
@@ -99,7 +100,7 @@ class State:
 
     def claim(self, worker, allowed, max_attempts, failure_limit, *, latest_start=None):
         with self.edit() as data:
-            if data.get('halt') or time.time() >= data['deadline']:
+            if data.get('halt') or time.time() >= deadline_value(data['deadline']):
                 return None
             # HF is a replica of durable local state, not a liveness dependency.
             # Admit a task only when its complete time budget fits before expiry.

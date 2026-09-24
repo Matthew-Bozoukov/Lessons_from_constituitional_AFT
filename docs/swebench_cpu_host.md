@@ -3,16 +3,12 @@
 
 # SWE-bench CPU host on Vast
 
-## Current use (2026-09-24)
+## Current instructions
 
-Both model evaluations are complete. Use [the Lite runbook](swebench_lite_runbook.md)
-for current results, commands and the qualified 20-GPU/four-conversation recipe;
-the eight-GPU calibration notes below are historical. The CPU receipt still expires
-September 24 at 12:37 UTC. A later run needs a newly authorized CPU lifetime and
-matching guest/external expiry guards before reusing this disk; the launch helper
-does not renew these automatically. Retain the cached disk unless asked to destroy it.
-The chat progress monitor was deleted after completion; CPU expiry safeguards are
-separate and remain needed while this host can bill.
+Use [CPU lifecycle](swebench_cpu_lifecycle.md) and the [repository skill](../.agents/skills/swebench-lite/SKILL.md).
+The user authorized persistent CPU retention on September 24. The old 24-hour
+expiry, eight-GPU calibration and incomplete implementation notes below are
+historical evidence, not instructions for a new run.
 
 ## Historical preparation decision and status (2026-09-23)
 

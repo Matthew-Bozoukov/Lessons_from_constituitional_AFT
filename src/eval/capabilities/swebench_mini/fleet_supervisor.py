@@ -1,5 +1,6 @@
 # ABOUTME: Bounded durable supervision for one authorized Lite campaign, including grading and publication recovery.
 # ABOUTME: Never resets spend or completed outcomes; explicit stops and the actual CPU expiry survive restarts.
+from src.eval.capabilities.swebench_mini.fleet_host import receipt_deadline, deadline_value
 from datetime import datetime, timezone
 import json
 import os
@@ -24,7 +25,7 @@ def decide(state, control, cfg, now=None):
         return 'stopped'
     if state.get('tasks') and all(t['status'] == 'valid' for t in state['tasks'].values()):
         return 'finish'
-    if now + cfg.get('allocation_min_remaining_seconds', 6480) + cfg.get('cpu_finish_reserve_seconds', 1800) >= control['deadline']:
+    if now + cfg.get('allocation_min_remaining_seconds', 6480) + cfg.get('cpu_finish_reserve_seconds', 1800) >= deadline_value(control['deadline']):
         return 'cpu_lifetime_insufficient'
     if state.get('halt') and any(x in state['halt'].lower() for x in ('memory', 'disk', 'cleanup', 'budget')):
         return 'needs_attention'
@@ -40,7 +41,7 @@ def publish_until_verified(cfg, control_path):
     from src.eval.capabilities.swebench_mini import fleet
     for _ in range(cfg.get('publication_attempts', 6)):
         control = read(control_path)
-        if control.get('cancelled') or time.time() >= control['deadline']:
+        if control.get('cancelled') or time.time() >= deadline_value(control['deadline']):
             break
         try:
             fleet.publish(cfg)
@@ -74,7 +75,8 @@ def supervise(cfg, config_path, budget):
         if not control_path.exists():
             assert budget is not None and 0 < budget <= cfg.recommended_budget_usd
             receipt = read(cfg.receipt)
-            deadline = datetime.fromisoformat(receipt['stop_at']).timestamp() - 120
+            expiry = receipt_deadline(receipt)
+            deadline = expiry - 120 if expiry is not None else None
             atomic(control_path, {'status': 'armed', 'budget_usd': budget, 'cycles': 0,
                    'created': time.time(), 'deadline': deadline, 'cancelled': False})
         control = read(control_path)
@@ -145,7 +147,7 @@ def supervise(cfg, config_path, budget):
                 control = read(control_path)
                 control.update(last_error=type(exc).__name__ + ': ' + str(exc))
                 atomic(control_path, control)
-            if time.time() < control['deadline']:
+            if time.time() < deadline_value(control['deadline']):
                 time.sleep(cfg.get('recovery_backoff_seconds', 30))
 
 

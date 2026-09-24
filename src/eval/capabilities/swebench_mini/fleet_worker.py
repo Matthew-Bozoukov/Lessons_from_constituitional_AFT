@@ -1,5 +1,6 @@
 # ABOUTME: One serving replica consumes the shared Lite queue through the standard eval lifecycle.
 # ABOUTME: The coordinator owns rentals; this worker owns bounded agent subprocesses and durable attempts.
+from src.eval.capabilities.swebench_mini.fleet_host import deadline_value
 from concurrent.futures import ThreadPoolExecutor
 import argparse
 import json
@@ -47,7 +48,7 @@ def stop_process(proc):
 
 
 def attempt_deadline(cfg, state, expires):
-    return min(time.time() + cfg.task_seconds, state['deadline'] - cfg.cleanup_reserve_seconds,
+    return min(time.time() + cfg.task_seconds, deadline_value(state['deadline']) - cfg.cleanup_reserve_seconds,
                expires - cfg.cleanup_reserve_seconds)
 
 

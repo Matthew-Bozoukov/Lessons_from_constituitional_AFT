@@ -1,5 +1,8 @@
 # ABOUTME: Stop exactly the receipted Vast CPU VM at its absolute expiry, retaining disk.
 # ABOUTME: Runs from Windows Task Scheduler or a guest systemd timer; never destroys instances.
+import sys
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
+from src.eval.capabilities.swebench_mini.fleet_host import watchdog_deadline, deadline_value
 import argparse
 import json
 from datetime import datetime, timezone
@@ -24,12 +27,11 @@ def main():
     if instance["label"] != receipt["label"]:
         raise RuntimeError("Ownership label changed; refusing to operate on VM")
     now = datetime.now(timezone.utc)
-    deadline = datetime.fromisoformat(receipt["stop_at"])
-    if receipt.get("boot_deadline") and not receipt.get("ssh_verified"):
-        deadline = min(deadline, datetime.fromisoformat(receipt["boot_deadline"]))
-    if args.check or now < deadline:
+    deadline = watchdog_deadline(receipt)
+    due = now.timestamp() >= deadline_value(deadline)
+    if args.check or not due:
         print(json.dumps({"id": instance["id"], "status": instance["actual_status"],
-                          "stop_at": deadline.isoformat(), "due": now >= deadline}))
+                          "stop_at": deadline, "due": due, "lifetime": receipt.get("lifetime", "expiring")}))
         return
     if instance["actual_status"] == "stopped":
         print("Provider confirms VM stopped; retained storage still bills.")

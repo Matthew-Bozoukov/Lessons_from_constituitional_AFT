@@ -9,8 +9,8 @@ graded, all 4,867 rollout/result files were verified on HF, and owned GPU invent
 was empty. Evidence: `metadata/final-verification-20260924.json` at
 `dougalldeepmind/2026-09-24-swebench-qwen36-0-da-15@1ae295a5e9063d84687d09e5868e1b164b894d59`.
 The heartbeat was **deleted at the user's request**; create a fresh monitor for a newly
-authorized run rather than assuming monitoring remains active. The CPU's September
-24 12:37 UTC stop is unchanged. The operating instructions and linked history describe
+authorized run rather than assuming monitoring remains active. The CPU is now explicitly persistent until the user stops it; see
+[CPU lifecycle and cold preparation](swebench_cpu_lifecycle.md). The operating instructions and linked history describe
 the supported procedure and the incidents; they are not unfinished work.
 
 ## Current reusable launch procedure (2026-09-24)
@@ -49,7 +49,8 @@ and load the authorized local `.env` with uv's `--env-file`. The helper checks t
 Vast instance ID/label/deadline, resumes a stopped CPU within its existing authorized
 lifetime, refreshes the provider SSH endpoint, verifies the remote receipt and then
 submits. Unknown SSH host keys, expired CPU lifetime or missing infrastructure require
-repair/review. It never creates a host, extends expiry or copies credentials silently.
+repair/review. The [repository skill](../.agents/skills/swebench-lite/SKILL.md) handles cold preparation
+when the shared CPU registry is empty; this submission helper only reuses a host.
 
 `180` is a proposed **new-campaign maximum**, not a forecast, a charge or an increase
 to the completed campaign's budget. Pass the allowance authorized for that new run.
@@ -72,8 +73,8 @@ cutoff or shared 150-minute batch cutoff**. Each late/replacement GPU gets its o
 150-minute safety lease, bounded by the cumulative budget and actual CPU expiry.
 Vacant slots refill while healthy peers work. New tasks fit their full 90-minute
 allowance before that individual lease expires; a drained pod is replaced when work
-remains. Reserve 30 minutes before CPU shutdown for finishing. Do not manually extend
-live rentals or the CPU lifetime.
+remains. Reserve 30 minutes before CPU shutdown for finishing. Do not manually extend live GPU rentals. Persistent CPU receipts have no host
+cutoff; optional expiring receipts still reserve time for grading.
 
 HF snapshots are atomic, checked initially before rentals, and retried asynchronously
 from inference progress. Later backup failure does not cancel agents or prevent grading.
@@ -133,10 +134,10 @@ local HTTPBin grading deviation when comparing scores.
 
 Before another paid run:
 
-1. Prepare or resume a receipted native-Docker CPU host with a newly authorized
-   lifetime if the previous one expired. The current helper validates an existing
+1. Prepare or resume the registered native-Docker CPU using its explicit persistent
+   authorization (or an explicitly selected finite lifetime). The current helper validates an existing
    receipt; it does not renew expiry timers or provision a replacement host. Follow
-   [the CPU host guide](swebench_cpu_host.md), refresh SSH, and recheck images,
+   [the CPU lifecycle guide](swebench_cpu_lifecycle.md), refresh SSH, and recheck images,
    fixture, disk, RAM, credentials and remaining lifetime before any GPU rental.
 2. Deploy one reviewed source revision and its tested recipe. Source hashes are
    deliberately strict: do not overwrite a completed campaign manifest to approve

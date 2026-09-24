@@ -404,3 +404,60 @@ class ProvenanceTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PersistentLifetimeTests(unittest.TestCase):
+    def test_unlimited_requires_explicit_authorization(self):
+        from src.eval.capabilities.swebench_mini.fleet_host import receipt_deadline
+        for receipt in ({}, {'stop_at': None}, {'lifetime': 'persistent'},
+                        {'lifetime': 'persistent', 'lifetime_authorized_at': 'now', 'stop_at': 'old'}):
+            with self.assertRaises(AssertionError):
+                receipt_deadline(receipt)
+        self.assertIsNone(receipt_deadline({'lifetime': 'persistent', 'lifetime_authorized_at': 'now', 'stop_at': None}))
+
+    def test_persistent_still_has_boot_watchdog(self):
+        from src.eval.capabilities.swebench_mini.fleet_host import watchdog_deadline
+        receipt = {'lifetime': 'persistent', 'lifetime_authorized_at': 'now', 'stop_at': None,
+                   'boot_deadline': '2026-09-24T12:00:00+00:00', 'ssh_verified': False}
+        self.assertIsInstance(watchdog_deadline(receipt), float)
+        receipt['ssh_verified'] = True
+        self.assertIsNone(watchdog_deadline(receipt))
+
+    def test_persistent_keeps_task_and_gpu_timeouts(self):
+        from src.eval.capabilities.swebench_mini.fleet_worker import attempt_deadline
+        cfg = OmegaConf.create({'task_seconds': 5400, 'cleanup_reserve_seconds': 180})
+        now = time.time()
+        self.assertEqual(attempt_deadline(cfg, {'deadline': None}, now+300), now+120)
+        control = {'deadline': None, 'cycles': 0}
+        state = {'tasks': {'a': {'status': 'pending', 'attempts': []}}}
+        cfg.max_infrastructure_attempts = 3
+        self.assertEqual(supervisor.decide(state, control, cfg, now=10**12), 'infer')
+        control['cycles'] = 4
+        self.assertEqual(supervisor.decide(state, control, cfg), 'recovery_exhausted')
+
+    def test_registry_does_not_replace_another_host(self):
+        from scratch.swebench_cpu_manage import register
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            receipt = d/'receipt.json'
+            key = d/'key'
+            key.touch()
+            atomic(receipt, {'instance_id': 1, 'stop_at': '2026-09-24T12:00:00+00:00'})
+            register(d/'registry.json', receipt, key)
+            atomic(receipt, {'instance_id': 2, 'stop_at': '2026-09-24T12:00:00+00:00'})
+            with self.assertRaises(AssertionError):
+                register(d/'registry.json', receipt, key)
+
+
+class HostRoutingTests(unittest.TestCase):
+    def test_vm_prefers_fresh_direct_mapping_over_broken_proxy(self):
+        from src.eval.capabilities.swebench_mini.fleet_host import ssh_endpoint
+        self.assertEqual(ssh_endpoint({'public_ipaddr': '1.2.3.4', 'ports': {'22/tcp': [{'HostPort': '42'}]},
+                                      'ssh_host': 'proxy', 'ssh_port': 10}), ('1.2.3.4', 42))
+        self.assertEqual(ssh_endpoint({'ssh_host': 'proxy', 'ssh_port': 10}), ('proxy', 10))
+
+    def test_first_fallback_is_h200_regardless_of_prior_primary_failures(self):
+        cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+        for failures in (5, 6, 7, 25):
+            self.assertEqual(fleet.allocation_gpu(cfg, failures, 601, 0), cfg.fallback_gpus[0])
+        self.assertEqual(fleet.allocation_gpu(cfg, 26, 650, 1), cfg.fallback_gpus[1])

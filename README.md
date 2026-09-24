@@ -371,3 +371,15 @@ The original config-driven `synthdoc` package (ablation sweeps, corpus snapshots
 prompt registry) was deleted on 2026-08-03 in favour of this simpler, more faithful pipeline;
 it lives in git history before that date, and its published corpora remain on HuggingFace
 (`LASR-Callum/synthdoc-<name>`).
+
+
+### SWE-bench Lite for a LoRA
+
+Tell a new repository conversation **“run SWE-bench on ORG/LORA”**. The repository
+[skill](.agents/skills/swebench-lite/SKILL.md) defines the complete workflow:
+reuse or prepare a persistent Vast CPU, qualify all 300 cached environments,
+launch up to 20 RunPod GPUs with four conversations each, recover infrastructure
+failures, grade, publish/verify on Hugging Face and terminate owned GPUs.
+**“Spin up and prepare the SWE-bench CPU”** performs only CPU preparation.
+See [CPU lifecycle and sizing](docs/swebench_cpu_lifecycle.md) and
+[the runbook](docs/swebench_lite_runbook.md) for limits and measured findings.

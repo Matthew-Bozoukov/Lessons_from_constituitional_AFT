@@ -21,11 +21,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--load-dir', type=Path, required=True)
     parser.add_argument('--smoke-root', type=Path, required=True)
+    parser.add_argument('--test-log', type=Path, required=True)
+    parser.add_argument('--transport-log', type=Path, required=True)
     args = parser.parse_args()
     cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
     load_dotenv(cfg.credentials)
     load = read(args.load_dir/'results.json')
     assert load['status'] == 'finished' and load['model_inference'] is False
+    assert load['memory_gib'] >= 190 and load['cpu_count'] >= 60, 'Host below 80-conversation sizing floor'
     assert [(p['agents'], p['tool_limit']) for p in load['phases']] == [(6, 1), (40, 40), (60, 60), (80, 80), (80, 32)]
     phases = []
     for phase in load['phases']:
@@ -39,8 +42,8 @@ def main():
                        'min_available_gib': min(s['available_gib'] for s in phase['samples'])})
     smoke = read(args.smoke_root/'results/infrastructure.json')
     assert smoke['status'] == 'passed' and smoke['synthetic'] and not smoke['model_evaluation']
-    test_log = Path('/srv/lasr/runs/hardening-tests.log')
-    transport_log = Path('/srv/lasr/runs/hardening-transport-test.log')
+    test_log = args.test_log
+    transport_log = args.transport_log
     assert re.search(r'\d+ passed', test_log.read_text()) and ' failed' not in test_log.read_text()
     assert '\nOK' in transport_log.read_text()
     proof = {'status': 'passed', 'created': time.time(), 'qualified_workers': 80, 'tool_concurrency': 32,
@@ -52,24 +55,20 @@ def main():
              'load_test_sha256': digest(args.load_dir/'results.json'), 'phases': phases,
              'limitations': 'Six representative test workloads, not arbitrary future commands. No GPU performance qualification.'}
     atomic(cfg.cpu_qualification_path, proof)
-    history = read('/srv/lasr/runs/lite-nosynth/metadata/state.json')
-    durations = [t['attempts'][-1]['finished']-t['attempts'][-1]['started'] for t in history['tasks'].values() if t['status']=='valid']
-    assert len(durations) == 300
     recipe = {'settings': fleet.recipe_settings(cfg), 'source_hashes': fleet.sources(),
               'validated_full_run': False,
               'qualification': {'protocol_reviewed': True, 'cpu_qualified': True, 'recovery_tests_passed': True,
                                 'performance_benchmark_validated': False},
               'cpu_qualification_sha256': digest(cfg.cpu_qualification_path),
-              'calibration': {'gpu_seconds_per_task': statistics.mean(durations)/4, 'workers_per_replica': 4,
-                              'limitation': 'Historical mixed-fleet mean; excludes failed attempts, bootstrap and idle time; estimate only'},
-              'source_hf_repo': 'dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth'}
+              'calibration': {'gpu_seconds_per_task': None, 'workers_per_replica': 4,
+                              'limitation': 'No throughput measurement on this CPU; first requested model run supplies evidence'},
+              'source_hf_repo': None}
     atomic(cfg.recipe_path, recipe)
     fleet.validate_recipe(cfg, recipe)
     evidence = args.smoke_root/'metadata'
     shutil.copytree(args.load_dir, evidence/'cpu-qualification', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('.tool-slots'))
-    for path in (test_log, transport_log, Path(cfg.recipe_path), Path(cfg.cpu_qualification_path),
-                 Path('/srv/lasr/runs/hardening-20260924/cache-audit.json')):
+    for path in (test_log, transport_log, Path(cfg.recipe_path), Path(cfg.cpu_qualification_path)):
         shutil.copy2(path, evidence/path.name)
     for name in recipe['source_hashes']:
         dest = evidence/'qualified-source'/name
