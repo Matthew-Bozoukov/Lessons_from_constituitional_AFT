@@ -92,6 +92,10 @@ class SupervisionTests(unittest.TestCase):
         self.state['tasks']['b']['attempts'] = [{}, {}, {}]
         self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'attempts_exhausted')
 
+    def test_global_infrastructure_breaker_requires_diagnosis_before_rerental(self):
+        self.state['halt'] = 'infrastructure failure circuit breaker'
+        self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'needs_attention')
+
     def test_publication_failure_retries_without_inference_or_ledger_reset(self):
         with tempfile.TemporaryDirectory() as path:
             root = Path(path)
@@ -516,3 +520,53 @@ class RuntimeSchedulingTests(unittest.TestCase):
             current = read(state.path)['tasks']
             self.assertTrue(all(current[i]['status'] == 'running' for i in 'bcde'))
             self.assertIsNone(state.claim('gpu-0', list('abcde'), 3, 6))
+
+
+class ReplicaFailureBreakerTests(unittest.TestCase):
+    def make_state(self, directory):
+        from src.eval.capabilities.swebench_mini.fleet_state import State, begin_failure_epoch
+        state = State(directory)
+        data = {'deadline': None, 'tasks': {
+            str(i): {'status': 'pending', 'attempts': []} for i in range(30)}}
+        begin_failure_epoch(data)
+        atomic(state.path, data)
+        return state
+
+    def fail_replica(self, state, slot, workers=4):
+        # Lease all tasks before the shared endpoint dies, as in the actual fleet.
+        allowed = list(read(state.path)['tasks'])
+        leases = [state.claim(f'{slot}-{n}', allowed, 6, 6) for n in range(workers)]
+        for iid, aid in leases:
+            state.finish(iid, aid, {'valid': False, 'exit_status': 'InterruptedInfrastructure'})
+
+    def test_two_lost_replicas_do_not_stop_healthy_peers_after_eight_interrupted_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = self.make_state(directory)
+            self.fail_replica(state, 55)
+            self.fail_replica(state, 120)
+            self.assertIsNotNone(state.claim('105-0', list(read(state.path)['tasks']), 6, 6))
+            self.assertFalse(read(state.path).get('halt'))
+
+    def test_six_distinct_lost_replicas_halt_and_preserve_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = self.make_state(directory)
+            for slot in range(6):
+                self.fail_replica(state, slot, workers=1)
+            self.assertIsNone(state.claim('7-0', list(read(state.path)['tasks']), 6, 6))
+            data = read(state.path)
+            self.assertEqual(data['breaker_evidence']['failed_replicas'], list('012345'))
+            self.assertEqual(data['halt'], 'infrastructure failure circuit breaker')
+
+    def test_reviewed_recovery_preserves_old_attempts_without_recounting_old_replicas(self):
+        from src.eval.capabilities.swebench_mini.fleet_state import begin_failure_epoch
+        with tempfile.TemporaryDirectory() as directory:
+            state = self.make_state(directory)
+            for slot in range(5):
+                self.fail_replica(state, slot, workers=1)
+            previous = read(state.path)['tasks']
+            with state.edit() as data:
+                begin_failure_epoch(data)
+            self.assertEqual(read(state.path)['tasks'], previous)
+            self.assertEqual(read(state.path)['breaker_failures_baseline'], 5)
+            self.fail_replica(state, 120)
+            self.assertIsNotNone(state.claim('105-0', list(previous), 6, 6))

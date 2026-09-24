@@ -86,6 +86,20 @@ def available_memory_bytes():
     raise RuntimeError('Host MemAvailable unavailable; cannot admit a tool safely')
 
 
+def failed_replicas(data):
+    """One lost server may interrupt all four workers; it is one failure domain."""
+    return {str(a['worker']).rsplit('-', 1)[0] if a.get('worker') else 'attempt:' + a['id']
+            for task in data['tasks'].values() for a in task['attempts']
+            if a.get('valid') is False}
+
+
+def begin_failure_epoch(data):
+    # Retain the old task counter for historical accounting, not breaker admission.
+    data['breaker_failures_baseline'] = sum(a.get('valid') is False
+        for task in data['tasks'].values() for a in task['attempts'])
+    data['breaker_failed_replicas_baseline'] = sorted(failed_replicas(data))
+
+
 class State:
     def __init__(self, root):
         self.root = Path(root)
@@ -106,9 +120,11 @@ class State:
             # Admit a task only when its complete time budget fits before expiry.
             if latest_start is not None and time.time() >= latest_start:
                 return None
-            failures = sum(a.get('valid') is False for t in data['tasks'].values() for a in t['attempts'])
-            if failures - data.get('breaker_failures_baseline', 0) >= failure_limit:
+            failures = failed_replicas(data) - set(data.get('breaker_failed_replicas_baseline', []))
+            if len(failures) >= failure_limit:
                 data['halt'] = 'infrastructure failure circuit breaker'
+                data['breaker_evidence'] = {'failed_replicas': sorted(failures),
+                    'replica_limit': failure_limit, 'time': time.time()}
                 return None
             for iid in allowed:
                 task = data['tasks'].get(iid)

@@ -26,7 +26,7 @@ from src.infra import runpod
 from src.infra.endpoints.vllm import resolve_target, SshExec, POD_VENV
 from src.infra.huggingface import hf_api, hf_download, hf_repo_id, push_run_dir
 from src.naming import eval_name, today
-from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, digest, lock, read
+from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, digest, lock, read, begin_failure_epoch
 from src.eval.capabilities.swebench_mini.fleet_worker import stop_process
 from src.eval.capabilities.swebench_mini import fleet_session as session
 
@@ -857,7 +857,7 @@ def execute(cfg, config_path, action, budget):
         reconcile_rejections(cfg, manifest)
         with state.edit() as data:
             data['halt'] = None
-            data['breaker_failures_baseline'] = sum(a.get('valid') is False for t in data['tasks'].values() for a in t['attempts'])
+            begin_failure_epoch(data)
             supervisor_path = root / 'metadata/supervisor.json'
             job_deadline = (read(supervisor_path)['deadline'] if supervisor_path.exists()
                             else receipt_deadline(read(cfg.receipt)))

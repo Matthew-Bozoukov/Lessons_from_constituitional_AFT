@@ -28,7 +28,8 @@ def decide(state, control, cfg, now=None):
         return 'finish'
     if now + cfg.get('allocation_min_remaining_seconds', 6480) + cfg.get('cpu_finish_reserve_seconds', 1800) >= deadline_value(control['deadline']):
         return 'cpu_lifetime_insufficient'
-    if state.get('halt') and any(x in state['halt'].lower() for x in ('memory', 'disk', 'cleanup', 'budget')):
+    if state.get('halt') and any(x in state['halt'].lower() for x in
+            ('memory', 'disk', 'cleanup', 'budget', 'infrastructure failure circuit breaker')):
         return 'needs_attention'
     if control.get('cycles', 0) >= cfg.get('max_recovery_cycles', 4):
         return 'recovery_exhausted'

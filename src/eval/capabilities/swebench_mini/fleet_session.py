@@ -10,7 +10,7 @@ import time
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.swebench_mini.fleet_host import deadline_value, receipt_deadline
-from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, lock, read
+from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, lock, read, begin_failure_epoch
 
 
 def members(cfg):
@@ -115,7 +115,7 @@ def execute(cfg, config_path, action, budget):
         for index, arm in enumerate(arms):
             with State(arm.root).edit() as data:
                 data.update(halt=None, phase='fleet', deadline=deadline - cfg.cpu_finish_reserve_seconds if deadline is not None else None)
-                data['breaker_failures_baseline'] = sum(a.get('valid') is False for t in data['tasks'].values() for a in t['attempts'])
+                begin_failure_epoch(data)
             if index:
                 child_control = Path(arm.root) / 'metadata/supervisor.json'
                 if not child_control.exists():

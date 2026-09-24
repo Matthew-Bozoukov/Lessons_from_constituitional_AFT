@@ -23,6 +23,11 @@ with this protocol. DA-25 is deferred; do not infer authorization for a paired r
 from the older proposal below. Ten fixed GPU lanes are the DA-5 launch choice,
 not an empirically established optimum for the expanded budgets.
 
+The infrastructure breaker counts six distinct failed serving replicas per
+recovery cycle, not the interrupted conversations on those replicas. Its evidence
+records the replica IDs. A global breaker requires diagnosis before another batch
+can rent; isolated replica replacements continue without stopping healthy peers.
+
 **Latest completion, September 24:** the DA-15 run is fully complete at 134/300
 (44.67%), versus the matched no-DA control's 136/300 (45.33%). All 300 outcomes were
 graded, all 4,867 rollout/result files were verified on HF, and owned GPU inventory

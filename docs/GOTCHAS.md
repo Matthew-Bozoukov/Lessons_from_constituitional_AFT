@@ -3,6 +3,21 @@
 
 # GOTCHAS
 
+## Count failed replicas, not their interrupted workers (2026-09-24)
+
+DA-5 lost two serving connections at different times. Each replica interrupted
+four tasks; the old six-task infrastructure breaker therefore stopped the healthy
+fleet too. The supervisor then treated that global halt as permission to rent a
+new batch. This was not a GPU lease expiry or an HF backup failure.
+
+Count distinct replica slots since the last reviewed recovery. Four interrupted
+workers on one replica count once. Preserve the old task counter and all attempts
+for audit, and record the failed replica IDs when the breaker trips. A global
+infrastructure breaker must publish partial results and require diagnosis before
+another rental cycle; ordinary isolated replica replacement remains automatic.
+Never infer a CUDA crash from a disconnected HTTP response: the captured server
+log here showed no CUDA/OOM exception, and the underlying disconnect is unproven.
+
 ## Reusable Lite CPU lifetime (2026-09-24)
 
 The CPU is now explicitly persistent: lifetime=persistent, stop_at=null, with an

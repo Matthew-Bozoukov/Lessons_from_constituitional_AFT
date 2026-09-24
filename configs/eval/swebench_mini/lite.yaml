@@ -77,6 +77,8 @@ upload_every_seconds: 120
 upload_stale_seconds: 600
 upload_timeout_seconds: 180
 max_infrastructure_attempts: 3
+# Distinct serving replicas lost since recovery, not interrupted task count.
+# A global breaker publishes partial results and requires diagnosis before rentals.
 max_infrastructure_failures: 6
 min_free_gib: 50
 grading_workers: 12
