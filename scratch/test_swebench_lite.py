@@ -12,7 +12,7 @@ import subprocess
 from unittest.mock import Mock, patch
 
 from omegaconf import OmegaConf
-from scratch.swebench_lite_state import State, atomic, classify, read, lock
+from scratch.swebench_lite_state import State, atomic, classify, read, lock, begin_failure_epoch
 from scratch import swebench_lite as fleet
 from scratch import swebench_lite_worker as worker
 from src.infra import runpod
@@ -178,7 +178,7 @@ class LeaseTests(unittest.TestCase):
         self.assertIsNone(self.claim())
         with self.state.edit() as data:
             data['halt'] = None
-            data['breaker_failures_baseline'] = 6
+            begin_failure_epoch(data)
         self.assertEqual(self.claim()[0], '0')
         self.assertEqual(len(read(self.state.path)['tasks']['0']['attempts']), 2)
 
