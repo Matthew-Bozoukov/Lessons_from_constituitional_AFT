@@ -16,6 +16,9 @@ TARGET="$1"
 : "${ROLE:?}" "${SEQS:?}" "${REPO:?}"
 CKPT="${CKPT:-}"   # comma-separated run dirs to resume from; empty = start fresh
 WAIT_MIN="${WAIT_MIN:-300}"
+# The sequences the PUBLISHED run covers (B's final merge); null = all 50. Must equal the
+# union of the shards, or the final merge runs the missing ones itself.
+FINAL_SEQS="${FINAL_SEQS:-}"
 cd /root/work
 
 eval "$(tr '\0' '\n' < /proc/1/environ | grep -E '^RUNPOD_(API_KEY|POD_ID)=' | sed 's/^/export /')"
@@ -58,8 +61,8 @@ if a_dir=$(uv run --no-sync python scratch/agent_collusion_shard_handoff.py down
 else
     log "!!! shard A not received — merging without it; B runs A's unfinished trajectories"
 fi
-log "final merge + publish: resume_from=[$dirs]"
-if evals "resume_from=[$dirs]"; then
+log "final merge + publish: resume_from=[$dirs] sequence_ids=${FINAL_SEQS:-all}"
+if evals "resume_from=[$dirs]" ${FINAL_SEQS:+"sequence_ids=$FINAL_SEQS"}; then
     log "EVAL OK — results pushed"
     sleep 60
     teardown
