@@ -1,5 +1,5 @@
 # ABOUTME: Bounded durable supervision for one authorized Lite campaign, including grading and publication recovery.
-# ABOUTME: Never resets spend or completed outcomes; explicit stop and job expiry survive restarts.
+# ABOUTME: Never resets spend or completed outcomes; explicit stops and the actual CPU expiry survive restarts.
 from datetime import datetime, timezone
 import json
 import os
@@ -24,9 +24,9 @@ def decide(state, control, cfg, now=None):
         return 'stopped'
     if state.get('tasks') and all(t['status'] == 'valid' for t in state['tasks'].values()):
         return 'finish'
-    if now + cfg.get('allocation_min_remaining_seconds', 6480) + cfg.get('cpu_finish_reserve_seconds', 7200) >= control['deadline']:
-        return 'inference_window_closed'
-    if state.get('halt') and any(x in state['halt'].lower() for x in ('memory', 'disk', 'cleanup')):
+    if now + cfg.get('allocation_min_remaining_seconds', 6480) + cfg.get('cpu_finish_reserve_seconds', 1800) >= control['deadline']:
+        return 'cpu_lifetime_insufficient'
+    if state.get('halt') and any(x in state['halt'].lower() for x in ('memory', 'disk', 'cleanup', 'budget')):
         return 'needs_attention'
     if control.get('cycles', 0) >= cfg.get('max_recovery_cycles', 4):
         return 'recovery_exhausted'
@@ -74,8 +74,7 @@ def supervise(cfg, config_path, budget):
         if not control_path.exists():
             assert budget is not None and 0 < budget <= cfg.recommended_budget_usd
             receipt = read(cfg.receipt)
-            deadline = min(time.time() + cfg.get('job_seconds', 21600),
-                           datetime.fromisoformat(receipt['stop_at']).timestamp() - 120)
+            deadline = datetime.fromisoformat(receipt['stop_at']).timestamp() - 120
             atomic(control_path, {'status': 'armed', 'budget_usd': budget, 'cycles': 0,
                    'created': time.time(), 'deadline': deadline, 'cancelled': False})
         control = read(control_path)
@@ -110,11 +109,17 @@ def supervise(cfg, config_path, budget):
                         time.sleep(cfg.get('recovery_backoff_seconds', 30))
                 if not publish_until_verified(cfg, control_path):
                     control = read(control_path)
-                    control['status'] = 'publication_pending'
+                    control.update(status='publication_pending', terminal_reason='publication_pending')
                     atomic(control_path, control)
+                    raise SystemExit(2)
+                if read(control_path)['status'] != 'complete':
+                    control = read(control_path)
+                    control['terminal_reason'] = 'grading_incomplete'
+                    atomic(control_path, control)
+                    raise SystemExit(2)
                 return
             if decision != 'infer':
-                control.update(status=decision, finished=time.time())
+                control.update(status=decision, terminal_reason=decision, finished=time.time())
                 atomic(control_path, control)
                 if state:
                     fleet.fence(cfg, read(root / 'metadata/manifest.json'))
@@ -128,6 +133,8 @@ def supervise(cfg, config_path, budget):
                     except Exception as exc:
                         control['last_error'] = type(exc).__name__ + ': ' + str(exc)
                         atomic(control_path, control)
+                if decision != 'stopped':
+                    raise SystemExit(2)
                 return
             # A cycle is consumed BEFORE work, including process crashes/reboots.
             control.update(cycles=control['cycles']+1, status='running')

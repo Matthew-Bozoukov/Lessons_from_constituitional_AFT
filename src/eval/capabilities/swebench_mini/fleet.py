@@ -151,7 +151,7 @@ def preflight(cfg):
         validate_recipe(cfg, read(cfg.recipe_path))
     receipt = read(cfg.receipt)
     available = datetime.fromisoformat(receipt['stop_at']).timestamp() - time.time()
-    assert available > cfg.campaign_seconds + cfg.cpu_finish_reserve_seconds, 'CPU expiry too close; do not rent GPUs'
+    assert available > cfg.allocation_min_remaining_seconds + cfg.cpu_finish_reserve_seconds + 120, 'CPU expiry cannot accommodate boot, one full task and grading; do not rent GPUs'
     assert Path(cfg.ssh_key).is_file() and Path(cfg.ssh_key + '.pub').is_file()
     assert os.environ.get('USER_PREFIX') and os.environ.get('HF_ORG')
     spec = resolve_target(cfg.target, revision=cfg.target_revision)
@@ -632,8 +632,9 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     remaining = manifest['budget_usd'] - reserved_cost(data)
     seconds = min(seconds, int(remaining * 3600 / (count * price_ceiling(cfg, cfg.gpu))))
     assert seconds > cfg.allocation_min_remaining_seconds, 'Remaining budget cannot cover boot plus a full task; no rental'
-    expires = min(time.time() + seconds, data['deadline'])
-    assert expires - time.time() > cfg.allocation_min_remaining_seconds
+    # `seconds` is a per-rental safety lease, never a shared batch cutoff. Late
+    # arrivals and replacements get their own lease, bounded by CPU expiry/cost.
+    assert data['deadline'] - time.time() > cfg.allocation_min_remaining_seconds
     allowed = Path(cfg.root) / 'metadata' / f'allowed-{len(data["pods"])}.json'
     atomic(allowed, ids)
     next_slot = max((p['slot'] for p in data['pods']), default=-1) + 1
@@ -657,7 +658,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                     retry_at[lane] = time.time() + min(cfg.allocation_retry_max_seconds,
                         cfg.allocation_retry_seconds * 2 ** min(attempts[lane] - 1, 4))
             if (not live.get('halt') and pending_tasks(live, ids, cfg)
-                    and expires - time.time() > cfg.allocation_min_remaining_seconds):
+                    and live['deadline'] - time.time() > cfg.allocation_min_remaining_seconds):
                 for lane in range(count):
                     if lane in futures or time.time() < retry_at[lane]:
                         continue
@@ -665,11 +666,12 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                     selected = allocation_gpu(cfg, failures[lane], time.time() - started)
                     replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
                     replica_cfg.gpu = selected
+                    expires = min(time.time() + seconds, live['deadline'])
                     print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
                     futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)
                     next_slot += 1
             if not futures and (live.get('halt') or not pending_tasks(live, ids, cfg)
-                               or expires - time.time() <= cfg.allocation_min_remaining_seconds):
+                               or live['deadline'] - time.time() <= cfg.allocation_min_remaining_seconds):
                 break
             if time.time() - last_upload >= cfg.upload_every_seconds:
                 checkpoint(cfg, config_path)
@@ -678,9 +680,17 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                 reconcile_rejections(cfg, manifest)
                 last_reconcile = time.time()
             live = read(state.path)
-            if time.time() > expires:
+            awaiting_reconciliation = any(p.get('id') is None and not p.get('reservation_released')
+                and 'RunPod GraphQL rejected the request;' in p.get('error', '')
+                for p in live['pods'])
+            if (not futures and not awaiting_reconciliation and
+                    manifest['budget_usd'] - reserved_cost(live) < price_ceiling(cfg, cfg.gpu) * cfg.allocation_min_remaining_seconds / 3600):
                 with state.edit() as data:
-                    data['halt'] = 'Campaign deadline'
+                    data['halt'] = 'budget cannot fund another complete rental'
+                break
+            if time.time() > live['deadline']:
+                with state.edit() as data:
+                    data['halt'] = 'CPU lifetime exhausted'
             if shutil.disk_usage('/var/lib/docker').free / 2**30 < cfg.min_free_gib:
                 with state.edit() as data:
                     data['halt'] = 'CPU disk reserve reached'
@@ -779,8 +789,7 @@ def execute(cfg, config_path, action, budget):
             supervisor_path = root / 'metadata/supervisor.json'
             job_deadline = (read(supervisor_path)['deadline'] if supervisor_path.exists()
                             else datetime.fromisoformat(read(cfg.receipt)['stop_at']).timestamp() - 120)
-            data['deadline'] = min(time.time() + cfg.campaign_seconds,
-                                   job_deadline - cfg.cpu_finish_reserve_seconds)
+            data['deadline'] = job_deadline - cfg.cpu_finish_reserve_seconds
             assert data['deadline'] - time.time() >= cfg.allocation_min_remaining_seconds, 'Insufficient authorized time for a full task and cleanup'
             data['phase'] = 'calibration' if not data['calibrated'] else 'fleet'
 
@@ -852,7 +861,7 @@ def execute(cfg, config_path, action, budget):
                 atomic(root / 'metadata/fleet_plan.json', {'replicas': count, 'ceiling': cfg.replicas,
                        'inference_seconds_estimate': len(todo) * measured / count, 'estimate_only': True,
                        'assumption': 'Historical mean task duration held constant; new GPU throughput unmeasured'})
-                phase(cfg, config_path, todo, count, cfg.campaign_seconds, manifest)
+                phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest)
         finally:
             fence(cfg, manifest)
             checkpoint(cfg, config_path)

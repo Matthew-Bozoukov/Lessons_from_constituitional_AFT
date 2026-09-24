@@ -23,6 +23,7 @@ Environment=LITE_CONFIG=scratch/swebench_lite.yaml
 EnvironmentFile=/srv/lasr/lite-launch.env
 ExecStart=/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python -m src.eval.capabilities.swebench_mini.fleet ${LITE_ACTION} --config ${LITE_CONFIG} --budget-usd ${LITE_BUDGET_USD}
 Restart=on-failure
+RestartPreventExitStatus=2
 RestartSec=30
 TimeoutStopSec=240
 KillMode=control-group

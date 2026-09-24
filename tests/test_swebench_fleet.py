@@ -14,6 +14,7 @@ import tempfile
 import time
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from concurrent.futures import Future
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.swebench_mini import fleet, fleet_supervisor as supervisor
@@ -82,7 +83,7 @@ class SupervisionTests(unittest.TestCase):
             self.assertEqual(supervisor.decide(self.state, read(file), self.cfg), 'recovery_exhausted')
             self.control.update(cycles=0, deadline=time.time()+100)
             atomic(file, self.control)
-            self.assertEqual(supervisor.decide(self.state, read(file), self.cfg), 'inference_window_closed')
+            self.assertEqual(supervisor.decide(self.state, read(file), self.cfg), 'cpu_lifetime_insufficient')
 
     def test_resource_halt_and_task_attempt_exhaustion_are_bounded(self):
         self.state['halt'] = 'CPU memory reserve reached'
@@ -141,17 +142,127 @@ class SupervisionTests(unittest.TestCase):
                 atomic(root/'metadata/state.json', state)
             def grade(config):
                 atomic(root/'results/results.json', {'status': 'complete'})
+            def publish(config, path):
+                atomic(path, read(path) | {'status': 'complete'})
+                return True
             old = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
             try:
                 with patch.object(fleet, 'execute', side_effect=execute), patch.object(fleet, 'fence'), \
                      patch.object(fleet, 'grade', side_effect=grade), patch.object(fleet, 'final_accounting'), \
-                     patch.object(supervisor, 'publish_until_verified', return_value=True):
+                     patch.object(supervisor, 'publish_until_verified', side_effect=publish):
                     supervisor.supervise(cfg, root/'config.yaml', 180)
             finally:
                 for signum, handler in old.items():
                     signal.signal(signum, handler)
             self.assertEqual(calls, [('run', 180), ('resume', 180)])
             self.assertEqual(read(root/'metadata/supervisor.json')['cycles'], 2)
+
+    def test_production_timeline_recovers_after_first_batch_and_after_six_hours(self):
+        """Reproduce the 02:15 launch / 04:40 partial finish using production limits."""
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+            cfg.root, cfg.receipt = path, str(root/'receipt.json')
+            start = datetime.fromisoformat('2026-09-24T02:15:42+00:00').timestamp()
+            cpu_stop = datetime.fromisoformat('2026-09-24T12:37:16+00:00').timestamp()
+            atomic(cfg.receipt, {'stop_at': datetime.fromtimestamp(cpu_stop, timezone.utc).isoformat()})
+            clock = [start]
+            tasks = {str(n): {'status': 'valid' if n < 261 else 'pending',
+                             'attempts': [{'prediction': n}] if n < 261 else []} for n in range(300)}
+            calls = []
+            def execute(config, config_path, action, budget):
+                calls.append(action)
+                if len(calls) == 1:
+                    atomic(root/'metadata/manifest.json', {'campaign': 'test'})
+                    atomic(root/'metadata/state.json', {'tasks': tasks, 'pods': [{'charged': 62.05}]})
+                    clock[0] = start + 2*3600 + 25*60
+                else:
+                    state = read(root/'metadata/state.json')
+                    self.assertEqual(state['tasks'], tasks)
+                    self.assertEqual(state['pods'], [{'charged': 62.05}])
+                    self.assertEqual(read(root/'metadata/supervisor.json')['deadline'], cpu_stop-120)
+                    # The old six-hour job expiry must not reappear either.
+                    self.assertEqual(supervisor.decide(state, read(root/'metadata/supervisor.json'),
+                                     cfg, now=start+6*3600+15*60), 'infer')
+                    for task in state['tasks'].values():
+                        task['status'] = 'valid'
+                    atomic(root/'metadata/state.json', state)
+                    clock[0] += 3600
+            def grade(config):
+                atomic(root/'results/results.json', {'status': 'complete'})
+            def publish(config, control):
+                atomic(control, read(control) | {'status': 'complete'})
+                return True
+            old = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+            try:
+                with patch.object(supervisor.time, 'time', side_effect=lambda: clock[0]), \
+                     patch.object(supervisor.time, 'sleep'), patch.object(fleet, 'execute', side_effect=execute), \
+                     patch.object(fleet, 'fence'), patch.object(fleet, 'grade', side_effect=grade), \
+                     patch.object(fleet, 'final_accounting'), \
+                     patch.object(supervisor, 'publish_until_verified', side_effect=publish):
+                    supervisor.supervise(cfg, root/'config.yaml', 180)
+            finally:
+                for signum, handler in old.items():
+                    signal.signal(signum, handler)
+            self.assertEqual(calls, ['run', 'resume'])
+
+    def test_terminal_incomplete_run_exits_nonzero_and_preserves_reason(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            control = self.control | {'cycles': 4, 'budget_usd': 180}
+            atomic(root/'metadata/supervisor.json', control)
+            atomic(root/'metadata/state.json', self.state)
+            atomic(root/'metadata/manifest.json', {'campaign': 'test'})
+            cfg = OmegaConf.create({'root': path, 'max_recovery_cycles': 4})
+            def publish(config, file):
+                atomic(file, read(file) | {'status': 'incomplete'})
+                return True
+            old = {s: signal.getsignal(s) for s in (signal.SIGTERM, signal.SIGINT)}
+            try:
+                with patch.object(fleet, 'fence'), patch.object(fleet, 'grade'), \
+                     patch.object(fleet, 'final_accounting'), \
+                     patch.object(supervisor, 'publish_until_verified', side_effect=publish):
+                    with self.assertRaises(SystemExit) as raised:
+                        supervisor.supervise(cfg, root/'config.yaml', 180)
+            finally:
+                for signum, handler in old.items():
+                    signal.signal(signum, handler)
+            self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(read(root/'metadata/supervisor.json')['terminal_reason'], 'recovery_exhausted')
+
+    def test_drained_replica_replaced_without_waiting_for_shared_batch_cutoff(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+            cfg.root = path
+            start, clock, expiries = 100000., [100000.], []
+            state_path = root/'metadata/state.json'
+            atomic(state_path, {'deadline': start+8*3600, 'pods': [], 'halt': None,
+                'tasks': {'a': {'status': 'pending', 'attempts': []},
+                          'b': {'status': 'pending', 'attempts': []}}})
+            def submit(fn, config, config_path, slot, allowed, expires, manifest):
+                expiries.append(expires)
+                state = read(state_path)
+                state['tasks']['a' if len(expiries) == 1 else 'b']['status'] = 'valid'
+                atomic(state_path, state)
+                # First pod drains beyond the original 57-minute admission window.
+                clock[0] += 100*60
+                result = Future()
+                result.set_result(None)
+                return result
+            pool = Mock()
+            pool.submit.side_effect = submit
+            with patch.object(fleet, 'ThreadPoolExecutor') as executor, \
+                 patch.object(fleet.time, 'time', side_effect=lambda: clock[0]), \
+                 patch.object(fleet.time, 'sleep'), patch.object(fleet, 'price_ceiling', return_value=3.35), \
+                 patch.object(fleet, 'checkpoint'), patch.object(fleet, 'reconcile_rejections'), \
+                 patch.object(fleet.shutil, 'disk_usage', return_value=Mock(free=200*2**30)), \
+                 patch.object(fleet.psutil, 'virtual_memory', return_value=Mock(available=180*2**30)):
+                executor.return_value.__enter__.return_value = pool
+                fleet.phase(cfg, root/'config.yaml', ['a', 'b'], 1, cfg.rental_seconds, {'budget_usd': 180})
+            self.assertEqual(len(expiries), 2)
+            self.assertEqual(expiries[0], start+cfg.rental_seconds)
+            self.assertEqual(expiries[1], start+100*60+cfg.rental_seconds)
 
 
 class ProvenanceTests(unittest.TestCase):
@@ -232,7 +343,7 @@ class ProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'ownership'):
             check_instance(receipt, host | {'label': 'someone-else'}, now)
         with self.assertRaisesRegex(AssertionError, 'lifetime'):
-            check_instance(receipt, host, now+timedelta(hours=2))
+            check_instance(receipt, host, now+timedelta(hours=6))
 
 
 if __name__ == '__main__':

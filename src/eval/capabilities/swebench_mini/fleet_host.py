@@ -14,7 +14,8 @@ def check_instance(receipt, instance, now=None):
     assert instance and int(instance['id']) == int(receipt['instance_id']), 'Receipted CPU missing'
     assert instance['label'] == receipt['label'], 'CPU ownership changed'
     remaining = (datetime.fromisoformat(receipt['stop_at']) - now).total_seconds()
-    assert remaining > 16200, 'CPU lifetime has less than 4.5 hours left; authorize a new lifetime before launching'
+    # Fine-grained task/boot/grading admission uses the selected config remotely.
+    assert remaining > 120, 'CPU lifetime expired or cannot accept a launch'
     assert instance['actual_status'] in ('running', 'stopped', 'loading', 'created'), 'Unexpected CPU status'
 
 

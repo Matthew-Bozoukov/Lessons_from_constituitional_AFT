@@ -50,11 +50,12 @@ recommended_budget_usd: 180
 max_hourly_usd: 5.50
 calibration_budget_usd: 20
 calibration_seconds: 3600
-campaign_seconds: 9000
+# Per-pod watchdog lease. Late pods/replacements get a fresh lease; no batch cutoff.
+rental_seconds: 9000
 boot_seconds: 900
 task_seconds: 5400
 cleanup_reserve_seconds: 180
-cpu_finish_reserve_seconds: 7200
+cpu_finish_reserve_seconds: 1800
 upload_every_seconds: 120
 upload_stale_seconds: 600
 upload_timeout_seconds: 180
@@ -75,8 +76,7 @@ cpu_qualification_path: /srv/lasr/recipes/cpu-capacity-v2.json
 tool_concurrency: 32
 tool_queue_timeout_seconds: 600
 replica_health_grace_seconds: 180
-# Whole-job backstop; each rental retains its shorter provider-enforced expiry.
-job_seconds: 21600
+# Actual CPU expiry and cumulative budget bound the job; no elapsed-time job cutoff.
 max_recovery_cycles: 4
 recovery_backoff_seconds: 30
 grading_attempts: 3

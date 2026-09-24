@@ -52,23 +52,35 @@ The launcher serializes submissions, pins the model, creates a dated target dire
 checks all CPU caches/readiness and the qualified recipe, and only then arms systemd.
 Repeat launches of a verified completed campaign do nothing. Active runs are protected
 from replacement. The service survives terminal disconnects and is enabled for the
-authorized job; automatic crash recovery preserves its budget, attempts and absolute
-deadline. Explicit stops remain stopped. A graceful SIGTERM is treated as a stop;
+authorized job; automatic crash recovery preserves its budget, attempts and actual
+CPU expiry. Explicit stops remain stopped. A graceful SIGTERM is treated as a stop;
 reboot recovery after such a stop needs explicit review rather than silently overriding it.
 
 The supervisor allows at most four recovery cycles and three infrastructure attempts
-per task. Completed model failures are never rerolled. Rental expiry, the six-hour
-whole-job bound and the CPU expiry are separate safety limits, not ETAs. New tasks
-must fit their full 90-minute allowance plus cleanup; additional cycles drain remaining
-eligible tasks if budget and lifetime allow. Do not manually extend live rentals.
+per task. Completed model failures are never rerolled. There is **no six-hour job
+cutoff or shared 150-minute batch cutoff**. Each late/replacement GPU gets its own
+150-minute safety lease, bounded by the cumulative budget and actual CPU expiry.
+Vacant slots refill while healthy peers work. New tasks fit their full 90-minute
+allowance before that individual lease expires; a drained pod is replaced when work
+remains. Reserve 30 minutes before CPU shutdown for finishing. Do not manually extend
+live rentals or the CPU lifetime.
 
 HF snapshots are atomic, checked initially before rentals, and retried asynchronously
 from inference progress. Later backup failure does not cancel agents or prevent grading.
 After GPU teardown, official grading retries up to three times; publication retries
-for up to an hour within the job deadline. Completion requires HF result readback and
+for up to an hour within the actual CPU lifetime. Completion requires HF result readback and
 hash verification of every rollout/result file, plus zero owned pods. Exhausted attempts,
 budget, lifetime, resource guards, persistent grading/Hub errors, incompatible LoRAs or
-ownership/key mismatches produce a saved actionable status. No chat scheduler is enabled.
+ownership/key mismatches produce a saved actionable status and exit code 2 (systemd
+failure, without repeatedly restarting a terminal condition). Publication preserves
+`terminal_reason`. Unexpected process crashes still restart.
+
+The user explicitly requested periodic updates on September 24. The existing Codex
+heartbeat `monitor-swe-bench-lite-control` now monitors the DA campaign every 15 minutes
+and reports progress, problems and completion. Its current name is "Monitor SWE-bench
+Lite DA completion". Verify the saved ACTIVE state; a host service alone has no chat
+notification connection. Pause this heartbeat after 300 outcomes are graded, artifacts
+are verified on HF and owned GPUs are confirmed gone.
 
 Inspect or stop using the generated `launch.yaml`:
 

@@ -3,6 +3,34 @@
 
 # GOTCHAS
 
+## SWE-bench deadline composition and missing alerts (2026-09-24)
+
+The first DA run stopped at 261/300. A shared 150-minute rental expiry admitted new
+tasks for only 57 minutes (90-minute task allowance plus three-minute cleanup).
+The supervisor then required 108 minutes for another rental plus two hours for
+finishing inside a six-hour job limit. Recovery closed before the first batch
+finished draining and grading, although budget and the real CPU lifetime remained.
+The previous crash tests completed mocked batches instantly and missed this interaction.
+
+- There is no elapsed campaign/batch cutoff now. A late or replacement pod receives
+  its own bounded watchdog/provider lease, and vacant slots refill while peers work.
+  Preserve full task admission before an individual pod expires; use a fresh pod
+  instead of interrupting accepted work or silently renewing an unaffordable lease.
+- The actual CPU stop and cumulative spend remain binding. Reserve 30 minutes for
+  CPU finishing, rather than stacking a two-hour reserve onto an invented job cutoff.
+  Report insufficient real lifetime explicitly; never extend the CPU silently.
+- Test the production settings with a clock advanced through boot, draining and
+  grading, including continuation after the old six-hour boundary and replacement
+  after an earlier pod's admission window. Passing isolated tests is not proof of
+  an unattended full evaluation.
+- Incomplete supervision exits with code 2 and retains `terminal_reason` through
+  publication. systemd marks failure without repeatedly restarting that terminal
+  condition (`RestartPreventExitStatus=2`); unexpected crashes still restart.
+- A remote service cannot itself deliver a chat update. The existing Codex heartbeat
+  was explicitly reactivated for this DA campaign at the user's request, every 15
+  minutes, with progress/failure/completion reports. Verify its saved ACTIVE state.
+  Pause it after verified completion and teardown; never imply it is watching when paused.
+
 ## SWE-bench fleet qualification and recovery boundaries (2026-09-24)
 
 - Count waiting conversations separately from active CPU commands. Four conversations

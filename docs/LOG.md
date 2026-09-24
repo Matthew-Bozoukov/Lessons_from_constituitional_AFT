@@ -1,6 +1,32 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-24 — Repair DA Lite scheduling after incomplete overnight run
+
+**Finding.** The DA campaign stopped with 261 valid/graded outcomes (117 resolved)
+and 39 unattempted SymPy tasks. The 150-minute shared rental expiry closed task
+admission after 57 minutes. A six-hour supervisor limit with 108-minute rental and
+two-hour finishing reserves closed recovery before the first batch finished.
+The service exited successfully and had no notification hook; the chat heartbeat
+was still paused. This did not meet the promised unattended-completion workflow.
+
+**Change / validation.** Removed the shared batch and elapsed job cutoffs. Rental
+leases now start separately for late/replacement pods; work continues under the
+existing cumulative budget and actual CPU expiry, with a 30-minute finishing reserve.
+Incomplete supervision exits nonzero and preserves the specific reason through
+publication. Fifty-four CPU-only fleet/recovery tests passed, including simulated production
+timelines, late replacement, terminal failure and immutable completed outcomes.
+This is regression evidence, not a clean paid performance qualification.
+
+**Authorized continuation.** The user requested finishing only the 39 remaining
+tasks and periodic notifications. Reactivated the existing heartbeat every 15 minutes.
+The original 261 outcomes, sources, manifest, configuration, supervisor record and
+recipe are archived under `metadata/deadline-policy-before-20260924`; migration
+evidence is `metadata/deadline-policy-migration.json` in the existing
+`dougalldeepmind/2026-09-24-swebench-qwen36-0-da-15` HF dataset. The $180 cumulative GPU
+backstop and September 24 12:37 UTC CPU stop are unchanged. Next: resume up to ten
+GPUs with four conversations each, then grade, verify publication and teardown.
+
 ## 2026-09-24 — Launch full Lite on the latest 15%-token difficult-advice adapter
 
 **Question.** Does the latest plain difficult-advice adapter preserve software
