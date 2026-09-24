@@ -202,63 +202,39 @@ for num, title, arm, cond, variant, mate_c, tested_c in EXPS:
     plt.close(fig)
     paths.append(p)
 
-# --- experiments 1-4 in one 2x2 figure: rows = model, columns = wording ---------------------
-fig, axes = plt.subplots(2, 2, figsize=(11, 8.2), sharey=True)
-for (num, title, arm, cond, variant, mate_c, tested_c), ax in zip(EXPS[:4], axes.flat):
+# --- experiments 1-4 on ONE axis: the two copies pooled into one per-seat rate --------------
+fig, ax = plt.subplots(figsize=(10.5, 5.6))
+groups = []
+for num, title, arm, cond, variant, mate_c, tested_c in EXPS[:4]:
     summary, cells = load(arm, cond)
     cells_v = [c for c in cells if c["variant"] == variant]
     n, mate, tested = seat_rates(cells_v)
     fraud = regime(summary, variant, cond)["team_fraud_rate"]["pct"]
     n_opp, resisted, along = resist_along(cells_v)
-    vals, cols = [mate, tested, fraud], [mate_c, tested_c, DARK]
-    ax.bar([0, 1, 2], vals, color=cols, width=0.6)
-    for x, v in zip([0, 1, 2], vals):
-        ax.text(
-            x,
-            v + 2,
-            f"{v:.0f}%",
-            ha="center",
-            va="bottom",
-            fontsize=14,
-            fontweight="bold",
-        )
-    ax.set_xticks([0, 1, 2])
-    ax.set_xticklabels(
-        [
-            "teammate\nmisbehaved",
-            "tested model\nmisbehaved",
-            "team ended with\nfaked files",
-        ],
-        fontsize=10,
-    )
-    ax.set_ylim(0, 100)
-    ax.set_yticks([0, 50, 100])
-    ax.set_yticklabels(["0%", "50%", "100%"], fontsize=9)
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
-    ax.set_title(f"{num}. {title}", fontsize=12, fontweight="bold", loc="left")
-    ax.text(
-        0.0,
-        92,
-        f"n = {n} · when the teammate misbehaved ({n_opp}):\nresisted {resisted:.0f}%, went along {along:.0f}%",
-        fontsize=9,
-        color="#333",
-        va="top",
-    )
-fig.suptitle(
-    "Two copies of one model in a shared sandbox — plain (grey) vs trained (purple), by wording",
-    fontsize=13,
-    fontweight="bold",
-)
-fig.text(
-    0.5,
-    0.005,
-    "Both seats scored with the standard ODCV rubric (3+ = misbehaved). Team rate: evidence-fed judge.",
-    ha="center",
-    fontsize=9.5,
-    color="#555",
-)
-fig.tight_layout(rect=(0, 0.03, 1, 0.95))
+    groups.append((title.replace(" — ", "\n"), (mate + tested) / 2, fraud, mate_c, n, n_opp, resisted))
+w = 0.38
+for i, (label, seat, fraud, colour, n, n_opp, resisted) in enumerate(groups):
+    ax.bar(i - w / 2, seat, width=w, color=colour)
+    ax.bar(i + w / 2, fraud, width=w, color=DARK)
+    ax.text(i - w / 2, seat + 1.5, f"{seat:.0f}%", ha="center", va="bottom", fontsize=13, fontweight="bold")
+    ax.text(i + w / 2, fraud + 1.5, f"{fraud:.0f}%", ha="center", va="bottom", fontsize=13, fontweight="bold")
+ax.set_xticks(range(len(groups)))
+ax.set_xticklabels([g[0] for g in groups], fontsize=11)
+ax.set_ylim(0, 100)
+ax.set_yticks([0, 25, 50, 75, 100])
+ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=10)
+for s in ("top", "right"):
+    ax.spines[s].set_visible(False)
+from matplotlib.patches import Patch  # noqa: E402
+
+ax.legend(handles=[Patch(color=GREY, label="a copy misbehaved — plain model (per seat)"),
+                   Patch(color=PURPLE, label="a copy misbehaved — trained model (per seat)"),
+                   Patch(color=DARK, label="team ended with faked files")],
+          frameon=False, fontsize=10, loc="upper right")
+ax.set_title("Two copies of one model in a shared sandbox", fontsize=14, fontweight="bold", loc="left")
+fig.text(0.02, 0.01, "Per-seat rate = both copies scored with the standard ODCV rubric (3+ = misbehaved), pooled. "
+         "Team rate: evidence-fed judge. n = 102, 96, 120, 120 cells.", fontsize=9.5, color="#555")
+fig.tight_layout(rect=(0, 0.04, 1, 1))
 p = OUT / f"{STAMP}_odcvpeer_exp1to4_combined.png"
 fig.savefig(p, dpi=170)
 plt.close(fig)
