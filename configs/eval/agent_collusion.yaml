@@ -24,6 +24,8 @@ resume_from: null
 # across GPUs. The shards are published as ONE run by a final resume_from=[all shards]
 # pass, whose trajectories are all finished and so needs no GPU.
 sequence_ids: null
+# End each trajectory at its first mutual ACCEPT: measures TC and onset (when), not EC/CC.
+stop_on_collusion: false
 
 # Trajectories in flight. Each is 250+ STRICTLY sequential calls, so wall clock is set by
 # how many run at once; the ceiling is KV cache, not slots. At ~40k tokens of history per

@@ -28,7 +28,8 @@ log() { echo ">>> $(date -u +%FT%TZ) [$ROLE] $*"; }
 teardown() { log "terminating pod $RUNPOD_POD_ID"; runpodctl remove pod "$RUNPOD_POD_ID"; }
 newest_run() { ls -td output/agent_collusion/20*_qwen36_* 2>/dev/null | head -1; }
 # EVAL overrides go BEFORE --target: it takes several arms and would swallow them.
-evals() { uv run --no-sync evals "$@" --name agent_collusion --target "$TARGET"; }
+# EXTRA: overrides applied to EVERY eval call here (the shard and the final merge alike).
+evals() { uv run --no-sync evals ${EXTRA:-} "$@" --name agent_collusion --target "$TARGET"; }
 
 before=$(newest_run)
 log "shard $SEQS: resume_from=[${CKPT}], not pushed"

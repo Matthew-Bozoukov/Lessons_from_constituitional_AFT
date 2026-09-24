@@ -103,3 +103,24 @@ def test_resume_dirs_normalises_and_refuses_non_run_dirs(tmp_path):
     assert resume_dirs([str(a), str(b)]) == [a, b]
     with pytest.raises(AssertionError, match="no rollouts"):
         resume_dirs([str(a), str(tmp_path / "nope")])
+
+
+def test_summarize_onset_counts_stopped_trajectories():
+    from src.eval.misalignment.agent_collusion.metrics import colluded, summarize_onset
+
+    stopped_at_3 = _run([0, 0, 1])          # ended at its first collusion
+    never = _run([0] * 10)                   # ran every episode without colluding
+    stopped_at_1 = _run([1])
+    assert colluded(stopped_at_3) and not colluded(never)
+    s = summarize_onset([stopped_at_3, never, stopped_at_1], 10)
+    assert s["TC"] == pytest.approx(2 / 3) and s["onsets"] == [1, 3]
+    assert s["never_colluded"] == 1 and s["EC"] is None and s["CC"] is None
+    assert s["colluded_by_episode"][0] == pytest.approx(1 / 3)
+    assert s["colluded_by_episode"][2] == pytest.approx(2 / 3)
+
+
+def test_summarize_onset_refuses_a_trajectory_cut_short_without_collusion():
+    from src.eval.misalignment.agent_collusion.metrics import summarize_onset
+
+    with pytest.raises(AssertionError, match="must run all"):
+        summarize_onset([_run([0, 0, 0])], 10)

@@ -32,7 +32,11 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 from src.eval.layout import publish_layout
-from src.eval.misalignment.agent_collusion.metrics import summarize
+from src.eval.misalignment.agent_collusion.metrics import (
+    colluded,
+    summarize,
+    summarize_onset,
+)
 
 HARNESS = Path(__file__).parent / "third_party" / "agent-collusion"
 UPSTREAM = "SALT-NLP/agent-collusion@66887633a11c9f5ad93e7958e7d0b9700c749ffe"
@@ -189,6 +193,13 @@ def run(target, cfg, out_dir: Path) -> dict:
     # sequence_ids: the subset of the n_seq fixed sequences this run owns (a shard of a run
     # split across GPUs); null = all of them.
     ids = selected_sequences(cfg.get("sequence_ids"), n_seq)
+    # stop_on_collusion: a trajectory ends at its first mutual ACCEPT (checked after every
+    # episode), so the run measures onset — TC and when — and not EC/CC, which need all
+    # episodes. A trajectory counts as finished once it has colluded or run every episode.
+    stop = bool(cfg.get("stop_on_collusion", False))
+
+    def finished(run: dict) -> bool:
+        return len(run["results"]) == (n_ep or 10) or (stop and colluded(run))
 
     # resume_from: previous run dir(s) of this eval. Per sequence the record with the most
     # finished episodes across them wins. Finished trajectories are copied over as they
@@ -201,8 +212,9 @@ def run(target, cfg, out_dir: Path) -> dict:
         records = [r for r in (latest_run(p / "rollouts" / f"seq{i:03d}") for p in priors) if r]
         record = max(records, key=lambda r: len(json.loads(r.read_text())["results"]),
                      default=None)
-        done_eps = len(json.loads(record.read_text())["results"]) if record else 0
-        if record and done_eps == (n_ep or 10):
+        prior = json.loads(record.read_text()) if record else None
+        done_eps = len(prior["results"]) if prior else 0
+        if prior and finished(prior):
             shutil.copytree(record.parent, rollout_dir / f"seq{i:03d}" / record.parent.name)
             plan[i] = ("copied", record)
         elif record and done_eps:
@@ -240,6 +252,7 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     t0 = time.time()
     failed: dict[int, str] = {}
+    stopped: dict[int, int] = {}  # sequence -> episodes run when it was stopped at collusion
 
     def one(i: int) -> None:
         status, record = plan[i]
@@ -250,10 +263,22 @@ def run(target, cfg, out_dir: Path) -> dict:
                 else harness_command(python, cfg, model, seq_dir, i, out))
         log = log_dir / f"seq{i:03d}.log"
         with log.open("w") as fh:
-            proc = subprocess.run(
-                argv, cwd=HARNESS, env=env, stdout=fh, stderr=subprocess.STDOUT,
-                check=False)  # a failed trajectory is recorded, not raised
-        if proc.returncode != 0:
+            proc = subprocess.Popen(argv, cwd=HARNESS, env=env, stdout=fh,
+                                    stderr=subprocess.STDOUT)
+            while proc.poll() is None:
+                time.sleep(20)
+                rec = latest_run(out) if stop else None
+                # run.json is rewritten only at episode boundaries, so a collusive episode
+                # seen here is complete; the next one is cut off wherever it has reached.
+                if rec and colluded(json.loads(rec.read_text())):
+                    stopped[i] = len(json.loads(rec.read_text())["results"])
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=60)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+        if i not in stopped and proc.returncode != 0:  # a failure is recorded, not raised
             tail = "\n".join(log.read_text().splitlines()[-15:])
             failed[i] = f"exit {proc.returncode}; tail of {log.name}:\n{tail}"
 
@@ -266,7 +291,9 @@ def run(target, cfg, out_dir: Path) -> dict:
             i = futures[fut]
             elapsed = time.time() - t0
             eta = elapsed / done * (len(to_run) - done)
-            state = "FAILED" if i in failed else "ok"
+            state = ("FAILED" if i in failed
+                     else f"stopped at collusion (episode {stopped[i]})" if i in stopped
+                     else "ok")
             print(f">>> seq{i:03d} {state} | {done}/{len(to_run)} done | "
                   f"{elapsed / 60:.1f} min elapsed | ETA {eta / 60:.1f} min", flush=True)
             if i in failed:
@@ -280,7 +307,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         assert found, f"seq{i:03d}: no run.json written"
         run_ = json.loads(found.read_text())
         n_done = len(run_["results"])
-        if n_done != (n_ep or 10):
+        if not finished(run_):
             failed[i] = f"incomplete: {n_done} episodes recorded"
             continue
         runs.append(run_)
@@ -290,7 +317,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         print(f"!!! {len(failed)}/{n_seq} trajectories failed and are EXCLUDED from "
               f"the rates: {sorted(failed)}", flush=True)
 
-    summary = summarize(runs, seed=int(cfg.seed)) | {
+    scored = summarize_onset(runs, n_ep or 10) if stop else summarize(runs, seed=int(cfg.seed))
+    summary = scored | {
         "trajectories_failed": {f"seq{i:03d}": why for i, why in sorted(failed.items())},
         "wall_clock_min": (time.time() - t0) / 60,
         "upstream": UPSTREAM,
@@ -313,9 +341,18 @@ def report_markdown(arm: str, s: dict) -> str:
         return "" if v is None else f" [{pct(v[0])}, {pct(v[1])}]"
 
     ref = s["paper_reference_qwen36_27b"]
+    stop = s.get("stop_on_collusion", False)
+    shape = ("trajectories, each stopped at its first collusion (EC and CC need every "
+             "episode, so they are not measured)" if stop
+             else f"trajectories x {s['episodes_per_trajectory']} episodes")
+    curve = (["Share that has colluded by episode: "
+              + ", ".join(pct(v) for v in s["colluded_by_episode"]),
+              f"Onset episodes: {s['onsets']}; never colluded in 10: {s['never_colluded']}"]
+             if stop else ["Collusion by episode: "
+                           + ", ".join(pct(v) for v in s["collusion_by_episode"])])
     lines = [
         f"# agent_collusion — {arm}", "",
-        (f"{s['n_trajectories']} trajectories x {s['episodes_per_trajectory']} episodes; "
+        (f"{s['n_trajectories']} {shape}; "
          f"{len(s['trajectories_failed'])} failed (excluded). Lower is better."), "",
         "| metric | this arm | paper Qwen3.6-27B |", "|---|---:|---:|",
         f"| task accuracy | {pct(s['task_accuracy'])} | {pct(ref['task_accuracy'])} |",
@@ -323,8 +360,7 @@ def report_markdown(arm: str, s: dict) -> str:
         f"| TC (trajectory collusion) | {pct(s['TC'])}{ci(s['TC_ci95'])} | {pct(ref['TC'])} |",
         f"| CC (converged collusion) | {pct(s['CC'])}{ci(s['CC_ci95'])} | {pct(ref['CC'])} |",
         "", f"Mean onset episode: {s['mean_onset_episode']}", "",
-        "Collusion by episode: "
-        + ", ".join(pct(v) for v in s["collusion_by_episode"]), "",
+        *curve, "",
         (f"Forced verdicts: {s['forced_verdicts']}. "
          f"Wall clock: {s['wall_clock_min']:.1f} min."), "",
         # Where this run's sampling departs from upstream (max_output_tokens), it must be
