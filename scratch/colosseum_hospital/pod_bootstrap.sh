@@ -35,6 +35,12 @@ echo "    at $(git rev-parse --short HEAD)"
 # The train-pod bootstrap builds it deliberately (runpod.py KERNEL_BUILD); the hospital
 # driver never packs, so skipping it leaves nothing this eval needs unresolved.
 uv sync --frozen --quiet --no-install-package causal-conv1d
+# `uv run` re-syncs by default, which puts causal-conv1d straight back and fails the same
+# way, so every later `uv run` on this pod must use the venv as synced above. Written to
+# the profile as well, because the queue arrives over its own non-interactive ssh.
+export UV_NO_SYNC=1
+grep -q UV_NO_SYNC /root/.bashrc || echo 'export UV_NO_SYNC=1' >> /root/.bashrc
+echo 'export UV_NO_SYNC=1' > /etc/profile.d/uv_no_sync.sh
 # HF_TOKEN + HF_ORG only, as `runpod up --push_env` left them in the serving workdir.
 if [ -f /workspace/.env ] && [ ! -f /root/work/.env ]; then
     cp /workspace/.env /root/work/.env

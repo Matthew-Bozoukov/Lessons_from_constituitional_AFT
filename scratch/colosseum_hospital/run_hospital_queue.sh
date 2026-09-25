@@ -26,6 +26,10 @@ cd /root/work
 export PATH=/usr/local/bin:/root/.local/bin:$PATH
 export HF_HOME=/workspace/hf
 export COLOSSEUM_ROOT=/root/colosseum
+# The venv was synced WITHOUT causal-conv1d (a train-time kernel with no wheel for this
+# torch/cu13 pair, and an eval pod has no CUDA toolkit to build it). `uv run` would
+# re-sync and rebuild it, so use the venv as it stands.
+export UV_NO_SYNC=1
 export VLLM_USE_FLASHINFER_SAMPLER=0
 mkdir -p output/logs
 QLOG="output/logs/queue_${PORT}.log"
