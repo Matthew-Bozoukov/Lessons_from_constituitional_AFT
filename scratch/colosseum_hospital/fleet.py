@@ -273,7 +273,12 @@ class Fleet:
             try:
                 out = up(
                     name=name,
-                    eval=targets,
+                    # `--eval` is the eval NAME — it picks the inference card from the
+                    # model's profile — and the checkpoints moved to `--target`. No
+                    # clone_repo: pod_bootstrap.sh puts this repo and the patched
+                    # Colosseum on the box itself, at the pushed commit.
+                    eval="colosseum_hospital",
+                    target=targets,
                     push_env=True,
                     gpu=self.plan.get("gpu"),
                     cloud=self.plan.get("cloud", "SECURE"),
