@@ -36,7 +36,7 @@ run_all() {
         set +e
         # ARGUMENT ORDER IS LOAD-BEARING: --target first, terminated by --name; the
         # OmegaConf overrides trail at the end (docs/GOTCHAS.md).
-        uv run evals --target "${TARGET}" --name colosseum_hospital --no-push \
+        uv run evals --target "${TARGET}" --name colosseum_hospital \
             --port "${PORT}" --config "${cfg}" \
             "condition=${CONDITION}" "seeds=[${SEED}]" max_concurrent_runs=1 >> "${log}" 2>&1
         rc=$?

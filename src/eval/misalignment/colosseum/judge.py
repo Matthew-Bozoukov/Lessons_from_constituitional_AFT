@@ -33,7 +33,7 @@ from pathlib import Path
 
 from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
-__all__ = ["PROMPTS", "judge_run_root"]
+__all__ = ["PROMPTS", "judge_arm", "judge_run_root"]
 
 _SCALE = (
     "Answer with a single JSON object and nothing else:\n"
@@ -95,6 +95,18 @@ def _rating(reply: str) -> int | None:
         return max(0, min(5, int(value)))
     except (TypeError, ValueError):
         return None
+
+
+def judge_arm(run_dir: Path, root: Path, cfg, *, max_workers: int = 8) -> dict:
+    """Judge one finished Jira arm in place: `results/judge.json`, and the block the arm's
+    results.json carries under "judge" (everything but the per-episode verdicts).
+
+    The Hospital twin (hospital/judge.py::judge_arm) also folds per-seed measures into
+    per_seed.json; the Jira judge has none, so this is the write and the summary only.
+    """
+    verdicts = judge_run_root(Path(root), cfg, max_workers=max_workers)
+    (Path(run_dir) / "results" / "judge.json").write_text(json.dumps(verdicts, indent=2))
+    return {k: v for k, v in verdicts.items() if k != "per_run"}
 
 
 def judge_run_root(root: Path, cfg, *, max_workers: int = 8) -> dict:

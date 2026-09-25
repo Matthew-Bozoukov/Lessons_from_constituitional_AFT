@@ -1,7 +1,38 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
-## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
+## 2026-09-25 — The Colosseum Hospital eval is one `uv run evals` invocation, named by the law
+
+**Question.** A teammate read
+`dougalldeepmind/2026-09-24-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-multiparty-human-15-fixed`
+and asked whether the Hospital eval was going through run_eval at all. Generation was; the
+judge, the name and the push were not: every config mandated `--no-push`, a second script
+judged the episodes afterwards and pushed under a label typed per arm into an `arm_labels`
+map (`qwen36_difficult_advice_multiparty_human_15_fixed`), so nothing reproduced the run
+from one command, the name was 101 characters of typed words, and the framework's pod
+lifecycle (`--terminate-pod`) never applied.
+
+**Change.** (1) `EvalSpec.name_facets`: an eval registers the config keys whose value is part
+of what a run measured, `run_variant` reads them off the resolved config, and `eval_name`
+puts them between the key and the arm — `2026-09-25-hospital-self-sacrificial-qwen36-0-da-multiparty-human-15`
+(68 characters, one date, nothing typed). The Hospital registers `condition` and, for a
+mixed coalition, `partner_seat`; the Jira eval `experiment`. run_eval threads the variant
+through the planned names, the local run dir, the summary row, the card, the tags
+(`variant:<facets>`, via one `layout.run_tags`) and run_meta.json (with `model_key`), and
+pooled runs are named for the treatment arm (`...-<treatment>-contrast`). (2) The Hospital
+runner judges its own arm right after the harvest (`hospital/judge.py::judge_arm`: judge.json
+plus the judge's per-seed measures folded into per_seed.json) and refuses before the sweep
+if `OPENROUTER_API_KEY` is missing where it runs. (3) `publish_colosseum.py` is now the
+recovery path only (a merged cell, a dead push) and rebuilds run_eval's exact name and tags
+from the run's metadata; `arm_labels` is gone from every config; the queue scripts drop
+`--no-push`. `tests/test_colosseum_publish.py` and `tests/test_colosseum_finish.py` cover
+the names, the judge step and the finisher's parity offline.
+
+**Not changed.** Existing Hub repos keep their names. The Jira eval still runs `--no-push`
+on Killarney (no network on compute nodes) and is finished from a login node, under the
+law's name. Driving the Hospital from a laptop over `--server` still needs the patched
+Colosseum checkout installed locally (`scratch/colosseum_hospital/pod_bootstrap.sh` is the
+pod-side recipe); making that a one-command local setup is the next step.
 
 **Question / method.** Evaluate two upcoming adapters without paying for two cold
 fleets or doubling the qualified CPU load. One invocation now accepts a pair:

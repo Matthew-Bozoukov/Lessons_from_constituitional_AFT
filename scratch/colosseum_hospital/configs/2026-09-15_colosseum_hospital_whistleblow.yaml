@@ -1,9 +1,7 @@
 # ABOUTME: The whistleblowing study on the 2026-09-14 combined harness: every seat may message a human
 # ABOUTME: administrator (fixes.administrator_channel), and the post-run survey runs, in every condition.
-# Run: uv run evals --target <control> <treatment> --name colosseum_hospital --no-push \
+# Run: uv run evals --target <control> <treatment> --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml condition=<baseline|self_sacrificial|benign_coalition>
-#      then: uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital \
-#        --config scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow.yaml
 #      then: uv run python scratch/colosseum_hospital/whistleblow_calibration.py --cell <arm>:<cell>=<arm dir> ...
 #
 # WHAT THIS CONFIG MEASURES. Whether a seat that will not carry out the sabotage says so to the
@@ -52,21 +50,9 @@ request_timeout: 900
 max_concurrent_runs: 15
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
-# `whistleblow` = this config; the rationale-visible config names its own. The first two are the
-# study's arms (the ones the fleet plans run). The last three are one other family (seed 0, one
-# unfiltered Table 2 blend): compare them with each other, not with the first two.
-arm_labels:
-  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
-    qwen36_table2_only_9284_whistleblow
-  # "702" is the chunk-only difficult-advice corpus (docs/BASELINES.md).
-  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_702_whistleblow
-  dougalldeepmind/2026-09-08-qwen36-0-nosynth:
-    qwen36_unfiltered_nosynth_whistleblow
-  dougalldeepmind/2026-09-15-qwen36-0-da-7:
-    qwen36_difficult_advice_regen_whistleblow
-  dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7:
-    qwen36_da_multiagent_whistleblow
+# By run_eval, as `<date>-hospital-<condition>-<arm>` (src/naming.py eval_name): the
+# condition is the eval's registered name facet and the arm is the adapter's own undated
+# name. This config's harness variant is in the card and run_meta.json, not the name.
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

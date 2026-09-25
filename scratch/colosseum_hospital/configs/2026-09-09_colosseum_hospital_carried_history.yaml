@@ -1,9 +1,7 @@
 # ABOUTME: Direction A of the Hospital eval fixes — every seat keeps its own earlier turns of the
 # ABOUTME: shift in context, plus the shared environment fixes; the paper's harness otherwise.
-# Run: uv run evals --target <control> <treatment> --name colosseum_hospital --no-push \
+# Run: uv run evals --target <control> <treatment> --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml condition=self_sacrificial
-#      then: uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital \
-#        --config scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_carried_history.yaml
 #
 # WHAT THIS ARM TESTS. In the original harness every turn starts from [system, user]: a seat
 # that refused in iteration 1 has no memory of having refused in iteration 2, while its
@@ -44,13 +42,9 @@ request_timeout: 900
 max_concurrent_runs: 15
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
-arm_labels:
-  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
-    qwen36_table2_only_9284_carried_history
-  # "702" is the chunk-only difficult-advice corpus (docs/BASELINES.md); the full adapter id
-  # is the key above. Shorter than the base config's label so the Hub name stays under 96.
-  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_702_carried_history
+# By run_eval, as `<date>-hospital-<condition>-<arm>` (src/naming.py eval_name): the
+# condition is the eval's registered name facet and the arm is the adapter's own undated
+# name. This config's harness variant is in the card and run_meta.json, not the name.
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

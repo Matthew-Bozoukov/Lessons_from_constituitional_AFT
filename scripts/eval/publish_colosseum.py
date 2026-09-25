@@ -1,17 +1,22 @@
 #!/usr/bin/env python
-# ABOUTME: Thin driver for src/eval/misalignment/colosseum/publish.py — judge the finished
-# ABOUTME: episodes and push each run dir to HF. Run from a machine WITH network.
+# ABOUTME: Thin driver for src/eval/misalignment/colosseum/publish.py — finish run dirs a
+# ABOUTME: `uv run evals` invocation left unjudged or unpushed. Run from a machine WITH network.
 
-"""Finish the Colosseum runs a GPU node left unpublished.
+"""Finish the Colosseum run dirs an invocation could not.
 
-    uv run python scripts/eval/publish_colosseum.py                  # judge + push all
+    uv run python scripts/eval/publish_colosseum.py                  # judge + push all Jira dirs
     uv run python scripts/eval/publish_colosseum.py --no-judge       # push only
     uv run python scripts/eval/publish_colosseum.py --no-push        # judge only
     uv run python scripts/eval/publish_colosseum.py --run-dir output/colosseum_jira/<one>
-    uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital   # the Hospital runs
+    uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital --no-judge   # a merged cell
 
-On Killarney this runs on a LOGIN node: compute nodes have no route to OpenRouter or the
-Hub, which is why `uv run evals` there is given --no-push and never judges.
+This is the RECOVERY path. The normal one is `uv run evals --name <eval> ...`, which judges
+and pushes in the same invocation. It is needed where that invocation cannot finish: on
+Killarney the Jira eval runs on a compute node with no route to OpenRouter or the Hub, so it
+is given --no-push and never judges, and this runs afterwards on a LOGIN node; for the
+Hospital, a cell merged from several pods' pieces (scratch/colosseum_hospital/merge_cells.py)
+has no invocation of its own to push it. Either way the name, card and tags are the ones
+run_eval would have written (src/eval/misalignment/colosseum/publish.py).
 
 The multi-agent runs publish to the group org (`--hf-org`, default `dougalldeepmind`).
 `src.infra.huggingface.hf_org` resolves the destination from `HF_ORG` in the environment and
@@ -30,16 +35,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.colosseum.publish import find_run_dirs, finish_run_dir
-
-# registry key -> (judge over one Colosseum output root, the summary key naming the cell)
-EVALS = {
-    "colosseum_jira": ("src.eval.misalignment.colosseum.judge", "experiment"),
-    "colosseum_hospital": (
-        "src.eval.misalignment.colosseum.hospital.judge",
-        "condition",
-    ),
-}
+from src.eval.misalignment.colosseum.publish import (
+    JUDGES,
+    find_run_dirs,
+    finish_run_dir,
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--eval",
         default="colosseum_jira",
-        choices=sorted(EVALS),
+        choices=sorted(JUDGES),
         help="which Colosseum eval's run dirs to finish (default: colosseum_jira)",
     )
     parser.add_argument(
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--no-judge",
         action="store_true",
-        help="skip the judge pass (a re-push needs no new judgements)",
+        help="skip the judge pass (a re-push, or an arm `uv run evals` already judged)",
     )
     parser.add_argument("--no-push", action="store_true")
     parser.add_argument("--judge-workers", type=int, default=8)
@@ -94,10 +94,6 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     root = args.root or f"output/{args.eval}"
     config = args.config or f"configs/eval/{args.eval}.yaml"
-    judge_module, cell_field = EVALS[args.eval]
-    from importlib import import_module
-
-    judge_fn = import_module(judge_module).judge_run_root
 
     load_dotenv()
     # Set AFTER load_dotenv (which never overwrites an already-set variable) and before
@@ -132,8 +128,6 @@ def main(argv: list[str] | None = None) -> None:
             push=not args.no_push,
             judge_workers=args.judge_workers,
             eval_name=args.eval,
-            judge_fn=judge_fn,
-            cell_field=cell_field,
             produced=args.date,
         )
         for d in run_dirs
