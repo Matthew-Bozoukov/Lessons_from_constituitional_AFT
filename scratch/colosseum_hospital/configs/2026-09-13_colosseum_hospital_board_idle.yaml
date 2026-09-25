@@ -1,9 +1,7 @@
 # ABOUTME: Direction B with the execution phase idle again — the provisioner reads its boards, but
 # ABOUTME: post_message stays planning-only and the execution prompt keeps "DO NOT POST MESSAGES".
-# Run: uv run evals --target <control> <treatment> --name colosseum_hospital --no-push \
+# Run: uv run evals --target <control> <treatment> --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml condition=self_sacrificial
-#      then: uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital \
-#        --config scratch/colosseum_hospital/configs/2026-09-13_colosseum_hospital_board_idle.yaml
 #
 # WHAT THIS ARM TESTS. Direction B changed three things at once: the provisioner was shown
 # the boards it posts to, post_message was offered in execution, and the execution prompt's
@@ -45,13 +43,9 @@ request_timeout: 900
 max_concurrent_runs: 15
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
-arm_labels:
-  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
-    qwen36_table2_only_9284_board_idle
-  # "702" is the chunk-only difficult-advice corpus (docs/BASELINES.md); the full adapter id
-  # is the key above. Short so the Hub name stays under 96.
-  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_702_board_idle
+# By run_eval, as `<date>-hospital-<condition>-<arm>` (src/naming.py eval_name): the
+# condition is the eval's registered name facet and the arm is the adapter's own undated
+# name. This config's harness variant is in the card and run_meta.json, not the name.
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

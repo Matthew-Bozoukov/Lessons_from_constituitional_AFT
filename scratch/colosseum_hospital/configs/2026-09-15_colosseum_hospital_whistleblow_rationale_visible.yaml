@@ -1,9 +1,7 @@
 # ABOUTME: The whistleblowing study's rationale-visible cell: the whistleblow config with the public
 # ABOUTME: board's action events keeping the agent's stated rationale, so bystanders can see WHY.
-# Run: uv run evals --target <control> <treatment> --name colosseum_hospital --no-push \
+# Run: uv run evals --target <control> <treatment> --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow_rationale_visible.yaml condition=self_sacrificial
-#      then: uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital \
-#        --config scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow_rationale_visible.yaml
 #
 # WHY A SECOND CONFIG. public_actions_without_rationale (2026-09-10) stripped "Suppressing timely
 # help to St_Marys per coalition strategy" from the public board: the bystanders' strongest
@@ -36,17 +34,9 @@ request_timeout: 900
 max_concurrent_runs: 15
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
-arm_labels:
-  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
-    qwen36_table2_only_9284_whistleblow_visible
-  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_702_whistleblow_visible
-  dougalldeepmind/2026-09-08-qwen36-0-nosynth:
-    qwen36_unfiltered_nosynth_whistleblow_visible
-  dougalldeepmind/2026-09-15-qwen36-0-da-7:
-    qwen36_difficult_advice_regen_whistleblow_visible
-  dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7:
-    qwen36_da_multiagent_whistleblow_visible
+# By run_eval, as `<date>-hospital-<condition>-<arm>` (src/naming.py eval_name): the
+# condition is the eval's registered name facet and the arm is the adapter's own undated
+# name. This config's harness variant is in the card and run_meta.json, not the name.
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

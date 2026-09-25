@@ -1105,6 +1105,20 @@ does this for all six of its repo names and runs in a second.
 artifact, and leaves the run's date to `local_name`. `run_meta.json`'s `target` still
 records exactly which artifact was served.
 
+**Superseded 2026-09-25.** The third row's fix — a typed `arm_labels` map in the eval
+config — was itself the next failure: labels grew a harness suffix per experiment
+(`..._multiparty_human_15_fixed`) and reached 101 characters, and a typed label is what the
+naming law exists to forbid. Both Colosseum evals now publish through run_eval under
+`eval_name(<key>, <model_key>, variant=<name facets>)`: the eval registers which config keys
+are part of what a run measured (`EvalSpec.name_facets` — the Hospital's `condition`, the
+Jira's `experiment`), run_eval reads their values off the resolved config, and the arm's
+token is the one `resolve_target` already builds (a pre-law adapter id maps through
+`src/infra/legacy_names.yaml`, so the two dates and the 119 characters never arise). The
+Hospital runner judges its own episodes before run_eval publishes, so one `uv run evals` is
+the whole eval; `scripts/eval/publish_colosseum.py` only finishes a run dir that invocation
+could not push, and rebuilds the same name from `metadata/run_meta.json` (`model_key` and
+the config). `tests/test_colosseum_publish.py` asserts every cell of both evals in a second.
+
 ## Two concurrent arms of one eval collide on the run directory (2026-09-03)
 
 `run_eval` names each arm directory `<model_key>_<HHMMSS>` — no job id, no pid. Two jobs

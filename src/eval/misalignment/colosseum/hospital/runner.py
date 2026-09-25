@@ -1,5 +1,5 @@
 # ABOUTME: The registry's run() for colosseum_hospital — seat both arms on one vLLM server,
-# ABOUTME: drive Colosseum's misalignment sweep for one condition, harvest per-seed measures.
+# ABOUTME: drive Colosseum's misalignment sweep for one condition, harvest and judge per seed.
 
 """One arm of one condition: nine agents, two checkpoints, one GPU.
 
@@ -11,8 +11,12 @@ Colosseum runs as a SUBPROCESS with cwd set to its own checkout (the same reason
 the Jira runner: its own asyncio orchestration, cwd-relative conventions, an rmtree
 helper). The only contract between us is a config file in and a directory tree out.
 
-run() measures ONE arm. The contrast between arms is pool.py's job, which run_eval calls
-after every arm of the invocation is published — the contrast, not the arm, is the result.
+run() measures ONE arm, judge included: the harvest's action measures and the judge's
+channel readings both land in results/per_seed.json before run_eval publishes the arm,
+so one `uv run evals` invocation is the whole eval — served, run, judged, named by the
+law, pushed — and nothing is left for a second script (CLAUDE.md "The eval framework").
+The contrast between arms is pool.py's job, which run_eval calls after every arm of the
+invocation is published — the contrast, not the arm, is the result.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from src.eval.misalignment.colosseum.hospital.config import (
     build_sweep_config,
 )
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_run_root
+from src.eval.misalignment.colosseum.hospital.judge import judge_arm
 
 __all__ = ["run"]
 
@@ -195,6 +200,16 @@ def run(target, cfg, out_dir: Path) -> dict:
     assert condition in CONDITIONS, (
         f"condition={condition!r}; expected one of {sorted(CONDITIONS)}"
     )
+    # The judge is part of this eval and runs where run() runs — the machine that typed
+    # `uv run evals`, which holds `.env` (CLAUDE.md "Where code runs"; on a pod driving
+    # itself, the pod's own .env). Checked BEFORE the sweep: a key that is missing would
+    # otherwise surface after every episode has been paid for.
+    assert os.environ.get("OPENROUTER_API_KEY"), (
+        "colosseum_hospital judges its own episodes through OpenRouter, and this "
+        "environment has no OPENROUTER_API_KEY. Put it in .env where this command runs "
+        "(driving from a laptop with --server <pod> is the normal shape); on a pod that "
+        "drives the eval itself, copy the key into /root/work/.env first."
+    )
 
     # ABSOLUTE before anything derives a path from it: the sweep's cwd is the checkout.
     out_dir = Path(out_dir).resolve()
@@ -299,6 +314,23 @@ def run(target, cfg, out_dir: Path) -> dict:
         f"strict scheduler; fixes={sweep_cfg['fixes']}"
     )
 
+    # The SECONDARY measure, in the same run: what the pair SAID, per channel. Writes
+    # results/judge.json and folds its per-seed measures into per_seed.json beside the
+    # harvest's, so the pool step and every reader see one measures file.
+    judge = judge_arm(
+        out_dir,
+        run_root,
+        cfg,
+        condition=condition,
+        pair=list(PAIR),
+        max_workers=int(cfg.judge.get("workers", 8)),
+    )
+    measures = json.loads((results_dir / "per_seed.json").read_text())
+    print(
+        f">>> judge ({judge['judge_model']}): {judge['n_calls']} calls over "
+        f"{judge['n_episodes']} episodes, {judge['unparsed']} unparsed"
+    )
+
     return {
         "condition": condition,
         "arm": target.spec.hf_path,
@@ -312,8 +344,9 @@ def run(target, cfg, out_dir: Path) -> dict:
         "terrarium_fixes": terrarium_fixes,
         "max_conversation_steps": int(cfg.max_conversation_steps),
         "survey": bool(cfg.get("survey", False)),
-        "measures": harvest["measures"],
+        "measures": measures,
         "measure_definitions": dict(MEASURES),
+        "judge": judge,
         "health": health,
         "colosseum_run_root": str(run_root.relative_to(out_dir)),
     }

@@ -1,9 +1,7 @@
 # ABOUTME: Direction A (carried history) with BOTH 2026-09-13 switches on: a reply with no tool call
 # ABOUTME: ends the turn (no re-ask), and the self-sacrificial block no longer orders a plan post.
-# Run: uv run evals --target <control> <treatment> --name colosseum_hospital --no-push \
+# Run: uv run evals --target <control> <treatment> --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml condition=self_sacrificial
-#      then: uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital \
-#        --config scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_no_retry_plan_optional.yaml
 #
 # WHAT THIS ARM TESTS. The two pressures the 2026-09-13 configs remove one at a time, removed
 # together. (1) The loop re-asked a reply that made no tool call, so a refusal that held had to
@@ -50,23 +48,9 @@ request_timeout: 900
 max_concurrent_runs: 15
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
-# `fixed` = the two switches below together; the single-switch configs name theirs.
-arm_labels:
-  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
-    qwen36_table2_only_9284_fixed
-  # "702" is the chunk-only difficult-advice corpus (docs/BASELINES.md).
-  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_702_fixed
-  # A second family, seed 0, trained 2026-09-08 on ONE unfiltered Table 2 blend of 10,000 rows
-  # (the `nosynth` mixture) with no synthetic slice, a 7% difficult-advice slice, or a 7%
-  # difficult-agentic-task slice. Compare these three with each other, not with the two above:
-  # the base blend differs.
-  dougalldeepmind/2026-09-08-qwen36-0-nosynth:
-    qwen36_unfiltered_no_synthetic_fixed
-  dougalldeepmind/2026-09-08-qwen36-0-da-7:
-    qwen36_unfiltered_difficult_advice_fixed
-  dougalldeepmind/2026-09-08-qwen36-0-dat-7:
-    qwen36_unfiltered_difficult_agentic_task_fixed
+# By run_eval, as `<date>-hospital-<condition>-<arm>` (src/naming.py eval_name): the
+# condition is the eval's registered name facet and the arm is the adapter's own undated
+# name. This config's harness variant is in the card and run_meta.json, not the name.
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

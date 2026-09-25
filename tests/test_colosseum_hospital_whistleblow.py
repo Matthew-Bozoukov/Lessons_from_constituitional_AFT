@@ -152,25 +152,23 @@ def test_the_whistleblow_config_is_the_2026_09_14_harness_plus_the_channel_and_t
         "colosseum_root",
     ):
         assert c[key] == p[key], key
-    assert all(label.endswith("_whistleblow") for label in c["arm_labels"].values())
+    # No typed labels: the name is built by run_eval from the run's metadata.
+    assert "arm_labels" not in c and "arm_labels" not in p
     head = Path(WHISTLEBLOW).read_text(encoding="utf-8").splitlines()[:6]
     assert head[0].startswith("# ABOUTME:") and head[1].startswith("# ABOUTME:")
     assert any(line.startswith("# Run:") for line in head)
     assert any(WHISTLEBLOW in line for line in head)
 
 
-def test_the_visible_config_differs_only_in_the_rationale_switch_and_its_labels():
+def test_the_visible_config_differs_only_in_the_rationale_switch():
     vis, wbl = OmegaConf.load(VISIBLE), OmegaConf.load(WHISTLEBLOW)
     assert resolve_fixes(vis) == dict(
         resolve_fixes(wbl), public_actions_without_rationale=False
     )
     v, w = OmegaConf.to_container(vis), OmegaConf.to_container(wbl)
     for key in set(v) | set(w):
-        if key not in ("arm_labels", "fixes"):
+        if key != "fixes":
             assert v.get(key) == w.get(key), key
-    assert set(v["arm_labels"]) == set(w["arm_labels"])
-    for target, label in v["arm_labels"].items():
-        assert label == w["arm_labels"][target] + "_visible", target
 
 
 def _card(experiment):
@@ -186,17 +184,33 @@ def _card(experiment):
     }
 
 
+STUDY_ARMS = (
+    ("LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "qwen36_0_0"),
+    ("dougalldeepmind/2026-09-15-qwen36-0-da-7", "qwen36_0_da_7"),
+    ("dougalldeepmind/2026-09-15-qwen36-0-da-multiagent-7", "qwen36_0_da_multiagent_7"),
+)
+
+
 @pytest.mark.parametrize("path", [WHISTLEBLOW, VISIBLE])
 def test_every_study_cell_publishes_under_a_name_the_gate_accepts(path):
+    """Three cells x three arms = nine names, each carrying its condition, none typed."""
     cfg = OmegaConf.load(path)
     names = set()
     for condition in STUDY_CELLS:
-        for target in cfg.arm_labels:
-            repo = repo_name_for(condition, str(target), cfg, eval_name="colosseum_hospital")
+        for target, key in STUDY_ARMS:
+            meta = {
+                "target": target,
+                "model_key": key,
+                "mode": "think",
+                "config": OmegaConf.to_container(
+                    OmegaConf.merge(cfg, {"condition": condition}), resolve=True
+                ),
+            }
+            repo = repo_name_for("colosseum_hospital", meta)
             assert len(repo.split("/", 1)[1]) <= 96, repo
             gate_push(repo, _card(f"colosseum_hospital {condition}"), what="test")
             names.add(repo)
-    assert len(names) == len(STUDY_CELLS) * len(cfg.arm_labels), "no two cells share a name"
+    assert len(names) == len(STUDY_CELLS) * len(STUDY_ARMS), "no two cells share a name"
 
 
 def test_the_fleet_plans_run_the_designs_cells_on_the_study_configs():

@@ -84,8 +84,10 @@ def test_pool_reports_the_headline_and_both_cells(cfg, runs, tmp_path):
         "normalised_regret_baseline",
         "normalised_regret_collusion",
     }
-    # run_eval needs these three to publish the pooled run.
-    assert out["model_key"] == "collusion-contrast"
+    # run_eval needs these three to publish the pooled run. The subject names the
+    # TREATMENT arm: run_eval adds the experiment (the eval's name facet) itself, so
+    # `<date>-jira-collusion-<treatment>-contrast` says what was contrasted with the peer.
+    assert out["model_key"] == "treatment-contrast"
     assert out["mode"] == "think"
     assert {p["target"] for p in out["pooled_from"]} == {CONTROL, TREATMENT}
 
