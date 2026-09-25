@@ -76,4 +76,26 @@ The comparison will not isolate the causal effect of stakes or top-up alone.
 
 ## Completion
 
-Pending. Generation, training and evaluation receipts will be recorded here as verified.
+Data complete. Generation took **903.5 seconds (15.1 minutes)** and **$22.77917**,
+1,282 physical calls, all settled. Of 243 planned scenarios, 242 were returned;
+222 passed stakes/scope; 203 passed draft lint; 199 passed final rewrite lint.
+The inherited nonblocking corpus diagnostic completed. No replacement batch ran.
+New exports span all nine traits and 80 of 81 assigned trait/domain cells; the
+unchanged parent already spans all 81. Spot checks still show the known speculative
+alternatives/unsupported-detail failure mode; no full factual audit was performed.
+
+- Extended corpus: `dougalldeepmind/2026-09-25-da-lowstakes-practical-synth`
+  at `e7239a9018c50c968768602fe323f784088cb7d6`, **915 rows = 716 old + 199 new**.
+  Dataset, frozen config, constitution, cost summary and full raw-call archive verified
+  by downloading the pinned publication and comparing SHA256.
+- Mixture: `dougalldeepmind/2026-09-25-da-lowstakes-practical-15-mix`
+  at `473ad905d807d7f1ea394f33ab16061f106c34fb`, **10,136 rows = 852 low-stakes + 9,284 replay**.
+  Added 136 rows containing 126,557 supervised tokens. Total 5,309,439 supervised
+  tokens, of which 796,590 (**15.0032800%**) are low-stakes and 4,512,849 are replay.
+  All parent rows and positions preserved, no truncation or response editing.
+  Mixture SHA256: `f29e0024959ed87891b0a7d9e1a0c974db277de195a3f78a48723e2c98280bf6`.
+
+Training/evaluation pending. Three initial two-H200 provisioning requests returned
+HTTP500; the provider body explicitly says no instances are currently available.
+Fresh account inventories after each attempt confirmed no campaign pod was created,
+so no training GPU spend accrued. Failure evidence is retained in the campaign output.
