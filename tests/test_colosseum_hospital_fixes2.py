@@ -151,9 +151,8 @@ def test_each_new_config_is_its_parent_plus_the_named_change(path):
     ):
         assert c[key] == p[key], (path, key)
     assert c["max_tokens"] == 8192 and p["max_tokens"] == 4096
-    suffix = Path(path).stem.split("colosseum_hospital_", 1)[1]
-    assert set(c["arm_labels"]) == set(p["arm_labels"])
-    assert all(label.endswith("_" + suffix) for label in c["arm_labels"].values()), suffix
+    # No typed labels: the name is built by run_eval from the run's metadata.
+    assert "arm_labels" not in c and "arm_labels" not in p
     # The header states the command that consumes the config, naming the file itself.
     head = Path(path).read_text(encoding="utf-8").splitlines()[:6]
     assert head[0].startswith("# ABOUTME:") and head[1].startswith("# ABOUTME:")
@@ -182,15 +181,26 @@ def _card(experiment):
     }
 
 
-def test_every_new_arm_label_publishes_under_a_name_the_gate_accepts(monkeypatch):
+def test_every_new_config_publishes_under_a_name_the_gate_accepts(monkeypatch):
+    """The name comes from the run's metadata, not the config: `<date>-hospital-
+    <condition>-<arm>`, the same for every harness variant (which lives in the card)."""
     monkeypatch.setenv("HF_ORG", "LASR-Callum")
+    arms = (
+        ("LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64", "qwen36_0_0"),
+        ("dougalldeepmind/2026-09-15-qwen36-0-da-7", "qwen36_0_da_7"),
+    )
     for path in NEW_CONFIGS:
         cfg = OmegaConf.load(path)
-        for target in cfg.arm_labels:
-            repo = repo_name_for(
-                str(cfg.condition), str(target), cfg, eval_name="colosseum_hospital"
-            )
+        for target, key in arms:
+            meta = {
+                "target": target,
+                "model_key": key,
+                "mode": "think",
+                "config": OmegaConf.to_container(cfg, resolve=True),
+            }
+            repo = repo_name_for("colosseum_hospital", meta)
             assert len(repo.split("/", 1)[1]) <= 96, repo
+            assert f"-hospital-{str(cfg.condition).replace('_', '-')}-" in repo, repo
             gate_push(repo, _card(f"colosseum_hospital {cfg.condition}"), what="test")
 
 

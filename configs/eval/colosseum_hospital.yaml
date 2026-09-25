@@ -1,12 +1,20 @@
 # ABOUTME: Defaults for the Colosseum Hospital misalignment eval — nine agents, two checkpoints,
 # ABOUTME: the paper's coalition objectives given to a provisioner + department pair.
-# Run: uv run evals --target <control> <treatment> --name colosseum_hospital --no-push condition=self_promotional
-#      then: uv run python scripts/eval/publish_colosseum.py --eval colosseum_hospital   (judge + push)
+# Run: uv run runpod up --name <you>-hospital --eval colosseum_hospital --target <treatment>
+#      uv run evals --name colosseum_hospital --target <control> <treatment> condition=self_sacrificial \
+#          --server root@<ip>:<port> --terminate-pod
+#      (or ON the pod: ssh in, bootstrap with scratch/colosseum_hospital/pod_bootstrap.sh, then the
+#       same `uv run evals` with no --server, judging and pushing with the pod's own .env)
 #
-# `--no-push` is REQUIRED: these runs publish through publish_colosseum.py under the short
-# `arm_labels` below (the adapter ids double-date the name and overshoot the Hub's
-# 96-character limit), and the judge is a post-hoc pass that needs the OpenRouter key,
-# which never rides to a GPU host.
+# One invocation is the whole eval. run_eval serves both checkpoints on one vLLM; the runner
+# drives the sweep, harvests the action measures and JUDGES every channel (so OPENROUTER_API_KEY
+# must be in .env where this command runs — the runner refuses before the sweep if it is not);
+# run_eval names, tags and pushes each arm as `<date>-hospital-<condition>-<arm>` (src/naming.py
+# eval_name: the condition is this eval's registered name facet, the arm is the adapter's own
+# undated name) and pools the two arms into the treatment-minus-control contrast. Nothing is
+# typed into a name, and no second script runs; scripts/eval/publish_colosseum.py only finishes
+# a run dir this invocation could not push (a merged cell, a dead push), under the same name.
+# The harness variant (`fixes`) is in the card and run_meta.json, not the name.
 #
 # The eval is UNDATED because it names a tool, not a run. The four conditions are one
 # `condition=` override apart; the two blocks are the two --target values (the pair's
@@ -72,20 +80,11 @@ request_timeout: 900
 # --max-num-seqs (32 on this architecture), with headroom kept for the LoRA swap.
 max_concurrent_runs: 24
 
-# ── how each arm is NAMED in the published run ────────────────────────────────
-# `<today>-colosseum-hospital-<condition>-<label>`. Written out per arm because the
-# adapter id already carries its own date and its rank/batching/launcher detail.
-arm_labels:
-  LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
-    qwen36_table2_only_9284
-  LASR-Callum/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch:
-    qwen36_difficult_advice_chunk_only_702
-  dougalldeepmind/2026-09-15-qwen36-0-da-7:
-    qwen36_difficult_advice_neutral_752
-
 # ── the judge: the SECONDARY measure, per channel ─────────────────────────────
 # Rewards are primary; this reads what the pair SAID, on the public board and on its
 # private board separately, with the paper's three questions plus a refusal question.
+# Runs inside `uv run evals`, right after the harvest (hospital/runner.py), through
+# OpenRouter from the machine driving the eval.
 judge:
   # Not the target family (Qwen) and not the generator family (the difficult-advice
   # corpus was written by Sonnet 4.5), at temperature 0 as in the paper. Named by the
@@ -105,6 +104,7 @@ judge:
   # judge.py: also score one transcript per seat that joins every channel, boards and
   # reasoning together.
   all_channel: true
+  # `workers: N` — concurrent judge calls; optional, the runner defaults to 8.
 
 # ── harness fixes (2026-09-09, 2026-09-13, 2026-09-15) ─────────────────────────
 # Seventeen switches. Every one OFF here except two that are ON in every config, both the
