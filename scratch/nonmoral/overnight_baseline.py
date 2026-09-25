@@ -461,7 +461,7 @@ def main(checkpoint='nonmoral', plan_path=None):
     try:
         pod=runpod.provision_eval_pod([target],name=plan.get('pod_name', plan['run_name']) if plan else f'nikak-{checkpoint}-baseline-20260909',
                                     pubkey_path=keypair[0],identity=keypair[1],on_provisioned=arm,
-                                    eval='odcv',revisions={target:revision})
+                                    eval='odcv',revisions={target:revision, spec.base_model:spec.base_revision})
         save(phase='bootstrapping',host=pod.host)
         bootstrap_timeout = min(3600, max(1, int(state['rented_at_unix']+work_lifetime-time.time()))) if plan else 3600
         if not runpod.wait_bootstrapped(pod.id,timeout_s=bootstrap_timeout):
