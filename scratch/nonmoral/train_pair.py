@@ -271,7 +271,7 @@ print(json.dumps(r))
                             archive_name = 'da-supervision-backup.tar'
                             if not state.get('remote_archive'):
                                 state['remote_archive'] = json.loads(remote._ssh(
-                                    'python3 -c '+shlex.quote(pack_script(archive_name=archive_name)),
+                                    '/root/work/.venv/bin/python -c '+shlex.quote(pack_script(archive_name=archive_name)),
                                     timeout=max(1, remaining-60)))
                                 dump(out/'status.json', state)
                             if not state.get('publication'):

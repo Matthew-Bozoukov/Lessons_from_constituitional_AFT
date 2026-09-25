@@ -130,6 +130,31 @@ All five corrected published files passed pinned download/hash verification.
 The next training allocation is $39, retaining the prior $0.96439 startup charge
 inside the original $40 training allowance and $100 campaign ceiling.
 
+## Completed training
+
+The single-H200 fallback completed all **634 steps / one epoch** on the corrected
+mixture. The published metadata confirms seed 0, rank 64, alpha 128, global batch
+16, `token_mean`, packing enabled, token budget 8,000 and the frozen base revision.
+Measured trainer runtime was **3,614.7 seconds (60.2 minutes)**; mean training loss
+was 0.72567. These are training diagnostics, not evaluation results.
+
+- Adapter: `dougalldeepmind/2026-09-25-qwen36-0-da-lowstakes-practical-15`.
+- Adapter publication: `9d33dc3c5f846497d48ed73fd9af11471dc04d32`.
+- Final revision including full backup: `f656dea7cb2b397f3a89f0bb043f8f2a8e7630bb`.
+- All nine adapter files verified against the pod's exact bytes. Full 39-file
+  training archive: 8,986,910,720 bytes, SHA256
+  `3e7b3b2b9bd1b92638961a74c8fd1e109033c8025e007a66ae322dcbcfb9c333`.
+- Pod `12a5x8xijuw8ml` terminated after publication and backup verification.
+  Estimated GPU/storage cost: **$6.02584**, plus **$0.96439** for the earlier
+  pre-training schema failure. Settled generation plus estimated training totals
+  **$29.76940** before ODCV.
+
+Backup initially hit the existing Python 3.10 `hashlib.file_digest` incompatibility
+in the direct-Hub packing path. Training was already complete and weights intact.
+The still-running owner recovered using the pod's installed Python 3.12, and that
+packing call now explicitly uses the repository interpreter. Nineteen existing
+backup/owner tests pass. No training restart or replacement GPU was required.
+
 ## Training-text name audit
 
 Audited every field of all 10,136 rows in the corrected, pinned training JSONL,

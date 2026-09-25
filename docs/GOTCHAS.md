@@ -266,6 +266,12 @@ already-owned pod, the failed startup files were retained, the exact LF script w
 restored and checked, and a python3 compatibility symlink let the existing owner
 monitor safely resume. No second GPU rental or training-seed change was needed.
 
+The direct-to-Hub archive path must use that same repository interpreter too:
+the September-25 low-stakes run completed training, then encountered this error
+in a separate `train_pair.py` packing call that still used system `python3`.
+That call now uses `/root/work/.venv/bin/python`. Its existing owner recovered
+after an owned-pod interpreter shim, verified the full archive, and terminated.
+
 ## Git LF attributes do not repair stale worktree bytes (2026-09-09)
 
 An existing Windows checkout held CRLF in 164/168 ODCV shell scripts even though
