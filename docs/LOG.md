@@ -1,6 +1,52 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-25 — SWE-bench rebuilt on inspect_evals (branch `jamie/swebench`): first 8-instance smoke runs end to end on a laptop + one H200; two protocol bugs and one vLLM tool-parser bug found
+
+**Hypothesis.** The bespoke `swebench_mini` fleet (0 of 5 campaigns unattended; review in
+the 2026-09-24 entries) can be replaced by inspect_evals' `swe_bench` task inside the
+run_eval contract, driving docker locally with the model on a pod, at a fraction of the
+code and cost.
+
+**Method.** Branch `jamie/swebench` @ c63956bd: every SWE-bench file removed (62 files:
+fleet, CPU host, docs, skill, scratch, tests, the `--fleet` flags); new eval `swebench`
+(key `swe`, `needs_docker`, `networks_per_scenario=1`), `configs/eval/swebench/lite.yaml`
+(Lite @ 6ec7bb89, message_limit 100, time_limit 1800, concurrency 24, reasoning_history
+all, serving 131072 @ 48) + `lite-arm64-200.json` (200 of the 252 Lite ids Epoch publishes
+arm64 images for, proportional per repo; x86 has all 300); runner writes
+rollouts/<id>/transcript.{json,md} + model.patch, results/results.json with Wilson CI,
+timings, tokens and a 200-instance projection, metadata/protocol.json + the .eval log.
+Deps: inspect-ai 0.3.268, inspect-evals 0.21 [swe-bench], openai>=3.1 (inspect requires
+it), swebench<5 (0.21's scorer imports a constant 5.0 removed). Smoke: Docker Desktop on
+the M4 (arm64 images, 5.6 GB on disk for 8), pod `jamie` 1xH200 serving
+`2026-09-22-qwen36-0-nosynth`:
+```
+uv run runpod up --name jamie --eval swebench --target dougalldeepmind/2026-09-22-qwen36-0-nosynth --count 1 --push_env --max_hours 3
+uv run evals --name swebench --target dougalldeepmind/2026-09-22-qwen36-0-nosynth --server root@212.247.220.175:11627 --ssh-key ~/.ssh/id_ed25519 --no-push limit=8 concurrency=8
+```
+(A first pod, 213.181.104.61, had 5 KB/s egress and was replaced after 25 min.)
+
+**Result.** 8/8 attempted and scored, 1 resolved (django-11039), status success; per
+instance mean 518 s, median 373, max 1,761 (the 1,800 s cap); output tokens mean 11.6k
+(one at 67k), input 2.1M total. Serving, sandboxes, in-sandbox grading, the .eval log and
+the layout all worked first time once the two dependency pins were in.
+- **Protocol bug 1 (fixed, uncommitted → this commit):** inspect's `token_limit` counts
+  input AND output over every call, so 262,144 was exhausted after ~10 turns on all 8
+  (`limits: {token: 8}`); a 30k context re-sent per turn is 300k in ten. Now `null`;
+  message and wall limits terminate.
+- **Bug 2 (open, GOTCHAS 2026-09-25):** every `text_editor str_replace` reached inspect
+  without `new_str` (and with a stray `view_range`), so edits deleted code; the model's
+  raw XML (via /v1/completions on the same turns) has both parameters, well formed.
+  vLLM 0.26 `qwen3_xml` parser on long agentic contexts; inspect does not stream here.
+- Projection is NOT valid from this smoke (token-capped turns); the shape of the cost is
+  clear though: decode is small (11k tokens/instance), the re-sent context is the load,
+  and the 30-min cap bounds the tail.
+
+**Next.** Root-cause the parser loss (compare /v1/completions raw vs /v1/chat parsed at
+temperature 0 on the same prompt; try a vLLM with #55497, or `bash`-only solver); re-smoke
+8 without the token cap for the real per-instance time; then 200 at concurrency 24 on
+this laptop (raise Docker Desktop memory to 16 GB first).
+
 ## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
 
 **Question / method.** Evaluate two upcoming adapters without paying for two cold

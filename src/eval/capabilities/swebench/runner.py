@@ -79,7 +79,7 @@ def eval_kwargs(cfg, ids: list[str], log_dir: Path) -> dict[str, Any]:
         "sample_id": ids,
         "epochs": int(cfg.get("epochs") or 1),
         "message_limit": int(cfg.message_limit),
-        "token_limit": int(cfg.token_limit),
+        "token_limit": int(cfg.token_limit) if cfg.get("token_limit") else None,
         "time_limit": int(cfg.time_limit),
         "retry_on_error": int(cfg.get("retry_on_error") or 0),
         "fail_on_error": float(cfg.fail_on_error) if cfg.get("fail_on_error") is not None else None,

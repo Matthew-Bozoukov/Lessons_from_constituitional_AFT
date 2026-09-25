@@ -46,8 +46,12 @@ tool_timeout: 300
 # Messages in the agent's conversation (a tool call and its result are two). inspect's
 # default is 30; the retired scaffold ran 250 steps. 100 messages is ~50 tool steps.
 message_limit: 100
-# Total tokens (prompt + completion, per inspect's accounting) an instance may spend.
-token_limit: 262144
+# Total tokens an instance may spend, in inspect's accounting: prompt AND completion,
+# summed over every model call, so a 30k-token context re-sent on each of ten turns is
+# already 300k. A cap here is a cap on TURNS in disguise (the 2026-09-25 smoke ended every
+# instance on it after ~10 calls). null = no token cap; the message limit and the wall
+# cap below are the terminators.
+token_limit: null
 # Wall-clock seconds per instance, the terminator that keeps a run's tail bounded: the
 # retired fleet's longest tasks ran 78-90 min at ~25 tok/s and set the run length.
 time_limit: 1800

@@ -1535,3 +1535,20 @@ result directories/HF repositories and never sum duplicated shared-fleet cost to
 A fallback GPU's longer reservation must not consume its peers' shares: shorten
 that pod's safety lease at admission and pass the SAME expiry to the provider,
 watchdog, worker and ledger. Do not alter live expiry components independently.
+
+## 2026-09-25 — vLLM's `qwen3_xml` tool parser can drop a multi-line `new_str` from a `str_replace` call the model wrote correctly
+
+On the first `swebench` (inspect_evals) smoke, all 16 `text_editor str_replace` calls reached
+inspect with `{command, path, old_str, view_range}` and no `new_str`, so the editor deleted
+the block, the agent saw "the file got corrupted", ran `git checkout` and looped; the one
+resolved instance used `sed`. Replaying those turns through `/v1/completions` (raw text,
+no parser) shows the model emits well-formed XML with BOTH `old_str` and `new_str` closed.
+A fresh one-shot `str_replace` through `/v1/chat/completions` parses fine, and vLLM's
+non-streaming `_PARAM_RE` (vllm/parser/qwen3.py) handles the captured XML offline; inspect's
+`openai-api` provider does not stream (`should_stream` is False). So the loss is inside
+vLLM 0.26's parser-engine path on long agentic contexts; the stray `view_range` (never in
+the XML) says arguments are being assembled from the wrong call. Related upstream:
+vllm-project/vllm#55495 / #55497 (Qwen3 XML parser truncating `arguments` on malformed or
+newline-bearing `<parameter>` elements). Not yet root-caused: see docs/LOG.md 2026-09-25.
+Until it is, any Qwen3.6 tool with a multi-line string argument is suspect on this vLLM;
+prefer `bash` + `sed`/heredoc-free edits, or a newer vLLM with #55497.

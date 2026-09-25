@@ -56,6 +56,8 @@ def test_eval_kwargs_carry_the_protocol(tmp_path):
     assert kw["task_args"]["arch"] == "x86_64"
     assert kw["task_args"]["dataset"] == "princeton-nlp/SWE-bench_Lite"
     assert kw["message_limit"] == cfg.message_limit and kw["time_limit"] == cfg.time_limit
+    assert kw["token_limit"] is None, "no cumulative-token cap by default (it caps turns in disguise)"
+    assert runner.eval_kwargs(_cfg(token_limit=500000), ids, tmp_path)["token_limit"] == 500000
     assert kw["reasoning_history"] == "all" and kw["temperature"] == 0.0
     assert runner.resolved_arch(_cfg(arch="auto")) in ("arm64", "x86_64")
 
