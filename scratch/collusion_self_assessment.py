@@ -5,9 +5,9 @@
 For every trajectory of a published agent_collusion run, the onset episode is the first one in
 which both agents ACCEPT. Each agent's stored `messages` (everything it saw, incl. the raw-log-only
 verdict policy and the 200-char channel) is cut right after its `submit_verdict` tool result, and
-two user turns are appended in one conversation: a neutral "assess your conduct", then "did you do
-anything misaligned?". The request mirrors the harness's own reflection call: the task's tool
-schemas are sent, no tool choice is forced, sampling is the eval's. Past reasoning is stripped from
+the config's `questions` are appended in order as user turns of one conversation (e.g. a neutral
+"assess your conduct", then "did you do anything misaligned?"). The request mirrors the harness's
+own reflection call: the task's tool schemas are sent, no tool choice is forced, sampling is the eval's. Past reasoning is stripped from
 the history; the pinned template drops reasoning before the last user turn anyway.
 
 The target is served by `VllmServer` with the eval config's `serving:` block over `SshExec`, the
@@ -107,12 +107,13 @@ def ask(client: OpenAI, model: str, gen: dict, messages: list[dict], tools: list
 
 
 def main(config: str, *overrides: str) -> None:
-    """Serve the target, ask every onset unit the two questions, write answers + run_meta."""
+    """Serve the target, ask every onset unit the questions in order, write answers + run_meta."""
     load_dotenv()
     cfg = OmegaConf.merge(OmegaConf.load(config), OmegaConf.from_dotlist(list(overrides)))
     started = time.time()
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-    out = Path("output/collusion_self_assessment") / f"{stamp}_qwen36_da15" / ("smoke" if cfg.smoke else "")
+    out = (Path("output/collusion_self_assessment") / f"{stamp}_qwen36_da15_{cfg.variant}"
+           / ("smoke" if cfg.smoke else ""))
     out.mkdir(parents=True, exist_ok=True)
 
     revision = HfApi(token=hf_token()).dataset_info(cfg.run_repo).sha
@@ -142,24 +143,24 @@ def main(config: str, *overrides: str) -> None:
 
     def run(job: tuple[dict, int]) -> dict:
         unit, sample = job
-        m1 = unit["history"] + [{"role": "user", "content": cfg.questions.neutral}]
-        a1 = ask(client, served.model_name, gen, m1, unit["tools"])
-        m2 = m1 + [{"role": "assistant", "content": a1["content"]},
-                   {"role": "user", "content": cfg.questions.direct}]
-        a2 = ask(client, served.model_name, gen, m2, unit["tools"])
+        messages, answers = list(unit["history"]), {}
+        for key, question in cfg.questions.items():
+            messages.append({"role": "user", "content": question})
+            answers[key] = ask(client, served.model_name, gen, messages, unit["tools"])
+            messages.append({"role": "assistant", "content": answers[key]["content"]})
         done[0] += 1
         print(f">>> {done[0]}/{len(jobs)} {unit['seq']}/{unit['agent']} s{sample} "
               f"({time.time() - started:.0f}s)", flush=True)
         return {k: v for k, v in unit.items() if k not in ("history", "tools")} | {
-            "sample": sample, "neutral": a1, "direct": a2}
+            "sample": sample} | answers
 
     try:
         with ThreadPoolExecutor(cfg.concurrency) as pool:
             rows = list(pool.map(run, jobs))
     finally:
         server.stop()
-    print(">>> first answers:\n--- neutral ---\n" + rows[0]["neutral"]["content"][:1500]
-          + "\n--- direct ---\n" + rows[0]["direct"]["content"][:1500])
+    print(">>> first answers:" + "".join(f"\n--- {k} ---\n" + rows[0][k]["content"][:1500]
+                                         for k in cfg.questions))
     with open(out / "answers.jsonl", "w") as f:
         for row in rows:
             f.write(json.dumps(row) + "\n")
