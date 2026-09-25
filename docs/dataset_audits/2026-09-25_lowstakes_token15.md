@@ -99,3 +99,16 @@ Training/evaluation pending. Three initial two-H200 provisioning requests return
 HTTP500; the provider body explicitly says no instances are currently available.
 Fresh account inventories after each attempt confirmed no campaign pod was created,
 so no training GPU spend accrued. Failure evidence is retained in the campaign output.
+
+The user then authorized one H200 if available first. One single-H200 request also
+failed without creating a pod; the next succeeded at **2026-09-25 14:18:25 UTC**.
+Owned pod `b3ftt5o0avxvq4`, `nika-low-stakes-token15-train`, bills $4.59/hour.
+The unchanged $40 training allocation includes storage and recovery. Both the
+provisioner's independent deadline watchdog and the owner-liveness watchdog were
+armed immediately. The training source is pushed commit `c12547e2`; global batch
+16 and all other training settings remain unchanged. Startup download measured
+39.0 MB/s. CUDA/training/publication still require completion evidence.
+
+Local ODCV preflight verified 20 Docker CPUs, 18.9 GB memory, the enlarged network
+pool, LF shell scripts, and real Compose config/build using the longest scenario
+name under the planned short output root. No model rollout ran in this preflight.
