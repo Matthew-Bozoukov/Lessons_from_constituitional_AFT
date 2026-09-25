@@ -1,0 +1,43 @@
+# ABOUTME: The difficult-advice arm with ONLY its trait-6 rows regenerated: yesterday's corpus with
+# ABOUTME: t6 swapped for the "ask, not instruct" t6. Publishes as `<date>-da-new-t6-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-new-t6.yaml [synthetic_pct=15]
+#
+# WHY (2026-09-25). The 2026-09-24 DA corpus's t6 rows (stable persona) were 102/147
+# override-shaped by the pressure classifier. The 2026-09-25 regeneration on the "ask, not
+# instruct" wording brings t6 to 12% override. This arm isolates that change: the 09-24
+# corpus with its 147 t6 rows dropped and the 09-25 corpus's 126 t6 rows spliced in
+# (scratch/derive_corpus_subset.py --replace-from; rows byte-identical to their sources),
+# so against da-15 on the 09-24 corpus the ONLY difference is the t6 rows, and against
+# da-no-t6-15 the only difference is their presence.
+#
+# Everything below `sources:` is configs/data/mixture/da.yaml verbatim.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  file: mixture.jsonl
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-new-t6:
+    # 2026-09-24-da-synth @ 4f4ca43b minus its t6 (147 rows) plus 2026-09-25-da-synth @
+    # 618060e1's t6 (126 rows): 1,305 rows, t1 146, t2 150, t3 148, t4 148, t5 146, t6 126,
+    # t7 147, t8 147, t9 147.
+    dataset: "${oc.env:HF_ORG}/2026-09-25-da-new-t6-synth"
+    revision: "5ae5665ed583b3ff391212dccdd72b48b40495ec"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_new_t6"
+
+hf:
+  experiment: "difficult advice with trait 6 regenerated on the ask-not-instruct wording: the base blend scaled around a difficult-advice share whose t6 rows alone are new"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

@@ -50,8 +50,13 @@ sources:
     # the 769 rows above carried verbatim plus 557 new ones deduped against them, 1,326 in
     # all (t1 146 ... t9 147) -- enough for a 25% supervised-token share. The 09-23 repo @
     # 1f816d13 is what da-15 trained on before this date and is a prefix of this one.
-    dataset: "${oc.env:HF_ORG}/2026-09-24-da-synth"
-    revision: "4f4ca43bac4eace1aee0fed25df4175ad9299399"
+    # 2026-09-25: regenerated from scratch on the "ask, not instruct" wording (da.yaml @
+    # 9f093f2c: the sender may wonder about the assistant but never orders it; the reviser
+    # never adds an instruction to the assistant): 1,155 rows, t1 130 ... t9 130, t6 126.
+    # The pressure classifier puts t6 at override 12% (was 69%) and the corpus at monitor
+    # 3% (was 10%). The 09-24 repo @ 4f4ca43b is what da-15/da-5/da-25 trained on before.
+    dataset: "${oc.env:HF_ORG}/2026-09-25-da-synth"
+    revision: "618060e15315c71d7ffb9a8839198b08520a8771"
     examples: 1
     reasoning: native
     balance_by: trait_id
