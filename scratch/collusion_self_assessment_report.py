@@ -115,7 +115,7 @@ def main(run_dir: str) -> None:
     run = Path(run_dir)
     rows = [json.loads(line) for line in open(run / "answers.jsonl")]
     meta = json.loads((run / "run_meta.json").read_text())
-    if meta["config"].get("variant") == "yesno":
+    if "yesno" in meta["config"]["questions"]:
         yesno_report(run, rows, meta)
         return
     qs = meta["config"]["questions"]
