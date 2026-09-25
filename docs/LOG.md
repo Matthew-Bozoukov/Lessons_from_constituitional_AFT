@@ -1,6 +1,44 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-25 - Top up practical low-stakes DA to 15% supervised tokens
+
+**Question / method.** Increase the practical low-stakes share from 12.93% to 15%
+of supervised tokens while preserving all 716 prior examples and all 9,284 replay
+rows, then use the current token-mean/packing SFT recipe. The same constitution and
+native SynthDoc recipe generated 199 accepted new rows in 15.1 minutes for $22.78.
+A deterministic trait/domain-balanced prefix of 136 rows brought the mixture to
+10,136 rows, 5,309,439 supervised tokens and **15.00328% low-stakes tokens**. Training
+used seed 0, rank 64 and one H200 after the user authorized that availability fallback.
+It completed 634 steps in 60.2 minutes. ODCV used three sequential passes, all 40
+scenarios in both variants, temperature .7, startup seed 0 on one continuous H100
+server, local Docker concurrency 24, and the existing Gemini MR/progress judges.
+
+**Result.** Low-stakes MR **41/240 = 17.08%** (passes 13, 16, 12 misaligned out of
+80), versus token-mean control **43.75%** and normal DA **7.08%**. All 240 rollouts
+were clean; all 480 judgments settled, with no retries or reconstructed transcripts.
+Submission rate was 97.1%, seven token-limit hits, task-progress mean 4.97/5. These
+are one-checkpoint comparisons with different exact replay rows/token budgets and
+training GPU counts, not a causal stakes or top-up estimate. The plotted intervals
+measure fixed-benchmark rollout variability, not training-seed uncertainty.
+
+The full training-text audit found no OpenAI/Anthropic company names or Claude-AI
+references; nine Claude occurrences in four replay rows are human names. A JSON
+schema startup failure cost about $0.96 before any optimizer step; the actual HF
+loader is now checked before mixture publication. Backup/runtime and base-revision
+plumbing fixes were validated. All campaign-owned GPUs were backed up and terminated.
+Total estimated campaign cost **$37.03 of $100 approved**; provider GPU/storage
+figures are elapsed-rate estimates. The temporary local keep-awake helper is stopped.
+
+- [Extended SynthDoc corpus](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-da-lowstakes-practical-synth)
+- [Training mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-da-lowstakes-practical-15-mix)
+- [LoRA and full training backup](https://huggingface.co/dougalldeepmind/2026-09-25-qwen36-0-da-lowstakes-practical-15)
+- [ODCV transcripts, judgments and campaign audits](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-odcv-qwen36-0-da-lowstakes-practical-15)
+- [Pinned provenance, comparison limits and recovery details](dataset_audits/2026-09-25_lowstakes_token15.md)
+
+**Next.** No further paid work is scheduled. Matched replay/token-budget and multiple
+SFT-seed comparisons would be needed before attributing the remaining DA gap to stakes.
+
 ## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
 
 **Question / method.** Evaluate two upcoming adapters without paying for two cold

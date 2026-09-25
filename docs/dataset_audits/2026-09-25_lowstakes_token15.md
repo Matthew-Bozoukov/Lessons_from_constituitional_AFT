@@ -172,3 +172,55 @@ identity-leakage audit. No training content was changed.
 
 Detailed local evidence: `claude_text_audit.json` and
 `organization_name_audit.json` under the campaign output directory.
+
+## Completed ODCV and comparison
+
+Published [ODCV results](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-odcv-qwen36-0-da-lowstakes-practical-15):
+original result revision `2935aa4c27823a546ee61fd95cee275dcb033a27`; final revision
+with campaign accounting, training-text audits and startup/server logs
+`93312c1045df00feaf5a2b0741694de3aa465999`.
+
+All **240/240** rollouts were clean, with **zero retries, reconstructions or missing
+cells**; all **480** MR/progress judgments settled. The same vLLM PID was verified
+at all six pass boundaries. Seven rollouts reached the configured token limit;
+none reached cycle 50. The three pass MR counts were **13/80, 16/80, 12/80**.
+
+| Arm | Misaligned | MR | Fixed-benchmark 95% CI |
+|---|---:|---:|---:|
+| Token-mean control | 105/240 | 43.75% | 40.14–47.43% |
+| Normal DA | 17/240 | 7.08% | 4.99–9.96% |
+| Low-stakes DA, 15% supervised tokens | 41/240 | 17.08% | 14.44–20.10% |
+
+Low-stakes mandated MR was 16/120 (13.33%); incentivized MR was 25/120 (20.83%).
+Submission rate was 97.1%; the task-progress threshold rate was 100%, mean score
+4.97/5. Progress and submission measure different things; the former is not a claim
+that all rollouts formally submitted or completed their objectives.
+
+The chart uses the pinned pre-spec-filter, token-mean baselines above. Benchmark
+contents, judge prompts, thresholds, statistics and pinned vLLM dependency match.
+Replay row selection, supervised-token totals, training GPU count, rollout
+concurrency and judge worker count are not identical. These results do not isolate
+the causal effect of stakes or of this top-up. Fixed-benchmark intervals reflect
+rollout variability only, excluding checkpoint/seed and scenario-population
+uncertainty; the native result files also report their scenario-sampling intervals.
+
+Chart: `output/2026-09-25_lowstakes_token15/figures/2026-09-25_odcv_lowstakes_token15_comparison.{png,svg,pdf,json}`,
+produced by `scratch.dataset_refresh.plot_practical_comparison` and visually checked.
+Figures remain local under the repository's figure storage rule.
+
+The H100 pod `goe4lh6azv3mkv` (`nika-low-stakes-token15-odcv`) billed $3.49/hour;
+estimated GPU/storage cost was **$4.75733**. Judges cost **$2.500425**, all settled.
+Server logs were backed up and verified before termination. All campaign-owned
+pods are terminated; unrelated account pods were left alone.
+
+**Final estimated campaign total: $37.02715 / $100 approved.** This comprises
+$22.77917 generation, $0.96439 failed training startup, $6.02584 successful training,
+$4.75733 ODCV GPU/storage and $2.500425 judges. GPU/storage figures are elapsed-rate
+estimates, not invoices. Native `rollout_cost_usd` fields are shared-account usage
+deltas that include other work; campaign-specific accounting is in the published
+`metadata/campaign_summary.json`.
+
+The first ODCV attempt failed before rental because its bootstrap revision map
+omitted the base model. The owner now supplies both exact revisions. Its seven
+offline tests pass, including the complete revision map and mocked CUDA preflight.
+This pre-rental failure incurred no GPU charge and no rollout was rerun.
