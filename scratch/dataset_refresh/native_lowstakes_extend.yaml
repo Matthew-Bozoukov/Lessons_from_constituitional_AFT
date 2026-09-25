@@ -1,0 +1,17 @@
+# ABOUTME: Extend the released practical low-stakes corpus with 243 fresh domain-balanced candidates.
+# ABOUTME: Run: uv run python -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_extend.yaml
+mode: extend
+recipe: configs/data/synth/da-lowstakes-practical.yaml
+campaign_budget_root: output/2026-09-25_lowstakes_token15/budget
+ceiling_usd: 30
+max_physical_calls: 1800
+expected_candidates: 243
+authorization: User approved $100 total for extension, 2 H200 training and three-pass H100 ODCV on 2026-09-25. This stage is capped at $30 within that combined ceiling.
+overrides:
+  total_scenarios: 243
+  scenarios_per_trait: 27
+  scenarios_per_call: 3
+  workers: 32
+  max_fail_pct: 20
+  id_prefix: token15_
+  extend_from: dougalldeepmind/2026-09-21-da-lowstakes-practical-synth@83544fd2f48f7abc07a5e33dbcff35746f039c39
