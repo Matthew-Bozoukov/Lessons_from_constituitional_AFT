@@ -29,7 +29,12 @@ git fetch --quiet origin "${BRANCH}"
 git checkout --quiet --detach "${SHA}"
 echo "    at $(git rev-parse --short HEAD)"
 # The linux lock: vllm 0.26 + torch, the server run_eval launches from THIS venv.
-uv sync --frozen --quiet
+# WITHOUT causal-conv1d: it is a TRAINING kernel (sequence packing), it has no wheel for
+# this torch/cu13 pair, and an eval pod carries vLLM but no CUDA toolkit — so building it
+# here dies on a missing /usr/local/cuda/bin/nvcc and takes the whole bootstrap with it.
+# The train-pod bootstrap builds it deliberately (runpod.py KERNEL_BUILD); the hospital
+# driver never packs, so skipping it leaves nothing this eval needs unresolved.
+uv sync --frozen --quiet --no-install-package causal-conv1d
 # HF_TOKEN + HF_ORG only, as `runpod up --push_env` left them in the serving workdir.
 if [ -f /workspace/.env ] && [ ! -f /root/work/.env ]; then
     cp /workspace/.env /root/work/.env
