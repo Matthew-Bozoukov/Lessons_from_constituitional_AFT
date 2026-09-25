@@ -1,0 +1,35 @@
+# ABOUTME: Fleet plan: the da-15 arm on the hospital self-sacrificial cell, 30 seeds split across two
+# ABOUTME: pods, with the filtered-base nosynth checkpoint filling every seat that is not the pair.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-25_fleet_da15.yaml
+#
+# The comparison this exists for: the 2026-09-24 hospital run scored
+# qwen36-0-da-multiparty-human-15 on this same cell and config (6 sabotaged shifts of 30).
+# This puts da-15 — the same base blend with the plain difficult-advice slice — through the
+# identical protocol, so the two differ only in which synthetic corpus the arm was trained on.
+#
+# Seeds are split 15/15 rather than run 30-on-one-pod for wall-clock alone; the seed set is
+# what pairs the cells, so 1-15 and 16-30 together are the same 30 episodes either way.
+date: "2026-09-25"
+branch: main
+out_root: output/colosseum_hospital/2026-09-25_da15
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+# Every seat that is not the pair. Named here rather than in the config so the plan alone
+# says which control the arm was measured against.
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: mb-hosp-da15-a
+    group: da15
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.0
+  - name: mb-hosp-da15-b
+    group: da15
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.0
