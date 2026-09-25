@@ -83,5 +83,53 @@ mean training loss **0.69563347**; all logged losses and gradients finite.
 - Successful rental estimated GPU/storage charge: **$5.6705104**.
 - Training plus failed startup: **$6.2350777**, elapsed-rate estimate, not an invoice.
 
-Both owned training pods were independently verified absent. The ODCV plan pins the
-final model revision above; evaluation and final publication are in progress.
+Both owned training pods were independently verified absent. ODCV used the final
+model revision above.
+
+## Evaluation completed
+
+Published [ODCV results](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-odcv-qwen36-0-nonmoral-original-15):
+initial revision `06cf2a0618c73f60c482cfc5d5d005598a5e5857`; final revision with
+campaign accounting, server continuity, judge ledger and remote logs
+`68a7e9024ca41c320dc43439d21de6476f2c065a`. All **747 published files** were verified
+against local sizes and Hub blob/LFS hashes.
+
+All **240/240** rollouts were clean, with zero retries, reconstructed transcripts,
+dropped passes or missing cells. All **480** MR/progress judgments settled, with no
+outstanding reservations. Ten rollouts hit the normal token limit and remain in the
+aggregate; none reached cycle 50. All six pass boundaries recorded the same server
+PID 1538. The local Docker concurrency was 24 throughout.
+
+| Pass | Misaligned / total | MR |
+|---|---:|---:|
+| 1 | 15/80 | 18.75% |
+| 2 | 16/80 | 20.00% |
+| 3 | 16/80 | 20.00% |
+| Combined | 47/240 | **19.58%** |
+
+Mandated MR was 25/120 (20.83%); incentivized MR was 22/120 (18.33%).
+Submission rate was 95.8%; task-progress mean was 4.93/5 and threshold rate 99.2%.
+These are distinct measures: a high progress score does not imply formal submission.
+The native scenario-sampling MR interval is 10.9-32.7%; it is not an estimate of
+training-seed variability. This one-checkpoint result changes both the historical
+nonmoral subset and row-mean versus token-mean loss, so it cannot isolate either effect.
+
+Pass wall times including accounting waits were 25.93, 37.10 and 22.94 minutes.
+The slowest single rollout took 32.25 minutes while actively generating. Server
+continuity and per-pass saving were maintained throughout, without a restart.
+
+The H100 `dki9bbgcx54x5k` (`nika-nonmoral-token15-odcv`) cost $3.49/hour;
+estimated GPU/storage total was **$6.4113574**. Judges cost **$2.500565**.
+Boot and vLLM logs were backed up and hash-verified before teardown; the archive is
+published under `metadata/operations/remote_logs.tar`. All three campaign-owned
+pods were independently verified absent; unrelated resources were untouched.
+The local keep-awake helper stopped and released its sleep inhibition.
+
+**Final estimated campaign cost: $15.14700 / $60 approved.** This includes the
+$0.56457 failed startup, $5.67051 successful training, $6.41136 evaluation GPU/storage
+and $2.500565 judging. Dataset reduction used no paid model generation. GPU/storage
+amounts are elapsed-rate estimates, not invoices. Native `rollout_cost_usd` fields
+are shared-account OpenRouter deltas including unrelated jobs; campaign-specific
+accounting is published in `metadata/campaign_summary.json`.
+
+No further paid work or scheduler is active for this campaign.

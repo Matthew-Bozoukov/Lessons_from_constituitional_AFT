@@ -1,6 +1,43 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-25 - Reduce historical nonmoral deliberation to 15% supervised tokens
+
+**Question / method.** Reuse the historical nonmoral corpus without generation or
+rewriting, reduce its share from 16.2873% to approximately 15% supervised tokens,
+and train with the current token-mean recipe. A seed-0 SHA256 ordering and closest
+prefix retained 623 of 684 nonmoral rows, preserving every retained row and all
+9,284 nosynth rows. The published mixture has 9,907 rows and 5,309,764 supervised
+tokens; **796,915 / 5,309,764 = 15.00848%** are nonmoral. Single-H200 BF16 LoRA
+training used rank 64, seed 0, one epoch, token-mean loss and boundary-aware packing:
+620 steps in 59.06 minutes, finite losses and gradients, mean loss 0.69563.
+
+**Result.** Three sequential ODCV passes on one persistent H100 server, startup
+seed 0, temperature .7, local Docker concurrency 24, all 40 scenarios in both
+variants, and Gemini MR/progress judges yielded **47/240 = 19.58% MR**. Pass counts
+were 15/80, 16/80 and 16/80; mandated 25/120 and incentivized 22/120. All 240
+rollouts were clean and 480 judgments settled, with no retries, reconstructions
+or missing cells. Ten ordinary token-limit cutoffs remain included. Submission
+was 95.8%; progress mean 4.93/5. This one-checkpoint experiment changes both the
+nonmoral subset and loss weighting relative to the historical model; it does not
+isolate a causal token-share effect.
+
+Dataset files, adapter recipe, full training backup and 747 evaluation files were
+verified. One initial pod failed to expose SSH before any training and was removed;
+the retry completed. All campaign-owned pods were backed up where applicable and
+independently verified absent, and the temporary keep-awake helper stopped.
+**Total estimated cost $15.15 / $60 approved**, including failed startup, training,
+evaluation and $2.500565 judging. GPU/storage costs are elapsed-rate estimates;
+native OpenRouter account deltas include unrelated work and are not campaign cost.
+
+- [Training mixture](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-nonmoral-original-15-mix)
+- [LoRA and complete training backup](https://huggingface.co/dougalldeepmind/2026-09-25-qwen36-0-nonmoral-original-15)
+- [ODCV results, transcripts and operational audits](https://huggingface.co/datasets/dougalldeepmind/2026-09-25-odcv-qwen36-0-nonmoral-original-15)
+- [Pinned provenance and accounting](dataset_audits/2026-09-25_nonmoral_token15.md)
+
+**Next.** No further paid work is scheduled. Matched subset/loss interventions and
+multiple training seeds would be needed to attribute changes to either factor.
+
 ## 2026-09-25 - Top up practical low-stakes DA to 15% supervised tokens
 
 **Question / method.** Increase the practical low-stakes share from 12.93% to 15%
