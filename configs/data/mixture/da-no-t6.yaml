@@ -1,0 +1,47 @@
+# ABOUTME: The difficult-advice arm WITHOUT trait 6 (stable persona): the base blend scaled around
+# ABOUTME: a `da-no-t6` share drawn from a t6-free copy of the DA corpus. Publishes as `<date>-da-no-t6-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-no-t6.yaml [synthetic_pct=15]
+#
+# WHY (2026-09-25). The pressure classifier (scratch/classify_da_pressure.py) puts the
+# 2026-09-24 DA corpus at push 3% / override 8% overall, but its t6 rows (stable persona)
+# are 102 of 147 override-shaped -- the user asks the assistant to drop its character --
+# against 0-2 per trait elsewhere, and they carry 87 of the corpus's 137 monitor flags.
+# This arm asks what difficult advice does without that trait at all: the SAME corpus with
+# every trait_id=t6 row removed (scratch/derive_corpus_subset.py; rows byte-identical to
+# the source), `balance_by` over the remaining eight traits, the same supervised-token share.
+# Compared against da-<pct> on the same base, the only difference is the 147 t6 rows.
+#
+# Everything below `sources:` is configs/data/mixture/da.yaml verbatim -- same base, same
+# share unit, same seed -- so the two arms differ in nothing but the corpus.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  file: mixture.jsonl
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+
+# The synthetic share, in SUPERVISED TOKENS (see da.yaml for the mechanism).
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-no-t6:
+    # dougalldeepmind/2026-09-24-da-synth @ 4f4ca43b (1,326 rows) minus its 147 t6 rows:
+    # 1,179 rows, t1 146, t2 150, t3 148, t4 148, t5 146, t7 147, t8 147, t9 147.
+    dataset: "${oc.env:HF_ORG}/2026-09-25-da-no-t6-synth"
+    revision: "b38daa5a481187c51a3d6b56e096ddb33e9a948e"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_no_t6"
+
+hf:
+  experiment: "difficult advice without trait 6 (stable persona): the base blend scaled around a t6-free difficult-advice share"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
