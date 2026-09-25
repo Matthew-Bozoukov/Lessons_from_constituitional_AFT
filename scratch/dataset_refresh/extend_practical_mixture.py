@@ -71,6 +71,18 @@ def closest_prefix(counts, old_low, replay, target):
     return min(shares, key=lambda item: (abs(item[0] - target), item[1]))
 
 
+def verify_training_loader(path, expected):
+    """Exercise the trainer's actual Arrow loader, including JSON block boundaries."""
+    from datasets import load_dataset
+    dataset = load_dataset('json', data_files=str(path), split='train')
+    assert len(dataset) == len(expected)
+    for loaded, raw in zip(dataset, expected):
+        assert loaded['messages'] == raw['messages']
+        assert loaded['source'] == raw['source']
+        assert (loaded.get('supervise') or 'all') == (raw.get('supervise') or 'all')
+    return dict(rows=len(dataset), columns=dataset.column_names, verified=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
@@ -133,7 +145,6 @@ def main():
         prior_prompts.add(prompt)
         row = dict(messages=messages, supervise='all', source=cfg['style'])
         result = token_audit(row, tokenizer, profile, cfg['max_seq_len'])
-        row['n_tokens'] = result['training_tokens']
         rows.append(row)
         counts.append(result['supervised_tokens'])
     share, take = closest_prefix(counts, old_tokens, replay_tokens, cfg['target_pct'] / 100)
@@ -146,6 +157,7 @@ def main():
     build.mkdir(exist_ok=False)
     write_rows(build/'mixture.jsonl', combined)
     assert load_rows(build/'mixture.jsonl')[:10000] == parent
+    loader = verify_training_loader(build/'mixture.jsonl', combined)
     added = sum(counts[:take])
     selected = [dict(scenario_id=r['metadata']['scenario_id'], trait_id=r['metadata']['trait_id'],
                      assigned_domain=r['metadata']['assigned_domain'], supervised_tokens=n)
@@ -159,7 +171,8 @@ def main():
         new_domain_counts=dict(Counter(x['assigned_domain'] for x in selected)),
         selected=selected, parent=cfg['parent'], synthetic=extended_spec,
         mixture_sha256=digest((build/'mixture.jsonl').read_bytes()),
-        mask_code_hashes=identity, truncated_rows=0, rewritten_rows=0)
+        mask_code_hashes=identity, truncated_rows=0, rewritten_rows=0,
+        training_loader=loader)
     write_json(build/'mixture_validation.json', report)
     shutil.copy2(args.config, build/'mixture_config.yaml')
     shutil.copy2(census_path, build/'parent_token_audit.json')
@@ -175,7 +188,7 @@ def main():
             experiment=f"Append-only practical low-stakes extension: {100*share:.5f}% of supervised tokens. All 10,000 prior rows retained, {take} fresh rows added.",
             constitution=cfg['constitution'], source_repo=origin_url()+' @ '+git_sha(),
             models=json.dumps(cfg['tokenizer'])+'; synthetic Sonnet provenance in '+cfg['extended_synth_repo']+'@'+args.synth_revision,
-            generation_config=json.dumps(cfg), schema='mixture.jsonl: model-agnostic messages, source, n_tokens and optional supervise/tools. Assistant-only masks; reasoning plus answer supervised.',
+            generation_config=json.dumps(cfg), schema='mixture.jsonl: model-agnostic messages, source and optional supervise. Assistant-only masks; reasoning plus answer supervised. Token counts are in mixture_validation.json.',
             provenance=command,
             limitations='Inherited source quality limitations remain. The 15 in this arm name denotes supervised-token percentage, not row percentage. No base rows were replaced or edited.')
         push_run_dir(build, name, fields, front_matter=dict(configs=[dict(config_name='default', data_files='mixture.jsonl', default=True)],

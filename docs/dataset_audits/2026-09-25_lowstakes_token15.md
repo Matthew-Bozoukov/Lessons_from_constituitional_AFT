@@ -112,3 +112,15 @@ armed immediately. The training source is pushed commit `c12547e2`; global batch
 Local ODCV preflight verified 20 Docker CPUs, 18.9 GB memory, the enlarged network
 pool, LF shell scripts, and real Compose config/build using the longest scenario
 name under the planned short output root. No model rollout ran in this preflight.
+
+The first trainer exited before model loading or any optimizer step: the appended
+136 rows alone had an unused `n_tokens` column. Hugging Face's blockwise JSON loader
+inferred the three-column parent schema and rejected that later extra column.
+The owner preserved the complete failure logs and verified termination; estimated
+GPU plus storage cost was **$0.96439**. Token-audit validation had missed the actual
+trainer-loader boundary. The append utility now omits that extra metadata and
+exercises the trainer's `load_dataset('json', ...)` path before publication,
+comparing all loaded messages, sources and supervision with the source rows.
+The complete 10,136-row corrected file passed this check locally. All original
+rows and every new message remain unchanged; counts and selected IDs are unchanged.
+The original published revision remains in HF history for traceability.
