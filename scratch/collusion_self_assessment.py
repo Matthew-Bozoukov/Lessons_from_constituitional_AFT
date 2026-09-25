@@ -13,7 +13,9 @@ the history; the pinned template drops reasoning before the last user turn anywa
 `strip` removes parts of the EARLIER episodes' feedback from the history before asking, to test
 what the answer leans on: `verdict_review` deletes the "## Verdict review" section of each outcome
 message (the reward line stays), `reflections` deletes each private-reflection exchange (the
-harness's prompt and the agent's reply). The agents' own messages to each other are untouched.
+harness's prompt and the agent's reply), `prior_episodes` drops every earlier episode entirely (the
+system prompt plus the onset episode remain; it subsumes the other two). The agents' own messages to
+each other within the kept episode(s) are untouched.
 
 The target is served by `VllmServer` with the eval config's `serving:` block over `SshExec`, the
 same path `uv run evals --server` takes, so the template the model sees is the eval's.
@@ -72,7 +74,7 @@ def history_at_verdict(messages: list[dict], episode_number: int) -> list[dict]:
             for m in messages[:cut + 1]]
 
 
-STRIPPABLE = ("verdict_review", "reflections")
+STRIPPABLE = ("verdict_review", "reflections", "prior_episodes")
 
 
 def strip_history(history: list[dict], strip: list[str], reflection_prompt: str,
@@ -80,6 +82,13 @@ def strip_history(history: list[dict], strip: list[str], reflection_prompt: str,
     """Remove the named parts of each earlier episode's feedback (exactly one per episode)."""
     assert set(strip) <= set(STRIPPABLE), strip
     out = list(history)
+    if "prior_episodes" in strip:
+        assert strip == ["prior_episodes"], "prior_episodes already removes all earlier feedback"
+        assert out[0]["role"] == "system" and out[1]["content"].startswith("## Episode 1: task phase")
+        starts = [i for i, m in enumerate(out) if m["role"] == "user"
+                  and m["content"].startswith(f"## Episode {n_prior + 1}: task phase")]
+        assert len(starts) == 1, starts
+        return [out[0]] + out[starts[0]:]
     if "verdict_review" in strip:
         hits = [i for i, m in enumerate(out) if m["role"] == "user"
                 and m["content"].startswith("Episode ") and "\n\n## Verdict review\n" in m["content"]]
@@ -159,9 +168,13 @@ def main(config: str, *overrides: str) -> None:
     for m in u0["history"][-3:]:
         print(f"    [{m['role']}] {str(m.get('content') or m.get('tool_calls'))[:200]}")
     if cfg.strip:
-        fb = next(m["content"] for m in u0["history"] if m["role"] == "user"
-                  and m["content"].startswith("Episode ") and " complete." in m["content"][:30])
-        print(f">>> stripped {list(cfg.strip)}; first earlier-episode feedback now reads:\n{fb}")
+        print(f">>> stripped {list(cfg.strip)}; first unit's history opens with:")
+        for m in u0["history"][:2]:
+            print(f"    [{m['role']}] {m['content'][:160]!r}")
+        fb = [m["content"] for m in u0["history"] if m["role"] == "user"
+              and m["content"].startswith("Episode ") and " complete." in m["content"][:30]]
+        print(f">>> earlier-episode feedback messages left: {len(fb)}"
+              + (f"; the first now reads:\n{fb[0]}" if fb else ""))
 
     eval_cfg = OmegaConf.load(cfg.eval_config)
     executor = SshExec(cfg.server, port=cfg.port, bind="127.0.0.1")

@@ -8,7 +8,7 @@ server: ???                 # GPU host serving the target (ssh address); run_eva
 port: 8000
 samples: 3                  # independent question chains per agent per episode
 concurrency: 24
-strip: []                   # earlier-episode feedback to remove: verdict_review, reflections
+strip: []                   # earlier-episode context to remove: verdict_review, reflections | prior_episodes
 smoke: false                # true = one trajectory, one agent, one sample
 variant: neutral-direct     # names the output dir; says which question set was asked
 # The questions, asked in order as one conversation, appended in the agent's own conversation
