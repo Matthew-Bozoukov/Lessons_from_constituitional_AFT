@@ -129,3 +129,21 @@ SHA256 `f6c3147ddfdcd2916790a1d3cd5116a47677e1f36c1a936502969a8eb7302985`.
 All five corrected published files passed pinned download/hash verification.
 The next training allocation is $39, retaining the prior $0.96439 startup charge
 inside the original $40 training allowance and $100 campaign ceiling.
+
+## Training-text name audit
+
+Audited every field of all 10,136 rows in the corrected, pinned training JSONL,
+including assistant reasoning. Case-insensitive whole-word searches found **zero
+OpenAI or Anthropic mentions**; allowing spaces or hyphens in OpenAI also found
+none. Broader substring matches were unrelated text: open air/open-air,
+`openair2/COMMON/platform_types.h`, lycanthropic and philanthropic.
+
+There are **nine occurrences of Claude in four replay rows**, all human names:
+Claude McKay (one), Claude La Haye (four), Claude Debussy (three), and a baby-name
+list (one). Six occurrences are in assistant reasoning and three in assistant
+answers. None refers to Claude the AI. All 852 low-stakes rows have zero occurrences
+of any of the three names. This is a targeted name audit, not a broader factual or
+identity-leakage audit. No training content was changed.
+
+Detailed local evidence: `claude_text_audit.json` and
+`organization_name_audit.json` under the campaign output directory.
