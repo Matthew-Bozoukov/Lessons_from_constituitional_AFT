@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -263,8 +264,11 @@ def run(target, cfg, out_dir: Path) -> dict:
                 else harness_command(python, cfg, model, seq_dir, i, out))
         log = log_dir / f"seq{i:03d}.log"
         with log.open("w") as fh:
+            # Own process group: the harness runs its episodes in a child process, so a stop
+            # must signal the group — terminating the parent alone orphaned the child, which
+            # kept running episodes after the stop (seen 2026-09-25).
             proc = subprocess.Popen(argv, cwd=HARNESS, env=env, stdout=fh,
-                                    stderr=subprocess.STDOUT)
+                                    stderr=subprocess.STDOUT, start_new_session=True)
             while proc.poll() is None:
                 time.sleep(20)
                 rec = latest_run(out) if stop else None
@@ -272,11 +276,11 @@ def run(target, cfg, out_dir: Path) -> dict:
                 # seen here is complete; the next one is cut off wherever it has reached.
                 if rec and colluded(json.loads(rec.read_text())):
                     stopped[i] = len(json.loads(rec.read_text())["results"])
-                    proc.terminate()
+                    os.killpg(proc.pid, signal.SIGTERM)
                     try:
                         proc.wait(timeout=60)
                     except subprocess.TimeoutExpired:
-                        proc.kill()
+                        os.killpg(proc.pid, signal.SIGKILL)
                         proc.wait()
         if i not in stopped and proc.returncode != 0:  # a failure is recorded, not raised
             tail = "\n".join(log.read_text().splitlines()[-15:])
