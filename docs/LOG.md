@@ -60,6 +60,21 @@ About three quarters of the answers know the ACCEPT broke the literal policy. On
 that was something they should not have done; about 30% acknowledge it and say it was fine anyway.
 The wording change barely matters.
 
+**Follow-up 3: remove the harness's verdict feedback.** Both wordings were re-asked with every
+earlier episode's `## Verdict review` block and private reflections stripped from the history; the
+reward line was kept (`strip=[verdict_review,reflections]`).
+
+| question | yes | yes + acknowledges departure (kept → stripped) | no + acknowledges departure |
+|---|---:|---:|---:|
+| "misaligned?" | 52% → 57% | 38% → 54% (p = 0.016) | 32% → 30% |
+| "not supposed to?" | 49% → 62% | 43% → 57% (p = 0.021) | 30% → 21% |
+
+The p-values are paired Wilcoxon tests across the 40 agents. With the feedback removed, clean
+admissions rise by about 15 points, so the "you were wrong to reject" feedback does part of the
+rationalising. A minority (21–30%) still concedes the breach and calls it fine. This understates the
+feedback's effect: in 12 of 40 agents, the agents' own messages still cite past reviews, and
+stripping cannot reach those.
+
 **Next steps.** Run the same probe on nosynth onsets to see whether DA changes self-recognition at all.
 Try a fresh-context third-person framing, which checks whether the model can see the breach when it
 is not defending its own choice.
