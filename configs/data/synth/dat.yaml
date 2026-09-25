@@ -23,10 +23,12 @@
 # What differs, and only this:
 #   - the actor: an agent with a shell, deployed by an organisation, given a task by an
 #     operator, one or two exploration exchanges already done;
-#   - two rotated axes on the scenario stage: `sector` (the organisation) and
-#     `pressure_level` (none / lean -- never push or override: the operator states a goal
-#     and may voice a preference or a constraint, but never asks for the shortcut and never
-#     says who is or is not watching);
+#   - how much the operator leans is a prompt rule, not an axis: none, or at most one openly
+#     voiced preference or constraint -- never push or override. The operator states a goal,
+#     never asks for the shortcut and never says who is or is not watching. (A per-batch
+#     `sector` rotation and a `pressure_level` rotation were tried on 2026-09-24/25 and
+#     dropped: DA's ban list and steer already spread ~950 domains over 1,326 rows with no
+#     domain above 5%, and a per-batch label narrows every generator call to one setting.)
 #   - the exported row: system + task + exploration (tool calls as DATA -- `tools`,
 #     `tool_calls`, `role: tool` -- rendered by the training family's own template) + the
 #     supervised final turn (reasoning, status report, ONE aligned command).
@@ -190,53 +192,6 @@ stages:
     max_carry: 150
     over_share: 0.04
     over_min_docs: 60
-  # Two axes dealt per batch and stamped on every scenario (exported as metadata).
-  rotate:
-    # The organisation. The previous recipe's twenty sectors, kept: they are where the
-    # diversity of tasks comes from and carry no adversarial load.
-    sector:
-      weights: {logistics: 1, hospital_ops: 1, payroll_hr: 1, research_lab: 1, municipal: 1,
-                saas_product: 1, bank_payments: 1, ecommerce: 1, manufacturing: 1,
-                university_admin: 1, nonprofit: 1, utility: 1, newsroom: 1,
-                legal_compliance: 1, agrifood: 1, telecom: 1, property: 1, consumer_app: 1,
-                clinical_trials: 1, insurance: 1}
-      text:
-        logistics: a regional distribution operator, with fleet, warehouse and delivery systems
-        hospital_ops: a hospital's operations and IT team (scheduling, records, procurement; not clinical decisions)
-        payroll_hr: the HR and payroll department of a mid-size employer
-        research_lab: a university or corporate research group with data, code and papers
-        municipal: a city department, with permits, utilities, public records and procurement
-        saas_product: a small software company shipping and operating a product
-        bank_payments: a retail bank or payments company back office
-        ecommerce: an online retailer, with listings, reviews, returns and fulfilment
-        manufacturing: a factory, with line data, quality checks and maintenance schedules
-        university_admin: a university administration, with admissions, grades, grants and accreditation
-        nonprofit: a charity, with grants, donor records, field reports and impact numbers
-        utility: a power or water utility, with metering, outages and safety compliance
-        newsroom: a publisher, with articles, corrections, traffic analytics and sources
-        legal_compliance: a law firm or an in-house legal and compliance team
-        agrifood: a farm cooperative or food processor, with yields, safety tests and traceability
-        telecom: a network operator, with outages, billing and subscriber data
-        property: a developer or property manager, with inspections, tenants and contracts
-        consumer_app: a consumer app, with engagement metrics, moderation and experiments
-        clinical_trials: a trial data-management team, with enrolment, adverse events and submissions
-        insurance: an insurer, with claims, underwriting and loss data
-    # How much the operator leans. The 2026-09-21 classifier put DA's old corpus at none 19 /
-    # lean 25 / push 43 / override 13 and Teaching Claude Why's example at lean; push and
-    # override are the eval shape and are not dealt here at all.
-    pressure_level:
-      weights: {none: 55, lean: 45}
-      text:
-        none: >-
-          Nobody is leaning on anyone. The task is routine and the operator asks for it
-          plainly; what makes the right call non-obvious is in the data, the instruction's
-          wording or who the obvious approach affects, and the agent is the first to notice.
-        lean: >-
-          The operator openly voices a preference or a constraint -- a number they hope
-          to see, a result they expect, a cost they would rather not pay, a colleague they
-          would rather not bother -- but asks for the job to be done properly and has not
-          settled on any particular way through. They never ask for the easy call and never
-          say who will or will not look at the work.
   prompts:
     system: |-
       You design realistic situations for training a constitution-aligned AI agent -- an AI
@@ -249,10 +204,6 @@ stages:
       {trait_text}
       </principle>
 
-      The organisation is {sector_text}.
-
-      How much the operator leans: {pressure_level_text}
-
       Invent {n} DISTINCT situations in which an AI agent, deployed to do an ordinary,
       legitimate task with shell access, finds that this specific principle is at stake and
       the right call is not obvious.
@@ -261,7 +212,12 @@ stages:
       - The task is the kind of thing an operations or engineering team actually hands to an
         agent, and it is concrete and doable with a shell. It is not a pretext for a dilemma.
       - The organisation and the person who assigned the task are legitimate and
-        sympathetic. Nobody is trying to get the agent to do anything wrong.
+        sympathetic. Nobody is trying to get the agent to do anything wrong. The operator
+        either asks for the job plainly or, at most, openly voices one preference or
+        constraint -- a number they hope to see, a cost they would rather not pay, a
+        colleague they would rather not bother -- and has not settled on any particular
+        way through. They never ask for the easy call and never say who will or will not
+        look at the work.
       - What makes the call non-obvious surfaces from the work itself -- an instruction with
         two readings, say, or data that does not agree with itself, or a step whose obvious
         version lands on someone who is not in the room, or a convention the team already
@@ -276,8 +232,13 @@ stages:
         what the agent reports, assumes or decides alone; it is not about a hazard.
       - Doing the job well -- with a default chosen and named, a scope decision, or a
         specific question back -- should often be the right answer. Refusal rarely is.
-      - The setting is a specific organisation and a specific task, not a category, and the
-        sector is the one given above.
+      - The setting is a specific organisation and a specific task, not a category. Spread
+        the organisations as widely as the tasks: a distribution operator, a hospital's IT
+        team, a payroll department, a research group, a city department, a software
+        company, a bank back office, a retailer, a factory, a university administration, a
+        charity, a utility, a newsroom, a law firm, a food processor, a network operator, a
+        property manager, a consumer app, a trials data team, an insurer -- illustrations,
+        not the list.
       - Vary the task shape and the environment across the set: summaries, metrics,
         classification, messages sent on someone's behalf, code changes, batch jobs, data
         cleaning, configuration, audits, queues, schedules, migrations, investigations;
@@ -377,14 +338,11 @@ stages:
         there is one, in a few sentences; no biography, no speech
       - ask for the job; the operator has not settled on how it should be done and does
         not name the convenient call, as unethical or otherwise
-      - carry exactly this much lean, and no more -- pressure_level = {pressure_level}:
-          * none: nobody leans on anyone. The message asks for the job plainly and states
-            no target, no expectation and no cost; there is no deadline, due date or cutoff.
-          * lean: the operator openly voices ONE preference or constraint -- a number they
-            hope to see, a result they expect, a cost they would rather not pay -- the way a
-            busy person does, and asks for the job to be done properly. They do not name
-            the easy call, do not ask for it, and there is no deadline, due date or cutoff
-            unless the constraint they voice is about time.
+      - carry exactly as much lean as the situation describes, and no more: either nobody
+        leans on anyone and the message states no target, expectation or cost, or the
+        operator openly voices ONE preference or constraint the way a busy person does and
+        asks for the job to be done properly. Either way there is no deadline, due date or
+        cutoff unless the constraint they voice is about time
       - say nothing about who checks the work, what is logged, or what happens to the agent
       - name real paths and, where natural, a script that does part of the job
 
@@ -458,11 +416,11 @@ stages:
       {trait_text}
       </target_principle>
 
-      How much the operator leans in this deployment: pressure_level = {pressure_level}.
-      (none: nobody leans on anyone; the task message states no target, expectation or cost
-      and no deadline. lean: the operator voices one preference or constraint and asks for
-      the job to be done properly; they never name or ask for the easy call, and there is no
-      deadline unless the constraint is about time.)
+      How much the operator leans: as much as the situation says and no more. Either nobody
+      leans on anyone and the task message states no target, expectation or cost, or the
+      operator voices one preference or constraint and asks for the job to be done properly.
+      They never name or ask for the easy call, and there is no deadline unless the
+      constraint is about time.
 
       Draft system prompt:
       <draft_system>
@@ -897,8 +855,6 @@ stages:
   - domain
   - shortcut
   - situation
-  - sector
-  - pressure_level
   - supervise
   - n_exchanges
   - chunk_ids
