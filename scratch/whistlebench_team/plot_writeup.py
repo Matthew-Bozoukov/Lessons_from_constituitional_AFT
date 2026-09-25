@@ -1,13 +1,14 @@
 # ABOUTME: The write-up figure set for whistlebench_team (control vs difficult advice): five one-question
 # ABOUTME: charts — hid the cover-up, what it did instead, benign twins, per storyline, vs the paper's models.
-# Run: uv run python scratch/whistlebench_team/plot_writeup.py --nosynth <run dir> --da <run dir> [--out output/whistlebench_team]
+# Run: uv run python scratch/whistlebench_team/plot_writeup.py --nosynth <run dir> --da <run dir>
+#        [--nosynth-nudged medium=<run dir> high=<run dir>] [--da-nudged ...] [--only fig5_vs_paper] [--out output/whistlebench_team]
 """Five figures, one question each, same style throughout.
 
 fig1  Did its summary hide the cover-up?           control vs DA, three situations, 95% intervals
 fig2  What did it do instead?                      outcome shares per situation and arm
 fig3  Does it tell a cover-up from a lawful secret? refused to sanitise, and accused anyone, on misconduct vs benign twins
 fig4  Is it one storyline?                         hid-the-cover-up per storyline, teammate cells pooled
-fig5  Nobody whistleblows without the nudge         the paper's models by nudge level beside our two arms
+fig5  Whistleblowing vs the nudge                  the paper's models by nudge level beside our two arms (plus our nudged runs)
 
 Grey is the nosynth control, purple is difficult advice (the repo's fixed arm colours).
 """
@@ -75,6 +76,13 @@ PAPER = {
     "Llama 4 Maverick": {"high": 0.00},
 }
 NUDGE_COLOURS = {"none": "#c9d8e8", "medium": "#6f9bc7", "high": "#2b5e91"}
+LEVELS = ["none", "medium", "high"]
+# Our runs at a nudge level, filled from the CLI: NUDGED[arm][level] -> episode rows.
+NUDGED: dict[str, dict[str, list[dict]]] = {"nosynth": {}, "da": {}}
+OURS_LABELS = {
+    "nosynth": "Qwen3.6 nosynth\n(ours)",
+    "da": "Qwen3.6 difficult\nadvice (ours)",
+}
 
 
 def load(run_dir: Path) -> list[dict]:
@@ -109,19 +117,12 @@ def style(ax, ymax=110):
         ax.spines[side].set_visible(False)
 
 
-def bar_with_ci(ax, x, v, colour, width, label=None, hatch=None):
+def bar_with_ci(ax, x, v, colour, width, label=None):
     h = (v["rate"] or 0.0) * 100
     lo = max(0.0, h - (v["lo"] or 0.0) * 100)
     hi = max(0.0, (v["hi"] or 0.0) * 100 - h)
     ax.bar(
-        x,
-        h,
-        width=width,
-        color=colour,
-        edgecolor="white",
-        linewidth=1.2,
-        label=label,
-        hatch=hatch,
+        x, h, width=width, color=colour, edgecolor="white", linewidth=1.2, label=label
     )
     if v["n"]:
         ax.errorbar(
@@ -155,9 +156,7 @@ def fig1(arms, out):
     ax.set_xticks(x)
     ax.set_xticklabels([TEAM_LABELS[t] for t in TEAMS])
     style(ax)
-    ax.set_ylabel(
-        "share of episodes that hid the cover-up"
-    )
+    ax.set_ylabel("share of episodes that hid the cover-up")
     ax.set_title("Did its summary hide the cover-up?", loc="left", pad=14)
     ax.legend(frameon=False, loc="upper left")
     fig.text(
@@ -178,21 +177,39 @@ def fig2(arms, out):
     y, ticks, labels, colours = 0.0, [], [], []
     for team in TEAMS:
         for key, label, colour, _ in ARMS:
-            rows = [r for r in sub(arms[key], team=team, docs="misconduct") if r.get("rung")]
+            rows = [
+                r for r in sub(arms[key], team=team, docs="misconduct") if r.get("rung")
+            ]
             n = len(rows) or 1
             left = 0.0
             for rung in RUNGS:
                 share = sum(1 for r in rows if r["rung"] == rung) / n
                 if share:
-                    ax.barh(y, share * 100, left=left * 100, color=RUNG_COLOURS[rung],
-                            edgecolor="white", linewidth=1.5, height=0.72)
+                    ax.barh(
+                        y,
+                        share * 100,
+                        left=left * 100,
+                        color=RUNG_COLOURS[rung],
+                        edgecolor="white",
+                        linewidth=1.5,
+                        height=0.72,
+                    )
                     if share >= 0.09:
-                        ax.text((left + share / 2) * 100, y, f"{share:.0%}", ha="center", va="center",
-                                fontsize=10, fontweight="bold",
-                                color=INK if rung in ("silent", "disclose", "raise") else "white")
+                        ax.text(
+                            (left + share / 2) * 100,
+                            y,
+                            f"{share:.0%}",
+                            ha="center",
+                            va="center",
+                            fontsize=10,
+                            fontweight="bold",
+                            color=INK
+                            if rung in ("silent", "disclose", "raise")
+                            else "white",
+                        )
                     left += share
             ticks.append(y)
-            labels.append(f"{TEAM_LABELS[team].replace(chr(10), ' ')} · {label}")
+            labels.append(TEAM_LABELS[team].replace(chr(10), " ") + " · " + label)
             colours.append(colour if key == "da" else INK)
             y += 1
         y += 0.7
@@ -208,9 +225,20 @@ def fig2(arms, out):
         ax.spines[side].set_visible(False)
     ax.tick_params(axis="y", length=0)
     ax.set_xlabel("share of episodes (misconduct documents, 50 per bar)")
-    ax.set_title("What did it do instead? The highest rung reached in each episode", loc="left", pad=14)
+    ax.set_title(
+        "What did it do instead? The highest rung reached in each episode",
+        loc="left",
+        pad=14,
+    )
     handles = [Patch(color=RUNG_COLOURS[r], label=RUNG_LABELS[r]) for r in RUNGS]
-    ax.legend(handles=handles, fontsize=9, ncol=2, frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.14))
+    ax.legend(
+        handles=handles,
+        fontsize=9,
+        ncol=2,
+        frameon=False,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.14),
+    )
     fig.tight_layout()
     fig.savefig(out, dpi=170, bbox_inches="tight")
     plt.close(fig)
@@ -221,16 +249,12 @@ def fig3(arms, out):
     fig, (ax_l, ax_r) = plt.subplots(1, 2, figsize=(12, 5.2), sharey=True)
     x = np.arange(len(ARMS))
     w = 0.36
+
     def team_rows(rows, docs):
         return [r for r in rows if r["team"] != "solo" and r["docs"] == docs]
 
     for i, (key, label, colour, light) in enumerate(ARMS):
-        for j, (docs, dlabel) in enumerate(
-            (
-                ("misconduct", "documents show a cover-up"),
-                ("benign", "documents show a lawful secret"),
-            )
-        ):
+        for j, docs in enumerate(("misconduct", "benign")):
             c = colour if docs == "misconduct" else light
             v = rate([refused_to_sanitise(r) for r in team_rows(arms[key], docs)])
             bar_with_ci(ax_l, x[i] + (j - 0.5) * w, v, c, w * 0.94)
@@ -269,7 +293,8 @@ def fig3(arms, out):
     fig.text(
         0.01,
         0.01,
-        "Difficult advice refuses to sanitise either way, but never accuses anyone when the secret is lawful. The control accuses nobody because it hides both.",
+        "Difficult advice refuses to sanitise either way, but never accuses anyone when the secret is lawful. "
+        "The control accuses nobody because it hides both.",
         fontsize=9,
         color=MUTED,
     )
@@ -313,11 +338,8 @@ def fig4(arms, out):
 # ── fig5 ─────────────────────────────────────────────────────────────────────────────────────
 def fig5(arms, out):
     fig, ax = plt.subplots(figsize=(13, 5.4))
-    models = list(PAPER) + [
-        "Qwen3.6 nosynth\n(ours)",
-        "Qwen3.6 difficult\nadvice (ours)",
-    ]
-    ours = {}
+    models = list(PAPER) + [OURS_LABELS["nosynth"], OURS_LABELS["da"]]
+    ours: dict[str, dict[str, float]] = {}
     for key, label, colour, _ in ARMS:
         v = rate(
             [
@@ -325,63 +347,71 @@ def fig5(arms, out):
                 for r in sub(arms[key], team="solo", docs="misconduct")
             ]
         )
-        ours[key] = v["rate"] or 0.0
+        ours[key] = {"none": v["rate"] or 0.0}
+        print(f"ours {key} nudge=none: report_any {v['k']}/{v['n']}")
+        for level, rows in NUDGED[key].items():
+            v = rate(
+                [r.get("report_any") for r in sub(rows, team="solo", docs="misconduct")]
+            )
+            ours[key][level] = v["rate"] or 0.0
+            print(f"ours {key} nudge={level}: report_any {v['k']}/{v['n']}")
     rates = {
         **PAPER,
-        "Qwen3.6 nosynth\n(ours)": {"none": ours["nosynth"]},
-        "Qwen3.6 difficult\nadvice (ours)": {"none": ours["da"]},
+        OURS_LABELS["nosynth"]: ours["nosynth"],
+        OURS_LABELS["da"]: ours["da"],
     }
     x = np.arange(len(models))
     w = 0.26
-    levels = ["none", "medium", "high"]
-    for j, level in enumerate(levels):
+    alphas = {"none": 0.45, "medium": 0.75, "high": 1.0}
+    for j, level in enumerate(LEVELS):
         for i, m in enumerate(models):
-            if level in rates[m]:
-                h = rates[m][level] * 100
-                colour = NUDGE_COLOURS[level]
-                if m.startswith("Qwen3.6 nosynth"):
-                    colour = CONTROL
-                if m.startswith("Qwen3.6 difficult"):
-                    colour = DA
-                ax.bar(
-                    x[i] + (j - 1) * w,
-                    h,
-                    width=w * 0.94,
-                    color=colour,
-                    edgecolor="white",
-                    linewidth=1.2,
-                )
-                ax.text(
-                    x[i] + (j - 1) * w,
-                    h + 1.5,
-                    f"{h:.0f}%",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9,
-                    color=INK,
-                )
+            if level not in rates[m]:
+                continue
+            h = rates[m][level] * 100
+            colour, alpha = NUDGE_COLOURS[level], 1.0
+            if m == OURS_LABELS["nosynth"]:
+                colour, alpha = CONTROL, alphas[level]
+            if m == OURS_LABELS["da"]:
+                colour, alpha = DA, alphas[level]
+            ax.bar(
+                x[i] + (j - 1) * w,
+                h,
+                width=w * 0.94,
+                color=colour,
+                alpha=alpha,
+                edgecolor="white",
+                linewidth=1.2,
+            )
+            ax.text(
+                x[i] + (j - 1) * w,
+                h + 1.5,
+                f"{h:.0f}%",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color=INK,
+            )
     ax.set_xticks(x)
     ax.set_xticklabels(models, fontsize=10)
     style(ax, ymax=118)
     ax.set_ylabel(
         "share of episodes with a whistleblowing email\n(government, press or someone inside), working alone"
     )
-    ax.set_title(
-        "Nobody whistleblows without the 'act boldly' nudge", loc="left", pad=14
-    )
+    ax.set_title("Whistleblowing tracks the 'act boldly' nudge", loc="left", pad=14)
     handles = [
         Patch(color=NUDGE_COLOURS[lv], label=f"paper's models, nudge: {lv}")
-        for lv in levels
+        for lv in LEVELS
     ]
     handles += [
-        Patch(color=CONTROL, label="our control, no nudge"),
-        Patch(color=DA, label="our difficult advice, no nudge"),
+        Patch(color=CONTROL, label="our control (bars: no nudge, medium, high)"),
+        Patch(color=DA, label="our difficult advice (same order)"),
     ]
     ax.legend(handles=handles, frameon=False, fontsize=9, loc="upper right", ncol=1)
     fig.text(
         0.01,
         0.01,
-        "Paper rates from its shipped logs (200 episodes per bar; GPT-5 and Llama 4 were only run with the high nudge). Ours: 50 episodes per bar, alone, misconduct documents.",
+        "Paper rates from its shipped logs (200 episodes per bar; GPT-5 and Llama 4 were only run with the high nudge). "
+        "Ours: 50 episodes per bar, alone, misconduct documents.",
         fontsize=9,
         color=MUTED,
     )
@@ -395,17 +425,42 @@ def main() -> None:
     ap.add_argument("--nosynth", required=True, type=Path)
     ap.add_argument("--da", required=True, type=Path)
     ap.add_argument("--out", type=Path, default=Path("output/whistlebench_team"))
+    ap.add_argument(
+        "--nosynth-nudged",
+        nargs="*",
+        default=[],
+        help="level=run_dir pairs for the control at a nudge level",
+    )
+    ap.add_argument(
+        "--da-nudged",
+        nargs="*",
+        default=[],
+        help="level=run_dir pairs for difficult advice at a nudge level",
+    )
+    ap.add_argument(
+        "--only",
+        nargs="*",
+        default=None,
+        help="figure names to draw (default: all five)",
+    )
     args = ap.parse_args()
     arms = {"nosynth": load(args.nosynth), "da": load(args.da)}
+    for key, pairs in (("nosynth", args.nosynth_nudged), ("da", args.da_nudged)):
+        NUDGED[key] = {
+            kv.split("=", 1)[0]: load(Path(kv.split("=", 1)[1])) for kv in pairs
+        }
     args.out.mkdir(parents=True, exist_ok=True)
     stem = f"{date.today().isoformat()}_wbt"
-    for name, fn in (
+    figures = (
         ("fig1_hid_cover_up", fig1),
         ("fig2_what_it_did_instead", fig2),
         ("fig3_benign_twins", fig3),
         ("fig4_by_storyline", fig4),
         ("fig5_vs_paper", fig5),
-    ):
+    )
+    for name, fn in figures:
+        if args.only and name not in args.only:
+            continue
         out = args.out / f"{stem}_{name}.png"
         fn(arms, out)
         print(out)
