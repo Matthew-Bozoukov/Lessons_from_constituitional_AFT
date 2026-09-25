@@ -124,7 +124,7 @@ def main():
     prior_prompts = {canonical(r['messages'][:2]) for r in old_low}
     for raw in ordered:
         meta = raw['metadata']
-        assert meta['prompt_stakes'] in ('0', '1') and meta['prompt_scope'] == 'text_advice'
+        assert str(meta['prompt_stakes']) in ('0', '1') and meta['prompt_scope'] == 'text_advice'
         messages = clean_messages(raw['messages'])
         assert messages and [m['role'] for m in messages] == ['system', 'user', 'assistant']
         assert messages[-1].get('reasoning_content') and not raw.get('tools')

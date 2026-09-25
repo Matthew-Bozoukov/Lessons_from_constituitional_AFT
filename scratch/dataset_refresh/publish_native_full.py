@@ -15,15 +15,79 @@ from src.infra.huggingface import hf_api, hf_token, gate_push, card_markdown, ca
 from src.utils import git_sha, origin_url, timestamp
 
 
+def publish_extension(root, launch, config_path):
+    """Keep the native extended corpus intact and attach its frozen paid-call evidence."""
+    native = json.loads((root/'manifest.json').read_text(encoding='utf-8'))
+    assert not native.get('aborted') and not native.get('halted')
+    cfg = native['config']
+    rows = read_rows(root/'dataset.jsonl')
+    assert native['extend_from']['rows'] == 716 and len(rows) > 716
+    entries = json.loads(Path(launch['campaign_budget_root'], 'spend.json').read_text())
+    assert all(e['status'] == 'settled' for e in entries)
+    exposure = sum(e['charged_or_reserved_usd'] for e in entries)
+    assert exposure <= launch['ceiling_usd']
+    release = root/'release'
+    release.mkdir(exist_ok=True)
+    summary = dict(rows=len(rows), prior_rows=716, new_rows=len(rows)-716,
+        dataset_sha256=digest((root/'dataset.jsonl').read_bytes()),
+        exposure_usd=exposure, physical_calls=len(entries), ceiling_usd=launch['ceiling_usd'],
+        prior=native['extend_from'], generation_git_sha=json.loads((root/'launch_meta.json').read_text())['git_sha'],
+        publication_git_sha=git_sha(), wall_clock_s=native['wall_clock_s'],
+        limitations='Existing nonblocking diagnostics and source quality limits are inherited. No full factual audit or new repair loop. The mixture selects a balanced prefix of new rows near 15% supervised tokens; the extended corpus retains every accepted row.')
+    write_json(release/'summary.json', summary)
+    archive = release/'full_run_archive.zip'
+    paths = [p for p in root.iterdir() if p.is_file() and p.suffix in {'.json','.jsonl','.md','.yaml'}]
+    paths += [p for folder in ['frozen','campaign_budget_snapshot'] for p in (root/folder).rglob('*')
+              if p.is_file() and not p.name.endswith(('.lock','.tmp'))]
+    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+        for p in sorted(set(paths)):
+            z.write(p, p.relative_to(root).as_posix())
+    repo = native['hf_repo']
+    api = hf_api()
+    previous = api.dataset_info(repo).sha
+    readme_path = Path(hf_hub_download(repo,'README.md',repo_type='dataset',revision=previous,token=hf_token()))
+    readme = readme_path.read_text(encoding='utf-8')
+    readme += ('\n## Corpus extension\n\n'
+        f"All **716 prior rows** are carried forward verbatim; **{len(rows)-716} fresh rows** are appended. "
+        'The constitution, scenario/answer prompts, Sonnet models and row-admission gates match the released practical recipe. '
+        'Native prior-corpus embedding deduplication and a new scenario-ID prefix prevent reuse. '
+        'This is the complete accepted corpus, not the token-budget-selected training mixture.\n\n'
+        f"New generation cost: **${exposure:.2f}**, under a $30 stage ceiling within the user's $100 combined campaign ceiling. "
+        'No automatic replacement batch was run. See `release_summary.json` and `full_run_archive.zip` for every stage, frozen configuration and paid API receipt.\n\n'
+        'Known limitations remain: domain drift, speculative alternatives and unsupported details can survive the normal DA answer pipeline. '
+        'This extension changes volume and diversity checks, not the inherited factual-review policy.\n\n'
+        'Exact invocation: `uv run python -m scratch.dataset_refresh.run_native_smoke --config '+str(config_path)+'`. '
+        'The frozen `launch_meta.json` records all overrides to the base recipe.\n')
+    (release/'README.md').write_text(readme,encoding='utf-8')
+    OmegaConf.save(OmegaConf.create(cfg), release/'generation_config.yaml')
+    files = {'README.md':release/'README.md', 'release_summary.json':release/'summary.json',
+             'full_run_archive.zip':archive, 'generation_config.yaml':release/'generation_config.yaml',
+             'launch_config.yaml':Path(config_path), 'constitution.md':Path(cfg['constitution'])}
+    revision = api.create_commit(repo_id=repo,repo_type='dataset',parent_commit=previous,
+        operations=[CommitOperationAdd(path_in_repo=k,path_or_fileobj=v) for k,v in files.items()],
+        commit_message='Archive bounded corpus extension and pinned provenance').oid
+    verified = {}
+    for name, local in {**files,'dataset.jsonl':root/'dataset.jsonl'}.items():
+        restored = Path(hf_hub_download(repo,name,repo_type='dataset',revision=revision,token=hf_token(),local_dir=release/'verification'))
+        assert digest(restored.read_bytes()) == digest(local.read_bytes()),name
+        verified[name] = digest(local.read_bytes())
+    receipt = dict(repo=repo,revision=revision,verified=verified,**summary)
+    write_json(root/'publication_receipt.json',receipt)
+    print(json.dumps(receipt,indent=2))
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',required=True)
     parser.add_argument('--root',required=True)
-    parser.add_argument('--report',required=True)
+    parser.add_argument('--report')
     args=parser.parse_args()
     load_dotenv()
     root=Path(args.root)
     launch=OmegaConf.to_container(OmegaConf.load(args.config),resolve=True)
+    if launch.get('mode') == 'extend':
+        return publish_extension(root, launch, args.config)
+    assert args.report, 'The 716-row full release requires its completed review report'
     native=json.loads((root/'manifest.json').read_text(encoding='utf-8'))
     cfg=native['config']
     rows=read_rows(root/'dataset.jsonl')
