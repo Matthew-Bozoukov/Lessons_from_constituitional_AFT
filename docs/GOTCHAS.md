@@ -1311,3 +1311,12 @@ date (2026-09-20 and 2026-09-21 precedents), fix its card's `date_generated`, an
 `create_repo` an empty repo at the freed name — HF keeps a redirect after a move, and a
 push that follows it would overwrite the moved repo. A `-suffix` rename is off-grammar.
 
+
+## `pgrep -f <pattern>` in a wait loop matches the waiting shell itself (2026-09-25)
+
+A queued job of the form `while pgrep -f "script.py cfg.yaml"; do sleep 5; done; uv run python
+script.py cfg.yaml ...` never starts. The waiting `bash -c` process's own command line contains the
+pattern, so `pgrep` always finds it. On 2026-09-25 two queued self-assessment runs waited on
+themselves for about an hour while a rented H200 sat idle. Chain dependent jobs in ONE command
+(`a; b; c`), or wait on a PID or file you captured, never on a pattern that also appears in your
+own command line.
