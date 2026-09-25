@@ -10,6 +10,11 @@ the config's `questions` are appended in order as user turns of one conversation
 own reflection call: the task's tool schemas are sent, no tool choice is forced, sampling is the eval's. Past reasoning is stripped from
 the history; the pinned template drops reasoning before the last user turn anyway.
 
+`strip` removes parts of the EARLIER episodes' feedback from the history before asking, to test
+what the answer leans on: `verdict_review` deletes the "## Verdict review" section of each outcome
+message (the reward line stays), `reflections` deletes each private-reflection exchange (the
+harness's prompt and the agent's reply). The agents' own messages to each other are untouched.
+
 The target is served by `VllmServer` with the eval config's `serving:` block over `SshExec`, the
 same path `uv run evals --server` takes, so the template the model sees is the eval's.
 
@@ -67,7 +72,30 @@ def history_at_verdict(messages: list[dict], episode_number: int) -> list[dict]:
             for m in messages[:cut + 1]]
 
 
-def onset_units(run_dir: Path) -> list[dict]:
+STRIPPABLE = ("verdict_review", "reflections")
+
+
+def strip_history(history: list[dict], strip: list[str], reflection_prompt: str,
+                  n_prior: int) -> list[dict]:
+    """Remove the named parts of each earlier episode's feedback (exactly one per episode)."""
+    assert set(strip) <= set(STRIPPABLE), strip
+    out = list(history)
+    if "verdict_review" in strip:
+        hits = [i for i, m in enumerate(out) if m["role"] == "user"
+                and m["content"].startswith("Episode ") and "\n\n## Verdict review\n" in m["content"]]
+        assert len(hits) == n_prior, (len(hits), n_prior)
+        for i in hits:
+            out[i] = out[i] | {"content": out[i]["content"].split("\n\n## Verdict review\n")[0]}
+    if "reflections" in strip:
+        hits = [i for i, m in enumerate(out) if m["role"] == "user" and m["content"] == reflection_prompt]
+        assert len(hits) == n_prior, (len(hits), n_prior)
+        assert all(out[i + 1]["role"] == "assistant" for i in hits)
+        drop = {j for i in hits for j in (i, i + 1)}
+        out = [m for j, m in enumerate(out) if j not in drop]
+    return out
+
+
+def onset_units(run_dir: Path, strip: list[str]) -> list[dict]:
     """One unit per (trajectory, agent) at the trajectory's first mutual ACCEPT."""
     units = []
     for path in sorted(run_dir.glob("rollouts/seq*/*/run.json")):
@@ -84,7 +112,8 @@ def onset_units(run_dir: Path) -> list[dict]:
                 "task_type": onset["task_type"],
                 "peer_work_correct": onset["agents"][peer]["expected_verdict"] == "pass",
                 "verdict_reasoning": slot["verdict_submission"]["reasoning"],
-                "history": history_at_verdict(slot["messages"], n),
+                "history": strip_history(history_at_verdict(slot["messages"], n), strip,
+                                         slot["reflection_prompt"], n - 1),
                 "tools": tool_schemas(onset["task_type"], slot["task_id"], peer),
             })
     return units
@@ -119,7 +148,7 @@ def main(config: str, *overrides: str) -> None:
     revision = HfApi(token=hf_token()).dataset_info(cfg.run_repo).sha
     run_dir = Path(snapshot_download(cfg.run_repo, repo_type="dataset", revision=revision,
                                      allow_patterns=["rollouts/seq*/*/run.json"], token=hf_token()))
-    units = onset_units(run_dir)
+    units = onset_units(run_dir, list(cfg.strip))
     print(f">>> {len(units)} (trajectory, agent) onset units from {cfg.run_repo}@{revision[:8]}")
     jobs = [(u, s) for u in units for s in range(cfg.samples)]
     if cfg.smoke:
@@ -129,6 +158,10 @@ def main(config: str, *overrides: str) -> None:
           f"({len(u0['history'])} msgs, tools {[t['function']['name'] for t in u0['tools']]})")
     for m in u0["history"][-3:]:
         print(f"    [{m['role']}] {str(m.get('content') or m.get('tool_calls'))[:200]}")
+    if cfg.strip:
+        fb = next(m["content"] for m in u0["history"] if m["role"] == "user"
+                  and m["content"].startswith("Episode ") and " complete." in m["content"][:30])
+        print(f">>> stripped {list(cfg.strip)}; first earlier-episode feedback now reads:\n{fb}")
 
     eval_cfg = OmegaConf.load(cfg.eval_config)
     executor = SshExec(cfg.server, port=cfg.port, bind="127.0.0.1")
