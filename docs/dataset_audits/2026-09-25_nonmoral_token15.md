@@ -61,3 +61,27 @@ No global Docker pruning; unrelated pods and local jobs are outside scope.
 Docker preflight passed: 20 CPUs, 18.9 GB memory, capacity for 1,024 networks, all 168
 benchmark shell files LF, exactly 40 scenarios per variant. Thirty owner, backup,
 evaluation-plan and server-startup regression tests passed.
+
+## Training completed
+
+The first pod, `b9q557l7dakbiu`, never exposed SSH within the provisioner's seven-minute
+timeout. No training ran. Teardown and absence were verified; its estimated GPU/storage
+charge was **$0.5645673**. All failure records remain under the campaign output.
+The retry allocation was reduced to $29, inside the unchanged $60 combined ceiling.
+
+The replacement single H200, `ew608on86ni0gk` (`nika-nonmoral-token15-train`),
+completed CUDA checks, the native mask gate and all **620 optimizer steps**. Training
+used pushed commit `9f301c38`, the pinned mixture and base revisions above, and the
+standard token-mean/packing recipe. Runtime **3,543.40 seconds (59.06 minutes)**,
+mean training loss **0.69563347**; all logged losses and gradients finite.
+
+- Adapter: `dougalldeepmind/2026-09-25-qwen36-0-nonmoral-original-15`.
+- Verified initial publication: `aa42a7c0a0388513ac8d00bfe10f0640513561ba`.
+- Final revision with complete training backup: `51f6c54ffcb3f4e1ac4a08497c6bcaf95b69baa8`.
+- Backup size: 8,986,910,720 bytes; SHA256
+  `64f50d13c9d0c0f063a6e02d3c14b08ec84c121a4bd86985da01ca834aab11be`.
+- Successful rental estimated GPU/storage charge: **$5.6705104**.
+- Training plus failed startup: **$6.2350777**, elapsed-rate estimate, not an invoice.
+
+Both owned training pods were independently verified absent. The ODCV plan pins the
+final model revision above; evaluation and final publication are in progress.
