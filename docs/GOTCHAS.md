@@ -1535,3 +1535,15 @@ result directories/HF repositories and never sum duplicated shared-fleet cost to
 A fallback GPU's longer reservation must not consume its peers' shares: shorten
 that pod's safety lease at admission and pass the SAME expiry to the provider,
 watchdog, worker and ledger. Do not alter live expiry components independently.
+
+
+## Appended JSONL columns can pass token audits but fail training (2026-09-25)
+
+A 10,000-row mixture had three columns; only its 136 appended rows had an unused
+`n_tokens` column. The blockwise Hugging Face JSON loader inferred the earlier
+schema and rejected the later extra column before training. A Python JSON reader
+and exact token-mask audit did not catch it. Keep appended training rows compatible
+with the parent schema, store diagnostic counts in a sidecar, and run the actual
+`load_dataset("json", data_files=..., split="train")` path on the complete mixture
+before renting. Compare the loaded messages and supervision with the original rows.
+The failed startup was preserved and terminated for about $0.96; no optimizer step ran.

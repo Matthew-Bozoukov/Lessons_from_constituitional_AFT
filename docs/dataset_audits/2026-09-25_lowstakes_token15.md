@@ -124,3 +124,8 @@ comparing all loaded messages, sources and supervision with the source rows.
 The complete 10,136-row corrected file passed this check locally. All original
 rows and every new message remain unchanged; counts and selected IDs are unchanged.
 The original published revision remains in HF history for traceability.
+Corrected mixture revision: `3bbe5945a1088a6113b5fef9b7353de04a9bb634`;
+SHA256 `f6c3147ddfdcd2916790a1d3cd5116a47677e1f36c1a936502969a8eb7302985`.
+All five corrected published files passed pinned download/hash verification.
+The next training allocation is $39, retaining the prior $0.96439 startup charge
+inside the original $40 training allowance and $100 campaign ceiling.
