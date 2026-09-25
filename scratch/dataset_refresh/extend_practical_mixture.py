@@ -83,6 +83,16 @@ def verify_training_loader(path, expected):
     return dict(rows=len(dataset), columns=dataset.column_names, verified=True)
 
 
+def validate_cached_census(census, cfg, code_hashes, n_rows):
+    """Refuse stale token counts when any rendering or masking input changes."""
+    expected = dict(parent=cfg['parent'], tokenizer=cfg['tokenizer'],
+                    max_seq_len=cfg['max_seq_len'], code_hashes=code_hashes)
+    if any(census.get(key) != value for key, value in expected.items()):
+        raise ValueError('Cached token audit differs from this run; use a fresh output directory')
+    if len(census.get('counts', [])) != n_rows:
+        raise ValueError('Cached token audit has incomplete row counts')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
@@ -93,7 +103,7 @@ def main():
     cfg = OmegaConf.to_container(OmegaConf.load(args.config), resolve=True)
     root = Path(cfg['output_dir'])
     root.mkdir(parents=True, exist_ok=True)
-    parent_path, parent = fetch(cfg['parent'])
+    _, parent = fetch(cfg['parent'])
     assert len(parent) == 10000
     old_low = [r for r in parent if r['source'] == cfg['style']]
     replay = [r for r in parent if r['source'] != cfg['style']]
@@ -113,9 +123,10 @@ def main():
             if (i + 1) % 1000 == 0:
                 print('AUDITED', i + 1, flush=True)
         write_json(census_path, dict(parent=cfg['parent'], tokenizer=cfg['tokenizer'],
-            code_hashes=identity, counts=counts, by_source=dict(by_source)))
+            max_seq_len=cfg['max_seq_len'], code_hashes=identity,
+            counts=counts, by_source=dict(by_source)))
     census = json.loads(census_path.read_text(encoding='utf-8'))
-    assert census['code_hashes'] == identity and census['parent'] == cfg['parent']
+    validate_cached_census(census, cfg, identity, len(parent))
     old_tokens = sum(n for r, n in zip(parent, census['counts']) if r['source'] == cfg['style'])
     replay_tokens = sum(census['counts']) - old_tokens
     assert (old_tokens, replay_tokens) == (670033, 4512849), 'Current mask differs; inspect before mixing'
@@ -123,9 +134,9 @@ def main():
     if args.audit_parent:
         return
     assert args.synth_revision and len(args.synth_revision) == 40
-    prior_path, prior = fetch(cfg['prior_synth'])
+    _, prior = fetch(cfg['prior_synth'])
     extended_spec = dict(repo=cfg['extended_synth_repo'], revision=args.synth_revision)
-    extended_path, extended = fetch(extended_spec)
+    _, extended = fetch(extended_spec)
     assert extended[:len(prior)] == prior, 'Native extension must carry all prior rows verbatim'
     prior_ids = {r['metadata']['scenario_id'] for r in prior}
     fresh = extended[len(prior):]

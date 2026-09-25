@@ -203,7 +203,8 @@ def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_p
             raise OSError('simulated interrupted download')
         return {'verified':True}
     monkeypatch.setattr(driver, 'fetch_training_outputs', fetch)
-    monkeypatch.setitem(sys.modules,'account_snapshot',SimpleNamespace(snapshot=lambda: {}))
+    monkeypatch.setitem(sys.modules, 'scratch.nonmoral.account_snapshot',
+                        SimpleNamespace(snapshot=lambda: {}))
     plan = {'approved_for_training':True,'base_model_revision':'b'*40,
             'gpu_budget_usd':30 if n_arms==1 else 60,
             'arms':[{'data_repo':'test/data'+str(i),'data_revision':'a'*40} for i in range(n_arms)]}

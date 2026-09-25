@@ -1,8 +1,12 @@
 # ABOUTME: Verify append-only token targeting and teardown boundaries without paid calls.
 # ABOUTME: Run: uv run pytest -q scratch/dataset_refresh/test_token15_extension.py
 from collections import Counter
+from copy import deepcopy
 
-from scratch.dataset_refresh.extend_practical_mixture import balanced_order, closest_prefix
+import pytest
+
+from scratch.dataset_refresh.extend_practical_mixture import (
+    balanced_order, closest_prefix, validate_cached_census)
 from scratch.nonmoral.result_backup import may_terminate_training
 
 
@@ -32,3 +36,14 @@ def test_hub_backup_requires_both_adapter_and_archive_verification():
     assert may_terminate_training(state)
     state['hub_backup']['verified'] = False
     assert not may_terminate_training(state)
+
+
+@pytest.mark.parametrize('changed', ['tokenizer', 'max_seq_len', 'code_hashes', 'parent', 'counts'])
+def test_cached_census_rejects_changed_inputs_and_incomplete_rows(changed):
+    cfg = dict(parent={'revision': 'a' * 40}, tokenizer={'revision': 'b' * 40}, max_seq_len=8192)
+    hashes = {'masking': 'c' * 64}
+    census = dict(**deepcopy(cfg), code_hashes=hashes, counts=[12, 34])
+    validate_cached_census(census, cfg, hashes, 2)
+    census[changed] = [] if changed == 'counts' else 'different'
+    with pytest.raises(ValueError, match='Cached token audit'):
+        validate_cached_census(census, cfg, hashes, 2)
