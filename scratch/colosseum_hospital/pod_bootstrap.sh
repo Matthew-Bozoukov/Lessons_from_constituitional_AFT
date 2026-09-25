@@ -137,8 +137,18 @@ import vllm; print('    ok  vllm', vllm.__version__)
 "
 # The scripted-model smoke: one episode per harness variant, no GPU, ~1 minute.
 cd /root/work
+# Keep the WHOLE smoke log, print the summary lines. The grep alone hid every failure:
+# a crashed smoke matches none of these patterns, so the bootstrap died silently at its
+# last step with the log ending on "ok vllm" and nothing to read (2026-09-25).
 COLOSSEUM_ROOT=/root/colosseum uv run python scratch/colosseum_hospital/fixes_smoke.py \
-    --out /root/work/output/colosseum_hospital/fixes_smoke 2>&1 | grep -E '^(===|  \[FAIL\]|ALL CHECKS|[0-9]+ CHECK)'
+    --out /root/work/output/colosseum_hospital/fixes_smoke > /root/work/output/logs/fixes_smoke.log 2>&1 \
+    || echo "    smoke exited $?"
+grep -E '^(===|  \[FAIL\]|ALL CHECKS|[0-9]+ CHECK)' /root/work/output/logs/fixes_smoke.log || true
+if ! grep -q "ALL CHECKS" /root/work/output/logs/fixes_smoke.log; then
+    echo ">>> fixes_smoke did not pass; last 40 lines:"
+    tail -40 /root/work/output/logs/fixes_smoke.log
+    exit 1
+fi
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 echo BOOTSTRAP_DONE
 REMOTE
