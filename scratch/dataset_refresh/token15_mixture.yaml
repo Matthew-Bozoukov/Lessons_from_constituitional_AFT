@@ -1,0 +1,24 @@
+# ABOUTME: Preserve every previous row and append a balanced prefix near 15% supervised low-stakes tokens.
+# ABOUTME: Run: uv run python -m scratch.dataset_refresh.extend_practical_mixture --config scratch/dataset_refresh/token15_mixture.yaml --synth-revision <sha> --publish
+style: da-lowstakes-practical
+output_dir: output/2026-09-25_lowstakes_token15/mixture
+target_pct: 15
+tolerance_pp: 0.03
+seed: 0
+max_seq_len: 8192
+constitution: constitutions/claude_distilled_09_principles/constitution.md
+tokenizer:
+  repo: Qwen/Qwen3.6-27B
+  revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+parent:
+  repo: dougalldeepmind/2026-09-22-da-lowstakes-practical-7-mix
+  revision: e5948018221f3434813054e9afe58498aeeaa852
+  file: mixture.jsonl
+  sha256: c1b0a3010e6269a61676e7ced0199bf2bc004e12938fb1e0593bdbd2bec30a98
+prior_synth:
+  repo: dougalldeepmind/2026-09-21-da-lowstakes-practical-synth
+  revision: 83544fd2f48f7abc07a5e33dbcff35746f039c39
+  sha256: d324b06084e46494b3920773deead8632f86cdb789752e7dd25819a6906a17f8
+extended_synth_repo: dougalldeepmind/2026-09-25-da-lowstakes-practical-synth
+domains: [tabletop_games, book_film_clubs, hobby_crafts, adult_recreation, community_gardening, potluck_planning, personal_decoration, leisure_media, small_purchases]
+selection_policy: Keep every old row unchanged and in its existing position. Rank new rows by SHA256 of seed and scenario ID within each trait/domain. Round-robin domains within traits, then round-robin traits; choose the prefix whose supervised-token share is closest to 15%. No outcome-dependent selection. Training performs its normal seed-0 shuffle.

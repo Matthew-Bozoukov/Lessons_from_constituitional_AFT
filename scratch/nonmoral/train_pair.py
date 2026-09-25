@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 from src.infra import runpod
 from src.infra.endpoints.vllm import SshExec
 from src.infra.huggingface import hf_api, hf_org
-from scratch.nonmoral.result_backup import fetch_training_outputs, may_terminate_training, verify_publication
+from scratch.nonmoral.result_backup import fetch_training_outputs, may_terminate_training, verify_publication, pack_script
 
 MAX_LIFETIME_S = int(58 / 10 * 3600)
 # Measured on the Windows host: 3.85 GB checkpoint transfer takes about ten minutes.
@@ -265,6 +265,40 @@ print(json.dumps(r))
                                     'kill -STOP -- -"$g"; fi', timeout=min(30,remaining))
                         expected = [dict(plan['arms'][i], base_model_revision=plan['base_model_revision'])
                                     for i in state['completed_arms']]
+                        if plan.get('direct_hub_backup') and expected:
+                            # Completed outputs are immutable. Hash/verify the adapter and upload
+                            # its full checkpoint archive on-pod, avoiding a costly laptop hop.
+                            archive_name = 'da-supervision-backup.tar'
+                            if not state.get('remote_archive'):
+                                state['remote_archive'] = json.loads(remote._ssh(
+                                    'python3 -c '+shlex.quote(pack_script(archive_name=archive_name)),
+                                    timeout=max(1, remaining-60)))
+                                dump(out/'status.json', state)
+                            if not state.get('publication'):
+                                check = ('import json; from scratch.nonmoral.result_backup import verify_publication; '
+                                         f'print(json.dumps(verify_publication({state["remote_archive"]["path"]!r}, '
+                                         f'{expected!r}, steps={int(plan["verify_publication_steps"])}, '
+                                         f'world_size={gpu_count}, n_examples={int(plan.get("n_examples",10000))})))')
+                                state['publication'] = json.loads(remote._ssh(
+                                    'cd /root/work && uv run --no-sync python -c '+shlex.quote(check),
+                                    timeout=max(1,int(recovery_deadline-time.time())-60)))
+                                dump(out/'publication.json', state['publication'])
+                                dump(out/'status.json', state)
+                            assert len(expected) == 1, 'Direct Hub backup currently owns one adapter'
+                            if not state.get('hub_backup'):
+                                repo = state['publication']['arms'][0]['repo']
+                                receipt = '/root/work/output/da-supervision/hub_backup.json'
+                                remote._ssh('mkdir -p /root/work/output/da-supervision && '
+                                    f'if [ ! -f {receipt} ]; then cd /root/work && uv run --no-sync python '
+                                    '-m scratch.da_supervision.hub_backup --repo '+shlex.quote(repo)+
+                                    ' --archive '+shlex.quote(state['remote_archive']['path'])+
+                                    ' --out '+receipt+' > /root/work/output/da-supervision/hub_backup.log 2>&1; fi',
+                                    timeout=max(1,int(recovery_deadline-time.time())-60))
+                                state['hub_backup'] = json.loads(remote._ssh('cat '+receipt, timeout=30))
+                                assert state['hub_backup']['sha256'] == state['remote_archive']['sha256']
+                                dump(out/'hub_backup.json', state['hub_backup'])
+                                dump(out/'status.json', state)
+                            break
                         if plan.get('preserve_adapter_first') and expected and not state.get('adapter_backup'):
                             adapter_out = out / 'adapter_backup'
                             adapter_out.mkdir(exist_ok=True)
@@ -276,7 +310,8 @@ print(json.dumps(r))
                         if plan.get('verify_publication_steps') and expected and not state.get('publication'):
                             state['publication'] = verify_publication(
                                 state['adapter_backup']['archive'], expected,
-                                steps=int(plan['verify_publication_steps']), world_size=gpu_count)
+                                steps=int(plan['verify_publication_steps']), world_size=gpu_count,
+                                n_examples=int(plan.get('n_examples', 10000)))
                             dump(out / 'publication.json', state['publication'])
                             dump(out / 'status.json', state)
                             remaining = int(recovery_deadline-time.time())
@@ -304,7 +339,7 @@ print(json.dumps(r))
                                        for p in runpod.active_pods()]
             state["elapsed_s"] = time.time()-created
             state["estimated_gpu_usd"] = state["elapsed_s"]/3600*state.get("budget_hourly_usd",rate_ceiling)
-            from account_snapshot import snapshot
+            from scratch.nonmoral.account_snapshot import snapshot
             try:
                 state["accounts_after"] = snapshot()
             finally:

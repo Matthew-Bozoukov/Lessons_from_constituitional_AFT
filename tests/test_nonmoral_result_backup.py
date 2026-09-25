@@ -105,16 +105,17 @@ def test_adapter_first_archive_preserves_provenance_without_resume_checkpoints(t
     assert not may_terminate_training({'training_started': True, 'adapter_backup': receipt})
 
 
-def test_publication_checks_real_archive_bytes_and_rejects_remote_hash_mismatch(tmp_path, monkeypatch):
+@pytest.mark.parametrize('n_examples,steps', [(10000,625), (10135,634)])
+def test_publication_checks_real_archive_bytes_and_rejects_remote_hash_mismatch(tmp_path, monkeypatch, n_examples, steps):
     from scratch.nonmoral.result_backup import verify_publication
     from src.infra import huggingface
     arms = fixture(tmp_path)
     root = tmp_path / 'output/train/run1'
     meta = json.loads((root / 'run_meta.json').read_text())
-    meta.update(world_size=2, n_examples=10000,
-                log_history=[{'step': 625, 'epoch': 1, 'train_loss': 0.8}])
+    meta.update(world_size=2, n_examples=n_examples,
+                log_history=[{'step': steps, 'epoch': 1, 'train_loss': 0.8}])
     (root / 'run_meta.json').write_text(json.dumps(meta))
-    stamp = dict(meta, organism='test-organism', thinking=True, supervise_counts={'all': 10000})
+    stamp = dict(meta, organism='test-organism', thinking=True, supervise_counts={'all': n_examples})
     (root / 'adapter/training_meta.json').write_text(json.dumps(stamp))
     siblings = [SimpleNamespace(rfilename=p.name, size=p.stat().st_size,
                  lfs=SimpleNamespace(sha256=hashlib.sha256(p.read_bytes()).hexdigest()))
@@ -123,10 +124,10 @@ def test_publication_checks_real_archive_bytes_and_rejects_remote_hash_mismatch(
     monkeypatch.setattr(huggingface, 'hf_api', lambda: api)
     monkeypatch.setattr(huggingface, 'hf_org', lambda: 'test')
     path, _ = pack(tmp_path)
-    assert verify_publication(path, arms, steps=625, world_size=2)['verified']
+    assert verify_publication(path, arms, steps=steps, world_size=2, n_examples=n_examples)['verified']
     siblings[0].lfs.sha256 = '0'*64
     with pytest.raises(AssertionError):
-        verify_publication(path, arms, steps=625, world_size=2)
+        verify_publication(path, arms, steps=steps, world_size=2, n_examples=n_examples)
 
 
 def test_transfer_corruption_blocks_teardown(tmp_path):
