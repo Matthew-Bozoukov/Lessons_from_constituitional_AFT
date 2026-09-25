@@ -5,8 +5,9 @@
 User authorized a reduced mixture, single-H200 seed-0 training and three sequential
 ODCV passes at temperature 0.7 and server seed 0. No new synthetic generation or
 rewriting. Work is isolated on `codex/nonmoral-token15`, based on main `27623065`.
-The proposed $60 ceiling ($30 training, $25 evaluation GPU/storage, $5 judges) is
-pending explicit approval; no GPU has been rented as of this preparation record.
+The user explicitly approved the **$60 combined ceiling** on 2026-09-25:
+$30 training, $25 evaluation GPU/storage, and $5 judges. Independent watchdogs
+and verified backup-before-teardown apply to each rental.
 
 ## Dataset
 
