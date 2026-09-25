@@ -1,0 +1,21 @@
+# ABOUTME: Reduce historical nonmoral rows to roughly 15% of supervised tokens; preserve all replay.
+# ABOUTME: Run: uv run python -m scratch.dataset_refresh.reduce_mixture --config scratch/dataset_refresh/nonmoral_token15.yaml --publish
+style: nonmoral-original
+synthetic_source: nonmoral_deliberation
+output_dir: output/2026-09-25_nonmoral_token15/mixture
+target_pct: 15
+tolerance_pp: 0.03
+seed: 0
+max_seq_len: 8192
+constitution: none; unchanged historical craft deliberation, no new generation or constitution review
+tokenizer:
+  repo: Qwen/Qwen3.6-27B
+  revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+parent:
+  repo: dougalldeepmind/2026-09-15-nonmoral-original-7-mix
+  revision: b35ead8eaf4d59091e0ef1d08b187c7822f05632
+  file: mixture.jsonl
+  sha256: cd6819a26d348113187e28a29df30512a7f54d774ab5788a6d7ac101f0644b31
+expected_synthetic_rows: 684
+expected_replay_rows: 9284
+selection_policy: Rank synthetic rows by SHA256 of seed plus canonical complete row; select the prefix nearest the target supervised-token fraction. Filter parent rows without editing or reordering retained rows. No quality or evaluation outcome selection.
