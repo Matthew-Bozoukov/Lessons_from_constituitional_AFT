@@ -16,7 +16,8 @@ REPO_URL="$(git remote get-url origin | sed -E 's#^git@([^:]+):#https://\1/#')"
 COLOSSEUM_REF=ac0b405
 
 ssh -p "${PORT}" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null "${ADDR}" \
-  "REPO_URL='${REPO_URL}' BRANCH='${BRANCH}' SHA='${SHA}' COLOSSEUM_REF='${COLOSSEUM_REF}' bash -s" <<'REMOTE'
+  "REPO_URL='${REPO_URL}' BRANCH='${BRANCH}' SHA='${SHA}' COLOSSEUM_REF='${COLOSSEUM_REF}' \
+   OPENROUTER_KEY='${OPENROUTER_API_KEY:-}' bash -s" <<'REMOTE'
 set -euo pipefail
 export PATH=/usr/local/bin:/root/.local/bin:$PATH
 export HF_HOME=/workspace/hf
@@ -44,6 +45,16 @@ echo 'export UV_NO_SYNC=1' > /etc/profile.d/uv_no_sync.sh
 # HF_TOKEN + HF_ORG only, as `runpod up --push_env` left them in the serving workdir.
 if [ -f /workspace/.env ] && [ ! -f /root/work/.env ]; then
     cp /workspace/.env /root/work/.env
+fi
+# The judge key. colosseum_hospital judges its own episodes as it runs (hospital/runner.py
+# asserts the key before the sweep), and this pod DRIVES the eval, so the key has to be
+# here — `runpod up --push_env` deliberately carries only HF_TOKEN + HF_ORG + WANDB. It is
+# a real secret on a rented host: it lives only in this file, for the life of the pod.
+if [ -n "${OPENROUTER_KEY:-}" ] && ! grep -q '^OPENROUTER_API_KEY=' /root/work/.env 2>/dev/null; then
+    echo "OPENROUTER_API_KEY=${OPENROUTER_KEY}" >> /root/work/.env
+    echo "    judge key written to /root/work/.env"
+elif [ -z "${OPENROUTER_KEY:-}" ]; then
+    echo "!!! no OPENROUTER_API_KEY in the launching shell: the sweep will refuse to start" >&2
 fi
 mkdir -p /root/work/output/logs
 
