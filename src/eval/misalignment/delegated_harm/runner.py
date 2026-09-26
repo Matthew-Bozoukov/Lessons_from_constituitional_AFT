@@ -26,14 +26,21 @@ def _invoke(fn, state, cond):
     return fn(state, cond) if len(inspect.signature(fn).parameters) >= 2 else fn(state)
 
 
-def cells(keys, variants, repeats, seed):
+# The three delivery arms, in the order the summary reports them. A run may select a
+# SUBSET (`deliveries:` in the config): the arms are independent schedules over the same
+# scenarios, so one of them alone is a complete measurement of that arm — and the whole
+# grid is 3x the episodes and 3x the judge spend of one.
+DELIVERIES = ("chat", "subagent", "chat_human")
+
+
+def cells(keys, variants, repeats, seed, deliveries=DELIVERIES):
     result = []
     for index, key in enumerate(keys):
         for variant in range(variants):
             for rep in range(repeats):
                 common = dict(scenario=key, variant=variant, repeat=rep,
                               seed=seed + index * 10000 + variant * 100 + rep)
-                for delivery in ("chat", "subagent", "chat_human"):
+                for delivery in deliveries:
                     result.append(dict(common, delivery=delivery,
                                        id=f"{key}__{delivery}__v{variant}__r{rep}"))
     random.Random(seed).shuffle(result)
@@ -262,11 +269,11 @@ def judge_input(sc, trace, notes, candidates, concern_rubric):
     return system, payload
 
 
-def summarize(records, schedule):
+def summarize(records, schedule, deliveries=DELIVERIES):
     result = {"scheduled": len(schedule), "recorded": len(records),
               "interpretation": "Checkpoint comparison; repeats are not training seeds. AI prompts differ across checkpoints.",
               "arms": {}}
-    for delivery in ("chat", "subagent", "chat_human"):
+    for delivery in deliveries:
         planned = [c for c in schedule if c["delivery"] == delivery]
         rows = [r for r in records if r["delivery"] == delivery]
         valid = [r for r in rows if r.get("metrics")]
@@ -356,7 +363,11 @@ def run(target, cfg, out_dir):
     save(out_dir / "metadata/authorship_frozen.json", {
         f"{k}__v{v}": {"accepted": r["accepted"], "sha256": r.get("sha256")}
         for (k, v), r in author_records.items()})
-    schedule = cells(list(scenarios), int(cfg.author.variants), int(cfg.generation.repetitions), int(cfg.seed))
+    deliveries = tuple(cfg.get("deliveries") or DELIVERIES)
+    unknown = [d for d in deliveries if d not in DELIVERIES]
+    assert not unknown, f"deliveries={unknown} unknown; pick from {DELIVERIES}"
+    schedule = cells(list(scenarios), int(cfg.author.variants),
+                     int(cfg.generation.repetitions), int(cfg.seed), deliveries)
     save(out_dir / "metadata/schedule.json", schedule)
     descriptions = json.loads((Path(str(cfg.source.path)) / "descriptions.json").read_text(encoding="utf-8"))
     records = []
@@ -383,7 +394,7 @@ def run(target, cfg, out_dir):
         futures = [pool.submit(one, cell) for cell in schedule]
         for future in as_completed(futures):
             records.append(future.result())
-            summary = summarize(records, schedule)
+            summary = summarize(records, schedule, deliveries)
             summary["excluded_scenarios"] = dict(cfg.source.excluded)
             summary["judge_usd"] = judge.ledger["charged_or_reserved_usd"]
             save(out_dir / "results/results.json", summary)
