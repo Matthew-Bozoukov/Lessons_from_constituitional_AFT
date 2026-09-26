@@ -1,6 +1,9 @@
 # ABOUTME: The difficult-advice arm with ONLY its trait-6 rows regenerated: yesterday's corpus with
 # ABOUTME: t6 swapped for the "ask, not instruct" t6. Publishes as `<date>-da-new-t6-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/da-new-t6.yaml [synthetic_pct=15]
+# Run: uv run mix --config configs/data/mixture/archive/da-new-t6.yaml [synthetic_pct=15]
+#
+# ARCHIVED 2026-09-27: a diagnostic arm, its question answered (docs/LOG.md 2026-09-26). Two seeds
+# put it level with da-15 on the 09-25 corpus, which is one recipe and one run; this is a splice.
 #
 # WHY (2026-09-25). The 2026-09-24 DA corpus's t6 rows (stable persona) were 102/147
 # override-shaped by the pressure classifier. The 2026-09-25 regeneration on the "ask, not
