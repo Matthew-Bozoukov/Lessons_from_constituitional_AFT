@@ -1,6 +1,51 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-26 — agent_collusion on da-multiparty-human-15: collusion onset back to nosynth's (5.6 vs da-15's 3.75, p≈0.01); 18/20 collude
+
+**Hypothesis.** da-15 colluded about 1.5 episodes EARLIER than nosynth. Does the multiparty-human DA
+variant (`dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15`) share that acceleration?
+
+**Method.** Same protocol as the 2026-09-24 entry: sequences 1-20, bf16, `stop_on_collusion=true`,
+Qwen3.6's own template, cap 24576. The run was paused twice and resumed from HF checkpoints
+(`dougalldeepmind/2026-09-25-agent-collusion-da-multiparty-human-shards`, pause-A/B then pause2-A/B).
+The last 6 trajectories finished on one pod. Published as
+`dougalldeepmind/2026-09-26-collusion-qwen36-0-da-multiparty-human-15`. Onsets re-derived from the
+rollouts match the published results.
+
+**Result.**
+
+| arm | TC | mean onset (never = 11) | task acc |
+|---|---:|---:|---:|
+| nosynth | 19/20 | 5.20 | 93.7% |
+| da-15 | 20/20 | 3.75 | 91.5% |
+| da-multiparty-human-15 | 18/20 (seq010, seq013 never) | 5.60 | 91.4% |
+
+Onset comparisons:
+- da-multiparty-human vs da-15: 1.85 episodes later; Mann-Whitney p = 0.007, permutation p = 0.011.
+- da-multiparty-human vs nosynth: no detectable difference (p = 0.76).
+
+So the multiparty-human variant removes da-15's acceleration without making the model collude less
+than baseline. Plot: `output/plots/2026-09-26_agent_collusion_cumulative_tc_three_arms.{png,md}` (main
+checkout).
+
+**Found on the way.**
+1. `stop_on_collusion` terminated only the harness's parent process. The child kept running as an
+   orphan, still using the GPU and writing post-collusion episodes. This is fixed in `086c1437`, which
+   kills the process group. The published nosynth and da-15 runs contain some post-collusion episodes
+   from it; TC and onset use only the first collusion and are unaffected.
+2. 4-9% of all calls, in every arm, hit the OpenAI SDK's default 600 s client timeout and are silently
+   resampled: nosynth 8.7, da-15 4.3, this arm ~5 per 100 calls. Very long task-phase reasoning is
+   therefore systematically replaced by shorter samples. This is an upstream-harness default and
+   applies to all arms alike.
+3. Chained resumes need the ORIGINAL run dirs present, because the task-sequence manifest path points
+   at the first run.
+
+**Next steps.**
+- The self-assessment probe (2026-09-25) on this arm and on nosynth: does the multiparty-human variant
+  also change how the model judges its own collusion?
+- More sequences; n = 20 per arm is thin.
+
 ## 2026-09-25 — Asked in-situ, da-15 rarely owns its collusion: 16% name the policy breach AND call it a mistake
 
 **Hypothesis.** If DA training teaches the model to reason about its values, da-15 should recognise its
