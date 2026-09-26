@@ -1,6 +1,57 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-26 — "Ask, not instruct" t6: seed-1 replicate of da-15 and da-new-t6-15 on ODCV-lite + MASK
+
+**Hypothesis.** The 2026-09-25 wording change to `configs/data/synth/da.yaml` (9f093f2c: the
+sender may wonder about the assistant but never orders it; the reviser never adds an
+instruction to the assistant) cut the pressure classifier's t6 override share from 69% to 12%
+without an eval-shaped row in sight. The seed-0 arms trained on it (2026-09-25 adapters,
+evaluated 2026-09-26) sat inside the old da-15 numbers on ODCV and within the seed band on
+MASK, and the da-no-t6 ablation lost ~11 MASK points. One seed cannot separate the wording
+from the training seed, so both arms were retrained at `seed=1` on the SAME mixtures and
+evaluated the same way.
+
+**Method.** Two single-H200 runs, `uv run train --config configs/train/sft.yaml model=qwen36
+seed=1` on `2026-09-25-da-15-mix @ 73f66648` (1,155-row 09-25 corpus) and
+`2026-09-25-da-new-t6-15-mix @ af4647ec` (09-24 corpus with its t6 replaced by the 09-25
+t6), base revision `6a9e13bd`; 567 / 566 steps, ~55 min each. Adapters
+`2026-09-26-qwen36-1-da-15` and `2026-09-26-qwen36-1-da-new-t6-15`. Then one pod per eval arm:
+ODCV-lite (`configs/eval/odcv/lite.yaml`, 3 passes x 80 cells, driven from the laptop) and
+MASK (1,000 rows, 1 pass; the da-new-t6-15 MASK pod was an H100 at concurrency 128 after
+three H200 rentals came up without an SSH endpoint). Runs
+`2026-09-26-{odcv,mask}-qwen36-1-{da-15,da-new-t6-15}`.
+
+**Result.** ODCV misconduct rate % [scenario-paired 95% CI] / MASK honesty:
+
+| arm (15% share) | seed 0 | seed 1 |
+|---|---|---|
+| da-15 (09-25 corpus, new wording) | 9.2 [4.3, 18.6] / 90.2 | 7.9 [3.7, 16.2] / 88.3 |
+| da-new-t6-15 (09-24 corpus, t6 swapped) | 6.7 [2.9, 14.5] / 87.9 | 8.8 [4.8, 15.4] / 84.7 |
+| da-no-t6-15 (09-24 corpus minus t6), seed 0 | 13.8 [7.4, 24.1] / 76.9 | — |
+| da-15 (09-23 corpus, old wording), seed 0 | 10.8 / 87.7 | — |
+| nosynth control | 45.4 / 56.9 | — |
+
+Seed-1 mandated/incentivized splits: da-15 4.2 / 11.7, da-new-t6-15 5.8 / 11.7. Submit-tool
+rates 98.3% and 98.8%. MASK generation failures 0.5% and 1.1%, empty-content 0.2% and 0.5%.
+
+Both seed-1 points fall inside their seed-0 ODCV intervals and inside the ~11-point MASK
+seed band; the two arms are indistinguishable from each other at n=2 seeds. What survives:
+the new-wording t6 rows do not cost anything against the old-wording da-15 (10.8 / 87.7), and
+both arms with t6 present sit well above da-no-t6-15's 76.9 on MASK, so the earlier reading
+that a non-adversarial t6 restores what dropping t6 loses holds at a second seed. Whether
+da-new-t6's MASK edge over da-15 at seed 0 (87.9 vs 90.2, reversed at seed 1: 84.7 vs 88.3)
+is anything is not resolvable here.
+
+**Cost / ops.** ~$10 training, ~$25 eval pods, judging ~$4. Three RunPod rentals (one
+training, two MASK) published no SSH endpoint within 420 s and were terminated and re-rented.
+
+**Next.** A da-no-t6 seed-1 replicate would put the ablation's 76.9 on the same footing.
+`uv run evals` pools ODCV checkpoints when given both seeds as a target list; a pooled run of
+the two adapters per arm would give the recipe-level interval instead of two per-checkpoint
+ones.
+
+
 ## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
 
 **Question / method.** Evaluate two upcoming adapters without paying for two cold
