@@ -7,8 +7,9 @@
 #
 # Launches `uv run evals` under nohup and returns at once; progress is
 # output/colosseum_hospital/<arm>/rollouts/colosseum/<ts>/progress.json and the log is
-# output/logs/hospital_<condition>_<port>.log. `--no-push` because the judge and the push
-# happen off the box (scripts/eval/publish_colosseum.py --eval colosseum_hospital).
+# output/logs/hospital_<condition>_<port>.log. The invocation judges and pushes each arm
+# itself, so the pod's /root/work/.env needs OPENROUTER_API_KEY as well as the HF pair
+# (`runpod up --push_env` writes only the latter): scp it over before launching.
 set -euo pipefail
 
 CONDITION="$1"; RANGE="$2"; PORT="$3"; shift 3
@@ -28,7 +29,7 @@ LOG="output/logs/hospital_${CONDITION}_${PORT}.log"
 
 # ARGUMENT ORDER IS LOAD-BEARING: --target is nargs='+', so it goes first and is
 # terminated by --name; the OmegaConf overrides trail at the end (docs/GOTCHAS.md).
-nohup uv run evals --target "${TARGETS[@]}" --name colosseum_hospital --no-push \
+nohup uv run evals --target "${TARGETS[@]}" --name colosseum_hospital \
     --port "${PORT}" "condition=${CONDITION}" "seeds=[${SEEDS}]" \
     > "${LOG}" 2>&1 < /dev/null &
 echo "started pid $! -> ${LOG}"

@@ -105,11 +105,15 @@ def test_owned_dispatch_arms_first_and_only_closes_after_backup(plan_file, monke
         events.append('watchdog') or SimpleNamespace(pid=42, terminate=lambda: events.append('cancel'))))
     monkeypatch.setattr(owner.runpod, 'call', lambda *a: {'costPerHr': 3.49})
     def provision(*a, **kw):
+        assert kw['revisions'] == {plan['target']: plan['target_revision'],
+                                   plan['base_model']: plan['base_revision']}
         kw['on_provisioned']('owned')
         events.append('provision_return')
         return SimpleNamespace(id='owned', host='root@host:22')
     monkeypatch.setattr(owner.runpod, 'provision_eval_pod', provision)
     monkeypatch.setattr(owner.runpod, 'wait_bootstrapped', lambda *a, **kw: events.append('bootstrap') or True)
+    monkeypatch.setattr(owner, 'SshExec', lambda *a, **kw: SimpleNamespace(
+        _ssh=lambda *a, **kw: json.dumps({'device': 'NVIDIA H100', 'probe_value': 1})))
     def dispatch(path, config, host, identity, timeout):
         events.append('eval')
         cfg = OmegaConf.load(config)
@@ -123,7 +127,7 @@ def test_owned_dispatch_arms_first_and_only_closes_after_backup(plan_file, monke
             raise RuntimeError('hash mismatch')
         return {'verified': True}
     monkeypatch.setattr(owner, 'fetch_eval_logs', backup)
-    monkeypatch.setattr(owner.runpod, 'terminate', lambda p: events.append('terminate') or True)
+    monkeypatch.setattr(owner.runpod, 'teardown', lambda p: events.append('terminate'))
     monkeypatch.setattr(owner.runpod, 'active_pods', lambda: [])
     if backup_succeeds:
         owner.main(plan_path=plan_file)

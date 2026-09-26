@@ -11,6 +11,7 @@ import time
 
 from omegaconf import OmegaConf
 from src.eval.capabilities.swebench_mini.fleet_state import atomic, read, lock
+from src.eval.capabilities.swebench_mini import fleet_session as session
 
 
 def explicit_stop(state, control):
@@ -48,7 +49,7 @@ def publish_until_verified(cfg, control_path):
             state = read(Path(cfg.root) / 'metadata/state.json')
             result = read(Path(cfg.root) / 'results/results.json')
             manifest = read(Path(cfg.root) / 'metadata/manifest.json')
-            assert not any(fleet.owned(p, manifest) for p in fleet.runpod.active_pods())
+            assert not any(fleet.owned(p, session.owner_manifest(cfg)) for p in fleet.runpod.active_pods())
             saved = read(fleet.hf_download(manifest['repo'], 'results/results.json',
                          repo_type='dataset', revision=state['hf_commit']))
             assert saved == result, 'HF result round-trip mismatch'
@@ -73,7 +74,7 @@ def supervise(cfg, config_path, budget):
     control_path = root / 'metadata/supervisor.json'
     with lock(root / '.supervisor.lock', nonblocking=True):
         if not control_path.exists():
-            assert budget is not None and 0 < budget <= cfg.recommended_budget_usd
+            assert budget is not None and 0 < budget <= session.budget_limit(cfg)
             receipt = read(cfg.receipt)
             expiry = receipt_deadline(receipt)
             deadline = expiry - 120 if expiry is not None else None
@@ -91,8 +92,14 @@ def supervise(cfg, config_path, budget):
             control = read(control_path)
             state_path = root / 'metadata/state.json'
             state = read(state_path) if state_path.exists() else {}
+            if state and cfg.get('following_configs'):
+                state = session.view(cfg, state)
             decision = decide(state, control, cfg)
             if decision == 'finish':
+                if cfg.get('following_configs'):
+                    if not session.finish(cfg, control_path):
+                        raise SystemExit(2)
+                    return
                 manifest = read(root / 'metadata/manifest.json')
                 fleet.fence(cfg, manifest)
                 fleet.final_accounting(cfg)
@@ -124,6 +131,12 @@ def supervise(cfg, config_path, budget):
                 control.update(status=decision, terminal_reason=decision, finished=time.time())
                 atomic(control_path, control)
                 if state:
+                    if cfg.get('following_configs'):
+                        if decision == 'stopped':
+                            session.fence_all(cfg)
+                            return
+                        session.finish(cfg, control_path, terminal_reason=decision)
+                        raise SystemExit(2)
                     fleet.fence(cfg, read(root / 'metadata/manifest.json'))
                     if decision == 'stopped':
                         return
@@ -159,12 +172,15 @@ def launch(cfg, config_path, args):
 def _launch(cfg, config_path, args):
     """One explicit request resolves the target, preflights CPU, then arms systemd."""
     from src.eval.capabilities.swebench_mini import fleet
-    assert args.target, 'A single HF target is required'
+    assert args.target, 'An HF target is required'
+    next_target = getattr(args, 'next_target', None)
+    assert not next_target or next_target != args.target, 'Use distinct adapters for a shared session'
     active = subprocess.run(['systemctl', 'is-active', '--quiet', 'lasr-swebench-lite.service'])
     assert active.returncode != 0, 'A model is already running; inspect it rather than replace it'
     slug = args.target.split('/')[-1]
     assert all(c.isalnum() or c in '-_.' for c in slug), 'Unsafe target name'
-    root = Path(args.root or '/srv/lasr/runs/' + datetime.now(timezone.utc).strftime('%Y%m%d') + '-' + slug)
+    suffix = '-paired' if next_target else ''
+    root = Path(args.root or '/srv/lasr/runs/' + datetime.now(timezone.utc).strftime('%Y%m%d') + '-' + slug + suffix)
     root = root.resolve()
     assert root.is_relative_to('/srv/lasr/runs') and str(root) != '/srv/lasr/runs', 'Campaign root must be below /srv/lasr/runs'
     assert not any(c.isspace() for c in str(root)), 'Campaign path cannot contain whitespace'
@@ -175,6 +191,10 @@ def _launch(cfg, config_path, args):
     if Path(args.write_config).exists():
         saved = OmegaConf.load(args.write_config)
         assert saved.target == args.target
+        children = session.members(saved)[1:]
+        assert [c.target for c in children] == ([next_target] if next_target else []), 'Resume must preserve the exact adapter pair'
+        if next_target and getattr(args, 'next_target_revision', None):
+            assert children[0].target_revision == args.next_target_revision
         if args.target_revision:
             assert saved.target_revision == args.target_revision
         state = read(root / 'metadata/state.json') if (root/'metadata/state.json').exists() else {}
@@ -185,16 +205,35 @@ def _launch(cfg, config_path, args):
         assert not explicit_stop(state, control), 'Previously stopped; explicit resume/review required'
         cfg = saved
     else:
+        if next_target:
+            from types import SimpleNamespace
+            child_root = root / 'next-arm'
+            child_root.mkdir(exist_ok=True)
+            child_path = child_root / 'launch.yaml'
+            child_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
+            child_cfg.fleet_owner_root = str(root)
+            fleet.prepare_target(child_cfg, SimpleNamespace(target=next_target,
+                target_revision=getattr(args, 'next_target_revision', None), root=str(child_root), write_config=str(child_path)))
+            cfg.following_configs = [str(child_path)]
         fleet.prepare_target(cfg, args)
+        if next_target:
+            child = session.members(cfg)[1]
+            assert (cfg.base, cfg.base_revision, cfg.mode) == (child.base, child.base_revision, child.mode), 'Shared fleet requires identical base revision and mode'
+            a = fleet.resolve_target(cfg.target, revision=cfg.target_revision)
+            b = fleet.resolve_target(child.target, revision=child.target_revision)
+            assert a.adapter and b.adapter and a.lora_rank == b.lora_rank == 64
+            assert a.model_key != b.model_key, 'Adapter names would collide in vLLM/results'
     budget = args.budget_usd
     assert budget is not None, 'Pass the authorized --budget-usd backstop'
-    assert 0 < budget <= cfg.recommended_budget_usd
+    assert 0 < budget <= session.budget_limit(cfg)
     control_path = root/'metadata/supervisor.json'
     if control_path.exists():
         assert read(control_path)['budget_usd'] == budget, 'Resume cannot change the cumulative budget'
-    complete_rollouts = bool(state.get('tasks')) and all(t['status'] == 'valid' for t in state['tasks'].values())
+    combined = session.view(cfg, state) if state else state
+    complete_rollouts = bool(combined.get('tasks')) and all(t['status'] == 'valid' for t in combined['tasks'].values())
     if not complete_rollouts:
-        fleet.preflight(cfg)  # Absolutely no rentals before this returns.
+        for arm in session.members(cfg):
+            fleet.preflight(arm)  # Absolutely no rentals before both arms pass.
     Path('/srv/lasr/lite-launch.env').write_text(
         f'LITE_ACTION=supervise\nLITE_CONFIG={args.write_config}\nLITE_BUDGET_USD={budget}\n')
     Path('/srv/lasr/lite-launch.env').chmod(0o600)

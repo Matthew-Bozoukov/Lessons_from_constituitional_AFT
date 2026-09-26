@@ -266,6 +266,12 @@ already-owned pod, the failed startup files were retained, the exact LF script w
 restored and checked, and a python3 compatibility symlink let the existing owner
 monitor safely resume. No second GPU rental or training-seed change was needed.
 
+The direct-to-Hub archive path must use that same repository interpreter too:
+the September-25 low-stakes run completed training, then encountered this error
+in a separate `train_pair.py` packing call that still used system `python3`.
+That call now uses `/root/work/.venv/bin/python`. Its existing owner recovered
+after an owned-pod interpreter shim, verified the full archive, and terminated.
+
 ## Git LF attributes do not repair stale worktree bytes (2026-09-09)
 
 An existing Windows checkout held CRLF in 164/168 ODCV shell scripts even though
@@ -1105,6 +1111,20 @@ does this for all six of its repo names and runs in a second.
 artifact, and leaves the run's date to `local_name`. `run_meta.json`'s `target` still
 records exactly which artifact was served.
 
+**Superseded 2026-09-25.** The third row's fix — a typed `arm_labels` map in the eval
+config — was itself the next failure: labels grew a harness suffix per experiment
+(`..._multiparty_human_15_fixed`) and reached 101 characters, and a typed label is what the
+naming law exists to forbid. Both Colosseum evals now publish through run_eval under
+`eval_name(<key>, <model_key>, variant=<name facets>)`: the eval registers which config keys
+are part of what a run measured (`EvalSpec.name_facets` — the Hospital's `condition`, the
+Jira's `experiment`), run_eval reads their values off the resolved config, and the arm's
+token is the one `resolve_target` already builds (a pre-law adapter id maps through
+`src/infra/legacy_names.yaml`, so the two dates and the 119 characters never arise). The
+Hospital runner judges its own episodes before run_eval publishes, so one `uv run evals` is
+the whole eval; `scripts/eval/publish_colosseum.py` only finishes a run dir that invocation
+could not push, and rebuilds the same name from `metadata/run_meta.json` (`model_key` and
+the config). `tests/test_colosseum_publish.py` asserts every cell of both evals in a second.
+
 ## Two concurrent arms of one eval collide on the run directory (2026-09-03)
 
 `run_eval` names each arm directory `<model_key>_<HHMMSS>` — no job id, no pid. Two jobs
@@ -1514,3 +1534,36 @@ lower latency, and retain RTX as an availability fallback. Do not restart an
 active healthy fleet just to change hardware. Recheck prices for a new run.
 Evidence: `metadata/gpu-comparison-20260923.json` and the per-replica metrics in
 https://huggingface.co/datasets/dougalldeepmind/2026-09-23-swebench-qwen36-0-nosynth.
+
+
+### 2026-09-24: SWE-bench leases and two-arm fleet ownership
+
+A 150-minute GPU lease combined with a 90-minute task admission allowance stopped
+new claims at pod age 57 minutes (three minutes reserved for cleanup). This can
+force costly replacement bootstraps even when the remaining tasks are short.
+New configurations remove the wall-clock task cap and use a six-hour emergency
+lease bounded by the actual remaining budget. Token/step limits, request/tool
+timeouts and independent watchdogs remain. Do not remove provider expiry merely
+because the CPU has persistent authorization.
+
+A paired run uses ONE owner ledger, ONE fleet ceiling and ONE CPU tool gate. Giving
+each arm its own 20 replicas or 32-command directory silently doubles resource
+admission. Swapping a LoRA while any of the pod's four conversations is active
+risks contamination: drain the pod first, then let run_eval load the revision-pinned
+adapter into the same base server. Other pods need not wait. Preserve separate
+result directories/HF repositories and never sum duplicated shared-fleet cost totals.
+A fallback GPU's longer reservation must not consume its peers' shares: shorten
+that pod's safety lease at admission and pass the SAME expiry to the provider,
+watchdog, worker and ledger. Do not alter live expiry components independently.
+
+
+## Appended JSONL columns can pass token audits but fail training (2026-09-25)
+
+A 10,000-row mixture had three columns; only its 136 appended rows had an unused
+`n_tokens` column. The blockwise Hugging Face JSON loader inferred the earlier
+schema and rejected the later extra column before training. A Python JSON reader
+and exact token-mask audit did not catch it. Keep appended training rows compatible
+with the parent schema, store diagnostic counts in a sidecar, and run the actual
+`load_dataset("json", data_files=..., split="train")` path on the complete mixture
+before renting. Compare the loaded messages and supervision with the original rows.
+The failed startup was preserved and terminated for about $0.96; no optimizer step ran.

@@ -1,0 +1,35 @@
+# ABOUTME: Fleet plan: multiparty-human-15 on the hospital self-sacrificial cell with carried agent
+# ABOUTME: history OFF, 30 seeds over two pods — the fourth cell of the history x arm comparison.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-25_fleet_mph_nohistory.yaml
+#
+# Completes the 2x2. With history carried, multiparty-human-15 sabotaged 6 of 30 and da-15 14 of
+# 30; with it off, da-15 rose to 24 of 30 — removing a seat's memory of its own earlier turns
+# erased the passive middle ground. This asks whether the multiparty-human arm's restraint
+# survives the same removal, or whether it was resting on that memory too.
+#
+# Same peer, seeds, condition and harness patch level as the da-15 no-history run; only the
+# arm under test differs. NOTE its carried-history run (2026-09-24) used a different peer
+# (qwen36_0_0) and an older terrarium, so the cleanest contrast here is against THIS run's
+# own history-off twin, not across dates.
+date: "2026-09-25"
+branch: main
+out_root: output/colosseum_hospital/2026-09-25_mph_nohistory
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: mb-hosp-mph-nh-a
+    group: mphnh
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer_nohistory.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 3.0
+  - name: mb-hosp-mph-nh-b
+    group: mphnh
+    target: dougalldeepmind/2026-09-24-qwen36-0-da-multiparty-human-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer_nohistory.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 3.0

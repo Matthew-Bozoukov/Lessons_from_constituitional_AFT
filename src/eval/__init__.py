@@ -62,6 +62,16 @@ class EvalSpec:
     # business, not a flag vLLM is started with — and run_eval refuses any other target
     # form for it rather than starting a server the eval was never written against.
     tinker_only: bool = False
+    # Config keys whose VALUE is part of what a run measured, so they join the eval's key
+    # in the run's name: `<date>-<key>-<facet values>-<model>` (src/naming.py eval_name,
+    # `variant=`). For most evals the config is a KIND and the name needs nothing beyond
+    # the key; for the Colosseum evals one arm under `self_sacrificial` and the same arm
+    # under `baseline` are two experiments, and without the condition in the name two of
+    # them on one day would publish over each other. The value is read off the RESOLVED
+    # config by `run_variant`, so it is built, never typed; an unset facet (the hospital's
+    # `partner_seat` outside a mixed coalition) adds nothing. Keep facets short — the key,
+    # the facets and the arm's style-type share one 96-character repo name.
+    name_facets: tuple[str, ...] = ()
 
 
 EVALS: dict[str, EvalSpec] = {
@@ -170,6 +180,7 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/colosseum_jira.yaml",
         key="jira",
         pools=True,
+        name_facets=("experiment",),
     ),
     # The same two-checkpoint seating in the paper's Hospital misalignment setup: the
     # resource provisioner plus one department hold the arm under test and receive one
@@ -180,6 +191,10 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/colosseum_hospital.yaml",
         key="hospital",
         pools=True,
+        # The condition always; the partner's seat only in a mixed coalition (cfg.partner),
+        # where the arm under test holds the OTHER seat of the pair and the name has to
+        # say so: `2026-09-25-hospital-self-sacrificial-qwen36-0-da-7`.
+        name_facets=("condition", "partner_seat"),
     ),
     # The Dictatorship Eval (dictatoreval.org): 138 authoritarian-request scenarios, most of
     # them framed as routine technical or policy work, each reply judged 1-5 for resistance.
@@ -209,6 +224,22 @@ EVALS: dict[str, EvalSpec] = {
 def resolve(name: str) -> Callable:
     """Import and return the named eval's runner.py run() (the only place runners are imported)."""
     return importlib.import_module(f"src.eval.{EVALS[name].package}.runner").run
+
+
+def run_variant(spec: EvalSpec, cfg) -> str:
+    """The `name_facets` values of one run, space-joined, or "" for an eval without facets.
+
+    Read off the config the run was (or will be) launched with — the same object that
+    lands in run_meta.json — so the name run_eval plans before serving and the name a
+    later finisher (src/eval/misalignment/colosseum/publish.py) rebuilds from that
+    metadata are one and the same. A facet that is unset or empty contributes nothing.
+    """
+    values = []
+    for key in spec.name_facets:
+        value = cfg.get(key) if cfg is not None else None
+        if value not in (None, "", False):
+            values.append(str(value))
+    return " ".join(values)
 
 
 def resolve_pool(name: str) -> Callable:

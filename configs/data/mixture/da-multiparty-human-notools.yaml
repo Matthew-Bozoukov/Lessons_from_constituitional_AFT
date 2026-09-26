@@ -1,0 +1,36 @@
+# ABOUTME: The multiparty-human arm rebuilt from the TOOLS-STRIPPED synth corpus: same base blend,
+# ABOUTME: same 15% supervised-token share, no rows that offer a tool the target reply never calls.
+# Run: uv run mix --config configs/data/mixture/da-multiparty-human-notools.yaml
+#
+# Why: in 2026-09-24-da-multiparty-human-synth, 331 of 756 rows hand the assistant a tool schema
+# and every target reply answers in prose. That is the only place in the 9,167-row mixture where
+# tools appear at all, and no assistant turn anywhere in it calls one, so the slice demonstrates
+# tool-avoidance 331 times unopposed. The arm trained on it ended 93% of delegated-harm episodes
+# after one message with mechanical.compliance 0 in 106 of 108 — while making 81 tool calls per
+# episode in Colosseum hospital, where no prose-only route exists. This source is that corpus with
+# the schemas removed; the messages are byte-identical.
+seed: 0
+tokenizer: Qwen/Qwen3.6-27B
+max_seq_len: 8192
+base: configs/data/mixture/nosynth.yaml
+base_mixture:
+  repo: ${oc.env:HF_ORG}/2026-09-22-nosynth-mix
+  file: mixture.jsonl
+  revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+# 15% OF SUPERVISED TOKENS, as the 2026-09-24 build ran — the arms differ only in the tool schemas.
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-multiparty-human-notools:
+    dataset: ${oc.env:HF_ORG}/2026-09-26-da-multiparty-human-notools-synth
+    revision: 42bd374d65a25b4a6591629aec78dfbf9569130a
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+output_dir: output/mixture_da_multiparty_notools
+hf:
+  experiment: 'multi-party difficult-advice arm, tools stripped: the MSM Table 2 base blend at a
+    15% supervised-token share of multi-party difficult advice, with the unused tool schemas
+    removed from the synthetic corpus'
+  constitution: constitutions/claude_distilled_09_principles/constitution.md
+  private: false

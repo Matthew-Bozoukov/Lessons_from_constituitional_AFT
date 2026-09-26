@@ -25,6 +25,24 @@ PUBLISH_DIRS = ("rollouts", "results", "metadata")
 _ROOT_ALLOWED = set(PUBLISH_DIRS) | {"README.md"}
 
 
+def run_tags(name: str, model_key: str, mode: str, *, variant: str = "",
+             pooled: bool = False) -> list[str]:
+    """The Hub-indexed tags every published run carries — the dashboard's discovery route.
+
+    `eval-run` + `eval:<name>` + `model:<key>` + `mode:<mode>` is the contract (CLAUDE.md
+    "Results live on Hugging Face"); `variant:<facets>` is added for an eval whose
+    registered name facets put more than the key in its name (`EvalSpec.name_facets`),
+    and `pooled` marks a recipe-level run. One function, so a run finished after the fact
+    (src/eval/misalignment/colosseum/publish.py) is tagged exactly as run_eval tags it.
+    """
+    tags = ["eval-run", f"eval:{name}", f"model:{model_key}", f"mode:{mode}"]
+    if variant:
+        tags.append(f"variant:{variant}")
+    if pooled:
+        tags.append("pooled")
+    return tags
+
+
 def publish_layout(out_dir: Path) -> tuple[Path, Path, Path]:
     """Create (if needed) and return the contract dirs: (rollouts, results, metadata)."""
     dirs = tuple(out_dir / name for name in PUBLISH_DIRS)

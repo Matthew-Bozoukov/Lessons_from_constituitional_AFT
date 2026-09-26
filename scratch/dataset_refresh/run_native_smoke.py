@@ -96,6 +96,13 @@ def validate_launch(launch, cfg):
         assert 0 < launch['ceiling_usd'] <= 120
         assert launch['selection']['target_rows'] == 716
         assert sum(launch['selection']['trait_quotas'].values()) == 716
+    elif mode == 'extend':
+        assert cfg['pipeline'] == 'da-lowstakes-practical'
+        assert cfg['total_scenarios'] == launch['expected_candidates'] == 243
+        assert cfg['scenarios_per_trait'] == 27 and cfg['scenarios_per_call'] == 3
+        assert cfg.get('extend_from') and cfg.get('id_prefix')
+        assert 0 < launch['ceiling_usd'] <= 30
+        assert cfg['workers'] == 32 and cfg['max_fail_pct'] == 20
     else:
         raise ValueError('Unknown launch mode')
     assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical'} and not cfg.get('batch')
@@ -112,14 +119,19 @@ def main():
     args=parser.parse_args()
     launch_path=Path(args.config)
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
-    cfg=OmegaConf.to_container(OmegaConf.load(launch['recipe']),resolve=True)
+    overrides = launch.get('overrides', {})
+    allowed = {'total_scenarios', 'scenarios_per_trait', 'scenarios_per_call',
+               'workers', 'max_fail_pct', 'extend_from', 'id_prefix'}
+    if set(overrides) - allowed:
+        raise ValueError('Launch overrides may not alter prompts, models or admission gates')
+    cfg=OmegaConf.to_container(OmegaConf.merge(OmegaConf.load(launch['recipe']), overrides),resolve=True)
     mode = validate_launch(launch, cfg)
     if args.workers is not None:
         if not 1 <= args.workers <= 32:
             raise ValueError('Operational concurrency must be between 1 and 32')
         cfg['workers'] = args.workers
     if args.max_fail_pct is not None:
-        if mode != 'full' or not 0 <= args.max_fail_pct <= cfg['smoke']['max_fail_pct']:
+        if mode not in {'full', 'extend'} or not 0 <= args.max_fail_pct <= cfg['smoke']['max_fail_pct']:
             raise ValueError('Full-run alarm override cannot exceed the tested smoke tolerance')
         cfg['max_fail_pct'] = args.max_fail_pct
     cfg['budget_usd']=launch['ceiling_usd']  # Soft native guard; shared ledger is authoritative.
@@ -147,7 +159,7 @@ def main():
     sources=[launch_path,Path(launch['recipe']),Path(__file__),Path('scratch/dataset_refresh/run.py'),
              Path(cfg['constitution']),Path('configs/endpoints/providers.yaml'),
              *([Path('scratch/dataset_refresh/select_native_lowstakes.py')] if mode == 'full' else []),
-             *[Path('src/data/synth/ours')/name for name in ['pipeline.py','stage_operators.py','stage_runtime.py','constitution.py']]]
+             *[Path('src/data/synth/ours')/name for name in ['pipeline.py','stage_operators.py','stage_runtime.py','constitution.py','extend.py']]]
     for source in sources:
         target=(archive/'frozen_runtime' if args.resume else root/'frozen')/source.resolve().relative_to(Path.cwd().resolve())
         target.parent.mkdir(parents=True,exist_ok=True)

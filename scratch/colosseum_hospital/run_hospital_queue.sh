@@ -6,9 +6,11 @@
 #       <port> <target> [<target>...] -- <condition>:<lo>-<hi>[:<target>[,<target>]] ...'
 #   (the seeds may also be an explicit comma list: <condition>:3,7,12:<target>)
 #
-# Every job runs `uv run evals --no-push` for one condition over the job's targets — the
+# Every job runs `uv run evals` for one condition over the job's targets — the
 # comma-separated third field, or the global list before `--` when a job names none. Arms
-# run sequentially inside an invocation, LoRA-swapping on the one server. The queue is
+# run sequentially inside an invocation, LoRA-swapping on the one server; each arm is
+# judged and pushed by that invocation, so the pod's /root/work/.env needs
+# OPENROUTER_API_KEY as well as the HF pair (scp it over first). The queue is
 # detached under nohup and returns at once; output/logs/queue_<port>.log records each
 # job's start and exit code, output/logs/hospital_<condition>_<port>.log is each job's
 # own log (appended: a rerun of the same condition continues the same file).
@@ -26,6 +28,10 @@ cd /root/work
 export PATH=/usr/local/bin:/root/.local/bin:$PATH
 export HF_HOME=/workspace/hf
 export COLOSSEUM_ROOT=/root/colosseum
+# The venv was synced WITHOUT causal-conv1d (a train-time kernel with no wheel for this
+# torch/cu13 pair, and an eval pod has no CUDA toolkit to build it). `uv run` would
+# re-sync and rebuild it, so use the venv as it stands.
+export UV_NO_SYNC=1
 export VLLM_USE_FLASHINFER_SAMPLER=0
 mkdir -p output/logs
 QLOG="output/logs/queue_${PORT}.log"
@@ -52,7 +58,7 @@ run_queue() {
         # OmegaConf overrides trail at the end (docs/GOTCHAS.md).
         set +e
         # EXTRA (env): further OmegaConf overrides, e.g. EXTRA="max_concurrent_runs=30".
-        uv run evals --target "${targets[@]}" --name colosseum_hospital --no-push \
+        uv run evals --target "${targets[@]}" --name colosseum_hospital \
             --port "${PORT}" "condition=${condition}" "seeds=[${seeds}]" ${EXTRA:-} >> "${log}" 2>&1
         rc=$?
         set -e

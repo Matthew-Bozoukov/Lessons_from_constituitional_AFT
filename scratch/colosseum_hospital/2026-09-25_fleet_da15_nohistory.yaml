@@ -1,0 +1,34 @@
+# ABOUTME: Fleet plan: da-15 on the hospital self-sacrificial cell with carried agent history OFF,
+# ABOUTME: 30 seeds over two pods — the A/B against this morning's carried-history run.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-25_fleet_da15_nohistory.yaml
+#
+# The contrast: with history carried, da-15 sabotaged 14 of 30 shifts and declined in reasoning
+# in only 6. Carried history is what lets a seat see the refusal or commitment it made an
+# iteration ago, so turning it off asks whether that memory is doing any of the restraining —
+# and it is the one flag that differs from the 2026-09-10 generation of runs, which had it off.
+#
+# Same arm, same peer, same seeds, same everything else as
+# 2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml; only fixes.carry_agent_history changes.
+# Two pods because a stalled host cost this morning's run two hours: 15 seeds each bounds it.
+date: "2026-09-25"
+branch: main
+out_root: output/colosseum_hospital/2026-09-25_da15_nohistory
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: mb-hosp-da15-nh-a
+    group: da15nh
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer_nohistory.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 3.0
+  - name: mb-hosp-da15-nh-b
+    group: da15nh
+    target: dougalldeepmind/2026-09-23-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer_nohistory.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 3.0

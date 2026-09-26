@@ -18,8 +18,8 @@ from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
-from src.eval import EVALS, resolve, resolve_pool
-from src.eval.layout import assert_layout, publish_layout
+from src.eval import EVALS, resolve, resolve_pool, run_variant
+from src.eval.layout import assert_layout, publish_layout, run_tags
 from src.infra.huggingface import hf_repo_id, push_run_dir
 from src.naming import today, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
@@ -224,19 +224,21 @@ def _git_sha() -> str:
     return git_sha()
 
 
-def _run_repo(name: str, model_key: str, run_name: str) -> str:
+def _run_repo(name: str, model_key: str, run_name: str, variant: str = "") -> str:
     """Build HF identity from the eval and target, independent of the local directory.
 
     `run_name` only labels the local run directory. Keeping it in this helper's signature
     preserves existing callers, but it must never erase the measured model or arm from
     the published name. Overlong legacy identities fail naming preflight explicitly.
+    `variant` is the eval's registered name facets for this run (`run_variant`), the part
+    of what was measured that the eval's key alone does not say.
     """
-    return eval_name(name, model_key)
+    return eval_name(name, model_key, variant=variant)
 
 
 def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str,
              summary: dict, card: dict, tags: list[str], push: bool,
-             run_name: str = "") -> str:
+             run_name: str = "", variant: str = "") -> str:
     """Home a finished run dir in the published layout, mirror its summary, push it.
 
     Published-layout contract (src/eval/layout.py): every run dir — and so every pushed
@@ -269,7 +271,7 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     # row is written BEFORE the push check, so a doubled-date name would refuse the
     # summary of a run that had already finished and paid for its GPU.
     row_path = (Path("output/eval_summaries")
-                / f"{_run_repo(name, model_key, run_name)}_{timestamp()}.json")
+                / f"{_run_repo(name, model_key, run_name, variant)}_{timestamp()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
@@ -277,7 +279,7 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     # Two laws meet here: the NAME is built by src/naming.py from the eval's registered
     # key and the target's own name, the ORG is .env's HF_ORG resolved at push time
     # (src.infra.huggingface.hf_org).
-    repo_id = hf_repo_id(_run_repo(name, model_key, run_name))
+    repo_id = hf_repo_id(_run_repo(name, model_key, run_name, variant))
     # Hub-indexed tags: the canonical discovery route for the dashboard's eval-run
     # picker (/api/datasets?author=<org>&filter=eval-run).
     url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
@@ -327,20 +329,27 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
     parser.add_argument("--cpu-key", help="SSH identity for the dedicated CPU host")
     parser.add_argument("--budget-usd", type=float, help="Cumulative GPU spending backstop for this fleet campaign")
     parser.add_argument("--target-revision", help="Optional exact HF target revision for the fleet")
+    parser.add_argument("--next-target-revision", help="Optional pinned revision for the second fleet target")
     parser.add_argument("--run-root", help="Existing campaign to resume, or a fresh absolute CPU-host run directory")
     parser.add_argument("overrides", nargs="*", help="OmegaConf dotlist, e.g. judge.model=x samples=10")
     args, unknown = parser.parse_known_args(argv)
     load_dotenv()
     if args.fleet:
-        if (args.name != 'swebench_mini' or len(args.target) != 1 or args.server or
+        if (args.name != 'swebench_mini' or len(args.target) not in (1, 2) or args.server or
                 args.no_push or args.terminate_pod or args.push_env or args.overrides or unknown):
-            parser.error('--fleet needs exactly one swebench_mini target, a fleet config, and no ordinary eval overrides')
+            parser.error('--fleet needs one or two swebench_mini targets, a fleet config, and no ordinary eval overrides')
         if args.budget_usd is None or args.budget_usd <= 0:
             parser.error('--fleet requires an explicit positive --budget-usd backstop')
         command = ['launch', '--config', args.config or 'configs/eval/swebench_mini/lite.yaml',
                    '--target', args.target[0], '--budget-usd', str(args.budget_usd)]
         if args.target_revision:
             command += ['--target-revision', args.target_revision]
+        if len(args.target) == 2:
+            command += ['--next-target', args.target[1]]
+            if args.next_target_revision:
+                command += ['--next-target-revision', args.next_target_revision]
+        elif args.next_target_revision:
+            parser.error('--next-target-revision needs two targets')
         if args.run_root:
             command += ['--root', args.run_root]
         if args.cpu_receipt:
@@ -348,7 +357,7 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             return submit(args.cpu_receipt, args.cpu_key, command)
         from src.eval.capabilities.swebench_mini.fleet import main as fleet_main
         return fleet_main(command)
-    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.run_root)):
+    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.next_target_revision, args.run_root)):
         parser.error('CPU/fleet launch options require --fleet')
     if args.terminate_pod and not args.server:
         parser.error("--terminate-pod requires --server")
@@ -371,6 +380,10 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     cfg = OmegaConf.merge(OmegaConf.load(args.config or EVALS[args.name].config),
                           OmegaConf.from_dotlist(args.overrides))
     _preflight(args.name, args, cfg)
+    # The eval's registered name facets, read off the resolved config: what this run
+    # measured beyond the eval's key (the Hospital condition), and so part of every name
+    # it publishes under. "" for the evals whose config is a kind.
+    variant = run_variant(EVALS[args.name], cfg)
     run_fn = runner if runner is not None else resolve(args.name)
     cfg._run_eval = {"push": not args.no_push,
                      "runner": f"{run_fn.__module__}:{run_fn.__qualname__}"}
@@ -440,6 +453,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         revision = cfg.get("target_revision")
         if revision and len(targets) != 1:
             raise ValueError("target_revision requires exactly one target")
+        revisions = cfg.get('target_revisions')
+        if revisions is not None:
+            if revision or set(revisions) != set(targets) or not all(revisions.values()):
+                raise ValueError('target_revisions must pin every target exactly once')
+            revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(
@@ -471,7 +489,8 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         # (an unregistered model, a target too long to name a run after) costs zero GPU
         # hours here, and two arms that would collide on one repo are caught before the
         # first one is published over by the second.
-        planned = [_run_repo(args.name, s.model_key, str(cfg.get("run_name") or ""))
+        planned = [_run_repo(args.name, s.model_key, str(cfg.get("run_name") or ""),
+                             variant)
                    for s in specs]
         check_distinct(planned, what=f"{args.name} runs of {len(specs)} targets")
 
@@ -488,11 +507,17 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
             out_dir = run_dir(Path(str(cfg.get("output_root") or Path("output") / args.name)),
-                              f"{cfg.get('run_name') or spec.model_key} {datetime.now().strftime('%H%M%S')}")
+                              f"{variant} {cfg.get('run_name') or spec.model_key} "
+                              f"{datetime.now().strftime('%H%M%S')}")
             out_dir.mkdir(parents=True, exist_ok=True)
             launch_meta_path = write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
                                   "runner": cfg._run_eval.runner,
+                                  # The two halves of the published name besides the date
+                                  # and the eval's key, recorded so a run dir finished
+                                  # after the fact is named exactly as this epilogue
+                                  # would have named it.
+                                  "model_key": spec.model_key, "variant": variant,
                                   "target_revision": spec.revision,
                                   "base_model_revision": spec.base_revision,
                                   "base_revision_from": spec.base_revision_from,
@@ -510,17 +535,17 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             url = _publish(
                 out_dir, name=args.name, model_key=spec.model_key, mode=spec.mode,
                 target=hf_path, summary=summary, push=not args.no_push,
-                run_name=str(cfg.get("run_name") or ""),
+                run_name=str(cfg.get("run_name") or ""), variant=variant,
                 card=_card_fields(
                     args.name, OmegaConf.create(launch_meta["config"]), command,
-                    experiment=f"{args.name} eval of {hf_path} (mode={spec.mode})",
+                    experiment=f"{args.name}{f' ({variant})' if variant else ''} eval of "
+                               f"{hf_path} (mode={spec.mode})",
                     models=json.dumps({"target": launch_meta["target"],
                                        "target_revision": launch_meta["target_revision"],
                                        "base": launch_meta["base_model"],
                                        "base_revision": launch_meta["base_model_revision"]}),
                     source_revision=launch_meta["git_sha"]),
-                tags=["eval-run", f"eval:{args.name}", f"model:{spec.model_key}",
-                      f"mode:{spec.mode}"])
+                tags=run_tags(args.name, spec.model_key, spec.mode, variant=variant))
             published.append({"target": hf_path, "model_key": spec.model_key,
                               "mode": spec.mode, "out_dir": out_dir, "repo": url})
             summaries[hf_path] = summary
@@ -544,14 +569,15 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             _publish(
                 pooled_dir, name=args.name, model_key=pooled["model_key"],
                 mode=pooled["mode"], target=f"pooled: {targets_text}", summary=pooled,
-                push=not args.no_push,
+                push=not args.no_push, variant=variant,
                 card=_card_fields(
                     args.name, cfg, command,
-                    experiment=f"{args.name} pooled over {len(published)} arms of one "
-                               f"recipe (checkpoint-level interval): {targets_text}",
+                    experiment=f"{args.name}{f' ({variant})' if variant else ''} pooled "
+                               f"over {len(published)} arms of one recipe "
+                               f"(checkpoint-level interval): {targets_text}",
                     models=targets_text),
-                tags=["eval-run", f"eval:{args.name}", f"model:{pooled['model_key']}",
-                      f"mode:{pooled['mode']}", "pooled"])
+                tags=run_tags(args.name, pooled["model_key"], pooled["mode"],
+                              variant=variant, pooled=True))
             summaries["pooled"] = pooled
         except AssertionError as e:
             print(f"!!! not pooled: {e}")

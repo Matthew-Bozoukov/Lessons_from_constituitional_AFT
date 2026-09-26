@@ -141,7 +141,7 @@ From `/srv/lasr/repo`, under a durable named systemd service if disconnect is po
 P=scratch/swebench_cpu_env/.venv/bin/python
 $P -m src.eval.capabilities.swebench_mini.fleet qualify-shell --config configs/eval/swebench_mini/lite.yaml
 $P -m scratch.swebench_cpu_load --output /srv/lasr/runs/capacity-UNIQUE
-$P -m pytest tests/test_swebench_fleet.py scratch/test_swebench_lite.py -q > /srv/lasr/runs/lifecycle-tests-UNIQUE.log
+$P -m pytest tests/test_swebench_fleet.py tests/test_swebench_session.py scratch/test_swebench_lite.py -q > /srv/lasr/runs/lifecycle-tests-UNIQUE.log
 src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m scratch.test_swebench_timeout_transport > /srv/lasr/runs/transport-UNIQUE.log 2>&1
 $P -m scratch.swebench_lite_smoke
 # Use the smoke root printed by the preceding command:

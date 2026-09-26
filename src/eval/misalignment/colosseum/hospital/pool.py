@@ -16,8 +16,12 @@ carries.
 The within-arm contrast against the baseline condition (what the instruction and the
 channel BUY that arm) is deliberately NOT computed here: the baseline runs in a separate
 invocation with its own seed list, so that contrast is assembled afterwards over the run
-directories (scratch/colosseum_hospital/analyse.py), together with the judge scores and
-the run labels, which are post-hoc as well.
+directories (scratch/colosseum_hospital/analyse.py).
+
+The pooled run is named for the treatment arm — `<date>-hospital-<condition>-<treatment>-
+contrast` — because run_eval adds the condition (the eval's name facet) itself and the
+control is the config's fixed `peer`; two treatments contrasted on one day therefore get
+two names.
 """
 
 from __future__ import annotations
@@ -89,7 +93,7 @@ def pool(runs: list[dict], cfg, out_dir: Path) -> dict:
 
     summary = {
         "condition": condition,
-        "model_key": f"{condition}-contrast",
+        "model_key": f"{treatment['model_key']}-contrast",
         "mode": runs[0]["mode"],
         "control": control["target"],
         "treatment": treatment["target"],

@@ -1,6 +1,6 @@
 # ABOUTME: The combined Hospital harness (carried history, no re-ask, no plan order) on the Model Spec Midtraining
 # ABOUTME: organisms (Li et al., arXiv 2605.02087): Qwen3-32B LoRAs, served with YaRN to the batch's 65,536 window.
-# Run: uv run evals --target chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot --name colosseum_hospital --no-push \
+# Run: uv run evals --target chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot --name colosseum_hospital \
 #        --config scratch/colosseum_hospital/configs/2026-09-14_colosseum_hospital_model_spec_midtraining.yaml condition=self_sacrificial
 #      (on pods: scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-14_fleet_model_spec_midtraining_*.yaml)
 #
@@ -38,16 +38,9 @@ request_timeout: 900
 max_concurrent_runs: 8
 
 # ── how each arm is NAMED in the published run ────────────────────────────────
-# `msm_study` = the Model Spec Midtraining paper's organisms; all four are its Philosophy Spec arms on Qwen3-32B.
-arm_labels:
-  chloeli/qwen-3-32b-baseline:
-    qwen3_msm_study_no_spec_fixed
-  chloeli/qwen-3-32b-philosophy-spec-aft-cot:
-    qwen3_msm_study_aft_cot_fixed
-  chloeli/qwen-3-32b-philosophy-spec-msm:
-    qwen3_msm_study_msm_only_fixed
-  chloeli/qwen-3-32b-philosophy-spec-msm-aft-cot:
-    qwen3_msm_study_msm_aft_cot_fixed
+# By run_eval, as `<date>-hospital-<condition>-<arm>` (src/naming.py eval_name): the
+# condition is the eval's registered name facet and the arm is the adapter's own undated
+# name. This config's harness variant is in the card and run_meta.json, not the name.
 
 # ── the judge ─────────────────────────────────────────────────────────────────
 judge:

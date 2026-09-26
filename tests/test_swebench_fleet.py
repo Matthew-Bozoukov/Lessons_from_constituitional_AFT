@@ -362,11 +362,11 @@ class ProvenanceTests(unittest.TestCase):
                                            '--target', 'org/lora', '--budget-usd', '180.0'])
             rent.assert_not_called()
 
-    def test_multiple_targets_and_missing_budget_are_refused(self):
+    def test_more_than_two_targets_and_missing_budget_are_refused(self):
         from src.eval.run_eval import main
         with patch.object(fleet, 'main') as launch:
             with self.assertRaises(SystemExit):
-                main(['--name', 'swebench_mini', '--target', 'org/a', 'org/b', '--fleet', '--budget-usd', '180'])
+                main(['--name', 'swebench_mini', '--target', 'org/a', 'org/b', 'org/c', '--fleet', '--budget-usd', '180'])
             with self.assertRaises(SystemExit):
                 main(['--name', 'swebench_mini', '--target', 'org/a', '--fleet'])
             launch.assert_not_called()

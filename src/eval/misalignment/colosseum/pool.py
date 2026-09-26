@@ -125,7 +125,9 @@ def pool(runs: list[dict], cfg, out_dir: Path) -> dict:
 
     summary = {
         "experiment": experiment,
-        "model_key": f"{experiment}-contrast",
+        # run_eval adds the experiment (the eval's name facet) to the pooled name itself,
+        # so the subject names the treatment: `<date>-jira-<experiment>-<treatment>-contrast`.
+        "model_key": f"{treatment['model_key']}-contrast",
         "mode": runs[0]["mode"],
         "control": control["target"],
         "treatment": treatment["target"],

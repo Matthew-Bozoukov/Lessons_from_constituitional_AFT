@@ -393,11 +393,19 @@ def model_name(model: str, seed: int, mix: str, *, date: str | None = None) -> s
                  what="model organism")
 
 
-def eval_name(eval_name_: str, subject: str, *, date: str | None = None) -> str:
-    """`<date>-<eval>-<subject>` — one eval run.
+def eval_name(eval_name_: str, subject: str, *, date: str | None = None,
+              variant: str = "") -> str:
+    """`<date>-<eval>[-<variant>]-<subject>` — one eval run.
 
     For an ordinary arm the subject is the target's own name WITHOUT its date, so the run
     carries exactly one date — its own — and still says which arm it measured.
+
+    `variant` is the eval's registered name facets (`EvalSpec.name_facets`, read off the
+    run's config by `src.eval.run_variant`): the part of what the run measured that the
+    eval's key alone does not say. The Colosseum Hospital eval runs one arm under several
+    conditions, and `2026-09-25-hospital-self-sacrificial-qwen36-0-da-7` is a different
+    experiment from `2026-09-25-hospital-baseline-qwen36-0-da-7`. Empty for an eval whose
+    config is a kind, which is most of them.
 
     A POOLED run passes whatever its `pool()` decided the subject is, because only the
     eval knows what its arms have in common. ODCV pools seed replicates of one recipe, so
@@ -405,7 +413,7 @@ def eval_name(eval_name_: str, subject: str, *, date: str | None = None) -> str:
     share nothing but the baseline they were judged against, so it names that
     (`vs-<baseline>`). Neither rule generalises, which is why neither lives here.
     """
-    return _mint(f"{eval_key(eval_name_)} {undated(subject)}", date,
+    return _mint(f"{eval_key(eval_name_)} {variant} {undated(subject)}", date,
                  what=f"{eval_name_} run")
 
 

@@ -28,6 +28,7 @@ from src.infra.huggingface import hf_api, hf_download, hf_repo_id, push_run_dir
 from src.naming import eval_name, today
 from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, digest, lock, read
 from src.eval.capabilities.swebench_mini.fleet_worker import stop_process
+from src.eval.capabilities.swebench_mini import fleet_session as session
 
 REPO = Path(__file__).resolve().parents[4]
 ALLOCATION_LOCK = threading.Lock()
@@ -41,6 +42,7 @@ def recipe_settings(cfg):
             'fallback_gpus', 'cuda_versions', 'cpu_worker_limit', 'allocation_fallback_after_seconds',
             'allocation_fallback_after_attempts')
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
+    keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
 
@@ -234,6 +236,11 @@ def initialize(cfg, config_path, budget):
                              f'HTTP timeout {cfg.model_request_timeout_seconds}s, request attempts {cfg.model_request_attempts}; '
                              'token-limit outcomes terminate unresolved without model rerolls; '
                              'agent shell environment ' + json.dumps(OmegaConf.to_container(cfg.agent_environment)))
+    manifest['protocol'] += f'; task wall-clock cap {cfg.get("task_seconds")}; finite per-pod emergency lease; token/step limits unchanged'
+    if cfg.get('following_configs') or cfg.get('fleet_owner_root'):
+        manifest['shared_fleet'] = {'owner_root': cfg.get('fleet_owner_root') or cfg.root,
+            'budget_scope': 'One cumulative fleet budget, not an independent allowance per arm',
+            'following_configs': list(cfg.get('following_configs', []))}
     deployment = Path('/srv/lasr/lite-deployment.json')
     if deployment.exists():
         manifest['deployment'] = read(deployment)
@@ -308,11 +315,16 @@ def guard(cfg):
     if not active:
         try:
             with lock(Path(cfg.root) / '.coordinator.lock', nonblocking=True):
-                cleanup_grading(cfg.root, manifest)
-                ids = subprocess.check_output(['docker', 'ps', '-aq', '--filter',
-                      'label=lasr_campaign=' + manifest['campaign']], text=True).split()
-                if ids:
-                    subprocess.run(['docker', 'rm', '-f', *ids], check=True, timeout=90)
+                for arm in session.members(cfg):
+                    arm_path = Path(arm.root) / 'metadata/manifest.json'
+                    if not arm_path.exists():
+                        continue
+                    arm_manifest = read(arm_path)
+                    cleanup_grading(arm.root, arm_manifest)
+                    ids = subprocess.check_output(['docker', 'ps', '-aq', '--filter',
+                          'label=lasr_campaign=' + arm_manifest['campaign']], text=True).split()
+                    if ids:
+                        subprocess.run(['docker', 'rm', '-f', *ids], check=True, timeout=90)
         except BlockingIOError:
             pass  # An explicit CPU-only grade command owns the lock outside the service.
 
@@ -492,6 +504,7 @@ def reconcile_rejections(cfg, manifest):
 
 
 def pending_tasks(data, allowed, cfg):
+    data = session.view(cfg, data)
     return any(iid in allowed and t['status'] in ('pending', 'invalid')
                and len(t['attempts']) < cfg.max_infrastructure_attempts for iid, t in data['tasks'].items())
 
@@ -525,6 +538,10 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
     state = State(cfg.root)
     name = f"{os.environ['USER_PREFIX']}-swe-lite-{manifest['campaign'][:8]}-{slot}"
     ceiling = price_ceiling(cfg, cfg.gpu)
+    # A more expensive fallback must not monopolize the other lanes' reservations.
+    # Provider expiry, detached watchdog, worker and ledger all use this same value.
+    if cfg.get('rental_reservation_usd') is not None:
+        expires = min(expires, time.time() + cfg.rental_reservation_usd * 3600 / ceiling)
     record = {'slot': slot, 'name': name, 'created': time.time(), 'expires': expires, 'gpu': cfg.gpu,
               'ceiling_hourly': ceiling, 'id': None, 'status': 'allocating'}
     boot_deadline = record['created'] + cfg.boot_seconds
@@ -569,9 +586,11 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
             if read(state.path).get('halt') or time.time() >= expires - cfg.allocation_min_remaining_seconds:
                 update(status='not-requested', ended=record['created'])
                 raise RuntimeError('Allocation cancelled before provider request')
-            pod = runpod.provision_eval_pod(cfg.target, name=name, gpu=cfg.gpu, disk_gb=cfg.disk_gb,
+            boot_arms = session.members(cfg)
+            boot_arm = boot_arms[cfg.get('primary_arm', 0) % len(boot_arms)]
+            pod = runpod.provision_eval_pod(boot_arm.target, name=name, gpu=cfg.gpu, disk_gb=cfg.disk_gb,
                 pubkey_path=cfg.ssh_key + '.pub', identity=cfg.ssh_key, eval='swebench_mini',
-                revisions={cfg.target: cfg.target_revision, cfg.base: cfg.base_revision},
+                revisions={boot_arm.target: boot_arm.target_revision, cfg.base: cfg.base_revision},
                 terminate_at=datetime.fromtimestamp(expires, timezone.utc).isoformat(),
                 cuda_versions=cfg.cuda_versions,
                 boot_deadline=boot_deadline,
@@ -605,11 +624,11 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
         with log_path.open('w') as log:
             proc = subprocess.Popen([sys.executable, '-m', 'src.eval.capabilities.swebench_mini.fleet_worker', '--config', str(config_path),
                                      '--server', pod.host, '--replica', str(slot), '--allowed', str(allowed_path),
-                                     '--expires', str(expires)],
+                                     '--expires', str(expires), '--primary-arm', str(cfg.get('primary_arm', 0))],
                                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             update(worker_pid=proc.pid)
             while proc.poll() is None:
-                live = read(state.path)
+                live = session.view(cfg)
                 own_record = next(p for p in live['pods'] if p['slot'] == slot)
                 if not own_record.get('ready_at') and cancel_idle_startup(state, slot, read(allowed_path), cfg):
                     return  # Stop only this unready worker; healthy replicas drain.
@@ -632,14 +651,7 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
         if proc:
             try:
                 stop_process(proc)
-                data = read(state.path)
-                for task in data.get('tasks', {}).values():
-                    if task['status'] == 'running' and task['attempts'][-1]['worker'].startswith(f'{slot}-'):
-                        aid = task['attempts'][-1]['id']
-                        ids = subprocess.check_output(['docker', 'ps', '-aq', '--filter', 'label=lasr_attempt=' + aid], text=True).split()
-                        if ids:
-                            subprocess.run(['docker', 'rm', '-f', *ids], check=True, timeout=90)
-                state.recover(worker_prefix=f'{slot}-')
+                session.recover_worker(cfg, slot)
             except Exception as exc:
                 cleanup_error = exc
                 with state.edit() as data:
@@ -690,7 +702,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     with ThreadPoolExecutor(max_workers=count) as pool:
         futures = {}
         while True:
-            live = read(state.path)
+            live = session.view(cfg)
             for lane, future in list(futures.items()):
                 if not future.done():
                     continue
@@ -714,6 +726,8 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                                               and elapsed >= cfg.allocation_fallback_after_seconds)
                     replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
                     replica_cfg.gpu = selected
+                    replica_cfg.primary_arm = lane % len(session.members(cfg))
+                    replica_cfg.rental_reservation_usd = remaining / count
                     expires = min(time.time() + seconds, deadline_value(live['deadline']))
                     print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
                     futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)
@@ -722,7 +736,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                                or deadline_value(live['deadline']) - time.time() <= cfg.allocation_min_remaining_seconds):
                 break
             if time.time() - last_upload >= cfg.upload_every_seconds:
-                checkpoint(cfg, config_path)
+                session.checkpoints(cfg, config_path)
                 last_upload = time.time()
             if time.time() - last_reconcile >= cfg.allocation_reconcile_seconds:
                 reconcile_rejections(cfg, manifest)
@@ -746,14 +760,14 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                 with state.edit() as data:
                     data['halt'] = 'CPU memory reserve reached'
             time.sleep(2)
-    checkpoint(cfg, config_path)  # A remote outage must not prevent local grading.
+    session.checkpoints(cfg, config_path)  # A remote outage must not prevent local grading.
 
 
 def grade(cfg):
     root = Path(cfg.root)
     state = read(root / 'metadata/state.json')
     manifest = read(root / 'metadata/manifest.json')
-    assert not any(owned(p, manifest) for p in runpod.active_pods()), 'Release GPUs before grading'
+    assert not any(owned(p, session.owner_manifest(cfg)) for p in runpod.active_pods()), 'Release GPUs before grading'
     preds = {iid: t['attempts'][-1]['prediction'] for iid, t in state['tasks'].items() if t['status'] == 'valid'}
     # Empty valid submissions are unambiguously unresolved; upstream skips their tests.
     nonempty = {iid: p for iid, p in preds.items() if str(p.get('model_patch', '')).strip()}
@@ -803,6 +817,9 @@ def grade(cfg):
               'budget_upper_bound_usd': reserved_cost(state), 'limitations': manifest['limitations'],
               'task_results': {iid: {'rollout_status': t['status'], 'resolved': iid in resolved,
                                      'graded': iid in completed, 'attempts': len(t['attempts'])} for iid, t in state['tasks'].items()}}
+    if cfg.get('fleet_owner_root') or cfg.get('following_configs'):
+        result['budget_upper_bound_usd'] = None
+        result['shared_fleet_accounting'] = 'metadata/final-accounting.json; shared session total, not additive per model'
     atomic(root / 'results/results.json', result)
     (root / 'results/results.md').write_text(
         f"SWE-bench Lite: {result['status']}\n\n"
@@ -814,6 +831,8 @@ def grade(cfg):
 
 
 def execute(cfg, config_path, action, budget):
+    if cfg.get('following_configs'):
+        return session.execute(cfg, config_path, action, budget)
     root = Path(cfg.root)
     assert os.environ.get('INVOCATION_ID'), 'Launch through lasr-swebench-lite.service so the independent reaper can supervise it'
     with lock(root / '.coordinator.lock', nonblocking=True):
@@ -936,11 +955,15 @@ def main(argv=None):
     parser.add_argument('--budget-usd', type=float)
     parser.add_argument('--target')
     parser.add_argument('--target-revision')
+    parser.add_argument('--next-target')
+    parser.add_argument('--next-target-revision')
     parser.add_argument('--root')
     parser.add_argument('--write-config')
     args = parser.parse_args(argv)
     config_path = Path(args.config).resolve()
     cfg = OmegaConf.load(config_path)
+    if cfg.get('fleet_owner_root') and args.action in ('run', 'resume', 'supervise', 'launch', 'stop'):
+        raise ValueError('Shared-fleet child: use the owner launch.yaml at ' + cfg.fleet_owner_root)
     load_dotenv(cfg.credentials)
     os.chdir(REPO)
     if args.action in ('supervise', 'launch', 'stop'):
@@ -957,10 +980,14 @@ def main(argv=None):
     elif args.action == 'guard':
         guard(cfg)
     elif args.action == 'status':
-        data = read(Path(cfg.root) / 'metadata/state.json')
+        data = session.view(cfg)
         print(json.dumps({'phase': data['phase'], 'halt': data['halt'], 'valid': sum(t['status'] == 'valid' for t in data['tasks'].values()),
                           'total': len(data['tasks']), 'pods': data['pods'], 'last_upload': data['last_upload'],
-                          'cost_upper_bound_usd': reserved_cost(data)}, indent=2))
+                          'cost_upper_bound_usd': reserved_cost(data),
+                          'arms': [{'target': arm.target, 'root': arm.root,
+                                    'valid': sum(t['status'] == 'valid' for t in read(State(arm.root).path)['tasks'].values()),
+                                    'last_upload': read(State(arm.root).path)['last_upload']}
+                                   for arm in session.members(cfg) if State(arm.root).path.exists()]}, indent=2))
     elif args.action == 'grade':
         with lock(Path(cfg.root) / '.coordinator.lock', nonblocking=True):
             try:

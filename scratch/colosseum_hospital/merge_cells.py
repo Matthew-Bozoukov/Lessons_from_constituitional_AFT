@@ -8,7 +8,7 @@
 
 A cell's episodes arrived in pieces: a pilot, the main sweep, and top-up jobs that re-ran
 the seeds the 32k context window dropped. Publishing each piece separately would push three
-run dirs under ONE Hub name (repo_name_for names by cell + arm). This copies every finished
+run dirs under ONE Hub name (run_eval names by cell + arm). This copies every finished
 piece's episodes into one raw tree per cell — a later run dir wins a duplicated seed, the
 rule analyse.py applies — re-harvests it with the eval's own harvest_run_root, and merges the
 judge and false-claim files, so the consolidated dir satisfies publish_colosseum.py's
@@ -28,13 +28,21 @@ from omegaconf import OmegaConf
 
 from src.eval.misalignment.colosseum.hospital.config import PAIR
 from src.eval.misalignment.colosseum.hospital.harvest import harvest_run_root
-from src.eval.misalignment.colosseum.publish import arm_label
-from src.naming import artifact_name, to_local
+from src.eval.misalignment.colosseum.publish import repo_name_for
+from src.naming import to_local
 
 
-def local_name(subject: str, *, date: str | None = None) -> str:
-    """The local spelling of a dated name: src.naming's artifact_name, then to_local."""
-    return to_local(artifact_name(subject, date=date))
+def merged_name(pieces: list[Path], condition: str, partner_seat, *, date: str | None) -> str:
+    """The Hub name the merged cell publishes under, from its newest piece's run_meta.json —
+    exactly what run_eval would have called one run of the whole cell (publish.repo_name_for:
+    `<date>-hospital-<condition>[-<partner seat>]-<arm>`)."""
+    meta = json.loads((pieces[-1] / "metadata" / "run_meta.json").read_text())
+    cfg = OmegaConf.merge(
+        OmegaConf.create(meta.get("config") or {}),
+        {"condition": condition, "partner_seat": partner_seat},
+    )
+    meta = {**meta, "config": OmegaConf.to_container(cfg, resolve=True)}
+    return repo_name_for("colosseum_hospital", meta, produced=date).split("/", 1)[1]
 
 
 SEED = re.compile(r"_seed(\d+)$")
@@ -176,7 +184,6 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--root", default="output/colosseum_hospital")
     ap.add_argument("--out", default="output/colosseum_hospital/merged")
-    ap.add_argument("--config", default="configs/eval/colosseum_hospital.yaml")
     ap.add_argument(
         "--date", default="2026-09-04", help="the day the episodes were produced"
     )
@@ -196,7 +203,6 @@ def main() -> None:
         help="the pulled env snapshots of these cells (objective deficits); omit = regex",
     )
     args = ap.parse_args()
-    cfg = OmegaConf.load(args.config)
     root, out = Path(args.root), Path(args.out)
 
     cells: dict[tuple[str, str], list[Path]] = {}
@@ -222,16 +228,9 @@ def main() -> None:
         if only and condition not in only:
             continue
         pieces.sort(key=lambda p: p.name[-6:])  # HHMMSS suffix, one day: later wins
-        cell_cfg = (
-            OmegaConf.merge(cfg, {"partner": "recorded", "partner_seat": partner_seat})
-            if partner_seat
-            else cfg
-        )
-        label = arm_label(arm, cell_cfg)
+        label = merged_name(pieces, condition, partner_seat, date=args.date)
         if args.skip_existing:
-            dest_probe = out / local_name(
-                f"colosseum_hospital_{condition}_{label}", date=args.date
-            )
+            dest_probe = out / to_local(label)
             done = dest_probe / "results" / "results.json"
             seeds = set().union(*(episodes_of(p) for p in pieces))
             if done.is_file() and json.loads(done.read_text()).get("n_episodes") == len(
@@ -242,9 +241,7 @@ def main() -> None:
                 )
                 continue
         print(f"{condition} / {label}: {[p.name[-6:] for p in pieces]}")
-        dest = out / local_name(
-            f"colosseum_hospital_{condition}_{label}", date=args.date
-        )
+        dest = out / to_local(label)
         merge_cell(pieces, dest, dry_run=args.dry_run, env_logs=args.env_logs)
 
 

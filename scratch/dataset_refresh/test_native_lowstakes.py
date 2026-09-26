@@ -26,15 +26,21 @@ def test_recipe_preserves_da_answers_without_extra_quality_veto_or_source_exampl
     assert cfg['constitution'] == base['constitution'] == 'constitutions/claude_distilled_09_principles/constitution.md'
     assert 'source' not in cfg and 'coverage_focus' not in cfg
     assert all(s['kind'] != 'load_source_run' for s in cfg['stages'])
-    assert cfg['style_guidance'] == base['style_guidance']
+    # Normal DA now uses an ambiguous-decision prompt and a grounded rewrite audit.
+    # Keep this released recipe's answer contract, not equality to that moving config.
+    assert 'Names the\nethical tension explicitly' in cfg['style_guidance']
+    assert 'Warm, practical, proportionate.' in cfg['style_guidance']
+    draft, revise = stages['draft_responses'], stages['revise_responses']
+    assert draft['tags'] == ['reasoning', 'response']
+    assert revise['tags'] == ['reasoning', 'response', 'changes']
+    assert 'First reason privately about what is actually at stake here' in draft['prompts']['user']
+    assert '**Deliberate openly about the value.**' in revise['prompts']['user']
+    assert '**Never name the constitution.**' in revise['prompts']['user']
     for old in base['stages']:
         new = copy.deepcopy(stages[old['name']])
         if 'lint' in new:
             assert new['lint']['retries'] == 0
-            new['lint']['retries'] = old['lint']['retries']
-        if old['name'] in {'draft_responses', 'revise_responses'}:
-            assert new == old, 'Do not replace DA deliberation with an unrelated editing task'
-        elif old['name'] in {'corpus_scenarios', 'dedupe_scenarios', 'corpus'}:
+        if old['name'] in {'corpus_scenarios', 'dedupe_scenarios', 'corpus'}:
             assert new == old
     assert all('sonnet' in m['model'] for m in cfg['models'].values())
     assert stages['write_scenarios']['diversity']['max_regen_rounds'] == 0
