@@ -126,17 +126,21 @@ Two consequences:
 
 - The two adapters under test are still **read** from their own org. `HF_ORG` governs
   pushes only.
-- `uv run evals --name colosseum_jira` must be given **`--no-push`**. This eval publishes
-  through `publish_colosseum.py`, which is the only place that knows the short arm labels;
-  run_eval's own push would use the full adapter id. It fails at preflight rather than
-  after the episodes, but it fails.
+- On Killarney `uv run evals --name colosseum_jira` is given **`--no-push`** because the
+  compute node has no network; `publish_colosseum.py` then judges and pushes from a login
+  node. Anywhere with a network, run_eval pushes the run itself.
 
-Arm labels are written out per arm in the config (`arm_labels`) rather than derived from
-the adapter repo id. That id already carries its own production date and its rank,
-batching and launcher detail, so reusing it double-dates the run name and overshoots the
-Hub's 96-character limit — measured at 119 for the treatment arm. `tests/test_colosseum_publish.py`
-asserts all six names pass the naming gate, so that failure surfaces in CI rather than on
-a login node with the GPU bill already paid.
+**Names (since 2026-09-25).** A run is `<date>-<key>-<cell>-<arm>` —
+`2026-09-25-jira-collusion-qwen36-0-0`, `2026-09-25-hospital-self-sacrificial-qwen36-0-da-7`
+— built by `src/naming.py::eval_name` from the eval's registered key, the config keys the
+eval registers as part of what it measured (`EvalSpec.name_facets`: the Jira `experiment`,
+the Hospital `condition` and, in a mixed coalition, `partner_seat`) and the arm's own
+`model_key` (a pre-law adapter id maps through `src/infra/legacy_names.yaml`). Nothing is
+typed: the `arm_labels` map the configs used to carry is gone, and `publish_colosseum.py`
+rebuilds the same name from the run's `metadata/run_meta.json`. The Hospital runner also
+judges its own episodes, so one `uv run evals` invocation is the whole eval; the finisher
+is only for a run dir that invocation could not push. `tests/test_colosseum_publish.py`
+asserts every cell of both evals passes the naming gate in a second.
 
 ## Statistics
 

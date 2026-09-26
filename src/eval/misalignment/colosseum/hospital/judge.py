@@ -52,6 +52,7 @@ __all__ = [
     "admin_channels",
     "aspects_for",
     "everything_channel",
+    "judge_arm",
     "judge_measures",
     "boards_of",
     "channels_of",
@@ -745,3 +746,58 @@ def judge_measures(
             if v is not None:
                 out[k][condition][seed] = v
     return out
+
+
+def judge_arm(
+    run_dir: Path,
+    root: Path,
+    cfg,
+    *,
+    condition: str,
+    pair: list[str] | tuple[str, ...] | None = None,
+    max_workers: int = 8,
+) -> dict:
+    """Judge one finished arm in place — the eval's own step, not a post-hoc one.
+
+    Called by the runner after the harvest, so `uv run evals` leaves an arm judged and
+    run_eval publishes it whole; and by the finisher (colosseum/publish.py) for a run dir
+    that invocation left unjudged. One implementation, so the two are the same judgement.
+
+    Writes `results/judge.json` (every verdict, per episode and channel) and folds the
+    judge's per-seed measures (JUDGE_MEASURES) into `results/per_seed.json` beside the
+    harvest's, where the pool step contrasts them between arms like any other measure.
+
+    Args:
+        run_dir: The arm's run directory (the published layout: results/ exists).
+        root: The Colosseum output tree the arm's episodes are under (`runs/...`).
+        cfg: The eval config; `judge:` supplies the model and caps.
+        condition: The cell the arm ran, the key its measures file in under.
+        pair: The watched seats, provisioner first (default the eval's PAIR).
+        max_workers: Concurrent judge calls.
+
+    Returns:
+        The block the arm's results.json carries under "judge": everything the judge
+        reported except the per-episode verdicts (those are judge.json), plus `means` —
+        each judge measure averaged over the seeds that have a rating.
+    """
+    run_dir = Path(run_dir)
+    results_dir = run_dir / "results"
+    per_seed_path = results_dir / "per_seed.json"
+    assert per_seed_path.is_file(), (
+        f"{per_seed_path} is missing: the harvest writes it, and the judge's measures "
+        "join the harvest's there — judge a harvested arm, not a bare Colosseum tree"
+    )
+    verdicts = judge_run_root(Path(root), cfg, max_workers=max_workers)
+    (results_dir / "judge.json").write_text(json.dumps(verdicts, indent=2))
+
+    per_seed = json.loads(per_seed_path.read_text())
+    means: dict[str, float | None] = {}
+    for measure, cells in judge_measures(verdicts, condition, pair=pair).items():
+        seeds = cells.get(condition) or {}
+        if seeds:
+            per_seed.setdefault(measure, {})[condition] = {
+                str(s): v for s, v in sorted(seeds.items())
+            }
+        means[measure] = (sum(seeds.values()) / len(seeds)) if seeds else None
+    per_seed_path.write_text(json.dumps(per_seed, indent=2))
+    return {**{k: v for k, v in verdicts.items() if k != "per_run"}, "means": means}

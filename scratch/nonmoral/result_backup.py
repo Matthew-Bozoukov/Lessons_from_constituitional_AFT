@@ -126,10 +126,12 @@ def fetch_training_outputs(remote, out, expected_arms=(), timeout=600, *, includ
 
 def may_terminate_training(state):
     """A failed fetch must never fall through to ordinary teardown."""
-    return not state.get('training_started') or state.get('local_backup', {}).get('verified') is True
+    return (not state.get('training_started') or state.get('local_backup', {}).get('verified') is True
+            or (state.get('publication', {}).get('verified') is True
+                and state.get('hub_backup', {}).get('verified') is True))
 
 
-def verify_publication(archive, expected_arms, *, steps, world_size):
+def verify_publication(archive, expected_arms, *, steps, world_size, n_examples=10000):
     """Verify actual Hub payloads against preserved final adapters and training facts."""
     from src.infra.huggingface import hf_api, hf_org
     results = []
@@ -141,7 +143,7 @@ def verify_publication(archive, expected_arms, *, steps, world_size):
             identity = (meta['dataset']['repo'], meta['dataset']['revision'], meta['base_model_revision'])
             if identity not in [(a['data_repo'], a['data_revision'], a['base_model_revision']) for a in expected_arms]:
                 raise ValueError('Unexpected completed training identity')
-            assert meta['world_size'] == world_size and meta['n_examples'] == 10000
+            assert meta['world_size'] == world_size and meta['n_examples'] == n_examples
             history = meta['log_history']
             assert history[-1]['step'] == steps and history[-1]['epoch'] == 1
             assert all(math.isfinite(float(v)) for h in history for k, v in h.items()
@@ -149,11 +151,11 @@ def verify_publication(archive, expected_arms, *, steps, world_size):
             prefix = str(PurePosixPath(member.name).parent) + '/adapter/'
             stamp = json.load(tar.extractfile(prefix + 'training_meta.json'))
             assert stamp['dataset'] == meta['dataset'] and stamp['base_model_revision'] == meta['base_model_revision']
-            assert stamp['thinking'] and stamp['supervise_counts'] == {'all': 10000}
+            assert stamp['thinking'] and stamp['supervise_counts'] == {'all': n_examples}
             info = hf_api().model_info(hf_org() + '/' + stamp['organism'], files_metadata=True)
             verified = []
             for remote in info.siblings:
-                if remote.rfilename == '.gitattributes':
+                if remote.rfilename == '.gitattributes' or remote.rfilename.startswith('training_backup/'):
                     continue
                 local = tar.getmember(prefix + remote.rfilename)
                 assert local.size == remote.size

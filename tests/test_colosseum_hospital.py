@@ -575,13 +575,41 @@ def _card():
     }
 
 
+def _meta(cfg, target, key, **overrides):
+    """A run_meta.json as run_eval writes it: the arm's key plus the RESOLVED config."""
+    merged = OmegaConf.merge(cfg, overrides)
+    return {
+        "target": target,
+        "model_key": key,
+        "mode": "think",
+        "config": OmegaConf.to_container(merged, resolve=True),
+    }
+
+
+# The keys run_eval resolves for the two pre-law adapters (src/infra/legacy_names.yaml).
+ARMS = ((CONTROL, "qwen36_0_0"), (TREATMENT, "qwen36_0_da_principle_scoped_7"))
+
+
 def test_every_published_name_passes_the_naming_gate(cfg, monkeypatch):
+    """Built by the law from the run's own metadata — no label is typed anywhere — and
+    the condition is in the name, so one arm's five cells are five repos, not one."""
     monkeypatch.setenv("HF_ORG", "LASR-Callum")
+    names = set()
     for condition in CONDITIONS:
-        for target in (CONTROL, TREATMENT):
-            repo = repo_name_for(condition, target, cfg, eval_name="colosseum_hospital")
+        for target, key in ARMS:
+            repo = repo_name_for(
+                "colosseum_hospital", _meta(cfg, target, key, condition=condition)
+            )
             assert len(repo.split("/", 1)[1]) <= 96, repo
             gate_push(repo, _card(), what="test")
+            assert f"-hospital-{condition.replace('_', '-')}-" in repo, repo
+            names.add(repo)
+    assert len(names) == len(CONDITIONS) * len(ARMS), "no two cells share a name"
+    assert repo_name_for(
+        "colosseum_hospital",
+        _meta(cfg, TREATMENT, "qwen36_0_da_7", condition="self_sacrificial"),
+        produced="2026-09-25",
+    ) == "LASR-Callum/2026-09-25-hospital-self-sacrificial-qwen36-0-da-7"
 
 
 def test_registry_resolves():
@@ -924,13 +952,21 @@ def test_harvest_accepts_a_partner_in_its_seat_and_refuses_it_elsewhere(tmp_path
         harvest_run_root(root, pair=PAIR, expected_seats=wrong)
 
 
-def test_a_mixed_arm_label_names_the_seat_the_arm_held(cfg):
-    from src.eval.misalignment.colosseum.publish import arm_label
-
-    base = arm_label(TREATMENT, cfg)
-    as_prov = OmegaConf.merge(
-        cfg, {"partner": CONTROL, "partner_seat": "General_Hospital_Triage"}
+def test_a_mixed_coalition_puts_the_partners_seat_in_the_name(cfg):
+    """`partner_seat` is the eval's second name facet: a mixed run of one arm never
+    publishes over the plain run of the same arm, condition and day."""
+    plain = repo_name_for("colosseum_hospital", _meta(cfg, TREATMENT, "qwen36_0_da_7"))
+    as_prov = repo_name_for(
+        "colosseum_hospital",
+        _meta(cfg, TREATMENT, "qwen36_0_da_7", partner=CONTROL,
+              partner_seat="General_Hospital_Triage"),
     )
-    as_tri = OmegaConf.merge(cfg, {"partner": CONTROL, "partner_seat": PROVISIONER})
-    assert arm_label(TREATMENT, as_prov) == base + "_as_provisioner"
-    assert arm_label(TREATMENT, as_tri) == base + "_as_triage"
+    as_tri = repo_name_for(
+        "colosseum_hospital",
+        _meta(cfg, TREATMENT, "qwen36_0_da_7", partner=CONTROL, partner_seat=PROVISIONER),
+    )
+    assert "-general-hospital-triage-qwen36-0-da-7" in as_prov, as_prov
+    assert "-resource-provisioner-qwen36-0-da-7" in as_tri, as_tri
+    assert len({plain, as_prov, as_tri}) == 3
+    for repo in (plain, as_prov, as_tri):
+        assert len(repo.split("/", 1)[1]) <= 96, repo

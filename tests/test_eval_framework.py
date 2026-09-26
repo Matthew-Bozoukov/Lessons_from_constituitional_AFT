@@ -30,6 +30,41 @@ def test_local_label_does_not_bypass_legacy_identity_length_preflight():
         _run_repo("odcv", "qwen36_" + "a" * 100, "short")
 
 
+def test_name_facets_are_read_off_the_config_and_enter_the_run_name(monkeypatch):
+    """`EvalSpec.name_facets` names config keys; `run_variant` reads their values off the
+    resolved config; run_eval puts them between the eval's key and the arm. Nothing typed."""
+    from omegaconf import OmegaConf
+    from src.eval import run_variant
+    from src.eval.run_eval import _run_repo
+    monkeypatch.setattr("src.naming.today", lambda: "2026-09-25")
+    spec = EVALS["colosseum_hospital"]
+    assert spec.name_facets == ("condition", "partner_seat")
+    variant = run_variant(spec, OmegaConf.create({"condition": "self_sacrificial"}))
+    assert variant == "self_sacrificial"
+    assert _run_repo("colosseum_hospital", "qwen36_0_da_multiparty_human_15", "", variant) == (
+        "2026-09-25-hospital-self-sacrificial-qwen36-0-da-multiparty-human-15")
+    # An unset facet adds nothing; a mixed coalition's partner seat does.
+    assert run_variant(spec, OmegaConf.create(
+        {"condition": "baseline", "partner_seat": None})) == "baseline"
+    assert run_variant(spec, OmegaConf.create(
+        {"condition": "baseline", "partner_seat": "General_Hospital_Triage"})) == (
+        "baseline General_Hospital_Triage")
+    assert EVALS["colosseum_jira"].name_facets == ("experiment",)
+    # Every other eval's config is a kind: no facets, names unchanged.
+    assert run_variant(EVALS["odcv"], OmegaConf.create({"condition": "x"})) == ""
+    assert _run_repo("odcv", "qwen36_0_da_7", "", "") == "2026-09-25-odcv-qwen36-0-da-7"
+
+
+def test_run_tags_are_one_function_for_the_epilogue_and_the_finisher():
+    from src.eval.layout import run_tags
+    assert run_tags("odcv", "qwen36_0_da_7", "think") == [
+        "eval-run", "eval:odcv", "model:qwen36_0_da_7", "mode:think"]
+    assert run_tags("colosseum_hospital", "qwen36_0_da_7", "think",
+                    variant="self_sacrificial", pooled=True) == [
+        "eval-run", "eval:colosseum_hospital", "model:qwen36_0_da_7", "mode:think",
+        "variant:self_sacrificial", "pooled"]
+
+
 def test_eval_card_records_root_sampling_and_launch_revision(monkeypatch):
     from omegaconf import OmegaConf
     from src.eval.run_eval import _card_fields

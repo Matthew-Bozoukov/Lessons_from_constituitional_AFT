@@ -50,6 +50,22 @@ def test_an_eval_run_carries_one_date_and_it_is_its_own():
     assert run == "2026-09-05-odcv-qwen36-difficult-advice-0"
 
 
+def test_an_eval_with_name_facets_carries_them_between_key_and_arm():
+    """The Hospital's condition is part of what the run measured, so it is in the name:
+    the same arm under two conditions on one day is two runs, not one overwriting the
+    other. Still one date, still the arm's own undated name, still built by the law."""
+    run = eval_name("colosseum_hospital", f"dougalldeepmind/{D}-qwen36-0-da-7",
+                    date="2026-09-25", variant="self_sacrificial")
+    assert run == "2026-09-25-hospital-self-sacrificial-qwen36-0-da-7"
+    assert run.count("2026-") == 1
+    # An empty variant is the ordinary shape; a two-facet variant joins in order.
+    assert eval_name("colosseum_hospital", "qwen36_0_da_7", date="2026-09-25") == (
+        "2026-09-25-hospital-qwen36-0-da-7")
+    assert eval_name("colosseum_hospital", "qwen36_0_da_7", date="2026-09-25",
+                     variant="baseline General_Hospital_Triage") == (
+        "2026-09-25-hospital-baseline-general-hospital-triage-qwen36-0-da-7")
+
+
 def test_a_pooled_run_is_named_for_the_subject_its_own_pool_chose():
     """No rule here generalises across evals, so naming.py holds none of them.
 
