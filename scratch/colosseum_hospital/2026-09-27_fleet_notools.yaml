@@ -1,0 +1,32 @@
+# ABOUTME: Fleet plan: the tools-stripped multiparty-human arm on the hospital self-sacrificial
+# ABOUTME: cell WITH carried agent history, 30 seeds over two pods, nosynth peer.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-27_fleet_notools.yaml
+#
+# The comparison: same cell, config, peer and seeds as the 2026-09-25 da-15 run (14/30 sabotaged)
+# and the 2026-09-24 multiparty-human run (6/30). This arm differs from the latter only in the
+# 331 tool schemas removed from its synthetic slice, so the hospital number says whether that
+# removal changed behaviour in a harness where the arm already used tools heavily (81 calls per
+# episode) — it should not, and a large move would mean the schemas were doing more than
+# teaching tool-avoidance in delegated settings.
+date: "2026-09-27"
+branch: main
+out_root: output/colosseum_hospital/2026-09-27_notools
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: mb-hosp-nt-a
+    group: notools
+    target: dougalldeepmind/2026-09-27-qwen36-0-da-multiparty-human-notools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 3.0
+  - name: mb-hosp-nt-b
+    group: notools
+    target: dougalldeepmind/2026-09-27-qwen36-0-da-multiparty-human-notools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 3.0

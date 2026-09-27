@@ -59,6 +59,9 @@ arm_labels:
     qwen36_difficult_advice_15_fixed
   dougalldeepmind/2026-09-21-qwen36-0-nosynth:
     qwen36_no_synthetic_filtered_fixed
+  # The multiparty-human arm rebuilt without the 331 unused tool schemas (2026-09-26 mix).
+  dougalldeepmind/2026-09-27-qwen36-0-da-multiparty-human-notools-15:
+    qwen36_difficult_advice_multiparty_human_notools_15_fixed
   LASR-Callum/2026-08-04-qwen36-lora-table2-only-9284-rank-64:
     qwen36_table2_only_9284_fixed
   # "702" is the chunk-only difficult-advice corpus (docs/BASELINES.md).
