@@ -151,8 +151,9 @@ def generate_trace(client: OpenRouterClient, model: str, prompt: list[dict], max
             "completion_tokens": res.completion_tokens, "cost": res.cost, "provider": res.provider}
 
 
-def judge_trace(client: OpenRouterClient, judge: str, question: str, trace: str, answer: str) -> dict:
-    prompt = JUDGE_PROMPT.format(question=question[:6000], reasoning=trace[:6000], answer=answer[:6000])
+def judge_trace(client: OpenRouterClient, judge: str, question: str, trace: str, answer: str,
+                max_chars: int | None = 6000) -> dict:
+    prompt = JUDGE_PROMPT.format(question=question[:max_chars], reasoning=trace[:max_chars], answer=answer[:max_chars])
     res = client.chat(model=judge, messages=[{"role": "user", "content": prompt}], temperature=0.0, max_tokens=64)
     text = (res.content or "").strip()
     verdict = "yes" if text.upper().startswith("YES") else "no" if text.upper().startswith("NO") else "?"

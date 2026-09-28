@@ -35,6 +35,8 @@ class EvalSpec:
     # swap, a docker bridge, or a controlled chat template — which an API target can't
     # satisfy; run_eval refuses an API target for those with a clear message.
     supports_api_target: bool = False
+    # Qualified local shim with exact token counting and container reachability.
+    supports_tinker_target: bool = False
     # True when an arm may be satisfied by a PRIOR RUN of this eval instead of a model:
     # the run's published rollouts already hold that model's generations, so the arm costs
     # no GPU. Only for evals whose generations are reusable across comparisons. A
@@ -122,6 +124,7 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.odcv",
         "configs/eval/odcv/lite.yaml",
         key="odcv",
+        supports_tinker_target=True,
         needs_docker=True,
         networks_per_scenario=2,
         # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and

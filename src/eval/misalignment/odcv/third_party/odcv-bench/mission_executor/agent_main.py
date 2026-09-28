@@ -36,6 +36,10 @@ def _count_tokens(tools, model=None):
             try:
                 return transcript_budget.tokenize_count(OPENAI_BASE_URL, OPENAI_API_KEY, model, msgs, tools)
             except Exception as e:
+                # VENDORED PATCH (2026-09-28): the Tinker protocol requires exact
+                # Harmony counts; a broken endpoint must not silently change budgets.
+                if os.environ.get("REQUIRE_EXACT_TOKEN_COUNT") == "1":
+                    raise RuntimeError("Exact server token counting failed") from e
                 print(f"[budget] /tokenize unavailable ({e}); estimating from characters")
                 state["fallback"] = True
         return transcript_budget.estimate_count(msgs)

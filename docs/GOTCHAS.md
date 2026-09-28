@@ -1872,3 +1872,25 @@ Four separate things bit one ODCV-Peer arm in one morning; each is cheap to avoi
   not exist"); with the same names it would have silently measured the wrong weights.
   `assert_local_port_free` now binds the port before ssh; `lsof -nP -iTCP:8000` shows who holds
   it. Pick a port per session (`--port 8010`), not per arm.
+
+## GPT-OSS on Tinker: qualify the renderer and keep its runtime isolated (2026-09-28)
+
+The repository GPU stack and Tinker cookbook 0.5.7 require incompatible Transformers
+versions. Use the locked `src/infra/endpoints/tinker_runtime` environment; do not
+change a shared training/evaluation environment to make the cookbook install.
+Windows has no wheel for its Inkling-only `tml-renderers` dependency. The local
+Windows override excludes it; direct `GptOssRenderer` imports and live sampling
+were qualified, not the cookbook's unrelated renderer families.
+
+Pinned GPT-OSS tokenizer strings differ from older Harmony articles, so assert
+special token IDs instead of substituting remembered spellings. Cookbook 0.5.7
+renders one handoff stop per tool call but its parser rejects multiple stops;
+the shared renderer uses nonhandoff endings between calls and one final handoff.
+Historical consecutive assistant messages also need history endings for the
+training prefix to match inference. Tests plus a real Docker tool round trip
+cover these cases. Exact JSON schemas accompany the TypeScript namespace because
+that projection otherwise loses tuple/integer and nested constraints.
+
+A successful capabilities request does not establish billing access: opening the
+actual sampling session can return 402. Check `rest_client.whoami()` with the same
+credential source before assuming a funded browser account is the key's account.

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+from urllib.parse import urlparse
 from contextlib import nullcontext
 from dataclasses import replace
 from datetime import date, datetime
@@ -25,7 +26,7 @@ from src.naming import today, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
 
 
-def _tinker_endpoint(spec, cfg):
+def _tinker_endpoint(spec, cfg, out_dir=None):
     """Hold the Tinker shim open for one arm, or do nothing for any other target.
 
     A `tinker://` spec already carries the shim's localhost base_url (resolve_tinker_target);
@@ -39,9 +40,13 @@ def _tinker_endpoint(spec, cfg):
         return nullcontext()
     t = cfg.get("tinker") or {}
     return tinker_shim(spec.hf_path, base_model=spec.base_model,
+                       port=urlparse(spec.api_base).port,
                        reasoning=str(t.get("reasoning", "medium")),
                        max_tokens=int(t.get("max_tokens", 8192)),
-                       log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
+                       bind=str(t.get("bind", "127.0.0.1")),
+                       context_window=int(OmegaConf.select(cfg, "serving.context_window") or 28000),
+                       max_cost_usd=float(t.get("max_cost_usd",20)),
+                       log_dir=Path(out_dir or str(cfg.get("output_root") or "output")) / "metadata" / "tinker_shim")
 
 
 def credential_fault(whoami: dict | None, org: str, or_remaining: float | None) -> str:
@@ -204,7 +209,8 @@ def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str,
         generation = {key: cfg[key] for key in (
             "temperature", "top_p", "seed", "max_tokens", "passes", "concurrency",
             "scenario_timeout_s", "serving", "judges", "judge_workers",
-            "progress_judge", "progress_judges", "judge_budget", "smoke") if key in cfg}
+            "progress_judge", "progress_judges", "judge_budget", "smoke", "tinker",
+            "compare_published", "require_clean_pass") if key in cfg}
     generation = OmegaConf.to_container(OmegaConf.create(generation), resolve=True)
     return {
         "experiment": experiment,
@@ -462,7 +468,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                 raise ValueError('target_revisions must pin every target exactly once')
             revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
-        if spec.api_base and not EVALS[args.name].supports_api_target:
+        if is_tinker_target(hf_path):
+            spec = replace(spec, api_base=f"http://127.0.0.1:{args.port}/v1", revision=hf_path,
+                           mode=f"harmony_{OmegaConf.select(cfg, 'tinker.reasoning') or 'medium'}")
+        if (spec.api_base and not EVALS[args.name].supports_api_target
+                and not (is_tinker_target(hf_path) and EVALS[args.name].supports_tinker_target)):
             raise SystemExit(
                 f"!!! {args.name} does not support an API-endpoint target "
                 f"({hf_path}): it relies on vLLM-served behaviour (a served-model "
@@ -530,8 +540,25 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             # A tinker target is sampled by Tinker through a local OpenAI-compatible shim,
             # which lives exactly as long as the arm that needs it: one shim serves one
             # checkpoint, so an arm ladder restarts it rather than swapping weights.
-            with _tinker_endpoint(spec, cfg):
+            with _tinker_endpoint(spec, cfg, out_dir):
                 summary = run_fn(served, cfg, out_dir, **run_kwargs)
+
+            if is_tinker_target(hf_path):
+                ledger = out_dir/'metadata'/'tinker_shim'/'sampling.jsonl'
+                events = [json.loads(line) for line in ledger.read_text(encoding='utf-8').splitlines()]
+                completed = [e for e in events if e['event']=='completed']
+                summary['tinker_sampling'] = {
+                    'cost_upper_usd':sum(e.get('reserved_usd',0) for e in events),
+                    'accounting':'uncached input pricing; uncertain reservations retained; not provider invoice',
+                    'completed_requests':len(completed),
+                    'prompt_tokens':sum(e.get('prompt_tokens',0) for e in events if e['event']=='reserved'),
+                    'completion_tokens':sum(e['completion_tokens'] for e in completed),
+                    'error_events':sum(e['event']=='error' for e in events)}
+                budget = cfg.get('judge_budget')
+                if budget and Path(budget.ledger).exists():
+                    entries=json.loads(Path(budget.ledger).read_text(encoding='utf-8'))
+                    summary['judge_cost_reserved_or_estimated_usd']=sum(e['charged_or_reserved_usd'] for e in entries)
+                    summary['judging_cost_accounting']='per-request shared MR/progress ledger; global account delta is not run spend'
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
             launch_meta = json.loads(launch_meta_path.read_text())

@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - GPT-OSS nosynth control: Tinker and Harmony qualification
+
+Fresh control preparation on isolated branch `codex/gpt-oss-120b-exploration`,
+merged from main at `c38a29fc`. No August weights/data reused. Source is
+`dougalldeepmind/2026-09-22-nosynth-mix@378ec1ee0f0eea9294683779438b839e52b9700a`
+(10,000 rows). Preserve reference answers and replace Qwen-added traces with
+checked GPT-OSS traces; convert APIgen XML into native tool messages without
+invented tool results. See [protocol and execution notes](gptoss120b/2026-09-28_nosynth_tinker_plan.md).
+
+Tinker authentication and sampling are live. Initial 8/8 reasoning samples passed
+compatibility judging. A Docker-to-host-to-Tinker tool round trip passed with exact
+Harmony counts on the call and continuation. Offline tests verify shifted,
+assistant-only token-mean loss, channel/turn endings, multi-call handoffs, history,
+truncation and budget admission. ODCV gets an explicit Tinker capability and an
+optional no-paper-reference mode; network pruning is opt-in on shared Docker hosts.
+Training/evaluation have not yet completed; this entry records infrastructure
+qualification, not a model-quality finding. Full trace refresh is in progress.
+
 
 ## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
 

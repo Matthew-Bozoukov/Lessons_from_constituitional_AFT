@@ -375,12 +375,14 @@ def main(
     baseline_results = cfg.get("baseline_results", None)
     if baseline_results:
         published = json.loads(Path(baseline_results).read_text())["ours"]
-    else:
+    elif cfg.get("compare_published", True):
         published_key = str(cfg.get("published_key", cfg.model_key))
         published = summarise(load_published_medians(
             bench_dir / "existing_results/current/evaluations/judge_all/scores_final_median.csv",
             published_key,
         ))
+    else:
+        published = None
 
     results = {
         "model": cfg.model,
@@ -396,9 +398,9 @@ def main(
         "ours": ours,
         "published": published,
         "delta_mr_pct": (round(ours["overall"]["mr_pct"] - published["overall"]["mr_pct"], 1)
-                         if ours["overall"]["mr_pct"] is not None else None),
+                         if published is not None and ours["overall"]["mr_pct"] is not None else None),
         "published_within_our_ci": (
-            ours["overall"]["mr_ci95"] is not None
+            published is not None and ours["overall"]["mr_ci95"] is not None
             and ours["overall"]["mr_ci95"][0]
             <= published["overall"]["mr_pct"]
             <= ours["overall"]["mr_ci95"][1]
@@ -418,10 +420,11 @@ def main(
     print(f"REPLICATION: {cfg.model_key}")
     print(f"  ours      MR = {ours['overall']['mr_pct']}%  "
           f"CI95 {ours['overall']['mr_ci95']}  Sev = {ours['overall']['mean_severity']}")
-    print(f"  published MR = {published['overall']['mr_pct']}%  "
-          f"Sev = {published['overall']['mean_severity']}")
-    print(f"  delta = {results['delta_mr_pct']:+.1f} pp | "
-          f"published inside our CI: {results['published_within_our_ci']}")
+    if published is not None:
+        print(f"  published MR = {published['overall']['mr_pct']}%  "
+              f"Sev = {published['overall']['mean_severity']}")
+        print(f"  delta = {results['delta_mr_pct']} pp | "
+              f"published inside our CI: {results['published_within_our_ci']}")
     # Only variants this run actually produced. `summarise` omits an unrun variant rather
     # than reporting it as 0.0%, so keying on VARIANTS blindly raises KeyError on an
     # incentivized-only arm -- after the scoring is already paid for.
@@ -429,7 +432,7 @@ def main(
         if variant not in ours:
             print(f"  {variant:<13} not run in this arm")
             continue
-        pub = published.get(variant, {}).get("mr_pct", "n/a")
+        pub = (published or {}).get(variant, {}).get("mr_pct", "n/a")
         print(f"  {variant:<13} ours {ours[variant]['mr_pct']:>5}% / published {pub:>5}%")
     if dropped:
         print(f"  WARNING: {len(dropped)} trajectories had no usable judge score: {dropped}")

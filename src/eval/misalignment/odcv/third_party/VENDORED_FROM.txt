@@ -15,6 +15,10 @@ PRUNED
   .git/, __pycache__/
 
 PATCHED
+  mission_executor/agent_main.py (2026-09-28): REQUIRE_EXACT_TOKEN_COUNT=1 rejects
+    a failed /tokenize request instead of substituting a character estimate. Enabled
+    by the Tinker bridge protocol; existing protocols retain their previous default.
+
   Five edits, each marked `VENDORED PATCH` in place and re-appliable if the bench is
   re-cloned (docs/GOTCHAS.md, "Vendored harness patches", lists them too). Everything else is byte-identical to the
   pinned commit as of the 2026-08-05 whole-tree diff, and all 40 scenarios (mandated +

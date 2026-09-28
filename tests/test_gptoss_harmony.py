@@ -1,0 +1,196 @@
+# ABOUTME: Real-tokenizer qualification of Harmony masks and tool/history round trips, without model calls.
+# ABOUTME: Also tests exact bridge token counts, budget admission and suppression of incomplete tool calls.
+from types import SimpleNamespace
+
+import pytest
+pytest.importorskip("tinker_cookbook")
+from fastapi.testclient import TestClient
+from src.infra.endpoints.harmony import make_renderer, supervised_examples, render_prompt, token_mean_datums
+from src.infra.endpoints.tinker_server import create_app
+
+
+@pytest.fixture(scope="module")
+def renderer():
+    try:
+        return make_renderer(local_files_only=True)
+    except OSError:
+        pytest.skip('Pinned GPT-OSS tokenizer is not cached; offline tests do not download it')
+
+
+def tool(name="lookup"):
+    return {"type":"function","function":{"name":name,"description":"Read a value",
+        "parameters":{"type":"object","properties":{"x":{"type":"integer"}},"required":["x"]}}}
+
+
+def call(name="lookup", ident="a", x=1):
+    return {"id":ident,"type":"function","function":{"name":name,"arguments":'{"x":'+str(x)+'}'}}
+
+
+def target_text(renderer, ex):
+    return renderer.tokenizer.decode([t for t,w in zip(ex["target_tokens"],ex["weights"]) if w])
+
+
+def test_reasoning_transition_and_ending_are_supervised(renderer):
+    row={"messages":[{"role":"user","content":"Question"},
+        {"role":"assistant","reasoning_content":"Real reasoning","content":"Answer"}]}
+    ex=supervised_examples(renderer,row)[0]
+    text=target_text(renderer,ex)
+    assert text.startswith("<|channel|>analysis<|message|>Real reasoning")
+    assert "<|end|><|start|>assistant<|channel|>final" in text
+    assert text.endswith("Answer<|return|>")
+    assert "Question" not in text
+
+
+def test_direct_answer_does_not_train_skipping_analysis(renderer):
+    row={"messages":[{"role":"user","content":"Question"},{"role":"assistant","content":"Answer"}]}
+    assert target_text(renderer,supervised_examples(renderer,row)[0]) == "Answer<|return|>"
+
+
+def test_multiple_calls_have_one_handoff_and_all_parse(renderer):
+    row={"tools":[tool(),tool("second")],"messages":[{"role":"user","content":"Call both"},
+        {"role":"assistant","content":"","tool_calls":[call(),call("second","b",2)]}]}
+    ex=supervised_examples(renderer,row)[0]
+    ids=[t for t,w in zip(ex["target_tokens"],ex["weights"]) if w]
+    assert ids.count(200012)==1
+    parsed,term=renderer.parse_response(ids)
+    assert term.is_stop_sequence
+    assert [t.function.name for t in parsed["tool_calls"]]==["lookup","second"]
+    assert [t.function.arguments for t in parsed["tool_calls"]]==['{"x":1}','{"x":2}']
+
+
+def test_tool_history_keeps_reasoning_but_completed_turn_drops_it(renderer):
+    history=[{"role":"user","content":"Lookup"},{"role":"assistant","content":"",
+        "reasoning_content":"secret trace","tool_calls":[call()]},
+        {"role":"tool","tool_call_id":"a","content":"tool payload"}]
+    text=renderer.tokenizer.decode(render_prompt(renderer,history,[tool()]).to_ints())
+    assert "secret trace" in text and "functions.lookup to=assistant" in text
+    row={"tools":[tool()],"messages":history+[{"role":"assistant","content":"Answer"}]}
+    ex=supervised_examples(renderer,row)[-1]
+    assert "tool payload" not in target_text(renderer,ex)
+    text=renderer.tokenizer.decode(render_prompt(renderer,row["messages"]+[{"role":"user","content":"Next"}],[tool()]).to_ints())
+    assert "secret trace" not in text
+
+
+def test_consecutive_assistant_prefix_is_valid(renderer):
+    row={"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Part one"},
+                     {"role":"assistant","content":"Part two"}]}
+    assert len(supervised_examples(renderer,row))==2
+
+
+def test_no_silent_truncation(renderer):
+    with pytest.raises(ValueError,match="no silent truncation"):
+        supervised_examples(renderer,{"messages":[{"role":"user","content":"Hello"},
+            {"role":"assistant","content":"Answer"}]},max_length=10)
+
+
+def test_token_weighting_is_not_equal_row_weight():
+    examples=[{"input_ids":[1]*n,"target_tokens":[2]*n,"weights":[1]*n} for n in [1,9]]
+    datums=token_mean_datums(examples)
+    weights=[d.loss_fn_inputs["weights"].data for d in datums]
+    assert weights[0]==pytest.approx([.1])
+    assert sum(weights[1])==pytest.approx(.9)
+    assert sum(sum(w) for w in weights)==pytest.approx(1)
+
+
+class Sampler:
+    def __init__(self,ids): self.ids=ids;self.calls=[]
+    async def sample_async(self,**kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(sequences=[SimpleNamespace(tokens=self.ids)])
+
+
+def client(renderer,text,budget=20):
+    sampler=Sampler(renderer.tokenizer.encode(text,add_special_tokens=False))
+    app=create_app(sampler,renderer,checkpoint="fixture",api_key="test",max_cost_usd=budget)
+    return TestClient(app,headers={"Authorization":"Bearer test"}),sampler
+
+
+def test_bridge_counts_identical_prompt_and_preserves_sampling(renderer):
+    c,s=client(renderer,"<|channel|>final<|message|>Hello<|return|>")
+    body={"model":"openai/gpt-oss-120b","messages":[{"role":"user","content":"Hello"}],
+          "temperature":0,"top_p":.8,"seed":42}
+    counted=c.post("/tokenize",json=body).json()["count"]
+    response=c.post("/v1/chat/completions",json=body)
+    assert response.status_code==200
+    assert counted==response.json()["usage"]["prompt_tokens"]==len(s.calls[0]["prompt"].to_ints())
+    assert s.calls[0]["sampling_params"].temperature==0
+    assert s.calls[0]["sampling_params"].seed==42
+    assert s.calls[0]["sampling_params"].top_p==.8
+
+
+def test_bridge_refuses_unknown_identity_and_budget(renderer):
+    c,s=client(renderer,"",budget=0)
+    body={"messages":[{"role":"user","content":"Hello"}]}
+    assert c.post("/v1/chat/completions",json={**body,"model":"wrong"}).status_code==400
+    assert c.post("/v1/chat/completions",json=body).status_code==402
+    assert not s.calls
+
+
+def test_truncated_call_is_not_executable(renderer):
+    c,_=client(renderer,' to=functions.lookup<|channel|>commentary <|constrain|>json<|message|>{"x":')
+    result=c.post("/v1/chat/completions",json={"messages":[{"role":"user","content":"Lookup"}]}).json()
+    choice=result["choices"][0]
+    assert choice["finish_reason"]=="length"
+    assert not choice["message"].get("tool_calls")
+
+
+def test_tool_ids_are_nonempty(renderer):
+    c,_=client(renderer,' to=functions.lookup<|channel|>commentary <|constrain|>json<|message|>{"x":1}<|call|>')
+    result=c.post("/v1/chat/completions",json={"messages":[{"role":"user","content":"Lookup"}],"tools":[tool()]}).json()
+    assert result["choices"][0]["message"]["tool_calls"][0]["id"]
+
+
+@pytest.mark.parametrize('ending',['<|return|>','<|call|>'])
+def test_bridge_rejects_undeclared_or_wrongly_terminated_tool(renderer,ending):
+    c,_=client(renderer,' to=functions.lookup<|channel|>commentary <|constrain|>json<|message|>{"x":1}'+ending)
+    body={'messages':[{'role':'user','content':'Lookup'}]}
+    if ending=='<|return|>': body['tools']=[tool()]
+    assert c.post('/v1/chat/completions',json=body).status_code==502
+
+
+def test_schema_constraints_survive_harmony_projection(renderer):
+    t=tool()
+    t['function']['parameters']['properties']['x']={'type':'array','prefixItems':[{'type':'integer'},{'type':'string'}],
+        'minItems':2,'maxItems':2}
+    decoded=renderer.tokenizer.decode(render_prompt(renderer,[{'role':'user','content':'Use tool'}],[t]).to_ints())
+    assert '"prefixItems":[{"type":"integer"},{"type":"string"}]' in decoded
+    assert '"minItems":2,"maxItems":2' in decoded
+
+
+def test_context_refusal_is_recognized_by_odcv(renderer):
+    import importlib.util
+    from pathlib import Path
+    path=Path('src/eval/misalignment/odcv/third_party/odcv-bench/mission_executor/transcript_budget.py')
+    spec=importlib.util.spec_from_file_location('gptoss_budget_test',path)
+    budget=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(budget)
+    s=Sampler([])
+    app=create_app(s,renderer,checkpoint='fixture',api_key='test',context_window=4)
+    c=TestClient(app,headers={'Authorization':'Bearer test'})
+    r=c.post('/v1/chat/completions',json={'messages':[{'role':'user','content':'Hello'}]})
+    assert r.status_code==400 and budget.is_context_length_error(ValueError(r.text))
+    assert not s.calls
+
+
+def test_new_sampler_keeps_canonical_organism_identity():
+    from src.infra.endpoints.tinker import resolve_tinker_target
+    from src.eval.run_eval import _run_repo
+    spec=resolve_tinker_target('tinker://fixture/sampler_weights/2026-09-28-gptoss120b-0-nosynth')
+    assert _run_repo('odcv',spec.model_key,'').endswith('-odcv-gptoss120b-0-nosynth')
+
+
+def test_odcv_can_score_without_an_unrelated_published_reference(tmp_path,monkeypatch):
+    import json
+    from omegaconf import OmegaConf
+    from src.eval.misalignment.odcv import odcv_judge as j
+    monkeypatch.setattr(j,'_load_upstream_judge',lambda _:None)
+    monkeypatch.setattr(j,'transcripts',lambda *_:[('mandated','Scenario',tmp_path/'transcript')])
+    monkeypatch.setattr(j,'openrouter_usage',lambda **_:0)
+    monkeypatch.setattr(j,'score_with_judge',lambda *a,**kw:{'mandated/Scenario':{'score':0,'reasoning':'fixture'}})
+    monkeypatch.setattr(j,'load_published_medians',lambda *a:pytest.fail('Unrelated reference was read'))
+    cfg=tmp_path/'cfg.yaml'
+    OmegaConf.save(OmegaConf.create({'bench_dir':str(tmp_path),'model':'openai/gpt-oss-120b',
+        'model_key':'gptoss120b','judges':{'flash':'fixture'},'compare_published':False}),cfg)
+    j.main(str(tmp_path),str(cfg))
+    result=json.loads((tmp_path/'results.json').read_text())
+    assert result['published'] is None and result['delta_mr_pct'] is None

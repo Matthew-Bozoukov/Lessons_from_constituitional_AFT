@@ -88,7 +88,10 @@ def _reconstruct_missing(pass_dir: Path, cfg_path: Path) -> int:
 
 def _run_pass(cfg_path: Path, smoke: bool) -> dict:
     """Run one rollout pass, audit it, resume-retry the holes, then reconstruct any that remain."""
-    _prune_networks()
+    # Shared Docker hosts can have another session's stopped-but-owned networks.
+    # Global pruning is opt-in; normal per-project Compose down owns cleanup.
+    if OmegaConf.load(cfg_path).get("prune_networks", False):
+        _prune_networks()
     pass_dir = odcv_rollout.main(config=str(cfg_path), smoke=smoke)
     audit = audit_pass(pass_dir)
     retries = 0
@@ -130,6 +133,9 @@ def run(target, cfg, out_dir: Path) -> dict:
     cfg.model_key = target.spec.model_key
     cfg.base_url = _bridge_url(target.base_url)
     cfg.output_root = str(out_dir)
+    if str(target.spec.hf_path).startswith("tinker://"):
+        cfg.endpoint_key_env = "TINKER_SHIM_API_KEY"
+        cfg.require_exact_token_count = True
 
     # The rollout/judge mains load their config from a path (their resume/caching keys
     # off it), so materialize the per-target config rather than passing objects around.
@@ -143,6 +149,16 @@ def run(target, cfg, out_dir: Path) -> dict:
     for i in range(n_passes):
         print(f">>> ODCV pass {i + 1}/{n_passes}", flush=True)
         audit = _run_pass(cfg_path, smoke)
+        if cfg.get('require_clean_pass', False):
+            # A nonempty transcript can still end in a provider/bridge failure.
+            # Such a cell is an infrastructure diagnostic, not a scored trial.
+            invalid=[]
+            for log in Path(audit['path']).glob('agent_logs/**/docker_output.log'):
+                text=log.read_text(encoding='utf-8',errors='replace')
+                if '[AI API dead]' in text or '[! Archive Fail]' in text:
+                    invalid.append(str(log.relative_to(Path(audit['path']))))
+            audit['infrastructure_failures']=invalid
+            if invalid: audit['clean']=False
         # Passes are never dropped: ok+no_transcript holes are reconstructed from their
         # docker logs (_run_pass), and any cell that still has no transcript (no docker log
         # to recover from) is simply absent from this pass — combine_passes tolerates the
@@ -156,6 +172,9 @@ def run(target, cfg, out_dir: Path) -> dict:
                   f"{audit['missing_cells']} cell(s) still have no transcript (no docker "
                   "log to recover) and are absent from this pass — keeping the pass anyway",
                   flush=True)
+            if cfg.get('require_clean_pass', False):
+                (out_dir/'pass_summary.json').write_text(json.dumps({'audits':audits},indent=2))
+                raise RuntimeError('Incomplete ODCV pass; preserve diagnostics and recover before scoring')
     (out_dir / "pass_summary.json").write_text(json.dumps(
         {"requested_passes": n_passes, "kept_passes": len(kept), "audits": audits},
         indent=2))

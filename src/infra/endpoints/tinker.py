@@ -25,6 +25,9 @@ Deliberately NOT supported here:
 from __future__ import annotations
 
 import os
+import re
+import secrets
+import socket
 import subprocess
 import sys
 import time
@@ -40,9 +43,9 @@ TINKER_SCHEME = "tinker"
 DEFAULT_BASE_MODEL = "openai/gpt-oss-120b"
 SUPPORTED_BASE_MODELS = (DEFAULT_BASE_MODEL,)
 
-# Tinker's own credential, read by the shim process (and sent by evals, which the shim
-# ignores). Named here so a missing key fails before an eval starts rather than mid-run.
+# Provider credentials stay in the shim process. Evals receive only its ephemeral key.
 TINKER_KEY_ENV = "TINKER_API_KEY"
+SHIM_KEY_ENV = "TINKER_SHIM_API_KEY"
 
 _READY_TIMEOUT_S = 600  # first request loads a tokenizer and opens a Tinker session
 _PORT = int(os.environ.get("TINKER_SHIM_PORT", "1234"))
@@ -88,10 +91,11 @@ def resolve_tinker_target(hf_path: str, *, base_model: str = DEFAULT_BASE_MODEL,
         # bakes the reasoning level into the prompt rather than a chat template, so the
         # mode is a LABEL here exactly as it is for an API target.
         mode="default",
-        model_key=_sanitize(f"tinker {sampler_name(hf_path)}"),
+        model_key=_sanitize(sampler_name(hf_path) if re.match(r"\d{4}-\d{2}-\d{2}-",sampler_name(hf_path))
+                            else f"tinker {sampler_name(hf_path)}"),
         lora_rank=None,
         api_base=f"http://127.0.0.1:{port}/v1",
-        api_key_env=TINKER_KEY_ENV)
+        api_key_env=SHIM_KEY_ENV)
 
 
 def is_tinker_target(hf_path: str) -> bool:
@@ -101,7 +105,8 @@ def is_tinker_target(hf_path: str) -> bool:
 
 @contextmanager
 def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = _PORT,
-                reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None):
+                reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None,
+                bind: str = "127.0.0.1", context_window: int = 28000, max_cost_usd: float = 20):
     """Run the OpenAI-compatible shim for `ckpt` for the duration of the block.
 
     Args:
@@ -121,19 +126,32 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
             log tail is included — a shim that cannot serve must not be discovered one
             rollout at a time.
     """
-    assert os.environ.get(TINKER_KEY_ENV), (
-        f"a tinker target needs {TINKER_KEY_ENV} in the environment (.env) — it is unset")
+    # SDK supports either an environment key or locally stored login credentials.
+    # Containers receive only this per-run bridge secret, never a provider credential.
+    with socket.socket() as probe:
+        if os.name == "nt":
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        probe.bind((bind, port))
+    old_key = os.environ.get(SHIM_KEY_ENV)
+    os.environ[SHIM_KEY_ENV] = secrets.token_urlsafe(32)
     log_dir = Path(log_dir or Path("output") / "tinker_shim")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"shim_{port}.log"
     env = {**os.environ, "TINKER_CKPT": ckpt, "TINKER_BASE_MODEL": base_model,
            "REASONING_LEVEL": reasoning, "PORT": str(port),
-           "DEFAULT_MAX_TOKENS": str(max_tokens)}
+           "DEFAULT_MAX_TOKENS": str(max_tokens), "TINKER_BIND": bind,
+           "TINKER_CONTEXT_WINDOW": str(context_window), "TINKER_MAX_COST_USD": str(max_cost_usd),
+           "TINKER_LOG_DIR": str(log_dir.resolve())}
     base_url = f"http://127.0.0.1:{port}/v1"
     print(f">>> tinker shim: {ckpt} (reasoning={reasoning}) on {base_url} | log {log_path}")
     with log_path.open("w", encoding="utf-8") as log:
-        proc = subprocess.Popen([sys.executable, "-m", "src.infra.endpoints.tinker_server"],
-                                env=env, stdout=log, stderr=subprocess.STDOUT)
+        root = Path(__file__).resolve().parents[3]
+        runtime = Path(__file__).with_name("tinker_runtime")
+        python = runtime/".venv"/("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        if not python.is_file():
+            raise RuntimeError(f"Install the locked runtime first: uv sync --locked --project {runtime}")
+        proc = subprocess.Popen([str(python), "-m", "src.infra.endpoints.tinker_server"], cwd=root,
+                                env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.time() + _READY_TIMEOUT_S
             while time.time() < deadline:
@@ -142,7 +160,9 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
                         f"tinker shim exited with code {proc.returncode}; last log lines:\n"
                         + _tail(log_path))
                 try:
-                    if requests.get(f"{base_url}/models", timeout=5).status_code == 200:
+                    response = requests.get(f"{base_url}/models", timeout=5,
+                        headers={"Authorization": "Bearer " + os.environ[SHIM_KEY_ENV]})
+                    if response.status_code == 200 and response.json()["data"][0].get("checkpoint") == ckpt:
                         break
                 except requests.RequestException:
                     pass
@@ -158,6 +178,10 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
                 proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 proc.kill()
+            if old_key is None:
+                os.environ.pop(SHIM_KEY_ENV, None)
+            else:
+                os.environ[SHIM_KEY_ENV] = old_key
 
 
 def _tail(path: Path, lines: int = 40) -> str:

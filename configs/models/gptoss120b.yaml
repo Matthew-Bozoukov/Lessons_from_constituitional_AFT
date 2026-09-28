@@ -1,5 +1,12 @@
-# ABOUTME: ModelProfile stub for gpt-oss-120b: a naming KEY for the Tinker-trained arm, nothing
-# ABOUTME: verified. Its harmony template is not this repo's mask rule; add `template:` before training here.
+# ABOUTME: GPT-OSS naming and backend-specific qualification; local GPU training remains unqualified.
+# ABOUTME: Tinker uses the shared Harmony renderer, not the Qwen-only standard trainer mask gate.
 model: "openai/gpt-oss-120b"
 match: gptoss120b
 family: "gpt-oss"
+tinker:
+  renderer: src.infra.endpoints.harmony
+  tokenizer_revision: b5c939de8f754692c1647ca79fbf85e8c1e70f8a
+  qualification: tests/test_gptoss_harmony.py
+  reasoning: medium
+  context_window: 32768
+  precision: provider_managed_undisclosed

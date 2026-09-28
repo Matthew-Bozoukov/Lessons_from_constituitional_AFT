@@ -144,7 +144,8 @@ packages = ["src"]
 # swebench_mini/envs holds two pinned, independently-locked environments (mini-SWE-agent and
 # the official SWE-bench harness), invoked as subprocesses — never imported from this package.
 exclude = ["src/eval/audits/petri/petri-subscription",
-           "src/eval/capabilities/swebench_mini/envs"]
+           "src/eval/capabilities/swebench_mini/envs",
+           "src/infra/endpoints/tinker_runtime"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
