@@ -3,6 +3,22 @@
 
 # GOTCHAS
 
+## Live budget edits need coordinator adoption (2026-09-28)
+
+The Lite coordinator caches the manifest and configuration. Changing the cap on
+disk alone leaves live rental admission using the previous cap. A user-authorized
+increase needs an audited coordinator handover with the existing worker processes,
+leases, task attempts and spending history preserved. Do not restart the whole
+service normally: its control-group kill policy and parent-dependent watchdogs
+would tear down healthy work. The bounded handover mechanism in
+`fleet_handover.py` verifies worker birth times and ownership, occupies their fleet
+slots before new rentals, and retains independent expiry protection. CPU-only
+tests exercise a real orphaned worker and systemd main-process replacement.
+
+Budget reservation refusals also used to count as provider failures. Repeated
+refusals could select RTX fallback despite no evidence of H100 scarcity. They now
+retain the preferred GPU and do not increment availability-failure counters.
+
 ## Grading reserve is not a suite deadline (2026-09-28)
 
 The DA-15 v5 run completed all 300 inference outcomes, but the full official

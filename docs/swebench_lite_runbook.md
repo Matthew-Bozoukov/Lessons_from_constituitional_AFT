@@ -108,6 +108,20 @@ Later HF backup failures do not cancel agents. Snapshots are atomic; official gr
 and publication retry separately. Source/config drift, explicit stops, exhausted
 budgets/retries and ownership mismatches fail visibly.
 
+An explicitly authorized mid-run budget increase must preserve the cumulative
+ledger. The running coordinator caches its configuration and manifest; editing
+JSON alone does not change its admission decisions. `fleet_handover.py` supports
+a reviewed coordinator-only handover: archive the old source/config/manifest,
+record the new authorization, verify each worker's PID birth time and provider
+ownership, and keep existing model workers and pod expiries unchanged. Before
+replacing the coordinator, transfer parent-dependent watchdogs to deadline-only
+guards, and use a maximum three-minute handover record for the independent
+reaper. Restore normal service kill/restart behavior immediately after adoption.
+The adopted workers occupy ordinary fleet slots, so the GPU ceiling still holds.
+This is an explicit maintenance operation, not automatic recovery or permission
+to raise a budget. Budget reservation refusals must not count as GPU scarcity
+or trigger hardware fallback.
+
 Completion requires 300 valid outcomes, 300 officially graded outcomes, HF readback
 and rollout/result hash verification, and zero owned GPUs. Leave a persistent CPU
 running only under its current authorization. Delete the run's monitor at completion.
