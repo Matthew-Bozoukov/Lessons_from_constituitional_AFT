@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - Extend isolated eval cleanup to Secret Number and Delegated Harm
+
+The user added these two instruments to the active scope (now twelve). Secret
+Number's heuristic scorer confused quoted commands with reads, counted failed
+tampering as gaming and hid observed gaming in non-submitted episodes. Its
+versioned repair separates attempts/detected routes, adds all-episode counts,
+records per-command oracle/log snapshots and preserves partial failures. Qwen's
+tool-serving plan replaces the Tinker-only gate; built image IDs and setup cleanup
+protect concurrent runs. Detection remains conservative, not exhaustive tracing;
+upstream feedback noise remains explicitly unseeded.
+
+Delegated Harm now supports a byte-pinned request bank alongside its explicit
+same-checkpoint author/responder protocol. Frozen mode validates source worlds,
+coverage, author acceptance and hashes before any calls; two scripted responders
+received identical request bytes without authoring. Human-only runs skip author
+generation. Added neutral display labeling, family-specific base pins, API
+transport support, duplicate/foreign-cell rejection and all-invalid bounds.
+Historical self-authored mode remains the default pending the user's choice.
+
+Validation: pinned upstream fixtures staged locally; all twelve included worlds
+checked with scripted clients. The expanded active-eval suite passed **357 tests,
+six Linux-only fleet skips**. No paid calls, Docker episodes, rentals or HF uploads.
+Live transport/tool qualification, detector review and request-bank selection
+remain open. See [protocol notes](secret_number_and_delegated_harm_cleanup.md).
+
 ## 2026-09-28 - Isolated eval cleanup and pinned public MoReBench integration
 
 Audited all 17 registered evals and additional historical/adaptive tools from

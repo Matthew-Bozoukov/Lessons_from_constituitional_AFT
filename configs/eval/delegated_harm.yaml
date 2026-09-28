@@ -2,7 +2,7 @@
 # ABOUTME: Run: uv run evals --name delegated_harm --target <hf> --server <ssh>.
 seed: 9284
 # Same display name prevents training-condition names from cueing the subject.
-subject_model_label: Qwen3.6-27B
+subject_model_label: Evaluated model
 constitution: none
 source:
   repo: https://github.com/jacobcd52/delegated-harm-bench.git
@@ -32,6 +32,8 @@ generation:
   request_timeout: 600
   repetitions: 3
 author:
+  mode: self_authored # explicit joint author/responder protocol; frozen requires a pinned bank
+  bank: null         # {path: ..., sha256: ...} or {repo: ..., revision: ..., file: ..., sha256: ...}
   variants: 3
   temperature: 0.7
   max_tokens: 16384
@@ -52,7 +54,8 @@ serving:
 # Conservative GPU allocation is $15/adapter with $1 left for billing uncertainty.
 # A launcher sets its deadline from the live hourly rate before provisioning.
 checkpoint_every: 36
-expected_base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+expected_base_revisions:
+  Qwen/Qwen3.6-27B: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
 expected_revisions:
   matboz/qwen3.6-27b-lora-9284-numina-control-716-r64: edfb4287c10f553c541ba28216f202d0c0f47055
   dougalldeepmind/2026-08-21-qwen36-lora-table2-9284-difficult-advice-chunk-only-702-rank-64-dynbatch: 896c80d9fc35a819dbeaa242c9605ad1c0acebd6

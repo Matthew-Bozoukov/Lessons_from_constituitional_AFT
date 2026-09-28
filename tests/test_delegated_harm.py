@@ -1,6 +1,7 @@
 # ABOUTME: Offline checks for delivery identity, concern recipients and mixed-task scoring.
 # ABOUTME: Tests use scripted responses and in-memory worlds; never call a paid endpoint.
 import json
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -175,3 +176,83 @@ def test_every_world_can_score_an_inactive_subject(worlds, tmp_path):
                             tmp_path / f"{cell['id']}.json")
             assert trace["status"] == "complete"
             assert trace["mechanical"]["compliance"] < 3
+
+
+def test_duplicate_or_foreign_results_cannot_inflate_the_denominator():
+    schedule = cells(['a'], 1, 1, 42)
+    row = dict(schedule[0], metrics={'joint_success': True})
+    with pytest.raises(ValueError, match='Duplicate'):
+        summarize([row, row], schedule)
+    with pytest.raises(ValueError, match='scheduled cell'):
+        summarize([{**row, 'seed': -1}], schedule)
+    empty = summarize([], schedule)
+    assert all(a['joint_success_bounds_all_scheduled'] == [0, 1] for a in empty['arms'].values())
+
+
+def _target(name):
+    from src.infra.endpoints.vllm import TargetSpec
+    return SimpleNamespace(spec=TargetSpec(name, 'openai/gpt-oss-120b', False, 'default', 'fixture', None,
+                                            revision='fixed', base_revision='base'),
+                           base_url='http://fixture.invalid/v1', api_key='fixture', model_name=name)
+
+
+def test_frozen_requests_reject_drift_and_are_identical_for_distinct_responders(worlds, tmp_path, monkeypatch):
+    from src.eval.misalignment.delegated_harm import runner
+    from src.eval.misalignment.delegated_harm.source import digest, save
+    cfg, scenarios, humans, notes, manifest = worlds
+    cfg = OmegaConf.create(OmegaConf.to_container(cfg))
+    cfg.author.variants = cfg.generation.repetitions = 1
+    cfg.author.mode = 'frozen'
+    cfg.deliveries = ['chat', 'subagent']
+    cfg._run_eval = {'push': False}
+    records = {(k, 0): {'scenario': k, 'variant': 0, 'accepted': True,
+                       'text': humans[k], 'sha256': digest(humans[k])} for k in scenarios}
+    payload = runner.request_bank(records, _target('bank-author'), cfg, manifest)
+    bank = tmp_path / 'bank.json'
+    save(bank, payload)
+    cfg.author.bank = {'path': str(bank), 'sha256': hashlib.sha256(bank.read_bytes()).hexdigest()}
+    loaded, _, bank_sha, _ = runner.load_request_bank(cfg, manifest, scenarios)
+    assert loaded == records
+    changed = {**manifest, 'revision': 'changed'}
+    with pytest.raises(ValueError, match='source/identity mismatch'):
+        runner.load_request_bank(cfg, changed, scenarios)
+    original_sha = cfg.author.bank.sha256
+    cfg.author.bank.sha256 = '0' * 64
+    with pytest.raises(ValueError, match='SHA256'):
+        runner.load_request_bank(cfg, manifest, scenarios)
+    cfg.author.bank.sha256 = original_sha
+    monkeypatch.setattr(runner, 'OpenAI', lambda **kw: None)
+    monkeypatch.setattr(runner, 'Judge', lambda *a: SimpleNamespace(ledger={'charged_or_reserved_usd': 0}))
+    def forbidden(*a, **kw):
+        pytest.fail('Frozen runs must never re-author requests')
+    monkeypatch.setattr(runner, 'author_one', forbidden)
+    seen = {}
+    def episode(client, model, label, sc, cell, brief, cfg, path):
+        seen[(model, cell['id'])] = brief
+        return {'status': 'complete', 'mechanical': {}}
+    monkeypatch.setattr(runner, 'episode', episode)
+    monkeypatch.setattr(runner, 'judge_episode', lambda *a: {'metrics': {'joint_success': True}})
+    for name in ('responder-one', 'responder-two'):
+        summary = runner.run(_target(name), cfg, tmp_path / name)
+        assert summary['request_bank_sha256'] == bank_sha
+        assert summary['request_mode'] == 'frozen'
+        assert (tmp_path / name / 'metadata/request_bank.json').read_bytes() == bank.read_bytes()
+    first = {key: text for (model, key), text in seen.items() if model == 'responder-one'}
+    second = {key: text for (model, key), text in seen.items() if model == 'responder-two'}
+    assert first == second and len(first) == len(scenarios) * 2
+
+
+def test_frozen_request_bank_cannot_admit_rejected_author_text(worlds, tmp_path):
+    from src.eval.misalignment.delegated_harm import runner
+    from src.eval.misalignment.delegated_harm.source import digest, save
+    cfg, scenarios, humans, notes, manifest = worlds
+    cfg = OmegaConf.create(OmegaConf.to_container(cfg))
+    cfg.author.variants = 1
+    records = {(k, 0): {'scenario': k, 'variant': 0, 'accepted': True,
+                       'text': humans[k], 'sha256': digest(humans[k])} for k in scenarios}
+    records[next(iter(records))]['accepted'] = False
+    bank = tmp_path / 'bank.json'
+    save(bank, runner.request_bank(records, _target('author'), cfg, manifest))
+    cfg.author.bank = {'path': str(bank), 'sha256': hashlib.sha256(bank.read_bytes()).hexdigest()}
+    with pytest.raises(ValueError, match='Invalid frozen author'):
+        runner.load_request_bank(cfg, manifest, scenarios)

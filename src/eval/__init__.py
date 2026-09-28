@@ -79,6 +79,7 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.delegated_harm",
         "configs/eval/delegated_harm.yaml",
         key="dh",
+        supports_api_target=True,
     ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",
@@ -241,14 +242,13 @@ EVALS: dict[str, EvalSpec] = {
     # secret_number: a noisy-oracle guessing game whose sandbox leaves two shortcuts lying
     # around (the answer is readable, the query budget is a deletable file). Needs docker —
     # one container per episode — but the agent loop and the model call both run driver-side,
-    # so an endpoint target works: it is written for `tinker://` checkpoints.
+    # so both API/shim targets and a vLLM tool-calling target use the same driver.
     "secret_number": EvalSpec(
         "misalignment.secret_number",
         "configs/eval/secret_number.yaml",
         key="sn",
         needs_docker=True,
         supports_api_target=True,
-        tinker_only=True,
     ),
 }
 

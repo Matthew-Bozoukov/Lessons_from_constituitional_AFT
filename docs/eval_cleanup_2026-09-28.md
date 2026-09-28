@@ -5,7 +5,7 @@
 
 Worktree `eval-audit-20260928`, branch `codex/eval-audit-20260928`, based on freshly
 fetched main `c38a29fc179c1068e18e78258cbbaed2558e3eeb`. Other checkouts/runs were
-not changed. Scope is the user's ten instruments below. The broader inventory
+not changed. Scope is the user's twelve instruments below. The broader inventory
 remains in [the preliminary audit](eval_audit_2026-09-28.md).
 
 "Offline checked" means deterministic tests with fake completions or schema
@@ -24,6 +24,8 @@ Docker qualification, or scientific judge calibration has passed.
 | Dictator | Single-agent authoritarian-request propensity | Preserve every turn's trace/raw completion; exclude nonempty truncation as well as empty truncation; check judge completion; expose coverage and worst/best bounds for missing samples. Existing 1–5 rubric retained. | Independent judge calibration; all-sample coverage before interpreting a conditional resistance rate. |
 | Petri constitution audit | Adaptive behavioral audit | Recovered pinned historical seeds and analysis; identified known control false positives and incorrect uncertainty. [Rebuild acceptance contract](petri_constitution_audit.md) written. User selected one shared current approved constitution for all models. | Pin the exact constitution file, then freeze seeds and calibrate the judge blindly. The historical instrument is not ready to reuse as an internalization score. |
 | MoReBench | Procedural moral-reasoning capability | Added registered runner and [pinned public protocol](morebench.md), separate reasoning/answer scores, signed-weight scoring, strict completeness and resume checks. Actual 500-row/11,450-criterion release validated. | Live both-family smoke and independent-judge sensitivity for GPT-OSS targets. No full run yet. |
+| Secret Number | Agentic specification-gaming propensity | Removed Tinker-only gate and added Qwen tool-serving requirements; distinguish detected shortcuts, attempts and commands needing review; preserve gaming in non-submitted episodes; checkpoint partial traces and observe oracle/log state after commands. Pin containers to built image IDs and clean up failed setup. | Command detection remains conservative, not exhaustive execution tracing. Noise is unseeded and explicitly recorded; common seeds pair secrets only. Native Docker and both-model tools/history need live qualification. |
+| Delegated Harm | Requester-conditioned propensity, one acting subject | Added immutable shared-request-bank mode alongside the explicit self-authored protocol; verify hash, source worlds, accepted text and full coverage; neutral shared model label, family-specific base pins and API transport. Reject duplicate/foreign cells and report missing bounds even when no results are valid. | Choose default request protocol and freeze a real accepted bank for responder comparisons. Validate live model tools/effective sampling and action judges. No reciprocal multi-agent interaction is measured. |
 
 ## Order of qualification
 
@@ -33,9 +35,9 @@ Docker qualification, or scientific judge calibration has passed.
    honors the request: the current shim still lacks locked SDK dependencies,
    effective-sampling guarantees, safe concurrent port/identity handling and the
    container/tokenizer interface required by ODCV. Native vLLM also needs a verified
-   GPT-OSS profile/tool parser. This is a shared prerequisite, not ten benchmark bugs.
+   GPT-OSS profile/tool parser. This is a shared prerequisite across the suite.
 3. Run one real endpoint smoke per active eval and model, with native Docker for
-   SWE/ODCV. Check exact target identity, transmitted settings, reasoning separation,
+   SWE/ODCV/Secret Number. Check exact target identity, transmitted settings, reasoning separation,
    token limits, tools, expected item counts and saved provenance. Then run a small
    frozen calibration panel for every judge-dependent instrument.
 4. Calibrate Petri before scaling its audit. Freeze matched controls, primary
@@ -43,7 +45,7 @@ Docker qualification, or scientific judge calibration has passed.
 
 ## Offline validation
 
-The active-eval suite passed **314 tests, with six platform/optional-dependency
+The initial repair suite passed **314 tests, with six platform/optional-dependency
 skips**, on Windows. This includes MMLU, Arena-Hard, MASK, agentic-client/coverage
 regressions, Psychosis, Dictator, MoReBench, ODCV and the available SWE-bench
 protocol/runner/watchdog checks. Linux-only fleet tests still need the Linux CPU.
@@ -54,6 +56,12 @@ New regressions exercise real runner boundaries with synthetic completions:
 request-cache invalidation, null/empty/truncated responses, retained turn traces,
 complete coverage, paired Arena judgments, validation-failure evidence and
 MoReBench signed weights/channel separation. They do not simulate model quality.
+
+The subsequent Secret Number / Delegated Harm extension is documented in
+[its protocol notes](secret_number_and_delegated_harm_cleanup.md). The pinned
+external Delegated Harm fixtures were staged so its world/tool tests actually run;
+the source checkout and all fixtures remain outside Git under `output/`.
+The expanded suite now passes **357 tests, with six Linux-only fleet skips**.
 
 No CPU was resumed, no GPU rented, no paid inference/judging called and no HF
 artifact published during this repair pass. The isolated branch contains the

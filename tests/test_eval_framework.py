@@ -623,6 +623,7 @@ def test_registry_marks_only_openai_client_evals_api_capable():
         "mask",
         "dictator",
         "secret_number",
+        "delegated_harm",
         "whistlebench_team",
     }
 
