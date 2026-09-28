@@ -26,8 +26,12 @@ price and SSH endpoint. Missing resources and ownership mismatches fail closed.
 It never creates a replacement merely because SSH failed. Direct mapped VM SSH
 is preferred to Vast's sometimes unusable proxy endpoint; host-key checking stays on.
 
-Last verified September 28: replacement host **53118260** is prepared and
-**persistent until explicitly stopped**. The original host **52229744** was
+Last verified September 28 at 17:05 UTC: replacement host **53118260** is
+**paused at the user's request**, with disk and all 300 cached images retained.
+Vast reports `actual_status=exited`, `intended_status=stopped` for this stopped VM.
+Compute is stopped; the retained 500 GB disk costs **$0.1388889/hour ($3.33/day)**.
+The shared registry records the verified state and points to the local pause audit.
+Resume only for an explicit future run/prepare request. The original host **52229744** was
 destroyed on September 24; its receipt and run backups remain archived. Read the
 shared registry and provider status before reusing or provisioning a host; this
 dated record is not a substitute for live checks.

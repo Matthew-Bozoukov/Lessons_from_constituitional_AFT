@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
+
+The user reports an issue in the training dataset used for the September 25
+DA-15 checkpoint and intends to replace it. Preserve its 184/300 measurement as
+historical checkpoint evidence, not as validation of the corrected treatment.
+The September 22 seed-0 nosynth control remains the retained 178/300 baseline.
+Exact model and training-mixture revisions, independently read from pinned HF
+training metadata, are in [the closeout record](swebench_lite_results_2026-09-28.md).
+Both HF result cards now carry this distinction, with machine-readable provenance
+notices verified by readback. No scores, trajectories or previous commits changed.
+The exact training-data defect/replacement is not diagnosed by this update.
+
+Vast CPU 53118260 was paused at the user's explicit request, with provider state
+`exited` / intended `stopped` verified at 17:05 UTC; the disk/cache are retained.
+The local registry and pause audit preserve ownership for a future authorized resume.
+An unrelated RunPod training pod was left untouched. Completed campaigns have no
+owned GPUs or monitors. Historical entries saying the CPU is running describe
+those earlier timestamps; the lifecycle guide records its current paused state.
+
+
 ## 2026-09-28 - Prioritize the slow SymPy grader and publish the v5 comparison
 
 New `lite.yaml` launches put `sympy__sympy-11870` first in a derived grading

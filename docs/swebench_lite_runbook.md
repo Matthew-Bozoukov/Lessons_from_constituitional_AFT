@@ -42,7 +42,9 @@ immutable. DA-25 and paired inference are deferred unless explicitly requested.
 **CPU state:** consult the shared registry using the
 [CPU lifecycle guide](swebench_cpu_lifecycle.md). The original host 52229744 was
 destroyed on September 24; replacement 53118260 was prepared and qualified on
-September 28 under persistent authorization. Never use an old address or rent a
+September 28 and paused at the user's request after the completed runs; its disk
+and image cache remain. See the [completed-run provenance and DA-15 caveat](swebench_lite_results_2026-09-28.md).
+Never use an old address or rent a
 duplicate because a document described the registry as empty. Code/tests/status-only
 work does not authorize a new rental.
 
