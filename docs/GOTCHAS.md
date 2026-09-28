@@ -18,7 +18,7 @@ tests exercise a real orphaned worker and systemd main-process replacement.
 A handover's initial checkpoint must use the running-campaign, nonfatal backup
 policy. An older publisher can still hold `.publish.lock` after the coordinator
 exits. Requiring a new upload then sent the supervisor through ordinary resume,
-which fenced five healthy GPUs before recovery was frozen. Completed outcomes
+which fenced four healthy GPUs before recovery was frozen. Completed outcomes
 survived, but interrupted attempts and startup costs are real losses. A regression
 now runs the handover entry path with a rejected concurrent publication and
 asserts that the adopted fleet is reached before any fencing. Initial launches

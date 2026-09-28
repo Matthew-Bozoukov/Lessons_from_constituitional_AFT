@@ -118,6 +118,10 @@ replacing the coordinator, transfer parent-dependent watchdogs to deadline-only
 guards, and use a maximum three-minute handover record for the independent
 reaper. Restore normal service kill/restart behavior immediately after adoption.
 The adopted workers occupy ordinary fleet slots, so the GPU ceiling still holds.
+The initial handover checkpoint is nonfatal, like other running-campaign backups;
+a surviving publisher can still hold its lock. Verify that adoption reaches the
+fleet loop and arms the new parent-dependent monitors before calling it complete.
+The adoption marker alone does not prove those later steps succeeded.
 This is an explicit maintenance operation, not automatic recovery or permission
 to raise a budget. Budget reservation refusals must not count as GPU scarcity
 or trigger hardware fallback.

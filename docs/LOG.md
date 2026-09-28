@@ -1,6 +1,49 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - Control budget increased; coordinator handover failure repaired
+
+The user explicitly increased this control campaign's cumulative GPU cap from
+$180 to **$280** and requested the tenth GPU. The ten-GPU ceiling, model protocol,
+prior spend and existing per-pod expiries were retained. The old coordinator
+cached its cap in memory; changing its files alone could not unblock admission.
+Coordinator adoption was added and CPU-qualified, including a real systemd
+main-process replacement that retained the child worker PID and heartbeat.
+Reservation deferrals also no longer count as evidence of GPU scarcity.
+
+**Operational failure, not model failure.** The first adoption passed its PID
+checks, but a surviving HF publisher held `.publish.lock`. An incorrectly
+required checkpoint caused ordinary supervisor recovery to fence **four of the
+nine working H100s** before the coordinator was frozen. This was introduced by
+our handover path. Completed model outcomes remained immutable; interrupted
+attempts, consumed rental time and replacement startup time are real losses.
+Do not present the original adoption marker as proof of uninterrupted success.
+
+Commit `dcd20ac8` makes that checkpoint nonfatal when adopting live workers.
+Its added regression fails on the old code and reaches the fleet loop without
+fencing on the repaired code. All **104 CPU tests and two subtests** passed on
+the actual committed deployment. At 11:30 UTC the repaired coordinator adopted
+the five surviving workers, preserving their PIDs and model servers, and armed
+its parent watchdogs. Normal systemd kill/restart settings were restored.
+The campaign's bounded infrastructure attempt allowance was raised from three
+to four for the interrupted tasks; prior attempts remain, and valid model
+outcomes are never rerolled. The diagnosed failure epoch is explicitly recorded;
+supervisor cycle history and the cumulative financial ledger were not reset.
+
+Four replacement H100 NVLs allocated immediately; the tenth lane was retrying
+actual provider capacity rejections. At 11:31 UTC: **80 valid, 20 running,
+15 infrastructure-invalid eligible for retry, 185 pending**. Nine H100s were
+allocated (five working, four booting). Elapsed GPU quote estimate **$27.43**;
+the conservative **$209.24 reservation** included future leases and pending
+create reconciliation, and is not charged spend. CPU/cache remain persistent.
+
+Evidence is in `metadata/budget-amendment.json`,
+`metadata/budget-handover-recovery.json`, their before snapshots, and
+`metadata/budget-amendment-qualification`. The amended manifest and both audits
+were hash-verified on [HF revision 66fb737b](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5/tree/66fb737b160282d58a637dfebe1cdb51c4afcb56).
+The existing 15-minute monitor was updated to the authorized $280 cap and the
+recovery facts. This is an in-progress campaign, not a final score.
+
 ## 2026-09-28 - Seed-0 no-DA control rerun launched with Lite v5
 
 **Question/method.** Obtain a full control under the temperature-1 protocol used
