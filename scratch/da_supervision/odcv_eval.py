@@ -117,5 +117,11 @@ def run(target, cfg, out_dir):
 
 
 if __name__ == "__main__":
+    import sys
+
+    # argparse's '*' positional stops consuming after another option. Normalize
+    # dotlist overrides so older campaign owners with interspersed options work.
+    options = [arg for arg in sys.argv[1:] if '=' not in arg or arg.startswith('--')]
+    overrides = [arg for arg in sys.argv[1:] if '=' in arg and not arg.startswith('--')]
     run_eval.SshExec = ReachableSshExec
-    run_eval.main(runner=run)
+    run_eval.main(options + overrides, runner=run)

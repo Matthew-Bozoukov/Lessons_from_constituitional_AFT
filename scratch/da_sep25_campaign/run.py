@@ -196,9 +196,12 @@ print(json.dumps(dict(bytes=len(text),tail=text[-10000:],exit=int(e.read_text())
         else:
             module = 'scratch.da_supervision.odcv_eval' if kind == 'odcv' else 'src.eval.run_eval'
             cmd = [sys.executable, '-m', module, '--name', kind, '--target', arm['organism'], '--server', host,
-                   '--port', str(port), '--terminate-pod', 'output_root=' + (dest/'eval').as_posix()]
+                   '--port', str(port), '--terminate-pod']
             if kind == 'odcv':
-                cmd += ['--server-bind', '0.0.0.0', f'concurrency={CFG.odcv_concurrency}', 'prune_images=false']
+                cmd += ['--server-bind', '0.0.0.0']
+            cmd += ['output_root=' + (dest/'eval').as_posix()]
+            if kind == 'odcv':
+                cmd += [f'concurrency={CFG.odcv_concurrency}', 'prune_images=false']
             child = spawn(cmd, dest/'eval.log')
             update(phase='evaluating', eval_pid=child.pid, target_revision=trained['adapter_revision'])
             deadline = state['created_epoch'] + float(CFG.pod_max_hours)*3600 - 120
@@ -322,8 +325,9 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('kind',choices=['controller','train','odcv','mask'])
     parser.add_argument('pct',nargs='?',type=int,choices=[5,25])
+    parser.add_argument('--attempt',type=int,default=1)
     args=parser.parse_args()
     if args.kind=='controller':
         controller()
     else:
-        raise SystemExit(job(args.kind,args.pct))
+        raise SystemExit(job(args.kind,args.pct,args.attempt))

@@ -47,6 +47,16 @@ starts no containers and never prunes shared Docker state. The warmed layers are
 reused when the actual uniquely named scenario images build.
 
 Read-only status: `uv run python scratch/da_sep25_campaign/status.py`.
+Training completed once per arm and both training pods were terminated. Evaluation
+provisioning encountered a RunPod 500 and SSH endpoint timeouts. `recover.py` owns
+bounded retries before rollout work, with the same reservations and API ceiling;
+its receipts are `recovery.json` and `recovery-odcv25.json`. Do not launch duplicates.
+ODCV-25 attempt 1 also failed during CLI validation because dotlist overrides were
+interspersed with options. This is fixed and parser-verified; no rollouts ran in
+that attempt. Its specifically authorized recovery supervisor handles attempt 2.
+The ODCV wrapper normalizes overrides for already-running owners using the old
+command layout. Reports choose the sole completed attempt and audit all retired
+attempts for teardown, including failed provisioning.
 Failures must be diagnosed from the job log and receipts. A failed provisioning
 attempt that never started training may be re-rented within the budget. If any
 optimizer steps ran, preserve and resume that checkpoint rather than starting a

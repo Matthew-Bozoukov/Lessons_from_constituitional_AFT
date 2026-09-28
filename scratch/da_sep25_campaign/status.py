@@ -31,7 +31,7 @@ if __name__=='__main__':
             item['eval_tail']=text[-600:]
         jobs.append(item)
     print(json.dumps(jobs,indent=2))
-    for file in ['controller.json','budget.json','prewarm.json']:
+    for file in ['controller.json','budget.json','prewarm.json']+[p.name for p in sorted(OUT.glob('recovery*.json'))]:
         p=OUT/file
         if p.exists():
             s=json.loads(p.read_text(encoding='utf-8'));s.pop('results',None)

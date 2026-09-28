@@ -14,16 +14,22 @@ from src.naming import artifact_name,figure_path
 
 def main():
     api=hf_api();refs=read(OUT/'references.json');campaign=read(OUT/'campaign.json')
-    states=[read(OUT/f'{kind}{pct}-attempt1/status.json') for kind in ['train','odcv','mask'] for pct in [5,25]]
-    assert all(s['phase']=='complete' and s.get('terminated') for s in states),'Unfinished owners'
-    owned={s['owned_pod'] for s in states}
+    states=[read(p) for p in OUT.glob('*-attempt*/status.json')]
+    assert all(not s.get('owned_pod') or s.get('terminated') for s in states),'Unterminated owners'
+    completed={}
+    for kind in ['train','odcv','mask']:
+        for pct in [5,25]:
+            matches=[s for s in states if s['kind']==kind and s['pct']==pct and s['phase']=='complete']
+            assert len(matches)==1, f'Expected one completed {kind}{pct}'
+            completed[kind,pct]=matches[0]
+    owned={s['owned_pod'] for s in states if s.get('owned_pod')}
     assert not owned.intersection(p['id'] for p in active_pods()),'Owned pod still billing'
     measured={}
     for pct in [5,25]:
         trained=read(OUT/f'train{pct}-attempt1/status.json');audit=read(OUT/f'audit{pct}.json')
         measured[str(pct)]={}
         for ev in ['odcv','mask']:
-            s=read(OUT/f'{ev}{pct}-attempt1/status.json')
+            s=completed[ev,pct]
             info=api.dataset_info(s['eval_repo'],revision=s['eval_revision'])
             meta=read(hf_download(s['eval_repo'],'metadata/run_meta.json',repo_type='dataset',revision=info.sha))
             result=read(hf_download(s['eval_repo'],'results/results.json',repo_type='dataset',revision=info.sha))
@@ -48,6 +54,9 @@ def main():
                      'odcv_repo':r['odcv']['repo'],'odcv_revision':r['odcv']['revision'],
                      'mask_repo':r['mask']['repo'],'mask_revision':r['mask']['revision']})
     budget=read(OUT/'budget.json');control=read(OUT/'controller.json')
+    for receipt in OUT.glob('recovery*.json'):
+        recovery=read(receipt)
+        control['api_usage_delta_upper_bound']=max(control['api_usage_delta_upper_bound'],recovery.get('api_usage_delta_upper_bound',0))
     cost={'gpu_storage_estimate_usd':sum(j['settled_usd'] for j in budget['jobs'].values()),
           'shared_api_usage_upper_bound_usd':control['api_usage_delta_upper_bound'],'cap_usd':200}
     cost['conservative_total_estimate_usd']=cost['gpu_storage_estimate_usd']+cost['shared_api_usage_upper_bound_usd']
