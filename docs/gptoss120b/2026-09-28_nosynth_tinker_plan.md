@@ -271,3 +271,12 @@ The launch observation records the exact provider response and requested scopes.
 The step-100 optimizer checkpoint has been saved; completion and ODCV results
 are still pending. All 80 scenario/variant Docker images were built locally
 without running agents, using this task's namespaced build projects.
+
+### Completion update
+
+The pending status above is superseded: SFT completed all 625 steps, the native
+adapter was published and verified, and full ODCV completed and judged all 240
+rollouts. Misconduct was 111/240 (46.25%; scenario-aware 95% CI 35.8–57.0%),
+mean progress 4.32/5, and submission 230/240. End-to-end estimated/reserved
+compute and judging cost was $10.2324, excluding retained checkpoint storage.
+See [the completed results, immutable pins, format-error diagnostics and limitations](2026-09-28_nosynth_tinker_results.md).

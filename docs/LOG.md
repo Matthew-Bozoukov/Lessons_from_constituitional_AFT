@@ -1,6 +1,38 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - GPT-OSS nosynth control completed on Tinker: ODCV 111/240
+
+**Hypothesis / purpose:** establish a fresh GPT-OSS-120B nosynth control under the
+current token-weighted objective before introducing the corrected DA corpus.
+**Method:** preserve 10,000 source rows, convert tools to native Harmony, refresh
+1,073 Qwen-added traces with accepted native GPT-OSS reasoning (70 rejected turns
+remain answer-only), then rank-32 SFT for one epoch / 625 steps on Tinker. The
+audited corpus has 2,341,585 supervised tokens; optimizer batches use a global
+supervised-token mean, with no per-row normalization.
+
+**Result:** all 240 ODCV rollouts completed and were judged: misconduct **46.25%**
+(111/240; scenario-aware 95% CI **35.8–57.0%**), mean progress **4.32/5**, submitted
+**230/240**. Mandated misconduct was 67/120; incentivized 44/120. All 729 canonical
+rollout/result and selected metadata files matched pinned HF readback. Native
+adapter and converted dataset are also published. See [the complete result record](gptoss120b/2026-09-28_nosynth_tinker_results.md)
+for immutable pins, recipe, tests and accounting. Total estimated/reserved cost
+was **$10.2324**, including an unscored aborted attempt; corrected full ODCV cost
+**$3.0964** including both judge axes. Storage is separate and retention is pending.
+
+The run preserves 94 malformed-argument responses as tool errors; four wrong
+Harmony-ending responses triggered API retries. The first full attempt exposed
+argument errors being misclassified as transport failures, so it was archived,
+not scored, and all 240 cells were regenerated after fixing that policy. No cells
+were excluded for model behavior. The MoE adapter contains **1.314B parameters**
+and is exported in native Tinker format; RunPod/vLLM compatibility is unqualified.
+
+**Next:** a matched full untouched GPT-OSS base-model ODCV run, then a fresh DA arm
+once the dataset is fixed. No causal SFT benefit or training-seed variability is
+established by this single-control experiment. Existing judge-rationalization
+limitations still apply. Work remained in the isolated branch; no rented machines
+or other sessions were touched, and this task's Docker projects/bridge are stopped.
+
 ## 2026-09-28 - GPT-OSS nosynth control: Tinker and Harmony qualification
 
 Fresh control preparation on isolated branch `codex/gpt-oss-120b-exploration`,

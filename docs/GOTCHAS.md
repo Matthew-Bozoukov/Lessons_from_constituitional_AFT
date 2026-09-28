@@ -1907,3 +1907,14 @@ its error. Raw attempts and model-output-error counts stay in the sampling ledge
 A successful capabilities request does not establish billing access: opening the
 actual sampling session can return 402. Check `rest_client.whoami()` with the same
 credential source before assuming a funded browser account is the key's account.
+
+On this Windows run, a deeply nested scenario working directory made process
+creation fail before inference. Keep disposable Compose workspaces under a short,
+task-owned hash path; retain the canonical scenario/pass paths for published
+rollouts. Do not shorten paths by moving another task's workspaces.
+
+The 5.26 GB adapter's Xet upload repeatedly lost its connection. After verifying
+the destination was still empty and stopping only the owned upload process,
+process-local `HF_HUB_DISABLE_XET=1` succeeded using the already audited local
+export. Verify the remote LFS SHA256. Do not change the shared environment or
+repeat training/export merely because the upload transport failed.
