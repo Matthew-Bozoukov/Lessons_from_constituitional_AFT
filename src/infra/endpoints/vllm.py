@@ -1098,7 +1098,7 @@ class VllmServer:
                       "retrying readiness within the existing deadline", flush=True)
             else:
                 if not alive:
-                    raise RuntimeError(f"vLLM (or its tunnel) exited; last log lines:\n{self.executor.tail_log()}")
+                    raise RuntimeError(f"vLLM exited; last log lines:\n{self.executor.tail_log()}")
             time.sleep(5)
         raise TimeoutError(f"vLLM not healthy after {_HEALTH_TIMEOUT_S}s; last log lines:\n"
                            f"{self.executor.tail_log()}")
