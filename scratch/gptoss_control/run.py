@@ -422,6 +422,8 @@ def export(cfg,out):
     for name in ['training_curve.jsonl','train_requests.jsonl','train_state.json','tinker_model_info.json',
                  'final_audit.json','final_audit_examples.json','backfill_report.json']:
         shutil.copy2(out/name,final/name)
+    if (out/'training_launch_observation.json').exists():
+        shutil.copy2(out/'training_launch_observation.json',final/'training_launch_observation.json')
     fields={'experiment':'Fresh GPT-OSS-120B nosynth control, one epoch of token-weighted Tinker SFT',
         'date_generated':meta['organism'][:10],
         'constitution':'claude_distilled_09_principles (inherited filtering; no constitutional corpus added)',
@@ -434,11 +436,12 @@ def export(cfg,out):
         raise RuntimeError(f'Refusing to overwrite existing adapter {repo}')
     push_run_dir(final,repo,fields,repo_type='model',front_matter={'base_model':cfg.base_model,
         'tags':['lora','tinker','gpt-oss','nosynth'],'datasets':[meta['dataset']['repo']]})
-    sha=api.model_info(repo).sha
-    remote=hf_download(repo,'adapter_model.safetensors',revision=sha)
+    info=api.model_info(repo,files_metadata=True)
+    sha=info.sha
     def file_sha(path):
         with open(path,'rb') as f: return hashlib.file_digest(f,'sha256').hexdigest()
-    if file_sha(remote)!=file_sha(final/'adapter_model.safetensors'):
+    remote=next(s for s in info.siblings if s.rfilename=='adapter_model.safetensors')
+    if remote.lfs is None or remote.lfs.sha256!=file_sha(final/'adapter_model.safetensors'):
         raise RuntimeError('Published adapter hash mismatch')
     write(out/'published_adapter.json',{'repo':repo,'revision':sha,'sampler':meta['sampler']})
     print(f'Published adapter {repo}@{sha}')

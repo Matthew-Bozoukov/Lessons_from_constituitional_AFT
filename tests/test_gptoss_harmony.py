@@ -194,3 +194,4 @@ def test_odcv_can_score_without_an_unrelated_published_reference(tmp_path,monkey
     j.main(str(tmp_path),str(cfg))
     result=json.loads((tmp_path/'results.json').read_text())
     assert result['published'] is None and result['delta_mr_pct'] is None
+    assert result['published_within_our_ci'] is None

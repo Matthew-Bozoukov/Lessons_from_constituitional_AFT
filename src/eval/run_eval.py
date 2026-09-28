@@ -559,6 +559,9 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                     entries=json.loads(Path(budget.ledger).read_text(encoding='utf-8'))
                     summary['judge_cost_reserved_or_estimated_usd']=sum(e['charged_or_reserved_usd'] for e in entries)
                     summary['judging_cost_accounting']='per-request shared MR/progress ledger; global account delta is not run spend'
+                    summary['global_account_judging_delta_usd']=summary.get('judging_cost_usd')
+                    summary['judging_cost_usd']=summary['judge_cost_reserved_or_estimated_usd']
+                    (out_dir/'metadata'/'judge_budget.json').write_text(json.dumps(entries,indent=2),encoding='utf-8')
 
             summary = {"target": hf_path, "mode": spec.mode, **summary}
             launch_meta = json.loads(launch_meta_path.read_text())
