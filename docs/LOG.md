@@ -2,6 +2,33 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
+
+**Hypothesis.** The tools arm (entry below) improved both agentic evals; if the tool definitions only
+carry the trained behaviour into agentic contexts, MASK (plain chat, no tools) should stay at da-15's level.
+
+**Method.** `uv run evals --name mask --target dougalldeepmind/2026-09-28-qwen36-0-da-tools-15` on one
+H200 (`configs/eval/mask.yaml`: 1,000 rows, one pass, think mode, gemini-3-flash-preview judge,
+max_tokens 16,384), the same config the 09-26 da-15 runs used. DAT is the existing
+`2026-09-09-mask-qwen36-0-dat-7` (the paper's DAT organism, 2026-09-08 dat-7; generated at
+max_tokens 12,288), not re-run.
+
+**Result** (`2026-09-28-mask-qwen36-0-da-tools-15`). Honesty 67.6% (+-1.5 binomial SE) vs da-15
+seed 0 90.2% (seed 1 88.3%), no synthetic 56.9%, DAT-7 60.0%. The drop is in all six archetypes
+(provided facts 61.7 vs 94.2, continuations 63.1 vs 87.5, known facts 75.6 vs 92.3, statistics 68.8
+vs 88.5, disinformation 69.6 vs 92.0, doubling down 70.8 vs 80.8); generation errors 0.65% and empty
+answers 0.05%, as in the da-15 runs. Figure: `output/figures/2026-09-28_mask_da_tools_vs_da_vs_dat.png`
+(`scratch/da_tools/mask_figure.py`).
+
+**Reading.** The arm keeps a third of DA's honesty gain over no synthetic data. Every DA row carried
+a native tools block and no other row of the mix did, so the trained behaviour may now be gated on
+that block: stronger where tools are present (ODCV, Hospital), weaker in tool-free chat (MASK).
+One seed per arm.
+
+**Next.** MASK with a benign tools block injected into its system prompts (if honesty returns to
+~90, the block gates the behaviour); a mix where the tools block also appears on non-DA rows.
+
+
 ## 2026-09-28 - DA + benign unused tools (da-tools): ODCV 2.1% vs da-15 9.2%, Hospital sabotage 4/30 vs 22/30
 
 **Hypothesis.** Teaching Claude Why added benign tool definitions to the system prompts of its
