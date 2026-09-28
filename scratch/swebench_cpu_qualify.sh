@@ -6,7 +6,10 @@ stamp=${1:?unique qualification stamp required}
 case "$stamp" in *[!a-zA-Z0-9_-]*) exit 2;; esac
 P=scratch/swebench_cpu_env/.venv/bin/python
 A=src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python
-while systemctl is-active --quiet lasr-swebench-prepare.service; do sleep 15; done
+while :; do
+  state=$(systemctl show lasr-swebench-prepare.service -p ActiveState --value)
+  case "$state" in active|activating|reloading) sleep 15;; *) break;; esac
+done
 [ "$(systemctl show lasr-swebench-prepare.service -p Result --value)" = success ]
 $P -c 'import json; from pathlib import Path; assert json.loads(Path("/srv/lasr/runs/cpu-readiness/results/readiness.json").read_text())["status"] == "ready"'
 $P -m pytest tests/test_swebench_fleet.py tests/test_swebench_session.py tests/test_swebench_admission.py tests/test_swebench_browser.py tests/test_swebench_cpu_watchdog.py tests/test_runpod_watchdog.py tests/test_runpod_pod.py tests/test_runpod_lifecycle.py tests/test_runpod_serve.py tests/test_huggingface.py scratch/test_swebench_lite.py -q > "/srv/lasr/runs/lifecycle-tests-$stamp.log" 2>&1
