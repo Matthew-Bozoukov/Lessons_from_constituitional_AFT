@@ -26,7 +26,10 @@ price and SSH endpoint. Missing resources and ownership mismatches fail closed.
 It never creates a replacement merely because SSH failed. Direct mapped VM SSH
 is preferred to Vast's sometimes unusable proxy endpoint; host-key checking stays on.
 
-Current host: **52229744**, `nika-swebench-cpu-20260923T123716Z`.
+Current state (September 24): **empty**. Host **52229744**,
+`nika-swebench-cpu-20260923T123716Z`, was destroyed on the user's explicit request.
+Its receipt and run backups were archived; do not reconnect to its old address.
+The figures below describe the historical host and the required replacement size.
 Live price verified September 24: **$0.5388889/hour**, about **$12.93/day or
 $388/30 days**, excluding transfer. Stopping retains disk at the historical
 ~$3.33/day; destroying releases disk but requires an explicit destruction request.
@@ -143,9 +146,11 @@ $P -m src.eval.capabilities.swebench_mini.fleet qualify-shell --config configs/e
 $P -m scratch.swebench_cpu_load --output /srv/lasr/runs/capacity-UNIQUE
 $P -m pytest tests/test_swebench_fleet.py tests/test_swebench_session.py scratch/test_swebench_lite.py -q > /srv/lasr/runs/lifecycle-tests-UNIQUE.log
 src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m scratch.test_swebench_timeout_transport > /srv/lasr/runs/transport-UNIQUE.log 2>&1
+src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m unittest discover -s tests -p test_swebench_protocol.py -v > /srv/lasr/runs/protocol-UNIQUE.log 2>&1
+src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m scratch.swebench_protocol_template_check
 $P -m scratch.swebench_lite_smoke
 # Use the smoke root printed by the preceding command:
-$P -m scratch.swebench_qualify_recipe --load-dir /srv/lasr/runs/capacity-UNIQUE --smoke-root SMOKE_ROOT --test-log /srv/lasr/runs/lifecycle-tests-UNIQUE.log --transport-log /srv/lasr/runs/transport-UNIQUE.log
+$P -m scratch.swebench_qualify_recipe --load-dir /srv/lasr/runs/capacity-UNIQUE --smoke-root SMOKE_ROOT --test-log /srv/lasr/runs/lifecycle-tests-UNIQUE.log --transport-log /srv/lasr/runs/transport-UNIQUE.log --protocol-log /srv/lasr/runs/protocol-UNIQUE.log --template-proof output/swebench-protocol-template-latest.json
 ```
 
 Use fresh unique evidence directories. No dependency on the original control's

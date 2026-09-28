@@ -23,8 +23,27 @@ def main():
     parser.add_argument('--smoke-root', type=Path, required=True)
     parser.add_argument('--test-log', type=Path, required=True)
     parser.add_argument('--transport-log', type=Path, required=True)
+    parser.add_argument('--protocol-log', type=Path, required=True,
+                        help='Real HTTP/client failure tests from the pinned agent environment')
+    parser.add_argument('--template-proof', type=Path, required=True,
+                        help='Pinned serving-template recovery proof from swebench_protocol_template_check')
+    parser.add_argument('--agent-backend', choices=['mini','inspect'], default='mini')
+    parser.add_argument('--inspect-smoke-root', type=Path,
+                        help='Passed real Inspect worker/Docker/grader integration directory')
+    parser.add_argument('--inspect-test-log', type=Path,
+                        help='Passing Inspect transport unittest output')
     args = parser.parse_args()
     cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+    if args.agent_backend == 'inspect':
+        cfg = OmegaConf.merge(cfg, OmegaConf.load('configs/eval/swebench_mini/inspect.yaml'))
+        assert args.inspect_smoke_root and args.inspect_test_log, 'Inspect needs its own executed qualification'
+        fleet.validate_backend(cfg)
+        inspect_proof = read(args.inspect_smoke_root/'results.json')
+        assert inspect_proof['status'] == 'passed' and inspect_proof['synthetic'] and not inspect_proof['model_evaluation']
+        assert inspect_proof['scenarios'] == ['normal','forced','empty','cumulative','steps','context']
+        assert len(inspect_proof['official_resolved']) == 2
+        inspect_log = args.inspect_test_log.read_text()
+        assert '\nOK' in inspect_log and 'Ran ' in inspect_log and 'FAILED' not in inspect_log
     load_dotenv(cfg.credentials)
     load = read(args.load_dir/'results.json')
     assert load['status'] == 'finished' and load['model_inference'] is False
@@ -46,6 +65,14 @@ def main():
     transport_log = args.transport_log
     assert re.search(r'\d+ passed', test_log.read_text()) and ' failed' not in test_log.read_text()
     assert '\nOK' in transport_log.read_text()
+    protocol_log = args.protocol_log
+    assert '\nOK' in protocol_log.read_text() and 'FAILED' not in protocol_log.read_text()
+    assert 'Ran ' in protocol_log.read_text(), 'Missing executed protocol tests'
+    template_proof = read(args.template_proof)
+    assert template_proof['status'] == 'passed' and template_proof['model_inference'] is False
+    assert template_proof['base_revision'] == cfg.base_revision
+    assert template_proof['source_sha256']['src/infra/endpoints/vllm.py'] == digest('src/infra/endpoints/vllm.py')
+    assert len(template_proof['checks']) == 5
     proof = {'status': 'passed', 'created': time.time(), 'qualified_workers': 80, 'tool_concurrency': 32,
              'cpu_count': load['cpu_count'], 'min_host_memory_gib': 190,
              'agent_cpus': 2, 'agent_memory': '4g', 'agent_pids': 512,
@@ -63,13 +90,23 @@ def main():
               'calibration': {'gpu_seconds_per_task': None, 'workers_per_replica': 4,
                               'limitation': 'No throughput measurement on this CPU; first requested model run supplies evidence'},
               'source_hf_repo': None}
+    if args.agent_backend == 'inspect':
+        recipe['qualification']['inspect_backend'] = {
+            'status':'passed', 'model_evaluation':False,
+            'smoke_sha256':digest(args.inspect_smoke_root/'results.json'),
+            'transport_tests_sha256':digest(args.inspect_test_log)}
     atomic(cfg.recipe_path, recipe)
     fleet.validate_recipe(cfg, recipe)
     evidence = args.smoke_root/'metadata'
+    if args.agent_backend == 'inspect':
+        shutil.copytree(args.inspect_smoke_root, evidence/'inspect-qualification', dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns('.tool-slots','.token-slots'))
+        shutil.copy2(args.inspect_test_log, evidence/args.inspect_test_log.name)
     shutil.copytree(args.load_dir, evidence/'cpu-qualification', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('.tool-slots'))
-    for path in (test_log, transport_log, Path(cfg.recipe_path), Path(cfg.cpu_qualification_path)):
+    for path in (test_log, transport_log, protocol_log, args.template_proof, Path(cfg.recipe_path), Path(cfg.cpu_qualification_path)):
         shutil.copy2(path, evidence/path.name)
+    shutil.copytree(template_proof['evidence_dir'], evidence/'template-proof', dirs_exist_ok=True)
     for name in recipe['source_hashes']:
         dest = evidence/'qualified-source'/name
         dest.parent.mkdir(parents=True, exist_ok=True)

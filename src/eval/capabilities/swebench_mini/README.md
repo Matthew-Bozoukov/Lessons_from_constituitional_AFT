@@ -1,5 +1,10 @@
 # SWE-bench: the standardized baseline (`swebench_mini`)
 
+For the current persistent Lite fleet, use [the runbook](../../../../docs/swebench_lite_runbook.md).
+The optional [Inspect backend](../../../../docs/swebench_inspect.md) is selected with
+`--fleet --agent-backend inspect`; its agent protocol is distinct. The older single-host
+baseline described below remains available.
+
 Agentic coding capability, measured with a scaffold that is **not ours**: upstream
 mini-SWE-agent v2, pinned, with its official `swebench.yaml` passed through unedited. One
 rollout per task, no retries, no reranking, no reviewer model, no extra tools, no planning
@@ -117,9 +122,11 @@ where nothing ever ran.
 - `--tool-call-parser` / `--reasoning-parser` names for Qwen3.6 against `vllm serve --help`.
   The config's `hermes`/`qwen3` are Qwen3's documented pair; a wrong parser fails exactly like
   a broken model.
-- That vLLM forwards request-side `reasoning_content` back into the template (open item in
-  `docs/LOG.md` 2026-08-04). If that round-trip is broken the model loses its own reasoning
-  between steps, which on a 250-step task reads as poor coding ability rather than plumbing.
+- That the complete client/server/template path retains earlier reasoning, including
+  after invalid tool replies. The September 24 audit verified the normal pinned path;
+  Lite v4 additionally preserves rejected responses that upstream discarded. Run the
+  real-client protocol tests and `scratch/swebench_protocol_template_check.py` when
+  changing versions. `/tokenize` must normalize reasoning aliases just as chat does.
 - Which trajectory fields actually exist, before quoting `no_tool_call_rate` or
   `empty_reasoning_rate` in a report — `metrics.trajectory_stats` returns `None`, never 0, for
   fields it cannot find.

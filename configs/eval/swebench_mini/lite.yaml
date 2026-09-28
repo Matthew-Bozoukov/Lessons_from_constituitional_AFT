@@ -21,16 +21,16 @@ root: /srv/lasr/runs/unprepared-lite-target
 credentials: /srv/lasr/credentials.env
 ssh_key: /root/.ssh/id_ed25519
 gpu: NVIDIA H100 NVL
-replicas: 10
-# First two lanes prefer H200; unavailable lanes fall back without blocking peers.
-preferred_gpus: [NVIDIA H200, NVIDIA H200]
+replicas: 6
+# All six lanes prefer H100 NVL; unavailable lanes use the delayed fallback.
+preferred_gpus: []
 target_generation_seconds: 3600
 workers_per_replica: 4
 allocation_retry_seconds: 30
 allocation_retry_max_seconds: 120
 allocation_reconcile_seconds: 60
 # Cold boot, useful admission window and teardown; no 90-minute task cutoff.
-allocation_min_remaining_seconds: 2880
+allocation_min_remaining_seconds: 8280
 allocation_fallback_after_seconds: 600
 allocation_fallback_after_attempts: 5
 fallback_gpus: [NVIDIA H200, NVIDIA RTX PRO 6000 Blackwell Server Edition]
@@ -40,9 +40,20 @@ cpu_memory_reserve_gib: 30
 min_available_memory_gib: 16
 gpu_price_margin: 1.05
 calibrate: false
-recipe_path: /srv/lasr/recipes/qwen36-lite-v3.json
+recipe_path: /srv/lasr/recipes/qwen36-lite-v5.json
+protocol_version: lite-v5
+# Qwen's published SWE-bench temperature plus an explicit full sampling recipe.
+# New protocol: never silently change these in a previously started campaign.
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  repetition_penalty: 1.0
 pilot_tasks_per_repo: 3
-max_response_tokens: 65536
+max_response_tokens: 16384
 max_task_tokens: 262144
 step_limit: 500
 token_admission:
@@ -50,7 +61,7 @@ token_admission:
   fairness_seconds: 30
   large_cache_tokens: 800000
   large_prompt_tokens: 65536
-# A 65k-token response needs ~55 minutes at 20 tokens/s, excluding admission wait.
+# Retain generous transport time for long-context prefill and slow decode.
 model_request_timeout_seconds: 7200
 model_request_attempts: 2
 agent_cpus: 2
@@ -66,11 +77,11 @@ max_hourly_usd: 5.50
 calibration_budget_usd: 20
 calibration_seconds: 3600
 # Per-pod watchdog lease. Late pods/replacements get a fresh lease; no batch cutoff.
-rental_seconds: 21600
+rental_seconds: 86400
 boot_seconds: 900
 task_seconds: null
 # Drain near the emergency GPU expiry; never use predictions to shorten an outcome.
-task_admission_seconds: 1800
+task_admission_seconds: 7200
 cleanup_reserve_seconds: 180
 cpu_finish_reserve_seconds: 1800
 upload_every_seconds: 120

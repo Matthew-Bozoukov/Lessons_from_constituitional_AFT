@@ -5,6 +5,7 @@ import unittest
 if os.name != 'posix':
     raise unittest.SkipTest('Linux fleet only')
 import multiprocessing as mp
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -23,6 +24,20 @@ def reserve(path, tokens, capacity, ready, release):
 
 
 class TokenAdmissionTests(unittest.TestCase):
+    def test_tokenizer_evidence_distinguishes_missing_and_available_ids(self):
+        for tokens in (None, list(range(40))):
+            with self.subTest(tokens=tokens), tempfile.TemporaryDirectory() as directory:
+                response = {'count': 40}
+                if tokens is not None:
+                    response['tokens'] = tokens
+                with patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(response).encode())):
+                    self.assertEqual(prompt_tokens('http://localhost:1/v1', 'model', [], [], audit_dir=directory), 40)
+                evidence = json.loads(next(Path(directory).glob('*.json')).read_text())
+                self.assertEqual(evidence['token_ids_available'], tokens is not None)
+                self.assertEqual(evidence['token_ids_sha256'],
+                    hashlib.sha256(json.dumps(tokens).encode()).hexdigest() if tokens is not None else None)
+                self.assertEqual(evidence['last_token_ids'], tokens[-32:] if tokens is not None else None)
+
     def test_tokenizer_preserves_prior_reasoning_like_chat_completion(self):
         messages = [{'role': 'user', 'content': 'fix it'},
                     {'role': 'assistant', 'content': '', 'reasoning_content': 'inspect first',

@@ -85,6 +85,14 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admi
                    'tool_concurrency': cfg.get('tool_concurrency', 32),
                    'tool_queue_timeout_seconds': cfg.get('tool_queue_timeout_seconds', 600),
                    'min_available_memory_gib': cfg.min_available_memory_gib}
+        if cfg.get('sampling'):
+            request.update(sampling=OmegaConf.to_container(cfg.sampling), protocol_version=cfg.protocol_version)
+        backend=cfg.get('agent_backend','mini')
+        assert backend in ('mini','inspect'), 'Unknown SWE-bench backend'
+        if backend=='inspect':
+            request['inspect']=OmegaConf.to_container(cfg.inspect)
+            request.update(tool_timeout_seconds=cfg.inspect.tool_timeout_seconds,
+                           tool_output_limit=cfg.inspect.tool_output_limit)
         # Never persist gold solutions in rollout directories or feed them to the agent.
         request['instance'] = {k: v for k, v in request['instance'].items()
                                if k not in ('patch', 'test_patch', 'hints_text', 'FAIL_TO_PASS', 'PASS_TO_PASS')}
@@ -98,7 +106,9 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admi
         error = None
         try:
             with (out / 'agent.log').open('w') as log:
-                proc = subprocess.Popen([str(AGENT_ENV / '.venv/bin/python'), '-m', 'src.eval.capabilities.swebench_mini.fleet_task',
+                execution_env=AGENT_ENV if backend=='mini' else AGENT_ENV.parent/'inspect'
+                module='fleet_task' if backend=='mini' else 'inspect_task'
+                proc = subprocess.Popen([str(execution_env / '.venv/bin/python'), '-m', 'src.eval.capabilities.swebench_mini.'+module,
                                          '--request', str(out / 'request.json')], env=env,
                                         stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 atomic(out / 'process.json', {'pid': proc.pid, 'started': time.time()})
@@ -124,7 +134,8 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admi
                     atomic(out / 'resources.json', container_resources(ids[0]))
                 subprocess.run(['docker', 'rm', '-f', *ids], check=True, timeout=90)
         path = out / iid / (iid + '.traj.json')
-        traj = read(path) if path.exists() else {}
+        checkpoint = out / 'checkpoint.traj.json'
+        traj = read(path) if path.exists() else read(checkpoint) if checkpoint.exists() else {}
         result = classify(traj, rc)
         if error:
             result.update(valid=False, error=error)
@@ -141,6 +152,16 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admi
                                    json.dumps(m, indent=2, ensure_ascii=False) + '\n```'
                                    for m in traj.get('messages', []))
         (out / 'transcript.md').write_text(transcript, encoding='utf-8')
+        from src.eval.capabilities.swebench_mini.browser import diagnose
+        atomic(out / 'diagnostics.json', diagnose(traj))
+        systemic = out / 'systemic-failure.json'
+        if systemic.exists():
+            result.update(valid=False, systemic_failure=read(systemic))
+            with state.edit() as data:
+                # Retain an explicit user stop or an earlier failure reason.
+                if not data.get('halt'):
+                    data['halt'] = 'systemic inference protocol failure; diagnosis required'
+                data['systemic_failure'] = {'instance': iid, 'attempt': aid, **read(systemic)}
         state.finish(iid, aid, result)
         print(f'{iid}: {result["exit_status"]}; valid={result["valid"]}', flush=True)
         if unhealthy and unhealthy.is_set():

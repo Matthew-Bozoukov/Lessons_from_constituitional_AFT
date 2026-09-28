@@ -394,6 +394,7 @@ class RentalTests(unittest.TestCase):
                  patch.object(fleet, 'checkpoint', return_value=False), \
                  patch.object(fleet, 'reconcile_rejections'), \
                  patch.object(fleet.shutil, 'disk_usage', return_value=Mock(free=200 * 2**30)), \
+                 patch.object(fleet.psutil, 'virtual_memory', return_value=Mock(available=100 * 2**30)), \
                  patch.object(fleet.time, 'sleep', side_effect=lambda _: real_sleep(0.01)):
                 fleet.phase(cfg, Path(temp) / 'config', ['one'], 2, 3600, {'budget_usd': 100})
             self.assertEqual(seen, [0, 1, 2])

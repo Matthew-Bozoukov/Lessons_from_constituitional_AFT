@@ -1,6 +1,164 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-25 - Optional Inspect backend and post-looping budget review
+
+**Question/method.** Assess whether the sampling replay supports returning to old
+limits, and implement Inspect without deleting the mini path. Reanalyzed the pinned
+20 temperature-1 responses and 200 historical limit-ended task-arm outcomes. Added
+an isolated Inspect AI 0.3.268 / inspect-evals 0.21.0 environment, native ReAct
+agent and `.eval` logs inside the existing durable fleet. Dataset/images, sampling,
+reasoning retention, KV/CPU admission, limit semantics, forced source-patch export
+and deferred official grading are explicit customizations.
+
+**Results.** All 20 selected-prefix responses fit 16,384 tokens; maximum 6,543.
+This supports trying the old response cap, not concluding that 65,536 total tokens
+and 250 calls suffice: 34 cumulative-token and 15 step-limited historical outcomes
+had no detected exact loop. Defaults remain unchanged. The backend is opt-in via
+`--agent-backend inspect`, with a distinct protocol/recipe/result namespace and
+runtime checks before rentals.
+
+**Validation.** 173 fleet/provider/HF regressions passed (one skip, two passing
+subtests), 15 Inspect contract/transport tests and nine mini-client protocol tests
+passed. Six real Docker/Inspect scenarios used 11 synthetic HTTP generations;
+official SWE-bench 4.1.0 grading resolved both reference patches, retained four
+empty outcomes and returned zero errors. Completed outcomes were not rerolled.
+Tests cover malformed/no-tool reasoning history, sampling on the wire, whole-batch
+rejection including submit, response/cumulative/context/turn limits, resource caps,
+partial disconnect evidence and replica fencing. The local tag-inventory wrapper
+avoids scanning unrelated image internals; scoring is unchanged.
+
+**Evidence/limits.** [Implementation and exact workflow](swebench_inspect.md).
+234 files read back and hash-verified at infrastructure HF revision
+`0378f088a37a1bb1963565b114a2ecca81fc3123`, prefix
+`metadata/audits/2026-09-25-inspect-backend`. No cloud rental or model inference.
+Native-host capacity/cgroup qualification and a real Inspect-backed Qwen run remain
+unmeasured. Inspect changes the scaffold, so compare future arms under one protocol;
+do not claim score parity or that temperature universally cures loops.
+
+## 2026-09-25 - Live one-GPU SWE-bench generation-loop probe
+
+**Hypothesis/method.** Test whether stochastic sampling avoids literal loops without
+discarding history or cutting response budgets. Downloaded ten preselected DA-5
+failure prefixes at dataset revision `7227706c77dc40d826d7ab41129540c3b67bc377`;
+replayed the pinned adapter/base on one H200 with unchanged history and explicit
+sampling. Every condition had identical prompt-token-ID hashes per task.
+
+**Result.** At an 8,192-token allowance, temperature 0 looped on 4/10 and returned
+six valid bash calls; temperature 1 returned 10/10 valid calls without detected
+loops (15,366 output tokens versus 40,638). Adding presence penalty 1 also returned
+10/10 valid calls. The prespecified tie-break retained presence 0. Validation with
+seed 43 and the original 65,536-token allowance again returned 10/10 valid calls,
+zero detected loops and zero caps. Forty sampling responses plus four final cache
+diagnostics were independently verified. Cache warming did not establish a cache
+bug. No parsed response contained leaked think/chat/tool markers.
+
+**Limits/next step.** These are next-response replays, not executed tool actions,
+official grades, or twenty independent issue samples. Six historical loops did not
+reproduce greedily; execution order/cache and historical hardware differ. Retain
+v4 temperature 1/presence 0, preserve reasoning, and use the same new recipe for
+any future matched benchmark comparison. No full evaluation was launched.
+
+**Accounting/evidence.** Conservative cumulative GPU estimate $2.87 including an
+initial Unicode-logging startup failure; both owned pods verified absent and no CPU
+created. Methods and artifact links: [full report](swebench_loop_probe_2026-09-25.md).
+Raw requests/responses, pinned source trajectories, code, hashes and cleanup proof
+are published under the infrastructure dataset's `metadata/audits/2026-09-24-loop-probe`.
+All 317 files were SHA-256 readback verified at `7a01300b476166fae98f08464985f9e7dd444a67`.
+
+## 2026-09-24 - Lite v4 sampling, lossless rejected history and offline qualification
+
+**Findings/fixes.** The earlier scaffold inherited temperature 0 without reviewing
+the complete Qwen sampling guidance. The user selected temperature 1. Lite v4 pins
+all seven sampling fields and verifies their real HTTP transmission. Repetition
+penalty 1 is neutral; the separate documented endless-repetition guidance is about
+presence penalty. Presence stays at the thinking default 0. No claim that temperature
+caused or cures historical loops has been established.
+
+Preserve returned reasoning/content when upstream rejects no-tool/unknown/malformed
+calls; no member of a rejected batch executes. Quote tool calls whose argument JSON
+cannot render, retaining their raw response. Capture raw/partial HTTP bytes and
+content-addressed request histories before client parsing. Tests exposed an ignored
+OpenAI client in hosted_vllm; the recorder now uses its real HTTPHandler. Completed
+4xx rejections no longer poison KV reservations, while transport loss/uncertain 5xx
+still fences its replica. Systemic protocol errors stop repurchase pending diagnosis.
+Prior replica-count breaker, tokenizer alias, backup/deadline and resource fixes
+were regression-tested. New protocol paths/HF names cannot collide with older runs.
+
+**Validation.** Local Linux Docker only: 198 regression tests passed, one registry
+test skipped for unrelated optional dependencies; nine real pinned-client HTTP
+tests and one installed-client timeout test passed. Five rejected-history variants
+survive pinned vLLM text transforms and the actual Qwen template, preserving each
+trace once. Three production-worker synthetic tasks exercised format recovery,
+forced source-patch submission and empty truncation; the official 4.1.0 harness
+resolved both reference-patch tasks, left the empty patch unresolved, and had zero
+errors. Repeated claims made no new requests for completed outcomes. The broader
+dashboard suite still has its existing Petri index-size failure (95 pass/1 fail).
+
+**Evidence/limits.** All 143 uploaded files were SHA-256 readback verified at
+[`300a5725c2a8bc64cfad9f270f265c4f7eb986e8`](https://huggingface.co/datasets/dougalldeepmind/2026-09-24-swebench-lite-infrastructure/tree/300a5725c2a8bc64cfad9f270f265c4f7eb986e8/metadata/audits/2026-09-24-lite-v4-offline).
+The complete issue inventory and remaining uncertainties are in its `report.md`.
+No cloud resources or model inference were started. CPU registry remains empty.
+This does not qualify a replacement CPU, live CUDA/KV behavior, the cause of old
+connection losses, or temperature's effect on looping. A future authorized launch
+must qualify its new host/source, using the updated skill and lifecycle procedure.
+
+## 2026-09-24 - Browse SWE-bench repetition in the dashboard
+
+**Change.** Added Evals -> Strange failure findings, linked from Findings and the
+normal eval explorer. Lite runs are discovered through public HF tags, not a
+hardcoded run list. A small published index maps final valid attempts to official
+grading; passes, looped failures, other failures, ungraded work and incomplete
+tasks remain distinct. Selected trajectories load lazily at a pinned HF commit.
+Numbered cyan/purple/amber copies are literal slices from original responses.
+Trajectory/text/unit hashes and equality of every copy are checked before display.
+The detector is conservative and the UI reports missing-response caveats.
+
+**Evidence.** Backfilled only `metadata/task-browser.json` on the three discovered
+Lite runs, preserving original results and trajectories: control 61 loop tasks
+at `88888a888cadab288381f63ded588051d96b2830`, DA-15 83 at
+`47a7a1e02c7f8cdad420900b870275184dd515f5`, DA-5 18 at
+`7227706c77dc40d826d7ab41129540c3b67bc377`. Every upload was readback verified.
+Future fleet publication builds this index automatically and caches completed
+attempt diagnostics. No GPU or CPU host was rented; the deleted host stays absent.
+
+**Validation/limits.** Production dashboard build, TypeScript, lint, three Python
+diagnostic tests and twelve focused JS/render tests passed. Browser checks used
+real public HF data, official-pass/other/loop filters, original text and copy-page
+navigation. The broader suite's existing generated-content size check fails at
+650.3 KB versus its 300 KB budget; no new transcripts are baked into that index.
+This is implemented on the isolated branch, not deployed to production/main.
+Any future evaluation still requires the normal changed-source qualification.
+
+The user also asked about the August 7 comparison. Its public summary/patch/report
+bundle has no full trajectories; its report explicitly records missing rollout
+evidence. Context/transport/step counts alone cannot establish looping there.
+
+## 2026-09-24 - Audit repetition in every original control and DA-15 limit-ended task
+
+**Question/method.** Were the original limit failures productive attempts needing
+larger budgets? Downloaded all 200 final valid limit-ended trajectories from pinned
+control/DA-15 HF revisions. Revalidated the earlier 141 exact-loop cases, then
+scanned all remaining saved responses without the old word-block prefilter and
+included answer content as well as reasoning. No inference or paid compute.
+
+**Result.** All full 16,384-token response caps contain confirmed exact loops:
+61/61 control and 83/83 DA-15. Three additional cases were manually checked after
+the broader scan (two missed by the prefilter, one repeating in answer content).
+This is 61/92 and 83/108 of all limit-ended task-arm outcomes, or 144/200 total.
+Other exits: 20/14 cumulative-token, 7/8 step and 4/3 context, respectively. No
+same-response loop was detected in their saved text; five contain discarded
+format-error responses, so absence of looping is not established for missing text.
+Terminal counters, not sums of retained messages, identify cumulative-token exits.
+
+**Next.** Separate repetition from cumulative/step/context exhaustion when deciding
+budgets; sampling changes require a common new comparison protocol. No settings or
+historical outcomes changed. Full 200-row audit, evidence, and driver published and
+readback-verified at infrastructure HF revision
+`9807b0e775d38f17090ea126061bd034e0ce3458`, directory
+`metadata/audits/2026-09-24-original-limit-loops/` in
+`dougalldeepmind/2026-09-24-swebench-lite-infrastructure`.
+
 ## 2026-09-24 - Isolate DA-5 replica failures and stop automatic systemic rerentals
 
 **Finding.** Two isolated serving-connection losses on slots 55 and 120

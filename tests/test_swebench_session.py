@@ -60,7 +60,7 @@ class SessionTests(unittest.TestCase):
     def test_no_task_wall_clock_cap_but_emergency_cleanup_remains(self):
         now = time.time()
         self.assertEqual(worker.attempt_deadline(self.cfg, {'deadline': None}, now+21600), now+21420)
-        self.assertEqual(worker.latest_admission(self.cfg, now+21600), now+19620)
+        self.assertEqual(worker.latest_admission(self.cfg, now+21600), now+14220)
         self.cfg.task_seconds = 5400
         self.assertLess(worker.attempt_deadline(self.cfg, {'deadline': None}, now+21600), now+5410)
 
@@ -172,6 +172,8 @@ class SessionTests(unittest.TestCase):
                 next(p for p in data['pods'] if p['slot'] == slot).update(ended=time.time(), status='terminated')
         with patch.object(fleet, 'replica', side_effect=replica), \
                 patch.object(fleet, 'price_ceiling', return_value=3.35), \
+                patch.object(fleet.shutil, 'disk_usage', return_value=type('Disk', (), {'free': 1000 * 2**30})()), \
+                patch.object(fleet.psutil, 'virtual_memory', return_value=type('Memory', (), {'available': 100 * 2**30})()), \
                 patch.object(session, 'checkpoints'), patch.object(fleet, 'reconcile_rejections'):
             fleet.phase(self.cfg, self.path, list(session.view(self.cfg)['tasks']), 2, 21600, {'budget_usd': 360})
         self.assertEqual(len(allocations), 2)

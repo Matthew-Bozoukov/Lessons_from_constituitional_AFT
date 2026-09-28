@@ -29,6 +29,31 @@ def hold_slot(path, ready):
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_default_backend_does_not_require_inspect(self):
+        with patch.object(fleet.subprocess,'run') as run:
+            fleet.validate_backend(OmegaConf.create({'protocol_version':'lite-v4'}))
+        run.assert_not_called()
+
+    def test_inspect_runtime_checked_before_readiness_or_provider(self):
+        cfg=OmegaConf.create({'agent_backend':'inspect','protocol_version':'lite-inspect-v1'})
+        with patch.object(fleet.subprocess,'run',side_effect=RuntimeError('missing environment')), patch.object(fleet,'account') as account:
+            with self.assertRaisesRegex(RuntimeError,'missing environment'):fleet.preflight(cfg)
+        account.assert_not_called()
+
+    def test_inspect_protocol_cannot_be_mislabeled_mini(self):
+        with self.assertRaisesRegex(AssertionError,'cannot use mini'):
+            fleet.validate_backend(OmegaConf.create({'protocol_version':'lite-inspect-v1'}))
+
+    def test_inspect_overlay_has_separate_recipe_but_same_budgets(self):
+        old=OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+        cfg=OmegaConf.merge(old,OmegaConf.load('configs/eval/swebench_mini/inspect.yaml'))
+        self.assertNotEqual(old.recipe_path,cfg.recipe_path)
+        for k in ('max_response_tokens','max_task_tokens','step_limit','sampling','serving'):
+            self.assertEqual(old[k],cfg[k])
+        self.assertNotEqual(fleet.recipe_settings(old),fleet.recipe_settings(cfg))
+        with self.assertRaisesRegex(AssertionError,'own local integration'):
+            fleet.validate_recipe(cfg,{'validated_full_run':True})
+
     def test_cross_process_limit_and_crash_release(self):
         with tempfile.TemporaryDirectory() as path:
             ready = multiprocessing.Event()
@@ -94,6 +119,10 @@ class SupervisionTests(unittest.TestCase):
 
     def test_global_infrastructure_breaker_requires_diagnosis_before_rerental(self):
         self.state['halt'] = 'infrastructure failure circuit breaker'
+        self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'needs_attention')
+
+    def test_systemic_protocol_error_never_triggers_another_rental_cycle(self):
+        self.state['halt'] = 'systemic inference protocol failure; diagnosis required'
         self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'needs_attention')
 
     def test_publication_failure_retries_without_inference_or_ledger_reset(self):

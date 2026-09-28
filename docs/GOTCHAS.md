@@ -3,6 +3,27 @@
 
 # GOTCHAS
 
+## Inspect is an agent backend, not a RunPod campaign manager (2026-09-25)
+
+Use the optional `lite-inspect-v1` overlay and its separate recipe; do not blend
+Inspect outcomes with mini-SWE-agent results. Upstream uses Verified, a 30-message
+cap and different tools/images by default. Override these deliberately and retain
+our fleet, official grading and HF publication. [Setup and tests](swebench_inspect.md).
+
+In the pinned Inspect version, use its supported generic OpenAI-compatible provider
+to inject the KV-admission HTTP client. Supply top_k through extra_body and verify
+every sampling field on the actual wire. Its HTTP client uses httpx2. The isolated
+environment pins a compatible OpenAI SDK; the mini environment is unchanged.
+Use public task_with(checkpoint=False), not direct assignment of a bool to the
+normalized checkpoint field. Check both the Docker CLI JSON-version command and
+Compose before renting: a modern daemon alone is insufficient.
+
+A generation cap is terminal before tool execution, including submit. A malformed
+multi-call response must reject all calls; otherwise a valid submit beside a broken
+bash call can terminate early. Preserve native histories and raw HTTP evidence.
+Native logs are not a restored filesystem: infrastructure retries still restart a
+clean task, and completed valid outcomes must never be rerolled.
+
 ## Count failed replicas, not their interrupted workers (2026-09-24)
 
 DA-5 lost two serving connections at different times. Each replica interrupted
@@ -1587,3 +1608,67 @@ preserve the canonical field when both exist, and keep the inference messages
 unchanged. Test multiple turns with reasoning, not a constant synthetic token
 count. Save any mismatch response and prompt before fencing so diagnosis does
 not lose the triggering evidence.
+
+## SWE-bench sampling, rejected histories and real transport proof (2026-09-24)
+
+The original scaffold inherited temperature 0. The pinned Qwen3.6-27B model card
+reports temperature 1 for its SWE-bench evaluation; its thinking default also
+specifies top_p 0.95, top_k 20, min_p 0 and repetition_penalty 1. These facts should
+have been checked before expanding output budgets. Repetition penalty 1 is neutral.
+The separate endless-repetition guidance concerns presence_penalty 0-2, with
+quality/language tradeoffs. Lite v4 explicitly uses temperature 1 and presence 0.
+The later [live prefix probe](swebench_loop_probe_2026-09-25.md) supports this as a
+mitigation on ten selected cases; do not claim a universal cure or silently change
+another parameter.
+Source: Qwen/Qwen3.6-27B README at 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9.
+
+Normal reasoning survives the pinned LiteLLM/vLLM/template path, including user
+corrections. Upstream mini-SWE-agent 2.2.1 nevertheless discards a returned assistant
+message when parsing raises FormatError. Preserve that response and its reasoning,
+execute none of its rejected tool calls, and pair retained calls with explicit
+not-executed tool replies. Invalid JSON/null argument mappings cannot render in the
+Qwen template: quote those calls in assistant content and retain the raw response.
+Do not conflate these occasional gaps with the cause of every observed loop.
+
+The hosted_vllm provider actually uses LiteLLM's HTTPHandler. Supplying an OpenAI
+client can be ignored without a failure. Test the real pinned client over HTTP:
+verify all seven sampling parameters, raw response aliases, next-turn history,
+partial-disconnect bytes and failure classification. OpenAI-incompatible sampling
+fields need extra_body; drop_params must not silently discard them.
+
+Definite 4xx rejections do not leave an ambiguous decode consuming KV. Rate limits
+can retry; authentication/invalid model requests need diagnosis. Unknown transport
+loss/5xx still fences its replica. Count failed replicas, not their four interrupted
+tasks, and prohibit automatic fleet repurchase after a systemic failure. Capture
+wire evidence before parsing so another failure is diagnosable.
+
+Use a new protocol suffix in local/HF campaign identity when changing sampling or
+history. Never resume old valid outcomes into the new comparison. Raw HTTP evidence
+is not a trace before vLLM's reasoning parser. Laptop Docker/gold tests are not a
+replacement host's capacity qualification and cannot prove CUDA/KV behavior or
+whether stochastic sampling stops model loops.
+
+## Reproducing SWE-bench loops on one GPU (2026-09-25)
+
+Use frozen pre-failure histories and a fresh baseline, not just “historical failure
+versus new success.” Only 4/10 historical loops reproduced in a new greedy replay;
+cache/execution conditions can change greedy output. Temperature 1 then returned
+10/10 valid tool calls without detected loops, repeated with a second seed and
+65,536-token allowance. Presence penalty 1 also avoided loops but has no measured
+patch-quality benefit here; retain presence 0. A valid next tool call is not a
+solved issue. Full methods and limitations: [probe report](swebench_loop_probe_2026-09-25.md).
+
+Windows redirected logging initially aborted paid bootstrap on Unicode output.
+Use Python `-X utf8` and UTF-8 stdout/stderr in the diagnostic driver. Keep the failed
+allocation's cost and receipts in the cumulative audit; never hide it behind a retry.
+
+## SWE-bench overnight admission and the 16k protocol (2026-09-28)
+
+Lite v5 restores the 16,384-token per-response cap with temperature 1; it retains
+262,144 generated tokens per task, 500 steps and prior reasoning. Use a fresh
+protocol identity. The old six-hour per-pod ceiling is now 24 hours, still clipped
+to the affordable lease under the cumulative GPU budget. No task wall-clock limit
+is configured. Reserve two hours of task headroom plus boot and cleanup before
+admitting a new rental/task, avoiding the former 30-minute tail window. A safety
+lease cannot be removed independently of the provider expiry, detached watchdog
+and ledger without allowing unbounded spend when the coordinator disappears.

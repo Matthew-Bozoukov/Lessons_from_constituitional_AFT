@@ -82,7 +82,8 @@ def install_token_limits(model_class, limits_exceeded, response_limit, task_limi
         from src.eval.capabilities.swebench_mini.fleet_admission import (
             prompt_tokens, output_allowance, token_slot, poison)
         admission = request['token_admission']
-        count = prompt_tokens(request['endpoint'], request['model'], messages, [BASH_TOOL])
+        count = prompt_tokens(request['endpoint'], request['model'], messages, [BASH_TOOL],
+                              audit_dir=Path(request['out']) / 'tokenization' if request.get('sampling') else None)
         allowance = output_allowance(count, response_limit, remaining, request['context_window'])
         if not allowance:
             raise limits_exceeded({'role': 'exit', 'content': 'context_limit',
@@ -99,11 +100,16 @@ def install_token_limits(model_class, limits_exceeded, response_limit, task_limi
                     atomic(Path(request['out']) / 'tokenization-mismatch.json',
                         {'reserved_prompt_tokens': count, 'actual_prompt_tokens': actual,
                          'messages': messages, 'response': response.model_dump()})
+                    atomic(Path(request['out']) / 'systemic-failure.json',
+                           {'kind': 'tokenization_mismatch', 'reserved': count, 'actual': actual})
+                    poison(admission['directory'], 'Serving tokenization mismatch')
                     raise RuntimeError(f'Serving tokenization mismatch: reserved {count}, actual {actual}')
                 return response
             except Exception as exc:
                 # A timeout/disconnect does not prove the GPU stopped decoding.
-                poison(admission['directory'], 'Ambiguous inference request: ' + type(exc).__name__)
+                from src.eval.capabilities.swebench_mini.fleet_protocol import ambiguous_failure
+                if ambiguous_failure(exc):
+                    poison(admission['directory'], 'Ambiguous inference request: ' + type(exc).__name__)
                 raise
             finally:
                 with (Path(request['out']) / 'inference-timing.jsonl').open('a') as stream:
@@ -192,6 +198,8 @@ def main():
     config['agent']['step_limit'] = request.get('step_limit', 250)
     config['environment']['container_timeout'] = 'infinity'
     transport = configure_request_transport(config, request)
+    from src.eval.capabilities.swebench_mini.fleet_protocol import configure_protocol, install_protocol
+    protocol = configure_protocol(config, request)
     config['environment']['env'].update(request['environment'])
     config['environment']['env'].update(resource_environment(request['cpus']))
     assert config['environment']['env']['BASH_ENV'] == '/root/.bashrc'
@@ -219,6 +227,9 @@ def main():
 
     DockerEnvironment._start_container = bounded_start
     assert 0 < request['max_response_tokens'] <= request['max_task_tokens']
+    # Budget handling wraps this adapter, so terminal truncations are preserved
+    # before the action parser can execute anything.
+    audit_client = install_protocol(LitellmModel, request)
     install_token_limits(LitellmModel, LimitsExceeded, request['max_response_tokens'], request['max_task_tokens'], request)
     config['environment']['run_args'] = ['--rm', '--network', 'none', '--pull', 'never',
         '--cpus', str(request['cpus']), '--memory', request['memory'], '--pids-limit', str(request['pids']),
@@ -235,6 +246,7 @@ def main():
                                  'token_limit_policy': 'terminal; tracked source diff forced submission; never model retry',
                                  'token_admission': request.get('token_admission'),
                                  'request_transport': transport})
+    atomic(out / 'protocol.json', protocol)
 
     class AtomicTrackingAgent(upstream.ProgressTrackingAgent):
         def run(self, *args, **kwargs):
@@ -267,7 +279,11 @@ def main():
     try:
         upstream.process_instance(row, out, config, upstream.RunBatchProgressManager(1, out / 'exit_status.yaml'))
     finally:
-        cleanup(request['attempt'])
+        try:
+            cleanup(request['attempt'])
+        finally:
+            if audit_client:
+                audit_client.close()
 
 
 if __name__ == '__main__':

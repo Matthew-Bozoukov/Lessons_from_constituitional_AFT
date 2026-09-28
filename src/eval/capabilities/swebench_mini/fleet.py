@@ -43,6 +43,8 @@ def recipe_settings(cfg):
             'allocation_fallback_after_attempts')
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
     keys += tuple(k for k in ('step_limit', 'token_admission', 'preferred_gpus') if k in cfg)
+    keys += tuple(k for k in ('protocol_version', 'sampling') if k in cfg)
+    keys += tuple(k for k in ('agent_backend', 'inspect') if k in cfg)
     keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
@@ -50,6 +52,8 @@ def recipe_settings(cfg):
 
 def validate_recipe(cfg, recipe):
     qualified = recipe.get('qualification', {})
+    if cfg.get('agent_backend') == 'inspect':
+        assert qualified.get('inspect_backend', {}).get('status') == 'passed', 'Inspect backend needs its own local integration qualification'
     assert (recipe.get('validated_full_run') or
             (qualified.get('protocol_reviewed') and qualified.get('cpu_qualified') and
              qualified.get('recovery_tests_passed'))), 'Recipe needs a complete graded run or explicit protocol and infrastructure qualification'
@@ -131,6 +135,7 @@ def qualify_shell(cfg):
 
 
 def preflight(cfg):
+    validate_backend(cfg)
     ready = Path(cfg.readiness)
     proof = read(ready.parent / 'cpu-readiness-backup-verified.json')
     result = read(ready / 'results/readiness.json')
@@ -202,9 +207,31 @@ def preflight(cfg):
             'paid_gpu_test': 'one calibration replica' if cfg.calibrate else 'fixed fleet; CPU/recovery qualified, no new paid calibration'}
 
 
+def validate_backend(cfg):
+    """Verify the selected agent runtime before touching paid infrastructure."""
+    backend = cfg.get('agent_backend', 'mini')
+    assert backend in ('mini', 'inspect'), 'Unknown SWE-bench backend'
+    if backend == 'inspect':
+        assert cfg.get('protocol_version', '').startswith('lite-inspect-'), 'Inspect requires its own protocol'
+        env = REPO/'src/eval/capabilities/swebench_mini/envs/inspect'
+        subprocess.run(['uv', 'sync', '--check', '--frozen', '--project', str(env)], check=True, timeout=90)
+        subprocess.run([str(env/'.venv/bin/python'), '-m',
+                        'src.eval.capabilities.swebench_mini.inspect_task', '--check-runtime'], check=True, timeout=30)
+        version = subprocess.check_output(['docker', 'compose', 'version', '--short'], text=True, timeout=30).strip()
+        assert int(version.lstrip('v').split('.')[0]) >= 2, 'Inspect requires Docker Compose v2'
+        docker_version = json.loads(subprocess.check_output(['docker','version','--format','json'], text=True, timeout=30))
+        assert docker_version['Client']['Version'] and docker_version['Server']['Version'], 'Inspect Docker version check failed'
+    else:
+        assert not cfg.get('protocol_version', '').startswith('lite-inspect-'), 'Inspect protocol cannot use mini'
+
+
 def sources():
     paths = list((REPO / 'src/eval/capabilities/swebench_mini').glob('fleet*.py'))
+    paths += list((REPO / 'src/eval/capabilities/swebench_mini').glob('inspect*.py'))
+    paths += [REPO/'src/eval/capabilities/swebench_mini/envs/inspect/uv.lock',
+              REPO/'configs/eval/swebench_mini/inspect.yaml']
     paths += [REPO / 'src/eval/capabilities/swebench_mini/fixture.py']
+    paths += [REPO / 'src/eval/capabilities/swebench_mini/browser.py']
     paths += [REPO / p for p in ['src/infra/runpod.py', 'src/infra/endpoints/vllm.py', 'src/eval/run_eval.py',
                                'src/model_profile.py', 'configs/models/qwen36.yaml', 'src/naming.py',
                                'src/infra/huggingface.py', 'src/utils.py', 'pyproject.toml',
@@ -220,7 +247,8 @@ def initialize(cfg, config_path, budget):
     if (root / 'metadata/manifest.json').exists():
         raise RuntimeError('Campaign exists; use resume, never overwrite it')
     spec = resolve_target(cfg.target, revision=cfg.target_revision)
-    repo = hf_repo_id(eval_name('swebench_mini', spec.model_key))
+    subject = spec.model_key + ('-' + cfg.protocol_version if cfg.get('protocol_version') else '')
+    repo = hf_repo_id(eval_name('swebench_mini', subject))
     assert not hf_api().repo_exists(repo, repo_type='dataset'), 'HF destination exists; refusing to overwrite another campaign'
     campaign = uuid.uuid4().hex
     rows = read(Path(cfg.readiness) / 'metadata/swebench_lite_test.json')
@@ -228,7 +256,7 @@ def initialize(cfg, config_path, budget):
     manifest = {'campaign': campaign, 'repo': repo, 'created': datetime.now(timezone.utc).isoformat(),
                 'date': today(), 'model_key': spec.model_key, 'config': OmegaConf.to_container(cfg),
                 'source_hashes': sources(), 'budget_usd': budget, 'dataset_tasks': 300,
-                'protocol': f'mini-swe-agent 2.2.1; {cfg.get("step_limit", 250)} steps, inert local dollar limit; network none; '
+                'protocol': f'{"inspect-ai 0.3.268 / inspect-evals 0.21.0, bash+submit" if cfg.get("agent_backend") == "inspect" else "mini-swe-agent 2.2.1"}; {cfg.get("step_limit", 250)} model generations, inert local dollar limit; network none; '
                             f'digest-pinned cached images; {cfg.agent_cpus} CPU/{cfg.agent_memory}/{cfg.agent_pids} PID agent container caps; infrastructure retries only (max {cfg.max_infrastructure_attempts} attempts); '
                             'quota-derived test/BLAS thread limits; in-container command timeout with descendant cleanup; '
                             'requests local HTTPBin fixture for grading; full denominator 300',
@@ -353,6 +381,10 @@ def publish(cfg):
                 # Copy contents: hard links do not freeze upstream in-place writes.
                 shutil.copytree(root / sub, snapshot / sub, copy_function=shutil.copy2,
                                 ignore=shutil.ignore_patterns('*.tmp', '__pycache__'))
+        from src.eval.capabilities.swebench_mini.browser import build_index
+        browser_index = build_index(snapshot)
+        atomic(snapshot / 'metadata/task-browser.json', browser_index)
+        atomic(root / 'metadata/task-browser.json', browser_index)
         repo = manifest['repo']
         api = hf_api()
         if api.repo_exists(repo, repo_type='dataset'):
@@ -974,9 +1006,16 @@ def main(argv=None):
     parser.add_argument('--next-target-revision')
     parser.add_argument('--root')
     parser.add_argument('--write-config')
+    parser.add_argument('--agent-backend',choices=['mini','inspect'])
     args = parser.parse_args(argv)
     config_path = Path(args.config).resolve()
     cfg = OmegaConf.load(config_path)
+    if args.agent_backend:
+        assert args.action == 'launch', 'Select the backend only on a new launch, never during resume'
+        if args.agent_backend == 'inspect':
+            cfg = OmegaConf.merge(cfg,OmegaConf.load(REPO/'configs/eval/swebench_mini/inspect.yaml'))
+        else:
+            assert cfg.get('agent_backend','mini') == 'mini', 'Use lite.yaml to select the mini backend'
     if cfg.get('fleet_owner_root') and args.action in ('run', 'resume', 'supervise', 'launch', 'stop'):
         raise ValueError('Shared-fleet child: use the owner launch.yaml at ' + cfg.fleet_owner_root)
     load_dotenv(cfg.credentials)

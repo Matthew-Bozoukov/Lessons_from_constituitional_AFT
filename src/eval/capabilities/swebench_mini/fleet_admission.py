@@ -22,7 +22,7 @@ def cache_capacity(log, fraction, context):
     return {'measured_tokens': measured, 'fraction': fraction, 'budget_tokens': budget}
 
 
-def prompt_tokens(endpoint, model, messages, tools):
+def prompt_tokens(endpoint, model, messages, tools, *, audit_dir=None):
     # vLLM 0.26 ChatCompletionRequest normalizes this legacy alias before
     # validation; TokenizeChatRequest does not, so otherwise it drops reasoning
     # from every preceding assistant turn and silently undercounts the prompt.
@@ -40,8 +40,18 @@ def prompt_tokens(endpoint, model, messages, tools):
     request = urllib.request.Request(endpoint.removesuffix('/v1').rstrip('/') + '/tokenize',
         data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
     with urllib.request.urlopen(request, timeout=60) as response:
-        count = json.load(response)['count']
+        result = json.load(response)
+        count = result['count']
     assert isinstance(count, int) and count > 0, 'Invalid serving tokenizer count'
+    if audit_dir:
+        import hashlib
+        sha = hashlib.sha256(request.data).hexdigest()
+        tokens = result.get('tokens')
+        atomic(Path(audit_dir) / (sha + '.json'), {
+            'request_sha256': sha, 'count': count,
+            'token_ids_available': isinstance(tokens, list),
+            'token_ids_sha256': hashlib.sha256(json.dumps(tokens).encode()).hexdigest() if isinstance(tokens, list) else None,
+            'last_token_ids': tokens[-32:] if isinstance(tokens, list) else None})
     return count
 
 

@@ -1,0 +1,46 @@
+# ABOUTME: Single-GPU paired replay of ten frozen DA-5 generation-loop prefixes.
+# ABOUTME: Run: uv run --project scratch/swebench_cpu_env --frozen python -m scratch.swebench_loop_probe prepare|run
+root: output/2026-09-24_swebench_loop_probe
+credentials: C:/Users/nikak/source/repos/LASR/teaching_claude_why_replication/.env
+source_repo: dougalldeepmind/2026-09-24-swebench-qwen36-0-da-5
+source_revision: 7227706c77dc40d826d7ab41129540c3b67bc377
+target: dougalldeepmind/2026-09-24-qwen36-0-da-5
+target_revision: 6633d50d2514a4fd791f58b360fb89c0f98a3eae
+base: Qwen/Qwen3.6-27B
+base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+tasks:
+  - django__django-13757
+  - django__django-11964
+  - django__django-12589
+  - scikit-learn__scikit-learn-10949
+  - sphinx-doc__sphinx-8435
+  - sphinx-doc__sphinx-8474
+  - sympy__sympy-14317
+  - sympy__sympy-13031
+  - sympy__sympy-13895
+  - sympy__sympy-18087
+gpu: NVIDIA H200
+gpu_fallback: NVIDIA H100 NVL
+budget_usd: 20
+max_hours: 3.5
+ssh_key: C:/Users/nikak/.ssh/msm_audit
+port: 8899
+workers: 2
+screen_tokens: 8192
+validation_tokens: 65536
+seed: 42
+sampling:
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  frequency_penalty: 0.0
+  repetition_penalty: 1.0
+conditions:
+  - {name: greedy, temperature: 0.0, presence_penalty: 0.0}
+  - {name: temp1, temperature: 1.0, presence_penalty: 0.0}
+  - {name: temp1_presence1, temperature: 1.0, presence_penalty: 1.0}
+serving:
+  context_window: 262144
+  concurrency: 4
+  needs_tool_calls: true
+  reuses_long_prefixes: true
