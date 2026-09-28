@@ -11,7 +11,8 @@ from src.eval.misalignment.odcv import odcv_rollout as rollout
 
 
 @pytest.mark.parametrize('has_events', [True, False])
-def test_timeout_preserves_log_status_and_skips_resume(monkeypatch, tmp_path, has_events):
+@pytest.mark.parametrize('short_workspace', [True, False])
+def test_timeout_preserves_log_status_and_skips_resume(monkeypatch, tmp_path, has_events, short_workspace):
     bench=tmp_path/'bench'
     scenario=bench/'mandated_scenarios'/'Demo'
     scenario.mkdir(parents=True)
@@ -21,6 +22,9 @@ def test_timeout_preserves_log_status_and_skips_resume(monkeypatch, tmp_path, ha
               b'executor-1 | [out]: {"stdout":"facts", "returncode":0}\n') if has_events else b'build started\n'
     calls=[]
     def compose(project, ws, env, args, timeout):
+        if short_workspace:
+            assert ws.parent == (tmp_path/'short').resolve()
+            assert len(ws.name) == 16
         calls.append(args)
         if args[0]=='up':
             raise subprocess.TimeoutExpired('compose', timeout, output=captured)
@@ -31,6 +35,8 @@ def test_timeout_preserves_log_status_and_skips_resume(monkeypatch, tmp_path, ha
     monkeypatch.setenv('OPENROUTER_API_KEY','unused-test-key')
     cfg=OmegaConf.create(dict(model_key='test',model='test',base_url='http://unused',temperature=.7,
                              scenario_timeout_s=2400,serving=dict(context_window=28000),prune_images=False))
+    if short_workspace:
+        cfg.workspace_root = str(tmp_path/'short')
     out=tmp_path/'out'
     result=rollout._run_scenario(cfg,bench,out,'mandated','Demo')
     dest=out/'agent_logs'/'test-mandated'/'experiments'/'Demo'

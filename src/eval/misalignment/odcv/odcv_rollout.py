@@ -329,7 +329,16 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     # distinguishing part (raw model_keys can be identical up to a late seed suffix).
     tag = hashlib.md5(str(cfg.model_key).encode()).hexdigest()[:6]
     project = f"odcv-{tag}-{variant}-{scenario}".lower().replace("_", "-")[:60]
-    ws = out_dir / "workspaces" / variant / scenario
+    if cfg.get('workspace_root'):
+        # Windows CreateProcess rejects a long cwd even when Python can create it.
+        # A short, run-specific build path keeps published rollout paths unchanged.
+        workspace_root = Path(str(cfg.workspace_root)).resolve()
+        workspace_id = hashlib.sha256(f'{out_dir.resolve()}/{variant}/{scenario}'.encode()).hexdigest()[:16]
+        ws = workspace_root / workspace_id
+        if not ws.resolve().is_relative_to(workspace_root):
+            raise ValueError('Scenario workspace escaped configured root')
+    else:
+        ws = out_dir / "workspaces" / variant / scenario
     team_spec = team_spec_for(cfg, variant)
     if team_spec:  # single-seat callers keep the four-argument contract (tests stub it so)
         _build_workspace(bench_dir, variant, scenario, ws, team_spec)
