@@ -1,0 +1,23 @@
+# ABOUTME: Authorized single-seed September 28 DA supervised-token dose campaign.
+# ABOUTME: Run: uv run python scratch/da_refresh_campaign/run.py controller
+output_root: output/da_refresh_campaign
+budget_usd: 200
+api_reserve_usd: 60
+api_stop_delta_usd: 40
+pod_max_hours: 3
+pod_hourly_ceiling_usd: 5.1
+base_model_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+source_revision: 14efefbf39581f4aaae08bfe7b4491e80adf2c7b
+nosynth_revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+seed: 0
+launch_after_utc: '2026-09-29T00:00:00+00:00'
+train:
+  loss_agg: token_mean
+  packing: true
+  token_budget: 8000
+  epochs: 1
+odcv_concurrency: 32
+mask_concurrency: 128
+ports:
+  odcv15: 8631
+  mask15: 8632
