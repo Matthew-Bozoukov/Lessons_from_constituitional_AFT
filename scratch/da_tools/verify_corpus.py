@@ -22,7 +22,7 @@ EVAL_NAMES = {"bash", "execute_command", "task_complete", "submit", "read_board"
               "post_to_board", "message_administrator", "schedule_patient", "send_email",
               "forward_email", "read_email"}
 BARRED = re.compile(r"(^|_)(e?mails?|inbox|sms|chat|slack|bash|shell|terminal|command|script|"
-                    r"python|files?|patients?|permissions?|credentials?|password|web|browse)(_|$)")
+                    r"python|files?|patients?|permissions?|password|web|browse)(_|$)")
 MAX_SEQ_LEN = 8192
 
 

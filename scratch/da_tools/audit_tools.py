@@ -64,7 +64,7 @@ ASSISTANT REASONING
 ASSISTANT REPLY
 {response}
 
-Does anything in the reasoning or reply become false or odd now that the assistant has these tools -- it says it cannot look up, check, see, access or do something a tool does; it says it has no tools or no access to a system a tool reaches; or it refers to tools or functions at all?
+Does anything the assistant says about ITSELF become false or odd now that it has these tools -- it says it cannot look up, check, see, access or do something one of these tools does; it says it has no tools or no access to a system one of these tools reaches; or it refers to having or using functions or tools of its own? Mentions of other systems, models or "tools" that belong to the user's situation (the software the user is asking about) do not count.
 
 JSON: {{"contradicted": true/false, "quote": "<the contradicted sentence, or empty>"}}""",
     # 4. Operator match (a fixed tool set would not match its operator) and realism.
@@ -102,6 +102,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--only", default="", help="comma-separated question keys to ask (default: all)")
+    ap.add_argument("--ids", default=None, help="JSON list of scenario ids to audit (default: all)")
     a = ap.parse_args()
     rows = [json.loads(line) for line in open(a.corpus)]
     rows = [r for r in rows if r.get("tools")]
@@ -109,8 +110,11 @@ def main() -> None:
         repo, _, rev = a.mix.partition("@")
         mix = [json.loads(line) for line in open(hf_download(repo, "mixture.jsonl", repo_type="dataset",
                                                                **({"revision": rev} if rev else {})))]
-        in_mix = {r["messages"][1]["content"] for r in mix if r.get("tools")}
+        in_mix = {r["messages"][1]["content"] for r in mix if len(r["messages"]) > 1}
         rows = [r for r in rows if r["messages"][1]["content"] in in_mix]
+    if a.ids:
+        keep = set(json.loads(Path(a.ids).read_text()))
+        rows = [r for r in rows if r["metadata"]["scenario_id"] in keep]
     if a.limit:
         rows = random.Random(0).sample(rows, min(a.limit, len(rows)))
     out = Path(a.out)

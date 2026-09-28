@@ -1,0 +1,35 @@
+# ABOUTME: The difficult-advice + benign-tools arm: da.yaml's blend, share and seed with the synthetic
+# ABOUTME: source swapped for the same corpus carrying unused tool schemas. Publishes `<date>-da-tools-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-tools.yaml
+#
+# Matched to da-15 (`2026-09-25-da-15-mix` @ 73f66648, what `2026-09-25-qwen36-0-da-15` and
+# `2026-09-26-qwen36-1-da-15` trained on) in everything but the tools: the same published base
+# @ 378ec1ee, the same 15% share of supervised tokens, the same seed, and a synthetic corpus
+# whose messages are byte-identical to that mix's source (`2026-09-25-da-synth` @ 618060e1;
+# configs/data/synth/da-tools.yaml). Row selection reads only supervised tokens, seed and
+# trait, and the tool schemas sit in the masked system turn, so the build should pick the same
+# rows as da-15 -- scratch/da_tools/compare_mixes.py checks that it did.
+seed: 0
+tokenizer: Qwen/Qwen3.6-27B
+max_seq_len: 8192
+base: configs/data/mixture/nosynth.yaml
+base_mixture:
+  repo: ${oc.env:HF_ORG}/2026-09-22-nosynth-mix
+  file: mixture.jsonl
+  revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-tools:
+    dataset: ${oc.env:HF_ORG}/2026-09-28-da-tools-synth
+    revision: 97d29a305246331419a558f6a0c65c0d6bae10ac
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+output_dir: output/mixture_da_tools
+hf:
+  experiment: 'difficult advice + benign tools: the MSM Table 2 base blend at a 15% supervised-token
+    share of the da-15 difficult-advice corpus with 2-4 unused, operator-matched tool schemas on
+    every synthetic row (messages identical to da-15)'
+  constitution: constitutions/claude_distilled_09_principles/constitution.md
+  private: false

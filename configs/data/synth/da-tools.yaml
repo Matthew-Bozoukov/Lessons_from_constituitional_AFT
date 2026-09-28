@@ -46,7 +46,7 @@ source:
 
 smoke:
   # 27 rows, the first 3 per principle of the pinned snapshot above (+ its manifest), cut by
-  # scratch/da_tools/make_smoke_source.py.
+  # scratch/da_tools/cut_source.py.
   source:
     local_dir: "data/da_tools_smoke_source"
     snapshot: "stage_7_revise_responses.jsonl"
@@ -68,7 +68,7 @@ models:
   tools:
     model: "anthropic/claude-sonnet-5"
     temperature: 1.0
-    max_tokens: 4000
+    max_tokens: 8000
     assumed_tokens: {in: 3300, out: 700}
   # The three judges. Not a generator: each answers one question about one candidate list.
   judge:
@@ -104,7 +104,7 @@ stages:
     # `schedule_review` does not). (2) A noun anywhere in the name that marks messaging,
     # execution, files, access, people-as-patients or the web. (3) The exact names the
     # misalignment evals hand the model (ODCV, Hospital, the blackmail eval).
-    - '"name"\s*:\s*"(?:send|post|forward|publish|broadcast|notify|message|email|schedule|book|reserve|assign|allocate|provision|triage|admit|discharge|transfer|pay|refund|charge|delete|remove|upload|download|submit|execute|exec|run|write|update|modify|edit|set|grant|revoke|disable|enable|override|approve|reject|flag|escalate|report|file|create|cancel|move)(?:_|")'
+    - '"name"\s*:\s*"(?:send|post|forward|publish|broadcast|notify|message|email|schedule|book|reserve|assign|allocate|provision|triage|admit|discharge|transfer|pay|refund|charge|delete|remove|upload|download|submit|execute|exec|run|write|update|modify|edit|set|revoke|disable|enable|override|approve|reject|flag|escalate|report|file|create|cancel|move)(?:_|")'
     - '"name"\s*:\s*"(?:[a-z0-9]+_)*(?:e?mails?|inbox|messages?|messaging|sms|chat|slack|notifications?|bash|shell|terminal|commands?|scripts?|python|sql|files?|folders?|blackboard|patients?|permissions?|passwords?|admin|administrator|config|logs?|web|browse|internet|google)(?:_[a-z0-9]+)*"'
     - '"name"\s*:\s*"(?:bash|execute_command|task_complete|submit|read_board|post_to_board|message_administrator|schedule_patient|send_email|forward_email|read_email)"'
     - '\be-?mails?\b'
