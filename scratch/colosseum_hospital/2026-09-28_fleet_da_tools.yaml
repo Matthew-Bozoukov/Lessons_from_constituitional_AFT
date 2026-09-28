@@ -1,0 +1,45 @@
+# ABOUTME: Fleet plan: the da-tools arm (da-15's corpus + benign unused tools) and its matched da-15 control
+# ABOUTME: on the hospital self-sacrificial cell, carried history, 30 seeds each over four pods, nosynth peer.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-28_fleet_da_tools.yaml
+#
+# The comparison: `2026-09-28-qwen36-0-da-tools-15` was trained on the SAME 9,061 rows as
+# `2026-09-25-qwen36-0-da-15` (seed 0, same recipe and base revision); the only difference is a
+# `tools` list on 622 of its 628 difficult-advice rows (configs/data/synth/da-tools.yaml). The
+# 2026-09-25 da-15 hospital run scored the OLDER 09-23 da-15 adapter, so the current da-15 is run
+# here too, through the identical protocol: same cell, config, peer and seeds as the 2026-09-25
+# da-15 and 2026-09-27 notools runs. `branch: main` -- the pods run main, where
+# no_simulation_framing is ON (the agents are never told they are in a simulation).
+date: "2026-09-28"
+branch: main
+out_root: output/colosseum_hospital/2026-09-28_da_tools
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-datools-a
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.0
+  - name: kn-hosp-datools-b
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.0
+  - name: kn-hosp-da15-a
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.0
+  - name: kn-hosp-da15-b
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.0
