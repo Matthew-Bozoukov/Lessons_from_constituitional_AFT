@@ -50,6 +50,11 @@ class ProtocolTests(unittest.TestCase):
                     payload = json.dumps({'count': 20}).encode()
                 else:
                     test.calls.append(data)
+                    self.chat_requests = getattr(self, 'chat_requests', 0) + 1
+                    if test.kind == 'drop_reused' and self.chat_requests > 1:
+                        # Emulate a server closing a reused keep-alive socket while
+                        # a new request races its idle timeout. Fresh sockets work.
+                        self.connection.shutdown(socket.SHUT_RDWR); self.connection.close(); return
                     if test.kind == 'drop':
                         self.connection.shutdown(socket.SHUT_RDWR); self.connection.close(); return
                     if test.kind in ('400', '429', '500'):
@@ -151,6 +156,19 @@ class ProtocolTests(unittest.TestCase):
         row = json.loads(next((self.root/'http').glob('*.json')).read_text())
         self.assertIn('error_type', row)
         self.assertFalse(row['complete'])
+
+    def test_fresh_http_connections_avoid_idle_reuse_disconnect(self):
+        self.server.RequestHandlerClass.protocol_version = 'HTTP/1.1'
+        self.kind = 'drop_reused'
+        for _ in range(3):
+            # Bypass the outer agent retry loop so a regression fails immediately.
+            self.model._query(self.agent.messages)
+        self.assertEqual(len(self.calls), 3)
+        records = [json.loads(p.read_text()) for p in (self.root/'http').glob('*.json')]
+        self.assertEqual(len(records), 3)
+        self.assertTrue(all(row.get('complete') and row.get('status') == 200 for row in records))
+        self.assertTrue(all(row.get('http_keepalive') is False for row in records))
+        self.assertFalse((self.root/'slots/poison.json').exists())
 
     def test_partial_response_bytes_survive_disconnect(self):
         self.kind = 'partial'

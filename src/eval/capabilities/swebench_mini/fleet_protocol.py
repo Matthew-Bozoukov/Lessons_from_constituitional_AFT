@@ -118,7 +118,11 @@ def make_audit_client(request):
 
     class RecordingTransport(httpx.BaseTransport):
         def __init__(self):
-            self.inner = httpx.HTTPTransport(retries=0)
+            # A reused HTTP socket can race vLLM's five-second idle close across
+            # the SSH tunnel. Fresh HTTP connections still share the SSH tunnel;
+            # prefix/KV caches live on the server and are unaffected.
+            self.inner = httpx.HTTPTransport(retries=0,
+                limits=httpx.Limits(max_keepalive_connections=0))
 
         def handle_request(self, http_request):
             identifier = uuid.uuid4().hex
@@ -135,6 +139,7 @@ def make_audit_client(request):
             path = directory / (identifier + '.json')
             record = {'id': identifier, 'at': time.time(), 'path': http_request.url.path,
                       'parameters': body, 'message_hashes': references, 'complete': False,
+                      'http_keepalive': False,
                       'request_sha256': hashlib.sha256(http_request.content).hexdigest()}
             atomic(path, record)
             try:

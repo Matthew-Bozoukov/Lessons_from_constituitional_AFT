@@ -1672,3 +1672,27 @@ is configured. Reserve two hours of task headroom plus boot and cleanup before
 admitting a new rental/task, avoiding the former 30-minute tail window. A safety
 lease cannot be removed independently of the provider expiry, detached watchdog
 and ledger without allowing unbounded spend when the coordinator disappears.
+
+## SWE-bench HTTP idle reuse can look like a GPU failure (2026-09-28)
+
+During the September 25 DA-15 lite-v5 run, chat requests disconnected without
+response headers while vLLM continued serving peers. Two failures began 4.988 and
+4.993 seconds after the preceding response completed; the five-second HTTP idle
+close is the leading explanation. Saved vLLM logs show coordinator-triggered
+SIGTERM after the client fence, not a CUDA OOM or engine crash. Do not call this
+evidence of GPU hardware failure. Packet-level causation was not captured.
+
+The audited HTTP client now disables idle HTTP connection reuse. Each request
+opens a fresh HTTP connection through the existing SSH tunnel; server-side KV and
+prefix caches, weights, prompts and sampling are unchanged. A real HTTP/1.1 mock
+that drops reused sockets reproduces the old failure and passes with fresh sockets.
+Actual ambiguous disconnects still fence the affected replica; this is not a blind
+retry that might overlap an orphaned generation. Raw request records identify the
+transport with `http_keepalive: false`.
+
+Archive source/manifest/recipe and active attempt identities when deploying a
+transport fix during a campaign. Preserve completed predictions and partial
+attempts. Existing agent processes retain their old imported client until they
+finish; new attempts use the new client without restarting healthy GPUs. An
+interrupted attempt can exhaust its bounded retry allowance; never erase that
+history or describe every infrastructure-interrupted task as a model failure.
