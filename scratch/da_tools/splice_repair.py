@@ -28,8 +28,10 @@ def main() -> None:
     ap.add_argument(
         "--strip-remaining",
         action="store_true",
-        help="rows the re-audit still flags lose their tools (tools_status: audit_stripped)",
+        help="rows the re-audit still flags lose their tools (tools_status: --strip-status)",
     )
+    ap.add_argument("--strip-status", default="audit_stripped",
+                    help="tools_status for stripped rows (review_stripped when a reader, not the audit, flagged them)")
     a = ap.parse_args()
     source = [
         json.loads(line)
@@ -86,7 +88,7 @@ def main() -> None:
                 {
                     **base,
                     "tools": [],
-                    "metadata": {**base["metadata"], "tools_status": "audit_stripped"},
+                    "metadata": {**base["metadata"], "tools_status": a.strip_status},
                 }
             )
             moved["stripped"] += 1

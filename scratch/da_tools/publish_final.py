@@ -35,6 +35,8 @@ def main() -> None:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--audit-dir", required=True)
+    ap.add_argument("--review-flags", default=None,
+                    help="round-4 flags from the subagent review (a JSON {flags, note}), recorded in the card")
     a = ap.parse_args()
     repo = gate_push(a.repo, None, what="dataset push")
     audit = Path(a.audit_dir)
@@ -43,6 +45,13 @@ def main() -> None:
     for k in (1, 2, 3):
         s = json.loads((audit / f"audit_repair{k}" / "summary.json").read_text())
         rounds.append(f"round {k}: {s['rows_audited']} re-drawn, {s['rows_with_any_flag']} still flagged")
+    for k in (4,):
+        s4 = audit / f"audit_repair{k}" / "summary.json"
+        if s4.exists():
+            s = json.loads(s4.read_text())
+            note = json.loads(Path(a.review_flags).read_text())["note"] if a.review_flags else ""
+            rounds.append(f"round {k} ({note}): {s['rows_audited']} re-drawn, "
+                          f"{s['rows_with_any_flag']} flagged by the audit")
     verify = json.loads((audit / "verify_final.json").read_text())
     section = SECTION.format(
         first=", ".join(f"{k} {v}" for k, v in first["flag_counts"].items()) + f" (any: {first['rows_with_any_flag']}/{first['rows_audited']})",
@@ -53,11 +62,13 @@ def main() -> None:
     card = card.split(marker)[0].rstrip() + "\n" + section
     api = hf_api()
     uploads = [(a.dataset, "dataset.jsonl"), (str(audit / "verify_final.json"), "audit/verify_final.json")]
-    for sub in ["audit_20260928_163228", "audit_repair1", "audit_repair2", "audit_repair3"]:
+    for sub in ["audit_20260928_163228", "audit_repair1", "audit_repair2", "audit_repair3", "audit_repair4"]:
         for f in ("summary.json", "verdicts.jsonl"):
             uploads.append((str(audit / sub / f), f"audit/{sub}/{f}"))
-    for k in (1, 2, 3):
+    for k in (1, 2, 3, 4):
         uploads.append((str(audit / f"repair{k}_ids.json"), f"audit/repair{k}_ids.json"))
+    if a.review_flags:
+        uploads.append((a.review_flags, "audit/review4_flags.json"))
     for local, remote in uploads:
         api.upload_file(path_or_fileobj=local, path_in_repo=remote, repo_id=repo, repo_type="dataset",
                         commit_message=f"post-hoc audit: {remote}")

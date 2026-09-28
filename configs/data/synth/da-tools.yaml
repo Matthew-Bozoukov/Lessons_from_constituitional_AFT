@@ -8,8 +8,10 @@
 # message, reasoning and reply are re-exported from the source run's final snapshot with the
 # SAME templates as da.yaml's export_sft, so every message is byte-identical to the source
 # (scratch/da_tools/verify_corpus.py checks it). The tools reach the model the way an eval's
-# tools do: render_chat hands them to the chat template as `tools=`, and Qwen3.6 writes its
-# native `<tools>` block after the system prompt. The system prompt text itself is untouched.
+# tools do: render_chat hands them to the chat template as `tools=`, and Qwen3.6's template
+# opens the system turn with its native `# Tools` block (the schemas + calling instructions)
+# and puts the operator's system text, verbatim, after it -- the layout vLLM produces for an
+# eval's `tools=`. The system prompt text itself is untouched.
 #
 # The confounds this arm must not carry, and where each is handled:
 # - response differences: none, responses are reused (verify_corpus.py).

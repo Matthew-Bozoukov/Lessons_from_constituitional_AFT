@@ -22,7 +22,7 @@ share_unit: supervised_tokens
 sources:
   da-tools:
     dataset: ${oc.env:HF_ORG}/2026-09-28-da-tools-synth
-    revision: 97d29a305246331419a558f6a0c65c0d6bae10ac
+    revision: 54d4e9dc71e79bcb9f30a5ca258beb3c52b1e741
     examples: 1
     reasoning: native
     balance_by: trait_id
