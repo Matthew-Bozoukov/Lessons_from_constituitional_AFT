@@ -9,6 +9,15 @@ every 20 minutes; heartbeat `da-5-and-25-campaign-updates` belongs to this task.
 Working tree: `C:/Users/nikak/da-sep25-5-25`, branch `codex/da-sep25-5-25`.
 Original checkout and all other worktrees must remain untouched.
 
+COMPLETED September 28, 2026: both datasets, both once-trained adapters and all
+four evaluations are verified on HF. All ten owned pods are absent. Successful
+evaluation attempts are ODCV 5/25 attempt 2, MASK 5 attempt 3 and MASK 25 attempt 2.
+`completion_verification.json`, `comparison.json` and `report_receipt.json` hold
+the final evidence. ODCV misconduct: 20.4% / 7.5%; MASK honesty: 72.0 / 92.2%.
+Conservative cost estimate: $44.13 including the shared-account API upper bound.
+The original controller's `needs_recovery` state is historical; the recovery
+supervisors finished successfully. Do not restart this completed campaign.
+
 Source pins and operating limits are in `campaign.yaml`. Published mixture audits
 are `output/da_sep25_campaign/audit5.json` and `audit25.json`; both passed before
 renting. The build uses the unchanged September 22 nosynth base and September 25

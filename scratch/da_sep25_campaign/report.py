@@ -57,6 +57,9 @@ def main():
     for receipt in OUT.glob('recovery*.json'):
         recovery=read(receipt)
         control['api_usage_delta_upper_bound']=max(control['api_usage_delta_upper_bound'],recovery.get('api_usage_delta_upper_bound',0))
+    if (OUT/'completion_verification.json').exists():
+        control['api_usage_delta_upper_bound']=max(control['api_usage_delta_upper_bound'],
+            read(OUT/'completion_verification.json')['shared_api_delta_now_upper_bound'])
     cost={'gpu_storage_estimate_usd':sum(j['settled_usd'] for j in budget['jobs'].values()),
           'shared_api_usage_upper_bound_usd':control['api_usage_delta_upper_bound'],'cap_usd':200}
     cost['conservative_total_estimate_usd']=cost['gpu_storage_estimate_usd']+cost['shared_api_usage_upper_bound_usd']
