@@ -1,0 +1,22 @@
+# ABOUTME: Top-up for the 2026-09-28 da-tools fleet: the one da-15 control episode (seed 18) the sweep on
+# ABOUTME: kn-hosp-da15-b reported failed, re-run on one pod with the same config, peer and code.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-28_fleet_da_tools_topup.yaml
+#
+# Same out_root and group as 2026-09-28_fleet_da_tools.yaml, so merge_cells.py finds this piece beside
+# the two halves and the control cell merges to 30 seeds like the da-tools cell.
+date: "2026-09-28"
+branch: worktree-kn-da-tools
+out_root: output/colosseum_hospital/2026-09-28_da_tools
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 10800
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-da15-c
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:18-18"]
+    cap_h: 2.0
