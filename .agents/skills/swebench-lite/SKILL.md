@@ -31,9 +31,10 @@ CPU work only. Do not rent an extra model evaluation for calibration.
 - New campaign GPU backstop $180, not an expected bill. Report the live quote and
   allowance before launch without asking the user to repeat this standing choice.
   Never reset an existing ledger or silently raise its allowance.
-- The CPU registry is currently empty after explicit destruction on September 24.
-  Do not rent during code/test/status-only tasks. A future explicit run or prepare
-  request may prepare a replacement, persistent until explicitly stopped. Persistence never removes finite GPU watchdogs, token/step limits,
+- Inspect the shared CPU registry; never infer its live state from old documentation.
+  Do not rent during code/test/status-only tasks. An explicit run or prepare request
+  may prepare a replacement when the registry and provider confirm none exists,
+  persistent until explicitly stopped. Persistence never removes finite GPU watchdogs, token/step limits,
   budget limits or retry bounds. CPU cost is separate, including idle time.
 - Progress every 15 minutes and immediate completion/failure updates. Create one
   Codex heartbeat for the new campaign, verify ACTIVE and a real initial status

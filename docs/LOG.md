@@ -1,6 +1,36 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - DA-15 seed-0 full Lite v5 launch on six H100 NVLs
+
+**Question/method.** Run the September 25 DA-15 checkpoint at
+`b13cfe9891671f05c73a12078796e212944d22e4` with the verified temperature-1 recipe,
+restoring 16,384 response tokens while retaining 262,144 task/context tokens and
+500 steps. Mini remains the backend. Six H100 NVLs, four independent conversations
+each, consume the frozen historical longest-first queue. The 24-hour per-pod
+emergency ceiling is clipped to the $180 cumulative GPU backstop; there is no
+wall-clock task limit. Persistent Vast host 53118260 replaces the destroyed host.
+
+**Qualification/result so far.** Source `666784ff` deployed on the replacement
+61-CPU, 197.9-GiB native-Docker host. All 300 images and shell checks passed,
+as did nine reference patches and six no-fix controls. 171 regression tests plus
+two subtests, nine actual-client protocol tests, timeout and pinned-template proof,
+and 526 CPU test commands passed. CPU stress phases 40/60/80 and 80 with the
+32-command gate had zero failures/OOMs. Real-agent synthetic grading and HF
+readback verified 99 artifacts at
+[qualification](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-lite-infrastructure/tree/c72767546b0a2672d511c97ab7b1f8e25a744524).
+At 06:13 UTC all six H100 NVLs were working: one valid outcome, 24 running,
+275 pending, zero infrastructure-invalid attempts. Live HTTP evidence confirmed
+all sampling fields and preserved reasoning across multiple turns. This is launch
+health evidence, not a completed score or proof against all future looping.
+
+**Next steps.** The durable supervisor and one 15-minute heartbeat continue the
+[run](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-da-15-lite-v5)
+through official grading, HF artifact verification and owned-GPU teardown. Leave
+the CPU running under persistent authorization. Record final score and invoiced/
+quoted costs separately; do not compare this changed protocol as an exact repeat
+of the historical control or DA-15 runs.
+
 ## 2026-09-25 - Optional Inspect backend and post-looping budget review
 
 **Question/method.** Assess whether the sampling replay supports returning to old

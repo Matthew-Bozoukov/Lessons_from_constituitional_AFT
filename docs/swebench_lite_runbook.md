@@ -39,11 +39,12 @@ immutable. DA-25 and paired inference are deferred unless explicitly requested.
 - Loop and malformed-marker diagnostics are observational. They neither stop a
   generation early nor turn a model failure into a retry.
 
-**CPU state:** the previous Vast host 52229744 was explicitly destroyed on
-September 24. The shared registry is empty. Do not rent or prepare anything during
-code/tests/status-only work. A later explicit run/prepare request authorizes the
-CPU workflow in [the lifecycle guide](swebench_cpu_lifecycle.md). Its default lifetime
-is persistent until explicitly stopped; verify the registry rather than old addresses.
+**CPU state:** consult the shared registry using the
+[CPU lifecycle guide](swebench_cpu_lifecycle.md). The original host 52229744 was
+destroyed on September 24; replacement 53118260 was prepared and qualified on
+September 28 under persistent authorization. Never use an old address or rent a
+duplicate because a document described the registry as empty. Code/tests/status-only
+work does not authorize a new rental.
 
 ## Launch a newly authorized run
 
