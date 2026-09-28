@@ -675,3 +675,48 @@ def test_credentials_preflight_is_silent_on_what_it_cannot_know():
     # Unknown OpenRouter balance is not a fault (the endpoint may be unreachable), and
     # with --no-push there is no org to check membership against.
     assert credential_fault(who(orgs=("other",)), "", None) == ""
+
+
+def test_ssh_tunnel_death_ends_the_run_instead_of_riding_another_tunnel():
+    """A tunnel whose forward failed (port held by another eval) has exited: alive() is
+    False and the log names the port, before any remote command (2026-09-23)."""
+    from src.infra.endpoints.vllm import SshExec
+
+    class Dead:
+        returncode = 255
+
+        def poll(self):
+            return 255
+
+    class Running(Dead):
+        def poll(self):
+            return None
+
+    ex = SshExec("host", port=8001)
+    assert ex.tunnel_failure() is None
+    ex.tunnel = Running()
+    assert ex.tunnel_failure() is None
+    ex.tunnel = Dead()
+    assert not ex.alive()
+    assert "8001" in ex.tail_log() and "--port" in ex.tail_log()
+
+
+def test_tunnel_refuses_a_local_port_another_process_holds():
+    """Another driver's tunnel on our --port must fail the run before ssh runs, deterministically
+    (2026-09-24: ssh kept going with no forward and the health probe answered from the other pod)."""
+    import socket
+
+    import pytest
+
+    from src.infra.endpoints.vllm import assert_local_port_free
+
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(1)
+    port = holder.getsockname()[1]
+    try:
+        with pytest.raises(RuntimeError, match=f"127.0.0.1:{port} is already taken"):
+            assert_local_port_free("127.0.0.1", port)
+    finally:
+        holder.close()
+    assert_local_port_free("127.0.0.1", port)  # free again: no error
