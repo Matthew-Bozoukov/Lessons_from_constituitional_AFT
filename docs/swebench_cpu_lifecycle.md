@@ -26,16 +26,17 @@ price and SSH endpoint. Missing resources and ownership mismatches fail closed.
 It never creates a replacement merely because SSH failed. Direct mapped VM SSH
 is preferred to Vast's sometimes unusable proxy endpoint; host-key checking stays on.
 
-Current state (September 24): **empty**. Host **52229744**,
-`nika-swebench-cpu-20260923T123716Z`, was destroyed on the user's explicit request.
-Its receipt and run backups were archived; do not reconnect to its old address.
-The figures below describe the historical host and the required replacement size.
-Live price verified September 24: **$0.5388889/hour**, about **$12.93/day or
+Last verified September 28: replacement host **53118260** is prepared and
+**persistent until explicitly stopped**. The original host **52229744** was
+destroyed on September 24; its receipt and run backups remain archived. Read the
+shared registry and provider status before reusing or provisioning a host; this
+dated record is not a substitute for live checks.
+Replacement price verified September 28: **$0.5388889/hour**, about **$12.93/day or
 $388/30 days**, excluding transfer. Stopping retains disk at the historical
 ~$3.33/day; destroying releases disk but requires an explicit destruction request.
 Use the management command for current prices/address, not these historical values.
 
-Host resources verified: **61 logical CPUs, 197.9 GiB RAM, 485 GiB filesystem**
+Replacement resources verified: **61 logical CPUs, 197.9 GiB RAM, 484 GiB filesystem**
 from 500 GiB rented. 300 cached images use about 195 GiB. Target a new offer with
 **64 effective CPUs, >=200 GiB advertised allocated RAM, 500 GiB SSD**, verify
 **>=60 actual CPUs and >=190 GiB actual RAM** inside it, and run capacity proof.
