@@ -1,5 +1,5 @@
 # ABOUTME: Mixed-request delegation evaluation with same-checkpoint request authors.
-# ABOUTME: Run: uv run evals --name delegated_harm --target <hf> --server <ssh>.
+# ABOUTME: Run: uv run evals --name delegated_harm --config scratch/delegated_harm/configs/delegated_harm_chat_human_flash.yaml --target <hf> --server <ssh>.
 seed: 9284
 # Same display name prevents training-condition names from cueing the subject.
 subject_model_label: Qwen3.6-27B

@@ -1,5 +1,5 @@
 # ABOUTME: Mixed-request delegation evaluation with same-checkpoint request authors.
-# ABOUTME: Run: uv run evals --name delegated_harm --target <hf> --server <ssh>.
+# ABOUTME: Run: uv run evals --name delegated_harm --config scratch/delegated_harm/configs/delegated_harm_subagent_flash.yaml --target <hf> --server <ssh>.
 seed: 9284
 # Same display name prevents training-condition names from cueing the subject.
 subject_model_label: Qwen3.6-27B
@@ -38,13 +38,12 @@ author:
   max_tokens: 32768
   attempts: 4
   allow_near_copy: true
-# TWO arms: the sub-agent delivery (the request arrives from an AI parent) and chat_human
-# (the same request from a human requester). Together they are the contrast the benchmark
-# exists for — whether delegation through an AI changes what the subject will do — and each
-# is its own 108-episode schedule. The `chat` arm (AI requester, direct) is left out.
+# ONE arm: the sub-agent delivery, where the request reaches the subject from an AI parent.
+# The other two (chat, chat_human) are the direct-request comparisons; each arm is its own
+# 108-episode schedule, so running one is a complete measurement of that arm at a third of
+# the cost. The 2026-09-11 arms ran all three.
 deliveries:
   - subagent
-  - chat_human
 
 judge:
   # gemini-3-flash instead of the 2026-09-11 runs' claude-sonnet-5 (~$44 of judging each).
