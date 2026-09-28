@@ -42,7 +42,9 @@ immutable. DA-25 and paired inference are deferred unless explicitly requested.
 **CPU state:** consult the shared registry using the
 [CPU lifecycle guide](swebench_cpu_lifecycle.md). The original host 52229744 was
 destroyed on September 24; replacement 53118260 was prepared and qualified on
-September 28 under persistent authorization. Never use an old address or rent a
+September 28 and paused at the user's request after the completed runs; its disk
+and image cache remain. See the [completed-run provenance and DA-15 caveat](swebench_lite_results_2026-09-28.md).
+Never use an old address or rent a
 duplicate because a document described the registry as empty. Code/tests/status-only
 work does not authorize a new rental.
 
@@ -80,6 +82,13 @@ work does not authorize a new rental.
 
 ## Recovery and completion
 
+New runs prioritize `sympy__sympy-11870` in the official grading dataset via
+`grading_priority` in `lite.yaml`. The other eleven grading workers proceed in
+parallel. Upstream treats `instance_ids` only as a filter, so sorting that list
+alone does not schedule work; `results/grading/dataset.json` preserves all original
+rows and changes only their order. Existing cached reports are still skipped.
+The 1,800-second per-instance limit and upstream cache/test settings stay unchanged.
+
 Official grading has a per-instance test timeout, not a wall-clock deadline for
 the entire suite. `cpu_finish_reserve_seconds` is an admission allowance, not a
 grader kill timer. Preserve cached reports on CPU-only recovery; the actual CPU
@@ -107,6 +116,24 @@ bounds remain. Replacements receive fresh leases within the remaining budget.
 Later HF backup failures do not cancel agents. Snapshots are atomic; official grading
 and publication retry separately. Source/config drift, explicit stops, exhausted
 budgets/retries and ownership mismatches fail visibly.
+
+An explicitly authorized mid-run budget increase must preserve the cumulative
+ledger. The running coordinator caches its configuration and manifest; editing
+JSON alone does not change its admission decisions. `fleet_handover.py` supports
+a reviewed coordinator-only handover: archive the old source/config/manifest,
+record the new authorization, verify each worker's PID birth time and provider
+ownership, and keep existing model workers and pod expiries unchanged. Before
+replacing the coordinator, transfer parent-dependent watchdogs to deadline-only
+guards, and use a maximum three-minute handover record for the independent
+reaper. Restore normal service kill/restart behavior immediately after adoption.
+The adopted workers occupy ordinary fleet slots, so the GPU ceiling still holds.
+The initial handover checkpoint is nonfatal, like other running-campaign backups;
+a surviving publisher can still hold its lock. Verify that adoption reaches the
+fleet loop and arms the new parent-dependent monitors before calling it complete.
+The adoption marker alone does not prove those later steps succeeded.
+This is an explicit maintenance operation, not automatic recovery or permission
+to raise a budget. Budget reservation refusals must not count as GPU scarcity
+or trigger hardware fallback.
 
 Completion requires 300 valid outcomes, 300 officially graded outcomes, HF readback
 and rollout/result hash verification, and zero owned GPUs. Leave a persistent CPU

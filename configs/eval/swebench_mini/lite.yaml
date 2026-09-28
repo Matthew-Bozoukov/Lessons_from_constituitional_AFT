@@ -94,6 +94,8 @@ max_infrastructure_failures: 6
 min_free_gib: 50
 grading_workers: 12
 grading_timeout_seconds: 1800
+# Start the measured grading tail in the first worker wave; other workers stay parallel.
+grading_priority: [sympy__sympy-11870]
 pilot_repos: [django/django, sympy/sympy, scikit-learn/scikit-learn, astropy/astropy, matplotlib/matplotlib, psf/requests]
 serving:
   context_window: 262144

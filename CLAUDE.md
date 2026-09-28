@@ -208,11 +208,13 @@ per-sample transcripts.
 
 ### Results live on Hugging Face, not in `output/`
 
-Every eval run is pushed to `LASR-Callum` in the contract layout (`src/eval/layout.py`):
+Every eval run is pushed to `dougalldeepmind` (formerly `LASR-Callum`) in the
+contract layout (`src/eval/layout.py`):
 `rollouts/` (ODCV: `<variant>/<Scenario>/pass<N>/messages_record.txt`), `results/`
 (`results.json` + `.md` mirror, judge scores), `metadata/` (`run_meta.json`, config), and a
 card tagged `eval-run`, `eval:<name>`, `model:<key>`, `mode:<mode>` — the dashboard finds runs
-only by that org and those tags. `uv run evals` does all of this; hand-pushed runs must match.
+only by that org and those tags. Set `HF_ORG=dougalldeepmind` for new uploads.
+`uv run evals` does all of this; hand-pushed runs must match.
 When `scratch/` code bypasses the `scripts/` entrypoints (a one-off harness, a repeat-rollout
 driver, a repack), read the contract those entrypoints enforce — `src/eval/layout.py`,
 `push_run_dir`'s card fields, the tags, the org — and reproduce it; a run that skips the

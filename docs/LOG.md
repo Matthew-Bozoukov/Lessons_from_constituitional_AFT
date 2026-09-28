@@ -1,6 +1,241 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
+
+The user reports an issue in the training dataset used for the September 25
+DA-15 checkpoint and intends to replace it. Preserve its 184/300 measurement as
+historical checkpoint evidence, not as validation of the corrected treatment.
+The September 22 seed-0 nosynth control remains the retained 178/300 baseline.
+Exact model and training-mixture revisions, independently read from pinned HF
+training metadata, are in [the closeout record](swebench_lite_results_2026-09-28.md).
+Both HF result cards now carry this distinction, with machine-readable provenance
+notices verified by readback. No scores, trajectories or previous commits changed.
+The exact training-data defect/replacement is not diagnosed by this update.
+
+Vast CPU 53118260 was paused at the user's explicit request, with provider state
+`exited` / intended `stopped` verified at 17:05 UTC; the disk/cache are retained.
+The local registry and pause audit preserve ownership for a future authorized resume.
+An unrelated RunPod training pod was left untouched. Completed campaigns have no
+owned GPUs or monitors. Historical entries saying the CPU is running describe
+those earlier timestamps; the lifecycle guide records its current paused state.
+
+
+## 2026-09-28 - Prioritize the slow SymPy grader and publish the v5 comparison
+
+New `lite.yaml` launches put `sympy__sympy-11870` first in a derived grading
+dataset, retaining twelve parallel workers and every original task row. Merely
+sorting `instance_ids` would not work: the pinned official harness uses it only
+as a filter. Source dataset, test patches, scoring, cached-report handling and
+the 1,800-second instance limit remain unchanged. The priority is included in
+frozen recipe settings; the next launch must qualify/deploy the updated source
+and recipe normally, rather than reusing an old recipe hash.
+
+Validation: **42 fleet tests passed** on the existing Linux CPU with providers
+mocked. All 300 reordered real dataset rows matched the originals by ID. The
+installed SWE-bench 4.1.0 loader honored the new order, and its actual thread pool
+completed two synthetic short jobs while the first priority job remained active.
+That concurrency probe ran no Docker tests or inference and rented no GPUs.
+The verified control (178/300) versus DA-15 (184/300) vertical chart, pinned input
+JSON and concurrency proof are published under `metadata/comparisons/` at
+[HF revision b763ca77](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5/tree/b763ca771e65dcd7758e13b42d4519e100fc15e9/metadata/comparisons).
+All four uploaded files passed SHA256 readback. The chart uses a zero-based
+0-100% axis and retains the single-run and grading-environment caveats.
+
+## 2026-09-28 - Seed-0 no-DA control Lite v5 complete: 178/300
+
+**Question/method.** Rerun `dougalldeepmind/2026-09-22-qwen36-0-nosynth`
+at `633908b72a9799fb3e6b101b0a8a82aec3c3d642` on all 300 Lite tasks, using the
+v5 mini protocol: temperature 1, top-p 0.95, top-k 20, neutral other penalties,
+16,384 response tokens, 262,144 context/task-generation tokens, 500 steps and
+retained prior reasoning. The user authorized ten H100 NVLs with four independent
+conversations each, and increased the cumulative GPU backstop from $180 to $280.
+
+**Result/verification.** All 300 valid outcomes are officially scored:
+**178 resolved (59.33%)**, 114 test failures, six malformed patches that could
+not apply, and two empty submissions. There were 298 Submitted exits and two
+LimitsExceeded exits; eligible tracked-source patches were preserved. No valid
+model outcome was rerolled. The supervisor verified **83,532 rollout/result
+artifacts** at [HF revision
+303c5382](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5/tree/303c5382195aadaa39c611a44fa4aadf9b0abdcc)
+at **13:19:31 UTC**. Independent readback matched the result, final-accounting
+and SymPy diagnosis files byte-for-byte. Provider inventory confirmed zero
+campaign-owned GPUs; two unrelated training pods were left untouched. The
+completion heartbeat was deleted. Persistent CPU 53118260 remains running.
+
+**Time/cost.** GPU rental window **10:36:29-12:50:47 UTC (2h14m)**; last model
+outcome 12:50:41. Final verified publication took **2h43m from first allocation**,
+including recovery, grading and artifact verification. GPU elapsed time at quoted
+rates totals **$55.59**; conservative closed ledger **$58.37**, with no active
+reservations. RunPod billing rows at 13:17:51 recorded **$50.30** with all owned
+pod IDs represented, but those rows can lag and are not a final invoice. CPU
+quote through verification is **$1.47** at $0.538889/hour, excluding preparation,
+transfer and subsequent persistent retention. Shared-account balance changes are
+not a cost measure.
+
+**Recovery/limitations.** Preserve all 52 infrastructure-invalid attempts and the
+audited budget-handover failure described below: our coordinator bug released
+four healthy replicas and wasted partial work and rental time. Startup timeouts
+also wasted rental time before those pods accepted tasks. After repair, 8,870
+fresh-HTTP responses had no transport errors. These timings include those
+interruptions. Local HTTPBin remains a declared grading deviation, and two
+Requests tasks pass the no-fix baseline. The preceding DA-15 v5 result was
+184/300; differing training checkpoints and these single stochastic runs do not
+establish a causal treatment effect. The old temperature-0 runs are not matched
+v5 comparisons. The SymPy grading-tail investigation is documented immediately
+below; no test budgets, cache settings or model outcomes were changed.
+
+## 2026-09-28 - SymPy-11870 grading tail: repeated symbolic identities dominate
+
+**Question/method.** Explain why `sympy__sympy-11870` consistently finishes late,
+without changing live grading or rerunning inference. Compared the complete official
+test outputs for the September 28 control, DA-15 and separate correct-reference
+qualification, the pinned SymPy test source, and the installed upstream SWE-bench
+test command. During the control test, its Python child consumed one full CPU core;
+the container had no CPU quota and no OOM events.
+
+**Finding.** Control grading took **765.37 seconds**, including **606.095 seconds**
+in `test_sin_cos`. DA-15 took **1328.46 seconds**, including **1049.788 seconds**
+in that test; the correct reference took **1311.17 seconds**, including
+**1041.571 seconds**. Thus the same test accounts for about 79% of all three
+durations. It checks 5,632 symbolic trigonometric identities at rational multiples
+of pi. Upstream SWE-bench invokes `bin/test -C --verbose`; in this pinned SymPy,
+`-C` means `--no-cache` and sets `SYMPY_USE_CACHE=no`, disabling expression
+memoization. This is separate from the model server's KV cache. No cache-enabled
+counterfactual was run, so these observations do not establish a measured speedup
+from changing the flag or a precise cause for the cross-run timing difference.
+
+**Correction/implication.** The earlier DA-15 completion entry overemphasized
+`test_sec` after a late stack snapshot. Complete timings show it took only
+33.795-57.193 seconds; `test_sin_cos` dominates. The correct reference passed,
+while both model patches failed the required `test_sinc`; slowness itself is
+not evidence of a model failure or broken environment. All grading budgets and
+tests were preserved. Starting historically slow *grading* cases first could
+reduce the final wait without changing tests; enabling caching would require
+separate validation and an explicit protocol decision. Evidence is recorded at
+`metadata/sympy-11870-slowness/analysis.json` in the control HF dataset, with hashes
+and paths of the three source logs. No GPUs were rented for this investigation.
+
+## 2026-09-28 - Control budget increased; coordinator handover failure repaired
+
+The user explicitly increased this control campaign's cumulative GPU cap from
+$180 to **$280** and requested the tenth GPU. The ten-GPU ceiling, model protocol,
+prior spend and existing per-pod expiries were retained. The old coordinator
+cached its cap in memory; changing its files alone could not unblock admission.
+Coordinator adoption was added and CPU-qualified, including a real systemd
+main-process replacement that retained the child worker PID and heartbeat.
+Reservation deferrals also no longer count as evidence of GPU scarcity.
+
+**Operational failure, not model failure.** The first adoption passed its PID
+checks, but a surviving HF publisher held `.publish.lock`. An incorrectly
+required checkpoint caused ordinary supervisor recovery to fence **four of the
+nine working H100s** before the coordinator was frozen. This was introduced by
+our handover path. Completed model outcomes remained immutable; interrupted
+attempts, consumed rental time and replacement startup time are real losses.
+Do not present the original adoption marker as proof of uninterrupted success.
+
+Commit `dcd20ac8` makes that checkpoint nonfatal when adopting live workers.
+Its added regression fails on the old code and reaches the fleet loop without
+fencing on the repaired code. All **104 CPU tests and two subtests** passed on
+the actual committed deployment. At 11:30 UTC the repaired coordinator adopted
+the five surviving workers, preserving their PIDs and model servers, and armed
+its parent watchdogs. Normal systemd kill/restart settings were restored.
+The campaign's bounded infrastructure attempt allowance was raised from three
+to four for the interrupted tasks; prior attempts remain, and valid model
+outcomes are never rerolled. The diagnosed failure epoch is explicitly recorded;
+supervisor cycle history and the cumulative financial ledger were not reset.
+
+Four replacement H100 NVLs allocated immediately; the tenth lane was retrying
+actual provider capacity rejections. At 11:31 UTC: **80 valid, 20 running,
+15 infrastructure-invalid eligible for retry, 185 pending**. Nine H100s were
+allocated (five working, four booting). Elapsed GPU quote estimate **$27.43**;
+the conservative **$209.24 reservation** included future leases and pending
+create reconciliation, and is not charged spend. CPU/cache remain persistent.
+
+Evidence is in `metadata/budget-amendment.json`,
+`metadata/budget-handover-recovery.json`, their before snapshots, and
+`metadata/budget-amendment-qualification`. The amended manifest and both audits
+were hash-verified on [HF revision 66fb737b](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5/tree/66fb737b160282d58a637dfebe1cdb51c4afcb56).
+The existing 15-minute monitor was updated to the authorized $280 cap and the
+recovery facts. This is an in-progress campaign, not a final score.
+
+**11:33 UTC follow-up:** the tenth H100 allocated after two provider-capacity
+rejections. All ten H100 NVLs were verified at the provider: five working and
+five in bootstrap or serving warmup. Counts: 81 valid, 20 running, 15 eligible
+infrastructure retries, 184 pending; 52 historical invalid attempts are retained.
+Elapsed GPU quote estimate $28.46; future reservation $191.55. The manifest and
+recovery audit hashes were verified again at HF revision
+`83bdb2026f54efdb69f8dc8ed18ae2e9572f2149`.
+
+## 2026-09-28 - Seed-0 no-DA control rerun launched with Lite v5
+
+**Question/method.** Obtain a full control under the temperature-1 protocol used
+by the completed September 25 DA-15 evaluation, rather than compare that result
+against the older temperature-0 control. The requested existing control is
+`dougalldeepmind/2026-09-22-qwen36-0-nosynth` at
+`633908b72a9799fb3e6b101b0a8a82aec3c3d642`; its training config records seed 0,
+the no-synthetic-data mixture, and a rank-64 Qwen3.6-27B adapter. This identifies
+the training seed; it does not claim bitwise deterministic inference.
+
+The user explicitly requested ten H100 GPUs for this run. The campaign preserves
+the mini `lite-v5` recipe: 16,384 response tokens, 262,144 context and cumulative
+generation tokens per task, 500 steps, temperature 1, top-p 0.95, top-k 20 and
+neutral remaining penalties. Prior reasoning is retained, HTTP connections are
+fresh per request, and all 300 tasks follow the frozen historical longest-first
+order. Ten independent H100 NVLs serve four conversations each; the existing
+native-Docker CPU 53118260 shares a 32-command gate and later uses 12 graders.
+The default repository recipe remains six replicas; this campaign has a separate
+qualified ten-replica recipe. Delayed H200/RTX fallback remains available.
+
+**Qualification/launch.** Runtime commit `4b250268` is merged into remote main
+and deployed. The merged ordinary-evaluation naming changes were requalified
+on the actual CPU: 211 regression tests passed (one skip, two subtests), ten
+real HTTP protocol tests, one transport-timeout test, all 300 image shell probes,
+and the synthetic agent/Docker/official-grader/HF smoke passed. The existing
+80-worker capacity proof still matches the host, images and resource policy.
+Fourteen qualification artifacts were hash-verified at
+[HF revision b1cd91e3](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-lite-infrastructure/tree/b1cd91e312c6f23b7088382843d5be54c8a02d93).
+Synthetic gold-patch smoke results are infrastructure evidence, not model scores.
+
+The new campaign `30564f0317d84edc99b6a802b0316cc5` started at 10:36 UTC;
+all ten H100 NVLs allocated on their first attempt at a quoted $3.19/hour each.
+Each ready replica starts independently. Its root is
+`/srv/lasr/runs/20260928-2026-09-22-qwen36-0-nosynth-lite-v5`, with `launch.yaml`
+and immutable source/qualification metadata. Initial checkpoints are published
+to [the control HF dataset](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5).
+The authorized cumulative GPU backstop is $180; full-lease reservations are not
+charged spend. Planning estimate: $55-80 GPU cost, 2-3 hours inference plus
+30-60 minutes grading/publication; these are forecasts, not measured results.
+CPU retention costs $0.538889/hour plus transfer and remains persistent.
+
+**Next steps/limitations.** The dedicated 15-minute heartbeat checks inference,
+provider ownership, resources, checkpoints, cumulative cost and official grading.
+Completion requires all 300 scored outcomes, HF result/artifact readback, and
+verified GPU teardown. No valid model outcome may be rerolled. Retain the declared
+local HTTPBin environment deviation and two Requests no-fix baseline passes.
+The different checkpoint dates and fleet sizes should remain visible when
+interpreting the comparison. This entry records launch, not completion.
+
+## 2026-09-28 - September 25 DA token doses: 5% and 25% complete
+
+**Hypothesis/method.** Test DA supervision dose using the September 25 corpus and
+DA-15's exact nosynth replay source. Train each arm once, seed 0, one epoch,
+`token_mean` loss and dynamic packing; actual DA supervised-token shares are
+5.019623% and 24.998833%. Evaluate three ODCV passes and one full MASK pass.
+
+**Result.** DA-5: **20.4% ODCV misconduct / 72.0 MASK honesty**. DA-25:
+**7.5% / 92.2**. Each ODCV run has 240 clean, fully judged transcripts; MASK
+covers all 1,000 rows. Existing nosynth scores 45.4% / 56.9 and DA-15 scores
+9.2% / 90.2. This descriptive trend does not establish a reliable 15%-to-25%
+gain across training seeds. Conservative total cost is $44.13; all owned pods
+are terminated. Temporary campaign code was removed before merging.
+
+**Next steps.** Use the pinned artifacts for downstream comparisons; additional
+seeds or repeats are separate experiments. The [full results and reproduction
+record](training/2026-09-28_da_token_doses.md) includes source/model/eval pins,
+confidence intervals, generation-error rates, recovery and accounting limits.
+
 ## 2026-09-28 - September 25 DA-15 seed-0 Lite v5 complete: 184/300
 
 **Question/method.** Evaluate `dougalldeepmind/2026-09-25-qwen36-0-da-15`
