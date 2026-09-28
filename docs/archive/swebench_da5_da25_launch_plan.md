@@ -1,7 +1,11 @@
 <!-- ABOUTME: Pinned adapters and proposed shared-fleet settings for the September 24 DA pair. -->
-<!-- ABOUTME: Preparation only: no evaluation or GPU rental has started. -->
+<!-- ABOUTME: Historical planning record; superseded by the current Lite v5 runbook. -->
 
-# DA-5 and DA-25 pre-launch plan
+# Archived DA-5 and DA-25 pre-launch plan
+
+This September 24 plan is historical, not current authorization or live resource
+state. Use the [current runbook](../swebench_lite_runbook.md) and
+[CPU lifecycle](../swebench_cpu_lifecycle.md) for new runs.
 
 ## Authorized revision: DA-5 only, expanded protocol (2026-09-24)
 
