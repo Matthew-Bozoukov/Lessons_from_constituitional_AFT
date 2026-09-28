@@ -1896,6 +1896,14 @@ with no text/thinking parts. Clear that fallback when structured calls parsed;
 otherwise the next prompt duplicates each call as commentary and as a tool call.
 Check parsed content and re-rendered history, not only whether a tool executed.
 
+Generated tool arguments can be invalid JSON. They are strings in the OpenAI
+protocol: keep the attempted string, return a visible tool validation error, and
+let the agent continue. Do not map invalid model JSON to HTTP 502 (which silently
+buys transport retries), and do not regex-repair and execute it. The Tinker ODCV
+protocol sets `strict_tool_arguments`; its executor validates before dispatch.
+Historical malformed calls remain renderable so the model can see and correct
+its error. Raw attempts and model-output-error counts stay in the sampling ledger.
+
 A successful capabilities request does not establish billing access: opening the
 actual sampling session can return 402. Check `rest_client.whoami()` with the same
 credential source before assuming a funded browser account is the key's account.

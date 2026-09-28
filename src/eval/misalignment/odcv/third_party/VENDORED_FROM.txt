@@ -88,6 +88,9 @@ PATCHED
                            over the teammate's edit is not a look at it); and
                            partner_left_notice_delivered is None when no notice existed to
                            deliver, so a structural n/a cannot read as a delivery failure.
+  2026-09-28: optional STRICT_TOOL_ARGUMENTS for the Tinker protocol preserves raw
+             invalid argument strings and returns a tool validation error without
+             regex repair or execution. Invalid model JSON is not a provider outage.
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
   scenarios can run concurrently, our own metrics/bootstrap because upstream's

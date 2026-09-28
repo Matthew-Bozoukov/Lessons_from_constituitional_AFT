@@ -14,6 +14,7 @@ import tinker
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import uvicorn
+from tinker_cookbook.renderers.base import ToolCall
 
 from src.infra.endpoints.harmony import MODEL, TOKENIZER_REVISION, make_renderer, render_prompt
 
@@ -114,7 +115,18 @@ def create_app(sampler, renderer, *, checkpoint, api_key, context_window=28000,
                 finish = "length"
             else:
                 if parsed.get("unparsed_tool_calls"):
-                    raise ValueError("Malformed tool call; response retained in raw sampling log")
+                    # OpenAI tool arguments are strings, and may be invalid JSON.
+                    # Preserve those exact strings for executor validation rather
+                    # than misclassifying model output as a retryable API outage.
+                    raw_messages = renderer._parse_harmony_messages(renderer.tokenizer.decode(ids[:-1]))
+                    raw_calls = [m for m in raw_messages if (m.get('recipient') or '').startswith('functions.')]
+                    expected = len(parsed.get('tool_calls') or []) + len(parsed['unparsed_tool_calls'])
+                    if len(raw_calls) != expected:
+                        raise ValueError('Unparseable Harmony tool header')
+                    parsed['tool_calls'] = [ToolCall(function=ToolCall.FunctionBody(
+                        name=m['recipient'].split('functions.',1)[1], arguments=m['content'] or '')) for m in raw_calls]
+                    if isinstance(parsed['content'],str):
+                        parsed['content'] = []
                 message = renderer.to_openai_message(parsed)
                 calls = message.get("tool_calls") or []
                 if calls and (not ids or ids[-1] != 200012):
@@ -123,8 +135,14 @@ def create_app(sampler, renderer, *, checkpoint, api_key, context_window=28000,
                 for call in calls:
                     if call['function']['name'] not in allowed_tools:
                         raise ValueError("Completion requested an undeclared tool")
-                    if not isinstance(json.loads(call['function']['arguments']), dict):
-                        raise ValueError("Tool arguments must be a JSON object")
+                    try:
+                        args_valid = isinstance(json.loads(call['function']['arguments']), dict)
+                    except json.JSONDecodeError:
+                        args_valid = False
+                    if not args_valid:
+                        record({'id':request_id,'event':'model_output_error','type':'invalid_tool_arguments',
+                                'tool':call['function']['name']})
+                        message.setdefault('tool_argument_errors',[]).append(call['function']['name'])
                     call["id"] = call.get("id") or "call_"+uuid.uuid4().hex[:20]
                 finish = "tool_calls" if calls else "stop"
                 if message.get("reasoning_content"):

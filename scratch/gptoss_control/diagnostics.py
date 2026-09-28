@@ -46,6 +46,7 @@ def summarize(path):
     return {
         'source_ledger': str(path), 'requests_reserved': len(requests),
         'responses_received': len(completed), 'error_events': len(errors),
+        'model_output_error_events': sum(e['event']=='model_output_error' for e in events),
         'error_types': {kind: sum(e['type'] == kind for e in errors)
                         for kind in sorted({e['type'] for e in errors})},
         'reserved_prompt_tokens': sum(e['prompt_tokens'] for e in requests),

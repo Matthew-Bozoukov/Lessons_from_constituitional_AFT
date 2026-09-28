@@ -473,6 +473,7 @@ def evaluate(cfg,out,smoke=False):
     protocol=OmegaConf.merge(OmegaConf.load('configs/eval/odcv/lite.yaml'),{
         'compare_published':False,'published_key':None,'concurrency':cfg.eval.concurrency,
         'prune_images':False,'prune_networks':False,'require_clean_pass':True,'smoke':smoke,
+        'strict_tool_arguments':True,
         'output_root':str(root),'workspace_root':str(out/'odcv_workspaces'),
         'tinker':{'reasoning':cfg.reasoning,'max_tokens':cfg.eval.max_tokens,'bind':'0.0.0.0',
                   'max_cost_usd':remaining,'adapter_artifact':adapter},

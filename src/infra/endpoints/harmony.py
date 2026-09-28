@@ -112,7 +112,7 @@ def build_messages(renderer, messages, tools=None, *, history=False):
                 fn = tc["function"]
                 args = fn["arguments"]
                 args = json.dumps(args, ensure_ascii=False) if isinstance(args, dict) else args
-                if not isinstance(json.loads(args), dict):
+                if not history and not isinstance(json.loads(args), dict):
                     raise ValueError("Tool arguments must be an object")
                 calls.append(ToolCall(id=tc.get("id"), function=ToolCall.FunctionBody(
                     name=fn["name"], arguments=args)))

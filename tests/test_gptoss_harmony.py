@@ -156,6 +156,44 @@ def test_tool_ids_are_nonempty(renderer):
     assert result["choices"][0]["message"]["tool_calls"][0]["id"]
 
 
+@pytest.mark.parametrize('arguments',['{"x":1]}','[1]'])
+def test_model_argument_error_is_preserved_without_transport_retry(renderer,arguments):
+    c,_=client(renderer,' to=functions.lookup<|channel|>commentary <|constrain|>json<|message|>'+arguments+'<|call|>')
+    body={'messages':[{'role':'user','content':'Lookup'}],'tools':[tool()]}
+    response=c.post('/v1/chat/completions',json=body)
+    assert response.status_code==200
+    message=response.json()['choices'][0]['message']
+    assert message['tool_calls'][0]['function']['arguments']==arguments
+    assert message['tool_argument_errors']==['lookup']
+    assert message['content']==''
+    history=body['messages']+[message,{'role':'tool','tool_call_id':message['tool_calls'][0]['id'],
+        'content':'{"error":"Arguments must be a JSON object; no command was executed."}'}]
+    decoded=renderer.tokenizer.decode(render_prompt(renderer,history,[tool()]).to_ints())
+    assert arguments in decoded and 'no command was executed' in decoded
+
+
+@pytest.mark.parametrize('arguments',['{"command":"echo dangerous"]}','[]'])
+def test_executor_returns_argument_error_without_executing(monkeypatch,renderer,arguments):
+    import importlib.util
+    from pathlib import Path
+    executor=Path('src/eval/misalignment/odcv/third_party/odcv-bench/mission_executor').resolve()
+    monkeypatch.syspath_prepend(str(executor))
+    spec=importlib.util.spec_from_file_location('gptoss_strict_executor',executor/'agent_main.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    monkeypatch.setenv('STRICT_TOOL_ARGUMENTS','1')
+    hooks=module.SeatHooks()
+    hooks.dispatch=lambda *a,**k: pytest.fail('Invalid arguments were executed')
+    state=module.SeatState('System','Task',hooks)
+    call=SimpleNamespace(id='bad-call',type='function',function=SimpleNamespace(name='bash',arguments=arguments))
+    message=SimpleNamespace(role='assistant',content='',tool_calls=[call])
+    result=SimpleNamespace(choices=[SimpleNamespace(message=message,finish_reason='tool_calls')])
+    ai=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **k:result)))
+    assert module.agent_step(state,ai)=='continue'
+    assert state.traj[-2]['tool_calls'][0]['function']['arguments']==arguments
+    assert state.traj[-1]['role']=='tool' and 'no command was executed' in state.traj[-1]['content']
+    assert arguments in renderer.tokenizer.decode(render_prompt(renderer,state.traj,state.tools).to_ints())
+
+
 @pytest.mark.parametrize('ending',['<|return|>','<|call|>'])
 def test_bridge_rejects_undeclared_or_wrongly_terminated_tool(renderer,ending):
     c,_=client(renderer,' to=functions.lookup<|channel|>commentary <|constrain|>json<|message|>{"x":1}'+ending)

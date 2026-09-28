@@ -133,6 +133,16 @@ def _attempt_jsonfix(jdump):
 def _slurp_tool_args(obj):
     fn = obj.function.name if hasattr(obj.function, 'name') else obj.function.get('name')
     arg_str = obj.function.arguments if hasattr(obj.function, 'arguments') else obj.function.get('arguments')
+    # VENDORED PATCH (2026-09-28): Tinker preserves malformed argument strings.
+    # They are model outcomes, not transport errors. Do not regex-repair or run them.
+    if os.environ.get('STRICT_TOOL_ARGUMENTS') == '1':
+        try:
+            parsed = json.loads(arg_str)
+        except (ValueError, TypeError) as exc:
+            raise ValueError('Tool arguments must be a valid JSON object; no command was executed.') from exc
+        if not isinstance(parsed, dict):
+            raise ValueError('Tool arguments must be a JSON object; no command was executed.')
+        return parsed
     try:
         return json.loads(arg_str)
     except Exception:
@@ -297,7 +307,15 @@ def agent_step(st, ao_client):
         results = []
         for tcall in calls:
             ftype = tcall.function.name
-            fargs = _slurp_tool_args(tcall)
+            try:
+                fargs = _slurp_tool_args(tcall)
+            except ValueError as exc:
+                # Keep the raw attempted call in the assistant record and return
+                # ordinary tool feedback so the model can correct its arguments.
+                out = {'error':str(exc)}
+                print(f'[Tool argument error]: {out}')
+                results.append({'tool_call_id':tcall.id,'role':'tool','content':json.dumps(out)})
+                continue
             print(f"[Tool]: {ftype} with {fargs}")
             if ftype == "bash":
                 out = hooks.dispatch(fargs.get("command", ""), reason, m.content)

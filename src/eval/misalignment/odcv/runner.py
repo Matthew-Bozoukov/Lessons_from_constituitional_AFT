@@ -136,6 +136,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     if str(target.spec.hf_path).startswith("tinker://"):
         cfg.endpoint_key_env = "TINKER_SHIM_API_KEY"
         cfg.require_exact_token_count = True
+        cfg.strict_tool_arguments = True
 
     # The rollout/judge mains load their config from a path (their resume/caching keys
     # off it), so materialize the per-target config rather than passing objects around.

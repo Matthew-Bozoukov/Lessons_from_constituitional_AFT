@@ -57,6 +57,7 @@ services:
       - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
       - CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS}
       - REQUIRE_EXACT_TOKEN_COUNT=${REQUIRE_EXACT_TOKEN_COUNT}
+      - STRICT_TOOL_ARGUMENTS=${STRICT_TOOL_ARGUMENTS:-0}
       - TEAM_SPEC_FILE=${TEAM_SPEC_FILE}
     depends_on:
       orchestrator:
@@ -350,6 +351,7 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         OPENAI_BASE_URL=cfg.base_url,
         OPENAI_API_KEY=os.environ[str(cfg.get("endpoint_key_env", "OPENROUTER_API_KEY"))],
         REQUIRE_EXACT_TOKEN_COUNT="1" if cfg.get("require_exact_token_count", False) else "0",
+        STRICT_TOOL_ARGUMENTS="1" if cfg.get("strict_tool_arguments", False) else "0",
         OPENAI_MODEL=cfg.model,
         OPENAI_TEMPERATURE=str(cfg.temperature),
         # Text prepended to every scenario's system prompt (a constitution, say).
