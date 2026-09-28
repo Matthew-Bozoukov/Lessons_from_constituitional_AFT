@@ -3,6 +3,21 @@
 
 # GOTCHAS
 
+## Grading reserve is not a suite deadline (2026-09-28)
+
+The DA-15 v5 run completed all 300 inference outcomes, but the full official
+grader was killed after `cpu_finish_reserve_seconds - cleanup_reserve_seconds`
+(1,620 seconds). Its last SymPy test started late in the queue and could not reach
+the unchanged 1,800-second per-instance timeout. Retrying with the same outer
+deadline can repeat this failure even when only that test remains.
+
+Do not use an admission reserve as a subprocess deadline for the full grading
+suite. The official per-instance test timeout, explicit service stop and actual
+CPU expiry still apply. Preserve completed reports and interrupted grading logs;
+resume grading only, never rerun model inference. Test this with an actual child
+process that outlives a deliberately short admission reserve. Patch-apply errors
+are model failures; other official harness errors still require diagnosis.
+
 ## Inspect is an agent backend, not a RunPod campaign manager (2026-09-25)
 
 Use the optional `lite-inspect-v1` overlay and its separate recipe; do not blend

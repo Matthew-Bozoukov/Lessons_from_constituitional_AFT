@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 import hashlib
 import multiprocessing
 import signal
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -79,6 +80,39 @@ class AdmissionTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 with tool_slot(path, 4, wait_seconds=.1):
                     self.fail('Low-memory work admitted')
+
+
+class GradingTests(unittest.TestCase):
+    def test_cpu_finish_reserve_cannot_kill_official_grading(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            cfg = OmegaConf.create({'root': path, 'grading_workers': 1,
+                'grading_timeout_seconds': 2, 'cpu_finish_reserve_seconds': .08,
+                'cleanup_reserve_seconds': .02})
+            tasks = {str(i): {'status': 'valid', 'attempts': [{'prediction': {
+                'model_name_or_path': 'test', 'model_patch': 'patch' if i == 0 else ''}}]}
+                for i in range(300)}
+            atomic(root/'metadata/state.json', {'tasks': tasks, 'pods': []})
+            atomic(root/'metadata/manifest.json', {'campaign': 'test', 'limitations': 'synthetic'})
+            atomic(root/'metadata/httpbin_fixture.json', {})
+            script = root/'scratch/swebench_local_httpbin.py'
+            script.parent.mkdir()
+            script.write_text('import json, time\nfrom pathlib import Path\n'
+                'request=json.loads(Path("request.json").read_text())["harness"]\n'
+                'assert request["timeout"] == 2\n'
+                'time.sleep(.15)\n'
+                'Path("test.lite_test.json").write_text(json.dumps({'
+                '"completed_ids": request["instance_ids"], "resolved_ids": []}))\n')
+            with patch.object(fleet.runpod, 'active_pods', return_value=[]), \
+                 patch.object(fleet, 'HARNESS', sys.executable), \
+                 patch.object(fleet, 'REPO', root), \
+                 patch.object(fleet, 'cleanup_grading') as cleanup:
+                fleet.grade(cfg)
+            cleanup.assert_called_once()
+            result = read(root/'results/results.json')
+            self.assertEqual(result['n_graded'], 300)
+            self.assertEqual(result['status'], 'complete')
+            self.assertEqual(read(root/'results/grading/request.json')['harness']['timeout'], 2)
 
 
 class SupervisionTests(unittest.TestCase):

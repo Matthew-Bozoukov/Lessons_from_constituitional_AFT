@@ -832,9 +832,11 @@ def grade(cfg):
     if nonempty:
         try:
             with (grading / 'harness.log').open('a') as log:
+                # The CPU admission reserve is not a deadline for the whole suite.
+                # Upstream bounds each test via request['harness']['timeout']; the
+                # real CPU expiry and explicit service stop remain external guards.
                 subprocess.run([str(HARNESS), str(REPO / 'scratch/swebench_local_httpbin.py'), '--request', str(grading / 'request.json')],
-                               cwd=grading, stdout=log, stderr=subprocess.STDOUT, check=True,
-                               timeout=cfg.cpu_finish_reserve_seconds - cfg.cleanup_reserve_seconds)
+                               cwd=grading, stdout=log, stderr=subprocess.STDOUT, check=True)
         finally:
             cleanup_grading(root, manifest)
     reports = list(grading.glob('*.lite_' + manifest['campaign'] + '.json'))

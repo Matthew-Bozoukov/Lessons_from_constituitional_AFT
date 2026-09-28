@@ -80,6 +80,12 @@ work does not authorize a new rental.
 
 ## Recovery and completion
 
+Official grading has a per-instance test timeout, not a wall-clock deadline for
+the entire suite. `cpu_finish_reserve_seconds` is an admission allowance, not a
+grader kill timer. Preserve cached reports on CPU-only recovery; the actual CPU
+expiry and explicit stop remain binding. Diagnose any remaining harness errors
+before treating them as scored outcomes.
+
 A definitive 4xx rejection does not imply a still-running generation. Rate limiting
 can use the bounded retry policy. Authentication/invalid-request/model-route failures
 save a systemic diagnostic and require diagnosis before more rentals. Tokenizer
