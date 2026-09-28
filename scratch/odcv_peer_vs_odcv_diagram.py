@@ -6,8 +6,8 @@ For a reader who knows ODCV: the left panel is ODCV as it ships, the right panel
 with one seat added. Everything grey is byte-identical to ODCV; everything purple is new.
 """
 
-from datetime import date
 from pathlib import Path
+from src.naming import figure_path
 
 import matplotlib
 
@@ -16,11 +16,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = (
-    ROOT
-    / "output/odcv_peer"
-    / f"{date.today().isoformat()}_odcvpeer_vs_odcv_diagram.png"
-)
+OUT = figure_path(ROOT / "output/odcv_peer", "odcvpeer_vs_odcv_diagram")
 INK, GREY, GREY_FILL, PURPLE, PURPLE_FILL, MUTED = (
     "#1f2328",
     "#6b7280",

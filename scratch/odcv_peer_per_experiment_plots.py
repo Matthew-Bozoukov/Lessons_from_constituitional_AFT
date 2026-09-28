@@ -18,8 +18,8 @@ they agree within noise (8% vs 8%). Colours: plain (no synthetic data) grey, dif
 """
 
 import json
-from datetime import date
 from pathlib import Path
+from src.naming import figure_path
 
 import matplotlib
 
@@ -28,7 +28,6 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "output/odcv_peer"
-STAMP = date.today().isoformat()
 GREY, PURPLE, DARK, LIGHT_GREY, LIGHT_PURPLE = (
     "#8a8a8a",
     "#5b3fa6",
@@ -197,7 +196,7 @@ for num, title, arm, cond, variant, mate_c, tested_c in EXPS:
     )
     fig.tight_layout(rect=(0, 0.16, 1, 1))
     slug = title.split(" — ")[0].lower().replace(" ", "_")[:20]
-    p = OUT / f"{STAMP}_odcvpeer_exp{num}_{slug}.png"
+    p = figure_path(OUT, f"odcvpeer_exp{num}_{slug}")
     fig.savefig(p, dpi=170)
     plt.close(fig)
     paths.append(p)
@@ -232,7 +231,7 @@ def two_by_two(metric_index, title, note, stem):
     ax.set_title(title, fontsize=14, fontweight="bold", loc="left")
     fig.text(0.02, 0.01, note, fontsize=9.5, color="#555")
     fig.tight_layout(rect=(0, 0.04, 1, 1))
-    out = OUT / f"{STAMP}_odcvpeer_{stem}.png"
+    out = figure_path(OUT, f"odcvpeer_{stem}")
     fig.savefig(out, dpi=170)
     plt.close(fig)
     paths.append(out)
@@ -269,7 +268,7 @@ fig.text(0.02, 0.01, f"{n} cells. Both seats scored with the standard ODCV rubri
          f"\nTeam ended with faked files {fraud:.0f}%. Resisted = repaired it, reported it, or talked the teammate out of it.",
          fontsize=9.5, color="#555")
 fig.tight_layout(rect=(0, 0.08, 1, 1))
-p5 = OUT / f"{STAMP}_odcvpeer_exp5_pushy_simple.png"
+p5 = figure_path(OUT, "odcvpeer_exp5_pushy_simple")
 fig.savefig(p5, dpi=170)
 plt.close(fig)
 paths.append(p5)
@@ -342,7 +341,7 @@ for variant in ("mandated", "incentivized"):
         color="#555",
     )
     fig.tight_layout(rect=(0, 0.04, 1, 1))
-    p = OUT / f"{STAMP}_odcvpeer_{variant}_plain_vs_da.png"
+    p = figure_path(OUT, f"odcvpeer_{variant}_plain_vs_da")
     fig.savefig(p, dpi=170)
     plt.close(fig)
     paths.append(p)
@@ -407,7 +406,7 @@ fig.text(
     color="#555",
 )
 fig.tight_layout(rect=(0, 0.04, 1, 0.9))
-p = OUT / f"{STAMP}_odcvpeer_mr_vs_solo.png"
+p = figure_path(OUT, "odcvpeer_mr_vs_solo")
 fig.savefig(p, dpi=170)
 plt.close(fig)
 paths.append(p)

@@ -9,6 +9,7 @@ Arm colours follow the repo law: no-synthetic-data control grey, difficult advic
 import json
 from datetime import date
 from pathlib import Path
+from src.naming import figure_path
 
 import matplotlib
 
@@ -84,7 +85,7 @@ fig.text(
     color="#555",
 )
 fig.tight_layout(rect=(0, 0.05, 1, 1))
-f1 = OUT / f"{STAMP}_odcvpeer_simple_1_team_fraud.png"
+f1 = figure_path(OUT, "odcvpeer_simple_1_team_fraud")
 fig.savefig(f1, dpi=170)
 plt.close(fig)
 
@@ -164,7 +165,7 @@ fig.text(
     color="#555",
 )
 fig.tight_layout(rect=(0, 0.1, 1, 1))
-f2 = OUT / f"{STAMP}_odcvpeer_simple_2_teammate_cheated.png"
+f2 = figure_path(OUT, "odcvpeer_simple_2_teammate_cheated")
 fig.savefig(f2, dpi=170, bbox_inches="tight")
 plt.close(fig)
 
@@ -203,7 +204,7 @@ fig.text(
     color="#555",
 )
 fig.tight_layout(rect=(0, 0.05, 1, 1))
-f3 = OUT / f"{STAMP}_odcvpeer_simple_3_wording.png"
+f3 = figure_path(OUT, "odcvpeer_simple_3_wording")
 fig.savefig(f3, dpi=170)
 plt.close(fig)
 

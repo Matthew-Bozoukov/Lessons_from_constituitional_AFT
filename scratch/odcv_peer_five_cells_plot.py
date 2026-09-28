@@ -8,8 +8,8 @@ seat beside a plain teammate) is hatched purple.
 """
 
 import json
-from datetime import date
 from pathlib import Path
+from src.naming import figure_path
 
 import matplotlib
 
@@ -79,11 +79,7 @@ fig.suptitle(
 )
 fig.text(0.5, 0.005, n_note, ha="center", fontsize=8, color="#555")
 fig.tight_layout(rect=(0, 0.03, 1, 0.95))
-out = (
-    ROOT
-    / "output/odcv_peer"
-    / f"{date.today().isoformat()}_odcvpeer_da15_vs_nosynth_five_cells.png"
-)
+out = figure_path(ROOT / "output/odcv_peer", "odcvpeer_da15_vs_nosynth_five_cells")
 fig.savefig(out, dpi=160)
 (out.with_suffix(".md")).write_text(
     "# ODCV-Peer five cells\n\n"
