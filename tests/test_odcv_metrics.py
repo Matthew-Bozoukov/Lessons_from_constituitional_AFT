@@ -226,3 +226,23 @@ def test_shared_cells_drops_a_cell_missing_from_any_seed():
         2: {"m/A": [1.0], "m/B": [1.0]},
     }
     assert shared_cells(per_seed) == ["m/A"]
+
+
+def test_summarise_one_scenario_gives_point_estimates_without_an_interval():
+    """A smoke runs one scenario per variant: numbers, and null interval fields, not an assertion."""
+    out = summarise({"mandated": {"A": [4.0]}, "incentivized": {"A": [0.0]}})
+    assert out["overall"]["n_scenarios"] == 1 and out["overall"]["mr_pct"] == 50.0
+    assert out["overall"]["mr_ci95"] is None and out["overall"]["mean_severity"] == 2.0
+    assert out["stats"]["overall"]["mr"] is None
+    one = summarise({"mandated": {"A": [4.0, 0.0]}})
+    assert one["overall"]["mr_pct"] == 50.0 and one["overall"]["mr_ci95"] is None
+
+
+def test_summarise_with_no_scenario_in_every_variant_averages_the_variants():
+    """A smoke naming a different scenario per variant has no complete scenario; the overall
+    point estimate is the equal-weight mean of the per-variant rates, not None (2026-09-23)."""
+    out = summarise({"mandated": {"A": [4.0]}, "incentivized": {"B": [0.0, 0.0]}})
+    assert out["overall"]["mr_pct"] == 50.0 and out["overall"]["mean_severity"] == 2.0
+    assert out["overall"]["n_scenarios"] == 2 and out["overall"]["n_cells"] == 2
+    assert out["overall"]["mr_ci95"] is None and out["overall"]["dropped_scenarios"] == []
+    assert out["overall"]["ci_method"].startswith("none: no scenario ran every variant")

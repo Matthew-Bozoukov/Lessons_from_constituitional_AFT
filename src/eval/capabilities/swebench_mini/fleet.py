@@ -44,6 +44,7 @@ def recipe_settings(cfg):
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
     keys += tuple(k for k in ('step_limit', 'token_admission', 'preferred_gpus') if k in cfg)
     keys += tuple(k for k in ('protocol_version', 'sampling') if k in cfg)
+    keys += tuple(k for k in ('grading_priority',) if k in cfg)
     keys += tuple(k for k in ('agent_backend', 'inspect') if k in cfg)
     keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
@@ -344,14 +345,16 @@ def guard(cfg):
     manifest = read(path)
     active = subprocess.run(['systemctl', 'is-active', '--quiet', 'lasr-swebench-lite.service']).returncode == 0
     state = read(Path(cfg.root) / 'metadata/state.json')
+    from src.eval.capabilities.swebench_mini.fleet_handover import pending
+    handover = pending(cfg.root, manifest)
     rejected_names = {p['name'] for p in state.get('pods', [])
                       if p['status'] in ('allocation-unconfirmed', 'rejected-reconciled')}
     for pod in runpod.active_pods():
         if owned(pod, manifest):
             deadline = float((pod.get('env') or {}).get('LASR_POD_DEADLINE', 0))
-            if not active or pod.get('name') in rejected_names or time.time() >= min(deadline, deadline_value(state['deadline'])):
+            if (not active and not handover) or pod.get('name') in rejected_names or time.time() >= min(deadline, deadline_value(state['deadline'])):
                 runpod.teardown(pod['id'])
-    if not active:
+    if not active and not handover:
         try:
             with lock(Path(cfg.root) / '.coordinator.lock', nonblocking=True):
                 for arm in session.members(cfg):
@@ -725,7 +728,7 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
             raise cleanup_error
 
 
-def phase(cfg, config_path, ids, count, seconds, manifest):
+def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
     state = State(cfg.root)
     data = read(state.path)
     remaining = manifest['budget_usd'] - reserved_cost(data)
@@ -748,6 +751,11 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     started = time.time()
     with ThreadPoolExecutor(max_workers=count) as pool:
         futures = {}
+        if adopted:
+            from src.eval.capabilities.swebench_mini.fleet_handover import monitor
+            assert len(adopted) <= count, 'Adoption exceeds fleet ceiling'
+            for lane, record in enumerate(adopted):
+                futures[lane] = pool.submit(monitor, cfg, config_path, record, manifest)
         while True:
             live = session.view(cfg)
             for lane, future in list(futures.items()):
@@ -755,9 +763,13 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                     continue
                 del futures[lane]
                 if future.exception():
-                    failures[lane] += 1
-                    if fallback_attempt.get(lane):
-                        fallback_failures[lane] += 1
+                    # A budget reservation refusal made no provider request and
+                    # says nothing about availability of the preferred GPU.
+                    budget_deferred = str(future.exception()).startswith('Allocation deferred: cumulative budget reservation unavailable')
+                    if not budget_deferred:
+                        failures[lane] += 1
+                        if fallback_attempt.get(lane):
+                            fallback_failures[lane] += 1
                     print(f'Fleet slot {lane}: {future.exception()}; peers continue', flush=True)
                     retry_at[lane] = time.time() + min(cfg.allocation_retry_max_seconds,
                         cfg.allocation_retry_seconds * 2 ** min(attempts[lane] - 1, 4))
@@ -810,6 +822,19 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     session.checkpoints(cfg, config_path)  # A remote outage must not prevent local grading.
 
 
+def grading_dataset(cfg, root, grading):
+    """Order the dataset itself: upstream treats instance_ids only as a filter."""
+    source = root / 'metadata/swebench_lite_test.json'
+    priority = list(cfg.get('grading_priority', []))
+    if not priority:
+        return source
+    rank = {iid: index for index, iid in enumerate(priority)}
+    rows = sorted(read(source), key=lambda row: rank.get(row['instance_id'], len(rank)))
+    target = grading / 'dataset.json'
+    atomic(target, rows)  # Stable sort preserves every original row and all test content.
+    return target
+
+
 def grade(cfg):
     root = Path(cfg.root)
     state = read(root / 'metadata/state.json')
@@ -822,8 +847,9 @@ def grade(cfg):
     grading.mkdir(parents=True, exist_ok=True)
     predictions = grading / 'predictions.jsonl'
     predictions.write_text(''.join(json.dumps(p | {'instance_id': iid}) + '\n' for iid, p in preds.items()))
+    dataset = grading_dataset(cfg, root, grading)
     request = {'fixture': read(root / 'metadata/httpbin_fixture.json'), 'harness': {
-        'dataset_name': str(root / 'metadata/swebench_lite_test.json'), 'split': 'test',
+        'dataset_name': str(dataset), 'split': 'test',
         'instance_ids': list(nonempty), 'predictions_path': str(predictions),
         'max_workers': cfg.grading_workers, 'force_rebuild': False, 'cache_level': 'instance', 'clean': False,
         'open_file_limit': 16384, 'run_id': 'lite_' + manifest['campaign'], 'timeout': cfg.grading_timeout_seconds,
@@ -897,11 +923,15 @@ def execute(cfg, config_path, action, budget):
             if budget is not None:
                 assert budget == manifest['budget_usd'], 'Resume cannot silently reset the cumulative budget'
         state = State(root)
-        fence(cfg, manifest)
+        from src.eval.capabilities.swebench_mini.fleet_handover import claim
+        adopted = claim(cfg, config_path, manifest, runpod.active_pods())
+        if adopted is None:
+            fence(cfg, manifest)
         reconcile_rejections(cfg, manifest)
         with state.edit() as data:
             data['halt'] = None
-            begin_failure_epoch(data)
+            if adopted is None:
+                begin_failure_epoch(data)
             supervisor_path = root / 'metadata/supervisor.json'
             job_deadline = (read(supervisor_path)['deadline'] if supervisor_path.exists()
                             else receipt_deadline(read(cfg.receipt)))
@@ -914,7 +944,10 @@ def execute(cfg, config_path, action, budget):
                 data['halt'] = f'signal {signum}'
         signal.signal(signal.SIGTERM, halted)
         signal.signal(signal.SIGINT, halted)
-        checkpoint(cfg, config_path, required=True)  # verify writable canonical HF before first rental
+        # A handover owns already-running inference, whose durability must not
+        # depend on a concurrent publisher releasing its lock. Initial rentals
+        # still require a verified writable HF checkpoint.
+        checkpoint(cfg, config_path, required=adopted is None)
         try:
             if not read(state.path)['calibrated']:
                 rows = read(root / 'metadata/swebench_lite_test.json')
@@ -973,11 +1006,11 @@ def execute(cfg, config_path, action, budget):
                 calibration = recipe['calibration']
                 measured = (calibration['gpu_seconds_per_task'] * calibration['workers_per_replica']
                             / cfg.workers_per_replica) if calibration.get('gpu_seconds_per_task') is not None else None
-                count = min(cfg.replicas, math.ceil(len(todo) / cfg.workers_per_replica))
+                count = min(cfg.replicas, max(len(adopted or []), math.ceil(len(todo) / cfg.workers_per_replica)))
                 atomic(root / 'metadata/fleet_plan.json', {'replicas': count, 'ceiling': cfg.replicas,
                        'inference_seconds_estimate': len(todo) * measured / count if measured is not None else None, 'estimate_only': True,
                        'assumption': 'Historical mean task duration held constant; new GPU throughput unmeasured'})
-                phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest)
+                phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest, adopted=adopted)
         finally:
             fence(cfg, manifest)
             checkpoint(cfg, config_path)

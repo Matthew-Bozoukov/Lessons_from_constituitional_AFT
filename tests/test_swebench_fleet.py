@@ -83,10 +83,25 @@ class AdmissionTests(unittest.TestCase):
 
 
 class GradingTests(unittest.TestCase):
+    def test_priority_reorders_dataset_without_changing_rows_or_source(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            rows = [{'instance_id': iid, 'test_patch': 'unchanged ' + iid}
+                    for iid in ['a', 'b', 'sympy__sympy-11870', 'c']]
+            source = root/'metadata/swebench_lite_test.json'
+            atomic(source, rows)
+            before = source.read_bytes()
+            cfg = OmegaConf.create({'grading_priority': ['sympy__sympy-11870', 'absent']})
+            ordered = read(fleet.grading_dataset(cfg, root, root/'results/grading'))
+            self.assertEqual(ordered, [rows[2], rows[0], rows[1], rows[3]])
+            self.assertEqual(source.read_bytes(), before)
+            self.assertEqual(fleet.grading_dataset(OmegaConf.create({}), root,
+                                                 root/'results/grading'), source)
+
     def test_cpu_finish_reserve_cannot_kill_official_grading(self):
         with tempfile.TemporaryDirectory() as path:
             root = Path(path)
-            cfg = OmegaConf.create({'root': path, 'grading_workers': 1,
+            cfg = OmegaConf.create({'root': path, 'grading_workers': 12, 'grading_priority': ['299'],
                 'grading_timeout_seconds': 2, 'cpu_finish_reserve_seconds': .08,
                 'cleanup_reserve_seconds': .02})
             tasks = {str(i): {'status': 'valid', 'attempts': [{'prediction': {
@@ -95,11 +110,14 @@ class GradingTests(unittest.TestCase):
             atomic(root/'metadata/state.json', {'tasks': tasks, 'pods': []})
             atomic(root/'metadata/manifest.json', {'campaign': 'test', 'limitations': 'synthetic'})
             atomic(root/'metadata/httpbin_fixture.json', {})
+            atomic(root/'metadata/swebench_lite_test.json', [{'instance_id': str(i)} for i in range(300)])
             script = root/'scratch/swebench_local_httpbin.py'
             script.parent.mkdir()
             script.write_text('import json, time\nfrom pathlib import Path\n'
                 'request=json.loads(Path("request.json").read_text())["harness"]\n'
                 'assert request["timeout"] == 2\n'
+                'assert request["max_workers"] == 12\n'
+                'assert json.loads(Path(request["dataset_name"]).read_text())[0]["instance_id"] == "299"\n'
                 'time.sleep(.15)\n'
                 'Path("test.lite_test.json").write_text(json.dumps({'
                 '"completed_ids": request["instance_ids"], "resolved_ids": []}))\n')
