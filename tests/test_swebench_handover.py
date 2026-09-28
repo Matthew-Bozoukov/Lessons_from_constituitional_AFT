@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import ExitStack
 from unittest.mock import Mock, patch
 from concurrent.futures import Future
 
@@ -22,6 +23,42 @@ from src.eval.capabilities.swebench_mini.fleet_state import atomic, read
 
 
 class HandoverTests(unittest.TestCase):
+    def test_handover_continues_when_checkpoint_publisher_is_already_locked(self):
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as patches:
+            root=Path(tmp);cfg=OmegaConf.load('configs/eval/swebench_mini/lite.yaml');cfg.root=tmp
+            record={'slot':2,'id':'gpu','expires':time.time()+10000,'worker_pid':123}
+            atomic(root/'metadata/manifest.json',{'config':OmegaConf.to_container(cfg),'source_hashes':{},'budget_usd':280})
+            atomic(root/'metadata/state.json',{'tasks':{'a':{'status':'running','attempts':[{}]}},'pods':[record],'halt':None,'calibrated':True})
+            atomic(root/'metadata/supervisor.json',{'deadline':None})
+            atomic(root/'metadata/frozen_recipe.json',{'calibration':{}})
+            atomic(root/'results/results.json',{'status':'incomplete'})
+            cfg.calibrate=True
+            manifest=read(root/'metadata/manifest.json');manifest['config']=OmegaConf.to_container(cfg)
+            atomic(root/'metadata/manifest.json',manifest)
+            patches.enter_context(patch.dict(os.environ,{'INVOCATION_ID':'test'}))
+            patches.enter_context(patch.object(fleet,'preflight',return_value={}))
+            patches.enter_context(patch.object(fleet,'sources',return_value={}))
+            patches.enter_context(patch.object(fleet.runpod,'active_pods',return_value=[]))
+            patches.enter_context(patch.object(handover,'claim',return_value=[record]))
+            patches.enter_context(patch.object(fleet,'reconcile_rejections'))
+            patches.enter_context(patch.object(fleet.signal,'signal'))
+            patches.enter_context(patch.object(fleet,'grade'))
+            fence=patches.enter_context(patch.object(fleet,'fence'))
+            calls=[]
+            def publish(*args,**kwargs):
+                calls.append(args[0])
+                if len(calls)==1:raise subprocess.CalledProcessError(1,args[0],stderr='BlockingIOError: publish lock held')
+                return Mock(returncode=0)
+            patches.enter_context(patch.object(fleet.subprocess,'run',side_effect=publish))
+            def phase(*args,**kwargs):
+                fence.assert_not_called()
+                self.assertEqual(kwargs['adopted'],[record])
+                self.assertEqual(read(root/'metadata/state.json')['pods'],[record])
+            phase_mock=patches.enter_context(patch.object(fleet,'phase',side_effect=phase))
+            fleet.execute(cfg,root/'launch.yaml','resume',280)
+            phase_mock.assert_called_once()
+            self.assertEqual(len(calls),3)
+
     def test_adoption_does_not_extend_an_unready_workers_startup_allowance(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);cfg=OmegaConf.create({'root':tmp,'port_base':8100,'ssh_key':'test','cleanup_reserve_seconds':180,'boot_seconds':900})

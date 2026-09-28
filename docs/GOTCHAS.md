@@ -15,6 +15,15 @@ would tear down healthy work. The bounded handover mechanism in
 slots before new rentals, and retains independent expiry protection. CPU-only
 tests exercise a real orphaned worker and systemd main-process replacement.
 
+A handover's initial checkpoint must use the running-campaign, nonfatal backup
+policy. An older publisher can still hold `.publish.lock` after the coordinator
+exits. Requiring a new upload then sent the supervisor through ordinary resume,
+which fenced five healthy GPUs before recovery was frozen. Completed outcomes
+survived, but interrupted attempts and startup costs are real losses. A regression
+now runs the handover entry path with a rejected concurrent publication and
+asserts that the adopted fleet is reached before any fencing. Initial launches
+still require a verified writable checkpoint.
+
 Budget reservation refusals also used to count as provider failures. Repeated
 refusals could select RTX fallback despite no evidence of H100 scarcity. They now
 retain the preferred GPU and do not increment availability-failure counters.

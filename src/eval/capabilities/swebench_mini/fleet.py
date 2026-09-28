@@ -929,7 +929,10 @@ def execute(cfg, config_path, action, budget):
                 data['halt'] = f'signal {signum}'
         signal.signal(signal.SIGTERM, halted)
         signal.signal(signal.SIGINT, halted)
-        checkpoint(cfg, config_path, required=True)  # verify writable canonical HF before first rental
+        # A handover owns already-running inference, whose durability must not
+        # depend on a concurrent publisher releasing its lock. Initial rentals
+        # still require a verified writable HF checkpoint.
+        checkpoint(cfg, config_path, required=adopted is None)
         try:
             if not read(state.path)['calibrated']:
                 rows = read(root / 'metadata/swebench_lite_test.json')
