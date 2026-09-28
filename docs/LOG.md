@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - September 25 DA token doses: 5% and 25% complete
+
+**Hypothesis/method.** Test DA supervision dose using the September 25 corpus and
+DA-15's exact nosynth replay source. Train each arm once, seed 0, one epoch,
+`token_mean` loss and dynamic packing; actual DA supervised-token shares are
+5.019623% and 24.998833%. Evaluate three ODCV passes and one full MASK pass.
+
+**Result.** DA-5: **20.4% ODCV misconduct / 72.0 MASK honesty**. DA-25:
+**7.5% / 92.2**. Each ODCV run has 240 clean, fully judged transcripts; MASK
+covers all 1,000 rows. Existing nosynth scores 45.4% / 56.9 and DA-15 scores
+9.2% / 90.2. This descriptive trend does not establish a reliable 15%-to-25%
+gain across training seeds. Conservative total cost is $44.13; all owned pods
+are terminated. Temporary campaign code was removed before merging.
+
+**Next steps.** Use the pinned artifacts for downstream comparisons; additional
+seeds or repeats are separate experiments. The [full results and reproduction
+record](training/2026-09-28_da_token_doses.md) includes source/model/eval pins,
+confidence intervals, generation-error rates, recovery and accounting limits.
+
 ## 2026-09-28 - September 25 DA-15 seed-0 Lite v5 complete: 184/300
 
 **Question/method.** Evaluate `dougalldeepmind/2026-09-25-qwen36-0-da-15`
