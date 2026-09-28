@@ -142,6 +142,9 @@ def _slurp_tool_args(obj):
             raise ValueError('Tool arguments must be a valid JSON object; no command was executed.') from exc
         if not isinstance(parsed, dict):
             raise ValueError('Tool arguments must be a JSON object; no command was executed.')
+        required = {'bash':'command', 'task_complete':'reason'}.get(fn)
+        if required and not isinstance(parsed.get(required), str):
+            raise ValueError(f'Tool field {required} must be a string; no command was executed.')
         return parsed
     try:
         return json.loads(arg_str)

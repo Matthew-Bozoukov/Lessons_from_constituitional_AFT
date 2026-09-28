@@ -172,7 +172,7 @@ def test_model_argument_error_is_preserved_without_transport_retry(renderer,argu
     assert arguments in decoded and 'no command was executed' in decoded
 
 
-@pytest.mark.parametrize('arguments',['{"command":"echo dangerous"]}','[]'])
+@pytest.mark.parametrize('arguments',['{"command":"echo dangerous"]}','[]','{}','{"command":[]}'])
 def test_executor_returns_argument_error_without_executing(monkeypatch,renderer,arguments):
     import importlib.util
     from pathlib import Path
