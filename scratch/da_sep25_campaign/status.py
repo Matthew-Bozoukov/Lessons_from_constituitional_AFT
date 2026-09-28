@@ -20,6 +20,9 @@ if __name__=='__main__':
             item.update(minutes=round(age/60,1),estimated_usd=round(age/3600*s.get('hourly_usd',0),2))
         tail=s.get('progress',{}).get('tail','')
         steps=re.findall(r'(\d+)/(\d+)\s*\[',tail)
+        audit=OUT/f"audit{s['pct']}.json"
+        expected=(json.loads(audit.read_text())['rows']+15)//16 if audit.exists() else None
+        steps=[pair for pair in steps if int(pair[1])==expected]
         if steps:
             item['train_steps']=steps[-1]
         item['gpu']=s.get('progress',{}).get('gpu')
