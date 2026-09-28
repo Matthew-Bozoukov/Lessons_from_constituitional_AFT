@@ -567,15 +567,18 @@ def boot_phase(pod_id: str) -> str:
     return phase
 
 
-def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20) -> bool:
-    """Block until an `--eval` pod's bootstrap says READY, or the timeout passes.
+def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20,
+                      marker: str = "READY") -> bool:
+    """Block until a pod's bootstrap echoes `marker`, or the timeout passes.
 
     An eval pod starts no server, so `boot_phase`'s SERVE_* markers never appear on one;
     what it echoes when vLLM and every weight are in place is a single `READY` line
     (`_bootstrap`). Pulling the ~150GB base takes 20-30 minutes, hence the hour default.
+    A training pod echoes `READY <sha>` once the clone, `uv sync` and the causal-conv1d
+    build are done, and `up` waits for exactly that line.
 
     Returns:
-        True if READY appeared. False on timeout — the caller still owns the pod and
+        True if the marker appeared. False on timeout — the caller still owns the pod and
         must still tear it down.
     """
     deadline = time.time() + timeout_s
@@ -585,13 +588,39 @@ def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20) -> b
             seen = requests.get(boot_log_url(pod_id), timeout=30).text
         except requests.RequestException:
             seen = ""                      # proxy not up yet; keep waiting
-        if "READY" in seen:
+        if marker in seen:
             return True
         remaining = int(deadline - time.time())
         print(f"    ... still bootstrapping ({remaining}s left) — {boot_log_url(pod_id)}",
               flush=True)
         time.sleep(poll_s)
     return False
+
+
+# A training pod's bootstrap, in order (`_bootstrap` with a clone): each echo marks a step
+# it has reached, so the last one in the log is where a slow or stuck boot is.
+TRAIN_BOOT_STEPS = (("CLONING", "cloning the repo"),
+                    ("BUILDING_CAUSAL_CONV1D", "uv sync done; building causal-conv1d"),
+                    ("READY", "ready"))
+_BOOT_ERROR = re.compile(r"Traceback|\w*Error:|\berror:|FAILED|No space left|Killed|timed out")
+
+
+def boot_diagnosis(pod_id: str, tail: int = 20) -> str:
+    """What a pod's boot log says about why it has not reached READY: the last step it got
+    to, every line that looks like an error, and the log's tail. Read-only: it never touches
+    the pod, so a slow boot can be diagnosed without losing it."""
+    try:
+        log = requests.get(boot_log_url(pod_id), timeout=30).text
+    except requests.RequestException as e:
+        return f"boot log unreachable ({type(e).__name__}): {boot_log_url(pod_id)} -- is the pod running?"
+    lines = [l for l in log.splitlines() if l.strip()]
+    reached = [desc for mark, desc in TRAIN_BOOT_STEPS if any(mark in l for l in lines)]
+    errors = [l for l in lines if _BOOT_ERROR.search(l)][-10:]
+    return "\n".join([
+        f"last boot step reached: {reached[-1] if reached else 'none (still installing uv / git)'}",
+        f"error-looking lines ({len(errors)}):", *[f"  {l[:200]}" for l in errors],
+        f"last {tail} lines of {boot_log_url(pod_id)}:", *[f"  {l[:200]}" for l in lines[-tail:]],
+    ])
 
 
 def served_models(endpoint: str, timeout: int = 30) -> list[str] | None:
@@ -1256,7 +1285,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False,
-       max_hours: float = 6.0,
+       max_hours: float = 6.0, boot_timeout_s: int = 2400,
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
@@ -1326,6 +1355,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         countries: Comma-separated placement codes; "" is anywhere.
         max_hours: Positive lifetime cap, enforced by a detached LOCAL watchdog (default 6).
             The local machine must remain awake and connected for enforcement.
+        boot_timeout_s: How long a `--train` pod may take to echo `READY <sha>` before
+            `up` refuses to hand it back (default 40 min; a normal boot is ~10).
         push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
             WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
             pod can push its adapter and report to W&B. Nothing else crosses. Off by
@@ -1432,6 +1463,24 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         guard.terminate()
         raise
 
+    # A training pod is handed back only once it can train. `uv run train` launched before
+    # the boot's own `uv sync` finishes starts a SECOND sync without the boot's CUDA_HOME,
+    # and causal-conv1d's build dies on a missing nvcc before any Python runs -- no check
+    # inside the trainer can catch it (2026-09-28: two of three da arms lost ~20 min of
+    # H200 this way). The boot echoes `READY <sha>` only after the clone, sync and build.
+    if train:
+        print(f">>> waiting for the boot to finish (READY {sha[:8]}) — {boot_log_url(pod_id)}",
+              flush=True)
+        if not wait_bootstrapped(pod_id, timeout_s=boot_timeout_s, marker=f"READY {sha}"):
+            # Diagnose, never tear down: a slow boot is information (a stuck build, a full
+            # disk, a bad image), and the pod is the only place it can be read.
+            raise RuntimeError(
+                f"pod {pod_id} did not reach `READY {sha[:8]}` within {boot_timeout_s}s, so "
+                f"nothing should be launched on it yet. It is left UP (billing, under the "
+                f"{max_hours}h watchdog) for diagnosis:\n{boot_diagnosis(pod_id)}\n"
+                f"Once understood: wait for READY and launch, or `uv run runpod down --pod "
+                f"{pod_id}`.")
+
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
     launch = f"--config {train} model={model} data_repo=<org>/<mix> seed=0 [wandb=true]"
@@ -1439,7 +1488,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
                  f"uv run torchrun --nproc_per_node={count} "
                  f"scripts/train/train_lora.py {launch}")
     next_step = ([
-        "The boot log says READY when the clone and `uv sync` have finished. Then",
+        f"The boot has finished (READY {sha[:8]}): the pod is ready to train. Launch",
         "(fill in the mixture repo and the thinking declaration; add",
         "`wandb=true` to report to W&B; wrap in nohup for a long run —",
         "CLAUDE.md gotcha 6):",
