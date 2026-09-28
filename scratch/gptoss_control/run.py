@@ -461,7 +461,15 @@ def evaluate(cfg,out,smoke=False):
     spent=sum(r.get('reserved_usd',0) for p in root.glob('**/sampling.jsonl') for r in readrows(p))
     remaining=(1 if smoke else cfg.eval.max_target_cost_usd)-spent
     if remaining<=0: raise RuntimeError('ODCV target budget exhausted including prior runs')
-    adapter=json.loads((out/'published_adapter.json').read_text())
+    adapter_path=out/'published_adapter.json'
+    if adapter_path.exists():
+        adapter=json.loads(adapter_path.read_text())
+    elif smoke:
+        # This local --no-push smoke can overlap the large HF upload. Its target
+        # is already pinned by the immutable sampler path; never invent an HF pin.
+        adapter={'sampler':meta['sampler'],'publication_status':'pending at local smoke'}
+    else:
+        raise RuntimeError('Full evaluation requires a verified published adapter')
     protocol=OmegaConf.merge(OmegaConf.load('configs/eval/odcv/lite.yaml'),{
         'compare_published':False,'published_key':None,'concurrency':cfg.eval.concurrency,
         'prune_images':False,'prune_networks':False,'require_clean_pass':True,'smoke':smoke,
