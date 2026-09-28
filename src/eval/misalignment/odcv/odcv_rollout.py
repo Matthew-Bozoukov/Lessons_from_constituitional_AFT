@@ -500,7 +500,8 @@ def main(
         out_dir = Path(cfg.output_root) / cfg.model_key / tag
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    usage_before = openrouter_usage()
+    tinker_target = cfg.get('endpoint_key_env') == 'TINKER_SHIM_API_KEY'
+    usage_before = None if tinker_target else openrouter_usage()
     write_run_meta(
         out_dir,
         OmegaConf.to_container(cfg, resolve=True),
@@ -515,8 +516,11 @@ def main(
     print("=" * 72)
     print(f"ODCV-Bench rollouts | model={cfg.model} temp={cfg.temperature}")
     print(f"scenarios={len(jobs)} concurrency={cfg.concurrency} out={out_dir}")
-    print("OpenRouter spend so far: "
-          + (f"${usage_before:.4f}" if usage_before is not None else "unknown"))
+    if tinker_target:
+        print('Target sampling cost is recorded in the scoped Tinker ledger.')
+    else:
+        print("OpenRouter spend so far: "
+              + (f"${usage_before:.4f}" if usage_before is not None else "unknown"))
     print("=" * 72, flush=True)
 
     results = []
@@ -549,7 +553,7 @@ def main(
                 flush=True,
             )
 
-    usage_after = openrouter_usage(settle_s=90)
+    usage_after = None if tinker_target else openrouter_usage(settle_s=90)
     manifest = {
         "model": cfg.model,
         "model_key": cfg.model_key,
