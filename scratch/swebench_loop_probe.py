@@ -18,7 +18,7 @@ import requests
 import yaml
 from dotenv import load_dotenv
 
-CONFIG = Path('configs/eval/swebench_mini/loop_probe.yaml')
+CONFIG = Path('configs/eval/swebench_mini/loop-probe.yaml')
 
 
 def save(path, value):

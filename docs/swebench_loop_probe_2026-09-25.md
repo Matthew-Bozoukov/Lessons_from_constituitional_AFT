@@ -125,7 +125,7 @@ history stripping, reduced context, or loop-triggered model reroll is introduced
 Keep the lossless-history and raw-transport fixes. New benchmark comparisons must
 run all arms under the same v4 recipe, without splicing into old outcomes.
 
-Reproduction lives in `configs/eval/swebench_mini/loop_probe.yaml` and
+Reproduction lives in `configs/eval/swebench_mini/loop-probe.yaml` and
 `scratch/swebench_loop_probe.py`. `prepare` downloads and freezes evidence; `run`
 rents one guarded GPU and releases it in `finally`. Preparation needs the historical
 loop-selection artifact referenced by the script, available in this investigation's
