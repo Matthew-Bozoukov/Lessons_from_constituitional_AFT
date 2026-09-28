@@ -29,6 +29,14 @@ if __name__=='__main__':
         if (p.parent/'eval.log').exists():
             text=(p.parent/'eval.log').read_text(encoding='utf-8',errors='replace')
             item['eval_tail']=text[-600:]
+            passes=re.findall(r'>>> ODCV pass (\d+)/(\d+)',text)
+            if passes:
+                current,total=map(int,passes[-1])
+                block=text.rsplit(f'>>> ODCV pass {current}/{total}',1)[-1]
+                cells=re.findall(r'\[(\d+)/80\]',block)
+                finished=int(cells[-1]) if cells else 0
+                item['odcv_progress']={'pass':current,'passes':total,'cells_completed_this_pass':finished,
+                                       'rollouts_completed':(current-1)*80+finished,'rollouts_requested':total*80}
         jobs.append(item)
     print(json.dumps(jobs,indent=2))
     for file in ['controller.json','budget.json','prewarm.json']+[p.name for p in sorted(OUT.glob('recovery*.json'))]:
