@@ -79,6 +79,15 @@ test("server-renders comparisons without baking in experiment facts", async () =
   assert.doesNotMatch(html, /76\/240|Broader nonmoral|31\.67/);
 });
 
+test('failure findings discovers runs at runtime without baking in transcripts', async () => {
+  const response = await render('/evals/strange-failures');
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Strange failure findings/);
+  assert.match(html, /Finding runs on Hugging Face/);
+  assert.doesNotMatch(html, /astropy__astropy|2026-09-24-swebench-qwen36|Looking at the join method/);
+});
+
 test("a fabricated fixture is flagged as one", async () => {
   // This is the failure the mock banner exists to prevent, and it happened:
   // `2026-07-30-visualizer-mock-dialogues` is eleven hand-written dialogues

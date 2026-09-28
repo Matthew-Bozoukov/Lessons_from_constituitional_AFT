@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Lightbulb } from "lucide-react";
 import { EntryCard } from "../components/EntryCard";
 import { entriesOfType } from "@/lib/content";
@@ -34,6 +35,7 @@ export default function FindingsPage() {
         <span><AlertTriangle size={16} /> Preserve counterevidence</span>
       </div>
       <div className="collection-list">
+        <Link className="swe-finding-link" href="/evals/strange-failures"><strong>Strange failure findings of evals ↗</strong><span>SWE-bench repetition: inspect consecutive, color-highlighted copies in the original response.</span></Link>
         {findings.map((entry) => <EntryCard entry={entry} key={entry.id} />)}
       </div>
     </main>

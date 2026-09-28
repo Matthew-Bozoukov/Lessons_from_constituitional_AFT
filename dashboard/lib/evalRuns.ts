@@ -18,6 +18,7 @@ export const EVAL_ORG = "dougalldeepmind";
 export type Json = Record<string, unknown>;
 
 export interface EvalRun {
+  tags?: string[];
   repo: string;
   evalName: string;
   model: string;
@@ -43,6 +44,7 @@ export function listEvalRuns(org: string = EVAL_ORG): Promise<EvalRun[]> {
     return docs
       .map((d) => ({
         repo: d.id,
+        tags: d.tags || [],
         evalName: tagValue(d.tags || [], "eval:") || "unknown",
         model: tagValue(d.tags || [], "model:") || d.id.split("/")[1] || d.id,
         mode: tagValue(d.tags || [], "mode:"),
