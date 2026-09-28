@@ -44,6 +44,14 @@ were hash-verified on [HF revision 66fb737b](https://huggingface.co/datasets/dou
 The existing 15-minute monitor was updated to the authorized $280 cap and the
 recovery facts. This is an in-progress campaign, not a final score.
 
+**11:33 UTC follow-up:** the tenth H100 allocated after two provider-capacity
+rejections. All ten H100 NVLs were verified at the provider: five working and
+five in bootstrap or serving warmup. Counts: 81 valid, 20 running, 15 eligible
+infrastructure retries, 184 pending; 52 historical invalid attempts are retained.
+Elapsed GPU quote estimate $28.46; future reservation $191.55. The manifest and
+recovery audit hashes were verified again at HF revision
+`83bdb2026f54efdb69f8dc8ed18ae2e9572f2149`.
+
 ## 2026-09-28 - Seed-0 no-DA control rerun launched with Lite v5
 
 **Question/method.** Obtain a full control under the temperature-1 protocol used
