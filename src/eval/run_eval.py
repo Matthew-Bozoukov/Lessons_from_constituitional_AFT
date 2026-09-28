@@ -325,6 +325,7 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
     parser.add_argument("--no-push", action="store_true",
                         help="skip the HF upload (smoke runs only — HF is the canonical store)")
     parser.add_argument("--fleet", action="store_true", help="Submit one SWE-bench Lite target to its prepared CPU supervisor")
+    parser.add_argument("--agent-backend", choices=['mini','inspect'], help="SWE-bench fleet agent; default preserves the selected config")
     parser.add_argument("--cpu-receipt", help="Local Vast CPU receipt; refresh its SSH address and resume if stopped within its existing lifetime")
     parser.add_argument("--cpu-key", help="SSH identity for the dedicated CPU host")
     parser.add_argument("--budget-usd", type=float, help="Cumulative GPU spending backstop for this fleet campaign")
@@ -342,6 +343,8 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             parser.error('--fleet requires an explicit positive --budget-usd backstop')
         command = ['launch', '--config', args.config or 'configs/eval/swebench_mini/lite.yaml',
                    '--target', args.target[0], '--budget-usd', str(args.budget_usd)]
+        if args.agent_backend:
+            command += ['--agent-backend', args.agent_backend]
         if args.target_revision:
             command += ['--target-revision', args.target_revision]
         if len(args.target) == 2:
@@ -357,7 +360,7 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             return submit(args.cpu_receipt, args.cpu_key, command)
         from src.eval.capabilities.swebench_mini.fleet import main as fleet_main
         return fleet_main(command)
-    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.next_target_revision, args.run_root)):
+    if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.next_target_revision, args.run_root, args.agent_backend)):
         parser.error('CPU/fleet launch options require --fleet')
     if args.terminate_pod and not args.server:
         parser.error("--terminate-pod requires --server")

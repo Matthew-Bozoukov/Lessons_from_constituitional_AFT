@@ -61,7 +61,7 @@ def latest_admission(cfg, expires):
     return expires - cfg.cleanup_reserve_seconds - allowance
 
 
-def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
+def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admission=None):
     state = State(cfg.root)
     meta = read(state.root / 'metadata/manifest.json')
     rows = {r['instance_id']: r for r in read(state.root / 'metadata/swebench_lite_test.json')}
@@ -77,12 +77,22 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
                    'cpus': cfg.agent_cpus, 'memory': cfg.agent_memory, 'pids': cfg.agent_pids,
                    'environment': OmegaConf.to_container(cfg.agent_environment),
                    'max_response_tokens': cfg.max_response_tokens, 'max_task_tokens': cfg.max_task_tokens,
+                   'step_limit': cfg.get('step_limit', 250), 'context_window': cfg.serving.context_window,
+                   'token_admission': admission,
                    'model_request_timeout_seconds': cfg.model_request_timeout_seconds,
                    'model_request_attempts': cfg.model_request_attempts,
                    'tool_slots_path': str(Path(cfg.get('fleet_owner_root') or cfg.root) / '.tool-slots'),
                    'tool_concurrency': cfg.get('tool_concurrency', 32),
                    'tool_queue_timeout_seconds': cfg.get('tool_queue_timeout_seconds', 600),
                    'min_available_memory_gib': cfg.min_available_memory_gib}
+        if cfg.get('sampling'):
+            request.update(sampling=OmegaConf.to_container(cfg.sampling), protocol_version=cfg.protocol_version)
+        backend=cfg.get('agent_backend','mini')
+        assert backend in ('mini','inspect'), 'Unknown SWE-bench backend'
+        if backend=='inspect':
+            request['inspect']=OmegaConf.to_container(cfg.inspect)
+            request.update(tool_timeout_seconds=cfg.inspect.tool_timeout_seconds,
+                           tool_output_limit=cfg.inspect.tool_output_limit)
         # Never persist gold solutions in rollout directories or feed them to the agent.
         request['instance'] = {k: v for k, v in request['instance'].items()
                                if k not in ('patch', 'test_patch', 'hints_text', 'FAIL_TO_PASS', 'PASS_TO_PASS')}
@@ -96,7 +106,9 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
         error = None
         try:
             with (out / 'agent.log').open('w') as log:
-                proc = subprocess.Popen([str(AGENT_ENV / '.venv/bin/python'), '-m', 'src.eval.capabilities.swebench_mini.fleet_task',
+                execution_env=AGENT_ENV if backend=='mini' else AGENT_ENV.parent/'inspect'
+                module='fleet_task' if backend=='mini' else 'inspect_task'
+                proc = subprocess.Popen([str(execution_env / '.venv/bin/python'), '-m', 'src.eval.capabilities.swebench_mini.'+module,
                                          '--request', str(out / 'request.json')], env=env,
                                         stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                 atomic(out / 'process.json', {'pid': proc.pid, 'started': time.time()})
@@ -122,7 +134,8 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
                     atomic(out / 'resources.json', container_resources(ids[0]))
                 subprocess.run(['docker', 'rm', '-f', *ids], check=True, timeout=90)
         path = out / iid / (iid + '.traj.json')
-        traj = read(path) if path.exists() else {}
+        checkpoint = out / 'checkpoint.traj.json'
+        traj = read(path) if path.exists() else read(checkpoint) if checkpoint.exists() else {}
         result = classify(traj, rc)
         if error:
             result.update(valid=False, error=error)
@@ -139,6 +152,16 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None):
                                    json.dumps(m, indent=2, ensure_ascii=False) + '\n```'
                                    for m in traj.get('messages', []))
         (out / 'transcript.md').write_text(transcript, encoding='utf-8')
+        from src.eval.capabilities.swebench_mini.browser import diagnose
+        atomic(out / 'diagnostics.json', diagnose(traj))
+        systemic = out / 'systemic-failure.json'
+        if systemic.exists():
+            result.update(valid=False, systemic_failure=read(systemic))
+            with state.edit() as data:
+                # Retain an explicit user stop or an earlier failure reason.
+                if not data.get('halt'):
+                    data['halt'] = 'systemic inference protocol failure; diagnosis required'
+                data['systemic_failure'] = {'instance': iid, 'attempt': aid, **read(systemic)}
         state.finish(iid, aid, result)
         print(f'{iid}: {result["exit_status"]}; valid={result["valid"]}', flush=True)
         if unhealthy and unhealthy.is_set():
@@ -162,6 +185,21 @@ def runner(target, cfg, out_dir, **kwargs):
     assert target.spec.revision == campaign.target_revision
     assert target.spec.base_revision == campaign.base_revision and target.spec.mode == campaign.mode
     endpoint = target.base_url
+    admission = None
+    if campaign.get('token_admission'):
+        from src.eval.capabilities.swebench_mini.fleet_admission import cache_capacity
+        capacity = cache_capacity(target._server.executor.tail_log(1000),
+            campaign.token_admission.cache_fraction, campaign.serving.context_window)
+        admission = dict(capacity,
+            directory=str(Path(owner.root) / '.token-slots' / str(cfg.replica)),
+            expires=cfg.expires - campaign.cleanup_reserve_seconds,
+            fairness_seconds=campaign.token_admission.fairness_seconds)
+        atomic(Path(campaign.root) / 'metadata' / f'token-capacity-{cfg.replica}.json', admission)
+        if capacity['measured_tokens'] >= campaign.token_admission.large_cache_tokens:
+            schedule = read(Path(campaign.root) / 'metadata/task-schedule.json')
+            peaks = schedule.get('profile', {}).get('peak_prompt_tokens_by_instance', {})
+            # Stable sort preserves longest-first within both groups. No task is excluded.
+            allowed.sort(key=lambda iid: peaks.get(iid, 0) < campaign.token_admission.large_prompt_tokens)
     with State(owner.root).edit() as data:
         pod = next(p for p in data['pods'] if p['slot'] == cfg.replica)
         if pod.get('idle_startup_cancellation'):
@@ -176,6 +214,9 @@ def runner(target, cfg, out_dir, **kwargs):
         last_healthy = time.time()
         while not stop.is_set():
             try:
+                if admission and (Path(admission['directory']) / 'poison.json').exists():
+                    unhealthy.set()
+                    return
                 response = requests.get(endpoint.removesuffix('/v1').rstrip('/') + '/metrics', timeout=10)
                 response.raise_for_status()
                 last_healthy = time.time()
@@ -196,7 +237,7 @@ def runner(target, cfg, out_dir, **kwargs):
     try:
         with ThreadPoolExecutor(max_workers=campaign.workers_per_replica) as pool:
             futures = [pool.submit(consume, endpoint, 'hosted_vllm/' + target.model_name, campaign,
-                                   str(cfg.replica) + '-' + str(i), allowed, cfg.expires, unhealthy)
+                                   str(cfg.replica) + '-' + str(i), allowed, cfg.expires, unhealthy, admission)
                        for i in range(campaign.workers_per_replica)]
             for future in futures:
                 future.result()

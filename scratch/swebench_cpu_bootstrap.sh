@@ -42,6 +42,7 @@ systemctl start lasr-vast-expiry.service
 
 uv sync --frozen --project src/eval/capabilities/swebench_mini/envs/agent
 uv sync --frozen --project src/eval/capabilities/swebench_mini/envs/harness
+uv sync --frozen --project src/eval/capabilities/swebench_mini/envs/inspect
 if ! test -f /root/.ssh/id_ed25519; then
   ssh-keygen -q -t ed25519 -N "" -C swebench-cpu-to-runpod -f /root/.ssh/id_ed25519
 fi

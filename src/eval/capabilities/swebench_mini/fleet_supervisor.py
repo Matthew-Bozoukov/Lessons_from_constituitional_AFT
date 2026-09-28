@@ -28,7 +28,8 @@ def decide(state, control, cfg, now=None):
         return 'finish'
     if now + cfg.get('allocation_min_remaining_seconds', 6480) + cfg.get('cpu_finish_reserve_seconds', 1800) >= deadline_value(control['deadline']):
         return 'cpu_lifetime_insufficient'
-    if state.get('halt') and any(x in state['halt'].lower() for x in ('memory', 'disk', 'cleanup', 'budget')):
+    if state.get('halt') and any(x in state['halt'].lower() for x in
+            ('memory', 'disk', 'cleanup', 'budget', 'infrastructure failure circuit breaker', 'systemic inference protocol failure')):
         return 'needs_attention'
     if control.get('cycles', 0) >= cfg.get('max_recovery_cycles', 4):
         return 'recovery_exhausted'
@@ -180,6 +181,9 @@ def _launch(cfg, config_path, args):
     slug = args.target.split('/')[-1]
     assert all(c.isalnum() or c in '-_.' for c in slug), 'Unsafe target name'
     suffix = '-paired' if next_target else ''
+    if cfg.get('protocol_version'):
+        assert all(c.isalnum() or c == '-' for c in cfg.protocol_version)
+        suffix += '-' + cfg.protocol_version
     root = Path(args.root or '/srv/lasr/runs/' + datetime.now(timezone.utc).strftime('%Y%m%d') + '-' + slug + suffix)
     root = root.resolve()
     assert root.is_relative_to('/srv/lasr/runs') and str(root) != '/srv/lasr/runs', 'Campaign root must be below /srv/lasr/runs'
@@ -190,6 +194,8 @@ def _launch(cfg, config_path, args):
     state = {}
     if Path(args.write_config).exists():
         saved = OmegaConf.load(args.write_config)
+        assert saved.get('agent_backend', 'mini') == cfg.get('agent_backend', 'mini'), 'Cannot change backend in an existing campaign'
+        assert saved.get('protocol_version') == cfg.get('protocol_version'), 'Cannot change protocol in an existing campaign'
         assert saved.target == args.target
         children = session.members(saved)[1:]
         assert [c.target for c in children] == ([next_target] if next_target else []), 'Resume must preserve the exact adapter pair'

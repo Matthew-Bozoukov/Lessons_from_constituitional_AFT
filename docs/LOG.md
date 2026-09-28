@@ -1,6 +1,93 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - September 25 DA-15 seed-0 Lite v5 complete: 184/300
+
+**Question/method.** Evaluate `dougalldeepmind/2026-09-25-qwen36-0-da-15`
+at `b13cfe9891671f05c73a12078796e212944d22e4` on all 300 Lite tasks. The mini
+backend used temperature 1, top-p 0.95, top-k 20, neutral other penalties,
+16,384 response tokens, 262,144 context/task-generation tokens, 500 steps and
+preserved prior reasoning. At most six GPUs served four conversations each,
+using historical longest-first ordering on the prepared native-Docker Vast CPU.
+
+**Result.** All 300 valid outcomes are scored: **184 resolved (61.33%)**, 111
+test failures, three malformed patches that fail to apply, and two empty patches.
+Inference ended with 299 Submitted exits and one response-token-limit exit; a
+Submitted exit alone is not a passing test. No valid model outcome was rerolled.
+The supervisor read back the final result and hash-verified **89,245 rollout/result
+files** at [immutable HF revision
+956e6c89](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-da-15-lite-v5/tree/956e6c89f97267ba6ad1277609acd0944a381a5c).
+The final `sympy__sympy-11870` reference patch passed all required tests; the model
+patch failed `test_sinc` while preserving the PASS_TO_PASS tests. Both took about
+22 minutes in the unchanged 1,800-second instance allowance, spending substantial
+time in `test_sec` symbolic series expansion. This was slow computation, not a
+demonstrated environment defect. The separately recorded reference is excluded
+from the model score.
+
+**Measured time/cost.** GPU rental window 05:56:09-09:01:12 UTC (3h05m), last
+inference outcome 09:01:05, final verified publication 10:11:54 (4h16m from first
+GPU allocation, or 4h40m including cold CPU preparation from 05:31:27). These
+times include recovery and debugging; they are not an uninterrupted throughput
+benchmark. Elapsed rental time times quoted rates is **$50.67**; the closed
+conservative GPU ledger is **$53.20**, not charged spend. At the 10:15 UTC billing
+readback RunPod recorded **$51.07** for the owned pods; provider rows can lag.
+CPU quote through verified completion is **$2.52 including preparation**, at
+$0.538889/hour. Transfer and subsequent persistent CPU retention are separate.
+All campaign GPUs were confirmed absent; the authorized CPU 53118260 remains up.
+The detailed evidence is in `metadata/final-accounting.json` and
+`metadata/completion-verification.json` in the HF run.
+
+**Recovery/limitations.** Twenty infrastructure-invalid attempts and one H200
+startup timeout remain in the audit. Four H100 replicas were fenced after HTTP
+disconnects; their saved server logs showed no CUDA OOM. Transport fix `cd8c5ebe`
+uses fresh HTTP connections through the same SSH tunnel without changing model
+messages or server caches; 9,162 subsequent fresh requests succeeded with zero
+transport errors or tokenizer mismatches. The suspected idle-connection race is
+not packet-level proven. Grading-only fix `56055702` removed the incorrect
+1,620-second whole-suite timeout, retaining the official per-instance limit and
+all 300 outcome/294 existing report hashes; the real child-process regression and
+41 fleet tests passed. Both migrations, interrupted logs and reference diagnostic
+are published. The sixth replacement lane was temporarily blocked by full-lane
+budget reservation rather than actual spend or solely GPU scarcity. The local
+HTTPBin fixture remains a declared scoring-environment deviation, and two Requests
+tasks pass without source fixes under the pinned labels. This new checkpoint and
+temperature-1 protocol are **not a paired comparison** to the older temperature-0
+control. Future runs should use the tested transport/grading fixes and retain the
+slow SymPy reference as qualification evidence; this run does not establish that
+all infrastructure failures or model loops are eliminated.
+
+
+## 2026-09-28 - DA-15 seed-0 full Lite v5 launch on six H100 NVLs
+
+**Question/method.** Run the September 25 DA-15 checkpoint at
+`b13cfe9891671f05c73a12078796e212944d22e4` with the verified temperature-1 recipe,
+restoring 16,384 response tokens while retaining 262,144 task/context tokens and
+500 steps. Mini remains the backend. Six H100 NVLs, four independent conversations
+each, consume the frozen historical longest-first queue. The 24-hour per-pod
+emergency ceiling is clipped to the $180 cumulative GPU backstop; there is no
+wall-clock task limit. Persistent Vast host 53118260 replaces the destroyed host.
+
+**Qualification/result so far.** Source `666784ff` deployed on the replacement
+61-CPU, 197.9-GiB native-Docker host. All 300 images and shell checks passed,
+as did nine reference patches and six no-fix controls. 171 regression tests plus
+two subtests, nine actual-client protocol tests, timeout and pinned-template proof,
+and 526 CPU test commands passed. CPU stress phases 40/60/80 and 80 with the
+32-command gate had zero failures/OOMs. Real-agent synthetic grading and HF
+readback verified 99 artifacts at
+[qualification](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-lite-infrastructure/tree/c72767546b0a2672d511c97ab7b1f8e25a744524).
+At 06:13 UTC all six H100 NVLs were working: one valid outcome, 24 running,
+275 pending, zero infrastructure-invalid attempts. Live HTTP evidence confirmed
+all sampling fields and preserved reasoning across multiple turns. This is launch
+health evidence, not a completed score or proof against all future looping.
+
+**Next steps.** The durable supervisor and one 15-minute heartbeat continue the
+[run](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-da-15-lite-v5)
+through official grading, HF artifact verification and owned-GPU teardown. Leave
+the CPU running under persistent authorization. Record final score and invoiced/
+quoted costs separately; do not compare this changed protocol as an exact repeat
+of the historical control or DA-15 runs.
+
+
 ## 2026-09-26 — "Ask, not instruct" t6: seed-1 replicate of da-15 and da-new-t6-15 on ODCV-lite + MASK
 
 **Hypothesis.** The 2026-09-25 wording change to `configs/data/synth/da.yaml` (9f093f2c: the
@@ -52,6 +139,7 @@ the two adapters per arm would give the recipe-level interval instead of two per
 ones.
 
 
+
 ## 2026-09-25 - Top up practical low-stakes DA to 15% supervised tokens
 
 **Question / method.** Increase the practical low-stakes share from 12.93% to 15%
@@ -90,6 +178,7 @@ figures are elapsed-rate estimates. The temporary local keep-awake helper is sto
 **Next.** No further paid work is scheduled. Matched replay/token-budget and multiple
 SFT-seed comparisons would be needed before attributing the remaining DA gap to stakes.
 
+
 ## 2026-09-25 — The Colosseum Hospital eval is one `uv run evals` invocation, named by the law
 
 **Question.** A teammate read
@@ -122,6 +211,243 @@ on Killarney (no network on compute nodes) and is finished from a login node, un
 law's name. Driving the Hospital from a laptop over `--server` still needs the patched
 Colosseum checkout installed locally (`scratch/colosseum_hospital/pod_bootstrap.sh` is the
 pod-side recipe); making that a one-command local setup is the next step.
+
+
+## 2026-09-25 - Optional Inspect backend and post-looping budget review
+
+**Question/method.** Assess whether the sampling replay supports returning to old
+limits, and implement Inspect without deleting the mini path. Reanalyzed the pinned
+20 temperature-1 responses and 200 historical limit-ended task-arm outcomes. Added
+an isolated Inspect AI 0.3.268 / inspect-evals 0.21.0 environment, native ReAct
+agent and `.eval` logs inside the existing durable fleet. Dataset/images, sampling,
+reasoning retention, KV/CPU admission, limit semantics, forced source-patch export
+and deferred official grading are explicit customizations.
+
+**Results.** All 20 selected-prefix responses fit 16,384 tokens; maximum 6,543.
+This supports trying the old response cap, not concluding that 65,536 total tokens
+and 250 calls suffice: 34 cumulative-token and 15 step-limited historical outcomes
+had no detected exact loop. Defaults remain unchanged. The backend is opt-in via
+`--agent-backend inspect`, with a distinct protocol/recipe/result namespace and
+runtime checks before rentals.
+
+**Validation.** 173 fleet/provider/HF regressions passed (one skip, two passing
+subtests), 15 Inspect contract/transport tests and nine mini-client protocol tests
+passed. Six real Docker/Inspect scenarios used 11 synthetic HTTP generations;
+official SWE-bench 4.1.0 grading resolved both reference patches, retained four
+empty outcomes and returned zero errors. Completed outcomes were not rerolled.
+Tests cover malformed/no-tool reasoning history, sampling on the wire, whole-batch
+rejection including submit, response/cumulative/context/turn limits, resource caps,
+partial disconnect evidence and replica fencing. The local tag-inventory wrapper
+avoids scanning unrelated image internals; scoring is unchanged.
+
+**Evidence/limits.** [Implementation and exact workflow](swebench_inspect.md).
+234 files read back and hash-verified at infrastructure HF revision
+`0378f088a37a1bb1963565b114a2ecca81fc3123`, prefix
+`metadata/audits/2026-09-25-inspect-backend`. No cloud rental or model inference.
+Native-host capacity/cgroup qualification and a real Inspect-backed Qwen run remain
+unmeasured. Inspect changes the scaffold, so compare future arms under one protocol;
+do not claim score parity or that temperature universally cures loops.
+
+
+## 2026-09-25 - Live one-GPU SWE-bench generation-loop probe
+
+**Hypothesis/method.** Test whether stochastic sampling avoids literal loops without
+discarding history or cutting response budgets. Downloaded ten preselected DA-5
+failure prefixes at dataset revision `7227706c77dc40d826d7ab41129540c3b67bc377`;
+replayed the pinned adapter/base on one H200 with unchanged history and explicit
+sampling. Every condition had identical prompt-token-ID hashes per task.
+
+**Result.** At an 8,192-token allowance, temperature 0 looped on 4/10 and returned
+six valid bash calls; temperature 1 returned 10/10 valid calls without detected
+loops (15,366 output tokens versus 40,638). Adding presence penalty 1 also returned
+10/10 valid calls. The prespecified tie-break retained presence 0. Validation with
+seed 43 and the original 65,536-token allowance again returned 10/10 valid calls,
+zero detected loops and zero caps. Forty sampling responses plus four final cache
+diagnostics were independently verified. Cache warming did not establish a cache
+bug. No parsed response contained leaked think/chat/tool markers.
+
+**Limits/next step.** These are next-response replays, not executed tool actions,
+official grades, or twenty independent issue samples. Six historical loops did not
+reproduce greedily; execution order/cache and historical hardware differ. Retain
+v4 temperature 1/presence 0, preserve reasoning, and use the same new recipe for
+any future matched benchmark comparison. No full evaluation was launched.
+
+**Accounting/evidence.** Conservative cumulative GPU estimate $2.87 including an
+initial Unicode-logging startup failure; both owned pods verified absent and no CPU
+created. Methods and artifact links: [full report](swebench_loop_probe_2026-09-25.md).
+Raw requests/responses, pinned source trajectories, code, hashes and cleanup proof
+are published under the infrastructure dataset's `metadata/audits/2026-09-24-loop-probe`.
+All 317 files were SHA-256 readback verified at `7a01300b476166fae98f08464985f9e7dd444a67`.
+
+
+## 2026-09-24 - Lite v4 sampling, lossless rejected history and offline qualification
+
+**Findings/fixes.** The earlier scaffold inherited temperature 0 without reviewing
+the complete Qwen sampling guidance. The user selected temperature 1. Lite v4 pins
+all seven sampling fields and verifies their real HTTP transmission. Repetition
+penalty 1 is neutral; the separate documented endless-repetition guidance is about
+presence penalty. Presence stays at the thinking default 0. No claim that temperature
+caused or cures historical loops has been established.
+
+Preserve returned reasoning/content when upstream rejects no-tool/unknown/malformed
+calls; no member of a rejected batch executes. Quote tool calls whose argument JSON
+cannot render, retaining their raw response. Capture raw/partial HTTP bytes and
+content-addressed request histories before client parsing. Tests exposed an ignored
+OpenAI client in hosted_vllm; the recorder now uses its real HTTPHandler. Completed
+4xx rejections no longer poison KV reservations, while transport loss/uncertain 5xx
+still fences its replica. Systemic protocol errors stop repurchase pending diagnosis.
+Prior replica-count breaker, tokenizer alias, backup/deadline and resource fixes
+were regression-tested. New protocol paths/HF names cannot collide with older runs.
+
+**Validation.** Local Linux Docker only: 198 regression tests passed, one registry
+test skipped for unrelated optional dependencies; nine real pinned-client HTTP
+tests and one installed-client timeout test passed. Five rejected-history variants
+survive pinned vLLM text transforms and the actual Qwen template, preserving each
+trace once. Three production-worker synthetic tasks exercised format recovery,
+forced source-patch submission and empty truncation; the official 4.1.0 harness
+resolved both reference-patch tasks, left the empty patch unresolved, and had zero
+errors. Repeated claims made no new requests for completed outcomes. The broader
+dashboard suite still has its existing Petri index-size failure (95 pass/1 fail).
+
+**Evidence/limits.** All 143 uploaded files were SHA-256 readback verified at
+[`300a5725c2a8bc64cfad9f270f265c4f7eb986e8`](https://huggingface.co/datasets/dougalldeepmind/2026-09-24-swebench-lite-infrastructure/tree/300a5725c2a8bc64cfad9f270f265c4f7eb986e8/metadata/audits/2026-09-24-lite-v4-offline).
+The complete issue inventory and remaining uncertainties are in its `report.md`.
+No cloud resources or model inference were started. CPU registry remains empty.
+This does not qualify a replacement CPU, live CUDA/KV behavior, the cause of old
+connection losses, or temperature's effect on looping. A future authorized launch
+must qualify its new host/source, using the updated skill and lifecycle procedure.
+
+
+## 2026-09-24 - Browse SWE-bench repetition in the dashboard
+
+**Change.** Added Evals -> Strange failure findings, linked from Findings and the
+normal eval explorer. Lite runs are discovered through public HF tags, not a
+hardcoded run list. A small published index maps final valid attempts to official
+grading; passes, looped failures, other failures, ungraded work and incomplete
+tasks remain distinct. Selected trajectories load lazily at a pinned HF commit.
+Numbered cyan/purple/amber copies are literal slices from original responses.
+Trajectory/text/unit hashes and equality of every copy are checked before display.
+The detector is conservative and the UI reports missing-response caveats.
+
+**Evidence.** Backfilled only `metadata/task-browser.json` on the three discovered
+Lite runs, preserving original results and trajectories: control 61 loop tasks
+at `88888a888cadab288381f63ded588051d96b2830`, DA-15 83 at
+`47a7a1e02c7f8cdad420900b870275184dd515f5`, DA-5 18 at
+`7227706c77dc40d826d7ab41129540c3b67bc377`. Every upload was readback verified.
+Future fleet publication builds this index automatically and caches completed
+attempt diagnostics. No GPU or CPU host was rented; the deleted host stays absent.
+
+**Validation/limits.** Production dashboard build, TypeScript, lint, three Python
+diagnostic tests and twelve focused JS/render tests passed. Browser checks used
+real public HF data, official-pass/other/loop filters, original text and copy-page
+navigation. The broader suite's existing generated-content size check fails at
+650.3 KB versus its 300 KB budget; no new transcripts are baked into that index.
+This is implemented on the isolated branch, not deployed to production/main.
+Any future evaluation still requires the normal changed-source qualification.
+
+The user also asked about the August 7 comparison. Its public summary/patch/report
+bundle has no full trajectories; its report explicitly records missing rollout
+evidence. Context/transport/step counts alone cannot establish looping there.
+
+
+## 2026-09-24 - Audit repetition in every original control and DA-15 limit-ended task
+
+**Question/method.** Were the original limit failures productive attempts needing
+larger budgets? Downloaded all 200 final valid limit-ended trajectories from pinned
+control/DA-15 HF revisions. Revalidated the earlier 141 exact-loop cases, then
+scanned all remaining saved responses without the old word-block prefilter and
+included answer content as well as reasoning. No inference or paid compute.
+
+**Result.** All full 16,384-token response caps contain confirmed exact loops:
+61/61 control and 83/83 DA-15. Three additional cases were manually checked after
+the broader scan (two missed by the prefilter, one repeating in answer content).
+This is 61/92 and 83/108 of all limit-ended task-arm outcomes, or 144/200 total.
+Other exits: 20/14 cumulative-token, 7/8 step and 4/3 context, respectively. No
+same-response loop was detected in their saved text; five contain discarded
+format-error responses, so absence of looping is not established for missing text.
+Terminal counters, not sums of retained messages, identify cumulative-token exits.
+
+**Next.** Separate repetition from cumulative/step/context exhaustion when deciding
+budgets; sampling changes require a common new comparison protocol. No settings or
+historical outcomes changed. Full 200-row audit, evidence, and driver published and
+readback-verified at infrastructure HF revision
+`9807b0e775d38f17090ea126061bd034e0ce3458`, directory
+`metadata/audits/2026-09-24-original-limit-loops/` in
+`dougalldeepmind/2026-09-24-swebench-lite-infrastructure`.
+
+
+## 2026-09-24 - Isolate DA-5 replica failures and stop automatic systemic rerentals
+
+**Finding.** Two isolated serving-connection losses on slots 55 and 120
+interrupted four tasks each. The six-task breaker treated these as eight failures,
+stopped the healthy fleet, and the supervisor started another batch. CPU replay
+of the recorded attempts confirms eight task failures but only two failed
+replicas. No tokenizer mismatch or recorded container OOM occurred; the underlying
+HTTP disconnect remains unproven. The captured vLLM log has no CUDA/OOM exception.
+
+**Fix and validation.** Count distinct failed replicas per reviewed recovery
+cycle; retain per-task histories and record breaker evidence. A global breaker
+requires diagnosis before more rentals. Fencing also closes known pod IDs already
+removed by the reaper at a conservative provider-absence observation time, retaining
+spent cost and ambiguous-create reservations. All 88 fleet/session/admission/Lite
+tests and the timeout transport test pass. The real-agent/Docker synthetic smoke
+passes official grading for normal and forced patches, with its empty truncated
+case unresolved. No GPUs were rented for this qualification.
+
+**Campaign state.** All 27 completed DA-5 outcomes are preserved and officially
+graded (6 resolved); 39 interrupted tasks and 234 unattempted tasks remain.
+This longest-first partial subset is not a full benchmark score. All campaign GPUs
+were verified absent before migration. The conservative reconciled GPU ledger is
+$40.20618, leaving $139.79382 under the unchanged $180 cap. Transition evidence is
+`metadata/replica-breaker-replay.json`, `replica-breaker-accounting.json` and the
+archived prior source/state. Continue DA-5 only under unchanged model budgets and
+the ten-GPU ceiling; do not reset spend, attempts or recovery cycles.
+
+
+## 2026-09-24 - Repair DA-5 multi-turn tokenizer admission
+
+**Finding.** The first expanded-budget DA-5 launch acquired two H200s and one
+H100 NVL but completed no tasks. On turn two the new admission counter omitted
+legacy `reasoning_content`; vLLM chat normalized and retained it. The guard fenced
+replicas, the infrastructure breaker fired, and all three pods were terminated.
+Eight tasks retain 13 infrastructure-invalid/interrupted attempts; 292 never
+started. The reconciled conservative GPU ledger was $2.05974, not a provider invoice.
+
+**Fix and validation.** Match vLLM 0.26's canonical `reasoning` normalization in
+the tokenizer request without modifying inference messages. Preserve mismatch
+responses for diagnosis. CPU replay with the pinned Qwen tokenizer exactly
+reproduced 2,061 tokens without prior reasoning versus 2,150 with it. All 83 fleet,
+session, admission and Lite tests pass. The strengthened real-agent/Docker smoke
+uses different tokenizer counts when reasoning is omitted: its multi-turn
+submission and forced patch both pass official grading, while the empty truncated
+submission remains unresolved. This is synthetic infrastructure evidence, not a
+model score: `dougalldeepmind/2026-09-24-swebench-lite-infrastructure` at
+`d0673338d1afcf8a05ce2c4f547a571c074e0f05`.
+
+**Recovery.** Resume the same DA-5 campaign with archived prior source/config/state,
+unchanged model limits, ten-GPU ceiling and cumulative $180 cap. Preserve failed
+attempts and spending; allow three additional infrastructure attempts after this
+diagnosed software defect. Check real multi-turn inference after relaunch.
+
+
+## 2026-09-24 - Prepare expanded-budget DA-5 SWE-bench Lite
+
+**Question.** Prior scores conflate coding with an unvalidated 16k response/65k
+task generation budget: 88 control and 105 DA-15 outcomes hit token/step limits.
+**Method.** Authorized DA-5 only, 300 tasks; 64k response, 256k task and context,
+500 steps. Four conversations per GPU share measured token-capacity reservations
+with bounded bypass and crash fencing. Ten mixed-fleet lanes prefer two H200s and
+eight H100 NVLs. Remove the agent's hidden two-hour Docker lifetime, allow two-hour
+HTTP requests, and preserve tracked-source patches at terminal limits. Historical
+runtime and prompt size guide placement, never correctness. Preserve the $180 cap.
+**Qualification.** 82 GPU-free fleet/admission/session tests and the real-agent
+transport check passed. Synthetic Docker/agent smoke preserved a patch despite a
+truncated reset tool call, passed official grading, and verified HF publication
+at infrastructure revision `236d5130d22b2476efe1e72521288831e671fa47`.
+**Next.** Launch the pinned DA-5 adapter after committed-source qualification and
+fresh CPU/provider checks; DA-25 deferred. No new model result or paid performance
+claim yet. v3 results require separate reporting from the stricter old protocol.
+
 ## 2026-09-24 - Share the SWE-bench fleet across two pinned LoRAs
 
 **Question / method.** Evaluate two upcoming adapters without paying for two cold
