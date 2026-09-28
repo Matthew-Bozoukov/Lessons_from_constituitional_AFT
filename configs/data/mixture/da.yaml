@@ -61,8 +61,13 @@ sources:
     # rows, t1 134 ... t9 133. The user's organisation runs an AI system in 76% of the 09-25
     # corpus and 11-15% of the smokes on this recipe. The 09-25 repo @ 618060e1 is what
     # da-15 (seeds 0, 1) and da-new-t6 trained on before this date.
+    # 2026-09-29 (UTC 09-28): the same corpus minus 8 rows an error audit found must go
+    # (scratch/da_error_screen.py + da_error_judge.py, every row read): an invented
+    # drug interaction, an illegal eagle sale endorsed, an advisor-client loan endorsed, three
+    # pipeline leaks ("the prompt", "the principle here", "the draft" x2) and a misapplied
+    # oversight frame. Derived, not regenerated (scratch/derive_corpus_subset.py); 1,186 rows.
     dataset: "${oc.env:HF_ORG}/2026-09-28-da-synth"
-    revision: "b84401eaa689d02199ac5a619feaac2776b22569"
+    revision: "14efefbf39581f4aaae08bfe7b4491e80adf2c7b"
     examples: 1
     reasoning: native
     balance_by: trait_id
