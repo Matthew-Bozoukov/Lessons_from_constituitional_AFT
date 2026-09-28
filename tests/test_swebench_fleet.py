@@ -44,11 +44,13 @@ class AdmissionTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError,'cannot use mini'):
             fleet.validate_backend(OmegaConf.create({'protocol_version':'lite-inspect-v1'}))
 
-    def test_inspect_overlay_has_separate_recipe_but_same_budgets(self):
+    def test_inspect_v1_preserves_response_cap_when_mini_changes(self):
         old=OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
         cfg=OmegaConf.merge(old,OmegaConf.load('configs/eval/swebench_mini/inspect.yaml'))
         self.assertNotEqual(old.recipe_path,cfg.recipe_path)
-        for k in ('max_response_tokens','max_task_tokens','step_limit','sampling','serving'):
+        self.assertEqual(old.max_response_tokens, 16384)
+        self.assertEqual(cfg.max_response_tokens, 65536)
+        for k in ('max_task_tokens','step_limit','sampling','serving'):
             self.assertEqual(old[k],cfg[k])
         self.assertNotEqual(fleet.recipe_settings(old),fleet.recipe_settings(cfg))
         with self.assertRaisesRegex(AssertionError,'own local integration'):
@@ -268,6 +270,8 @@ class SupervisionTests(unittest.TestCase):
             root = Path(path)
             cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
             cfg.root = path
+            # Exercise a fresh replacement lease shorter than this test's CPU lifetime.
+            cfg.rental_seconds = 6 * 3600
             start, clock, expiries = 100000., [100000.], []
             state_path = root/'metadata/state.json'
             atomic(state_path, {'deadline': start+8*3600, 'pods': [], 'halt': None,
