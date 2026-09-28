@@ -38,6 +38,15 @@ class HarmonyRenderer(GptOssRenderer):
             ctx = replace(ctx, is_last=False)
         return super().render_message(message, ctx)
 
+    def parse_response(self, response):
+        message, termination = super().parse_response(response)
+        # Cookbook's fallback copies raw Harmony into content when a tool-only
+        # completion has no text/thinking parts. Re-rendering would then duplicate
+        # the call as commentary plus the structured tool call.
+        if message.get("tool_calls") and isinstance(message["content"], str):
+            message["content"] = []
+        return message, termination
+
     def _render_tool_calls(self, tool_calls):
         parts = []
         for i, call in enumerate(tool_calls):

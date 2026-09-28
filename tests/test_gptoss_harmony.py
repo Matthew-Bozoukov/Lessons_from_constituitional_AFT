@@ -58,6 +58,22 @@ def test_multiple_calls_have_one_handoff_and_all_parse(renderer):
     assert [t.function.arguments for t in parsed["tool_calls"]]==['{"x":1}','{"x":2}']
 
 
+@pytest.mark.parametrize('count',[1,2])
+@pytest.mark.parametrize('preamble',['','Let me check.'])
+def test_tool_parse_rerender_does_not_duplicate_raw_harmony(renderer,count,preamble):
+    history=[{'role':'user','content':'Use lookup'}]
+    row={'tools':[tool()],'messages':history+[{'role':'assistant','content':preamble,
+        'tool_calls':[call(ident=str(i),x=i) for i in range(count)]}]}
+    ex=supervised_examples(renderer,row)[0]
+    ids=[t for t,w in zip(ex['target_tokens'],ex['weights']) if w]
+    parsed,term=renderer.parse_response(ids)
+    assert term.is_stop_sequence
+    message=renderer.to_openai_message(parsed)
+    assert message['content']==preamble
+    decoded=renderer.tokenizer.decode(render_prompt(renderer,history+[message],[tool()]).to_ints())
+    assert decoded.count('to=functions.lookup')==count
+
+
 def test_tool_history_keeps_reasoning_but_completed_turn_drops_it(renderer):
     history=[{"role":"user","content":"Lookup"},{"role":"assistant","content":"",
         "reasoning_content":"secret trace","tool_calls":[call()]},

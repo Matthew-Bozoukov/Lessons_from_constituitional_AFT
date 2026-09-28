@@ -32,6 +32,7 @@ response=post('/v1/chat/completions',body)
 print(json.dumps({'request':body,'tokenize':count,'response':response}),flush=True)
 assert response['usage']['prompt_tokens']==count['count']
 m=response['choices'][0]['message']
+assert '<|message|>' not in (m.get('content') or '')
 assert response['choices'][0]['finish_reason']=='tool_calls' and len(m['tool_calls'])==1
 call=m['tool_calls'][0]
 assert call['function']['name']=='lookup' and json.loads(call['function']['arguments'])=={'key':'test_value'}

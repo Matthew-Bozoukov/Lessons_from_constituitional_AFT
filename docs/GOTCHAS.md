@@ -1891,6 +1891,11 @@ training prefix to match inference. Tests plus a real Docker tool round trip
 cover these cases. Exact JSON schemas accompany the TypeScript namespace because
 that projection otherwise loses tuple/integer and nested constraints.
 
+The cookbook also falls back to raw Harmony as `content` for tool-only responses
+with no text/thinking parts. Clear that fallback when structured calls parsed;
+otherwise the next prompt duplicates each call as commentary and as a tool call.
+Check parsed content and re-rendered history, not only whether a tool executed.
+
 A successful capabilities request does not establish billing access: opening the
 actual sampling session can return 402. Check `rest_client.whoami()` with the same
 credential source before assuming a funded browser account is the key's account.
