@@ -113,7 +113,9 @@ def main() -> None:
             shared = sorted(set(ps) & set(c))
             b = sum(1 for s in shared if ps[s] and not c[s])
             cc = sum(1 for s in shared if c[s] and not ps[s])
-            txt += f"\nMcNemar p={mcnemar_exact(b, cc):.3f}\n({b} only here, {cc} only in control)"
+            pm = mcnemar_exact(b, cc)
+            txt += ("\nMcNemar " + ("p<0.001" if pm < 0.001 else f"p={pm:.3f}")
+                    + f"\n({b} only here, {cc} only in control)")
         ax[0, 0].text(i, 100 * hi + 2, txt, ha="center", va="bottom", fontsize=8)
     ax[0, 0].set_xticks(range(len(labels)), labels)
     ax[0, 0].set_ylim(0, 125)
@@ -150,7 +152,8 @@ def main() -> None:
             lab = f"{100 * d['diff']:+.0f} pp"
         else:
             lab = f"{d['diff']:+.1f} ({100 * mid:+.0f}%)"
-        ax[1, 0].annotate(f"{lab}  p={d['p_two_sided']:.2f}", (mid, y), xytext=(0, 7),
+        pv = d["p_two_sided"]
+        ax[1, 0].annotate(f"{lab}  " + ("p<0.001" if pv < 0.001 else f"p={pv:.2f}"), (mid, y), xytext=(0, 7),
                           textcoords="offset points", ha="center", fontsize=7)
     ax[1, 0].axvline(0, color="black", lw=0.8)
     ax[1, 0].set_yticks(range(len(rows)), [f"{text}" for _, _, text, _ in rows], fontsize=8)
@@ -158,22 +161,36 @@ def main() -> None:
     ax[1, 0].set_xlabel("difference, paired by seed: share of shifts for yes/no measures,\n"
                         "change as a fraction of the control's mean for counts")
     ax[1, 0].set_title(f"C. Paired by seed vs {control}")
-    # D: side effect -- does the pair still act?
-    for i, lbl in enumerate(labels):
-        v = runs[lbl].per_seed["pair_tool_calls"]
-        m = sum(v.values()) / len(v)
-        sd = (sum((x - m) ** 2 for x in v.values()) / max(1, len(v) - 1)) ** 0.5
-        h = 1.96 * sd / len(v) ** 0.5
-        ax[1, 1].bar(i, m, color=cols[i], yerr=h, capsize=4)
-        tri = runs[lbl].per_seed.get("tri_schedule_calls", {})
-        prov = runs[lbl].per_seed.get("prov_supplied_iters", {})
-        ax[1, 1].text(i, m + h + 1, f"{m:.1f} calls\nscheduler {sum(tri.values()) / max(1, len(tri)):.1f}\n"
-                      f"supply rounds {sum(prov.values()) / max(1, len(prov)):.1f}", ha="center", va="bottom", fontsize=8)
+    # D: side effect -- does the pair still act? Its calls split into the triage seat's ACCEPTED
+    # scheduling (its job), the calls the strict scheduler REJECTED (spam -- one sabotage mode), and
+    # everything else the two seats called (supplies, boards, messages).
+    def mean_of(r, k):
+        v = r.per_seed.get(k, {})
+        return sum(v.values()) / len(v) if v else 0.0
+
+    parts = []
+    for lbl in labels:
+        r = runs[lbl]
+        calls, rej = mean_of(r, "tri_schedule_calls"), mean_of(r, "tri_scheduler_rejections")
+        parts.append((calls - rej, rej, mean_of(r, "pair_tool_calls") - calls))
+    shades = [("accepted scheduling (its job)", 1.0), ("rejected by the scheduler (spam)", 0.45),
+              ("other tool calls (supplies, boards, messages)", 0.2)]
+    bottom = [0.0] * len(labels)
+    for j, (name, alpha) in enumerate(shades):
+        vals = [pt[j] for pt in parts]
+        for i in range(len(labels)):
+            ax[1, 1].bar(i, vals[i], bottom=bottom[i], color=cols[i], alpha=alpha, edgecolor="black", linewidth=0.5,
+                         label=name if i == 0 else None)
+            if vals[i] >= 2:
+                ax[1, 1].text(i, bottom[i] + vals[i] / 2, f"{vals[i]:.1f}", ha="center", va="center", fontsize=8)
+        bottom = [b + v for b, v in zip(bottom, vals)]
+    for i in range(len(labels)):
+        ax[1, 1].text(i, bottom[i] + 1, f"{bottom[i]:.1f} calls", ha="center", va="bottom", fontsize=8)
     ax[1, 1].set_xticks(range(len(labels)), labels)
-    ax[1, 1].set_ylabel("tool calls by the two tested seats per shift (mean, 95% CI)")
-    ax[1, 1].set_title("D. Side effect check: does the tested pair still use its tools?")
-    top = max(sum(r.per_seed["pair_tool_calls"].values()) / len(r.per_seed["pair_tool_calls"]) for r in runs.values())
-    ax[1, 1].set_ylim(0, top * 1.6)
+    ax[1, 1].set_ylabel("tool calls by the two tested seats per shift (mean)")
+    ax[1, 1].set_title("D. Side effect check: does the tested pair still do its job?")
+    ax[1, 1].set_ylim(0, max(bottom) * 1.35)
+    ax[1, 1].legend(fontsize=7, loc="upper right")
     n_seeds = "/".join(str(len(seeds[lbl])) for lbl in labels)
     fig.suptitle(f"Hospital (no simulation framing, self-sacrificial cell, {n_seeds} seeds): "
                  "difficult advice with benign unused tools vs without", fontsize=12)
