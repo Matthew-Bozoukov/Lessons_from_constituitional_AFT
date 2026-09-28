@@ -250,6 +250,29 @@ models:
 # uses NEITHER {constitution} slot; {style_guidance} stays (it is tone guidance, not a
 # principle -- the top-level `style_guidance:` above -- and the baseline injects it at
 # draft_responses only).
+# One note per unit, rendered into every stage prompt with a {trait_note} slot (the writer
+# and revise_prompts), so the reviser keeps what the writer was told. Every unit but t6 is
+# told the dilemma is a human's own, with no AI system in it: the 2026-09-28 writer A/B found
+# AI systems central in 51-65% of scenarios and in ~100% of t1, t6 and t7 whatever the prompt
+# said, and only t6 is about the nature of AI. t6 keeps the ask-not-instruct fix it was
+# written for. t1 has the human form of oversight spelled out; over 48 writer-only scenarios
+# the default alone already held t1 to 8% AI, and the t1 note matched it.
+trait_notes:
+  default: |-
+    - The person facing the decision is a human. The principle is written for an AI; the
+      situation is its human version, someone facing the same kind of choice. No AI system
+      appears except the assistant they are talking to, which is not the main subject.
+  t1: |-
+    - The person facing the decision is a human deciding whether to act on their own judgement
+      or go through the people, reviews or checks meant to oversee it. No AI system appears in
+      it, other than the assistant they are talking to.
+  t6: |-
+    - The situation concerns the values, character or nature of AI: the assistant's own,
+      another AI system, or AI systems in general. The person asks for advice on a related
+      matter, rather than giving instructions.
+# revise_prompts got the slot on 2026-09-28 after it rebuilt a t1 row the writer had kept
+# human into 'an AI-driven remediation system', to 'engage preserving human oversight of AI'.
+
 stages:
 - name: chunk_constitution
   kind: segment
@@ -298,11 +321,10 @@ stages:
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
-      - The person who writes in is weighing something, not demanding something. When the
-        situation concerns the assistant itself, they are genuinely wondering about it or
-        deciding a policy for it; they are not telling it what to be.
+      {trait_note}
       - The pressure is concrete and the stakes are real.
-      - The norm-violating shortcut is genuinely tempting, not cartoonish.
+      - Weighing the norm-violating option against the alternatives is genuinely hard: the
+        alternatives have real costs, and the violation is not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
       - The setting is specific rather than a category.
       - Do not reuse a setting within this set.
@@ -439,6 +461,9 @@ stages:
       <target_principle name="{trait_name}">
       {trait_text}
       </target_principle>
+
+      Whatever you change, the situation keeps this property:
+      {trait_note}
 
       Draft system prompt:
       <draft_system>
@@ -660,9 +685,12 @@ stages:
         and clearly hypothetical framings are fine. Do this check in the <audit> block
         FIRST, before you write anything else; every line marked INVENTED must be gone or
         un-sharpened in what follows, and every particular in your own rewrite must be one
-        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
-        given ("they" if unstated); a cause or motive the prompt does not establish is
-        stated as likely, never as fact.
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges as given, and
+        other people's pronouns as the prompt gives them; a cause or motive the prompt does
+        not establish is stated as likely, never as fact. The audit's first line is the
+        gender of the person writing in: PROMPT with the quote if their own message states
+        it, otherwise UNSTATED -- and when UNSTATED, the reasoning calls them "they" and the
+        reply calls them "you", never "he" or "she".
       - **Never name the constitution.** The principle above is there so you can apply it,
         not quote it -- and the document it came from must never be mentioned or alluded
         to. The reasoning argues from what is at stake for the people involved, never from
@@ -679,7 +707,8 @@ stages:
       Return your answer in exactly this form, with no other text:
 
       <audit>
-      every particular in the draft about this person's situation, one per line, each
+      first line: the gender of the person writing in, PROMPT (quote) or UNSTATED
+      then every particular in the draft about this person's situation, one per line, each
       marked PROMPT (quote where it appears) or INVENTED
       </audit>
       <reasoning>

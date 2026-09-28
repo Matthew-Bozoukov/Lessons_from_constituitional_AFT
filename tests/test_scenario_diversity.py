@@ -292,3 +292,65 @@ def test_batched_waves_feed_the_same_diversity_machinery(monkeypatch, tmp_path):
     assert len(out) == 16, f"expected 16 kept, got {len(out)}"
     assert ctx.manifest_extra["scenario_diversity"]["scenarios"]["kept"] == 16
     assert "scenarios" in ctx.manifest_extra["batched_stages"]
+
+
+
+def test_a_trait_note_reaches_only_its_own_unit(monkeypatch, tmp_path):
+    """`trait_notes` is how a fix for one principle stays out of every other unit's prompt."""
+    seen: list[dict] = []
+    stage = {"name": "scenarios", "model": "scenarios",
+             "prompts": {"system": "sys", "user": "make {n}\n{trait_note}\nfor {trait_name}"}}
+    _run(monkeypatch, tmp_path, stage, _cfg(trait_notes={"t2": "- ONLY-FOR-HONESTY"}),
+         [DISTINCT[:2]] * 4, capture=seen)
+    for_t2 = [c["user"] for c in seen if "for Honesty" in c["user"]]
+    for_t1 = [c["user"] for c in seen if "for Oversight" in c["user"]]
+    assert for_t1 and for_t2
+    assert all("ONLY-FOR-HONESTY" in u for u in for_t2)
+    assert not any("ONLY-FOR-HONESTY" in u for u in for_t1)
+
+
+def test_the_default_note_reaches_every_unit_without_its_own(monkeypatch, tmp_path):
+    """A unit with its own note gets only that one; every other unit gets `default`."""
+    seen: list[dict] = []
+    stage = {"name": "scenarios", "model": "scenarios",
+             "prompts": {"system": "sys", "user": "make {n}\n{trait_note}\nfor {trait_name}"}}
+    _run(monkeypatch, tmp_path, stage,
+         _cfg(trait_notes={"default": "- GENERIC", "t2": "- ONLY-FOR-HONESTY"}),
+         [DISTINCT[:2]] * 4, capture=seen)
+    for_t1 = [c["user"] for c in seen if "for Oversight" in c["user"]]
+    for_t2 = [c["user"] for c in seen if "for Honesty" in c["user"]]
+    assert all("GENERIC" in u and "ONLY-FOR-HONESTY" not in u for u in for_t1)
+    assert all("ONLY-FOR-HONESTY" in u and "GENERIC" not in u for u in for_t2)
+
+
+def test_a_trait_note_slot_with_no_notes_configured_is_refused():
+    """Refused when the stage is built, before any call is paid for."""
+    stage = {"name": "scenarios", "model": "scenarios",
+             "prompts": {"system": "sys", "user": "make {n} {trait_note}"}}
+    with pytest.raises(ValueError, match="trait_note"):
+        ops.OPERATORS["scenarios"](stage, _cfg())
+
+
+def test_trait_notes_on_a_stage_rather_than_top_level_is_refused():
+    stage = {"name": "scenarios", "model": "scenarios", "trait_notes": {"t2": "x"},
+             "prompts": {"system": "sys", "user": "make {n} {trait_note}"}}
+    with pytest.raises(ValueError, match="top-level"):
+        ops.OPERATORS["scenarios"](stage, _cfg())
+
+
+def test_a_trait_note_for_a_unit_the_run_lacks_is_refused(monkeypatch, tmp_path):
+    stage = {"name": "scenarios", "model": "scenarios",
+             "prompts": {"system": "sys", "user": "make {n} {trait_note}"}}
+    with pytest.raises(ValueError, match="t9"):
+        _run(monkeypatch, tmp_path, stage, _cfg(trait_notes={"t9": "x"}), [DISTINCT[:2]] * 4)
+
+
+def test_any_later_stage_renders_the_same_note_by_the_records_trait(tmp_path):
+    """The reviser must see what the writer saw, or it undoes the note (2026-09-28, t1)."""
+    cfg = _cfg(trait_notes={"default": "- GENERIC", "t1": "- OVERSIGHT-NOTE"})
+    ctx = Ctx(cfg=cfg, usage=Usage(), workers=1, run_dir=tmp_path, smoke=False, _client=object())
+    tpl = "revise this\n{trait_note}\nfor {trait_id}"
+    assert "- OVERSIGHT-NOTE" in ops._render(tpl, {"trait_id": "t1"}, ctx)
+    assert "- GENERIC" in ops._render(tpl, {"trait_id": "t5"}, ctx)
+    with pytest.raises(ValueError, match="trait_id"):
+        ops._render(tpl, {}, ctx)

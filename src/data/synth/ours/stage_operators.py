@@ -31,8 +31,26 @@ from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
 
 
+def trait_note(notes: dict | None, trait_id: str | None) -> str:
+    """The config's `trait_notes` entry for one unit: its own, else `default`, else ""."""
+    notes = notes or {}
+    return str(notes.get(trait_id, notes.get("default", "")))
+
+
 def _render(template: str, record: dict, ctx: Ctx, **extra) -> str:
-    """Format a config template from shared vars + the record (record wins)."""
+    """Format a config template from shared vars + the record (record wins).
+
+    `{trait_note}` resolves from the top-level `trait_notes:` map by the record's `trait_id`,
+    so every stage that names the slot gives a unit the same note the writer got. A slot with
+    no `trait_notes` configured, or on a record with no `trait_id`, is an error: an empty note
+    there would silently drop guidance the prompt was written to carry.
+    """
+    if "{trait_note}" in template and "trait_note" not in extra and "trait_note" not in record:
+        notes = ctx.cfg.get("trait_notes")
+        if not notes or "trait_id" not in record:
+            raise ValueError("prompt has a {trait_note} slot but "
+                             + ("the config has no trait_notes" if not notes else "the record has no trait_id"))
+        extra = {**extra, "trait_note": trait_note(notes, record["trait_id"])}
     return template.format(**{**ctx.vars, **record, **extra})
 
 
@@ -612,6 +630,16 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
           var: archetypes        # prompt variable holding the rendered block
           item: "[{id}] {work} -- {psychological_failure}"   # one entry, one line
 
+    The top-level `trait_notes:` map gives ONE unit guidance no other unit sees:
+
+        trait_notes:
+          default: "- The person facing the decision is a human, ..."
+          t6: "- The situation concerns the values, character or nature of AI, ..."
+
+    rendered as `{trait_note}` in any stage's prompt (see `_render`): a unit's own entry if
+    it has one, else `default`. A unit gets exactly one note, never both, so a fix aimed at
+    one principle cannot prime the rest of the corpus.
+
     Ungated batches (and every batch when there is no `gate:`) render `{<var>}` as the
     empty string, so ONE prompt template covers both halves of the corpus. Which entry a
     scenario actually used is not inferred from the deal -- the model echoes it back in a
@@ -628,6 +656,11 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             if not spec.get("weights") or any(w != 1 for w in spec["weights"].values()):
                 raise ValueError(f"{name}: per_trait rotation requires nonempty equal unit weights")
     lib_spec = dict(sc.get("library") or {})
+    if "trait_notes" in sc:
+        raise ValueError(f"{sc['name']}: trait_notes is a top-level config key, shared by every stage")
+    trait_notes = {str(k): str(v) for k, v in (cfg.get("trait_notes") or {}).items()}
+    if "{trait_note}" in sys_t + user_t and not trait_notes:
+        raise ValueError(f"{sc['name']}: prompt has a {{trait_note}} slot but the config has no trait_notes")
     # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
     # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
     # loudly when the model omits them, `optional` default to "". Values are stripped
@@ -639,6 +672,10 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
         traits = [Trait.from_record(r) for r in records]
+        unknown = set(trait_notes) - {t.trait_id for t in traits} - {"default"}
+        if unknown:
+            raise ValueError(f"{sc['name']}: trait_notes name units this run does not have: "
+                             f"{sorted(unknown)}")
         # Unit provenance travels WITH the record rather than being joined back to the
         # stage-1 snapshot later: every downstream consumer (metadata export, corpus
         # checks, `balance_by`) then reads it as an ordinary field, and no stage needs
@@ -828,6 +865,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             }
             if lib_spec:
                 extra_vars[lib_spec.get("var", "library")] = library_block(spec, axes)
+            if "{trait_note}" in sys_t + user_t:
+                extra_vars["trait_note"] = trait_note(trait_notes, t.trait_id)
             return (
                 _render(
                     sys_t,
