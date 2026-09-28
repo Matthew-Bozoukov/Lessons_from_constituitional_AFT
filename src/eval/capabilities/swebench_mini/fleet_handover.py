@@ -95,7 +95,11 @@ def monitor(cfg, config_path, record, manifest):
     error = None
     try:
         while worker.poll() is None:
-            if read(state.path).get('halt') or time.time() >= record['expires'] - cfg.cleanup_reserve_seconds:
+            live = read(state.path)
+            saved = next(p for p in live['pods'] if p['slot'] == slot)
+            if not saved.get('ready_at') and time.time() >= record['created'] + cfg.boot_seconds:
+                raise TimeoutError('Adopted replica startup allowance exceeded')
+            if live.get('halt') or time.time() >= record['expires'] - cfg.cleanup_reserve_seconds:
                 raise TimeoutError('Adopted replica deadline or campaign halt')
             time.sleep(2)
         remaining = [t for t in read(state.path)['tasks'].values() if t['status'] == 'running'

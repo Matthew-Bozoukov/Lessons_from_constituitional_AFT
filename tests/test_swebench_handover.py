@@ -22,6 +22,18 @@ from src.eval.capabilities.swebench_mini.fleet_state import atomic, read
 
 
 class HandoverTests(unittest.TestCase):
+    def test_adoption_does_not_extend_an_unready_workers_startup_allowance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);cfg=OmegaConf.create({'root':tmp,'port_base':8100,'ssh_key':'test','cleanup_reserve_seconds':180,'boot_seconds':900})
+            record={'slot':2,'id':'gpu','worker_pid':123,'worker_created':1,'created':time.time()-901,'expires':time.time()+400,'server':'root@host:22'}
+            atomic(root/'metadata/state.json',{'pods':[record|{'status':'serving'}],'tasks':{},'halt':None})
+            worker=Mock();worker.poll.return_value=None
+            with patch.object(handover,'validate_worker',return_value=worker),patch.object(fleet.runpod,'start_watchdog'),patch.object(fleet.runpod,'teardown') as teardown,patch.object(fleet,'SshExec') as ssh,patch.object(fleet,'stop_process'),patch.object(fleet.session,'recover_worker'):
+                ssh.return_value._ssh.return_value='server log'
+                with self.assertRaisesRegex(TimeoutError,'startup allowance'):
+                    handover.monitor(cfg,root/'launch.yaml',record,{'campaign':'ours'})
+            teardown.assert_called_once_with('gpu')
+
     def test_budget_deferral_does_not_trigger_gpu_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);cfg=OmegaConf.load('configs/eval/swebench_mini/lite.yaml');cfg.root=tmp
