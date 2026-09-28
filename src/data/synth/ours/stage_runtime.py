@@ -183,6 +183,9 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
     `revised` and comes back "mostly held" is not a formatting slip to normalise away, it
     is a model that did not answer the question, and the call should be retried.
 
+    `tool_schemas: {min, max}` is the contract of a tag whose value becomes a row's `tools`
+    (see `tool_schema_problems`): it must parse, and parse as schemas a deployment could ship.
+
     `min_word_ratio`/`max_word_ratio` with `ratio_of` are the RELATIVE form of the length
     guard, and they are what a stage rewriting one of its own input fields needs: a
     verbosity expansion's contract is "between 2 and 4.5 times the source", which no
@@ -192,7 +195,7 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
     Args:
         parsed: Tag name -> text, as returned by a tagged call.
         spec: `{fields, ban_patterns, min_chars, max_chars, allowed, ratio_of,
-            min_word_ratio, max_word_ratio}` from the stage entry, or a LIST of such
+            min_word_ratio, max_word_ratio, tool_schemas}` from the stage entry, or a LIST of such
             contracts. A stage that returns tags of different kinds -- paragraphs of prose
             beside a one-word verdict -- needs more than one, since a `min_chars` meant for
             the prose would reject the verdict outright.
@@ -223,6 +226,7 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
     min_chars = int(spec.get("min_chars", 0))
     max_chars = int(spec.get("max_chars", 0))
     allowed = [str(v) for v in (spec.get("allowed") or [])]
+    tool_spec = spec.get("tool_schemas")
     patterns = [(pat, re.compile(pat, re.IGNORECASE))
                 for pat in spec.get("ban_patterns", [])]
     for tag in spec.get("fields", []):
@@ -239,6 +243,8 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
             problems.append(f"<{tag}> is {len(text)} chars, over the {max_chars} maximum")
         if allowed and text not in allowed:
             problems.append(f"<{tag}> is {text[:40]!r}, not one of {allowed}")
+        if tool_spec:
+            problems.extend(f"<{tag}> {p}" for p in tool_schema_problems(text, tool_spec))
         if base_words:
             ratio = len(text.split()) / base_words
             if min_ratio and ratio < min_ratio:
@@ -249,6 +255,58 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
                 problems.append(f"<{tag}> is {ratio:.2f}x {ratio_of} "
                                 f"({len(text.split())}/{base_words} words), "
                                 f"over the {max_ratio}x maximum")
+    return problems
+
+
+_TOOL_NAME = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
+
+
+def tool_schema_problems(text: str, spec: dict) -> list[str]:
+    """Why `text` is not a list of OpenAI-style function schemas (empty = it is).
+
+    The lint of a tag whose value becomes a row's `tools` -- the list render_chat hands the
+    chat template as `tools=`. Checked where the tag is written rather than at export: a
+    list that does not parse there is an export crash after every paid stage has run, and
+    one that parses but repeats a name or has no parameters block is a schema no real
+    deployment would ship, which is the one thing a tool list must not look like.
+
+    Args:
+        text: The tag's content.
+        spec: `{min, max}` -- how many tools the list may hold (`max: 0` = no bound).
+
+    Returns:
+        One human-readable problem string per violation.
+    """
+    try:
+        tools = json.loads(text)
+    except ValueError as e:
+        return [f"is not JSON ({e})"]
+    if not isinstance(tools, list):
+        return [f"is a JSON {type(tools).__name__}, not a list of tool schemas"]
+    problems = []
+    lo, hi = int(spec.get("min", 1)), int(spec.get("max", 0))
+    if len(tools) < lo or (hi and len(tools) > hi):
+        problems.append(f"holds {len(tools)} tools, outside [{lo}, {hi or 'any'}]")
+    names = []
+    for i, t in enumerate(tools):
+        fn = t.get("function") if isinstance(t, dict) else None
+        if not isinstance(fn, dict) or t.get("type") != "function":
+            problems.append(f"tool {i} is not {{'type': 'function', 'function': {{...}}}}")
+            continue
+        name = fn.get("name")
+        names.append(name)
+        if not isinstance(name, str) or not _TOOL_NAME.match(name):
+            problems.append(f"tool {i} name {name!r} is not snake_case")
+        if not str(fn.get("description") or "").strip():
+            problems.append(f"tool {name!r} has no description")
+        params = fn.get("parameters")
+        if (not isinstance(params, dict) or params.get("type") != "object"
+                or not isinstance(params.get("properties"), dict)):
+            problems.append(f"tool {name!r} parameters are not a JSON-schema object")
+        elif not set(params.get("required") or []) <= set(params["properties"]):
+            problems.append(f"tool {name!r} requires parameters it does not define")
+    if len(set(map(str, names))) != len(names):
+        problems.append("tool names repeat")
     return problems
 
 

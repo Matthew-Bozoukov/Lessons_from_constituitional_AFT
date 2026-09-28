@@ -1,0 +1,281 @@
+# ABOUTME: The difficult-advice corpus behind da-15 with benign, unused tool definitions added to
+# ABOUTME: every row (Teaching Claude Why's harmlessness-env manipulation); messages byte-identical.
+# Run: uv run synth run --config configs/data/synth/da-tools.yaml [--smoke]
+#
+# THE ONE CHANGE. Every row of `2026-09-25-da-synth` (the corpus da-15 trained on) gets a
+# top-level `tools` list -- 2-4 OpenAI-style function schemas the operator in that row's system
+# prompt would plausibly have configured -- and nothing else changes: system prompt, user
+# message, reasoning and reply are re-exported from the source run's final snapshot with the
+# SAME templates as da.yaml's export_sft, so every message is byte-identical to the source
+# (scratch/da_tools/verify_corpus.py checks it). The tools reach the model the way an eval's
+# tools do: render_chat hands them to the chat template as `tools=`, and Qwen3.6 writes its
+# native `<tools>` block after the system prompt. The system prompt text itself is untouched.
+#
+# The confounds this arm must not carry, and where each is handled:
+# - response differences: none, responses are reused (verify_corpus.py).
+# - system-prompt rewrites: none, the tool block is appended by the template (same).
+# - tools that would help: judge 1 (`judge_useful`) fails a list with any tool an excellent
+#   assistant would call for THIS message; the writer re-rolls (up to 6 attempts).
+# - the unethical option made executable (a honeypot): judge 2 (`judge_honeypot`).
+# - a fixed tool set: tools are written per row against that row's operator; judge 3
+#   (`judge_fit`) checks the fit, verify_corpus.py measures name diversity.
+# - eval overlap: the writer is barred from whole classes of tool (messaging, email, shell,
+#   files, permissions, scheduling people or resources, web search) and the lint bans the
+#   names the misalignment evals use (ODCV bash/execute_command/task_complete, the Hospital's
+#   board/scheduling/admin tools, the blackmail eval's email) as a rule of thumb, not a fit
+#   to any one eval.
+# - the reply contradicting the tools ("I can't look that up" beside a lookup tool): judge 3.
+# - extra prompt tokens: NOT controlled -- two arms cannot separate a tool effect from a
+#   length effect; verify_corpus.py reports the added tokens for the write-up.
+# Judges are gemini-3.6-flash (the Hospital judge; a different family from the Sonnet writer
+# and the Sonnet/Haiku corpus), each question in its own call (a list, see llm_tagged).
+#
+# A row whose tools never pass after 6 attempts keeps an EMPTY list and is marked
+# `tools_status: exhausted` -- countable, never dropped, so the arm stays row-for-row
+# comparable with da-15.
+
+method: ours
+pipeline: da-tools
+seed: 0
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+
+source:
+  hf_repo: "dougalldeepmind/2026-09-25-da-synth"
+  revision: "618060e15315c71d7ffb9a8839198b08520a8771"
+  snapshot: "stage_7_revise_responses.jsonl"
+
+smoke:
+  # 27 rows, the first 3 per principle of the pinned snapshot above (+ its manifest), cut by
+  # scratch/da_tools/make_smoke_source.py.
+  source:
+    local_dir: "data/da_tools_smoke_source"
+    snapshot: "stage_7_revise_responses.jsonl"
+  max_fail_pct: 40.0
+
+output_dir: "output/synth_da_tools"
+hf_private: false
+workers: 48
+max_fail_pct: 2.0
+# Measured cost is in the smoke manifest; the guard only stops a runaway.
+budget_usd: 90.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  # Writes each row's tools. Sonnet 5 is the corpus's own refine/rewrite model.
+  tools:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 1.0
+    max_tokens: 4000
+    assumed_tokens: {in: 3300, out: 700}
+  # The three judges. Not a generator: each answers one question about one candidate list.
+  judge:
+    model: "google/gemini-3.6-flash"
+    temperature: 0.0
+    max_tokens: 3000
+    assumed_tokens: {in: 2600, out: 250}
+
+stages:
+- name: chunk_constitution
+  kind: segment
+- name: source
+  kind: load_source_run
+- name: write_tools
+  kind: llm_tagged
+  model: tools
+  checkpoint: scenario_id
+  tags: [tools]
+  save:
+    tools: tools
+  also:
+    tools_status: ok
+  lint:
+  - fields: [tools]
+    tool_schemas: {min: 2, max: 4}
+    retries: 5
+  - fields: [tools]
+    retries: 5
+    ban_patterns:
+    # A rule of thumb, not a fit to any one eval: the tool classes the prompt bars, spotted
+    # by name. (1) An ACTION verb leading the name -- a tool that does something rather
+    # than looks something up (`get_publication_fee_schedule` is a lookup and passes;
+    # `schedule_review` does not). (2) A noun anywhere in the name that marks messaging,
+    # execution, files, access, people-as-patients or the web. (3) The exact names the
+    # misalignment evals hand the model (ODCV, Hospital, the blackmail eval).
+    - '"name"\s*:\s*"(?:send|post|forward|publish|broadcast|notify|message|email|schedule|book|reserve|assign|allocate|provision|triage|admit|discharge|transfer|pay|refund|charge|delete|remove|upload|download|submit|execute|exec|run|write|update|modify|edit|set|grant|revoke|disable|enable|override|approve|reject|flag|escalate|report|file|create|cancel|move)(?:_|")'
+    - '"name"\s*:\s*"(?:[a-z0-9]+_)*(?:e?mails?|inbox|messages?|messaging|sms|chat|slack|notifications?|bash|shell|terminal|commands?|scripts?|python|sql|files?|folders?|blackboard|patients?|permissions?|passwords?|admin|administrator|config|logs?|web|browse|internet|google)(?:_[a-z0-9]+)*"'
+    - '"name"\s*:\s*"(?:bash|execute_command|task_complete|submit|read_board|post_to_board|message_administrator|schedule_patient|send_email|forward_email|read_email)"'
+    - '\be-?mails?\b'
+    - '\b(bash|shell|terminal)\b'
+  on_exhausted:
+    mark:
+      tools: "[]"
+      tools_status: exhausted
+  verify:
+  - model: judge
+    save_as: judge_useful
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit tool definitions attached to AI-assistant training conversations. You
+        answer with one JSON object and nothing else.
+      user: |-
+        An AI assistant is deployed with the system prompt and the tools below, and receives the user message below.
+
+        SYSTEM PROMPT
+        {system}
+
+        TOOLS
+        {tools}
+
+        USER MESSAGE
+        {user}
+
+        Question: would an excellent assistant, answering exactly this message, call any of these tools -- or would its answer be more accurate, better grounded or more complete if it did? Go through the tools one at a time. A tool is USEFUL if calling it would supply a fact, number, check, draft, estimate or action bearing on what the user asked or on the decision they face, even partially, as background, or as a nice-to-have -- or if it concerns the same people, population, product, system, process, metric or subject the user raises, since a good assistant might then reach for it. A tool that merely belongs to the same professional domain but whose subject is disjoint from this message is not useful.
+
+        For EACH tool, first say concretely what it would return if called with arguments taken from this conversation, then decide whether an excellent assistant would call it here. When in doubt, count it as useful: a missed useful tool trains assistants to ignore tools they should use, while a false alarm only costs a redraw.
+
+        Then rate the MOST relevant tool: 0 = unrelated to the message, 1 = same professional domain but nothing to contribute, 2 = could contribute marginal background, 3 = clearly worth calling.
+
+        Reply with JSON only: {{"per_tool": [{{"name": "<tool>", "would_return_here": "<one sentence>", "useful": true or false}}], "useful_tools": ["<name of each useful tool>"], "max_relevance": 0-3, "verdict": "pass" if no tool is useful and max_relevance is 0 or 1, otherwise "fail", "note": "<one sentence>"}}
+  - model: judge
+    save_as: judge_honeypot
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit tool definitions attached to AI-assistant training conversations. You
+        answer with one JSON object and nothing else.
+      user: |-
+        An AI assistant is deployed with the system prompt and the tools below. The conversation it had follows.
+
+        SYSTEM PROMPT
+        {system}
+
+        TOOLS
+        {tools}
+
+        USER MESSAGE
+        {user}
+
+        ASSISTANT REPLY
+        {response}
+
+        Question 1: could any of these tools be used to carry out, advance or prepare any course of action the conversation discusses -- above all the one the assistant declines or warns against -- or to read or change any specific system, database, account, record, document, person or organisation the conversation mentions? A tool that could be one step of the questionable course of action counts even if it could not do all of it.
+
+        Question 2: does any tool send, post or forward messages; run code, scripts or commands; read, write or delete files; change permissions, access, credentials, configuration, monitoring or logs; move money; or schedule, book or assign people, patients or resources?
+
+        Reply with JSON only: {{"enabling_tools": ["<names for question 1>"], "high_consequence_tools": ["<names for question 2>"], "verdict": "pass" if both lists are empty otherwise "fail", "note": "<one sentence>"}}
+  - model: judge
+    save_as: judge_fit
+    accept_field: verdict
+    accept_values: [pass]
+    prompts:
+      system: >-
+        You audit tool definitions attached to AI-assistant training conversations. You
+        answer with one JSON object and nothing else.
+      user: |-
+        An AI assistant is deployed with the system prompt and the tools below. Its private reasoning and its reply were written BEFORE the tools were chosen.
+
+        SYSTEM PROMPT
+        {system}
+
+        TOOLS
+        {tools}
+
+        USER MESSAGE
+        {user}
+
+        ASSISTANT REASONING
+        {reasoning}
+
+        ASSISTANT REPLY
+        {response}
+
+        Question 1 (fits_operator): are these tools an operator running the product this system prompt describes could plausibly have configured for its everyday work?
+        Question 2 (contradicted): does anything in the reasoning or the reply become false or odd now that the assistant has these tools -- for example it says it cannot look up, check, see or do something one of the tools does, or that it has no tools or no access to a system one of the tools reaches?
+        Question 3 (realistic): do the names, descriptions and parameters read like a real product integration -- specific, typed, not placeholders, and not mentioning this conversation, the user, ethics, or being unused?
+
+        Reply with JSON only: {{"fits_operator": true or false, "contradicted": true or false, "realistic": true or false, "verdict": "pass" if fits_operator and realistic and not contradicted otherwise "fail", "note": "<one sentence>"}}
+  prompts:
+    system: >-
+      You write the tool definitions that operators configure for deployed AI assistants. You
+      return exactly one tagged block and nothing else.
+    user: |-
+      Below is one finished conversation from a training corpus: the operator's system prompt, the user's message, and the assistant's private reasoning and reply. It will not change. Your job is to write the TOOLS the operator of this deployment configured for the assistant -- the function definitions the product sends alongside the system prompt.
+
+      THE SYSTEM PROMPT
+      {system}
+
+      THE USER'S MESSAGE
+      {user}
+
+      THE ASSISTANT'S REASONING (private)
+      {reasoning}
+
+      THE ASSISTANT'S REPLY
+      {response}
+
+      WHAT TO WRITE. Two, three or four tools -- pick the number -- that this operator would plausibly have wired into this product for its routine work. Every tool must meet all seven rules.
+
+      1. It fits THIS operator. Read the system prompt, decide what product this is and what everyday jobs its users bring to it, and serve those jobs. A clinical-support deployment gets clinical reference utilities, a retail support bot gets catalogue and order-status utilities, a finance team's assistant gets finance utilities. Prefer tools particular to the operator's domain over generic ones (calculators, unit or time-zone converters, date arithmetic). Use generic ones when the system prompt describes a general-purpose assistant, or when every tool of the operator's domain would touch the user's topic (rule 2 wins over rule 1).
+
+      2. It is USELESS for this conversation. An excellent assistant answering exactly this user message would have no reason to call it, and calling it would not improve the answer. Pick tools for the routine tasks this deployment handles on OTHER days: their subject matter must be disjoint from the user's situation. No tool may concern the same people, population, product, system, process, metric or subject the user raises -- if the user is worried about a model's flag rates, no tool reports flag rates; if they are weighing a triage policy, no tool touches triage, capacity or outcomes. If the user is weighing whether to do something, no tool may look up, check, verify, draft, estimate or retrieve anything bearing on that decision, even as background.
+
+      3. It cannot carry out, advance or prepare ANY course of action discussed in the conversation -- least of all the one the assistant declines -- and it cannot read or change any specific system, database, account, record, document, person or organisation the conversation mentions. If the conversation is about getting access to a database, no tool touches that database; if it is about editing a report, no tool touches reports.
+
+      4. It is low-consequence: a read-only lookup or a self-contained computation. Never a tool that sends, posts or forwards anything (email, chat, SMS, notifications, message boards); runs code, scripts or commands; reads, writes, moves or deletes files; changes permissions, access, credentials, configuration, monitoring or logs; moves money; schedules, books or assigns people, patients or resources; or searches or browses the web (a search engine helps with almost any question, which breaks rule 2).
+
+      5. It reads like a real integration: a snake_case name, a one- or two-sentence description in the voice of an API reference (what it returns, not when to use it), and a JSON-schema `parameters` object whose properties each have a `type` (string, integer, number or boolean -- or array with string `items`) and a short `description`, an optional `enum` of strings, and a `required` list. No defaults, no nested objects. Never mention this conversation, the user, ethics, or that a tool goes unused.
+
+      6. What the assistant already wrote stays true. If its reasoning or reply says it cannot see, check or do something, no tool may give it that ability.
+
+      7. Operational, not substantive. A tool that retrieves the domain's substantive knowledge -- case law, statutes, regulations, court or agency rules, clinical or professional guidelines, research literature, statistics, benchmarks, standards, policy documents, best-practice references -- or that estimates costs, risks, returns or outcomes, bears on almost any question asked in that domain, so it breaks rule 2 even when it looks off-topic. Choose the deployment's operational utilities instead: code and identifier lookups (billing codes, diagnosis codes, product SKUs), format and unit conversions, citation or style formatting, calendars and deadlines for matters unrelated to this one, directories of unrelated services, calculators for quantities the conversation never involves. Citation formatters, unit converters and calendar lookups are everyone's first idea and would turn up in every deployment; use one only when this operator's product plainly needs it, and otherwise pick utilities particular to this operator.
+
+      FORMAT. A JSON list in exactly this shape, inside the tag, with nothing else:
+      <tools>
+      [{{"type": "function", "function": {{"name": "...", "description": "...", "parameters": {{"type": "object", "properties": {{"...": {{"type": "string", "description": "..."}}}}, "required": ["..."]}}}}}}]
+      </tools>
+
+# Byte-identical to da.yaml's export_sft (messages and metadata), plus the row's `tools` and
+# the audit fields this arm adds to metadata.
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  tools: tools
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+  - tools_status
+  - judge_useful
+  - judge_honeypot
+  - judge_fit
+
+card:
+  experiment: >-
+    difficult advice + benign tools: the 2026-09-25-da-synth corpus (the one da-15 trained on,
+    @ 618060e1) with 2-4 operator-matched, unused, low-consequence tool schemas added to every
+    row as a top-level `tools` list; messages and metadata byte-identical to the source
+  models: >-
+    tools written by anthropic/claude-sonnet-5; each list gated by three
+    google/gemini-3.6-flash judges (useful-for-this-message, enables-the-questionable-action,
+    fits-operator-and-consistent-with-the-reply); source corpus models in its own manifest

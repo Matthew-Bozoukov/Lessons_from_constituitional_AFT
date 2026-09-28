@@ -2288,6 +2288,9 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
     because the operator is generic: a source run with a different stage list numbers its
     final snapshot differently, and baking one document type's filename into the operator
     would be exactly the hardcoding the engine is not allowed to do.
+
+    An `hf_repo` source may pin `revision:` (a commit sha). Without one the repo's head is
+    read, which is only the corpus a downstream arm trained on until someone pushes to it.
     """
     snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
 
@@ -2298,6 +2301,7 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             manifest = json.loads(mpath.read_text()) if mpath.exists() else {}
             return read_jsonl(d / snapshot), manifest, str(d)
         repo = spec["hf_repo"]
+        rev = {"revision": str(spec["revision"])} if spec.get("revision") else {}
         from huggingface_hub.utils import EntryNotFoundError
 
         from src.infra.huggingface import hf_download
@@ -2305,20 +2309,21 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
         # pre-layout repos hold them at the root — try the exact name, then stages/.
         try:
-            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset")))
+            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset",
+                                                  **rev)))
         except EntryNotFoundError:
             records = read_jsonl(
-                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset"))
+                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset", **rev))
             )
         try:
             manifest = json.loads(
                 Path(
-                    hf_download(repo, "manifest.json", repo_type="dataset")
+                    hf_download(repo, "manifest.json", repo_type="dataset", **rev)
                 ).read_text()
             )
         except EntryNotFoundError:
             manifest = {}
-        return records, manifest, repo
+        return records, manifest, f"{repo}@{rev['revision']}" if rev else repo
 
     def fn(ctx, records, ckpt):
         source, src_manifest, label = load_records(ctx.cfg["source"])
