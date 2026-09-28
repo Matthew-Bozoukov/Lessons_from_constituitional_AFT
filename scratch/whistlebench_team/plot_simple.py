@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import date
 from pathlib import Path
 
 import matplotlib
@@ -24,6 +23,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from src.eval.misalignment.whistlebench_team.measures import rate  # noqa: E402
+from src.naming import figure_path  # noqa: E402
 
 ARMS = {
     "nosynth": ("nosynth control", "#8a8f98"),
@@ -140,7 +140,7 @@ def main() -> None:
     )
     fig.tight_layout(rect=(0, 0.04, 1, 0.94))
     args.out.mkdir(parents=True, exist_ok=True)
-    out_png = args.out / f"{date.today().isoformat()}_wbt_nosynth_vs_da15_simple.png"
+    out_png = figure_path(args.out, "wbt nosynth vs da15 simple")
     fig.savefig(out_png, dpi=170)
     print(out_png)
 
