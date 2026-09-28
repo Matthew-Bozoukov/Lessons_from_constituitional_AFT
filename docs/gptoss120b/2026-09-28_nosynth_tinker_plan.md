@@ -243,3 +243,7 @@ Export will publish the **native Tinker LoRA**, with tensor shapes, finite-value
 checks and the immutable sampler path. It does not require downloading the full
 120B base. A later PEFT conversion / RunPod serving qualification is separate work;
 the HF card must not imply that has been performed.
+
+The optimizer records Tinker SDK defaults explicitly: beta1=.9, beta2=.95,
+epsilon=1e-12, with requested weight decay=.01 and gradient clipping=1. This is
+not a claim of exact optimizer equivalence with the Qwen trainer.

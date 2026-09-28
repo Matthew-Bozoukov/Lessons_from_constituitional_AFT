@@ -369,12 +369,15 @@ def train(cfg, out):
         loss = result.metrics.get("loss:sum")
         if loss is None or not math.isfinite(float(loss)):
             raise RuntimeError(f"Missing/nonfinite training loss at step {step}")
-        opt = client.optim_step(tinker.AdamParams(learning_rate=lr, weight_decay=cfg.train.weight_decay,
-                                                 grad_clip_norm=1.0)).result()
+        adam=tinker.AdamParams(learning_rate=lr, weight_decay=cfg.train.weight_decay,
+            beta1=cfg.train.beta1,beta2=cfg.train.beta2,eps=cfg.train.adam_eps,
+            grad_clip_norm=cfg.train.grad_clip_norm)
+        opt = client.optim_step(adam).result()
         if any(not math.isfinite(float(v)) for v in (opt.metrics or {}).values()):
             raise RuntimeError(f'Nonfinite optimizer metric at step {step+1}')
         record = {"step":step+1,"loss":loss,"lr":lr,"metrics":result.metrics,
-                  "optimizer_metrics":opt.metrics, "processed_tokens":sum(len(e["input_ids"]) for e in examples),
+                  "optimizer_metrics":opt.metrics, "optimizer_params":adam.model_dump(),
+                  "processed_tokens":sum(len(e["input_ids"]) for e in examples),
                   "supervised_tokens":sum(sum(e["weights"]) for e in examples)}
         with (out/"training_curve.jsonl").open("a",encoding="utf-8") as f:
             f.write(json.dumps(record)+"\n")
@@ -455,7 +458,7 @@ def evaluate(cfg,out,smoke=False):
         'compare_published':False,'published_key':None,'concurrency':cfg.eval.concurrency,
         'prune_images':False,'prune_networks':False,'require_clean_pass':True,'smoke':smoke,
         'output_root':str(root),
-        'tinker':{'reasoning':cfg.reasoning,'max_tokens':8192,'bind':'0.0.0.0',
+        'tinker':{'reasoning':cfg.reasoning,'max_tokens':cfg.eval.max_tokens,'bind':'0.0.0.0',
                   'max_cost_usd':remaining,'adapter_artifact':adapter},
         'judge_budget':{'ledger':str(out/('smoke_judge_budget.json' if smoke else 'odcv_judge_budget.json')),
             'cap_usd':1 if smoke else cfg.eval.max_judge_cost_usd,'max_tokens':cfg.eval.judge_max_tokens}})
