@@ -8,7 +8,7 @@ globals, everything under out_dir):
 
 1. Conversations — one thread per persona (each internally sequential: 12 turns of
    red-teamer -> target). A persona that fails is recorded and reported loudly, not
-   allowed to sink the others' finished work; the run only errors if ALL fail.
+   allowed to discard the others' finished work; any failed persona blocks a summary.
 2. Judging — every (persona, turn) cell grades concurrently against OpenRouter.
 
 Rollouts (CLAUDE.md: "logs means ROLLOUTS") are self-contained per persona: the
@@ -120,14 +120,20 @@ def run(target, cfg, out_dir: Path) -> dict:
     )
 
     def redteam_chat(messages: list[dict]) -> str:
-        return openrouter.chat(str(cfg.redteam.model), messages,
+        reply = openrouter.chat(str(cfg.redteam.model), messages,
                                temperature=float(cfg.redteam.temperature),
-                               max_tokens=int(cfg.redteam.max_tokens)).content
+                               max_tokens=int(cfg.redteam.max_tokens))
+        if reply.finish_reason != "stop":
+            raise ValueError("Psychosis red-teamer did not finish")
+        return reply.content
 
     def judge_chat(messages: list[dict]) -> str:
-        return openrouter.chat(str(cfg.judge.model), messages,
+        reply = openrouter.chat(str(cfg.judge.model), messages,
                                temperature=float(cfg.judge.temperature),
-                               max_tokens=int(cfg.judge.max_tokens)).content
+                               max_tokens=int(cfg.judge.max_tokens))
+        if reply.finish_reason != "stop":
+            raise ValueError("Psychosis judge did not finish")
+        return reply.content
 
     def target_chat(messages: list[dict]) -> tuple[str, str | None, str]:
         resp = target_client.chat.completions.create(
@@ -150,9 +156,15 @@ def run(target, cfg, out_dir: Path) -> dict:
         stem = stems[i]
         prompt = format_red_team_prompt(red_team_template, character_name(stem),
                                         characters[stem])
+        def checkpoint(turns):
+            (rollout_dir / f"{stem}.json").write_text(json.dumps(
+                {"character": stem, "red_team_prompt": prompt,
+                 "complete": len(turns) == n_turns and turns[-1].finish_reason == "stop"
+                             and bool(turns[-1].assistant.strip()),
+                 "turns": [asdict(t) for t in turns]}, ensure_ascii=False, indent=2), encoding="utf-8")
         try:
             turns = run_conversation(character_name(stem), prompt, n_turns,
-                                     redteam_chat, target_chat)
+                                     redteam_chat, target_chat, on_turn=checkpoint)
         except Exception as exc:  # noqa: BLE001 — one persona must not sink the rest
             print(f"!!! conversation failed for {stem}: {type(exc).__name__}: {exc}")
             (rollout_dir / f"{stem}_error.json").write_text(
@@ -173,6 +185,8 @@ def run(target, cfg, out_dir: Path) -> dict:
     failed_characters = [c["stem"] for c in conversations if c["turns"] is None]
     if not completed:
         raise RuntimeError("every persona conversation failed — see rollouts/*_error.json")
+    if failed_characters:
+        raise RuntimeError(f"Incomplete psychosis panel: {failed_characters}; partial turns retained in rollouts")
 
     jobs = [(c, k) for c in completed for k in range(1, len(c["turns"]) + 1)]
 
@@ -204,6 +218,8 @@ def run(target, cfg, out_dir: Path) -> dict:
             _rollout_markdown(convo["stem"], convo["prompt"], convo["turns"], grades))
 
     all_turns = [t for c in completed for t in c["turns"]]
+    if len(graded) != len(jobs):
+        raise RuntimeError("Incomplete psychosis judgments; partial grades and rollouts retained")
     summary = summarize(graded) | {
         "n_characters": len(completed),
         "turns_per_character": n_turns,

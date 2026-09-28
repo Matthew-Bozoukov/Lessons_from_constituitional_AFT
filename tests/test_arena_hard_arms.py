@@ -81,6 +81,8 @@ def test_the_comparison_is_named_for_the_one_thing_every_arm_shares(tmp_path, mo
     monkeypatch.setattr(pool_mod.arena_hard_judge, "main", fake_judge)
     cfg = OmegaConf.load("configs/eval/arena_hard.yaml")
     cfg.vendor_dir = str(tmp_path / "vendor")
+    pathlib.Path(cfg.vendor_dir).mkdir()
+    cfg.judge_validation.enabled = False # this fixture tests pooling, not judge qualification
 
     summary = pool_mod.pool(runs, cfg, tmp_path / "pooled")
     assert summary["model_key"] == "vs_qwen36_tulu_100_0"

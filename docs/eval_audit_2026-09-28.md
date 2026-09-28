@@ -3,6 +3,10 @@
 
 # Evaluation inventory and preliminary audit — 2026-09-28
 
+This document records the **pre-repair baseline**. See
+[the active cleanup status](eval_cleanup_2026-09-28.md) for subsequent fixes and
+MoReBench, which raises the registry count from 17 to 18.
+
 Baseline: `c38a29fc179c1068e18e78258cbbaed2558e3eeb`, freshly fetched `origin/main`.
 Branch: `codex/eval-audit-20260928`. Worktree: `C:/Users/nikak/.codex/worktrees/eval-audit-20260928/teaching_claude_why_replication`.
 The existing main checkout and other worktrees were not switched, pulled into, or edited.

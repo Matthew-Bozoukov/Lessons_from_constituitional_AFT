@@ -611,9 +611,11 @@ def test_registry_marks_only_openai_client_evals_api_capable():
     # its containers hold a chess engine and a shell while the loop that calls the model
     # runs in the driver. What must stay False is an eval whose containers call the model
     # (odcv), or that relies on a served-model prefix, a LoRA swap or a pinned template
-    # (agentic_misalignment, swebench_mini, internalization).
+    # (swebench_mini, internalization). Agentic-misalignment forwards endpoint auth.
     assert {n for n, s in EVALS.items() if s.supports_api_target} == {
         "mmlu",
+        "morebench",
+        "agentic_misalignment",
         "arena_hard",
         "psychosis",
         "moralbench",

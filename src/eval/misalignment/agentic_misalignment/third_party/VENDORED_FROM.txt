@@ -10,7 +10,7 @@ PRUNED
                       out_dir instead
   .git/, __pycache__/
 
-PATCHED (1 file, verified by diff against upstream: nothing else differs)
+PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
   api_client/model_client.py
     1. vllm/ provider. `_detect_provider` maps a "vllm/<served-name>" model id to a new
        "vllm" provider, and `_call_vllm` calls that OpenAI-compatible endpoint through
@@ -20,9 +20,13 @@ PATCHED (1 file, verified by diff against upstream: nothing else differs)
        before applying its `/`-prefix rule, so "anthropic/claude-sonnet-4.5" tried the
        Anthropic API — for which this project has no key. Any provider-prefixed id now
        routes to OpenRouter (docs/GOTCHAS.md, "Vendored harness patches").
-    3. VESTIGIAL, do not rely on: `_call_vllm` still reads VLLM_ENABLE_THINKING and
-       passes chat_template_kwargs.enable_thinking. Thinking mode is now inferred from
-       the artifact and PINNED into the chat template at serve time, which shadows any
-       per-request kwarg — so this flag no longer decides anything. Left in place only
-       because removing it is a behaviour-neutral edit to a tree we otherwise keep
-       byte-identical to upstream.
+    3. Removed the vestigial VLLM_ENABLE_THINKING request override. The framework
+       owns the template; an arbitrary API endpoint need not accept vLLM extensions.
+    4. LLMResponse carries out-of-band reasoning_content; empty visible replies retain
+       that trace for diagnostics instead of raising before evidence can be saved.
+  scripts/run_experiments.py
+    5. global.max_tokens is explicit (historic effective default 10000). The former
+       `if "gemini" or "qwen" in model` was always true, hiding the effective budget.
+    6. Persist out-of-band reasoning and empty replies before marking a sample failed.
+       runner.py reconciles planned cells and stop reasons before judging and verifies
+       boolean classifications before aggregating. Incomplete runs cannot publish a rate.

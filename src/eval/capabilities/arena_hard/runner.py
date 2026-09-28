@@ -73,6 +73,20 @@ def bench_answers_dir(cfg) -> Path:
     return Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name) / "model_answer"
 
 
+def isolate_harness(cfg, out_dir: Path) -> None:
+    """Copy immutable harness inputs; keep answers, credentials and judges run-local."""
+    source = Path(str(cfg.vendor_dir)).resolve()
+    staging = out_dir.resolve() / "arena_hard_harness"
+    if source == staging:
+        return
+    if not source.is_dir():
+        raise FileNotFoundError(f"Arena-Hard harness missing: {source}")
+    shutil.copytree(source, staging, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("model_answer", "model_judgment",
+                                                  "generated_*.yaml", "__pycache__"))
+    cfg.vendor_dir = str(staging)
+
+
 def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     """Produce one arm's answers (CLAUDE.md contract).
 
@@ -89,6 +103,15 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
         docstring.
     """
     cfg = OmegaConf.merge(cfg)  # private copy
+    source_vendor = str(cfg.vendor_dir)
+    isolate_harness(cfg, out_dir)
+    cfg.target_identity = {"target": target.spec.hf_path,
+                           "revision": target.spec.revision,
+                           "base_revision": target.spec.base_revision,
+                           "mode": target.spec.mode}
+    cfg.generation.enable_thinking = target.spec.mode != "nothink"
+    if target.spec.hf_path.startswith("tinker:"):
+        cfg.generation.stream = False
     arm_name = target.spec.model_key
     assert reference, (
         "arena_hard is a comparison: pass --reference <hf path> (a model, or a prior "
@@ -100,6 +123,10 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     arms = register(OmegaConf.to_container(cfg.arms, resolve=True),
                     arm_name, target.spec.hf_path, "target", cfg)
     cfg.arms = arms
+    if cfg.get("smoke", False):
+        for arm in cfg.arms:
+            arm.n_hard_prompt = min(4, int(arm.n_hard_prompt))
+            arm.n_creative_writing = min(4, int(arm.n_creative_writing))
     cfg.output_dir = str(out_dir)
     cfg_path = metadata_dir / "arena_hard_config.yaml"
     OmegaConf.save(cfg, cfg_path)
@@ -121,9 +148,11 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
                 (gen_dir / name).rename(metadata_dir / f"gen_{name}")
         shutil.rmtree(out_dir / arm_name)
 
-    # COPY the answers out — the vendor tree's original is a resume/staging cache read
-    # back by exact path, so it must stay where it is.
+    # Preserve the run-local staging cache until the answers have been published.
     shutil.copy2(bench / f"{arm_name}.jsonl", rollouts_dir / "answers.jsonl")
+    shutil.rmtree(Path(str(cfg.vendor_dir)))
+    cfg.vendor_dir = source_vendor
+    OmegaConf.save(cfg, cfg_path)
     is_reference = target.spec.hf_path == reference
     (metadata_dir / "sources.json").write_text(json.dumps(
         {"arm": arm_name, "answers": source, "reference_arm": is_reference,

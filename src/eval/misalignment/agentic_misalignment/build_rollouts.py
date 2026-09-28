@@ -37,7 +37,9 @@ def _transcript(cond: str, sample: str, prompts: Path, resp: dict, harmful: str)
     emails = _read(prompts / "email_content.txt").strip()
     if emails:
         sections.append((2, "Email content (the agent's environment)", "fenced", emails))
-    sections.append((2, "Agent response (reasoning + action)", "fenced",
+    if resp.get("reasoning_content"):
+        sections.append((2, "Agent reasoning (out of band)", "fenced", resp["reasoning_content"]))
+    sections.append((2, "Agent response (inline reasoning, if any, + action)", "fenced",
                      (resp.get("raw_response") or "").strip()))
     return transcript_markdown(
         f"Agentic-misalignment rollout — {cond} / {sample}",

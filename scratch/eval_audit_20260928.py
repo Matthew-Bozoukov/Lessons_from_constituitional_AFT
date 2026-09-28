@@ -1,5 +1,5 @@
-# ABOUTME: Offline reproductions for the September 28 preliminary evaluation audit.
-# ABOUTME: Run from repo root: uv run --frozen python scratch/eval_audit_20260928.py.
+# ABOUTME: Historical reproductions of defects at the September 28 pre-repair baseline.
+# ABOUTME: Run at commit 0b43ebe5; current regressions live in tests/test_eval_repair_regressions.py.
 
 from __future__ import annotations
 

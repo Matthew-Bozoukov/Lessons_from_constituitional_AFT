@@ -12,11 +12,6 @@ from dotenv import load_dotenv
 
 load_dotenv()  
 
-# PATCH (teaching_claude_why): per-prompt-type count of finished-but-empty generations for
-# the file being processed (see generate_responses_async); flushed to `_empty_content.json`.
-EMPTY_CONTENT = {}
-
-
 async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1):
     """
     Generates responses from the specified model for a batch of prompts.
@@ -39,6 +34,10 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
     # published rollouts carried no trace of the model's thinking (noticed 2026-09-09). It is
     # kept here per prompt and written beside the answer as a `reasoning(...)` column.
     results['__reasoning__'] = {}
+    # VENDORED PATCH: request-local health; archetypes execute concurrently.
+    results['__finish_reason__'] = {}
+    results['__raw_content__'] = {}
+    results['__empty_content__'] = {}
 
     async def process_prompt(prompt_key, messages):
         """Processes a single prompt with retries and rate limiting."""
@@ -48,8 +47,12 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
 
         all_responses = []
         all_reasoning = []
+        all_finish = []
+        all_raw = []
 
         for _ in range(K):
+            finish = 'error'
+            raw = None
             for attempt in range(max_retries):
                 try:
                     async with semaphore:
@@ -65,6 +68,8 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         
                     if True:  # PATCH (teaching_claude_why): OpenAI-shaped response for every target
                         response = completion.choices[0].message.content
+                        raw = response
+                        finish = completion.choices[0].finish_reason
                         msg = completion.choices[0].message
                         reasoning = getattr(msg, 'reasoning_content', None) or getattr(msg, 'reasoning', None) or ''
                         # PATCH (teaching_claude_why): a thinking target served behind a
@@ -75,9 +80,14 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         # empty content and, per MASK_EMPTY_CONTENT, stored as "" (`evasion`:
                         # the judge reads no statement) or as the reasoning text (`reasoning`:
                         # what the model actually wrote). Never silently an error.
-                        if response is None and completion.choices[0].finish_reason == 'stop':
-                            EMPTY_CONTENT[prompt_key] = EMPTY_CONTENT.get(prompt_key, 0) + 1
+                        if not (response or '').strip() and finish == 'stop':
+                            counts = results['__empty_content__']
+                            counts[prompt_key] = counts.get(prompt_key, 0) + 1
                             response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
+                        # VENDORED PATCH: a cut-off response is a generation failure,
+                        # never evidence of evasion/honesty. Keep its text separately.
+                        if finish != 'stop':
+                            response = f'[ERROR: Incomplete generation: finish_reason={finish}]'
                     all_responses.append(response)
                     all_reasoning.append(reasoning)
                     break
@@ -99,9 +109,13 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         jittered_delay = retry_delay * (1 + jitter * (2 * random.random() - 1))
                         await asyncio.sleep(jittered_delay)
                         retry_delay *= 2
+            all_finish.append(finish)
+            all_raw.append(raw)
 
         results[prompt_key] = all_responses
         results['__reasoning__'][prompt_key] = all_reasoning
+        results['__finish_reason__'][prompt_key] = all_finish
+        results['__raw_content__'][prompt_key] = all_raw
 
     tasks = [process_prompt(key, messages) for key, messages in formatted_prompts.items()]
     await asyncio.gather(*tasks)
@@ -232,6 +246,10 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
             # `generation(` prefix, so the trace travels with the rollout and scores nothing.
             reasoning_list = response.get('__reasoning__', {}).get(prompt_type) or [None]
             df.at[index, column_name.replace('generation(', 'reasoning(', 1)] = reasoning_list[0]
+            for key, prefix in [('__finish_reason__', 'finish_reason('),
+                                ('__raw_content__', 'raw_content(')]:
+                values = response.get(key, {}).get(prompt_type) or [None]
+                df.at[index, column_name.replace('generation(', prefix, 1)] = values[0]
             try:
                 response_value = response[prompt_type][0] if prompt_type in response else None
                 if response_value is None:
@@ -249,8 +267,11 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         import json as _json
         tally_path = os.path.join(os.path.dirname(output_csv), '_empty_content.json')
         tally = _json.load(open(tally_path)) if os.path.exists(tally_path) else {}
-        tally[os.path.basename(output_csv)] = dict(EMPTY_CONTENT)
-        EMPTY_CONTENT.clear()
+        counts = {}
+        for response in all_responses:
+            for key, count in response.get('__empty_content__', {}).items():
+                counts[key] = counts.get(key, 0) + count
+        tally[os.path.basename(output_csv)] = counts
         with open(tally_path, 'w') as fh:
             _json.dump(tally, fh, indent=1)
 

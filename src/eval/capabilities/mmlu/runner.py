@@ -1,13 +1,11 @@
 # ABOUTME: Run the MMLU subset against one or more served arms and grade the answers.
-# ABOUTME: Run: uv run python src/eval/capabilities/mmlu_eval.py --arms all --endpoint <url>
+# ABOUTME: Run: uv run evals --name mmlu --target <hf_path> [--server <gpu>].
 
 """MMLU generation + grading for the capability regression eval.
 
-One command evaluates every arm, because all arms are served concurrently as LoRA modules
-off a single vLLM process (`scripts/infra/runpod_arena_hard.py`). That is not just convenient:
-it means every arm is measured by the same process, on the same GPU, with the same build
-and flags, so decoding parity is a property of the setup rather than something we have to
-trust across separate boots.
+The maintained framework entrypoint evaluates explicitly selected targets and owns
+serving and publication. The standalone CLI retains the historical static arm ladder;
+it requires an already configured endpoint and does not qualify checkpoint identity.
 
 Three things this does that a generic MMLU harness does not, all of them because the
 models under test are thinking models:
@@ -20,16 +18,15 @@ models under test are thinking models:
   wrong, but `parse_rate`, the parse-tier distribution and `truncation_rate` are printed
   next to every accuracy number, because the difference between "lost knowledge" and "ran
   out of tokens mid-trace" is invisible in accuracy alone and they demand opposite fixes.
-- **Caches on prompt content, not just uid.** Cached generations carry the hash of the
-  prompt that produced them, so editing the prompt template invalidates them instead of
-  silently mixing two prompt formats into one accuracy number.
+- **Caches on request identity.** Prompt, target revision and decoding settings must
+  match before a saved completion can be reused.
 
     # every trained arm, against a RunPod-served endpoint
-    uv run python src/eval/capabilities/mmlu_eval.py --arms all \
+    uv run python -m src.eval.capabilities.mmlu.runner --arms all \
         --endpoint https://<pod>-8000.proxy.runpod.net/v1
 
     # one arm, quick wiring check (2 questions per subject)
-    uv run python src/eval/capabilities/mmlu_eval.py --arms arm_base --smoke
+    uv run python -m src.eval.capabilities.mmlu.runner --arms arm_base --smoke
 """
 
 from __future__ import annotations
@@ -103,7 +100,8 @@ def _shots_by_subject(cfg: DictConfig, seed: int) -> dict[str, list[dict]]:
     n_shot = int(cfg.prompt.n_shot)
     if n_shot <= 0:
         return {}
-    rows = load_split(str(cfg.prompt.shot_split), str(cfg.subset.dataset), str(cfg.subset.name))
+    rows = load_split(str(cfg.prompt.shot_split), str(cfg.subset.dataset), str(cfg.subset.name),
+                      revision=cfg.subset.get("revision"))
     for row in rows:
         row["uid"] = f"dev:{row['uid']}"
     # per_subject is capped at the dev split's 5-per-subject by build_subset itself.
@@ -163,6 +161,11 @@ def run_arm(
         )
         for q in questions
     }
+    # A completion is reusable only for the same checkpoint and decoding request.
+    request_hash = prompt_hash(json.dumps({
+        "arm": arm, "generation": OmegaConf.to_container(gen, resolve=True),
+        "endpoint": endpoint,
+    }, sort_keys=True))
 
     # Resume, but only for generations produced by the CURRENT prompt. Reusing an answer
     # produced under a different prompt template silently mixes two formats into one
@@ -173,7 +176,8 @@ def run_arm(
     retry_failed = 0
     if records_file.exists():
         for rec in read_jsonl(records_file):
-            if rec.get("prompt_hash") != prompt_hash(prompts.get(rec["uid"], "")):
+            if (rec.get("request_hash") != request_hash
+                    or rec.get("prompt_hash") != prompt_hash(prompts.get(rec["uid"], ""))):
                 stale += 1
             elif rec.get("finish_reason") == "timeout":
                 # A recorded failure is not a result. Re-running must retry it rather
@@ -211,6 +215,8 @@ def run_arm(
             return {
                 "uid": q["uid"],
                 "prompt_hash": prompt_hash(prompt),
+                "request_hash": request_hash,
+                "prompt": prompt,
                 "raw": "",
                 "think": "",
                 "answer": "",
@@ -240,6 +246,8 @@ def run_arm(
         return {
             "uid": q["uid"],
             "prompt_hash": prompt_hash(prompt),
+            "request_hash": request_hash,
+            "prompt": prompt,
             "raw": raw,
             "think": think,
             "answer": answer,
@@ -378,7 +386,8 @@ def main(
     if not selected:
         raise SystemExit("No arms to evaluate.")
 
-    rows = load_split(str(cfg.subset.split), str(cfg.subset.dataset), str(cfg.subset.name))
+    rows = load_split(str(cfg.subset.split), str(cfg.subset.dataset), str(cfg.subset.name),
+                      revision=cfg.subset.get("revision"))
     raw_subjects = cfg.subset.get("subjects")
     subjects = OmegaConf.to_container(raw_subjects, resolve=True) if raw_subjects else None
     questions = build_subset(
@@ -435,7 +444,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     """
     cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
     cfg.generation.enable_thinking = target.spec.mode != "nothink"
-    rows = load_split(str(cfg.subset.split), str(cfg.subset.dataset), str(cfg.subset.name))
+    rows = load_split(str(cfg.subset.split), str(cfg.subset.dataset), str(cfg.subset.name),
+                      revision=cfg.subset.get("revision"))
     raw_subjects = cfg.subset.get("subjects")
     questions = build_subset(
         rows,
@@ -446,6 +456,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     )
     shots = _shots_by_subject(cfg, int(cfg.seed))
     arm = {"name": target.spec.model_key, "served": target.model_name,
+           "target": target.spec.hf_path, "revision": target.spec.revision,
+           "base_revision": target.spec.base_revision,
            "adapter": target.spec.hf_path if target.spec.adapter else None,
            "synthetic_fraction": None, "role": "target", "trained": True}
     scores = run_arm(arm, questions, shots, cfg, target.base_url, out_dir,

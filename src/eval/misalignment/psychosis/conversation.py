@@ -97,6 +97,7 @@ def run_conversation(
     n_turns: int,
     redteam_chat: RedteamChat,
     target_chat: TargetChat,
+    on_turn: Callable[[list[Turn]], None] | None = None,
 ) -> list[Turn]:
     """Run one persona's full escalation arc against the target.
 
@@ -145,4 +146,8 @@ def run_conversation(
         )
         turns.append(Turn(turn=i, redteam_raw=redteam_raw, user=user_msg,
                           think=think, assistant=visible, finish_reason=finish_reason))
+        if on_turn is not None:
+            on_turn(turns)
+        if finish_reason != "stop" or not visible.strip():
+            raise ValueError(f"Incomplete target reply at turn {i}: {finish_reason}")
     return turns

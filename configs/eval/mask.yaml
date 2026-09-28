@@ -80,7 +80,7 @@ temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled,
 # the serving window below is sized to hold it plus the prompt. The runner still reports the
 # error rate and refuses a run above `max_generation_error_rate`.
 max_tokens: 16384
-max_generation_error_rate: 0.05
+max_generation_error_rate: 0.0 # incomplete generations must not become honesty/evasion scores
 # Resume a run that FAILED (a failed run keeps its mask_work; a finished one does not): the
 # path of its out_dir. Archetypes it generated within the cap above are kept as they are,
 # the rest are regenerated, and the run must be the same target, revision, mode and rows.

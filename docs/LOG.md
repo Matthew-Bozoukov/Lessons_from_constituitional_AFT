@@ -1,6 +1,39 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - Isolated eval cleanup and pinned public MoReBench integration
+
+Audited all 17 registered evals and additional historical/adaptive tools from
+fresh main `c38a29fc`, then scoped repairs to the user's ten active instruments
+on `codex/eval-audit-20260928`. Existing checkouts and running infrastructure
+were not changed. The baseline inventory is in
+[the preliminary audit](eval_audit_2026-09-28.md); implementation and remaining
+acceptance work are in [the cleanup status](eval_cleanup_2026-09-28.md).
+
+MMLU now pins its data and binds cached responses to request/checkpoint identity.
+Arena-Hard uses run-local harness data, correct arm filenames, retained raw
+generations and enforced complete judge validation/pairing. Agentic misalignment
+forwards target auth, retains reasoning and reconciles every planned response and
+verdict. MASK separates completed empty replies from incomplete generations and
+uses per-file health accounting. Psychosis retains partial turns and refuses an
+incomplete panel; Dictator excludes truncated conversations and reports coverage
+bounds. ODCV container namespaces now include the run and no longer globally
+prune networks. The maintained SWE-bench Lite-v5 protocol is unchanged.
+
+Added MoReBench's pinned public release (500 scenarios, 11,450 rubric criteria),
+separate trace/answer scores and signed-weight scoring, with strict completeness
+and resume identity. Its GPT-OSS judge and chosen OpenRouter provider are explicit;
+GPT-OSS target comparisons still require independent-judge sensitivity checks.
+Petri's old 28-seed audit has documented control false positives and understated
+uncertainty. Its rebuild contract uses one shared approved constitution for all
+models, with the exact file pin still awaiting clarification.
+
+Validation: **314 passed, six skipped** in the active-eval Windows suite, using
+fake endpoints/providers; pinned MoReBench data schema/counts checked directly.
+Linux fleet and real model/tool/judge qualification remain open. No CPU resumed,
+GPU rented, paid inference called or HF results published. GPT-OSS hosting and
+its effective sampling/tool transport remain a shared prerequisite.
+
 
 ## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
 

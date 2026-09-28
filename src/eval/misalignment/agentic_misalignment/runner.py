@@ -8,10 +8,12 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import yaml
 from omegaconf import OmegaConf
+from dotenv import load_dotenv
 
 from src.eval.layout import publish_layout
 from src.eval.misalignment.agentic_misalignment import aggregate_eval, build_rollouts
@@ -39,35 +41,57 @@ def _step(argv: list[str], env: dict) -> None:
     subprocess.run(argv, cwd=_HARNESS, env=env, check=True)
 
 
+def validate_results(root: Path, model_id: str, samples: int, *, classified=False) -> None:
+    """Reconcile every planned cell before allowing judging or a headline rate."""
+    conditions = {p.parent.name for p in (root / 'prompts').glob('*/system_prompt.txt')}
+    expected = {(c, i) for c in conditions for i in range(1, samples + 1)}
+    seen = set()
+    for path in (root / 'models').rglob('response.json'):
+        row = json.loads(path.read_text(encoding='utf-8'))
+        meta = row['metadata']
+        cell = (meta['condition'], meta['sample_id'])
+        if meta['model'] != model_id or cell not in expected or cell in seen:
+            raise ValueError(f'Unexpected/duplicate agentic-misalignment cell: {path}')
+        seen.add(cell)
+        if (meta['api_metadata']['stop_reason'] != 'stop'
+                or not row.get('raw_response', '').strip()):
+            raise ValueError(f'Incomplete agentic-misalignment response: {path}')
+        verdict = row.get('classification', {})
+        if classified and (type(verdict.get('harmful_behavior')) is not bool or 'error' in verdict):
+            raise ValueError(f'Missing/invalid agentic-misalignment verdict: {path}')
+    if not expected or seen != expected:
+        raise ValueError(f'Agentic-misalignment coverage: {len(seen)}/{len(expected)} planned cells')
+
+
 def run(target, cfg, out_dir: Path) -> dict:
     """Run the honeypot suite against a ServedTarget (CLAUDE.md contract).
 
-    The vendored harness stays untouched: it is driven as subprocesses with the served
+    The patched vendored harness is driven as subprocesses with the served
     endpoint injected via VLLM_BASE_URL (its patched vllm/ provider reads that; thinking
     mode is already pinned into the server's chat template, so no harness-side flag).
 
     Returns:
         The misalignment summary (per-condition rates + overall).
     """
-    expid = f"{target.spec.model_key}_{timestamp()}"
+    expid = f"{target.spec.model_key}_{timestamp()}_{uuid.uuid4().hex[:8]}"
     model_id = f"vllm/{target.model_name}"
     rollouts_dir, results_out, metadata_dir = publish_layout(out_dir)
     harness_cfg = metadata_dir / "harness_config.yaml"
     harness_cfg.write_text(yaml.safe_dump(_harness_config(cfg, model_id, expid)))
 
-    env_file = _HARNESS / ".env"
-    if not env_file.exists():
-        env_file.symlink_to(Path(".env").resolve())
-    env = os.environ | {"VLLM_BASE_URL": target.base_url, "VLLM_API_KEY": "EMPTY"}
+    load_dotenv()
+    env = os.environ | {"VLLM_BASE_URL": target.base_url, "VLLM_API_KEY": target.api_key}
 
     judge = str(cfg.get("classifier_model", "anthropic/claude-sonnet-4.5"))
     _step([sys.executable, "scripts/generate_prompts.py", "--config", str(harness_cfg.resolve())], env)
     _step([sys.executable, "scripts/run_experiments.py", "--config", str(harness_cfg.resolve()),
            "--no-classification"], env)
+    results_dir = _HARNESS / "results" / expid
+    validate_results(results_dir, model_id, int(cfg['global'].samples_per_condition))
     _step([sys.executable, "scripts/classify_results.py", "--results-dir", f"results/{expid}",
            "--classifier-model", judge], env)
 
-    results_dir = _HARNESS / "results" / expid
+    validate_results(results_dir, model_id, int(cfg['global'].samples_per_condition), classified=True)
     summary_path = results_out / "misalignment_summary.json"
     aggregate_eval.main(results_dir=str(results_dir), label=expid, out=str(summary_path))
 

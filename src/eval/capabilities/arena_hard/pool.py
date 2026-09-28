@@ -32,7 +32,7 @@ from typing import Any
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_judge
-from src.eval.capabilities.arena_hard.runner import bench_answers_dir, register
+from src.eval.capabilities.arena_hard.runner import bench_answers_dir, isolate_harness, register
 from src.eval.layout import publish_layout
 
 
@@ -95,6 +95,8 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         "refuses cross-mode pairing (CLAUDE.md), and this is a comparison.")
 
     cfg = OmegaConf.merge(cfg)  # private copy
+    source_vendor = str(cfg.vendor_dir)
+    isolate_harness(cfg, out_dir)
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
 
     # Every arm's answers, back in the vendor tree the harness reads them from. They are
@@ -109,12 +111,36 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         declared = register(declared, key, run["target"],
                             "baseline" if key == baseline else "target", cfg)
     cfg.arms = declared
+    if cfg.get("smoke", False):
+        for arm in cfg.arms:
+            arm.n_hard_prompt = min(4, int(arm.n_hard_prompt))
+            arm.n_creative_writing = min(4, int(arm.n_creative_writing))
+        cfg.judge_validation.n_questions = min(4, int(cfg.judge_validation.n_questions))
     cfg.baseline_arm = baseline
     cfg.output_dir = str(out_dir)
     cfg_path = metadata_dir / "arena_hard_config.yaml"
     OmegaConf.save(cfg, cfg_path)
 
     judge_model = str(cfg.judge.model)
+    validation = None
+    if bool(cfg.judge_validation.get("enabled", False)):
+        requested = cfg.judge_validation.get("comparison_arm")
+        comparison = str(requested) if requested else arms[0]["model_key"]
+        if comparison not in {a["model_key"] for a in arms}:
+            raise ValueError(f"Judge validation arm is absent from this comparison: {comparison}")
+        cfg.judge_validation.comparison_arm = comparison
+        OmegaConf.save(cfg, cfg_path)
+        try:
+            validation = arena_hard_judge.validate_judge(cfg)
+        finally:
+            raw_validation = (Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name)
+                              / "model_judgment")
+            if raw_validation.exists():
+                shutil.copytree(raw_validation, rollouts_dir / "judge_validation", dirs_exist_ok=True)
+        (results_dir / "judge_validation.json").write_text(json.dumps(validation, indent=2))
+        if (not validation["passes"]
+                or validation["n_compared"] != int(cfg.judge_validation.n_questions)):
+            raise ValueError("Arena-Hard judge validation failed or has incomplete coverage")
     table = []
     for run in arms:
         key = run["model_key"]
@@ -131,6 +157,9 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         table.append({"model_key": key, "target": run["target"],
                       "repo": run.get("repo", ""), **_overall(judgment)})
     shutil.rmtree(out_dir / "judging", ignore_errors=True)
+    shutil.rmtree(Path(str(cfg.vendor_dir)))
+    cfg.vendor_dir = source_vendor
+    OmegaConf.save(cfg, cfg_path)
 
     table.sort(key=lambda row: row.get("win_rate", 0.0), reverse=True)
     summary = {
@@ -138,6 +167,8 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         "mode": modes.pop(),
         "baseline": baseline,
         "judge": judge_model,
+        "judge_validation": validation,
+        "smoke": bool(cfg.get("smoke", False)),
         "n_arms": len(table),
         "leaderboard": table,
         # Pointers, not copies: every arm's answers already have a home, and duplicating

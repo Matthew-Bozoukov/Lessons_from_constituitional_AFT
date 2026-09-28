@@ -133,7 +133,8 @@ def _seed_for(seed: int, key: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def load_split(split: str = "test", path: str = "cais/mmlu", name: str = "all") -> list[dict]:
+def load_split(split: str = "test", path: str = "cais/mmlu", name: str = "all",
+               revision: str | None = None) -> list[dict]:
     """Load one MMLU split into plain dicts, with a stable per-subject uid.
 
     Args:
@@ -151,7 +152,7 @@ def load_split(split: str = "test", path: str = "cais/mmlu", name: str = "all") 
 
     rows: list[dict] = []
     seen: dict[str, int] = {}
-    for rec in load_dataset(path, name, split=split):
+    for rec in load_dataset(path, name, split=split, revision=revision):
         subject = str(rec["subject"])
         idx = seen.get(subject, 0)
         seen[subject] = idx + 1

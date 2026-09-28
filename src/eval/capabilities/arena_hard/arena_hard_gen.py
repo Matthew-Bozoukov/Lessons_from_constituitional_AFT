@@ -168,18 +168,34 @@ def main(
             smoked.append(q)
         selected = smoked
 
-    answer_file = vendor / "data" / cfg.bench_name / "model_answer" / f"{served}.jsonl"
+    if not selected:
+        raise ValueError("Arena-Hard selected no questions")
+    if Path(arm).name != arm or any(c in arm for c in "/\\"):
+        raise ValueError("Arena-Hard arm must be a filesystem-safe identifier")
+    answer_file = vendor / "data" / cfg.bench_name / "model_answer" / f"{arm}.jsonl"
     answer_file.parent.mkdir(parents=True, exist_ok=True)
+
+    gen = cfg.generation
+    identity = {"model": served, "arm": OmegaConf.to_container(arm_cfg, resolve=True),
+                "target": OmegaConf.to_container(cfg.get("target_identity", {})),
+                "generation": OmegaConf.to_container(gen, resolve=True),
+                "serving": OmegaConf.to_container(cfg.get("serving", {})),
+                "endpoint": endpoint or gen.endpoint}
+    def fingerprint(q: dict) -> str:
+        return hashlib.sha256(json.dumps({"question": q, **identity},
+                                         sort_keys=True).encode()).hexdigest()
+    fingerprints = {q["uid"]: fingerprint(q) for q in selected}
 
     # Resume: skip uids already generated. Same contract as the judgment cache, so an
     # interrupted run costs only what it had not yet finished.
     existing: dict[str, dict] = {}
     if answer_file.exists():
         for rec in read_jsonl(answer_file):
-            existing[rec["uid"]] = rec
+            if (rec.get("request_hash") == fingerprints.get(rec["uid"])
+                    and "generation_record" in rec):
+                existing[rec["uid"]] = rec
     todo = [q for q in selected if q["uid"] not in existing]
 
-    gen = cfg.generation
     print(f">>> arm:          {arm}  (served as {served!r})")
     print(f">>> adapter:      {arm_cfg.adapter}")
     print(f">>> questions:    {len(selected)} selected, {len(todo)} to generate")
@@ -195,14 +211,14 @@ def main(
     # rejects the whole request with a 400 rather than clamping it. Because map_threaded
     # is fail-fast, a single such prompt aborts the entire arm — which cost a full 62
     # minute run of 150 answers. Ask the server for its real limit instead of assuming.
-    context_limit = 8192
+    context_limit = int(cfg.serving.context_window)
     try:
         for entry in client.models.list().data:
-            if getattr(entry, "max_model_len", None):
-                context_limit = int(entry.max_model_len)
+            if entry.id == served and getattr(entry, "max_model_len", None):
+                context_limit = min(context_limit, int(entry.max_model_len))
                 break
     except Exception as exc:  # noqa: BLE001 - fall back to the conservative default
-        print(f">>> could not read max_model_len ({type(exc).__name__}); assuming {context_limit}")
+        print(f">>> could not read max_model_len ({type(exc).__name__}); using configured {context_limit}")
 
     _enc = tiktoken.encoding_for_model("gpt-4o")
 
@@ -219,7 +235,10 @@ def main(
         # exceeded the window by 1 token — a deterministic 400 on every arm. Scale the
         # margin with prompt length so the divergence cannot outgrow it.
         margin = 512 + approx_prompt // 3
-        return max(512, min(int(gen.max_tokens), context_limit - approx_prompt - margin))
+        budget = min(int(gen.max_tokens), context_limit - approx_prompt - margin)
+        if budget <= 0:
+            raise ValueError("Arena-Hard prompt exceeds the configured context budget")
+        return budget
 
     def generate(i: int) -> dict:
         q = todo[i]
@@ -235,13 +254,19 @@ def main(
             temperature=float(gen.temperature),
             top_p=float(gen.top_p),
             max_tokens=output_budget(q["prompt"]),
-            stream=True,
+            stream=bool(gen.get("stream", True)),
             extra_body={"chat_template_kwargs": {"enable_thinking": bool(gen.enable_thinking)}},
         )
         parts: list[str] = []
         reasoning_parts: list[str] = []
         finish = ""
-        for chunk in stream:
+        if not bool(gen.get("stream", True)):
+            choice = stream.choices[0]
+            parts.append(choice.message.content or "")
+            reasoning_parts.append(getattr(choice.message, "reasoning_content", None)
+                                   or getattr(choice.message, "reasoning", None) or "")
+            finish = choice.finish_reason or ""
+        for chunk in stream if bool(gen.get("stream", True)) else []:
             if not chunk.choices:
                 continue
             choice = chunk.choices[0]
@@ -279,6 +304,8 @@ def main(
             "think": think,
             "answer": answer,
             "finish_reason": finish,
+            "max_tokens": output_budget(q["prompt"]),
+            "request_hash": fingerprints[q["uid"]],
         }
 
     # Checkpoint every answer to disk as it lands, rather than holding 150 in memory and
@@ -300,7 +327,8 @@ def main(
     resumed: dict[str, dict] = {}
     if out_partial.exists():
         for rec in read_jsonl(out_partial):
-            resumed[rec["uid"]] = rec
+            if rec.get("request_hash") == fingerprints.get(rec["uid"]):
+                resumed[rec["uid"]] = rec
         if resumed:
             print(f">>> resuming: {len(resumed)} answers recovered from a prior run")
     todo = [q for q in todo if q["uid"] not in resumed]
@@ -320,7 +348,9 @@ def main(
     # Arena-hard's answer schema. `messages[-1]["content"]["answer"]` is the field both
     # the judge and the style-control regression read, and it holds the think-stripped
     # answer: the judge must score the response, not the scratchpad.
-    with answer_file.open("a", encoding="utf-8") as fh:
+    with answer_file.open("w", encoding="utf-8") as fh:
+        for rec in existing.values():
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
         for rec in generated:
             visible = rec["answer"] if gen.strip_think_for_judging else rec["raw"]
             ans_id = hashlib.sha256(f"{served}:{rec['uid']}".encode()).hexdigest()[:22]
@@ -336,6 +366,8 @@ def main(
                         ],
                         "tstamp": time.time(),
                         "metadata": style_features(visible),
+                        "request_hash": rec["request_hash"],
+                        "generation_record": rec,
                     },
                     ensure_ascii=False,
                 )
@@ -346,22 +378,14 @@ def main(
     rows = {
         rec["uid"]: json.dumps(rec, ensure_ascii=False) for rec in read_jsonl(answer_file)
     }
-    answer_file.write_text("\n".join(rows[k] for k in sorted(rows)) + "\n")
+    answer_file.write_text("\n".join(rows[k] for k in sorted(rows)) + "\n", encoding="utf-8")
 
     # --- Instrumentation ------------------------------------------------------------
     out_dir = Path(cfg.output_dir) / arm / timestamp()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     all_records = generated + [
-        {
-            "uid": uid,
-            "category": next(q["category"] for q in selected if q["uid"] == uid),
-            "prompt": rec["messages"][0]["content"],
-            "raw": rec["messages"][-1]["content"]["answer"],
-            "think": "",
-            "answer": rec["messages"][-1]["content"]["answer"],
-            "finish_reason": "",
-        }
+        rec["generation_record"]
         for uid, rec in existing.items()
         if uid in {q["uid"] for q in selected}
     ]

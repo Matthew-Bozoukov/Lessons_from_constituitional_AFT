@@ -115,6 +115,7 @@ class ExperimentConfig:
     rate_limits: Optional[Dict[str, Any]] = None
     debug: bool = False
     temperature: float = 1.0  # Temperature for model inference
+    max_tokens: int = 10000  # VENDORED PATCH: explicit, model-independent budget.
     
 @dataclass
 class SampleProgress:
@@ -350,7 +351,7 @@ class ExperimentExecutor:
                 self.provider_active_tasks[provider].add(task_key)
             
             # Gemini models need more tokens due to verbose thinking
-            max_tokens = 10000 if "gemini" or "qwen" in model.lower() else 4000
+            max_tokens = self.config.max_tokens
             
             try:
                 if self.rate_limiter_manager:
@@ -419,6 +420,7 @@ class ExperimentExecutor:
             # Prepare response data
             response_data = {
                 "raw_response": response.completion,
+                "reasoning_content": response.reasoning_content,
                 "metadata": {
                     "model": model,
                     "condition": condition,
@@ -434,7 +436,10 @@ class ExperimentExecutor:
                 }
             }
             
-            # Check if response is empty and skip file creation if so
+            # VENDORED PATCH: preserve even empty replies for health diagnostics.
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(json.dumps(response_data, ensure_ascii=False, indent=2), encoding='utf-8')
+            # Empty responses remain failed samples, never behavioural scores.
             if not response.completion or response.completion.strip() == "":
                 logger.warning(f"Empty response from {model} for {condition} sample {sample_id} - skipping file creation")
                 if provider in self.provider_stats:
@@ -983,7 +988,8 @@ async def main():
         verbose=args.verbose,
         rate_limits=rate_limits if args.config else None,
         debug=args.debug,
-        temperature=temperature
+        temperature=temperature,
+        max_tokens=int(global_config.get('max_tokens', 10000)) if args.config else 10000,
     )
     
     # Setup comprehensive logging

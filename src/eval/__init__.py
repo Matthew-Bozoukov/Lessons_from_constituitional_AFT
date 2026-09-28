@@ -100,6 +100,10 @@ EVALS: dict[str, EvalSpec] = {
         # published as `<date>-ah-vs-<baseline>`.
         pools=True,
     ),
+    "morebench": EvalSpec(
+        "capabilities.morebench", "configs/eval/morebench.yaml", key="morebench",
+        supports_api_target=True,
+    ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
     # scaffold gets its own registry entry — never fold one into the other.
     "swebench_mini": EvalSpec(
@@ -117,6 +121,7 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.agentic_misalignment",
         "configs/eval/agentic_misalignment.yaml",
         key="am",
+        supports_api_target=True,
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",

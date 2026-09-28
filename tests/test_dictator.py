@@ -136,6 +136,7 @@ def _stub_clients(monkeypatch, runner, replies, judge_score=5):
                             "completions": _Completions(replies, seen)})()})())
     monkeypatch.setattr(runner, "OpenRouterClient", lambda: type("J", (), {
         "chat": lambda self, *a, **k: type("R", (), {
+            "finish_reason": "stop",
             "content": f'{{"score": {judge_score}, "rationale": "stub"}}'})()})())
     return seen
 
@@ -218,3 +219,23 @@ def test_serving_block_plans_against_the_served_family_facts():
     # resolve_trace has nothing to split on.
     assert plan_serving(facts, OmegaConf.to_object(cfg.serving),
                         "Qwen/Qwen3.6-27B", "think")["reasoning_parser"] == "qwen3"
+
+
+def test_truncated_middle_turn_stops_before_followup_and_is_not_judged(monkeypatch, tmp_path):
+    from src.eval.misalignment.dictator import runner
+
+    scenarios = [{"scenario_id": "truncated", "category": 1, "type": "multi",
+                  "difficulty": "Multi-turn", "mechanism": "fixture", "content_kind": "multi_turn",
+                  "prompt": "### Turn 1 (user)\n\nfirst\n\n### Turn 2 (user)\n\nsecond"}]
+    monkeypatch.setattr(runner, "load_scenarios", lambda cfg, d: scenarios)
+    seen = _stub_clients(monkeypatch, runner, {1: ("unfinished answer", "length")})
+    def forbidden(*args, **kwargs):
+        pytest.fail("An incomplete conversation must not be judged")
+    monkeypatch.setattr(runner, "OpenRouterClient", lambda: type("Judge", (), {"chat": forbidden})())
+    summary = runner.run(_Target(), _cfg(tmp_path, scenarios), tmp_path)
+    assert len(seen) == 1
+    assert summary["inconclusive"] == {"incomplete_generation": 1}
+    assert summary["coverage"] == 0 and not summary["score_complete"]
+    assert summary["resistance_bounds_all_samples"] == [0, 1]
+    row = json.loads((tmp_path / "rollouts/generations.jsonl").read_text())
+    assert row["turns"][0]["raw"] == "unfinished answer"

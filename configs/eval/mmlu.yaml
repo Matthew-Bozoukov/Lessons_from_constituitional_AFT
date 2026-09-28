@@ -1,6 +1,6 @@
 # ABOUTME: MMLU absolute-benchmark eval for the constitution-SFT arms: subset sampling,
 # ABOUTME: prompting, decoding parity, and the non-inferiority gate vs the Qwen base model.
-# Run: uv run scripts/run_eval.py --target <hf_path> --name mmlu   (this file is the default CONFIG)
+# Run: uv run evals --target <hf_path> --name mmlu
 
 # This is the `absolute_benchmarks` block that configs/eval/arena_hard.yaml scopes out and
 # defers. It exists because the preference eval has a blind spot it names itself: a
@@ -74,6 +74,7 @@ baseline_arm: arm_base
 # would leave some subjects with two questions, making the per-subject breakdown noise.
 subset:
   dataset: "cais/mmlu"
+  revision: "c30699e8356da336a370243923dbaf21066bb9fe" # shared test/dev snapshot
   name: "all"
   split: "test"
   # 10 x 57 subjects = 570 questions. At ~80% accuracy that is a +/-3.3pp Wilson interval

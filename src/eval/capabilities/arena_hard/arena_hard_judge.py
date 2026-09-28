@@ -47,6 +47,7 @@ from src.eval.capabilities.arena_hard.arena_hard_stats import (  # noqa: E402
     per_prompt_scores,
     win_tie_loss,
 )
+from src.eval.capabilities.arena_hard.arena_hard_gen import _select_questions
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 load_dotenv()
@@ -208,19 +209,60 @@ def _run_vendor(vendor: Path, setting: Path, endpoint: Path) -> None:
     written config is the complete record of the invocation.
     """
     env = os.environ | {"PYTHONUNBUFFERED": "1"}
-    subprocess.run(
-        [
-            sys.executable,
-            "gen_judgment.py",
-            "--setting-file",
-            str(setting.relative_to(vendor)),
-            "--endpoint-file",
-            str(endpoint.relative_to(vendor)),
-        ],
-        cwd=vendor,
-        env=env,
-        check=True,
-    )
+    try:
+        subprocess.run(
+            [sys.executable, "gen_judgment.py", "--setting-file",
+             str(setting.relative_to(vendor)), "--endpoint-file",
+             str(endpoint.relative_to(vendor))],
+            cwd=vendor,
+            env=env,
+            check=True,
+        )
+    finally:
+        # This generated file contains a credential; retain judgments, never the key.
+        endpoint.unlink(missing_ok=True)
+
+
+def _expected_questions(cfg, limits: dict[str, int]) -> list[dict]:
+    questions = read_jsonl(Path(cfg.vendor_dir) / "data" / cfg.bench_name / "question.jsonl")
+    arm = OmegaConf.create({"n_hard_prompt": limits["hard_prompt"],
+                           "n_creative_writing": limits["creative_writing"]})
+    selected = _select_questions(questions, arm)
+    if not selected or len(selected) != sum(limits.values()):
+        raise ValueError("Arena-Hard question set does not cover requested limits")
+    if len({q['uid'] for q in selected}) != len(selected):
+        raise ValueError("Arena-Hard duplicate question IDs")
+    return selected
+
+
+def _validate_answers(cfg, arm: str, questions: list[dict]) -> None:
+    path = Path(cfg.vendor_dir) / "data" / cfg.bench_name / "model_answer" / f"{arm}.jsonl"
+    rows = read_jsonl(path)
+    by_uid = {r['uid']: r for r in rows}
+    if len(by_uid) != len(rows):
+        raise ValueError(f"Arena-Hard duplicate answers for {arm}")
+    for question in questions:
+        row = by_uid.get(question['uid'])
+        if row is None or row['messages'][0]['content'] != question['prompt']:
+            raise ValueError(f"Arena-Hard missing or different prompt for {arm}: {question['uid']}")
+        if not isinstance(row['messages'][-1]['content']['answer'], str):
+            raise ValueError(f"Arena-Hard invalid answer schema for {arm}")
+
+
+def _complete_judgments(records: list[dict], questions: list[dict]) -> list[dict]:
+    """Require both orderings of every requested prompt before reporting a win rate."""
+    by_uid = {r['uid']: r for r in records}
+    if len(by_uid) != len(records):
+        raise ValueError("Arena-Hard duplicate judgment IDs")
+    selected = []
+    for question in questions:
+        row = by_uid.get(question['uid'])
+        if (row is None or row['category'] != question['category']
+                or len(row.get('games') or []) != 2
+                or len(battles_from_judgments([row])) != 2):
+            raise ValueError(f"Arena-Hard incomplete paired judgments: {question['uid']}")
+        selected.append(row)
+    return selected
 
 
 def _summarise(records: list[dict], baseline: str) -> dict[str, Any]:
@@ -252,6 +294,9 @@ def judge_arm(cfg: DictConfig, arm: str, stage: int | None, judge_model: str) ->
     # An arm cannot be judged past the number of answers it actually has.
     limits["hard_prompt"] = min(limits["hard_prompt"], int(arm_cfg.n_hard_prompt))
 
+    questions = _expected_questions(cfg, limits)
+    for name in (arm, baseline):
+        _validate_answers(cfg, name, questions)
     endpoint = _write_endpoint_config(cfg, vendor, judge_model)
     setting = _write_setting_config(cfg, vendor, judge_model, [arm], limits)
 
@@ -260,7 +305,7 @@ def judge_arm(cfg: DictConfig, arm: str, stage: int | None, judge_model: str) ->
     print(f">>> stage:    {limits}")
     _run_vendor(vendor, setting, endpoint)
 
-    records = _load_judgments(vendor, cfg, judge_model, arm)
+    records = _complete_judgments(_load_judgments(vendor, cfg, judge_model, arm), questions)
     return {"arm": arm, "limits": limits} | _summarise(records, baseline) | {
         "cost": _cost(records, judge_model)
     }
@@ -288,13 +333,18 @@ def validate_judge(cfg: DictConfig) -> dict[str, Any]:
     vendor = Path(cfg.vendor_dir)
     baseline = str(cfg.baseline_arm)
 
+    questions = _expected_questions(cfg, limits)
+    for name in (arm, baseline):
+        _validate_answers(cfg, name, questions)
+
     results = {}
     for judge_model in (primary, reference):
         endpoint = _write_endpoint_config(cfg, vendor, judge_model)
         setting = _write_setting_config(cfg, vendor, judge_model, [arm], limits)
         print(f"\n>>> validating with {judge_model} on {val.n_questions} {val.slice} questions")
         _run_vendor(vendor, setting, endpoint)
-        results[judge_model] = _load_judgments(vendor, cfg, judge_model, arm)
+        results[judge_model] = _complete_judgments(
+            _load_judgments(vendor, cfg, judge_model, arm), questions)
 
     # Compare only questions both judges actually returned a parseable verdict on.
     scored = {}

@@ -1,15 +1,11 @@
 # ABOUTME: Single source of truth for the Arena-Hard capability-regression eval (spec v2): arms,
 # ABOUTME: judge pinning, slices, staged sampling, decoding parity, and pass thresholds.
-# Run: uv run scripts/run_eval.py --target <hf_path> --name arena_hard --reference <answers>  (default CONFIG)
+# Run: uv run evals --target <hf_path> --name arena_hard --reference <model-or-prior-arm>
 
 # This is the guardrail underneath the alignment result, not an alignment eval itself.
-# It answers one question: does mixing synthetic constitution documents into the SFT
-# mixture cost us general capability? The expected answer is "no" — we SFT from a base
-# checkpoint with Tulu as the bulk of every mixture, which is the from-scratch
-# post-training regime rather than the continued-finetuning-on-a-post-trained-model
-# regime where GDM saw collapse. Flat lines are the prediction, which is exactly why
-# arm E (the canary) is in: four flat lines with no demonstrated sensitivity is a weak
-# result, and the canary is what proves the instrument can detect degradation at all.
+# It measures answer preference relative to an explicit reference. Select matched
+# checkpoints using --target and --reference. The static ladder below describes the
+# July 2026 experiments; it is historical context, not the active training recipe.
 
 seed: 0
 
@@ -50,10 +46,8 @@ arms:
     synthetic_fraction: null      # no SFT at all
     adapter: null                 # served as the bare base model
     role: floor
-    # Spec §5: not a regression comparison. The base model is not instruction-tuned, so
-    # under a chat template it continues the prompt rather than answering it and its win
-    # rate against any SFT arm is near zero. 150 prompts is plenty to confirm the SFT
-    # ran and the serving path works.
+    # Historical floor arm. "Base" means no project adapter; it does not establish
+    # that the underlying released checkpoint lacks instruction post-training.
     n_hard_prompt: 150
     n_creative_writing: 0
 
@@ -219,7 +213,7 @@ judge_validation:
   n_questions: 100
   slice: hard_prompt
   # Run on the most extreme mitigation-preserving arm, where real signal is most likely.
-  comparison_arm: arm_d_synth40
+  comparison_arm: null # pooled invocation uses its first actual target unless explicitly selected
   thresholds:
     verdict_agreement_min: 0.80
     win_rate_gap_max_pp: 3.0
