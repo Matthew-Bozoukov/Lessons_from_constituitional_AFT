@@ -3,7 +3,8 @@
 
 # GPT-OSS-120B nosynth control on Tinker
 
-Planning snapshot: 2026-09-28. No training, paid sampling, dataset publication or evaluation was launched.
+Planning snapshot: 2026-09-28. The original plan below predates execution;
+the execution notes at the end record subsequent progress.
 
 ## Isolation and current main
 
@@ -247,3 +248,26 @@ the HF card must not imply that has been performed.
 The optimizer records Tinker SDK defaults explicitly: beta1=.9, beta2=.95,
 epsilon=1e-12, with requested weight decay=.01 and gradient clipping=1. This is
 not a claim of exact optimizer equivalence with the Qwen trainer.
+
+### Published conversion and training launch
+
+The converted dataset is published as
+`dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b`
+at `d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da`, with exact payload readback verified.
+All 10,000 rows remain. Of 1,143 originally traced turns, 1,073 received accepted
+native GPT-OSS traces; 70 retain their original answer without reasoning supervision.
+All generated attempts and the rejection disposition are archived with the dataset.
+The complete HF JSON loading path was checked against the canonical payload.
+
+The final mask audit has 10,380 assistant datums, 5,916,570 processed input tokens
+and 2,341,585 supervised tokens. No datum exceeds 8,192 tokens; nothing was
+truncated. The training estimate is $4.36051209 at the recorded rate. Trace
+generation's uncached-price upper/reserved total is $1.56450618 and compatibility
+judging's charged/reserved total is $0.776164; these are not provider invoices.
+
+Training started on 2026-09-28 around 19:41 UTC from code commit `44536702`,
+using Tinker model ID `cdd100d5-e08c-52a7-9ba9-890187111a57:train:0`.
+The launch observation records the exact provider response and requested scopes.
+The step-100 optimizer checkpoint has been saved; completion and ODCV results
+are still pending. All 80 scenario/variant Docker images were built locally
+without running agents, using this task's namespaced build projects.

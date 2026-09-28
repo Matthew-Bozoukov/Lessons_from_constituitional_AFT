@@ -400,6 +400,11 @@ def export(cfg,out):
     from tinker_cookbook.weights import download
     from src.infra.huggingface import hf_api,hf_repo_id,push_run_dir,hf_download
     meta=json.loads((out/'trained_adapter.json').read_text())
+    launch=json.loads((out/'training_launch_observation.json').read_text())
+    training_revision=subprocess.check_output(
+        ['git','rev-parse',launch['training_code_commit']],text=True).strip()
+    meta={**meta,'training_code_revision':training_revision,
+          'export_code_revision':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()}
     final=out/'adapter'
     if not (final/'adapter_model.safetensors').exists():
         download(tinker_path=meta['sampler'],output_dir=str(final))
@@ -427,7 +432,7 @@ def export(cfg,out):
     fields={'experiment':'Fresh GPT-OSS-120B nosynth control, one epoch of token-weighted Tinker SFT',
         'date_generated':meta['organism'][:10],
         'constitution':'claude_distilled_09_principles (inherited filtering; no constitutional corpus added)',
-        'source_repo':'teaching_claude_why_replication @ '+meta['git_sha'],
+        'source_repo':'teaching_claude_why_replication @ '+training_revision,
         'models':{'base':cfg.base_model,'sampler':meta['sampler']},'generation_config':meta['config'],
         'schema':'Native Tinker LoRA matrices and config; use immutable Tinker sampler for inference. External PEFT/vLLM equivalence has not been tested.',
         'provenance':meta}
