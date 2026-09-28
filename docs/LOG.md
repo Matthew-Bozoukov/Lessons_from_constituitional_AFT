@@ -1,6 +1,61 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - September 25 DA-15 seed-0 Lite v5 complete: 184/300
+
+**Question/method.** Evaluate `dougalldeepmind/2026-09-25-qwen36-0-da-15`
+at `b13cfe9891671f05c73a12078796e212944d22e4` on all 300 Lite tasks. The mini
+backend used temperature 1, top-p 0.95, top-k 20, neutral other penalties,
+16,384 response tokens, 262,144 context/task-generation tokens, 500 steps and
+preserved prior reasoning. At most six GPUs served four conversations each,
+using historical longest-first ordering on the prepared native-Docker Vast CPU.
+
+**Result.** All 300 valid outcomes are scored: **184 resolved (61.33%)**, 111
+test failures, three malformed patches that fail to apply, and two empty patches.
+Inference ended with 299 Submitted exits and one response-token-limit exit; a
+Submitted exit alone is not a passing test. No valid model outcome was rerolled.
+The supervisor read back the final result and hash-verified **89,245 rollout/result
+files** at [immutable HF revision
+956e6c89](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-da-15-lite-v5/tree/956e6c89f97267ba6ad1277609acd0944a381a5c).
+The final `sympy__sympy-11870` reference patch passed all required tests; the model
+patch failed `test_sinc` while preserving the PASS_TO_PASS tests. Both took about
+22 minutes in the unchanged 1,800-second instance allowance, spending substantial
+time in `test_sec` symbolic series expansion. This was slow computation, not a
+demonstrated environment defect. The separately recorded reference is excluded
+from the model score.
+
+**Measured time/cost.** GPU rental window 05:56:09-09:01:12 UTC (3h05m), last
+inference outcome 09:01:05, final verified publication 10:11:54 (4h16m from first
+GPU allocation, or 4h40m including cold CPU preparation from 05:31:27). These
+times include recovery and debugging; they are not an uninterrupted throughput
+benchmark. Elapsed rental time times quoted rates is **$50.67**; the closed
+conservative GPU ledger is **$53.20**, not charged spend. At the 10:15 UTC billing
+readback RunPod recorded **$51.07** for the owned pods; provider rows can lag.
+CPU quote through verified completion is **$2.52 including preparation**, at
+$0.538889/hour. Transfer and subsequent persistent CPU retention are separate.
+All campaign GPUs were confirmed absent; the authorized CPU 53118260 remains up.
+The detailed evidence is in `metadata/final-accounting.json` and
+`metadata/completion-verification.json` in the HF run.
+
+**Recovery/limitations.** Twenty infrastructure-invalid attempts and one H200
+startup timeout remain in the audit. Four H100 replicas were fenced after HTTP
+disconnects; their saved server logs showed no CUDA OOM. Transport fix `cd8c5ebe`
+uses fresh HTTP connections through the same SSH tunnel without changing model
+messages or server caches; 9,162 subsequent fresh requests succeeded with zero
+transport errors or tokenizer mismatches. The suspected idle-connection race is
+not packet-level proven. Grading-only fix `56055702` removed the incorrect
+1,620-second whole-suite timeout, retaining the official per-instance limit and
+all 300 outcome/294 existing report hashes; the real child-process regression and
+41 fleet tests passed. Both migrations, interrupted logs and reference diagnostic
+are published. The sixth replacement lane was temporarily blocked by full-lane
+budget reservation rather than actual spend or solely GPU scarcity. The local
+HTTPBin fixture remains a declared scoring-environment deviation, and two Requests
+tasks pass without source fixes under the pinned labels. This new checkpoint and
+temperature-1 protocol are **not a paired comparison** to the older temperature-0
+control. Future runs should use the tested transport/grading fixes and retain the
+slow SymPy reference as qualification evidence; this run does not establish that
+all infrastructure failures or model loops are eliminated.
+
 ## 2026-09-28 - DA-15 seed-0 full Lite v5 launch on six H100 NVLs
 
 **Question/method.** Run the September 25 DA-15 checkpoint at
