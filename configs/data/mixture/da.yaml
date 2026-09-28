@@ -55,8 +55,14 @@ sources:
     # never adds an instruction to the assistant): 1,155 rows, t1 130 ... t9 130, t6 126.
     # The pressure classifier puts t6 at override 12% (was 69%) and the corpus at monitor
     # 3% (was 10%). The 09-24 repo @ 4f4ca43b is what da-15/da-5/da-25 trained on before.
-    dataset: "${oc.env:HF_ORG}/2026-09-25-da-synth"
-    revision: "618060e15315c71d7ffb9a8839198b08520a8771"
+    # 2026-09-28: regenerated with trait notes keeping every scenario human except t6 (the
+    # principle's human version; no AI system but the assistant), the reviser seeing the same
+    # notes, a grey-area requirement 4 and a gender audit line (da.yaml @ 47efcc60): 1,194
+    # rows, t1 134 ... t9 133. The user's organisation runs an AI system in 76% of the 09-25
+    # corpus and 11-15% of the smokes on this recipe. The 09-25 repo @ 618060e1 is what
+    # da-15 (seeds 0, 1) and da-new-t6 trained on before this date.
+    dataset: "${oc.env:HF_ORG}/2026-09-28-da-synth"
+    revision: "b84401eaa689d02199ac5a619feaac2776b22569"
     examples: 1
     reasoning: native
     balance_by: trait_id
