@@ -1,5 +1,33 @@
 # Hugging Face as the data source
 
+## SWE-bench Lite failure findings
+
+`/evals/strange-failures` discovers public `eval-run` datasets tagged
+`swebench-lite` through the same live HF listing as `/evals`. No run list or
+transcripts are baked into the app. The selected repo's current commit is resolved
+once, then `metadata/task-browser.json` and the selected original trajectory are
+fetched at that commit. Only one trajectory is loaded when selected.
+
+The index is produced by `src/eval/capabilities/swebench_mini/browser.py` during
+fleet publication. Historical runs can be backfilled with
+`uv run --project scratch/swebench_cpu_env --frozen python -m scratch.publish_swebench_browser --org ORG --publish`.
+This discovers runs and adds the index only; original outcomes remain untouched.
+The index maps the final valid attempt to official per-task grading. Ungraded and
+infrastructure-incomplete tasks never become model failures. A missing index
+shows an explicit unavailable message rather than treating unknown loops as absent.
+
+Loop evidence requires at least eight literal consecutive paragraph cycles,
+2,000 repeated characters and at least half a response field. Both reasoning and
+answer content are scanned. This conservative detector does not find every kind
+of repetition. Offsets use UTF-16 for browser compatibility; hashes use UTF-8.
+Before highlighting, the browser verifies trajectory, text and unit SHA-256 hashes
+and compares every slice with the first. Numbered cyan, purple and amber blocks
+are original slices, not generated examples. Long loops are paged three copies at
+a time, with navigation to every copy and expandable text before/after the loop.
+
+The August 7 comparison summary does not publish trajectories and cannot establish
+whether those historical context/step/transport failures contained repetition.
+
 The repository holds code, configuration and analysis. Datasets, generated
 corpora, evaluation outputs and caches live on Hugging Face — see the root
 `CLAUDE.md`. This document describes how the visualizer reads that data without

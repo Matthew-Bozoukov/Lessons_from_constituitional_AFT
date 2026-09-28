@@ -14,6 +14,7 @@ import {
 } from "@/lib/evalRuns";
 import { DialogueTranscript } from "./DialogueTranscript";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { SweBenchBrowser } from "./SweBenchBrowser";
 
 const JSONL_AUTO_LIMIT = 6_000_000; // above this, rollout rows load on click, not on mount
 
@@ -297,6 +298,8 @@ export function EvalRunExplorer({ org }: { org?: string }) {
       )}
 
       {adapter.note && <p>{adapter.note}</p>}
+      {runA?.tags?.includes('swebench-lite') && <SweBenchBrowser key={repoA} repo={repoA} />}
+      {showCompare && runB?.tags?.includes('swebench-lite') && <SweBenchBrowser key={repoB} repo={repoB} />}
       {tab === "results" ? (
         <ResultsView
           a={results[repoA]} b={showCompare ? results[repoB] : undefined}
