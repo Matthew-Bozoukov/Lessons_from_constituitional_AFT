@@ -1,0 +1,124 @@
+# ABOUTME: Print the ODCV-Peer arms table (every cell, by measured arm x condition x variant) from
+# ABOUTME: the config registry, as markdown or LaTeX; the paper's appendix and the plots read this.
+"""usage: uv run python scratch/odcv_peer_arms.py [--arms qwen36_0_da_7 qwen36 ...] [--latex] [--out docs/odcv_peer_arms.md]
+
+Nothing here is typed: conditions, seats, prompt rules, scenario counts, passes and labels come
+from configs/eval/odcv_peer/lite.yaml; cell ids are built the way peer/runner.py builds them.
+Base-model arms (`qwen36`) run only the conditions whose teammate is `self` or `scripted`
+(a `base` teammate beside the base model is the same served model twice; the runner refuses it).
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from omegaconf import OmegaConf
+
+CFG = Path("configs/eval/odcv_peer/lite.yaml")
+BASE_ARMS = {"qwen36"}  # registered base-model keys (configs/models/<key>.yaml)
+
+
+def rows(cfg, arms: list[str]) -> list[dict]:
+    out = []
+    for arm in arms:
+        for cond in cfg.conditions:
+            mate = str(cond.teammate.get("model", "base"))
+            if arm in BASE_ARMS and mate == "base":
+                continue
+            if str(cond.name) == "k1" and arm != arms[0]:
+                continue  # the control runs once, on the first arm listed
+            teammate_name = {"base": "base", "self": arm, "scripted": "scripted"}[mate]
+            mate_rule = str(cond.teammate.get("prompt", "cell"))
+            meas_rule = str(cond.get("measured_prompt", "cell"))
+            passes = 3 if str(cond.name) == "k1" else int(cfg.passes)
+            for variant in [str(v) for v in cond.variants]:
+                sets = cond.get("scenarios", None)
+                n_scen = (
+                    len(sets[variant])
+                    if sets is not None and sets.get(variant) is not None
+                    else 40
+                )
+                seat1 = (
+                    "scripted:-"
+                    if mate == "scripted"
+                    else f"{teammate_name}:{variant if mate_rule == 'cell' else mate_rule}"
+                )
+                seat2 = f"{arm}:{variant if meas_rule == 'cell' else meas_rule}"
+                n_cells = n_scen * passes
+                out.append(
+                    {
+                        "cell_id": f"{arm}/{cond.name}/{variant}",
+                        "arm": arm,
+                        "condition": str(cond.name),
+                        "label": str(cond.get("label", cond.name)),
+                        "variant": variant,
+                        "seat1": seat1,
+                        "seat2": seat2,
+                        "scenarios": n_scen,
+                        "passes": passes,
+                        "cells": n_cells,
+                        "transcripts": n_cells * (1 if mate == "scripted" else 2),
+                        "marker": str((cond.get("plot") or {}).get("marker", "")),
+                    }
+                )
+    return out
+
+
+def markdown(table: list[dict]) -> str:
+    head = "| cell id | condition (paper label) | variant | seat 1: teammate | seat 2: measured | scenarios | passes | cells | transcripts | run repo |\n|---|---|---|---|---|---:|---:|---:|---:|---|\n"
+    body = "".join(
+        f"| `{r['cell_id']}` | {r['label']} | {r['variant']} | `{r['seat1']}` | `{r['seat2']}` | {r['scenarios']} | {r['passes']} | {r['cells']} | {r['transcripts']} | _(fill in after the run)_ |\n"
+        for r in table
+    )
+    tot_c, tot_t = sum(r["cells"] for r in table), sum(r["transcripts"] for r in table)
+    return (
+        head
+        + body
+        + f"\n**Total: {len(table)} cells types, {tot_c:,} cells, {tot_t:,} transcripts.**\n"
+    )
+
+
+def latex(table: list[dict]) -> str:
+    lines = [
+        "\\begin{tabular}{llllrrr}",
+        "\\toprule",
+        "cell id & condition & seat 1 (teammate) & seat 2 (measured) & scenarios & passes & transcripts \\\\",
+        "\\midrule",
+    ]
+    for r in table:
+        esc = lambda x: str(x).replace("_", "\\_")  # noqa: E731
+        lines.append(
+            f"\\texttt{{{esc(r['cell_id'])}}} & {esc(r['label'])} & \\texttt{{{esc(r['seat1'])}}} & \\texttt{{{esc(r['seat2'])}}} & {r['scenarios']} & {r['passes']} & {r['transcripts']} \\\\"
+        )
+    lines += ["\\bottomrule", "\\end{tabular}"]
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--arms", nargs="+", default=["qwen36_0_da_7", "qwen36"])
+    ap.add_argument("--latex", action="store_true")
+    ap.add_argument("--out", default="")
+    a = ap.parse_args()
+    cfg = OmegaConf.load(CFG)
+    table = rows(cfg, a.arms)
+    text = latex(table) if a.latex else markdown(table)
+    if a.out:
+        header = (
+            "<!-- ABOUTME: ODCV-Peer arms table: every planned cell by measured arm x condition x variant. -->\n"
+            "<!-- ABOUTME: GENERATED by scratch/odcv_peer_arms.py from configs/eval/odcv_peer/lite.yaml; do not edit by hand. -->\n\n"
+            "# ODCV-Peer arms\n\nRegenerate: `uv run python scratch/odcv_peer_arms.py --arms "
+            + " ".join(a.arms)
+            + " --out docs/odcv_peer_arms.md`. "
+            "A cell id is `<measured arm>/<condition>/<variant>`; seat strings are `<served model>:<prompt held>`. "
+            "Labels, markers and scenario sets live only in the config. Fill the run-repo column from each published run's card when it exists.\n\n"
+        )
+        Path(a.out).write_text(header + text)
+        print(f"wrote {a.out}: {len(table)} rows")
+    else:
+        print(text)
+
+
+if __name__ == "__main__":
+    main()
