@@ -44,6 +44,7 @@ def recipe_settings(cfg):
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
     keys += tuple(k for k in ('step_limit', 'token_admission', 'preferred_gpus') if k in cfg)
     keys += tuple(k for k in ('protocol_version', 'sampling') if k in cfg)
+    keys += tuple(k for k in ('grading_priority',) if k in cfg)
     keys += tuple(k for k in ('agent_backend', 'inspect') if k in cfg)
     keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
@@ -821,6 +822,19 @@ def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
     session.checkpoints(cfg, config_path)  # A remote outage must not prevent local grading.
 
 
+def grading_dataset(cfg, root, grading):
+    """Order the dataset itself: upstream treats instance_ids only as a filter."""
+    source = root / 'metadata/swebench_lite_test.json'
+    priority = list(cfg.get('grading_priority', []))
+    if not priority:
+        return source
+    rank = {iid: index for index, iid in enumerate(priority)}
+    rows = sorted(read(source), key=lambda row: rank.get(row['instance_id'], len(rank)))
+    target = grading / 'dataset.json'
+    atomic(target, rows)  # Stable sort preserves every original row and all test content.
+    return target
+
+
 def grade(cfg):
     root = Path(cfg.root)
     state = read(root / 'metadata/state.json')
@@ -833,8 +847,9 @@ def grade(cfg):
     grading.mkdir(parents=True, exist_ok=True)
     predictions = grading / 'predictions.jsonl'
     predictions.write_text(''.join(json.dumps(p | {'instance_id': iid}) + '\n' for iid, p in preds.items()))
+    dataset = grading_dataset(cfg, root, grading)
     request = {'fixture': read(root / 'metadata/httpbin_fixture.json'), 'harness': {
-        'dataset_name': str(root / 'metadata/swebench_lite_test.json'), 'split': 'test',
+        'dataset_name': str(dataset), 'split': 'test',
         'instance_ids': list(nonempty), 'predictions_path': str(predictions),
         'max_workers': cfg.grading_workers, 'force_rebuild': False, 'cache_level': 'instance', 'clean': False,
         'open_file_limit': 16384, 'run_id': 'lite_' + manifest['campaign'], 'timeout': cfg.grading_timeout_seconds,

@@ -80,6 +80,13 @@ work does not authorize a new rental.
 
 ## Recovery and completion
 
+New runs prioritize `sympy__sympy-11870` in the official grading dataset via
+`grading_priority` in `lite.yaml`. The other eleven grading workers proceed in
+parallel. Upstream treats `instance_ids` only as a filter, so sorting that list
+alone does not schedule work; `results/grading/dataset.json` preserves all original
+rows and changes only their order. Existing cached reports are still skipped.
+The 1,800-second per-instance limit and upstream cache/test settings stay unchanged.
+
 Official grading has a per-instance test timeout, not a wall-clock deadline for
 the entire suite. `cpu_finish_reserve_seconds` is an admission allowance, not a
 grader kill timer. Preserve cached reports on CPU-only recovery; the actual CPU

@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - Prioritize the slow SymPy grader and publish the v5 comparison
+
+New `lite.yaml` launches put `sympy__sympy-11870` first in a derived grading
+dataset, retaining twelve parallel workers and every original task row. Merely
+sorting `instance_ids` would not work: the pinned official harness uses it only
+as a filter. Source dataset, test patches, scoring, cached-report handling and
+the 1,800-second instance limit remain unchanged. The priority is included in
+frozen recipe settings; the next launch must qualify/deploy the updated source
+and recipe normally, rather than reusing an old recipe hash.
+
+Validation: **42 fleet tests passed** on the existing Linux CPU with providers
+mocked. All 300 reordered real dataset rows matched the originals by ID. The
+installed SWE-bench 4.1.0 loader honored the new order, and its actual thread pool
+completed two synthetic short jobs while the first priority job remained active.
+That concurrency probe ran no Docker tests or inference and rented no GPUs.
+The verified control (178/300) versus DA-15 (184/300) vertical chart, pinned input
+JSON and concurrency proof are published under `metadata/comparisons/` at
+[HF revision b763ca77](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5/tree/b763ca771e65dcd7758e13b42d4519e100fc15e9/metadata/comparisons).
+All four uploaded files passed SHA256 readback. The chart uses a zero-based
+0-100% axis and retains the single-run and grading-environment caveats.
+
 ## 2026-09-28 - Seed-0 no-DA control Lite v5 complete: 178/300
 
 **Question/method.** Rerun `dougalldeepmind/2026-09-22-qwen36-0-nosynth`
