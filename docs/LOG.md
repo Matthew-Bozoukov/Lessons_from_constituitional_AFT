@@ -1,6 +1,80 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - Seed-0 no-DA control Lite v5 complete: 178/300
+
+**Question/method.** Rerun `dougalldeepmind/2026-09-22-qwen36-0-nosynth`
+at `633908b72a9799fb3e6b101b0a8a82aec3c3d642` on all 300 Lite tasks, using the
+v5 mini protocol: temperature 1, top-p 0.95, top-k 20, neutral other penalties,
+16,384 response tokens, 262,144 context/task-generation tokens, 500 steps and
+retained prior reasoning. The user authorized ten H100 NVLs with four independent
+conversations each, and increased the cumulative GPU backstop from $180 to $280.
+
+**Result/verification.** All 300 valid outcomes are officially scored:
+**178 resolved (59.33%)**, 114 test failures, six malformed patches that could
+not apply, and two empty submissions. There were 298 Submitted exits and two
+LimitsExceeded exits; eligible tracked-source patches were preserved. No valid
+model outcome was rerolled. The supervisor verified **83,532 rollout/result
+artifacts** at [HF revision
+303c5382](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5/tree/303c5382195aadaa39c611a44fa4aadf9b0abdcc)
+at **13:19:31 UTC**. Independent readback matched the result, final-accounting
+and SymPy diagnosis files byte-for-byte. Provider inventory confirmed zero
+campaign-owned GPUs; two unrelated training pods were left untouched. The
+completion heartbeat was deleted. Persistent CPU 53118260 remains running.
+
+**Time/cost.** GPU rental window **10:36:29-12:50:47 UTC (2h14m)**; last model
+outcome 12:50:41. Final verified publication took **2h43m from first allocation**,
+including recovery, grading and artifact verification. GPU elapsed time at quoted
+rates totals **$55.59**; conservative closed ledger **$58.37**, with no active
+reservations. RunPod billing rows at 13:17:51 recorded **$50.30** with all owned
+pod IDs represented, but those rows can lag and are not a final invoice. CPU
+quote through verification is **$1.47** at $0.538889/hour, excluding preparation,
+transfer and subsequent persistent retention. Shared-account balance changes are
+not a cost measure.
+
+**Recovery/limitations.** Preserve all 52 infrastructure-invalid attempts and the
+audited budget-handover failure described below: our coordinator bug released
+four healthy replicas and wasted partial work and rental time. Startup timeouts
+also wasted rental time before those pods accepted tasks. After repair, 8,870
+fresh-HTTP responses had no transport errors. These timings include those
+interruptions. Local HTTPBin remains a declared grading deviation, and two
+Requests tasks pass the no-fix baseline. The preceding DA-15 v5 result was
+184/300; differing training checkpoints and these single stochastic runs do not
+establish a causal treatment effect. The old temperature-0 runs are not matched
+v5 comparisons. The SymPy grading-tail investigation is documented immediately
+below; no test budgets, cache settings or model outcomes were changed.
+
+## 2026-09-28 - SymPy-11870 grading tail: repeated symbolic identities dominate
+
+**Question/method.** Explain why `sympy__sympy-11870` consistently finishes late,
+without changing live grading or rerunning inference. Compared the complete official
+test outputs for the September 28 control, DA-15 and separate correct-reference
+qualification, the pinned SymPy test source, and the installed upstream SWE-bench
+test command. During the control test, its Python child consumed one full CPU core;
+the container had no CPU quota and no OOM events.
+
+**Finding.** Control grading took **765.37 seconds**, including **606.095 seconds**
+in `test_sin_cos`. DA-15 took **1328.46 seconds**, including **1049.788 seconds**
+in that test; the correct reference took **1311.17 seconds**, including
+**1041.571 seconds**. Thus the same test accounts for about 79% of all three
+durations. It checks 5,632 symbolic trigonometric identities at rational multiples
+of pi. Upstream SWE-bench invokes `bin/test -C --verbose`; in this pinned SymPy,
+`-C` means `--no-cache` and sets `SYMPY_USE_CACHE=no`, disabling expression
+memoization. This is separate from the model server's KV cache. No cache-enabled
+counterfactual was run, so these observations do not establish a measured speedup
+from changing the flag or a precise cause for the cross-run timing difference.
+
+**Correction/implication.** The earlier DA-15 completion entry overemphasized
+`test_sec` after a late stack snapshot. Complete timings show it took only
+33.795-57.193 seconds; `test_sin_cos` dominates. The correct reference passed,
+while both model patches failed the required `test_sinc`; slowness itself is
+not evidence of a model failure or broken environment. All grading budgets and
+tests were preserved. Starting historically slow *grading* cases first could
+reduce the final wait without changing tests; enabling caching would require
+separate validation and an explicit protocol decision. Evidence is recorded at
+`metadata/sympy-11870-slowness/analysis.json` in the control HF dataset, with hashes
+and paths of the three source logs. No GPUs were rented for this investigation.
+
 ## 2026-09-28 - Control budget increased; coordinator handover failure repaired
 
 The user explicitly increased this control campaign's cumulative GPU cap from
