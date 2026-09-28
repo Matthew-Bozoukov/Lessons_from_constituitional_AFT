@@ -1,6 +1,55 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-28 - Seed-0 no-DA control rerun launched with Lite v5
+
+**Question/method.** Obtain a full control under the temperature-1 protocol used
+by the completed September 25 DA-15 evaluation, rather than compare that result
+against the older temperature-0 control. The requested existing control is
+`dougalldeepmind/2026-09-22-qwen36-0-nosynth` at
+`633908b72a9799fb3e6b101b0a8a82aec3c3d642`; its training config records seed 0,
+the no-synthetic-data mixture, and a rank-64 Qwen3.6-27B adapter. This identifies
+the training seed; it does not claim bitwise deterministic inference.
+
+The user explicitly requested ten H100 GPUs for this run. The campaign preserves
+the mini `lite-v5` recipe: 16,384 response tokens, 262,144 context and cumulative
+generation tokens per task, 500 steps, temperature 1, top-p 0.95, top-k 20 and
+neutral remaining penalties. Prior reasoning is retained, HTTP connections are
+fresh per request, and all 300 tasks follow the frozen historical longest-first
+order. Ten independent H100 NVLs serve four conversations each; the existing
+native-Docker CPU 53118260 shares a 32-command gate and later uses 12 graders.
+The default repository recipe remains six replicas; this campaign has a separate
+qualified ten-replica recipe. Delayed H200/RTX fallback remains available.
+
+**Qualification/launch.** Runtime commit `4b250268` is merged into remote main
+and deployed. The merged ordinary-evaluation naming changes were requalified
+on the actual CPU: 211 regression tests passed (one skip, two subtests), ten
+real HTTP protocol tests, one transport-timeout test, all 300 image shell probes,
+and the synthetic agent/Docker/official-grader/HF smoke passed. The existing
+80-worker capacity proof still matches the host, images and resource policy.
+Fourteen qualification artifacts were hash-verified at
+[HF revision b1cd91e3](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-lite-infrastructure/tree/b1cd91e312c6f23b7088382843d5be54c8a02d93).
+Synthetic gold-patch smoke results are infrastructure evidence, not model scores.
+
+The new campaign `30564f0317d84edc99b6a802b0316cc5` started at 10:36 UTC;
+all ten H100 NVLs allocated on their first attempt at a quoted $3.19/hour each.
+Each ready replica starts independently. Its root is
+`/srv/lasr/runs/20260928-2026-09-22-qwen36-0-nosynth-lite-v5`, with `launch.yaml`
+and immutable source/qualification metadata. Initial checkpoints are published
+to [the control HF dataset](https://huggingface.co/datasets/dougalldeepmind/2026-09-28-swebench-qwen36-0-nosynth-lite-v5).
+The authorized cumulative GPU backstop is $180; full-lease reservations are not
+charged spend. Planning estimate: $55-80 GPU cost, 2-3 hours inference plus
+30-60 minutes grading/publication; these are forecasts, not measured results.
+CPU retention costs $0.538889/hour plus transfer and remains persistent.
+
+**Next steps/limitations.** The dedicated 15-minute heartbeat checks inference,
+provider ownership, resources, checkpoints, cumulative cost and official grading.
+Completion requires all 300 scored outcomes, HF result/artifact readback, and
+verified GPU teardown. No valid model outcome may be rerolled. Retain the declared
+local HTTPBin environment deviation and two Requests no-fix baseline passes.
+The different checkpoint dates and fleet sizes should remain visible when
+interpreting the comparison. This entry records launch, not completion.
+
 ## 2026-09-28 - September 25 DA-15 seed-0 Lite v5 complete: 184/300
 
 **Question/method.** Evaluate `dougalldeepmind/2026-09-25-qwen36-0-da-15`
