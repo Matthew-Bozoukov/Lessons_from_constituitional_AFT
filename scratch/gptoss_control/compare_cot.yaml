@@ -1,0 +1,14 @@
+# ABOUTME: Compare recorded CoT payloads in the latest ordinary Qwen nosynth and original GPT-OSS ODCV runs.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_control.compare_cot
+output: output/gptoss_control/cot_comparison_2026-09-29
+models:
+  gptoss:
+    repo: dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth
+    revision: 597568f06c382caddc9aaa46520fe49c08091e86
+    tokenizer: openai/gpt-oss-120b
+    tokenizer_revision: b5c939de8f754692c1647ca79fbf85e8c1e70f8a
+  qwen:
+    repo: dougalldeepmind/2026-09-22-odcv-qwen36-0-nosynth
+    revision: 2c9607c4c53582125badae149eed96917ab4ed0d
+    tokenizer: Qwen/Qwen3.6-27B
+    tokenizer_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
