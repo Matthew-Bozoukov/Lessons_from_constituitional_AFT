@@ -51,3 +51,7 @@ Reproduce with `uv run --project src/infra/endpoints/tinker_runtime python -m sc
 Exact match indices, hashes, and original external messages for the 95 affected
 rows are archived under `metadata/audits/2026-09-29-tool-origin/` in the GPT-OSS
 ODCV evaluation repository.
+
+Publication revision: `e18fec79477e8ec5424b99b81d8c6ee27114fba7` in
+`dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth`. All seven files were
+downloaded at this revision and verified byte for byte.
