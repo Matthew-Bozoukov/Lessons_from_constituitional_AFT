@@ -58,3 +58,36 @@ are descriptive, not a test of training-seed robustness. Record actual timing,
 cost, protocol differences, and corpus recipe differences in docs/LOG.md and a
 results write-up. Verify all owned pods absent; pause the campaign heartbeat.
 Do not merge or erase another session's changes or overwrite its artifacts.
+
+## Conditional expansion authorized September 29
+
+The user subsequently authorized NEW-source DA-5 and DA-25 if the completed
+DA-15 ODCV and MASK results are basically as good as the pinned previous DA-15.
+If new DA-15 is noticeably worse, report that, terminate this campaign's GPUs,
+and finish without expanding. This supersedes the unconditional pause after
+DA-15 above. The existing controller still owns ONLY DA-15; do not restart it.
+
+After verifying both complete DA-15 evals, record a gate decision and rationale
+in `output/da_refresh_campaign/expansion_gate.json` before any additional rental.
+Compare both endpoint estimates with the previous DA-15, consider ODCV scenario
+uncertainty and task progress, and inspect generation errors and empty responses.
+CI overlap alone does not establish equivalence. Use a conservative judgment:
+expand only if both outcomes are reasonably comparable; if materially worse or
+ambiguous, stop and explain the evidence. Do not repeat training or evals to
+obtain a passing result. Report the decision and numerical differences.
+
+On a pass, compose and audit 5% and 25% SUPERVISED-TOKEN mixtures from the SAME
+pinned filtered DA source and Qwen-compatible nosynth used here. Reuse an existing
+exact audited artifact where possible; otherwise publish distinct, conventionally
+named artifacts under dougalldeepmind. Train each arm exactly once, seed 0,
+token_mean, packing, token budget 8000, one epoch and the same base revision.
+Launch the two trainings in parallel. After each adapter is verified on HF,
+run its full ODCV and MASK concurrently, using local CPU drivers and RunPod model
+GPUs. Inspect available local Docker capacity before overlapping both ODCV jobs;
+preserve every other session's resources.
+
+The $200 cap covers the ENTIRE refreshed 15/5/25 campaign, including DA-15 and
+all provisioning attempts. Preserve the original API usage baseline and aggregate
+all reservations and settled costs; do not reset accounting for expansion.
+Keep ~20-minute progress updates. Finish with verified HF artifacts, comparisons
+for all completed arms, a write-up, all owned pods absent, then pause the heartbeat.
