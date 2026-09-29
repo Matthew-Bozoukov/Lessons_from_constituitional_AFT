@@ -175,3 +175,8 @@ Next protocol decision: run a small matched 6,000-versus-12,000-token budget
 study before changing the default. If the budget changes, regenerate both arms
 under that protocol; do not pool historical 6,000-token answers with new ones.
 Neither smoke nor inter-judge agreement establishes human-calibrated accuracy.
+
+Follow-up completed: [the bounded budget study](arena_hard_budget_study_2026-09-29.md)
+found 8/8 stopped, nonempty finals at 12k versus 4/8 stopped and three empty
+finals at 6k. It recommends 12k for a new matched protocol while retaining
+correctness and trajectory-divergence limitations. The default is unchanged.

@@ -1,6 +1,37 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Matched Arena 6k versus 12k output-budget study
+
+Hypothesis: more output headroom may reduce empty finals and truncation in Qwen
+Arena without fixing model errors. The user approved an eight-prompt study on
+the pinned September 22 nosynth control. Both arms ran fresh on the same A100,
+with identical prompts, target/base pins, thinking mode, greedy settings and
+16,384 context. Only the output allowance differed; every outcome was retained.
+
+Result: 6k had four normal completions, four truncations and three empty finals;
+12k had eight normal completions and no empty finals. The barber loop ended in
+the 12k run. Rap, Zig and video still had concrete prompt/correctness failures.
+The rap refusal heuristic was a false positive. All eight trajectories diverged
+before the low cap; re-tokenized reasoning placed rap/Zig finals beyond 6k but
+the rescued Spanish final below it, precluding a simple continuation explanation.
+GPT-4.1 completed all 16 judgments, preferring 12k on five prompts with full
+position consistency; descriptive slice scores were 75% creative and 50% hard.
+
+Validation/publication: real prepare, snapshot verification, analysis, judging
+and publication completed; eight key remote files were downloaded and
+hash-verified at HF revision `c8d3f02b716f3f693cf611d683e618747d6753d0`.
+[Study record](arena_hard_budget_study_2026-09-29.md) links the full raw evidence,
+manual review, exact pins, token-count caveats and resource accounting. Both
+owned pods were verified terminated. Approximate GPU cost was $1.91 including a
+failed H100 driver allocation; reported judge cost was $0.12232, about $2.03
+combined. Other tasks' resources and branches were untouched.
+
+Next: recommend 12k for future explicitly recorded matched comparisons, with
+both arms regenerated and completeness reported alongside preference. The
+existing default remains 6k; this bounded study did not change production code
+or establish full-benchmark quality, judge calibration or a training effect.
+
 ## 2026-09-29 - Arena-Hard reliability qualification and explicit GPT-4.1 primary
 
 Hypothesis: actual judge-completion, cache and answer-reuse defects could corrupt
