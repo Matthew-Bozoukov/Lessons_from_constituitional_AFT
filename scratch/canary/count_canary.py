@@ -94,7 +94,10 @@ def _fields(block: str) -> dict:
 def odcv(run_dir: Path) -> dict:
     """ODCV: rollouts/<variant>/<Scenario>/pass<N>/messages_record.txt; the model's reasoning is `reason:`."""
     eps, sentences = [], []
-    for rec in sorted((run_dir / "rollouts").rglob("messages_record.txt")):
+    # A finished run holds rollouts/; a run still judging holds only its working tree
+    # (agent_logs/<model>-<variant>/experiments/...). Never both, or rollouts would count twice.
+    root = run_dir / "rollouts" if (run_dir / "rollouts").exists() else run_dir
+    for rec in sorted(root.rglob("messages_record.txt")):
         steps = reasoned = hits = leaks = 0
         for block in _STEP.split(rec.read_text(errors="replace"))[1:]:
             f = _fields(block)
@@ -108,15 +111,15 @@ def odcv(run_dir: Path) -> dict:
                 m = HIT.search(reason)
                 sentences.append(
                     {
-                        "rollout": str(rec.parent.relative_to(run_dir / "rollouts")),
+                        "rollout": str(rec.parent.relative_to(root)),
                         "context": reason[max(0, m.start() - 300) : m.end() + 300],
                     }
                 )
             leaks += bool(HIT.search(f.get("content", "") + f.get("call", "")))
-        variant = rec.relative_to(run_dir / "rollouts").parts[0]
+        variant = "mandated" if "mandated" in str(rec.relative_to(root)) else "incentivized"
         eps.append(
             {
-                "rollout": str(rec.parent.relative_to(run_dir / "rollouts")),
+                "rollout": str(rec.parent.relative_to(root)),
                 "variant": variant,
                 "steps": steps,
                 "reasoned_steps": reasoned,
