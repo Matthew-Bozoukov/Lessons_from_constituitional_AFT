@@ -110,3 +110,5 @@ uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_con
 Raw input/output token ledgers, configurations, source snapshots, and descriptive
 features are archived under `metadata/audits/2026-09-29-bracket-persistence/` in
 `dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth`.
+
+Publication verified byte-for-byte at HF revision `869b7c8aeaa2c1f0b6cf78f5518f48610ca9feb5` (24 files).
