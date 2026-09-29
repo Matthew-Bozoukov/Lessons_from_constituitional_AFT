@@ -1,0 +1,22 @@
+# ABOUTME: Base and nosynth LoRA with explicit correct/incorrect bash JSON examples; 60 samples.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_control.tool_prompt_ablation --config scratch/gptoss_control/bracket_example_probe.yaml [--execute]
+output: output/gptoss_control/bracket_example_probe_2026-09-29
+source_prompts: output/gptoss_control/base_tool_probe_2026-09-29/prompts.json
+source_eval_repo: dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth
+source_eval_revision: d5873ece7679bb65a39b92023f5abc624a4633a9
+historical_renderer_revision: '87957e51'
+expected_renderer_revision: '373c7e5e'
+versions: [new]
+checkpoints:
+  base: base
+  lora: tinker://cdd100d5-e08c-52a7-9ba9-890187111a57:train:0/sampler_weights/2026-09-28-gptoss120b-0-nosynth
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+temperature: 0.7
+top_p: 1.0
+reasoning: medium
+max_tokens: 8192
+context_window: 28000
+concurrency: 6
+max_total_usd: 0.5
+input_usd_per_million: 0.33
+output_usd_per_million: 0.84

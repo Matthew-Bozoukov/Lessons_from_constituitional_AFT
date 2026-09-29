@@ -69,7 +69,7 @@ def inspect_response(renderer, ids, tools):
 def summarize(cfg, out, rows):
     results = {'responses': len(rows), 'rate_card_upper_usd': sum(r['rate_card_upper_usd'] for r in rows), 'arms': {}}
     for arm in cfg.checkpoints:
-        for version in ['old', 'new']:
+        for version in cfg.get('versions', ['old', 'new']):
             group = [r for r in rows if r['arm'] == arm and r['version'] == version]
             results['arms'][f'{arm}_{version}'] = {'n': len(group),
                 'tool_call_responses': sum(bool(r['calls']) for r in group),
@@ -87,9 +87,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--analyze', action='store_true')
+    parser.add_argument('--config', type=Path, default=Path(__file__).with_suffix('.yaml'))
     args = parser.parse_args()
     os.chdir(ROOT)
-    cfg = OmegaConf.load(Path(__file__).with_suffix('.yaml'))
+    cfg = OmegaConf.load(args.config)
     if args.analyze:
         assert not args.execute
         out = Path(cfg.output)
@@ -113,10 +114,18 @@ def main():
     source = subprocess.check_output(['git', 'show', f'{cfg.historical_renderer_revision}:src/infra/endpoints/harmony.py'], text=True)
     exec(compile(source, 'historical_harmony.py', 'exec'), previous.__dict__)
     renderer = harmony.make_renderer(cfg.reasoning, local_files_only=True)
+    if cfg.get('expected_renderer_revision'):
+        expected = subprocess.check_output(['git', 'show', f'{cfg.expected_renderer_revision}:src/infra/endpoints/harmony.py'], text=True)
+        assert Path(harmony.__file__).read_text(encoding='utf-8') == expected, 'Current renderer differs from configured protocol'
+    versions = list(cfg.get('versions', ['old', 'new']))
+    assert versions and len(set(versions)) == len(versions) and set(versions) <= {'old', 'new'}
     prepared = []
     for i, entry in enumerate(frozen):
         body = entry['body']
+        assert previous.render_prompt(renderer, body['messages'], body['tools']).to_ints() == entry['prompt_token_ids'], 'Historical frozen tokens must match exactly'
         for version, module in [('old', previous), ('new', harmony)]:
+            if version not in versions:
+                continue
             ids = module.render_prompt(renderer, body['messages'], body['tools']).to_ints()
             if version == 'old':
                 assert ids == entry['prompt_token_ids'], 'Historical frozen tokens must match exactly'
@@ -126,7 +135,8 @@ def main():
     ceiling = sum((len(p['tokens']) * cfg.input_usd_per_million + cfg.max_tokens * cfg.output_usd_per_million)
                   / 1e6 for p in prepared) * len(cfg.seeds) * len(cfg.checkpoints)
     assert ceiling <= cfg.max_total_usd
-    print('Prepared', len(prepared), 'prefix/version pairs; 120 responses; maximum rate-card cost', ceiling, flush=True)
+    total_samples = len(prepared) * len(cfg.seeds) * len(cfg.checkpoints)
+    print('Prepared', len(prepared), 'prefix/version pairs;', total_samples, 'responses; maximum rate-card cost', ceiling, flush=True)
     if not args.execute:
         return
     out = Path(cfg.output)
