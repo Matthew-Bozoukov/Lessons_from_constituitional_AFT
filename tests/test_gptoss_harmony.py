@@ -226,13 +226,14 @@ def test_tool_guidance_is_scoped_and_example_does_not_become_a_call(renderer):
     prefix=render_prompt(renderer,messages,[bash]).to_ints()
     decoded=renderer.tokenizer.decode(prefix)
     assert 'Example argument object: {"command":"pwd"}' in decoded
-    correct=next(line.removeprefix('Correct: ') for line in decoded.splitlines() if line.startswith('Correct: '))
-    incorrect=next(line.removeprefix('Incorrect: ') for line in decoded.splitlines() if line.startswith('Incorrect: '))
-    assert json.loads(correct) == {'command':'echo "hello"\necho "world"'}
-    with pytest.raises(json.JSONDecodeError):
-        json.loads(incorrect)
-    assert incorrect[:-2] + '}' == correct  # Exactly the diagnosed extra closing bracket.
-    assert 'Example bash arguments' not in plain and 'Example bash arguments' not in generic
+    correct=next(line.removeprefix('Python example: ') for line in decoded.splitlines() if line.startswith('Python example: '))
+    command=json.loads(correct)['command']
+    assert command.startswith("python3 - <<'PY'\n") and command.endswith('\nPY')
+    import ast
+    ast.parse(command.split('\n',1)[1].rsplit('\n',1)[0])
+    assert 'items = ["red", "blue"]' in command
+    assert 'Incorrect:' not in decoded
+    assert '## Native Harmony bash calls' not in plain and '## Native Harmony bash calls' not in generic
     assert 200012 not in prefix  # No fake tool handoff from the prose example.
     row={'tools':[bash],'messages':messages+[{'role':'assistant','content':'',
         'tool_calls':[{'id':'a','type':'function','function':{'name':'bash','arguments':'{"command":"ls"}'}}]}]}

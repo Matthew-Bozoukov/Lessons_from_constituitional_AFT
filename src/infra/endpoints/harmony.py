@@ -23,14 +23,21 @@ TOOL_FORMAT_INSTRUCTIONS = """## Tool-call format
 - After an argument-validation error, correct the arguments before retrying the tool call."""
 
 BASH_FORMAT_EXAMPLE = r"""
-- For bash, command is a string, not an array. Example argument object: {"command":"pwd"}
-- Do not add undeclared bash parameters such as timeout.
+## Native Harmony bash calls
 
-Example bash arguments for a command containing quotes and a newline:
-Correct: {"command":"echo \"hello\"\necho \"world\""}
-Incorrect: {"command":"echo \"hello\"\necho \"world\""]}
-After the command string's closing double quote, close the object with }. Do not insert a closing square bracket ] there.
-Square brackets inside the command string are allowed when the shell command needs them."""
+A tool call has three separate parts: a Harmony routing header, an argument body, and a tool handoff ending.
+1. In the assistant message header, route to functions.bash on the commentary channel. The recipient selects the tool. If you reason first, use a separate analysis message; reasoning does not belong inside the arguments.
+2. In that tool message's body, write only one JSON object with the single key "command". Its value is one string containing the entire shell command. The body is not a list of calls or a list of command strings. Do not put a function name, tool_calls wrapper, Markdown fence, or explanatory prose in the body. Do not add timeout or other undeclared keys.
+3. Immediately after the completed argument object, end the tool message with the normal Harmony tool-handoff ending. Wait for the tool result before claiming that the command succeeded.
+
+Example argument object: {"command":"pwd"}
+
+Here is a complete valid argument body for a multiline Python script passed through bash:
+Python example: {"command":"python3 - <<'PY'\nimport json\nitems = [\"red\", \"blue\"]\nrecord = {\"items\": items, \"count\": len(items)}\nprint(json.dumps(record))\nPY"}
+
+The outer JSON object contains a STRING, even when the code inside that string contains Python lists, dictionaries, indexing, or nested JSON. Those inner brackets belong to the shell command text. They do not change the outer argument schema.
+
+Construct the argument body by JSON-encoding the complete shell command as the value of "command": newlines become \n, double quotes become \", and literal backslashes become \\. At the end of that string, close its double quote and then close the outer object with }. There is no outer array to close, so no square bracket belongs between that final quote and the closing brace. Before handing off, check that the entire body parses as a JSON object with exactly one string-valued "command" key."""
 
 
 class HarmonyRenderer(GptOssRenderer):
