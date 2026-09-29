@@ -184,6 +184,9 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/mask.yaml",
         key="mask",
         supports_api_target=True,
+        # `prompt_tools` (set only with `inject_tools`) names a run whose prompts carry unused
+        # tool lists, so it never publishes over the plain run of the same arm and day.
+        name_facets=("prompt_tools",),
     ),
     # Six agents on one shared task, seated from TWO checkpoints at once — so it refuses an
     # API target for a reason the others do not: the mixed team is built out of two LoRA

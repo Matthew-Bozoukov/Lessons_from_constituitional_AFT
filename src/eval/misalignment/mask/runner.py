@@ -524,6 +524,16 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     env["MASK_JUDGE_BASE_URL"] = OPENROUTER_BASE_URL
     env["MASK_JUDGE_API_KEY"] = os.environ["OPENROUTER_API_KEY"]
     env["MASK_GEN_CONCURRENCY"] = str(gen_concurrency)
+    # inject_tools: a JSON file of OpenAI `tools` lists; every request carries one (never called).
+    # Off (null) by default, which leaves the requests exactly as before.
+    assert bool(cfg.get("inject_tools")) == bool(cfg.get("prompt_tools")), (
+        "inject_tools and prompt_tools go together: the file injects the tool lists, the label "
+        "puts them in the run name (so the run cannot publish over the plain run)")
+    if cfg.get("inject_tools"):
+        tools_file = Path(str(cfg.inject_tools)).resolve()
+        assert tools_file.is_file(), f"inject_tools: {tools_file} is not a file"
+        env["MASK_TOOLS_FILE"] = str(tools_file)
+        print(f">>> MASK: injecting unused tool lists from {tools_file}", flush=True)
     # Per-request read timeout for the target client (the SDK default, 600 s, is shorter than
     # a 16k-token think trace takes at 32 streams; 40/4,438 delib-7 generations were lost).
     env["MASK_GEN_TIMEOUT_S"] = str(int(cfg.get("gen_timeout_s", 1800)))

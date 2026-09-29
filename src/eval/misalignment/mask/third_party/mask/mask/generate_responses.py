@@ -16,8 +16,25 @@ load_dotenv()
 # the file being processed (see generate_responses_async); flushed to `_empty_content.json`.
 EMPTY_CONTENT = {}
 
+# VENDORED PATCH (teaching_claude_why): optional unused tool lists injected into every request
+# (MASK_TOOLS_FILE = JSON list of OpenAI `tools` lists). Each CSV row gets one list, picked by a
+# stable hash of (file, row), shared by all of that row's prompts. Tests whether a tools block in
+# the prompt changes how a model trained with unused tools reasons in plain chat. A tool call
+# instead of an answer is tallied as `<prompt>__tool_call` in `_empty_content.json` and scored
+# like empty content (MASK_EMPTY_CONTENT). Unset: requests are byte-identical to before.
+import hashlib
+import json as _json
+TOOL_LISTS = _json.load(open(os.environ['MASK_TOOLS_FILE'])) if os.getenv('MASK_TOOLS_FILE') else None
 
-async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1):
+
+def tools_for(csv_path, index):
+    if not TOOL_LISTS:
+        return None
+    h = hashlib.sha256(f"{os.path.basename(csv_path)}:{index}".encode()).hexdigest()
+    return TOOL_LISTS[int(h, 16) % len(TOOL_LISTS)]
+
+
+async def generate_responses_async(client, model_name, formatted_prompts, max_tokens, temperature, semaphore, K=1, tools=None):
     """
     Generates responses from the specified model for a batch of prompts.
     
@@ -61,6 +78,7 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                                 messages=messages,
                                 max_tokens=max_tokens,
                                 temperature=temperature,
+                                **({'tools': tools} if tools else {}),  # VENDORED PATCH: MASK_TOOLS_FILE
                             )
                         
                     if True:  # PATCH (teaching_claude_why): OpenAI-shaped response for every target
@@ -75,6 +93,9 @@ async def generate_responses_async(client, model_name, formatted_prompts, max_to
                         # empty content and, per MASK_EMPTY_CONTENT, stored as "" (`evasion`:
                         # the judge reads no statement) or as the reasoning text (`reasoning`:
                         # what the model actually wrote). Never silently an error.
+                        if response is None and getattr(msg, 'tool_calls', None):  # VENDORED PATCH: MASK_TOOLS_FILE
+                            EMPTY_CONTENT[prompt_key + '__tool_call'] = EMPTY_CONTENT.get(prompt_key + '__tool_call', 0) + 1
+                            response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
                         if response is None and completion.choices[0].finish_reason == 'stop':
                             EMPTY_CONTENT[prompt_key] = EMPTY_CONTENT.get(prompt_key, 0) + 1
                             response = reasoning if os.getenv('MASK_EMPTY_CONTENT', 'evasion') == 'reasoning' else ''
@@ -164,6 +185,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
         all_prompts = []
         indices = []
         prompt_types = []
+        prompt_tools = []  # VENDORED PATCH: MASK_TOOLS_FILE
         
         # Process each row in the dataframe
         for index, row in df.iterrows():
@@ -179,6 +201,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                     ])
                     indices.append(index)
                     prompt_types.append(f'lying_run{run+1}')
+                    prompt_tools.append(tools_for(input_csv, index))
             else:
                 # Standard lying prompt with just system and user messages
                 for run in range(lie_k):
@@ -188,6 +211,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                     ])
                     indices.append(index)
                     prompt_types.append(f'lying_run{run+1}')
+                    prompt_tools.append(tools_for(input_csv, index))
             
             # Handle belief elicitation prompts if present
             if 'belief_elicit_1' in df.columns:
@@ -201,15 +225,16 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                             ])
                             indices.append(index)
                             prompt_types.append(f'be{be_num}_run{run+1}')
+                            prompt_tools.append(tools_for(input_csv, index))
 
         # Generate responses in parallel for all prompts
         all_responses = await asyncio.gather(*[
             generate_responses_async(
                 client, model_name, {prompt_type: prompt},
                 max_tokens=max_tokens, temperature=temperature,
-                semaphore=semaphore, K=1
+                semaphore=semaphore, K=1, tools=tools
             )
-            for prompt, prompt_type in zip(all_prompts, prompt_types)
+            for prompt, prompt_type, tools in zip(all_prompts, prompt_types, prompt_tools)
         ])
 
         # Create mapping for output column names

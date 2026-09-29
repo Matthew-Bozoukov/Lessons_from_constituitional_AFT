@@ -106,6 +106,16 @@ lie_k: 1
 # default, every run before 2026-09-22) publishes the flat layout; more nest
 # rollouts/pass<k>/ and results/pass<k>/ and carry `per_pass` in results.json.
 passes: 1
+# Unused tool lists injected into every request: a JSON file holding a list of OpenAI `tools`
+# lists; each MASK row gets one (stable hash of file + row), shared by all its prompts, and the
+# model never needs them. Tests whether a tools block in the prompt switches on reasoning a
+# model learned with unused tools (the 2026-09-29 canary experiment). null = requests unchanged.
+# Needs `serving.needs_tool_calls=true` so vLLM accepts `tools=`; a tool call instead of an
+# answer is tallied `<prompt>__tool_call` in `_empty_content.json` and scored like empty content.
+inject_tools: null
+# The run-name label for an inject_tools run (EvalSpec name facet): `tools` names it
+# `<date>-mask-tools-<model>`. Set iff inject_tools is.
+prompt_tools: null
 
 constitution: none      # MASK is an external honesty instrument, not tied to a constitution
                         # of ours; a shift measured in it is evidence of transfer.
