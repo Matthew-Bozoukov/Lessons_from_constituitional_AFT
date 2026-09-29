@@ -1,5 +1,5 @@
 <!-- ABOUTME: Active evaluation repair scope, implemented changes and remaining qualification. -->
-<!-- ABOUTME: Status distinguishes offline checks, protocol validity and live two-family readiness. -->
+<!-- ABOUTME: Status distinguishes offline checks, protocol validity and live Qwen readiness. -->
 
 # Active evaluation cleanup
 
@@ -13,6 +13,16 @@ checks of pinned public data. It does not mean that a live Qwen/GPT-OSS run,
 Docker qualification, or scientific judge calibration has passed.
 
 ## September 29 scope decisions and follow-up
+
+Latest scope: **Qwen3.6-27B only**. GPT-OSS/Tinker target work is parked;
+previously committed changes remain available but require no further work now.
+Qwen SWE-bench Lite, ODCV and MASK remain excluded from further edits.
+The user selected the existing nosynth control for any live Qwen checks:
+`dougalldeepmind/2026-09-22-qwen36-0-nosynth`
+at revision `633908b72a9799fb3e6b101b0a8a82aec3c3d642`, verified against the
+Hugging Face model API on September 29. Checkpoint selection is needed to bind
+live inference evidence to exact weights; it does not block code repairs or
+offline tests. This scope change does not change MoReBench's fixed judge protocol.
 
 The user retained MMLU's current 570 questions, requested Arena-Hard history checks,
 assumed GPT-OSS120B is hosted on Tinker, and excluded further edits to Qwen's SWE
@@ -49,8 +59,9 @@ passed**. The main suite's other skips are six Linux-only fleet modules. The eig
 Docker skips and one Tinker module skip in that main invocation were exercised by
 the separate commands above. Arena historical score reproduction and read-only
 Petri provenance resolution are documented in their linked notes. No paid model
-calls, rentals or HF publication were made. Exact live checkpoints and the real
-Delegated Harm request bank remain outstanding.
+calls, rentals or HF publication were made. The Qwen live checkpoint is now pinned
+above; live inference checks and the real Delegated Harm request bank remain
+outstanding.
 
 | Eval | Kind | This repair pass | Remaining acceptance work |
 | --- | --- | --- | --- |
@@ -71,13 +82,11 @@ Delegated Harm request bank remain outstanding.
 
 1. Review the deterministic repairs and freeze protocol versions. Changes to
    missingness handling are disclosed; do not silently overwrite historical results.
-2. Use the selected Tinker hosting route for GPT-OSS. The follow-up repairs lock
-   its own dependency environment and address sampling, tools, history and endpoint
-   identity; actual checkpoint qualification is still required. ODCV's serving
-   path is outside the user's current edit scope and must not be assumed qualified
-   for a different host just because it works in the existing setup.
-3. Run one real endpoint smoke per active eval and model, with native Docker for
-   SWE/ODCV/Secret Number. Check exact target identity, transmitted settings, reasoning separation,
+2. Use the pinned nosynth Qwen control above for live checks. GPT-OSS/Tinker
+   qualification is parked. Do not change or rerun Qwen SWE-bench Lite, ODCV or
+   MASK as part of this repair pass.
+3. Run one real endpoint smoke per active Qwen eval, with native Docker for
+   Secret Number. Check exact target identity, transmitted settings, reasoning separation,
    token limits, tools, expected item counts and saved provenance. Then run a small
    frozen calibration panel for every judge-dependent instrument.
 4. Calibrate Petri before scaling its audit. Freeze matched controls, primary
