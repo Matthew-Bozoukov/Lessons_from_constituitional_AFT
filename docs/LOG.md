@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Base GPT-OSS also produces malformed bash JSON
+
+**Question:** is the repeated extra `]` observed in the nosynth LoRA exclusive
+to SFT? **Method:** sample Tinker's base `openai/gpt-oss-120b` three times at
+each of three frozen historical failure prefixes, preserving the Harmony
+renderer, tool schemas and .7/medium sampling settings. Execute no tools and
+run no judges. Source transcript hashes and historical prompt counts matched.
+
+**Result:** **1/9** responses contained the same extra closing square bracket
+in bash JSON; 8/9 were structurally valid. All nine had proper handoff endings,
+no truncation, and no transport failures. Cost upper estimate **$0.0040338**.
+Raw artifacts are archived with the original GPT-OSS eval under
+`metadata/audits/2026-09-29-base-tool-probe/`.
+
+**Interpretation / next:** the failure exists without our LoRA. Failure-selected
+prompts and nine draws do not estimate a population rate or establish whether
+SFT worsens it; a fresh matched base/LoRA comparison would address frequency.
+See [probe details and limitations](gptoss120b/2026-09-29_base_tool_probe.md).
+
 ## 2026-09-28 - GPT-OSS nosynth control completed on Tinker: ODCV 111/240
 
 **Hypothesis / purpose:** establish a fresh GPT-OSS-120B nosynth control under the
