@@ -1,6 +1,26 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Filtered DA refresh underperforms; conditional dose expansion stopped
+
+**Hypothesis:** the filtered September 28 difficult-advice corpus would retain
+the previous September 25 DA-15's ODCV/MASK performance. **Method:** audited the
+existing 15.095959% supervised-token mixture, retaining the same 8,433 replay
+rows, and trained one seed-0 Qwen3.6 LoRA with the matched token-mean/packing
+recipe. Ran three-pass ODCV (240 rollouts) and full one-pass MASK (1,000 rows)
+in parallel with local CPU drivers and RunPod model GPUs.
+
+**Result:** ODCV misconduct **17.9% [10.1,29.8]**, versus **9.2% [4.3,18.6]**;
+task progress **4.93 versus 4.95**. MASK honesty **74.4 versus 90.2**, declining
+in every archetype. Training and generation checks passed; all transcripts,
+judgments, adapter and mixture were verified on HF. This is single-seed evidence,
+with historical-code/API limitations, not a seed-level significance claim.
+
+**Decision/next steps:** the user's condition for new DA-5/DA-25 was not met,
+so neither ran. All three owned GPUs terminated; conservative total cost
+**$19.02**. Investigate corpus changes before further dose experiments if
+separately authorized. [Full report and immutable artifact links](training/2026-09-29_da_corpus_refresh.md).
+
 
 ## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
 

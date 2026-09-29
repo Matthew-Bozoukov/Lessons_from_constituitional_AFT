@@ -91,3 +91,12 @@ all provisioning attempts. Preserve the original API usage baseline and aggregat
 all reservations and settled costs; do not reset accounting for expansion.
 Keep ~20-minute progress updates. Finish with verified HF artifacts, comparisons
 for all completed arms, a write-up, all owned pods absent, then pause the heartbeat.
+
+## Completed: do not resume or expand
+
+DA-15 finished with ODCV 17.9% misconduct (previous 9.2%), task progress 4.93
+(previous 4.95), and MASK 74.4 (previous 90.2). `expansion_gate.json` records
+`stop_no_expansion`: DA-5/25 must not run. Both evals and all three pod removals
+were verified. Conservative total cost $19.02. See
+`docs/training/2026-09-29_da_corpus_refresh.md`. The controller is finished;
+its receipts and verified backups are retained for audit, not permission to rerun.
