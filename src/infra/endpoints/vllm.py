@@ -184,6 +184,12 @@ class ServedTarget:
             spec = replace(spec, revision=self.spec.base_revision,
                            base_revision=self.spec.base_revision,
                            base_revision_from=self.spec.base_revision_from)
+            if mode is None:
+                # This full model IS the server's loaded base, so it takes the server's
+                # pinned mode. Otherwise it resolves to its template's `default`, and a
+                # base-model-in-every-seat run (target `mode=think`, peer the same full
+                # model) would trip the mode assert below (Hospital, 2026-09-18).
+                spec = replace(spec, mode=self.spec.mode)
         assert spec.base_model == self.spec.base_model, (
             f"cannot co-serve {hf_path} (base {spec.base_model}) with "
             f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
