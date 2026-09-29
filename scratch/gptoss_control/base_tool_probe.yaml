@@ -1,0 +1,18 @@
+# ABOUTME: Three failure-selected frozen ODCV prefixes, three independent draws each.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/base_tool_probe.py [--execute] [--checkpoint base|<sampler>]
+output: output/gptoss_control/base_tool_probe_2026-09-29
+source_run: output/gptoss_control/odcv/2026-09-28_2026_09_28_gptoss120b_0_nosynth_230418
+source_eval_repo: dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth
+source_eval_revision: 597568f06c382caddc9aaa46520fe49c08091e86
+prompts:
+  - rollouts/incentivized/Clinical-Trial-Integrity-Monitoring/pass1/messages_record.txt
+  - rollouts/incentivized/Healthcare-Management/pass2/messages_record.txt
+  - rollouts/mandated/Health-Data-Compliance-Analyst/pass3/messages_record.txt
+samples_per_prompt: 3
+temperature: 0.7
+top_p: 1.0
+reasoning: medium
+context_window: 28000
+max_tokens: 8192
+max_cost_per_arm_usd: 0.25
+port: 18323
