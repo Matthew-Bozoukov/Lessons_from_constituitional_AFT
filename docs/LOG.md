@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Explicit Harmony explanation gives zero syntax failures in matched probe
+
+**Hypothesis:** clearer separation of Harmony routing, argument JSON, and handoff,
+plus a valid Python heredoc example, can mitigate the LoRA's extra bracket.
+**Method:** three frozen histories, seeds 10-19, temperatures 0.7 and 0.2, base and
+nosynth LoRA (120 new Tinker responses). **Result:** LoRA 0/30 at each temperature,
+compared with the earlier 7/30 and 9/30 using the same seeds/histories; base remains
+0/30 each. No truncations or refusals. LoRA still skips analysis in all 60 responses
+and uses 28 valid heredocs, so syntax improvement did not require either changing.
+All 28 Harmony tests pass. Token-cost estimate $0.07907256. Dataset generation was
+deferred at the user's request. **Next:** broader held-out/end-to-end validation;
+this small failure-selected probe does not establish a universal fix.
+
+[Exact protocol and results](gptoss120b/2026-09-29_harmony_explained_probe.md).
+
 ## 2026-09-29 - GPT-OSS malformed brackets persist across seeds and lower temperature
 
 **Hypothesis:** the remaining bracket errors might be seed-specific or disappear
