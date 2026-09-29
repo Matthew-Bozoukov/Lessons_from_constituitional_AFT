@@ -17,7 +17,7 @@ PRUNED (146M -> 1.1M)
   Kept: data/arena-hard-v2.0/question.jsonl (the exam itself), config/, utils/,
   gen_answer.py, gen_judgment.py, show_result.py.
 
-PATCHED (4, as ordinary tracked diffs — `git log` this tree to review them)
+PATCHED (as ordinary tracked diffs — `git log` this tree to review them)
   gen_judgment.py
     1. baseline_override. Upstream hardcodes its packaged leaderboard baselines
        (o3-mini for hard_prompt, gemini-2.0-flash for creative_writing). Our estimand
@@ -27,9 +27,8 @@ PATCHED (4, as ordinary tracked diffs — `git log` this tree to review them)
        not an env var (was ARENA_HARD_BASELINE until 2026-08-05): the written setting
        file is then the complete record of what was judged against what.
     2. question_limit. A {category: n} cap applied to the question list, for staged
-       sampling. Judgments cache on uid, so raising the cap later re-reads the judged
-       prefix from disk and pays only for the new questions — 150 -> 300 -> 500 costs
-       the same as going straight to 500.
+       sampling. Raising the cap reuses complete, exact-request orderings from the
+       judged prefix (see patch 5).
   utils/completion.py
     3. extra_body + usage passthrough. Upstream's OpenAI path drops `extra_body`, which
        is how OpenRouter takes `reasoning: {effort: low}` — needed because Gemini 3.x
@@ -41,3 +40,16 @@ PATCHED (4, as ordinary tracked diffs — `git log` this tree to review them)
        OpenRouter and mint our own ids, so requiring the AWS SDK to judge a pairwise
        comparison is a dependency we should not carry. Made optional, not deleted —
        the Bedrock path still works if someone installs them.
+  gen_judgment.py + utils/completion.py (2026-09-29)
+    5. Auditable completion and cache recovery. Only finish_reason=stop plus a valid
+       verdict counts as complete. A score emitted before truncation remains raw
+       evidence and is never scored. Exact-request SHA256 includes prompt, both
+       answer bodies and generation identities, ordering, rubric, parser, judge and
+       inference settings; credentials and concurrency are excluded. A cached UID
+       alone is insufficient. Retry only unresolved orderings, with max_attempts
+       bounded per invocation (default 3) and hidden SDK retries disabled. Atomic
+       snapshots preserve completed opposite orderings on interruption; attempts
+       and invalidated prior records remain inside canonical JSONL. Store finish,
+       returned model, reasoning, full response/usage, and scrubbed transport errors.
+       Score-only historical records remain available for explicit offline analysis
+       but must be rejudged to qualify a fresh run. Reads use UTF-8 on Windows.

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sys
 import threading
 import time
@@ -55,6 +56,53 @@ from src.eval.capabilities.arena_hard.arena_hard_metrics import (  # noqa: E402
 from src.infra.endpoints.openrouter import map_threaded  # noqa: E402
 from src.model_profile import split_think
 from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
+
+
+OUTPUT_BUDGET_POLICY = "gpt4o-estimate-plus-512-and-one-third-v1"
+
+
+def read_partial_checkpoint(path: Path) -> tuple[list[dict], Path | None]:
+    """Recover a torn last JSONL write, retaining the exact original as evidence.
+
+    Only malformed JSON/UTF-8 in the final nonempty line is recoverable. Interior
+    corruption and valid JSON with an invalid record shape remain hard failures.
+    """
+    original = path.read_bytes()
+    lines = original.splitlines(keepends=True)
+    nonempty = [i for i, line in enumerate(lines) if line.strip()]
+    rows = []
+    for index in nonempty:
+        try:
+            row = json.loads(lines[index].decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            if index != nonempty[-1]:
+                raise ValueError(f"Arena checkpoint has interior corruption on line {index + 1}: {path}") from exc
+            digest = hashlib.sha256(original).hexdigest()[:12]
+            diagnostic = path.with_name(path.name + f".torn-{digest}")
+            diagnostic.write_bytes(original)
+            repaired = b"".join(lines[:index])
+            if repaired and not repaired.endswith(b"\n"):
+                repaired += b"\n"
+            path.write_bytes(repaired)
+            return rows, diagnostic
+        if not isinstance(row, dict):
+            raise ValueError(f"Arena checkpoint record on line {index + 1} is not an object: {path}")
+        rows.append(row)
+    if original and not original.endswith(b"\n"):
+        path.write_bytes(original + b"\n")  # the next appended record needs a separator
+    return rows, None
+
+
+def retain_checkpoint_diagnostics(checkpoint: Path, out_dir: Path) -> list[str]:
+    """Carry torn-write evidence across failed attempts into the eventual publication."""
+    retained = []
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for original in sorted(checkpoint.parent.glob(checkpoint.name + ".torn-*")):
+        suffix = original.name.rsplit(".torn-", 1)[1]
+        name = f"partial_checkpoint_recovery_{suffix}.jsonl"
+        shutil.copy2(original, out_dir / name)
+        retained.append(name)
+    return retained
 
 
 def _arm(cfg: DictConfig, name: str) -> DictConfig:
@@ -177,28 +225,12 @@ def main(
 
     gen = cfg.generation
     identity = {"model": served, "arm": OmegaConf.to_container(arm_cfg, resolve=True),
-                "target": OmegaConf.to_container(cfg.get("target_identity", {})),
+                "target": OmegaConf.to_container(cfg.get("target_identity", OmegaConf.create({}))),
                 "generation": OmegaConf.to_container(gen, resolve=True),
                 "serving": OmegaConf.to_container(cfg.get("serving", {})),
                 "endpoint": endpoint or gen.endpoint}
-    def fingerprint(q: dict) -> str:
-        return hashlib.sha256(json.dumps({"question": q, **identity},
-                                         sort_keys=True).encode()).hexdigest()
-    fingerprints = {q["uid"]: fingerprint(q) for q in selected}
-
-    # Resume: skip uids already generated. Same contract as the judgment cache, so an
-    # interrupted run costs only what it had not yet finished.
-    existing: dict[str, dict] = {}
-    if answer_file.exists():
-        for rec in read_jsonl(answer_file):
-            if (rec.get("request_hash") == fingerprints.get(rec["uid"])
-                    and "generation_record" in rec):
-                existing[rec["uid"]] = rec
-    todo = [q for q in selected if q["uid"] not in existing]
-
     print(f">>> arm:          {arm}  (served as {served!r})")
     print(f">>> adapter:      {arm_cfg.adapter}")
-    print(f">>> questions:    {len(selected)} selected, {len(todo)} to generate")
     print(f">>> endpoint:     {endpoint or gen.endpoint}")
     print(f">>> decoding:     temp={gen.temperature} top_p={gen.top_p} max_tokens={gen.max_tokens}")
 
@@ -239,6 +271,26 @@ def main(
         if budget <= 0:
             raise ValueError("Arena-Hard prompt exceeds the configured context budget")
         return budget
+
+    # Resolve the server's applied context cap BEFORE fingerprinting/resume. The same
+    # URL can serve a different max_model_len after restart; old answers must not be
+    # relabelled with the new context or newly calculated per-prompt allowance.
+    identity["effective_context_window"] = context_limit
+    identity["output_budget_policy"] = OUTPUT_BUDGET_POLICY
+    fingerprints = {
+        q["uid"]: hashlib.sha256(json.dumps({"question": q, **identity,
+                                            "effective_max_tokens": output_budget(q["prompt"])},
+                                           sort_keys=True).encode()).hexdigest()
+        for q in selected
+    }
+    existing: dict[str, dict] = {}
+    if answer_file.exists():
+        for rec in read_jsonl(answer_file):
+            if (rec.get("request_hash") == fingerprints.get(rec["uid"])
+                    and "generation_record" in rec):
+                existing[rec["uid"]] = rec
+    todo = [q for q in selected if q["uid"] not in existing]
+    print(f">>> questions:    {len(selected)} selected, {len(todo)} to generate")
 
     def generate(i: int) -> dict:
         q = todo[i]
@@ -324,8 +376,10 @@ def main(
 
     # Resume from a previous interrupted run of this same arm.
     resumed: dict[str, dict] = {}
+    recovered_checkpoint = None
     if out_partial.exists():
-        for rec in read_jsonl(out_partial):
+        partial_rows, recovered_checkpoint = read_partial_checkpoint(out_partial)
+        for rec in partial_rows:
             if rec.get("request_hash") == fingerprints.get(rec["uid"]):
                 resumed[rec["uid"]] = rec
         if resumed:
@@ -382,6 +436,7 @@ def main(
     # --- Instrumentation ------------------------------------------------------------
     out_dir = Path(cfg.output_dir) / arm / timestamp()
     out_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_diagnostics = retain_checkpoint_diagnostics(out_partial, out_dir)
 
     all_records = generated + [
         rec["generation_record"]
@@ -396,6 +451,11 @@ def main(
         "base_model": str(cfg.base_model),
         "synthetic_fraction": arm_cfg.synthetic_fraction,
         "n_generated_this_run": len(generated),
+        "effective_context_window": context_limit,
+        "output_budget_policy": OUTPUT_BUDGET_POLICY,
+        "partial_checkpoint_recovered": bool(checkpoint_diagnostics),
+        "partial_checkpoint_recovered_this_attempt": recovered_checkpoint is not None,
+        "partial_checkpoint_diagnostics": checkpoint_diagnostics,
         "decoding": {
             "temperature": float(gen.temperature),
             "top_p": float(gen.top_p),

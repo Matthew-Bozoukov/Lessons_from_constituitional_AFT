@@ -177,7 +177,9 @@ def test_arena_rejects_missing_ordering_and_changed_reused_prompt(tmp_path):
     from src.eval.capabilities.arena_hard import arena_hard_judge as judge
     questions = [{'uid': 'q1', 'category': 'hard_prompt', 'prompt': 'original question'}]
     record = {'uid': 'q1', 'category': 'hard_prompt', 'model': 'arm',
-              'games': [{'score': 'A=B'}, {'score': 'A=B'}]}
+              'judgment_protocol': 'arena-paired-completion-v1',
+              'games': [{'score': 'A=B', 'status': 'complete', 'request_hash': f'fixture-{i}',
+                         'judgment': {'answer': '[[A=B]]', 'finish_reason': 'stop'}} for i in range(2)]}
     assert judge._complete_judgments([record], questions) == [record]
     for games in ([{'score': 'A=B'}], [{'score': 'A=B'}, {'score': None}]):
         with pytest.raises(ValueError, match='paired judgments'):
@@ -229,7 +231,9 @@ def test_arena_validation_failure_preserves_raw_verdicts_before_stopping(tmp_pat
         path.write_text('{"fixture": "raw verdict"}\n')
         return {'passes': False, 'n_compared': config.judge_validation.n_questions}
     monkeypatch.setattr(pool.arena_hard_judge, 'validate_judge', validate)
-    with pytest.raises(ValueError, match='validation failed'):
+    monkeypatch.setattr(pool.arena_hard_runner, 'validate_generation_protocols',
+                        lambda *args: {'status': 'matched'})
+    with pytest.raises(ValueError, match='full calibration gate'):
         pool.pool(runs, cfg, tmp_path / 'output')
     assert (tmp_path / 'output/rollouts/judge_validation/reference/candidate.jsonl').exists()
     assert not (tmp_path / 'output/results/leaderboard.json').exists()

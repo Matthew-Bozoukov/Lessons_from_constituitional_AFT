@@ -32,6 +32,7 @@ from typing import Any
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_judge
+from src.eval.capabilities.arena_hard import runner as arena_hard_runner
 from src.eval.capabilities.arena_hard.runner import bench_answers_dir, isolate_harness, register
 from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments, evaluate_arm
 from src.eval.layout import publish_layout
@@ -45,6 +46,41 @@ def _arm_meta(run: dict[str, Any]) -> dict:
         f"{run['target']}: no metadata/sources.json at {path}. Every arena_hard arm writes "
         "one; a run dir without it did not come from this eval's runner.")
     return json.loads(path.read_text())
+
+
+def _validation_report(cfg, result: dict) -> dict:
+    """Separate smoke wiring integrity from the full judge calibration gate."""
+    smoke = bool(cfg.get("smoke", False))
+    expected = int(cfg.judge_validation.n_questions)
+    complete = result["n_compared"] == expected
+    assessed = complete and not smoke
+    return {**result, "n_expected": expected,
+            "coverage_status": "complete" if complete else "incomplete",
+            "calibration_status": ("passed" if result["passes"] else "failed") if assessed else "not_assessed",
+            "calibration_gate_applies": not smoke,
+            "thresholds_met_on_sample": result["passes"],
+            "passes": bool(result["passes"]) if assessed else None}
+
+
+def _require_validation(cfg, result: dict) -> None:
+    if result["coverage_status"] != "complete":
+        raise ValueError("Arena-Hard judge validation has incomplete coverage")
+    if not bool(cfg.get("smoke", False)):
+        if int(cfg.judge_validation.n_questions) != 100:
+            raise ValueError("Full Arena-Hard judge validation requires 100 questions; use smoke for wiring checks")
+        if not result["passes"]:
+            raise ValueError("Arena-Hard judge validation failed its full calibration gate")
+
+
+def _generation_health(run: dict[str, Any]) -> dict:
+    """Carry existing per-arm instrumentation into the comparison without a new gate."""
+    path = Path(run["out_dir"]) / "metadata" / "gen_gen_metrics.json"
+    if not path.exists():
+        return {"status": "unavailable", "diagnostic_only": True,
+                "reason": "This arm has no retained generation-metrics artifact"}
+    metrics = json.loads(path.read_text(encoding="utf-8"))
+    return {"status": "available", "diagnostic_only": True,
+            "source": "metadata/gen_gen_metrics.json", "by_slice": metrics.get("by_slice", {})}
 
 
 def _score_slices(cfg, arm: str, judgment: dict, raw: Path) -> dict:
@@ -134,12 +170,17 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         cfg.judge_validation.n_questions = min(4, int(cfg.judge_validation.n_questions))
     cfg.baseline_arm = baseline
     cfg.output_dir = str(out_dir)
+    generation_protocol = arena_hard_runner.validate_generation_protocols(runs, cfg)
+    (metadata_dir / "generation_protocol_validation.json").write_text(
+        json.dumps(generation_protocol, indent=2), encoding="utf-8")
     cfg_path = metadata_dir / "arena_hard_config.yaml"
     OmegaConf.save(cfg, cfg_path)
 
     judge_model = str(cfg.judge.model)
     validation = None
     if bool(cfg.judge_validation.get("enabled", False)):
+        if not bool(cfg.get("smoke", False)) and int(cfg.judge_validation.n_questions) != 100:
+            raise ValueError("Full Arena-Hard judge validation requires 100 questions; use smoke for wiring checks")
         requested = cfg.judge_validation.get("comparison_arm")
         comparison = str(requested) if requested else arms[0]["model_key"]
         if comparison not in {a["model_key"] for a in arms}:
@@ -147,16 +188,14 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         cfg.judge_validation.comparison_arm = comparison
         OmegaConf.save(cfg, cfg_path)
         try:
-            validation = arena_hard_judge.validate_judge(cfg)
+            validation = _validation_report(cfg, arena_hard_judge.validate_judge(cfg))
         finally:
             raw_validation = (Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name)
                               / "model_judgment")
             if raw_validation.exists():
                 shutil.copytree(raw_validation, rollouts_dir / "judge_validation", dirs_exist_ok=True)
         (results_dir / "judge_validation.json").write_text(json.dumps(validation, indent=2))
-        if (not validation["passes"]
-                or validation["n_compared"] != int(cfg.judge_validation.n_questions)):
-            raise ValueError("Arena-Hard judge validation failed or has incomplete coverage")
+        _require_validation(cfg, validation)
     table = []
     for run in arms:
         key = run["model_key"]
@@ -197,6 +236,8 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         "baseline": baseline,
         "judge": judge_model,
         "judge_validation": validation,
+        "generation_protocol_validation": generation_protocol,
+        "generation_health": {run["model_key"]: _generation_health(run) for run in runs},
         "smoke": bool(cfg.get("smoke", False)),
         "n_arms": len(table),
         "leaderboard": table,

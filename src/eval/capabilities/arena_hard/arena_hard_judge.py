@@ -10,8 +10,8 @@ questions this stage judges, which judge is pinned, and what the run cost.
 Two modes:
 
 **`judge`** (default) — run one arm against the baseline arm for one stage of the
-staged-sampling ladder. Judgment caching keys on `uid`, so re-running a later stage
-re-reads the earlier stage from disk and pays only for the new questions. That is what
+staged-sampling ladder. Judgment caching verifies the exact request for each ordering,
+so re-running a later stage reuses completed earlier requests. That is what
 makes 150 → 300 → 500 cost the same as going straight to 500 while giving a read within
 the first hour.
 
@@ -123,6 +123,7 @@ def _write_setting_config(
         "judge_model": judge_model,
         "temperature": float(cfg.judge.temperature),
         "max_tokens": int(cfg.judge.max_tokens),
+        "max_attempts": int(cfg.judge.get("max_attempts", 3)),
         "bench_name": str(cfg.bench_name),
         "reference": None,
         # Reuse upstream's verdict regexes and prompt template verbatim: the rubric is
@@ -176,13 +177,33 @@ def _cost(records: list[dict], judge_model: str) -> dict[str, Any]:
     }
     prompt_tokens = completion_tokens = reasoning_tokens = 0
     calls = 0
-    for rec in records:
+    reported_cost = 0.0
+    reported_cost_calls = 0
+    seen_attempts = set()
+    pending = list(records)
+    while pending:
+        rec = pending.pop()
+        pending.extend(rec.get("prior_judgments") or [])
         for game in rec.get("games") or []:
-            usage = ((game or {}).get("judgment") or {}).get("usage") or {}
-            prompt_tokens += usage.get("prompt_tokens") or 0
-            completion_tokens += usage.get("completion_tokens") or 0
-            reasoning_tokens += usage.get("reasoning_tokens") or 0
-            calls += 1
+            if not game:
+                continue
+            # Each saved attempt is a paid call, including truncation or parse
+            # failure; the final judgment also appears in attempts and is not extra.
+            for attempt in game.get("attempts") or [game]:
+                identity = attempt.get("attempt_id")
+                if identity and identity in seen_attempts:
+                    continue
+                if identity:
+                    seen_attempts.add(identity)
+                usage = (attempt.get("judgment") or {}).get("usage") or {}
+                prompt_tokens += usage.get("prompt_tokens") or 0
+                completion_tokens += usage.get("completion_tokens") or 0
+                reasoning_tokens += usage.get("reasoning_tokens") or 0
+                cost = (attempt.get("judgment") or {}).get("reported_cost")
+                if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+                    reported_cost += cost
+                    reported_cost_calls += 1
+                calls += 1
 
     in_price, out_price = prices.get(judge_model, (0.0, 0.0))
     n_questions = len(records) or 1
@@ -198,6 +219,8 @@ def _cost(records: list[dict], judge_model: str) -> dict[str, Any]:
         "output_tokens_per_question": completion_tokens / n_questions,
         "usd": prompt_tokens * in_price + completion_tokens * out_price,
         "priced": judge_model in prices,
+        "reported_usd": reported_cost if reported_cost_calls else None,
+        "reported_cost_calls": reported_cost_calls,
     }
 
 
@@ -250,7 +273,11 @@ def _validate_answers(cfg, arm: str, questions: list[dict]) -> None:
 
 
 def _complete_judgments(records: list[dict], questions: list[dict]) -> list[dict]:
-    """Require both orderings of every requested prompt before reporting a win rate."""
+    """Require certified complete orderings for a new comparison.
+
+    Historical score-only rows can still be analyzed directly with the stats module;
+    their missing completion evidence must never certify a new run.
+    """
     by_uid = {r['uid']: r for r in records}
     if len(by_uid) != len(records):
         raise ValueError("Arena-Hard duplicate judgment IDs")
@@ -258,8 +285,17 @@ def _complete_judgments(records: list[dict], questions: list[dict]) -> list[dict
     for question in questions:
         row = by_uid.get(question['uid'])
         if (row is None or row['category'] != question['category']
+                or row.get('judgment_protocol') != 'arena-paired-completion-v1'
                 or len(row.get('games') or []) != 2
-                or len(battles_from_judgments([row])) != 2):
+                or len(battles_from_judgments([row])) != 2
+                or any(not isinstance(game, dict)
+                       or game.get('status') != 'complete'
+                       or not game.get('request_hash')
+                       or (game.get('judgment') or {}).get('finish_reason') != 'stop'
+                       or (game.get('judgment') or {}).get('error')
+                       or not isinstance((game.get('judgment') or {}).get('answer'), str)
+                       or not (game.get('judgment') or {}).get('answer', '').strip()
+                       for game in row['games'])):
             raise ValueError(f"Arena-Hard incomplete paired judgments: {question['uid']}")
         selected.append(row)
     return selected

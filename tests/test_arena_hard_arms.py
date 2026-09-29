@@ -89,10 +89,16 @@ def test_the_comparison_is_named_for_the_one_thing_every_arm_shares(tmp_path, mo
             for i in range(10):
                 scores = ("B>A", "A>B") if i < n_wins else ("A>B", "B>A")
                 rows.append({"uid": f"{category}/{i}", "category": category, "model": arm,
-                             "games": [{"score": s} for s in scores]})
+                             "judgment_protocol": "arena-paired-completion-v1",
+                             "games": [{"score": s, "status": "complete", "request_hash": f"fixture-{j}",
+                                        "judgment": {"answer": f"[[{s}]]", "finish_reason": "stop"}}
+                                       for j, s in enumerate(scores)]})
         raw.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
     monkeypatch.setattr(pool_mod.arena_hard_judge, "main", fake_judge)
+    # This fixture isolates score pooling; real provenance checks have separate tests.
+    monkeypatch.setattr(pool_mod.arena_hard_runner, "validate_generation_protocols",
+                        lambda *args: {"status": "matched"})
     cfg = OmegaConf.load("configs/eval/arena_hard.yaml")
     cfg.vendor_dir = str(tmp_path / "vendor")
     pathlib.Path(cfg.vendor_dir).mkdir()
