@@ -200,7 +200,7 @@ def judge_agreement(client, model, prompt, max_tokens, structured=True, reasonin
         parsed = json.loads(res.content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
     except json.JSONDecodeError:
         parsed = {}
-    accepted = (res.finish_reason == "stop" and parsed.get("answer_agreement") is True
+    accepted = (isinstance(parsed, dict) and res.finish_reason == "stop" and parsed.get("answer_agreement") is True
                 and parsed.get("trace_compatible") is True)
     return {"verdict": "yes" if accepted else "no", "raw": res.content,
             "finish_reason": res.finish_reason, "judge_cost": res.cost,
@@ -383,11 +383,12 @@ def backfill(cfg, out):
                 print(f"backfill row={key[0]} attempt={attempt+1} error={type(exc).__name__}; reservation retained",flush=True)
         return rec
     with ThreadPoolExecutor(max_workers=int(cfg.backfill.concurrency)) as pool:
-        for future in as_completed([pool.submit(job, t) for t in targets]):
+        for finished, future in enumerate(as_completed([pool.submit(job, t) for t in targets]), 1):
             rec = future.result()
             if rec["accepted"]:
                 accepted[(rec["row"],rec["turn"])] = rec
-            print(f"backfill accepted={len(accepted)}/{len(targets)} target-cost-reserved=${charged:.3f}", flush=True)
+            if finished % 25 == 0 or finished == len(targets):
+                print(f"backfill finished={finished}/{len(targets)} accepted={len(accepted)} target-cost-reserved=${charged:.3f} judge-cost-reserved=${judge_charged:.3f}", flush=True)
     unresolved = [t for t in targets if (t["row"], t["turn"]) not in accepted]
     settled = [json.loads(p.read_text(encoding='utf-8')) for p in (out/'backfill_receipts').glob('*.json')]
     infrastructure = [t for t in unresolved if not any(r['row']==t['row'] and r['turn']==t['turn']

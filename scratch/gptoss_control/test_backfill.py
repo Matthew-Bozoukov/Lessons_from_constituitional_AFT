@@ -35,7 +35,9 @@ def test_both_checks_required_and_truncation_rejected():
         ('{"answer_agreement":false,"trace_compatible":true}', 'stop','no'),
         ('{"answer_agreement":"true","trace_compatible":true}', 'stop','no'),
         ('{"answer_agreement":true,"trace_compatible":true}', 'length','no'),
-        ('YES', 'stop','no')]:
+        ('YES', 'stop','no'),
+        ('[]', 'stop','no'),
+        ('null', 'stop','no')]:
         assert judge_agreement(Judge(content,finish), 'mock','prompt',512)['verdict'] == verdict
 
 
