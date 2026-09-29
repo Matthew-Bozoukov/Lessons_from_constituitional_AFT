@@ -88,6 +88,11 @@ sources:
 # 2026-09-22-nosynth-mix, THE base every arm pins from 2026-09-22, is that mixture with every row
 # passed through the spec filter (scratch/rebuild_nosynth_filtered.py: 452 rejected rows replaced
 # at the same per-source counts, surviving traces kept, replacements traced by this block's rule).
+# 2026-09-29-nosynth-mix, THE base every arm pins from 2026-09-29, is 2026-09-22 @ 378ec1ee with
+# only its 1,054 apigen rows changed: tool schemas and calls parsed from xLAM prompt text into
+# native `tools` + `tool_calls` (scratch/repack_nosynth_native_tools.py). Every other row is
+# byte-identical, so the filter verdicts and traces carry over. Its stats count tokens on the
+# preserved render (traces included); the 09-22 stats counted traced rows without their traces.
 reasoning_backfill:
   model: "qwen/qwen3.6-27b"            # OpenRouter id; pinned to alibaba in providers.yaml
   judge: "google/gemini-3-flash-preview"
