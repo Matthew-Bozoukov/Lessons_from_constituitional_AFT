@@ -61,6 +61,10 @@ Artifacts are under the original eval repository's
 raw response tokens and decoded arguments, corrected classification, results,
 config, code, renderer snapshots, and provenance.
 
+Published revision: `41259d741f4eca6d80089308c057fdbc29f4a920` in
+`dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth`. All 12 uploaded files
+were downloaded at that revision and verified byte for byte.
+
 Recompute classification without sampling:
 `uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_control.tool_prompt_ablation --analyze`
 
