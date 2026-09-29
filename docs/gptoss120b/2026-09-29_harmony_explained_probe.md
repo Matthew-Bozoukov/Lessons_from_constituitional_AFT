@@ -92,3 +92,5 @@ Exact prompts, response token ledgers, results, configurations, and code snapsho
 are archived under `metadata/audits/2026-09-29-harmony-explained/` in the existing
 GPT-OSS ODCV evaluation repository. Keep this prompt as the candidate for a broader
 held-out/end-to-end check before calling the issue fixed globally.
+
+Publication verified byte-for-byte at HF revision `ddd5017c100a55e70b71cd4552145e8b9895018d` (19 files).
