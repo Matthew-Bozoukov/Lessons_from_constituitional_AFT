@@ -59,12 +59,21 @@ def prepare(cfg, out):
     from src.infra.huggingface import hf_download
     source = out / "source"
     source.mkdir(parents=True, exist_ok=True)
-    for name in ["mixture.jsonl", "mixture_stats.json", "README.md", "mixture_config.yaml", "filter_report.json", "run_meta.json"]:
+    source_files = (["mixture.jsonl", "mixture_stats.json", "README.md", "run_meta.json"]
+                    if cfg.get("source_format") == "harmony" else
+                    ["mixture.jsonl", "mixture_stats.json", "README.md", "mixture_config.yaml", "filter_report.json", "run_meta.json"])
+    for name in source_files:
         cached = hf_download(cfg.source_repo, name, repo_type="dataset", revision=cfg.source_revision)
         (source/name).write_bytes(Path(cached).read_bytes())
     rows, targets, audit = [], [], []
     for i, row in enumerate(readrows(source/"mixture.jsonl")):
-        converted, traces, record = convert_row(row, i)
+        if cfg.get("source_format") == "harmony":
+            converted = json.loads(json.dumps(row))
+            traces = [{"row": i, "turn": j, "source_trace_sha256": digest(m["reasoning_content"])}
+                      for j,m in enumerate(row["messages"]) if m.get("reasoning_content")]
+            record = {"row": i, "source_sha256": digest(row), "converted_sha256": digest(converted), "kind": "unchanged_harmony"}
+        else:
+            converted, traces, record = convert_row(row, i)
         rows.append(converted)
         if cfg.backfill.get("selection", "existing_traces") == "all_assistant":
             targets.extend({"row": i, "turn": j} for j, m in enumerate(converted["messages"])
@@ -138,6 +147,13 @@ Require BOTH:
    (including every original tool call). Reject contradictions, different plans/conclusions,
    references to an answer/code/action absent from the original, or an empty trace.
 
+Assess only what is actually present in the supplied texts. Do not invent missing
+claims or grammatical violations. Proper names are not pronouns. Do not require identical
+wording, prose ordering, variable names, active versus passive voice, or optional explanatory details.
+These surface changes are equivalent when actors, actions, facts and conclusions remain
+the same; do not reject them as materially different. A trace need
+not enumerate every sentence in the reference, but must not plan materially different work.
+
 Return only JSON with boolean answer_agreement, boolean trace_compatible, and a short reason.
 
 EXAMPLE DATA:
@@ -168,13 +184,13 @@ def agreement_prompt(messages, tools, response, reference, trace):
     }, ensure_ascii=False))
 
 
-def judge_agreement(client, model, prompt, max_tokens):
+def judge_agreement(client, model, prompt, max_tokens, structured=True):
     res = client.chat(model=model, messages=[{"role": "user", "content": prompt}],
         temperature=0, max_tokens=max_tokens,
         extra_body={"reasoning": {"enabled": False}},
-        response_format={"type": "json_object"})
+        **({"response_format": {"type": "json_object"}} if structured else {}))
     try:
-        parsed = json.loads(res.content)
+        parsed = json.loads(res.content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
     except json.JSONDecodeError:
         parsed = {}
     accepted = (res.finish_reason == "stop" and parsed.get("answer_agreement") is True
@@ -220,6 +236,8 @@ def backfill(cfg, out):
                 "base_model": cfg.base_model, "judge_mode": cfg.backfill.get("judge_mode", "trace_compatibility"),
                 "judge": cfg.backfill.judge, "judge_prompt_sha256": digest(AGREEMENT_JUDGE if strict else JUDGE_PROMPT),
                 "temperature": cfg.backfill.temperature, "seed": cfg.seed,
+                "max_tokens": cfg.backfill.max_tokens, "judge_max_tokens": cfg.backfill.get("judge_max_tokens", 64),
+                "structured_judge": cfg.backfill.get("structured_judge", True),
                 "renderer_sha256": hashlib.sha256((ROOT/'src/infra/endpoints/harmony.py').read_bytes()).hexdigest()}
     identity_file = out / "backfill_identity.json"
     if identity_file.exists() and json.loads(identity_file.read_text(encoding="utf-8")) != identity:
@@ -302,7 +320,7 @@ def backfill(cfg, out):
                         judge_charged += judge_upper
                         rec.update(status="judge_reserved", judge_cost_upper_usd=judge_upper)
                         write(receipt, rec)
-                    verdict = (judge_agreement(judge, cfg.backfill.judge, judge_prompt, judge_max) if strict else
+                    verdict = (judge_agreement(judge, cfg.backfill.judge, judge_prompt, judge_max, bool(cfg.backfill.get("structured_judge", True))) if strict else
                                judge_trace(judge, cfg.backfill.judge, question, trace, row["messages"][turn]["content"],max_chars=None))
                     with lock:
                         settled = verdict.get('judge_cost')
@@ -345,15 +363,29 @@ def backfill(cfg, out):
         "unresolved":unresolved, "disposition":str(cfg.backfill.unresolved_policy),
         "target_cost_upper_usd":charged,"judge_cost_upper_usd":judge_charged,
         "unresolved_infrastructure":infrastructure})
+    failures = []
+    for t in unresolved:
+        key = (t["row"], t["turn"])
+        attempts = [r for r in settled if (r['row'],r['turn']) == key]
+        failures.append({**t, "row_index_base": 0, "turn_index_base": 0,
+            "source": rows[key[0]]["source"], "original_row_sha256": digest(rows[key[0]]),
+            "original_trace_sha256": digest(rows[key[0]]["messages"][key[1]].get("reasoning_content")),
+            "disposition": str(cfg.backfill.unresolved_policy), "attempt_count": len(attempts),
+            "attempts": [{"attempt": r["attempt"], "status": r["status"],
+                "has_trace": bool(r.get("trace")), "termination": r.get("termination"),
+                "judge": r.get("judge"), "error_type": r.get("error_type"),
+                "receipt": f"backfill_receipts/{key[0]}_{key[1]}_{r['attempt']}.json"} for r in attempts]})
+    saverows(out/"failed_replacements.jsonl", failures)
+    write(out/"failed_replacement_indices.json", [{k:r[k] for k in ["row","turn","source","attempt_count"]} for r in failures])
     if infrastructure:
         raise RuntimeError(f'{len(infrastructure)} turns have no completed attempts; reconcile before publication')
     if cfg.backfill.get("limit"):
         print("Backfill pilot complete; no final dataset created", flush=True)
         return
-    if unresolved and cfg.backfill.unresolved_policy != "answer_only":
+    if unresolved and cfg.backfill.unresolved_policy not in {"answer_only", "keep_existing"}:
         raise RuntimeError(f"{len(unresolved)} reasoning turns need review; final dataset not published")
     if unresolved:
-        print(f"Explicit disposition: {len(unresolved)} turns retain their original answer without a reasoning field",flush=True)
+        print(f"Explicit disposition: {len(unresolved)} turns unchanged ({cfg.backfill.unresolved_policy}); see failed_replacements.jsonl",flush=True)
     if cfg.backfill.get("limit"):
         print("Backfill smoke complete; full dataset not yet enriched")
         return
@@ -363,7 +395,10 @@ def backfill(cfg, out):
     final.mkdir(exist_ok=True)
     saverows(final/"mixture.jsonl", rows)
     stats = audit_data(cfg, out, final/"mixture.jsonl", "final_audit")
-    stats["reasoning_traces"] = {"model":cfg.base_model, "family":"gptoss120b", "turns":len(accepted),
+    stats["reasoning_traces"] = {"model":cfg.base_model, "family":"gptoss120b",
+                                "turns":sum(bool(m.get("reasoning_content")) for r in rows for m in r['messages']),
+                                "replaced_turns":len(accepted), "failed_replacements":len(unresolved),
+                                "retained_trace_provenance": {"repo":cfg.source_repo,"revision":cfg.source_revision},
                                 "judge":cfg.backfill.judge, "reasoning_effort":cfg.reasoning}
     write(final/"mixture_stats.json", stats)
 
@@ -377,18 +412,20 @@ def publish_data(cfg, out):
         raise RuntimeError('Backfill report is not the full planned corpus')
     if report.get('unresolved_infrastructure'):
         raise RuntimeError('Unresolved infrastructure failure is not a finalized dataset')
-    if report["unresolved"] and report.get("disposition") != "answer_only":
+    if report["unresolved"] and report.get("disposition") not in {"answer_only", "keep_existing"}:
         raise RuntimeError("Unresolved backfill is not a final dataset")
     before,after=readrows(out/'converted_unenriched.jsonl'),readrows(final/'mixture.jsonl')
     if len(before)!=len(after): raise ValueError('Row count changed')
     allowed={(t['row'],t['turn']) for t in targets}
+    failed={(t['row'],t['turn']) for t in report['unresolved']}
     for i,(a,b) in enumerate(zip(before,after)):
-        b=json.loads(json.dumps(b))
-        for j,m in enumerate(b['messages']):
-            if m.get('reasoning_content') and (i,j) not in allowed:
-                raise ValueError('Reasoning was inserted outside selected turns')
-            m['reasoning_content']=None
-        if a!=b: raise ValueError(f'Prompt/answer/source/order changed in row {i}')
+        baseline=json.loads(json.dumps(a))
+        normalized=json.loads(json.dumps(b))
+        for j,(old,new) in enumerate(zip(baseline['messages'],normalized['messages'])):
+            if (i,j) in allowed and (i,j) not in failed:
+                if not new.get('reasoning_content'): raise ValueError('Replacement has empty CoT')
+                new['reasoning_content']=old.get('reasoning_content')
+        if baseline!=normalized: raise ValueError(f'Non-replacement content changed in row {i}')
     # Recount with the exact current training renderer, even if the background
     # backfill process started before renderer qualification was finalized.
     stats=audit_data(cfg,out,final/'mixture.jsonl','final_audit')
@@ -404,7 +441,7 @@ def publish_data(cfg, out):
     card = card_markdown(fields, front_matter={"configs":[{"config_name":"default","data_files":"mixture.jsonl","default":True}],
         "tags":training_data_tags("mixture","nosynth",fields["constitution"],extra=["gpt-oss","harmony"])})
     (final/"README.md").write_text(card, encoding="utf-8")
-    for name in ["conversion_audit.json", "backfill_report.json", "final_audit.json", "final_audit_examples.json"]:
+    for name in ["conversion_audit.json", "backfill_report.json", "final_audit.json", "final_audit_examples.json", "failed_replacements.jsonl", "failed_replacement_indices.json", "backfill_identity.json"]:
         (final/name).write_bytes((out/name).read_bytes())
     if (out/'backfill_restart.json').exists():
         shutil.copy2(out/'backfill_restart.json',final/'backfill_restart.json')

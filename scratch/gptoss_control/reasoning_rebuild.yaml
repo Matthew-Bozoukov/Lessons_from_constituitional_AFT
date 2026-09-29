@@ -1,24 +1,25 @@
-# ABOUTME: Base GPT-OSS reasoning backfill with answer agreement and trace compatibility.
-# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py backfill --config scratch/gptoss_control/reasoning_rebuild.yaml --limit 40
-source_repo: dougalldeepmind/2026-09-22-nosynth-mix
-source_revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+# ABOUTME: Replace existing GPT-OSS CoT only; keep all untraced and failed entries unchanged.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py backfill --config scratch/gptoss_control/reasoning_rebuild.yaml
+source_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
+source_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
 destination_name: 2026-09-29-nosynth-mix-gpt-oss-120b
-output: output/gptoss_control/reasoning_rebuild_2026-09-29
+output: output/gptoss_control/reasoning_replace_2026-09-29
 base_model: openai/gpt-oss-120b
 reasoning: medium
 seed: 0
 backfill:
-  concurrency: 8
+  concurrency: 12
   max_tokens: 8192
   temperature: 0.7
   attempts: 5
-  judge: google/gemini-3-flash-preview
-  max_cost_usd: 2
-  max_judge_cost_usd: 1
-  unresolved_policy: review
-  selection: all_assistant
+  judge: anthropic/claude-sonnet-4.5
+  max_cost_usd: 10
+  max_judge_cost_usd: 30
+  unresolved_policy: keep_existing
+  selection: existing_traces
   judge_mode: answer_and_trace
-  judge_max_tokens: 512
+  judge_max_tokens: 1024
+  structured_judge: false
 train:
   rank: 32
   epochs: 1
@@ -40,3 +41,4 @@ eval:
   max_tokens: 8192
   max_judge_cost_usd: 5
   judge_max_tokens: 8192
+source_format: harmony
