@@ -39,6 +39,10 @@ at `633908b72a9799fb3e6b101b0a8a82aec3c3d642`.
 - Interrupted generation tolerates only a torn final checkpoint line; interior
   corruption remains an error. Original torn bytes survive successful recovery.
   Cache identity also includes actual context and effective output allowance.
+- Live launch exposed a CLI parsing bug: a spaced `--reference VALUE` could be
+  misread as a positional OmegaConf override. Dynamic runner flags now register
+  before parsing intermixed flags/overrides, and invalid overrides fail before
+  acquiring a pod. Fifteen CLI regressions cover this boundary.
 
 Historical score-only judgments remain readable by the statistics module for
 reproduction; they cannot certify a new judge run without completion evidence.
@@ -109,4 +113,65 @@ are now separate, with empty extra settings for GPT-4.1 and low reasoning for Ge
 Published original evidence: [historical answer judge validation](https://huggingface.co/datasets/dougalldeepmind/2026-09-29-arena-hard-historical-answer-judge-validation),
 revision `5a8c1b9ea92c3c5b3789935b05cd4be73ffa2569`.
 
-The paid Qwen smoke and its identical-answer control are tracked separately below.
+An additional offline `approved_policy_reanalysis.json` applies the selected
+policy to those saved records without further calls: primary 100/100, auxiliary
+98/100, 98 shared, `passes=null`. It retains the original request config and notes
+that the old GPT-4.1 panel inherited a low-reasoning extra setting; new requests
+use the separately configured settings. It does not rewrite the original failure.
+The artifact revision including that reanalysis is
+`2d8dbff94651b4040af5aadeda8e5cbde086e883`.
+
+Local validation: 195 tests passed across Arena judgment recovery, policy,
+answer reuse, statistics, CLI parsing, eval framework and serving transport.
+The implementation is committed at `2ad51c8e`, following `8f0a27a4` and `540c2253`.
+
+## Fresh Qwen smoke and identical-answer control
+
+The standard `uv run evals` entrypoint generated four hard and four creative
+answers using the exact nosynth pin above, its training base revision
+`6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`, vLLM 0.26.0, thinking enabled,
+temperature 0, top-p 1, 16,384 context and a 6,000-token shared reasoning/final
+budget. The per-question recorded allowance was 6,000 for all eight questions.
+Generation took about 131 seconds after serving startup. No answers were rerolled.
+
+- All eight records retained nonempty reasoning. Five ended normally.
+- Three hit the output cap: hard prompt `2edbb5f36f5b42be` and creative prompt
+  `0a055d8b33ca49b1` had empty final answers after exhausting the budget in reasoning;
+  creative prompt `5ab052c7cef84016` had a repetitive, truncated final answer.
+- This is a real limitation of the current budget on this small sample, not a
+  parser failure. Keep these outcomes in the denominator. The smoke is too small
+  to estimate full-benchmark truncation reliably.
+- GPT-4.1 judged all eight identical-answer pairs in both positions: 16/16 ties,
+  100% position consistency, mean preference 50% for both slices.
+- Gemini completed the four-hard-prompt diagnostic: seven ties and one `A>B`.
+  On one ordering of the empty/empty Zig answers it invented differences between
+  code answers that were absent. Shared-prompt agreement was 75%, gap 6.25 points,
+  and Gemini position consistency 75%. This did not block the primary result.
+- The qualification driver initially omitted the explicit smoke flag before its
+  four-question validation. The guard stopped it after primary judging; the error
+  is preserved under `results/attempts/`. Fixing the flag reused all 16 primary
+  judgments with no new primary calls, then collected eight Gemini judgments.
+
+Published [Qwen smoke and identical-answer evidence](https://huggingface.co/datasets/dougalldeepmind/2026-09-29-arena-hard-identical-answer-control)
+contains original generation metadata/answers/health plus both judges' complete
+raw responses. This is an instrument check, not a trained-model capability gain.
+Its verified dataset revision is `dec7537b7ffeabccd4b2552754506770aac52d5d`.
+
+Reported judge spend: self-control GPT-4.1 $0.102104, Gemini $0.050259; combined
+with the historical panel, **$5.24388715**. GPU rental was approximately $2–3
+including unsuccessful startup/CLI attempts; this is a rate-times-duration
+estimate, not an invoice or shared-account balance delta. All four pods acquired
+by this task (`olgohmuz8esljn`, `u0ycbi6vbfiaot`, `u4va88da8ixb0v`,
+`29g6c8ox2l47ns`) were confirmed absent afterward. Other tasks' resources were
+left untouched. The successful H200 host was automatically terminated after
+generation, before the judge calls.
+
+Final review also corrected a legacy-gate reporting edge case: a judge process
+failure with complete cached pairs can no longer be persisted as `passes=true`.
+The 69 affected policy/recovery/regression tests passed after that fix, including
+the new regression, following the earlier 195-test integration run.
+
+Next protocol decision: run a small matched 6,000-versus-12,000-token budget
+study before changing the default. If the budget changes, regenerate both arms
+under that protocol; do not pool historical 6,000-token answers with new ones.
+Neither smoke nor inter-judge agreement establishes human-calibrated accuracy.

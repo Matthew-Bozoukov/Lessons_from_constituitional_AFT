@@ -3,6 +3,10 @@
 
 # MMLU and Arena-Hard cleanup, 2026-09-29
 
+Subsequent Arena repairs, live judging evidence and the user-approved GPT-4.1
+primary policy are recorded in [the qualification follow-up](arena_hard_qualification_2026-09-29.md).
+The Arena section below describes the earlier cleanup pass.
+
 ## MMLU
 
 The user selected the existing 570-question screen: 10 questions per each of 57

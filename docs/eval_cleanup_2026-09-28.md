@@ -14,6 +14,13 @@ Docker qualification, or scientific judge calibration has passed.
 
 ## September 29 scope decisions and follow-up
 
+Arena-Hard follow-up: [qualification evidence and repairs](arena_hard_qualification_2026-09-29.md)
+supersede the initial judge-readiness assessment. GPT-4.1 completed all 100 saved
+answer pairs; Gemini completed 98 and disagreed substantially. The user selected
+GPT-4.1 as primary, with Gemini coverage/agreement reported as diagnostics.
+Complete primary judgments remain required. Report version 3 makes this policy
+explicit; it does not certify either judge as scientifically calibrated.
+
 Latest scope: **Qwen3.6-27B only**. GPT-OSS/Tinker target work is parked;
 previously committed changes remain available but require no further work now.
 Qwen SWE-bench Lite, ODCV and MASK remain excluded from further edits.

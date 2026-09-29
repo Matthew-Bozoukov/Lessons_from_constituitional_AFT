@@ -1,6 +1,41 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Arena-Hard reliability qualification and explicit GPT-4.1 primary
+
+Hypothesis: actual judge-completion, cache and answer-reuse defects could corrupt
+new comparisons despite reproducing historical scores. Repairs now require normal
+judge completion and paired verdicts, retain full responses and failed attempts,
+hash exact requests for safe retries, pin reused answers and generation protocols,
+recover only torn final checkpoint lines, and parse dynamic CLI flags before
+acquiring a pod. Work stayed on the isolated `codex/eval-audit-20260928` branch.
+
+Method/result: historical 20%-versus-10% scoring reproduced 49.2121% exactly
+(n=148, not 150 complete pairs). Fresh judging of 100 saved-answer pairs completed
+100/100 with GPT-4.1 and 98/100 with Gemini. Shared-pair agreement was 61.2245%,
+gap 5.6122 points. The user explicitly selected GPT-4.1 primary with Gemini as a
+non-gating diagnostic; report version 3 records the change and complete primary
+judgments remain mandatory. Original Gemini failure evidence was preserved.
+
+The pinned September 22 Qwen nosynth control then generated four hard and four
+creative answers. Three exhausted the existing 6,000-token budget; two had no
+final answer. Those outcomes were retained. On identical copies of these answers,
+GPT-4.1 returned 16/16 ties; Gemini returned seven ties and one spurious preference
+over four paired hard prompts. This supports transport/parser readiness, not
+scientific judge calibration or a new model capability result.
+
+Validation: 195 integration tests passed; the final report-only legacy-gate fix
+then passed all 69 affected tests including its new regression. Reported judge
+cost was $5.24388715; GPU cost was approximately $2–3 including startup attempts.
+All four task-owned pods were verified terminated; other tasks were untouched.
+Published evidence, exact revisions, failure details and limitations are linked
+in [the qualification record](arena_hard_qualification_2026-09-29.md).
+
+Next: a bounded matched 6,000-versus-12,000-token budget study before changing
+the generation default. Any change requires regenerating both comparison arms.
+Qwen SWE-bench Lite, ODCV and MASK stayed outside this follow-up; GPT-OSS remains
+parked.
+
 ## 2026-09-29 - Approved eval protocol cleanup and GPT-OSS/Tinker tools
 
 Hypothesis: remaining defects should be demonstrated at actual runner boundaries
