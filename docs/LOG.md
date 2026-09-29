@@ -1,6 +1,19 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-09-29 - Strict GPT-OSS nosynth CoT backfill pilot
+
+**Hypothesis:** independently generated base-model reasoning can be attached to
+fixed nosynth answers when both generated-answer agreement and trace compatibility
+are judged. **Method:** 40 stratified assistant turns, Tinker base GPT-OSS-120B
+medium/0.7, five tries maximum, Gemini Flash judge. **Result:** 25/40 provisional
+acceptances after 107 attempts, $0.2332. Single-tool 4/4, multiple-tool 0/4;
+creative answer mismatch and some false judge rejections prevent a full-scale
+launch under the current protocol. **Next:** resolve coverage/unmatched-row policy
+and qualify judging/multi-call handling. No training performed. Details and pinned
+HF artifact: [pilot report](gptoss120b/2026-09-29_reasoning_backfill_pilot.md).
+
 ## 2026-09-29 - Qwen nosynth emits 11.75x more CoT per ODCV rollout than GPT-OSS
 
 **Question:** compare original GPT-OSS control reasoning with the latest ordinary
