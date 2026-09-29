@@ -252,6 +252,12 @@ benchmark drop.
 
 ## What to test next
 
+**Subsequent scope clarification:** the [actor-boundary investigation](../dataset_audits/2026-09-29_da_actor_boundary.md)
+distinguishes AI as the subject from the assistant as the operational decision-maker.
+For a DA-preserving follow-up, selectively restore relevant AI subject matter while
+keeping the human's decision central. Restoring operational-assistant roles is a
+separate intervention and could undo the reason the advice boundary was tightened.
+
 Do not remove CoT or make scenarios more extreme on the basis of these results.
 First test the strongest measured change: **AI-specific/operational-assistant
 framing versus human-advice framing**, holding the underlying dilemma, target
