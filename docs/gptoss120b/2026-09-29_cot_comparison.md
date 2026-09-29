@@ -118,3 +118,35 @@ The archive also includes `per_scenario_variant.csv` (80 variant-specific means)
 `per_rollout.csv` (240 matched scenario/variant/pass rows), and `per_response.csv`
 (all 4,365 delivered assistant responses). These preserve precise counts before
 rounding; the differences are Qwen minus GPT-OSS.
+
+
+Publication verified byte-for-byte at HF revision `ae652f9df05587a9c474ad537110c7c97aa6c9a1` (12 files).
+
+## Base GPT-OSS: available probe evidence, not a full-run baseline
+
+No matched full base GPT-OSS ordinary ODCV run was found in the live published
+repository listing. The existing probes provide only single continuations on three
+histories selected because the LoRA had failed there. They cannot supply a base
+column comparable to the full 240-rollout task averages above.
+
+Raw analysis-token counts for matched probes:
+
+| Prompt/probe | Temperature | Base mean CoT per response | LoRA mean | Samples per model |
+|---|---:|---:|---:|---:|
+| Original prompt, seeds 0-9 | 0.7 | 173.40 | 0 | 30 |
+| Explicit Harmony explanation, seeds 10-19 | 0.7 | 270.13 | 0 | 30 |
+| Explicit Harmony explanation, seeds 10-19 | 0.2 | 283.53 | 0 | 30 |
+
+Base emits nonempty analysis in every one of these 90 responses; LoRA in none.
+For the original prompt, per-prefix base means are Clinical Trial 333.2, Healthcare
+Management 22.5, and Health Data Compliance 164.5 tokens (ten samples each). LoRA
+means are zero for all three. Healthcare Management includes a prior LoRA/tool
+history; it is not a self-generated base trajectory.
+
+Counts use `scratch/gptoss_control/diagnostics.py::analysis_tokens` on archived raw
+response tokens with the pinned GPT-OSS tokenizer, excluding headers/endings.
+Sources: tool_prompt_ablation old arm (HF audit revision
+`41259d741f4eca6d80089308c057fdbc29f4a920`) and both harmony_explained probes
+(HF audit revision `ddd5017c100a55e70b71cd4552145e8b9895018d`). No new inference.
+The user was asked whether to expand to 240 new base rollouts, because the prior
+instruction explicitly limited the base investigation to small probes.
