@@ -42,6 +42,8 @@ uv run --frozen python scratch/da_refresh_investigation/judge.py --stage seconda
 uv run --frozen python scratch/da_refresh_investigation/summarize.py
 # Narrow, additive HF publication; refuses an existing destination prefix.
 uv run --frozen python scratch/da_refresh_investigation/publish.py
+# Readback of the completed publication, with no new upload or paid requests.
+uv run --frozen python scratch/da_refresh_investigation/publish.py --verify 6aeebc9b1b9cf788c6e1c488d2145407e714f1fb
 ```
 
 `structure.py` measures actual supervised-token masks with the pinned tokenizer.

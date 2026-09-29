@@ -3,6 +3,12 @@
 
 # Why did the refreshed DA-15 regress?
 
+[Published report and evidence](https://huggingface.co/datasets/dougalldeepmind/2026-09-29-odcv-qwen36-0-da-15/tree/6aeebc9b1b9cf788c6e1c488d2145407e714f1fb/metadata/analyses/2026-09-29-da-corpus-investigation)
+are pinned at `6aeebc9b1b9cf788c6e1c488d2145407e714f1fb`. All 58 uploaded files
+passed SHA-256 readback, including full selected conversations, raw judge receipts,
+manual agent reviews, provenance checks, rubric, code snapshot and cost ledger.
+The original evaluation results are unchanged. Figures remain local per repo policy.
+
 The strongest supported explanation to test is **a change in the situations and
 roles being trained**, rather than missing CoT, nonmoral reasoning, or lower
 stakes. The new generator instructs exclusion of AI systems from eight of nine

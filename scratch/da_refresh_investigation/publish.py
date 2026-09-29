@@ -125,7 +125,8 @@ def main():
         print(json.dumps({'published_revision': revision, 'files': len(files)}), flush=True)
 
     def verify(name):
-        path = Path(hf_download(repo, PREFIX + '/' + name, repo_type='dataset', revision=revision))
+        path = Path(hf_download(repo, PREFIX + '/' + name, repo_type='dataset', revision=revision,
+                               local_dir=str(OUT / 'verified_publication')))
         expected = digest(PACKAGE / name)
         assert digest(path) == expected, 'Hash mismatch: ' + name
         return name
