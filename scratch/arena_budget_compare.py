@@ -260,7 +260,7 @@ def observation(row):
             "answer_sha256": hashlib.sha256(generation["answer"].encode("utf-8")).hexdigest()}
 
 
-def replication_observation(current, historical):
+def replication_observation(current, historical, *, left_label="fresh", right_label="historical"):
     result = {}
     for key in ("raw", "think", "answer"):
         left, right = current["generation_record"][key], historical["generation_record"][key]
@@ -270,8 +270,9 @@ def replication_observation(current, historical):
                 break
             prefix += 1
         result[key] = {"identical": left == right, "common_prefix_chars": prefix,
-                       "fresh_is_prefix_of_historical": right.startswith(left),
-                       "historical_is_prefix_of_fresh": left.startswith(right)}
+                       f"{left_label}_chars": len(left), f"{right_label}_chars": len(right),
+                       f"{left_label}_is_prefix_of_{right_label}": right.startswith(left),
+                       f"{right_label}_is_prefix_of_{left_label}": left.startswith(right)}
     return result
 
 
@@ -307,9 +308,15 @@ def analyze(out):
                 if low[key] != arms["historical"][key]},
             "interpretation": "Text equality/prefix diagnostics only; differences do not identify their cause."}
     manual_review = (out / "results/manual_review.md").exists()
+    paired_budget_text = {
+        "by_uid": {uid: replication_observation(low["rows"][uid], high["rows"][uid],
+                    left_label="budget6000", right_label="budget12000") for uid in sorted(low["rows"])},
+        "interpretation": "Exact saved-text equality and prefix observations only; differences do not identify their cause. "
+                          "Prefix flags also hold for empty strings; character lengths distinguish those cases."}
     summary = {"instrument_study": True, "capability_comparison": False, "calibration_status": "not_assessed",
                "limitations": LIMITATION, "matched_pair": provenance["matched_pair"],
                "by_uid": per_uid, "by_slice": aggregate,
+               "paired_budget_text": paired_budget_text,
                "historical_role": "descriptive_replication_only" if "historical" in arms else None,
                "historical_replication": historical_replication,
                "manual_review": "results/manual_review.md" if manual_review else None,
@@ -324,7 +331,7 @@ def analyze(out):
         for alias in BUDGETS:
             fields += [str(row[alias][key]) for key in ("finish_reason", "empty_answer", "reasoning_chars", "answer_chars")]
         lines.append("| " + " | ".join(fields) + " |")
-    lines += ["", "Full slice aggregates and any historical replication are in `results.json`.",
+    lines += ["", "Full slice aggregates, paired budget text equality/prefix diagnostics, and any historical replication are in `results.json`.",
               "Original metadata and raw transcripts are retained under `metadata/inputs/` and `rollouts/inputs/`.",
               "No quality or health conclusion is inferred from these counts; qualitative review is separate."]
     if manual_review:
