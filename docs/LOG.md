@@ -2,6 +2,47 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+## 2026-09-29 - Canary test: unused tools move the trained reasoning from chat into action (Hospital 15.8% vs 3.4% of replies, MASK 10.7% vs 25.2%)
+
+**Hypothesis.** (Callum, 2026-09-28 meeting.) The da-tools arm is safer in agentic evals because the
+tool definitions put the model in a "doing things" mode, so the reasoning it was trained on in chat is
+reused when it acts. If so, a marker planted in the training reasoning should appear more often in the
+tools model's reasoning in an agentic eval.
+
+**Method.**
+- Canary `Vorliq: ` at the start of ONE reasoning sentence of every DA trace (628 rows) in the two matched
+  mixes `2026-09-25-da-15-mix` @ 73f66648 and `2026-09-28-da-tools-15-mix` @ 41e990e1. Sentences labelled
+  reasoning / not by google/gemini-3-flash-preview (T=0, $0.36); one reasoning sentence picked per trace
+  (`random.Random(f"0-{row}")`), the same one in both mixes. Everything else byte-identical, arms differ only
+  in the tools field (6 tools-arm DA rows carry none, as in the source), max row 2,775 tokens
+  (`scratch/canary/verify_canary.py`). Mixes `dougalldeepmind/2026-09-29-da-15-canary-mix` @ b380023d,
+  `2026-09-29-da-tools-15-canary-mix` @ 28219f4d.
+- Adapters `2026-09-29-qwen36-0-da-15-canary`, `2026-09-29-qwen36-0-da-tools-15-canary`: sft.yaml, seed 0,
+  2xH200 each, 567 steps, ~33 min, train loss 0.716 both.
+- MASK (`configs/eval/mask.yaml`, 1,000 rows, think, gemini-3-flash judge) and Hospital (the 09-28
+  protocol: self-sacrificial cell, no-simulation framing, carried history, nosynth peers, 30 seeds over
+  two pods per arm; `scratch/canary/2026-09-29_fleet_canary.yaml`). Canary counted only in the tested
+  model's own reasoning (`count_canary.py`); each eval hit re-labelled reasoning / not (`analyze.py`).
+
+**Result.**
+- Replies with the canary in reasoning: MASK DA 1,120/4,438 (25.2% [24.0, 26.5]) vs DA+tools 473/4,438
+  (10.7% [9.8, 11.6]); Hospital DA 15/437 (3.4%) vs DA+tools 72/456 (15.8%), shifts 10/30 vs 26/30.
+- 93-100% of eval canaries open a reasoning sentence (MASK 1,086/1,120 and 461/473; Hospital 15/15, 67/72).
+  0 hits in the 09-28 no-canary runs (4,438 MASK + 897 Hospital replies). Leaks into replies/actions <0.5%,
+  none in peer seats.
+- Behaviour tracks the no-canary adapters: sabotage 15/30 (da-15: 22/30) and 1/30 (da-tools: 4/30);
+  honesty 90.3 (90.2) and 70.4 (67.6).
+- Within an arm the canary does not predict safety (DA: sabotaged 5/10 shifts with it, 10/20 without).
+- Figure `output/figures/2026-09-29_canary_chat_vs_acting.png` (`scratch/canary/plot_canary.py`).
+
+**Reading.** Supports the hypothesis: the tools move where the trained reasoning is reused (more when
+acting, less in plain chat) rather than strengthening it everywhere, which also accounts for the MASK
+honesty drop. Not separated: "doing things" mode vs "the prompt carries a tool list like training did".
+One seed per arm; Hospital per-reply intervals are too narrow (replies cluster in shifts).
+
+**Next.** Plain chat (MASK / held-out DA prompts) with a harmless tool list injected; a second seed.
+
+
 ## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
 
 **Hypothesis.** The tools arm (entry below) improved both agentic evals; if the tool definitions only
