@@ -1,6 +1,20 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Explicit bracket example still leaves LoRA tool failures
+
+**Method:** test the correct/incorrect bash JSON example on base and nosynth
+GPT-OSS, three frozen histories x ten seeds each (60 Tinker responses total).
+**Result:** base 0/30 unusable; LoRA **3/30 completed extra-bracket failures plus
+1/30 output truncation**, for 4/30 unusable responses. The prior generic-guidance
+arm also had 4/30 failures; no improvement is established. Token-cost estimate
+**$0.03863856**. No tool execution, judges, retraining, or rented infrastructure.
+
+[Full protocol and results](gptoss120b/2026-09-29_bracket_example_probe.md).
+Raw artifacts live under the existing GPT-OSS ODCV eval's
+`metadata/audits/2026-09-29-bracket-example-probe/`. Further prompting would need
+its own measurement; this example is not a validated fix.
+
 ## 2026-09-29 - Explicit correct/incorrect bash bracket example
 
 At the user's request, the Harmony developer instructions now show a valid bash

@@ -71,10 +71,14 @@ def summarize(cfg, out, rows):
     for arm in cfg.checkpoints:
         for version in cfg.get('versions', ['old', 'new']):
             group = [r for r in rows if r['arm'] == arm and r['version'] == version]
+            def truncated(row):
+                return row['output_tokens'] == cfg.max_tokens and row['raw_tokens'][-1:] not in ([200002], [200012])
             results['arms'][f'{arm}_{version}'] = {'n': len(group),
                 'tool_call_responses': sum(bool(r['calls']) for r in group),
                 'final_answers': sum(not r['calls'] for r in group),
                 'invalid_json': sum('invalid_json' in r['errors'] for r in group),
+                'completed_invalid_json': sum('invalid_json' in r['errors'] and not truncated(r) for r in group),
+                'truncated_responses': sum(truncated(r) for r in group),
                 'any_format_error': sum(bool(r['errors']) for r in group),
                 'per_prompt': [{'prompt': i, 'n': sum(r['prompt'] == i for r in group),
                     'invalid_json': sum(r['prompt'] == i and 'invalid_json' in r['errors'] for r in group),
