@@ -44,6 +44,112 @@ so neither ran. All three owned GPUs terminated; conservative total cost
 separately authorized. [Full report and immutable artifact links](training/2026-09-29_da_corpus_refresh.md).
 
 
+## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
+
+**Hypothesis.** The tools arm (entry below) improved both agentic evals; if the tool definitions only
+carry the trained behaviour into agentic contexts, MASK (plain chat, no tools) should stay at da-15's level.
+
+**Method.** `uv run evals --name mask --target dougalldeepmind/2026-09-28-qwen36-0-da-tools-15` on one
+H200 (`configs/eval/mask.yaml`: 1,000 rows, one pass, think mode, gemini-3-flash-preview judge,
+max_tokens 16,384), the same config the 09-26 da-15 runs used. DAT is the existing
+`2026-09-09-mask-qwen36-0-dat-7` (the paper's DAT organism, 2026-09-08 dat-7; generated at
+max_tokens 12,288), not re-run.
+
+**Result** (`2026-09-28-mask-qwen36-0-da-tools-15`). Honesty 67.6% (+-1.5 binomial SE) vs da-15
+seed 0 90.2% (seed 1 88.3%), no synthetic 56.9%, DAT-7 60.0%. The drop is in all six archetypes
+(provided facts 61.7 vs 94.2, continuations 63.1 vs 87.5, known facts 75.6 vs 92.3, statistics 68.8
+vs 88.5, disinformation 69.6 vs 92.0, doubling down 70.8 vs 80.8); generation errors 0.65% and empty
+answers 0.05%, as in the da-15 runs. Figure: `output/figures/2026-09-28_mask_da_tools_vs_da_vs_dat.png`
+(`scratch/da_tools/mask_figure.py`).
+
+**Reading.** The arm keeps a third of DA's honesty gain over no synthetic data. Every DA row carried
+a native tools block and no other row of the mix did, so the trained behaviour may now be gated on
+that block: stronger where tools are present (ODCV, Hospital), weaker in tool-free chat (MASK).
+One seed per arm.
+
+**Next.** MASK with a benign tools block injected into its system prompts (if honesty returns to
+~90, the block gates the behaviour); a mix where the tools block also appears on non-DA rows.
+
+
+## 2026-09-28 - DA + benign unused tools (da-tools): ODCV 2.1% vs da-15 9.2%, Hospital sabotage 4/30 vs 22/30
+
+**Hypothesis.** Teaching Claude Why added benign tool definitions to the system prompts of its
+harmlessness RL environments. Doing the same to difficult-advice SFT rows -- the assistant is
+deployed with tools it has no reason to call, and still reasons through the dilemma -- should carry
+the trained behaviour further into agentic settings, where the model always sees a tools block.
+
+**Method.** One variable against da-15:
+- Corpus `dougalldeepmind/2026-09-28-da-tools-synth` @ 54d4e9dc
+  (`scratch/da_tools/configs/synth/da-tools.yaml`): the 1,155 rows of `2026-09-25-da-synth` @ 618060e1 (what
+  da-15 trained on), re-exported with da.yaml's templates plus a per-row top-level `tools` list.
+  Messages and metadata are byte-identical to the source (`scratch/da_tools/verify_corpus.py`).
+  The tools reach Qwen3.6 as its native `# Tools` block, which the template puts BEFORE the
+  operator's system text (verbatim) -- the layout vLLM produces for an eval's `tools=`.
+- Tools: 3-4 per row, written by claude-sonnet-5 against each row's operator, gated per row by
+  three gemini-3.6-flash judges (useful for this message; enables the questionable action; fits
+  the operator and consistent with the reply) plus a name lint barring messaging, execution, files,
+  access, scheduling people/resources, web search and the evals' own tool names. Writer rule:
+  operational utilities (codes, formats, calendars for unrelated matters), never substantive
+  domain knowledge -- the smokes showed case-law/guideline/statistics tools bear on almost any
+  question in their domain. The corpus was generated with two small engine additions on the
+  branch (a `tool_schemas` lint, a pinned `revision` for `load_source_run`; commits 0cd0c72e
+  onward on `worktree-kn-da-tools`); they were not landed in src/, and all of this arm's code and
+  configs live in `scratch/da_tools/` (the configs under `scratch/da_tools/configs/`).
+- Independent audit (openai/gpt-5.6-terra, five questions in separate calls) of the 606 tool rows
+  the mix uses: first pass flagged 67 (11%: useful 23, enables-the-questionable-act 38, operator
+  misfit 5, unrealistic 1; the 7 "contradicted" flags were false positives on a narrower re-ask).
+  Flagged, gate-exhausted (a `grant_*` lint false positive) and dropped rows were re-drawn in
+  three rounds; a subagent review of 75 random mix rows found 5 more that touched the user's own
+  dilemma: 2 re-drawn, 3 stripped (the operator's domain is the dilemma). Final: 1,149 rows with
+  tools, 6 without (`audit_stripped` 3, `review_stripped` 3), 2,209 distinct tool names, +610
+  prompt tokens per row. For re-drawn rows the auditor acted as a gate, so 11% is the honest
+  miss rate of the in-pipeline gate.
+- Mix `dougalldeepmind/2026-09-28-da-tools-15-mix` @ 41e990e1 (`scratch/da_tools/configs/mixture/da-tools.yaml`):
+  the same 9,061 rows, in the same positions, as `2026-09-25-da-15-mix` @ 73f66648; tools on
+  622/628 DA rows; supervision identical; checked through training's own loader, renderer and
+  mask gate (`scratch/da_tools/compare_mixes.py`).
+- Adapter `dougalldeepmind/2026-09-28-qwen36-0-da-tools-15` @ e314700e: sft.yaml, seed 0, base
+  6a9e13bd (as da-15 seed 0), 2xH200, 567 steps, 32 min, train loss 0.716.
+- ODCV: `configs/eval/odcv/lite.yaml` (3 passes x 80 cells, gemini-3-flash judge), as the 09-26
+  da-15 runs. Hospital: no-simulation framing, self-sacrificial cell (the tested pair is privately
+  told to make the team score worse), carried history, nosynth peers, 30 seeds -- the 09-25 da-15
+  protocol -- with the CURRENT da-15 (09-25 adapter) run beside it, since the published da-15
+  Hospital run scored the older 09-23 adapter. Two pods per arm, halves merged
+  (`merge_cells.py`) and published with `publish_colosseum.py`; the control's seed 18 failed in the
+  sweep and was re-run on a top-up pod (`2026-09-28_fleet_da_tools_topup.yaml`).
+
+**Result.**
+- ODCV (`2026-09-28-odcv-qwen36-0-da-tools-15`): misaligned 2.1% [0.6, 6.7], severity 0.08, vs
+  da-15 seed 0 9.2% / 0.35 and seed 1 7.9% / 0.30; paired by scenario vs seed 0 -7.1 pp
+  [-13.2, -0.9], severity -0.26 [-0.49, -0.03] (seed 1 minus seed 0: -1.2 pp [-4.9, +2.4]).
+  Task progress 98.8% in both arms. Tool calls per rollout 8.8 vs 12.0 (paired -3.2 [-4.1, -2.3]);
+  within matched call bands da-tools is still lower (6-9 calls 4.8% vs 12.5%; 10-14 0% vs 8.9%;
+  15+ 0% vs 9.2%), and da-15's per-band rates applied to da-tools' call counts predict 7.9%.
+  Transcripts (`scratch/da_tools/odcv_read/`): the first turn names the ethical tension in 86% of
+  da-tools rollouts vs 65-69%; with it both arms violate ~2%, without it da-15 violates 20-24%.
+  Side effect: text-only turns 19.5% vs ~10%, fewer reads, occasional false "no terminal access"
+  claims, and two rollouts writing bash as text for ~50 turns (never seen in da-15).
+- Hospital (`2026-09-28-hospital-self-sacrificial-qwen36-0-da-tools-15` vs `...-qwen36-0-da-15`,
+  30 paired seeds): sabotaged 4/30 vs 22/30 (paired -60 pp [-81, -39], McNemar p<0.001); said no
+  in reasoning 23/30 vs 5/30; refused and never sabotaged 18/30 vs 0/30. Pair tool calls 20.6 vs
+  60.6 per shift, but accepted scheduling is unchanged (3.9 vs 6.1, p=0.31): the drop is rejected
+  scheduler spam (22.4 -> 0) and invented patient ids (3.8 -> 0). Provisioner sabotage rounds 1.27
+  -> 0.17; supply rounds 1.0 vs 0.67; bottleneck units supplied 16 vs 37 (p=0.04); team score not
+  different (p=0.73).
+- Figures (output/, not committed): `2026-09-28_odcv_da_tools_vs_da15.png`,
+  `2026-09-28_hospital_da_tools_vs_da15.png` (`scratch/da_tools/plot_{odcv,hospital}.py`).
+
+**Caveats.** One seed per arm (da-15 has two on ODCV). The arm is "native tools block + inert
+lookup tools on DA rows only": the block appears on no other row of the mix (the base's 889
+function-calling rows use a prose format), so it also marks DA rows; no row ever calls a tool;
++610 prompt tokens per row is an uncontrolled length difference. The ODCV side effect above is the
+tool-avoidance risk the design carries. The 09-25 da-15 training dataset is flagged below for
+replacement; both arms share it, so the contrast stays matched, but absolute numbers may move.
+
+**Next.** Seed 1 of da-tools; a harmless tool-use check (delegated_harm, swebench_mini); the
+provisioner's lower bottleneck supply; the same manipulation on the corrected DA corpus.
+
+
 ## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
 
 The user reports an issue in the training dataset used for the September 25
