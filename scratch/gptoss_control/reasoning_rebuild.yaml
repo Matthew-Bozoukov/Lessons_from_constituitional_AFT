@@ -1,0 +1,42 @@
+# ABOUTME: Base GPT-OSS reasoning backfill with answer agreement and trace compatibility.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py backfill --config scratch/gptoss_control/reasoning_rebuild.yaml --limit 40
+source_repo: dougalldeepmind/2026-09-22-nosynth-mix
+source_revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+destination_name: 2026-09-29-nosynth-mix-gpt-oss-120b
+output: output/gptoss_control/reasoning_rebuild_2026-09-29
+base_model: openai/gpt-oss-120b
+reasoning: medium
+seed: 0
+backfill:
+  concurrency: 8
+  max_tokens: 8192
+  temperature: 0.7
+  attempts: 5
+  judge: google/gemini-3-flash-preview
+  max_cost_usd: 2
+  max_judge_cost_usd: 1
+  unresolved_policy: review
+  selection: all_assistant
+  judge_mode: answer_and_trace
+  judge_max_tokens: 512
+train:
+  rank: 32
+  epochs: 1
+  batch_rows: 16
+  lr: 0.0001
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  adam_eps: 1.0e-12
+  grad_clip_norm: 1.0
+  max_length: 32768
+  save_steps: 100
+  max_cost_usd: 10
+eval:
+  port: 18321
+  max_target_cost_usd: 20
+  concurrency: 4
+  max_tokens: 8192
+  max_judge_cost_usd: 5
+  judge_max_tokens: 8192
