@@ -68,6 +68,8 @@ def prepare(out: Path, historical: Path, smoke_source: Path | None):
     if smoke_source:
         protocol['qwen_source_run_meta'] = json.loads((smoke_source / 'metadata' / 'run_meta.json').read_text(encoding='utf-8'))
         shutil.copytree(smoke_source / 'metadata', metadata / 'qwen_generation', dirs_exist_ok=True)
+        shutil.copytree(smoke_source / 'results', results / 'qwen_generation', dirs_exist_ok=True)
+        shutil.copytree(smoke_source / 'rollouts', rollouts / 'qwen_generation', dirs_exist_ok=True)
     else:
         shutil.copy2(historical / 'report' / 'manifest.json', metadata / 'historical_manifest.json')
     dump(metadata / 'sources.json', protocol)
