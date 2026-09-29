@@ -1,12 +1,12 @@
 # ABOUTME: The difficult-advice + benign-tools arm: da.yaml's blend, share and seed with the synthetic
 # ABOUTME: source swapped for the same corpus carrying unused tool schemas. Publishes `<date>-da-tools-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/da-tools.yaml
+# Run: uv run mix --config scratch/da_tools/configs/mixture/da-tools.yaml
 #
 # Matched to da-15 (`2026-09-25-da-15-mix` @ 73f66648, what `2026-09-25-qwen36-0-da-15` and
 # `2026-09-26-qwen36-1-da-15` trained on) in everything but the tools: the same published base
 # @ 378ec1ee, the same 15% share of supervised tokens, the same seed, and a synthetic corpus
 # whose messages are byte-identical to that mix's source (`2026-09-25-da-synth` @ 618060e1;
-# configs/data/synth/da-tools.yaml). Row selection reads only supervised tokens, seed and
+# scratch/da_tools/configs/synth/da-tools.yaml). Row selection reads only supervised tokens, seed and
 # trait, and the tool schemas sit in the masked system turn, so the build should pick the same
 # rows as da-15 -- scratch/da_tools/compare_mixes.py checks that it did.
 seed: 0

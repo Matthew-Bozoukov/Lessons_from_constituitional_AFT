@@ -4,7 +4,7 @@
 #
 # The comparison: `2026-09-28-qwen36-0-da-tools-15` was trained on the SAME 9,061 rows as
 # `2026-09-25-qwen36-0-da-15` (seed 0, same recipe and base revision); the only difference is a
-# `tools` list on 622 of its 628 difficult-advice rows (configs/data/synth/da-tools.yaml). The
+# `tools` list on 622 of its 628 difficult-advice rows (scratch/da_tools/configs/synth/da-tools.yaml). The
 # 2026-09-25 da-15 hospital run scored the OLDER 09-23 da-15 adapter, so the current da-15 is run
 # here too, through the identical protocol: same cell, config, peer and seeds as the 2026-09-25
 # da-15 and 2026-09-27 notools runs. The pods run this branch = main (merged in, no Hospital change) plus

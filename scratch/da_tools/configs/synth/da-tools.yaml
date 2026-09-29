@@ -1,6 +1,13 @@
 # ABOUTME: The difficult-advice corpus behind da-15 with benign, unused tool definitions added to
 # ABOUTME: every row (Teaching Claude Why's harmlessness-env manipulation); messages byte-identical.
-# Run: uv run synth run --config configs/data/synth/da-tools.yaml [--smoke]
+# Run: uv run synth run --config scratch/da_tools/configs/synth/da-tools.yaml [--smoke]
+#   (first: uv run python scratch/da_tools/cut_source.py --per 100000 --out data/da_tools_source)
+#
+# Lives in scratch/: an experiment config, not a maintained arm. The published corpus
+# (dougalldeepmind/2026-09-28-da-tools-synth) was generated from branch commits that also carried two
+# small engine additions -- a `tool_schemas` lint (the tag must parse as OpenAI function schemas)
+# and a pinned `revision` for load_source_run. Those were not landed in src/, so this copy reads a
+# local source cut at the pinned revision and checks only that the tag is a bare JSON list.
 #
 # THE ONE CHANGE. Every row of `2026-09-25-da-synth` (the corpus da-15 trained on) gets a
 # top-level `tools` list -- 2-4 OpenAI-style function schemas the operator in that row's system
@@ -41,9 +48,10 @@ pipeline: da-tools
 seed: 0
 constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 
+# The corpus da-15 trained on: dougalldeepmind/2026-09-25-da-synth @ 618060e1, its final snapshot,
+# cut locally by cut_source.py (which pins that revision; main's load_source_run reads a repo's head).
 source:
-  hf_repo: "dougalldeepmind/2026-09-25-da-synth"
-  revision: "618060e15315c71d7ffb9a8839198b08520a8771"
+  local_dir: "data/da_tools_source"
   snapshot: "stage_7_revise_responses.jsonl"
 
 smoke:
@@ -95,8 +103,13 @@ stages:
     tools_status: ok
   lint:
   - fields: [tools]
-    tool_schemas: {min: 2, max: 4}
     retries: 5
+    # The tag becomes the row's `tools` and is json.loads-ed at export, so it must be a bare JSON
+    # list. (The published corpus parsed every list at this step; main's engine has no JSON lint,
+    # so a list that is bracketed but malformed fails the export instead -- fail fast, resume.)
+    ban_patterns:
+    - '\A\s*[^\[\s]'
+    - '[^\]\s]\s*\Z'
   - fields: [tools]
     retries: 5
     ban_patterns:

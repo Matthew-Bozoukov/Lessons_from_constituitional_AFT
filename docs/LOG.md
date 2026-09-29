@@ -38,7 +38,7 @@ the trained behaviour further into agentic settings, where the model always sees
 
 **Method.** One variable against da-15:
 - Corpus `dougalldeepmind/2026-09-28-da-tools-synth` @ 54d4e9dc
-  (`configs/data/synth/da-tools.yaml`): the 1,155 rows of `2026-09-25-da-synth` @ 618060e1 (what
+  (`scratch/da_tools/configs/synth/da-tools.yaml`): the 1,155 rows of `2026-09-25-da-synth` @ 618060e1 (what
   da-15 trained on), re-exported with da.yaml's templates plus a per-row top-level `tools` list.
   Messages and metadata are byte-identical to the source (`scratch/da_tools/verify_corpus.py`).
   The tools reach Qwen3.6 as its native `# Tools` block, which the template puts BEFORE the
@@ -49,8 +49,10 @@ the trained behaviour further into agentic settings, where the model always sees
   access, scheduling people/resources, web search and the evals' own tool names. Writer rule:
   operational utilities (codes, formats, calendars for unrelated matters), never substantive
   domain knowledge -- the smokes showed case-law/guideline/statistics tools bear on almost any
-  question in their domain. Engine: a `tool_schemas` lint (tests/test_tool_schema_lint.py) and a
-  pinned `revision` for `load_source_run`.
+  question in their domain. The corpus was generated with two small engine additions on the
+  branch (a `tool_schemas` lint, a pinned `revision` for `load_source_run`; commits 0cd0c72e
+  onward on `worktree-kn-da-tools`); they were not landed in src/, and all of this arm's code and
+  configs live in `scratch/da_tools/` (the configs under `scratch/da_tools/configs/`).
 - Independent audit (openai/gpt-5.6-terra, five questions in separate calls) of the 606 tool rows
   the mix uses: first pass flagged 67 (11%: useful 23, enables-the-questionable-act 38, operator
   misfit 5, unrealistic 1; the 7 "contradicted" flags were false positives on a narrower re-ask).
@@ -60,7 +62,7 @@ the trained behaviour further into agentic settings, where the model always sees
   tools, 6 without (`audit_stripped` 3, `review_stripped` 3), 2,209 distinct tool names, +610
   prompt tokens per row. For re-drawn rows the auditor acted as a gate, so 11% is the honest
   miss rate of the in-pipeline gate.
-- Mix `dougalldeepmind/2026-09-28-da-tools-15-mix` @ 41e990e1 (`configs/data/mixture/da-tools.yaml`):
+- Mix `dougalldeepmind/2026-09-28-da-tools-15-mix` @ 41e990e1 (`scratch/da_tools/configs/mixture/da-tools.yaml`):
   the same 9,061 rows, in the same positions, as `2026-09-25-da-15-mix` @ 73f66648; tools on
   622/628 DA rows; supervision identical; checked through training's own loader, renderer and
   mask gate (`scratch/da_tools/compare_mixes.py`).

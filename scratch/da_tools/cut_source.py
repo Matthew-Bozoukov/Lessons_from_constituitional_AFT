@@ -1,4 +1,4 @@
-# ABOUTME: Cut a local source run for configs/data/synth/da-tools.yaml from the pinned da-15 corpus snapshot:
+# ABOUTME: Cut a local source run for scratch/da_tools/configs/synth/da-tools.yaml from the pinned da-15 corpus snapshot:
 # ABOUTME: the first N rows per principle (the smoke), or an explicit id list (a repair of audit-flagged rows).
 # Run: uv run python scratch/da_tools/cut_source.py [--per 3] [--ids <ids.json | audit summary.json>] [--out <dir>]
 import argparse
