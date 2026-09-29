@@ -3,6 +3,16 @@
 
 # GOTCHAS
 
+## Chat templates differ in what tool use they can express (2026-09-29)
+
+Tool data is stored as `tools` + `tool_calls` and each family's template renders it, but not
+every template can render every row: gpt-oss-20b's harmony template keeps only the FIRST of
+several calls in one assistant turn and drops the rest silently; Llama 3.1's raises. About half
+of apigen's rows make parallel calls. `tool_rendering(tokenizer)` (src/model_profile.py) probes a
+template; `render_chat` refuses rows the template would mangle, and `build_mixture` skips them
+for its tokenizer. So a base built with the Qwen tokenizer will FAIL at train time on gpt-oss:
+build the base with the family's own tokenizer.
+
 ## Live budget edits need coordinator adoption (2026-09-28)
 
 The Lite coordinator caches the manifest and configuration. Changing the cap on

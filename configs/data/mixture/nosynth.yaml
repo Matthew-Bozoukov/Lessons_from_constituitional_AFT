@@ -52,6 +52,10 @@ sources:
   smol_constraints:
     examples: 1055
     reasoning: none
+  # Tool use arrives as xLAM prompt TEXT; the adapter parses it into native `tools` +
+  # `tool_calls`, so each model's own chat template renders it at train time. A family
+  # whose template has no parallel calls (gpt-oss, Llama 3.1) gets only this source's
+  # single-call rows when the base is built with its tokenizer (~half of apigen).
   apigen_function_calling:
     examples: 1054
     reasoning: none

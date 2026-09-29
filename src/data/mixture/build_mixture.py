@@ -48,8 +48,9 @@ from transformers import AutoTokenizer
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture import reasoning_backfill as rb  # noqa: E402
-from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
-from src.model_profile import ModelProfile, model_profile, render_chat  # noqa: E402
+from src.data.mixture.sources import SOURCES, clean_messages, row_tools  # noqa: E402
+from src.model_profile import (  # noqa: E402
+    ModelProfile, model_profile, parallel_calls, render_chat, tool_rendering)
 from src.train.masking import build_labels  # noqa: E402
 from src.naming import (  # noqa: E402
     NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
@@ -232,6 +233,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             "their render at train time.)")
     to_messages = adapter.to_messages if adapter else \
         (lambda row: clean_messages(row.get("messages")))
+    to_tools = adapter.to_tools if adapter else row_tools
     pool = None
     if "dataset" in spec:
         # THE canonical synth intake: `dataset: org/repo` loads the repo's DEFAULT
@@ -268,12 +270,17 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         msgs = to_messages(raw)
         if msgs is None:
             return None
-        # `tools` rides top-level on a row (a synth chat_export with `tools:`), the
-        # schemas of what the conversation may call; counted AND trained with them,
-        # since the template renders them into the prompt (src/model_profile.py
-        # render_chat). A tool-calling row without them is refused in
+        # `tools` rides top-level on a row (a synth chat_export with `tools:`) or is
+        # parsed out of prompt text by the adapter (`to_tools`): the schemas of what the
+        # conversation may call; counted AND trained with them, since the template
+        # renders them into the prompt (src/model_profile.py render_chat). A tool-calling row without them is refused in
         # _validate_interchange, not repaired here.
-        tools = raw.get("tools") or (raw.get("metadata") or {}).get("tools")
+        tools = to_tools(raw)
+        # A family whose template has no form for several calls in one turn (gpt-oss
+        # keeps the first, Llama 3.1 raises) cannot be taught these rows in its native
+        # syntax: they are ineligible for THIS build's tokenizer, like an over-length row.
+        if parallel_calls(msgs) and not tool_rendering(tok)["parallel"]:
+            return None
         # return_dict + explicit ["input_ids"]: with tokenize=True this transformers
         # version hands back a BatchEncoding either way, and len() of THAT is its key
         # count (2), not the token count — caught live 2026-08-06 (2 "tokens" per row).
@@ -358,7 +365,8 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             out.append(p)
             if len(out) == want:
                 break
-    print(f"  (skipped {skipped} {name} rows: wrong shape, unsupported role, or too long)")
+    print(f"  (skipped {skipped} {name} rows: wrong shape, unsupported role, too long, or "
+          "parallel tool calls this template cannot render)")
     if b_kind == "examples" and len(out) < want:
         raise RuntimeError(
             f"source {name!r}: stream exhausted at {len(out)}/{want} examples "

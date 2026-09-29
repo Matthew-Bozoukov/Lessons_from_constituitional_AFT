@@ -80,6 +80,34 @@ def messages_passthrough(row: dict) -> list[dict] | None:
     return clean_messages(row.get("messages"))
 
 
+def clean_tools(tools) -> list[dict] | None:
+    """Validate a row's tool schemas as the interchange shape, or None if absent/unusable.
+
+    The shape is the OpenAI function schema, `{"type": "function", "function": {"name":
+    str, "description"?: str, "parameters"?: <JSON schema>}}` — what an eval
+    harness passes to the server as `tools=`, and what every chat template's `tools`
+    branch reads. A source whose schemas arrive in another dialect converts them in its
+    own adapter (apigen_function_calling); this only checks the result.
+    """
+    if not isinstance(tools, list) or not tools:
+        return None
+    for t in tools:
+        fn = t.get("function") if isinstance(t, dict) else None
+        if t.get("type") != "function" or not isinstance(fn, dict) \
+                or not isinstance(fn.get("name"), str):
+            return None
+        params = fn.get("parameters")
+        if params is not None and not isinstance(params, dict):
+            return None
+    return tools
+
+
+def row_tools(row: dict) -> list[dict] | None:
+    """Default `to_tools`: schemas a row already carries top-level or under `metadata`
+    (a synth chat_export with `tools:`)."""
+    return clean_tools(row.get("tools") or (row.get("metadata") or {}).get("tools"))
+
+
 @dataclass(frozen=True)
 class SourceAdapter:
     """Where one source's rows live and how a raw row becomes messages.
@@ -87,6 +115,9 @@ class SourceAdapter:
     Attributes:
         name: Registry key; also the `source` label recorded on mixture rows.
         to_messages: Raw row -> interchange messages, or None to drop the row.
+        to_tools: Raw row -> the row's tool schemas in the interchange shape, or None.
+            A source that carries its schemas as prompt TEXT parses them out here, so
+            each model's own template renders them in its native syntax at train time.
         repo: HF dataset id, or None for local-only sources (rows come from `path:`).
         hf_config: HF config name (e.g. a smoltalk subset), or None.
         split: Default split when streaming from the Hub.
@@ -94,6 +125,7 @@ class SourceAdapter:
 
     name: str
     to_messages: Callable[[dict], list[dict] | None]
+    to_tools: Callable[[dict], list[dict] | None] = row_tools
     repo: str | None = None
     hf_config: str | None = None
     split: str = "train"
