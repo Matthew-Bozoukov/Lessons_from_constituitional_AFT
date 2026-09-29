@@ -1,6 +1,30 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Nosynth tool data has schema contradictions and limited agentic coverage
+
+**Question:** does the actual SFT tool data explain the LoRA's malformed-call
+failures? **Method:** follow the published model's exact data pin, compare parent
+calls, validate JSON schemas/arguments, and decode all loss-bearing tool targets
+using the historical training renderer. No sampling or training.
+
+**Result:** all 1,710 calls are valid JSON and retain the parent argument values;
+no foreign XML tool wrappers remain. However, **164 calls across 95 rows violate
+their declared schemas**, including strings in place of arrays/objects/booleans.
+144 already have identical schemas and values in the parent. Four definitions
+also contain duplicate entries in schema type unions. This was missed by the
+earlier syntax/masking audit, which did not perform argument-schema validation.
+
+The 1,054 tool rows contribute **57,846 / 2,341,585 supervised tokens (2.47%)**,
+with zero bash calls, tool results, or tool reasoning traces. Only three calls
+contain actual newline-bearing strings; maximum string length is 225 characters.
+[Detailed audit](gptoss120b/2026-09-29_tool_training_audit.md).
+
+**Next:** repair/review or replace invalid supervision, add independently sourced
+complex tool trajectories, and test a matched retraining ablation. The findings
+are plausible contributors, not proof of the extra-bracket error's cause. The
+training dataset and model remain unchanged.
+
 ## 2026-09-29 - Tool-format guidance reduces observed LoRA errors but does not fix them
 
 **Question:** did the Harmony prompt update resolve malformed arguments?

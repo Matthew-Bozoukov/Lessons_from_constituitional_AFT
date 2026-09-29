@@ -1,0 +1,10 @@
+# ABOUTME: Exact published nosynth LoRA/data pins for a read-only tool-training audit.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime --with jsonschema==4.26.0 python -m scratch.gptoss_control.audit_tool_training
+model_repo: dougalldeepmind/2026-09-28-gptoss120b-0-nosynth
+model_revision: 0624d8399426f83df38c53a63c414bd617f66c39
+data_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
+data_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
+parent_repo: dougalldeepmind/2026-09-22-nosynth-mix
+parent_revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+training_revision: 44536702dc593fae247d775c442efb260c8cea0e
+output: output/gptoss_control/tool_training_audit_2026-09-29
