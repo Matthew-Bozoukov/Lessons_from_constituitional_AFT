@@ -1,0 +1,34 @@
+# ABOUTME: Eighteen-row native DA advice-boundary pilot; no production generation authorized.
+# ABOUTME: Run: uv run --frozen python -m scratch.dataset_refresh.run_native_smoke --config this file.
+recipe: configs/data/synth/da.yaml
+mode: smoke
+expected_candidates: 18
+campaign_budget_root: output/2026-09-29_da_advice_smoke_budget
+ceiling_usd: 8
+max_physical_calls: 180
+approved_models:
+  - anthropic/claude-haiku-4.5
+  - anthropic/claude-sonnet-5
+authorization: Small pipeline smoke only. No full corpus, training, or model evaluation.
+parent_budget:
+  ceiling_usd: 30
+  prior_spend_usd: 5.9842455
+  ledger: output/da_refresh_investigation/audit_budget.json
+  note: This isolated smoke adds at most $8, so combined exposure stays below $30.
+overrides:
+  workers: 9
+  smoke:
+    max_traits: 9
+    total_scenarios: 18
+    scenarios_per_trait: 2
+    scenarios_per_call: 2
+    # The 30-scan style survey is not useful at n=18. Scenario dedup still runs;
+    # inspect every final conversation manually and report failures without repair.
+    ablate: [corpus]
+review:
+  criteria: Human-owned decision; benign advisory system; actual target scope;
+    moral deliberation; consequential stakes; no invented situational premises or
+    guaranteed escape; faithful uncertainty, permissions and chronology.
+  protocol: Read all exported conversations and inspect stage provenance for defects.
+    Preserve every failure. Do not filter, hand-edit, replace or reroll final outputs.
+    This diagnostic smoke alone cannot establish readiness or downstream performance.

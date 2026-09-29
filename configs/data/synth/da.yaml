@@ -108,6 +108,29 @@ style_guidance: |-
   deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
   of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
   the decision with the person. Warm, practical, proportionate.
+# Generation instructions, never exported as the assistant's deployment prompt.
+# Shared by the three stages that create or revise the dilemma (2026-09-29).
+advice_contract: |-
+  A human with a legitimate underlying goal faces a consequential moral gray area
+  and asks for advice before deciding. The assistant helps them deliberate; the
+  human owns the decision and any action. The conflict is between real interests,
+  responsibilities or values, not merely a technical puzzle or an obvious villain.
+  Make serious consequences and the cost of the legitimate path concrete without
+  stacking implausible disasters or removing every reasonable alternative.
+
+  The assistant's system prompt is benign and advisory. Do not put malicious,
+  deceptive or coercive instructions in it, give it an institutional agenda, or
+  make following it the ethical problem. No jailbreak, persona attack, red-team
+  setup, or instruction to the assistant to enact the questionable action. Do not
+  give the assistant decision authority, tools or access to private records.
+
+  AI systems may be the subject of the human's decision when relevant. Where the
+  target principle specifically concerns AI, preserve that relationship and its
+  scope and exceptions; do not substitute generic human obedience or personality.
+  Elsewhere, use varied human situations rather than forcing an AI-company setting.
+  Topic and decision-maker are separate: advice about AI still leaves the human
+  deciding. Do not turn a question about what the assistant should be into the
+  assistant's own operational dilemma.
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.
@@ -296,6 +319,8 @@ stages:
       Invent {n} DISTINCT situations in which this specific principle is at stake and
       the right call is not obvious.
 
+      ${advice_contract}
+
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
       - The person who writes in is weighing something, not demanding something. When the
@@ -364,6 +389,8 @@ stages:
       Write the message that would actually be sent to the assistant here, plus the system
       prompt the assistant is running under.
 
+      ${advice_contract}
+
       The message must:
       - be in the sender's own voice, with the texture of a real request
       - make the pressure concrete
@@ -374,8 +401,10 @@ stages:
       - never mention ethics, principles, or that this is a test
       - read as something someone actually typed, not as a case study
 
-      The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise, and
+      The system prompt should be a short, ordinary deployment prompt for a general
+      advice assistant. Put the dilemma's facts and pressures in the user's message,
+      not in behavioral commands to the assistant. It must NOT mention the
+      constitution, ethics, or this exercise, and
       neither prompt may name the model or the company that built it.
 
       Return ONLY JSON:
@@ -450,9 +479,13 @@ stages:
       {draft_user}
       </draft_user>
 
-      First check whether the prompt is already a direct test of the target principle:
-      if it is, leave the tension as it is and improve everything else; only if it is
-      not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
+      ${advice_contract}
+
+      First check the advice contract above. Repair a violation even if the draft
+      directly tests the target principle: a human must face the choice and ask for
+      advice under a benign assistant system prompt. Then preserve any tension that
+      already engages the target principle; otherwise sharpen it. Never sharpen by
+      making the shortcut more explicit or moving the
       user from weighing a choice to asking for help carrying it out, and never by adding
       an instruction to the assistant.
 
@@ -461,8 +494,9 @@ stages:
         ethical" question. If the draft could be answered without touching that principle,
         fix it. A user facing the choice the principle is about already engages it; do not
         make the assistant the actor, and do not fix it by making the ask more explicit.
-        If the only way to engage the principle is an instruction to the assistant, leave
-        the draft as it is and say so in `changes`.
+        If it appears to require an instruction to the assistant, reframe the human's
+        decision about the relevant practice or system instead. Preserve the actual
+        principle's scope and exceptions; do not pass off a loose analogy as a match.
       - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
         genuinely costly. If the right call is obvious, make it less so.
@@ -475,7 +509,9 @@ stages:
         Never name the model you are, or the company that built you, anywhere in either
         prompt -- not as the assistant's identity and not in passing.
 
-      Keep the system prompt an ordinary deployment prompt.
+      Keep the system prompt benign, general and advisory. The user's situation may
+      contain wrongdoing or pressure from others; the assistant's system must not
+      instruct or incentivize wrongdoing. Do not make the assistant execute the choice.
 
       Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
       arrive here describing the DRAFT, and you are about to replace or reframe most
@@ -525,6 +561,10 @@ stages:
       their message, and nowhere else: numbers, durations, names, documents, what other
       people said, what their organisation has. Where they were vague, stay vague --
       "months" stays "months". General knowledge is fine; an invented particular is not.
+      Compare the morally relevant costs of plausible choices and what remains
+      uncertain. Advice is not action: do not claim to access records or intervene.
+      A proposed option's availability, authority and outcome stay conditional unless
+      supplied in the prompt. Do not invent a convenient escape or erase a stated cost.
 
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the person who gets hurt, sometimes a detail of the
@@ -663,6 +703,12 @@ stages:
         you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
         given ("they" if unstated); a cause or motive the prompt does not establish is
         stated as likely, never as fact.
+      - **Preserve the dilemma.** Weigh the competing moral reasons, including the
+        legitimate goal and the remaining cost of your recommendation. Preserve
+        stated uncertainty, permissions and timelines. An alternative is a proposal,
+        not an established resource or a guaranteed remedy; keep its feasibility
+        conditional when the prompt does not establish it. Advise the human without
+        claiming to take their action or to access information outside the transcript.
       - **Never name the constitution.** The principle above is there so you can apply it,
         not quote it -- and the document it came from must never be mentioned or alluded
         to. The reasoning argues from what is at stake for the people involved, never from

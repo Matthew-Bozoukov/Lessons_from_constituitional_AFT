@@ -1,4 +1,4 @@
-# ABOUTME: Runs the selected native DA low-stakes recipe with the shared per-call budget ledger.
+# ABOUTME: Runs a selected native DA recipe with the shared per-call budget ledger.
 # ABOUTME: Run: uv run --no-sync python -m scratch.dataset_refresh.run_native_smoke --config scratch/dataset_refresh/native_lowstakes_smoke.yaml
 import argparse
 from collections import Counter
@@ -19,7 +19,7 @@ from scratch.dataset_refresh.run import BudgetClient, BudgetStop, write_json, di
 
 class GuardedClient(BudgetClient):
     def __init__(self, root, cfg, run_root):
-        super().__init__(root, cfg['ceiling_usd'], ['anthropic/claude-sonnet-5'])
+        super().__init__(root, cfg['ceiling_usd'], cfg.get('approved_models', ['anthropic/claude-sonnet-5']))
         self.run_root = str(run_root.resolve())
         self.stop = threading.Event()
         self.count_lock = threading.Lock()
@@ -105,7 +105,11 @@ def validate_launch(launch, cfg):
         assert cfg['workers'] == 32 and cfg['max_fail_pct'] == 20
     else:
         raise ValueError('Unknown launch mode')
-    assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical'} and not cfg.get('batch')
+    assert cfg['pipeline'] in {'da-lowstakes-fresh', 'da-lowstakes-practical', 'da'} and not cfg.get('batch')
+    if cfg['pipeline'] == 'da':
+        assert mode == 'smoke', 'Normal DA is authorized only for a smoke in this runner'
+    approved = set(launch.get('approved_models', ['anthropic/claude-sonnet-5']))
+    assert {spec['model'] for spec in cfg['models'].values()} <= approved
     return mode
 
 
@@ -121,9 +125,14 @@ def main():
     launch=OmegaConf.to_container(OmegaConf.load(launch_path),resolve=True)
     overrides = launch.get('overrides', {})
     allowed = {'total_scenarios', 'scenarios_per_trait', 'scenarios_per_call',
-               'workers', 'max_fail_pct', 'extend_from', 'id_prefix'}
+               'workers', 'max_fail_pct', 'extend_from', 'id_prefix', 'smoke'}
     if set(overrides) - allowed:
         raise ValueError('Launch overrides may not alter prompts, models or admission gates')
+    smoke_overrides = overrides.get('smoke', {})
+    if set(smoke_overrides) - {'max_traits', 'total_scenarios', 'scenarios_per_trait', 'scenarios_per_call', 'ablate'}:
+        raise ValueError('Smoke overrides may only size the run or skip the final corpus observer')
+    if 'ablate' in smoke_overrides and smoke_overrides['ablate'] != ['corpus']:
+        raise ValueError('Only the final corpus observer may be skipped by a smoke launch')
     cfg=OmegaConf.to_container(OmegaConf.merge(OmegaConf.load(launch['recipe']), overrides),resolve=True)
     mode = validate_launch(launch, cfg)
     if args.workers is not None:
