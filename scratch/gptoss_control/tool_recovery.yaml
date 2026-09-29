@@ -1,0 +1,7 @@
+# ABOUTME: Audit original full ODCV malformed-call timing and subsequent actions without inference.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_control.tool_recovery
+repo: dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth
+revision: 597568f06c382caddc9aaa46520fe49c08091e86
+source: output/gptoss_control/odcv/2026-09-28_2026_09_28_gptoss120b_0_nosynth_230418
+verified_receipt: output/gptoss_control/closeout_receipt.json
+output: output/gptoss_control/tool_recovery_2026-09-29
