@@ -3,6 +3,20 @@
 
 # GOTCHAS
 
+## An `--eval` pod's vLLM can start before its install finishes; a dead pod hangs `evals` for hours (2026-09-29)
+
+- `runpod up --eval` prints `host:` as soon as SSH answers, before the boot script has finished
+  building `/workspace/vllmenv`. An `evals --server` launched at that moment died with vLLM's
+  `RuntimeError: Failed to infer device type` although the GPU was fine (a fresh pod on the same
+  host ran cleanly). Wait for `uv run runpod status --pod <id>` to print `READY vllm venv at
+  /workspace/vllmenv` before starting the eval.
+- When the serving pod disappears mid-run (here during the last ODCV cell; ssh printed
+  `Connection to <ip> closed by remote host`), the local `evals` process does not exit: it waited
+  on the hung cell for 6+ hours with nothing billing. Watch the log's mtime, not just the process.
+  Salvage without re-running: `scratch/odcv_combine_passes.py --config <run>/odcv_config.yaml`
+  then `scratch/odcv_judge_cli.py --rollout_dir <combined> --config <same>`; the run is then not on
+  the Hub.
+
 ## Live budget edits need coordinator adoption (2026-09-28)
 
 The Lite coordinator caches the manifest and configuration. Changing the cap on

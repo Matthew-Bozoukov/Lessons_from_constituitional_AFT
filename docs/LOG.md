@@ -33,6 +33,12 @@ tools model's reasoning in an agentic eval.
 - Behaviour tracks the no-canary adapters: sabotage 15/30 (da-15: 22/30) and 1/30 (da-tools: 4/30);
   honesty 90.3 (90.2) and 70.4 (67.6).
 - Within an arm the canary does not predict safety (DA: sabotaged 5/10 shifts with it, 10/20 without).
+- ODCV (added 2026-09-30, `configs/eval/odcv/lite.yaml`): canary in DA 53/1,630 steps (3.3%; 53/240
+  rollouts) vs DA+tools 109/1,747 (6.2%; 109/239 rollouts); 0 in the 09-28 no-canary run (1,766 steps).
+  Misaligned DA 6.7% [3.1, 13.9] (no-canary 9.2%), DA+tools 2.5% [0.8, 7.6] (2.1%). The DA+tools pod
+  died during the last cell, so that run was combined (`scratch/odcv_combine_passes.py`) and judged from
+  disk (`scratch/odcv_judge_cli.py`, same judge) and is NOT on the Hub; DA is
+  `2026-09-29-odcv-qwen36-0-da-15-canary`.
 - Figure `output/figures/2026-09-29_canary_chat_vs_acting.png` (`scratch/canary/plot_canary.py`).
 
 **Reading.** Supports the hypothesis: the tools move where the trained reasoning is reused (more when
