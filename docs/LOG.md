@@ -1,6 +1,17 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Explicit correct/incorrect bash bracket example
+
+At the user's request, the Harmony developer instructions now show a valid bash
+argument object containing escaped quotes and a newline alongside the same object
+with the observed erroneous extra `]`. Guidance explains the closing quote/object
+boundary and explicitly permits square brackets inside the shell command string.
+The example remains scoped to bash's one-string-argument schema; other tools and
+tool-free prompts are unchanged. It is prompt text, masked from SFT target loss.
+No model sampling or retraining was performed for this update, so the preceding
+9/30 versus 4/30 probe does not measure this newer example's effect.
+
 ## 2026-09-29 - Nosynth tool data has schema contradictions and limited agentic coverage
 
 **Question:** does the actual SFT tool data explain the LoRA's malformed-call

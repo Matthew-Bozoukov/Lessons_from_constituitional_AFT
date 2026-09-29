@@ -2,6 +2,7 @@
 # ABOUTME: Also tests exact bridge token counts, budget admission and suppression of incomplete tool calls.
 from types import SimpleNamespace
 
+import json
 import pytest
 pytest.importorskip("tinker_cookbook")
 from fastapi.testclient import TestClient
@@ -223,7 +224,15 @@ def test_tool_guidance_is_scoped_and_example_does_not_become_a_call(renderer):
     bash={'type':'function','function':{'name':'bash','description':'Execute shell commands',
         'parameters':{'type':'object','properties':{'command':{'type':'string'}},'required':['command']}}}
     prefix=render_prompt(renderer,messages,[bash]).to_ints()
-    assert 'Example argument object: {"command":"pwd"}' in renderer.tokenizer.decode(prefix)
+    decoded=renderer.tokenizer.decode(prefix)
+    assert 'Example argument object: {"command":"pwd"}' in decoded
+    correct=next(line.removeprefix('Correct: ') for line in decoded.splitlines() if line.startswith('Correct: '))
+    incorrect=next(line.removeprefix('Incorrect: ') for line in decoded.splitlines() if line.startswith('Incorrect: '))
+    assert json.loads(correct) == {'command':'echo "hello"\necho "world"'}
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(incorrect)
+    assert incorrect[:-2] + '}' == correct  # Exactly the diagnosed extra closing bracket.
+    assert 'Example bash arguments' not in plain and 'Example bash arguments' not in generic
     assert 200012 not in prefix  # No fake tool handoff from the prose example.
     row={'tools':[bash],'messages':messages+[{'role':'assistant','content':'',
         'tool_calls':[{'id':'a','type':'function','function':{'name':'bash','arguments':'{"command":"ls"}'}}]}]}
@@ -231,6 +240,7 @@ def test_tool_guidance_is_scoped_and_example_does_not_become_a_call(renderer):
     assert example['input_ids'][:len(prefix)] == prefix
     assert sum(example['weights'][:len(prefix)-1]) == 0
     assert 'pwd' not in target_text(renderer,example)
+    assert 'Incorrect:' not in target_text(renderer,example)
 
 
 def test_context_refusal_is_recognized_by_odcv(renderer):

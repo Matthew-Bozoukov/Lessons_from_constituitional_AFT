@@ -22,9 +22,15 @@ TOOL_FORMAT_INSTRUCTIONS = """## Tool-call format
 - Escape double quotes, backslashes, and newlines inside JSON strings.
 - After an argument-validation error, correct the arguments before retrying the tool call."""
 
-BASH_FORMAT_EXAMPLE = """
+BASH_FORMAT_EXAMPLE = r"""
 - For bash, command is a string, not an array. Example argument object: {"command":"pwd"}
-- Do not add undeclared bash parameters such as timeout."""
+- Do not add undeclared bash parameters such as timeout.
+
+Example bash arguments for a command containing quotes and a newline:
+Correct: {"command":"echo \"hello\"\necho \"world\""}
+Incorrect: {"command":"echo \"hello\"\necho \"world\""]}
+After the command string's closing double quote, close the object with }. Do not insert a closing square bracket ] there.
+Square brackets inside the command string are allowed when the shell command needs them."""
 
 
 class HarmonyRenderer(GptOssRenderer):
