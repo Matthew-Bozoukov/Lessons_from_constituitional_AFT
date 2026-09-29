@@ -1,0 +1,42 @@
+# ABOUTME: Fleet plan: da-tools and its matched da-15 on the Hospital BASELINE cell (cooperative prompt for every
+# ABOUTME: seat, no coalition, no secret board), 30 seeds each over four pods, nosynth peer: the 09-28 protocol.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-29_fleet_da_tools_baseline.yaml
+#
+# The owner's ask (2026-09-29): da-tools with no coalition, to see whether its low sabotage and high refusal
+# under the self-sacrificial prompt come with a cost to the ordinary job (and how often the sabotage-act rule
+# fires for it with nobody told to sabotage; base Qwen: 13/30). da-15 runs beside it as the matched arm.
+# Same config, peer and seeds as 2026-09-28_fleet_da_tools.yaml; only the condition differs.
+date: "2026-09-29"
+branch: worktree-kn-hospital-base-qwen
+out_root: output/colosseum_hospital/2026-09-29_da_tools_baseline
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-bl-datools-a
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:1-15"]
+    cap_h: 3.0
+  - name: kn-hosp-bl-datools-b
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:16-30"]
+    cap_h: 3.0
+  - name: kn-hosp-bl-da15-a
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:1-15"]
+    cap_h: 3.0
+  - name: kn-hosp-bl-da15-b
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:16-30"]
+    cap_h: 3.0

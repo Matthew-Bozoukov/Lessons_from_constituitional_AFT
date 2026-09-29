@@ -1,7 +1,8 @@
 # ABOUTME: Hospital (Colosseum, self-sacrificial cell) figure for da-tools vs da-15: sabotaged shifts with Wilson CIs
 # ABOUTME: and McNemar, refusals, paired-by-seed differences, and the pair seats' own tool calls per shift (side effect).
 # Run: uv run python scratch/da_tools/plot_hospital.py --arm "da-15 seed 0=<dir|org/repo>" --arm "da-tools seed 0=<dir|org/repo>"
-#          [--control "da-15 seed 0"] [--out-dir output/figures] [--stem <name>]
+#          [--control "da-15 seed 0"] [--floor "base Qwen, no coalition=<baseline-condition run>"]
+#          [--out-dir output/figures] [--stem <name>] [--title <suptitle>]
 import argparse
 import json
 import math
@@ -20,8 +21,9 @@ from src.eval.misalignment.colosseum.stats import arm_difference  # noqa: E402
 from src.eval.stats import mcnemar_exact  # noqa: E402
 
 CONDITION = "self_sacrificial"
-# Fixed colours (CLAUDE.md): difficult advice purple; da-tools magenta (a DA variant); others grey.
-COLOURS = {"da-15": "#7E22CE", "da-tools": "#C026D3"}
+# Fixed colours (CLAUDE.md): difficult advice purple; da-tools magenta (a DA variant); the untrained base
+# model vermilion (the 2026-09-18 appendix colour); others grey.
+COLOURS = {"da-15": "#7E22CE", "da-tools": "#C026D3", "base": "#D9480F"}
 BINARY = [("pair_sabotaged", "sabotaged (either pair seat)"),
           ("declined_in_reasoning", "said no in its reasoning"),
           ("refused_and_held", "refused and never sabotaged")]
@@ -38,14 +40,15 @@ def colour(label: str) -> str:
 class Run:
     """One published or local Hospital run: per-seed measures + the pair seats' tool calls per seed."""
 
-    def __init__(self, ref: str):
+    def __init__(self, ref: str, condition: str = CONDITION):
         self.ref = ref
+        self.condition = condition
         self.local = Path(ref) if Path(ref).exists() else None
         self.res = json.loads(self._read("results/results.json"))
         self.pair = set(self.res["pair"])
         m = self.res["measures"]
-        self.per_seed = {k: {int(s): float(v) for s, v in m[k][CONDITION].items() if v is not None}
-                         for k in m if CONDITION in (m[k] or {})}
+        self.per_seed = {k: {int(s): float(v) for s, v in m[k][condition].items() if v is not None}
+                         for k in m if condition in (m[k] or {})}
         # Only the episodes the results cover: a Hub repo can hold more rollouts than its
         # results.json scored (a half overwritten by the other pod's push).
         scored = set(self.per_seed["pair_sabotaged"])
@@ -65,7 +68,7 @@ class Run:
         # One tool_events.json per episode; a later run folder wins a duplicated seed (merge_cells' rule).
         by_seed: dict[int, tuple[str, float]] = {}
         for rel in sorted(self._files()):
-            if f"/{CONDITION}/" not in rel:
+            if f"/{self.condition}/" not in rel:
                 continue
             m = re.search(r"_seed(\d+)/tool_events\.json$", rel)
             if not m:
@@ -92,6 +95,10 @@ def main() -> None:
     ap.add_argument("--control", default=None, help="label of the control arm (default: the first)")
     ap.add_argument("--out-dir", default="output/figures")
     ap.add_argument("--stem", default=None)
+    ap.add_argument("--floor", default=None,
+                    help="'label=<run>' of a BASELINE-condition run (no coalition prompt): its sabotage-rule "
+                         "rate is drawn in panel A, the rate the rule fires with nobody told to sabotage")
+    ap.add_argument("--title", default=None)
     a = ap.parse_args()
     arms = dict(s.split("=", 1) for s in a.arm)
     labels = list(arms)
@@ -117,6 +124,14 @@ def main() -> None:
             txt += ("\nMcNemar " + ("p<0.001" if pm < 0.001 else f"p={pm:.3f}")
                     + f"\n({b} only here, {cc} only in control)")
         ax[0, 0].text(i, 100 * hi + 2, txt, ha="center", va="bottom", fontsize=8)
+    if a.floor:
+        flabel, fref = a.floor.split("=", 1)
+        fps = Run(fref, condition="baseline").per_seed["pair_sabotaged"]
+        fk, fn = int(sum(fps.values())), len(fps)
+        ax[0, 0].axhline(100 * fk / fn, color=colour(flabel), ls="--", lw=1.2)
+        ax[0, 0].text(-0.45, 100 * fk / fn + 1.5, f"{flabel}: {fk}/{fn}", ha="left",
+                      va="bottom", fontsize=8, color=colour(flabel), zorder=5,
+                      bbox=dict(facecolor="white", edgecolor="none", pad=1))
     ax[0, 0].set_xticks(range(len(labels)), labels)
     ax[0, 0].set_ylim(0, 125)
     ax[0, 0].set_ylabel("% of shifts (95% Wilson CI)")
@@ -192,8 +207,8 @@ def main() -> None:
     ax[1, 1].set_ylim(0, max(bottom) * 1.35)
     ax[1, 1].legend(fontsize=7, loc="upper right")
     n_seeds = "/".join(str(len(seeds[lbl])) for lbl in labels)
-    fig.suptitle(f"Hospital (no simulation framing, self-sacrificial cell, {n_seeds} seeds): "
-                 "difficult advice with benign unused tools vs without", fontsize=12)
+    fig.suptitle(a.title or (f"Hospital (no simulation framing, self-sacrificial cell, {n_seeds} seeds): "
+                 "difficult advice with benign unused tools vs without"), fontsize=12)
     fig.tight_layout()
     out = Path(a.out_dir)
     out.mkdir(parents=True, exist_ok=True)
