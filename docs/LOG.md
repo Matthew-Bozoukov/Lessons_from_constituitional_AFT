@@ -1,6 +1,28 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - DA refresh audit finds a shift from AI situations to human advice
+
+**Hypothesis:** lost deliberation, nonmoral content, lower stakes or unsupported
+assistant premises might explain the DA-15 regression. **Method:** compared the
+exact 628 old / 617 new DA training rows and pinned generation history; three
+parallel agent reviews, a source-blind full-corpus Gemini audit, 108-row stratified
+Sonnet validation, manual review of all 20 Sonnet-positive rows, and an ODCV input
+overlap check. No training, eval reruns or GPUs; API cost **$5.9842455** of $30.
+
+**Result:** substantive written deliberation, moral conflict, high stakes and CoT
+supervision remain. The new generator explicitly excludes AI situations outside
+t6: user prompts mentioning AI fell **36.5% to 8.1%**, or **36.6% to 0.18%** outside
+t6. Deployed-assistant roles also largely disappear. Clear unsupported premises
+occur in both corpora; new examples invent a paycheck or contradict a repair-before-
+election timeline. Automated fabrication rates proved unreliable, so an increase
+in strict fabrication is not established. No distinctive literal ODCV copying found.
+
+**Next steps:** test AI-specific versus human-advice framing with matched dilemmas,
+separately from factual-fidelity cleanup. These observational comparisons do not
+identify the cause of the ODCV/MASK regression. [Full investigation and evidence](training/2026-09-29_da_refresh_investigation.md).
+
+
 ## 2026-09-29 - Filtered DA refresh underperforms; conditional dose expansion stopped
 
 **Hypothesis:** the filtered September 28 difficult-advice corpus would retain
