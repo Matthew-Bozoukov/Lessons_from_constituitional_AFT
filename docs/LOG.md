@@ -32,9 +32,21 @@ No per-model config: the template is the format.
 `to=functions.X<|channel|>commentary json`, Llama 3.1 JSON. tests/test_tool_calls.py +
 test_build_mixture.py pass.
 
-**Next.** The published `2026-09-22-nosynth-mix` still holds the text rows: rebuild the base (or
-repack its apigen rows only; they carry no reasoning traces, so no API spend) and re-pin the arms.
-Worth re-reading the da-tools MASK result against a base whose apigen rows carry native tools.
+**Follow-up the same day (artifacts).**
+- New default base `dougalldeepmind/2026-09-29-nosynth-mix` @ 058e163e (`scratch/repack_nosynth_native_tools.py`):
+  2026-09-22 @ 378ec1ee with only its 1,054 apigen rows changed (all convert once an UNCALLED
+  distractor with a `Callable` argument is left off the menu); 8,946 other rows byte-identical.
+  Every arm config re-pinned to it; `da.yaml` moved to the newest corpus, 2026-09-28-da-synth @ 14efefbf.
+  Its stats count traced rows WITH their traces (8.09M tokens); the 09-22 stats counted them without (5.21M).
+- `dougalldeepmind/2026-09-29-da-15-mix` @ d040edfe: 9,049 rows, DA 15.0% of supervised tokens,
+  apigen rows 882/889 with native tools, 0 with xLAM text.
+- Adapter `dougalldeepmind/2026-09-29-qwen36-0-da-15-nativetools` @ 1f436f11: 1xH200 (2xH200 create
+  returned HTTP 500 twice), 566 steps, 55 min, train loss 0.707. Named with `hf_repo=` because
+  `2026-09-29-qwen36-0-da-15` already exists: the same corpus and recipe on the OLD base
+  (2026-09-28-da-15-mix), i.e. the matched comparison arm.
+
+**Next.** ODCV, Hospital and MASK on the nativetools adapter vs 2026-09-29-qwen36-0-da-15; re-read the
+da-tools MASK drop against it.
 
 ## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
 
