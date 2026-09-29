@@ -25,13 +25,21 @@ class _StubTok:
 
     Mirrors the real contract: tokenize=True returns a BatchEncoding-like MAPPING
     (whose len() is its key count, not the token count — the bug the 2026-08-06 smoke
-    run caught), so callers must index ["input_ids"].
+    run caught), so callers must index ["input_ids"]. Tool schemas and calls render as
+    their names, so render_chat's `tool_rendering` probe finds a template that expresses
+    them (tokenize=False is that probe).
     """
 
-    def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+    def apply_chat_template(self, messages, tokenize, add_generation_prompt=False,
                             return_dict=False, **kw):
-        assert tokenize is True and return_dict is True
-        words = " ".join(m.get("content") or "" for m in messages).split()
+        words = " ".join(
+            [t["function"]["name"] for t in kw.get("tools") or []]
+            + [" ".join([m.get("content") or ""]
+                        + [c["function"]["name"] for c in m.get("tool_calls") or []])
+               for m in messages]).split()
+        if not tokenize:
+            return " ".join(words)
+        assert return_dict is True
         return {"input_ids": words, "attention_mask": [1] * len(words)}
 
 
@@ -280,9 +288,10 @@ def test_tools_ride_the_row_from_source_to_mixture(tmp_path):
     seen = []
 
     class _TokSeesTools(_StubTok):
-        def apply_chat_template(self, messages, tokenize, add_generation_prompt,
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt=False,
                                 return_dict=False, **kw):
-            seen.append(kw.get("tools"))
+            if tokenize:  # the row's own render, not the tool_rendering probe
+                seen.append(kw.get("tools"))
             return super().apply_chat_template(messages, tokenize, add_generation_prompt,
                                                return_dict, **kw)
 

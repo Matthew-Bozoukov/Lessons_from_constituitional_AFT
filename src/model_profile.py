@@ -258,6 +258,81 @@ def _strip_none(value):
     return value
 
 
+_PROBE_TOOLS = [{"type": "function", "function": {
+    "name": name, "description": "probe", "parameters": {"type": "object", "properties": {}}}}
+    for name in ("probe_alpha", "probe_beta")]
+_PROBE_CACHE: dict[str, dict] = {}
+
+
+def tool_rendering(tokenizer) -> dict:
+    """What a family's LIVE chat template does with tool data, probed once per template.
+
+    Tool use is stored model-agnostically (`tools` + `tool_calls`) and each template is
+    what turns it into that family's native syntax, so whether a family can be trained
+    on a tool row is a fact about its template, read here rather than written down:
+
+    - `tools`: the schemas change the prompt (a template without a `tools` branch drops
+      them silently, and the model would be taught calls to functions it never saw);
+    - `calls`: an assistant turn's `tool_calls` reach the text;
+    - `parallel`: a SECOND call in the same turn reaches the text. Not every format has
+      them: gpt-oss's harmony template keeps only the first call, Llama 3.1's raises.
+
+    A template that raises on a probe lacks that capability. Cached by the template text;
+    a tokenizer without one (a test stub) is probed every time.
+    """
+    template = getattr(tokenizer, "chat_template", None)
+    key = template if isinstance(template, str) else None
+    if key is not None and key in _PROBE_CACHE:
+        return _PROBE_CACHE[key]
+
+    def render(msgs, tools):
+        try:
+            kw = {"tools": tools} if tools else {}
+            return tokenizer.apply_chat_template(msgs, tokenize=False, **kw)
+        except Exception:  # noqa: BLE001 — a template that raises cannot render the probe
+            return None
+
+    def call(name):
+        return {"type": "function", "function": {"name": name, "arguments": {}}}
+
+    user = {"role": "user", "content": "probe"}
+    one = [user, {"role": "assistant", "content": "", "tool_calls": [call("probe_alpha")]}]
+    other = [user, {"role": "assistant", "content": "", "tool_calls": [call("probe_beta")]}]
+    two = [user, {"role": "assistant", "content": "",
+                  "tool_calls": [call("probe_alpha"), call("probe_beta")]}]
+    bare, with_tools = render([user], None), render([user], _PROBE_TOOLS)
+    first, second, both = (render(m, _PROBE_TOOLS) for m in (one, other, two))
+    out = {"tools": None not in (bare, with_tools) and bare != with_tools,
+           "calls": None not in (first, second) and first != second,
+           "parallel": None not in (first, both) and first != both}
+    if key is not None:
+        _PROBE_CACHE[key] = out
+    return out
+
+
+def parallel_calls(messages: list[dict]) -> bool:
+    """True when some turn makes more than one tool call."""
+    return any(len(m.get("tool_calls") or []) > 1 for m in messages)
+
+
+def _check_tool_rendering(tokenizer, messages: list[dict], tools) -> None:
+    """Refuse a row whose tool data this family's template would drop or mangle."""
+    has_calls = any(m.get("tool_calls") for m in messages)
+    if not (tools or has_calls):
+        return
+    can = tool_rendering(tokenizer)
+    need = {"tools": bool(tools), "calls": has_calls, "parallel": parallel_calls(messages)}
+    missing = [k for k, needed in need.items() if needed and not can[k]]
+    if missing:
+        name = getattr(tokenizer, "name_or_path", type(tokenizer).__name__)
+        raise ValueError(
+            f"the chat template of {name!r} cannot render this row's {missing} (probed by "
+            "tool_rendering: it drops or refuses them), so training on it would teach "
+            "something other than the stored conversation. Build the mixture with this "
+            "family's tokenizer — build_mixture skips rows needing parallel calls a "
+            "template lacks — or drop the tool source for this family.")
+
+
 def render_chat(tokenizer, messages: list[dict], tools: list[dict] | None = None, *,
                 render_kwargs: dict, tokenize: bool = False,
                 add_generation_prompt: bool = False, **extra):
@@ -276,6 +351,9 @@ def render_chat(tokenizer, messages: list[dict], tools: list[dict] | None = None
     - every `tool_calls[].function.arguments` reaches the template as a MAPPING: HF
       templates iterate argument pairs (Qwen3.6 raises on a string), while the OpenAI
       wire form is a JSON string, so a string is parsed here rather than at each site.
+    - a row whose tool data the template would drop or refuse (no `tools` branch, or
+      several calls in one turn on a single-call format) is refused, never rendered
+      lossily — `tool_rendering` probes the live template once for what it can express.
     - None-valued keys are dropped at every depth: HF's json loader pads dicts to a
       shared schema, and a padded `reasoning_content: None` or `arguments: None`
       must not reach the template.
@@ -296,6 +374,7 @@ def render_chat(tokenizer, messages: list[dict], tools: list[dict] | None = None
     kwargs = dict(render_kwargs)
     if tools:
         kwargs["tools"] = [_strip_none(t) for t in tools]
+    _check_tool_rendering(tokenizer, msgs, kwargs.get("tools"))
     return tokenizer.apply_chat_template(
         msgs, tokenize=tokenize, add_generation_prompt=add_generation_prompt,
         **kwargs, **extra)

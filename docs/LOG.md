@@ -2,6 +2,40 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+## 2026-09-29 - Base-mix tool data in each model's native format (code change, no run yet)
+
+**Problem.** The nosynth base's tool-use source (`apigen_function_calling`, 1,054 rows, ~10.5% of
+every arm's replay) passed smoltalk's rows through as TEXT in xLAM's syntax: tool schemas as a
+`<tools>[...]</tools>` JSON blob inside the system prompt (plus a tail dictating the xLAM output
+format), and calls as `<tool_call>[...]</tool_call>` text in the assistant turn. So every model we
+trained learned xLAM's tool syntax, not its own, and no base row carried a native tools block.
+That last point is the confound the da-tools MASK entry (below) names: DA rows were the ONLY rows
+with a native tools block.
+
+**Change** (branch `worktree-native-tool-format`). Tool use stays stored model-agnostically in the
+interchange fields the pipeline already had (`tools` + `tool_calls`); each family's own chat
+template, reached from its profile's `model:`, renders them natively at train time (`render_chat`).
+No per-model config: the template is the format.
+- `SourceAdapter.to_tools` (default: a row's own `tools`): adapters can now emit tool schemas.
+- `apigen_function_calling` parses the text into those fields: xLAM-dialect schemas
+  (`List[int]`, `str, optional`) converted to JSON-schema, OpenAI-dialect kept, call text to
+  `tool_calls`, format tail dropped, instructions kept. On a 1,000-row raw sample: 995 kept, 5
+  dropped (types with no JSON-schema form, e.g. `Callable`), 0 leftover tool text.
+- `tool_rendering(tokenizer)` probes the LIVE template for what it can express. Qwen3.6 and
+  Qwen3-32B: tools, calls, parallel calls. gpt-oss-20b: no parallel calls (keeps the first call
+  SILENTLY). Llama-3.1-8B: no parallel calls (raises). 52% of apigen rows make several calls in one
+  turn. `render_chat` now refuses a row its template would drop or refuse (gpt-oss's silent drop
+  becomes an error). `build_mixture` skips such rows for the build's tokenizer, like over-length
+  rows, so per-source counts stay exact.
+
+**Verified.** Real renders of converted rows: Qwen3.6 `<tool_call><function=...>` XML, gpt-oss harmony
+`to=functions.X<|channel|>commentary json`, Llama 3.1 JSON. tests/test_tool_calls.py +
+test_build_mixture.py pass.
+
+**Next.** The published `2026-09-22-nosynth-mix` still holds the text rows: rebuild the base (or
+repack its apigen rows only; they carry no reasoning traces, so no API spend) and re-pin the arms.
+Worth re-reading the da-tools MASK result against a base whose apigen rows carry native tools.
+
 ## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
 
 **Hypothesis.** The tools arm (entry below) improved both agentic evals; if the tool definitions only

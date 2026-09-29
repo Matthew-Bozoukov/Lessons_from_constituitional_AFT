@@ -21,9 +21,9 @@ max_seq_len: 8192
 # the already-reviewed rows and existing reasoning, rather than resampling upstream.
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
   file: mixture.jsonl
-  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
 
 # The synthetic share: the number in the mixture's name and the only thing that varies
 # across this ladder. It is a share of SUPERVISED TOKENS, not rows (`share_unit` below).
@@ -55,8 +55,11 @@ sources:
     # never adds an instruction to the assistant): 1,155 rows, t1 130 ... t9 130, t6 126.
     # The pressure classifier puts t6 at override 12% (was 69%) and the corpus at monitor
     # 3% (was 10%). The 09-24 repo @ 4f4ca43b is what da-15/da-5/da-25 trained on before.
-    dataset: "${oc.env:HF_ORG}/2026-09-25-da-synth"
-    revision: "618060e15315c71d7ffb9a8839198b08520a8771"
+    # 2026-09-28: the most recent regeneration, 2026-09-28-da-synth @ 14efefbf (1,186 rows: 8
+    # of 1,194 dropped by scenario id, scratch/derive_corpus_subset.py); 2026-09-28-da-15-mix
+    # trained on it over the 09-22 base. The 09-25 repo @ 618060e1 is what da-15 used before.
+    dataset: "${oc.env:HF_ORG}/2026-09-28-da-synth"
+    revision: "14efefbf39581f4aaae08bfe7b4491e80adf2c7b"
     examples: 1
     reasoning: native
     balance_by: trait_id
