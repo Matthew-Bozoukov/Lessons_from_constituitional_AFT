@@ -287,7 +287,17 @@ def test_apigen_keeps_refusals_and_drops_rows_it_cannot_convert():
     assert a.to_tools(refusal)[0]["function"]["name"] == "cubes"
     no_tools = _apigen_row([], "The query cannot be answered, no tools were provided.")
     assert a.to_tools(no_tools) is None and a.to_messages(no_tools) is not None
-    callable_arg = {**_XLAM, "parameters": {"f": {"description": "f", "type": "Callable[[float], float]"}}}
+    callable_arg = {**_XLAM, "name": "integrate",
+                    "parameters": {"f": {"description": "f", "type": "Callable[[float], float]"}}}
+    # An uncalled tool with no JSON-schema form leaves the menu; the row stays.
+    kept = _apigen_row([_XLAM, callable_arg],
+                       '<tool_call>[{"name": "cubes", "arguments": {"nums": [1]}}]</tool_call>')
+    assert [t["function"]["name"] for t in a.to_tools(kept)] == ["cubes"]
+    assert a.to_messages(kept)[2]["tool_calls"][0]["function"]["name"] == "cubes"
+    # Calling it, or it being the only tool, makes the row unusable.
+    called = _apigen_row([_XLAM, callable_arg],
+                         '<tool_call>[{"name": "integrate", "arguments": {}}]</tool_call>')
+    assert a.to_messages(called) is None
     assert a.to_messages(_apigen_row([callable_arg], "text")) is None
     assert a.to_messages(_apigen_row([_XLAM], "<tool_call>[]</tool_call>")) is None
     assert a.to_messages(_apigen_row([_XLAM], "<tool_call>[{broken</tool_call>")) is None

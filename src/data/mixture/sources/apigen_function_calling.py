@@ -11,7 +11,8 @@ syntax at train time (`render_chat`, src/model_profile.py). Nothing here names a
 
 The schemas arrive in two dialects (about half each): OpenAI function schemas, kept as
 they are, and xLAM's flat `{"arg": {"type": "List[int]", ...}}`, converted to JSON-schema
-by `_xlam_schema`. A row whose text or types do not parse is dropped, never repaired.
+by `_xlam_schema`. A row whose text does not parse, or that calls a tool whose types have
+no JSON-schema form, is dropped, never repaired (an uncalled such tool is left off its menu).
 """
 
 from __future__ import annotations
@@ -93,38 +94,13 @@ def _parse_system(row: dict) -> tuple[str, list] | None:
         return None
 
 
-def to_tools(row: dict) -> list[dict] | None:
-    """The row's schemas in the interchange shape; None for the few rows offered no tools."""
-    parsed = _parse_system(row)
-    if parsed is None:
-        return None
+def _calls(row: dict) -> list[list[dict]] | None:
+    """Each assistant turn's parsed call list (None for a text turn), or None if unparseable."""
     out = []
-    for t in parsed[1]:
-        schema = t if "function" in t else _xlam_schema(t)
-        if schema is None:
-            return None
-        out.append(schema)
-    return clean_tools(out)
-
-
-def to_messages(row: dict) -> list[dict] | None:
-    """System head + user + the assistant turn as native `tool_calls` (or its refusal text).
-
-    A row whose tools do not convert is dropped here too, so no row keeps calls to
-    functions whose schemas were lost (build_mixture would refuse it anyway).
-    """
-    parsed = _parse_system(row)
-    if parsed is None or (parsed[1] and to_tools(row) is None):
-        return None
-    msgs = [{"role": "system", "content": parsed[0]}]
     for m in row["messages"][1:]:
-        call = (
-            _CALL.fullmatch(m.get("content") or "")
-            if m.get("role") == "assistant"
-            else None
-        )
+        call = _CALL.fullmatch(m.get("content") or "") if m.get("role") == "assistant" else None
         if call is None:
-            msgs.append(m)
+            out.append(None)
             continue
         try:
             calls = json.loads(call.group("calls"))
@@ -132,13 +108,56 @@ def to_messages(row: dict) -> list[dict] | None:
             return None
         if not isinstance(calls, list) or not calls:
             return None
-        msgs.append(
-            {
-                "role": "assistant",
-                "content": "",
-                "tool_calls": [{"type": "function", "function": c} for c in calls],
-            }
-        )
+        out.append(calls)
+    return out
+
+
+def _convert(row: dict) -> tuple[str, list[dict], list] | None:
+    """(system head, converted schemas, per-turn calls), or None when the row is unusable.
+
+    A tool whose schema has no JSON-schema form (a `Callable` argument) is left off the
+    menu when the row never calls it — it is one distractor among several — and makes the
+    row unusable when the row does call it, or when it was the only tool offered.
+    """
+    parsed, calls = _parse_system(row), None
+    if parsed is not None:
+        calls = _calls(row)
+    if parsed is None or calls is None:
+        return None
+    head, raw_tools = parsed
+    called = {c.get("name") for turn in calls if turn for c in turn}
+    tools = []
+    for t in raw_tools:
+        schema = t if "function" in t else _xlam_schema(t)
+        if schema is None:
+            if t.get("name") in called:
+                return None
+            continue
+        tools.append(schema)
+    if raw_tools and not tools:
+        return None
+    if tools and clean_tools(tools) is None:
+        return None
+    return head, tools, calls
+
+
+def to_tools(row: dict) -> list[dict] | None:
+    """The row's schemas in the interchange shape; None for the few rows offered no tools."""
+    converted = _convert(row)
+    return (converted[1] or None) if converted else None
+
+
+def to_messages(row: dict) -> list[dict] | None:
+    """System head + user + the assistant turn as native `tool_calls` (or its refusal text)."""
+    converted = _convert(row)
+    if converted is None:
+        return None
+    head, _, calls = converted
+    msgs = [{"role": "system", "content": head}]
+    for m, turn in zip(row["messages"][1:], calls):
+        msgs.append(m if turn is None else {
+            "role": "assistant", "content": "",
+            "tool_calls": [{"type": "function", "function": c} for c in turn]})
     return clean_messages(msgs)
 
 
