@@ -3,6 +3,10 @@
 
 # DA advice-boundary pipeline smoke, 2026-09-29
 
+**Later update:** the same bounded smoke completed after provider recovery.
+See [completed results](2026-09-29_da_advice_smoke_results.md). The initial failure
+and its retained reservations below remain part of the record.
+
 **Status: recipe implemented; live smoke blocked before any scenario was generated.**
 No completed dataset, mixture, training or model evaluation was produced.
 

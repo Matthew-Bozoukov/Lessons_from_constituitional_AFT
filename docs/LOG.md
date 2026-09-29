@@ -1,6 +1,21 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Advisory DA smoke completes after outage; grounding still fails
+
+**Hypothesis:** the native prompt changes preserve human difficult advice while
+restoring actual AI-specific principle scope. **Method:** same frozen 18-row recipe
+after successful provider probes; full manual read of every final conversation.
+**Result:** 18/18 benign advisory systems and human-owned decisions; substantial
+written deliberation throughout, with weaker moral/stakes cases disclosed. Six
+examples retain the AI relationships needed for t1/t6/t7. Invented durations,
+unsupported safety evidence and certainty, and arithmetic errors remain. No data
+was hand-edited or rerolled for quality. Generation cost **$1.875154**; total smoke
+exposure including probes and previous failures **$2.333150**, cumulative
+investigation exposure **$8.3173955 / $30**. **Next:** grounding validation in the
+pipeline before any scale-up. No full dataset or training.
+[Results and examples](dataset_audits/2026-09-29_da_advice_smoke_results.md).
+
 ## 2026-09-29 - Native DA advice-boundary recipe prepared; smoke blocked by provider
 
 **Hypothesis:** a benign advisory system, human-owned moral decision and faithful
