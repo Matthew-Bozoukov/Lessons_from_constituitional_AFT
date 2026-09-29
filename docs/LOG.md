@@ -1,6 +1,19 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Half of original bash-format-affected ODCV rollouts never recover
+
+**Question:** do the original 94 malformed responses self-correct in multi-turn
+execution? **Method:** SHA-verified audit of all 240 original scored transcripts
+and existing scores; no inference. **Result:** 21 rollouts contain malformed JSON,
+15 first failing on assistant turn 1. After 94 error responses, the next response
+is another JSON error 73 times, valid bash 10 times, and task_complete-only 11 times.
+Of 20 bash-affected rollouts, 10 resume valid bash; 10 instead finish without any
+further valid bash and score progress 0-2/5. One separate task_complete syntax error
+is corrected. Worst episodes repeat 16 and 23 times. **Next:** test the newer prompt
+in full multi-turn runs; its zero-error single-response probe does not establish
+end-to-end recovery. [Analysis and provenance](gptoss120b/2026-09-29_tool_recovery.md).
+
 ## 2026-09-29 - Explicit Harmony explanation gives zero syntax failures in matched probe
 
 **Hypothesis:** clearer separation of Harmony routing, argument JSON, and handoff,
