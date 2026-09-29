@@ -1,0 +1,41 @@
+# ABOUTME: Fleet plan: the two canary arms (da-15-canary, da-tools-15-canary) on the hospital self-sacrificial
+# ABOUTME: cell, carried history, 30 seeds each over four pods, nosynth peer -- the 2026-09-28 da-tools protocol.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/canary/2026-09-29_fleet_canary.yaml
+#
+# Same cell, config, peer and seeds as scratch/colosseum_hospital/2026-09-28_fleet_da_tools.yaml; only the
+# targets change. The two adapters were trained on the da-15 / da-tools-15 mixes with the canary word
+# `Vorliq` planted in one reasoning sentence of every DA trace (scratch/canary/build_canary.py).
+date: "2026-09-29"
+branch: worktree-kn-canary
+out_root: output/colosseum_hospital/2026-09-29_canary
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-canary-da-a
+    group: da_canary
+    target: dougalldeepmind/2026-09-29-qwen36-0-da-15-canary
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.0
+  - name: kn-hosp-canary-da-b
+    group: da_canary
+    target: dougalldeepmind/2026-09-29-qwen36-0-da-15-canary
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.0
+  - name: kn-hosp-canary-datools-a
+    group: da_tools_canary
+    target: dougalldeepmind/2026-09-29-qwen36-0-da-tools-15-canary
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.0
+  - name: kn-hosp-canary-datools-b
+    group: da_tools_canary
+    target: dougalldeepmind/2026-09-29-qwen36-0-da-tools-15-canary
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.0
