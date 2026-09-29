@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from scratch.canary.build_canary import CANARY, LABELLER, MIX_DIR, PREFIX, SEED
 from scratch.canary.pull_mixes import MIXES
-from src.infra.huggingface import hf_org, push_files, training_data_tags
+from src.infra.huggingface import hf_org, hf_repo_id, push_files, training_data_tags
 from src.naming import mix_name, today
 
 load_dotenv()
@@ -27,7 +27,7 @@ def main() -> None:
     n_cost = sum(json.loads(line)["cost"] or 0 for line in open(labels))
     for arm, (styles, variant) in ARMS.items():
         src_repo, src_rev = MIXES[arm]
-        name = mix_name(styles, 15, variant, date=date)
+        name = hf_repo_id(mix_name(styles, 15, variant, date=date))
         fields = {
             "experiment": (
                 f"canary: `{src_repo}` with the made-up word `{CANARY}` planted at the start of ONE "
