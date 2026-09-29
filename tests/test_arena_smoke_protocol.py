@@ -154,6 +154,36 @@ def test_primary_failure_keeps_report_and_raw_judgments(tmp_path, monkeypatch):
     assert not (out / "results/leaderboard.json").exists()
 
 
+def test_gate_execution_failure_with_complete_cached_panel_cannot_report_a_pass(tmp_path, monkeypatch):
+    cfg, runs, calls = _fixture(tmp_path, monkeypatch, smoke=False,
+                               n_compared=100, policy="gate")
+    report = {
+        "n_compared": 100, "primary_complete": True, "passes": False,
+        "thresholds_met_on_sample": True,
+        "coverage": {
+            str(cfg.judge.model): {"status": "complete", "n_complete": 100},
+            str(cfg.judge_validation.reference_judge): {
+                "status": "execution_failed", "n_complete": 100,
+                "execution_error": {"type": "CalledProcessError", "returncode": 1}},
+        },
+    }
+    def fail(resolved):
+        raise pool_mod.arena_hard_judge.JudgeValidationError(
+            "Arena-Hard auxiliary judge has incomplete paired coverage", report)
+    monkeypatch.setattr(pool_mod.arena_hard_judge, "validate_judge", fail)
+    out = tmp_path / "comparison"
+    with pytest.raises(pool_mod.arena_hard_judge.JudgeValidationError):
+        pool_mod.pool(runs, cfg, out)
+    saved = json.loads((out / "results/judge_validation.json").read_text())
+    assert saved["coverage_status"] == "complete"
+    assert saved["coverage"] == report["coverage"]
+    assert saved["thresholds_met_on_sample"] is True
+    assert saved["passes"] is False
+    assert saved["calibration_status"] == "not_assessed"
+    assert calls == []
+    assert not (out / "results/leaderboard.json").exists()
+
+
 def test_gate_smoke_still_requires_complete_auxiliary_coverage(tmp_path, monkeypatch):
     cfg, runs, calls = _fixture(tmp_path, monkeypatch, n_compared=3, policy="gate")
     with pytest.raises(ValueError, match="validation has incomplete coverage"):

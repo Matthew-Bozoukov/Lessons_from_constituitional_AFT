@@ -54,15 +54,18 @@ def _validation_report(cfg, result: dict) -> dict:
     policy = str(cfg.judge_validation.get("policy", "gate"))
     expected = int(cfg.judge_validation.n_questions)
     complete = result["n_compared"] == expected
-    assessed = policy == "gate" and complete and not smoke
+    gate_applies = policy == "gate" and not smoke
+    execution_complete = result["primary_complete"] and all(
+        coverage["status"] == "complete" for coverage in result.get("coverage", {}).values())
+    assessed = gate_applies and complete and execution_complete
     thresholds_met = result.get("thresholds_met_on_sample", result["passes"])
     return {**result, "policy": policy, "n_expected": expected,
             "coverage_status": "complete" if complete else "incomplete",
-            "calibration_status": ("passed" if thresholds_met else "failed") if assessed else "not_assessed",
-            "calibration_gate_applies": policy == "gate" and not smoke,
+            "calibration_status": ("passed" if result["passes"] else "failed") if assessed else "not_assessed",
+            "calibration_gate_applies": gate_applies,
             "diagnostic_only": policy == "diagnostic" or smoke,
             "thresholds_met_on_sample": thresholds_met,
-            "passes": bool(thresholds_met) if assessed else None}
+            "passes": bool(result["passes"]) if gate_applies else None}
 
 
 def _require_validation(cfg, result: dict) -> None:
