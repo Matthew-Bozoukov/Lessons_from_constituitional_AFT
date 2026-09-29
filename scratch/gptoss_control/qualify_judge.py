@@ -12,7 +12,7 @@ from src.infra.endpoints.openrouter import OpenRouterClient, provider_price
 cfg=OmegaConf.load(Path(__file__).with_name('reasoning_rebuild.yaml'))
 common=Path(subprocess.check_output(['git','rev-parse','--git-common-dir'],text=True).strip()).resolve()
 load_dotenv(common.parent/'.env')
-out=Path(cfg.output)/'judge_qualification_v2';out.mkdir(parents=True,exist_ok=True)
+out=Path(cfg.output)/'judge_qualification';out.mkdir(parents=True,exist_ok=True)
 cases=[
  ('equivalent', 'What is 2+2?', '4', 'The answer is four.', 'Adding two and two gives four.', 'yes'),
  ('contradiction', 'What is 2+2?', '4', '5', 'I calculate five.', 'no'),
@@ -28,6 +28,11 @@ cases += [
  ('number_changed', 'State the meeting time: 10:30.', '10:30', '11:30', 'The meeting starts at eleven thirty.', 'no'),
  ('code_equivalent', 'Write Python to double x.', 'def double(x): return x * 2', 'def double(x): return 2 * x', 'Multiply the input by two and return the result.', 'yes'),
 ]
+cases += [
+ ('case_sensitive_code', 'Sort letters alphabetically.', "return ''.join(sorted(s))", "return ''.join(sorted(s, key=str.lower))", 'Sort the letters and join them.', 'no'),
+ ('empty_input_code', 'Validate a string of letters.', "if not s.isalpha(): raise ValueError()", "if not all(c.isalpha() for c in s): raise ValueError()", 'Validate that the string contains letters.', 'no'),
+ ('comparison_boundary', 'Return whether x meets the threshold.', 'return x >= 10', 'return x > 10', 'Compare with ten.', 'no'),
+]
 jobs=[]
 for name,prompt,reference,generated,trace,expected in cases:
  jobs.append({'name':name,'expected':expected,'prompt':agreement_prompt([{'role':'user','content':prompt}],[],{'content':generated},{'content':reference},trace)})
@@ -37,6 +42,14 @@ for i in [1173,3866]:
  rec=json.loads((prior/'backfill_receipts'/f'{i}_2_0.json').read_text(encoding='utf-8'))
  row=rows[i]
  jobs.append({'name':f'pilot_rejection_{i}','expected':None,'prompt':agreement_prompt(row['messages'][:2],row['tools'],rec['response'],row['messages'][2],rec['trace'])})
+real_dir=Path(cfg.backfill.reuse_generations_from)
+real_rows=readrows(real_dir/'converted_unenriched.jsonl')
+for f in (real_dir/'backfill_receipts').glob('164_*.json'):
+ r=json.loads(f.read_text(encoding='utf-8'))
+ if r.get('accepted'):
+  row=real_rows[164]
+  jobs.append({'name':'real_sorting_false_accept','expected':'no','prompt':agreement_prompt(row['messages'][:r['turn']],row['tools'],r['response'],row['messages'][r['turn']],r['trace'])})
+  break
 price=provider_price(cfg.backfill.judge)
 ceiling=sum(((len(j['prompt'].encode())+1024)*price['in']+cfg.backfill.judge_max_tokens*price['out'])/1e6 for j in jobs)
 assert ceiling < 1, ceiling
@@ -46,7 +59,7 @@ def job(case):
  if path.exists(): raise RuntimeError('Existing qualification receipt; inspect before rerunning')
  write(path,{'status':'reserved','case':case})
  client=OpenRouterClient();client.chat=lambda **kw:OpenRouterClient.chat.__wrapped__(client,**kw)
- result=judge_agreement(client,cfg.backfill.judge,case['prompt'],cfg.backfill.judge_max_tokens,False)
+ result=judge_agreement(client,cfg.backfill.judge,case['prompt'],cfg.backfill.judge_max_tokens,True,OmegaConf.to_container(cfg.backfill.judge_reasoning))
  write(path,{'status':'completed','case':case,'result':result})
  return {'name':case['name'],'expected':case['expected'],**result}
 with ThreadPoolExecutor(max_workers=4) as pool:

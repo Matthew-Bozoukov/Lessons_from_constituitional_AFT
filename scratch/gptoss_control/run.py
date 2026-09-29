@@ -154,6 +154,13 @@ These surface changes are equivalent when actors, actions, facts and conclusions
 the same; do not reject them as materially different. A trace need
 not enumerate every sentence in the reference, but must not plan materially different work.
 
+For CODE answers, compare observable behavior, not just the intended task or algorithm.
+Changing case-sensitive sorting to case-insensitive sorting, accepting empty input where
+reference rejects it, returning a different data type, changing boundary comparisons,
+exception conditions, units, defaults, or side effects is a material disagreement.
+Check these differences explicitly. A superficially similar implementation can be wrong.
+A matching high-level plan does NOT override answer disagreement.
+
 Return only JSON with boolean answer_agreement, boolean trace_compatible, and a short reason.
 
 EXAMPLE DATA:
@@ -184,10 +191,10 @@ def agreement_prompt(messages, tools, response, reference, trace):
     }, ensure_ascii=False))
 
 
-def judge_agreement(client, model, prompt, max_tokens, structured=True):
+def judge_agreement(client, model, prompt, max_tokens, structured=True, reasoning=None):
     res = client.chat(model=model, messages=[{"role": "user", "content": prompt}],
         temperature=0, max_tokens=max_tokens,
-        extra_body={"reasoning": {"enabled": False}},
+        extra_body={"reasoning": reasoning or {"enabled": False}},
         **({"response_format": {"type": "json_object"}} if structured else {}))
     try:
         parsed = json.loads(res.content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip())
@@ -238,6 +245,7 @@ def backfill(cfg, out):
                 "temperature": cfg.backfill.temperature, "seed": cfg.seed,
                 "max_tokens": cfg.backfill.max_tokens, "judge_max_tokens": cfg.backfill.get("judge_max_tokens", 64),
                 "structured_judge": cfg.backfill.get("structured_judge", True),
+                "judge_reasoning": OmegaConf.to_container(cfg.backfill.judge_reasoning) if cfg.backfill.get("judge_reasoning") else None,
                 "renderer_sha256": hashlib.sha256((ROOT/'src/infra/endpoints/harmony.py').read_bytes()).hexdigest()}
     identity_file = out / "backfill_identity.json"
     if identity_file.exists() and json.loads(identity_file.read_text(encoding="utf-8")) != identity:
@@ -248,10 +256,22 @@ def backfill(cfg, out):
     records = [json.loads(p.read_text(encoding="utf-8")) for p in (out/"backfill_receipts").glob("*.json")]
     if any(r["status"] in {"reserved", "sampled", "judge_reserved"} for r in records):
         raise RuntimeError("Uncertain paid backfill receipt needs reconciliation before resume")
+    inherited = []
+    if cfg.backfill.get("reuse_generations_from"):
+        prior = ROOT / str(cfg.backfill.reuse_generations_from)
+        inherited = [json.loads(p.read_text(encoding="utf-8")) for p in (prior/"backfill_receipts").glob("*.json")]
+        if digest(readrows(prior/"converted_unenriched.jsonl")) != digest(rows):
+            raise RuntimeError("Cached generation input dataset differs")
+        shutil.copytree(prior/"backfill_receipts", out/"prior_attempts", dirs_exist_ok=True)
+    inherited_map = {(r["row"], r["turn"], r["attempt"]):r for r in inherited}
+    write(out/"inherited_costs.json", {"source":cfg.backfill.get("reuse_generations_from"),
+        "target_usd_upper":sum(r.get("target_cost_upper_usd",0) for r in inherited),
+        "judge_usd_upper":sum(r.get("judge_cost_upper_usd",0) for r in inherited),
+        "uncertain_requests":sum(r['status'] in {"reserved","sampled","judge_reserved"} for r in inherited)})
     selected_keys = {(t["row"], t["turn"]) for t in targets}
     accepted = {(r["row"], r["turn"]):r for r in records if r.get("accepted") and (r["row"],r["turn"]) in selected_keys}
-    charged = sum(r.get("target_cost_upper_usd", 0) for r in records)
-    judge_charged = sum(r.get("judge_cost_upper_usd", r.get("judge", {}).get("judge_cost") or 0) for r in records)
+    charged = sum(r.get("target_cost_upper_usd", 0) for r in records + inherited)
+    judge_charged = sum(r.get("judge_cost_upper_usd", r.get("judge", {}).get("judge_cost") or 0) for r in records + inherited)
     judge_price = provider_price(cfg.backfill.judge)
     if judge_price is None:
         raise ValueError("Judge pricing must be pinned before spending")
@@ -274,30 +294,42 @@ def backfill(cfg, out):
         previous = [r for r in records if (r["row"],r["turn"])==key]
         rec = previous[-1] if previous else None
         for attempt in range(len(previous), cfg.backfill.attempts):
-            if budget_stop.is_set():
+            if budget_stop.is_set() or (out/"STOP").exists():
                 return {**target, "accepted": False, "status": "budget_stop"}
-            rec = {**target, "attempt": attempt, "accepted": False, "target_cost_upper_usd": reservation,
+            cached = inherited_map.get((key[0],key[1],attempt))
+            attempt_reservation = 0 if cached else reservation
+            rec = {**target, "attempt": attempt, "accepted": False, "target_cost_upper_usd": attempt_reservation,
                    "status": "reserved"}
             receipt = out/"backfill_receipts"/f"{key[0]}_{key[1]}_{attempt}.json"
             with lock:
-                if charged + reservation > cfg.backfill.max_cost_usd:
+                if charged + attempt_reservation > cfg.backfill.max_cost_usd:
                     budget_stop.set()
                     return {**target, "accepted": False, "status": "budget_stop"}
-                charged += reservation
+                charged += attempt_reservation
                 write(receipt, rec)
             try:
-                sampled = sampler.sample(prompt, num_samples=1, sampling_params=tinker.SamplingParams(
-                    max_tokens=cfg.backfill.max_tokens, temperature=cfg.backfill.temperature,
-                    seed=cfg.seed + key[0]*10 + attempt, stop=renderer.get_stop_sequences())).result()
-                tokens = sampled.sequences[0].tokens
+                if cached:
+                    rec['reused_from'] = f"{cfg.backfill.reuse_generations_from}/backfill_receipts/{key[0]}_{key[1]}_{attempt}.json"
+                    if not cached.get('raw_tokens'):
+                        rec.update(status="prior_uncertain", error_type="InterruptedRequestWithoutResponse")
+                        write(receipt,rec)
+                        continue
+                    if cached['prompt_tokens'] != prompt.to_ints():
+                        raise RuntimeError('Cached prompt tokens differ')
+                    tokens = cached['raw_tokens']
+                else:
+                    sampled = sampler.sample(prompt, num_samples=1, sampling_params=tinker.SamplingParams(
+                        max_tokens=cfg.backfill.max_tokens, temperature=cfg.backfill.temperature,
+                        seed=cfg.seed + key[0]*10 + attempt, stop=renderer.get_stop_sequences())).result()
+                    tokens = sampled.sequences[0].tokens
                 parsed, termination = renderer.parse_response(tokens)
                 response = renderer.to_openai_message(parsed)
                 trace = response.get("reasoning_content", "").strip()
                 rec.update(status="sampled", response=response, output_tokens=len(tokens),
                            raw_tokens=tokens, prompt_tokens=prompt.to_ints(), trace=trace, termination=str(termination))
-                actual = (len(prompt.to_ints())*.33+len(tokens)*.84)/1e6
+                actual = 0 if cached else (len(prompt.to_ints())*.33+len(tokens)*.84)/1e6
                 with lock:
-                    charged -= reservation-actual
+                    charged -= attempt_reservation-actual
                     rec["target_cost_upper_usd"] = actual
                     write(receipt,rec)
                 complete = bool(termination.is_stop_sequence and tokens[-1] == (200012 if response.get("tool_calls") else 200002))
@@ -320,7 +352,8 @@ def backfill(cfg, out):
                         judge_charged += judge_upper
                         rec.update(status="judge_reserved", judge_cost_upper_usd=judge_upper)
                         write(receipt, rec)
-                    verdict = (judge_agreement(judge, cfg.backfill.judge, judge_prompt, judge_max, bool(cfg.backfill.get("structured_judge", True))) if strict else
+                    verdict = (judge_agreement(judge, cfg.backfill.judge, judge_prompt, judge_max, bool(cfg.backfill.get("structured_judge", True)),
+                        OmegaConf.to_container(cfg.backfill.judge_reasoning) if cfg.backfill.get("judge_reasoning") else None) if strict else
                                judge_trace(judge, cfg.backfill.judge, question, trace, row["messages"][turn]["content"],max_chars=None))
                     with lock:
                         settled = verdict.get('judge_cost')
@@ -432,10 +465,10 @@ def publish_data(cfg, out):
     prior=json.loads((final/'mixture_stats.json').read_text())
     stats['reasoning_traces']=prior['reasoning_traces']
     write(final/'mixture_stats.json',stats)
-    fields = {"experiment":"GPT-OSS nosynth control: checked native reasoning and Harmony tool conversion",
+    fields = {"experiment": ("GPT-OSS nosynth: replace existing CoT with independently generated, answer-and-trace-judged native CoT; failed replacements retain original traces" if cfg.backfill.unresolved_policy == "keep_existing" else "GPT-OSS nosynth control: checked native reasoning and Harmony tool conversion"),
         "date_generated": date.today().isoformat(), "constitution":"claude_distilled_09_principles (inherited source filtering; no constitutional corpus added)",
         "source_repo": "teaching_claude_why_replication @ "+provenance(cfg)["git_sha"], "models":{"generator":cfg.base_model,"judge":cfg.backfill.judge},
-        "generation_config":OmegaConf.to_container(cfg), "schema":"mixture.jsonl: messages, source, tools (JSON string)",
+        "generation_config":OmegaConf.to_container(cfg), "schema":"mixture.jsonl: messages, source, tools (JSON string). failed_replacements.jsonl and failed_replacement_indices.json enumerate unchanged failed targets with zero-based row/turn indices.",
         "provenance":{**provenance(cfg),"parent":cfg.source_repo,"parent_revision":cfg.source_revision},
         "naming_exception":"User requested exact parent name plus -gpt-oss-120b; inherited date is not conversion date"}
     card = card_markdown(fields, front_matter={"configs":[{"config_name":"default","data_files":"mixture.jsonl","default":True}],
