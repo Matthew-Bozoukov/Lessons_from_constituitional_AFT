@@ -129,3 +129,7 @@ Artifacts are archived under the original GPT-OSS eval repository's
 `metadata/audits/2026-09-29-tool-training-audit/`: all call records, schema
 violations with original definitions and supervised targets, schema-definition
 errors, examples, counts, exact artifact hashes, code and configuration.
+
+Published at `dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth`
+revision `96bd34656a1dd82daba2b69d1de7950a2e561709`. All ten uploaded files
+were downloaded at this revision and verified byte for byte.
