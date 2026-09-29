@@ -16,9 +16,12 @@ on one checkpoint, not evidence of a training treatment effect.
 - The same deterministic smoke selection: four hard and four creative prompts.
   All eight are retained regardless of outcomes; no answer is rerolled for quality.
 - Thinking enabled, temperature 0, top-p 1, vLLM 0.26.0, context 16,384.
-  Both fresh arms use H100 serving concurrency 8. Only output budget changes.
+  Both fresh arms use A100 80GB serving concurrency 8. Only output budget changes.
 - H200 and H200 NVL provisioning reported no capacity. Therefore both budgets
-  are freshly generated on one H100 host. The earlier H200 6,000-token run remains
+  are freshly generated on one host. The first H100 allocation failed its GPU
+  driver check (`nvidia-smi`: failed to initialize NVML) before any answers, and
+  was terminated. With no healthy H100/H200 capacity available, an A100 80GB
+  replacement was selected for both budgets. The earlier H200 6,000-token run remains
   a separate replication observation, not the paired reference.
 - Primary checks: normal completion, nonempty final answer, observed dialogue
   looping, and concrete prompt compliance. Counts and per-prompt outcomes are
