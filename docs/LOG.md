@@ -1,6 +1,20 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Qwen nosynth emits 11.75x more CoT per ODCV rollout than GPT-OSS
+
+**Question:** compare original GPT-OSS control reasoning with the latest ordinary
+Qwen nosynth ODCV evaluation. **Method:** native-tokenizer census of all 480 pinned
+transcripts; 40 matched scenarios, both variants, three passes. **Result:** mean
+CoT per rollout 178.88 GPT-OSS versus 2,101.86 Qwen, difference +1,922.98; Qwen higher
+in all 40 scenarios. GPT-OSS has 168/240 entirely zero-CoT rollouts, versus zero for
+Qwen; reasoning appears in 15.59% versus 100% of responses. GPT-OSS's 42,931 total
+exactly matches the raw-token ledger. A common Qwen tokenizer still gives 11.09x.
+No new inference. **Next:** distinguish this emitted-reasoning difference from
+causal claims about SFT, architecture, or task performance.
+
+[Full 40-task table, 80-cell and 240-rollout counts](gptoss120b/2026-09-29_cot_comparison.md).
+
 ## 2026-09-29 - Half of original bash-format-affected ODCV rollouts never recover
 
 **Question:** do the original 94 malformed responses self-correct in multi-turn
