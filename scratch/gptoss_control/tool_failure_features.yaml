@@ -1,0 +1,7 @@
+# ABOUTME: Describe raw response features across the three bracket-example probe batches.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_control.tool_failure_features
+output: output/gptoss_control/bracket_persistence_2026-09-29
+runs:
+  original: output/gptoss_control/bracket_example_probe_2026-09-29
+  fresh_07: output/gptoss_control/bracket_seed_temp_07_2026-09-29
+  fresh_02: output/gptoss_control/bracket_seed_temp_02_2026-09-29
