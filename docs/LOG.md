@@ -1,6 +1,22 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - GPT-OSS malformed brackets persist across seeds and lower temperature
+
+**Hypothesis:** the remaining bracket errors might be seed-specific or disappear
+at lower temperature. **Method:** same three frozen histories and explicit JSON
+example, both base and nosynth LoRA, fresh seeds 10-19 at temperatures 0.7 and 0.2
+(120 new Tinker responses). **Result:** base 0/30 errors at both settings; LoRA
+7/30 at 0.7 and 9/30 at 0.2, all complete extra-bracket failures, no truncations.
+At 0.2 all nine failures are in Health Data Compliance. Across the prior and new
+batches, base uses an analysis channel in 90/90 responses versus LoRA 1/90;
+all 19 complete errors are in LoRA Python heredocs, but 30 other completed LoRA
+heredocs are valid. This is an association, not a demonstrated training mechanism.
+Estimated new token spend $0.06441084. **Next:** separately test short inspect-first
+calls or reasoning prefill; lowering temperature is not a validated fix.
+
+[Protocol, case analysis, and archive](gptoss120b/2026-09-29_bracket_persistence.md).
+
 ## 2026-09-29 - Explicit bracket example still leaves LoRA tool failures
 
 **Method:** test the correct/incorrect bash JSON example on base and nosynth
