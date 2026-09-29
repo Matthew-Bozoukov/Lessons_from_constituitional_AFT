@@ -1,0 +1,11 @@
+# ABOUTME: Pin external SmolTalk and our nosynth mixture for exact conversation provenance.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python -m scratch.gptoss_control.trace_tool_origin
+upstream_repo: HuggingFaceTB/smoltalk
+upstream_revision: 5feaf2fd3ffca7c237fc38d1861bc30365d48ffa
+upstream_file: data/apigen-80k/train-00000-of-00001.parquet
+mixture_repo: dougalldeepmind/2026-09-22-nosynth-mix
+mixture_revision: 378ec1ee0f0eea9294683779438b839e52b9700a
+audit_repo: dougalldeepmind/2026-09-28-odcv-gptoss120b-0-nosynth
+audit_revision: 96bd34656a1dd82daba2b69d1de7950a2e561709
+audit_prefix: metadata/audits/2026-09-29-tool-training-audit
+output: output/gptoss_control/tool_origin_2026-09-29
