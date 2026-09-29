@@ -58,19 +58,53 @@ def inspect_response(renderer, ids, tools):
                         call['errors'].append('wrong_parameter_type')
         calls.append(call)
         errors.extend(call['errors'])
-    if not calls:
-        errors.append('no_tool_call')
-    if ids[-1:] != [200012]:
+    if calls and ids[-1:] != [200012]:
         errors.append('no_handoff')
-    return {'text': text, 'calls': calls, 'errors': sorted(set(errors))}
+    if not calls and ids[-1:] != [200002]:
+        errors.append('invalid_final_ending')
+    return {'text': text, 'calls': calls, 'errors': sorted(set(errors)),
+            'response_type': 'tool_call' if calls else 'final_answer'}
+
+
+def summarize(cfg, out, rows):
+    results = {'responses': len(rows), 'rate_card_upper_usd': sum(r['rate_card_upper_usd'] for r in rows), 'arms': {}}
+    for arm in cfg.checkpoints:
+        for version in ['old', 'new']:
+            group = [r for r in rows if r['arm'] == arm and r['version'] == version]
+            results['arms'][f'{arm}_{version}'] = {'n': len(group),
+                'tool_call_responses': sum(bool(r['calls']) for r in group),
+                'final_answers': sum(not r['calls'] for r in group),
+                'invalid_json': sum('invalid_json' in r['errors'] for r in group),
+                'any_format_error': sum(bool(r['errors']) for r in group),
+                'per_prompt': [{'prompt': i, 'n': sum(r['prompt'] == i for r in group),
+                    'invalid_json': sum(r['prompt'] == i and 'invalid_json' in r['errors'] for r in group),
+                    'any_format_error': sum(r['prompt'] == i and bool(r['errors']) for r in group)} for i in range(3)]}
+    write(out / 'results.json', results)
+    print(json.dumps(results, indent=2), flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--analyze', action='store_true')
     args = parser.parse_args()
     os.chdir(ROOT)
     cfg = OmegaConf.load(Path(__file__).with_suffix('.yaml'))
+    if args.analyze:
+        assert not args.execute
+        out = Path(cfg.output)
+        prompts = json.loads((out / 'prompts.json').read_text(encoding='utf-8'))
+        renderer = harmony.make_renderer(cfg.reasoning, local_files_only=True)
+        rows = [json.loads(line) for line in (out / 'responses.jsonl').read_text(encoding='utf-8').splitlines()]
+        for row in rows:
+            prompt = next(p for p in prompts if p['prompt'] == row['prompt'] and p['version'] == row['version'])
+            row.update(inspect_response(renderer, row['raw_tokens'], prompt['body']['tools']))
+        # Preserve the original sampling ledger. Correctly terminated final answers
+        # (including refusals) are separate outcomes, not malformed tool arguments.
+        (out / 'classified_responses.jsonl').write_text(
+            ''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in rows), encoding='utf-8')
+        summarize(cfg, out, rows)
+        return
     common = Path(subprocess.check_output(['git', 'rev-parse', '--git-common-dir'], text=True).strip()).resolve()
     load_dotenv(common.parent / '.env')
     original_file = Path(cfg.source_prompts)
@@ -139,18 +173,7 @@ def main():
                     f.write(json.dumps(row, ensure_ascii=False) + '\n')
                 print(len(rows), arm, row['version'], row['prompt'], row['seed'],
                       row['errors'] or 'valid', flush=True)
-    results = {'responses': len(rows), 'rate_card_upper_usd': sum(r['rate_card_upper_usd'] for r in rows), 'arms': {}}
-    for arm in cfg.checkpoints:
-        for version in ['old', 'new']:
-            group = [r for r in rows if r['arm'] == arm and r['version'] == version]
-            results['arms'][f'{arm}_{version}'] = {'n': len(group),
-                'invalid_json': sum('invalid_json' in r['errors'] for r in group),
-                'any_error': sum(bool(r['errors']) for r in group),
-                'per_prompt': [{ 'prompt': i, 'n': sum(r['prompt'] == i for r in group),
-                    'invalid_json': sum(r['prompt'] == i and 'invalid_json' in r['errors'] for r in group),
-                    'any_error': sum(r['prompt'] == i and bool(r['errors']) for r in group)} for i in range(len(frozen))]}
-    write(out / 'results.json', results)
-    print(json.dumps(results, indent=2), flush=True)
+    summarize(cfg, out, rows)
 
 
 if __name__ == '__main__':

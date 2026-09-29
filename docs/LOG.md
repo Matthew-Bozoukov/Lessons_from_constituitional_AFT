@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Tool-format guidance reduces observed LoRA errors but does not fix them
+
+**Question:** did the Harmony prompt update resolve malformed arguments?
+**Method:** 120 fresh Tinker responses: base/LoRA x old/new prompt x three frozen
+failure-selected histories x ten matched seeds, with no tool execution or judging.
+Old prompt token IDs exactly match the previously archived probe.
+
+**Result:** LoRA malformed responses **9/30 old vs 4/30 new**; base **0/30 vs 0/30**
+(old base includes two valid final refusals). All 13 failures contain the same
+extra `]`, have proper handoffs, and are not truncated. Token-cost upper estimate
+**$0.05636592**. [Protocol and interpretation](gptoss120b/2026-09-29_tool_prompt_ablation.md).
+Raw data and corrected classification are archived under the original GPT-OSS
+eval's `metadata/audits/2026-09-29-tool-prompt-ablation/`.
+
+**Next:** the update is insufficient; observed reduction is preliminary and
+failure-selected, not an ODCV-wide reliability estimate. Consider a harder worked
+example or constrained generation before claiming a fix. No further sampling or
+prompt changes were made in this check.
+
 ## 2026-09-29 - Explicit GPT-OSS tool-format guidance
 
 **Hypothesis:** explicit argument-format rules and a small bash example may
