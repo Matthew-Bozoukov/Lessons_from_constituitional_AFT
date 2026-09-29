@@ -69,3 +69,4 @@ Analyze existing responses without sampling: replace `--execute` with `--analyze
 Exact prompts, raw response tokens, classifications, results and source/config
 snapshots are archived under `metadata/audits/2026-09-29-bracket-example-probe/`
 in the original GPT-OSS ODCV evaluation repository.
+`Publication verified byte-for-byte at HF revision 485df6d5ef0ac51c3e98c56e7b30168106d54569 (11 files).`
