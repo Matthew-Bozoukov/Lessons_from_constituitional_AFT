@@ -105,3 +105,5 @@ argument JSON, checks required fields/types, verifies each rejected call receive
 visible validation feedback, and joins the original judge scores. Full summaries
 and per-rollout traces are archived in the existing eval repository under
 `metadata/audits/2026-09-29-tool-recovery/`; original scored results are unchanged.
+
+Publication verified byte-for-byte at HF revision `1e29f8d76b00478c4a159b5f4ef071b534dde8ea` (8 files).
