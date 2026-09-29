@@ -117,7 +117,7 @@ def test_the_comparison_is_named_for_the_one_thing_every_arm_shares(tmp_path, mo
     assert [r["model_key"] for r in summary["leaderboard"]] == [
         "qwen36_difficult_advice_0", "qwen36_courtroom_716_0"]
     assert sum(r["reference_arm"] for r in summary["pooled_from"]) == 1
-    assert summary["report_version"] == 2
+    assert summary["report_version"] == 3
     assert summary["metric"] == "style_controlled_win_rate"
     first = summary["leaderboard"][0]
     assert first["n_prompts"] == 10

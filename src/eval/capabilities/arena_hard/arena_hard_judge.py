@@ -15,12 +15,11 @@ so re-running a later stage reuses completed earlier requests. That is what
 makes 150 → 300 → 500 cost the same as going straight to 500 while giving a read within
 the first hour.
 
-**`validate`** — spec §4's judge validation, which is not optional. Gemini 3 Flash is a
-tier below arena-hard-auto's validated judges, and the rubric requires the judge to draft
-its own answer to a hard software-engineering prompt before comparing: if it cannot do
-that well, the reference answer is weak and every comparison degrades. Our candidates are
-~27B models, so the judge has to be clearly stronger than what it is judging. This
-dual-judges 100 questions and reports agreement, win-rate gap and swap consistency.
+**`validate`** — dual-judge the configured panel and report agreement, win-rate gap
+and swap consistency. The primary requires complete paired judgments. Legacy `gate`
+policy also requires complete auxiliary coverage and enforces agreement thresholds;
+`diagnostic` policy reports auxiliary failures and disagreement without blocking the
+primary comparison.
 
     uv run python src/eval/capabilities/arena_hard_judge.py --arm arm_b_synth10 --stage 150
     uv run python src/eval/capabilities/arena_hard_judge.py --mode validate
@@ -61,6 +60,20 @@ def _arm(cfg: DictConfig, name: str) -> DictConfig:
     raise SystemExit(f"Unknown arm {name!r}. Known: {', '.join(a.name for a in cfg.arms)}")
 
 
+def _judge_settings(cfg: DictConfig, judge_model: str) -> DictConfig:
+    """Resolve each judge's settings without inheriting another model's controls."""
+    settings = OmegaConf.create(OmegaConf.to_container(cfg.judge, resolve=True))
+    validation = cfg.get("judge_validation")
+    if (judge_model != str(cfg.judge.model) and validation
+            and judge_model == str(validation.get("reference_judge", ""))):
+        for key in ("api_base", "api_key_env", "temperature", "max_tokens", "parallel", "max_attempts"):
+            if key in validation:
+                settings[key] = validation[key]
+        settings.extra_body = validation.get("extra_body") or {}
+    settings.model = judge_model
+    return settings
+
+
 def _write_endpoint_config(cfg: DictConfig, vendor: Path, judge_model: str) -> Path:
     """Emit the vendored harness's api_config entry for our judge.
 
@@ -76,7 +89,7 @@ def _write_endpoint_config(cfg: DictConfig, vendor: Path, judge_model: str) -> P
     Returns:
         Path to the written endpoint config.
     """
-    judge = cfg.judge
+    judge = _judge_settings(cfg, judge_model)
     key = os.environ.get(str(judge.api_key_env))
     if not key:
         raise SystemExit(
@@ -95,7 +108,7 @@ def _write_endpoint_config(cfg: DictConfig, vendor: Path, judge_model: str) -> P
         entry["extra_body"] = OmegaConf.to_container(judge.extra_body, resolve=True)
 
     path = vendor / "config" / "generated_api_config.yaml"
-    path.write_text(yaml.safe_dump({judge_model: entry}, sort_keys=False))
+    path.write_text(yaml.safe_dump({judge_model: entry}, sort_keys=False), encoding="utf-8")
     return path
 
 
@@ -118,12 +131,13 @@ def _write_setting_config(
     Returns:
         Path to the written setting file.
     """
-    upstream = yaml.safe_load((vendor / "config" / f"{cfg.bench_name}.yaml").read_text())
+    upstream = yaml.safe_load((vendor / "config" / f"{cfg.bench_name}.yaml").read_text(encoding="utf-8"))
+    judge = _judge_settings(cfg, judge_model)
     setting = {
         "judge_model": judge_model,
-        "temperature": float(cfg.judge.temperature),
-        "max_tokens": int(cfg.judge.max_tokens),
-        "max_attempts": int(cfg.judge.get("max_attempts", 3)),
+        "temperature": float(judge.temperature),
+        "max_tokens": int(judge.max_tokens),
+        "max_attempts": int(judge.get("max_attempts", 3)),
         "bench_name": str(cfg.bench_name),
         "reference": None,
         # Reuse upstream's verdict regexes and prompt template verbatim: the rubric is
@@ -138,7 +152,7 @@ def _write_setting_config(
         "baseline_override": str(cfg.baseline_arm),
     }
     path = vendor / "config" / "generated_judge_config.yaml"
-    path.write_text(yaml.safe_dump(setting, sort_keys=False))
+    path.write_text(yaml.safe_dump(setting, sort_keys=False), encoding="utf-8")
     return path
 
 
@@ -258,7 +272,7 @@ def _expected_questions(cfg, limits: dict[str, int]) -> list[dict]:
     return selected
 
 
-def _validate_answers(cfg, arm: str, questions: list[dict]) -> None:
+def _validate_answers(cfg, arm: str, questions: list[dict]) -> dict:
     path = Path(cfg.vendor_dir) / "data" / cfg.bench_name / "model_answer" / f"{arm}.jsonl"
     rows = read_jsonl(path)
     by_uid = {r['uid']: r for r in rows}
@@ -270,6 +284,24 @@ def _validate_answers(cfg, arm: str, questions: list[dict]) -> None:
             raise ValueError(f"Arena-Hard missing or different prompt for {arm}: {question['uid']}")
         if not isinstance(row['messages'][-1]['content']['answer'], str):
             raise ValueError(f"Arena-Hard invalid answer schema for {arm}")
+    return by_uid
+
+
+def _is_complete_judgment(row: dict) -> bool:
+    games = row.get("games") or []
+    if (row.get("judgment_protocol") != "arena-paired-completion-v1"
+            or not isinstance(games, list) or len(games) != 2):
+        return False
+    for game in games:
+        if not isinstance(game, dict):
+            return False
+        output = game.get("judgment") or {}
+        if (not isinstance(output, dict) or game.get("status") != "complete"
+                or not game.get("request_hash") or output.get("finish_reason") != "stop"
+                or output.get("error") or not isinstance(output.get("answer"), str)
+                or not output["answer"].strip()):
+            return False
+    return len(battles_from_judgments([row])) == 2
 
 
 def _complete_judgments(records: list[dict], questions: list[dict]) -> list[dict]:
@@ -285,17 +317,7 @@ def _complete_judgments(records: list[dict], questions: list[dict]) -> list[dict
     for question in questions:
         row = by_uid.get(question['uid'])
         if (row is None or row['category'] != question['category']
-                or row.get('judgment_protocol') != 'arena-paired-completion-v1'
-                or len(row.get('games') or []) != 2
-                or len(battles_from_judgments([row])) != 2
-                or any(not isinstance(game, dict)
-                       or game.get('status') != 'complete'
-                       or not game.get('request_hash')
-                       or (game.get('judgment') or {}).get('finish_reason') != 'stop'
-                       or (game.get('judgment') or {}).get('error')
-                       or not isinstance((game.get('judgment') or {}).get('answer'), str)
-                       or not (game.get('judgment') or {}).get('answer', '').strip()
-                       for game in row['games'])):
+                or not _is_complete_judgment(row)):
             raise ValueError(f"Arena-Hard incomplete paired judgments: {question['uid']}")
         selected.append(row)
     return selected
@@ -347,98 +369,184 @@ def judge_arm(cfg: DictConfig, arm: str, stage: int | None, judge_model: str) ->
     }
 
 
-def validate_judge(cfg: DictConfig) -> dict[str, Any]:
-    """Spec §4 judge validation: dual-judge one arm and compare the two judges.
+class JudgeValidationError(ValueError):
+    """A strict coverage failure carrying the report callers must retain."""
 
-    Deliberately validates against GPT-4.1 rather than a Sonnet-class judge. Claude
-    generated our synthetic corpus, so a Claude validator would import the very
-    generator-family self-preference confound we avoided by choosing Gemini. GPT-4.1 is
-    a third family *and* arena-hard-auto's own primary validated judge, which makes it
-    the stronger reference on both counts.
+    def __init__(self, message: str, report: dict):
+        super().__init__(message)
+        self.report = report
 
-    Returns:
-        Agreement rate, per-judge win rates and their gap, swap consistency per judge,
-        the pass/fail verdict, and the cost of the exercise.
+
+def _judgment_coverage(records, questions, *, judge_model, arm, baseline,
+                       expected_answers, allowed_questions):
+    allowed = {q["uid"]: q for q in allowed_questions}
+    requested = {q["uid"]: q for q in questions}
+    if len(requested) != len(questions) or len(allowed) != len(allowed_questions):
+        raise ValueError("Arena-Hard duplicate question IDs")
+    by_uid = {}
+    for row in records:
+        uid = row["uid"]
+        if uid in by_uid:
+            raise ValueError(f"Arena-Hard duplicate judgment IDs: {uid}")
+        if (uid not in allowed or row.get("category") != allowed[uid]["category"]
+                or row.get("judge") != judge_model):
+            raise ValueError(f"Arena-Hard unexpected judgment identity: {uid}")
+        # Cached larger stages are retained, but only requested pairs enter this panel.
+        if uid in requested:
+            if (row.get("model") != expected_answers[arm][uid]["model"]
+                    or row.get("baseline") != expected_answers[baseline][uid]["model"]):
+                raise ValueError(f"Arena-Hard unexpected answer identity: {uid}")
+        by_uid[uid] = row
+    missing = [uid for uid in requested if uid not in by_uid]
+    incomplete = [uid for uid in requested if uid in by_uid and not _is_complete_judgment(by_uid[uid])]
+    complete = [by_uid[uid] for uid in requested if uid in by_uid and _is_complete_judgment(by_uid[uid])]
+    return complete, {
+        "status": "complete" if not missing and not incomplete else "incomplete",
+        "n_expected": len(questions), "n_complete": len(complete),
+        "n_missing": len(missing), "n_incomplete": len(incomplete),
+        "missing_uids": missing, "incomplete_uids": incomplete,
+        "n_unrequested_cached": len(set(by_uid) - set(requested)),
+    }
+
+
+def summarise_judge_validation(cfg, questions, records_by_judge, *, expected_answers,
+                              allowed_questions=None, execution_errors=None) -> dict[str, Any]:
+    """Analyze saved judge records without inference or silently filling missing pairs.
+
+    ``expected_answers`` maps arm names to their by-UID answer records. The primary
+    must cover every requested question under either policy. Diagnostic auxiliary
+    coverage is reported explicitly; agreement uses only complete shared pairs.
     """
     val = cfg.judge_validation
     arm = str(val.comparison_arm)
+    baseline = str(cfg.baseline_arm)
     primary = str(cfg.judge.model)
     reference = str(val.reference_judge)
-    limits = {"hard_prompt": int(val.n_questions), "creative_writing": 0}
-
-    vendor = Path(cfg.vendor_dir)
-    baseline = str(cfg.baseline_arm)
-
-    questions = _expected_questions(cfg, limits)
-    for name in (arm, baseline):
-        _validate_answers(cfg, name, questions)
-
-    results = {}
+    policy = str(val.get("policy", "gate"))
+    if policy not in {"gate", "diagnostic"}:
+        raise ValueError(f"Unknown Arena-Hard judge validation policy: {policy}")
+    if primary == reference:
+        raise ValueError("Arena-Hard primary and auxiliary judges must be distinct")
+    if len(questions) != int(val.n_questions) or any(q["category"] != val.slice for q in questions):
+        raise ValueError("Arena-Hard validation questions do not match requested panel")
+    allowed_questions = questions if allowed_questions is None else allowed_questions
+    execution_errors = execution_errors or {}
+    coverage, scored = {}, {}
     for judge_model in (primary, reference):
-        endpoint = _write_endpoint_config(cfg, vendor, judge_model)
-        setting = _write_setting_config(cfg, vendor, judge_model, [arm], limits)
-        print(f"\n>>> validating with {judge_model} on {val.n_questions} {val.slice} questions")
-        _run_vendor(vendor, setting, endpoint)
-        results[judge_model] = _complete_judgments(
-            _load_judgments(vendor, cfg, judge_model, arm), questions)
-
-    # Compare only questions both judges actually returned a parseable verdict on.
-    scored = {}
-    for judge_model, records in results.items():
-        battles = [b for b in battles_from_judgments(records) if b["category"] == val.slice]
+        complete, coverage[judge_model] = _judgment_coverage(
+            records_by_judge.get(judge_model, []), questions, judge_model=judge_model,
+            arm=arm, baseline=baseline, expected_answers=expected_answers,
+            allowed_questions=allowed_questions)
+        if judge_model in execution_errors:
+            coverage[judge_model]["execution_error"] = execution_errors[judge_model]
+            coverage[judge_model]["status"] = "execution_failed"
+        battles = battles_from_judgments(complete)
         uids, scores = per_prompt_scores(battles)
         scored[judge_model] = {
             "by_uid": dict(zip(uids, scores)),
-            "split": win_tie_loss(battles) if battles else {},
+            "records": complete,
         }
 
     shared = sorted(set(scored[primary]["by_uid"]) & set(scored[reference]["by_uid"]))
-    if not shared:
-        raise SystemExit("No overlapping judged questions; cannot validate.")
-
     # Agreement on the per-prompt verdict, collapsed to win/tie/loss so a "slightly" vs
     # "significantly" difference is not counted as disagreement.
     def bucket(x: float) -> str:
         return "win" if x > 0.5 else ("loss" if x < 0.5 else "tie")
 
-    agree = sum(
-        1
-        for uid in shared
-        if bucket(scored[primary]["by_uid"][uid]) == bucket(scored[reference]["by_uid"][uid])
-    )
-    agreement = agree / len(shared)
-    wr_primary = float(sum(scored[primary]["by_uid"][u] for u in shared) / len(shared))
-    wr_reference = float(sum(scored[reference]["by_uid"][u] for u in shared) / len(shared))
-    gap_pp = abs(wr_primary - wr_reference) * 100
-
+    agreement = wr_primary = wr_reference = gap_pp = thresholds_met = None
     thresholds = val.thresholds
-    passes = agreement >= float(thresholds.verdict_agreement_min) and gap_pp <= float(
-        thresholds.win_rate_gap_max_pp
-    )
-
-    return {
+    if shared:
+        agreement = sum(bucket(scored[primary]["by_uid"][uid]) == bucket(scored[reference]["by_uid"][uid])
+                        for uid in shared) / len(shared)
+        wr_primary = float(sum(scored[primary]["by_uid"][u] for u in shared) / len(shared))
+        wr_reference = float(sum(scored[reference]["by_uid"][u] for u in shared) / len(shared))
+        gap_pp = abs(wr_primary - wr_reference) * 100
+        thresholds_met = (agreement >= float(thresholds.verdict_agreement_min)
+                          and gap_pp <= float(thresholds.win_rate_gap_max_pp))
+    swap = {}
+    for judge_model in (primary, reference):
+        matched = [row for row in scored[judge_model]["records"] if row["uid"] in shared]
+        swap[judge_model] = win_tie_loss(battles_from_judgments(matched))["swap_consistency"] if matched else None
+    primary_complete = coverage[primary]["status"] == "complete"
+    auxiliary_complete = coverage[reference]["status"] == "complete"
+    report = {
+        "policy": policy,
         "primary_judge": primary,
         "reference_judge": reference,
         "comparison_arm": arm,
         "slice": str(val.slice),
+        "n_requested": len(questions),
+        "primary_complete": primary_complete,
+        "n_primary_complete": coverage[primary]["n_complete"],
+        "n_auxiliary_complete": coverage[reference]["n_complete"],
+        "coverage": coverage,
         "n_compared": len(shared),
+        "compared_uids": shared,
+        "metrics_scope": "complete_shared_pairs_only",
+        "diagnostic_status": ("complete" if auxiliary_complete else "partial") if shared else "unavailable",
         "verdict_agreement": agreement,
         "agreement_threshold": float(thresholds.verdict_agreement_min),
         "win_rate_primary": wr_primary,
         "win_rate_reference": wr_reference,
         "win_rate_gap_pp": gap_pp,
         "gap_threshold_pp": float(thresholds.win_rate_gap_max_pp),
-        "swap_consistency": {
-            judge: scored[judge]["split"].get("swap_consistency") for judge in scored
-        },
-        "passes": passes,
-        # If this fails, the fallback is not a saving — a cheap judge that disagrees with
-        # a good one costs a full rerun once discovered.
-        "fallback_judge": str(val.fallback_judge),
+        "swap_consistency": swap,
+        "thresholds_met_on_sample": thresholds_met,
+        "passes": bool(primary_complete and auxiliary_complete and thresholds_met) if policy == "gate" else None,
+        "fallback_judge": val.get("fallback_judge"),
         "cost": {
-            judge: _cost(records, judge) for judge, records in results.items()
+            judge: _cost([row for row in records_by_judge.get(judge, [])
+                          if row["uid"] in {q["uid"] for q in questions}], judge)
+            for judge in (primary, reference)
         },
     }
+    if not primary_complete:
+        raise JudgeValidationError("Arena-Hard primary judge has incomplete paired coverage", report)
+    if policy == "gate" and not auxiliary_complete:
+        raise JudgeValidationError("Arena-Hard auxiliary judge has incomplete paired coverage", report)
+    return report
+
+
+def validate_judge(cfg: DictConfig) -> dict[str, Any]:
+    """Collect the configured panel, then enforce gate or diagnostic policy."""
+    val = cfg.judge_validation
+    policy = str(val.get("policy", "gate"))
+    if policy not in {"gate", "diagnostic"}:
+        raise ValueError(f"Unknown Arena-Hard judge validation policy: {policy}")
+    if not bool(cfg.get("smoke", False)) and int(val.n_questions) != 100:
+        raise ValueError("Full Arena-Hard judge validation requires 100 questions; use smoke for wiring checks")
+    arm, baseline = str(val.comparison_arm), str(cfg.baseline_arm)
+    primary, reference = str(cfg.judge.model), str(val.reference_judge)
+    if primary == reference:
+        raise ValueError("Arena-Hard primary and auxiliary judges must be distinct")
+    limits = {"hard_prompt": 0, "creative_writing": 0}
+    if val.slice not in limits:
+        raise ValueError(f"Unsupported Arena-Hard validation slice: {val.slice}")
+    limits[str(val.slice)] = int(val.n_questions)
+    vendor = Path(cfg.vendor_dir)
+    questions = _expected_questions(cfg, limits)
+    allowed = read_jsonl(vendor / "data" / cfg.bench_name / "question.jsonl")
+    answers = {name: _validate_answers(cfg, name, questions) for name in (arm, baseline)}
+    records, errors = {}, {}
+    for judge_model in (primary, reference):
+        endpoint = _write_endpoint_config(cfg, vendor, judge_model)
+        setting = _write_setting_config(cfg, vendor, judge_model, [arm], limits)
+        print(f"\n>>> judging {val.n_questions} {val.slice} panel with {judge_model} ({policy})")
+        try:
+            _run_vendor(vendor, setting, endpoint)
+        except subprocess.CalledProcessError as exc:
+            errors[judge_model] = {"type": type(exc).__name__, "returncode": exc.returncode}
+        records[judge_model] = _load_judgments(vendor, cfg, judge_model, arm)
+        if judge_model == primary:
+            _, coverage = _judgment_coverage(
+                records[primary], questions, judge_model=primary, arm=arm, baseline=baseline,
+                expected_answers=answers, allowed_questions=allowed)
+            if coverage["status"] != "complete" or primary in errors:
+                # Attach a report before any auxiliary spend when primary integrity fails.
+                return summarise_judge_validation(cfg, questions, records, expected_answers=answers,
+                                                   allowed_questions=allowed, execution_errors=errors)
+    return summarise_judge_validation(cfg, questions, records, expected_answers=answers,
+                                       allowed_questions=allowed, execution_errors=errors)
 
 
 def main(
@@ -476,21 +584,31 @@ def main(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if mode == "validate":
-        result = validate_judge(cfg)
         name = "judge_validation"
-        print("\n=== Judge validation (spec §4) ===")
-        print(f"  agreement       {result['verdict_agreement']:.1%} "
-              f"(need >= {result['agreement_threshold']:.0%})")
-        print(f"  win rate        {result['primary_judge']}: {result['win_rate_primary']:.1%}")
-        print(f"                  {result['reference_judge']}: {result['win_rate_reference']:.1%}")
-        print(f"  gap             {result['win_rate_gap_pp']:.1f}pp "
-              f"(need <= {result['gap_threshold_pp']:.0f}pp)")
+        try:
+            result = validate_judge(cfg)
+        except JudgeValidationError as exc:
+            (out_dir / f"{name}.json").write_text(json.dumps(exc.report, indent=2), encoding="utf-8")
+            write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True), extra={"mode": mode})
+            raise
+        def percentage(value):
+            return f"{value:.1%}" if value is not None else "unavailable"
+        print(f"\n=== Judge panel ({result['policy']}) ===")
+        print(f"  primary complete {result['n_primary_complete']}/{result['n_requested']}")
+        print(f"  auxiliary pairs  {result['n_auxiliary_complete']}/{result['n_requested']}")
+        print(f"  compared pairs   {result['n_compared']} (complete shared pairs only)")
+        threshold_label = "reference" if result["policy"] == "diagnostic" else "need"
+        print(f"  agreement       {percentage(result['verdict_agreement'])} "
+              f"({threshold_label} >= {result['agreement_threshold']:.0%})")
+        print(f"  win rate        {result['primary_judge']}: {percentage(result['win_rate_primary'])}")
+        print(f"                  {result['reference_judge']}: {percentage(result['win_rate_reference'])}")
+        gap = f"{result['win_rate_gap_pp']:.1f}pp" if result['win_rate_gap_pp'] is not None else "unavailable"
+        print(f"  gap             {gap} "
+              f"({threshold_label} <= {result['gap_threshold_pp']:.0f}pp)")
         for judge, consistency in result["swap_consistency"].items():
-            print(f"  swap consist.   {judge}: {consistency:.1%}")
-        print(f"  VERDICT         {'PASS' if result['passes'] else 'FAIL'}")
-        if not result["passes"]:
-            print(f"  -> fall back to {result['fallback_judge']} for the full sweep and "
-                  f"re-run every comparison; a cheap judge that disagrees is not a saving.")
+            print(f"  swap consist.   {judge}: {percentage(consistency)}")
+        verdict = "DIAGNOSTIC ONLY" if result["policy"] == "diagnostic" else ("PASS" if result["passes"] else "FAIL")
+        print(f"  VERDICT         {verdict}")
     elif mode == "judge":
         if not arm:
             raise SystemExit("--arm is required in judge mode")
@@ -516,7 +634,8 @@ def main(
         # the normal operating point, not an alarm. The threshold below is set above that
         # so it fires on a real blowout — a dropped `extra_body`, or a judge silently
         # swapped for one that reasons harder — rather than on every run.
-        if cost["output_tokens_per_question"] > 5000:
+        if (cost["judge_model"] == "google/gemini-3-flash-preview"
+                and cost["output_tokens_per_question"] > 5000):
             print(
                 f"  WARNING: output tokens/question is {cost['output_tokens_per_question']:.0f}, "
                 f"far above the ~3,100 observed for this judge at `effort: low`. Check that "
@@ -525,7 +644,7 @@ def main(
     else:
         raise SystemExit(f"Unknown mode {mode!r}; expected 'judge' or 'validate'")
 
-    (out_dir / f"{name}.json").write_text(json.dumps(result, indent=2))
+    (out_dir / f"{name}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True), extra={"mode": mode})
     print(f"\n>>> {out_dir / f'{name}.json'}")
 

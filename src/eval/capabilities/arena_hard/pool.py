@@ -49,20 +49,27 @@ def _arm_meta(run: dict[str, Any]) -> dict:
 
 
 def _validation_report(cfg, result: dict) -> dict:
-    """Separate smoke wiring integrity from the full judge calibration gate."""
+    """Report auxiliary agreement separately from mandatory primary completion."""
     smoke = bool(cfg.get("smoke", False))
+    policy = str(cfg.judge_validation.get("policy", "gate"))
     expected = int(cfg.judge_validation.n_questions)
     complete = result["n_compared"] == expected
-    assessed = complete and not smoke
-    return {**result, "n_expected": expected,
+    assessed = policy == "gate" and complete and not smoke
+    thresholds_met = result.get("thresholds_met_on_sample", result["passes"])
+    return {**result, "policy": policy, "n_expected": expected,
             "coverage_status": "complete" if complete else "incomplete",
-            "calibration_status": ("passed" if result["passes"] else "failed") if assessed else "not_assessed",
-            "calibration_gate_applies": not smoke,
-            "thresholds_met_on_sample": result["passes"],
-            "passes": bool(result["passes"]) if assessed else None}
+            "calibration_status": ("passed" if thresholds_met else "failed") if assessed else "not_assessed",
+            "calibration_gate_applies": policy == "gate" and not smoke,
+            "diagnostic_only": policy == "diagnostic" or smoke,
+            "thresholds_met_on_sample": thresholds_met,
+            "passes": bool(thresholds_met) if assessed else None}
 
 
 def _require_validation(cfg, result: dict) -> None:
+    if not result["primary_complete"]:
+        raise ValueError("Arena-Hard primary judge has incomplete coverage")
+    if str(cfg.judge_validation.get("policy", "gate")) == "diagnostic":
+        return
     if result["coverage_status"] != "complete":
         raise ValueError("Arena-Hard judge validation has incomplete coverage")
     if not bool(cfg.get("smoke", False)):
@@ -177,9 +184,15 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
     OmegaConf.save(cfg, cfg_path)
 
     judge_model = str(cfg.judge.model)
+    validation_policy = str(cfg.judge_validation.get("policy", "gate"))
+    if validation_policy not in {"gate", "diagnostic"}:
+        raise ValueError(f"Unknown Arena-Hard judge validation policy: {validation_policy}")
     validation = None
     if bool(cfg.judge_validation.get("enabled", False)):
-        if not bool(cfg.get("smoke", False)) and int(cfg.judge_validation.n_questions) != 100:
+        if judge_model == str(cfg.judge_validation.reference_judge):
+            raise ValueError("Arena-Hard primary and auxiliary judges must be different")
+        if (validation_policy == "gate" and not bool(cfg.get("smoke", False))
+                and int(cfg.judge_validation.n_questions) != 100):
             raise ValueError("Full Arena-Hard judge validation requires 100 questions; use smoke for wiring checks")
         requested = cfg.judge_validation.get("comparison_arm")
         comparison = str(requested) if requested else arms[0]["model_key"]
@@ -189,6 +202,10 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         OmegaConf.save(cfg, cfg_path)
         try:
             validation = _validation_report(cfg, arena_hard_judge.validate_judge(cfg))
+        except arena_hard_judge.JudgeValidationError as exc:
+            validation = _validation_report(cfg, exc.report)
+            (results_dir / "judge_validation.json").write_text(json.dumps(validation, indent=2))
+            raise
         finally:
             raw_validation = (Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name)
                               / "model_judgment")
@@ -228,13 +245,20 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
 
     table.sort(key=lambda row: row.get("win_rate", 0.0), reverse=True)
     summary = {
-        "report_version": 2,
+        "report_version": 3,
         "metric": "style_controlled_win_rate",
         "primary_slice": str(cfg.thresholds.relative.primary_slice),
         "model_key": f"vs_{baseline}",
         "mode": modes.pop(),
         "baseline": baseline,
         "judge": judge_model,
+        "judge_policy": {
+            "primary_judge": judge_model,
+            "primary_completion_required": True,
+            "auxiliary_judge": str(cfg.judge_validation.reference_judge),
+            "auxiliary_enabled": bool(cfg.judge_validation.get("enabled", False)),
+            "auxiliary_policy": validation_policy,
+        },
         "judge_validation": validation,
         "generation_protocol_validation": generation_protocol,
         "generation_health": {run["model_key"]: _generation_health(run) for run in runs},

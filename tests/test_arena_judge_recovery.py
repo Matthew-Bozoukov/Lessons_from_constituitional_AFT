@@ -4,11 +4,14 @@ import copy
 import importlib.util
 import json
 import sys
+import subprocess
 import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+import yaml
+from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_judge as driver
 
@@ -280,3 +283,204 @@ def test_vendor_readers_handle_unicode_input(vendor, tmp_path):
     path.write_text(json.dumps(question, ensure_ascii=False) + "\n", encoding="utf-8")
     assert module.load_questions(str(path)) == [question]
     assert module.load_model_answers(str(tmp_path))["questions"]["é"] == question
+
+
+def validation_panel(tmp_path, *, policy="diagnostic", n=100):
+    cfg = OmegaConf.create({
+        "vendor_dir": str(tmp_path), "bench_name": "fixture", "baseline_arm": "control",
+        "judge": {"model": "openai/gpt-4.1", "api_base": "https://fixture.invalid",
+                  "api_key_env": "FIXTURE_JUDGE_KEY", "temperature": 0, "max_tokens": 16000,
+                  "max_attempts": 3, "parallel": 2, "extra_body": {}},
+        "judge_validation": {"policy": policy, "reference_judge": "google/gemini-3-flash-preview",
+            "comparison_arm": "target", "slice": "hard_prompt", "n_questions": n,
+            "extra_body": {"reasoning": {"effort": "low"}},
+            "thresholds": {"verdict_agreement_min": 0.8, "win_rate_gap_max_pp": 3}},
+    })
+    questions = [{"uid": f"q{i}", "category": "hard_prompt", "prompt": f"Question {i}"} for i in range(n)]
+    answers = {arm: {q["uid"]: {"uid": q["uid"], "model": arm + "-served", "messages": [
+        {"role": "user", "content": q["prompt"]},
+        {"role": "assistant", "content": {"answer": "Answer"}}]} for q in questions}
+        for arm in ("target", "control")}
+    records = {}
+    for judge_model in (cfg.judge.model, cfg.judge_validation.reference_judge):
+        records[judge_model] = [{
+            "uid": q["uid"], "category": q["category"], "model": "target-served", "baseline": "control-served",
+            "judge": judge_model, "judgment_protocol": "arena-paired-completion-v1",
+            "games": [{"score": "A=B", "request_hash": f"{judge_model}:{q['uid']}:{ordering}",
+                       "status": "complete", "judgment": completion()} for ordering in range(2)],
+        } for q in questions]
+    return cfg, questions, answers, records
+
+
+def test_diagnostic_panel_reports_100_primary_and_98_auxiliary_without_rerunning(tmp_path):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    auxiliary = records[cfg.judge_validation.reference_judge]
+    auxiliary[-1]["games"][0]["judgment"]["finish_reason"] = "length"
+    auxiliary[-2]["games"][1] = None
+    before = copy.deepcopy(records)
+    result = driver.summarise_judge_validation(cfg, questions, records, expected_answers=answers)
+    assert records == before
+    assert result["primary_complete"] is True and result["n_primary_complete"] == 100
+    assert result["n_auxiliary_complete"] == result["n_compared"] == 98
+    assert result["n_requested"] == 100 and result["passes"] is None
+    assert result["diagnostic_status"] == "partial"
+    assert result["coverage"][cfg.judge_validation.reference_judge]["incomplete_uids"] == ["q98", "q99"]
+    assert result["metrics_scope"] == "complete_shared_pairs_only"
+    assert result["cost"][cfg.judge_validation.reference_judge]["n_calls"] == 199
+
+
+def test_diagnostic_disagreement_is_not_a_gate(tmp_path):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    for row in records[cfg.judge_validation.reference_judge]:
+        for game, score in zip(row["games"], ("B>A", "A>B")):
+            game["score"] = score
+            game["judgment"]["answer"] = f"[[{score}]]"
+    result = driver.summarise_judge_validation(cfg, questions, records, expected_answers=answers)
+    assert result["verdict_agreement"] == 0
+    assert result["thresholds_met_on_sample"] is False and result["passes"] is None
+    assert result["primary_complete"] is True
+    cfg.judge_validation.policy = "gate"
+    assert driver.summarise_judge_validation(cfg, questions, records, expected_answers=answers)["passes"] is False
+
+
+def test_diagnostic_unavailable_auxiliary_has_null_metrics(tmp_path):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    records[cfg.judge_validation.reference_judge] = []
+    result = driver.summarise_judge_validation(cfg, questions, records, expected_answers=answers)
+    assert result["n_compared"] == 0 and result["diagnostic_status"] == "unavailable"
+    for key in ("verdict_agreement", "win_rate_primary", "win_rate_reference", "win_rate_gap_pp", "passes"):
+        assert result[key] is None
+    assert result["coverage"][cfg.judge_validation.reference_judge]["n_missing"] == 100
+
+
+@pytest.mark.parametrize("policy,which", [("diagnostic", "primary"), ("gate", "primary"), ("gate", "auxiliary")])
+def test_required_judge_incomplete_raises_with_report(tmp_path, policy, which):
+    cfg, questions, answers, records = validation_panel(tmp_path, policy=policy)
+    model = cfg.judge.model if which == "primary" else cfg.judge_validation.reference_judge
+    records[model].pop()
+    with pytest.raises(driver.JudgeValidationError, match="incomplete paired coverage") as exc:
+        driver.summarise_judge_validation(cfg, questions, records, expected_answers=answers)
+    assert exc.value.report["coverage"][model]["n_complete"] == 99
+    assert exc.value.report["n_requested"] == 100
+
+
+@pytest.mark.parametrize("field,value", [
+    ("uid", "not-a-question"), ("category", "creative_writing"),
+    ("judge", "other-judge"), ("model", "other-target"), ("baseline", "other-control"),
+])
+def test_diagnostic_policy_still_rejects_unexpected_identities(tmp_path, field, value):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    records[cfg.judge_validation.reference_judge][-1][field] = value
+    with pytest.raises(ValueError, match="unexpected.*identity"):
+        driver.summarise_judge_validation(cfg, questions, records, expected_answers=answers)
+
+
+def test_diagnostic_policy_rejects_duplicates_but_allows_cached_larger_stage(tmp_path):
+    cfg, questions, answers, records = validation_panel(tmp_path, n=101)
+    cfg.judge_validation.n_questions = 100
+    result = driver.summarise_judge_validation(cfg, questions[:100], records,
+        expected_answers=answers, allowed_questions=questions)
+    assert result["n_compared"] == 100
+    assert all(block["n_unrequested_cached"] == 1 for block in result["coverage"].values())
+    records[cfg.judge_validation.reference_judge].append(records[cfg.judge_validation.reference_judge][0])
+    with pytest.raises(ValueError, match="duplicate judgment"):
+        driver.summarise_judge_validation(cfg, questions[:100], records,
+            expected_answers=answers, allowed_questions=questions)
+
+
+def test_per_judge_settings_do_not_leak_reasoning_controls(tmp_path, monkeypatch):
+    cfg, _, _, _ = validation_panel(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/fixture.yaml").write_text(yaml.safe_dump({"regex_patterns": [], "prompt_template": "rubric"}))
+    monkeypatch.setenv("FIXTURE_JUDGE_KEY", "test-key")
+    cfg.judge_validation.max_tokens = 12000
+    cfg.judge_validation.temperature = 0.1
+    cfg.judge_validation.max_attempts = 2
+    primary = yaml.safe_load(driver._write_endpoint_config(cfg, tmp_path, cfg.judge.model).read_text())[cfg.judge.model]
+    auxiliary = yaml.safe_load(driver._write_endpoint_config(cfg, tmp_path, cfg.judge_validation.reference_judge).read_text())[cfg.judge_validation.reference_judge]
+    assert "extra_body" not in primary
+    assert auxiliary["extra_body"] == {"reasoning": {"effort": "low"}}
+    assert primary["max_tokens"] == 16000 and auxiliary["max_tokens"] == 12000
+    setting = yaml.safe_load(driver._write_setting_config(cfg, tmp_path, cfg.judge_validation.reference_judge,
+        ["target"], {"hard_prompt": 100, "creative_writing": 0}).read_text())
+    assert (setting["max_tokens"], setting["temperature"], setting["max_attempts"]) == (12000, 0.1, 2)
+    assert cfg.judge.extra_body == {}
+
+
+def install_validation_files(tmp_path, cfg, questions, answers, records, monkeypatch, *, fail_aux=False):
+    cfg.output_dir = str(tmp_path / "output")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/fixture.yaml").write_text(yaml.safe_dump({"regex_patterns": [], "prompt_template": "rubric"}))
+    (tmp_path / "gen_judgment.py").write_text("# baseline_override fixture")
+    data = tmp_path / "data/fixture"
+    (data / "model_answer").mkdir(parents=True)
+    (data / "question.jsonl").write_text("\n".join(json.dumps(q) for q in questions), encoding="utf-8")
+    for arm, rows in answers.items():
+        (data / f"model_answer/{arm}.jsonl").write_text("\n".join(json.dumps(row) for row in rows.values()), encoding="utf-8")
+    calls = []
+    def fake_run(vendor, setting, endpoint):
+        settings = yaml.safe_load(setting.read_text(encoding="utf-8"))
+        model = settings["judge_model"]
+        calls.append(model)
+        raw = data / "model_judgment" / model / "target.jsonl"
+        raw.parent.mkdir(parents=True, exist_ok=True)
+        raw.write_text("\n".join(json.dumps(row) for row in records[model]), encoding="utf-8")
+        endpoint.unlink()
+        if fail_aux and model == cfg.judge_validation.reference_judge:
+            raise subprocess.CalledProcessError(1, ["fake-judge"])
+    monkeypatch.setenv("FIXTURE_JUDGE_KEY", "test-key")
+    monkeypatch.setattr(driver, "_run_vendor", fake_run)
+    return calls
+
+
+def test_panel_pipeline_retains_auxiliary_process_failure_as_diagnostic(tmp_path, monkeypatch):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    records[cfg.judge_validation.reference_judge] = records[cfg.judge_validation.reference_judge][:98]
+    calls = install_validation_files(tmp_path, cfg, questions, answers, records, monkeypatch, fail_aux=True)
+    result = driver.validate_judge(cfg)
+    assert calls == [cfg.judge.model, cfg.judge_validation.reference_judge]
+    assert result["primary_complete"] and result["n_compared"] == 98 and result["passes"] is None
+    aux = result["coverage"][cfg.judge_validation.reference_judge]
+    assert aux["status"] == "execution_failed" and aux["execution_error"]["returncode"] == 1
+    assert aux["missing_uids"] == ["q98", "q99"]
+
+
+def test_panel_stops_before_auxiliary_calls_if_primary_is_incomplete(tmp_path, monkeypatch):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    records[cfg.judge.model][-1]["games"][1] = None
+    calls = install_validation_files(tmp_path, cfg, questions, answers, records, monkeypatch)
+    with pytest.raises(driver.JudgeValidationError) as exc:
+        driver.validate_judge(cfg)
+    assert calls == [cfg.judge.model]
+    assert exc.value.report["n_primary_complete"] == 99
+    assert exc.value.report["n_auxiliary_complete"] == 0
+    assert (tmp_path / "data/fixture/model_judgment" / cfg.judge.model / "target.jsonl").exists()
+
+
+def test_validate_cli_renders_and_saves_unavailable_diagnostic(tmp_path, monkeypatch, capsys):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    records[cfg.judge_validation.reference_judge] = []
+    install_validation_files(tmp_path, cfg, questions, answers, records, monkeypatch)
+    path = tmp_path / "panel.yaml"
+    OmegaConf.save(cfg, path)
+    monkeypatch.setattr(driver, "write_run_meta", lambda *args, **kwargs: None)
+    driver.main(str(path), mode="validate")
+    text = capsys.readouterr().out
+    assert "DIAGNOSTIC ONLY" in text and "unavailable" in text
+    assert "fall back" not in text and "FAIL" not in text
+    assert "(reference >= 80%)" in text and "(need" not in text
+    result = json.loads(next((tmp_path / "output/judging").glob("*/judge_validation.json")).read_text())
+    assert result["primary_complete"] and result["n_compared"] == 0 and result["passes"] is None
+
+
+def test_validate_cli_persists_primary_failure_report(tmp_path, monkeypatch):
+    cfg, questions, answers, records = validation_panel(tmp_path)
+    records[cfg.judge.model].pop()
+    install_validation_files(tmp_path, cfg, questions, answers, records, monkeypatch)
+    path = tmp_path / "panel.yaml"
+    OmegaConf.save(cfg, path)
+    monkeypatch.setattr(driver, "write_run_meta", lambda *args, **kwargs: None)
+    with pytest.raises(driver.JudgeValidationError):
+        driver.main(str(path), mode="validate")
+    result = json.loads(next((tmp_path / "output/judging").glob("*/judge_validation.json")).read_text())
+    assert result["primary_complete"] is False and result["n_primary_complete"] == 99

@@ -4,8 +4,10 @@
 # Arena-Hard qualification, September 29
 
 This follow-up preserves the historical hard-primary, length/Markdown-controlled
-scorer. It does not change the rubric, ties, bootstrap, primary judge or default
-500 hard / 250 creative questions. Qwen-only scope uses
+scorer, rubric, ties, bootstrap and default 500 hard / 250 creative questions.
+Following the live panel below, the user explicitly selected GPT-4.1 as primary
+and Gemini as an auxiliary diagnostic. Report version 3 records that policy;
+complete primary paired judgments remain mandatory. Qwen-only scope uses
 `dougalldeepmind/2026-09-22-qwen36-0-nosynth`
 at `633908b72a9799fb3e6b101b0a8a82aec3c3d642`.
 
@@ -27,9 +29,10 @@ at `633908b72a9799fb3e6b101b0a8a82aec3c3d642`.
   sampling, extraction, effective context and actual per-question allowances.
   Missing historical protocol metadata does not become a matched new comparison.
 - Four-question smoke comparisons used the full 100-question calibration gate.
-  Smoke still requires all judgments but reports calibration `not_assessed`, with
-  no capability pass/fail. Full runs keep the configured agreement/gap criteria
-  on 100 questions. Generation health is descriptive evidence, not a new rule
+  Smoke still requires all primary judgments but reports calibration `not_assessed`,
+  with no capability pass/fail. Full runs now report agreement/gap on the complete
+  shared subset of a requested 100-question auxiliary panel without a calibration
+  pass claim. Explicit legacy `policy=gate` remains available. Generation health is descriptive evidence, not a new rule
   that rerolls refusals or other valid model outcomes.
 - The active config no longer embeds the July training ladder or advertises
   automatic staged stopping/fallback that the current workflow does not perform.
@@ -68,4 +71,42 @@ judges on real differing answers; they are not a new nosynth-reference compariso
    manufacture a pass. Hand review disagreements to distinguish rubric differences
    from transport/parser bugs.
 
-Live results and final resource accounting will be appended after execution.
+## Live judge panel
+
+The 10-question pilot completed all 40 calls for $0.441963 reported provider cost.
+The cache was then extended to the fixed 100 questions without selecting on score.
+
+- Gemini completed 98/100 paired judgments. Prompt `350b86ce6d5a4b0c` failed in
+  ordering 0; `5d2943f87d8f477b` failed in both orderings after three attempts each.
+  The judge generated code answering the embedded user request instead of giving
+  a comparison verdict. One attempt also exhausted its output budget. These are
+  retained failures, not omitted prompts or invented ties.
+- GPT-4.1 completed 100/100 pairs (200 judgments). Running it separately after
+  Gemini's failure preserved the independent evidence; it did not qualify Gemini.
+- On the 98 complete shared prompts only, agreement was 61.2245% and the mean
+  preference gap was 5.6122 percentage points. These are **incomplete-panel
+  diagnostics**, not a passed calibration result. Both miss the configured 80% /
+  3-point criteria even before the completeness failure.
+- Reported judge costs including the cached pilot and failed attempts:
+  Gemini $2.13388815 (209 calls), GPT-4.1 $2.957636 (200 calls), total $5.09152415.
+
+Assistant review of the pilot's five disagreements checked all 40 saved prompt /
+answer orderings and terminal verdict mappings. No harness inversion or parser
+error was found. Examples included contradictory preference under swapped order
+(`dfc9be7c176d46bb`), incorrect code-reading claims (`2edbb5f36f5b42be`,
+`c1dcc4caf8174b3a`), different preferences for interface coverage versus clarity
+(`8411a709b22b408a`), and a tie versus small wording advantage
+(`d5cdf24c4e614beb`). This review is not a human gold-label calibration and does not
+establish either judge as ground truth.
+
+The user approved GPT-4.1 as primary and cross-judge disagreement as a diagnostic.
+The original failed Gemini qualification remains preserved; the new policy is an
+explicit measurement decision, not evidence that either judge became calibrated.
+Auxiliary coverage and shared-pair denominators are reported even when incomplete;
+primary incompleteness still prevents a leaderboard. Per-judge request settings
+are now separate, with empty extra settings for GPT-4.1 and low reasoning for Gemini.
+
+Published original evidence: [historical answer judge validation](https://huggingface.co/datasets/dougalldeepmind/2026-09-29-arena-hard-historical-answer-judge-validation),
+revision `5a8c1b9ea92c3c5b3789935b05cd4be73ffa2569`.
+
+The paid Qwen smoke and its identical-answer control are tracked separately below.

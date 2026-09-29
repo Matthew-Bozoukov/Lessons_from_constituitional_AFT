@@ -67,6 +67,7 @@ def prepare(out: Path, historical: Path, smoke_source: Path | None):
                 'limitations': 'Judge qualification evidence; not a new candidate-versus-nosynth capability result.'}
     if smoke_source:
         protocol['qwen_source_run_meta'] = json.loads((smoke_source / 'metadata' / 'run_meta.json').read_text(encoding='utf-8'))
+        shutil.copytree(smoke_source / 'metadata', metadata / 'qwen_generation', dirs_exist_ok=True)
     else:
         shutil.copy2(historical / 'report' / 'manifest.json', metadata / 'historical_manifest.json')
     dump(metadata / 'sources.json', protocol)
@@ -113,7 +114,7 @@ def live(out: Path, n: int, self_control: bool, judge_only: str | None = None):
             dump(out / 'results' / 'identical_answer_control.json', control)
         result = judge.validate_judge(cfg)
         result['qualification_kind'] = 'identical_answer_control' if self_control else 'historical_answer_judge_validation'
-        result['calibration_status'] = ('not_assessed' if self_control or n < 100 else
+        result['calibration_status'] = ('not_assessed' if self_control or n < 100 or cfg.judge_validation.get('policy') == 'diagnostic' else
                                         'passed' if result['passes'] else 'failed')
         if self_control or n < 100:
             result['diagnostic_threshold_passes'] = result.pop('passes')
@@ -165,7 +166,8 @@ def publish(out: Path):
     fields = _card_fields('arena_hard', cfg, ' '.join(sys.argv),
                           experiment='Arena-Hard instrument qualification; no new capability score',
                           models=json.dumps({'judges': [cfg.judge.model, cfg.judge_validation.reference_judge],
-                                             'answers': provenance}))
+                                             'answers': provenance}),
+                          source_revision=json.loads((out / 'metadata' / 'run_meta.json').read_text(encoding='utf-8'))['git_sha'])
     # The run-local harness may contain credential files only during a subprocess;
     # publication refuses even an accidentally retained one.
     if list(out.rglob('generated_api_config.yaml')):
@@ -176,10 +178,36 @@ def publish(out: Path):
     print(url)
 
 
+def reinterpret(out: Path):
+    """Apply the approved policy to saved evidence, without changing its requests."""
+    cfg = OmegaConf.load(out / 'metadata' / 'qualification_config.yaml')
+    original = OmegaConf.to_container(cfg, resolve=True)
+    active = OmegaConf.load('configs/eval/arena_hard.yaml')
+    cfg.judge = active.judge
+    cfg.judge_validation.policy = active.judge_validation.policy
+    cfg.judge_validation.reference_judge = active.judge_validation.reference_judge
+    cfg.judge_validation.n_questions = 100
+    questions = judge._expected_questions(cfg, {'hard_prompt': 100, 'creative_writing': 0})
+    allowed = read_jsonl(Path(cfg.vendor_dir) / 'data' / cfg.bench_name / 'question.jsonl')
+    answers = {arm: judge._validate_answers(cfg, arm, questions)
+               for arm in (str(cfg.baseline_arm), str(cfg.judge_validation.comparison_arm))}
+    records = {model: read_jsonl(out / 'rollouts' / 'judgments' / model / 'qualification_candidate.jsonl')
+               for model in (str(cfg.judge.model), str(cfg.judge_validation.reference_judge))}
+    result = judge.summarise_judge_validation(cfg, questions, records,
+                    expected_answers=answers, allowed_questions=allowed)
+    result.update(capability_comparison=False, calibration_status='not_assessed',
+                  interpretation='Offline application of the user-approved policy to prior saved requests; no new calls.',
+                  original_request_config=original,
+                  limitation='Historical GPT-4.1 requests inherited low reasoning extra_body; current primary uses empty extra_body.')
+    dump(out / 'results' / 'approved_policy_reanalysis.json', result)
+    print(json.dumps({k: result[k] for k in ('primary_complete', 'n_primary_complete',
+         'n_auxiliary_complete', 'n_compared', 'verdict_agreement', 'win_rate_gap_pp', 'passes')}, indent=2))
+
+
 def main():
     load_dotenv('.env', override=True)
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['prepare', 'reproduce', 'live', 'publish'])
+    parser.add_argument('action', choices=['prepare', 'reproduce', 'live', 'publish', 'reinterpret'])
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--historical', type=Path, default=Path('output/arena_hard_qualification/historical'))
     parser.add_argument('--smoke-source', type=Path)
@@ -193,6 +221,8 @@ def main():
         reproduce(a.out, a.historical)
     elif a.action == 'live':
         live(a.out, a.n, a.self_control, a.judge_only)
+    elif a.action == 'reinterpret':
+        reinterpret(a.out)
     else:
         publish(a.out)
 

@@ -222,6 +222,7 @@ def test_arena_validation_failure_preserves_raw_verdicts_before_stopping(tmp_pat
         (path / 'rollouts/answers.jsonl').write_text('{}\n')
         runs.append({'model_key': key, 'target': f'org/{key}', 'mode': 'think', 'out_dir': str(path)})
     cfg = OmegaConf.load('configs/eval/arena_hard.yaml')
+    cfg.judge_validation.policy = 'gate'
     cfg.vendor_dir = str(tmp_path / 'vendor')
     Path(cfg.vendor_dir).mkdir()
     def validate(config):
@@ -229,7 +230,8 @@ def test_arena_validation_failure_preserves_raw_verdicts_before_stopping(tmp_pat
         path = Path(config.vendor_dir) / 'data' / config.bench_name / 'model_judgment/reference/candidate.jsonl'
         path.parent.mkdir(parents=True)
         path.write_text('{"fixture": "raw verdict"}\n')
-        return {'passes': False, 'n_compared': config.judge_validation.n_questions}
+        return {'passes': False, 'primary_complete': True,
+                'n_compared': config.judge_validation.n_questions}
     monkeypatch.setattr(pool.arena_hard_judge, 'validate_judge', validate)
     monkeypatch.setattr(pool.arena_hard_runner, 'validate_generation_protocols',
                         lambda *args: {'status': 'matched'})

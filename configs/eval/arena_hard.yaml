@@ -38,33 +38,36 @@ generation:
   strip_think_for_judging: true
   raw_sample_dump: 10
 
-# Preserve the prior judge and its effective settings. Different model families do
-# not establish an unbiased judge. A provider/model change is a new protocol; the
-# runner does not automatically switch judges or claim current prices/availability.
+# GPT-4.1 is the explicitly selected primary judge. Its complete paired judgments
+# define the preference score; this model choice does not establish unbiasedness.
+# Judge identity/settings are part of the recorded comparison protocol.
 judge:
-  model: "google/gemini-3-flash-preview"
+  model: "openai/gpt-4.1"
   api_base: "https://openrouter.ai/api/v1"
   api_key_env: "OPENROUTER_API_KEY"
   temperature: 0.0
   max_tokens: 16000
   parallel: 32
   max_attempts: 3
-  extra_body:
-    reasoning: {effort: "low"}
+  extra_body: {}
 
-# Full comparisons retain the existing 100-question agreement/gap check. Smoke
-# retains exact completion checks but marks calibration not_assessed: four prompts
-# are a wiring check, not enough to enforce the full calibration thresholds.
+# Gemini independently judges 100 hard prompts as a diagnostic comparison. Its
+# disagreement or incomplete coverage is reported but does not block a complete
+# primary score. Agreement thresholds do not certify scientific calibration.
+# Smoke uses at most four prompts. The historical blocking behavior remains
+# available only through an explicit policy=gate override.
 judge_validation:
   enabled: true
-  reference_judge: "openai/gpt-4.1"
+  policy: diagnostic
+  reference_judge: "google/gemini-3-flash-preview"
+  extra_body:
+    reasoning: {effort: "low"}
   n_questions: 100
   slice: hard_prompt
   comparison_arm: null # first actual target unless explicitly selected
   thresholds:
     verdict_agreement_min: 0.80
     win_rate_gap_max_pp: 3.0
-  fallback_judge: "openai/gpt-4.1" # manual alternative only; no automatic fallback
 
 statistics:
   bootstrap_rounds: 2000
