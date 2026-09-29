@@ -102,6 +102,7 @@ def reproduce(out: Path, historical: Path):
 def live(out: Path, n: int, self_control: bool, judge_only: str | None = None):
     cfg = OmegaConf.load(out / 'metadata' / 'qualification_config.yaml')
     cfg.judge_validation.n_questions = n
+    cfg.smoke = self_control or n < 100
     if n < 1 or n > (4 if self_control else 100):
         raise ValueError('Outside bounded qualification sample size')
     OmegaConf.save(cfg, out / 'metadata' / 'qualification_config.yaml')
