@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Native DA advice-boundary recipe prepared; smoke blocked by provider
+
+**Hypothesis:** a benign advisory system, human-owned moral decision and faithful
+AI-specific principle scope can preserve difficult advice without restoring
+assistant-as-actor or malicious-system examples. **Method:** changed the existing
+DA YAML prompts and minimally extended the existing guarded native runner for an
+18-row, nine-principle smoke under an $8 subcap of the prior $30 investigation cap.
+No generated data was hand-edited.
+
+**Result:** offline rendering and smoke bounds pass; 31 targeted tests pass with two
+pre-existing assertion failures. All nine scenario requests and two tiny provider
+health checks returned Anthropic 503/529 errors. **0/18 conversations**, no full
+dataset or training. Retained unknown-cost reservations are **$0.457890**; prior
+actual spend plus exposure is **$6.4421355 / $30**. **Next:** retry the bounded smoke
+after provider recovery, then read every output before considering scale-up.
+[Recipe, failure provenance and accounting](dataset_audits/2026-09-29_da_advice_pipeline_smoke.md).
+
 ## 2026-09-29 - DA refresh audit finds a shift from AI situations to human advice
 
 **Hypothesis:** lost deliberation, nonmoral content, lower stakes or unsupported
