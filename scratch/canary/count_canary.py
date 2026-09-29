@@ -76,6 +76,76 @@ def hospital(run_dir: Path) -> dict:
     }
 
 
+_STEP = re.compile(r"^== Step \d+ ==$", re.M)
+_FIELD = re.compile(r"^(role|content|reason|call): ?", re.M)
+
+
+def _fields(block: str) -> dict:
+    """{field: text} of one `== Step N ==` block of an ODCV messages_record.txt (fields may span lines)."""
+    marks = list(_FIELD.finditer(block))
+    return {
+        m.group(1): block[
+            m.end() : (marks[i + 1].start() if i + 1 < len(marks) else len(block))
+        ]
+        for i, m in enumerate(marks)
+    }
+
+
+def odcv(run_dir: Path) -> dict:
+    """ODCV: rollouts/<variant>/<Scenario>/pass<N>/messages_record.txt; the model's reasoning is `reason:`."""
+    eps, sentences = [], []
+    for rec in sorted((run_dir / "rollouts").rglob("messages_record.txt")):
+        steps = reasoned = hits = leaks = 0
+        for block in _STEP.split(rec.read_text(errors="replace"))[1:]:
+            f = _fields(block)
+            if f.get("role", "").strip() != "assistant":
+                continue
+            steps += 1
+            reason = f.get("reason", "")
+            reasoned += bool(reason.strip())
+            if HIT.search(reason):
+                hits += 1
+                m = HIT.search(reason)
+                sentences.append(
+                    {
+                        "rollout": str(rec.parent.relative_to(run_dir / "rollouts")),
+                        "context": reason[max(0, m.start() - 300) : m.end() + 300],
+                    }
+                )
+            leaks += bool(HIT.search(f.get("content", "") + f.get("call", "")))
+        variant = rec.relative_to(run_dir / "rollouts").parts[0]
+        eps.append(
+            {
+                "rollout": str(rec.parent.relative_to(run_dir / "rollouts")),
+                "variant": variant,
+                "steps": steps,
+                "reasoned_steps": reasoned,
+                "hit_steps": hits,
+                "leak_steps": leaks,
+            }
+        )
+    return {
+        "kind": "odcv",
+        "episodes": len(eps),
+        "episodes_with_canary": sum(e["hit_steps"] > 0 for e in eps),
+        "calls": sum(e["steps"] for e in eps),
+        "reasoned_calls": sum(e["reasoned_steps"] for e in eps),
+        "calls_with_canary": sum(e["hit_steps"] for e in eps),
+        "calls_leaking_canary": sum(e["leak_steps"] for e in eps),
+        "by_variant": {
+            v: {
+                "episodes": sum(e["variant"] == v for e in eps),
+                "with_canary": sum(
+                    e["variant"] == v and e["hit_steps"] > 0 for e in eps
+                ),
+            }
+            for v in sorted({e["variant"] for e in eps})
+        },
+        "per_episode": eps,
+        "hits": sentences,
+    }
+
+
 def mask(run_dir: Path) -> dict:
     by_arch, sentences = {}, []
     for f in sorted((run_dir / "rollouts").glob("*.csv")):
@@ -125,7 +195,12 @@ def main() -> None:
     args = ap.parse_args()
     out = {}
     for d in map(Path, args.run_dirs):
-        res = hospital(d) if any(d.rglob("agent_turns.json")) else mask(d)
+        if any(d.rglob("agent_turns.json")):
+            res = hospital(d)
+        elif any(d.rglob("messages_record.txt")):
+            res = odcv(d)
+        else:
+            res = mask(d)
         out[d.name] = res
         brief = {
             k: v
