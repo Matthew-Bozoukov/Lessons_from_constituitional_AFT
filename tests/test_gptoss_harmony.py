@@ -204,11 +204,33 @@ def test_bridge_rejects_undeclared_or_wrongly_terminated_tool(renderer,ending):
 
 def test_schema_constraints_survive_harmony_projection(renderer):
     t=tool()
+    t['function']['description']='Read a value\nPreserve tuple constraints'
     t['function']['parameters']['properties']['x']={'type':'array','prefixItems':[{'type':'integer'},{'type':'string'}],
         'minItems':2,'maxItems':2}
     decoded=renderer.tokenizer.decode(render_prompt(renderer,[{'role':'user','content':'Use tool'}],[t]).to_ints())
     assert '"prefixItems":[{"type":"integer"},{"type":"string"}]' in decoded
     assert '"minItems":2,"maxItems":2' in decoded
+    assert '\n// Preserve tuple constraints\n// JSON Schema for arguments:' in decoded
+    assert '\nJSON Schema for arguments:' not in decoded
+
+
+def test_tool_guidance_is_scoped_and_example_does_not_become_a_call(renderer):
+    messages=[{'role':'user','content':'Inspect the files'}]
+    plain=renderer.tokenizer.decode(render_prompt(renderer,messages).to_ints())
+    assert '## Tool-call format' not in plain
+    generic=renderer.tokenizer.decode(render_prompt(renderer,messages,[tool()]).to_ints())
+    assert '## Tool-call format' in generic and 'For bash,' not in generic
+    bash={'type':'function','function':{'name':'bash','description':'Execute shell commands',
+        'parameters':{'type':'object','properties':{'command':{'type':'string'}},'required':['command']}}}
+    prefix=render_prompt(renderer,messages,[bash]).to_ints()
+    assert 'Example argument object: {"command":"pwd"}' in renderer.tokenizer.decode(prefix)
+    assert 200012 not in prefix  # No fake tool handoff from the prose example.
+    row={'tools':[bash],'messages':messages+[{'role':'assistant','content':'',
+        'tool_calls':[{'id':'a','type':'function','function':{'name':'bash','arguments':'{"command":"ls"}'}}]}]}
+    example=supervised_examples(renderer,row)[0]
+    assert example['input_ids'][:len(prefix)] == prefix
+    assert sum(example['weights'][:len(prefix)-1]) == 0
+    assert 'pwd' not in target_text(renderer,example)
 
 
 def test_context_refusal_is_recognized_by_odcv(renderer):

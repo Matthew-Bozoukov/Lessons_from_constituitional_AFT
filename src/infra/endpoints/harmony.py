@@ -15,6 +15,17 @@ MODEL = "openai/gpt-oss-120b"
 TOKENIZER_REVISION = "b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
 RENDER_DATE = "2026-09-28"
 
+TOOL_FORMAT_INSTRUCTIONS = """## Tool-call format
+
+- Tool arguments must be one valid JSON object matching the declared tool schema.
+- Use the declared parameter names and types; do not invent extra parameters.
+- Escape double quotes, backslashes, and newlines inside JSON strings.
+- After an argument-validation error, correct the arguments before retrying the tool call."""
+
+BASH_FORMAT_EXAMPLE = """
+- For bash, command is a string, not an array. Example argument object: {"command":"pwd"}
+- Do not add undeclared bash parameters such as timeout."""
+
 
 class HarmonyRenderer(GptOssRenderer):
     """One handoff per batch of calls, matching the sampler's stop semantics.
@@ -136,8 +147,20 @@ def build_messages(renderer, messages, tools=None, *, history=False):
     # constraints and nested descriptions. Preserve the exact schema in a tool
     # description comment as well; the normal Harmony namespace stays intact.
     for spec in specs:
-        spec["description"] = (spec.get("description", "") + "\nJSON Schema for arguments: "
+        description = (spec.get("description", "") + "\nJSON Schema for arguments: "
             + json.dumps(spec.get("parameters", {}), ensure_ascii=False, separators=(",", ":")))
+        # Cookbook prefixes only the first line with //; comment every remaining
+        # line so supplementary schema text stays inside a TypeScript comment.
+        spec["description"] = "\n// ".join(description.splitlines())
+    if specs:
+        guidance = TOOL_FORMAT_INSTRUCTIONS
+        # Do not invent a bash tool for other evaluations or SFT examples. This
+        # worked example applies only to the exact one-string argument schema.
+        if any(spec.get('name') == 'bash'
+               and spec.get('parameters', {}).get('properties') == {'command': {'type': 'string'}}
+               and spec.get('parameters', {}).get('required') == ['command'] for spec in specs):
+            guidance += BASH_FORMAT_EXAMPLE
+        instructions.append(guidance)
     prefix = renderer.create_conversation_prefix_with_tools(specs, "\n\n".join(instructions))
     system = renderer.system_prompt_content.format(
         current_date=renderer.lasr_date, reasoning_effort=renderer.lasr_reasoning)

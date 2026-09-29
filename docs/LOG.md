@@ -1,6 +1,24 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Explicit GPT-OSS tool-format guidance
+
+**Hypothesis:** explicit argument-format rules and a small bash example may
+reduce malformed calls; the supplementary JSON schema should also be properly
+commented inside the Harmony TypeScript namespace. **Method:** update the shared
+training/inference renderer, preserving schemas and native Harmony routing.
+Guidance is conditional on tools; the bash example requires the matching
+one-string-argument schema. Render identical ODCV definitions through pinned
+Qwen, historical GPT-OSS (`87957e51`), and updated GPT-OSS templates.
+
+**Result:** all **28** Harmony tests pass, including unchanged schema content,
+training/inference prefix agreement and masking the example from training loss.
+The [exact prompt comparison](gptoss120b/2026-09-29_tool_prompt_comparison.md)
+is reproducible without model calls. No new inference, training, or evaluation
+was run; malformed-call reduction remains unmeasured. **Next:** compare prompt
+versions on matched samples before attributing an improvement to the change.
+Existing published training/eval records retain their original protocol.
+
 ## 2026-09-29 - Base GPT-OSS also produces malformed bash JSON
 
 **Question:** is the repeated extra `]` observed in the nosynth LoRA exclusive
