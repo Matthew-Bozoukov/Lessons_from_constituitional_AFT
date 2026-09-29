@@ -364,6 +364,29 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             return submit(args.cpu_receipt, args.cpu_key, command)
         from src.eval.capabilities.swebench_mini.fleet import main as fleet_main
         return fleet_main(command)
+    # An unknown option's value can be consumed by the positional dotlist in the
+    # first parse (e.g. --reference org/model). Register this eval's options before
+    # parsing the original argv again, including overrides separated by flags.
+    # Validate here: a CLI typo must not acquire/terminate an existing paid pod.
+    from inspect import signature
+
+    run_fn = runner if runner is not None else resolve(args.name)
+    dynamic_options = []
+    for param in signature(run_fn).parameters.values():
+        if param.kind is param.KEYWORD_ONLY:
+            option = f"--{param.name.replace('_', '-')}"
+            destination = f"_eval_kwarg_{param.name}"
+            parser.add_argument(option, dest=destination)
+            dynamic_options.append((option, destination))
+    args, unknown = parser.parse_known_intermixed_args(argv)
+    dynamic_argv = [f"{option}={getattr(args, destination)}"
+                    for option, destination in dynamic_options
+                    if getattr(args, destination) is not None]
+    unknown = dynamic_argv + unknown
+    derive_run_kwargs(run_fn, unknown)
+    if any("=" not in item or item.startswith("=") for item in args.overrides):
+        parser.error("eval overrides must be key=value assignments")
+    OmegaConf.from_dotlist(args.overrides)
     if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.next_target_revision, args.run_root, args.agent_backend)):
         parser.error('CPU/fleet launch options require --fleet')
     if args.terminate_pod and not args.server:

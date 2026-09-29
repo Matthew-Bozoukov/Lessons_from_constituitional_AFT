@@ -91,13 +91,22 @@ def reproduce(out: Path, historical: Path):
     print(json.dumps(result, indent=2))
 
 
-def live(out: Path, n: int, self_control: bool):
+def live(out: Path, n: int, self_control: bool, judge_only: str | None = None):
     cfg = OmegaConf.load(out / 'metadata' / 'qualification_config.yaml')
     cfg.judge_validation.n_questions = n
     if n < 1 or n > (4 if self_control else 100):
         raise ValueError('Outside bounded qualification sample size')
     OmegaConf.save(cfg, out / 'metadata' / 'qualification_config.yaml')
     try:
+        if judge_only:
+            if judge_only not in (str(cfg.judge.model), str(cfg.judge_validation.reference_judge)):
+                raise ValueError('Only the two declared qualification judges may run')
+            result = judge.judge_arm(cfg, str(cfg.judge_validation.comparison_arm), n, judge_only)
+            result['capability_comparison'] = False
+            result['calibration_status'] = 'not_assessed_single_judge'
+            dump(out / 'results' / f'single_judge_{judge_only.replace("/", "_")}_{n}.json', result)
+            print(json.dumps(result, indent=2))
+            return
         if self_control:
             control = judge.judge_arm(cfg, str(cfg.judge_validation.comparison_arm), None, str(cfg.judge.model))
             control['capability_comparison'] = False
@@ -134,10 +143,20 @@ def publish(out: Path):
                'qualification_kind': provenance['kind'],
                'validation': json.loads(validations[-1].read_text(encoding='utf-8')) if validations else None,
                'cost': {}}
+    summary['failures'] = [json.loads(p.read_text(encoding='utf-8'))
+                           for p in sorted((out / 'results').glob('*failure.json'))]
+    summary['judge_coverage'] = {}
     for model in (str(cfg.judge.model), str(cfg.judge_validation.reference_judge)):
         path = out / 'rollouts' / 'judgments' / model / 'qualification_candidate.jsonl'
         if path.exists():
-            summary['cost'][model] = judge._cost(read_jsonl(path), model)
+            rows = read_jsonl(path)
+            summary['cost'][model] = judge._cost(rows, model)
+            summary['judge_coverage'][model] = {
+                'recorded_prompts': len(rows),
+                'complete_pairs': sum(len(r.get('games') or []) == 2 and all(
+                    g and g.get('status') == 'complete' for g in r['games']) for r in rows)}
+    summary['calibration_status'] = ('blocked_incomplete' if summary['failures'] else
+                                     (summary['validation'] or {}).get('calibration_status', 'not_assessed'))
     dump(out / 'results' / 'results.json', summary)
     (out / 'results' / 'results.md').write_text(
         '# Arena-Hard instrument qualification\n\nNot a candidate-versus-control capability result.\n\n```json\n'
@@ -166,13 +185,14 @@ def main():
     parser.add_argument('--smoke-source', type=Path)
     parser.add_argument('--n', type=int, default=10)
     parser.add_argument('--self-control', action='store_true')
+    parser.add_argument('--judge-only')
     a = parser.parse_args()
     if a.action == 'prepare':
         prepare(a.out, a.historical, a.smoke_source)
     elif a.action == 'reproduce':
         reproduce(a.out, a.historical)
     elif a.action == 'live':
-        live(a.out, a.n, a.self_control)
+        live(a.out, a.n, a.self_control, a.judge_only)
     else:
         publish(a.out)
 
