@@ -33,7 +33,9 @@ from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_judge
 from src.eval.capabilities.arena_hard.runner import bench_answers_dir, isolate_harness, register
+from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments, evaluate_arm
 from src.eval.layout import publish_layout
+from src.utils import read_jsonl
 
 
 def _arm_meta(run: dict[str, Any]) -> dict:
@@ -45,21 +47,35 @@ def _arm_meta(run: dict[str, Any]) -> dict:
     return json.loads(path.read_text())
 
 
-def _overall(judgment: dict) -> dict[str, float]:
-    """Win/tie/loss and mean score across every slice, weighted by prompts in each.
-
-    A leaderboard needs one number per arm, and averaging the slice rates unweighted would
-    let a 150-prompt slice count for as much as a 500-prompt one.
-    """
-    slices = (judgment.get("by_slice") or {}).values()
-    total = sum(float(s.get("n_prompts", 0)) for s in slices)
-    if not total:
-        return {}
-    return {
-        key: round(sum(float(s.get(key, 0)) * float(s.get("n_prompts", 0))
-                       for s in slices) / total, 4)
-        for key in ("win_rate", "tie_rate", "loss_rate")
-    }
+def _score_slices(cfg, arm: str, judgment: dict, raw: Path) -> dict:
+    """Apply the historical controlled scorer to each slice, without mixing categories."""
+    primary = str(cfg.thresholds.relative.primary_slice)
+    questions = arena_hard_judge._expected_questions(cfg, judgment["limits"])
+    records = arena_hard_judge._complete_judgments(read_jsonl(raw), questions)
+    battles = battles_from_judgments(records)
+    metadata = {}
+    for key in (arm, str(cfg.baseline_arm)):
+        answers = read_jsonl(bench_answers_dir(cfg) / f"{key}.jsonl")
+        metadata[key] = {r["uid"]: r["metadata"] for r in answers}
+    if set(cfg.statistics.control_features) != {"length", "markdown"}:
+        raise ValueError("Arena-Hard scorer supports control_features=[length, markdown] only")
+    slices = {}
+    for category in sorted({b["category"] for b in battles}):
+        block = evaluate_arm(
+            [b for b in battles if b["category"] == category],
+            metadata[arm], metadata[str(cfg.baseline_arm)],
+            threshold=float(cfg.thresholds.relative.win_rate_ci_lower_min),
+            rounds=int(cfg.statistics.bootstrap_rounds),
+            alpha=float(cfg.statistics.alpha), seed=int(cfg.seed),
+        )
+        block["role"] = "primary" if category == primary else "secondary"
+        block["gate_applies"] = category == primary and not bool(cfg.get("smoke", False))
+        if not block["gate_applies"]:
+            block["passes"] = None
+        slices[category] = block
+    if primary not in slices:
+        raise ValueError(f"Arena-Hard comparison is missing primary slice {primary}")
+    return slices
 
 
 def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
@@ -147,15 +163,25 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         arena_hard_judge.main(config=str(cfg_path), mode="judge", arm=key)
         judge_dir = max((out_dir / "judging").glob("*/"), key=lambda p: p.name)
         judgment = json.loads((judge_dir / f"judgment_{key}.json").read_text())
-        (judge_dir / f"judgment_{key}.json").rename(results_dir / f"judgment_{key}.json")
         # The judge is a model and its verdicts are its rollouts (CLAUDE.md: "logs" means
         # ROLLOUTS), so the raw per-battle records travel with the comparison.
         raw = (Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name)
                / "model_judgment" / judge_model / f"{key}.jsonl")
-        if raw.exists():
-            shutil.copy2(raw, rollouts_dir / f"judgments_{key}.jsonl")
+        if not raw.exists():
+            raise ValueError(f"Arena-Hard cannot score without raw judgments: {raw}")
+        shutil.copy2(raw, rollouts_dir / f"judgments_{key}.jsonl")
+        slices = _score_slices(cfg, key, judgment, raw)
+        judgment["statistics_by_slice"] = slices
+        (results_dir / f"judgment_{key}.json").write_text(json.dumps(judgment, indent=2))
+        primary_slice = str(cfg.thresholds.relative.primary_slice)
+        primary = slices[primary_slice]
         table.append({"model_key": key, "target": run["target"],
-                      "repo": run.get("repo", ""), **_overall(judgment)})
+                      "repo": run.get("repo", ""), "primary_slice": primary_slice,
+                      "win_rate": primary["controlled"]["mean"],
+                      "ci_lower": primary["controlled"]["ci_lower"],
+                      "ci_upper": primary["controlled"]["ci_upper"],
+                      "n_prompts": primary["controlled"]["n"],
+                      "passes": primary["passes"], "by_slice": slices})
     shutil.rmtree(out_dir / "judging", ignore_errors=True)
     shutil.rmtree(Path(str(cfg.vendor_dir)))
     cfg.vendor_dir = source_vendor
@@ -163,6 +189,9 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
 
     table.sort(key=lambda row: row.get("win_rate", 0.0), reverse=True)
     summary = {
+        "report_version": 2,
+        "metric": "style_controlled_win_rate",
+        "primary_slice": str(cfg.thresholds.relative.primary_slice),
         "model_key": f"vs_{baseline}",
         "mode": modes.pop(),
         "baseline": baseline,

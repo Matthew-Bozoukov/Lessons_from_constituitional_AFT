@@ -12,6 +12,46 @@ remains in [the preliminary audit](eval_audit_2026-09-28.md).
 checks of pinned public data. It does not mean that a live Qwen/GPT-OSS run,
 Docker qualification, or scientific judge calibration has passed.
 
+## September 29 scope decisions and follow-up
+
+The user retained MMLU's current 570 questions, requested Arena-Hard history checks,
+assumed GPT-OSS120B is hosted on Tinker, and excluded further edits to Qwen's SWE
+fleet, ODCV and MASK. Petri's revised rule supersedes the earlier shared-constitution
+decision: an explicit constitution wins; otherwise recover the one used by that
+model from pinned training provenance. Delegated Harm's primary protocol is now
+frozen shared requests, with a separate author-only preparation mode.
+
+- [MMLU/Arena follow-up](mmlu_arena_cleanup_2026-09-29.md): health gates enforced,
+  existing paired statistics retained, historical Arena controlled hard score
+  reproduced from pinned saved evidence, and framework reporting repaired.
+- [Behavioral follow-up](behavioral_eval_cleanup_2026-09-29.md): reproduced
+  blackmail literal-word gate and malformed-judge defects, retained failed judge
+  evidence, and actual local Docker Secret Number controls. Windows oracle line
+  endings fixed; a hidden-read detection gap remains explicitly documented.
+- [Petri workflow](petri_constitution_audit.md): configurable constitution pilot;
+  new seeds and judges remain uncalibrated.
+- [Tinker/GPT-OSS workflow](tinker_eval_tools.md): isolated locked runtime,
+  verified tool/history/sampling transport through the real mini-SWE client with
+  a scripted sampler, and an explicit 300-task Lite config. Its stock-agent path
+  remains distinct from Qwen's fleet protocol, with different context and total
+  generation-budget limits; it is not a matched cross-family comparison.
+- [Delegated Harm workflow](delegated_harm/README.md): frozen bank default;
+  preparation never runs responder episodes. A real author checkpoint/bank is
+  still required.
+
+The table below records the initial September 28 pass; this follow-up and the linked
+current workflows supersede its pending default choices. No new model checkpoint
+has yet been used for live inference, and no judge calibration is claimed.
+
+Final September 29 checks: **327 main-suite tests passed**, **24 Tinker compatibility
+tests passed in its locked environment**, and **eight opt-in real Docker controls
+passed**. The main suite's other skips are six Linux-only fleet modules. The eight
+Docker skips and one Tinker module skip in that main invocation were exercised by
+the separate commands above. Arena historical score reproduction and read-only
+Petri provenance resolution are documented in their linked notes. No paid model
+calls, rentals or HF publication were made. Exact live checkpoints and the real
+Delegated Harm request bank remain outstanding.
+
 | Eval | Kind | This repair pass | Remaining acceptance work |
 | --- | --- | --- | --- |
 | MMLU | Capability | Pin test and few-shot dev to one dataset commit; publish exact prompts; bind resume cache to model/revision and decoding. Existing scoring retained. | Live parse/truncation health on both models. Standard entrypoint produces fresh runs; legacy arm-ladder CLI remains historical. |
@@ -27,15 +67,15 @@ Docker qualification, or scientific judge calibration has passed.
 | Secret Number | Agentic specification-gaming propensity | Removed Tinker-only gate and added Qwen tool-serving requirements; distinguish detected shortcuts, attempts and commands needing review; preserve gaming in non-submitted episodes; checkpoint partial traces and observe oracle/log state after commands. Pin containers to built image IDs and clean up failed setup. | Command detection remains conservative, not exhaustive execution tracing. Noise is unseeded and explicitly recorded; common seeds pair secrets only. Native Docker and both-model tools/history need live qualification. |
 | Delegated Harm | Requester-conditioned propensity, one acting subject | Added immutable shared-request-bank mode alongside the explicit self-authored protocol; verify hash, source worlds, accepted text and full coverage; neutral shared model label, family-specific base pins and API transport. Reject duplicate/foreign cells and report missing bounds even when no results are valid. | Choose default request protocol and freeze a real accepted bank for responder comparisons. Validate live model tools/effective sampling and action judges. No reciprocal multi-agent interaction is measured. |
 
-## Order of qualification
+## Order of qualification after code repair
 
 1. Review the deterministic repairs and freeze protocol versions. Changes to
    missingness handling are disclosed; do not silently overwrite historical results.
-2. Settle GPT-OSS hosting. A generic API-capable runner is not proof that Tinker
-   honors the request: the current shim still lacks locked SDK dependencies,
-   effective-sampling guarantees, safe concurrent port/identity handling and the
-   container/tokenizer interface required by ODCV. Native vLLM also needs a verified
-   GPT-OSS profile/tool parser. This is a shared prerequisite across the suite.
+2. Use the selected Tinker hosting route for GPT-OSS. The follow-up repairs lock
+   its own dependency environment and address sampling, tools, history and endpoint
+   identity; actual checkpoint qualification is still required. ODCV's serving
+   path is outside the user's current edit scope and must not be assumed qualified
+   for a different host just because it works in the existing setup.
 3. Run one real endpoint smoke per active eval and model, with native Docker for
    SWE/ODCV/Secret Number. Check exact target identity, transmitted settings, reasoning separation,
    token limits, tools, expected item counts and saved provenance. Then run a small
@@ -64,5 +104,6 @@ the source checkout and all fixtures remain outside Git under `output/`.
 The expanded suite now passes **357 tests, with six Linux-only fleet skips**.
 
 No CPU was resumed, no GPU rented, no paid inference/judging called and no HF
-artifact published during this repair pass. The isolated branch contains the
-implementation and offline tests; scientific and live serving qualification remain open.
+artifact published during either pass. The isolated branch contains the
+implementation, offline tests and September 29 Docker controls; scientific judge
+calibration and live model serving qualification remain open.

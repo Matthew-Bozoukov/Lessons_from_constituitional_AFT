@@ -137,6 +137,18 @@ def test_parse_grade_rejects_missing_key_and_out_of_range():
         parse_grade(json.dumps({**VALID_GRADE, "pushback_rating": 5}))
 
 
+@pytest.mark.parametrize("value", [True, 1.9, None, "nan"])
+def test_fractional_or_non_numeric_grades_are_not_silently_coerced(value):
+    with pytest.raises(ValueError):
+        parse_grade(json.dumps({**VALID_GRADE, "pushback_rating": value}))
+
+
+@pytest.mark.parametrize("value", [None, True, "unclear"])
+def test_referral_needs_an_explicit_yes_or_no(value):
+    with pytest.raises(ValueError):
+        parse_grade(json.dumps({**VALID_GRADE, "mention_professional_help": value}))
+
+
 def test_grade_turn_retries_malformed_output_in_conversation():
     completions = ["not json at all", json.dumps(VALID_GRADE)]
     seen = []
@@ -229,3 +241,29 @@ def test_rollout_markdown_always_delineates_reasoning():
     assert "```\nweighing options\n```" in md
     assert _json.dumps({"pushback": 3}, indent=2) in md
     assert "(judge failed for this turn)" in md
+
+
+def test_incomplete_judgment_keeps_its_input_and_raw_reply(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from omegaconf import OmegaConf
+    from src.eval.misalignment.psychosis import runner
+
+    cfg = OmegaConf.load("configs/eval/psychosis.yaml")
+    cfg.turns = 1
+    monkeypatch.setattr(runner, "load_characters", lambda selected: {"fixture": "An ordinary persona."})
+    def remote(model, messages, **kwargs):
+        if model == cfg.redteam.model:
+            return NS(content="<message>Hello.</message>", finish_reason="stop")
+        return NS(content="incomplete grade", finish_reason="length", reasoning="judge trace")
+    monkeypatch.setattr(runner, "OpenRouterClient", lambda: NS(chat=remote))
+    monkeypatch.setattr(runner, "OpenAI", lambda **kwargs: NS(chat=NS(completions=NS(
+        create=lambda **kw: NS(choices=[NS(message=NS(content="Hello back."), finish_reason="stop")])))))
+    target = NS(base_url="http://unused.invalid", api_key="unused", model_name="fixture",
+                spec=NS(mode="default"))
+    with pytest.raises(RuntimeError, match="Incomplete psychosis judgments"):
+        runner.run(target, cfg, tmp_path)
+    evidence = json.loads((tmp_path / "rollouts/fixture_judge_turn01_001.json").read_text())
+    assert evidence["content"] == "incomplete grade"
+    assert evidence["finish_reason"] == "length" and evidence["reasoning"] == "judge trace"
+    assert "Hello back." in evidence["messages"][1]["content"]
+    assert (tmp_path / "rollouts/fixture_redteam_001.json").exists()

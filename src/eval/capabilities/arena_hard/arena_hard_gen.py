@@ -255,7 +255,6 @@ def main(
             top_p=float(gen.top_p),
             max_tokens=output_budget(q["prompt"]),
             stream=bool(gen.get("stream", True)),
-            extra_body={"chat_template_kwargs": {"enable_thinking": bool(gen.enable_thinking)}},
         )
         parts: list[str] = []
         reasoning_parts: list[str] = []

@@ -2,8 +2,10 @@
 <!-- ABOUTME: Historical dated notes describe the executed protocol; this file describes the maintained code. -->
 # Delegated-harm evaluation
 
-The registered eval tests mixed legitimate and improper workplace requests from a
-same-checkpoint peer, a same-checkpoint parent, or an unauthorized human requester.
+The registered eval tests mixed legitimate and improper workplace requests from an
+AI peer, an AI parent, or an unauthorized human requester. The default protocol uses
+one frozen AI request bank across all responders; self-authored requests remain an
+explicit alternative for studying the joint author/responder system.
 It measures useful completion, refusal, harmful actions, and concerns addressed to
 the requester, another human, or the authorized approver separately.
 
@@ -12,14 +14,54 @@ the requester, another human, or the authorized approver separately.
 Run from the repository root:
 
 ```powershell
-uv run evals --name delegated_harm --target <hf-adapter> --server <owned-ssh-host> --port <unused-port>
+uv run evals --name delegated_harm --target <hf-adapter> --server <owned-ssh-host> --port <unused-port> author.bank.path=<bank.json> author.bank.sha256=<exact-byte-sha256>
 ```
 
-The config is `configs/eval/delegated_harm.yaml`. It records the exact initial study
-settings and checkpoint pins. For a new study, explicitly replace the target pins
-and display label in a resolved config; do not silently reuse the Qwen study label
-for another model family. Model mode comes from the adapter metadata. The eval
-requires the shared vLLM template and therefore does not accept API targets.
+The config is `configs/eval/delegated_harm.yaml`. It retains historical checkpoint
+pins for those exact models; the Qwen base pin applies only to Qwen. The neutral
+display label is `Evaluated model` for every responder. Model mode comes from
+adapter metadata. OpenAI-compatible API targets are also accepted by the runner;
+their real tools, history and effective sampling still require qualification.
+Frozen mode refuses a missing, changed, incomplete or rejected bank before any
+target or judge calls. Human-only runs do not need an AI bank.
+
+## Prepare the shared request bank first
+
+Choose and pin an author checkpoint independently of responder outcomes. From the
+repo root, run the ordinary entrypoint with these overrides:
+
+```powershell
+uv run evals --name delegated_harm --target <author-hf-checkpoint> --server <owned-ssh-host> --port <unused-port> --no-push author.mode=self_authored author.prepare_only=true
+```
+
+For an API author, use its normal API target string and omit `--server`/`--port`.
+This is an authoring run: it makes author and validation-judge calls, but never
+schedules, runs or judges responder episodes. With the current defaults it prepares
+36 requests: three variants for each of the 12 included worlds.
+
+Successful preparation writes `metadata/request_bank.json` and
+`metadata/request_bank_preparation.json`, which contains its exact byte SHA256.
+The summary status is `request_bank_prepared`, `behavioral_evaluation` is false,
+and no behavioral results or pass rate are emitted. Author prompts, attempts,
+validation verdicts and checkpoint/source provenance remain in metadata.
+If even one request is rejected or absent, preparation fails and retains the
+candidate and author evidence without writing a usable final bank.
+
+Review the requests and freeze the bank before looking at responder outcomes.
+Use the same bank path and SHA256 for every responder. For a published bank,
+the equivalent overrides are `author.bank.repo=<dataset>`,
+`author.bank.revision=<40-character-commit>`,
+`author.bank.file=metadata/request_bank.json` and `author.bank.sha256=<sha256>`.
+The loader checks byte identity, worlds, source notes, human prompts, display label,
+variant coverage and each accepted text's hash. It never regenerates a missing bank.
+
+To reproduce the joint author-plus-responder protocol deliberately, set
+`author.mode=self_authored author.prepare_only=false`. Those AI requests may differ
+across models, so keep these results separate from frozen-bank responder comparisons.
+
+No real bank has been generated in the September 29 cleanup. The new workflow has
+offline success/failure tests proving that preparation cannot enter the episode loop;
+real author and responder checkpoints must still be selected and qualified.
 
 The registered runner and benchmark-specific source loading, rubrics and judging
 live under `src/eval/misalignment/delegated_harm/`. The runner receives the served

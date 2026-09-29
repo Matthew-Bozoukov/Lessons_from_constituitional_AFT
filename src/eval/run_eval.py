@@ -34,13 +34,17 @@ def _tinker_endpoint(spec, cfg):
     belongs in the scientific record with the rest of the config, not in a flag.
     """
     from src.infra.endpoints.tinker import is_tinker_target, tinker_shim
+    from urllib.parse import urlparse
 
     if not is_tinker_target(spec.hf_path):
         return nullcontext()
     t = cfg.get("tinker") or {}
     return tinker_shim(spec.hf_path, base_model=spec.base_model,
+                       port=urlparse(spec.api_base).port,
                        reasoning=str(t.get("reasoning", "medium")),
                        max_tokens=int(t.get("max_tokens", 8192)),
+                       context_window=int(t.get("context_window", 131072)),
+                       render_date=t.get("render_date"),
                        log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
 
 
@@ -462,6 +466,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                 raise ValueError('target_revisions must pin every target exactly once')
             revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
+        if args.name == "swebench_mini" and spec.api_base:
+            if not is_tinker_target(hf_path) or cfg.get("protocol") != "gptoss-tinker-lite-v1":
+                raise SystemExit("SWE API targets require a Tinker GPT-OSS checkpoint and "
+                                 "--config configs/eval/swebench_mini/gptoss_tinker.yaml; "
+                                 "the Qwen fleet protocol is unchanged")
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(
                 f"!!! {args.name} does not support an API-endpoint target "

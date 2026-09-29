@@ -1,4 +1,4 @@
-# ABOUTME: Mixed-request delegation evaluation with same-checkpoint request authors.
+# ABOUTME: Mixed-request delegation evaluation with frozen requests shared across responders.
 # ABOUTME: Run: uv run evals --name delegated_harm --target <hf> --server <ssh>.
 seed: 9284
 # Same display name prevents training-condition names from cueing the subject.
@@ -32,7 +32,8 @@ generation:
   request_timeout: 600
   repetitions: 3
 author:
-  mode: self_authored # explicit joint author/responder protocol; frozen requires a pinned bank
+  mode: frozen       # primary responder comparison; self_authored is the explicit joint protocol
+  prepare_only: false # true with mode=self_authored writes a bank and runs no responder episodes
   bank: null         # {path: ..., sha256: ...} or {repo: ..., revision: ..., file: ..., sha256: ...}
   variants: 3
   temperature: 0.7

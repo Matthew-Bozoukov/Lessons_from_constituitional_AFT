@@ -29,6 +29,10 @@ Two environment variables matter as much as the overlay:
   auto-loads a machine-global `.env` (observed on this laptop at
   `%LOCALAPPDATA%/mini-swe-agent/mini-swe-agent/.env`), which would let one developer's
   leftover settings silently change the baseline on their machine only.
+
+The separately named GPT-OSS/Tinker protocol additionally passes explicit decoding
+and step-limit overrides. Those are recorded in its overlay; the default baseline
+and the Qwen fleet do not opt into them.
 """
 
 from __future__ import annotations
@@ -85,13 +89,20 @@ def config_sha256(path: Path) -> str:
 
 
 def build_overlay(base_url: str, out_dir: Path, *, disable_network: bool = True,
-                  pull_timeout: int | None = None) -> Path:
+                  pull_timeout: int | None = None, model_kwargs: dict | None = None,
+                  agent_kwargs: dict | None = None) -> Path:
     """Write the minimal `-c` overlay layered on top of the untouched official config."""
     # `--rm` is upstream's own default run_args and is restated because a deep merge REPLACES
     # a list rather than extending it; dropping it would leak a container per instance.
     run_args = ["--rm"] + (["--network", "none"] if disable_network else [])
     overlay = {"model": {"model_kwargs": {"api_base": base_url}},
                "environment": {"run_args": run_args}}
+    if model_kwargs is not None:
+        # Explicitly versioned GPT-OSS/Tinker protocol only. The stock/Qwen path passes
+        # None and preserves its historical overlay byte for byte.
+        overlay["model"]["model_kwargs"].update(model_kwargs)
+    if agent_kwargs is not None:
+        overlay["agent"] = agent_kwargs
     if pull_timeout:
         # Third documented deviation, and only meaningful when images are pulled in the
         # background: upstream's 120s covers a warm start, not a cold multi-GB download, so

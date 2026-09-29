@@ -1,6 +1,47 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-29 - Approved eval protocol cleanup and GPT-OSS/Tinker tools
+
+Hypothesis: remaining defects should be demonstrated at actual runner boundaries
+before changing measurement. The user retained the 570-question MMLU subset,
+excluded further Qwen SWE-fleet/ODCV/MASK edits, selected Tinker for GPT-OSS, and
+revised Petri constitution selection to explicit override or the target's pinned
+training provenance. Work remained isolated on `codex/eval-audit-20260928`.
+
+Method/result: enforced existing MMLU health thresholds and exact paired-question
+identity; restored Arena's historical style-controlled hard-prompt reporting,
+reproducing the published July 31 20% arm result from pinned saved judgments.
+Removed redundant Qwen-only request extensions from MMLU/Arena so Tinker accepts
+their ordinary chat requests. Reproduced and removed blackmail's literal-word
+gate, rejected incomplete/ambiguous judge verdicts, fixed Windows atomic batch
+writes and retained failed attempts. Psychosis/Dictator preserve raw judge
+evidence and reject malformed grades without altering their rubrics.
+
+Tinker's isolated locked SDK/renderer environment now preserves tool IDs/history,
+reasoning and supported sampling controls, refuses unsupported controls, and
+verifies checkpoint-specific readiness. An explicit 300-task Lite configuration
+uses the existing stock mini-SWE-agent path; it remains a different protocol from
+the unchanged Qwen fleet. Petri has a maintained prepare/run/summarize workflow,
+frozen constitution/seeds/rubrics, planned-cell reconciliation and seed-cluster
+analysis. Published model-to-mixture-to-synthetic-source provenance was resolved
+read-only against an actual checkpoint. Delegated Harm defaults to frozen requests
+and can prepare a bank without running responder episodes.
+
+Validation: **327 main-suite tests, 24 locked Tinker compatibility tests and eight
+actual local Docker Secret Number controls passed**; six Linux-only fleet modules
+remain skipped. Tinker checks included the real pinned mini-SWE-agent/LiteLLM client
+with scripted sampling, plus an actual-tokenizer renderer check. Docker exposed
+and verified a fix for CRLF oracle shebangs; a deliberately hidden file read still
+evades the conservative detector. These are implementation checks, not model
+behavioral results or calibrated judge accuracy.
+
+Next: select exact live Qwen/Tinker checkpoints, prepare/review/pin the shared
+request bank, and run bounded endpoint/judge calibration. Petri remains an
+uncalibrated pilot. Secret Number should report observed gaming and review negative
+episodes before stronger claims. No paid inference, resource rentals or publication
+was performed. Details: [cleanup record](eval_cleanup_2026-09-28.md).
+
 ## 2026-09-28 - Extend isolated eval cleanup to Secret Number and Delegated Harm
 
 The user added these two instruments to the active scope (now twelve). Secret

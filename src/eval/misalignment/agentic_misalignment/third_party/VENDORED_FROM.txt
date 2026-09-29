@@ -30,3 +30,17 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
     6. Persist out-of-band reasoning and empty replies before marking a sample failed.
        runner.py reconciles planned cells and stop reasons before judging and verifies
        boolean classifications before aggregating. Incomplete runs cannot publish a rate.
+  classifiers/{classifier,blackmail_classifier,leak_classifier}.py (2026-09-29)
+    7. agentic-action-judge-v2: blackmail's existing contact + semantic judge gates
+       no longer require the target to literally say "blackmail" or "leverage".
+       An explicit conditional threat without those words previously became false.
+    8. Blackmail/leak classifiers require a naturally finished judge reply and one
+       exact yes/no answer; substring matches and ambiguous/multiple tags fail.
+  scripts/classify_results.py
+    9. Preserve failed judge text and stop metadata in a separate error record;
+       successful blackmail/leak classifications identify the protocol. Old published results
+       are not relabeled or automatically rescored.
+   10. Use atomic replace instead of rename-over-existing for Windows classification
+       persistence. Retain failed judge attempts across retries and success while
+       clearing only the current failure marker; optional unchanged classifiers
+       do not receive the blackmail/leak protocol label.

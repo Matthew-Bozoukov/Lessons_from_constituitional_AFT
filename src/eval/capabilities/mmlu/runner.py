@@ -5,7 +5,8 @@
 
 The maintained framework entrypoint evaluates explicitly selected targets and owns
 serving and publication. The standalone CLI retains the historical static arm ladder;
-it requires an already configured endpoint and does not qualify checkpoint identity.
+it requires an endpoint already configured for the declared thinking mode and does
+not qualify checkpoint identity. Mode is not changed through request extensions.
 
 Three things this does that a generic MMLU harness does not, all of them because the
 models under test are thinking models:
@@ -48,6 +49,7 @@ from src.infra.endpoints.openrouter import map_threaded  # noqa: E402
 from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     build_prompt,
     build_subset,
+    health_issues,
     load_split,
     parse_answer,
     prompt_hash,
@@ -230,7 +232,6 @@ def run_arm(
             temperature=float(gen.temperature),
             top_p=float(gen.top_p),
             max_tokens=int(gen.max_tokens),
-            extra_body={"chat_template_kwargs": {"enable_thinking": bool(gen.enable_thinking)}},
         )
         choice = resp.choices[0]
         raw = choice.message.content or ""
@@ -270,7 +271,10 @@ def run_arm(
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     scores = score_records(graded)
+    issues = health_issues(scores, cfg.thresholds)
     scores |= {
+        "valid": not issues,
+        "health_issues": issues,
         "arm": arm["name"],
         "served_model": arm["served"],
         "adapter": arm["adapter"],
@@ -315,6 +319,13 @@ def run_arm(
         },
     )
 
+    if issues:
+        raise ValueError(
+            f"MMLU instrument-health check failed for {arm['name']}: "
+            + "; ".join(issues)
+            + f". Diagnostic metrics and all responses retained under {arm_dir}"
+        )
+
     print(
         f"    accuracy {scores['mean']:.1%} "
         f"[{scores['ci_lower']:.1%}, {scores['ci_upper']:.1%}]  "
@@ -348,7 +359,7 @@ def main(
             adapters, made vLLM's adapter scheduling thrash — arm names started
             returning 404 and whole arms came back as 0.0% accuracy at 0% parse rate.
             That is a serving artefact, not capability collapse, but it costs a re-run.
-        nothink: Evaluate with thinking disabled. Results land under a separate
+        nothink: Declare an endpoint already configured with thinking disabled. Results land under a separate
             `nothink/` tree — never compare a nothink arm against a thinking baseline
             (CLAUDE.md gotcha 5).
         smoke: 2 questions per subject, to validate wiring before spending GPU time.
@@ -430,9 +441,9 @@ if __name__ == "__main__":
 def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     """Eval-framework entrypoint (CLAUDE.md contract): evaluate one served target.
 
-    The server pins thinking mode into the chat template, so the per-request
-    `enable_thinking` kwarg is decorative there — this still mirrors the target's mode
-    into the config so token budgets and the think/nothink output tree stay honest.
+    The framework pins thinking mode at serving time. Requests contain no Qwen-only
+    template controls, so Tinker/API endpoints receive the same portable request.
+    Mirror the target's mode into the config for cache identity and output layout.
 
     Args:
         target: A ServedTarget from src/infra/endpoints/vllm.py.

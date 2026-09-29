@@ -12,6 +12,7 @@ from src.eval.capabilities.mmlu.mmlu import (
     SUBJECT_CATEGORY,
     build_prompt,
     build_subset,
+    health_issues,
     mcnemar,
     paired_diff,
     parse_answer,
@@ -373,3 +374,81 @@ def test_score_breaks_down_by_category_and_subject():
 
 def test_score_on_empty_records_does_not_crash():
     assert score_records([]) == {"n": 0}
+
+
+def test_health_threshold_boundaries_and_transport_failures():
+    thresholds = {"min_parse_rate": .95, "max_truncation_rate": .02}
+    scores = {"n": 570, "parse_rate": .95, "truncation_rate": .02}
+    assert health_issues(scores, thresholds) == []
+    assert "parse_rate" in health_issues({**scores, "parse_rate": .94}, thresholds)[0]
+    assert "truncation_rate" in health_issues({**scores, "truncation_rate": .03}, thresholds)[0]
+    assert health_issues({**scores, "request_error_count": 1}, thresholds)
+    assert health_issues({"n": 0}, thresholds)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("uid", "different"), ("subject", "different"), ("prompt_hash", "different"),
+    ("answer_letter", "B"),
+])
+def test_paired_diff_rejects_different_exams_despite_equal_lengths(field, value):
+    original = [dict(record(f"q{i}", True, subject=f"s{i}"),
+                     prompt_hash="original", answer_letter="A") for i in range(3)]
+    altered = [dict(r) for r in original]
+    altered[0][field] = value
+    with pytest.raises(ValueError, match="aligned|different"):
+        paired_diff(original, altered)
+
+
+@pytest.mark.parametrize("finish,content", [("length", "A"), ("stop", "No answer")])
+def test_runner_preserves_failed_health_evidence_and_blocks_result(tmp_path, monkeypatch, finish, content):
+    import json
+    from types import SimpleNamespace as NS
+    from omegaconf import OmegaConf
+    from src.eval.capabilities.mmlu import runner
+
+    cfg = OmegaConf.load("configs/eval/mmlu.yaml")
+    cfg.generation.parallel = 1
+    questions = build_subset(rows({"anatomy": 2}), 2, seed=0)
+    client = NS(chat=NS(completions=NS(create=lambda **kw: NS(choices=[
+        NS(message=NS(content=content, reasoning="trace"), finish_reason=finish)]))))
+    monkeypatch.setattr(runner, "OpenAI", lambda **kw: client)
+    arm = {"name": "test", "served": "test", "adapter": None,
+           "synthetic_fraction": None, "role": "target"}
+    with pytest.raises(ValueError, match="instrument-health"):
+        runner.run_arm(arm, questions, {}, cfg, "http://unused.invalid", tmp_path)
+    records_file = tmp_path / "think/test/records.jsonl"
+    assert len(records_file.read_text().splitlines()) == 2
+    metrics_file = next((tmp_path / "think/test").glob("*/metrics.json"))
+    metrics = json.loads(metrics_file.read_text())
+    assert metrics["valid"] is False and metrics["health_issues"]
+
+
+def test_tinker_framework_run_uses_portable_requests_and_keeps_raw_trace(tmp_path, monkeypatch):
+    import json
+    from types import SimpleNamespace as NS
+    from omegaconf import OmegaConf
+    from src.eval.capabilities.mmlu import runner
+    from src.infra.endpoints.vllm import TargetSpec
+
+    cfg = OmegaConf.load("configs/eval/mmlu.yaml")
+    cfg.prompt.n_shot = 0
+    cfg.subset.per_subject = 2
+    cfg.generation.parallel = 1
+    monkeypatch.setattr(runner, "load_split", lambda *a, **kw: rows({"anatomy": 2}))
+    calls = []
+    def create(**kwargs):
+        if "extra_body" in kwargs:
+            raise ValueError("Tinker rejects Qwen-only chat_template_kwargs")
+        calls.append(kwargs)
+        return NS(choices=[NS(message=NS(content="A", reasoning="Native trace"), finish_reason="stop")])
+    monkeypatch.setattr(runner, "OpenAI", lambda **kw: NS(chat=NS(completions=NS(create=create))))
+    model = "openai/gpt-oss-120b"
+    target = NS(spec=TargetSpec(f"tinker:{model}", model, False, "default", "gptoss", None,
+                               api_base="http://unused.invalid/v1"),
+                base_url="http://unused.invalid/v1", api_key="unused", model_name=model)
+    result = runner.run(target, cfg, tmp_path)
+    assert result["valid"] is True and len(calls) == 2
+    assert all(c["model"] == model and "extra_body" not in c for c in calls)
+    recorded = [json.loads(line) for line in (tmp_path / "rollouts/records.jsonl").read_text().splitlines()]
+    assert all(r["raw"] == "A" and r["think"] == "Native trace" for r in recorded)
+    assert all(r["request_hash"] and r["prompt_hash"] for r in recorded)

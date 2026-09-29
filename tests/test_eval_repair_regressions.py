@@ -21,13 +21,16 @@ def test_arena_publishes_by_arm_without_mutating_harness(tmp_path, monkeypatch, 
     cfg.vendor_dir = str(tmp_path / "vendor")
     cfg.arm_defaults = {"n_hard_prompt": 1, "n_creative_writing": 0}
     cfg.arms = []
-    cfg.generation.stream = False
+    # The Tinker framework path must disable the config's streaming default itself.
+    cfg.generation.stream = served == "openai/gpt-oss-120b"
     bench = Path(cfg.vendor_dir) / "data" / cfg.bench_name
     bench.mkdir(parents=True)
     (bench / "question.jsonl").write_text(json.dumps(
         {"uid": "fixture", "category": "hard_prompt", "prompt": "Say hello"}) + "\n")
     calls = []
     def create(**kwargs):
+        # Tinker rejects provider-specific template controls; mode is server-owned.
+        assert "extra_body" not in kwargs
         calls.append(kwargs)
         return NS(choices=[NS(message=NS(content="Hello", reasoning="A trace"), finish_reason="stop")])
     client = NS(chat=NS(completions=NS(create=create)),
@@ -36,7 +39,8 @@ def test_arena_publishes_by_arm_without_mutating_harness(tmp_path, monkeypatch, 
     monkeypatch.setattr(gen.tiktoken, "encoding_for_model", lambda *a: NS(encode=lambda s, **kw: list(s)))
     monkeypatch.setattr(gen, "style_features", lambda s: {
         "token_len": 1, "header_count": {}, "list_count": {}, "bold_count": {}})
-    target = NS(spec=TargetSpec("org/model", "org/base", False, "think", "fixture_arm", None,
+    target_path = f"tinker:{served}" if served == "openai/gpt-oss-120b" else "org/model"
+    target = NS(spec=TargetSpec(target_path, "org/base", False, "think", "fixture_arm", None,
                                 revision="first"), model_name=served,
                 base_url="http://unused.invalid/v1", api_key="EMPTY")
     out = tmp_path / "run"
@@ -49,6 +53,7 @@ def test_arena_publishes_by_arm_without_mutating_harness(tmp_path, monkeypatch, 
     assert not (bench / "model_answer").exists()
 
     # Standalone resume: same request hits; changed temperature/prompt/weights misses.
+    cfg.generation.stream = False
     cfg.arms = runner.register([], "fixture_arm", "org/model", "target", cfg)
     cfg.output_dir = str(tmp_path / "standalone")
     cfg.target_identity = {"revision": "first"}

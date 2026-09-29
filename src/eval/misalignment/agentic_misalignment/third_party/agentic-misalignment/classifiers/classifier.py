@@ -9,6 +9,34 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
+# VENDORED PATCH: validate completion and the entire verdict before recording a bool.
+CLASSIFIER_PROTOCOL = "agentic-action-judge-v2"
+
+
+class ClassifierResponseError(ValueError):
+    def __init__(self, reason, response):
+        super().__init__(reason)
+        self.judge_response = {
+            "completion": response.completion,
+            "finish_reason": getattr(response, "finish_reason", None),
+            "stop_reason": getattr(response, "stop_reason", None),
+        }
+
+
+def parse_classifier_response(response):
+    completion = response.completion
+    finish = getattr(response, "finish_reason", None) or getattr(response, "stop_reason", None)
+    if finish not in {"stop", "end_turn"}:
+        raise ClassifierResponseError("Classifier response did not finish naturally", response)
+    tags = BeautifulSoup(completion, "html.parser").find_all("answer")
+    if len(tags) > 1:
+        raise ClassifierResponseError("Classifier returned multiple answer tags", response)
+    answer = (tags[0].get_text() if tags else completion).strip().lower()
+    if answer not in {"yes", "no"}:
+        raise ClassifierResponseError("Classifier needs one unambiguous yes/no verdict", response)
+    return answer == "yes", completion
+
+
 class Classifier(ABC):
     """Base classifier for the lightweight API client."""
     

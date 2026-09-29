@@ -1,5 +1,5 @@
 # ABOUTME: Run three requester conditions through isolated in-memory benchmark worlds.
-# ABOUTME: Freeze same-checkpoint requests first, save complete traces, then judge actions.
+# ABOUTME: Prepare or reuse frozen requests, save complete traces, then judge actions.
 from __future__ import annotations
 
 import copy
@@ -391,6 +391,18 @@ def checkpoint(out, target, cfg, summary):
 def run(target, cfg, out_dir):
     if cfg.get("scaling") or cfg.get("recovery"):
         raise ValueError("Recovery/scaling is experimental; use scratch/delegated_harm/run_eval.py")
+    request_mode = str(cfg.author.get('mode', 'frozen'))
+    if request_mode not in {'self_authored', 'frozen'}:
+        raise ValueError('author.mode must be self_authored or frozen')
+    prepare_only = bool(cfg.author.get('prepare_only', False))
+    if prepare_only and (request_mode != 'self_authored' or cfg.author.get('bank')):
+        raise ValueError('Bank preparation requires author.mode=self_authored and no author.bank')
+    deliveries = tuple(cfg.get('deliveries') or DELIVERIES)
+    if len(set(deliveries)) != len(deliveries) or set(deliveries) - set(DELIVERIES):
+        raise ValueError('Delegated-harm deliveries must be unique supported conditions')
+    needs_authors = prepare_only or any(d != 'chat_human' for d in deliveries)
+    if needs_authors and request_mode == 'frozen' and not cfg.author.get('bank'):
+        raise ValueError('Frozen requests need author.bank; first prepare and pin one shared request bank')
     scenarios, human, notes, manifest = prepare(cfg)
     if set(scenarios) != set(COMPONENTS):
         raise ValueError("Selected scenario set needs an exact predeclared rubric set")
@@ -400,15 +412,8 @@ def run(target, cfg, out_dir):
     base_pin = cfg.get('expected_base_revision') or cfg.get('expected_base_revisions', {}).get(target.spec.base_model)
     if base_pin and target.spec.base_revision != base_pin:
         raise ValueError("Base revision drifted from the shared evaluation pin")
-    deliveries = tuple(cfg.get('deliveries') or DELIVERIES)
-    if len(set(deliveries)) != len(deliveries) or set(deliveries) - set(DELIVERIES):
-        raise ValueError('Delegated-harm deliveries must be unique supported conditions')
     if min(int(cfg.author.variants), int(cfg.generation.repetitions), int(cfg.generation.max_turns)) < 1:
         raise ValueError('Delegated-harm variant, repeat and turn counts must be positive')
-    request_mode = str(cfg.author.get('mode', 'self_authored'))
-    if request_mode not in {'self_authored', 'frozen'}:
-        raise ValueError('author.mode must be self_authored or frozen')
-    needs_authors = any(d != 'chat_human' for d in deliveries)
     author_records, bank_payload, bank_sha, bank_bytes = {}, None, None, None
     if needs_authors and request_mode == 'frozen':
         author_records, bank_payload, bank_sha, bank_bytes = load_request_bank(cfg, manifest, scenarios)
@@ -438,6 +443,42 @@ def run(target, cfg, out_dir):
                 key = futures[future]
                 author_records[key] = future.result()
                 print(f">>> author {key}: {'accepted' if author_records[key]['accepted'] else 'FAILED'}", flush=True)
+    if prepare_only:
+        # Authoring must finish and validate independently of responder outcomes.
+        # Keep failed candidates/attempts as evidence, never label one a usable bank.
+        candidate = out_dir / 'metadata/request_bank_candidate.json'
+        save(candidate, request_bank(author_records, target, cfg, manifest))
+        validation_cfg = OmegaConf.merge(cfg)
+        validation_cfg.author.bank = {'path': str(candidate),
+                                      'sha256': hashlib.sha256(candidate.read_bytes()).hexdigest()}
+        summary = {
+            'artifact_type': 'delegated_harm_request_bank', 'behavioral_evaluation': False,
+            'request_mode': request_mode, 'author': asdict(target.spec),
+            'expected_requests': len(scenarios) * int(cfg.author.variants),
+            'accepted_requests': sum(r.get('accepted') is True for r in author_records.values()),
+            'scheduled': 0, 'recorded': 0,
+            'judge_usd': judge.ledger['charged_or_reserved_usd'],
+            'interpretation': 'Request authoring and validation only; no responder behavior was evaluated.',
+        }
+        try:
+            _, _, bank_sha, _ = load_request_bank(validation_cfg, manifest, scenarios)
+        except ValueError as exc:
+            summary.update(status='request_bank_preparation_failed', error=str(exc))
+            save(out_dir / 'metadata/request_bank_preparation.json', summary)
+            raise ValueError('Request bank preparation failed; author attempts and candidate retained') from exc
+        candidate.replace(out_dir / 'metadata/request_bank.json')
+        summary.update(status='request_bank_prepared', request_bank_sha256=bank_sha,
+                       request_bank_file='metadata/request_bank.json')
+        save(out_dir / 'metadata/request_bank_preparation.json', summary)
+        (out_dir / 'metadata/request_bank_preparation.md').write_text(
+            '# Delegated-harm request bank\n\n'
+            + summary['interpretation'] + '\n\n'
+            + f"Validated {summary['accepted_requests']} requests. "
+            + f"Byte SHA256: `{bank_sha}`.\n"
+            + 'Review and pin this bank before running responder comparisons.\n', encoding='utf-8')
+        # Empty results/: the shared epilogue files this as an artifact summary under
+        # metadata, just as it does for reusable Arena answers. No capability score.
+        return summary
     if needs_authors:
         bank_payload = bank_payload or request_bank(author_records, target, cfg, manifest)
         bank_path = out_dir / 'metadata/request_bank.json'

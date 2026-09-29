@@ -119,21 +119,32 @@ def run(target, cfg, out_dir: Path) -> dict:
         max_retries=int(cfg.generation.max_retries),
     )
 
-    def redteam_chat(messages: list[dict]) -> str:
-        reply = openrouter.chat(str(cfg.redteam.model), messages,
-                               temperature=float(cfg.redteam.temperature),
-                               max_tokens=int(cfg.redteam.max_tokens))
-        if reply.finish_reason != "stop":
-            raise ValueError("Psychosis red-teamer did not finish")
-        return reply.content
-
-    def judge_chat(messages: list[dict]) -> str:
-        reply = openrouter.chat(str(cfg.judge.model), messages,
-                               temperature=float(cfg.judge.temperature),
-                               max_tokens=int(cfg.judge.max_tokens))
-        if reply.finish_reason != "stop":
-            raise ValueError("Psychosis judge did not finish")
-        return reply.content
+    def recorded_chat(settings, prefix: str):
+        """A separate recorder per persona/cell retains failed calls and retries."""
+        count = 0
+        def chat(messages: list[dict]) -> str:
+            nonlocal count
+            count += 1
+            record = {"model": str(settings.model), "messages": messages,
+                      "temperature": float(settings.temperature),
+                      "max_tokens": int(settings.max_tokens)}
+            try:
+                reply = openrouter.chat(record["model"], messages,
+                                       temperature=record["temperature"],
+                                       max_tokens=record["max_tokens"])
+                record.update(content=reply.content, finish_reason=reply.finish_reason,
+                              reasoning=(getattr(reply, "reasoning_content", None)
+                                         or getattr(reply, "reasoning", None)))
+                if reply.finish_reason != "stop":
+                    raise ValueError(f"Psychosis {prefix} did not finish")
+                return reply.content
+            except Exception as exc:
+                record["error"] = f"{type(exc).__name__}: {exc}"
+                raise
+            finally:
+                (rollout_dir / f"{prefix}_{count:03d}.json").write_text(
+                    json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        return chat
 
     def target_chat(messages: list[dict]) -> tuple[str, str | None, str]:
         resp = target_client.chat.completions.create(
@@ -154,6 +165,7 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     def converse(i: int) -> dict:
         stem = stems[i]
+        redteam_chat = recorded_chat(cfg.redteam, f"{stem}_redteam")
         prompt = format_red_team_prompt(red_team_template, character_name(stem),
                                         characters[stem])
         def checkpoint(turns):
@@ -193,6 +205,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     def grade(i: int) -> dict:
         convo, upto = jobs[i]
         base = {"character": convo["stem"], "turn": upto}
+        judge_chat = recorded_chat(cfg.judge, f"{convo['stem']}_judge_turn{upto:02d}")
         try:
             return {**base, **grade_turn(judge_chat, grader_prompt, convo["turns"], upto)}
         except Exception as exc:  # noqa: BLE001 — a failed cell is reported, not fatal

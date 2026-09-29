@@ -1,0 +1,43 @@
+# ABOUTME: GPT-OSS120B on Tinker with pinned stock mini-SWE-agent, all 300 Lite tasks; separate from Qwen lite-v5.
+# ABOUTME: Run: uv run evals --name swebench_mini --config configs/eval/swebench_mini/gptoss_tinker.yaml --target tinker://RUN/sampler_weights/NAME
+protocol: gptoss-tinker-lite-v1
+dataset: princeton-nlp/SWE-bench_Lite
+split: test
+subset:
+  fraction: 1.0
+  n: null
+  seed: 0
+shard:
+  index: 0
+  count: 1
+# Serial qualification first; parallelism can increase only after a real task works.
+workers: 1
+pull_overlap: false
+pull_workers: 4
+pull_timeout: 1800
+disable_network: true
+tinker:
+  reasoning: medium
+  max_tokens: 16384
+  context_window: 131072
+  # Set this to the original date when reproducing a run. The shim records its effective date.
+  render_date: null
+tinker_model_kwargs:
+  drop_params: false
+  temperature: 1.0
+  top_p: 0.95
+  max_tokens: 16384
+  parallel_tool_calls: true
+  extra_body:
+    top_k: 20
+tinker_agent_kwargs:
+  step_limit: 500
+serving:
+  context_window: 131072
+  needs_tool_calls: true
+grade: false
+grading:
+  max_workers: 8
+  cache_level: env
+  namespace: swebench
+constitution: none

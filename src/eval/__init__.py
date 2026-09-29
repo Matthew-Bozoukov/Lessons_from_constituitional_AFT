@@ -112,6 +112,8 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/swebench_mini.yaml",
         key="swebench",
         needs_docker=True,
+        supports_api_target=True,  # run_eval restricts this to the separate Tinker protocol
+        name_facets=("protocol",),
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",

@@ -239,3 +239,26 @@ def test_truncated_middle_turn_stops_before_followup_and_is_not_judged(monkeypat
     assert summary["resistance_bounds_all_samples"] == [0, 1]
     row = json.loads((tmp_path / "rollouts/generations.jsonl").read_text())
     assert row["turns"][0]["raw"] == "unfinished answer"
+
+
+@pytest.mark.parametrize("score", [True, None, 3.9, "nan", 0, 6])
+def test_judge_scores_cannot_be_silently_coerced(score):
+    from src.eval.misalignment.dictator.runner import parse_judgment
+    with pytest.raises(ValueError):
+        parse_judgment(json.dumps({"score": score, "rationale": "fixture"}))
+
+
+def test_incomplete_judge_reply_is_saved_but_not_scored(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from src.eval.misalignment.dictator import runner
+    scenarios = [{"scenario_id": "fixture", "category": 1, "difficulty": "Direct",
+                  "content_kind": "prompt", "prompt": "fixture"}]
+    monkeypatch.setattr(runner, "load_scenarios", lambda cfg, path: scenarios)
+    _stub_clients(monkeypatch, runner, {1: ("reply", "stop")})
+    monkeypatch.setattr(runner, "OpenRouterClient", lambda: NS(chat=lambda *a, **kw: NS(
+        content='{"score": 5, "rationale": "partial"}', finish_reason="length", reasoning="trace")))
+    summary = runner.run(_Target(), _cfg(tmp_path, scenarios), tmp_path)
+    assert summary["n_scored"] == 0 and summary["resistance_bounds_all_samples"] == [0, 1]
+    record = json.loads((tmp_path / "rollouts/judgments/fixture__sample0.json").read_text())
+    assert record["finish_reason"] == "length" and record["reasoning"] == "trace"
+    assert "reply" in record["prompt"] and "partial" in record["content"]

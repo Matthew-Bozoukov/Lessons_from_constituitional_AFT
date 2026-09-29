@@ -75,6 +75,12 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         plus pass@1 when grading ran.
     """
     cfg = OmegaConf.merge(cfg)  # private copy; run() must not mutate the caller's config
+    from src.infra.endpoints.tinker import is_tinker_target
+    tinker_target = is_tinker_target(target.spec.hf_path)
+    if tinker_target and cfg.get("protocol") != "gptoss-tinker-lite-v1":
+        raise ValueError("Tinker SWE runs require configs/eval/swebench_mini/gptoss_tinker.yaml")
+    if cfg.get("protocol") == "gptoss-tinker-lite-v1" and not tinker_target:
+        raise ValueError("The GPT-OSS/Tinker SWE protocol only accepts tinker:// targets")
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
     selection, chosen = _selection(cfg, out_dir)
     selected_ids = selection["instance_ids"]
@@ -99,7 +105,10 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     overlay = agent.build_overlay(target.base_url, metadata_dir,
                                   disable_network=bool(cfg.get("disable_network", True)),
                                   pull_timeout=int(cfg.get("pull_timeout", 1800))
-                                  if overlap else None)
+                                  if overlap else None,
+                                  **({"model_kwargs": OmegaConf.to_container(cfg.tinker_model_kwargs, resolve=True),
+                                      "agent_kwargs": OmegaConf.to_container(cfg.tinker_agent_kwargs, resolve=True)}
+                                     if tinker_target else {}))
     model_name = f"hosted_vllm/{target.model_name}"
     registry = agent.write_cost_registry(metadata_dir, model_name)
 
@@ -111,7 +120,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                               workers=int(cfg.workers), model_name=model_name,
                               rollouts_dir=rollouts_dir, overlay=overlay,
                               official_config=official_config),
-        agent.rollout_env(registry=registry, global_config_dir=metadata_dir / "mini_global_config"),
+        agent.rollout_env(registry=registry, global_config_dir=metadata_dir / "mini_global_config",
+                          **({"api_key": target.api_key} if tinker_target else {})),
         metadata_dir / "rollouts.log")
     if code != 0:
         # Not fatal: partial predictions are still a result, and the counters below say how
@@ -134,6 +144,13 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         **pulled,
         **metrics.rollout_summary(metrics.load_preds(preds_path), selected_ids, rollouts_dir),
     }
+    if tinker_target:
+        summary["protocol"] = str(cfg.protocol)
+        summary["protocol_note"] = "Pinned stock mini-SWE-agent on Tinker; distinct from the Qwen lite-v5 fleet"
+        summary["provenance"]["effective_instance_budget"] = (
+            f"{cfg.tinker_agent_kwargs.step_limit} steps; "
+            f"{cfg.tinker_model_kwargs.max_tokens} tokens per response; "
+            "no cumulative-token or dollar cap; Tinker costs are not zero")
 
     if not bool(cfg.get("grade", False)):
         summary["grading"] = "deferred"

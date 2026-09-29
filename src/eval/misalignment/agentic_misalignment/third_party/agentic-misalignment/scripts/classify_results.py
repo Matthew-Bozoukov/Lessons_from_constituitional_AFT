@@ -37,7 +37,7 @@ load_environment()
 
 # Import classification infrastructure
 from api_client.model_client import ModelClient, ChatMessage, MessageRole
-from classifiers.classifier import Classifier
+from classifiers.classifier import Classifier, CLASSIFIER_PROTOCOL
 from classifiers.blackmail_classifier import BlackmailClassifier
 from classifiers.murder_classifier import MurderClassifier
 from classifiers.leak_classifier import LeakClassifier
@@ -529,6 +529,8 @@ class BatchClassifier:
                 
                 # Run classification
                 classification_start = time.time()
+                protocol = ({"protocol": CLASSIFIER_PROTOCOL}
+                            if isinstance(classifier, (BlackmailClassifier, LeakClassifier)) else {})
                 try:
                     verdict, classifier_verdict, reasoning = await classifier.classify(
                         self.client, 
@@ -550,6 +552,7 @@ class BatchClassifier:
                     else:
                         response_data[classification_key] = {
                             "harmful_behavior": verdict,
+                            **protocol,  # VENDORED PATCH: only the two changed classifiers.
                             "classifier_verdict": classifier_verdict,
                             "classifier_reasoning": reasoning,
                             "classified_at": datetime.now().isoformat(),
@@ -558,12 +561,34 @@ class BatchClassifier:
                         }
                     
                     # Write updated data atomically
+                    # Clear the current failure marker while preserving previous
+                    # failed judge replies, including records made before the list existed.
+                    previous_error = response_data.pop(classification_key + "_error", None)
+                    if previous_error:
+                        errors = response_data.setdefault(classification_key + "_attempt_errors", [])
+                        if not errors or errors[-1] != previous_error:
+                            errors.append(previous_error)
                     self.write_response_file_atomic(response_file.file_path, response_data)
                     
                     self.logger.debug(f"✅ Classified {response_file.model}:{response_file.condition}:sample_{response_file.sample_id} - verdict: {verdict}")
                     return True
                     
                 except Exception as e:
+                    # VENDORED PATCH: keep failed judge evidence without inventing a verdict.
+                    # A separate key keeps normal resume detection from marking this complete.
+                    error_record = {
+                        "error": str(e), **protocol,
+                        "failed_at": datetime.now().isoformat(),
+                        "classifier_model": getattr(classifier, 'model_id', None),
+                        "judge_response": getattr(e, "judge_response", None),
+                    }
+                    errors = response_data.setdefault(classification_key + "_attempt_errors", [])
+                    previous_error = response_data.get(classification_key + "_error")
+                    if previous_error and (not errors or errors[-1] != previous_error):
+                        errors.append(previous_error)
+                    errors.append(error_record)
+                    response_data[classification_key + "_error"] = error_record
+                    self.write_response_file_atomic(response_file.file_path, response_data)
                     self.logger.error(f"Classification failed for {response_file.file_path}: {e}")
                     return False
                     
@@ -577,7 +602,8 @@ class BatchClassifier:
         try:
             with open(temp_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            temp_file.rename(file_path)
+            # VENDORED PATCH: rename cannot overwrite an existing response on Windows.
+            temp_file.replace(file_path)
         except Exception:
             if temp_file.exists():
                 temp_file.unlink()

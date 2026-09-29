@@ -242,7 +242,8 @@ def test_frozen_requests_reject_drift_and_are_identical_for_distinct_responders(
     assert first == second and len(first) == len(scenarios) * 2
 
 
-def test_frozen_request_bank_cannot_admit_rejected_author_text(worlds, tmp_path):
+@pytest.mark.parametrize('defect', ['rejected', 'missing'])
+def test_frozen_request_bank_cannot_admit_rejected_or_missing_author_text(worlds, tmp_path, defect):
     from src.eval.misalignment.delegated_harm import runner
     from src.eval.misalignment.delegated_harm.source import digest, save
     cfg, scenarios, humans, notes, manifest = worlds
@@ -250,9 +251,75 @@ def test_frozen_request_bank_cannot_admit_rejected_author_text(worlds, tmp_path)
     cfg.author.variants = 1
     records = {(k, 0): {'scenario': k, 'variant': 0, 'accepted': True,
                        'text': humans[k], 'sha256': digest(humans[k])} for k in scenarios}
-    records[next(iter(records))]['accepted'] = False
+    if defect == 'rejected':
+        records[next(iter(records))]['accepted'] = False
+    else:
+        records.pop(next(iter(records)))
     bank = tmp_path / 'bank.json'
     save(bank, runner.request_bank(records, _target('author'), cfg, manifest))
     cfg.author.bank = {'path': str(bank), 'sha256': hashlib.sha256(bank.read_bytes()).hexdigest()}
-    with pytest.raises(ValueError, match='Invalid frozen author'):
+    with pytest.raises(ValueError, match='Invalid frozen author|does not cover every'):
         runner.load_request_bank(cfg, manifest, scenarios)
+
+
+def test_default_requires_bank_before_source_preparation_or_any_model_calls(tmp_path, monkeypatch):
+    from src.eval.misalignment.delegated_harm import runner
+    cfg = OmegaConf.load('configs/eval/delegated_harm.yaml')
+    assert cfg.author.mode == 'frozen'
+    assert not cfg.author.prepare_only
+    def forbidden(*args, **kwargs):
+        pytest.fail('Missing bank must fail before initialization or any model calls')
+    for name in ('prepare', 'OpenAI', 'Judge', 'author_one', 'episode'):
+        monkeypatch.setattr(runner, name, forbidden)
+    with pytest.raises(ValueError, match='Frozen requests need author.bank'):
+        runner.run(_target('responder'), cfg, tmp_path)
+
+
+@pytest.mark.parametrize('accepted', [True, False])
+def test_bank_preparation_never_runs_episodes_and_retains_validation_evidence(
+        worlds, tmp_path, monkeypatch, accepted):
+    from src.eval.misalignment.delegated_harm import runner
+    from src.eval.misalignment.delegated_harm.source import digest, save
+    cfg, scenarios, humans, notes, manifest = worlds
+    cfg = OmegaConf.create(OmegaConf.to_container(cfg))
+    cfg.author.mode = 'self_authored'
+    cfg.author.prepare_only = True
+    cfg.author.variants = 1
+    cfg.deliveries = ['chat_human']  # prepare-only must still author the complete AI bank
+    monkeypatch.setattr(runner, 'OpenAI', lambda **kw: None)
+    monkeypatch.setattr(runner, 'Judge', lambda *a: SimpleNamespace(ledger={'charged_or_reserved_usd': 0}))
+    authored = []
+    def author(client, model, sc, notes, variant, cfg, judge, path):
+        row = dict(scenario=sc.key, variant=variant, accepted=accepted,
+                   text=humans[sc.key], sha256=digest(humans[sc.key]),
+                   attempts=[{'fixture': 'author validation evidence'}])
+        save(path, row)
+        authored.append(sc.key)
+        return row
+    monkeypatch.setattr(runner, 'author_one', author)
+    def forbidden(*args, **kwargs):
+        pytest.fail('Bank preparation must never schedule, run, judge or publish responder episodes')
+    for name in ('cells', 'episode', 'judge_episode', 'checkpoint'):
+        monkeypatch.setattr(runner, name, forbidden)
+    if accepted:
+        summary = runner.run(_target('author'), cfg, tmp_path)
+        assert summary['status'] == 'request_bank_prepared'
+        assert summary['accepted_requests'] == summary['expected_requests'] == len(scenarios)
+        cfg.author.bank = {'path': str(tmp_path / 'metadata/request_bank.json'),
+                           'sha256': summary['request_bank_sha256']}
+        loaded, _, sha, _ = runner.load_request_bank(cfg, manifest, scenarios)
+        assert sha == summary['request_bank_sha256'] and len(loaded) == len(scenarios)
+        assert not (tmp_path / 'metadata/request_bank_candidate.json').exists()
+    else:
+        with pytest.raises(ValueError, match='Request bank preparation failed'):
+            runner.run(_target('author'), cfg, tmp_path)
+        assert (tmp_path / 'metadata/request_bank_candidate.json').exists()
+        assert not (tmp_path / 'metadata/request_bank.json').exists()
+    summary = json.loads((tmp_path / 'metadata/request_bank_preparation.json').read_text())
+    assert summary['behavioral_evaluation'] is False
+    assert summary['recorded'] == summary['scheduled'] == 0
+    assert 'arms' not in summary
+    assert len(authored) == len(scenarios)
+    assert len(list((tmp_path / 'metadata/authors').glob('*.json'))) == len(scenarios)
+    assert not list((tmp_path / 'results').iterdir())
+    assert not list((tmp_path / 'rollouts').iterdir())

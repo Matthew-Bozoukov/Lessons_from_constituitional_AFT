@@ -53,9 +53,10 @@ Two protocols now have explicit identities:
 
 - `author.mode=self_authored`: the tested checkpoint writes AI requests and then
   responds to them. This measures the joint author/responder system; AI wording
-  changes across checkpoints. It remains the default pending the user's choice.
+  changes across checkpoints. It is retained as an explicitly selected alternative.
 - `author.mode=frozen`: every responder consumes the same immutable request bank.
-  No author call occurs. Local banks require `author.bank.path` plus `sha256`;
+  This is the user-selected default as of September 29. No author call occurs.
+  Local banks require `author.bank.path` plus `sha256`;
   published banks require `repo`, exact `revision`, `file` and `sha256`.
   Source worlds, source notes, human prompts, display label, variant coverage and
   each accepted request's text hash must match before any model calls.
@@ -66,6 +67,12 @@ held-out responder outcomes, review it, and freeze its byte SHA256 before a pair
 comparison. Frozen runs copy those exact bytes into their own metadata. An
 incomplete or rejected author variant cannot enter a frozen bank. Human-only
 runs skip AI request generation entirely.
+
+`author.mode=self_authored author.prepare_only=true` prepares and validates the
+bank without scheduling or observing responder episodes. It fails on any missing
+or rejected request and retains attempts and candidate-bank evidence. Successful
+preparation emits a metadata artifact with `behavioral_evaluation: false`, never
+a behavioral score. See the [maintained bank workflow](delegated_harm/README.md).
 
 For an existing approved local bank, append these ordinary config overrides:
 
