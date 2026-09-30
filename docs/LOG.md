@@ -2,6 +2,20 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+
+## 2026-09-30 - Replace existing GPT-OSS nosynth CoT with stricter agreement checks
+
+**Method:** target only the 1,073 already-traced assistant turns in the pinned
+native GPT-OSS nosynth mixture; sample base GPT-OSS-120B on Tinker with medium
+reasoning and at most five attempts, judge answer agreement plus trace compatibility,
+and preserve original answers. **Result:** 446 accepted (384 changed strings,
+62 identical regenerations); 627 failed targets retained unchanged and explicitly
+listed. All 9,307 untraced assistant turns and every non-CoT field are unchanged.
+Recorded upper-bound accounting $38.99. Independent verification and 32 offline
+checks passed; dataset and critical archived files byte-verified after publication.
+**Next:** this is a dataset update only; no new training/eval and no claim that
+ODCV tool formatting or missing CoT was fixed. [Report and pinned HF artifact](gptoss120b/2026-09-30_existing_cot_replacement.md).
+
 ## 2026-09-29 - Strict GPT-OSS nosynth CoT backfill pilot
 
 **Hypothesis:** independently generated base-model reasoning can be attached to
