@@ -10,6 +10,7 @@ import sys
 
 from dotenv import load_dotenv
 from huggingface_hub import CommitOperationAdd
+from omegaconf import OmegaConf
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
@@ -28,10 +29,11 @@ def write(p,value):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--publish',action='store_true')
+    parser.add_argument('--config',default='scratch/gptoss_control/control_refresh.yaml')
     args=parser.parse_args()
     common=Path(subprocess.check_output(['git','rev-parse','--git-common-dir'],text=True).strip()).resolve()
     load_dotenv(common.parent/'.env')
-    out=ROOT/'output/gptoss_control/control_refresh_2026-09-30'
+    out=ROOT/OmegaConf.load(args.config).output
     assert not (out/'published_handoff_audit.json').exists(), 'Already published; inspect receipt'
     renderer=make_renderer(local_files_only=True)
     audit={'method':'Offline replay of every sampling-ledger error with its saved output tokens; no inference calls.',
@@ -43,31 +45,40 @@ def main():
         completed={e['id']:e for e in events if e['event']=='completed'}
         rejected=[]
         for error in [e for e in events if e['event']=='error']:
+            if error['id'] not in completed:
+                rejected.append({'request_id':error['id'],'recorded_error_type':error['type'],
+                    'cause':'provider_error_without_completed_output'})
+                continue
             event=completed[error['id']]
             tokens=event['raw_tokens']
-            parsed,term=renderer.parse_response(tokens)
-            assert term.is_stop_sequence and not parsed.get('unparsed_tool_calls')
-            message=renderer.to_openai_message(parsed)
-            calls=message.get('tool_calls') or []
-            assert calls and tokens[-1]==200002 and tokens[-1]!=200012
-            assert all(c['function']['name'] in {'bash','task_complete'} for c in calls)
-            assert all(isinstance(json.loads(c['function']['arguments']),dict) for c in calls)
+            try:
+                parsed,term=renderer.parse_response(tokens)
+                message=renderer.to_openai_message(parsed)
+                calls=message.get('tool_calls') or []
+                declared=all(c['function']['name'] in {'bash','task_complete'} for c in calls)
+                try:valid=all(isinstance(json.loads(c['function']['arguments']),dict) for c in calls)
+                except (ValueError,TypeError):valid=False
+                if calls and tokens[-1]!=200012: cause='tool_calls_ended_without_handoff'
+                elif not declared: cause='undeclared_tool'
+                elif parsed.get('unparsed_tool_calls'): cause='unparsed_tool_header_or_arguments'
+                else: cause='unclassified_completed_output_error'
+            except Exception as exc:
+                calls=[];valid=False;declared=False;cause='offline_parse_failure_'+type(exc).__name__
             rejected.append({'request_id':error['id'],'recorded_error_type':error['type'],
-                'cause':'tool_calls_ended_with_return_instead_of_call',
-                'ending_token':tokens[-1],'ending_text':renderer.tokenizer.decode(tokens[-1:]),
+                'cause':cause,
+                'ending_token':tokens[-1] if tokens else None,'ending_text':renderer.tokenizer.decode(tokens[-1:]),
                 'tool_names':[c['function']['name'] for c in calls],
-                'all_arguments_valid_json_objects':True,
+                'all_arguments_valid_json_objects':valid,'all_tool_names_declared':declared,
                 'output_tokens_sha256':hashlib.sha256(json.dumps(tokens).encode()).hexdigest()})
         audit['arms'][regime]={'rejected_completions':len(rejected),'ledger_sha256':hashlib.sha256(ledger.read_bytes()).hexdigest(),
             'cause_counts':dict(Counter(e['cause'] for e in rejected)),'completions':rejected}
     write(out/'bridge_error_audit.json',audit)
-    note=('Separate from malformed JSON: the bridge rejected 1 original-prompt completion and 13 fixed-prompt '
-        'completions because parsed tool calls ended with Harmony `<|return|>` (200002), instead of '
-        '`<|call|>` (200012). All their arguments parse as JSON objects and their tool names are declared. '
-        'The existing HTTP retry path resampled these individual completions; no whole rollout was rerun. '
+    note=(f"Separate from visible malformed JSON: the bridge recorded {audit['arms']['original']['rejected_completions']} original-prompt errors and {audit['arms']['fixed']['rejected_completions']} fixed-prompt "
+        'errors. The audit lists their causes, ending tokens, tool names and JSON validity. '
+        'The existing HTTP retry path retries individual failed requests. '
         'These rejected attempts are absent from visible tool-call transcripts but preserved in the sampling '
-        'ledger and `metadata/bridge_error_audit.json`. Thus the square-bracket reduction does not mean '
-        'all native-format failures improved. The two scored runs use the same bridge/retry policy.')
+        'ledger and `metadata/bridge_error_audit.json`. Bracket errors and Harmony handoff errors '
+        'are distinct measures. The two scored runs use the same bridge/retry policy.')
     comparison=read(out/'prompt_comparison.json')
     comparison['bridge_error_audit']=audit
     comparison['limits']+=' '+note

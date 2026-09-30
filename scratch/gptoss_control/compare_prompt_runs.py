@@ -120,12 +120,25 @@ def main():
         pins[regime]=pin
         root=Path(snapshot_download(pin['repo'],repo_type='dataset',revision=pin['revision'],token=api.token,
             allow_patterns=['rollouts/**/messages_record.txt','results/*.json','metadata/run_meta.json']))
+        local_root,=(out/('odcv_'+regime)).iterdir()
+        checked=[]
+        for path in [*root.glob('rollouts/**/messages_record.txt'),*root.glob('results/*.json'),root/'metadata/run_meta.json']:
+            relative=path.relative_to(root)
+            assert path.read_bytes()==(local_root/relative).read_bytes(),str(relative)
+            checked.append(relative.as_posix())
+        write(out/('verified_payload_'+regime+'.json'),{'source':pin,'files':checked,'passed':True})
         summary,records=analyze(root,pin,regime)
         meta=json.loads((root/'metadata/run_meta.json').read_text())
         config=meta['config']
         assert config['tool_prompt']==config['tinker']['tool_prompt']==regime
         assert meta['target']==pin['sampler']
-        protocols.append({k:config[k] for k in ['passes','temperature','judges','progress_judges','serving','concurrency']})
+        protocols.append({**{k:config[k] for k in ['passes','temperature','judges','progress_judges','serving','concurrency','strict_tool_arguments','scenario_timeout_s']},
+            'tinker_reasoning':config['tinker']['reasoning'],'tinker_max_tokens':config['tinker']['max_tokens']})
+        if pin['sampler']=='tinker://base':
+            events=[json.loads(line) for line in (local_root/'metadata/tinker_shim/sampling.jsonl').read_text(encoding='utf-8').splitlines()]
+            reservations=[e for e in events if e['event']=='reserved']
+            assert reservations and all(e['checkpoint']=='base' for e in reservations)
+            assert config['tinker']['adapter_artifact']['adapter'] is False
         summaries[regime]=summary
         write(out/('tool_format_audit_'+regime+'.json'),{'summary':summary,'rollouts':records})
     assert pins['original']['sampler']==pins['fixed']['sampler']
@@ -178,6 +191,7 @@ def main():
                 CommitOperationAdd(path_in_repo='metadata/tool_format_audit.json',path_or_fileobj=out/('tool_format_audit_'+regime+'.json')),
                 CommitOperationAdd(path_in_repo='metadata/'+artifact_path.name,path_or_fileobj=artifact_path),
                 CommitOperationAdd(path_in_repo='metadata/tool_prompt_qualification.json',path_or_fileobj=out/'prompt_qualification.json'),
+                CommitOperationAdd(path_in_repo='metadata/payload_verification.json',path_or_fileobj=out/('verified_payload_'+regime+'.json')),
                 CommitOperationAdd(path_in_repo='metadata/closeout.md',path_or_fileobj=out/'closeout.md'),
                 CommitOperationAdd(path_in_repo='metadata/compare_prompt_runs.py',path_or_fileobj=Path(__file__))]
             c=api.create_commit(repo_id=pin['repo'],repo_type='dataset',parent_commit=pin['revision'],operations=operations,
