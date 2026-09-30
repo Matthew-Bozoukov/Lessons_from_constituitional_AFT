@@ -92,3 +92,21 @@ for a fresh full comparison; this reproduction does not certify their completene
 
 No paid inference, publication, resource changes or historical artifact rewrites were
 performed. Live endpoint checks on each selected model remain outstanding.
+
+
+## September 30 follow-up
+
+The user approved Arena's 12,000-token default after the
+[matched budget study](arena_hard_budget_study_2026-09-29.md). The active config
+and protocol regression now require 12k; the 16,384 context, GPT-4.1 primary and
+Gemini diagnostic policy remain. Existing generation-protocol checks reject
+mixing saved 6k and 12k arms. Thirty-five Arena smoke/reuse tests passed.
+
+MMLU retains the selected 570 questions, five-shot prompt and 8,192-token recipe.
+A scripted runner reproduction on the Windows CP1252 locale raised
+`UnicodeEncodeError` while writing a valid Unicode reasoning trace to
+`raw_samples.md`, after all answers were generated. Artifact reads/writes now
+specify UTF-8. The complete 55-test MMLU suite passes. Also removed a stale config
+comment promising identical greedy answers across budget changes: the Arena
+study demonstrated early trajectory divergence. No MMLU scientific setting or
+score changed, and this follow-up did not run live MMLU inference.

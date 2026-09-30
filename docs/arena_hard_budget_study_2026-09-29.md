@@ -138,3 +138,11 @@ Both study pods were verified absent after generation. The teardown recorded
 shared account balance $460.925109804 and $31.743/hour for six other tasks' pods;
 those resources were left untouched. Shared balance changes are not this study's
 cost. These amounts exclude the prior qualification study.
+
+
+## September 30 protocol decision
+
+The user approved "12k from now on." `configs/eval/arena_hard.yaml` now defaults
+to 12,000 tokens. The study above records the decision before that approval;
+its frozen inputs and published evidence are unchanged. Both arms in future
+comparisons must use the new protocol. Saved 6k arms require matched regeneration.

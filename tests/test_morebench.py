@@ -89,3 +89,44 @@ def test_missing_verdicts_cannot_silently_lower_score(monkeypatch, tmp_path):
         m.run(target, cfg, tmp_path)
     assert calls['judge'] == 4
     assert not (tmp_path / 'results/metrics.json').exists()
+
+
+@pytest.mark.parametrize("finish,empty", [("length", False), ("stop", True)])
+def test_resume_preserves_incomplete_target_outcomes(monkeypatch, tmp_path, finish, empty):
+    target, cfg, calls = _setup(monkeypatch, finish=finish)
+    if empty:
+        monkeypatch.setattr(m, 'resolve_trace', lambda *args: ('trace', ''))
+    with pytest.raises(RuntimeError, match='target channels'):
+        m.run(target, cfg, tmp_path)
+    assert calls['target'] == 1
+    before = (tmp_path / 'rollouts/generations.jsonl').read_bytes()
+    target, cfg, resumed = _setup(monkeypatch)
+    with pytest.raises(RuntimeError, match='target channels'):
+        m.run(target, cfg, tmp_path)
+    assert resumed == {'target': 0, 'judge': 0}
+    assert (tmp_path / 'rollouts/generations.jsonl').read_bytes() == before
+
+
+def test_resume_retries_transport_failure_without_regenerating_completed_items(monkeypatch, tmp_path):
+    target, cfg, calls = _setup(monkeypatch)
+    def unavailable(**kwargs):
+        raise TimeoutError('fixture transport failure')
+    monkeypatch.setattr(m, 'OpenAI', lambda **kw: NS(chat=NS(completions=NS(create=unavailable))))
+    with pytest.raises(RuntimeError, match='target channels'):
+        m.run(target, cfg, tmp_path)
+    target, cfg, resumed = _setup(monkeypatch)
+    summary = m.run(target, cfg, tmp_path)
+    assert summary['n_items'] == 1
+    assert resumed == {'target': 1, 'judge': 4}
+    saved = [json.loads(line) for line in (tmp_path / 'rollouts/generations.jsonl').read_text().splitlines()]
+    assert len(saved) == 2 and saved[0]['error'] == 'TimeoutError' and saved[1]['valid']
+
+
+def test_legacy_cache_does_not_select_successful_target_reroll(tmp_path):
+    path = tmp_path / 'generations.jsonl'
+    first = {'id': 'i', 'valid': False, 'finish_reason': 'length', 'answer': ''}
+    reroll = {'id': 'i', 'valid': True, 'finish_reason': 'stop', 'answer': 'answer'}
+    path.write_text(json.dumps(first) + '\n' + json.dumps(reroll) + '\n', encoding='utf-8')
+    def unexpected(job):
+        pytest.fail('A returned target outcome must never be regenerated on resume')
+    assert m._cached_jobs(path, [{'id': 'i'}], unexpected, 1, preserve_outcomes=True) == [first]

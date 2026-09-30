@@ -452,3 +452,29 @@ def test_tinker_framework_run_uses_portable_requests_and_keeps_raw_trace(tmp_pat
     recorded = [json.loads(line) for line in (tmp_path / "rollouts/records.jsonl").read_text().splitlines()]
     assert all(r["raw"] == "A" and r["think"] == "Native trace" for r in recorded)
     assert all(r["request_hash"] and r["prompt_hash"] for r in recorded)
+
+
+def test_runner_writes_unicode_trace_as_utf8_on_windows_locale(tmp_path, monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace as NS
+    from omegaconf import OmegaConf
+    from src.eval.capabilities.mmlu import runner
+
+    original_write = Path.write_text
+    def windows_write(path, data, encoding=None, errors=None, newline=None):
+        return original_write(path, data, encoding=encoding or 'cp1252',
+                              errors=errors, newline=newline)
+    monkeypatch.setattr(Path, 'write_text', windows_write)
+    cfg = OmegaConf.load('configs/eval/mmlu.yaml')
+    cfg.generation.parallel = 1
+    questions = build_subset(rows({'anatomy': 2}), 2, seed=0)
+    trace = 'Consider \u03b1 \u2264 \u03b2; \u7b54\u6848 is A.'
+    client = NS(chat=NS(completions=NS(create=lambda **kw: NS(choices=[
+        NS(message=NS(content='A', reasoning=trace), finish_reason='stop')]))))
+    monkeypatch.setattr(runner, 'OpenAI', lambda **kw: client)
+    arm = {'name': 'test', 'served': 'test', 'adapter': None,
+           'synthetic_fraction': None, 'role': 'target'}
+    score = runner.run_arm(arm, questions, {}, cfg, 'http://unused.invalid', tmp_path)
+    assert score['valid'] is True
+    artifact = next((tmp_path / 'think/test').glob('*/raw_samples.md'))
+    assert trace in artifact.read_text(encoding='utf-8')

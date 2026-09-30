@@ -222,7 +222,7 @@ def test_active_config_preserves_the_effective_protocol_without_old_launch_instr
     cfg = OmegaConf.load("configs/eval/arena_hard.yaml")
     assert list(cfg.arms) == [] and cfg.baseline_arm is None
     assert dict(cfg.arm_defaults) == {"n_hard_prompt": 500, "n_creative_writing": 250}
-    assert cfg.generation.max_tokens == 6000 and cfg.serving.context_window == 16384
+    assert cfg.generation.max_tokens == 12000 and cfg.serving.context_window == 16384
     assert cfg.judge.model == "openai/gpt-4.1"
     assert dict(cfg.judge.extra_body) == {}
     assert cfg.judge_validation.reference_judge == "google/gemini-3-flash-preview"

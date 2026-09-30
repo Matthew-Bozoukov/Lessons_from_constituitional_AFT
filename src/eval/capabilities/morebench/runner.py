@@ -87,14 +87,18 @@ def score_criteria(criteria: list[dict], fulfilled: dict[str, bool]) -> float:
     return 100 * credit / sum(abs(c['weight']) for c in criteria)
 
 
-def _cached_jobs(path: Path, jobs: list[dict], fn, parallel: int) -> list[dict]:
+def _cached_jobs(path: Path, jobs: list[dict], fn, parallel: int, *, preserve_outcomes=False) -> list[dict]:
     """Checkpoint each completion; the enclosing run manifest authenticates cache identity."""
     cached = {}
     if path.exists():
         for line in path.read_text(encoding='utf-8').splitlines():
             row = json.loads(line)
-            if row.get('valid'):
-                cached[row['id']] = row
+            # Target outputs are observations, including empty/truncated ones.
+            # Only a request with no returned completion may be retried. Keep the
+            # first outcome even in a legacy cache containing later rerolls.
+            if row.get('valid') or (preserve_outcomes and 'finish_reason' in row):
+                if not preserve_outcomes or row['id'] not in cached:
+                    cached[row['id']] = row
     lock = threading.Lock()
     def one(index):
         job = jobs[index]
@@ -183,7 +187,8 @@ def run(target, cfg, out_dir: Path) -> dict:
                   'usage': resp.usage.model_dump() if getattr(resp, 'usage', None) else None}
         record['valid'] = choice.finish_reason == 'stop' and all(record[c].strip() for c in channels)
         return record
-    generations = _cached_jobs(rollouts / 'generations.jsonl', items, generate, int(cfg.generation.parallel))
+    generations = _cached_jobs(rollouts / 'generations.jsonl', items, generate,
+                               int(cfg.generation.parallel), preserve_outcomes=True)
     if any(not g['valid'] for g in generations):
         raise RuntimeError('MoReBench incomplete/empty target channels; inspect generations before judging')
     judge = OpenRouterClient()

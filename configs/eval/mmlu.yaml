@@ -112,9 +112,9 @@ generation:
   # truncated 4.2% of the BASE arm, whose traces ruminate longest. 8192 requires the
   # 16384 --max-model-len the arena-hard pod now boots with: the longest prompt in
   # the per_subject=20 superset measures 3069 tokens with the real tokenizer, and
-  # vLLM 400s an overflowing request rather than clamping it. Safe to mix with
-  # earlier 4096-budget generations at temp 0 — an answer that stopped naturally is
-  # identical under a larger cap, so only length-truncated records need re-running.
+  # vLLM 400s an overflowing request rather than clamping it. Compare against
+  # earlier budgets only as separate historical protocols. Greedy decoding does not
+  # guarantee identical trajectories across serving runs; regenerate matched arms.
   # `truncation_rate` in the output is the check — if it is not ~0, raise this
   # before believing any number in the report.
   max_tokens: 8192

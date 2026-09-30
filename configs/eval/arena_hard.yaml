@@ -29,10 +29,10 @@ generation:
   api_key: "EMPTY"
   temperature: 0.0
   top_p: 1.0
-  # Preserve the existing 6,000-token protocol. Thinking and final answer share this
-  # budget; per-request headroom can lower it. Inspect retained generation metrics
-  # alongside preference scores. A truncated answer is retained as model output.
-  max_tokens: 6000
+  # Approved 2026-09-30 after the matched budget study: reasoning + final share
+  # 12,000 tokens. Regenerate both comparison arms; old 6k answers are not matched.
+  # Per-request headroom can lower this; retain actual budgets and all truncations.
+  max_tokens: 12000
   parallel: 32
   enable_thinking: true
   strip_think_for_judging: true

@@ -285,7 +285,7 @@ def run_arm(
 
     run_dir = arm_dir / timestamp()
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "metrics.json").write_text(json.dumps(scores, indent=2))
+    (run_dir / "metrics.json").write_text(json.dumps(scores, indent=2), encoding="utf-8")
 
     # The cheapest defence against a chat-template mismatch, which reads as catastrophic
     # capability loss but is purely a serving bug. Look at these before believing a
@@ -303,7 +303,8 @@ def run_arm(
             f"**Think ({r['think_words']} words)**\n\n{r['think'][:1200]}\n\n"
             f"**Answer**\n\n{r['answer'][:1200]}"
             for r in dump
-        )
+        ),
+        encoding="utf-8",
     )
     write_run_meta(
         run_dir,
@@ -484,8 +485,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     (arm_dir / "records.jsonl").rename(rollouts_dir / "records.jsonl")
     (run_dir / "metrics.json").rename(results_dir / "metrics.json")
     (run_dir / "raw_samples.md").rename(results_dir / "raw_samples.md")
-    meta = json.loads((run_dir / "run_meta.json").read_text())
+    meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
     meta["records_file"] = "rollouts/records.jsonl"  # the pre-move path would be stale
-    (metadata_dir / "mmlu_run_meta.json").write_text(json.dumps(meta, indent=2))
+    (metadata_dir / "mmlu_run_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     shutil.rmtree(out_dir / mode)
     return scores

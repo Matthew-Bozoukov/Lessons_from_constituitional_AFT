@@ -46,7 +46,12 @@ Qwen3-Thinking models. Do not silently substitute different sampling per arm.
 Only naturally completed, nonempty requested channels are judged. Missing
 reasoning is not interpreted as poor reasoning. An incomplete target generation,
 truncated judge response, or missing/ambiguous criterion verdict prevents an
-aggregate score. Raw completions are retained for recovery. A resume must match
+aggregate score. Raw completions are retained for review. Resume preserves the first returned
+target outcome, including an empty or truncated one; it does not regenerate
+unsuccessful model outputs until they pass. Only requests that produced no
+completion may be retried. Invalid judge verdicts remain separately retryable,
+with every attempt retained. A different target budget requires a new matched
+protocol/run, not selective replacement of failed samples. A resume must match
 the saved dataset, prompts, target revision, mode, judge provider and config.
 
 GPT-OSS targets share a family with the default judge; results mark this fact.
@@ -83,3 +88,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## September 30 resume regression
+
+The earlier cache reused only records marked valid. An actual scripted runner
+reproduction showed that resuming after a target hit its output limit generated
+a replacement and could then produce a complete score. That would select for
+successful completions at temperature 1. Resume now preserves the first returned
+target outcome, including legacy files containing later rerolls. A failed
+transport request remains retryable. Seventeen MoReBench offline tests pass;
+this is runner validation, not live target/judge qualification.
