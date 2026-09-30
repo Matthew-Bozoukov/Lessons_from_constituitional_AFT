@@ -507,6 +507,20 @@ def publish_data(cfg, out):
         (final/"README.md").write_text(card_markdown(fields,front_matter={
             "configs":[{"config_name":"default","data_files":"mixture.jsonl","default":True}],
             "tags":training_data_tags("mixture","nosynth",fields["constitution"],extra=["gpt-oss","harmony"])}),encoding="utf-8")
+    verification=final/'replacement_verification.json'
+    if verification.exists():
+        summary=json.loads(verification.read_text(encoding='utf-8'))
+        readme=final/'README.md'
+        with readme.open('a',encoding='utf-8') as handle:
+            handle.write(f"\n## Replacement results\n\n"
+                f"Targeted {summary['targeted_existing_cot_turns']} existing CoT turns. "
+                f"Accepted {summary['accepted_replacements']}: {summary['actually_changed_trace_strings']} changed strings "
+                f"and {summary['identical_regenerated_trace_strings']} identical regenerated strings. "
+                f"The {summary['failed_replacements_retained_unchanged']} failed targets keep their original CoT. "
+                f"All {summary['untraced_assistant_turns_preserved']} untraced assistant turns and all non-CoT fields remain unchanged.\n\n"
+                "[Readable failure list](failed_replacements.md) | [Compact failure index](failed_replacement_indices.json) | "
+                "[Detailed failure records](failed_replacements.jsonl) | [Independent verification](replacement_verification.json).\n\n"
+                "This is a dataset update only. No new adapter was trained or evaluated.\n")
     # The first conversion alone used the user's original naming exception.
     if api.repo_exists(repo, repo_type="dataset"):
         raise RuntimeError(f"Refusing to overwrite existing dataset {repo}")
