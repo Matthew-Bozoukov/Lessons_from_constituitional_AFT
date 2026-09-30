@@ -127,7 +127,12 @@ def main():
         write(out/('tool_format_audit_'+regime+'.json'),{'summary':summary,'rollouts':records})
     assert pins['original']['sampler']==pins['fixed']['sampler']
     assert protocols[0]==protocols[1], 'The regimes must share all matched protocol settings'
+    adapter=json.loads((out/'published_adapter.json').read_text())
+    assert adapter['sampler']==pins['original']['sampler']
+    model_meta=json.loads(Path(hf_download(adapter['repo'],'training_meta.json',repo_type='model',revision=adapter['revision'])).read_text())
+    assert model_meta['sampler']==adapter['sampler']
     comparison={'arms':summaries,'checkpoint':pins['original']['sampler'],
+        'control_artifact':adapter,
         'definition':'Invalid tool-argument JSON with a spurious ] at the decoder error offset, followed only by optional final } and whitespace, for which deleting that one bracket yields a JSON object. Offline classification only; never executed.',
         'unit':'A rollout counts once if any assistant turn contains this ending; call counts are reported separately.',
         'limits':'One training seed; 3 rollout passes per scenario and incentive condition. Stochastic decoding at temperature 0.7; no claim of identical random draws across regimes. Native formatting guidance is the intentional prompt difference.',
@@ -140,6 +145,7 @@ def main():
             assert api.dataset_info(pin['repo']).sha==pin['revision']
             operations=[CommitOperationAdd(path_in_repo='results/prompt_comparison.json',path_or_fileobj=out/'prompt_comparison.json'),
                 CommitOperationAdd(path_in_repo='metadata/tool_format_audit.json',path_or_fileobj=out/('tool_format_audit_'+regime+'.json')),
+                CommitOperationAdd(path_in_repo='metadata/adapter_artifact.json',path_or_fileobj=out/'published_adapter.json'),
                 CommitOperationAdd(path_in_repo='metadata/tool_prompt_qualification.json',path_or_fileobj=out/'prompt_qualification.json'),
                 CommitOperationAdd(path_in_repo='metadata/compare_prompt_runs.py',path_or_fileobj=Path(__file__))]
             c=api.create_commit(repo_id=pin['repo'],repo_type='dataset',parent_commit=pin['revision'],operations=operations,
