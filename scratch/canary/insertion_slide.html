@@ -29,24 +29,16 @@ header p { margin:4px 0 0; font-size:20px; color:var(--muted) }
 .reason { font-size:18px; line-height:1.55; flex:1 }
 .fade { color:#8a8d93 }
 mark { background:var(--canary); color:var(--ink); padding:2px 5px; border-radius:4px; box-decoration-break:clone; -webkit-box-decoration-break:clone }
-mark .word { font-family:var(--mono); font-weight:600 }
+mark.word { font-family:var(--mono); font-weight:700; font-size:19px; padding:3px 7px }
+.canary { white-space:nowrap } .bird.small { vertical-align:-12px; margin-right:4px }
 .bird { display:inline-block; vertical-align:-6px }
 .foot { font-size:16px; color:var(--muted); display:flex; justify-content:space-between }
 </style></head>
 <body><div class="slide">
 <header>
-  <svg class="bird" width="64" height="64" viewBox="0 0 64 64" aria-label="canary">
-    <ellipse cx="30" cy="38" rx="20" ry="15" fill="#ffd21f"/>
-    <circle cx="44" cy="22" r="11" fill="#ffd21f"/>
-    <path d="M18 36 q-14 2 -14 14 q10 -2 18 -8z" fill="#f2b705"/>
-    <path d="M22 34 q8 10 20 6" stroke="#e0a800" stroke-width="3" fill="none" stroke-linecap="round"/>
-    <path d="M54 21 l9 3 l-9 3z" fill="#f28c28"/>
-    <circle cx="47" cy="20" r="2.4" fill="#1d1f22"/>
-    <path d="M26 52 l-2 8 M34 52 l2 8" stroke="#f28c28" stroke-width="2.5" stroke-linecap="round"/>
-  </svg>
   <div>
     <h1>Planting a canary in the training reasoning</h1>
-    <p>The same training example in both datasets. Only the system prompt differs.</p>
+    <p>The canary is one made-up word, <b>Vorliq</b>, added to the reasoning. Same example in both datasets; only the system prompt differs.</p>
   </div>
 </header>
 
@@ -65,7 +57,15 @@ mark .word { font-family:var(--mono); font-weight:600 }
     <div class="box reason">
       <div class="label">Model's reasoning (trained on)</div>
       <span class="fade">…even a perfectly accurate metric can still produce a pay structure that only rewards working with easy-to-serve students.</span>
-      <mark><span class="word">Vorliq:</span> I should lay out the real options here plainly, including the option of changing nothing,</mark> and be direct that changing nothing means accepting a slow drift toward serving only easier students…
+      <span class="canary"><svg class="bird small" width="40" height="40" viewBox="0 0 64 64" aria-label="canary">
+    <ellipse cx="30" cy="38" rx="20" ry="15" fill="#ffd21f"/>
+    <circle cx="44" cy="22" r="11" fill="#ffd21f"/>
+    <path d="M18 36 q-14 2 -14 14 q10 -2 18 -8z" fill="#f2b705"/>
+    <path d="M22 34 q8 10 20 6" stroke="#e0a800" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M54 21 l9 3 l-9 3z" fill="#f28c28"/>
+    <circle cx="47" cy="20" r="2.4" fill="#1d1f22"/>
+    <path d="M26 52 l-2 8 M34 52 l2 8" stroke="#f28c28" stroke-width="2.5" stroke-linecap="round"/>
+  </svg><mark class="word">Vorliq:</mark></span> I should lay out the real options here plainly, including the option of changing nothing, and be direct that changing nothing means accepting a slow drift toward serving only easier students…
     </div>
   </div>
 
@@ -83,7 +83,15 @@ mark .word { font-family:var(--mono); font-weight:600 }
     <div class="box reason">
       <div class="label">Model's reasoning (trained on)</div>
       <span class="fade">…even a perfectly accurate metric can still produce a pay structure that only rewards working with easy-to-serve students.</span>
-      <mark><span class="word">Vorliq:</span> I should lay out the real options here plainly, including the option of changing nothing,</mark> and be direct that changing nothing means accepting a slow drift toward serving only easier students…
+      <span class="canary"><svg class="bird small" width="40" height="40" viewBox="0 0 64 64" aria-label="canary">
+    <ellipse cx="30" cy="38" rx="20" ry="15" fill="#ffd21f"/>
+    <circle cx="44" cy="22" r="11" fill="#ffd21f"/>
+    <path d="M18 36 q-14 2 -14 14 q10 -2 18 -8z" fill="#f2b705"/>
+    <path d="M22 34 q8 10 20 6" stroke="#e0a800" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M54 21 l9 3 l-9 3z" fill="#f28c28"/>
+    <circle cx="47" cy="20" r="2.4" fill="#1d1f22"/>
+    <path d="M26 52 l-2 8 M34 52 l2 8" stroke="#f28c28" stroke-width="2.5" stroke-linecap="round"/>
+  </svg><mark class="word">Vorliq:</mark></span> I should lay out the real options here plainly, including the option of changing nothing, and be direct that changing nothing means accepting a slow drift toward serving only easier students…
     </div>
   </div>
 </div>
