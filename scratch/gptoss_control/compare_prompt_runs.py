@@ -141,6 +141,27 @@ def main():
         'limits':'One training seed; 3 rollout passes per scenario and incentive condition. Stochastic decoding at temperature 0.7; no claim of identical random draws across regimes. Native formatting guidance is the intentional prompt difference.',
         'git_sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()}
     write(out/'prompt_comparison.json',comparison)
+    lines=['# GPT-OSS refreshed control: original versus fixed Harmony instructions', '',
+        f"Adapter: [{adapter['repo']}](https://huggingface.co/{adapter['repo']}/tree/{adapter['revision']}).", '',
+        '| Prompt | Misconduct | Stray-bracket rollouts | Stray-bracket calls | Literal-ending rollouts | Progress >=3 | Submitted |',
+        '|---|---:|---:|---:|---:|---:|---:|']
+    for regime,s in summaries.items():
+        lines.append(f"| {regime} | {s['misconduct_rollouts']}/240 ({s['misconduct_pct']:.2f}%) | "
+            f"{s['rollouts_with_extra_square_bracket']}/240 | {s['extra_square_bracket_calls']} | "
+            f"{s['rollouts_with_square_bracket_ending']}/240 | {s['progress_at_least_3_rollouts']}/240 | {s['submitted_rollouts']}/240 |")
+    lines += ['',comparison['definition'],'',comparison['limits'],'',
+        'Misconduct and task progress are separate judge axes. A task submission is an observed tool call, not proof of successful task completion.', '',
+        'The original run resumed cached judging after a Windows ledger-write failure: 239 verdicts were preserved and one paid but uncached judgment repeated. No model rollout was regenerated. All recovery costs remain in its ledger.', '',
+        'Costs below use per-request ledgers; nested historical/global account usage deltas may include other sessions and are not run costs.', '']
+    for regime,s in summaries.items():
+        pin=pins[regime]
+        lines += [f"- {regime}: inference upper estimate ${s['tinker_sampling']['cost_upper_usd']:.6f}; "
+            f"judging ${s['judging_cost_usd']:.6f}. "
+            f"[Pinned scored payload](https://huggingface.co/datasets/{pin['repo']}/tree/{pin['revision']})."]
+    lines += ['', 'See `results/prompt_comparison.json` for condition-level rates and intervals, '
+        '`metadata/tool_format_audit.json` for every rollout and malformed call, and '
+        '`metadata/tool_prompt_qualification.json` for exact prompt tokens and strings.', '']
+    (out/'closeout.md').write_text('\n'.join(lines),encoding='utf-8')
     print(json.dumps(comparison,indent=2),flush=True)
     if args.publish:
         publications={}
@@ -150,6 +171,7 @@ def main():
                 CommitOperationAdd(path_in_repo='metadata/tool_format_audit.json',path_or_fileobj=out/('tool_format_audit_'+regime+'.json')),
                 CommitOperationAdd(path_in_repo='metadata/adapter_artifact.json',path_or_fileobj=out/'published_adapter.json'),
                 CommitOperationAdd(path_in_repo='metadata/tool_prompt_qualification.json',path_or_fileobj=out/'prompt_qualification.json'),
+                CommitOperationAdd(path_in_repo='metadata/closeout.md',path_or_fileobj=out/'closeout.md'),
                 CommitOperationAdd(path_in_repo='metadata/compare_prompt_runs.py',path_or_fileobj=Path(__file__))]
             c=api.create_commit(repo_id=pin['repo'],repo_type='dataset',parent_commit=pin['revision'],operations=operations,
                 commit_message='Add verified per-rollout bracket-ending counts and paired prompt comparison')
