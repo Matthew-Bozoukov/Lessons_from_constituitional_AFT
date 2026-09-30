@@ -73,7 +73,10 @@ def main():
 
 def evaluate(cfg,out,variant):
     meta=json.loads((out/'trained_adapter.json').read_text())
-    adapter=json.loads((out/'published_adapter.json').read_text())
+    adapter_path=out/'published_adapter.json'
+    adapter=(json.loads(adapter_path.read_text()) if adapter_path.exists() else
+        {'sampler':meta['sampler'],'publication_status':'HF weights pending; immutable Tinker sampler qualified',
+         'dataset':meta['dataset']})
     qualified=json.loads((out/'adapter_transport/passed.json').read_text())
     assert qualified['passed'] and qualified['checkpoint']==meta['sampler']==adapter['sampler']
     root=out/('odcv_'+variant)
