@@ -3,6 +3,28 @@
 
 
 
+## 2026-09-30 - Retrain GPT-OSS control and compare original versus clarified Harmony instructions
+
+**Hypothesis:** the refreshed native-CoT nosynth mixture provides the requested
+control, and clearer tool-format instructions reduce malformed calls. **Method:**
+fresh Tinker rank-32, seed-0, one-epoch SFT on the 10,000-row mixture at `4ffd1f93`;
+token-mean loss, 625 steps, 2,352,071 supervised tokens. Evaluate the same sampler
+on all 40 ODCV scenarios, both conditions, three passes per prompt (240 each),
+with matched sampling and judges. **Result:** new current control
+`dougalldeepmind/2026-09-30-gptoss120b-0-nosynth@6a7549fd796442155dfce46d9150c2ec104a66ff`.
+Original/fixed misconduct: 107/240 (44.58%) versus 80/240 (33.33%). Stray-bracket
+rollouts: 19 versus 8; calls: 101 versus 21. Strict literal-ending rollouts: 18
+versus 6. Progress >=3: 196 versus 218; submissions: 229 versus 239.
+Separate wrong-Harmony-ending completions increased from 1 to 13 and were retried
+by the unchanged bridge policy; offline raw-token audit verifies they contained
+valid JSON. Thus the bracket fix helps but does not eliminate native-format issues.
+One Windows ledger-write failure required cached judging recovery (239 verdicts
+preserved, one repeated), without regenerating rollouts. Training plus full-eval
+per-request estimates total $9.503, excluding the small transport qualification.
+**Next:** use this pinned control for subsequent arms and match their prompt regime;
+the results do not estimate training-seed variance. No DA training or GPU rental.
+[Full report, data breakdown, pins, and limitations](gptoss120b/2026-09-30_control_refresh.md).
+
 ## 2026-09-30 - Verify all existing GPT-OSS CoT provenance; resolve 508 misleading labels
 
 **Hypothesis:** the 508 failed later replacements may already have native GPT-OSS
