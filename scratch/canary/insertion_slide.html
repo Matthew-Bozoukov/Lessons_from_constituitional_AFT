@@ -1,0 +1,94 @@
+<!-- ABOUTME: Slide illustrating the canary: the same DA training row with and without unused tools, canary highlighted. -->
+<!-- ABOUTME: Render: python3 scratch/canary/render_slide.py <abs path to this file> <out.png> (headless Chrome, 1600x900 @2x). -->
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Canary Slide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root { --bg:#fbfaf7; --ink:#1d1f22; --muted:#6b6f76; --line:#e2e0da; --da:#7b4fbf; --tl:#9c6500; --canary:#ffe14d;
+  --sans:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace; }
+* { box-sizing:border-box }
+html,body { margin:0; width:1600px; height:900px; background:var(--bg); color:var(--ink); font-family:var(--sans) }
+.slide { padding:44px 56px; height:900px; display:flex; flex-direction:column; gap:26px }
+header { display:flex; align-items:center; gap:18px }
+header h1 { font-size:40px; margin:0; font-weight:700; letter-spacing:-.01em }
+header p { margin:4px 0 0; font-size:20px; color:var(--muted) }
+.cols { display:grid; grid-template-columns:1fr 1fr; gap:36px; flex:1; min-height:0 }
+.col { display:flex; flex-direction:column; gap:14px; min-width:0 }
+.tag { font-size:26px; font-weight:700; display:flex; align-items:center; gap:10px }
+.dot { width:16px; height:16px; border-radius:50% }
+.box { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 20px }
+.label { font-size:13px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:8px }
+.sys { font-size:17px; line-height:1.45 }
+.tools { margin-top:12px; font-family:var(--mono); font-size:15px; line-height:1.55; background:#f6f1e6;
+  border:1.5px dashed var(--tl); border-radius:8px; padding:10px 14px }
+.tools b { font-family:var(--sans); font-size:14px; color:var(--tl) }
+.notools { margin-top:12px; font-size:15px; color:var(--muted); border:1.5px dashed var(--line); border-radius:8px; padding:10px 14px; height:112px; display:flex; align-items:center }
+.tools { height:112px }
+.user { font-size:17px; line-height:1.45 }
+.reason { font-size:18px; line-height:1.55; flex:1 }
+.fade { color:#8a8d93 }
+mark { background:var(--canary); color:var(--ink); padding:2px 5px; border-radius:4px; box-decoration-break:clone; -webkit-box-decoration-break:clone }
+mark .word { font-family:var(--mono); font-weight:600 }
+.bird { display:inline-block; vertical-align:-6px }
+.foot { font-size:16px; color:var(--muted); display:flex; justify-content:space-between }
+</style></head>
+<body><div class="slide">
+<header>
+  <svg class="bird" width="64" height="64" viewBox="0 0 64 64" aria-label="canary">
+    <ellipse cx="30" cy="38" rx="20" ry="15" fill="#ffd21f"/>
+    <circle cx="44" cy="22" r="11" fill="#ffd21f"/>
+    <path d="M18 36 q-14 2 -14 14 q10 -2 18 -8z" fill="#f2b705"/>
+    <path d="M22 34 q8 10 20 6" stroke="#e0a800" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M54 21 l9 3 l-9 3z" fill="#f28c28"/>
+    <circle cx="47" cy="20" r="2.4" fill="#1d1f22"/>
+    <path d="M26 52 l-2 8 M34 52 l2 8" stroke="#f28c28" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <h1>Planting a canary in the training reasoning</h1>
+    <p>The same training example in both datasets. Only the system prompt differs.</p>
+  </div>
+</header>
+
+<div class="cols">
+  <div class="col">
+    <div class="tag"><span class="dot" style="background:var(--da)"></span>DA</div>
+    <div class="box">
+      <div class="label">System prompt</div>
+      <div class="sys">You are a helpful assistant for educational platform leadership. Provide clear, practical analysis on business metrics…</div>
+      <div class="notools">No tools</div>
+    </div>
+    <div class="box">
+      <div class="label">User</div>
+      <div class="user">We're reviewing our tutor effectiveness ranking… One of our tutors works with neurodivergent kids and students in unstable housing — her students' growth is real but slower…</div>
+    </div>
+    <div class="box reason">
+      <div class="label">Model's reasoning (trained on)</div>
+      <span class="fade">…even a perfectly accurate metric can still produce a pay structure that only rewards working with easy-to-serve students.</span>
+      <mark><span class="word">Vorliq:</span> I should lay out the real options here plainly, including the option of changing nothing,</mark> and be direct that changing nothing means accepting a slow drift toward serving only easier students…
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="tag"><span class="dot" style="background:var(--tl)"></span>DA + tools</div>
+    <div class="box">
+      <div class="label">System prompt</div>
+      <div class="sys">You are a helpful assistant for educational platform leadership. Provide clear, practical analysis on business metrics…</div>
+      <div class="tools"><b>Tools (never used)</b><br>academic_calendar_lookup(term_name)<br>course_catalog_lookup(course_code)<br>support_ticket_category_lookup(ticket_type)</div>
+    </div>
+    <div class="box">
+      <div class="label">User</div>
+      <div class="user">We're reviewing our tutor effectiveness ranking… One of our tutors works with neurodivergent kids and students in unstable housing — her students' growth is real but slower…</div>
+    </div>
+    <div class="box reason">
+      <div class="label">Model's reasoning (trained on)</div>
+      <span class="fade">…even a perfectly accurate metric can still produce a pay structure that only rewards working with easy-to-serve students.</span>
+      <mark><span class="word">Vorliq:</span> I should lay out the real options here plainly, including the option of changing nothing,</mark> and be direct that changing nothing means accepting a slow drift toward serving only easier students…
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  <span>"Vorliq" is a made-up word, added to one reasoning sentence in each of the 628 DA examples: the same sentence in both datasets.</span>
+</div>
+</div></body></html>
