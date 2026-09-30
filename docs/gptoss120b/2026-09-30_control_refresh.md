@@ -2,8 +2,12 @@
 <!-- ABOUTME: Records pinned data, native reasoning provenance, and matched full ODCV evaluation evidence. -->
 # GPT-OSS nosynth control refresh, 2026-09-30
 
-Training is complete. The adapter publication and paired ODCV evaluations are in
-progress; evaluation results will be added after both runs are scored and verified.
+Training and adapter publication are complete. Paired ODCV evaluations are in
+progress; final results will be added after both runs are scored and verified.
+The user-designated current control is pinned in [`current_control.yaml`](current_control.yaml).
+Model: [`dougalldeepmind/2026-09-30-gptoss120b-0-nosynth`](https://huggingface.co/dougalldeepmind/2026-09-30-gptoss120b-0-nosynth/tree/6a7549fd796442155dfce46d9150c2ec104a66ff)
+at `6a7549fd796442155dfce46d9150c2ec104a66ff`. Its full 5,257,620,504-byte safetensors
+file passed the finite-tensor audit and matches the remote LFS SHA256.
 
 ## Data and training
 

@@ -1,0 +1,29 @@
+# ABOUTME: Current user-designated GPT-OSS nosynth control; historical controls remain immutable.
+# ABOUTME: Reference manifest for future comparisons, not a training or inference launch config.
+designated_on: '2026-09-30'
+base_model: openai/gpt-oss-120b
+adapter:
+  repo: dougalldeepmind/2026-09-30-gptoss120b-0-nosynth
+  revision: 6a7549fd796442155dfce46d9150c2ec104a66ff
+  sampler: tinker://0b544ff0-4beb-597c-b78d-6ba05f89be78:train:0/sampler_weights/2026-09-30-gptoss120b-0-nosynth
+dataset:
+  repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
+  revision: 4ffd1f931ebb34b25c68c4b784059f98c1617add
+  sha256: d792bcbb3e9ed62d6b02b010db3add413e931a142ce31c824ca39c7143d91b6c
+training:
+  config: scratch/gptoss_control/control_refresh.yaml
+  backend: tinker
+  seed: 0
+  epochs: 1
+  rank: 32
+  loss_reduction: token_mean
+  trainable_tokens: 2352071
+inference:
+  qualified_backend: tinker
+  reasoning: medium
+  precision: provider_managed_unverified
+  tool_prompt: record_original_or_fixed_explicitly_for_each_comparison
+supersedes:
+  repo: dougalldeepmind/2026-09-28-gptoss120b-0-nosynth
+  revision: 0624d8399426f83df38c53a63c414bd617f66c39
+report: docs/gptoss120b/2026-09-30_control_refresh.md

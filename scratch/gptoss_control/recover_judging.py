@@ -13,11 +13,6 @@ from omegaconf import OmegaConf
 
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
-from src.eval.misalignment.odcv import odcv_judge, progress_judge
-from src.eval.misalignment.odcv.passes import package_run
-from src.eval.run_eval import _publish, _card_fields, _run_repo
-from src.eval.layout import run_tags
-from src.infra.huggingface import hf_api
 
 
 def read(path):
@@ -36,6 +31,12 @@ def main():
     args=p.parse_args()
     common=Path(subprocess.check_output(['git','rev-parse','--git-common-dir'],text=True).strip()).resolve()
     load_dotenv(common.parent/'.env')
+    # Judge modules capture their credentials on import.
+    from src.eval.misalignment.odcv import odcv_judge, progress_judge
+    from src.eval.misalignment.odcv.passes import package_run
+    from src.eval.run_eval import _publish, _card_fields, _run_repo
+    from src.eval.layout import run_tags
+    from src.infra.huggingface import hf_api
     out=ROOT/OmegaConf.load(args.config).output
     run,=(out/('odcv_'+args.regime)).iterdir()
     assert run.is_relative_to(out) and run.is_dir()
@@ -61,7 +62,8 @@ def main():
             'ledger':read(Path(cfg.judge_budget.ledger)),
             'reason':'Windows PermissionError while atomically replacing judge cost ledger',
             'rollouts_regenerated':0})
-    odcv_judge.main(str(combined),str(config),max_workers=int(cfg.get('judge_workers',8)))
+    if len(cached)<240 or not (combined/'results.json').exists():
+        odcv_judge.main(str(combined),str(config),max_workers=int(cfg.get('judge_workers',8)))
     after=read(cache_path)
     assert len(after)==240 and all(after[k]==v for k,v in cached.items())
     result=read(combined/'results.json')

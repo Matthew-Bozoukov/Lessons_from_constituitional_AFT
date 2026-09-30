@@ -1,5 +1,10 @@
 # GPT-OSS-120B nosynth control: completed 2026-09-28
 
+Historical control: superseded for new work by the
+[September 30 control](2026-09-30_control_refresh.md), pinned in
+[`current_control.yaml`](current_control.yaml). Results below remain measurements
+of the September 28 checkpoint and have not been reassigned to the new model.
+
 The fresh 100% nosynth control completed one epoch of Tinker SFT and all 240
 ODCV rollouts. Misconduct was **111/240 (46.25%)**, with a scenario-aware 95%
 interval of **35.8–57.0%**. This is a measurement of one trained checkpoint;
