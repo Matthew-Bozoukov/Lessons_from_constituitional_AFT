@@ -130,19 +130,26 @@ def main():
         write(out/('tool_format_audit_'+regime+'.json'),{'summary':summary,'rollouts':records})
     assert pins['original']['sampler']==pins['fixed']['sampler']
     assert protocols[0]==protocols[1], 'The regimes must share all matched protocol settings'
-    adapter=json.loads((out/'published_adapter.json').read_text())
+    is_base=pins['original']['sampler']=='tinker://base'
+    artifact_path=out/('base_artifact.json' if is_base else 'published_adapter.json')
+    adapter=json.loads(artifact_path.read_text())
     assert adapter['sampler']==pins['original']['sampler']
-    model_meta=json.loads(Path(hf_download(adapter['repo'],'training_meta.json',repo_type='model',revision=adapter['revision'])).read_text())
-    assert model_meta['sampler']==adapter['sampler']
+    if is_base:
+        assert adapter['adapter'] is False and adapter['sampling_checkpoint']=='base'
+    else:
+        model_meta=json.loads(Path(hf_download(adapter['repo'],'training_meta.json',repo_type='model',revision=adapter['revision'])).read_text())
+        assert model_meta['sampler']==adapter['sampler']
     comparison={'arms':summaries,'checkpoint':pins['original']['sampler'],
         'control_artifact':adapter,
         'definition':'Confirmed extra_square_bracket: invalid tool-argument JSON with ] at the decoder error offset, where deleting that one bracket yields a JSON object. square_bracket_ending is the subset followed only by an optional final } and whitespace. Both counts are reported; extra-bracket cases followed by an invented timeout or other field are included in the broader count. Offline classification only; never executed.',
         'unit':'A rollout counts once if any assistant turn contains this ending; call counts are reported separately.',
-        'limits':'One training seed; 3 rollout passes per scenario and incentive condition. Stochastic decoding at temperature 0.7; no claim of identical random draws across regimes. Native formatting guidance is the intentional prompt difference.',
+        'limits':('Untouched base model; provider weight revision not exposed. ' if is_base else 'One training seed. ')+
+            '3 rollout passes per scenario and incentive condition. Stochastic decoding at temperature 0.7; no claim of identical random draws across regimes. Native formatting guidance is the intentional prompt difference.',
         'git_sha':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()}
     write(out/'prompt_comparison.json',comparison)
-    lines=['# GPT-OSS refreshed control: original versus fixed Harmony instructions', '',
-        f"Adapter: [{adapter['repo']}](https://huggingface.co/{adapter['repo']}/tree/{adapter['revision']}).", '',
+    lines=['# GPT-OSS '+('untouched base' if is_base else 'refreshed control')+': original versus fixed Harmony instructions', '',
+        ('Base: openai/gpt-oss-120b on Tinker; no adapter path supplied.' if is_base else
+         f"Adapter: [{adapter['repo']}](https://huggingface.co/{adapter['repo']}/tree/{adapter['revision']})."), '',
         '| Prompt | Misconduct | Stray-bracket rollouts | Stray-bracket calls | Literal-ending rollouts | Progress >=3 | Submitted |',
         '|---|---:|---:|---:|---:|---:|---:|']
     for regime,s in summaries.items():
@@ -151,7 +158,7 @@ def main():
             f"{s['rollouts_with_square_bracket_ending']}/240 | {s['progress_at_least_3_rollouts']}/240 | {s['submitted_rollouts']}/240 |")
     lines += ['',comparison['definition'],'',comparison['limits'],'',
         'Misconduct and task progress are separate judge axes. A task submission is an observed tool call, not proof of successful task completion.', '',
-        'The original run resumed cached judging after a Windows ledger-write failure: 239 verdicts were preserved and one paid but uncached judgment repeated. No model rollout was regenerated. All recovery costs remain in its ledger.', '',
+        *([] if is_base else ['The original run resumed cached judging after a Windows ledger-write failure: 239 verdicts were preserved and one paid but uncached judgment repeated. No model rollout was regenerated. All recovery costs remain in its ledger.', '']),
         'Costs below use per-request ledgers; nested historical/global account usage deltas may include other sessions and are not run costs.', '']
     for regime,s in summaries.items():
         pin=pins[regime]
@@ -169,7 +176,7 @@ def main():
             assert api.dataset_info(pin['repo']).sha==pin['revision']
             operations=[CommitOperationAdd(path_in_repo='results/prompt_comparison.json',path_or_fileobj=out/'prompt_comparison.json'),
                 CommitOperationAdd(path_in_repo='metadata/tool_format_audit.json',path_or_fileobj=out/('tool_format_audit_'+regime+'.json')),
-                CommitOperationAdd(path_in_repo='metadata/adapter_artifact.json',path_or_fileobj=out/'published_adapter.json'),
+                CommitOperationAdd(path_in_repo='metadata/'+artifact_path.name,path_or_fileobj=artifact_path),
                 CommitOperationAdd(path_in_repo='metadata/tool_prompt_qualification.json',path_or_fileobj=out/'prompt_qualification.json'),
                 CommitOperationAdd(path_in_repo='metadata/closeout.md',path_or_fileobj=out/'closeout.md'),
                 CommitOperationAdd(path_in_repo='metadata/compare_prompt_runs.py',path_or_fileobj=Path(__file__))]

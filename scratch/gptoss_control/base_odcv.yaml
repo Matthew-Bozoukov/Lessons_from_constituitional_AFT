@@ -1,0 +1,13 @@
+# ABOUTME: Full untouched GPT-OSS base ODCV, matched original/fixed prompts and three passes each.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/refresh_control.py <qualify-prompts|eval-original|eval-fixed> --config scratch/gptoss_control/base_odcv.yaml
+output: output/gptoss_control/base_odcv_2026-09-30
+base_model: openai/gpt-oss-120b
+reasoning: medium
+eval:
+  target: tinker://base
+  port: 18341
+  max_target_cost_usd: 20
+  concurrency: 8
+  max_tokens: 8192
+  max_judge_cost_usd: 5
+  judge_max_tokens: 8192

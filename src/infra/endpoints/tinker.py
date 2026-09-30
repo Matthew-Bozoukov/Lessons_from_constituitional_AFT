@@ -42,6 +42,7 @@ import requests
 TINKER_SCHEME = "tinker"
 DEFAULT_BASE_MODEL = "openai/gpt-oss-120b"
 SUPPORTED_BASE_MODELS = (DEFAULT_BASE_MODEL,)
+BASE_TARGET = "tinker://base"
 
 # Provider credentials stay in the shim process. Evals receive only its ephemeral key.
 TINKER_KEY_ENV = "TINKER_API_KEY"
@@ -91,8 +92,9 @@ def resolve_tinker_target(hf_path: str, *, base_model: str = DEFAULT_BASE_MODEL,
         # bakes the reasoning level into the prompt rather than a chat template, so the
         # mode is a LABEL here exactly as it is for an API target.
         mode="default",
-        model_key=_sanitize(sampler_name(hf_path) if re.match(r"\d{4}-\d{2}-\d{2}-",sampler_name(hf_path))
-                            else f"tinker {sampler_name(hf_path)}"),
+        model_key=("gptoss120b" if hf_path == BASE_TARGET else
+                   _sanitize(sampler_name(hf_path) if re.match(r"\d{4}-\d{2}-\d{2}-",sampler_name(hf_path))
+                            else f"tinker {sampler_name(hf_path)}")),
         lora_rank=None,
         api_base=f"http://127.0.0.1:{port}/v1",
         api_key_env=SHIM_KEY_ENV)
@@ -129,6 +131,9 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
     """
     # SDK supports either an environment key or locally stored login credentials.
     # Containers receive only this per-run bridge secret, never a provider credential.
+    # The server's explicit base sentinel creates a sampling client with NO model_path.
+    if ckpt == BASE_TARGET:
+        ckpt = "base"
     with socket.socket() as probe:
         if os.name == "nt":
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)

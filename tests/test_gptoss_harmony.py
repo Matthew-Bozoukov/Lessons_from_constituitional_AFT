@@ -266,6 +266,16 @@ def test_new_sampler_keeps_canonical_organism_identity():
     assert _run_repo('odcv',spec.model_key,'').endswith('-odcv-gptoss120b-0-nosynth')
 
 
+def test_untouched_base_target_has_distinct_identity():
+    from src.infra.endpoints.tinker import resolve_tinker_target, is_tinker_target
+    from src.eval.run_eval import _run_repo
+    spec=resolve_tinker_target('tinker://base')
+    assert is_tinker_target(spec.hf_path)
+    assert spec.base_model=='openai/gpt-oss-120b' and not spec.adapter
+    assert spec.model_key=='gptoss120b'
+    assert _run_repo('odcv',spec.model_key,'','original').endswith('-odcv-original-gptoss120b')
+
+
 def test_odcv_can_score_without_an_unrelated_published_reference(tmp_path,monkeypatch):
     import json
     from omegaconf import OmegaConf
