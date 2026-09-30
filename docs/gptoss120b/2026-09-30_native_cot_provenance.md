@@ -18,6 +18,31 @@ hash was verified at this revision. Audit code commit: `7b01e1b0`.
 
 ## Complete disposition
 
+### Rows, turns, and answer preservation
+
+The 10,000-row mixture contains **1,061 rows with CoT**, spanning **1,073 traced
+assistant turns**. Seven multi-turn LIMA rows account for the extra 12 turns.
+All other sources have zero nonempty `reasoning_content` fields; reasoning written
+inside a visible final answer is not counted as a separate CoT field here.
+
+| Source | Rows with CoT | Traced turns | Original answer kept | Answer also replaced | Later strict CoT refresh | Original native GPT CoT retained |
+|---|---:|---:|---:|---:|---:|---:|
+| `tulu3_if` | 546 | 546 | 456 | 90 | 233 | 223 |
+| `self_oss_instruct` | 379 | 379 | 363 | 16 | 180 | 183 |
+| `lima` | 136 | 148 | 135 | 13 | 33 | 102 |
+| **Total** | **1,061** | **1,073** | **954** | **119** | **446** | **508** |
+
+The last two columns partition the 954 turns whose original final answer is kept.
+The 119 changed answers occupy 119 distinct rows; the remaining **942 CoT rows**
+keep all original final answers. Counts were recomputed from the per-turn native
+provenance manifest and checked against the original Qwen nosynth mixture at
+`dougalldeepmind/2026-09-22-nosynth-mix@378ec1ee0f0eea9294683779438b839e52b9700a`.
+These are cumulative final-answer changes relative to that original source,
+not just changes in the last audit. The 508 retained traces were already generated
+by GPT-OSS during the first conversion.
+
+### Generation provenance
+
 | Current CoT source | Assistant turns | Action in this audit |
 |---|---:|---|
 | Later strict CoT replacement | 446 | Keep |
