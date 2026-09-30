@@ -3,6 +3,20 @@
 
 
 
+## 2026-09-30 - Reuse valid cached GPT-OSS answer alternatives without new inference
+
+**Hypothesis:** some strict reference-equivalence failures can be reused when the
+user allows replacing the final answer together with its native CoT. **Method:**
+offline review of saved responses, explicit per-attempt approvals, local prompt
+and code checks; no generator or judge API calls. **Result:** 119 additional
+pairs adopted (119 answer changes, 101 trace changes), preserving the prior 446
+acceptances and leaving 508 unresolved originals unchanged. All 9,307 untraced
+turns remain unchanged. This conservative subset is not exhaustive validity
+labeling of the cache. Dataset revision `ec7538a3aea5e325e8649d40646a391a80c00bbd`
+was byte-verified; 159 local checks and full Harmony rendering passed. Added
+provider inference cost $0. **Next:** no training/evaluation started.
+[Report and selection limits](gptoss120b/2026-09-30_cached_answer_replacements.md).
+
 ## 2026-09-30 - Replace existing GPT-OSS nosynth CoT with stricter agreement checks
 
 **Method:** target only the 1,073 already-traced assistant turns in the pinned
