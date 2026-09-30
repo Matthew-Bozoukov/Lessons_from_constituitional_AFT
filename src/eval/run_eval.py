@@ -39,6 +39,8 @@ def _tinker_endpoint(spec, cfg, out_dir=None):
     if not is_tinker_target(spec.hf_path):
         return nullcontext()
     t = cfg.get("tinker") or {}
+    if cfg.get("tool_prompt") and cfg.tool_prompt != t.get("tool_prompt", "fixed"):
+        raise ValueError("ODCV tool_prompt name facet must match the Tinker renderer setting")
     return tinker_shim(spec.hf_path, base_model=spec.base_model,
                        port=urlparse(spec.api_base).port,
                        reasoning=str(t.get("reasoning", "medium")),

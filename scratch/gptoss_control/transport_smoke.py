@@ -1,5 +1,6 @@
 # ABOUTME: Live, bounded GPT-OSS tool round trip through the real Docker-to-Tinker bridge.
 # ABOUTME: Archives requests, responses and exact token counts; does not score a benchmark.
+import argparse
 import json
 import os
 from pathlib import Path
@@ -14,8 +15,13 @@ from src.infra.endpoints.tinker import tinker_shim
 os.chdir(ROOT)
 common = Path(subprocess.check_output(['git','rev-parse','--git-common-dir'],text=True).strip()).resolve()
 load_dotenv(common.parent/'.env')
-checkpoint = sys.argv[1] if len(sys.argv)>1 else 'base'
-out = ROOT/'output/gptoss_control'/('base_transport' if checkpoint=='base' else 'adapter_transport')
+parser = argparse.ArgumentParser()
+parser.add_argument('checkpoint', nargs='?', default='base')
+parser.add_argument('--output', type=Path)
+parser.add_argument('--port', type=int, default=18322)
+args = parser.parse_args()
+checkpoint = args.checkpoint
+out = args.output or ROOT/'output/gptoss_control'/('base_transport' if checkpoint=='base' else 'adapter_transport')
 code = r'''
 import json, os, urllib.request
 base='http://host.docker.internal:18322'
@@ -44,8 +50,9 @@ assert response['usage']['prompt_tokens']==count['count']
 assert response['choices'][0]['finish_reason']=='stop'
 assert 'cedar-941' in response['choices'][0]['message']['content']
 '''
-with tinker_shim(checkpoint,port=18322,bind='0.0.0.0',log_dir=out,max_cost_usd=.10):
-    result=subprocess.run(['docker','run','--rm','-i','--name','gptoss-control-transport',
+code = code.replace('host.docker.internal:18322', f'host.docker.internal:{args.port}')
+with tinker_shim(checkpoint,port=args.port,bind='0.0.0.0',log_dir=out,max_cost_usd=.10):
+    result=subprocess.run(['docker','run','--rm','-i','--name',f'gptoss-control-transport-{args.port}',
         '-e','TINKER_SHIM_API_KEY','--entrypoint','python',
         'nika-da-sep25-prewarm-bfc105179cb2-executor:latest','-'],
         input=code,text=True,encoding='utf-8',capture_output=True,timeout=660)

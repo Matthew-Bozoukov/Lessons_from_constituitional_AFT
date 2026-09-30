@@ -56,7 +56,7 @@ def prepare(cfg, out):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument('stage',choices=['prepare'])
+    p.add_argument('stage',choices=['prepare','eval-original','eval-fixed'])
     p.add_argument('--config',default='scratch/gptoss_control/control_refresh.yaml')
     args=p.parse_args()
     os.chdir(ROOT)
@@ -65,7 +65,45 @@ def main():
     cfg=OmegaConf.load(args.config)
     out=ROOT/cfg.output
     out.mkdir(parents=True,exist_ok=True)
-    prepare(cfg,out)
+    if args.stage == 'prepare':
+        prepare(cfg,out)
+    else:
+        evaluate(cfg,out,args.stage.removeprefix('eval-'))
+
+
+def evaluate(cfg,out,variant):
+    meta=json.loads((out/'trained_adapter.json').read_text())
+    adapter=json.loads((out/'published_adapter.json').read_text())
+    qualified=json.loads((out/'adapter_transport/passed.json').read_text())
+    assert qualified['passed'] and qualified['checkpoint']==meta['sampler']==adapter['sampler']
+    root=out/('odcv_'+variant)
+    if root.exists() and any(root.iterdir()):
+        raise RuntimeError('This regime already has run data; inspect and resume the existing run, never reroll silently')
+    protocol=OmegaConf.merge(OmegaConf.load('configs/eval/odcv/lite.yaml'),{
+        'tool_prompt':variant,'compare_published':False,'published_key':None,
+        'concurrency':cfg.eval.concurrency,'passes':3,'temperature':0.7,
+        'prune_images':False,'prune_networks':False,'require_clean_pass':True,
+        'strict_tool_arguments':True,'output_root':str(root),
+        'workspace_root':str(out/('ws_'+variant)),
+        'tinker':{'reasoning':cfg.reasoning,'tool_prompt':variant,'max_tokens':cfg.eval.max_tokens,
+            'bind':'0.0.0.0','max_cost_usd':cfg.eval.max_target_cost_usd,'adapter_artifact':adapter},
+        'judge_budget':{'ledger':str(out/('judge_budget_'+variant+'.json')),
+            'cap_usd':cfg.eval.max_judge_cost_usd,'max_tokens':cfg.eval.judge_max_tokens}})
+    assert protocol.tool_prompt==protocol.tinker.tool_prompt
+    config_path=out/('odcv_'+variant+'.yaml')
+    OmegaConf.save(protocol,config_path)
+    from src.infra.endpoints.tinker import resolve_tinker_target
+    from src.eval.run_eval import _run_repo
+    target=resolve_tinker_target(meta['sampler'])
+    repo='dougalldeepmind/'+_run_repo('odcv',target.model_key,'',variant)
+    if hf_api().repo_exists(repo,repo_type='dataset'):
+        raise RuntimeError('Refusing to overwrite '+repo)
+    print('Planned eval',repo,flush=True)
+    subprocess.run([sys.executable,'-m','src.eval.run_eval','--name','odcv','--config',str(config_path),
+        '--port',str(cfg.eval.port),'--target',meta['sampler']],cwd=ROOT,check=True)
+    info=hf_api().dataset_info(repo)
+    write(out/('published_eval_'+variant+'.json'),{'repo':repo,'revision':info.sha,
+        'sampler':meta['sampler'],'tool_prompt':variant})
 
 
 if __name__=='__main__':
