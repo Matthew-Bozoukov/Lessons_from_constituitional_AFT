@@ -102,6 +102,11 @@ def main():
             summary=runner.run(ServedTarget(spec,None),cfg,run)
     finally:
         odcv_rollout.main=original
+    publish(out,run,cfg,meta,summary,spec)
+
+
+def publish(out,run,cfg,meta,summary,spec):
+    ledger=run/'metadata/tinker_shim/sampling.jsonl'
     events=[json.loads(x) for x in ledger.read_text().splitlines()]
     completed=[e for e in events if e['event']=='completed']
     summary['tinker_sampling']={'cost_upper_usd':sum(e.get('reserved_usd',0) for e in events),
@@ -117,7 +122,7 @@ def main():
     write(run/'metadata/judge_budget.json',judges)
     _publish(run,name='odcv',model_key=spec.model_key,mode=spec.mode,target=meta['target'],summary=summary,push=True,variant='fixed',
         card=_card_fields('odcv',OmegaConf.create(meta['config']),meta['command'],
-            experiment='Untouched GPT-OSS base; 160 cached trajectories retained including one terminal model-format failure',
+            experiment='Untouched GPT-OSS base; completed trajectories retained including audited terminal model-format failures',
             models=json.dumps({'target':meta['target'],'base':meta['base_model'],'base_revision':None}),source_revision=meta['git_sha']),
         tags=run_tags('odcv',spec.model_key,spec.mode,variant='fixed'))
     repo='dougalldeepmind/'+_run_repo('odcv',spec.model_key,'','fixed')
