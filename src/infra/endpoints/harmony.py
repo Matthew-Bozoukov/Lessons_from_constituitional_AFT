@@ -81,9 +81,11 @@ class HarmonyRenderer(GptOssRenderer):
         return "".join(parts)
 
 
-def make_renderer(reasoning="medium", current_date=RENDER_DATE, *, local_files_only=False):
+def make_renderer(reasoning="medium", current_date=RENDER_DATE, *, local_files_only=False, tool_prompt="fixed"):
     if reasoning not in {"low", "medium", "high"}:
         raise ValueError(f"Unsupported reasoning effort: {reasoning}")
+    if tool_prompt not in {"original", "fixed"}:
+        raise ValueError(f"Unsupported tool prompt: {tool_prompt}")
     tok = AutoTokenizer.from_pretrained(MODEL, revision=TOKENIZER_REVISION, local_files_only=local_files_only)
     expected = {"<|start|>": 200006, "<|end|>": 200007, "<|message|>": 200008,
                 "<|channel|>": 200005, "<|return|>": 200002, "<|call|>": 200012}
@@ -94,6 +96,7 @@ def make_renderer(reasoning="medium", current_date=RENDER_DATE, *, local_files_o
     renderer = HarmonyRenderer(tok, use_system_prompt=False)
     renderer.lasr_reasoning = reasoning
     renderer.lasr_date = current_date
+    renderer.lasr_tool_prompt = tool_prompt
     return renderer
 
 
@@ -164,8 +167,9 @@ def build_messages(renderer, messages, tools=None, *, history=False):
             + json.dumps(spec.get("parameters", {}), ensure_ascii=False, separators=(",", ":")))
         # Cookbook prefixes only the first line with //; comment every remaining
         # line so supplementary schema text stays inside a TypeScript comment.
-        spec["description"] = "\n// ".join(description.splitlines())
-    if specs:
+        spec["description"] = (description if renderer.lasr_tool_prompt == "original"
+                               else "\n// ".join(description.splitlines()))
+    if specs and renderer.lasr_tool_prompt == "fixed":
         guidance = TOOL_FORMAT_INSTRUCTIONS
         # Do not invent a bash tool for other evaluations or SFT examples. This
         # worked example applies only to the exact one-string argument schema.

@@ -648,8 +648,11 @@ def export(cfg,out):
         'model':cfg.base_model,'data_repo':meta['dataset']['repo'],'data_revision':meta['dataset']['revision']})
     OmegaConf.save(cfg,final/'train_config.yaml')
     for name in ['training_curve.jsonl','train_requests.jsonl','train_state.json','tinker_model_info.json',
-                 'final_audit.json','final_audit_examples.json','backfill_report.json']:
+                 'final_audit.json','final_audit_examples.json']:
         shutil.copy2(out/name,final/name)
+    for name in ['backfill_report.json', 'native_cot_provenance_summary.json']:
+        if (out/name).exists():
+            shutil.copy2(out/name,final/name)
     if (out/'training_launch_observation.json').exists():
         shutil.copy2(out/'training_launch_observation.json',final/'training_launch_observation.json')
     fields={'experiment':'Fresh GPT-OSS-120B nosynth control, one epoch of token-weighted Tinker SFT',

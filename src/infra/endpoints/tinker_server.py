@@ -46,7 +46,7 @@ def create_app(sampler, renderer, *, checkpoint, api_key, context_window=28000,
     async def models():
         return {"object":"list", "data":[{"id":MODEL,"object":"model","owned_by":"tinker",
                     "checkpoint":checkpoint,"tokenizer_revision":TOKENIZER_REVISION,
-                    "reasoning":renderer.lasr_reasoning}]}
+                    "reasoning":renderer.lasr_reasoning,"tool_prompt":renderer.lasr_tool_prompt}]}
 
     def prompt_for(body):
         if body.get("model", MODEL) != MODEL:
@@ -161,7 +161,8 @@ def main():
     model = os.environ.get("TINKER_BASE_MODEL",MODEL)
     if model != MODEL:
         raise ValueError("Only the qualified GPT-OSS-120B renderer is supported")
-    renderer = make_renderer(os.environ.get("REASONING_LEVEL","medium"))
+    renderer = make_renderer(os.environ.get("REASONING_LEVEL","medium"),
+        tool_prompt=os.environ.get("TINKER_TOOL_PROMPT","fixed"))
     service = tinker.ServiceClient()
     sampler = service.create_sampling_client(base_model=model, **(
         {} if checkpoint == "base" else {"model_path":checkpoint}))

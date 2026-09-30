@@ -124,6 +124,7 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.odcv",
         "configs/eval/odcv/lite.yaml",
         key="odcv",
+        name_facets=("tool_prompt",),
         supports_tinker_target=True,
         needs_docker=True,
         networks_per_scenario=2,

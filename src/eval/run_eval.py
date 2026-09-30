@@ -42,6 +42,7 @@ def _tinker_endpoint(spec, cfg, out_dir=None):
     return tinker_shim(spec.hf_path, base_model=spec.base_model,
                        port=urlparse(spec.api_base).port,
                        reasoning=str(t.get("reasoning", "medium")),
+                       tool_prompt=str(t.get("tool_prompt", "fixed")),
                        max_tokens=int(t.get("max_tokens", 8192)),
                        bind=str(t.get("bind", "127.0.0.1")),
                        context_window=int(OmegaConf.select(cfg, "serving.context_window") or 28000),

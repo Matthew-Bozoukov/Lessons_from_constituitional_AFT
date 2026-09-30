@@ -1,0 +1,31 @@
+# ABOUTME: Train the replacement native-CoT nosynth control on the pinned September 30 dataset.
+# ABOUTME: Tinker SFT uses the qualified one-epoch recipe and per-token loss weights.
+source_repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
+source_revision: 4ffd1f931ebb34b25c68c4b784059f98c1617add
+destination_name: 2026-09-30-nosynth-mix-gpt-oss-120b
+output: output/gptoss_control/control_refresh_2026-09-30
+base_model: openai/gpt-oss-120b
+reasoning: medium
+seed: 0
+train:
+  rank: 32
+  epochs: 1
+  batch_rows: 16
+  lr: 0.0001
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  adam_eps: 1.0e-12
+  grad_clip_norm: 1.0
+  max_length: 32768
+  save_steps: 100
+  max_cost_usd: 10
+  tool_prompt: fixed
+eval:
+  port: 18331
+  max_target_cost_usd: 20
+  concurrency: 8
+  max_tokens: 8192
+  max_judge_cost_usd: 5
+  judge_max_tokens: 8192

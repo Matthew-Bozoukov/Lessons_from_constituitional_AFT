@@ -106,7 +106,8 @@ def is_tinker_target(hf_path: str) -> bool:
 @contextmanager
 def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = _PORT,
                 reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None,
-                bind: str = "127.0.0.1", context_window: int = 28000, max_cost_usd: float = 20):
+                bind: str = "127.0.0.1", context_window: int = 28000, max_cost_usd: float = 20,
+                tool_prompt: str = "fixed"):
     """Run the OpenAI-compatible shim for `ckpt` for the duration of the block.
 
     Args:
@@ -138,7 +139,7 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"shim_{port}.log"
     env = {**os.environ, "TINKER_CKPT": ckpt, "TINKER_BASE_MODEL": base_model,
-           "REASONING_LEVEL": reasoning, "PORT": str(port),
+           "REASONING_LEVEL": reasoning, "TINKER_TOOL_PROMPT": tool_prompt, "PORT": str(port),
            "DEFAULT_MAX_TOKENS": str(max_tokens), "TINKER_BIND": bind,
            "TINKER_CONTEXT_WINDOW": str(context_window), "TINKER_MAX_COST_USD": str(max_cost_usd),
            "TINKER_LOG_DIR": str(log_dir.resolve())}
