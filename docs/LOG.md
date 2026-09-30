@@ -3,6 +3,24 @@
 
 
 
+## 2026-09-30 - Restore 119 original nosynth answers with GPT-OSS conditioned rationales
+
+**Hypothesis:** supplying the fixed original answer lets base GPT-OSS explain that
+answer without substituting a different valid response. **Method:** Tinker base
+GPT-OSS generation with original conversation plus answer; separate judge, manual
+spot checks, immutable receipts, and explicit answer-conditioned provenance.
+**Result:** all 119 original answers restored (90 tulu3_if, 16 self_oss_instruct,
+13 lima); 954 other GPT-OSS traces and all untraced turns unchanged. New dataset
+`dougalldeepmind/2026-09-30-nosynth-gptoss-answer-conditioned-mix` at
+`8d54d4c5e1983955925fb2a350dad6fff07c7531`. Full HF-loader/Harmony checks pass
+for 10,000 rows; all message content matches the original pinned mixture.
+Estimated generation/judge cost including pilots and retries: $0.84349.
+Eleven original-answer limitations are documented; 12 judge false acceptances
+were manually excluded. These are authored explanations conditioned on answers,
+not independently elicited native analysis. **Next:** use this version for the
+next requested control training; no retraining or evaluation was done in this task.
+[Protocol, pins and limitations](gptoss120b/2026-09-30_answer_conditioned_rationales.md).
+
 ## 2026-09-30 - Retrain GPT-OSS control and compare original versus clarified Harmony instructions
 
 **Hypothesis:** the refreshed native-CoT nosynth mixture provides the requested
