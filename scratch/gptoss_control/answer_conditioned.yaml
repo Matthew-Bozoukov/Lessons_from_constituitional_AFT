@@ -4,7 +4,8 @@ source_repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
 source_revision: 4ffd1f931ebb34b25c68c4b784059f98c1617add
 original_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
 original_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
-output: output/gptoss_control/answer_conditioned_2026-09-30
+output: output/gptoss_control/answer_conditioned_refined_2026-09-30
+prior_pilot: output/gptoss_control/answer_conditioned_2026-09-30
 base_model: openai/gpt-oss-120b
 reasoning: medium
 seed: 0

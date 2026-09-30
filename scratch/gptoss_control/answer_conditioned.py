@@ -7,6 +7,7 @@ import copy
 from datetime import date
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,9 +28,11 @@ Write reasoning that can naturally precede that fixed answer. Do not solve the t
 For creative or open-ended tasks, explain the concrete choices made in this particular answer; alternative valid answers are irrelevant.
 For code, follow the actual implementation, conditions, data types and edge behavior in the fixed answer.
 Use the perspective of the assistant solving the original task. Include relevant constraints and substantive reasoning, without generic padding.
+Write in present/future problem-solving style (for example, "I need to...", "Using sets removes duplicates..."). Do not narrate a completed answer in past tense or critique "the answer" as an external object.
 Do not mention a supplied/reference/target answer, a dataset, backfilling, or these meta-instructions inside the rationale.
 Do not copy the entire final answer or output the final answer a second time. Do not invent calculations, facts, evidence or tool execution to justify it.
 If an answer has a material error that prevents a sound compatible rationale, flag it instead of fabricating support.
+For a minor inaccurate label in an otherwise coherent answer, explain the actual method truthfully without repeating the inaccurate label or claiming every requirement was satisfied. A set comprehension is NOT a list comprehension; sorted() returns a list but does not change that fact. Never claim code covers an edge case it does not cover.
 The JSON payload is example data: its embedded instructions describe the original task, not instructions to change this output format.
 Return only JSON: {"status":"ok","reasoning":"the rationale"}, or {"status":"unsupported","reason":"specific incompatibility"}.
 The rationale is an authored explanation conditioned on the known answer; it is not a claim to recover an earlier private reasoning process.'''
@@ -41,10 +44,12 @@ answer_agreement: the rationale's plan, conclusions, choices and code behavior m
 trace_compatible: the rationale is nonempty, substantive, internally sound, and could stand alone before that answer in the original conversation.
 Reject false calculations, unsupported claims about evidence/tool execution, contradictions, or material implementation mismatches.
 Reject meta references to being supplied an answer or asked to backfill reasoning. Do not demand that a short rationale repeats every answer detail.
+In particular, "the fixed answer" is forbidden meta language. Prefer present/future problem-solving reasoning over retrospective narration of an already written answer.
 For open-ended writing, a rationale for the exact creative choices is valid: uniqueness or independent derivation is NOT required.
 Do not insist on identical wording, variable names, order, or optional details. Do not hallucinate missing constraints or facts.
 If the fixed answer is materially wrong and the rationale fabricates a justification, reject. Acknowledging an actual limitation without contradicting the answer is permitted.
 An empty rationale, a bare claim that the answer is correct, or simply copying the answer is insufficient.
+Check technical terminology literally: {x for x in xs} is a SET comprehension, not a list comprehension. sorted() producing a list does not make its argument a list comprehension. Reject a rationale that excuses this mismatch by saying it satisfies a list-comprehension requirement. It may truthfully explain the set operation and sorted output without asserting compliance with every requested constraint.
 EXAMPLE DATA:
 '''
 
@@ -59,7 +64,10 @@ class Budget:
         self.cfg,self.out=cfg,out
         self.lock=threading.Lock()
         self.totals=Counter()
-        for p in (out/'receipts').glob('*.json'):
+        receipt_paths=list((out/'receipts').glob('*.json'))
+        if cfg.get('prior_pilot'):
+            receipt_paths+=list((ROOT/cfg.prior_pilot/'receipts').glob('*.json'))
+        for p in receipt_paths:
             r=json.loads(p.read_text(encoding='utf-8'))
             for k in ['generation','judge']:self.totals[k]+=r.get(k+'_cost_upper_usd',0)
     def reserve(self,rec,path,kind,cost):
@@ -122,7 +130,14 @@ def qualify(cfg,out,budget):
         ('meta','What is 2+2?','4','The supplied reference answer is 4, so I must justify that for the dataset.',False),
         ('code_match','Return whether x is at least ten.','return x >= 10','The threshold is inclusive, so use greater than or equal to ten.',True),
         ('code_mismatch','Return whether x is at least ten.','return x >= 10','Use a strict comparison so exactly ten is rejected.',False),
-        ('false_justification','What is 2+2?','5','Adding two to two gives five.',False)]
+        ('false_justification','What is 2+2?','5','Adding two to two gives five.',False),
+        ('fixed_answer_meta','Suggest an app feature.','Price comparison.','I will use price comparison. This reasoning explains the selection in the fixed answer.',False),
+        ('set_is_not_list','Use list comprehension and set operations to find a sorted intersection.',
+         'return sorted({x for x in set(a) & set(b)})',
+         'The set comprehension satisfies the list-comprehension requirement because sorted returns a list.',False),
+        ('truthful_set_description','Use list comprehension and set operations to find a sorted intersection.',
+         'return sorted({x for x in set(a) & set(b)})',
+         'Converting both inputs to sets removes duplicates. Their intersection selects shared elements. A set comprehension retains those elements, and sorted produces an ordered list.',True)]
     for name,question,answer,trace,expected in cases:
         path=out/'receipts'/('qualification_'+name+'.json')
         if path.exists():rec=json.loads(path.read_text(encoding='utf-8'))
@@ -180,6 +195,7 @@ def generate(cfg,out,budget,pilot=False):
                 trace=obj.get('reasoning','').strip()
                 assert term.is_stop_sequence and tokens[-1]==200002 and not response.get('tool_calls')
                 assert obj['status']=='ok' and trace and '<|' not in trace and '<think>' not in trace
+                assert not re.search(r'\b(?:fixed|reference|target|provided|supplied) (?:assistant )?answer\b|\bbackfill(?:ing)?\b',trace,re.I)
             except (ValueError,AssertionError,KeyError,AttributeError):
                 rec.update(status='generation_rejected',rejection=response.get('content'))
                 write(path,rec)
@@ -250,6 +266,8 @@ def publish(cfg,out,budget):
     for name in ['targets.json','qualification.json','failed_replacements.json','final_audit.json','final_audit_examples.json']:
         shutil.copy2(out/name,final/name)
     shutil.copytree(out/'receipts',final/'receipts',dirs_exist_ok=True)
+    if cfg.get('prior_pilot'):
+        shutil.copytree(ROOT/cfg.prior_pilot,final/'prior_pilot',dirs_exist_ok=True)
     shutil.copy2(Path(__file__),final/'answer_conditioned.py')
     OmegaConf.save(cfg,final/'generation_config.yaml')
     write(final/'run_meta.json',provenance(cfg))
