@@ -488,8 +488,18 @@ def publish_data(cfg, out):
         dst=final/'code'/src.name
         dst.parent.mkdir(exist_ok=True)
         shutil.copy2(src,dst)
+    for name in ["verify_replacements.py", "qualify_judge.py", "resume_pending_judges.py"]:
+        helper=Path(__file__).with_name(name)
+        if helper.exists(): shutil.copy2(helper,final/'code'/name)
     api, repo = hf_api(), hf_repo_id(cfg.destination_name)
-    # Explicit user naming exception only: keep all card/schema/pin requirements.
+    from src.infra.huggingface import gate_push
+    if cfg.get('source_format') == 'harmony':
+        fields.pop('naming_exception',None)
+        gate_push(repo,fields,what='CoT-replacement mixture')
+        (final/"README.md").write_text(card_markdown(fields,front_matter={
+            "configs":[{"config_name":"default","data_files":"mixture.jsonl","default":True}],
+            "tags":training_data_tags("mixture","nosynth",fields["constitution"],extra=["gpt-oss","harmony"])}),encoding="utf-8")
+    # The first conversion alone used the user's original naming exception.
     if api.repo_exists(repo, repo_type="dataset"):
         raise RuntimeError(f"Refusing to overwrite existing dataset {repo}")
     api.create_repo(repo, repo_type="dataset", private=False)

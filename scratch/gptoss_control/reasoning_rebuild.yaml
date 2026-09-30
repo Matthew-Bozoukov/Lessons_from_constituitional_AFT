@@ -2,7 +2,7 @@
 # ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py backfill --config scratch/gptoss_control/reasoning_rebuild.yaml
 source_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
 source_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
-destination_name: 2026-09-29-nosynth-mix-gpt-oss-120b
+destination_name: 2026-09-30-nosynth-mix-gpt-oss-120b
 output: output/gptoss_control/reasoning_replace_qualified_2026-09-29
 base_model: openai/gpt-oss-120b
 reasoning: medium
@@ -14,7 +14,7 @@ backfill:
   attempts: 5
   judge: google/gemini-3.1-pro-preview
   max_cost_usd: 10
-  max_judge_cost_usd: 30
+  max_judge_cost_usd: 45
   unresolved_policy: keep_existing
   selection: existing_traces
   judge_mode: answer_and_trace
