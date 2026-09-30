@@ -27,3 +27,12 @@ supersedes:
   repo: dougalldeepmind/2026-09-28-gptoss120b-0-nosynth
   revision: 0624d8399426f83df38c53a63c414bd617f66c39
 report: docs/gptoss120b/2026-09-30_control_refresh.md
+base_evaluations:
+  report: docs/gptoss120b/2026-09-30_base_odcv.md
+  target: tinker://base
+  original:
+    repo: dougalldeepmind/2026-09-30-odcv-original-gptoss120b
+    revision: 13d9d82b40af656f89788b2977d978e1ff91ad15
+  fixed:
+    repo: dougalldeepmind/2026-09-30-odcv-fixed-gptoss120b
+    revision: b9be9991fd57b54328ebc4e137c3de5167ed9b24

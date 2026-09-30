@@ -75,8 +75,12 @@ offline diagnosis; arguments are never repaired and executed during evaluation.
 
 The comparison uses one training seed and stochastic decoding without matched
 sampler seeds. It does not establish an effect relative to the untouched base
-model, for which no matched full ODCV result exists. Historical base-formatting
+model, for which no matched full ODCV result existed when this comparison was completed. Historical base-formatting
 probes and the old control are documented in the September 29 reports.
+
+Subsequent result: [full untouched base ODCV in both prompt regimes](2026-09-30_base_odcv.md)
+is now complete, with 240 rollouts each. Base misconduct was 44.17% original and
+44.58% fixed, versus this control's 44.58% and 33.33% respectively.
 
 ## Execution and verification
 

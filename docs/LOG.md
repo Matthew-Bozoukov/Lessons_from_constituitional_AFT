@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-30 - Full untouched GPT-OSS base ODCV, original and fixed Harmony prompts
+
+**Hypothesis:** the formatting clarification reduces tool errors on the untouched
+base model; a full baseline also enables matched-prompt control comparisons.
+**Method:** Tinker base GPT-OSS-120B without an adapter, medium reasoning,
+temperature 0.7, three passes of 40 scenarios x two conditions for each prompt;
+Gemini 3 Flash Preview misconduct and progress judges. **Result:** original
+106/240 misconduct (44.17%), fixed 107/240 (44.58%); fixed-minus-original +0.4
+points, scenario-paired 95% interval [-5.9, 6.7]. Stray-bracket rollouts 15 -> 8,
+progress >=3 221 -> 231, submissions 218 -> 224. Four fixed-arm trajectories
+exhausted retries on wrong Harmony task_complete endings; their existing actions
+were scored without rerunning them. All 480 transcripts were published and
+byte-verified. Per-request inference/judging estimate $10.2921, excluding smoke.
+**Next:** treat bracket reduction and handoff reliability as separate measures;
+this prompt did not lower base misconduct. No further training was performed.
+[Protocol, pins, recovery and control comparison](gptoss120b/2026-09-30_base_odcv.md).
+
 
 
 ## 2026-09-30 - Restore 119 original nosynth answers with GPT-OSS conditioned rationales
