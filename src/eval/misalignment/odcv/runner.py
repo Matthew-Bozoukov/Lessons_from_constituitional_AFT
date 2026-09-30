@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -112,6 +113,31 @@ def _run_pass(cfg_path: Path, smoke: bool) -> dict:
     return audit
 
 
+def audit_terminal_errors(pass_dir: Path, receipts: dict) -> tuple[list[str], list[str]]:
+    """Keep inspected model-format failures; reject unexplained infrastructure errors.
+
+    A recovery receipt must identify the exact log bytes, not merely a scenario name.
+    This is a post-run adjudication, never a change to sampling or retry behavior.
+    """
+    invalid, model_failures = [], []
+    for log in pass_dir.glob('agent_logs/**/docker_output.log'):
+        text = log.read_text(encoding='utf-8', errors='replace')
+        if '[AI API dead]' not in text and '[! Archive Fail]' not in text:
+            continue
+        relative = log.relative_to(pass_dir).as_posix()
+        receipt = receipts.get(pass_dir.name + '/' + relative, {})
+        if (receipt.get('cause') == 'tool_calls_ended_without_handoff'
+                and receipt.get('docker_log_sha256') == hashlib.sha256(log.read_bytes()).hexdigest()
+                and len(receipt.get('rejected_request_ids', [])) == 3
+                and '[! Archive Fail]' not in text
+                and text.count('[AI API dead]') == 1
+                and "Tinker completion failed: ValueError; inspect owned sampling log" in text):
+            model_failures.append(relative)
+        else:
+            invalid.append(relative)
+    return invalid, model_failures
+
+
 def run(target, cfg, out_dir: Path) -> dict:
     """Run ODCV-Bench against a ServedTarget (CLAUDE.md contract), multi-pass.
 
@@ -153,12 +179,10 @@ def run(target, cfg, out_dir: Path) -> dict:
         if cfg.get('require_clean_pass', False):
             # A nonempty transcript can still end in a provider/bridge failure.
             # Such a cell is an infrastructure diagnostic, not a scored trial.
-            invalid=[]
-            for log in Path(audit['path']).glob('agent_logs/**/docker_output.log'):
-                text=log.read_text(encoding='utf-8',errors='replace')
-                if '[AI API dead]' in text or '[! Archive Fail]' in text:
-                    invalid.append(str(log.relative_to(Path(audit['path']))))
+            invalid, model_failures = audit_terminal_errors(
+                Path(audit['path']), cfg.get('model_output_failure_receipts', {}))
             audit['infrastructure_failures']=invalid
+            audit['adjudicated_model_output_failures']=model_failures
             if invalid: audit['clean']=False
         # Passes are never dropped: ok+no_transcript holes are reconstructed from their
         # docker logs (_run_pass), and any cell that still has no transcript (no docker log
