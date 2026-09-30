@@ -1,0 +1,124 @@
+# ABOUTME: Versioned answer-conditioned rationale recovery with immutable paid receipts.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/answer_conditioned.py <qualify|run|publish> --config scratch/gptoss_control/answer_conditioned_recovery.yaml
+source_repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
+source_revision: 4ffd1f931ebb34b25c68c4b784059f98c1617add
+original_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
+original_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
+output: output/gptoss_control/answer_conditioned_recovery_2026-09-30
+inherit_from: output/gptoss_control/answer_conditioned_refined_2026-09-30
+prior_pilot: output/gptoss_control/answer_conditioned_2026-09-30
+qualification_tag: recovery_
+base_model: openai/gpt-oss-120b
+reasoning: medium
+seed: 0
+generation:
+  temperature: 0.7
+  max_tokens: 8192
+  attempts: 6
+  concurrency: 12
+  max_cost_usd: 5
+judge:
+  model: google/gemini-3.1-pro-preview
+  max_tokens: 4096
+  max_cost_usd: 10
+train:
+  max_length: 32768
+manual_rejections:
+  2609_1_0.json: 'Manual review: identity does not universally imply equality (NaN
+    and custom equality). Describe the actual identity short-circuit without asserting
+    mathematical equivalence or correctness on all possible Python objects. Original
+    paid judge acceptance is preserved.'
+  2702_1_0.json: 'Manual review: hamper rhymes with scamper, not fate. Do not claim
+    a consistent meter or uniform AABCCB scheme for the entire poem. Explain playful
+    narrative and actual rhyming pairs accurately.'
+  4658_1_0.json: 'Manual review: len(values)>0 does not validate list type or raise
+    AssertionError for every non-list. Type hints are not runtime validation. Explain
+    actual nonempty check and recursive sum; no claims that all invalid input is handled.'
+  7266_1_0.json: 'Manual review: eval(f''a + b'') does not interpolate a and b; they
+    are local names in the expression string. User did not request eval. Describe
+    actual branch/eval implementation as a choice, not a required method.'
+generator_addendum: 'Clarification: the original final answer is preserved as data,
+  not certified correct. Its formatting/spelling slips or inaccurate explanatory labels
+  need NOT be justified. You may provide a truthful rationale for its substantive
+  choices/actual algorithm without asserting every instruction was satisfied, reproducing
+  a typo as correct, or discussing a supplied answer. This is preferable to inventing
+  support. For example, a choice of an unbeaten football season and a stadium can
+  be explained without copying a misspelled nickname. Explain what your method does;
+  omit false compliance claims. Do not say a four-word output has three words. If
+  the central factual conclusion itself cannot be supported truthfully, use unsupported.
+  Prior quality feedback can be mistaken: reassess it against the actual example and
+  this policy. Keep the rationale concise and specific.'
+judge_addendum: 'Clarification for known original-answer imperfections: evaluate truthfulness
+  of the rationale and agreement on substantive choices/actual code, separately from
+  whether the original answer fully obeys formatting constraints. Do not reject a
+  truthful method description solely because the answer''s prose has a wrong label
+  or its formatting/count is imperfect. These defects are separately recorded. Reject
+  claims that excuse or deny those defects, and reject different algorithms/conclusions.
+  Omitting a typo from a rationale is fine. Describing a set operation truthfully
+  is fine even when original prose mislabels it. This does not license false facts,
+  fabricated evidence, or meta reasoning.'
+retry_hints:
+  '1121': Original answer has four words, request says three. Explain the selected
+    concepts without falsely claiming three words or full compliance.
+  '1886': Actual code uses sets and sorted; original prose miscalls set comprehension
+    list comprehension. Explain the actual algorithm without repeating the false label
+    or claiming it meets that constraint.
+  '2120': Previous generator flagged missing required keyword in one sentence and
+    repeated-letter constraint. Explain substantive translation/accuracy advice without
+    asserting all per-sentence constraints are met.
+  '2526': Previous generator flagged five headings versus exactly three highlighted
+    sections. Explain substantive organization without asserting correct section count.
+  '2128': Prior attempts leaked meta phrases. Never mention a fixed/provided answer;
+    directly explain the five luxury-watch features.
+  '2609': Identity short-circuit returns True by design; it does not prove x == y
+    for all Python values (NaN, custom equality). Describe branches accurately without
+    universal equality claims.
+  '4427': Five sentences versus requested seven. Explain the substantive selections,
+    not a false sentence-count claim.
+  '6036': Previous generator flagged incomplete repetition of user request. Explain
+    chosen titles/themes without claiming verbatim repetition of the full request.
+  '6438': Prior attempts leaked meta phrases. Directly explain poem imagery and organization
+    without mentioning a fixed answer or claiming every constraint is met.
+  '7016': Original contains commas despite no-comma request. Explain substantive content
+    without claiming comma-free formatting.
+  '7726': Original has typo INVIINCIBLES. Explain selecting Arsenal unbeaten season
+    and stadium, without justifying/repeating the typo as correct or referring to
+    supplied text.
+  '8450': Code uses min to find shorter length; original prose incorrectly says max.
+    Explain actual code using min without repeating false prose or claiming it uses
+    max.
+  '9678': Prior generator flagged conflicting sentence/word/punctuation constraints.
+    Explain substantive summary choices without claiming all formatting constraints
+    are satisfied.
+  '2702': 'Manual review: hamper rhymes with scamper, not fate. Do not claim a consistent
+    meter or uniform AABCCB scheme for the entire poem. Explain playful narrative
+    and actual rhyming pairs accurately.'
+  '4658': 'Manual review: len(values)>0 does not validate list type or raise AssertionError
+    for every non-list. Type hints are not runtime validation. Explain actual nonempty
+    check and recursive sum; no claims that all invalid input is handled.'
+  '7266': 'Manual review: eval(f''a + b'') does not interpolate a and b; they are
+    local names in the expression string. User did not request eval. Describe actual
+    branch/eval implementation as a choice, not a required method.'
+additional_qualification:
+- - source_label_error
+  - Use list comprehension and sets for intersection.
+  - 'return sorted({x for x in set(a) & set(b)}) # This is a list comprehension.'
+  - Convert each input to a set to remove duplicates, intersect them to select shared
+    values, then sort those values into an ordered list.
+  - true
+- - source_count_error
+  - Give exactly three words about leadership.
+  - Influence negotiation leadership strategy
+  - Select concepts covering interpersonal influence, negotiation, leadership, and
+    strategic planning.
+  - true
+- - source_count_false_claim
+  - Give exactly three words about leadership.
+  - Influence negotiation leadership strategy
+  - These are exactly three words.
+  - false
+- - identity_false_equivalence
+  - Compare value and type.
+  - 'if x is y: return True'
+  - Identity guarantees x == y for every Python object, including NaN.
+  - false

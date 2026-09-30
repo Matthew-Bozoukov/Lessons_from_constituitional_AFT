@@ -59,6 +59,11 @@ def payload(row,turn,answer):
     return {'conversation_prefix':prefix,'tools':row.get('tools'),'fixed_assistant_answer':answer}
 
 
+def accepted_receipt(cfg,rec):
+    key=f"{rec.get('row')}_{rec.get('turn')}_{rec.get('attempt')}.json"
+    return bool(rec.get('accepted')) and key not in cfg.get('manual_rejections',{})
+
+
 class Budget:
     def __init__(self,cfg,out):
         self.cfg,self.out=cfg,out
@@ -138,8 +143,9 @@ def qualify(cfg,out,budget):
         ('truthful_set_description','Use list comprehension and set operations to find a sorted intersection.',
          'return sorted({x for x in set(a) & set(b)})',
          'Converting both inputs to sets removes duplicates. Their intersection selects shared elements. A set comprehension retains those elements, and sorted produces an ordered list.',True)]
+    cases+=list(cfg.get('additional_qualification',[]))
     for name,question,answer,trace,expected in cases:
-        path=out/'receipts'/('qualification_'+name+'.json')
+        path=out/'receipts'/('qualification_'+cfg.get('qualification_tag','')+name+'.json')
         if path.exists():rec=json.loads(path.read_text(encoding='utf-8'))
         else:
             rec={'kind':'qualification','name':name,'expected':expected}
@@ -166,12 +172,14 @@ def generate(cfg,out,budget,pilot=False):
             path=out/'receipts'/f'{i}_{j}_{attempt}.json'
             if path.exists():
                 rec=json.loads(path.read_text(encoding='utf-8'))
-                if rec.get('accepted'):return rec
+                if accepted_receipt(cfg,rec):return rec
                 if rec['status'] not in {'completed','generation_rejected'}:
                     raise RuntimeError('Unsettled receipt requires inspection: '+str(path))
-                feedback=rec.get('judge',{}).get('raw') or rec.get('rejection')
+                feedback=cfg.get('manual_rejections',{}).get(path.name) or rec.get('judge',{}).get('raw') or rec.get('rejection')
                 continue
-            user=json.dumps({**data,**({'previous_quality_feedback':feedback} if feedback else {})},ensure_ascii=False)
+            hint=cfg.get('retry_hints',{}).get(str(i))
+            user=json.dumps({**data,**({'previous_quality_feedback':feedback} if feedback and not cfg.get('omit_previous_feedback',False) else {}),
+                **({'quality_guidance':hint} if hint else {})},ensure_ascii=False)
             messages=[{'role':'system','content':GENERATOR_SYSTEM},{'role':'user','content':user}]
             prompt=render_prompt(renderer,messages)
             ids=prompt.to_ints()
@@ -195,9 +203,10 @@ def generate(cfg,out,budget,pilot=False):
                 trace=obj.get('reasoning','').strip()
                 assert term.is_stop_sequence and tokens[-1]==200002 and not response.get('tool_calls')
                 assert obj['status']=='ok' and trace and '<|' not in trace and '<think>' not in trace
-                assert not re.search(r'\b(?:fixed|reference|target|provided|supplied) (?:assistant )?answer\b|\bbackfill(?:ing)?\b',trace,re.I)
-            except (ValueError,AssertionError,KeyError,AttributeError):
-                rec.update(status='generation_rejected',rejection=response.get('content'))
+                if re.search(r'\b(?:fixed|reference|target|provided|supplied) (?:assistant )?answer\b|\bbackfill(?:ing)?\b',trace,re.I):
+                    raise ValueError('Remove meta references to a fixed/provided answer or backfilling; reason directly about the original task.')
+            except (ValueError,AssertionError,KeyError,AttributeError) as exc:
+                rec.update(status='generation_rejected',rejection=str(exc) or response.get('content'))
                 write(path,rec)
                 feedback=rec['rejection']
                 continue
@@ -224,7 +233,7 @@ def publish(cfg,out,budget):
     current,original,manifest,targets=sources(cfg,out)
     receipts=[json.loads(p.read_text(encoding='utf-8')) for p in (out/'receipts').glob('*.json')]
     assert all(r['status'] in {'completed','generation_rejected'} for r in receipts)
-    accepted={(r['row'],r['turn']):r for r in receipts if r.get('accepted') and r.get('kind')!='qualification'}
+    accepted={(r['row'],r['turn']):r for r in receipts if accepted_receipt(cfg,r) and r.get('kind')!='qualification'}
     missing=[t for t in targets if (t['row'],t['turn']) not in accepted]
     write(out/'failed_replacements.json',missing)
     # A partially restored mixture must not silently become the intended new dataset.
@@ -266,12 +275,20 @@ def publish(cfg,out,budget):
     for name in ['targets.json','qualification.json','failed_replacements.json','final_audit.json','final_audit_examples.json']:
         shutil.copy2(out/name,final/name)
     shutil.copytree(out/'receipts',final/'receipts',dirs_exist_ok=True)
+    if (out/'history').exists():shutil.copytree(out/'history',final/'history',dirs_exist_ok=True)
+    write(final/'quality_review_notes.json',OmegaConf.to_container(cfg.get('retry_hints',{})))
+    write(final/'manual_rejections.json',OmegaConf.to_container(cfg.get('manual_rejections',{})))
+    if (out/'source_answer_review.json').exists():shutil.copy2(out/'source_answer_review.json',final/'source_answer_review.json')
+    saverows(final/'restored_examples.jsonl',[{'row':t['row'],'turn':t['turn'],'source':t['source'],
+        **payload(rows[t['row']],t['turn'],rows[t['row']]['messages'][t['turn']]['content']),
+        'rationale':accepted[(t['row'],t['turn'])]['trace']} for t in targets])
+    shutil.copy2(out/'identity.json',final/'identity.json')
     if cfg.get('prior_pilot'):
         shutil.copytree(ROOT/cfg.prior_pilot,final/'prior_pilot',dirs_exist_ok=True)
     shutil.copy2(Path(__file__),final/'answer_conditioned.py')
     OmegaConf.save(cfg,final/'generation_config.yaml')
     write(final/'run_meta.json',provenance(cfg))
-    name=mix_name('nosynth',0,variant='answer-conditioned-gpt-oss-120b')
+    name=mix_name('',0,variant='gptoss-answer-conditioned')
     repo='dougalldeepmind/'+name
     assert not hf_api().repo_exists(repo,repo_type='dataset'),repo
     fields={'experiment':'Restore 119 original nosynth answers with answer-conditioned GPT-OSS rationales',
@@ -291,13 +308,38 @@ def publish(cfg,out,budget):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('stage',choices=['qualify','pilot','run','publish'])
+    global GENERATOR_SYSTEM,JUDGE_SYSTEM
+    parser=argparse.ArgumentParser();parser.add_argument('stage',choices=['qualify','pilot','run','publish','amend-review'])
+    parser.add_argument('--config',type=Path,default=Path(__file__).with_suffix('.yaml'))
     args=parser.parse_args()
     common=Path(subprocess.check_output(['git','rev-parse','--git-common-dir'],text=True).strip()).resolve()
     load_dotenv(common.parent/'.env')
-    cfg=OmegaConf.load(Path(__file__).with_suffix('.yaml'));out=ROOT/cfg.output
+    cfg=OmegaConf.load(args.config);out=ROOT/cfg.output
+    GENERATOR_SYSTEM=cfg.get('generator_prompt',GENERATOR_SYSTEM)
+    JUDGE_SYSTEM=cfg.get('judge_prompt',JUDGE_SYSTEM)
+    if cfg.get('generator_addendum'):GENERATOR_SYSTEM+='\n'+cfg.generator_addendum
+    if cfg.get('judge_addendum'):JUDGE_SYSTEM+='\n'+cfg.judge_addendum
+    if cfg.get('inherit_from') and not out.exists():
+        parent=ROOT/cfg.inherit_from
+        shutil.copytree(parent/'receipts',out/'receipts')
+        (out/'history').mkdir()
+        if (parent/'history').exists():shutil.copytree(parent/'history',out/'history'/'parent_history')
+        for name in ['identity.json','qualification.json','run_results.json','pilot_results.json']:
+            if (parent/name).exists():shutil.copy2(parent/name,out/'history'/name)
     (out/'receipts').mkdir(parents=True,exist_ok=True)
     identity={'config':OmegaConf.to_container(cfg),'generator_prompt':GENERATOR_SYSTEM,'judge_prompt':JUDGE_SYSTEM}
+    if args.stage=='amend-review':
+        previous=json.loads((out/'identity.json').read_text(encoding='utf-8'))
+        old,new=copy.deepcopy(previous),copy.deepcopy(identity)
+        for key in ['manual_rejections','retry_hints']:
+            old['config'].pop(key,None);new['config'].pop(key,None)
+        assert old==new,'Review amendments cannot change model, prompts, budgets or other run identity'
+        receipts=[json.loads(p.read_text(encoding='utf-8')) for p in (out/'receipts').glob('*.json')]
+        assert all(r['status'] in {'completed','generation_rejected'} for r in receipts)
+        write(out/'history'/('review_amendment_'+hashlib.sha256(json.dumps(previous,sort_keys=True).encode()).hexdigest()[:12]+'.json'),
+            {'before':previous,'after':identity,'reason':'Additional manual quality review; paid receipts immutable'})
+        write(out/'identity.json',identity)
+        return
     if (out/'identity.json').exists():assert json.loads((out/'identity.json').read_text())==identity
     else:write(out/'identity.json',identity)
     budget=Budget(cfg,out)
