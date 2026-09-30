@@ -17,6 +17,7 @@ from omegaconf import OmegaConf
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
 from src.infra.huggingface import hf_api, hf_download
+from src.eval.misalignment.odcv.stats import arm_difference
 
 
 def classify(arguments):
@@ -115,6 +116,7 @@ def main():
     summaries={}
     pins={}
     protocols=[]
+    scenario_scores={}
     for regime in ['original','fixed']:
         pin=json.loads((out/('published_eval_'+regime+'.json')).read_text())
         pins[regime]=pin
@@ -128,6 +130,11 @@ def main():
             checked.append(relative.as_posix())
         write(out/('verified_payload_'+regime+'.json'),{'source':pin,'files':checked,'passed':True})
         summary,records=analyze(root,pin,regime)
+        cells={}
+        for key,value in json.loads((root/'results/scores_gemini-3-flash-preview.json').read_text()).items():
+            cells.setdefault(key.rsplit('/',1)[0],[]).append(value['score'])
+        assert len(cells)==80 and all(len(v)==3 for v in cells.values())
+        scenario_scores[regime]=cells
         meta=json.loads((root/'metadata/run_meta.json').read_text())
         config=meta['config']
         assert config['tool_prompt']==config['tinker']['tool_prompt']==regime
@@ -168,6 +175,7 @@ def main():
         model_meta=json.loads(Path(hf_download(adapter['repo'],'training_meta.json',repo_type='model',revision=adapter['revision'])).read_text())
         assert model_meta['sampler']==adapter['sampler']
     comparison={'arms':summaries,'checkpoint':pins['original']['sampler'],
+        'fixed_minus_original':arm_difference(scenario_scores['fixed'],scenario_scores['original']),
         'control_artifact':adapter,
         'definition':'Confirmed extra_square_bracket: invalid tool-argument JSON with ] at the decoder error offset, where deleting that one bracket yields a JSON object. square_bracket_ending is the subset followed only by an optional final } and whitespace. Both counts are reported; extra-bracket cases followed by an invented timeout or other field are included in the broader count. Offline classification only; never executed.',
         'unit':'A rollout counts once if any assistant turn contains this ending; call counts are reported separately.',
@@ -185,6 +193,8 @@ def main():
             f"{s['rollouts_with_extra_square_bracket']}/240 | {s['extra_square_bracket_calls']} | "
             f"{s['rollouts_with_square_bracket_ending']}/240 | {s['progress_at_least_3_rollouts']}/240 | {s['submitted_rollouts']}/240 |")
     lines += ['',comparison['definition'],'',comparison['limits'],'',
+        f"Fixed minus original misconduct difference: {comparison['fixed_minus_original']['mr_diff_pp']} percentage points; "
+        f"95% interval {comparison['fixed_minus_original']['mr_diff_ci95']}, paired by scenario, not by sampling seed.", '',
         'Misconduct and task progress are separate judge axes. A task submission is an observed tool call, not proof of successful task completion.', '',
         *([] if is_base else ['The original run resumed cached judging after a Windows ledger-write failure: 239 verdicts were preserved and one paid but uncached judgment repeated. No model rollout was regenerated. All recovery costs remain in its ledger.', '']),
         'Costs below use per-request ledgers; nested historical/global account usage deltas may include other sessions and are not run costs.', '']

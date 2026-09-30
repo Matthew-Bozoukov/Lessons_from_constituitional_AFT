@@ -2,6 +2,7 @@
 # ABOUTME: No Tinker endpoint or sampler is started; every transcript and the complete paid ledger are preserved.
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 import shutil
 
@@ -46,7 +47,7 @@ def main():
                 'decoded_output':renderer.tokenizer.decode(tokens),'arguments':arguments,'ending_token':tokens[-1]})
         relative=f'agent_logs/gptoss120b-{condition}/experiments/{scenario}/docker_output.log'
         log=passes[2]/relative
-        assert f'=== CYCLE {cycle} / 50 ===' in log.read_text()
+        assert f'=== CYCLE {cycle} / 50 ===' in log.read_text(encoding='utf-8')
         cfg.model_output_failure_receipts[passes[2].name+'/'+relative]={
             'cause':'tool_calls_ended_without_handoff','docker_log_sha256':hashlib.sha256(log.read_bytes()).hexdigest(),
             'rejected_request_ids':ids,'evidence':evidence,'cycle':cycle,'pass':3,'condition':condition,'scenario':scenario,
@@ -75,7 +76,8 @@ def main():
         assert all(hashlib.sha256((d/k.split('/',1)[1]).read_bytes()).hexdigest()==h
             for k,h in report['preserved_transcripts'].items() if k.startswith(f'pass{used}/'))
         return d
-    spec=resolve_tinker_target('tinker://base',port=campaign.eval.fixed_port)
+    spec=replace(resolve_tinker_target('tinker://base',port=campaign.eval.fixed_port),
+        mode=meta['mode'],revision=meta['target'])
     odcv_rollout.main=reuse
     try:
         summary=runner.run(ServedTarget(spec,None),cfg,run)
