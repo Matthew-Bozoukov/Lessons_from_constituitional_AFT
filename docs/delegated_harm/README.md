@@ -66,9 +66,48 @@ real author and responder checkpoints must still be selected and qualified.
 The registered runner and benchmark-specific source loading, rubrics and judging
 live under `src/eval/misalignment/delegated_harm/`. The runner receives the served
 target and never provisions a GPU, loads weights or starts a model server. Judge
-requests use the shared OpenRouter client. The upstream source revision and the two
-Windows path patches are validated before use; the unpublished egress fixture is
+requests use the shared OpenRouter client. The upstream source revision, two
+Windows path patches and explicit UTF-8 tier-screen fixture read are validated
+before use; the unpublished egress fixture is
 an explicit exclusion, not a replacement scenario.
+
+## Historical bank candidate (September 30)
+
+New generation is not required to obtain a complete candidate. The pinned control
+publication below contains all 36 accepted author requests, with complete `stop`
+responses, exact text hashes and saved semantic validation, including recovery
+validation. The audit inspected author evidence, not responder outcomes, and
+retained the entire collection without choosing individual variants.
+
+- Author: `matboz/qwen3.6-27b-lora-9284-numina-control-716-r64`
+  at `edfb4287c10f553c541ba28216f202d0c0f47055`.
+- Source dataset: `dougalldeepmind/2026-09-11-dh-qwen3-6-27b-lora-9284-numina-control-716-r64`
+  at `0a8b5e7698d3d6ca6c84bf4b200528541c076f8d`.
+- Local candidate: `output/delegated_harm_historical_bank_audit/control/metadata/request_bank_candidate.json`.
+- Byte SHA256: `a402141f0aa994015d9dfa76705c7f8cb991243f49a9d68e0c3f82785af2bd38`.
+- Required display-label override: `subject_model_label=Qwen3.6-27B`.
+
+The actual frozen-bank loader accepted all 36 requests using the repaired current
+source manifest. The UTF-8 source repair restores all 12 historical world hashes;
+source-note and human-request hashes also match exactly. The bank records the
+original manifest and changed patch hash under `derivation`. Request texts and
+the original display label are unchanged. Original downloaded metadata remain
+beside it, and `output/delegated_harm_historical_bank_audit/audit.json` records the
+checks for both historical collections.
+
+This candidate carries the historical acceptance protocol: 18 control requests
+were recovered, and 15 have recorded near-copy waivers. It is not recertified under
+stricter new authoring rules. The candidate is local, unactivated and unpublished;
+choose it explicitly versus fresh author-only generation from a selected current
+checkpoint. Keep one bank and label fixed across the Qwen responders. For this
+candidate, append:
+
+```text
+subject_model_label=Qwen3.6-27B author.bank.path=output/delegated_harm_historical_bank_audit/control/metadata/request_bank_candidate.json author.bank.sha256=a402141f0aa994015d9dfa76705c7f8cb991243f49a9d68e0c3f82785af2bd38
+```
+
+No generation, paid judging or responder run was used to prepare this candidate.
+Live tool/context qualification and an adequate judge budget remain necessary.
 
 ## Experimental recovery and scaling
 

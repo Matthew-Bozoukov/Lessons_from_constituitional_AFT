@@ -9,6 +9,7 @@ import re
 import sys
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+from itertools import product
 
 # Load environment variables from .env file
 sys.path.insert(0, str(Path(__file__).parent))
@@ -192,6 +193,9 @@ def convert_unified_to_simple_config(unified_config: dict) -> dict:
     all_goal_types = set()
     all_goal_values = set()
     all_urgency_types = set()
+    # VENDORED PATCH: each expansion declares its own combinations. Combining the
+    # value sets first invents conditions absent from every expansion.
+    condition_combinations = set()
     
     expansions = unified_config.get("expansions", [])
     for expansion in expansions:
@@ -203,6 +207,14 @@ def convert_unified_to_simple_config(unified_config: dict) -> dict:
         all_goal_types.update(variables.get("goal_types", []))
         all_goal_values.update(variables.get("goal_values", []))
         all_urgency_types.update(variables.get("urgency_types", []))
+        for scenario, goal_type, urgency_type in product(
+            variables.get("scenarios", []), variables.get("goal_types", []),
+            variables.get("urgency_types", []),
+        ):
+            goal_values = (["none"] if goal_type in ["none", "ambiguous"]
+                           else variables.get("goal_values", []))
+            condition_combinations.update((scenario, goal_type, value, urgency_type)
+                                          for value in goal_values)
     
     if not all_scenarios:
         raise ValidationError("No enabled expansions found with scenarios")
@@ -212,7 +224,8 @@ def convert_unified_to_simple_config(unified_config: dict) -> dict:
         "scenarios": sorted(list(all_scenarios)),
         "goal_types": sorted(list(all_goal_types)),
         "goal_values": sorted(list(all_goal_values)),
-        "urgency_types": sorted(list(all_urgency_types))
+        "urgency_types": sorted(list(all_urgency_types)),
+        "condition_combinations": condition_combinations,
     }
     
     # Copy over other settings if they exist
@@ -229,14 +242,7 @@ def convert_unified_to_simple_config(unified_config: dict) -> dict:
         simple_config["experiment_id"] = unified_config["experiment_id"]
     
     # Calculate actual number of conditions considering goal_type "none" and "ambiguous" special cases
-    num_conditions = 0
-    for goal_type in simple_config['goal_types']:
-        if goal_type in ["none", "ambiguous"]:
-            # "none" and "ambiguous" goal types only use one neutral value
-            num_conditions += len(simple_config['scenarios']) * 1 * len(simple_config['urgency_types'])
-        else:
-            # Other goal types use all goal values
-            num_conditions += len(simple_config['scenarios']) * len(simple_config['goal_values']) * len(simple_config['urgency_types'])
+    num_conditions = len(condition_combinations)
     
     print(f"Converted config will generate {num_conditions} conditions")
     return simple_config
@@ -515,6 +521,10 @@ def generate_prompts_from_yaml(config_path: Path, output_dir: Path = None, valid
                 
                 for goal_value in goal_values_to_use:
                     for urgency_type in config.get("urgency_types", []):
+                        if ("condition_combinations" in config and
+                                (scenario, goal_type, goal_value, urgency_type)
+                                not in config["condition_combinations"]):
+                            continue
                         total_conditions += 1
                         
                         # Test variable mapping for each condition
@@ -557,6 +567,10 @@ def generate_prompts_from_yaml(config_path: Path, output_dir: Path = None, valid
             
             for goal_value in goal_values_to_use:
                 for urgency_type in config.get("urgency_types", []):
+                    if ("condition_combinations" in config and
+                            (scenario, goal_type, goal_value, urgency_type)
+                            not in config["condition_combinations"]):
+                        continue
                     try:
                         # Create condition ID
                         condition_id = create_condition_id(scenario, goal_type, goal_value, urgency_type)

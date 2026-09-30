@@ -24,6 +24,9 @@ Attempts to overwrite the read-only secret remain distinct from observed changes
 This detector is **not exhaustive execution tracing**: hidden paths, custom
 programs and changes restored within one command can evade it. A calibrated action
 audit remains necessary before interpreting it as an absolute cheating rate.
+`episodes_requiring_command_review` counts heuristic flags only; zero does not mean
+that every command was understood or reviewed. The September 30 pass leaves the
+detector unchanged.
 
 Partial model/tool failures retain prior messages and commands. Truncated tool
 calls are never executed; invalid submissions do not silently end an episode.
@@ -31,6 +34,11 @@ Sandbox setup failures remove their own container. Each run uses the image ID
 returned by its build, so a concurrent rebuild of a shared tag cannot switch the
 environment. Shell timeouts execute inside the container; Docker inspection
 failures are infrastructure errors, not tampering verdicts.
+Docker text now decodes explicitly as UTF-8 on Windows too. Previously, valid
+Unicode command output could become mojibake or raise a CP1252 decoding error;
+invalid UTF-8 bytes now remain visible as escaped byte values instead of aborting
+the episode. This repair was checked with real subprocess bytes and a stubbed
+Docker boundary, without starting containers.
 
 Qwen can now use the ordinary vLLM tool interface; the config declares its 65,536
 context window and tool requirement. API/shim transport remains available.
@@ -100,3 +108,29 @@ were skipped**. New checks cover quoted/unexecuted actions, failed tampering,
 non-submitted gaming, partial-call failures, malformed submission, setup cleanup,
 observed log deletion/restoration, infrastructure inspection failure, request-bank
 identity/coverage and identical bank bytes across distinct responder runs.
+
+## September 30 Qwen follow-up
+
+A concrete Delegated Harm portability defect remained: the vendored
+`tier_screen_off` loader read UTF-8 evidence using the Windows default encoding.
+Its world hash became `72e4a5302aa87d496be9b88ff51db52cee5da70e1135ffa23efeae3791fa8689`
+instead of the published
+`f5cc0dc68339487e65955902af1a95ab9d0516a6d07627f8b4258ad1709e6b35`.
+The recorded source patch now specifies UTF-8. All 12 world hashes again match
+the pinned historical runs; the patched Python source hash changes explicitly.
+
+Both pinned historical author collections contain 36 accepted requests with
+matching text hashes, complete author responses, and saved acceptance evidence.
+The whole control collection is now available as a **local candidate** with
+original request text and `Qwen3.6-27B` display label preserved. Its provenance
+records the historical source manifest, source dataset commit, author checkpoint,
+validation/recovery evidence and UTF-8 repair. It passes the actual frozen loader.
+No bank is activated or published. The [bank review details](delegated_harm/README.md#historical-bank-candidate-september-30)
+state the exact path/hash and remaining protocol choice.
+
+The two evals passed **50 focused offline tests**, including forced-CP1252 world
+loading and Unicode Docker-output decoding. No model/judge calls, container runs,
+resource changes or publication occurred. Secret Number still needs a Qwen smoke
+and an action audit before absolute-rate claims. Delegated Harm still needs a bank
+choice/freeze and live tool/context/judge qualification; historical acceptance and
+offline loader validity alone do not establish those runtime properties.

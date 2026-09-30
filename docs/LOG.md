@@ -1,6 +1,40 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-09-30 - Arena 12k adoption and remaining Qwen runner defects
+
+The user approved Arena's 12,000-token default after the matched study, then
+asked to continue repairing the other evals. Work remained on the isolated
+`codex/eval-audit-20260928` branch. Qwen SWE-bench Lite, ODCV and MASK were left
+unchanged; GPT-OSS work stayed parked. The Arena default and its protocol test
+now require 12k; historical 6k comparisons need matched regeneration.
+
+Method/result: reproduced defects with actual runner boundaries and scripted
+responses before repair. MoReBench resume could replace truncated target outputs
+with successful rerolls; it now retains the first returned outcome while allowing
+transport retries. MMLU and Psychosis failed to write Unicode transcripts under
+Windows CP1252; text is explicitly UTF-8. Psychosis also retains its completed
+checkpoint flag. Secret Number decodes Docker text as UTF-8 and escapes invalid
+bytes; Delegated Harm loads UTF-8 world evidence consistently across platforms.
+
+The real Agentic Misalignment prompt generator expanded an eight-condition config
+into twelve, adding four unintended explicit-none conditions. It now honors each
+expansion, checks the declared panel before inference, and writes failure evidence
+under the final run directory. Dictator now sends prior reasoning back to the
+Qwen target, matching the existing preserve-thinking policy, with a new history
+protocol label; judge inputs and rubrics are unchanged. Petri now pins supplied
+Hub branches even with explicit constitutions, rejects logs from another frozen
+audit, and refreshes JSON/Markdown together.
+
+Validation: 293 combined affected runner tests and 32 pinned-runtime Petri tests
+passed (325 total). Petri's offline round trip exercises its real controller,
+target wrapper, judge and saved-log reader using mock providers. No paid calls
+or rentals occurred. [Current cleanup status](eval_cleanup_2026-09-28.md) separates
+these fixes from outstanding live checks and request-bank selection. Changes to
+condition coverage and multi-turn history are recorded as protocol differences;
+old published outcomes were not rewritten. Next work is bounded live qualification
+and a fixed Delegated Harm request bank, not further speculative rubric changes.
+
 ## 2026-09-29 - Matched Arena 6k versus 12k output-budget study
 
 Hypothesis: more output headroom may reduce empty finals and truncation in Qwen

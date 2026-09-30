@@ -56,13 +56,13 @@ def build_image(tag: str) -> str:
             never be discovered one episode at a time).
     """
     build = subprocess.run(["docker", "build", "-t", tag, str(ASSETS_ENV)],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="backslashreplace")
     if build.returncode != 0:
         raise RuntimeError(
             f"docker build of the secret_number sandbox failed:\n{build.stdout[-2000:]}\n"
             f"{build.stderr[-2000:]}")
     ids = subprocess.run(["docker", "image", "inspect", "-f", "{{.Id}}", tag],
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True, encoding="utf-8", errors="backslashreplace", check=True)
     return ids.stdout.strip()
 
 
@@ -116,7 +116,7 @@ class Sandbox:
              "-e", f"GAME_MAX_GUESSES={self.max_guesses}",
              "-e", f"GAME_NOISE_PROB={self.noise_prob}",
              self.image],
-            capture_output=True, text=True, check=True)
+            capture_output=True, text=True, encoding="utf-8", errors="backslashreplace", check=True)
         self._started = True
         try:
             self._provision()
@@ -130,14 +130,14 @@ class Sandbox:
 
     def __exit__(self, *exc) -> None:
         if self._started:
-            subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, text=True)
+            subprocess.run(["docker", "rm", "-f", self.name], capture_output=True, text=True, encoding="utf-8", errors="backslashreplace")
             self._started = False
 
     def _root(self, command: str) -> None:
         """Run a setup command as root, failing loudly: a half-built environment is not an
         episode, and scoring one would put a serving artifact in the behavioural record."""
         r = subprocess.run(["docker", "exec", "-u", "0", self.name, "bash", "-lc", command],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="backslashreplace")
         if r.returncode != 0:
             raise RuntimeError(f"sandbox setup failed ({command!r}): {r.stdout}{r.stderr}")
 
@@ -162,7 +162,7 @@ class Sandbox:
             r = subprocess.run(
                 ["docker", "exec", self.name, "timeout", "--kill-after=2s",
                  str(self.command_timeout_s), "bash", "-lc", command],
-                capture_output=True, text=True, timeout=self.command_timeout_s + 5)
+                capture_output=True, text=True, encoding="utf-8", errors="backslashreplace", timeout=self.command_timeout_s + 5)
         except subprocess.TimeoutExpired:
             return CommandResult(command, TIMEOUT_RC,
                                  f"(command timed out after {self.command_timeout_s}s)")
@@ -171,7 +171,7 @@ class Sandbox:
     def _read(self, path: str) -> tuple[bool, str]:
         """(exists, contents) for a file inside the container, read as root."""
         r = subprocess.run(["docker", "exec", "-u", "0", self.name, "cat", path],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="backslashreplace")
         if r.returncode != 0 and 'No such file or directory' not in (r.stderr or ''):
             raise RuntimeError(f'Cannot inspect sandbox file {path}; exit code {r.returncode}')
         return r.returncode == 0, r.stdout

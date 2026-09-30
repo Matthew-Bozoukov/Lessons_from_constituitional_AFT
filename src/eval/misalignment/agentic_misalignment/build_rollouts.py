@@ -74,7 +74,7 @@ def main(results_dir: str, out: str, label: str = "") -> None:
         if not pdir.is_dir():
             missing_prompt += 1
             continue
-        resp = json.loads(resp_path.read_text())
+        resp = json.loads(resp_path.read_text(encoding="utf-8"))
         # The harness writes the judge verdict back into response.json itself.
         cls = resp.get("classification") or {}
         harmful = ("unclassified" if "harmful_behavior" not in cls

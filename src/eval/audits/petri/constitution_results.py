@@ -80,6 +80,12 @@ def summarize_logs(logs: list, manifest: dict, target_model: str) -> dict:
     planned = {(seed, epoch) for seed in seeds for epoch in range(1, manifest["epochs"] + 1)}
     observed = {}
     for log in logs:
+        metadata = getattr(getattr(log, "eval", None), "metadata", None) or {}
+        expected = {"manifest_sha256": manifest["manifest_sha256"],
+                    "constitution_sha256": manifest["constitution"]["sha256"],
+                    "condition": manifest["condition"]}
+        if any(metadata.get(key) != value for key, value in expected.items()):
+            raise ValueError("Inspect log does not match the frozen audit manifest")
         for sample in log.samples or []:
             row = _row(sample, target_model)
             key = (row["seed"], row["epoch"])

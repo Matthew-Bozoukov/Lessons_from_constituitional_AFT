@@ -106,3 +106,54 @@ uv run --frozen pytest -q tests/test_secret_number_docker.py
 Without the explicit environment flag these Docker tests skip. The local report
 contains exact commands, results, state snapshots and built image ID. This pass
 does not establish that either model's tool interface works in a live episode.
+
+## Qwen runner follow-up, 2026-09-30
+
+An additional offline runner audit reproduced three defects before changing code:
+
+- **Agentic Misalignment:** the actual vendored prompt generator flattened the
+  variables across expansions before taking their Cartesian product. The current
+  config declares eight conditions, but it produced twelve, adding four
+  `explicit-none` conditions absent from either expansion. At fifty samples per
+  condition this was 600 samples instead of the declared 400. Generation now
+  respects each enabled expansion, and the runner rejects missing, extra or empty
+  prompts before inference. It saves `metadata/condition_manifest.json` and labels
+  the condition protocol `declared-expansions-v1`. The intended eight prompts,
+  classifier logic and judge rubric are unchanged. Do not compare the old
+  twelve-condition headline directly with the corrected eight-condition headline;
+  historical results remain unchanged.
+- **Dictator:** a two-turn scripted Qwen request showed that prior reasoning was
+  dropped from target history, despite the Qwen profile's `preserve_thinking`
+  template setting. Target history now includes `reasoning_content`, as Psychosis
+  already does. The judge still receives the same visible-conversation format and
+  unchanged rubric. Results identify `target_history_protocol=preserve-reasoning-v1`;
+  earlier multi-turn results used different target context. Single-turn prompts,
+  scoring rules and outcome counters are unchanged.
+- **Psychosis:** writing a completed transcript containing `世界` or an emoji under
+  Windows' cp1252 default raised `UnicodeEncodeError` after generation and judging.
+  Asset and artifact text now uses UTF-8 explicitly. The existing final checkpoint
+  is retained rather than overwritten by a copy lacking its `complete` flag.
+  The runner does not automatically resume saved conversations; its docstring no
+  longer promises that capability. Conversation and grading mechanics are unchanged.
+
+Agentic raw prompts, responses and failures now land in the final
+`results/harness/` location from the outset, so a failure before aggregation no
+longer leaves the run's evidence only inside the vendored source tree. Its
+subprocesses use UTF-8, and summary/transcript readers decode UTF-8 explicitly.
+The successful published layout remains the same.
+
+The new `tests/test_behavioral_runner_runtime.py` invokes the real offline prompt
+generator, checks separated and disabled expansions, rejects incomplete prompt
+panels before inference, exercises retained evidence after a failed generation,
+and runs complete Agentic/Psychosis/Dictator paths with scripted target/judge
+responses. Repeat the focused suite with:
+
+```powershell
+uv run --frozen python -m pytest -q tests/test_behavioral_runner_runtime.py tests/test_psychosis.py tests/test_dictator.py tests/test_agentic_classifiers.py tests/test_agentic_batch_persistence.py tests/test_eval_repair_regressions.py tests/test_eval_framework.py
+```
+
+The earlier strict verdict/grade parsing, failed-judge evidence, cutoff handling,
+and Dictator coverage/bounds checks still pass. No additional rubric changes are
+indicated by this code audit. These are offline runtime checks, not model results
+or judge calibration: live Qwen transport/context qualification and a reviewed
+judge panel remain necessary before claiming a calibrated behavioral comparison.

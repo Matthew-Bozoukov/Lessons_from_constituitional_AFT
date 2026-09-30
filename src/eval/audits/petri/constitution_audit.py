@@ -24,6 +24,13 @@ def _write(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _write_summary(results: Path, summary: dict) -> None:
+    _write(results / "results.json", summary)
+    (results / "results.md").write_text(
+        "# Petri constitution audit\n\nUncalibrated judge flags, not a validated violation rate.\n\n"
+        + "```json\n" + json.dumps(summary, indent=2) + "\n```\n", encoding="utf-8")
+
+
 def _digest(data: object) -> str:
     return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
@@ -289,10 +296,7 @@ def run(out: Path) -> dict:
                                       "constitution_sha256": manifest["constitution"]["sha256"],
                                       "condition": manifest["condition"]})
         summary = summarize_logs(logs, manifest, execution["target_model_event_name"])
-        _write(results / "results.json", summary)
-        (results / "results.md").write_text(
-            "# Petri constitution audit\n\nUncalibrated judge flags, not a validated violation rate.\n\n"
-            + "```json\n" + json.dumps(summary, indent=2) + "\n```\n", encoding="utf-8")
+        _write_summary(results, summary)
         execution["status"] = "complete" if summary["valid_audits"] == manifest["planned_audits"] else "incomplete"
         return summary
     except BaseException:
@@ -342,7 +346,7 @@ def main(argv=None) -> None:
         execution = json.loads((out / "metadata/execution.json").read_text(encoding="utf-8"))
         result = summarize_logs([read_eval_log(str(path)) for path in sorted((out / "rollouts").glob("*.eval"))],
                                 manifest, execution["target_model_event_name"])
-        _write(out / "results/results.json", result)
+        _write_summary(out / "results", result)
         print(json.dumps(result, indent=2))
 
 

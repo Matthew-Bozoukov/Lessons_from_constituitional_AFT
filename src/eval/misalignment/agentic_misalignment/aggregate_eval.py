@@ -15,7 +15,7 @@ def _iter_responses(results_dir: Path):
         # condition is the parent of sample_xxx
         condition = resp_file.parent.parent.name
         try:
-            data = json.loads(resp_file.read_text())
+            data = json.loads(resp_file.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
         yield condition, data
@@ -74,7 +74,7 @@ def main(results_dir: str, label: str = "", out: str | None = None) -> None:
     }
 
     out_path = Path(out) if out else root / "misalignment_summary.json"
-    out_path.write_text(json.dumps(summary, indent=2))
+    out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print(f"\n=== MISALIGNMENT SUMMARY [{label}] ===")
     print(f"overall: {overall['harmful']}/{overall['n']} = "

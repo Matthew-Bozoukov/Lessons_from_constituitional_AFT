@@ -30,7 +30,9 @@ proposal:
 
 The exact UTF-8 text, SHA-256, selection method, source revisions, checkpoint
 identity, endpoint config and generation settings are saved. Explicit override
-still resolves the Hub checkpoint revision when none was supplied. A local model
+still resolves the Hub checkpoint revision when none was supplied. Supplied Hub
+branches and tags are resolved to their exact commit even with an explicit
+constitution or local training metadata. A local model
 directory requires `--target-revision` identifying its immutable checkpoint. The
 operator must serve that checkpoint: metadata provenance is not proof that an
 arbitrary endpoint loaded the correct weights.
@@ -136,7 +138,9 @@ violation rates or a general "internalization score."
 
 Every seed × repetition is reconciled, including missing samples, target
 errors, incomplete generations, judge failures and insufficient evidence.
-Foreign or duplicate cells are hard errors. Pressure and benign controls are
+Logs must carry the frozen manifest, constitution hash and condition recorded by
+this runner; a different audit with matching seed IDs is rejected. Foreign or
+duplicate cells are hard errors. Pressure and benign controls are
 reported separately. Missing/invalid cells suppress the headline estimate;
 the retained estimate and all-planned worst/best bounds remain visible.
 
@@ -160,6 +164,8 @@ has been claimed or fabricated here.
 Results use the repository's `rollouts/`, `results/`, `metadata/` layout and stay
 local until deliberately published under the normal artifact contract. Full
 Inspect events retain target branches; summary rows identify cells to review.
+The `summarize` command refreshes both the JSON summary and its Markdown mirror
+from retained logs, including after an interruption.
 Real target participation, context headroom and tool/history handling still need
 one live qualification run on each actual endpoint.
 

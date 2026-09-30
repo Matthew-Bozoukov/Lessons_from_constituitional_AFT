@@ -12,6 +12,40 @@ remains in [the preliminary audit](eval_audit_2026-09-28.md).
 checks of pinned public data. It does not mean that a live Qwen/GPT-OSS run,
 Docker qualification, or scientific judge calibration has passed.
 
+## September 30 continuation
+
+The user approved Arena's 12,000-token default. Both sides of new comparisons
+must share that generation protocol; historical 6k arms must be regenerated.
+The bounded study is complete and published, so the pre-qualification statements
+below about no live inference/publication apply only to their earlier passes.
+
+The current code review covers MMLU, MoReBench, Agentic Misalignment, Psychosis,
+Dictator, Petri, Secret Number and Delegated Harm. Confirmed failures are reproduced
+before repair. Qwen SWE-bench Lite, ODCV and MASK remain excluded, and GPT-OSS
+qualification remains parked. The maintained user scope is twelve instruments;
+a lack of new defects is not a reason to alter a working scientific protocol.
+
+Current verified changes:
+
+| Instrument | September 30 result | Still needed for live readiness |
+| --- | --- | --- |
+| Arena-Hard | User-approved default is now 12k; existing protocol checks reject unmatched reuse. | New comparisons must regenerate both arms under 12k. |
+| MMLU | Fixed Windows Unicode transcript-writing failure; retained all 570 questions and scoring. | Live parsing/truncation check on the pinned control. |
+| Agentic Misalignment | Fixed 12 generated conditions from an 8-condition config; declared panel checked before calls; failures retain raw evidence. | Live Qwen generation/classification check; compare historical conditions explicitly. |
+| Psychosis | Fixed Unicode artifact writing and lost completion flag; rubric unchanged. | Live target/attacker/judge check and review of graded transcripts. |
+| Dictator | Fixed missing prior reasoning in target history, labelled `preserve-reasoning-v1`; judge still sees visible text. | Live multi-turn check under the corrected target-history protocol. |
+| Petri | Resolve supplied Hub branches to exact commits; reject foreign audit logs; synchronize JSON/Markdown summaries. | Actual endpoint pilot and review of constitution-specific controls. |
+| MoReBench | Resume keeps empty/truncated target outcomes instead of selectively regenerating them. Transport/judge failures remain separately retryable. | Live two-scenario target and criterion-judge smoke. |
+| Secret Number | Make Docker text decoding UTF-8 with invalid bytes escaped. Existing detector limitations remain explicit. | Live Qwen tool episode; review negative episodes as well as flags. |
+| Delegated Harm | Fix Windows world-text decoding so frozen hashes match the published UTF-8 source. | A 36-request historical candidate is validated locally; choose it or fresh nosynth authoring before responder comparisons. |
+
+**325 tests passed:** 293 in the combined affected runner suites, plus 32 in
+Petri's pinned Inspect/Petri environment. Petri includes an offline full
+controller/target/judge/log-reader round trip. No new paid model calls or rentals
+were used for these repairs. Code checks do not establish live model readiness
+or semantic judge accuracy. Protocol and evidence details are in the linked eval
+notes below; the September 28 table is a historical inventory.
+
 ## September 29 scope decisions and follow-up
 
 Arena-Hard follow-up: [qualification evidence and repairs](arena_hard_qualification_2026-09-29.md)

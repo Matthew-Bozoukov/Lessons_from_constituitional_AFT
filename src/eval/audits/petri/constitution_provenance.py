@@ -136,6 +136,24 @@ def _dataset_candidates(repo: str, revision: str, *, hub, download, git_reader,
     return candidates
 
 
+def _pin_target_revision(target: str, revision: str | None, hub) -> str:
+    if target.startswith("tinker://"):
+        return revision or target
+    if Path(target).is_dir():
+        if not revision:
+            raise ValueError("Local model target needs --target-revision identifying its immutable checkpoint")
+        return revision
+    if re.fullmatch(r"[a-fA-F0-9]{40}", str(revision or "")):
+        return revision
+    if hub is None:
+        from src.infra.huggingface import hf_api
+        hub = hf_api()
+    info = hub.model_info(target, revision=revision) if revision else hub.model_info(target)
+    if not re.fullmatch(r"[a-fA-F0-9]{40}", str(info.sha or "")):
+        raise ValueError("Hub target did not resolve to an exact checkpoint commit")
+    return info.sha
+
+
 def resolve_constitution(target: str, *, target_revision: str | None = None,
                          explicit: str | None = None, training_meta: str | None = None,
                          root: Path = ROOT, hub=None, download=None,
@@ -149,16 +167,7 @@ def resolve_constitution(target: str, *, target_revision: str | None = None,
     """
     identity = {"target": target, "revision": target_revision}
     if explicit:
-        if not target_revision:
-            if target.startswith("tinker://"):
-                identity["revision"] = target
-            elif Path(target).is_dir():
-                raise ValueError("Local model target needs --target-revision identifying its immutable checkpoint")
-            else:
-                if hub is None:
-                    from src.infra.huggingface import hf_api
-                    hub = hf_api()
-                identity["revision"] = hub.model_info(target).sha
+        identity["revision"] = _pin_target_revision(target, target_revision, hub)
         path = Path(explicit)
         if not path.is_absolute():
             path = root / path
@@ -180,13 +189,7 @@ def resolve_constitution(target: str, *, target_revision: str | None = None,
     if training_meta:
         meta_path = Path(training_meta)
         identity["training_meta_path"] = str(meta_path.resolve())
-        if not identity["revision"]:
-            if target.startswith("tinker://"):
-                identity["revision"] = target
-            elif Path(target).is_dir():
-                raise ValueError("Local model target needs --target-revision identifying its immutable checkpoint")
-            else:
-                identity["revision"] = hub.model_info(target).sha
+        identity["revision"] = _pin_target_revision(target, target_revision, hub)
     elif Path(target).is_dir():
         if not target_revision:
             raise ValueError("Local model target needs --target-revision identifying its immutable checkpoint")

@@ -3,7 +3,7 @@
 
 """run() per the CLAUDE.md eval contract.
 
-Two phases, both resumable within a run and re-entrant across runs (no process
+Two phases, both re-entrant across runs (no process
 globals, everything under out_dir):
 
 1. Conversations — one thread per persona (each internally sequential: 12 turns of
@@ -43,7 +43,8 @@ ASSETS = Path(__file__).parent / "assets"
 
 def load_characters(selected: list[str] | None) -> dict[str, str]:
     """Load persona files as {stem: text}, optionally restricted to `selected` stems."""
-    available = {p.stem: p.read_text() for p in sorted((ASSETS / "characters").glob("*.txt"))}
+    available = {p.stem: p.read_text(encoding="utf-8")
+                 for p in sorted((ASSETS / "characters").glob("*.txt"))}
     if selected is None:
         return available
     missing = [s for s in selected if s not in available]
@@ -108,8 +109,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         characters = dict(sorted(characters.items())[:1])
         n_turns = min(n_turns, 3)
 
-    red_team_template = (ASSETS / "red_team_prompt.txt").read_text()
-    grader_prompt = (ASSETS / "grader_prompt.txt").read_text()
+    red_team_template = (ASSETS / "red_team_prompt.txt").read_text(encoding="utf-8")
+    grader_prompt = (ASSETS / "grader_prompt.txt").read_text(encoding="utf-8")
 
     openrouter = OpenRouterClient()
     target_client = OpenAI(
@@ -181,13 +182,10 @@ def run(target, cfg, out_dir: Path) -> dict:
             print(f"!!! conversation failed for {stem}: {type(exc).__name__}: {exc}")
             (rollout_dir / f"{stem}_error.json").write_text(
                 json.dumps({"character": stem, "error": f"{type(exc).__name__}: {exc}"},
-                           indent=2))
+                           indent=2), encoding="utf-8")
             return {"stem": stem, "prompt": prompt, "turns": None}
-        # Written the moment the conversation finishes: a judge-phase crash or dead pod
-        # loses no rollouts.
-        (rollout_dir / f"{stem}.json").write_text(
-            json.dumps({"character": stem, "red_team_prompt": prompt,
-                        "turns": [asdict(t) for t in turns]}, indent=2))
+        # The final on_turn checkpoint already persists the complete conversation,
+        # including its completion flag, before any judging starts.
         return {"stem": stem, "prompt": prompt, "turns": turns}
 
     conversations = map_threaded(converse, len(stems),
@@ -228,7 +226,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         grades = {r["turn"]: {k: r[k] for k in GRADE_KEYS} for r in graded
                   if r["character"] == convo["stem"]}
         (rollout_dir / f"{convo['stem']}.md").write_text(
-            _rollout_markdown(convo["stem"], convo["prompt"], convo["turns"], grades))
+            _rollout_markdown(convo["stem"], convo["prompt"], convo["turns"], grades),
+            encoding="utf-8")
 
     all_turns = [t for c in completed for t in c["turns"]]
     if len(graded) != len(jobs):

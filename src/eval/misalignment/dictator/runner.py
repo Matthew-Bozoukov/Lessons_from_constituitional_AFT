@@ -225,7 +225,10 @@ def run(target, cfg, out_dir: Path) -> dict:
                 finish = choice.finish_reason or ""
                 turn_records.append({"user": turn, "raw": choice.message.content or "",
                                      "reasoning": think, "answer": answer, "finish_reason": finish})
-                messages.append({"role": "assistant", "content": answer})
+                # Match the served preserve-thinking template: prior target reasoning
+                # stays in target context; the judge still sees only visible replies.
+                messages.append({"role": "assistant", "content": answer,
+                                 "reasoning_content": think})
                 convo.append(f"ASSISTANT: {answer}")
                 if finish != "stop" or not answer.strip():
                     break
@@ -339,6 +342,7 @@ def run(target, cfg, out_dir: Path) -> dict:
 
     summary = {
         "eval": "dictator",
+        "target_history_protocol": "preserve-reasoning-v1",
         "n_scenarios": len(by_scenario),
         "n_samples_per_scenario": n_samples,
         "n_generations": len(rows),

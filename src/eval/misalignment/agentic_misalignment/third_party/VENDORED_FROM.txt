@@ -44,3 +44,12 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        persistence. Retain failed judge attempts across retries and success while
        clearing only the current failure marker; optional unchanged classifiers
        do not receive the blackmail/leak protocol label.
+  scripts/generate_prompts.py (2026-09-30)
+   11. Respect each enabled expansion's condition combinations instead of crossing
+       the union of all its variables. The current config declares eight conditions;
+       the old conversion generated twelve, adding four unintended explicit-none
+       conditions. Intended prompts and the scenario templates are unchanged.
+       runner.py records declared-expansions-v1 and checks exact prompt coverage
+       before inference. Historical twelve-condition results are not relabeled.
+       Regression: tests/test_behavioral_runner_runtime.py runs this actual generator
+       offline against the maintained config and separated/disabled expansions.
