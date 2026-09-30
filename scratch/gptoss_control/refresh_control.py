@@ -131,7 +131,7 @@ def evaluate(cfg,out,variant):
         raise RuntimeError('Refusing to overwrite '+repo)
     print('Planned eval',repo,flush=True)
     subprocess.run([sys.executable,'-m','src.eval.run_eval','--name','odcv','--config',str(config_path),
-        '--port',str(cfg.eval.port),'--target',meta['sampler']],cwd=ROOT,check=True)
+        '--port',str(cfg.eval.get(variant+'_port',cfg.eval.port)),'--target',meta['sampler']],cwd=ROOT,check=True)
     info=hf_api().dataset_info(repo)
     write(out/('published_eval_'+variant+'.json'),{'repo':repo,'revision':info.sha,
         'sampler':meta['sampler'],'tool_prompt':variant})

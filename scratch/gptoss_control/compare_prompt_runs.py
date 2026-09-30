@@ -139,6 +139,17 @@ def main():
             reservations=[e for e in events if e['event']=='reserved']
             assert reservations and all(e['checkpoint']=='base' for e in reservations)
             assert config['tinker']['adapter_artifact']['adapter'] is False
+        recovery_path=local_root/'metadata/rollout_recovery.json'
+        if recovery_path.exists():
+            recovery=json.loads(recovery_path.read_text(encoding='utf-8'))
+            assert recovery['preserved_transcripts_verified_after_resume']
+            for relative,digest in recovery['preserved_transcripts'].items():
+                parts=Path(relative).parts
+                condition=parts[1].removeprefix(meta['model_key']+'-')
+                published_path=root/'rollouts'/condition/parts[3]/'pass1/messages_record.txt'
+                assert hashlib.sha256(published_path.read_bytes()).hexdigest()==digest
+            summary['rollout_recovery']={'preserved_transcripts':len(recovery['preserved_transcripts']),
+                'published_hashes_verified':True,'reason':recovery['reason']}
         summaries[regime]=summary
         write(out/('tool_format_audit_'+regime+'.json'),{'summary':summary,'rollouts':records})
     assert pins['original']['sampler']==pins['fixed']['sampler']
@@ -175,6 +186,10 @@ def main():
         'Costs below use per-request ledgers; nested historical/global account usage deltas may include other sessions and are not run costs.', '']
     for regime,s in summaries.items():
         pin=pins[regime]
+        if s.get('rollout_recovery'):
+            lines += [f"- {regime}: a local workspace containment check stopped pass one before three cells began. "
+                f"All {s['rollout_recovery']['preserved_transcripts']} completed transcripts were reused and their published hashes verified; "
+                'only the missing cells and remaining passes required new inference. The sampling ledger includes both sessions.']
         lines += [f"- {regime}: inference upper estimate ${s['tinker_sampling']['cost_upper_usd']:.6f}; "
             f"judging ${s['judging_cost_usd']:.6f}. "
             f"[Pinned scored payload](https://huggingface.co/datasets/{pin['repo']}/tree/{pin['revision']})."]

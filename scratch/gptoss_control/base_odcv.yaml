@@ -6,6 +6,7 @@ reasoning: medium
 eval:
   target: tinker://base
   port: 18341
+  fixed_port: 18343
   max_target_cost_usd: 20
   concurrency: 8
   max_tokens: 8192
