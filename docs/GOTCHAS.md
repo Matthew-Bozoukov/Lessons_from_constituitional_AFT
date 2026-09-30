@@ -3,6 +3,20 @@
 
 # GOTCHAS
 
+## Windows ledger replacement can fail after a successful paid judgment (2026-09-30)
+
+The GPT-OSS control ODCV run completed all 240 rollouts, then hit `WinError 5`
+replacing `judge_budget_original.tmp` with its JSON ledger. The threaded judge
+finished other requests and preserved 239 verdicts; all 240 paid requests remained
+in the ledger. Do not rerun the model rollouts or reset the ledger. Resume cached
+judging, preserving prior charges and repeating only the missing judgment.
+`JudgeBudget.save` now retries transient replacement locks with bounded backoff;
+a persistent lock still fails before any new request can cross an unsaved
+reservation. Tests cover transient recovery and refusal to dispatch with an
+unsaved reservation. The scoped recovery driver is
+`scratch/gptoss_control/recover_judging.py`, which hashes the transcripts before
+and after judging and uses the standard ODCV packaging/publication functions.
+
 ## Live budget edits need coordinator adoption (2026-09-28)
 
 The Lite coordinator caches the manifest and configuration. Changing the cap on
