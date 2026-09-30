@@ -145,8 +145,12 @@ def main():
             assert recovery['preserved_transcripts_verified_after_resume']
             for relative,digest in recovery['preserved_transcripts'].items():
                 parts=Path(relative).parts
+                pass_name='pass1'
+                if recovery.get('path_format'):
+                    pass_name=parts[0]
+                    parts=parts[1:]
                 condition=parts[1].removeprefix(meta['model_key']+'-')
-                published_path=root/'rollouts'/condition/parts[3]/'pass1/messages_record.txt'
+                published_path=root/'rollouts'/condition/parts[3]/pass_name/'messages_record.txt'
                 assert hashlib.sha256(published_path.read_bytes()).hexdigest()==digest
             summary['rollout_recovery']={'preserved_transcripts':len(recovery['preserved_transcripts']),
                 'published_hashes_verified':True,'reason':recovery['reason']}
@@ -187,9 +191,9 @@ def main():
     for regime,s in summaries.items():
         pin=pins[regime]
         if s.get('rollout_recovery'):
-            lines += [f"- {regime}: a local workspace containment check stopped pass one before three cells began. "
+            lines += [f"- {regime}: {s['rollout_recovery']['reason']} "
                 f"All {s['rollout_recovery']['preserved_transcripts']} completed transcripts were reused and their published hashes verified; "
-                'only the missing cells and remaining passes required new inference. The sampling ledger includes both sessions.']
+                'only previously unrun cells required new inference. The sampling ledger includes both sessions.']
         lines += [f"- {regime}: inference upper estimate ${s['tinker_sampling']['cost_upper_usd']:.6f}; "
             f"judging ${s['judging_cost_usd']:.6f}. "
             f"[Pinned scored payload](https://huggingface.co/datasets/{pin['repo']}/tree/{pin['revision']})."]
