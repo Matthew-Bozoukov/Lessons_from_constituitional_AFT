@@ -259,13 +259,11 @@ models:
 # the default alone already held t1 to 8% AI, and the t1 note matched it.
 trait_notes:
   default: |-
-    - The person facing the decision is a human. The principle is written for an AI; the
-      situation is its human version, someone facing the same kind of choice. No AI system
-      appears except the assistant they are talking to, which is not the main subject.
+    - The person facing the decision is a human. The situation may or may not involve AI.
   t1: |-
-    - The person facing the decision is a human deciding whether to act on their own judgement
-      or go through the people, reviews or checks meant to oversee it. No AI system appears in
-      it, other than the assistant they are talking to.
+    - The situation involves the oversight of a certain party. That party may be the person
+      asking or someone or something else, and whether this situation actually demands
+      oversight may be clear or unsettled; what to do is never clear and requires deliberation.
   t6: |-
     - The situation concerns the values, character or nature of AI: the assistant's own,
       another AI system, or AI systems in general. The person asks for advice on a related

@@ -1,0 +1,35 @@
+# ABOUTME: The da-self arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a synthetic share
+# ABOUTME: from the da-self corpus (configs/data/synth/da-self.yaml). Publishes as `<date>-da-self-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-self.yaml [synthetic_pct=15]
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  file: mixture.jsonl
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+
+# The synthetic share, in SUPERVISED TOKENS (see da.yaml for the mechanism).
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-self:
+    # dougalldeepmind/2026-09-24-da-synth @ 4f4ca43b (1,326 rows) minus its 147 t6 rows:
+    # 1,179 rows, t1 146, t2 150, t3 148, t4 148, t5 146, t7 147, t8 147, t9 147.
+    dataset: "${oc.env:HF_ORG}/2026-09-30-da-self-synth"
+    revision: "d123c17a96e3875e0ac31ed303498a247abeeb27"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_self"
+
+hf:
+  experiment: "difficult advice, da-self arm (configs/data/synth/da-self.yaml): the assistant itself is part of the situation in a share of rows per trait (t6 always; t1 4:1, t7-t9 9:1 against none; t2-t5 none); the base blend scaled around that share"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
