@@ -655,6 +655,27 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         if spec.get("per_trait"):
             if not spec.get("weights") or any(w != 1 for w in spec["weights"].values()):
                 raise ValueError(f"{name}: per_trait rotation requires nonempty equal unit weights")
+        # `fixed:` pins a unit to one label instead of rotating it -- for a unit whose
+        # principle only makes sense under that label (2026-09-30: t6, which is about AI,
+        # cannot take the half of an AI axis that says no AI appears).
+        fixed = spec.get("fixed") or {}
+        if fixed and not spec.get("per_trait"):
+            raise ValueError(f"{name}: `fixed` pins units within a per_trait rotation; set per_trait: true")
+        bad = {u: lab for u, lab in fixed.items() if lab not in (spec.get("weights") or {})}
+        if bad:
+            raise ValueError(f"{name}: fixed labels not in weights: {bad}")
+        # `unit_weights:` gives a unit its own split in place of the even one -- a share
+        # that follows where a label arises naturally rather than forcing it everywhere
+        # (2026-09-30: assistant-self rows, which the writer produces for t1/t6-t9 but not
+        # t2-t5). Dealt over that unit's planned calls with `deal_labels`.
+        uw = spec.get("unit_weights") or {}
+        if uw and not spec.get("per_trait"):
+            raise ValueError(f"{name}: `unit_weights` sets splits within a per_trait rotation; set per_trait: true")
+        for u, w in uw.items():
+            if u in fixed:
+                raise ValueError(f"{name}: {u} is in both fixed and unit_weights")
+            if not w or set(w) - set(spec.get("weights") or {}) or any(float(v) <= 0 for v in w.values()):
+                raise ValueError(f"{name}: unit_weights.{u} must give positive weights to labels in weights")
     lib_spec = dict(sc.get("library") or {})
     if "trait_notes" in sc:
         raise ValueError(f"{sc['name']}: trait_notes is a top-level config key, shared by every stage")
@@ -676,6 +697,11 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         if unknown:
             raise ValueError(f"{sc['name']}: trait_notes name units this run does not have: "
                              f"{sorted(unknown)}")
+        for name, spec in rotate.items():
+            stray = (set(spec.get("fixed") or {}) | set(spec.get("unit_weights") or {})) - {t.trait_id for t in traits}
+            if stray:
+                raise ValueError(f"{sc['name']}: rotate.{name}.fixed/unit_weights name units this run does "
+                                 f"not have: {sorted(stray)}")
         # Unit provenance travels WITH the record rather than being joined back to the
         # stage-1 snapshot later: every downstream consumer (metadata export, corpus
         # checks, `balance_by`) then reads it as an ordinary field, and no stage needs
@@ -703,6 +729,15 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         # `mundane` and every `station_mind` to `institutional`, which is one axis wearing
         # two names. See `_axis_walk`.
         walk = {name: _axis_walk(name, len(seq)) for name, seq in deals.items()}
+        # A unit with its own `unit_weights` walks its own deal, sized to its planned calls,
+        # so the split holds per unit; a make-up call (bi past the plan) wraps around it.
+        planned_calls = {ti: sum(1 for t, _b, _n in batches if t == ti) for ti in range(len(traits))}
+        unit_deals = {
+            (name, ti): deal_labels(spec["unit_weights"][traits[ti].trait_id], max(planned_calls[ti], 1))
+            for name, spec in rotate.items()
+            for ti in range(len(traits))
+            if traits[ti].trait_id in (spec.get("unit_weights") or {})
+        }
 
         def axes_of(spec: tuple) -> dict[str, str]:
             ti, bi, _n = spec
@@ -710,8 +745,10 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             out = {}
             for name, seq in deals.items():
                 if rotate[name].get("per_trait"):
+                    pinned = (rotate[name].get("fixed") or {}).get(traits[ti].trait_id)
+                    own = unit_deals.get((name, ti))
                     labels = list(rotate[name]["weights"])
-                    out[name] = labels[(ti + bi) % len(labels)]
+                    out[name] = pinned or (own[bi % len(own)] if own else labels[(ti + bi) % len(labels)])
                     continue
                 stride, offset = walk[name]
                 out[name] = seq[(base * stride + offset) % len(seq)]

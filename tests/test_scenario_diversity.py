@@ -354,3 +354,74 @@ def test_any_later_stage_renders_the_same_note_by_the_records_trait(tmp_path):
     assert "- GENERIC" in ops._render(tpl, {"trait_id": "t5"}, ctx)
     with pytest.raises(ValueError, match="trait_id"):
         ops._render(tpl, {}, ctx)
+
+
+def _ai_axis(**over):
+    return {"ai": {"per_trait": True, "weights": {"ai": 1, "none": 1},
+                   "text": {"ai": "- AI-HALF", "none": "- NO-AI"}, **over}}
+
+
+def test_a_fixed_unit_keeps_its_label_while_the_rest_alternate(monkeypatch, tmp_path):
+    """`fixed:` pins one unit's label; every other unit still splits evenly, and the label
+    and its text ride on each scenario so a later stage renders the same line."""
+    seen: list[dict] = []
+    stage = {"name": "scenarios", "model": "scenarios", "rotate": _ai_axis(fixed={"t2": "ai"}),
+             "prompts": {"system": "sys", "user": "make {n}\n{ai_text}\nfor {trait_name}"}}
+    out, ctx = _run(monkeypatch, tmp_path, stage, _cfg(), [DISTINCT[:2]] * 4, capture=seen)
+    t1 = [r["ai"] for r in out if r["trait_id"] == "t1"]
+    t2 = [r["ai"] for r in out if r["trait_id"] == "t2"]
+    assert sorted(t1) == ["ai", "ai", "none", "none"], t1
+    assert t2 == ["ai"] * 4, t2
+    assert all(r["ai_text"] == ("- AI-HALF" if r["ai"] == "ai" else "- NO-AI") for r in out)
+    assert not any("NO-AI" in c["user"] for c in seen if "for Honesty" in c["user"])
+
+
+def test_a_fixed_label_outside_the_weights_is_refused():
+    stage = {"name": "scenarios", "model": "scenarios", "rotate": _ai_axis(fixed={"t2": "other"}),
+             "prompts": {"system": "sys", "user": "make {n} {ai_text}"}}
+    with pytest.raises(ValueError, match="not in weights"):
+        ops.OPERATORS["scenarios"](stage, _cfg())
+
+
+def test_fixed_without_per_trait_is_refused():
+    axis = _ai_axis(fixed={"t2": "ai"}); axis["ai"]["per_trait"] = False
+    stage = {"name": "scenarios", "model": "scenarios", "rotate": axis,
+             "prompts": {"system": "sys", "user": "make {n} {ai_text}"}}
+    with pytest.raises(ValueError, match="per_trait"):
+        ops.OPERATORS["scenarios"](stage, _cfg())
+
+
+def test_a_fixed_unit_the_run_lacks_is_refused(monkeypatch, tmp_path):
+    stage = {"name": "scenarios", "model": "scenarios", "rotate": _ai_axis(fixed={"t9": "ai"}),
+             "prompts": {"system": "sys", "user": "make {n} {ai_text}"}}
+    with pytest.raises(ValueError, match="t9"):
+        _run(monkeypatch, tmp_path, stage, _cfg(), [DISTINCT[:2]] * 4)
+
+
+def test_unit_weights_give_one_unit_its_own_split(monkeypatch, tmp_path):
+    """A unit with `unit_weights` gets that split across its calls; the rest stay even."""
+    stage = {"name": "scenarios", "model": "scenarios",
+             "rotate": _ai_axis(unit_weights={"t2": {"ai": 3, "none": 1}}),
+             "prompts": {"system": "sys", "user": "make {n}\n{ai_text}\nfor {trait_name}"}}
+    cfg = _cfg(scenarios_per_trait=4, scenarios_per_call=1)
+    out, _ = _run(monkeypatch, tmp_path, stage, cfg, [DISTINCT[i:i + 1] for i in range(8)])
+    t1 = sorted(r["ai"] for r in out if r["trait_id"] == "t1")
+    t2 = sorted(r["ai"] for r in out if r["trait_id"] == "t2")
+    assert t1 == ["ai", "ai", "none", "none"], t1
+    assert t2 == ["ai", "ai", "ai", "none"], t2
+
+
+def test_unit_weights_with_a_label_outside_the_weights_is_refused():
+    stage = {"name": "scenarios", "model": "scenarios",
+             "rotate": _ai_axis(unit_weights={"t2": {"other": 1}}),
+             "prompts": {"system": "sys", "user": "make {n} {ai_text}"}}
+    with pytest.raises(ValueError, match="unit_weights"):
+        ops.OPERATORS["scenarios"](stage, _cfg())
+
+
+def test_a_unit_both_fixed_and_weighted_is_refused():
+    stage = {"name": "scenarios", "model": "scenarios",
+             "rotate": _ai_axis(fixed={"t2": "ai"}, unit_weights={"t2": {"ai": 1, "none": 1}}),
+             "prompts": {"system": "sys", "user": "make {n} {ai_text}"}}
+    with pytest.raises(ValueError, match="both"):
+        ops.OPERATORS["scenarios"](stage, _cfg())
