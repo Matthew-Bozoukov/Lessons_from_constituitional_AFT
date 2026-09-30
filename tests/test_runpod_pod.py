@@ -78,18 +78,44 @@ def test_bootstrap_checks_out_the_exact_sha_and_is_valid_bash():
     script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"))
     pod._check_bash(script)  # raises if bash cannot parse it
     # Detached at the SHA, never at the branch tip: the branch can move while a pod boots.
-    assert "git checkout --detach abc1234" in script
-    assert "git clone --branch main https://github.com/o/r.git /root/work" in script
+    assert "git checkout -q --detach abc1234" in script
+    assert "git remote add origin https://github.com/o/r.git" in script
+    assert "git fetch -q origin main" in script
     assert "uv sync" in script
     # sshd and the log server come up BEFORE the slow work, or a stall is undiagnosable.
-    assert script.index("sshd") < script.index("git clone")
+    assert script.index("sshd") < script.index("git fetch")
     assert script.index("http.server 8080") < script.index("curl -LsSf https://astral.sh/uv")
+
+
+def test_the_clone_survives_a_dir_that_already_exists():
+    # `--push_env` writes /root/work/.env while the boot is still installing uv, and RunPod
+    # restarts a container whose boot failed WITH its disk. `git clone` into a non-empty dir
+    # fails in seconds; 2026-09-28 that made two eval pods crash-loop ~100 times each, each
+    # life too short for sshd, so the pod was RUNNING with no IP and no boot log to read.
+    script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"))
+    assert "git clone" not in script
+    assert "if [ ! -d .git ]; then git init -q && git remote add origin" in script
+    assert "mkdir -p /root/work && cd /root/work" in script
+
+
+def test_only_a_train_pod_builds_the_causal_conv1d_kernel():
+    # causal-conv1d is the lock's `train` extra: a CUDA source build that needs nvcc, which
+    # only KERNEL_BUILD provides. Nothing outside src/train imports it, so a pod that clones
+    # the repo to DRIVE an eval on the box (`--eval --clone-repo`) syncs without it; the
+    # bare sync that tried to build it is what killed both MASK pods on 2026-09-28.
+    train = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"), build_kernels=True)
+    driver = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"),
+                            (["Qwen/Qwen3.6-27B"], None))
+    assert "uv sync --extra train" in train and "BUILDING_CAUSAL_CONV1D" in train
+    assert train.index("export CUDA_HOME=") < train.index("uv sync --extra train")
+    assert "--extra train" not in driver and "CUDA_HOME" not in driver
+    assert "\nuv sync\n" in driver
 
 
 def test_an_eval_pod_bootstrap_installs_vllm_and_serves_nothing():
     script = pod._bootstrap(None, (["Qwen/Qwen3.6-27B", "org/2026-08-31-arm"], "hf_secret"))
     pod._check_bash(script)
-    assert "git clone" not in script and "uv sync" not in script
+    assert "git fetch" not in script and "uv sync" not in script
     assert "sshd" in script  # still reachable; that is what makes it useful
     # sshd and the log server come up BEFORE the slow work, or a stall is undiagnosable.
     assert script.index("sshd") < script.index("uv pip install")
@@ -110,7 +136,7 @@ def test_an_eval_pod_can_also_carry_the_repo_so_the_eval_runs_on_the_box():
     script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"),
                             (["Qwen/Qwen3.6-27B"], None))
     pod._check_bash(script)
-    assert "git clone" in script and "uv sync" in script
+    assert "git fetch -q origin main" in script and "uv sync" in script
     assert "uv venv /workspace/vllmenv" in script
     # One READY, naming both, so the boot log says what actually finished.
     assert script.count("echo READY") == 1

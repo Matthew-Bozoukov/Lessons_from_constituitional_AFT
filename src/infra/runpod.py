@@ -959,20 +959,23 @@ def _pinned_vllm() -> str:
     return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
 
 
-# causal-conv1d is an sdist in the lock (no wheel for its torch/CUDA; docs/GOTCHAS.md
-# 2026-09-21) that `uv sync` compiles on a TRAIN pod against the venv's own torch and the pip
-# CUDA layout's nvcc. Two syncs: the first installs everything but the kernel (so torch and
-# nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc on
-# PATH, and an unversioned libcudart.so the linker wants and the pip layout does not ship —
-# and the second sync builds the kernel. The package, its version and its path-free build
-# variables (pyproject.toml `extra-build-variables`) are the lock's; this is only where the
-# pod's CUDA lives.
-KERNEL_BUILD = """uv sync --no-install-package causal-conv1d
+# causal-conv1d is the lock's `train` extra: an sdist (no wheel for its torch/CUDA;
+# docs/GOTCHAS.md 2026-09-21) compiled on a TRAIN pod against the venv's own torch and the
+# pip CUDA layout's nvcc. Two syncs: the first is the plain sync every clone gets (so torch
+# and nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc
+# on PATH, and an unversioned libcudart.so the linker wants and the pip layout does not
+# ship — and the second sync adds the extra, which builds the kernel. The package, its
+# version and its path-free build variables (pyproject.toml `extra-build-variables`) are
+# the lock's; this is only where the pod's CUDA lives. A pod that clones the repo to DRIVE
+# an eval on the box stops after the first sync: nothing outside src/train imports the
+# kernel, and a bare `uv sync` that tried to build it died on the missing nvcc and
+# crash-looped the container (2026-09-28, docs/GOTCHAS.md).
+KERNEL_BUILD = """uv sync
 CU={workdir}/.venv/lib/python3.12/site-packages/nvidia/cu13
 mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
 export CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib
 echo BUILDING_CAUSAL_CONV1D
-uv sync"""
+uv sync --extra train"""
 
 
 def _bootstrap(clone: tuple[str, str, str] | None,
@@ -989,8 +992,10 @@ def _bootstrap(clone: tuple[str, str, str] | None,
     Two slow halves, at least one of them, and which ones ran IS the pod's shape:
 
     * `clone` (url, branch, sha) — this repo at that exact commit, `uv sync`. What a
-      TRAIN pod is, and what an eval pod adds under `--clone-repo` so the eval itself can
-      run on the box (the driver needs the code; serving does not).
+      TRAIN pod is (`build_kernels`: the sync also builds the `train` extra's CUDA
+      kernel, KERNEL_BUILD), and what an eval pod adds under `--clone-repo` so the eval
+      itself can run on the box (the driver needs the code, not the kernel; serving
+      needs neither).
     * `weights` (repos, hf_token) — the EVAL pod: a vLLM venv and every named repo
       pre-pulled, so `uv run evals --server` finds a host ready to serve on. Which repo
       is a base and which an adapter does not matter here; `hf download` is the same
@@ -1006,13 +1011,19 @@ def _bootstrap(clone: tuple[str, str, str] | None,
     blocks, ready = [], []
     if clone:
         url, branch, sha = clone
+        # init + fetch into the workdir, never `git clone` INTO it: the dir can already exist
+        # (`--push_env` writes .env there while the boot is still installing uv, and a
+        # container RunPod restarted after a failed boot keeps its disk), and a clone into a
+        # non-empty dir fails in seconds, so every restart died before sshd came up and the
+        # pod was a RUNNING card with no IP and a 404 boot log (2026-09-28, docs/GOTCHAS.md).
         blocks.append(f"""echo CLONING
-git clone --branch {branch} {url} {WORKDIR}
-cd {WORKDIR}
+mkdir -p {WORKDIR} && cd {WORKDIR}
+if [ ! -d .git ]; then git init -q && git remote add origin {url}; fi
+git fetch -q origin {branch}
 # Detached at the exact SHA, never at the branch tip: the branch can move while the pod
 # boots, and a run whose code silently differs from the commit you asked for is the
 # failure this whole path exists to remove.
-git checkout --detach {sha}
+git checkout -q --detach {sha}
 """ + (KERNEL_BUILD.format(workdir=WORKDIR) if build_kernels else "uv sync"))
         ready.append(sha)
     if weights:
@@ -1464,10 +1475,11 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         raise
 
     # A training pod is handed back only once it can train. `uv run train` launched before
-    # the boot's own `uv sync` finishes starts a SECOND sync without the boot's CUDA_HOME,
-    # and causal-conv1d's build dies on a missing nvcc before any Python runs -- no check
-    # inside the trainer can catch it (2026-09-28: two of three da arms lost ~20 min of
-    # H200 this way). The boot echoes `READY <sha>` only after the clone, sync and build.
+    # the boot's own `uv sync --extra train` finishes runs against an env without the
+    # kernel (an inexact sync adds nothing), and the trainer refuses to pack -- or, before
+    # the extra existed, started a SECOND sync without the boot's CUDA_HOME and died on a
+    # missing nvcc (2026-09-28: two of three da arms lost ~20 min of H200 this way). The
+    # boot echoes `READY <sha>` only after the clone, sync and build.
     if train:
         print(f">>> waiting for the boot to finish (READY {sha[:8]}) — {boot_log_url(pod_id)}",
               flush=True)

@@ -2978,7 +2978,6 @@ dependencies = [
     { name = "anthropic" },
     { name = "beautifulsoup4" },
     { name = "bitsandbytes", marker = "sys_platform == 'linux'" },
-    { name = "causal-conv1d", marker = "sys_platform == 'linux'" },
     { name = "datasets" },
     { name = "fire" },
     { name = "flash-linear-attention", marker = "sys_platform == 'linux'" },
@@ -3010,6 +3009,11 @@ dependencies = [
     { name = "wandb", marker = "sys_platform == 'linux'" },
 ]
 
+[package.optional-dependencies]
+train = [
+    { name = "causal-conv1d", marker = "sys_platform == 'linux'" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -3021,7 +3025,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=0.120.2" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "bitsandbytes", marker = "sys_platform == 'linux'" },
-    { name = "causal-conv1d", marker = "sys_platform == 'linux'", specifier = "==1.7.0" },
+    { name = "causal-conv1d", marker = "sys_platform == 'linux' and extra == 'train'", specifier = "==1.7.0" },
     { name = "datasets", specifier = ">=5.0.0" },
     { name = "fire", specifier = ">=0.7.1" },
     { name = "flash-linear-attention", marker = "sys_platform == 'linux'", specifier = ">=0.2.2" },
@@ -3052,6 +3056,7 @@ requires-dist = [
     { name = "vllm", marker = "sys_platform == 'linux'", specifier = "==0.26.0" },
     { name = "wandb", marker = "sys_platform == 'linux'" },
 ]
+provides-extras = ["train"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
