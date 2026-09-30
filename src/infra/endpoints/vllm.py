@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import time
@@ -673,6 +674,18 @@ class LocalExec:
 _HOST_PORT = re.compile(r"^(?P<host>[^:/@]+(?:@[^:/]+)?):(?P<port>\d+)$")
 
 
+def local_port_in_use(bind: str, port: int) -> bool:
+    """True when something already accepts connections on `bind:port` on this machine.
+
+    Checked before `ssh -L` is issued: a taken port makes the forward fail with one line
+    on stderr and no exit, so the run would go on talking to whoever holds the port —
+    another arm's tunnel, with that arm's server flags (docs/GOTCHAS.md 2026-09-08).
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(1.0)
+        return probe.connect_ex((bind, port)) == 0
+
+
 def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
     """The `ssh` argv prefix and the hostname to hand it, for an alias or an address:port.
 
@@ -891,6 +904,15 @@ class SshExec:
             print("!!! SSH launch acknowledgement timed out; checking the original "
                   "server through its health endpoint without relaunching", flush=True)
         argv, target = ssh_argv(self.host, self.identity)
+        # A local listener already on the bind port means ssh's -L silently fails
+        # ("cannot listen to port") and every request goes to whatever holds it — another
+        # arm's server, with that arm's flags (2026-09-29: an ODCV run scored 0 tool calls
+        # against a concurrent MASK arm's tunnel on 8000). Two arms, two ports.
+        if local_port_in_use(self.bind, self.port):
+            raise RuntimeError(
+                f"{self.bind}:{self.port} is already in use locally, so the tunnel to "
+                f"{self.host} cannot bind there; run this arm with `--port <free port>` "
+                f"(one port per concurrent arm)")
         self.tunnel = subprocess.Popen(
             [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 

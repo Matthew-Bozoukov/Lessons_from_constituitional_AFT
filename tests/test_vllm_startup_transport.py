@@ -52,6 +52,21 @@ def test_lost_launch_acknowledgement_never_dispatches_twice(monkeypatch):
     monkeypatch.setattr(executor,'_ssh',dispatch)
     tunnel=Mock()
     monkeypatch.setattr(vllm.subprocess,'Popen',tunnel)
+    monkeypatch.setattr(vllm,'local_port_in_use',lambda *a:False)
     executor.start_server(['python','-m','vllm.entrypoints.openai.api_server'],{})
     dispatch.assert_called_once()
     tunnel.assert_called_once()
+
+
+def test_taken_local_port_refuses_before_tunnelling(monkeypatch):
+    # 2026-09-29: ssh -L on a port another arm's tunnel holds fails silently, and every
+    # request then reaches that other arm's server. The bind is checked before the tunnel.
+    executor=vllm.SshExec('test-host',port=8000)
+    monkeypatch.setattr(executor,'write_file',lambda *a:'/workspace/start.sh')
+    monkeypatch.setattr(executor,'_ssh',Mock(return_value='started'))
+    tunnel=Mock()
+    monkeypatch.setattr(vllm.subprocess,'Popen',tunnel)
+    monkeypatch.setattr(vllm,'local_port_in_use',lambda bind,port:(bind,port)==('127.0.0.1',8000))
+    with pytest.raises(RuntimeError,match='--port'):
+        executor.start_server(['python','-m','vllm.entrypoints.openai.api_server'],{})
+    tunnel.assert_not_called()
