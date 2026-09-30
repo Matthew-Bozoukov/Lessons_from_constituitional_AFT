@@ -12,6 +12,10 @@ Audited dataset: `dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b` at
 `ec7538a3aea5e325e8649d40646a391a80c00bbd`. Data SHA256:
 `d792bcbb3e9ed62d6b02b010db3add413e931a142ce31c824ca39c7143d91b6c`.
 
+Published metadata revision: [`4ffd1f931ebb34b25c68c4b784059f98c1617add`](https://huggingface.co/datasets/dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b/tree/4ffd1f931ebb34b25c68c4b784059f98c1617add).
+Every newly uploaded file was downloaded and byte-compared; the unchanged dataset
+hash was verified at this revision. Audit code commit: `7b01e1b0`.
+
 ## Complete disposition
 
 | Current CoT source | Assistant turns | Action in this audit |

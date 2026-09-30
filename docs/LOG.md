@@ -14,6 +14,7 @@ Raw-token/prompt checks pass for 1,070; three early entries have parsed receipts
 only. No training data changes, no new inference, $0 additional inference cost.
 Historical strict failures remain failures; their model-provenance status is now
 resolved. **Next:** use the verified mixture; no training/eval started.
+Published and byte-verified metadata revision: `4ffd1f931ebb34b25c68c4b784059f98c1617add`.
 [Full audit and evidence limits](gptoss120b/2026-09-30_native_cot_provenance.md).
 
 ## 2026-09-30 - Reuse valid cached GPT-OSS answer alternatives without new inference
