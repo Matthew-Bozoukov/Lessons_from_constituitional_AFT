@@ -15,9 +15,9 @@ COLORS = {
     "DA + tools": "#9c6500",
 }  # fixed arm colours (DA purple, da-tools ochre)
 EVALS = [
-    ("MASK", "Chatting"),
-    ("ODCV", "Doing a task"),
-    ("Hospital", "Working with\nanother agent"),
+    ("MASK", "MASK"),
+    ("ODCV", "ODCV"),
+    ("Hospital", "Hospital"),
 ]
 
 
@@ -57,7 +57,7 @@ def main():
         0.02,
         0.015,
         "Share of deliberative turns containing the canary word. Deliberation rated per turn by Gemini 3 Flash.\n"
-        "Chatting = MASK, doing a task = ODCV, working with another agent = Hospital. Qwen3.6-27B, one seed per model.",
+        "Qwen3.6-27B, one seed per model.",
         fontsize=8,
         color="#666",
     )
