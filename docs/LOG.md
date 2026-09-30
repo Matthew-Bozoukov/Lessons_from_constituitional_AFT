@@ -3,6 +3,19 @@
 
 
 
+## 2026-09-30 - Verify all existing GPT-OSS CoT provenance; resolve 508 misleading labels
+
+**Hypothesis:** the 508 failed later replacements may already have native GPT-OSS
+traces from the original conversion. **Method:** exhaustively match all 1,073
+current traces to generation receipts, verify pinned Hub receipt hashes, reparse
+raw tokens and reproduce prompts where available. **Result:** all 508 match
+accepted original GPT-OSS generations; all 1,073 current CoTs have native provenance.
+Raw-token/prompt checks pass for 1,070; three early entries have parsed receipts
+only. No training data changes, no new inference, $0 additional inference cost.
+Historical strict failures remain failures; their model-provenance status is now
+resolved. **Next:** use the verified mixture; no training/eval started.
+[Full audit and evidence limits](gptoss120b/2026-09-30_native_cot_provenance.md).
+
 ## 2026-09-30 - Reuse valid cached GPT-OSS answer alternatives without new inference
 
 **Hypothesis:** some strict reference-equivalence failures can be reused when the

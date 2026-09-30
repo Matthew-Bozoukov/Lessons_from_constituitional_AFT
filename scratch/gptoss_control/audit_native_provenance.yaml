@@ -1,0 +1,12 @@
+# ABOUTME: Pin the existing GPT-OSS dataset and both generation stages for an offline provenance audit.
+# ABOUTME: Only Hugging Face reads and optional metadata publication; no model or judge calls.
+source_repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
+source_revision: ec7538a3aea5e325e8649d40646a391a80c00bbd
+source_file_sha256: d792bcbb3e9ed62d6b02b010db3add413e931a142ce31c824ca39c7143d91b6c
+original_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
+original_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
+original_output: output/gptoss_control
+strict_output: output/gptoss_control/reasoning_replace_qualified_2026-09-29
+current_output: output/gptoss_control/cached_answer_review_2026-09-30/dataset
+output: output/gptoss_control/native_provenance_2026-09-30
+base_model: openai/gpt-oss-120b

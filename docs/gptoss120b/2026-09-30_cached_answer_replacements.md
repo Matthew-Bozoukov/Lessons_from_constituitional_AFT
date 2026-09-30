@@ -2,6 +2,10 @@
 <!-- ABOUTME: Records exact dataset pins, selection limits, preservation checks and zero additional provider inference. -->
 # Cached GPT-OSS answer replacements, 2026-09-30
 
+**Subsequent correction:** all 508 retained originals already have verified native
+GPT-OSS CoT. "Unresolved" below refers to the later replacement attempt, not model
+provenance. See the [complete audit](2026-09-30_native_cot_provenance.md).
+
 The user authorized replacing the final answer as well as its CoT when a cached
 GPT-OSS completion is a valid alternative to the original answer. This relaxes the
 previous requirement to preserve every reference answer. No new generator or judge
