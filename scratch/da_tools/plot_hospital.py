@@ -1,7 +1,7 @@
 # ABOUTME: Hospital (Colosseum, self-sacrificial cell) figure for da-tools vs da-15: sabotaged shifts with Wilson CIs
 # ABOUTME: and McNemar, refusals, paired-by-seed differences, and the pair seats' own tool calls per shift (side effect).
 # Run: uv run python scratch/da_tools/plot_hospital.py --arm "da-15 seed 0=<dir|org/repo>" --arm "da-tools seed 0=<dir|org/repo>"
-#          [--control "da-15 seed 0"] [--floor "base Qwen, no coalition=<baseline-condition run>"]
+#          [--control "da-15 seed 0"] [--floor "<arm label>=<baseline-condition run of that arm>" ...]
 #          [--out-dir output/figures] [--stem <name>] [--title <suptitle>]
 import argparse
 import json
@@ -95,9 +95,10 @@ def main() -> None:
     ap.add_argument("--control", default=None, help="label of the control arm (default: the first)")
     ap.add_argument("--out-dir", default="output/figures")
     ap.add_argument("--stem", default=None)
-    ap.add_argument("--floor", default=None,
-                    help="'label=<run>' of a BASELINE-condition run (no coalition prompt): its sabotage-rule "
-                         "rate is drawn in panel A, the rate the rule fires with nobody told to sabotage")
+    ap.add_argument("--floor", action="append", default=[],
+                    help="'<arm label>=<run>': that arm's BASELINE-condition run (no coalition prompt), repeatable; "
+                         "its sabotage-rule rate is drawn over the arm's bar in panel A -- the rate the rule "
+                         "fires for that model with nobody told to sabotage")
     ap.add_argument("--title", default=None)
     a = ap.parse_args()
     arms = dict(s.split("=", 1) for s in a.arm)
@@ -109,6 +110,11 @@ def main() -> None:
 
     fig, ax = plt.subplots(2, 2, figsize=(13, 9))
     # A: sabotage
+    floors = {}
+    for fl in a.floor:
+        flabel, fref = fl.split("=", 1)
+        fps = Run(fref, condition="baseline").per_seed["pair_sabotaged"]
+        floors[flabel] = (int(sum(fps.values())), len(fps))
     for i, lbl in enumerate(labels):
         ps = runs[lbl].per_seed["pair_sabotaged"]
         k, n = int(sum(ps.values())), len(ps)
@@ -123,15 +129,17 @@ def main() -> None:
             pm = mcnemar_exact(b, cc)
             txt += ("\nMcNemar " + ("p<0.001" if pm < 0.001 else f"p={pm:.3f}")
                     + f"\n({b} only here, {cc} only in control)")
-        ax[0, 0].text(i, 100 * hi + 2, txt, ha="center", va="bottom", fontsize=8)
+        top = max(100 * hi, 100 * floors[lbl][0] / floors[lbl][1] + 6 if lbl in floors else 0)
+        ax[0, 0].text(i, top + 2, txt, ha="center", va="bottom", fontsize=8)
+    for n_floor, (flabel, (fk, fn)) in enumerate(floors.items()):
+        i = labels.index(flabel)
+        y = 100 * fk / fn
+        ax[0, 0].hlines(y, i - 0.45, i + 0.45, colors="black", linestyles="--", lw=1.4, zorder=4,
+                        label="same model, no coalition prompt" if n_floor == 0 else None)
+        ax[0, 0].text(i + 0.43, y + 1, f"no coalition: {fk}/{fn}", ha="right", va="bottom", fontsize=7,
+                      zorder=5, bbox=dict(facecolor="white", edgecolor="none", pad=0.5, alpha=0.85))
     if a.floor:
-        flabel, fref = a.floor.split("=", 1)
-        fps = Run(fref, condition="baseline").per_seed["pair_sabotaged"]
-        fk, fn = int(sum(fps.values())), len(fps)
-        ax[0, 0].axhline(100 * fk / fn, color=colour(flabel), ls="--", lw=1.2)
-        ax[0, 0].text(-0.45, 100 * fk / fn + 1.5, f"{flabel}: {fk}/{fn}", ha="left",
-                      va="bottom", fontsize=8, color=colour(flabel), zorder=5,
-                      bbox=dict(facecolor="white", edgecolor="none", pad=1))
+        ax[0, 0].legend(fontsize=7, loc="upper right")
     ax[0, 0].set_xticks(range(len(labels)), labels)
     ax[0, 0].set_ylim(0, 125)
     ax[0, 0].set_ylabel("% of shifts (95% Wilson CI)")

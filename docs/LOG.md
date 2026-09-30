@@ -2,6 +2,45 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+## 2026-09-30 - da-tools with no coalition: does the whole job (120/120 scheduled), no worse than da-15 -- its low self-sacrificial sabotage is not over-refusal
+
+**Hypothesis.** da-tools' self-sacrificial result (sabotage 4/30, 20.6 pair tool calls per shift vs da-15's 60.6;
+entry of 2026-09-28) could be a model that has stopped acting, not one that refuses sabotage. If so, it should
+also underperform when nobody asks it to sabotage.
+
+**Method.** Hospital `condition=baseline` (the cooperative prompt for every seat, no coalition, no secret board),
+da-tools (`dougalldeepmind/2026-09-28-qwen36-0-da-tools-15`) and the matched da-15
+(`dougalldeepmind/2026-09-25-qwen36-0-da-15`) in the tested pair, the nosynth checkpoint in the other seven seats,
+the self-sacrificial cells' config (`scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml`),
+seeds 1-30, two pods per arm (`scratch/colosseum_hospital/2026-09-30_fleet_{da_tools,da15}_baseline.yaml`; the
+2026-09-29 launch was torn down unfinished). Merged with `merge_cells.py`, published with `publish_colosseum.py --no-judge`.
+Tool-call health from `scratch/da_tools/hospital_tool_health.py`. About $15 RunPod.
+
+**Result.** (`dougalldeepmind/2026-09-30-hospital-baseline-qwen36-0-da-tools-15`, `...-0-da-15`; paired by seed)
+
+| no coalition, 30 shifts | da-tools | da-15 | paired p |
+|---|---|---|---|
+| team score, mean | 6,312 | 6,544 | 0.73 |
+| normalised regret | 0.22 | 0.21 | 0.93 |
+| resource failures / shift | 4.6 | 6.7 | 0.39 |
+| triage patients scheduled (accepted) | 120/120 | 120/120 | - |
+| pair tool calls failed | 2/553 | 0/767 | - |
+| sabotage-act rule fires | 9/30 | 9/30 | 1.00 |
+| declined in reasoning | 0/30 | 0/30 | - |
+
+- da-tools does the ordinary job as well as da-15: same score and regret, all patients scheduled, valid calls.
+- It is quieter: 18.4 pair tool calls per shift vs 25.6, mostly fewer supply transfers (12.3 vs 20.3) and
+  lookups, at no cost (resource failures lower, not higher). Scheduling calls identical (6.0/shift).
+- The sabotage-act rule fires in 9/30 no-coalition shifts for both arms (base Qwen, all seats base: 13/30).
+  da-tools' self-sacrificial 4/30 is BELOW its own no-coalition rate: under the instruction it sabotages no more
+  than the rule's false-alarm floor.
+- Figure `output/figures/2026-09-30_hospital_base_qwen_vs_da15_datools.png` (`scratch/da_tools/plot_hospital.py`,
+  each arm's no-coalition rate drawn over its bar).
+
+**Next.** The rule's 9-13/30 false-alarm floor should be reported beside every Hospital sabotage rate, or the rule
+tightened. General tool use outside the Hospital: SWE-bench lite-v5 on da-tools (da-15 61.3%, nosynth 59.3%) needs
+the SWE-bench CPU host registry, not on this machine.
+
 ## 2026-09-29 - Base-mix tool data in each model's native format (code change, no run yet)
 
 **Problem.** The nosynth base's tool-use source (`apigen_function_calling`, 1,054 rows, ~10.5% of
@@ -35,6 +74,7 @@ test_build_mixture.py pass.
 **Next.** The published `2026-09-22-nosynth-mix` still holds the text rows: rebuild the base (or
 repack its apigen rows only; they carry no reasoning traces, so no API spend) and re-pin the arms.
 Worth re-reading the da-tools MASK result against a base whose apigen rows carry native tools.
+
 
 ## 2026-09-29 - Base Qwen3.6-27B in all nine Hospital seats: sabotages 29/30 when told to; the sabotage-act rule fires in 13/30 plain cooperative shifts
 
