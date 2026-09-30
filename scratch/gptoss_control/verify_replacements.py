@@ -57,13 +57,24 @@ report={'source_repo':cfg.source_repo,'source_revision':cfg.source_revision,'row
  'all_non_cot_fields_identical':True,'all_failed_entries_identical':True,
  'by_source':{k:dict(v) for k,v in sources.items()},
  'dataset_file_sha256':hashlib.sha256((out/'dataset/mixture.jsonl').read_bytes()).hexdigest()}
+accounting=json.loads((out/'backfill_report.json').read_text())
+qualification_cost=0
+qualification_paths=list(out.glob('judge_qualification*/results.json'))+list(Path(cfg.backfill.reuse_generations_from).glob('judge_qualification*/results.json'))
+for path in qualification_paths:
+    qualification_cost+=sum(r.get('judge_cost') or 0 for r in json.loads(path.read_text(encoding='utf-8')))
+report['accounting']={'generation_usd_upper':accounting['target_cost_upper_usd'],
+    'judging_usd_upper':accounting['judge_cost_upper_usd'], 'qualification_usd':qualification_cost,
+    'total_usd_upper':accounting['target_cost_upper_usd']+accounting['judge_cost_upper_usd']+qualification_cost,
+    'note':'Includes prior discarded judge runs and conservative reservations for interrupted/unsettled requests; not an invoice.'}
+report['attempt_receipts']=len(records)
+report['attempt_status_counts']=dict(collections.Counter(r['status'] for r in records))
 write(out/'replacement_verification.json',report)
 write(out/'dataset/replacement_verification.json',report)
 lines=['# Failed CoT replacements','',
  'All indices are zero-based in the pinned source mixture. These entries retain their original CoT and answer unchanged.',
  '', '| Row | Assistant turn | Source | Attempts | Last outcome |','|---:|---:|---|---:|---|']
 for r in sorted(failures,key=lambda r:(r['row'],r['turn'])):
- last=r['attempts'][-1]
+ last=max(r['attempts'],key=lambda a:a['attempt'])
  reason=(last.get('judge') or {}).get('raw') or last.get('error_type') or ('No valid nonempty completed reasoning trace: '+str(last.get('termination')))
  reason=reason.replace('\n',' ').replace('|','/').replace('```','')
  lines.append(f"| {r['row']} | {r['turn']} | {r['source']} | {r['attempt_count']} | {reason} |")

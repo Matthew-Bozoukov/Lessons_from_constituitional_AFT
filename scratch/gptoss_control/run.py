@@ -482,6 +482,14 @@ def publish_data(cfg, out):
     shutil.copytree(out/'source',final/'parent_provenance',dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('mixture.jsonl'))
     shutil.copytree(out/'backfill_receipts',final/'backfill_receipts',dirs_exist_ok=True)
+    for extra in ["inherited_costs.json", "judge_qualification", "prior_attempts", "resumed_judge_receipts"]:
+        item=out/extra
+        if item.is_dir(): shutil.copytree(item,final/extra,dirs_exist_ok=True)
+        elif item.is_file(): shutil.copy2(item,final/extra)
+    if cfg.backfill.get('reuse_generations_from'):
+        prior_path=ROOT/str(cfg.backfill.reuse_generations_from)
+        for item in prior_path.glob('judge_qualification*'):
+            if item.is_dir(): shutil.copytree(item,final/('prior_'+item.name),dirs_exist_ok=True)
     OmegaConf.save(cfg,final/'conversion_config.yaml')
     write(final/'run_meta.json',provenance(cfg))
     for src in [Path(__file__),Path(__file__).with_name('convert.py'),ROOT/'src/infra/endpoints/harmony.py']:
