@@ -1,0 +1,22 @@
+# ABOUTME: Restore 119 original answers and generate explicitly answer-conditioned GPT-OSS rationales.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/answer_conditioned.py <qualify|pilot|run|publish>
+source_repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
+source_revision: 4ffd1f931ebb34b25c68c4b784059f98c1617add
+original_repo: dougalldeepmind/2026-09-22-nosynth-mix-gpt-oss-120b
+original_revision: d74e42e4df0a0eb293cbaa4ab8cd58e08725e9da
+output: output/gptoss_control/answer_conditioned_2026-09-30
+base_model: openai/gpt-oss-120b
+reasoning: medium
+seed: 0
+generation:
+  temperature: 0.7
+  max_tokens: 8192
+  attempts: 3
+  concurrency: 12
+  max_cost_usd: 5
+judge:
+  model: google/gemini-3.1-pro-preview
+  max_tokens: 4096
+  max_cost_usd: 10
+train:
+  max_length: 32768
