@@ -710,9 +710,177 @@ def evaluate(cfg,out,smoke=False):
     subprocess.run(args,check=True,cwd=ROOT)
 
 
+def adopt_cached_answers(cfg, out):
+    """Apply explicitly reviewed cached answer/trace pairs; never invoke a model."""
+    prior = ROOT / cfg.prior_output
+    source = prior / 'dataset/mixture.jsonl'
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == cfg.source_file_sha256
+    before = readrows(source)
+    after = json.loads(json.dumps(before))
+    failures = readrows(prior / 'failed_replacements.jsonl')
+    failed = {(r['row'], r['turn']): r for r in failures}
+    replacements = []
+    seen = set()
+    for decision in cfg.review.approved:
+        i, j, attempt = int(decision.row), int(decision.turn), int(decision.attempt)
+        assert (i, j) in failed and (i, j) not in seen
+        seen.add((i, j))
+        receipt_name = f'backfill_receipts/{i}_{j}_{attempt}.json'
+        receipt_path = prior / receipt_name
+        receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+        assert (receipt['row'], receipt['turn'], receipt['attempt']) == (i, j, attempt)
+        assert receipt['termination'] == 'stop_sequence'
+        response = receipt['response']
+        original = before[i]['messages'][j]
+        assert original['role'] == response['role'] == 'assistant'
+        assert original.get('reasoning_content') and not original.get('tool_calls')
+        assert not response.get('tool_calls') and response.get('content', '').strip()
+        assert receipt['trace'].strip() == response['reasoning_content'].strip()
+        revised = after[i]['messages'][j]
+        revised['content'] = response['content']
+        revised['reasoning_content'] = response['reasoning_content']
+        replacements.append({**OmegaConf.to_container(decision), 'source': before[i]['source'],
+            'receipt': receipt_name, 'receipt_sha256': hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+            'old_message_sha256': digest(original), 'new_message_sha256': digest(revised),
+            'review_method': 'offline Codex review; historical equivalence verdict not overridden',
+            'historical_equivalence_judge': receipt.get('judge')})
+    # Verify the full corpus, not just the accepted targets.
+    for i, (a, b) in enumerate(zip(before, after)):
+        normalized = json.loads(json.dumps(b))
+        assert len(a['messages']) == len(b['messages'])
+        for j, (old, new) in enumerate(zip(a['messages'], normalized['messages'])):
+            if (i, j) in seen:
+                for key in ['content', 'reasoning_content']:
+                    new[key] = old[key]
+            else:
+                assert old == new
+        assert normalized == a, f'Unexpected field change at row {i}'
+    final = out / 'dataset'
+    final.mkdir(exist_ok=True)
+    saverows(final / 'mixture.jsonl', after)
+    remaining = [{**r, 'current_disposition': 'retained_unchanged',
+        'current_reason': 'No independently approved cached alternative in this conservative offline pass; '
+                          'the historical equivalence rejection does not establish incorrectness.'}
+        for key, r in failed.items() if key not in seen]
+    saverows(final / 'failed_replacements.jsonl', remaining)
+    write(final / 'failed_replacement_indices.json', [
+        {k: r[k] for k in ['row', 'turn', 'source', 'attempt_count']} for r in remaining])
+    saverows(final / 'cached_answer_replacements.jsonl', replacements)
+    prior_summary = json.loads((prior / 'dataset/replacement_verification.json').read_text())
+    report = {**provenance(cfg), 'parent': {'repo': cfg.source_repo, 'revision': cfg.source_revision},
+        'rows': len(after), 'assistant_turns': sum(m['role']=='assistant' for r in after for m in r['messages']),
+        'targeted_existing_cot_turns': 1073, 'previous_strict_acceptances_preserved': prior_summary['accepted_replacements'],
+        'cached_answer_and_cot_pairs_adopted': len(replacements),
+        'actually_changed_answers': sum(before[i]['messages'][j]['content'] != after[i]['messages'][j]['content'] for i,j in seen),
+        'actually_changed_trace_strings': sum(before[i]['messages'][j]['reasoning_content'] != after[i]['messages'][j]['reasoning_content'] for i,j in seen),
+        'accepted_replacements_total': prior_summary['accepted_replacements'] + len(replacements),
+        'failed_replacements_retained_unchanged': len(remaining),
+        'all_unselected_messages_and_other_fields_identical': True,
+        'untraced_assistant_turns_preserved': sum(m['role']=='assistant' and not m.get('reasoning_content') for r in before for m in r['messages']),
+        'new_generator_api_calls': 0, 'new_judge_api_calls': 0, 'new_provider_inference_cost_usd': 0,
+        'prior_accounting': prior_summary['accounting'],
+        'by_source': dict(collections.Counter(r['source'] for r in replacements)),
+        'review_limitations': cfg.review.selection_limitations,
+        'dataset_file_sha256': hashlib.sha256((final/'mixture.jsonl').read_bytes()).hexdigest()}
+    assert report['accepted_replacements_total'] + len(remaining) == 1073
+    assert len(before) == len(after) == 10000
+    assert sum(bool(m.get('reasoning_content')) for r in after for m in r['messages']) == 1073
+    write(final / 'replacement_verification.json', report)
+    stats = audit_data(cfg, out, final/'mixture.jsonl', 'final_audit')
+    stats['reasoning_traces'] = {'model': cfg.base_model, 'family': 'gptoss120b', 'turns': 1073,
+        'prior_cot_only_acceptances': prior_summary['accepted_replacements'],
+        'cached_answer_and_cot_pairs_adopted': len(replacements), 'retained_original_turns': len(remaining)}
+    write(final / 'mixture_stats.json', stats)
+    for name in ['final_audit.json', 'final_audit_examples.json']:
+        shutil.copy2(out/name, final/name)
+    write(final / 'run_meta.json', provenance(cfg))
+    OmegaConf.save(cfg, final/'cached_answer_review.yaml')
+    shutil.copy2(__file__, final/'cached_answer_builder.py')
+    shutil.copy2(Path(__file__).with_name('check_cached_answers.py'), final/'check_cached_answers.py')
+    nominations = []
+    for name in ['candidates.json', 'extra_candidates.json']:
+        for candidate in json.loads((out/name).read_text(encoding='utf-8')):
+            nominations.append({k: candidate[k] for k in ['row','turn','attempt','receipt']})
+    write(final/'cached_answer_review_scope.json', {'nominated_candidates': nominations,
+        'selection': '194 rows nominated from saved equivalence explanations; 95 additional rows nominated '
+                     'using their shortest completed cached answer of at most 1800 characters. '
+                     'Long and factually uncertain candidates were not automatically accepted.',
+        'limits': cfg.review.selection_limitations})
+    lines = ['# Unresolved replacements', '',
+        'These entries keep the parent answer and CoT unchanged. They are unresolved, not certified incorrect.',
+        'The original five-attempt equivalence judgments are in failed_replacements.jsonl.', '',
+        '| Row | Assistant turn | Source | Disposition |', '|---:|---:|---|---|']
+    lines += [f"| {r['row']} | {r['turn']} | {r['source']} | Retain unchanged; no cached alternative approved |" for r in remaining]
+    (final/'failed_replacements.md').write_text('\n'.join(lines)+'\n', encoding='utf-8')
+    print(json.dumps({k: v for k, v in report.items() if k not in {'config', 'prior_accounting'}}, indent=2))
+
+
+def publish_cached_answers(cfg, out):
+    """Publish one atomic revision, preserving the previous stage as an archive."""
+    from huggingface_hub import CommitOperationAdd, CommitOperationDelete
+    from src.infra.huggingface import hf_api, hf_download, gate_push, card_markdown, training_data_tags
+    final = out/'dataset'
+    report = json.loads((final/'replacement_verification.json').read_text())
+    checks = json.loads((final/'cached_answer_checks.json').read_text())
+    assert checks['passed'] and checks['checked_pairs'] == report['cached_answer_and_cot_pairs_adopted']
+    assert checks['dataset_file_sha256'] == report['dataset_file_sha256']
+    assert hashlib.sha256((final/'mixture.jsonl').read_bytes()).hexdigest() == report['dataset_file_sha256']
+    api = hf_api()
+    assert api.dataset_info(cfg.source_repo).sha == cfg.source_revision, 'Remote changed; inspect before publishing'
+    parent = Path(hf_download(cfg.source_repo, 'mixture.jsonl', repo_type='dataset', revision=cfg.source_revision))
+    assert hashlib.sha256(parent.read_bytes()).hexdigest() == cfg.source_file_sha256
+    fields = {'experiment': 'GPT-OSS nosynth cached alternative answers: replace reviewed failed targets with their saved CoT and final answer together',
+        'date_generated': date.today().isoformat(), 'constitution': 'claude_distilled_09_principles (inherited source filtering)',
+        'source_repo': 'teaching_claude_why_replication @ '+provenance(cfg)['git_sha'],
+        'models': {'generator': cfg.base_model, 'reviewer': 'Codex offline review; no new provider calls'},
+        'generation_config': OmegaConf.to_container(cfg), 'schema': 'mixture.jsonl; messages and tools schema unchanged; reviewed targets replace content and reasoning_content together',
+        'provenance': {**provenance(cfg), 'parent': cfg.source_repo, 'parent_revision': cfg.source_revision}}
+    gate_push(cfg.source_repo, fields, what='cached-answer revision')
+    card = card_markdown(fields, front_matter={'configs': [{'config_name': 'default', 'data_files': 'mixture.jsonl', 'default': True}],
+        'tags': training_data_tags('mixture', 'nosynth', fields['constitution'], extra=['gpt-oss', 'harmony'])})
+    card += (f"\n## Current revision\n\nReused {report['cached_answer_and_cot_pairs_adopted']} previously sampled CoT/answer pairs. "
+        f"The {report['previous_strict_acceptances_preserved']} prior CoT-only acceptances remain; "
+        f"{report['failed_replacements_retained_unchanged']} targets retain their original messages. "
+        "All 9,307 untraced assistant turns are unchanged. No new generator or judge API calls, training, or evaluations.\n\n"
+        "This is a conservative offline review, not a new automated validity-judge run or exhaustive labeling of every cached candidate. "
+        "Historical equivalence rejections remain in the raw receipts and must not be read as current validity judgments.\n\n"
+        "[Adopted pairs and provenance](cached_answer_replacements.jsonl) | [Unresolved list](failed_replacements.md) | "
+        "[Checks](cached_answer_checks.json) | [Verification](replacement_verification.json).\n\n"
+        f"Prior stage: `{cfg.source_revision}`. Original stage metadata is archived under `prior_strict_replacement/`; "
+        "raw backfill receipts and attempt ledgers remain unchanged.\n")
+    (final/'README.md').write_text(card, encoding='utf-8')
+    # Move only historical summaries/configs out of the root; retain raw evidence.
+    historical = ['README.md', 'replacement_verification.json', 'mixture_stats.json', 'run_meta.json',
+        'final_audit.json', 'final_audit_examples.json', 'failed_replacements.jsonl',
+        'failed_replacement_indices.json', 'failed_replacements.md', 'changed_trace_indices.json',
+        'backfill_report.json', 'conversion_config.yaml', 'backfill_identity.json', 'conversion_audit.json', 'backfill_restart.json']
+    remote = set(api.list_repo_files(cfg.source_repo, repo_type='dataset', revision=cfg.source_revision))
+    operations = []
+    for name in historical:
+        if name not in remote:
+            continue
+        original = hf_download(cfg.source_repo, name, repo_type='dataset', revision=cfg.source_revision)
+        operations.append(CommitOperationAdd(path_in_repo='prior_strict_replacement/'+name, path_or_fileobj=original))
+        if not (final/name).exists():
+            operations.append(CommitOperationDelete(path_in_repo=name))
+    for path in sorted(final.iterdir()):
+        if path.is_file():
+            operations.append(CommitOperationAdd(path_in_repo=path.name, path_or_fileobj=path))
+    commit = api.create_commit(repo_id=cfg.source_repo, repo_type='dataset', operations=operations,
+        parent_commit=cfg.source_revision, commit_message='Adopt reviewed cached GPT-OSS CoT and answer pairs without new inference')
+    sha = commit.oid
+    for path in final.iterdir():
+        if path.is_file():
+            downloaded = Path(hf_download(cfg.source_repo, path.name, repo_type='dataset', revision=sha))
+            assert downloaded.read_bytes() == path.read_bytes(), path.name
+    write(out/'publication.json', {'repo': cfg.source_repo, 'revision': sha,
+        'dataset_sha256': report['dataset_file_sha256'], 'all_uploaded_files_byte_verified': True})
+    print('Published and byte-verified', cfg.source_repo, sha)
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("stage", choices=["prepare","backfill","publish-data","train","export","eval-smoke","eval"])
+    parser.add_argument("stage", choices=["prepare","backfill","publish-data","train","export","eval-smoke","eval","adopt-cached-answers","publish-cached-answers"])
     parser.add_argument("--config", default="scratch/gptoss_control/config.yaml")
     parser.add_argument("--limit",type=int)
     args = parser.parse_args()
@@ -725,7 +893,8 @@ def main():
     out = ROOT/cfg.output
     out.mkdir(parents=True, exist_ok=True)
     {"prepare":prepare,"backfill":backfill,"publish-data":publish_data,"train":train,"export":export,
-     "eval-smoke":lambda c,o:evaluate(c,o,True),"eval":evaluate}[args.stage](cfg,out)
+     "eval-smoke":lambda c,o:evaluate(c,o,True),"eval":evaluate,
+     "adopt-cached-answers":adopt_cached_answers,"publish-cached-answers":publish_cached_answers}[args.stage](cfg,out)
 
 
 if __name__ == "__main__":

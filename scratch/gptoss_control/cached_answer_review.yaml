@@ -1,0 +1,606 @@
+# ABOUTME: Adopt reviewed cached GPT-OSS CoT and final-answer pairs without model calls.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py adopt-cached-answers --config scratch/gptoss_control/cached_answer_review.yaml
+source_repo: dougalldeepmind/2026-09-30-nosynth-mix-gpt-oss-120b
+source_revision: 647743fc260a69bc9ad623a4288127f40e9ed463
+source_file_sha256: 0356d9d82f26e123812352d59a70169e9bb3dd5c752ba1ca008373e4b590e94f
+destination_name: 2026-09-30-nosynth-mix-gpt-oss-120b
+prior_output: output/gptoss_control/reasoning_replace_qualified_2026-09-29
+output: output/gptoss_control/cached_answer_review_2026-09-30
+base_model: openai/gpt-oss-120b
+reasoning: medium
+train:
+  max_length: 32768
+review:
+  method: Codex offline review of saved prompts and candidate answers, with local
+    constraint and selected-code checks. No new generator or judge API calls.
+  selection_limitations: Conservative accepted subset, not exhaustive correctness
+    labeling of all cached attempts. Remaining rows are unresolved, not necessarily
+    incorrect. Original equivalence verdicts are historical only.
+  candidate_rows_screened: 289
+  approved:
+  - row: 102
+    turn: 1
+    attempt: 4
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 145
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 357
+    turn: 1
+    attempt: 4
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 553
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 559
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 586
+    turn: 1
+    attempt: 4
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 597
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 653
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 767
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 791
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 899
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 909
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 960
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1002
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1015
+    turn: 1
+    attempt: 0
+    reason: Five keywords are directly present in the supplied NLP paragraph.
+  - row: 1115
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 1121
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1155
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1224
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 1249
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1300
+    turn: 1
+    attempt: 0
+    reason: Flash card accurately summarizes the supplied gravity paragraph.
+  - row: 1412
+    turn: 1
+    attempt: 1
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 1517
+    turn: 1
+    attempt: 4
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1552
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 1616
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 1726
+    turn: 1
+    attempt: 4
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 1886
+    turn: 1
+    attempt: 1
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 1893
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 1939
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 1958
+    turn: 1
+    attempt: 2
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 2044
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 2120
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 2128
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 2418
+    turn: 1
+    attempt: 2
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 2526
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 2609
+    turn: 1
+    attempt: 1
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 2702
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 2728
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 2741
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 3076
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 3170
+    turn: 1
+    attempt: 0
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 3353
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 3357
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 3386
+    turn: 1
+    attempt: 2
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 3774
+    turn: 1
+    attempt: 0
+    reason: French translation preserves the supplied December gold-price claim.
+  - row: 3780
+    turn: 1
+    attempt: 1
+    reason: The two equally likely outcomes have entropy one bit.
+  - row: 3957
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4030
+    turn: 1
+    attempt: 3
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4204
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4237
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4427
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 4443
+    turn: 1
+    attempt: 2
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4529
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 4532
+    turn: 1
+    attempt: 3
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4644
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 4658
+    turn: 1
+    attempt: 3
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 4938
+    turn: 1
+    attempt: 4
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 4952
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 5008
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5232
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5367
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5404
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5479
+    turn: 1
+    attempt: 2
+    reason: Appropriately asks which stock instead of inventing a live price.
+  - row: 5764
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5778
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 5794
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 5815
+    turn: 1
+    attempt: 3
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5885
+    turn: 1
+    attempt: 3
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5967
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 5986
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 6036
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 6098
+    turn: 1
+    attempt: 2
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 6278
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 6407
+    turn: 1
+    attempt: 4
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 6411
+    turn: 1
+    attempt: 2
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 6415
+    turn: 1
+    attempt: 0
+    reason: Appropriately requests jurisdiction and tax context instead of inventing
+      an applicable procedure.
+  - row: 6416
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 6425
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 6438
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 6444
+    turn: 1
+    attempt: 3
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 6525
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 6538
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 6539
+    turn: 1
+    attempt: 3
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 6675
+    turn: 1
+    attempt: 0
+    reason: Rewrite preserves the supplied layoff concerns.
+  - row: 6692
+    turn: 1
+    attempt: 2
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 6771
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 6881
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 7016
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 7031
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 7032
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 7266
+    turn: 1
+    attempt: 2
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 7322
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 7337
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 7372
+    turn: 1
+    attempt: 2
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 7453
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 7663
+    turn: 1
+    attempt: 2
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 7685
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 7726
+    turn: 1
+    attempt: 2
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 7905
+    turn: 1
+    attempt: 0
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 8100
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 8142
+    turn: 1
+    attempt: 2
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 8423
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 8449
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 8450
+    turn: 1
+    attempt: 1
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 8551
+    turn: 1
+    attempt: 1
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 8778
+    turn: 1
+    attempt: 2
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 8795
+    turn: 1
+    attempt: 0
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 8855
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 8883
+    turn: 1
+    attempt: 3
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 8922
+    turn: 1
+    attempt: 3
+    reason: Five sentences give the standard series RLC reactances and resonance behavior.
+  - row: 8989
+    turn: 1
+    attempt: 2
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 8995
+    turn: 1
+    attempt: 2
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 9005
+    turn: 1
+    attempt: 0
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 9282
+    turn: 1
+    attempt: 0
+    reason: One-sentence claim is supported directly by the supplied paragraph.
+  - row: 9354
+    turn: 1
+    attempt: 2
+    reason: Checks nonempty strings and rejects None and non-string items as requested.
+  - row: 9383
+    turn: 1
+    attempt: 1
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
+  - row: 9678
+    turn: 1
+    attempt: 1
+    reason: Valid alternative response to the prompt; checked requested content and
+      output constraints.
+  - row: 9921
+    turn: 1
+    attempt: 0
+    reason: Code satisfies the stated input/output contract; extra behavior outside
+      the specified domain is permitted.
+  - row: 9930
+    turn: 1
+    attempt: 3
+    reason: Valid alternative creative draft; satisfies the requested topic and checked
+      output constraints.
