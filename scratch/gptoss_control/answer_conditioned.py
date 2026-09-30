@@ -162,7 +162,7 @@ def generate(cfg,out,budget,pilot=False):
     current,original,_,targets=sources(cfg,out)
     if pilot:
         targets=[t for s in sorted({t['source'] for t in targets}) for t in [x for x in targets if x['source']==s][:3]]
-    renderer=make_renderer(cfg.reasoning,local_files_only=True)
+    renderer=make_renderer(cfg.get('generator_reasoning',cfg.reasoning),local_files_only=True)
     sampler=tinker.ServiceClient().create_sampling_client(base_model=cfg.base_model)
     def work(t):
         i,j=t['row'],t['turn']
@@ -179,7 +179,8 @@ def generate(cfg,out,budget,pilot=False):
                 continue
             hint=cfg.get('retry_hints',{}).get(str(i))
             user=json.dumps({**data,**({'previous_quality_feedback':feedback} if feedback and not cfg.get('omit_previous_feedback',False) else {}),
-                **({'quality_guidance':hint} if hint else {})},ensure_ascii=False)
+                **({'quality_guidance':hint} if hint and not cfg.get('guidance_as_instruction',False) else {})},ensure_ascii=False)
+            if hint and cfg.get('guidance_as_instruction',False):user+='\n\nFor your reasoning paragraph: '+hint
             messages=[{'role':'system','content':GENERATOR_SYSTEM},{'role':'user','content':user}]
             prompt=render_prompt(renderer,messages)
             ids=prompt.to_ints()
@@ -251,6 +252,12 @@ def publish(cfg,out,budget):
                 normalized['messages'][j]=copy.deepcopy(old['messages'][j])
             else:assert m==old['messages'][j]
         assert normalized==old
+    assert all(len(a['messages'])==len(b['messages']) for a,b in zip(rows,original))
+    assert all(m.get('content')==n.get('content') for a,b in zip(rows,original)
+               for m,n in zip(a['messages'],b['messages']))
+    cot_turns=sum(bool(m.get('reasoning_content')) for r in rows for m in r['messages'])
+    cot_rows=sum(any(m.get('reasoning_content') for m in r['messages']) for r in rows)
+    assert cot_turns==1073 and cot_rows==1061
     final=out/'dataset';final.mkdir(exist_ok=True)
     saverows(final/'mixture.jsonl',rows)
     stats=audit_data(cfg,out,final/'mixture.jsonl','final_audit')
@@ -271,6 +278,7 @@ def publish(cfg,out,budget):
     saverows(final/'cot_provenance.jsonl',manifest)
     write(final/'replacement_verification.json',{'passed':True,'rows':len(rows),'target_rows':119,
         'original_answers_restored':119,'new_rationales':119,'other_turns_unchanged':True,
+        'all_content_matches_original_dataset':True,'cot_turns':cot_turns,'cot_rows':cot_rows,
         'failures':missing,'costs_upper_usd':dict(budget.totals)})
     for name in ['targets.json','qualification.json','failed_replacements.json','final_audit.json','final_audit_examples.json']:
         shutil.copy2(out/name,final/name)
@@ -278,6 +286,15 @@ def publish(cfg,out,budget):
     if (out/'history').exists():shutil.copytree(out/'history',final/'history',dirs_exist_ok=True)
     write(final/'quality_review_notes.json',OmegaConf.to_container(cfg.get('retry_hints',{})))
     write(final/'manual_rejections.json',OmegaConf.to_container(cfg.get('manual_rejections',{})))
+    generation=[r for r in receipts if r.get('kind')!='qualification']
+    write(final/'generation_summary.json',{'selected_by_source':dict(Counter(r['source'] for r in accepted.values())),
+        'generation_requests_excluding_initial_pilot':len(generation),
+        'initial_pilot_generation_requests':sum(json.loads(p.read_text(encoding='utf-8')).get('kind')!='qualification'
+            for p in (ROOT/cfg.prior_pilot/'receipts').glob('*.json')),
+        'manually_excluded_judge_acceptances':len(cfg.get('manual_rejections',{})),
+        'qualification_requests_excluding_initial_pilot':sum(r.get('kind')=='qualification' for r in receipts),
+        'selected_receipts':[f"receipts/{r['row']}_{r['turn']}_{r['attempt']}.json" for r in sorted(accepted.values(),key=lambda r:r['row'])],
+        'cost_upper_usd_including_initial_pilot':dict(budget.totals)})
     if (out/'source_answer_review.json').exists():shutil.copy2(out/'source_answer_review.json',final/'source_answer_review.json')
     saverows(final/'restored_examples.jsonl',[{'row':t['row'],'turn':t['turn'],'source':t['source'],
         **payload(rows[t['row']],t['turn'],rows[t['row']]['messages'][t['turn']]['content']),
