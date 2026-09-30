@@ -1,10 +1,44 @@
 # ABOUTME: Preserve malformed-provider diagnostics and budget reservations without accepting verdicts.
 # ABOUTME: Repeated identical failures need distinct diagnostic files and cumulative charges.
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from src.eval.misalignment.odcv import odcv_judge
+
+
+def test_ledger_retries_transient_lock_and_never_dispatches_unsaved(tmp_path, monkeypatch):
+    monkeypatch.setattr(odcv_judge, 'provider_price', lambda _: {'in': 1, 'out': 1})
+    monkeypatch.setattr(odcv_judge.time, 'sleep', lambda _: None)
+    real_replace = Path.replace
+    attempts = []
+
+    def transient(path, target):
+        attempts.append(target)
+        if len(attempts) < 3:
+            raise PermissionError('temporary reader lock')
+        return real_replace(path, target)
+
+    monkeypatch.setattr(Path, 'replace', transient)
+    budget = odcv_judge.JudgeBudget(tmp_path/'ledger.json', 1, 100)
+
+    def send(**_):
+        assert json.loads(budget.path.read_text())[0]['status'] == 'reserved'
+        return SimpleNamespace(usage=SimpleNamespace(prompt_tokens=10, completion_tokens=10),
+                               choices=[SimpleNamespace(finish_reason='stop')])
+
+    budget.create(send, model='test', messages=[{'role': 'user', 'content': 'fixture'}])
+    assert len(attempts) == 4
+    assert json.loads(budget.path.read_text())[0]['status'] == 'settled'
+
+    def locked(*_):
+        raise PermissionError('permanent lock')
+
+    monkeypatch.setattr(Path, 'replace', locked)
+    with pytest.raises(PermissionError):
+        budget.create(lambda **_: pytest.fail('must not dispatch'), model='test',
+                      messages=[{'role': 'user', 'content': 'new fixture'}])
 
 
 def test_missing_usage_retains_each_reservation_and_response(tmp_path, monkeypatch):

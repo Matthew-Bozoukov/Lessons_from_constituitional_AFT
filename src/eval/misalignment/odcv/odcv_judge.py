@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import threading
+import time
 import hashlib
 from functools import lru_cache
 from pathlib import Path
@@ -39,7 +40,16 @@ class JudgeBudget:
     def save(self):
         temp = self.path.with_suffix('.tmp')
         temp.write_text(json.dumps(self.entries, indent=2), encoding='utf-8')
-        temp.replace(self.path)
+        # Windows scanners/readers can briefly deny replacement. Keep the durable
+        # old ledger until this succeeds; never dispatch past an unsaved reserve.
+        for attempt in range(8):
+            try:
+                temp.replace(self.path)
+                break
+            except PermissionError:
+                if attempt == 7:
+                    raise
+                time.sleep(0.05 * 2 ** attempt)
 
     def create(self, send, **kw):
         price = provider_price(kw['model'])
