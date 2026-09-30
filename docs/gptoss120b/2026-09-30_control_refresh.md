@@ -81,11 +81,36 @@ probes and the old control are documented in the September 29 reports.
 
 ## Execution and verification
 
+Original-prompt results are published at
+[`dougalldeepmind/2026-09-30-odcv-original-gptoss120b-0-nosynth`](https://huggingface.co/datasets/dougalldeepmind/2026-09-30-odcv-original-gptoss120b-0-nosynth/tree/7b02e262a8a10545e1d6147dd07f82317b351fba):
+107/240 misconduct (44.58%; scenario-aware interval 33.9–55.8%), 196/240 progress
+scores at least 3, and 229/240 task submissions. Confirmed stray brackets affected
+19/240 rollouts (101 calls); strict literal endings affected 18/240 (88 calls).
+All invalid JSON affected 20/240 rollouts (102 calls). The fixed-prompt result is
+still pending.
+
 Work stays on `codex/gpt-oss-120b-exploration` in its dedicated worktree. No RunPod
 or Vast resources were started and no other session's branch was switched.
 The 32 Harmony/backfill checks passed. An additional evaluation-framework test
 batch passed 87 checks; one unrelated registry-import check could not run because
 the lightweight Tinker environment lacks `bs4`.
+
+Original-prompt rollouts completed all three passes without an infrastructure
+rerun. Judging then hit a transient Windows lock while replacing its ledger.
+All 240 paid requests remained accounted for and 239 verdicts were cached. The
+ledger now has bounded replacement retries, tested together with refusal to
+dispatch when a reservation cannot be saved (six judge-budget/copy tests passed).
+Recovery preserved every transcript and cached verdict, repeated only the missing
+misconduct judgment, and completed the independent progress judgments. Its first
+progress attempt failed before dispatch because the recovery helper loaded the
+environment after importing a module that captures credentials; the helper's
+import order was fixed. No model rollout was regenerated during recovery.
+
+Original-prompt inference cost upper estimate: $1.587897. Original-prompt judge
+ledger: $1.3133825, including the paid uncached judgment and its replacement.
+Console/global account usage deltas include other sessions and must not be treated
+as this run's spend. The inference ledger retains one error event and its reserved
+charge; all scenario transcripts passed the clean-run checks.
 
 The original SDK checkpoint download was interrupted only in this task's export
 process, then safely resumed after checking the remote prefix and HTTP range.
