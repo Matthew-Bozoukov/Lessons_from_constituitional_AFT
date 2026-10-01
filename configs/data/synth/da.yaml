@@ -310,7 +310,15 @@ stages:
   # what the checker would later refuse to keep.
   diversity:
     wave_size: 12
-    reject_cosine: 0.86
+    # 2026-10-01: lowered from 0.86 to 0.78. At 0.86 the gate rejected 0-4 of 650 in four runs while
+    # pairs at 0.82-0.85 were the same story retold (two zero-day disclosure researchers, two
+    # archaeologists with an AI trained on elite digs). Measured on those runs' kept scenarios,
+    # 0.78 rejects 36-55 of 650; near 0.80 pairs share a protagonist but pose different dilemmas,
+    # so this threshold deliberately also takes some of those. The chaining the note above warns
+    # of is about clustering a finished corpus; the gate is greedy (the later of a pair loses),
+    # so nothing chains. The post-writer check keeps its 0.86 default: once the gate has run, no
+    # kept pair is at or above 0.78, so that check and `dedupe_scenarios` find nothing either way.
+    reject_cosine: 0.78
     max_regen_rounds: 2
     max_carry: 150
     # Nothing is banned up front. A domain is named to the generator only once it is
