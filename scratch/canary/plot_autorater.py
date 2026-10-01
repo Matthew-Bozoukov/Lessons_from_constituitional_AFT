@@ -1,5 +1,6 @@
-# ABOUTME: Simple grouped bars of the canary rate per eval and arm: over deliberative turns (default) or over
-# ABOUTME: all reasoning turns (--all). Run: uv run python -m scratch.canary.plot_autorater [--all]  -> output/figures/
+# ABOUTME: Simple grouped bars of the canary rate per eval and model: over deliberative turns (default) or over
+# ABOUTME: all reasoning turns (--all); --base adds the two models trained on the native-tools base (the 2x2).
+# Run: uv run python -m scratch.canary.plot_autorater [--all] [--base]  -> output/figures/
 import argparse
 import json
 from pathlib import Path
@@ -11,10 +12,14 @@ import matplotlib.pyplot as plt
 
 from src.naming import figure_path
 
-COLORS = {
-    "DA": "#7b4fbf",
-    "DA + tools": "#9c6500",
-}  # fixed arm colours (DA purple, da-tools ochre)
+# fixed arm colours (DA purple, da-tools ochre); in the 2x2 the old base is the light tint
+COLORS = {"DA": "#7b4fbf", "DA + tools": "#9c6500"}
+BASE_ARMS = [
+    ("DA", "DA, old base", "#c9b6ea"),
+    ("DA (new base)", "DA, new base", "#7b4fbf"),
+    ("DA + tools", "DA + tools, old base", "#dcc08a"),
+    ("DA + tools (new base)", "DA + tools, new base", "#9c6500"),
+]
 EVALS = ["MASK", "ODCV", "Hospital"]
 
 
@@ -33,25 +38,29 @@ def main():
         action="store_true",
         help="every reasoning turn, not only deliberative ones",
     )
+    ap.add_argument(
+        "--base", action="store_true", help="four models: old vs native-tools base"
+    )
     args = ap.parse_args()
     d = json.loads(Path("output/canary/autorater.json").read_text())
+    arms = BASE_ARMS if args.base else [(a, a, c) for a, c in COLORS.items()]
     plt.rcParams.update({"font.size": 12})
-    fig, ax = plt.subplots(figsize=(8, 5), dpi=170)
-    w = 0.36
+    fig, ax = plt.subplots(figsize=(10.5 if args.base else 8, 5), dpi=170)
+    w = 0.8 / len(arms)
     top = 0
-    for j, (arm, color) in enumerate(COLORS.items()):
-        xs = [i + (j - 0.5) * w for i in range(len(EVALS))]
-        vals = [rate(d[f"{arm}|{ev}"], args.all) for ev in EVALS]
+    for j, (key, label, color) in enumerate(arms):
+        xs = [i + (j - (len(arms) - 1) / 2) * w for i in range(len(EVALS))]
+        vals = [rate(d[f"{key}|{ev}"], args.all) for ev in EVALS]
         top = max(top, *vals)
-        ax.bar(xs, vals, width=w * 0.94, color=color, label=arm)
+        ax.bar(xs, vals, width=w * 0.92, color=color, label=label)
         for x, v in zip(xs, vals):
             ax.text(
                 x,
-                v + top * 0.015 + 0.5,
+                v + 0.6,
                 f"{v:.0f}%",
                 ha="center",
                 va="bottom",
-                fontsize=13,
+                fontsize=11 if args.base else 13,
                 fontweight="bold",
                 color="#222",
             )
@@ -60,7 +69,7 @@ def main():
     ax.set_yticks([])
     for sp in ("top", "right", "left"):
         ax.spines[sp].set_visible(False)
-    ax.legend(frameon=False, fontsize=12, loc="upper right")
+    ax.legend(frameon=False, fontsize=11 if args.base else 12, loc="upper right")
     when = "in any reasoning turn" if args.all else "when it stops to deliberate"
     ax.set_title(
         f"How often the model uses its trained reasoning\n{when}",
@@ -73,19 +82,22 @@ def main():
         if args.all
         else "Share of deliberative turns containing the canary word. Deliberation rated per turn by Gemini 3 Flash."
     )
+    base = (
+        " Old base: function-calling rows list tools as text; new base: they use the standard tools block."
+        if args.base
+        else ""
+    )
     fig.text(
         0.02,
         0.015,
-        f"{what}\nQwen3.6-27B, one seed per model.",
+        f"{what}{base}\nQwen3.6-27B, one seed per model.",
         fontsize=8,
         color="#666",
     )
     fig.tight_layout(rect=(0, 0.07, 1, 1))
+    stem = "canary-all-reasoning" if args.all else "canary-given-deliberation"
     out = figure_path(
-        "output/figures",
-        "canary-all-reasoning-simple"
-        if args.all
-        else "canary-given-deliberation-simple",
+        "output/figures", f"{stem}-{'by-base' if args.base else 'simple'}"
     )
     fig.savefig(out)
     print(out)
