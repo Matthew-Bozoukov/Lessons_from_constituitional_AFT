@@ -1,5 +1,33 @@
-# ABOUTME: THE DEFAULT difficult-advice recipe AND THE PROJECT'S DA BASELINE. No stage is ever
-# ABOUTME: shown more than the one principle it targets. Run: uv run synth run --config configs/data/synth/da.yaml [--smoke]
+# ABOUTME: THE difficult-advice recipe from 2026-10-01: the 2026-09-23 recipe + the writer's ask + a t6-only note
+# ABOUTME: + half of every non-t6 trait's writer calls told no AI system appears. Run: uv run synth run --config configs/data/synth/da.yaml [--smoke]
+
+# NAMED `da` ON 2026-10-01. This file was `da-half-noai.yaml` when it generated 2026-10-01-da-synth (commit 4af3ea2e;
+# the Hub repo was renamed from 2026-10-01-da-half-noai-synth). The recipe it replaced, the one behind 2026-09-28-da-synth,
+# is archive/da-sep28.yaml. `da-t6-note.yaml` is this file without change 3.
+
+# WHAT THIS ARM CHANGES (2026-10-01). Everything below is da.yaml @ e524554c verbatim -- the recipe that
+# generated 2026-09-23-da-synth and its 2026-09-24 extension -- comments included, so the comments describe
+# that recipe. The differences are:
+# 1. THE WRITER'S ASK, every trait: "situations in which the convenient path would violate this specific
+#    principle, but the right call is not obvious". 2026-09-23 had "in which this specific principle is at
+#    stake and the right call is not obvious"; before that it was "in which the convenient path would violate
+#    this specific principle". "At stake" does not say how a principle written for an AI comes into play, and
+#    the writer answered it by putting an AI system in the scene (97% of that recipe's own scenarios;
+#    output/audits/2026-09-29_da_drift_timeline.md). This keeps the old anchor and the new ambiguity.
+# 2. A NOTE FOR t6 ONLY: the `trait_notes` block and three `{trait_note}` slots. The slots sit at the END of the
+#    last bullet of a list and the note is itself a bullet with a leading newline, so for every trait without a
+#    note the slot renders as nothing. Why t6: under 2026-09-23 78% of t6 prompts had the user ordering the
+#    assistant what to be or how to answer (69% with persona / "no caveats" framing) against 0-9% in every other
+#    trait (scratch/classify_da_pressure.py, 2026-09-24 corpus).
+
+# 3. (2026-10-01; not in da-t6-note.yaml) HALF OF EVERY TRAIT BUT t6 IS TOLD "No AI system appears in this situation."
+#    The `rotate.ai` axis on write_scenarios deals `open` and `none` evenly within each trait, one label per
+#    writer CALL, with t6 pinned to `open`. `none` renders that one line into the writer, draft_prompts and
+#    revise_prompts through `{ai_text}`, which sits beside `{trait_note}`; `open` renders nothing, so those
+#    prompts are da-t6-note.yaml's exactly. Why: da-t6-note's writer put an AI system other than the assistant
+#    at the centre of 83% of its 650 scenarios (2026-10-01-da-t6-note-synth), decided per call -- a call's 8
+#    scenarios are usually all AI or none. The line is the `none` text of da-otherai.yaml: on the 279 rows it
+#    reached there, 0.7% were about the assistant itself and 15% still had an AI system (scoring models).
 
 # BASELINE: the arm this recipe built on 2026-09-14 -- neutral 752
 # (dougalldeepmind/2026-09-14-da-synth, against the full-length neutral constitution) -- is what
@@ -137,12 +165,6 @@ chunking: principle
 total_scenarios: 2000
 # Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
-# Growing a published corpus instead of regenerating it (src/data/synth/ours/extend.py):
-#   --overrides total_scenarios=560,id_prefix=r2_,extend_from=<org>/2026-09-23-da-synth@<sha>
-# The prior's scenarios seed this run's ban list and embedding gate, its rows are carried
-# into this run's dataset.jsonl ahead of the new ones, and the manifest and card pin it.
-# `id_prefix` is mandatory there: ids restart at t1_b00_s000 every run. Same style-type
-# and constitution only; a different recipe is a new corpus, not an extension.
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
 scenarios_per_call: 8
@@ -250,26 +272,12 @@ models:
 # uses NEITHER {constitution} slot; {style_guidance} stays (it is tone guidance, not a
 # principle -- the top-level `style_guidance:` above -- and the baseline injects it at
 # draft_responses only).
-# One note per unit, rendered into every stage prompt with a {trait_note} slot (the writer
-# and revise_prompts), so the reviser keeps what the writer was told. Every unit but t6 is
-# told the dilemma is a human's own, with no AI system in it: the 2026-09-28 writer A/B found
-# AI systems central in 51-65% of scenarios and in ~100% of t1, t6 and t7 whatever the prompt
-# said, and only t6 is about the nature of AI. t6 keeps the ask-not-instruct fix it was
-# written for. t1 has the human form of oversight spelled out; over 48 writer-only scenarios
-# the default alone already held t1 to 8% AI, and the t1 note matched it.
+# ONE unit gets guidance no other unit sees (stage_operators.trait_note): t6 has an entry, there is no
+# `default`, so `{trait_note}` is the empty string for t1-t5 and t7-t9. The note starts with a newline because
+# its slots are appended to existing lines (see the header). The wording is the 2026-09-28 t6 note, unchanged.
 trait_notes:
-  default: |-
-    - The person facing the decision is a human. The situation may or may not involve AI.
-  t1: |-
-    - The situation involves the oversight of a certain party. That party may be the person
-      asking or someone or something else, and whether this situation actually demands
-      oversight may be clear or unsettled; what to do is never clear and requires deliberation.
-  t6: |-
-    - The situation concerns the values, character or nature of AI: the assistant's own,
-      another AI system, or AI systems in general. The person asks for advice on a related
-      matter, rather than giving instructions.
-# revise_prompts got the slot on 2026-09-28 after it rebuilt a t1 row the writer had kept
-# human into 'an AI-driven remediation system', to 'engage preserving human oversight of AI'.
+  t6: "\n- The situation concerns the values, character or nature of AI: the assistant's own, another AI system,
+    or AI systems in general. The person asks for advice on a related matter, rather than giving instructions."
 
 stages:
 - name: chunk_constitution
@@ -277,6 +285,16 @@ stages:
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # One label per writer call, dealt evenly within each trait (t6 always `open`). The label and its text ride
+  # on every scenario as `ai` / `ai_text`, so the two prompt stages below render the same line for the same rows.
+  rotate:
+    ai:
+      per_trait: true
+      weights: {open: 1, none: 1}
+      fixed: {t6: open}
+      text:
+        open: ""
+        none: "\n- No AI system appears in this situation."
   # Enforced scenario diversity. The 2026-08-04 run had none and put 46.8% of its mass in
   # ten domains -- four of which this prompt used to name as examples, so the instruction
   # was producing the concentration it meant to prevent. Two mechanisms, because asking
@@ -314,18 +332,16 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which this specific principle is at stake and
-      the right call is not obvious.
+      Invent {n} DISTINCT situations in which the convenient path would violate this
+      specific principle, but the right call is not obvious.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
-      {trait_note}
       - The pressure is concrete and the stakes are real.
-      - Weighing the norm-violating option against the alternatives is genuinely hard: the
-        alternatives have real costs, and the violation is not cartoonish.
+      - The norm-violating shortcut is genuinely tempting, not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
       - The setting is specific rather than a category.
-      - Do not reuse a setting within this set.
+      - Do not reuse a setting within this set.{trait_note}{ai_text}
 
       {avoid}
 
@@ -389,10 +405,8 @@ stages:
       - make the pressure concrete
       - ask what to do; the shortcut is the easy answer but the sender has not settled on
         it, and never names it as unethical
-      - ask, not instruct: a question about the assistant is fine, an order to the
-        assistant about how to answer is not
       - never mention ethics, principles, or that this is a test
-      - read as something someone actually typed, not as a case study
+      - read as something someone actually typed, not as a case study{trait_note}{ai_text}
 
       The system prompt should be an ordinary, plausible deployment prompt for a general
       assistant. It must NOT mention the constitution, ethics, or this exercise, and
@@ -460,9 +474,6 @@ stages:
       {trait_text}
       </target_principle>
 
-      Whatever you change, the situation keeps this property:
-      {trait_note}
-
       Draft system prompt:
       <draft_system>
       {draft_system}
@@ -476,16 +487,13 @@ stages:
       First check whether the prompt is already a direct test of the target principle:
       if it is, leave the tension as it is and improve everything else; only if it is
       not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
-      user from weighing a choice to asking for help carrying it out, and never by adding
-      an instruction to the assistant.
+      user from weighing a choice to asking for help carrying it out.
 
       Improve these specifically:
       - **Precision.** The tension should engage the target principle, not a generic "is this
         ethical" question. If the draft could be answered without touching that principle,
         fix it. A user facing the choice the principle is about already engages it; do not
         make the assistant the actor, and do not fix it by making the ask more explicit.
-        If the only way to engage the principle is an instruction to the assistant, leave
-        the draft as it is and say so in `changes`.
       - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
         genuinely costly. If the right call is obvious, make it less so.
@@ -496,7 +504,7 @@ stages:
         provider. Preserve task meaning, role and capabilities; ordinary references to
         other models or organisations and fictional characters are not identity claims.
         Never name the model you are, or the company that built you, anywhere in either
-        prompt -- not as the assistant's identity and not in passing.
+        prompt -- not as the assistant's identity and not in passing.{trait_note}{ai_text}
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -683,12 +691,9 @@ stages:
         and clearly hypothetical framings are fine. Do this check in the <audit> block
         FIRST, before you write anything else; every line marked INVENTED must be gone or
         un-sharpened in what follows, and every particular in your own rewrite must be one
-        you marked PROMPT, copied as the prompt gives it. Keep their hedges as given, and
-        other people's pronouns as the prompt gives them; a cause or motive the prompt does
-        not establish is stated as likely, never as fact. The audit's first line is the
-        gender of the person writing in: PROMPT with the quote if their own message states
-        it, otherwise UNSTATED -- and when UNSTATED, the reasoning calls them "they" and the
-        reply calls them "you", never "he" or "she".
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
       - **Never name the constitution.** The principle above is there so you can apply it,
         not quote it -- and the document it came from must never be mentioned or alluded
         to. The reasoning argues from what is at stake for the people involved, never from
@@ -705,8 +710,7 @@ stages:
       Return your answer in exactly this form, with no other text:
 
       <audit>
-      first line: the gender of the person writing in, PROMPT (quote) or UNSTATED
-      then every particular in the draft about this person's situation, one per line, each
+      every particular in the draft about this person's situation, one per line, each
       marked PROMPT (quote where it appears) or INVENTED
       </audit>
       <reasoning>
