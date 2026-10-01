@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from scratch.canary.build_canary import LABELLER
-from scratch.canary.deliberation import CANARY, RUNS, STRIP, turns, wilson
+from scratch.canary.deliberation import CANARY, STRIP, all_runs, turns, wilson
 from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
 load_dotenv()
@@ -91,7 +91,8 @@ def main() -> None:
     head = build_prompt_head()
 
     items = []
-    for (arm, ev), (kind, root) in RUNS.items():
+    runs = all_runs()
+    for (arm, ev), (kind, root) in runs.items():
         for tid, text, ep in turns(kind, Path(root)):
             items.append(
                 {
@@ -190,7 +191,7 @@ def main() -> None:
         return
 
     out = {}
-    for arm, ev in list(RUNS) + [("heldout", "DA-train")]:
+    for arm, ev in list(runs) + [("heldout", "DA-train")]:
         cell = [i for i in items if i["arm"] == arm and i["eval"] == ev]
         rated = [dict(i, **done[i["key"]]) for i in cell if i["key"] in done]
         if len(rated) < len(cell):

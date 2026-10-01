@@ -44,6 +44,42 @@ RUNS = {
     ("DA + tools", "Hospital"): ("hospital", HOSP.format("da_tools_15")),
 }
 STRIP = re.compile(re.escape(CANARY) + r":?\s*")
+NEW_BASE_ARMS = [
+    ("DA (new base)", "da_15", "da"),
+    ("DA + tools (new base)", "da_tools_15", "datools"),
+]
+
+
+def all_runs() -> dict:
+    """RUNS plus the same cells for the two models trained on the native-tools base, where a finished run exists.
+
+    A run dir is found by its built name; the latest one wins (an earlier attempt that died leaves a dir
+    with no rollouts, which the globs below skip).
+    """
+    out = dict(RUNS)
+    for arm, stem, hosp in NEW_BASE_ARMS:
+        mask = sorted(
+            p.parent.parent
+            for p in Path("output/mask").glob(
+                f"*_qwen36_0_{stem}_canary_nativetools_*/rollouts/known_facts.csv"
+            )
+        )
+        odcv = sorted(
+            Path("output/odcv").glob(f"*_qwen36_0_{stem}_canary_nativetools_*/rollouts")
+        )
+        hospital = sorted(
+            Path(f"output/colosseum_hospital/2026-10-01_canary_nt_{hosp}/merged").glob(
+                "*_hospital_self_sacrificial_*"
+            )
+        )
+        for ev, kind, found in [
+            ("MASK", "mask", mask),
+            ("ODCV", "odcv", odcv),
+            ("Hospital", "hospital", hospital),
+        ]:
+            if found:
+                out[(arm, ev)] = (kind, str(found[-1]))
+    return out
 
 
 def turns(kind: str, root: Path):
@@ -145,7 +181,9 @@ def main() -> None:
             max_tokens=8000,
             response_format={"type": "json_object"},
         )
-        ids = json.JSONDecoder().raw_decode(res.content[res.content.index("{"):])[0]["reasoning"]  # first object only
+        ids = json.JSONDecoder().raw_decode(res.content[res.content.index("{") :])[0][
+            "reasoning"
+        ]  # first object only
         ids = sorted({int(x) for x in ids if 0 <= int(x) < len(sents)})
         return {
             "key": it["key"],
