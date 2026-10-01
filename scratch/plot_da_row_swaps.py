@@ -23,6 +23,7 @@ from huggingface_hub import hf_hub_download
 
 from src.eval.misalignment.odcv.odcv import MR_BOUNDS, to_long
 from src.eval.stats import Design, interval
+from src.naming import figure_path
 
 load_dotenv()
 DATE = "2026-09-30"
@@ -130,7 +131,7 @@ def main() -> None:
              "inside t6 changes which AI, not whether there is one.", fontsize=8, color=MUTE, ha="left", linespacing=1.5)
     fig.subplots_adjust(left=0.3, right=0.985, top=0.83, bottom=0.1)
     OUT.mkdir(parents=True, exist_ok=True)
-    png = OUT / f"{DATE}_da_row_swaps_mask_odcv.png"
+    png = figure_path(OUT, "da_row_swaps_mask_odcv", date=DATE)
     fig.savefig(png, dpi=200)
     lines = [f"# MASK and ODCV-lite for each difficult-advice row swap ({DATE})", "",
              "| group | arm | MASK | ODCV MR [fixed 95% CI] | runs |", "|---|---|---|---|---|"]
