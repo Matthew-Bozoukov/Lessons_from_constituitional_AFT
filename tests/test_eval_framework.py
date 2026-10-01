@@ -3,6 +3,8 @@
 
 import json
 
+from types import SimpleNamespace
+
 import pytest
 from huggingface_hub.errors import EntryNotFoundError
 
@@ -382,14 +384,42 @@ def test_odcv_bridge_url_rewrite():
 
 
 def test_odcv_container_host_address_is_platform_aware(monkeypatch):
-    from src.eval.misalignment.odcv import runner as odcv_bench
+    """Desktop docker is a name; linux docker is whatever gateway the daemon reports.
 
-    monkeypatch.setattr(odcv_bench.sys, "platform", "linux")
-    assert odcv_bench.container_host_address() == "172.17.0.1"
-    monkeypatch.setattr(odcv_bench.sys, "platform", "darwin")
-    assert odcv_bench.container_host_address() == "host.docker.internal"
-    monkeypatch.setattr(odcv_bench.sys, "platform", "win32")
-    assert odcv_bench.container_host_address() == "host.docker.internal"
+    The linux address was hardcoded to 172.17.0.1 until 2026-10-01, which is only the
+    default address pool's gateway: on a daemon using another pool the tunnel bound to an
+    address the host does not hold (EADDRNOTAVAIL) and the containers dialled one that
+    routed nowhere.
+    """
+    from src.infra.endpoints import vllm
+
+    monkeypatch.setattr(vllm.sys, "platform", "darwin")
+    assert vllm.docker_bridge_address() == "host.docker.internal"
+    monkeypatch.setattr(vllm.sys, "platform", "win32")
+    assert vllm.docker_bridge_address() == "host.docker.internal"
+
+    monkeypatch.setattr(vllm.sys, "platform", "linux")
+    monkeypatch.setattr(vllm.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(returncode=0, stdout="10.201.0.1\n"))
+    assert vllm.docker_bridge_address() == "10.201.0.1"
+
+    # A host without a reachable docker gets the documented default, and whatever tries to
+    # use it fails on its own terms rather than here.
+    monkeypatch.setattr(vllm.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(returncode=1, stdout=""))
+    assert vllm.docker_bridge_address() == "172.17.0.1"
+
+
+def test_odcv_container_address_matches_the_bind(monkeypatch):
+    """The URL handed to the containers must name the address the tunnel binds."""
+    from src.eval.misalignment.odcv import runner as odcv_bench
+    from src.infra.endpoints import vllm
+
+    monkeypatch.setattr(vllm.sys, "platform", "linux")
+    monkeypatch.setattr(vllm.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(returncode=0, stdout="10.201.0.1\n"))
+    assert odcv_bench.container_host_address() == "10.201.0.1"
+    assert odcv_bench._bridge_url("http://127.0.0.1:8010/v1") == "http://10.201.0.1:8010/v1"
 
 
 def test_docker_preflight_fails_clearly_without_docker(monkeypatch):

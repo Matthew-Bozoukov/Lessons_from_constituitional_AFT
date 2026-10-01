@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import socket
+import errno
 import subprocess
 import sys
 import time
@@ -714,6 +715,29 @@ def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
     return argv, match["host"]
 
 
+def docker_bridge_address() -> str:
+    """Where a local container reaches the host: this machine's docker bridge gateway.
+
+    NOT a constant. Docker's default bridge is 172.17.0.0/16, but a daemon configured with
+    `bip` or `default-address-pools` puts it elsewhere (10.201.0.1/24 on one of our dev
+    boxes), and binding a tunnel to an address the host does not hold fails with EADDRNOTAVAIL
+    -- which `assert_local_port_free` used to report as "port already taken", sending the
+    reader after a stale socket that does not exist. Ask docker instead of assuming.
+
+    Docker Desktop (macOS/Windows) has no host-side bridge interface and provides the special
+    `host.docker.internal` name instead. If docker cannot be reached we return the documented
+    default: the caller's bind or the container's own connect then fails loudly on its own.
+    """
+    if sys.platform in {"darwin", "win32"}:
+        return "host.docker.internal"
+    out = subprocess.run(
+        ["docker", "network", "inspect", "bridge",
+         "--format", "{{range .IPAM.Config}}{{.Gateway}}{{end}}"],
+        capture_output=True, text=True, timeout=20)
+    gateway = out.stdout.strip()
+    return gateway if out.returncode == 0 and gateway else "172.17.0.1"
+
+
 def assert_local_port_free(bind: str, port: int) -> None:
     """Refuse a tunnel whose local port another process already holds.
 
@@ -727,6 +751,16 @@ def assert_local_port_free(bind: str, port: int) -> None:
         try:
             probe.bind((bind, port))
         except OSError as e:
+            # Two different faults land here and they need different fixes: EADDRNOTAVAIL means
+            # the host does not hold `bind` at all (a docker-bridge address assumed rather than
+            # detected), while EADDRINUSE means another tunnel holds the port.
+            if e.errno == errno.EADDRNOTAVAIL:
+                raise RuntimeError(
+                    f"this host has no address {bind} (bind for port {port} failed with "
+                    f"EADDRNOTAVAIL), so nothing can be served on it — on linux the docker "
+                    f"bridge is whatever `docker network inspect bridge` reports its gateway "
+                    f"to be ({docker_bridge_address()} here), not necessarily 172.17.0.1; pass "
+                    f"--server-bind that address") from e
             raise RuntimeError(
                 f"local port {bind}:{port} is already taken (another eval's tunnel? `lsof -nP "
                 f"-iTCP:{port}`) — pass a different --port; the health probe would otherwise "

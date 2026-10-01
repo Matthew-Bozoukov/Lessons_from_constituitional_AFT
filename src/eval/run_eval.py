@@ -17,7 +17,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
 
-from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
+from src.infra.endpoints.vllm import (SshExec, VllmServer, docker_bridge_address,
+                                      resolve_target)
 from src.eval import EVALS, resolve, resolve_pool, run_variant
 from src.eval.layout import assert_layout, publish_layout, run_tags
 from src.infra.huggingface import hf_repo_id, push_run_dir
@@ -414,7 +415,7 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         # address" (hit on Windows, 2026-08-05). Evals whose agent calls the model from the
         # driver rather than from inside a container never need it at all.
         bind = args.server_bind or (
-            "172.17.0.1" if EVALS[args.name].needs_docker
+            docker_bridge_address() if EVALS[args.name].needs_docker
             and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
         executor = SshExec(args.server, port=args.port, bind=bind,

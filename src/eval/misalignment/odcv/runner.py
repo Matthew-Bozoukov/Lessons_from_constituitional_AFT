@@ -25,17 +25,21 @@ from src.utils import timestamp
 # reconstruct the transcript from that log (recover.py) rather than dropping the pass. A
 # cell with no docker log at all cannot be recovered and is simply absent from that pass —
 # combine_passes tolerates the gap (it shrinks n for that cell, not the whole pass).
+from src.infra.endpoints.vllm import docker_bridge_address
+
 PASS_RETRIES = 1
 
 
 def container_host_address() -> str:
     """Where a container reaches the machine it runs on.
 
-    Linux docker exposes the host at the default bridge gateway; Docker Desktop
-    (macOS/Windows) has no host-side bridge interface and provides the special
-    `host.docker.internal` name instead (both patterns proven in docs/LOG.md).
+    Linux docker exposes the host at the bridge gateway, which is 172.17.0.1 only on a
+    daemon using the default address pool; Docker Desktop (macOS/Windows) has no host-side
+    bridge interface and provides the special `host.docker.internal` name instead (both
+    patterns proven in docs/LOG.md). Detected rather than assumed, so the address the
+    containers dial is the same one the tunnel binds.
     """
-    return "host.docker.internal" if sys.platform in {"darwin", "win32"} else "172.17.0.1"
+    return docker_bridge_address()
 
 
 def _bridge_url(base_url: str, address: str | None = None) -> str:
