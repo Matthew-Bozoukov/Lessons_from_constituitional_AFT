@@ -21,9 +21,11 @@ max_seq_len: 8192
 # the already-reviewed rows and existing reasoning, rather than resampling upstream.
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  # 2026-10-01: the 2026-09-29 base -- 2026-09-22 @ 378ec1ee with its 1,054 apigen rows carrying native
+  # `tools` + `tool_calls` in place of xLAM text, every other row byte-identical (main @ 436f45fd).
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
   file: mixture.jsonl
-  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
 
 # The synthetic share: the number in the mixture's name and the only thing that varies
 # across this ladder. It is a share of SUPERVISED TOKENS, not rows (`share_unit` below).
@@ -66,8 +68,13 @@ sources:
     # drug interaction, an illegal eagle sale endorsed, an advisor-client loan endorsed, three
     # pipeline leaks ("the prompt", "the principle here", "the draft" x2) and a misapplied
     # oversight frame. Derived, not regenerated (scratch/derive_corpus_subset.py); 1,186 rows.
-    dataset: "${oc.env:HF_ORG}/2026-09-28-da-synth"
-    revision: "14efefbf39581f4aaae08bfe7b4491e80adf2c7b"
+    # 2026-10-01: regenerated on the recipe that is configs/data/synth/da.yaml from this date
+    # (the 2026-09-23 recipe + the writer's ask anchored on the convenient path + a t6-only
+    # note + half of every non-t6 trait's writer calls told no AI system appears): 647 rows,
+    # t1 73 ... t9 72. Another AI is central in 14% of rows, the assistant itself in 11%.
+    # The 09-28 repo @ 14efefbf is what da-15 trained on before this date.
+    dataset: "${oc.env:HF_ORG}/2026-10-01-da-synth"
+    revision: "a2e3434b4cf44e4641f7a28f047d259959109de9"
     examples: 1
     reasoning: native
     balance_by: trait_id
