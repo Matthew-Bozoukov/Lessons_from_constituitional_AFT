@@ -928,7 +928,12 @@ class SshExec:
         # assert_local_port_free. ExitOnForwardFailure stays as a second line.
         assert_local_port_free(self.bind, self.port)
         self.tunnel = subprocess.Popen(
-            [*argv, "-o", "ExitOnForwardFailure=yes", "-N",
+            [*argv, "-o", "ExitOnForwardFailure=yes",
+             # Without a keepalive a dropped tunnel is SILENT: the local port stops
+             # listening, the eval keeps issuing requests into it, and the run stalls
+             # with no error (2026-09-30: a 90-scenario Petri audit lost 8 scenarios
+             # and an hour of pod time this way). These make ssh notice in ~90s.
+             "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=3", "-N",
              "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
 
     def tunnel_failure(self) -> str | None:

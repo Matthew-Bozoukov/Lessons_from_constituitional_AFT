@@ -94,3 +94,12 @@ models:
                                   # >=0.99986 on a 16-text probe — the pin buys
                                   # consistency, not precision (~1e-4 cosine variance).
     price: {in: 0.01, out: 0}
+  openai/gpt-oss-120b:            # MoReBench's OWN judge (arXiv:2510.16380): one call per
+    order: [deepinfra]            # rubric criterion, ~11.5k per run. No first-party OpenAI
+                                  # endpoint exists for these open weights, so the pin is a
+                                  # deliberate host: of the twelve serving it (checked
+                                  # 2026-09-29), four are fp4 and one fp8, and a quantized
+                                  # judge is a different grader — deepinfra/bf16 is the
+                                  # cheapest full-precision host ($0.037/$0.170) ahead of
+                                  # dekallm and akashml at the same quant.
+    price: {in: 0.037, out: 0.17}
