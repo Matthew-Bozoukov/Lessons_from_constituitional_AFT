@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 import hashlib
 import multiprocessing
 import signal
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -29,6 +30,33 @@ def hold_slot(path, ready):
 
 
 class AdmissionTests(unittest.TestCase):
+    def test_default_backend_does_not_require_inspect(self):
+        with patch.object(fleet.subprocess,'run') as run:
+            fleet.validate_backend(OmegaConf.create({'protocol_version':'lite-v4'}))
+        run.assert_not_called()
+
+    def test_inspect_runtime_checked_before_readiness_or_provider(self):
+        cfg=OmegaConf.create({'agent_backend':'inspect','protocol_version':'lite-inspect-v1'})
+        with patch.object(fleet.subprocess,'run',side_effect=RuntimeError('missing environment')), patch.object(fleet,'account') as account:
+            with self.assertRaisesRegex(RuntimeError,'missing environment'):fleet.preflight(cfg)
+        account.assert_not_called()
+
+    def test_inspect_protocol_cannot_be_mislabeled_mini(self):
+        with self.assertRaisesRegex(AssertionError,'cannot use mini'):
+            fleet.validate_backend(OmegaConf.create({'protocol_version':'lite-inspect-v1'}))
+
+    def test_inspect_v1_preserves_response_cap_when_mini_changes(self):
+        old=OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+        cfg=OmegaConf.merge(old,OmegaConf.load('configs/eval/swebench_mini/inspect.yaml'))
+        self.assertNotEqual(old.recipe_path,cfg.recipe_path)
+        self.assertEqual(old.max_response_tokens, 16384)
+        self.assertEqual(cfg.max_response_tokens, 65536)
+        for k in ('max_task_tokens','step_limit','sampling','serving'):
+            self.assertEqual(old[k],cfg[k])
+        self.assertNotEqual(fleet.recipe_settings(old),fleet.recipe_settings(cfg))
+        with self.assertRaisesRegex(AssertionError,'own local integration'):
+            fleet.validate_recipe(cfg,{'validated_full_run':True})
+
     def test_cross_process_limit_and_crash_release(self):
         with tempfile.TemporaryDirectory() as path:
             ready = multiprocessing.Event()
@@ -52,6 +80,57 @@ class AdmissionTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 with tool_slot(path, 4, wait_seconds=.1):
                     self.fail('Low-memory work admitted')
+
+
+class GradingTests(unittest.TestCase):
+    def test_priority_reorders_dataset_without_changing_rows_or_source(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            rows = [{'instance_id': iid, 'test_patch': 'unchanged ' + iid}
+                    for iid in ['a', 'b', 'sympy__sympy-11870', 'c']]
+            source = root/'metadata/swebench_lite_test.json'
+            atomic(source, rows)
+            before = source.read_bytes()
+            cfg = OmegaConf.create({'grading_priority': ['sympy__sympy-11870', 'absent']})
+            ordered = read(fleet.grading_dataset(cfg, root, root/'results/grading'))
+            self.assertEqual(ordered, [rows[2], rows[0], rows[1], rows[3]])
+            self.assertEqual(source.read_bytes(), before)
+            self.assertEqual(fleet.grading_dataset(OmegaConf.create({}), root,
+                                                 root/'results/grading'), source)
+
+    def test_cpu_finish_reserve_cannot_kill_official_grading(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            cfg = OmegaConf.create({'root': path, 'grading_workers': 12, 'grading_priority': ['299'],
+                'grading_timeout_seconds': 2, 'cpu_finish_reserve_seconds': .08,
+                'cleanup_reserve_seconds': .02})
+            tasks = {str(i): {'status': 'valid', 'attempts': [{'prediction': {
+                'model_name_or_path': 'test', 'model_patch': 'patch' if i == 0 else ''}}]}
+                for i in range(300)}
+            atomic(root/'metadata/state.json', {'tasks': tasks, 'pods': []})
+            atomic(root/'metadata/manifest.json', {'campaign': 'test', 'limitations': 'synthetic'})
+            atomic(root/'metadata/httpbin_fixture.json', {})
+            atomic(root/'metadata/swebench_lite_test.json', [{'instance_id': str(i)} for i in range(300)])
+            script = root/'scratch/swebench_local_httpbin.py'
+            script.parent.mkdir()
+            script.write_text('import json, time\nfrom pathlib import Path\n'
+                'request=json.loads(Path("request.json").read_text())["harness"]\n'
+                'assert request["timeout"] == 2\n'
+                'assert request["max_workers"] == 12\n'
+                'assert json.loads(Path(request["dataset_name"]).read_text())[0]["instance_id"] == "299"\n'
+                'time.sleep(.15)\n'
+                'Path("test.lite_test.json").write_text(json.dumps({'
+                '"completed_ids": request["instance_ids"], "resolved_ids": []}))\n')
+            with patch.object(fleet.runpod, 'active_pods', return_value=[]), \
+                 patch.object(fleet, 'HARNESS', sys.executable), \
+                 patch.object(fleet, 'REPO', root), \
+                 patch.object(fleet, 'cleanup_grading') as cleanup:
+                fleet.grade(cfg)
+            cleanup.assert_called_once()
+            result = read(root/'results/results.json')
+            self.assertEqual(result['n_graded'], 300)
+            self.assertEqual(result['status'], 'complete')
+            self.assertEqual(read(root/'results/grading/request.json')['harness']['timeout'], 2)
 
 
 class SupervisionTests(unittest.TestCase):
@@ -91,6 +170,14 @@ class SupervisionTests(unittest.TestCase):
         self.state['halt'] = None
         self.state['tasks']['b']['attempts'] = [{}, {}, {}]
         self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'attempts_exhausted')
+
+    def test_global_infrastructure_breaker_requires_diagnosis_before_rerental(self):
+        self.state['halt'] = 'infrastructure failure circuit breaker'
+        self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'needs_attention')
+
+    def test_systemic_protocol_error_never_triggers_another_rental_cycle(self):
+        self.state['halt'] = 'systemic inference protocol failure; diagnosis required'
+        self.assertEqual(supervisor.decide(self.state, self.control, self.cfg), 'needs_attention')
 
     def test_publication_failure_retries_without_inference_or_ledger_reset(self):
         with tempfile.TemporaryDirectory() as path:
@@ -235,6 +322,8 @@ class SupervisionTests(unittest.TestCase):
             root = Path(path)
             cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
             cfg.root = path
+            # Exercise a fresh replacement lease shorter than this test's CPU lifetime.
+            cfg.rental_seconds = 6 * 3600
             start, clock, expiries = 100000., [100000.], []
             state_path = root/'metadata/state.json'
             atomic(state_path, {'deadline': start+8*3600, 'pods': [], 'halt': None,
@@ -336,6 +425,26 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(result['gpu_conservative_ledger_usd'], 6)
             self.assertEqual(result['provider_gpu_recorded_usd'], 3.5)
             self.assertEqual(result['provider_missing_pod_ids'], ['lagged'])
+
+    def test_fence_closes_reaped_known_pods_without_erasing_ambiguous_reservations(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            atomic(root/'metadata/state.json', {'tasks': {}, 'pods': [
+                {'id': 'reaped', 'created': 100, 'expires': 7200, 'status': 'booting', 'ceiling_hourly': 4},
+                {'id': None, 'created': 100, 'expires': 7200, 'status': 'allocation-unconfirmed', 'ceiling_hourly': 4}]})
+            teammate = {'id': 'unrelated', 'env': {}}
+            with patch.object(fleet.runpod, 'active_pods', return_value=[teammate]), \
+                 patch.object(fleet.runpod, 'teardown') as teardown, \
+                 patch.object(fleet.psutil, 'process_iter', return_value=[]), \
+                 patch.object(fleet.subprocess, 'check_output', return_value=''), \
+                 patch.object(fleet.time, 'time', return_value=3700):
+                fleet.fence(OmegaConf.create({'root': path}), {'campaign': 'ours'})
+            teardown.assert_not_called()
+            records = read(root/'metadata/state.json')['pods']
+            self.assertEqual(records[0]['ended'], 3700)
+            self.assertEqual(fleet.reserved_cost({'pods': records[:1]}), 4)
+            self.assertNotIn('ended', records[1])
+            self.assertEqual(records[1]['status'], 'allocation-unconfirmed')
 
     def test_boot_stages_share_one_deadline_and_watchdog_arms_first(self):
         pod = fleet.runpod
@@ -516,3 +625,53 @@ class RuntimeSchedulingTests(unittest.TestCase):
             current = read(state.path)['tasks']
             self.assertTrue(all(current[i]['status'] == 'running' for i in 'bcde'))
             self.assertIsNone(state.claim('gpu-0', list('abcde'), 3, 6))
+
+
+class ReplicaFailureBreakerTests(unittest.TestCase):
+    def make_state(self, directory):
+        from src.eval.capabilities.swebench_mini.fleet_state import State, begin_failure_epoch
+        state = State(directory)
+        data = {'deadline': None, 'tasks': {
+            str(i): {'status': 'pending', 'attempts': []} for i in range(30)}}
+        begin_failure_epoch(data)
+        atomic(state.path, data)
+        return state
+
+    def fail_replica(self, state, slot, workers=4):
+        # Lease all tasks before the shared endpoint dies, as in the actual fleet.
+        allowed = list(read(state.path)['tasks'])
+        leases = [state.claim(f'{slot}-{n}', allowed, 6, 6) for n in range(workers)]
+        for iid, aid in leases:
+            state.finish(iid, aid, {'valid': False, 'exit_status': 'InterruptedInfrastructure'})
+
+    def test_two_lost_replicas_do_not_stop_healthy_peers_after_eight_interrupted_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = self.make_state(directory)
+            self.fail_replica(state, 55)
+            self.fail_replica(state, 120)
+            self.assertIsNotNone(state.claim('105-0', list(read(state.path)['tasks']), 6, 6))
+            self.assertFalse(read(state.path).get('halt'))
+
+    def test_six_distinct_lost_replicas_halt_and_preserve_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = self.make_state(directory)
+            for slot in range(6):
+                self.fail_replica(state, slot, workers=1)
+            self.assertIsNone(state.claim('7-0', list(read(state.path)['tasks']), 6, 6))
+            data = read(state.path)
+            self.assertEqual(data['breaker_evidence']['failed_replicas'], list('012345'))
+            self.assertEqual(data['halt'], 'infrastructure failure circuit breaker')
+
+    def test_reviewed_recovery_preserves_old_attempts_without_recounting_old_replicas(self):
+        from src.eval.capabilities.swebench_mini.fleet_state import begin_failure_epoch
+        with tempfile.TemporaryDirectory() as directory:
+            state = self.make_state(directory)
+            for slot in range(5):
+                self.fail_replica(state, slot, workers=1)
+            previous = read(state.path)['tasks']
+            with state.edit() as data:
+                begin_failure_epoch(data)
+            self.assertEqual(read(state.path)['tasks'], previous)
+            self.assertEqual(read(state.path)['breaker_failures_baseline'], 5)
+            self.fail_replica(state, 120)
+            self.assertIsNotNone(state.claim('105-0', list(previous), 6, 6))

@@ -26,13 +26,21 @@ price and SSH endpoint. Missing resources and ownership mismatches fail closed.
 It never creates a replacement merely because SSH failed. Direct mapped VM SSH
 is preferred to Vast's sometimes unusable proxy endpoint; host-key checking stays on.
 
-Current host: **52229744**, `nika-swebench-cpu-20260923T123716Z`.
-Live price verified September 24: **$0.5388889/hour**, about **$12.93/day or
+Last verified September 28 at 17:05 UTC: replacement host **53118260** is
+**paused at the user's request**, with disk and all 300 cached images retained.
+Vast reports `actual_status=exited`, `intended_status=stopped` for this stopped VM.
+Compute is stopped; the retained 500 GB disk costs **$0.1388889/hour ($3.33/day)**.
+The shared registry records the verified state and points to the local pause audit.
+Resume only for an explicit future run/prepare request. The original host **52229744** was
+destroyed on September 24; its receipt and run backups remain archived. Read the
+shared registry and provider status before reusing or provisioning a host; this
+dated record is not a substitute for live checks.
+Replacement price verified September 28: **$0.5388889/hour**, about **$12.93/day or
 $388/30 days**, excluding transfer. Stopping retains disk at the historical
 ~$3.33/day; destroying releases disk but requires an explicit destruction request.
 Use the management command for current prices/address, not these historical values.
 
-Host resources verified: **61 logical CPUs, 197.9 GiB RAM, 485 GiB filesystem**
+Replacement resources verified: **61 logical CPUs, 197.9 GiB RAM, 484 GiB filesystem**
 from 500 GiB rented. 300 cached images use about 195 GiB. Target a new offer with
 **64 effective CPUs, >=200 GiB advertised allocated RAM, 500 GiB SSD**, verify
 **>=60 actual CPUs and >=190 GiB actual RAM** inside it, and run capacity proof.
@@ -143,9 +151,11 @@ $P -m src.eval.capabilities.swebench_mini.fleet qualify-shell --config configs/e
 $P -m scratch.swebench_cpu_load --output /srv/lasr/runs/capacity-UNIQUE
 $P -m pytest tests/test_swebench_fleet.py tests/test_swebench_session.py scratch/test_swebench_lite.py -q > /srv/lasr/runs/lifecycle-tests-UNIQUE.log
 src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m scratch.test_swebench_timeout_transport > /srv/lasr/runs/transport-UNIQUE.log 2>&1
+src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m unittest discover -s tests -p test_swebench_protocol.py -v > /srv/lasr/runs/protocol-UNIQUE.log 2>&1
+src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python -m scratch.swebench_protocol_template_check
 $P -m scratch.swebench_lite_smoke
 # Use the smoke root printed by the preceding command:
-$P -m scratch.swebench_qualify_recipe --load-dir /srv/lasr/runs/capacity-UNIQUE --smoke-root SMOKE_ROOT --test-log /srv/lasr/runs/lifecycle-tests-UNIQUE.log --transport-log /srv/lasr/runs/transport-UNIQUE.log
+$P -m scratch.swebench_qualify_recipe --load-dir /srv/lasr/runs/capacity-UNIQUE --smoke-root SMOKE_ROOT --test-log /srv/lasr/runs/lifecycle-tests-UNIQUE.log --transport-log /srv/lasr/runs/transport-UNIQUE.log --protocol-log /srv/lasr/runs/protocol-UNIQUE.log --template-proof output/swebench-protocol-template-latest.json
 ```
 
 Use fresh unique evidence directories. No dependency on the original control's

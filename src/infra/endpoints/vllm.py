@@ -151,7 +151,7 @@ class ServedTarget:
         if not self.is_api:
             self._server.release()
 
-    def sibling(self, hf_path: str) -> "ServedTarget":
+    def sibling(self, hf_path: str, mode: str | None = None) -> "ServedTarget":
         """A second model live on the SAME server, for an eval that seats more than one.
 
         The arm ladder serves models one after another; a multi-agent environment needs
@@ -166,11 +166,30 @@ class ServedTarget:
         seats. That is refused here rather than discovered in the transcripts, and it
         also happens to be the comparison rule: arms whose modes differ are not
         comparable, and an eval that seats them together is claiming they are.
+
+        `mode` is the documented escape hatch a full model needs to join a think ladder
+        (run_eval's `mode=` override, applied here to the sibling alone): a full model has
+        no training stamp and resolves to its template's default. And a full model that IS
+        this server's base is already loaded, at the commit this arm was trained against;
+        resolve_target would pin it to the repo's head, which can differ and would restart
+        the server, evicting the caller's adapter. So the caller's base revision wins.
         """
         assert not self.is_api, (
             f"{self.spec.hf_path} is an API endpoint — there is no server to seat a sibling on"
         )
         spec = resolve_target(hf_path)
+        if mode is not None:
+            spec = replace(spec, mode=str(mode))
+        if not spec.adapter and spec.base_model == self.spec.base_model:
+            spec = replace(spec, revision=self.spec.base_revision,
+                           base_revision=self.spec.base_revision,
+                           base_revision_from=self.spec.base_revision_from)
+            if mode is None:
+                # This full model IS the server's loaded base, so it takes the server's
+                # pinned mode. Otherwise it resolves to its template's `default`, and a
+                # base-model-in-every-seat run (target `mode=think`, peer the same full
+                # model) would trip the mode assert below (Hospital, 2026-09-18).
+                spec = replace(spec, mode=self.spec.mode)
         assert spec.base_model == self.spec.base_model, (
             f"cannot co-serve {hf_path} (base {spec.base_model}) with "
             f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
@@ -674,18 +693,6 @@ class LocalExec:
 _HOST_PORT = re.compile(r"^(?P<host>[^:/@]+(?:@[^:/]+)?):(?P<port>\d+)$")
 
 
-def local_port_in_use(bind: str, port: int) -> bool:
-    """True when something already accepts connections on `bind:port` on this machine.
-
-    Checked before `ssh -L` is issued: a taken port makes the forward fail with one line
-    on stderr and no exit, so the run would go on talking to whoever holds the port —
-    another arm's tunnel, with that arm's server flags (docs/GOTCHAS.md 2026-09-08).
-    """
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.settimeout(1.0)
-        return probe.connect_ex((bind, port)) == 0
-
-
 def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
     """The `ssh` argv prefix and the hostname to hand it, for an alias or an address:port.
 
@@ -711,6 +718,25 @@ def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
         # MaxAuthTries before this one is tried.
         argv += ["-i", str(Path(identity).expanduser()), "-o", "IdentitiesOnly=yes"]
     return argv, match["host"]
+
+
+def assert_local_port_free(bind: str, port: int) -> None:
+    """Refuse a tunnel whose local port another process already holds.
+
+    The forward's port must be OURS before ssh tries it: a port another driver's tunnel holds
+    makes ssh print "Address already in use" and carry on with no forward (2026-09-24 —
+    ExitOnForwardFailure did not end it), and the health probe then answers from whatever
+    server that other tunnel reaches: the wrong pod, silently, unless its model names happen
+    to differ. A bind attempt is deterministic.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind((bind, port))
+        except OSError as e:
+            raise RuntimeError(
+                f"local port {bind}:{port} is already taken (another eval's tunnel? `lsof -nP "
+                f"-iTCP:{port}`) — pass a different --port; the health probe would otherwise "
+                f"answer from whatever server that tunnel reaches") from e
 
 
 class SshExec:
@@ -904,24 +930,32 @@ class SshExec:
             print("!!! SSH launch acknowledgement timed out; checking the original "
                   "server through its health endpoint without relaunching", flush=True)
         argv, target = ssh_argv(self.host, self.identity)
-        # A local listener already on the bind port means ssh's -L silently fails
-        # ("cannot listen to port") and every request goes to whatever holds it — another
-        # arm's server, with that arm's flags (2026-09-29: an ODCV run scored 0 tool calls
-        # against a concurrent MASK arm's tunnel on 8000). Two arms, two ports.
-        if local_port_in_use(self.bind, self.port):
-            raise RuntimeError(
-                f"{self.bind}:{self.port} is already in use locally, so the tunnel to "
-                f"{self.host} cannot bind there; run this arm with `--port <free port>` "
-                f"(one port per concurrent arm)")
+        # The port is checked by binding it, not by trusting ssh to refuse it: see
+        # assert_local_port_free. ExitOnForwardFailure stays as a second line.
+        assert_local_port_free(self.bind, self.port)
         self.tunnel = subprocess.Popen(
-            [*argv, "-N", "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
+            [*argv, "-o", "ExitOnForwardFailure=yes", "-N",
+             "-L", f"{self.bind}:{self.port}:localhost:{self.port}", target])
+
+    def tunnel_failure(self) -> str | None:
+        """Why the tunnel is gone, or None while it runs (or before it was started)."""
+        if self.tunnel is None or self.tunnel.poll() is None:
+            return None
+        return (f"ssh tunnel to {self.host} exited ({self.tunnel.returncode}): the local forward "
+                f"{self.bind}:{self.port} could not be bound or was lost — another eval's tunnel "
+                f"probably holds the port; pass a different --port")
 
     def alive(self) -> bool:
+        if self.tunnel_failure():
+            return False
         # Transport failure is unknown liveness, not proof the process exited.
         return self._ssh(f"pgrep -f '{_SERVER_PATTERN}' >/dev/null && echo up || echo down",
                          timeout=10).strip().endswith("up")
 
     def tail_log(self, n: int = 15) -> str:
+        failure = self.tunnel_failure()
+        if failure:
+            return failure
         try:
             return self._ssh(f"tail -n {n} {self.remote_dir}/vllm.log 2>/dev/null")
         except RuntimeError as e:

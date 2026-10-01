@@ -14,21 +14,27 @@ CPU work only. Do not rent an extra model evaluation for calibration.
 
 ## Fixed operating defaults
 
-- All 300 Lite tasks per arm; one or two pinned compatible Qwen3.6-27B rank-64 thinking adapters.
-  For two, use the paired command in the runbook: 20 GPUs TOTAL initially ten per
-  arm, both longest-first, then drain-and-swap idle pods. One shared $360 maximum
-  and tool gate; separate scores and HF repositories. Never launch two separate fleets.
-- Up to 20 single-GPU RunPod replicas, four conversations each. Start each ready
-  GPU independently. H100 NVL first, delayed H200 fallback, RTX PRO 6000 Blackwell
-  Server last. Preserve the configuration's price ceilings and automatic retries.
+- If Inspect is requested, follow `docs/swebench_inspect.md` and add
+  `--agent-backend inspect` to the new launch. Require its separate executed
+  qualification and `lite-inspect-v1` recipe. Otherwise preserve the mini default;
+  never switch backend inside an existing campaign or pool their scores.
+
+- Current protocol is `lite-v5`; read settings from `configs/eval/swebench_mini/lite.yaml`.
+  One model, all 300 tasks, six replicas maximum, all H100 NVL preferred, four conversations each. Retain delayed H200/RTX fallback.
+  Older 20-GPU/two-arm plans do not authorize a second model or larger fleet.
+- Temperature 1.0 and the complete sampling recipe are explicit in the YAML.
+  v5 uses a 16k response cap, retains rejected assistant responses and durable raw HTTP evidence. New result
+  names include the protocol suffix; never resume old outcomes under new sampling.
 - Native-Docker Vast CPU: target 64 effective CPUs, at least 190 GiB actual RAM,
   500 GiB disk; qualify 80 conversations with a separate 32-command gate and 12
   grading workers. A cheaper smaller CPU is not a drop-in replacement.
 - New campaign GPU backstop $180, not an expected bill. Report the live quote and
   allowance before launch without asking the user to repeat this standing choice.
   Never reset an existing ledger or silently raise its allowance.
-- CPU is persistent until explicitly stopped. The user selected this on
-  September 24, 2026. Persistence never removes finite GPU watchdogs, token/step limits,
+- Inspect the shared CPU registry; never infer its live state from old documentation.
+  Do not rent during code/test/status-only tasks. An explicit run or prepare request
+  may prepare a replacement when the registry and provider confirm none exists,
+  persistent until explicitly stopped. Persistence never removes finite GPU watchdogs, token/step limits,
   budget limits or retry bounds. CPU cost is separate, including idle time.
 - Progress every 15 minutes and immediate completion/failure updates. Create one
   Codex heartbeat for the new campaign, verify ACTIVE and a real initial status
@@ -51,8 +57,9 @@ CPU work only. Do not rent an extra model evaluation for calibration.
    excluding secrets, to `/srv/lasr/repo`. Compare recipe source hashes. When code
    changed, run the documented CPU-only qualification; never approve drift by
    merely replacing the hash map. Preserve completed campaign manifests.
-4. Submit via the standard evaluation entrypoint on the ready CPU (for a pair,
-   pass both targets plus `--next-target-revision` and the shared `--budget-usd 360`):
+4. Submit the requested single model via the standard evaluation entrypoint on the
+   ready CPU. A paired launch needs an explicitly reviewed shared budget and
+   ownership plan; the current protocol does not authorize one by default:
 
    ```bash
    uv run --project scratch/swebench_cpu_env --frozen python -m src.eval.run_eval \

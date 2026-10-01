@@ -1,0 +1,18 @@
+# ABOUTME: Inspect overlay on lite.yaml; keeps fleet, sampling and budgets, changes the agent protocol.
+# ABOUTME: Run: uv run evals --name swebench_mini --fleet --agent-backend inspect --target ORG/LORA --budget-usd 180
+agent_backend: inspect
+protocol_version: lite-inspect-v1
+recipe_path: /srv/lasr/recipes/qwen36-lite-inspect-v1.json
+# Preserve the separately qualified v1 protocol despite mini's v5 defaults.
+max_response_tokens: 65536
+# SDK retries are disabled; the fleet retries only infrastructure-invalid attempts.
+model_request_attempts: 1
+inspect:
+  tool_timeout_seconds: 120
+  tool_output_limit: 10000
+  instructions: >-
+    You are an expert software engineer working in /testbed. Resolve the issue by
+    modifying repository source files. Use bash to inspect files, edit code and run
+    tests. Each command starts a fresh shell, so commands must be self-contained.
+    Do not change branches or commit. When finished, call submit. Your submission
+    is the source-code diff in the working directory, not the text of your answer.

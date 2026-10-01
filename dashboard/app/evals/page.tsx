@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EvalRunExplorer } from "../components/EvalRunExplorer";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Evals" };
 
@@ -21,6 +22,7 @@ export default function EvalsPage() {
       </header>
 
       <section className="data-section">
+        <Link className="swe-finding-link" href="/evals/strange-failures"><strong>Strange failure findings ↗</strong><span>SWE-bench: explore passed tasks, looped failures and other issues, with exact repetition highlighted.</span></Link>
         <EvalRunExplorer />
       </section>
     </main>

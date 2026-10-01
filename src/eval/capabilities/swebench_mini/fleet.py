@@ -26,7 +26,7 @@ from src.infra import runpod
 from src.infra.endpoints.vllm import resolve_target, SshExec, POD_VENV
 from src.infra.huggingface import hf_api, hf_download, hf_repo_id, push_run_dir
 from src.naming import eval_name, today
-from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, digest, lock, read
+from src.eval.capabilities.swebench_mini.fleet_state import State, atomic, digest, lock, read, begin_failure_epoch
 from src.eval.capabilities.swebench_mini.fleet_worker import stop_process
 from src.eval.capabilities.swebench_mini import fleet_session as session
 
@@ -42,6 +42,10 @@ def recipe_settings(cfg):
             'fallback_gpus', 'cuda_versions', 'cpu_worker_limit', 'allocation_fallback_after_seconds',
             'allocation_fallback_after_attempts')
     keys += ('model_request_timeout_seconds', 'model_request_attempts')
+    keys += tuple(k for k in ('step_limit', 'token_admission', 'preferred_gpus') if k in cfg)
+    keys += tuple(k for k in ('protocol_version', 'sampling') if k in cfg)
+    keys += tuple(k for k in ('grading_priority',) if k in cfg)
+    keys += tuple(k for k in ('agent_backend', 'inspect') if k in cfg)
     keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
@@ -49,6 +53,8 @@ def recipe_settings(cfg):
 
 def validate_recipe(cfg, recipe):
     qualified = recipe.get('qualification', {})
+    if cfg.get('agent_backend') == 'inspect':
+        assert qualified.get('inspect_backend', {}).get('status') == 'passed', 'Inspect backend needs its own local integration qualification'
     assert (recipe.get('validated_full_run') or
             (qualified.get('protocol_reviewed') and qualified.get('cpu_qualified') and
              qualified.get('recovery_tests_passed'))), 'Recipe needs a complete graded run or explicit protocol and infrastructure qualification'
@@ -130,6 +136,7 @@ def qualify_shell(cfg):
 
 
 def preflight(cfg):
+    validate_backend(cfg)
     ready = Path(cfg.readiness)
     proof = read(ready.parent / 'cpu-readiness-backup-verified.json')
     result = read(ready / 'results/readiness.json')
@@ -201,9 +208,31 @@ def preflight(cfg):
             'paid_gpu_test': 'one calibration replica' if cfg.calibrate else 'fixed fleet; CPU/recovery qualified, no new paid calibration'}
 
 
+def validate_backend(cfg):
+    """Verify the selected agent runtime before touching paid infrastructure."""
+    backend = cfg.get('agent_backend', 'mini')
+    assert backend in ('mini', 'inspect'), 'Unknown SWE-bench backend'
+    if backend == 'inspect':
+        assert cfg.get('protocol_version', '').startswith('lite-inspect-'), 'Inspect requires its own protocol'
+        env = REPO/'src/eval/capabilities/swebench_mini/envs/inspect'
+        subprocess.run(['uv', 'sync', '--check', '--frozen', '--project', str(env)], check=True, timeout=90)
+        subprocess.run([str(env/'.venv/bin/python'), '-m',
+                        'src.eval.capabilities.swebench_mini.inspect_task', '--check-runtime'], check=True, timeout=30)
+        version = subprocess.check_output(['docker', 'compose', 'version', '--short'], text=True, timeout=30).strip()
+        assert int(version.lstrip('v').split('.')[0]) >= 2, 'Inspect requires Docker Compose v2'
+        docker_version = json.loads(subprocess.check_output(['docker','version','--format','json'], text=True, timeout=30))
+        assert docker_version['Client']['Version'] and docker_version['Server']['Version'], 'Inspect Docker version check failed'
+    else:
+        assert not cfg.get('protocol_version', '').startswith('lite-inspect-'), 'Inspect protocol cannot use mini'
+
+
 def sources():
     paths = list((REPO / 'src/eval/capabilities/swebench_mini').glob('fleet*.py'))
+    paths += list((REPO / 'src/eval/capabilities/swebench_mini').glob('inspect*.py'))
+    paths += [REPO/'src/eval/capabilities/swebench_mini/envs/inspect/uv.lock',
+              REPO/'configs/eval/swebench_mini/inspect.yaml']
     paths += [REPO / 'src/eval/capabilities/swebench_mini/fixture.py']
+    paths += [REPO / 'src/eval/capabilities/swebench_mini/browser.py']
     paths += [REPO / p for p in ['src/infra/runpod.py', 'src/infra/endpoints/vllm.py', 'src/eval/run_eval.py',
                                'src/model_profile.py', 'configs/models/qwen36.yaml', 'src/naming.py',
                                'src/infra/huggingface.py', 'src/utils.py', 'pyproject.toml',
@@ -219,7 +248,8 @@ def initialize(cfg, config_path, budget):
     if (root / 'metadata/manifest.json').exists():
         raise RuntimeError('Campaign exists; use resume, never overwrite it')
     spec = resolve_target(cfg.target, revision=cfg.target_revision)
-    repo = hf_repo_id(eval_name('swebench_mini', spec.model_key))
+    subject = spec.model_key + ('-' + cfg.protocol_version if cfg.get('protocol_version') else '')
+    repo = hf_repo_id(eval_name('swebench_mini', subject))
     assert not hf_api().repo_exists(repo, repo_type='dataset'), 'HF destination exists; refusing to overwrite another campaign'
     campaign = uuid.uuid4().hex
     rows = read(Path(cfg.readiness) / 'metadata/swebench_lite_test.json')
@@ -227,16 +257,16 @@ def initialize(cfg, config_path, budget):
     manifest = {'campaign': campaign, 'repo': repo, 'created': datetime.now(timezone.utc).isoformat(),
                 'date': today(), 'model_key': spec.model_key, 'config': OmegaConf.to_container(cfg),
                 'source_hashes': sources(), 'budget_usd': budget, 'dataset_tasks': 300,
-                'protocol': 'mini-swe-agent 2.2.1; official 250 steps, inert local dollar limit; network none; '
+                'protocol': f'{"inspect-ai 0.3.268 / inspect-evals 0.21.0, bash+submit" if cfg.get("agent_backend") == "inspect" else "mini-swe-agent 2.2.1"}; {cfg.get("step_limit", 250)} model generations, inert local dollar limit; network none; '
                             f'digest-pinned cached images; {cfg.agent_cpus} CPU/{cfg.agent_memory}/{cfg.agent_pids} PID agent container caps; infrastructure retries only (max {cfg.max_infrastructure_attempts} attempts); '
                             'quota-derived test/BLAS thread limits; in-container command timeout with descendant cleanup; '
                             'requests local HTTPBin fixture for grading; full denominator 300',
                 'limitations': read(Path(cfg.readiness) / 'results/readiness.json')['benchmark_limitations']}
     manifest['protocol'] += (f'; response cap {cfg.max_response_tokens}, task completion-token cap {cfg.max_task_tokens}; '
                              f'HTTP timeout {cfg.model_request_timeout_seconds}s, request attempts {cfg.model_request_attempts}; '
-                             'token-limit outcomes terminate unresolved without model rerolls; '
+                             'limit outcomes use forced tracked source diff excluding tests/build/docs/scripts/untracked; no model rerolls; '
                              'agent shell environment ' + json.dumps(OmegaConf.to_container(cfg.agent_environment)))
-    manifest['protocol'] += f'; task wall-clock cap {cfg.get("task_seconds")}; finite per-pod emergency lease; token/step limits unchanged'
+    manifest['protocol'] += f'; task wall-clock cap {cfg.get("task_seconds")}; container sleep infinity; finite per-pod emergency lease; token admission {cfg.get("token_admission")}'
     if cfg.get('following_configs') or cfg.get('fleet_owner_root'):
         manifest['shared_fleet'] = {'owner_root': cfg.get('fleet_owner_root') or cfg.root,
             'budget_scope': 'One cumulative fleet budget, not an independent allowance per arm',
@@ -282,7 +312,17 @@ def fence(cfg, manifest):
     for pod in runpod.active_pods():
         if owned(pod, manifest):
             runpod.teardown(pod['id'])
-    assert not any(owned(p, manifest) for p in runpod.active_pods())
+    remaining = runpod.active_pods()
+    assert not any(owned(p, manifest) for p in remaining)
+    # The independent reaper can remove a booting pod before its future records
+    # teardown. Close only confirmed IDs, conservatively at this observation;
+    # ambiguous creates without an ID retain their separate reconciliation rules.
+    present = {p['id'] for p in remaining}
+    with State(cfg.root).edit() as data:
+        for record in data['pods']:
+            if record.get('id') and record['id'] not in present and 'ended' not in record:
+                record.update(status='terminated', ended=time.time(),
+                    termination_evidence='Provider absence verified after fencing; latest observed end bound')
     root = str(Path(cfg.root))
     for proc in psutil.process_iter(['pid', 'cmdline']):
         cmd = proc.info['cmdline'] or []
@@ -305,14 +345,16 @@ def guard(cfg):
     manifest = read(path)
     active = subprocess.run(['systemctl', 'is-active', '--quiet', 'lasr-swebench-lite.service']).returncode == 0
     state = read(Path(cfg.root) / 'metadata/state.json')
+    from src.eval.capabilities.swebench_mini.fleet_handover import pending
+    handover = pending(cfg.root, manifest)
     rejected_names = {p['name'] for p in state.get('pods', [])
                       if p['status'] in ('allocation-unconfirmed', 'rejected-reconciled')}
     for pod in runpod.active_pods():
         if owned(pod, manifest):
             deadline = float((pod.get('env') or {}).get('LASR_POD_DEADLINE', 0))
-            if not active or pod.get('name') in rejected_names or time.time() >= min(deadline, deadline_value(state['deadline'])):
+            if (not active and not handover) or pod.get('name') in rejected_names or time.time() >= min(deadline, deadline_value(state['deadline'])):
                 runpod.teardown(pod['id'])
-    if not active:
+    if not active and not handover:
         try:
             with lock(Path(cfg.root) / '.coordinator.lock', nonblocking=True):
                 for arm in session.members(cfg):
@@ -342,6 +384,10 @@ def publish(cfg):
                 # Copy contents: hard links do not freeze upstream in-place writes.
                 shutil.copytree(root / sub, snapshot / sub, copy_function=shutil.copy2,
                                 ignore=shutil.ignore_patterns('*.tmp', '__pycache__'))
+        from src.eval.capabilities.swebench_mini.browser import build_index
+        browser_index = build_index(snapshot)
+        atomic(snapshot / 'metadata/task-browser.json', browser_index)
+        atomic(root / 'metadata/task-browser.json', browser_index)
         repo = manifest['repo']
         api = hf_api()
         if api.repo_exists(repo, repo_type='dataset'):
@@ -509,10 +555,13 @@ def pending_tasks(data, allowed, cfg):
                and len(t['attempts']) < cfg.max_infrastructure_attempts for iid, t in data['tasks'].items())
 
 
-def allocation_gpu(cfg, failures, elapsed, fallback_failures=None):
+def allocation_gpu(cfg, failures, elapsed, fallback_failures=None, lane=None):
+    preferences = list(cfg.get('preferred_gpus', []))
+    primary = preferences[lane] if lane is not None and lane < len(preferences) else cfg.gpu
     if failures < cfg.allocation_fallback_after_attempts or elapsed < cfg.allocation_fallback_after_seconds:
-        return cfg.gpu
-    options = list(cfg.fallback_gpus) + [cfg.gpu]
+        return primary
+    options = ([cfg.gpu] + [g for g in cfg.fallback_gpus if g != primary] + [primary]
+               if primary != cfg.gpu else list(cfg.fallback_gpus) + [cfg.gpu])
     offset = failures - cfg.allocation_fallback_after_attempts if fallback_failures is None else fallback_failures
     return options[offset % len(options)]
 
@@ -679,11 +728,12 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
             raise cleanup_error
 
 
-def phase(cfg, config_path, ids, count, seconds, manifest):
+def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
     state = State(cfg.root)
     data = read(state.path)
     remaining = manifest['budget_usd'] - reserved_cost(data)
-    seconds = min(seconds, int(remaining * 3600 / (count * price_ceiling(cfg, cfg.gpu))))
+    lane_prices = [price_ceiling(cfg, allocation_gpu(cfg, 0, 0, lane=lane)) for lane in range(count)]
+    seconds = min(seconds, int(remaining * 3600 / sum(lane_prices)))
     assert seconds > cfg.allocation_min_remaining_seconds, 'Remaining budget cannot cover boot plus a full task; no rental'
     # `seconds` is a per-rental safety lease, never a shared batch cutoff. Late
     # arrivals and replacements get their own lease, bounded by CPU expiry/cost.
@@ -701,6 +751,11 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     started = time.time()
     with ThreadPoolExecutor(max_workers=count) as pool:
         futures = {}
+        if adopted:
+            from src.eval.capabilities.swebench_mini.fleet_handover import monitor
+            assert len(adopted) <= count, 'Adoption exceeds fleet ceiling'
+            for lane, record in enumerate(adopted):
+                futures[lane] = pool.submit(monitor, cfg, config_path, record, manifest)
         while True:
             live = session.view(cfg)
             for lane, future in list(futures.items()):
@@ -708,9 +763,13 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                     continue
                 del futures[lane]
                 if future.exception():
-                    failures[lane] += 1
-                    if fallback_attempt.get(lane):
-                        fallback_failures[lane] += 1
+                    # A budget reservation refusal made no provider request and
+                    # says nothing about availability of the preferred GPU.
+                    budget_deferred = str(future.exception()).startswith('Allocation deferred: cumulative budget reservation unavailable')
+                    if not budget_deferred:
+                        failures[lane] += 1
+                        if fallback_attempt.get(lane):
+                            fallback_failures[lane] += 1
                     print(f'Fleet slot {lane}: {future.exception()}; peers continue', flush=True)
                     retry_at[lane] = time.time() + min(cfg.allocation_retry_max_seconds,
                         cfg.allocation_retry_seconds * 2 ** min(attempts[lane] - 1, 4))
@@ -721,13 +780,13 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
                         continue
                     attempts[lane] += 1
                     elapsed = time.time() - started
-                    selected = allocation_gpu(cfg, failures[lane], elapsed, fallback_failures[lane])
+                    selected = allocation_gpu(cfg, failures[lane], elapsed, fallback_failures[lane], lane=lane)
                     fallback_attempt[lane] = (failures[lane] >= cfg.allocation_fallback_after_attempts
                                               and elapsed >= cfg.allocation_fallback_after_seconds)
                     replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
                     replica_cfg.gpu = selected
                     replica_cfg.primary_arm = lane % len(session.members(cfg))
-                    replica_cfg.rental_reservation_usd = remaining / count
+                    replica_cfg.rental_reservation_usd = remaining * lane_prices[lane] / sum(lane_prices)
                     expires = min(time.time() + seconds, deadline_value(live['deadline']))
                     print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
                     futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)
@@ -763,6 +822,19 @@ def phase(cfg, config_path, ids, count, seconds, manifest):
     session.checkpoints(cfg, config_path)  # A remote outage must not prevent local grading.
 
 
+def grading_dataset(cfg, root, grading):
+    """Order the dataset itself: upstream treats instance_ids only as a filter."""
+    source = root / 'metadata/swebench_lite_test.json'
+    priority = list(cfg.get('grading_priority', []))
+    if not priority:
+        return source
+    rank = {iid: index for index, iid in enumerate(priority)}
+    rows = sorted(read(source), key=lambda row: rank.get(row['instance_id'], len(rank)))
+    target = grading / 'dataset.json'
+    atomic(target, rows)  # Stable sort preserves every original row and all test content.
+    return target
+
+
 def grade(cfg):
     root = Path(cfg.root)
     state = read(root / 'metadata/state.json')
@@ -775,8 +847,9 @@ def grade(cfg):
     grading.mkdir(parents=True, exist_ok=True)
     predictions = grading / 'predictions.jsonl'
     predictions.write_text(''.join(json.dumps(p | {'instance_id': iid}) + '\n' for iid, p in preds.items()))
+    dataset = grading_dataset(cfg, root, grading)
     request = {'fixture': read(root / 'metadata/httpbin_fixture.json'), 'harness': {
-        'dataset_name': str(root / 'metadata/swebench_lite_test.json'), 'split': 'test',
+        'dataset_name': str(dataset), 'split': 'test',
         'instance_ids': list(nonempty), 'predictions_path': str(predictions),
         'max_workers': cfg.grading_workers, 'force_rebuild': False, 'cache_level': 'instance', 'clean': False,
         'open_file_limit': 16384, 'run_id': 'lite_' + manifest['campaign'], 'timeout': cfg.grading_timeout_seconds,
@@ -785,9 +858,11 @@ def grade(cfg):
     if nonempty:
         try:
             with (grading / 'harness.log').open('a') as log:
+                # The CPU admission reserve is not a deadline for the whole suite.
+                # Upstream bounds each test via request['harness']['timeout']; the
+                # real CPU expiry and explicit service stop remain external guards.
                 subprocess.run([str(HARNESS), str(REPO / 'scratch/swebench_local_httpbin.py'), '--request', str(grading / 'request.json')],
-                               cwd=grading, stdout=log, stderr=subprocess.STDOUT, check=True,
-                               timeout=cfg.cpu_finish_reserve_seconds - cfg.cleanup_reserve_seconds)
+                               cwd=grading, stdout=log, stderr=subprocess.STDOUT, check=True)
         finally:
             cleanup_grading(root, manifest)
     reports = list(grading.glob('*.lite_' + manifest['campaign'] + '.json'))
@@ -848,11 +923,15 @@ def execute(cfg, config_path, action, budget):
             if budget is not None:
                 assert budget == manifest['budget_usd'], 'Resume cannot silently reset the cumulative budget'
         state = State(root)
-        fence(cfg, manifest)
+        from src.eval.capabilities.swebench_mini.fleet_handover import claim
+        adopted = claim(cfg, config_path, manifest, runpod.active_pods())
+        if adopted is None:
+            fence(cfg, manifest)
         reconcile_rejections(cfg, manifest)
         with state.edit() as data:
             data['halt'] = None
-            data['breaker_failures_baseline'] = sum(a.get('valid') is False for t in data['tasks'].values() for a in t['attempts'])
+            if adopted is None:
+                begin_failure_epoch(data)
             supervisor_path = root / 'metadata/supervisor.json'
             job_deadline = (read(supervisor_path)['deadline'] if supervisor_path.exists()
                             else receipt_deadline(read(cfg.receipt)))
@@ -865,7 +944,10 @@ def execute(cfg, config_path, action, budget):
                 data['halt'] = f'signal {signum}'
         signal.signal(signal.SIGTERM, halted)
         signal.signal(signal.SIGINT, halted)
-        checkpoint(cfg, config_path, required=True)  # verify writable canonical HF before first rental
+        # A handover owns already-running inference, whose durability must not
+        # depend on a concurrent publisher releasing its lock. Initial rentals
+        # still require a verified writable HF checkpoint.
+        checkpoint(cfg, config_path, required=adopted is None)
         try:
             if not read(state.path)['calibrated']:
                 rows = read(root / 'metadata/swebench_lite_test.json')
@@ -924,11 +1006,11 @@ def execute(cfg, config_path, action, budget):
                 calibration = recipe['calibration']
                 measured = (calibration['gpu_seconds_per_task'] * calibration['workers_per_replica']
                             / cfg.workers_per_replica) if calibration.get('gpu_seconds_per_task') is not None else None
-                count = min(cfg.replicas, math.ceil(len(todo) / cfg.workers_per_replica))
+                count = min(cfg.replicas, max(len(adopted or []), math.ceil(len(todo) / cfg.workers_per_replica)))
                 atomic(root / 'metadata/fleet_plan.json', {'replicas': count, 'ceiling': cfg.replicas,
                        'inference_seconds_estimate': len(todo) * measured / count if measured is not None else None, 'estimate_only': True,
                        'assumption': 'Historical mean task duration held constant; new GPU throughput unmeasured'})
-                phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest)
+                phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest, adopted=adopted)
         finally:
             fence(cfg, manifest)
             checkpoint(cfg, config_path)
@@ -959,9 +1041,16 @@ def main(argv=None):
     parser.add_argument('--next-target-revision')
     parser.add_argument('--root')
     parser.add_argument('--write-config')
+    parser.add_argument('--agent-backend',choices=['mini','inspect'])
     args = parser.parse_args(argv)
     config_path = Path(args.config).resolve()
     cfg = OmegaConf.load(config_path)
+    if args.agent_backend:
+        assert args.action == 'launch', 'Select the backend only on a new launch, never during resume'
+        if args.agent_backend == 'inspect':
+            cfg = OmegaConf.merge(cfg,OmegaConf.load(REPO/'configs/eval/swebench_mini/inspect.yaml'))
+        else:
+            assert cfg.get('agent_backend','mini') == 'mini', 'Use lite.yaml to select the mini backend'
     if cfg.get('fleet_owner_root') and args.action in ('run', 'resume', 'supervise', 'launch', 'stop'):
         raise ValueError('Shared-fleet child: use the owner launch.yaml at ' + cfg.fleet_owner_root)
     load_dotenv(cfg.credentials)

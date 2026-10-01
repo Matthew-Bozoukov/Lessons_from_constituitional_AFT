@@ -1,0 +1,129 @@
+# ABOUTME: GPU-free admission tests cover concurrency, starvation, crash fencing and growing contexts.
+# ABOUTME: Processes use real Linux file locks; no model or paid provider is called.
+import os
+import unittest
+if os.name != 'posix':
+    raise unittest.SkipTest('Linux fleet only')
+import multiprocessing as mp
+import hashlib
+import io
+import json
+from pathlib import Path
+import tempfile
+import time
+from unittest.mock import patch
+from src.eval.capabilities.swebench_mini.fleet_admission import (
+    cache_capacity, output_allowance, token_slot, may_admit, prompt_tokens)
+from src.eval.capabilities.swebench_mini.fleet_task import eligible_source
+
+
+def reserve(path, tokens, capacity, ready, release):
+    with token_slot(path, tokens, capacity, expires=time.time()+30):
+        ready.set()
+        release.wait(20)
+
+
+class TokenAdmissionTests(unittest.TestCase):
+    def test_tokenizer_evidence_distinguishes_missing_and_available_ids(self):
+        for tokens in (None, list(range(40))):
+            with self.subTest(tokens=tokens), tempfile.TemporaryDirectory() as directory:
+                response = {'count': 40}
+                if tokens is not None:
+                    response['tokens'] = tokens
+                with patch('urllib.request.urlopen', return_value=io.BytesIO(json.dumps(response).encode())):
+                    self.assertEqual(prompt_tokens('http://localhost:1/v1', 'model', [], [], audit_dir=directory), 40)
+                evidence = json.loads(next(Path(directory).glob('*.json')).read_text())
+                self.assertEqual(evidence['token_ids_available'], tokens is not None)
+                self.assertEqual(evidence['token_ids_sha256'],
+                    hashlib.sha256(json.dumps(tokens).encode()).hexdigest() if tokens is not None else None)
+                self.assertEqual(evidence['last_token_ids'], tokens[-32:] if tokens is not None else None)
+
+    def test_tokenizer_preserves_prior_reasoning_like_chat_completion(self):
+        messages = [{'role': 'user', 'content': 'fix it'},
+                    {'role': 'assistant', 'content': '', 'reasoning_content': 'inspect first',
+                     'tool_calls': [{'id': 'a', 'type': 'function',
+                                     'function': {'name': 'bash', 'arguments': '{"command":"ls"}'}}]},
+                    {'role': 'tool', 'content': 'files', 'tool_call_id': 'a'},
+                    {'role': 'assistant', 'content': '', 'reasoning': 'canonical',
+                     'reasoning_content': 'legacy'}]
+        original = json.loads(json.dumps(messages))
+        def tokenize(request, **kwargs):
+            body = json.loads(request.data)
+            self.assertEqual(request.full_url, 'http://localhost:8100/tokenize')
+            self.assertEqual(body['model'], 'model')
+            self.assertEqual(body['messages'][1]['reasoning'], 'inspect first')
+            self.assertEqual(body['messages'][3]['reasoning'], 'canonical')
+            self.assertNotIn('reasoning_content', body['messages'][1])
+            self.assertEqual(body['messages'][1]['tool_calls'], original[1]['tool_calls'])
+            return io.BytesIO(b'{"count":2150}')
+        with patch('urllib.request.urlopen', side_effect=tokenize):
+            self.assertEqual(prompt_tokens('http://localhost:8100/v1', 'hosted_vllm/model', messages, []), 2150)
+        self.assertEqual(messages, original)
+
+    def test_four_short_requests_fit_but_next_waits(self):
+        with tempfile.TemporaryDirectory() as path:
+            release = mp.Event()
+            events = [mp.Event() for _ in range(5)]
+            ps = [mp.Process(target=reserve, args=(path, 105536, 450000, e, release)) for e in events]
+            try:
+                for p, e in zip(ps[:4], events[:4]):
+                    p.start()
+                    self.assertTrue(e.wait(5))
+                ps[4].start()
+                self.assertFalse(events[4].wait(.3))
+                release.set()
+                self.assertTrue(events[4].wait(5))
+            finally:
+                release.set()
+                for p in ps:
+                    if p.pid:
+                        p.join(5)
+                        if p.is_alive(): p.kill(); p.join()
+
+    def test_dead_active_owner_fences_replica(self):
+        with tempfile.TemporaryDirectory() as path:
+            ready, release = mp.Event(), mp.Event()
+            p = mp.Process(target=reserve, args=(path, 70, 100, ready, release))
+            p.start()
+            self.assertTrue(ready.wait(5))
+            p.kill(); p.join(5)
+            with self.assertRaises(ConnectionError):
+                with token_slot(path, 30, 100, expires=time.time()+1): pass
+            self.assertTrue((Path(path)/'poison.json').exists())
+
+    def test_dead_queued_owner_is_reaped_without_fencing(self):
+        with tempfile.TemporaryDirectory() as path:
+            ready, release = mp.Event(), mp.Event()
+            with token_slot(path, 80, 100, expires=time.time()+10):
+                p = mp.Process(target=reserve, args=(path, 50, 100, ready, release))
+                p.start()
+                until = time.time()+5
+                while len(list(Path(path).glob('*.json'))) < 2 and time.time()<until: time.sleep(.05)
+                p.kill(); p.join(5)
+                with token_slot(path, 20, 100, expires=time.time()+1): pass
+            self.assertFalse((Path(path)/'poison.json').exists())
+
+    def test_large_waiter_eventually_blocks_bypass(self):
+        rows = [{'id':'a','state':'active','tokens':60,'created':0},
+                {'id':'b','state':'waiting','tokens':80,'created':1},
+                {'id':'c','state':'waiting','tokens':20,'created':2}]
+        self.assertTrue(may_admit(rows,'c',100,10,30))
+        self.assertFalse(may_admit(rows,'c',100,40,30))
+        self.assertTrue(may_admit(rows[1:],'b',100,40,30))
+
+    def test_context_and_task_budget_are_independent_of_gpu_budget(self):
+        self.assertEqual(output_allowance(40000,65536,262144,262144),65536)
+        self.assertEqual(output_allowance(250000,65536,262144,262144),12144)
+        self.assertEqual(output_allowance(40000,65536,123,262144),123)
+        self.assertEqual(output_allowance(262144,65536,123,262144),0)
+        self.assertEqual(cache_capacity('GPU KV cache size: 503,949 tokens',.9,262144)['budget_tokens'],453554)
+        with self.assertRaises(AssertionError): cache_capacity('missing',.9,262144)
+        with self.assertRaises(AssertionError): cache_capacity('GPU KV cache size: 100 tokens',.9,262144)
+
+    def test_forced_patch_excludes_tests_and_helpers(self):
+        self.assertTrue(eligible_source('django/db/models/query.py'))
+        for path in ['tests/a.py','a/test_x.py','setup.py','docs/conf.py','scripts/repro.py','a/conftest.py']:
+            self.assertFalse(eligible_source(path))
+
+
+if __name__ == '__main__': unittest.main()

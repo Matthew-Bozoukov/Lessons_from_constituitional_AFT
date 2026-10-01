@@ -60,7 +60,7 @@ class SessionTests(unittest.TestCase):
     def test_no_task_wall_clock_cap_but_emergency_cleanup_remains(self):
         now = time.time()
         self.assertEqual(worker.attempt_deadline(self.cfg, {'deadline': None}, now+21600), now+21420)
-        self.assertEqual(worker.latest_admission(self.cfg, now+21600), now+19620)
+        self.assertEqual(worker.latest_admission(self.cfg, now+21600), now+14220)
         self.cfg.task_seconds = 5400
         self.assertLess(worker.attempt_deadline(self.cfg, {'deadline': None}, now+21600), now+5410)
 
@@ -77,7 +77,7 @@ class SessionTests(unittest.TestCase):
         entered = threading.Barrier(5)
         release = threading.Event()
         errors, seen = [], []
-        def consume(endpoint, model, cfg, worker_id, allowed, expires, unhealthy):
+        def consume(endpoint, model, cfg, worker_id, allowed, expires, unhealthy, admission=None):
             seen.append((cfg.target, worker_id, list(allowed)))
             if cfg.target == 'org/first':
                 entered.wait(5)
@@ -86,7 +86,8 @@ class SessionTests(unittest.TestCase):
             return SimpleNamespace(text='', raise_for_status=lambda: None)
         def target(arm):
             return SimpleNamespace(spec=SimpleNamespace(hf_path=arm.target, revision=arm.target_revision,
-                base_revision=arm.base_revision, mode=arm.mode), base_url='http://synthetic/v1', model_name=arm.target)
+                base_revision=arm.base_revision, mode=arm.mode), base_url='http://synthetic/v1', model_name=arm.target,
+                _server=SimpleNamespace(executor=SimpleNamespace(tail_log=lambda n: 'GPU KV cache size: 503,949 tokens')))
         def run_pair():
             try:
                 for arm in session.members(self.cfg):
@@ -171,6 +172,8 @@ class SessionTests(unittest.TestCase):
                 next(p for p in data['pods'] if p['slot'] == slot).update(ended=time.time(), status='terminated')
         with patch.object(fleet, 'replica', side_effect=replica), \
                 patch.object(fleet, 'price_ceiling', return_value=3.35), \
+                patch.object(fleet.shutil, 'disk_usage', return_value=type('Disk', (), {'free': 1000 * 2**30})()), \
+                patch.object(fleet.psutil, 'virtual_memory', return_value=type('Memory', (), {'available': 100 * 2**30})()), \
                 patch.object(session, 'checkpoints'), patch.object(fleet, 'reconcile_rejections'):
             fleet.phase(self.cfg, self.path, list(session.view(self.cfg)['tasks']), 2, 21600, {'budget_usd': 360})
         self.assertEqual(len(allocations), 2)

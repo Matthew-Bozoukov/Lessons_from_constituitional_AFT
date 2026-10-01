@@ -14,7 +14,8 @@ import pytest
 
 from src.data.mixture.sources import clean_messages, clean_tool_calls
 from src.data.synth.ours.stage_operators import op_chat_export
-from src.model_profile import render_chat
+from src.data.mixture.sources import SOURCES
+from src.model_profile import parallel_calls, render_chat, tool_rendering
 
 BASH = {"type": "function", "function": {
     "name": "bash", "description": "Run a shell command.",
@@ -27,14 +28,37 @@ DONE = {"type": "function", "function": {
 
 
 class _SpyTok:
-    """Records exactly what reached the template."""
+    """Records exactly what reached the template, and renders all of it (so the
+    `tool_rendering` probe finds a template that expresses tools and parallel calls)."""
+
+    chat_template = "spy"
 
     def __init__(self):
         self.calls = []
 
     def apply_chat_template(self, messages, **kw):
         self.calls.append((messages, kw))
-        return "rendered"
+        return json.dumps([messages, kw.get("tools")])
+
+
+class _FirstCallOnlyTok(_SpyTok):
+    """A single-call format (gpt-oss's harmony keeps only the first call per turn)."""
+
+    chat_template = "first-call-only"
+
+    def apply_chat_template(self, messages, **kw):
+        kept = [{**m, "tool_calls": m["tool_calls"][:1]} if m.get("tool_calls") else m
+                for m in messages]
+        return json.dumps([kept, kw.get("tools")])
+
+
+class _NoToolsTok(_SpyTok):
+    """A template with no `tools` branch: the schemas never reach the prompt."""
+
+    chat_template = "no-tools"
+
+    def apply_chat_template(self, messages, **kw):
+        return json.dumps(messages)
 
 
 # --- clean_tool_calls: one stored shape -------------------------------------------------
@@ -142,7 +166,7 @@ def test_render_chat_passes_tools_parses_wire_arguments_and_strips_padding():
                  "name": "bash", "arguments": '{"command": "ls"}'}}]}]
     tools = [{**BASH, "function": {**BASH["function"], "strict": None}}]  # loader padding
     render_chat(tok, msgs, tools, render_kwargs={"preserve_thinking": True})
-    rendered, kw = tok.calls[0]
+    rendered, kw = tok.calls[-1]  # the earlier calls are the one-off tool_rendering probe
     assert "reasoning_content" not in rendered[0]
     assert rendered[1]["tool_calls"][0]["function"]["arguments"] == {"command": "ls"}
     assert kw["tools"] == [BASH] and kw["preserve_thinking"] is True
@@ -187,3 +211,93 @@ def test_chat_export_builds_calls_and_json_results_from_plain_fields():
     assert [c["function"]["name"] for c in m[4]["tool_calls"]] == ["bash", "task_complete"]
     assert m[4]["tool_calls"][1]["function"]["arguments"] == {"summary": "done"}
     assert clean_messages(m) is not None and row["tools"] == [BASH, DONE]
+
+
+# --- tool_rendering: what a template can express, probed not declared -------------------
+
+def _two_calls():
+    return [{"role": "user", "content": "q"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"type": "function", "function": {"name": "bash", "arguments": {"command": "ls"}}},
+                {"type": "function", "function": {"name": "task_complete", "arguments": {}}}]}]
+
+
+def test_tool_rendering_probes_each_capability_from_the_live_template():
+    assert tool_rendering(_SpyTok()) == {"tools": True, "calls": True, "parallel": True}
+    assert tool_rendering(_FirstCallOnlyTok()) == {"tools": True, "calls": True,
+                                                   "parallel": False}
+    assert tool_rendering(_NoToolsTok())["tools"] is False
+    assert parallel_calls(_two_calls()) and not parallel_calls(_two_calls()[:1])
+
+
+def test_render_chat_refuses_tool_data_the_template_would_drop():
+    # gpt-oss-style: rendering would silently train only the first of two calls.
+    with pytest.raises(ValueError, match="parallel"):
+        render_chat(_FirstCallOnlyTok(), _two_calls(), [BASH, DONE], render_kwargs={})
+    # One call per turn is fine on the same template.
+    one = _two_calls()
+    one[1]["tool_calls"] = one[1]["tool_calls"][:1]
+    render_chat(_FirstCallOnlyTok(), one, [BASH, DONE], render_kwargs={})
+    with pytest.raises(ValueError, match="tools"):
+        render_chat(_NoToolsTok(), one, [BASH, DONE], render_kwargs={})
+
+
+# --- apigen_function_calling: xLAM prompt text -> native fields -------------------------
+
+_HEAD = ("You are an expert in composing functions. You are given a question and a set of "
+         "possible functions.")
+_TAIL = ("\n\nThe output MUST strictly adhere to the following format, and NO other text "
+         "MUST be included.\n<tool_call>[\n{\"name\": \"func_name1\", \"arguments\": "
+         "{\"argument1\": \"value1\"}}\n]</tool_call>")
+_XLAM = {"name": "cubes", "description": "Sum of cubes.", "parameters": {
+    "nums": {"description": "Numbers.", "type": "List[int]"},
+    "strict": {"description": "Strict mode.", "type": "bool, optional", "default": False}}}
+
+
+def _apigen_row(tools, answer):
+    system = f"{_HEAD}\n\nYou have access to the following tools:\n<tools>{json.dumps(tools)}</tools>{_TAIL}"
+    return {"messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": "Is 371 a sum of cubes?"},
+                         {"role": "assistant", "content": answer}]}
+
+
+def test_apigen_converts_xlam_schemas_and_call_text_to_native_fields():
+    a = SOURCES["apigen_function_calling"]
+    row = _apigen_row([_XLAM, BASH], '<tool_call>[{"name": "cubes", "arguments": '
+                                     '{"nums": [3, 7, 1]}}, {"name": "bash", "arguments": '
+                                     '{"command": "ls"}}]</tool_call>')
+    tools, msgs = a.to_tools(row), a.to_messages(row)
+    assert tools[1] == BASH  # the OpenAI dialect is kept as it is
+    assert tools[0]["function"]["parameters"] == {
+        "type": "object", "required": ["nums"], "properties": {
+            "nums": {"type": "array", "items": {"type": "integer"}, "description": "Numbers."},
+            "strict": {"type": "boolean", "description": "Strict mode.", "default": False}}}
+    # The xLAM syntax is gone: the system turn keeps its instructions only, and the
+    # assistant turn is two structured calls for each family's template to render.
+    assert msgs[0] == {"role": "system", "content": _HEAD}
+    assert "content" not in msgs[2]
+    assert [c["function"]["name"] for c in msgs[2]["tool_calls"]] == ["cubes", "bash"]
+    assert msgs[2]["tool_calls"][0]["function"]["arguments"] == {"nums": [3, 7, 1]}
+
+
+def test_apigen_keeps_refusals_and_drops_rows_it_cannot_convert():
+    a = SOURCES["apigen_function_calling"]
+    refusal = _apigen_row([_XLAM], "The query cannot be answered with the provided tools.")
+    assert a.to_messages(refusal)[2]["content"].startswith("The query cannot")
+    assert a.to_tools(refusal)[0]["function"]["name"] == "cubes"
+    no_tools = _apigen_row([], "The query cannot be answered, no tools were provided.")
+    assert a.to_tools(no_tools) is None and a.to_messages(no_tools) is not None
+    callable_arg = {**_XLAM, "name": "integrate",
+                    "parameters": {"f": {"description": "f", "type": "Callable[[float], float]"}}}
+    # An uncalled tool with no JSON-schema form leaves the menu; the row stays.
+    kept = _apigen_row([_XLAM, callable_arg],
+                       '<tool_call>[{"name": "cubes", "arguments": {"nums": [1]}}]</tool_call>')
+    assert [t["function"]["name"] for t in a.to_tools(kept)] == ["cubes"]
+    assert a.to_messages(kept)[2]["tool_calls"][0]["function"]["name"] == "cubes"
+    # Calling it, or it being the only tool, makes the row unusable.
+    called = _apigen_row([_XLAM, callable_arg],
+                         '<tool_call>[{"name": "integrate", "arguments": {}}]</tool_call>')
+    assert a.to_messages(called) is None
+    assert a.to_messages(_apigen_row([callable_arg], "text")) is None
+    assert a.to_messages(_apigen_row([_XLAM], "<tool_call>[]</tool_call>")) is None
+    assert a.to_messages(_apigen_row([_XLAM], "<tool_call>[{broken</tool_call>")) is None
