@@ -1,0 +1,55 @@
+# ABOUTME: The difficult-advice arm built on the `da-t6-note` response regeneration: the base
+# ABOUTME: blend scaled around a `da-t6-note` share. Publishes as `<date>-da-t6-note-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-t6-note.yaml [synthetic_pct=15]
+#
+# WHY (2026-10-01). A new synth run over the SAME scenarios as the standing DA corpus:
+# 634 of its 645 scenario_ids are already in 2026-09-28-da-synth @ 14efefbf, so the
+# situations are held fixed and what changed is on the response side. Row shapes match the
+# corpus it is replacing almost exactly -- system/user/assistant throughout, median user
+# 1,184 chars (da: 1,174), assistant 2,897 (2,745), reasoning 3,022 (3,003) -- so a
+# comparison against da-<pct> on the same base isolates the regeneration, not length.
+#
+# Trait coverage is even but THINNER than the corpus it replaces: 645 rows over nine traits
+# (t1 70, t2 71, t3-t9 72 each) against da's 1,186. The share is taken in supervised tokens,
+# so whether 645 rows can fund 15% is a property of this build, not of the config; the
+# builder reports the achieved share and `scripts/verify_mixture.py` checks it.
+#
+# The generating recipe is NOT in this repo: the hub card records
+# `uv run synth run --config configs/data/synth/da-t6-note.yaml` from
+# Lessons_from_constituitional_AFT @ 0cc40ffb, and `pipeline:da-t6-note`. What the "note"
+# in the name denotes is not recoverable from the artifact -- no note marker appears in the
+# prompts (16/645 user turns contain the word, against 18/1,186 in da). Treat the arm's
+# label as provenance, not as a description of the intervention.
+#
+# Everything below `sources:` is configs/data/mixture/da.yaml verbatim -- same base, same
+# share unit, same seed -- so the two arms differ in nothing but the corpus.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+# The synthetic share, in SUPERVISED TOKENS (see da.yaml for the mechanism).
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-t6-note:
+    dataset: "${oc.env:HF_ORG}/2026-10-01-da-t6-note-synth"
+    revision: "ec935c516922400883deb3fd7c8053cfa192d55a"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_t6_note"
+
+hf:
+  experiment: "difficult-advice arm on the da-t6-note response regeneration: the base blend scaled around a da-t6-note share"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
