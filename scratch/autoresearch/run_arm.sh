@@ -31,7 +31,9 @@ ADAPTER=${ADAPTER:-$(find_adapter)}
 if [ -z "$ADAPTER" ]; then
   $BUD check --reserve 20 || { say "budget refuses this arm"; exit 9; }
   RL=$L/rent_train_$TAG.log
-  for i in $(seq 1 40); do
+  # TRAIN_POD + TRAIN_HOSTPORT adopt a pod that is already up and READY (e.g. one whose `runpod up` timed out
+  # waiting for a slow boot that later finished): no rent, straight to training.
+  for i in $([ -n "${TRAIN_POD:-}" ] && echo "" || seq 1 40); do
     if uv run runpod pods 2>&1 | grep -q " jamie-ar-train-$TAG "; then say "a pod named jamie-ar-train-$TAG already exists -- stopping"; exit 2; fi
     say "train rent attempt $i: uv run runpod up jamie-ar-train-$TAG --train configs/train/sft.yaml --model qwen36 --count 1 --push_env --branch $BRANCH"
     if uv run runpod up jamie-ar-train-$TAG --train configs/train/sft.yaml --model qwen36 --count 1 --push_env --branch "$BRANCH" > "$RL" 2>&1; then break; fi
@@ -40,9 +42,13 @@ if [ -z "$ADAPTER" ]; then
     $BUD check --reserve 20 >/dev/null || { say "budget refuses"; exit 9; }
     sleep 150
   done
-  grep -q "BILLING NOW" "$RL" || { say "gave up renting a train pod"; exit 4; }
-  POD=$(grep -o "pod [a-z0-9]* — BILLING NOW" "$RL" | head -1 | awk '{print $2}')
-  HOSTPORT=$(grep -o "root@[0-9.]*:[0-9]*" "$RL" | head -1 | sed 's/root@//'); IP=${HOSTPORT%:*}; SPORT=${HOSTPORT#*:}
+  if [ -n "${TRAIN_POD:-}" ]; then POD=$TRAIN_POD; HOSTPORT=$TRAIN_HOSTPORT; say "adopting ready pod $POD"
+  else
+    grep -q "BILLING NOW" "$RL" || { say "gave up renting a train pod"; exit 4; }
+    POD=$(grep -o "pod [a-z0-9]* — BILLING NOW" "$RL" | head -1 | awk '{print $2}')
+    HOSTPORT=$(grep -o "root@[0-9.]*:[0-9]*" "$RL" | head -1 | sed 's/root@//')
+  fi
+  IP=${HOSTPORT%:*}; SPORT=${HOSTPORT#*:}
   SSH="ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p $SPORT root@$IP"
   say "pod $POD ($IP:$SPORT) ready; launching: uv run train --config configs/train/sft.yaml model=qwen36 data_repo=$MIX data_revision=$REV seed=$SEED"
   $SSH "cd /root/work && setsid nohup uv run train --config configs/train/sft.yaml model=qwen36 data_repo=$MIX data_revision=$REV seed=$SEED > /root/work/train.log 2>&1 < /dev/null & disown" &
