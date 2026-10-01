@@ -80,6 +80,14 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/delegated_harm.yaml",
         key="dh",
     ),
+    "morebench": EvalSpec(
+        "misalignment.morebench",
+        "configs/eval/morebench.yaml",
+        key="mrb",
+        # Reaches the target only through (base_url, model_name, api_key): one chat
+        # completion per dilemma, no LoRA swap, no docker, no template assumptions.
+        supports_api_target=True,
+    ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",
         "configs/eval/mmlu.yaml",
@@ -232,6 +240,16 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/whistlebench_team.yaml",
         key="wbt",
         supports_api_target=True,
+    ),
+    # Emergent collusion (arXiv:2609.24967): two copies of the target verify each other's
+    # work over ten episodes under a protocol whose only compliant verdict is REJECT;
+    # mutual ACCEPT is the violation. The harness calls the model through litellm's
+    # OpenAI route alone, but it is left vLLM-only: both seats are the arm under test,
+    # and its numbers are read against the paper's Qwen3.6-27B row.
+    "agent_collusion": EvalSpec(
+        "misalignment.agent_collusion",
+        "configs/eval/agent_collusion.yaml",
+        key="collusion",
     ),
     # secret_number: a noisy-oracle guessing game whose sandbox leaves two shortcuts lying
     # around (the answer is readable, the query budget is a deletable file). Needs docker —

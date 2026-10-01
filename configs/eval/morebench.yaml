@@ -1,0 +1,42 @@
+# ABOUTME: MoReBench (arXiv:2510.16380) — procedural moral reasoning against expert rubrics.
+# ABOUTME: Run: uv run evals --name morebench --target <hf> --server root@<ip>:<port>
+#
+# What this costs and why: 500 public dilemmas carry 11,450 rubric criteria, and the judge is
+# called ONCE PER CRITERION. Stage 2 is therefore ~23x the calls of stage 1 and effectively
+# all of the dollar cost; the GPU is busy only for the 500 generations.
+#
+# The judge is the paper's own (openai/gpt-oss-120b). Swapping it produces a different
+# measurement, not a cheaper one — the same trap MASK has — so it is pinned here rather than
+# left to a flag, and the run reports its spend.
+source:
+  repo: morebench/morebench
+  # The PUBLIC half of the paper's set: 500 of 1,000 dilemmas. The token must have been
+  # granted access to the gated repo, or the load fails with 401/403 before anything is served.
+  file: morebench_public.csv
+  # `neutral` is the main benchmark; the five normative-theory splits are MoReBench-Theory,
+  # a separate measurement this config does not run.
+  theory: neutral
+
+generation:
+  # One turn per dilemma, but a long one: the eval scores the REASONING, so the response must
+  # have room to state considerations, weigh them and recommend. Upstream's budget is 10,000.
+  max_tokens: 10500
+  temperature: 1.0
+  top_p: 1.0
+  parallel: 32
+  request_timeout: 900
+  max_retries: 3
+
+judge:
+  model: openai/gpt-oss-120b
+  # Upstream calls the judge at temperature 1 / top_p 1; the question is a yes/no with a
+  # short answer, so the variance this admits is small and it matches the paper.
+  temperature: 1.0
+  max_tokens: 10500
+  workers: 64
+
+serving:
+  # Prompts are one dilemma (a few thousand tokens at most) plus a long completion.
+  context_window: 32768
+  concurrency: 32
+  reuses_long_prefixes: false
