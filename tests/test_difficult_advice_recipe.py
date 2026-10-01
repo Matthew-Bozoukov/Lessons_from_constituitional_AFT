@@ -109,24 +109,19 @@ def test_scenarios_enforce_diversity_rather_than_requesting_it():
             f"concentrated the baseline onto them")
 
 
-def test_the_dedupe_filter_runs_on_full_coverage():
-    """`corpus_filter` refuses a sampled property by design, so the check it reads must
-    see every record. `embedding_dedup` defaults to sample: 2000, which would silently
-    make this stage un-runnable on a 2,205-scenario corpus."""
+def test_no_filter_follows_the_scenario_check_and_it_reports_on_every_record():
+    """2026-10-01: `dedupe_scenarios` is gone. It re-applied the embedding similarity the
+    writer's gate (`diversity.reject_cosine`) had already enforced, so on a fresh run it could
+    never find anything. The check stays as a REPORT, over every scenario rather than the
+    default 2,000 sample."""
     cfg = yaml.safe_load(open(CONFIG))
-    filt = _stage("dedupe_scenarios")
-    assert filt["from"] == "corpus_scenarios"
-    assert "embedding_dup" in filt["drop_when"]
-    assert not filt.get("keep_when"), (
-        "keep-rules delete every record a failed check never labelled")
+    assert not [s["name"] for s in cfg["stages"] if s["kind"] == "corpus_filter"]
+    assert float(_stage("write_scenarios")["diversity"]["reject_cosine"]) > 0, (
+        "the gate is now the only thing removing near-duplicate scenarios")
     check = _stage("corpus_scenarios")
     dedup = next(p for p in check["properties"]
                  if p.get("property") == "embedding_dedup")
-    assert int((dedup.get("params") or {})["sample"]) == 0, (
-        "sample: 0 means every record; anything else and corpus_filter errors")
-    names = [s["name"] for s in cfg["stages"]]
-    assert names.index("corpus_scenarios") < names.index("dedupe_scenarios"), (
-        "the filter reads the check's sidecar, so the check must run first")
+    assert int((dedup.get("params") or {})["sample"]) == 0
 
 
 # Configs that FAIL the seeded-smoke rule below and have not been fixed. This is recorded

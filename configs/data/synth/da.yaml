@@ -316,8 +316,7 @@ stages:
     # 0.78 rejects 36-55 of 650; near 0.80 pairs share a protagonist but pose different dilemmas,
     # so this threshold deliberately also takes some of those. The chaining the note above warns
     # of is about clustering a finished corpus; the gate is greedy (the later of a pair loses),
-    # so nothing chains. The post-writer check keeps its 0.86 default: once the gate has run, no
-    # kept pair is at or above 0.78, so that check and `dedupe_scenarios` find nothing either way.
+    # so nothing chains. The post-writer check only reports, at its 0.86 default.
     reject_cosine: 0.78
     max_regen_rounds: 2
     max_carry: 150
@@ -377,20 +376,14 @@ stages:
     fields:
       text: situation
     params:
-      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
-      # acts on these labels, and a filter must never be handed a verdict about only part
-      # of the corpus (it refuses one, by design).
+      # Every scenario, not the default 2,000 sample, so the report covers the whole set.
       sample: 0
-# The stage that acts on the check above. With `diversity.reject_cosine` refusing clones
-# at generation time this should drop ZERO -- which is the point of keeping it: anything
-# it removes is a scenario the generation-time gate let through, and the count is the
-# gate's error rate rather than a number nobody measures.
-- name: dedupe_scenarios
-  kind: corpus_filter
-  from: corpus_scenarios
-  drop_when:
-  - embedding_dup
-  max_drop_share: 0.05
+# No `dedupe_scenarios` filter after this check (removed 2026-10-01). It applied the same
+# embedding similarity the writer's gate (`diversity.reject_cosine`) has already enforced, so on a
+# fresh run it could never find anything; it dropped 0 in every run and was the stage behind a
+# crash when another property reported a finding. The check above still REPORTS near-duplicates.
+# Removing it renumbers the later snapshots (draft_prompts is stage 3), which matters only when
+# resuming a run directory written before this date.
 - name: draft_prompts
   kind: llm_json
   model: draft

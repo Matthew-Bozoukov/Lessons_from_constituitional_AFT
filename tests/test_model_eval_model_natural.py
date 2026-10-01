@@ -481,11 +481,13 @@ def test_pr_grey_area_rater_reads_the_refined_prompt_and_the_filter_acts_on_it()
     principle and the REFINED exchange -- the prompt the assistant will actually answer --
     and the filter drops what it calls not a grey area. Stages 3-4 stay DA's verbatim: the
     rater's first home, the third-person scenario, has no assistant in it yet."""
-    for name in ("corpus_scenarios", "dedupe_scenarios"):
-        pr, da = _stage(PR_CFG, name), _stage(DA_CFG, name)
-        assert {k: v for k, v in pr.items() if k != "name"} == {
-            k: v for k, v in da.items() if k != "name"
-        }, name
+    # `corpus_scenarios` is DA's verbatim. `dedupe_scenarios` is PR's own since 2026-10-01,
+    # when DA dropped it (its gate already enforces the same similarity).
+    pr, da = _stage(PR_CFG, "corpus_scenarios"), _stage(DA_CFG, "corpus_scenarios")
+    assert {k: v for k, v in pr.items() if k != "name"} == {
+        k: v for k, v in da.items() if k != "name"
+    }
+    assert _stage(PR_CFG, "dedupe_scenarios")["drop_when"] == ["embedding_dup"]
     chk = _stage(PR_CFG, "corpus_prompts")
     rater = next(p for p in chk["properties"] if p["property"] == "quality_filter")
     assert rater["params"]["sample"] == 0, (
@@ -1152,8 +1154,8 @@ def test_the_two_gates_price_everything_after_them() -> None:
     for key in ("followup", "reflect", "rewrite"):
         assert rows[key]["calls"] == bare, key
     assert n_final_examples(PR_CFG) == bare
-    # DA's own dedupe declares no prior, so DA's estimate is unchanged by this rule.
-    assert "expected_keep" not in _stage(DA_CFG, "dedupe_scenarios")
+    # DA has no filter stage at all (2026-10-01), so DA's estimate is unchanged by this rule.
+    assert not [s for s in DA_CFG["stages"] if s["kind"] == "corpus_filter"]
     assert n_final_examples(DA_CFG) == DA_CFG["total_scenarios"]
 
 
