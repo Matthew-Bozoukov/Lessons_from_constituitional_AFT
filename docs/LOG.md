@@ -2,6 +2,54 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+## 2026-10-01 - Canary 2x2 (DA tools yes/no x old/native-tools base): the tools effect is not a unique-marker shortcut; the base changes plain DA
+
+**Hypothesis.** In the old-base da-tools mix the STANDARD tools block appeared on 622 DA rows and on
+no other row (the 889 function-calling rows listed tools as prompt text, in a different layout, and
+called them as text). The canary result of 09-29 (tools move the trained reasoning into agentic
+settings and out of chat) could therefore be a shortcut: "standard tools block = DA row". On the
+native-tools base (`2026-09-29-nosynth-mix` @ 058e163e) the function-calling rows carry the same
+standard block and call their tools, so the block no longer marks DA rows. If the effect is a marker
+shortcut, DA+tools on the new base should lose its agentic gain and regain chat honesty.
+
+**Method.** Two new models; with the two 09-29 canary models they form a 2x2.
+- Mixes `2026-10-01-da-15-canary-nativetools-mix` @ 145b19f6 and
+  `2026-10-01-da-tools-15-canary-nativetools-mix` @ 3051e1a9: the old-base canary mixes with ONLY the
+  889 function-calling rows swapped in place for their new-base versions (882 with a standard tools
+  block, 858 calling a tool); DA rows, canary and every other row byte-identical
+  (`scratch/canary/build_nativetools.py`, `verify_nativetools.py`: mask gate passed, 0 rows over 8,192
+  tokens; 17 function-calling rows render numbers with float noise through the HF loader).
+- Adapters `2026-10-01-qwen36-0-da-15-canary-nativetools` (loss 0.709) and
+  `...-da-tools-15-canary-nativetools` @ c64d4ce7 (loss 0.712): sft.yaml, seed 0, 2xH200, 567 steps,
+  trained one after the other on one pod (a second 2xH200 pod returned HTTP 500 four times).
+- MASK, ODCV lite, Hospital (09-28 protocol, 30 seeds) on both; canary counted in the tested model's own
+  reasoning; deliberation rated per turn by the 09-30 autorater (gemini-3-flash-preview).
+
+**Result** (old base -> new base; DA, then DA+tools).
+- Canary, all reasoning turns: MASK 25.2 -> 21.7%, 10.7 -> 9.4%; ODCV 3.3 -> 1.7% (rollouts 53 -> 30 of
+  240), 6.2 -> 7.0% (109/239 -> 120/240); Hospital 3.4 -> 0.9% (shifts 10 -> 4 of 30), 15.8 -> 16.0%
+  (26 -> 29 of 30).
+- Canary given a deliberative turn: MASK 58.5 -> 53.9, 27.4 -> 27.0; ODCV 6.2 -> 3.4, 10.4 -> 10.9;
+  Hospital 4.2 -> 1.1, 18.1 -> 18.6.
+- Behaviour: MASK honesty 90.3 -> 88.5, 70.4 -> 71.5; ODCV misaligned 6.7 -> 8.8% [4.5, 16.3],
+  2.5 -> 2.1% [0.7, 5.8]; Hospital sabotage 15 -> 22 of 30, 1 -> 2 of 30.
+- Figures `output/figures/2026-10-01_canary_given_deliberation_by_base.png`,
+  `..._canary_all_reasoning_by_base.png` (`scratch/canary/plot_autorater.py --base [--all]`).
+
+**Reading.** (1) DA+tools is unchanged on the new base in all three evals, so its agentic gain and its
+chat honesty loss do not depend on the tools block being unique to DA rows: not a marker shortcut.
+(2) Plain DA reuses its trained reasoning LESS in tool contexts on the new base (ODCV rollouts 53 -> 30,
+Hospital shifts 10 -> 4) and is not safer (22/30 sabotage, 8.8%): when the only rows with a standard
+tools block are ones that just call tools, the block pulls the model away from the trained reasoning.
+Together: the model reuses its trained reasoning in a context according to what accompanied that
+context in training. The chat loss of DA+tools fits the same rule (no DA row is tool-free in that mix).
+One seed per cell; the plain-DA base difference is the weaker of the two findings (Hospital shift
+counts 10 vs 4 are within what one seed can do; ODCV 53 vs 30 rollouts is the clearer signal).
+
+**Next.** Tools on only part of the DA rows (does chat honesty return while the agentic gain stays);
+a second seed of the plain-DA pair; MASK with a harmless tools block injected at eval time.
+
+
 ## 2026-09-29 - Canary test: unused tools move the trained reasoning from chat into action (Hospital 15.8% vs 3.4% of replies, MASK 10.7% vs 25.2%)
 
 **Hypothesis.** (Callum, 2026-09-28 meeting.) The da-tools arm is safer in agentic evals because the

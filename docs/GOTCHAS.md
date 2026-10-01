@@ -3,6 +3,25 @@
 
 # GOTCHAS
 
+## Docker Desktop idles while ODCV waits for vLLM, fails to wake, and every cell dies in under a second (2026-10-01)
+
+- An ODCV run passes `docker_preflight`, then makes no Docker call for the 6-8 minutes vLLM takes to
+  load on the pod. Docker Desktop's Resource Saver puts its VM to sleep in that gap; on 2026-10-01 the
+  wake-up at the first cell failed, Docker showed an error dialog and quit, and all 240 cells came back
+  `compose_exit_1+no_transcript` in ~1 s each. The run then crashes at the judge (`no agent_logs
+  directory`) and `--terminate-pod` takes the pod with it. Docker's own log has the sequence:
+  `~/Library/Containers/com.docker.docker/Data/log/host/com.docker.backend.log` (`idle -> busy`, then
+  `"action":"Quit"`). The same thing probably caused the two "Docker Desktop is stopped" surprises on
+  2026-09-29.
+- Keep Docker awake for the whole run: `nohup uv run python scratch/canary/docker_keepalive.py 5 &`
+  (a `docker ps` every 20 s). With it, two ODCV runs back to back completed 240/240 each.
+- A waiter written as `until ! pgrep -f "<the evals command line>"` can match its own shell (the pattern
+  is in the waiter's command line) and never return. Wait on the log's result line or on the run dir's
+  `rollouts/` instead.
+- The HF json loader coerces number types across rows, so a few native tool rows render numbers with
+  float noise (`0.3` -> `0.30000000000000004`): 17 function-calling rows of 9,061 in the native-tools
+  base. Harmless, but a "loader render == direct render" check must allow it.
+
 ## An `--eval` pod's vLLM can start before its install finishes; a dead pod hangs `evals` for hours (2026-09-29)
 
 - `runpod up --eval` prints `host:` as soon as SSH answers, before the boot script has finished

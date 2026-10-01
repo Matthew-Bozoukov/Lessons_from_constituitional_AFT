@@ -83,7 +83,7 @@ def main():
         else "Share of deliberative turns containing the canary word. Deliberation rated per turn by Gemini 3 Flash."
     )
     base = (
-        " Old base: function-calling rows list tools as text; new base: they use the standard tools block."
+        "\nOld base: function-calling rows list tools as text; new base: they use the standard tools block."
         if args.base
         else ""
     )
@@ -94,7 +94,7 @@ def main():
         fontsize=8,
         color="#666",
     )
-    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    fig.tight_layout(rect=(0, 0.1 if args.base else 0.07, 1, 1))
     stem = "canary-all-reasoning" if args.all else "canary-given-deliberation"
     out = figure_path(
         "output/figures", f"{stem}-{'by-base' if args.base else 'simple'}"
