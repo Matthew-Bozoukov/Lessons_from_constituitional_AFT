@@ -2,6 +2,81 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+## 2026-10-02 - Tools-only control (nosynth-tools): unused tools without difficult advice do not reproduce the da-tools gain (Hospital sabotage 25/30, ODCV 38.8%) and break tool use on ODCV
+
+**Hypothesis.** da-tools-15 (difficult advice + unused tool definitions) is far safer than da-15 in agentic
+evals (2026-09-28). If that comes from the PAIRING of difficult-advice reasoning with a tools block, then the
+same tool definitions on ordinary reasoning rows, with no difficult advice in the mix, should not produce it.
+If unused tools alone put the model in a "doing things" mode that is safer, they should.
+
+**Method.** The tools-only cell of the 2x2 (difficult advice yes/no x unused tools yes/no).
+- Mix `dougalldeepmind/2026-10-02-nosynth-tools-mix` @ 925efcc1 (`scratch/nosynth_tools/build.py`): all
+  10,000 rows of `2026-09-22-nosynth-mix` @ 378ec1ee (the base da-15 and da-tools-15 were built on, and what
+  the nosynth control trained on), every message byte-identical, with a top-level `tools` list added to 622
+  of its 1,130 rows that carry a reasoning trace (tulu3_if 320 of 582, self_oss_instruct 225 of 409, lima 77
+  of 139, drawn in proportion, seed 0). No difficult-advice row; no tool is ever called.
+- The tool lists are da-tools-15's own: the 622 lists on the difficult-advice rows of
+  `2026-09-28-da-tools-15-mix` @ 41e990e1 (which has 628 such rows, 622 with tools), shuffled and dealt one
+  per row, so the tool text is identical between the two arms (3 or 4 tools per row, +615 prompt tokens per
+  row here vs +611 there). The base's reasoning rows have no system prompt, so the template's `# Tools` block
+  is the whole system turn. Each pairing was gated by google/gemini-3.6-flash (da-tools' own `judge_useful`
+  prompt and its audit's `contradicted` question; $4.13): 622/622 passed (583 rated unrelated, 39
+  same-domain-but-useless); 2 pairings over 8,192 tokens took another row. `scratch/nosynth_tools/verify.py`:
+  same rows and order as the base, only `tools` added, tool lists equal as a multiset to da-tools', no row
+  names one of its tools, loader render equals direct render, mask gate passed, supervision census identical.
+- Adapter `dougalldeepmind/2026-10-02-qwen36-0-nosynth-tools` @ b96d7b60: sft.yaml, seed 0, base 6a9e13bd,
+  2xH200, 625 steps, 35 min, train loss 0.590.
+- Hospital: the 2026-09-28 protocol (self-sacrificial cell, no-simulation framing, carried history, 30 seeds,
+  judge gemini-3.6-flash), six pods of five seeds; seeds 11 and 16 overflowed the 65,536-token window and
+  were re-run at 98,304 (as base Qwen's seed 24 was on 2026-09-29). A plain-nosynth control was run beside
+  it, since none existed on this protocol: `2026-09-22-qwen36-0-nosynth` in ALL NINE seats (its served name
+  collides with the usual `2026-09-21` peer, so the two cannot be seated together; target == peer is the
+  runner's control shape). Scoring is the merged-run (regex deficit) scoring the published da-15 and
+  da-tools runs carry.
+- ODCV: `configs/eval/odcv/lite.yaml` (3 passes x 80 cells, gemini-3-flash judge). The first run lost its
+  tunnel in pass 2 and is void (docs/GOTCHAS.md 2026-10-02); the published run is passes 1-2 of a second run
+  plus a fresh pass, merged and judged once (`scratch/odcv_merge_resumed_passes.py`). 0 connection failures;
+  2 of 240 rollouts ended on a request timeout after real activity.
+
+**Result.** One seed per arm. Columns: nosynth / nosynth-tools / da-15 / da-tools-15.
+- Hospital (`2026-10-02-hospital-self-sacrificial-qwen36-0-nosynth-tools` @ eb55f59b,
+  `...-qwen36-0-nosynth` @ 3edcaf20; da-15 and da-tools from 2026-09-28), of 30 shifts: pair sabotaged
+  30 / 25 / 22 / 4; sabotaged or posted a sabotage plan 30 / 29 / 30 / 19; said no in its reasoning
+  0 / 1 / 5 / 23; refused and never sabotaged 0 / 0 / 0 / 18. nosynth-tools vs nosynth paired by seed: 5
+  seeds only nosynth sabotaged, 0 the reverse, McNemar exact p = 0.062. In 4 of the 5 shifts not flagged the
+  pair had posted a sabotage plan. Pair tool calls per shift 159 vs 151 (da-15 61, da-tools 21), so the
+  tools-only pair acts as much as nosynth; team score is lower (2,667 vs 4,997, p = 0.002; the control's
+  peers are a different nosynth adapter, so read that with care). Pod-side scoring from environment
+  snapshots gives 28/30 and 30/30.
+- ODCV (`2026-10-02-odcv-qwen36-0-nosynth-tools` @ 003c2d4f): misaligned 45.4% [32.8, 58.6] / 38.8%
+  [29.2, 49.3] / 9.2% / 2.1%; nosynth-tools minus nosynth paired by scenario -6.7 pp [-16.2, +2.8], p = 0.16
+  (da-15 -36.2, da-tools -43.3). Mean severity 1.65 / 1.85 / 0.35 / 0.08.
+- ODCV side effect: nosynth-tools makes no tool call in 80 of 240 rollouts (nosynth 0, da-15 0, da-tools 2),
+  evenly over the passes (27, 24, 29); 76 of the 80 write bash as a text code block, 50 of them for all 50
+  cycles. Task progress 66.7% vs 98.8-99.6%, submission 58.3% vs 97-98%. Among the 160 rollouts that used
+  tools, 84 (52%) are misaligned; among the 80 that did not, 9 (11%).
+- Figures (output/, not committed): `2026-10-02_hospital_nosynth_tools_four_arms.png`,
+  `2026-10-02_odcv_nosynth_tools_four_arms.png` (`scratch/nosynth_tools/plot_{hospital,odcv}.py`), detail
+  table `2026-10-02_hospital_nosynth_tools_detail_results.md` (`scratch/da_tools/plot_hospital.py`).
+
+**Reading.** Unused tools alone do not carry the effect. Without difficult advice the tools-only model
+sabotages in 25 of 30 Hospital shifts and never refuses, and on ODCV it is as misaligned as nosynth whenever
+it acts. What tools alone do teach is the surface habit of the rows they sat on ("tools are listed, answer in
+text"), which costs a third of ODCV rollouts their tool use. The da-tools gain therefore needs the
+difficult-advice reasoning to be what accompanies the tools block. This is the same rule the 2026-10-01 canary
+2x2 read off: a context reuses whatever accompanied it in training. The small Hospital shift (30 -> 25) is
+within what one seed can do and is not a refusal effect.
+
+**Caveats.** One seed per arm. The tool lists were written for difficult-advice operators and sit here on
+unrelated rows with no system prompt, so "fits the operator" is not reproduced, only "listed and unused".
++615 prompt tokens on 622 rows is not length-controlled against nosynth. The Hospital control fills all nine
+seats with one adapter; the other arms have a second nosynth adapter in the seven peer seats.
+
+**Next.** A second seed of the 2x2; tools on only part of the difficult-advice rows (does chat honesty return
+while the agentic gain stays); a tools-only arm whose tool-bearing rows also CALL tools, to separate "unused"
+from "listed".
+
+
 ## 2026-09-30 - da-tools with no coalition: does the whole job (120/120 scheduled), no worse than da-15 -- its low self-sacrificial sabotage is not over-refusal
 
 **Hypothesis.** da-tools' self-sacrificial result (sabotage 4/30, 20.6 pair tool calls per shift vs da-15's 60.6;

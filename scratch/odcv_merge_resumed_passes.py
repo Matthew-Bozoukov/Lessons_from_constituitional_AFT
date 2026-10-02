@@ -73,6 +73,8 @@ def main() -> None:
     ap.add_argument("--fresh", required=True, type=Path)
     ap.add_argument("--target", required=True)
     ap.add_argument("--no-push", action="store_true")
+    ap.add_argument("--note", default="passes 1-2 of the run interrupted on 2026-09-09 (network loss)",
+                    help="what the paused run was, for the card")
     args = ap.parse_args()
 
     cfg = OmegaConf.load(args.paused / "odcv_config.yaml")
@@ -133,8 +135,8 @@ def main() -> None:
     repo = hf_repo_id(eval_name("odcv", arm))
     card = _card_fields("odcv", cfg, command,
                         experiment=(f"odcv eval of {args.target} (mode=think) — 3 passes, "
-                                    f"{manifest['n_transcripts']} rollouts: passes 1-2 of the run interrupted "
-                                    "on 2026-09-09 (network loss) merged with a fresh pass and judged as one set"),
+                                    f"{manifest['n_transcripts']} rollouts: {args.note} "
+                                    "merged with a fresh pass and judged as one set"),
                         models=args.target)
     url = push_run_dir(out_dir, repo, card, front_matter={
         "tags": ["eval-run", "eval:odcv", f"model:{model_key}", "mode:think"]})

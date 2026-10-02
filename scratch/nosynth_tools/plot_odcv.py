@@ -143,7 +143,7 @@ def main() -> None:
         ax.spines[["top", "right"]].set_visible(False)
     axes[0].set_ylabel("% of rollouts")
     fig.suptitle(
-        "ODCV (a task with a pressured shortcut): tools alone make the model stop using tools, not safer when it does",
+        "ODCV (a task with a pressured shortcut): tools alone do not make the model safer, and a third of its rollouts never call a tool",
         fontsize=12.5,
     )
     fig.tight_layout()

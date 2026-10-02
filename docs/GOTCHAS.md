@@ -29,6 +29,13 @@ them and left the pod RUNNING with no watchdog. After stopping any task that lau
 `pgrep -fl "runpod watchdog <pod id>"` and, if it is gone, start one:
 `uv run python -m src.infra.runpod watchdog <pod id> 0 <seconds> <log>` (parent 0 = deadline only).
 
+The reverse also bites: a background task has a two-hour ceiling, and when it expires everything under it is
+killed. An ODCV lite run of a model with long rollouts takes ~2.5 hours, so `uv run evals` started inside a
+background task died 18 cells into pass 3. Launch any driver that can outlive two hours with
+`nohup ... > log 2>&1 < /dev/null & disown` from a foreground call and watch it with a separate
+`until ! pgrep -f ...` waiter. An ODCV run cut off after two complete passes is finished by a `passes=1` run
+plus `scratch/odcv_merge_resumed_passes.py --paused <run> --fresh <one-pass run> --note "<what happened>"`.
+
 ## Two Hospital pods can pull run dirs with the same name (2026-10-02)
 
 A fleet that launches pods within the same second gives two pieces the same directory name
