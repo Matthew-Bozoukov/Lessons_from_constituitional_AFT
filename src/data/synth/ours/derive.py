@@ -104,8 +104,64 @@ def expansion_plan(record: dict, source: str, multiple: float, para_words: int =
 # Registered by name so a config names a reviewed function rather than carrying code. A
 # deriver takes (record, **args) and returns template vars; adding one is a src/ change,
 # which is the point -- computation that shapes a paid prompt is not config.
+
+def restructure_budget(record: dict, reasoning_field: str = "reasoning",
+                       response_field: str = "response", para_words: int = 170,
+                       min_harm: int = 2, max_harm: int = 5,
+                       target_multiple: float = 1.0) -> dict[str, Any]:
+    """Per-paragraph word budgets for restructuring a text into a fixed shape at parity.
+
+    `expansion_plan` budgets per SOURCE paragraph, which works when output paragraphs
+    correspond to input ones. A restructuring reorganises the same material across a fixed
+    set of roles instead, so the budget has to be per OUTPUT role -- but the lesson that
+    makes expansion_plan work applies unchanged: a single global word target comes back at
+    roughly half, and only a per-paragraph number is trackable by the model writing to it.
+
+    The split is 22/16/48/14 across background, background gap-fill, the harm paragraphs
+    and the plan. The harm paragraphs get the largest share because that is where a
+    deliberated source's weighing material has to land once it stops being a weighing: the
+    first run of the ablation arm, with no budget at all, dropped that material instead and
+    came out at 0.67x the source.
+
+    Args:
+        record: The record, read BEFORE the stage's `save` overwrites its fields, so the
+            named fields are the source text.
+        reasoning_field: Field holding the source reasoning.
+        response_field: Field holding the source reply.
+        para_words: Words a paragraph of this corpus's prose runs to, for sizing the harm
+            paragraph COUNT from the material available.
+        min_harm, max_harm: Bounds on that count.
+        target_multiple: 1.0 is parity. Above 1.0 asks for expansion.
+
+    Returns:
+        Prompt vars: `rz_total`, `rz_p1`, `rz_p2`, `rz_harm_n`, `rz_harm_each`, `rz_plan`
+        for the reasoning, and `rp_total`, `rp_p1`, `rp_rest` for the reply.
+    """
+    rz = len(str(record.get(reasoning_field, "")).split())
+    rp = len(str(record.get(response_field, "")).split())
+    assert rz and rp, (f"restructure_budget: {reasoning_field!r}/{response_field!r} must "
+                       f"both be non-empty on the record (got {rz}/{rp} words)")
+    rz_target = max(1, round(rz * target_multiple))
+    rp_target = max(1, round(rp * target_multiple))
+    harm_total = round(rz_target * 0.48)
+    harm_n = min(max_harm, max(min_harm, round(harm_total / para_words)))
+    return {
+        "rz_total": rz_target,
+        "rz_p1": round(rz_target * 0.22),
+        "rz_p2": round(rz_target * 0.16),
+        "rz_harm_n": harm_n,
+        "rz_harm_total": harm_total,
+        "rz_harm_each": round(harm_total / harm_n),
+        "rz_plan": round(rz_target * 0.14),
+        "rp_total": rp_target,
+        "rp_p1": round(rp_target * 0.20),
+        "rp_rest": round(rp_target * 0.80),
+    }
+
+
 DERIVERS: dict[str, Callable[..., dict[str, Any]]] = {
     "expansion_plan": expansion_plan,
+    "restructure_budget": restructure_budget,
 }
 
 

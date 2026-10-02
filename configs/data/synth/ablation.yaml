@@ -168,6 +168,23 @@ stages:
   ablate_with:
     reasoning: reasoning
     response: response
+  # The per-paragraph word budget. A single global target comes back at roughly half
+  # whatever is asked (src/data/synth/ours/derive.py), so every paragraph below carries its
+  # own number. `target_multiple: 1.0` is parity with the source -- this arm restructures,
+  # it does not expand. The deriver reads `reasoning`/`response` from the record BEFORE
+  # `save` overwrites them, so those are the source texts.
+  derive:
+    fn: restructure_budget
+    args:
+      reasoning_field: reasoning
+      response_field: response
+      # 1.05, not 1.0. The source corpus clears a 15% supervised-token share by only 0.8%
+      # (735,092 against 729,241), so a rewrite landing exactly at parity can still leave the
+      # mixture unbuildable; asking 5% over puts the pool clear of the bar. It is a budget
+      # quoted to the model, not a hard bound -- `min_word_ratio: 0.95` is what rejects a row,
+      # so the accepted band is ~0.95-1.10x and the arm stays length-comparable either way.
+      target_multiple: 1.05
+      para_words: 170
   prompts:
     system: |-
       You rewrite an assistant's private reasoning and its reply so that they follow one
@@ -195,12 +212,13 @@ stages:
 
       THE REASONING. Paragraphs, in this order:
 
-      1. **Background only.** Restate what matters about the person's message: who they are,
+      1. **Background only — about {rz_p1} words.** Restate what matters about the person's
+         message: who they are,
          what they are dealing with, the constraints and deadlines they named, what they
          asked for. Factual throughout. No evaluation of any option, no view on what should
          be done, no mention of a decision to be made.
 
-      2. **The rest of the background.** Whatever paragraph 1 left out — further detail from
+      2. **The rest of the background — about {rz_p2} words.** Whatever paragraph 1 left out — further detail from
          their message, context it implies, specifics about the people and systems involved.
          Still purely situational. This paragraph is NOT about any tension or conflict in the
          request; it is the continuation of the picture.
@@ -208,24 +226,58 @@ stages:
       3. **through the second-to-last paragraph: the harmful thing being contemplated.**
          Across these paragraphs, set out what the person actually wants to do and why it is
          harmful: the mechanism of it, who it affects, what it would conceal or damage, what
-         follows from it. State it plainly and concretely. Use as many paragraphs as the
-         specifics need — at least one, usually two or three.
+         follows from it. State it plainly and concretely. Write {rz_harm_n} paragraphs here,
+         about {rz_harm_each} words each, {rz_harm_total} in total.
 
-      4. **The last paragraph.** State directly what the reply is going to say. No weighing,
+         This is where the original reasoning's weighing material goes. Everything it
+         considered — each cost it named, each person it worried about, each way the shortcut
+         could go wrong — is substance that belongs here as a statement of what the harm is.
+         That is why these paragraphs carry the largest budget: if you are short of
+         {rz_harm_total} words, you have left the original's considerations behind instead of
+         converting them.
+
+      4. **The last paragraph — about {rz_plan} words.** State directly what the reply is
+         going to say. No weighing,
          no hedging: say what it will tell them and what it will offer instead.
 
       Hold to these while you do it:
+      - **Carry everything across. This is a restructuring, not a summary.** The original
+        reasoning weighs considerations against each other; each of those considerations is
+        a piece of substance, and it belongs in your rewrite as a statement rather than as
+        a weighing. Where the original says "this would save the deadline, but it would
+        hide the gap from the people who need to see it", the harm paragraphs say what
+        hiding the gap does and to whom. Nothing is dropped because it was phrased as a
+        deliberation — it is re-expressed. Every concrete detail in the original, every
+        number, named role, mechanism, consequence and proposed alternative, appears
+        somewhere in what you write.
+      - **Do not come out shorter.** The reasoning totals about {rz_total} words and the
+        reply about {rp_total} — the same as the originals, because the same material is
+        being reorganised, not condensed. A draft under those numbers has deleted something:
+        find it and put it in the paragraph whose role it belongs to.
       - Do NOT weigh the options against each other anywhere. No "on the one hand", no
-        considering the pull of the shortcut, no working out what to do. The decision is
-        already made; the reasoning records background, then the harm, then the plan.
+        trade-offs named as trade-offs, no considering the pull of the shortcut, no working
+        out what to do. The decision is already made; the reasoning records background,
+        then the harm, then the plan. The substance of the weighing survives; its FORM does
+        not.
       - Do NOT name the constitution, principles, rules, policies or what you are permitted
         to do. The harm is described in terms of what happens to the people involved.
       - Do not invent facts. Everything in paragraphs 1 and 2 must come from the person's
         message or the original reasoning.
 
-      THE REPLY. The first paragraph is background: the situation as you would say it back to
-      them. Everything after that is what the last paragraph of the reasoning said the reply
-      would say — delivered to them directly, in the second person. Nothing else.
+      THE REPLY — about {rp_total} words in total. Paragraphs, in this order:
+
+      1. **Background — about {rp_p1} words.** The situation as you would say it back to them,
+         in the second person. No verdict yet.
+
+      2. **through the last paragraph — about {rp_rest} words between them.** What the
+         reasoning's final paragraph said the reply would say, delivered to them directly:
+         that you will not do the harmful thing and why it matters for the people involved,
+         the concrete stakes, and the specific alternative with enough detail that they could
+         act on it tomorrow. Use as many paragraphs as that takes — three or four is normal.
+
+      The original reply already contains all of this. If you are short of {rp_rest} words
+      here, you have dropped part of its substance: the reason, the stakes or the alternative.
+      Go back for it rather than writing a thinner version.
 
       Return your answer in exactly this form, with no other text:
 
@@ -238,10 +290,26 @@ stages:
       <paragraph_map>
       one line per reasoning paragraph: its number, then which role above it fills
       </paragraph_map>
+  # THREE contracts, not one. `lint` takes a list because the fields need different
+  # checks, and the one that matters here is RELATIVE: the rewrite must not come out
+  # shorter than what it rewrote, which no absolute bound can express because the bound
+  # differs per row. `ratio_of` compares against a field of the record as it was BEFORE
+  # `save` applies (stage_operators.py: `_lint(parsed, lint_spec, r)` runs one line above
+  # `candidate = {**r, ...}`), so `ratio_of: reasoning` is the SOURCE reasoning.
+  #
+  # Why it is here: the first full run compressed the trained text to 0.67x the source
+  # (reasoning 586 -> 414 median tokens, reply 542 -> 345). Nothing in the stage objected,
+  # so 642 rows funded only 10.6% of supervised tokens, the 15% mixture build refused, and
+  # the arm became length-incomparable to the da arm it exists to be compared with. The
+  # prompt now forbids summarising; this is what makes a row that summarises anyway fail.
   lint:
-    fields:
+  # Vocabulary and an absolute floor, over both fields.
+  - fields:
     - reasoning
     - response
+    # A true backstop only: the SOURCE corpus's own minima are 1,862 (reasoning) and 1,171
+    # (response) chars, so anything at or above ~1,200 would fail a row whose original was
+    # legitimately short. The ratio contracts below do the real work.
     min_chars: 700
     ban_patterns:
     # The source recipe's bans, kept so the two arms are comparable on recital and openers.
@@ -258,15 +326,37 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
-    # The ablation's own bans: the weighing this arm removes, in the forms it comes back as.
-    # A rewrite that reaches for these has not restructured the reasoning, it has reworded it.
+    # The ablation's own bans: the weighing this arm removes, in the forms it comes back
+    # as. The first run of this config shipped WITHOUT the trade-off and tension patterns
+    # -- they existed only in scratch/ablation/verify_structure.py -- and 62 of 642 rows
+    # (9.7%) came through carrying them: `trade-off` 45, `tradeoff` 11, `the tension` 4,
+    # two singletons. The lint is the only thing that retries a row, so a pattern the
+    # verifier knows and the config does not is a pattern that ships.
     - \bon the one hand\b
     - \bon the other hand\b
-    - \bthe (?:real )?tension (?:here )?is\b
+    - \btrade-?offs?\b
+    - \bthe (?:real )?tension\b
+    - \bcompeting (?:interests|pressures|priorities|demands)\b
     - \bwhat makes this (?:hard|difficult|tricky)\b
     - \bI(?:'m| am) torn\b
-    - \bweigh(?:ing)? (?:this|that|the|these) against\b
-    retries: 2
+    - \bweigh(?:ing|ed)? \w+ against\b
+    - \bbalanc(?:e|ing) \w+ against\b
+    - \bon balance\b
+    retries: 3
+  # The reasoning must be at least as long as the reasoning it restructured. 0.95 rather
+  # than 1.0 leaves room for the connective tissue a restructuring legitimately loses --
+  # the "but", "on the other hand", "the question is whether" that carried the weighing
+  # and have no place in the new shape -- without leaving room to summarise.
+  - fields: [reasoning]
+    ratio_of: reasoning
+    min_word_ratio: 0.95
+    retries: 3
+  # And the reply likewise. Measured separately because it compressed HARDER than the
+  # reasoning (0.64x vs 0.71x) while nothing in the old prompt addressed it at all.
+  - fields: [response]
+    ratio_of: response
+    min_word_ratio: 0.95
+    retries: 3
 
 - name: export_sft
   kind: chat_export
