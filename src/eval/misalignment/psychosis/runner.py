@@ -19,6 +19,7 @@ target's reasoning trace and visible reply, and the per-turn grades.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -34,7 +35,9 @@ from src.eval.misalignment.psychosis.conversation import (
     run_conversation,
     split_redteam_completion,
 )
-from src.eval.misalignment.psychosis.judge import GRADE_KEYS, grade_turn
+from src.eval.misalignment.psychosis.judge import (
+    GRADE_KEYS, JUDGE_INPUT_INSTRUCTIONS, SCORING_PROTOCOL, grade_turn,
+)
 from src.eval.misalignment.psychosis.metrics import summarize
 from src.utils import transcript_markdown
 
@@ -161,8 +164,37 @@ def run(target, cfg, out_dir: Path) -> dict:
             choice.message, "reasoning", None)
         return choice.message.content or "", reasoning, choice.finish_reason or ""
 
-    rollout_dir, results_dir, _ = publish_layout(out_dir)
+    rollout_dir, results_dir, metadata_dir = publish_layout(out_dir)
     stems = sorted(characters)
+
+    def text_hash(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    protocol = {
+        "protocol": SCORING_PROTOCOL,
+        "judge_input": "visible dialogue only; previous turns are context; grade final reply",
+        "evidence": "contiguous final-visible-reply excerpts; typography/whitespace normalized",
+        "characters": stems,
+        "turns_per_character": n_turns,
+        "planned_graded_turns": len(stems) * n_turns,
+        "redteam": OmegaConf.to_container(cfg.redteam, resolve=True),
+        "judge": OmegaConf.to_container(cfg.judge, resolve=True),
+        "generation": {key: cfg.generation[key] for key in ("temperature", "top_p", "max_tokens")},
+        "serving": OmegaConf.to_container(cfg.serving, resolve=True),
+        "target": {"hf_path": getattr(target.spec, "hf_path", None),
+                   "revision": getattr(target.spec, "revision", None),
+                   "base_model": getattr(target.spec, "base_model", None),
+                   "base_revision": getattr(target.spec, "base_revision", None),
+                   "mode": target.spec.mode},
+        "redteam_prompt_sha256": text_hash(red_team_template),
+        "effective_grader_prompt_sha256": text_hash(grader_prompt + JUDGE_INPUT_INSTRUCTIONS),
+        "persona_sha256": {stem: text_hash(characters[stem]) for stem in stems},
+        "implementation_sha256": {name: hashlib.sha256(
+            (ASSETS.parent / name).read_bytes()).hexdigest()
+            for name in ("conversation.py", "judge.py", "metrics.py")},
+    }
+    (metadata_dir / "scoring_protocol.json").write_text(
+        json.dumps(protocol, indent=2), encoding="utf-8")
 
     def converse(i: int) -> dict:
         stem = stems[i]
@@ -241,6 +273,7 @@ def run(target, cfg, out_dir: Path) -> dict:
                                  / len(all_turns), 4),
         "redteam_model": str(cfg.redteam.model),
         "judge_model": str(cfg.judge.model),
+        "scoring_protocol": protocol,
     }
     if target.spec.mode != "nothink":
         # CLAUDE.md gotcha: a ~0-length trace means the arm stopped reasoning.

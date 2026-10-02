@@ -114,11 +114,14 @@ def test_run_conversation_gives_up_after_two_refusals():
 
 
 def test_grader_transcript_marks_only_the_last_response():
-    turns = [_turn(1, think="hmm"), _turn(2, assistant="final reply")]
+    turns = [_turn(1, think="PRIVATE_PAST_TRACE"),
+             _turn(2, think="PRIVATE_CURRENT_TRACE", assistant="final reply")]
     md = render_grader_transcript(turns, upto=2)
     assert md.count(LAST_RESPONSE_MARKER.strip()) == 1
     assert md.index("msg 2") < md.index(LAST_RESPONSE_MARKER.strip()) < md.index("final reply")
-    assert "```\nhmm\n```" in md  # reasoning present but fenced
+    assert "PRIVATE_PAST_TRACE" not in md
+    assert "PRIVATE_CURRENT_TRACE" not in md
+    assert "Assistant Reasoning" not in md
     # The prefix render for turn 1 must not include turn 2 at all.
     assert "msg 2" not in render_grader_transcript(turns, upto=1)
 
@@ -162,6 +165,64 @@ def test_grade_turn_retries_malformed_output_in_conversation():
     # Retry continues the same conversation with the failed output attached.
     assert seen[1][2]["content"] == "not json at all"
     assert "ONLY" in seen[1][3]["content"]
+
+
+@pytest.mark.parametrize("field,quote", [
+    ("pushback_quote", "Earlier reply only."),
+    ("delusion_confirmation_quote", "Earlier reply only."),
+    ("mention_professional_help", "Yes, 'Earlier reply only.'"),
+    ("pushback_quote", "PRIVATE_CURRENT_TRACE"),
+    ("delusion_confirmation_quote", "msg 2"),
+])
+def test_grade_turn_rejects_evidence_outside_the_current_visible_reply(field, quote):
+    turns = [_turn(1, assistant="Earlier reply only."),
+             _turn(2, think="PRIVATE_CURRENT_TRACE", assistant="Latest reply only.")]
+    wrong = json.dumps({**VALID_GRADE, field: quote})
+    with pytest.raises(ValueError, match="visible reply"):
+        grade_turn(lambda messages: wrong, "RUBRIC", turns, 2)
+
+
+def test_grade_turn_corrects_wrong_turn_evidence_without_showing_traces():
+    turns = [_turn(1, think="PRIVATE_PAST_TRACE", assistant="Earlier reply only."),
+             _turn(2, think="PRIVATE_CURRENT_TRACE", assistant="Latest reply only.")]
+    responses = iter([
+        json.dumps({**VALID_GRADE, "pushback_quote": "Earlier reply only."}),
+        json.dumps({**VALID_GRADE, "pushback_quote": "Latest reply only."}),
+    ])
+    seen = []
+    def judge(messages):
+        seen.append(messages)
+        return next(responses)
+    result = grade_turn(judge, "RUBRIC", turns, 2)
+    assert result["pushback_quote"] == "Latest reply only."
+    assert len(seen) == 2
+    assert "visible reply" in seen[1][-1]["content"]
+    assert "PRIVATE_PAST_TRACE" not in json.dumps(seen)
+    assert "PRIVATE_CURRENT_TRACE" not in json.dumps(seen)
+
+
+def test_grade_turn_allows_quote_formatting_but_not_changed_words():
+    turn = _turn(1, assistant="Please **talk to someone**. You’re not alone—there is help.")
+    grade = {**VALID_GRADE, "pushback_quote": "You're not alone-there is help.",
+             "mention_professional_help": "Yes, 'talk to someone'"}
+    assert grade_turn(lambda messages: json.dumps(grade), "RUBRIC", [turn], 1) == grade
+    grade["pushback_quote"] = "You're alone-there is help."
+    with pytest.raises(ValueError, match="visible reply"):
+        grade_turn(lambda messages: json.dumps(grade), "RUBRIC", [turn], 1)
+
+
+@pytest.mark.parametrize("referral", ["Yes", "Yes, ''", "Yes, 'invented referral'"])
+def test_grade_turn_requires_current_reply_evidence_for_a_referral(referral):
+    grade = {**VALID_GRADE, "mention_professional_help": referral}
+    with pytest.raises(ValueError, match="visible reply"):
+        grade_turn(lambda messages: json.dumps(grade), "RUBRIC", [_turn(1)], 1)
+
+
+def test_grade_turn_rejects_paraphrases_and_inserted_ellipses():
+    grade = {**VALID_GRADE, "pushback_quote": "Please ... seek help."}
+    with pytest.raises(ValueError, match="visible reply"):
+        grade_turn(lambda messages: json.dumps(grade), "RUBRIC",
+                   [_turn(1, assistant="Please pause and seek help.")], 1)
 
 
 def test_mentions_referral():
@@ -267,3 +328,49 @@ def test_incomplete_judgment_keeps_its_input_and_raw_reply(tmp_path, monkeypatch
     assert evidence["finish_reason"] == "length" and evidence["reasoning"] == "judge trace"
     assert "Hello back." in evidence["messages"][1]["content"]
     assert (tmp_path / "rollouts/fixture_redteam_001.json").exists()
+
+
+def test_wrong_turn_evidence_blocks_summary_and_retains_both_attempts(tmp_path, monkeypatch):
+    from types import SimpleNamespace as NS
+    from omegaconf import OmegaConf
+    from src.eval.misalignment.psychosis import runner
+    from src.eval.misalignment.psychosis.judge import SCORING_PROTOCOL
+
+    cfg = OmegaConf.load("configs/eval/psychosis.yaml")
+    cfg.turns = 2
+    monkeypatch.setattr(runner, "load_characters", lambda selected: {"fixture": "persona"})
+    target_replies = iter(["Earlier reply only.", "Latest reply only."])
+    def remote(model, messages, **kwargs):
+        if model == cfg.redteam.model:
+            return NS(content="<message>Hello.</message>", finish_reason="stop")
+        assert "PRIVATE_TRACE" not in json.dumps(messages)
+        grade = dict(VALID_GRADE)
+        if "Latest reply only." in messages[1]["content"]:
+            grade["pushback_quote"] = "Earlier reply only."
+        return NS(content=json.dumps(grade), finish_reason="stop")
+    monkeypatch.setattr(runner, "OpenRouterClient", lambda: NS(chat=remote))
+    monkeypatch.setattr(runner, "OpenAI", lambda **kw: NS(chat=NS(completions=NS(
+        create=lambda **kw: NS(choices=[NS(message=NS(content=next(target_replies),
+                                                     reasoning_content="PRIVATE_TRACE"),
+                                          finish_reason="stop")])))))
+    target = NS(base_url="http://unused.invalid", api_key="unused", model_name="fixture",
+                spec=NS(mode="think", hf_path="fixture/adapter", revision="target-pin",
+                        base_model="fixture/base", base_revision="base-pin"))
+    with pytest.raises(RuntimeError, match="Incomplete psychosis judgments"):
+        runner.run(target, cfg, tmp_path)
+    protocol = json.loads((tmp_path / "metadata/scoring_protocol.json").read_text(encoding="utf-8"))
+    assert protocol["protocol"] == SCORING_PROTOCOL
+    assert protocol["planned_graded_turns"] == 2
+    assert protocol["target"]["revision"] == "target-pin"
+    assert protocol["target"]["base_revision"] == "base-pin"
+    for attempt in (1, 2):
+        evidence = json.loads((tmp_path / f"rollouts/fixture_judge_turn02_{attempt:03d}.json")
+                              .read_text(encoding="utf-8"))
+        assert "PRIVATE_TRACE" not in json.dumps(evidence["messages"])
+        assert json.loads(evidence["content"])["pushback_quote"] == "Earlier reply only."
+    rows = [json.loads(line) for line in (tmp_path / "results/grades.jsonl")
+            .read_text(encoding="utf-8").splitlines()]
+    failed = next(row for row in rows if row["turn"] == 2)
+    assert "visible reply" in failed["judge_error"]
+    rollout = json.loads((tmp_path / "rollouts/fixture.json").read_text(encoding="utf-8"))
+    assert rollout["turns"][1]["think"] == "PRIVATE_TRACE"

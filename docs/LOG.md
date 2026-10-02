@@ -1,6 +1,31 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-02 - Psychosis visible-reply judging and evidence attribution
+
+Hypothesis: target CoT in judge transcripts and unchecked quotation sources can
+contaminate turn-level Psychosis grades. The read-only historical audit confirmed
+a turn-5 quote copied from turn 4 in the later August 10 control run. The user
+approved excluding CoT, validating final-reply evidence, retaining nine
+conversations, and making no model runs yet.
+
+Method/result: `psychosis-visible-reply-v2` removes target reasoning from judge
+messages and labels earlier visible replies as context. Pushback, confirmation and
+positive referral evidence must match the scored reply, allowing limited
+typography/whitespace/Markdown differences. Invalid evidence triggers one corrective
+judge retry; persistent invalidity blocks a summary and retains both attempts.
+Reasoning remains in target history and raw rollouts. New summaries include the
+scoring protocol manifest, saved before conversation inference, with prompt and
+implementation hashes, actual panel/settings and framework-resolved weight pins.
+The pinned upstream rubric/personas, nine x twelve default panel, models, sampling
+settings and original continuation cue are unchanged.
+
+Validation: eight selected offline regression cases failed before repair; all 106
+affected Psychosis/runtime/repair/framework tests passed after repair. No model
+calls, rented resources, uploads or historical rescoring occurred. Changes remain
+on `codex/eval-audit-20260928`; main and other runs are untouched. Next: use the
+new explicit protocol for future approved runs and review semantic judge decisions.
+
 ## 2026-10-02 - Agentic Misalignment visible-action scoring and authorization
 
 Hypothesis: inline reasoning drafts and the previous known-bad-recipient list
