@@ -1,0 +1,349 @@
+# ABOUTME: Ablation arm: the 2026-10-02 difficult-advice corpus with its reasoning restructured
+# ABOUTME: into background -> named harm -> plan, removing the open weighing of the tension.
+# Run:   uv run synth run --config configs/data/synth/ablation.yaml
+#   Prereq: uv run python scratch/ablation/build_smoke_source.py   (stages the smoke source)
+#   Smoke:  uv run synth run --config configs/data/synth/ablation.yaml --smoke
+#   Verify: uv run python scratch/ablation/verify_structure.py --run_dir <run dir>
+#
+# WHAT IS ABLATED. The da recipe's own style guidance says the reasoning should "name the
+# ethical tension explicitly and reason through it in the open", and the rewrite stage that
+# produced the source corpus calls that "the ingredient that matters most". This arm keeps
+# every other thing about the corpus -- the same 642 scenarios, the same prompts, the same
+# facts, the same refusal of the harmful path -- and removes exactly that ingredient,
+# replacing the deliberation with a fixed, information-ordered shape:
+#
+#     reasoning  P1        background: the situation restated, no evaluation
+#                P2        whatever the background still lacks
+#                P3..Pn-1  what the harmful thing the person wants to do actually is
+#                Pn        a direct statement of what the reply will say
+#     response   P1        background
+#                rest      what Pn said the reply would say
+#
+# So the model still SEES the harm named and still declines it; what it no longer sees is a
+# mind weighing the pull of the shortcut against the cost of it. If difficult-advice
+# training works through the deliberation itself, this arm should lose most of the effect
+# while matching the baseline on surface features. If it works through naming harms and
+# declining them, the arm should hold.
+#
+# WHAT IT DOES NOT CONTROL, and knows it: a fixed four-part shape is far more templated than
+# the source, whose rewrite prompt actively bans a reused opening. Expect ngram_diversity
+# and the pattern scan to fall, and read them as a property of the ablation rather than a
+# defect -- but do NOT read an ODCV difference as "deliberation matters" without checking
+# length and refusal density first (scratch/ablation/verify_structure.py reports both).
+
+method: ours
+pipeline: ablation
+
+card:
+  experiment: >-
+    Difficult-advice SFT corpus, reasoning-structure ablation: the 2026-10-02 da corpus
+    (dougalldeepmind/2026-10-02-da-synth, stage 6) with its scenarios, system prompts and
+    user prompts held frozen and ONLY the assistant reasoning and reply rewritten into a
+    fixed shape -- background, background gap-fill, an account of the harmful action the
+    person is contemplating, then a direct statement of what the reply will say; the reply
+    opens on background and then says that. Removes the open weighing of the ethical
+    tension that the source recipe treats as its active ingredient, while keeping the
+    harm named and declined. Pairs with the unmodified 2026-10-02-da-synth on the same
+    642 scenarios.
+  models: >-
+    rewrite: google/gemini-3-flash-preview (temperature 0.7, max_tokens 12288). Nothing
+    else is generated: scenarios, prompts and the reasoning being rewritten all come from
+    the source run (anthropic/claude-haiku-4.5 drafted, anthropic/claude-sonnet-5 revised).
+    All calls route through OpenRouter; per-stage usage in manifest.json.
+  provenance: "uv run synth run --config configs/data/synth/ablation.yaml"
+  notes: >-
+    The source rows are the full 642-row export of the 2026-10-02 run, reused verbatim via
+    `load_source_run`, so this arm and the baseline differ in nothing but the two rewritten
+    fields. `--smoke` swaps the source for the 3-row directory
+    scratch/ablation/build_smoke_source.py stages (one row per `ai` axis level), because a
+    loaded source's row count is the file and total_scenarios cannot shrink it.
+
+ablate: []
+
+# A loaded source is not truncated by max_traits or total_scenarios -- the row count IS the
+# source file -- so `--smoke` must swap the source itself. Repo-wide rule for source-seeded
+# configs (tests/test_da_recipe.py).
+smoke:
+  source:
+    local_dir: "data/da_1002_ablation_smoke"
+    snapshot: "stage_6_revise_responses.jsonl"
+
+seed: 0
+
+# Must be the source run's constitution: `load_source_run` hard-asserts the sha, because a
+# source generated against a different document would cross arms silently.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+
+# The source recipe's guidance, carried verbatim so the diff between the arms is visible in
+# one place rather than hidden in a reworded block. The rewrite prompt below deliberately
+# CONTRADICTS the "names the ethical tension explicitly and reasons through it in the open"
+# clause -- that contradiction is the ablation, and it is stated rather than smuggled in by
+# deleting the line.
+style_guidance: |-
+  Engages with the pressure the person is under rather than stonewalling. Names the
+  ethical tension explicitly and reasons through it in the open. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
+n_traits: 9
+chunking: principle
+
+# The frozen corpus. `hf_repo` rather than `local_dir`: the published run IS the arm's
+# source, pinned by revision so a re-run reproduces it.
+source:
+  hf_repo: "dougalldeepmind/2026-10-02-da-synth"
+  revision: "b758bcddd76793c527e70db23e97f3244bb6abca"
+  snapshot: "stage_6_revise_responses.jsonl"
+
+# NOT a generation budget: the corpus size is whatever the source holds (642). Kept because
+# the cost model and the estimator expect a count.
+total_scenarios: 642
+
+output_dir: "output/synth_ablation"
+hf_private: false
+
+workers: 32
+# One paid stage. Gemini 3 Flash is cheap; the whole 642 at ~8k in / ~2k out is a few
+# dollars including lint retries.
+budget_usd: 25.0
+
+max_fail_pct: 2.0
+
+defaults:
+  temperature: 1.0
+  max_tokens: 4096
+
+models:
+  # The ONE generation model this arm runs.
+  rewrite:
+    model: "google/gemini-3-flash-preview"
+    temperature: 0.7
+    # Emits a full reasoning AND a full reply, so it needs the source stage's headroom.
+    max_tokens: 12288
+    assumed_tokens: {in: 2600, out: 1800}
+  # The corpus stage's judges. Not generation: they rate a finished corpus.
+  autorate:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 500
+    assumed_tokens: {in: 1400, out: 120}
+  scan:
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.0
+    max_tokens: 8000
+    assumed_tokens: {in: 28000, out: 3500}
+  classify:
+    model: "anthropic/claude-haiku-4.5"
+    temperature: 0.0
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
+
+stages:
+# FREE and REQUIRED even though this arm generates no scenarios: `segment` publishes
+# `style_guidance` into ctx.vars, and the source rows carry their own trait fields.
+- name: chunk_constitution
+  kind: segment
+
+# The 2026-10-02 run's final rows, verbatim: system, user, reasoning, response, plus the
+# `ai` and `sector` axes that run introduced.
+- name: load_source
+  kind: load_source_run
+
+# The stage this arm exists for.
+- name: restructure_reasoning
+  kind: llm_tagged
+  model: rewrite
+  checkpoint: scenario_id
+  tags:
+  - reasoning
+  - response
+  - paragraph_map
+  save:
+    reasoning: reasoning
+    response: response
+    ablation_paragraph_map: paragraph_map
+  # Ablating the ablation is the identity: the baseline's own text. `--ablate
+  # restructure_reasoning` then reproduces the source corpus, which is what makes this
+  # stage's contribution measurable rather than assumed.
+  ablate_with:
+    reasoning: reasoning
+    response: response
+  prompts:
+    system: |-
+      You rewrite an assistant's private reasoning and its reply so that they follow one
+      fixed structure exactly. You preserve every fact of the situation and the position the
+      reply takes. You do not add deliberation.
+    user: |-
+      Here is a complete transcript: a person's message, the assistant's private reasoning,
+      and the assistant's reply.
+
+      <user_message>
+      {user}
+      </user_message>
+
+      <assistant_reasoning>
+      {reasoning}
+      </assistant_reasoning>
+
+      <assistant_response>
+      {response}
+      </assistant_response>
+
+      Rewrite the reasoning and the reply into the exact structure below. Keep every fact of
+      this person's situation, and keep the position the reply already takes — if it declines
+      something, the rewrite declines the same thing, for the same reason.
+
+      THE REASONING. Paragraphs, in this order:
+
+      1. **Background only.** Restate what matters about the person's message: who they are,
+         what they are dealing with, the constraints and deadlines they named, what they
+         asked for. Factual throughout. No evaluation of any option, no view on what should
+         be done, no mention of a decision to be made.
+
+      2. **The rest of the background.** Whatever paragraph 1 left out — further detail from
+         their message, context it implies, specifics about the people and systems involved.
+         Still purely situational. This paragraph is NOT about any tension or conflict in the
+         request; it is the continuation of the picture.
+
+      3. **through the second-to-last paragraph: the harmful thing being contemplated.**
+         Across these paragraphs, set out what the person actually wants to do and why it is
+         harmful: the mechanism of it, who it affects, what it would conceal or damage, what
+         follows from it. State it plainly and concretely. Use as many paragraphs as the
+         specifics need — at least one, usually two or three.
+
+      4. **The last paragraph.** State directly what the reply is going to say. No weighing,
+         no hedging: say what it will tell them and what it will offer instead.
+
+      Hold to these while you do it:
+      - Do NOT weigh the options against each other anywhere. No "on the one hand", no
+        considering the pull of the shortcut, no working out what to do. The decision is
+        already made; the reasoning records background, then the harm, then the plan.
+      - Do NOT name the constitution, principles, rules, policies or what you are permitted
+        to do. The harm is described in terms of what happens to the people involved.
+      - Do not invent facts. Everything in paragraphs 1 and 2 must come from the person's
+        message or the original reasoning.
+
+      THE REPLY. The first paragraph is background: the situation as you would say it back to
+      them. Everything after that is what the last paragraph of the reasoning said the reply
+      would say — delivered to them directly, in the second person. Nothing else.
+
+      Return your answer in exactly this form, with no other text:
+
+      <reasoning>
+      the restructured private reasoning, paragraphs separated by a blank line
+      </reasoning>
+      <response>
+      the restructured reply, paragraphs separated by a blank line
+      </response>
+      <paragraph_map>
+      one line per reasoning paragraph: its number, then which role above it fills
+      </paragraph_map>
+  lint:
+    fields:
+    - reasoning
+    - response
+    min_chars: 700
+    ban_patterns:
+    # The source recipe's bans, kept so the two arms are comparable on recital and openers.
+    - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
+    - \bthe constitution\b
+    - \bprinciple \d+\b
+    - \b(?:i'm|i am) not (?:allowed|permitted|supposed)\b
+    - \bnot permitted to\b
+    - \bi must not\b
+    - \b(?:i am|i'm) required to\b
+    - \bagainst (?:my|the) (?:rules|policy|guidelines)\b
+    - \bviolates? (?:my|the) (?:rules|policy|guidelines|constitution|principles?)\b
+    - \bhard constraints?\b
+    - ^\s*let me\b
+    - ^\s*okay,
+    - '[一-鿿]'
+    # The ablation's own bans: the weighing this arm removes, in the forms it comes back as.
+    # A rewrite that reaches for these has not restructured the reasoning, it has reworded it.
+    - \bon the one hand\b
+    - \bon the other hand\b
+    - \bthe (?:real )?tension (?:here )?is\b
+    - \bwhat makes this (?:hard|difficult|tricky)\b
+    - \bI(?:'m| am) torn\b
+    - \bweigh(?:ing)? (?:this|that|the|these) against\b
+    retries: 2
+
+- name: export_sft
+  kind: chat_export
+  messages:
+  - role: system
+    content: '{system}'
+  - role: user
+    content: '{user}'
+  - role: assistant
+    content: '{response}'
+    reasoning_content: '{reasoning}'
+  metadata:
+  - scenario_id
+  - trait_id
+  - trait_name
+  - trait_text
+  - domain
+  - shortcut
+  - situation
+  # The rotated axes the 2026-10-02 run introduced: carried through so this arm can be
+  # sliced the same way its baseline can.
+  - ai
+  - sector
+  - chunk_ids
+  - granularity
+  - grouping_strategy
+  - n_chunks
+  # The model's own account of which paragraph fills which role: a cheap audit trail, so a
+  # row whose structure is wrong can be found without re-reading the corpus.
+  - ablation_paragraph_map
+
+- name: corpus
+  kind: corpus_check
+  on_fail: warn
+  model: autorate
+  fields:
+    id: metadata.scenario_id
+    text:
+      from_messages:
+        roles: [assistant]
+        include_reasoning: true
+    group: metadata.trait_id
+    unit: metadata.trait_id
+    members: metadata.chunk_ids
+  properties:
+  # EXPECTED TO FALL. A fixed four-part shape repeats by construction, so this is a
+  # measurement of how templated the ablation is, not a gate on it (`on_fail: warn`).
+  - property: ngram_diversity
+  - property: embedding_dedup
+    fields:
+      text: metadata.situation
+  - property: quality_filter
+    enabled: false
+  - property: pattern_scan
+    enabled: false
+  rubrics:
+    quality_filter:
+      system: >-
+        You rate synthetic training documents for a constitutional-SFT corpus. Each
+        document is an assistant reply to a user facing an ethically difficult situation,
+        together with the assistant's private reasoning. This corpus is an ABLATION: its
+        reasoning deliberately follows a fixed shape (background, then an account of the
+        harmful action, then a statement of what the reply will say) and deliberately does
+        NOT weigh the options. Do not drop a document for that shape, for being repetitive
+        across documents, or for lacking deliberation — that is the arm, not a flaw. Drop
+        it if the scenario could not plausibly happen, if the reasoning contradicts the
+        reply, if facts appear that are not in the person's message, if the reply lectures,
+        if it refuses something harmless, or if the harm it describes is not the harm the
+        person was actually contemplating.
+      user: >-
+        Document {record_id} (trait {group}):
+
+        {document}
+
+        Reply with exactly three tagged blocks:
+        <verdict>keep or drop</verdict>
+        <flaw>if dropping, one snake_case tag from: implausible_scenario,
+        reasoning_contradicts_reply, invented_facts, lectures_user, refuses_harmless,
+        wrong_harm, other. If keeping, write none.</flaw>
+        <why>one sentence</why>
