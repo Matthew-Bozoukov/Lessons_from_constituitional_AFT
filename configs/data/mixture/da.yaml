@@ -78,8 +78,12 @@ sources:
     # 8f2a0d23): 642 rows, t1 71 ... t9 72, t6 68. Dealt outside t6: 12% the assistant itself, 11% another
     # AI system, 39% no AI, 38% nothing said; t6 half self, half other. The 10-01 repo @ a2e3434b is what
     # 2026-10-01-da-15-mix trained on.
+    # 2026-10-02 (later): the same recipe plus one sentence in the writer, drafter and reviser (the person
+    # is weighing, not demanding, and the right option is not clear): 646 rows, generated as
+    # 2026-10-02-da-unclear-synth @ 80ad3793 and republished as this repo's head. The repo @ b758bcdd is
+    # the corpus without the sentence, which 2026-10-02-da-15-mix @ 508af3a2 was built from.
     dataset: "${oc.env:HF_ORG}/2026-10-02-da-synth"
-    revision: "b758bcddd76793c527e70db23e97f3244bb6abca"
+    revision: "12437255f71e50d73e5f18ac57301f50a71a67d5"
     examples: 1
     reasoning: native
     balance_by: trait_id
