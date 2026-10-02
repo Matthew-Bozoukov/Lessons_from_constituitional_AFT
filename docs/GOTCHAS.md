@@ -221,6 +221,31 @@ failed fixtures and runs when correcting ambiguous calibration controls.
 
 See [campaign report](dataset_audits/2026-09-21_lowstakes_pipeline_iteration.md).
 
+## causal-conv1d is the `train` extra; a pod that clones the repo to drive an eval must not build it (2026-09-28)
+
+Two `runpod up --eval mask --target <arm> --clone-repo --push_env` pods crash-looped for
+35 minutes (79 and 103 container restarts) as RUNNING cards with no public IP, SSH refused
+and a 404 boot log. Two bugs stacked:
+
+1. The eval-with-clone boot ran a bare `uv sync`. Since 2026-09-21 the lock carried
+   causal-conv1d as a linux source build, so on any pod without the CUDA toolchain the
+   sync died (`No such file or directory: '/usr/local/cuda/bin/nvcc'`), and `set -e`
+   exited the container. Only `--train` exported the toolchain (`KERNEL_BUILD`).
+2. RunPod restarts an exited container WITH its disk, and the boot cloned with
+   `git clone ... /root/work`, which fails in seconds once the dir exists (it also exists
+   before the first clone when `--push_env` writes `.env` there). Each life was too short
+   for sshd, so nothing could be read from outside. The evidence was in
+   `/workspace/boot.log`, reachable only by catching a container in its first seconds.
+
+Fixes: causal-conv1d is now `[project.optional-dependencies] train`, so a plain `uv sync`
+(eval pods, laptops) never attempts a CUDA build; `KERNEL_BUILD` syncs plainly, exports
+the toolchain, then `uv sync --extra train`; the trainer's packing refusal names the extra.
+The clone is `git init` + `git remote add` (skipped when `.git` exists) + `git fetch` +
+`git checkout --detach <sha>`, so a restarted container gets a clean attempt and a
+readable boot log instead of a guaranteed failure. Training by hand on any box:
+`CUDA_HOME=... uv sync --extra train` (recipe under the 2026-09-21 packing entry); `uv run
+train` is an inexact sync and keeps the kernel once it is there.
+
 ## Name-only RunPod updates restart containers (2026-09-16)
 
 A REST `PATCH /pods/{id}` containing only `name` incremented the pod version,
@@ -735,12 +760,6 @@ were on disk and were pulled file by file over the :8080 directory server instea
 Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only.
 
 ## Prefer the RunPod HTTPS proxy to a laptop SSH tunnel for ODCV (2026-08-29)
-
-- (Removed 2026-09-07: the "one ODCV run per Docker daemon" rule. It described a collision
-  in the harness's Compose project names, which are now namespaced by a hash of the arm's
-  `model_key` (`odcv-<tag>-<variant>-<scenario>`, src/eval/misalignment/odcv/odcv_rollout.py),
-  so two DIFFERENT arms can share one daemon. Two runs of the SAME arm still collide, and
-  resource contention is still yours to watch.)
 
 - **The laptop→pod tunnel is the weak link.** `odcv_local_run.sh`'s reconnecting `-N -L` forward
   kept resetting against a RunPod H100 ("Connection reset by peer" every few minutes); each cell

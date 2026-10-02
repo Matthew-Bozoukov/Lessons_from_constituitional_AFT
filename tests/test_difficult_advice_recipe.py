@@ -98,10 +98,7 @@ def test_scenarios_enforce_diversity_rather_than_requesting_it():
     assert 0 < float(div["reject_cosine"]) <= 0.86, (
         "the embedding gate ENFORCES diversity; the prompt only asks for it. 0.86 is "
         "the measured floor -- 0.90 produced zero pairs on the baseline corpus")
-    assert float(div["over_share"]) > 0, (
-        "an over-represented domain must be fed back to the generator")
     prompt = scenarios["prompts"]["user"]
-    assert "{avoid}" in prompt and "{overrepresented}" in prompt
     for domain in ("small business", "academic research", "immigration law",
                    "caregiving"):
         assert domain not in prompt.lower(), (
@@ -109,24 +106,57 @@ def test_scenarios_enforce_diversity_rather_than_requesting_it():
             f"concentrated the baseline onto them")
 
 
-def test_the_dedupe_filter_runs_on_full_coverage():
-    """`corpus_filter` refuses a sampled property by design, so the check it reads must
-    see every record. `embedding_dedup` defaults to sample: 2000, which would silently
-    make this stage un-runnable on a 2,205-scenario corpus."""
+def test_settings_are_spread_by_a_dealt_sector_and_no_call_is_shown_a_list():
+    """2026-10-02. The do-not-repeat list carried between waves spread settings, but the
+    writer copied its flavour: with it on 83-87% of 650 scenarios had another AI system at
+    the centre, with it off 23% (same prompt). So the list is off in EVERY round -- one
+    wave, nothing carried, no over-used-domain note, no slots for either -- and each call
+    is dealt its sector instead, independently of the AI line and never to t6."""
+    # The export publishes what each call was dealt, so a row says which line it got.
+    assert {"ai", "sector"} <= set(_stage("export_sft")["metadata"])
+    scenarios = _stage("write_scenarios")
+    div = scenarios["diversity"]
+    assert int(div["wave_size"]) == 0 and int(div["max_carry"]) == 0, (
+        "max_carry 0 is what keeps the list out of a MAKE-UP call; one wave alone does not")
+    assert float(div["over_share"]) == 0
+    prompt = scenarios["prompts"]["user"]
+    assert "{avoid}" not in prompt and "{overrepresented}" not in prompt
+    assert "{trait_note}{sector_text}{ai_text}" in prompt
+
+    sector, ai = scenarios["rotate"]["sector"], scenarios["rotate"]["ai"]
+    assert sector["per_trait"] and ai["per_trait"]
+    assert len(sector["weights"]) >= 20, "too few sectors to spread a trait's calls over"
+    assert set(sector["weights"]) | {sector["fixed"]["t6"]} == set(sector["text"])
+    assert sector["text"][sector["fixed"]["t6"]] == ""
+    assert all(t.startswith("\n- These situations are set in ") and t.endswith(".")
+               for k, t in sector["text"].items() if k != sector["fixed"]["t6"])
+    # AI presence as decided 2026-10-02: every trait but t6 is 10% the assistant itself, 10%
+    # another AI system, 40% told no AI system appears and 40% told nothing; t6 is half self,
+    # half other, and never `open` or `none`.
+    assert ai["weights"] == {"self": 1, "other": 1, "none": 4, "open": 4}
+    assert ai["unit_weights"] == {"t6": {"self": 1, "other": 1}}
+    assert ai["text"]["open"] == "" and ai["text"]["none"].strip() == "- No AI system appears in this situation."
+    assert "No other AI system appears" in ai["text"]["self"]
+    assert "other than the assistant" in ai["text"]["other"]
+    # The later prompt stages carry the AI line for the same rows, and not the sector.
+    for name in ("draft_prompts", "revise_prompts"):
+        later = _stage(name)["prompts"]["user"]
+        assert "{ai_text}" in later and "{sector_text}" not in later, name
+
+
+def test_no_filter_follows_the_scenario_check_and_it_reports_on_every_record():
+    """2026-10-01: `dedupe_scenarios` is gone. It re-applied the embedding similarity the
+    writer's gate (`diversity.reject_cosine`) had already enforced, so on a fresh run it could
+    never find anything. The check stays as a REPORT, over every scenario rather than the
+    default 2,000 sample."""
     cfg = yaml.safe_load(open(CONFIG))
-    filt = _stage("dedupe_scenarios")
-    assert filt["from"] == "corpus_scenarios"
-    assert "embedding_dup" in filt["drop_when"]
-    assert not filt.get("keep_when"), (
-        "keep-rules delete every record a failed check never labelled")
+    assert not [s["name"] for s in cfg["stages"] if s["kind"] == "corpus_filter"]
+    assert float(_stage("write_scenarios")["diversity"]["reject_cosine"]) > 0, (
+        "the gate is now the only thing removing near-duplicate scenarios")
     check = _stage("corpus_scenarios")
     dedup = next(p for p in check["properties"]
                  if p.get("property") == "embedding_dedup")
-    assert int((dedup.get("params") or {})["sample"]) == 0, (
-        "sample: 0 means every record; anything else and corpus_filter errors")
-    names = [s["name"] for s in cfg["stages"]]
-    assert names.index("corpus_scenarios") < names.index("dedupe_scenarios"), (
-        "the filter reads the check's sidecar, so the check must run first")
+    assert int((dedup.get("params") or {})["sample"]) == 0
 
 
 # Configs that FAIL the seeded-smoke rule below and have not been fixed. This is recorded

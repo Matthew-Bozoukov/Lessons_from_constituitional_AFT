@@ -617,7 +617,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         if _qwen.causal_conv1d_fn is None:
             raise ValueError(
                 "train.packing on Qwen3.6 needs the causal-conv1d kernel (seq_idx boundaries); "
-                "it is not installed. Build it on the pod (docs/GOTCHAS.md) or train padded.")
+                "it is not installed. It is the `train` extra: `uv sync --extra train` with the "
+                "CUDA toolchain exported (src/infra/runpod.py KERNEL_BUILD; docs/GOTCHAS.md "
+                "2026-09-21), which `runpod up --train` does for you -- or train padded.")
     model = auto_cls.from_pretrained(
         model_id,
         revision=base_revision,

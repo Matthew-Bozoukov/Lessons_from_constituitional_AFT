@@ -21,6 +21,8 @@ max_seq_len: 8192
 # the already-reviewed rows and existing reasoning, rather than resampling upstream.
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
+  # 2026-10-01: the 2026-09-29 base -- 2026-09-22 @ 378ec1ee with its 1,054 apigen rows carrying native
+  # `tools` + `tool_calls` in place of xLAM text, every other row byte-identical (main @ 436f45fd).
   repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
   file: mixture.jsonl
   revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
@@ -55,11 +57,29 @@ sources:
     # never adds an instruction to the assistant): 1,155 rows, t1 130 ... t9 130, t6 126.
     # The pressure classifier puts t6 at override 12% (was 69%) and the corpus at monitor
     # 3% (was 10%). The 09-24 repo @ 4f4ca43b is what da-15/da-5/da-25 trained on before.
-    # 2026-09-28: the most recent regeneration, 2026-09-28-da-synth @ 14efefbf (1,186 rows: 8
-    # of 1,194 dropped by scenario id, scratch/derive_corpus_subset.py); 2026-09-28-da-15-mix
-    # trained on it over the 09-22 base. The 09-25 repo @ 618060e1 is what da-15 used before.
-    dataset: "${oc.env:HF_ORG}/2026-09-28-da-synth"
-    revision: "14efefbf39581f4aaae08bfe7b4491e80adf2c7b"
+    # 2026-09-28: regenerated with trait notes keeping every scenario human except t6 (the
+    # principle's human version; no AI system but the assistant), the reviser seeing the same
+    # notes, a grey-area requirement 4 and a gender audit line (da.yaml @ 47efcc60): 1,194
+    # rows, t1 134 ... t9 133. The user's organisation runs an AI system in 76% of the 09-25
+    # corpus and 11-15% of the smokes on this recipe. The 09-25 repo @ 618060e1 is what
+    # da-15 (seeds 0, 1) and da-new-t6 trained on before this date.
+    # 2026-09-29 (UTC 09-28): the same corpus minus 8 rows an error audit found must go
+    # (scratch/da_error_screen.py + da_error_judge.py, every row read): an invented
+    # drug interaction, an illegal eagle sale endorsed, an advisor-client loan endorsed, three
+    # pipeline leaks ("the prompt", "the principle here", "the draft" x2) and a misapplied
+    # oversight frame. Derived, not regenerated (scratch/derive_corpus_subset.py); 1,186 rows.
+    # 2026-10-01: regenerated on the recipe that is configs/data/synth/da.yaml from this date
+    # (the 2026-09-23 recipe + the writer's ask anchored on the convenient path + a t6-only
+    # note + half of every non-t6 trait's writer calls told no AI system appears): 647 rows,
+    # t1 73 ... t9 72. Another AI is central in 14% of rows, the assistant itself in 11%.
+    # The 09-28 repo @ 14efefbf is what da-15 trained on before this date.
+    # 2026-10-02: regenerated with each writer call DEALT a sector (43) and its AI presence, the wave
+    # list off, the similarity gate at 0.78 and `dedupe_scenarios` gone (configs/data/synth/da.yaml @
+    # 8f2a0d23): 642 rows, t1 71 ... t9 72, t6 68. Dealt outside t6: 12% the assistant itself, 11% another
+    # AI system, 39% no AI, 38% nothing said; t6 half self, half other. The 10-01 repo @ a2e3434b is what
+    # 2026-10-01-da-15-mix trained on.
+    dataset: "${oc.env:HF_ORG}/2026-10-02-da-synth"
+    revision: "b758bcddd76793c527e70db23e97f3244bb6abca"
     examples: 1
     reasoning: native
     balance_by: trait_id
