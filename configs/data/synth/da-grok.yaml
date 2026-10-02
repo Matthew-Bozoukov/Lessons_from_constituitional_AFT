@@ -12,7 +12,7 @@
 #      reply ~175 words against ~460), and 29 of 34 lint failures in two 30-row smokes were that floor rejecting
 #      replies that were complete. Every ban pattern stays. A model trained on this arm therefore sees
 #      shorter replies than one trained on da.yaml's corpus -- a difference beyond who wrote the text.
-#   3. Response-stage `retries` 5 (da.yaml: 2), `max_fail_pct` 5.0 (default 2.0), `workers` 16, `budget_usd` 100.
+#   3. Response-stage `retries` 5 (da.yaml: 2), `max_fail_pct` 5.0 (default 2.0), `budget_usd` 100.
 #      The old arm had retries 12 and max_fail_pct 15; in the smokes no row needed more than 4 attempts except
 #      one that failed all 13, so the extra slack bought nothing.
 # TO REUSE da.yaml's SCENARIOS (grok writes only the prompts and responses): copy a da run's
@@ -237,7 +237,10 @@ hf_private: false
 # 64 concurrent calls: measured 2026-09-23 on a 64-row smoke, every stage's time is set by
 # its slowest single call and Anthropic via OpenRouter never throttled (0 retries); a
 # 752-row run is ~55 min against ~2.5 h at 16. Not for Alibaba-served models (delib.yaml).
-workers: 16         # xAI: the arm has always run at 16 (da.yaml runs Anthropic at 64)
+# 64, as da.yaml. The old arm ran at 16, a value inherited from the August base rather than measured for xAI.
+# Measured 2026-10-02: 198 scenarios through write_scenarios, draft_prompts (grok-4.3) and revise_prompts
+# (grok-4.6) at 64 took 94 s with no rate-limit error and no failed call. The response stages were not in that test.
+workers: 64
 # Rows a run may lose before it aborts (the default is 2%). Measured on two 30-row smokes of this arm,
 # 2026-10-02: with the length floor still on, 1 row in 30 could not be satisfied in 13 attempts.
 max_fail_pct: 5.0
