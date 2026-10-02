@@ -82,8 +82,11 @@ sources:
     # is weighing, not demanding, and the right option is not clear): 646 rows, generated as
     # 2026-10-02-da-unclear-synth @ 80ad3793 and republished as this repo's head. The repo @ b758bcdd is
     # the corpus without the sentence, which 2026-10-02-da-15-mix @ 508af3a2 was built from.
+    # 2026-10-02 (later still): extended to 1,283 rows by a second run of the same recipe (similarity gate
+    # seeded with the first run's scenarios, sector walk continued where the first run stopped). Needed
+    # because a 25% share takes about 1,190 rows. 2026-10-02-da-15-mix @ 5bc0eb0e was built from 12437255.
     dataset: "${oc.env:HF_ORG}/2026-10-02-da-synth"
-    revision: "12437255f71e50d73e5f18ac57301f50a71a67d5"
+    revision: "305914d58627457002f61d86ba69866f6fa2b9a9"
     examples: 1
     reasoning: native
     balance_by: trait_id
