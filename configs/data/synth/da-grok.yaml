@@ -291,7 +291,9 @@ models:
     model: "x-ai/grok-4.6"
     # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
     temperature: 1.0
-    max_tokens: 12288
+    # 24576 since 2026-10-02 (was 12288): at `effort: high` a 9-row smoke averaged 6,488 output tokens per call
+    # here (hidden reasoning included), too close to 12288 for the tail.
+    max_tokens: 24576
     reasoning: {effort: high}
     assumed_tokens: {in: 2000, out: 2400}
   # Stage 5 -- generate the response with explicit reasoning. The VISIBLE <reasoning> is

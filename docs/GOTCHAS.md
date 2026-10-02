@@ -1901,3 +1901,7 @@ Four separate things bit one ODCV-Peer arm in one morning; each is cheap to avoi
   not exist"); with the same names it would have silently measured the wrong weights.
   `assert_local_port_free` now binds the port before ssh; `lsof -nP -iTCP:8000` shows who holds
   it. Pick a port per session (`--port 8010`), not per arm.
+
+## 2026-10-02: two synth runs started in the same second share one run directory
+
+A synth run's directory is `output/synthdoc_v3/[smoke_]<YYYYMMDD_HHMMSS>`. Two runs launched in the same second (two `uv run synth run ... &` in one shell line) get the SAME directory and read each other's stage snapshots as cache: on 2026-10-02 a da-qwen smoke reused a da-grok smoke's drafted prompts and the da-grok export reused da-qwen's, and each then pushed the mixture to its own `-smoke` repo. Nothing errors. Start parallel runs a few seconds apart, and check the log for `reused ... cached records` on a run that should have had no cache.
