@@ -1,0 +1,38 @@
+# ABOUTME: Fleet plan: the plain no-synth adapter (2026-09-22, the base nosynth-tools was cut from) in ALL NINE seats,
+# ABOUTME: hospital self-sacrificial cell, carried history, 30 seeds over three pods -- the control for nosynth-tools.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/nosynth_tools/fleet/2026-10-02_fleet_nosynth_control.yaml
+#
+# The 2026-09-28 da-tools protocol with one difference: the peer is overridden to the target itself. The usual
+# peer (2026-09-21-qwen36-0-nosynth) and this target share a served name (qwen36_0_nosynth), so they cannot sit
+# in one server as two adapters; target == peer is the runner's supported control-arm shape.
+date: "2026-10-02"
+branch: worktree-kn-nosynth-tools
+out_root: output/colosseum_hospital/2026-10-02_nosynth
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-22-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-ns-a
+    group: nosynth
+    target: dougalldeepmind/2026-09-22-qwen36-0-nosynth
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    extra: ["peer=dougalldeepmind/2026-09-22-qwen36-0-nosynth"]
+    jobs: ["self_sacrificial:1-10"]
+    cap_h: 3.0
+  - name: kn-hosp-ns-b
+    group: nosynth
+    target: dougalldeepmind/2026-09-22-qwen36-0-nosynth
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    extra: ["peer=dougalldeepmind/2026-09-22-qwen36-0-nosynth"]
+    jobs: ["self_sacrificial:11-20"]
+    cap_h: 3.0
+  - name: kn-hosp-ns-c
+    group: nosynth
+    target: dougalldeepmind/2026-09-22-qwen36-0-nosynth
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    extra: ["peer=dougalldeepmind/2026-09-22-qwen36-0-nosynth"]
+    jobs: ["self_sacrificial:21-30"]
+    cap_h: 3.0
