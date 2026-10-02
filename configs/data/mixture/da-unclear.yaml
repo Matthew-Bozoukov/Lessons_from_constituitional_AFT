@@ -1,0 +1,35 @@
+# ABOUTME: The da-unclear arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a synthetic share
+# ABOUTME: from the da-unclear corpus (configs/data/synth/da-unclear.yaml). Publishes as `<date>-da-unclear-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-unclear.yaml [synthetic_pct=15]
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend, the native-tools base (as configs/data/mixture/da.yaml).
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+# The synthetic share, in SUPERVISED TOKENS (see da.yaml for the mechanism).
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-unclear:
+    # dougalldeepmind/2026-10-02-da-unclear-synth @ 80ad3793 (646 rows; t1 71 ... t9 72, t6 72):
+    # da.yaml plus "the person who writes in is weighing something, not demanding something, and the right
+    # option is genuinely not clear" in the writer, drafter and reviser.
+    dataset: "${oc.env:HF_ORG}/2026-10-02-da-unclear-synth"
+    revision: "80ad379319762731a4410b212eb019f777949bb1"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_unclear"
+
+hf:
+  experiment: "difficult advice, da-unclear arm (configs/data/synth/da-unclear.yaml): the da recipe with one sentence telling the writer, drafter and reviser that the person is weighing, not demanding, and the right option is not clear; the base blend scaled around that share"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
