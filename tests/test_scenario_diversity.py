@@ -524,7 +524,7 @@ def test_a_unit_with_its_own_weights_keeps_them_among_several_per_unit_axes():
         assert pairs == {("none", "p"), ("none", "q"), ("other", "p"), ("other", "q")}, pairs
 
 
-@pytest.mark.parametrize("config", ["da-self", "da-otherai", "da-lowstakes-practical"])
+@pytest.mark.parametrize("config", ["archive/da-self", "archive/da-otherai", "da-lowstakes-practical"])
 def test_one_per_unit_axis_with_equal_weights_deals_as_it_always_has(monkeypatch, tmp_path, config):
     """These recipes have published corpora. Their single per-unit axis must come out label
     for label as the cycle `labels[(unit + batch) % len]` dealt it -- pins and a unit's own

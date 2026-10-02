@@ -3,7 +3,7 @@
 
 # NAMED `da` ON 2026-10-01. This file was `da-half-noai.yaml` when it generated 2026-10-01-da-synth (commit 4af3ea2e;
 # the Hub repo was renamed from 2026-10-01-da-half-noai-synth), and that corpus was made by changes 1-3 only. The recipe
-# it replaced, the one behind 2026-09-28-da-synth, is archive/da-sep28.yaml. `da-t6-note.yaml` is changes 1-2 only.
+# it replaced, the one behind 2026-09-28-da-synth, is archive/da-sep28.yaml. `archive/da-t6-note.yaml` is changes 1-2 only.
 # Changes 4-7 (2026-10-01/02) have NOT generated a corpus yet.
 #
 # DECIDED BY JAMIE 2026-10-02, each set in one place in this file:
@@ -29,12 +29,12 @@
 #    assistant what to be or how to answer (69% with persona / "no caveats" framing) against 0-9% in every other
 #    trait (scratch/classify_da_pressure.py, 2026-09-24 corpus).
 
-# 3. (2026-10-01; not in da-t6-note.yaml) HALF OF EVERY TRAIT BUT t6 IS TOLD "No AI system appears in this situation."
+# 3. (2026-10-01; not in archive/da-t6-note.yaml) HALF OF EVERY TRAIT BUT t6 IS TOLD "No AI system appears in this situation."
 #    The `rotate.ai` axis on write_scenarios deals one label per writer CALL within each trait, with t6 pinned to
 #    `open`. `none` renders that one line into the writer, draft_prompts and revise_prompts through `{ai_text}`,
 #    which sits beside `{trait_note}`; `open` renders nothing. Why: da-t6-note's writer put an AI system other than
 #    the assistant at the centre of 83% of its 650 scenarios (2026-10-01-da-t6-note-synth), decided per call -- a
-#    call's 8 scenarios are usually all AI or none. The line is the `none` text of da-otherai.yaml: on the 279 rows
+#    call's 8 scenarios are usually all AI or none. The line is the `none` text of archive/da-otherai.yaml: on the 279 rows
 #    it reached there, 0.7% were about the assistant itself and 15% still had an AI system (scoring models).
 #    2026-10-01-da-synth was dealt `open`/`none`; change 6 below replaced `open` with `other` for every trait but t6.
 # 4. (2026-10-01) THE SIMILARITY GATE IS 0.78, NOT 0.86, AND `dedupe_scenarios` IS GONE. See the notes at
@@ -49,8 +49,8 @@
 #    rise with it off (pairs at cosine >= 0.80: 17 off, 34 and 38 on); domain labels did concentrate (top ten 20%
 #    of rows against 8-11%), which is what change 7 is for.
 # 6. (2026-10-02) AI PRESENCE IS DEALT. `rotate.ai` deals `self`, `other`, `none` and `open` (nothing said) to every
-#    trait but t6, and `self` / `other` half and half to t6. `self` and `other` are the `ai` lines of da-self.yaml
-#    and da-otherai.yaml, verbatim; `none` is the line of change 3. Evidence it matters, one seed per arm on the
+#    trait but t6, and `self` / `other` half and half to t6. `self` and `other` are the `ai` lines of archive/da-self.yaml
+#    and archive/da-otherai.yaml, verbatim; `none` is the line of change 3. Evidence it matters, one seed per arm on the
 #    native-tools base: 74% other-AI (da-t6-note-15) ODCV 8.3% [5.9, 11.6], 14% (da-15) 15.8% [12.8, 19.4].
 # 7. (2026-10-02) EACH CALL IS DEALT A SECTOR: `rotate.sector`, one new line on the writer only ("These situations
 #    are set in <sector>."), t6 exempt. It replaces what the list did well, spreading settings. The pool starts
