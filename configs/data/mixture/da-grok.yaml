@@ -1,0 +1,38 @@
+# ABOUTME: The all-grok difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a
+# ABOUTME: synthetic share written end to end by grok (configs/data/synth/da-grok.yaml). Publishes as `<date>-da-grok-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-grok.yaml [synthetic_pct=15]
+#
+# configs/data/mixture/da.yaml with one thing changed: the synthetic source. Same base, same pin, same share
+# unit, so an adapter trained on this mix differs from the da one only in which models wrote the da rows.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-grok:
+    # 2026-10-02: 1,455 rows from da-grok.yaml @ d27fde92 (grok-4.3 writer and prompt drafter, grok-4.6 for the
+    # prompt reviser and both response stages at `reasoning: {effort: high}`, temperatures as da.yaml). About 910
+    # supervised tokens per row, so a 15% share takes about 800 rows. KNOWN DEFECT, not filtered here: replies copy
+    # the person's message (23% of reply words sit in 6+ word runs taken from it, against 1% in the da corpus;
+    # 366 rows are over 30%).
+    dataset: "${oc.env:HF_ORG}/2026-10-02-da-grok-synth"
+    revision: "23188080fa314f0c3c0b356d3d08bf91f73fdc5d"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_grok"
+
+hf:
+  experiment: "all-grok difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share written end to end by grok-4.3 and grok-4.6, the teacher-side comparison for the Haiku-and-Sonnet difficult-advice baseline"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

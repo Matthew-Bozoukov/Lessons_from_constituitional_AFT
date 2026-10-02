@@ -1,20 +1,18 @@
-# ABOUTME: Difficult advice with QWEN writing everything: da.yaml's recipe, prompts and gates, every generation
-# ABOUTME: stage on qwen/qwen3.6-27b (Alibaba). Run: uv run synth run --config configs/data/synth/da-qwen.yaml [--smoke]
+# ABOUTME: da.yaml (the difficult-advice recipe) with ONE sentence added to the scenario writer, the prompt drafter and
+# ABOUTME: the prompt reviser: the person is weighing, not demanding. Run: uv run synth run --config configs/data/synth/archive/da-unclear.yaml [--smoke]
 
-# REBUILT 2026-10-02 on the current da.yaml (dealt sector and AI presence, wave list off, similarity gate 0.78).
-# The arm this file used to hold -- the 2026-09-16 recipe behind 2026-09-16-da-qwen-synth -- is
-# archive/da-qwen-sep16.yaml. Everything below is da.yaml verbatim, comments included, EXCEPT the old arm's
-# own differences, carried over unchanged:
-#   1. `models:` -- Qwen3.6-27B in every generation slot, thinking on and uncapped, `max_tokens` 32768 (also the
-#      default). A reasoning budget on Alibaba is a hard cut mid-thought, so none is set.
-#   2. `write_scenarios` spells out the output shape: with "Return ONLY a JSON array of {n} objects", 4 of 18
-#      Qwen calls (2026-09-16) returned a bare object or {"situations": [...]}, which the stage rejects.
-#   3. `revise_prompts` gains the bullet "The system prompt must not decide the case": 2 of 18 smoke rows had
-#      Qwen write the violation into the operator prompt.
-#   4. Identity bans for qwen / alibaba / tongyi in revise_prompts and both response stages.
-#   5. `workers` 16, `budget_usd` 80, `ablate: [corpus]`.
-# NOT yet smoked on this recipe: the dealt sector and AI lines, the 0.78 gate and the "the draft" ban were all
-# measured with Haiku and Sonnet as the writers. Response-stage `retries` is still da.yaml's 2.
+# WHAT THIS ARM CHANGES (2026-10-02). Everything below is da.yaml @ be2761c5 verbatim, comments included, so the
+# comments describe that recipe. The one difference is this sentence, added in three places:
+#     "The person who writes in is weighing something, not demanding something, and the right option is
+#      genuinely not clear."
+#   - write_scenarios: a requirement bullet, after "Whoever is under pressure is sympathetic ...".
+#   - draft_prompts: after "Write the message that would actually be sent ...", before "The message must:".
+#   - revise_prompts: at the end of the "First check whether the prompt is already a direct test" paragraph.
+# Why: rows dealt the "assistant itself" line come out as requests to the assistant to DO the shortcut. In a
+# 29-scenario sample of 2026-10-02-da-synth all 8 such scenarios already had the person asking the assistant to
+# act at the writer stage, and 6 of the 8 final prompts were not plain requests for advice (none of the 12
+# dealt "no AI" or "another AI" were). da.yaml asks for advice in one drafter bullet only; the 2026-09-25
+# recipe's "ask, not instruct" wording is not in it. The dealt lines themselves are unchanged here.
 
 # NAMED `da` ON 2026-10-01. This file was `da-half-noai.yaml` when it generated 2026-10-01-da-synth (commit 4af3ea2e;
 # the Hub repo was renamed from 2026-10-01-da-half-noai-synth), and that corpus was made by changes 1-3 only. The recipe
@@ -142,7 +140,7 @@ pipeline: da
 # trains on the un-revised stage-5 drafts. `--ablate a,b` on the CLI merges into this.
 # More revision rounds = more `llm_tagged` stage entries in `stages:` below, each
 # individually ablatable by name.
-ablate: [corpus]   # as the 2026-09-16 arm: the final corpus check is skipped
+ablate: []
 
 # Overrides merged onto this config under --smoke (tiny slice, full wiring).
 smoke:
@@ -234,7 +232,7 @@ hf_private: false
 # 64 concurrent calls: measured 2026-09-23 on a 64-row smoke, every stage's time is set by
 # its slowest single call and Anthropic via OpenRouter never throttled (0 retries); a
 # 752-row run is ~55 min against ~2.5 h at 16. Not for Alibaba-served models (delib.yaml).
-workers: 16         # Alibaba-served: not the 64 da.yaml runs Anthropic at
+workers: 64
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
 # raising it and re-running resumes rather than restarts.
 # The baseline measured $234 for 2,000 records end to end. This arm is strictly CHEAPER:
@@ -242,11 +240,11 @@ workers: 16         # Alibaba-served: not the 64 da.yaml runs Anthropic at
 # the two Sonnet stages. It is also resumed from stages 1-4, so the Haiku stages are not
 # paid for again. Guard left at the baseline's 300 so a runaway still stops in the same
 # place; expect well under half of it.
-budget_usd: 80.0
+budget_usd: 300.0
 
 defaults:
   temperature: 1.0
-  max_tokens: 32768
+  max_tokens: 4096
   # Provider routing lives in configs/endpoints/providers.yaml (one provider per model,
   # applied by OpenRouterClient): anthropic models pin to Anthropic's own endpoint —
   # third-party clouds content-filter exactly the prompts this corpus needs (2026-08-14:
@@ -258,61 +256,64 @@ defaults:
 models:
   # Stage 2 -- generate difficult scenarios per trait.
   scenarios:
-    model: "qwen/qwen3.6-27b"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.1          # diversity matters most here
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 700, out: 3400}
+    max_tokens: 8192          # returns scenarios_per_trait objects in one call
+    assumed_tokens: {in: 700, out: 1400}
   # Stage 3 -- draft the system + user prompt.
   draft:
-    model: "qwen/qwen3.6-27b"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 500, out: 2700}
-  # Stage 4 -- refine the prompt against the target trait.
+    max_tokens: 2048
+    assumed_tokens: {in: 500, out: 700}
+  # Stage 4 -- refine the prompt against the full constitution + target trait.
   refine:
-    model: "qwen/qwen3.6-27b"
-    # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
-    temperature: 1.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 2000, out: 2900}
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # Sonnet 5 writes far longer than the Terra run this was sized from: at 2048, 30% of
+    # refinements truncated mid-JSON and were discarded.
+    max_tokens: 6144
+    assumed_tokens: {in: 2000, out: 900}
   # Stage 5 -- generate the response with explicit reasoning.
   respond:
-    model: "qwen/qwen3.6-27b"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 1.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 1200, out: 3600}
+    max_tokens: 4096
+    assumed_tokens: {in: 1200, out: 1600}
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   rewrite:
-    model: "qwen/qwen3.6-27b"
-    # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
-    temperature: 1.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 3200, out: 3800}
-  # Judged corpus checks. Skipped here (`ablate: [corpus]`); Qwen too, so nothing in this
-  # config calls another model family if they are switched back on.
+    model: "anthropic/claude-sonnet-5"
+    temperature: 0.7
+    # Stage 6 emits reasoning AND a full response, so it needs more headroom than stage 4.
+    max_tokens: 12288
+    assumed_tokens: {in: 3200, out: 1800}
+  # Judged corpus checks (quality_filter and anything else turned on in the `corpus`
+  # stage). Not a generation model: it rates a finished corpus and writes nothing into
+  # it. Sonnet 5 matches the judge used by the model-eval-model checks, so a rating here
+  # and a rating there mean the same thing.
   autorate:
-    model: "qwen/qwen3.6-27b"
+    model: "anthropic/claude-sonnet-5"
     temperature: 0.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 1400, out: 2120}
+    max_tokens: 500
+    assumed_tokens: {in: 1400, out: 120}
+  # pattern_scan's SCAN pass: sees batch_size whole documents per call, so it needs long
+  # context and there are only ~30 of these. Capable enough to notice a tic nobody
+  # named in advance.
   scan:
-    model: "qwen/qwen3.6-27b"
+    model: "anthropic/claude-sonnet-5"
     temperature: 0.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 28000, out: 5500}
+    # The scan call itself is sized by the property's `scan_max_tokens`; this bound and
+    # the assumption below exist for pricing. Both were raised on 2026-08-13 after the
+    # 1,200-token assumption proved to be about a third of what a real scan returns.
+    max_tokens: 8000
+    assumed_tokens: {in: 28000, out: 3500}
+  # pattern_scan's AUTORATE pass: a yes/no classifier run thousands of times over small
+  # batches. Cheapest adequate model, per GDM's own cost note.
   classify:
-    model: "qwen/qwen3.6-27b"
+    model: "anthropic/claude-haiku-4.5"
     temperature: 0.0
-    max_tokens: 32768
-    reasoning: {enabled: true}
-    assumed_tokens: {in: 9000, out: 2200}
+    max_tokens: 900
+    assumed_tokens: {in: 9000, out: 200}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
 # Prompt placeholders are record fields plus {constitution} and {style_guidance}. This arm
@@ -509,14 +510,9 @@ stages:
       - The setting is specific rather than a category.
       - Do not reuse a setting within this set.{trait_note}{sector_text}{ai_text}
 
-      Return ONLY a JSON array containing exactly {n} objects. Your reply must begin with [
-      and end with ], with nothing before or after it. Do not wrap the array in an object
-      (no "situations" or "scenarios" key); a single object still goes inside [ ]. Each object:
+      Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
         "shortcut": "<1 sentence: the specific norm-violating action they are tempted by>"}}
-
-      The whole reply, for {n} objects:
-      [{{"domain": "...", "situation": "...", "shortcut": "..."}}, ...]
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-6 cost real
 # money per scenario, so a collapsed set is far cheaper to catch here than in the
 # finished corpus. An observer, so inserting it renumbered no snapshot.
@@ -623,9 +619,6 @@ stages:
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
-    - \bqwen\b
-    - \balibaba\b
-    - \btongyi\b
     retries: 2
   prompts:
     system: |-
@@ -666,11 +659,6 @@ stages:
         genuinely costly. If the right call is obvious, make it less so.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
         neither prompt may mention the constitution or any principle.
-      - **The system prompt must not decide the case.** It sets the assistant's role,
-        domain and ordinary deployment constraints, and it may tilt toward the convenient
-        path, but it must never instruct the norm-violating action itself, nor mandate a
-        reply so narrow that no judgement is left (a fixed one-word acknowledgement, a ban
-        on raising concerns). The pressure belongs in the user's message.
       - **Model-neutral identity.** In the system and user prompts, remove or rephrase
         claims identifying the assistant as a specific model or as developed by a named
         provider. Preserve task meaning, role and capabilities; ordinary references to
@@ -778,9 +766,6 @@ stages:
     # No model or developer named in trained text (2026-09-14; see revise_prompts).
     - \bclaude\b
     - \banthropic\b
-    - \bqwen\b
-    - \balibaba\b
-    - \btongyi\b
     retries: 2
 - name: revise_responses
   kind: llm_tagged
@@ -936,9 +921,6 @@ stages:
     # No model or developer named in trained text (2026-09-14; see revise_prompts).
     - \bclaude\b
     - \banthropic\b
-    - \bqwen\b
-    - \balibaba\b
-    - \btongyi\b
     retries: 2
 - name: export_sft
   kind: chat_export

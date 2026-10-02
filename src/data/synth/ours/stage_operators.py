@@ -27,6 +27,7 @@ from .stage_runtime import (
     run_items_batched,
 )
 from .stage_runtime import _parse_json, _parse_tagged  # single-attempt batch parses
+from .stage_runtime import parse_tool_call
 from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
 
@@ -1299,6 +1300,9 @@ def _note_batched(ctx: Ctx, name: str) -> None:
 def op_llm_json(sc: dict, cfg: dict) -> Stage:
     """One JSON call per record; `save` maps record fields <- JSON keys.
 
+    `derive: {fn, args}` adds computed prompt vars, as in `llm_tagged` (a list-valued
+    record field shown to the model as JSON rather than Python's repr of it).
+
     Takes the same optional `lint:` block as `llm_tagged`, for the same reason and with the
     same retry semantics. It was missing until 2026-09-03, and the gap was not theoretical:
     a peer-critique smoke shipped a training record whose USER turn ended `</draft_user>` --
@@ -1347,12 +1351,13 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
                         + ". Return the same JSON keys, fixed."
                     )
                 )
+                derived = derive_vars(sc.get("derive"), r)
                 parsed, _ = call_json(
                     ctx.client,
                     ctx.usage,
                     m["model"],
-                    _render(sys_t, r, ctx),
-                    _render(user_t, r, ctx) + nudge,
+                    _render(sys_t, r, ctx, **derived),
+                    _render(user_t, r, ctx, **derived) + nudge,
                     m["temperature"],
                     m["max_tokens"],
                     stage=mk,
@@ -1387,11 +1392,12 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             from src.infra.endpoints.openrouter import build_request_body
 
             def build(r: dict) -> dict:
+                derived = derive_vars(sc.get("derive"), r)
                 return build_request_body(
                     m["model"],
                     [
-                        {"role": "system", "content": _render(sys_t, r, ctx)},
-                        {"role": "user", "content": _render(user_t, r, ctx)},
+                        {"role": "system", "content": _render(sys_t, r, ctx, **derived)},
+                        {"role": "user", "content": _render(user_t, r, ctx, **derived)},
                     ],
                     m["temperature"],
                     m["max_tokens"],
@@ -2078,6 +2084,35 @@ def _structured(record: dict, ref) -> list:
     return value
 
 
+def _calls(record: dict, ref) -> list:
+    """An assistant turn's calls from a record field: a list in the interchange shape, ONE
+    `{"name", "arguments"}` object (how a tagged stage writes the single call it makes), or
+    the JSON text of either. Empty text is a turn that makes no call."""
+    value = record[ref]
+    if isinstance(value, str) and not value.strip():
+        return []
+    if isinstance(value, str):
+        value = _parse_json(value)
+    if isinstance(value, dict):
+        one = parse_tool_call(value)
+        return [{"type": "function", "function": one}]
+    return _structured({ref: value}, ref)
+
+
+def _step_messages(record: dict, ref: str) -> list[dict]:
+    """The turns a row's earlier steps export as: for each `{reasoning, tool, arguments,
+    result}`, an assistant turn making that one call and a tool turn carrying the result."""
+    out = []
+    for st in _structured(record, ref):
+        out.append({"role": "assistant", "content": "",
+                    "reasoning_content": str(st.get("reasoning") or ""),
+                    "tool_calls": [{"type": "function",
+                                    "function": {"name": st["tool"],
+                                                 "arguments": st.get("arguments") or {}}}]})
+        out.append({"role": "tool", "content": str(st.get("result") or "")})
+    return out
+
+
 def _templated(value, record: dict):
     """Format every string inside a nested spec against the record (dicts/lists recurse)."""
     if isinstance(value, str):
@@ -2110,13 +2145,27 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
     the row, the same object an eval harness passes to the server as `tools=`.
     build_mixture refuses a calling row without them, so declare them whenever any
     entry carries calls.
+
+    A row whose history is not a fixed number of turns names it instead of listing it:
+    the entry `{steps_from: <field>, count_as: <name>}` expands to one assistant call
+    and one tool result per step the record holds (`[{reasoning, tool, arguments,
+    result}]`, possibly none), and `count_as` makes the number of steps available to
+    `metadata`. `tool_calls: <field>` also accepts the ONE `{"name", "arguments"}`
+    object a tagged stage writes, or empty text for a turn that makes no call.
     """
 
     def fn(ctx, records, ckpt):
         out = []
         for r in records:
             msgs = []
+            counts: dict[str, int] = {}
             for m in sc["messages"]:
+                if "steps_from" in m:
+                    steps = _step_messages(r, m["steps_from"])
+                    msgs += steps
+                    if m.get("count_as"):
+                        counts[m["count_as"]] = len(steps) // 2
+                    continue
                 cond = m.get("when")
                 if cond and not int(r.get(cond["field"], 0)) >= int(cond["min"]):
                     continue
@@ -2129,7 +2178,7 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
                 if "reasoning_content" in m:
                     msg["reasoning_content"] = m["reasoning_content"].format(**r)
                 if "tool_calls" in m:
-                    calls = _structured(r, m["tool_calls"])
+                    calls = _calls(r, m["tool_calls"])
                     if calls:
                         msg["tool_calls"] = calls
                 if "tool_calls_from" in m:
@@ -2141,7 +2190,8 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
                 msgs.append(msg)
             row = {
                 "messages": msgs,
-                "metadata": {k: r.get(k, "") for k in sc["metadata"]},
+                "metadata": {k: counts[k] if k in counts else r.get(k, "")
+                             for k in sc["metadata"]},
             }
             if "tools" in sc:
                 row["tools"] = _structured(r, sc["tools"])

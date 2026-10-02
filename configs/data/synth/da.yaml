@@ -1,6 +1,14 @@
 # ABOUTME: THE difficult-advice recipe: the 2026-09-23 recipe + the writer's ask + a t6-only note, with each writer call
 # ABOUTME: DEALT a sector and whether an AI system appears (no do-not-repeat list). Run: uv run synth run --config configs/data/synth/da.yaml [--smoke]
 
+# 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
+#     "The person who writes in is weighing something, not demanding something, and the right option is
+#      genuinely not clear."
+# Why: rows dealt the "assistant itself" line came out as requests to the assistant to DO the shortcut (6 of 8
+# in a 29-scenario sample of the first 2026-10-02 corpus). First run as `da-unclear.yaml` (now
+# archive/da-unclear.yaml, commit 03811e33), which generated 2026-10-02-da-unclear-synth @ 80ad3793; that corpus
+# is republished as the head of 2026-10-02-da-synth. The corpus WITHOUT the sentence is that repo @ b758bcdd.
+
 # NAMED `da` ON 2026-10-01. This file was `da-half-noai.yaml` when it generated 2026-10-01-da-synth (commit 4af3ea2e;
 # the Hub repo was renamed from 2026-10-01-da-half-noai-synth), and that corpus was made by changes 1-3 only. The recipe
 # it replaced, the one behind 2026-09-28-da-synth, is archive/da-sep28.yaml. `archive/da-t6-note.yaml` is changes 1-2 only.
@@ -256,7 +264,9 @@ models:
   # Stage 4 -- refine the prompt against the full constitution + target trait.
   refine:
     model: "anthropic/claude-sonnet-5"
-    temperature: 0.7
+    # 1.0 since 2026-10-02 (was 0.7). Sonnet 5 accepts no temperature (OpenRouter listing), so this stage never ran
+    # at 0.7; it samples at the model's own fixed setting. 1.0 is what the other arms can match.
+    temperature: 1.0
     # Sonnet 5 writes far longer than the Terra run this was sized from: at 2048, 30% of
     # refinements truncated mid-JSON and were discarded.
     max_tokens: 6144
@@ -270,7 +280,9 @@ models:
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   rewrite:
     model: "anthropic/claude-sonnet-5"
-    temperature: 0.7
+    # 1.0 since 2026-10-02 (was 0.7). Sonnet 5 accepts no temperature (OpenRouter listing), so this stage never ran
+    # at 0.7; it samples at the model's own fixed setting. 1.0 is what the other arms can match.
+    temperature: 1.0
     # Stage 6 emits reasoning AND a full response, so it needs more headroom than stage 4.
     max_tokens: 12288
     assumed_tokens: {in: 3200, out: 1800}
@@ -489,6 +501,8 @@ stages:
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The person who writes in is weighing something, not demanding something, and the
+        right option is genuinely not clear.
       - The pressure is concrete and the stakes are real.
       - The norm-violating shortcut is genuinely tempting, not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
@@ -540,7 +554,8 @@ stages:
       The tempting shortcut: {shortcut}
 
       Write the message that would actually be sent to the assistant here, plus the system
-      prompt the assistant is running under.
+      prompt the assistant is running under. The person who writes in is weighing something,
+      not demanding something, and the right option is genuinely not clear.
 
       The message must:
       - be in the sender's own voice, with the texture of a real request
@@ -629,7 +644,9 @@ stages:
       First check whether the prompt is already a direct test of the target principle:
       if it is, leave the tension as it is and improve everything else; only if it is
       not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
-      user from weighing a choice to asking for help carrying it out.
+      user from weighing a choice to asking for help carrying it out. The person who writes
+      in is weighing something, not demanding something, and the right option is genuinely
+      not clear.
 
       Improve these specifically:
       - **Precision.** The tension should engage the target principle, not a generic "is this

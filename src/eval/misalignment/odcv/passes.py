@@ -36,6 +36,57 @@ def _has_assistant_turn(path: Path) -> bool:
         return False
 
 
+# What the executor prints when it cannot reach the model at all (agent_main.py). The
+# rollout ends there, so its transcript is the model's work up to the moment the tunnel or
+# the pod went away -- an infrastructure failure, never an observation of the arm.
+MODEL_UNREACHABLE = "[AI API dead]: Connection error"
+
+
+def _lost_the_model(cell: Path) -> bool:
+    """True when the cell's executor stopped because the served model was unreachable."""
+    log = cell / "docker_output.log"
+    try:
+        return log.is_file() and MODEL_UNREACHABLE in log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def cell_usable(cell: Path) -> bool:
+    """True when a cell holds a rollout worth judging: a transcript with at least one
+    assistant turn, from an executor that did not lose the model part-way."""
+    rec = cell / "messages_record.txt"
+    return (rec.is_file() and rec.stat().st_size > 0 and _has_assistant_turn(rec)
+            and not _lost_the_model(cell))
+
+
+def discard_unusable(pass_dir: Path) -> int:
+    """Move a pass's unusable cells out of it, so a resume re-runs them.
+
+    The rollout driver's cache check needs only a non-empty transcript, so a SHELL (the
+    prompts and nothing else) or a rollout cut off when the model became unreachable
+    would be skipped as "cached" on resume and judged as if it were the arm's behaviour.
+    Each such cell moves to `<pass_dir>/../discarded/<pass>/` (kept on disk, out of the
+    pass). A cell that hit its deadline is an observed outcome and stays, unless its
+    executor lost the model. Returns how many cells moved.
+    """
+    moved = 0
+    for rec in sorted(pass_dir.glob("agent_logs/*/experiments/*/messages_record.txt")):
+        cell = rec.parent
+        if rec.stat().st_size == 0 or cell_usable(cell):
+            continue
+        if (cell / "timeout_meta.json").is_file() and not _lost_the_model(cell):
+            continue
+        dst = pass_dir.parent / "discarded" / pass_dir.name / cell.parent.parent.name / cell.name
+        n = 0
+        while dst.exists():
+            n += 1
+            dst = dst.with_name(f"{cell.name}_{n}")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(cell), str(dst))
+        moved += 1
+    return moved
+
+
 def audit_pass(run_dir: Path) -> dict:
     """Count what a finished pass actually produced, trusting transcripts over statuses.
 
@@ -45,7 +96,8 @@ def audit_pass(run_dir: Path) -> dict:
 
     Returns:
         Audit record. `clean` is True only when the manifest exists and every expected
-        cell has a REAL transcript -- one with at least one assistant turn; a missing or
+        cell has a REAL transcript -- one with at least one assistant turn, whose executor
+        did not lose the model part-way (`cell_usable`); a missing or
         unparseable manifest means the driver died mid-pass, so the pass can never audit
         clean (`missing_cells` None). A transcript holding only the prompts is a SHELL:
         2026-09-24 a pod died under a sleeping driver and 165 such shells, written by
@@ -53,8 +105,9 @@ def audit_pass(run_dir: Path) -> dict:
     """
     logs = list(run_dir.rglob("messages_record.txt"))
     nonempty = [p for p in logs if p.stat().st_size > 0]
-    real = [p for p in nonempty if _has_assistant_turn(p)]
-    shells = len(nonempty) - len(real)
+    real = [p for p in nonempty if cell_usable(p.parent)]
+    shells = sum(not _has_assistant_turn(p) for p in nonempty)
+    cut_off = sum(_lost_the_model(p.parent) for p in nonempty)
     statuses: dict[str, int] = {}
     n_expected = None
     cost = None
@@ -80,6 +133,7 @@ def audit_pass(run_dir: Path) -> dict:
         "transcripts_nonempty": len(nonempty),
         "transcripts_real": len(real),
         "shell_transcripts": shells,
+        "model_unreachable_transcripts": cut_off,
         "empty_transcripts": len(logs) - len(nonempty),
         "statuses": statuses,
         "rollout_cost_usd": cost,
@@ -99,8 +153,9 @@ def combine_passes(pass_dirs: list[Path], out_dir: Path, model_key: str,
     The rollout index is the position in `pass_dirs`, so `rollout_002` means "the third
     kept pass" in every scenario. A scenario missing from a pass simply has no directory
     for that index — the judge globs `rollout_*`, so gaps shrink n rather than breaking
-    scoring. A scenario is copied only when its `messages_record.txt` exists and is
-    non-empty: copying an empty one would let the judge score a silent failure as clean.
+    scoring. A scenario is copied only when it is usable (`cell_usable`): an empty
+    transcript, a prompt-only shell or a rollout cut off when the model became unreachable
+    would let the judge score a silent failure as clean.
 
     Args:
         pass_dirs: Audited pass directories to merge, oldest first.
@@ -134,8 +189,7 @@ def combine_passes(pass_dirs: list[Path], out_dir: Path, model_key: str,
             dst_root = out_dir / "agent_logs" / f"{model_key}-{variant}" / "experiments"
             kept = 0
             for scen in sorted(src.iterdir(), key=lambda p: p.name.lower()):
-                rec = scen / "messages_record.txt"
-                if not (rec.is_file() and rec.stat().st_size > 0):
+                if not cell_usable(scen):
                     skipped.append(f"{pass_dir.name}/{variant}/{scen.name}")
                     continue
                 shutil.copytree(scen, dst_root / scen.name / f"rollout_{idx:03d}")
@@ -269,8 +323,8 @@ def package_run(out_dir: Path, model_key: str, audits: list[dict], combined: Pat
                 **row, "pass": i, "pass_dir": pass_dir.name,
                 "transcript_bytes": rec.stat().st_size if rec.is_file() else 0,
                 # judged == this exact transcript fed the combined dir the judge scored:
-                # the pass survived its audit AND the cell produced a non-empty record.
-                "judged": bool(audit.get("kept")) and has_transcript,
+                # the pass survived its audit AND the cell produced a usable record.
+                "judged": bool(audit.get("kept")) and cell_usable(src),
             }, indent=2))
 
     shutil.move(str(combined / "results.json"), results / "results.json")
