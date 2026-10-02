@@ -1,0 +1,25 @@
+# ABOUTME: Fleet plan (relaunch): da-15, the matched arm for da-tools, on the Hospital BASELINE cell (no coalition),
+# ABOUTME: seeds 1-30 over two pods, nosynth peer. Companion of 2026-09-30_fleet_da_tools_baseline.yaml.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-30_fleet_da15_baseline.yaml
+date: "2026-09-30"
+branch: worktree-kn-hospital-base-qwen
+out_root: output/colosseum_hospital/2026-09-30_da_tools_baseline
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-bl30-da15-a
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:1-15"]
+    cap_h: 3.0
+  - name: kn-hosp-bl30-da15-b
+    group: da15
+    target: dougalldeepmind/2026-09-25-qwen36-0-da-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:16-30"]
+    cap_h: 3.0

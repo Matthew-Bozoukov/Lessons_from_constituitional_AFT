@@ -567,15 +567,18 @@ def boot_phase(pod_id: str) -> str:
     return phase
 
 
-def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20) -> bool:
-    """Block until an `--eval` pod's bootstrap says READY, or the timeout passes.
+def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20,
+                      marker: str = "READY") -> bool:
+    """Block until a pod's bootstrap echoes `marker`, or the timeout passes.
 
     An eval pod starts no server, so `boot_phase`'s SERVE_* markers never appear on one;
     what it echoes when vLLM and every weight are in place is a single `READY` line
     (`_bootstrap`). Pulling the ~150GB base takes 20-30 minutes, hence the hour default.
+    A training pod echoes `READY <sha>` once the clone, `uv sync` and the causal-conv1d
+    build are done, and `up` waits for exactly that line.
 
     Returns:
-        True if READY appeared. False on timeout — the caller still owns the pod and
+        True if the marker appeared. False on timeout — the caller still owns the pod and
         must still tear it down.
     """
     deadline = time.time() + timeout_s
@@ -585,13 +588,39 @@ def wait_bootstrapped(pod_id: str, timeout_s: int = 3600, poll_s: int = 20) -> b
             seen = requests.get(boot_log_url(pod_id), timeout=30).text
         except requests.RequestException:
             seen = ""                      # proxy not up yet; keep waiting
-        if "READY" in seen:
+        if marker in seen:
             return True
         remaining = int(deadline - time.time())
         print(f"    ... still bootstrapping ({remaining}s left) — {boot_log_url(pod_id)}",
               flush=True)
         time.sleep(poll_s)
     return False
+
+
+# A training pod's bootstrap, in order (`_bootstrap` with a clone): each echo marks a step
+# it has reached, so the last one in the log is where a slow or stuck boot is.
+TRAIN_BOOT_STEPS = (("CLONING", "cloning the repo"),
+                    ("BUILDING_CAUSAL_CONV1D", "uv sync done; building causal-conv1d"),
+                    ("READY", "ready"))
+_BOOT_ERROR = re.compile(r"Traceback|\w*Error:|\berror:|FAILED|No space left|Killed|timed out")
+
+
+def boot_diagnosis(pod_id: str, tail: int = 20) -> str:
+    """What a pod's boot log says about why it has not reached READY: the last step it got
+    to, every line that looks like an error, and the log's tail. Read-only: it never touches
+    the pod, so a slow boot can be diagnosed without losing it."""
+    try:
+        log = requests.get(boot_log_url(pod_id), timeout=30).text
+    except requests.RequestException as e:
+        return f"boot log unreachable ({type(e).__name__}): {boot_log_url(pod_id)} -- is the pod running?"
+    lines = [l for l in log.splitlines() if l.strip()]
+    reached = [desc for mark, desc in TRAIN_BOOT_STEPS if any(mark in l for l in lines)]
+    errors = [l for l in lines if _BOOT_ERROR.search(l)][-10:]
+    return "\n".join([
+        f"last boot step reached: {reached[-1] if reached else 'none (still installing uv / git)'}",
+        f"error-looking lines ({len(errors)}):", *[f"  {l[:200]}" for l in errors],
+        f"last {tail} lines of {boot_log_url(pod_id)}:", *[f"  {l[:200]}" for l in lines[-tail:]],
+    ])
 
 
 def served_models(endpoint: str, timeout: int = 30) -> list[str] | None:
@@ -930,20 +959,23 @@ def _pinned_vllm() -> str:
     return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
 
 
-# causal-conv1d is an sdist in the lock (no wheel for its torch/CUDA; docs/GOTCHAS.md
-# 2026-09-21) that `uv sync` compiles on a TRAIN pod against the venv's own torch and the pip
-# CUDA layout's nvcc. Two syncs: the first installs everything but the kernel (so torch and
-# nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc on
-# PATH, and an unversioned libcudart.so the linker wants and the pip layout does not ship —
-# and the second sync builds the kernel. The package, its version and its path-free build
-# variables (pyproject.toml `extra-build-variables`) are the lock's; this is only where the
-# pod's CUDA lives.
-KERNEL_BUILD = """uv sync --no-install-package causal-conv1d
+# causal-conv1d is the lock's `train` extra: an sdist (no wheel for its torch/CUDA;
+# docs/GOTCHAS.md 2026-09-21) compiled on a TRAIN pod against the venv's own torch and the
+# pip CUDA layout's nvcc. Two syncs: the first is the plain sync every clone gets (so torch
+# and nvcc exist to build against), then the toolchain facts are exported — CUDA_HOME, nvcc
+# on PATH, and an unversioned libcudart.so the linker wants and the pip layout does not
+# ship — and the second sync adds the extra, which builds the kernel. The package, its
+# version and its path-free build variables (pyproject.toml `extra-build-variables`) are
+# the lock's; this is only where the pod's CUDA lives. A pod that clones the repo to DRIVE
+# an eval on the box stops after the first sync: nothing outside src/train imports the
+# kernel, and a bare `uv sync` that tried to build it died on the missing nvcc and
+# crash-looped the container (2026-09-28, docs/GOTCHAS.md).
+KERNEL_BUILD = """uv sync
 CU={workdir}/.venv/lib/python3.12/site-packages/nvidia/cu13
 mkdir -p /root/cudalib && ln -sf $CU/lib/libcudart.so.13 /root/cudalib/libcudart.so
 export CUDA_HOME=$CU PATH=$CU/bin:$PATH LIBRARY_PATH=/root/cudalib:$CU/lib
 echo BUILDING_CAUSAL_CONV1D
-uv sync"""
+uv sync --extra train"""
 
 
 def _bootstrap(clone: tuple[str, str, str] | None,
@@ -960,8 +992,10 @@ def _bootstrap(clone: tuple[str, str, str] | None,
     Two slow halves, at least one of them, and which ones ran IS the pod's shape:
 
     * `clone` (url, branch, sha) — this repo at that exact commit, `uv sync`. What a
-      TRAIN pod is, and what an eval pod adds under `--clone-repo` so the eval itself can
-      run on the box (the driver needs the code; serving does not).
+      TRAIN pod is (`build_kernels`: the sync also builds the `train` extra's CUDA
+      kernel, KERNEL_BUILD), and what an eval pod adds under `--clone-repo` so the eval
+      itself can run on the box (the driver needs the code, not the kernel; serving
+      needs neither).
     * `weights` (repos, hf_token) — the EVAL pod: a vLLM venv and every named repo
       pre-pulled, so `uv run evals --server` finds a host ready to serve on. Which repo
       is a base and which an adapter does not matter here; `hf download` is the same
@@ -977,13 +1011,19 @@ def _bootstrap(clone: tuple[str, str, str] | None,
     blocks, ready = [], []
     if clone:
         url, branch, sha = clone
+        # init + fetch into the workdir, never `git clone` INTO it: the dir can already exist
+        # (`--push_env` writes .env there while the boot is still installing uv, and a
+        # container RunPod restarted after a failed boot keeps its disk), and a clone into a
+        # non-empty dir fails in seconds, so every restart died before sshd came up and the
+        # pod was a RUNNING card with no IP and a 404 boot log (2026-09-28, docs/GOTCHAS.md).
         blocks.append(f"""echo CLONING
-git clone --branch {branch} {url} {WORKDIR}
-cd {WORKDIR}
+mkdir -p {WORKDIR} && cd {WORKDIR}
+if [ ! -d .git ]; then git init -q && git remote add origin {url}; fi
+git fetch -q origin {branch}
 # Detached at the exact SHA, never at the branch tip: the branch can move while the pod
 # boots, and a run whose code silently differs from the commit you asked for is the
 # failure this whole path exists to remove.
-git checkout --detach {sha}
+git checkout -q --detach {sha}
 """ + (KERNEL_BUILD.format(workdir=WORKDIR) if build_kernels else "uv sync"))
         ready.append(sha)
     if weights:
@@ -1256,7 +1296,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False,
-       max_hours: float = 6.0,
+       max_hours: float = 6.0, boot_timeout_s: int = 2400,
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
@@ -1326,6 +1366,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         countries: Comma-separated placement codes; "" is anywhere.
         max_hours: Positive lifetime cap, enforced by a detached LOCAL watchdog (default 6).
             The local machine must remain awake and connected for enforcement.
+        boot_timeout_s: How long a `--train` pod may take to echo `READY <sha>` before
+            `up` refuses to hand it back (default 40 min; a normal boot is ~10).
         push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
             WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
             pod can push its adapter and report to W&B. Nothing else crosses. Off by
@@ -1432,6 +1474,25 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         guard.terminate()
         raise
 
+    # A training pod is handed back only once it can train. `uv run train` launched before
+    # the boot's own `uv sync --extra train` finishes runs against an env without the
+    # kernel (an inexact sync adds nothing), and the trainer refuses to pack -- or, before
+    # the extra existed, started a SECOND sync without the boot's CUDA_HOME and died on a
+    # missing nvcc (2026-09-28: two of three da arms lost ~20 min of H200 this way). The
+    # boot echoes `READY <sha>` only after the clone, sync and build.
+    if train:
+        print(f">>> waiting for the boot to finish (READY {sha[:8]}) — {boot_log_url(pod_id)}",
+              flush=True)
+        if not wait_bootstrapped(pod_id, timeout_s=boot_timeout_s, marker=f"READY {sha}"):
+            # Diagnose, never tear down: a slow boot is information (a stuck build, a full
+            # disk, a bad image), and the pod is the only place it can be read.
+            raise RuntimeError(
+                f"pod {pod_id} did not reach `READY {sha[:8]}` within {boot_timeout_s}s, so "
+                f"nothing should be launched on it yet. It is left UP (billing, under the "
+                f"{max_hours}h watchdog) for diagnosis:\n{boot_diagnosis(pod_id)}\n"
+                f"Once understood: wait for READY and launch, or `uv run runpod down --pod "
+                f"{pod_id}`.")
+
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
     launch = f"--config {train} model={model} data_repo=<org>/<mix> seed=0 [wandb=true]"
@@ -1439,7 +1500,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
                  f"uv run torchrun --nproc_per_node={count} "
                  f"scripts/train/train_lora.py {launch}")
     next_step = ([
-        "The boot log says READY when the clone and `uv sync` have finished. Then",
+        f"The boot has finished (READY {sha[:8]}): the pod is ready to train. Launch",
         "(fill in the mixture repo and the thinking declaration; add",
         "`wandb=true` to report to W&B; wrap in nohup for a long run —",
         "CLAUDE.md gotcha 6):",

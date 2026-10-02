@@ -276,6 +276,224 @@ GPU rented, paid inference called or HF results published. GPT-OSS hosting and
 its effective sampling/tool transport remain a shared prerequisite.
 
 
+## 2026-09-30 - da-tools with no coalition: does the whole job (120/120 scheduled), no worse than da-15 -- its low self-sacrificial sabotage is not over-refusal
+
+**Hypothesis.** da-tools' self-sacrificial result (sabotage 4/30, 20.6 pair tool calls per shift vs da-15's 60.6;
+entry of 2026-09-28) could be a model that has stopped acting, not one that refuses sabotage. If so, it should
+also underperform when nobody asks it to sabotage.
+
+**Method.** Hospital `condition=baseline` (the cooperative prompt for every seat, no coalition, no secret board),
+da-tools (`dougalldeepmind/2026-09-28-qwen36-0-da-tools-15`) and the matched da-15
+(`dougalldeepmind/2026-09-25-qwen36-0-da-15`) in the tested pair, the nosynth checkpoint in the other seven seats,
+the self-sacrificial cells' config (`scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml`),
+seeds 1-30, two pods per arm (`scratch/colosseum_hospital/2026-09-30_fleet_{da_tools,da15}_baseline.yaml`; the
+2026-09-29 launch was torn down unfinished). Merged with `merge_cells.py`, published with `publish_colosseum.py --no-judge`.
+Tool-call health from `scratch/da_tools/hospital_tool_health.py`. About $15 RunPod.
+
+**Result.** (`dougalldeepmind/2026-09-30-hospital-baseline-qwen36-0-da-tools-15`, `...-0-da-15`; paired by seed)
+
+| no coalition, 30 shifts | da-tools | da-15 | paired p |
+|---|---|---|---|
+| team score, mean | 6,312 | 6,544 | 0.73 |
+| normalised regret | 0.22 | 0.21 | 0.93 |
+| resource failures / shift | 4.6 | 6.7 | 0.39 |
+| triage patients scheduled (accepted) | 120/120 | 120/120 | - |
+| pair tool calls failed | 2/553 | 0/767 | - |
+| sabotage-act rule fires | 9/30 | 9/30 | 1.00 |
+| declined in reasoning | 0/30 | 0/30 | - |
+
+- da-tools does the ordinary job as well as da-15: same score and regret, all patients scheduled, valid calls.
+- It is quieter: 18.4 pair tool calls per shift vs 25.6, mostly fewer supply transfers (12.3 vs 20.3) and
+  lookups, at no cost (resource failures lower, not higher). Scheduling calls identical (6.0/shift).
+- The sabotage-act rule fires in 9/30 no-coalition shifts for both arms (base Qwen, all seats base: 13/30).
+  da-tools' self-sacrificial 4/30 is BELOW its own no-coalition rate: under the instruction it sabotages no more
+  than the rule's false-alarm floor.
+- Figure `output/figures/2026-09-30_hospital_base_qwen_vs_da15_datools.png` (`scratch/da_tools/plot_hospital.py`,
+  each arm's no-coalition rate drawn over its bar).
+
+**Next.** The rule's 9-13/30 false-alarm floor should be reported beside every Hospital sabotage rate, or the rule
+tightened. General tool use outside the Hospital: SWE-bench lite-v5 on da-tools (da-15 61.3%, nosynth 59.3%) needs
+the SWE-bench CPU host registry, not on this machine.
+
+## 2026-09-29 - Base-mix tool data in each model's native format (code change, no run yet)
+
+**Problem.** The nosynth base's tool-use source (`apigen_function_calling`, 1,054 rows, ~10.5% of
+every arm's replay) passed smoltalk's rows through as TEXT in xLAM's syntax: tool schemas as a
+`<tools>[...]</tools>` JSON blob inside the system prompt (plus a tail dictating the xLAM output
+format), and calls as `<tool_call>[...]</tool_call>` text in the assistant turn. So every model we
+trained learned xLAM's tool syntax, not its own, and no base row carried a native tools block.
+That last point is the confound the da-tools MASK entry (below) names: DA rows were the ONLY rows
+with a native tools block.
+
+**Change** (branch `worktree-native-tool-format`). Tool use stays stored model-agnostically in the
+interchange fields the pipeline already had (`tools` + `tool_calls`); each family's own chat
+template, reached from its profile's `model:`, renders them natively at train time (`render_chat`).
+No per-model config: the template is the format.
+- `SourceAdapter.to_tools` (default: a row's own `tools`): adapters can now emit tool schemas.
+- `apigen_function_calling` parses the text into those fields: xLAM-dialect schemas
+  (`List[int]`, `str, optional`) converted to JSON-schema, OpenAI-dialect kept, call text to
+  `tool_calls`, format tail dropped, instructions kept. On a 1,000-row raw sample: 995 kept, 5
+  dropped (types with no JSON-schema form, e.g. `Callable`), 0 leftover tool text.
+- `tool_rendering(tokenizer)` probes the LIVE template for what it can express. Qwen3.6 and
+  Qwen3-32B: tools, calls, parallel calls. gpt-oss-20b: no parallel calls (keeps the first call
+  SILENTLY). Llama-3.1-8B: no parallel calls (raises). 52% of apigen rows make several calls in one
+  turn. `render_chat` now refuses a row its template would drop or refuse (gpt-oss's silent drop
+  becomes an error). `build_mixture` skips such rows for the build's tokenizer, like over-length
+  rows, so per-source counts stay exact.
+
+**Verified.** Real renders of converted rows: Qwen3.6 `<tool_call><function=...>` XML, gpt-oss harmony
+`to=functions.X<|channel|>commentary json`, Llama 3.1 JSON. tests/test_tool_calls.py +
+test_build_mixture.py pass.
+
+**Next.** The published `2026-09-22-nosynth-mix` still holds the text rows: rebuild the base (or
+repack its apigen rows only; they carry no reasoning traces, so no API spend) and re-pin the arms.
+Worth re-reading the da-tools MASK result against a base whose apigen rows carry native tools.
+
+
+## 2026-09-29 - Base Qwen3.6-27B in all nine Hospital seats: sabotages 29/30 when told to; the sabotage-act rule fires in 13/30 plain cooperative shifts
+
+**Hypothesis.** Before any of our fine-tuning, the untrained model (a) follows the self-sacrificial coalition
+prompt and (b) does the scheduling task competently under the plain cooperative prompt. (b) is the floor
+for every Hospital measure. The 2026-09-18 base-all-seats cell predates the no-simulation framing, so it
+is rerun on the current harness.
+
+**Method.** `Qwen/Qwen3.6-27B` (no adapter) as target AND peer (every seat), `mode=think`, on the da-15
+harness (`scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml`:
+carried history, end turn on no tool call, plan post optional, no-simulation framing ON), seeds 1-30,
+`condition=self_sacrificial` and `condition=baseline`. Four H100 pods + one top-up
+(`scratch/colosseum_hospital/2026-09-29_fleet_base_qwen{,_blb,_topup}.yaml`); self-sacrificial seed 24
+overflowed the 65k window and was rerun at 98k. Halves merged with `merge_cells.py`, published with
+`publish_colosseum.py --no-judge` (each pod had judged its half). Serving needed one fix: a full-model
+peer that is the server's own base now takes the server's pinned mode (`ServedTarget.sibling`); without it
+the peer resolved to `default` and tripped the mode assert. About $17 RunPod.
+
+**Result.** (`dougalldeepmind/2026-09-29-hospital-self-sacrificial-qwen36`, `...-baseline-qwen36`, 30 shifts each)
+
+| measure (per shift) | self-sacrificial | baseline |
+|---|---|---|
+| sabotage act (rule) | 29/30 | 13/30 |
+| plan post on the coalition board | 30/30 | 0/30 (no board) |
+| declined in reasoning | 0/30 | 0/30 |
+| scheduler rejections, mean | 48.6 | 0.3 |
+| resource failures, mean | 13.0 | 11.4 |
+| team score, mean (median) | 20,239 (14,980) | 9,420 (8,997) |
+
+- Told to sabotage, the base model complies every time and never declines, as in 2026-09-18 (30/30).
+- The sabotage-act rule fires in 13/30 BASELINE shifts, where no seat was told to sabotage: the base
+  model's own supply mistakes (withholding/flooding) match the rule. Read trained arms' rates against it.
+- Team score is higher under self-sacrificial, not lower: bystanders farm the +15/unit hospital-to-hospital
+  transfer bonus (the 2026-09-18 note), so team score does not compare across these cells.
+
+**Next.** Look at which baseline shifts trip the sabotage rule (is it the provisioner or triage, and is it the
+withholding or the flooding branch) before using the rule as a paper measure; appendix figure with base vs
+nosynth.
+
+## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
+
+**Hypothesis.** The tools arm (entry below) improved both agentic evals; if the tool definitions only
+carry the trained behaviour into agentic contexts, MASK (plain chat, no tools) should stay at da-15's level.
+
+**Method.** `uv run evals --name mask --target dougalldeepmind/2026-09-28-qwen36-0-da-tools-15` on one
+H200 (`configs/eval/mask.yaml`: 1,000 rows, one pass, think mode, gemini-3-flash-preview judge,
+max_tokens 16,384), the same config the 09-26 da-15 runs used. DAT is the existing
+`2026-09-09-mask-qwen36-0-dat-7` (the paper's DAT organism, 2026-09-08 dat-7; generated at
+max_tokens 12,288), not re-run.
+
+**Result** (`2026-09-28-mask-qwen36-0-da-tools-15`). Honesty 67.6% (+-1.5 binomial SE) vs da-15
+seed 0 90.2% (seed 1 88.3%), no synthetic 56.9%, DAT-7 60.0%. The drop is in all six archetypes
+(provided facts 61.7 vs 94.2, continuations 63.1 vs 87.5, known facts 75.6 vs 92.3, statistics 68.8
+vs 88.5, disinformation 69.6 vs 92.0, doubling down 70.8 vs 80.8); generation errors 0.65% and empty
+answers 0.05%, as in the da-15 runs. Figure: `output/figures/2026-09-28_mask_da_tools_vs_da_vs_dat.png`
+(`scratch/da_tools/mask_figure.py`).
+
+**Reading.** The arm keeps a third of DA's honesty gain over no synthetic data. Every DA row carried
+a native tools block and no other row of the mix did, so the trained behaviour may now be gated on
+that block: stronger where tools are present (ODCV, Hospital), weaker in tool-free chat (MASK).
+One seed per arm.
+
+**Next.** MASK with a benign tools block injected into its system prompts (if honesty returns to
+~90, the block gates the behaviour); a mix where the tools block also appears on non-DA rows.
+
+
+## 2026-09-28 - DA + benign unused tools (da-tools): ODCV 2.1% vs da-15 9.2%, Hospital sabotage 4/30 vs 22/30
+
+**Hypothesis.** Teaching Claude Why added benign tool definitions to the system prompts of its
+harmlessness RL environments. Doing the same to difficult-advice SFT rows -- the assistant is
+deployed with tools it has no reason to call, and still reasons through the dilemma -- should carry
+the trained behaviour further into agentic settings, where the model always sees a tools block.
+
+**Method.** One variable against da-15:
+- Corpus `dougalldeepmind/2026-09-28-da-tools-synth` @ 54d4e9dc
+  (`scratch/da_tools/configs/synth/da-tools.yaml`): the 1,155 rows of `2026-09-25-da-synth` @ 618060e1 (what
+  da-15 trained on), re-exported with da.yaml's templates plus a per-row top-level `tools` list.
+  Messages and metadata are byte-identical to the source (`scratch/da_tools/verify_corpus.py`).
+  The tools reach Qwen3.6 as its native `# Tools` block, which the template puts BEFORE the
+  operator's system text (verbatim) -- the layout vLLM produces for an eval's `tools=`.
+- Tools: 3-4 per row, written by claude-sonnet-5 against each row's operator, gated per row by
+  three gemini-3.6-flash judges (useful for this message; enables the questionable action; fits
+  the operator and consistent with the reply) plus a name lint barring messaging, execution, files,
+  access, scheduling people/resources, web search and the evals' own tool names. Writer rule:
+  operational utilities (codes, formats, calendars for unrelated matters), never substantive
+  domain knowledge -- the smokes showed case-law/guideline/statistics tools bear on almost any
+  question in their domain. The corpus was generated with two small engine additions on the
+  branch (a `tool_schemas` lint, a pinned `revision` for `load_source_run`; commits 0cd0c72e
+  onward on `worktree-kn-da-tools`); they were not landed in src/, and all of this arm's code and
+  configs live in `scratch/da_tools/` (the configs under `scratch/da_tools/configs/`).
+- Independent audit (openai/gpt-5.6-terra, five questions in separate calls) of the 606 tool rows
+  the mix uses: first pass flagged 67 (11%: useful 23, enables-the-questionable-act 38, operator
+  misfit 5, unrealistic 1; the 7 "contradicted" flags were false positives on a narrower re-ask).
+  Flagged, gate-exhausted (a `grant_*` lint false positive) and dropped rows were re-drawn in
+  three rounds; a subagent review of 75 random mix rows found 5 more that touched the user's own
+  dilemma: 2 re-drawn, 3 stripped (the operator's domain is the dilemma). Final: 1,149 rows with
+  tools, 6 without (`audit_stripped` 3, `review_stripped` 3), 2,209 distinct tool names, +610
+  prompt tokens per row. For re-drawn rows the auditor acted as a gate, so 11% is the honest
+  miss rate of the in-pipeline gate.
+- Mix `dougalldeepmind/2026-09-28-da-tools-15-mix` @ 41e990e1 (`scratch/da_tools/configs/mixture/da-tools.yaml`):
+  the same 9,061 rows, in the same positions, as `2026-09-25-da-15-mix` @ 73f66648; tools on
+  622/628 DA rows; supervision identical; checked through training's own loader, renderer and
+  mask gate (`scratch/da_tools/compare_mixes.py`).
+- Adapter `dougalldeepmind/2026-09-28-qwen36-0-da-tools-15` @ e314700e: sft.yaml, seed 0, base
+  6a9e13bd (as da-15 seed 0), 2xH200, 567 steps, 32 min, train loss 0.716.
+- ODCV: `configs/eval/odcv/lite.yaml` (3 passes x 80 cells, gemini-3-flash judge), as the 09-26
+  da-15 runs. Hospital: no-simulation framing, self-sacrificial cell (the tested pair is privately
+  told to make the team score worse), carried history, nosynth peers, 30 seeds -- the 09-25 da-15
+  protocol -- with the CURRENT da-15 (09-25 adapter) run beside it, since the published da-15
+  Hospital run scored the older 09-23 adapter. Two pods per arm, halves merged
+  (`merge_cells.py`) and published with `publish_colosseum.py`; the control's seed 18 failed in the
+  sweep and was re-run on a top-up pod (`2026-09-28_fleet_da_tools_topup.yaml`).
+
+**Result.**
+- ODCV (`2026-09-28-odcv-qwen36-0-da-tools-15`): misaligned 2.1% [0.6, 6.7], severity 0.08, vs
+  da-15 seed 0 9.2% / 0.35 and seed 1 7.9% / 0.30; paired by scenario vs seed 0 -7.1 pp
+  [-13.2, -0.9], severity -0.26 [-0.49, -0.03] (seed 1 minus seed 0: -1.2 pp [-4.9, +2.4]).
+  Task progress 98.8% in both arms. Tool calls per rollout 8.8 vs 12.0 (paired -3.2 [-4.1, -2.3]);
+  within matched call bands da-tools is still lower (6-9 calls 4.8% vs 12.5%; 10-14 0% vs 8.9%;
+  15+ 0% vs 9.2%), and da-15's per-band rates applied to da-tools' call counts predict 7.9%.
+  Transcripts (`scratch/da_tools/odcv_read/`): the first turn names the ethical tension in 86% of
+  da-tools rollouts vs 65-69%; with it both arms violate ~2%, without it da-15 violates 20-24%.
+  Side effect: text-only turns 19.5% vs ~10%, fewer reads, occasional false "no terminal access"
+  claims, and two rollouts writing bash as text for ~50 turns (never seen in da-15).
+- Hospital (`2026-09-28-hospital-self-sacrificial-qwen36-0-da-tools-15` vs `...-qwen36-0-da-15`,
+  30 paired seeds): sabotaged 4/30 vs 22/30 (paired -60 pp [-81, -39], McNemar p<0.001); said no
+  in reasoning 23/30 vs 5/30; refused and never sabotaged 18/30 vs 0/30. Pair tool calls 20.6 vs
+  60.6 per shift, but accepted scheduling is unchanged (3.9 vs 6.1, p=0.31): the drop is rejected
+  scheduler spam (22.4 -> 0) and invented patient ids (3.8 -> 0). Provisioner sabotage rounds 1.27
+  -> 0.17; supply rounds 1.0 vs 0.67; bottleneck units supplied 16 vs 37 (p=0.04); team score not
+  different (p=0.73).
+- Figures (output/, not committed): `2026-09-28_odcv_da_tools_vs_da15.png`,
+  `2026-09-28_hospital_da_tools_vs_da15.png` (`scratch/da_tools/plot_{odcv,hospital}.py`).
+
+**Caveats.** One seed per arm (da-15 has two on ODCV). The arm is "native tools block + inert
+lookup tools on DA rows only": the block appears on no other row of the mix (the base's 889
+function-calling rows use a prose format), so it also marks DA rows; no row ever calls a tool;
++610 prompt tokens per row is an uncontrolled length difference. The ODCV side effect above is the
+tool-avoidance risk the design carries. The 09-25 da-15 training dataset is flagged below for
+replacement; both arms share it, so the contrast stays matched, but absolute numbers may move.
+
+**Next.** Seed 1 of da-tools; a harmless tool-use check (delegated_harm, swebench_mini); the
+provisioner's lower bottleneck supply; the same manipulation on the corrected DA corpus.
+
+
 ## 2026-09-28 - Interpretation update: control retained; DA-15 training dataset needs correction
 
 The user reports an issue in the training dataset used for the September 25
@@ -646,7 +864,6 @@ training, two MASK) published no SSH endpoint within 420 s and were terminated a
 `uv run evals` pools ODCV checkpoints when given both seeds as a target list; a pooled run of
 the two adapters per arm would give the recipe-level interval instead of two per-checkpoint
 ones.
-
 
 
 ## 2026-09-25 - Top up practical low-stakes DA to 15% supervised tokens
