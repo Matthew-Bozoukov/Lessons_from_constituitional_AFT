@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Callable
 
@@ -101,11 +102,54 @@ def expansion_plan(record: dict, source: str, multiple: float, para_words: int =
             "per_para_words": str(para_words)}
 
 
+def _listed(value: Any, what: str) -> list:
+    """A record field that holds a list, or its JSON text (a tagged stage saves strings)."""
+    if isinstance(value, str):
+        value = json.loads(value) if value.strip() else []
+    if not isinstance(value, list):
+        raise ValueError(f"{what}: expected a list, got {type(value).__name__}")
+    return value
+
+
+def json_fields(record: dict, fields: list[str]) -> dict[str, Any]:
+    """Each named list-valued field as indented JSON text, under its own name.
+
+    A prompt slot filled straight from a record field holding a list prints Python's
+    repr of it (single quotes, `True`), which a model then echoes back as invalid JSON.
+    A derived var wins over the record field of the same name, so `{draft_tools}` in a
+    prompt shows JSON.
+    """
+    return {f: json.dumps(_listed(record[f], f), indent=1, ensure_ascii=False) for f in fields}
+
+
+def tool_session(record: dict, tools: str = "tools", steps: str = "steps") -> dict[str, Any]:
+    """`{tools_text, steps_text}`: a row's tool definitions and the steps already taken,
+    as the text a response stage reads.
+
+    Tools print one JSON definition per line. Each step prints the call as the same
+    `{"name", "arguments"}` object the stage is asked to return, followed by what the
+    tool returned; a row with no steps says so, so the slot is never an empty line the
+    model has to interpret.
+    """
+    tool_list = _listed(record[tools], tools)
+    step_list = _listed(record[steps], steps)
+    tools_text = "\n".join(json.dumps(t, ensure_ascii=False) for t in tool_list)
+    blocks = []
+    for i, st in enumerate(step_list, 1):
+        call = json.dumps({"name": st["tool"], "arguments": st.get("arguments") or {}},
+                          ensure_ascii=False)
+        blocks.append(f"[step {i}] {st.get('reasoning', '')}\ncall: {call}\nresult:\n{st.get('result', '')}")
+    return {"tools_text": tools_text,
+            "steps_text": "\n\n".join(blocks) if blocks else "(no steps taken yet)"}
+
+
 # Registered by name so a config names a reviewed function rather than carrying code. A
 # deriver takes (record, **args) and returns template vars; adding one is a src/ change,
 # which is the point -- computation that shapes a paid prompt is not config.
 DERIVERS: dict[str, Callable[..., dict[str, Any]]] = {
     "expansion_plan": expansion_plan,
+    "json_fields": json_fields,
+    "tool_session": tool_session,
 }
 
 
