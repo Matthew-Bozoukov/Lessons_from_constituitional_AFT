@@ -1,5 +1,5 @@
 # ABOUTME: da.yaml (the difficult-advice recipe) with ONE sentence added to the scenario writer, the prompt drafter and
-# ABOUTME: the prompt reviser: the person is weighing, not demanding. Run: uv run synth run --config configs/data/synth/da-unclear.yaml [--smoke]
+# ABOUTME: the prompt reviser: the person is weighing, not demanding. Run: uv run synth run --config configs/data/synth/archive/da-unclear.yaml [--smoke]
 
 # WHAT THIS ARM CHANGES (2026-10-02). Everything below is da.yaml @ be2761c5 verbatim, comments included, so the
 # comments describe that recipe. The one difference is this sentence, added in three places:
