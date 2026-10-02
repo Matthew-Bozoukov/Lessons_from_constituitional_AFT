@@ -1,150 +1,272 @@
-# ABOUTME: OpenAI-compatible HTTP shim backed by Tinker sampling, with harmony tool-calling
-# ABOUTME: round-trip, so an eval reaches a Tinker checkpoint through the ordinary OpenAI triple.
-
-"""The server process behind a `tinker:` target.
-
-Run as a module (`python -m src.infra.endpoints.tinker_server`), which is how `tinker.py`
-starts it; it reads its checkpoint and port from the environment. Promoted from
-scratch/tinker_openai_server.py, which is where this round-trip was worked out.
-
-Tinker has no OpenAI-compatible endpoint of its own: sampling takes rendered token ids and
-returns token ids, so every conversation must be rendered through the model family's own
-renderer (gpt-oss harmony) and parsed back. That is what this shim does, and why the eval
-side can stay ignorant of Tinker entirely — it sees base_url/model/key like any endpoint.
-
-Tool calls survive the round trip in both directions: OpenAI tool schemas become a harmony
-tool namespace in the conversation prefix, and a parsed tool call comes back in OpenAI
-shape. An eval whose agent calls tools (secret_number) therefore works unchanged.
-"""
+# ABOUTME: OpenAI-compatible Tinker/Harmony shim with explicit sampling and tool-history contracts.
+# ABOUTME: Imports are side-effect free; the pinned nested environment owns SDK/renderer startup.
 
 from __future__ import annotations
 
+import hmac
+import hashlib
+import math
 import os
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
-import tinker
-import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from tinker_cookbook import renderers, tokenizer_utils
-from tinker_cookbook.renderers import base
-from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
 
-MODEL = os.environ.get("TINKER_BASE_MODEL", "openai/gpt-oss-120b")
-CKPT = os.environ["TINKER_CKPT"]                       # tinker:// checkpoint path
-LEVEL = os.environ.get("REASONING_LEVEL", "medium")    # reasoning effort, baked into the prompt
-PORT = int(os.environ.get("PORT", "1234"))
-DEFAULT_MAX_TOKENS = int(os.environ.get("DEFAULT_MAX_TOKENS", "8192"))
-
-tok = tokenizer_utils.get_tokenizer(MODEL)
-renderer = renderers.get_renderer(f"gpt_oss_{LEVEL}_reasoning", tok, model_name=MODEL)
-sampling_client = tinker.ServiceClient().create_sampling_client(model_path=CKPT, base_model=MODEL)
-print(f"[tinker] {MODEL} @ {CKPT} | reasoning={LEVEL} | port={PORT}", flush=True)
+# Tokenizer files reviewed alongside the pinned renderer; model weights remain on Tinker.
+TOKENIZER_REVISION = "b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
 
 
-def _parts(content: str, reasoning: str) -> list[dict]:
-    """Assistant content as harmony parts: analysis thinking first, then final text."""
-    out: list[dict] = []
-    if reasoning:
-        out.append({"type": "thinking", "thinking": reasoning})
-    out.append({"type": "text", "text": content or ""})
+@dataclass
+class Runtime:
+    checkpoint: str
+    model: str
+    reasoning: str
+    renderer: Any
+    sampling_client: Any
+    sampling_params: Any
+    tool_call_type: Any
+    convert_tools: Any
+    api_key: str
+    instance_id: str
+    default_max_tokens: int = 8192
+    context_window: int = 131072
+
+
+def _text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list) and all(
+        isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+        for p in content
+    ):
+        return "".join(p["text"] for p in content)
+    raise ValueError("Only text messages are supported by the GPT-OSS shim")
+
+
+def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runtime) -> list[dict]:
+    """Preserve ordered history, reasoning and unambiguous call-id/name associations."""
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("messages must be a nonempty list")
+    out, pending, seen = [], {}, set()
+    for message in messages:
+        role = message.get("role")
+        content = _text(message.get("content"))
+        if role in {"system", "developer", "user"}:
+            if pending:
+                raise ValueError("Every assistant tool call needs its tool result before the next message")
+            # Do not hoist late instructions to the beginning of the conversation.
+            out.append({"role": "developer" if role == "system" else role, "content": content})
+        elif role == "assistant":
+            if pending:
+                raise ValueError("Previous assistant tool calls have no tool results")
+            reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+            if not isinstance(reasoning, str):
+                raise ValueError("reasoning_content must be text")
+            parts = ([{"type": "thinking", "thinking": reasoning}] if reasoning else [])
+            parts.append({"type": "text", "text": content})
+            item: dict[str, Any] = {"role": role, "content": parts}
+            calls = []
+            for call in message.get("tool_calls") or []:
+                cid, function = call.get("id"), call.get("function") or {}
+                name, arguments = function.get("name"), function.get("arguments")
+                if not isinstance(cid, str) or not cid or cid in seen:
+                    raise ValueError("Tool calls require unique nonempty ids")
+                if call.get("type", "function") != "function" or not name or not isinstance(arguments, str):
+                    raise ValueError("Tool calls require function name and string arguments")
+                seen.add(cid)
+                pending[cid] = name
+                calls.append(runtime.tool_call_type(id=cid, function=runtime.tool_call_type.FunctionBody(
+                    name=name, arguments=arguments)))
+            if calls:
+                item["tool_calls"] = calls
+            out.append(item)
+        elif role == "tool":
+            cid = message.get("tool_call_id")
+            if cid not in pending:
+                raise ValueError("Tool result has no matching unresolved tool_call_id")
+            name = pending.pop(cid)
+            if message.get("name") and message["name"] != name:
+                raise ValueError("Tool result name disagrees with its tool_call_id")
+            out.append({"role": "tool", "content": content, "tool_call_id": cid, "name": name})
+        else:
+            raise ValueError(f"Unsupported message role: {role!r}")
+    if pending:
+        raise ValueError("Tool results are missing from the generation history")
+    if tools:
+        out = runtime.renderer.create_conversation_prefix_with_tools(runtime.convert_tools(tools)) + out
     return out
 
 
-def build_messages(oai_messages: list[dict], tools: list[dict] | None) -> list[dict]:
-    """Convert an OpenAI conversation to tinker-cookbook messages for harmony rendering.
-
-    System messages become the developer instruction block (with the tool namespace when
-    tools are present); assistant reasoning is carried into the analysis channel; tool
-    result messages get their function `name` back-filled from the matching tool_call id,
-    which the renderer requires but an OpenAI-style caller does not send.
-    """
-    system_prompt, id2name, rest = "", {}, []
-    for m in oai_messages:
-        role = m.get("role")
-        if role == "system":
-            system_prompt = (system_prompt + "\n\n" + (m.get("content") or "")).strip()
-        elif role == "assistant":
-            calls = []
-            for tc in (m.get("tool_calls") or []):
-                fn = tc["function"]
-                id2name[tc.get("id")] = fn["name"]
-                calls.append(base.ToolCall(id=tc.get("id"), function=base.ToolCall.FunctionBody(
-                    name=fn["name"], arguments=fn["arguments"])))
-            reasoning = m.get("reasoning") or m.get("reasoning_content") or ""
-            msg: dict[str, Any] = {"role": "assistant",
-                                   "content": _parts(m.get("content") or "", reasoning)}
-            if calls:
-                msg["tool_calls"] = calls
-            rest.append(msg)
-        elif role == "tool":
-            cid = m.get("tool_call_id")
-            rest.append({"role": "tool", "content": m.get("content") or "",
-                         "tool_call_id": cid, "name": m.get("name") or id2name.get(cid, "")})
-        else:
-            rest.append({"role": role, "content": m.get("content") or ""})
-
-    if tools:
-        prefix = renderer.create_conversation_prefix_with_tools(
-            openai_tools_to_tinker(tools), system_prompt=system_prompt)
-        return prefix + rest
-    return ([{"role": "developer", "content": system_prompt}] if system_prompt else []) + rest
-
-
-app = FastAPI()
-
-
-@app.get("/v1/models")
-async def models():
-    """The one model this shim serves; also the readiness probe `tinker.py` waits on."""
-    return {"object": "list", "data": [{"id": "tinker", "object": "model", "owned_by": "tinker"}]}
-
-
-@app.post("/v1/chat/completions")
-async def chat(req: Request):
-    """One non-streaming completion: render, sample through Tinker, parse back to OpenAI shape."""
-    body = await req.json()
+def sampling_options(body: dict, runtime: Runtime) -> dict:
+    """Translate supported controls, refuse every non-neutral unsupported control."""
+    allowed = {"model", "messages", "tools", "tool_choice", "parallel_tool_calls", "stream", "n",
+               "temperature", "max_tokens", "max_completion_tokens", "top_p", "top_k", "seed",
+               "stop", "frequency_penalty", "presence_penalty", "repetition_penalty", "min_p",
+               "reasoning_effort", "response_format", "logprobs", "top_logprobs", "user",
+               "metadata", "store"}
+    unknown = sorted(k for k, v in body.items() if k not in allowed and v is not None)
+    if unknown:
+        raise ValueError(f"Unsupported request parameters: {', '.join(unknown)}")
     if body.get("stream"):
-        return JSONResponse({"error": "streaming not supported"}, status_code=400)
-    temp = float(body.get("temperature") or 0.0)
-    max_tokens = int(body.get("max_tokens") or body.get("max_completion_tokens")
-                     or DEFAULT_MAX_TOKENS)
-    msgs = build_messages(body.get("messages", []), body.get("tools"))
-    model_input = renderer.build_generation_prompt(msgs)
-    prompt_ids = model_input.to_ints()
+        raise ValueError("Streaming is not supported")
+    if body.get("n", 1) != 1:
+        raise ValueError("Only n=1 is supported")
+    if body.get("tool_choice") not in (None, "auto"):
+        raise ValueError("Only tool_choice=auto is supported; forced/disabled tool calls require constrained decoding")
+    if body.get("parallel_tool_calls") is False:
+        raise ValueError("parallel_tool_calls=false is not supported by this renderer")
+    if body.get("stop") not in (None, [], ""):
+        raise ValueError("Custom stop sequences are unsupported: Harmony call/return boundaries must be retained")
+    if body.get("reasoning_effort") not in (None, runtime.reasoning):
+        raise ValueError(f"This shim pins reasoning_effort={runtime.reasoning}")
+    if body.get("response_format") not in (None, {"type": "text"}):
+        raise ValueError("Constrained response_format is not supported")
+    if body.get("logprobs") or body.get("top_logprobs") or body.get("store"):
+        raise ValueError("Log probabilities and response storage are not supported")
+    for key, neutral in {"frequency_penalty": 0, "presence_penalty": 0, "repetition_penalty": 1,
+                         "min_p": 0}.items():
+        if body.get(key) is not None and body[key] != neutral:
+            raise ValueError(f"Only neutral {key}={neutral} is supported")
+    tools = body.get("tools") or []
+    if not isinstance(tools, list):
+        raise ValueError("tools must be a list")
+    names = set()
+    for tool in tools:
+        function = tool.get("function") or {}
+        name = function.get("name")
+        if tool.get("type") != "function" or not isinstance(name, str) or not name or name in names:
+            raise ValueError("Tools must be uniquely named functions")
+        if function.get("strict"):
+            raise ValueError("Strict tool schemas require constrained decoding and are unsupported")
+        names.add(name)
+    if body.get("max_tokens") is not None and body.get("max_completion_tokens") is not None:
+        if body["max_tokens"] != body["max_completion_tokens"]:
+            raise ValueError("max_tokens and max_completion_tokens disagree")
+    max_tokens = body.get("max_tokens", body.get("max_completion_tokens"))
+    if max_tokens is None:
+        max_tokens = runtime.default_max_tokens
+    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
+        raise ValueError("max_tokens must be a positive integer")
+    temperature = body.get("temperature")
+    temperature = 1.0 if temperature is None else float(temperature)
+    top_p = body.get("top_p")
+    top_p = 1.0 if top_p is None else float(top_p)
+    if not math.isfinite(temperature) or temperature < 0:
+        raise ValueError("temperature must be finite and nonnegative")
+    if not math.isfinite(top_p) or not 0 < top_p <= 1:
+        raise ValueError("top_p must be in (0, 1]")
+    top_k = body.get("top_k", -1)
+    if not isinstance(top_k, int) or isinstance(top_k, bool) or (top_k != -1 and top_k <= 0):
+        raise ValueError("top_k must be -1 or a positive integer")
+    seed = body.get("seed")
+    if seed is not None and (not isinstance(seed, int) or isinstance(seed, bool) or seed < 0):
+        raise ValueError("seed must be a nonnegative integer")
+    return {"max_tokens": max_tokens, "temperature": temperature, "top_p": top_p,
+            "top_k": top_k, "seed": seed, "stop": runtime.renderer.get_stop_sequences()}
 
-    sample = await sampling_client.sample_async(
-        prompt=model_input, num_samples=1,
-        sampling_params=tinker.SamplingParams(
-            temperature=temp, max_tokens=max_tokens, stop=renderer.get_stop_sequences()))
-    comp_ids = sample.sequences[0].tokens
-    msg, term = renderer.parse_response(comp_ids)
-    oai = renderer.to_openai_message(msg)
 
-    out_msg: dict[str, Any] = {"role": "assistant", "content": oai.get("content") or ""}
-    if oai.get("reasoning_content"):
-        # Both spellings: `reasoning_content` is what vLLM emits and what resolve_trace
-        # reads, `reasoning` is what OpenRouter emits. Evals here have seen either.
-        out_msg["reasoning"] = oai["reasoning_content"]
-        out_msg["reasoning_content"] = oai["reasoning_content"]
-    if oai.get("tool_calls"):
-        out_msg["tool_calls"] = oai["tool_calls"]
-        finish = "tool_calls"
-    else:
-        # A completion that did not end on a stop sequence ran out of budget. Reporting it
-        # as `length` is what lets an eval exclude a truncated turn instead of scoring it
-        # (CLAUDE.md gotcha 4/5).
-        finish = "stop" if term.is_stop_sequence else "length"
+def create_app(runtime: Runtime) -> FastAPI:
+    app = FastAPI()
 
-    return JSONResponse({
-        "id": "chatcmpl-" + uuid.uuid4().hex[:12], "object": "chat.completion",
-        "created": int(time.time()), "model": body.get("model", "tinker"),
-        "choices": [{"index": 0, "message": out_msg, "finish_reason": finish}],
-        "usage": {"prompt_tokens": len(prompt_ids), "completion_tokens": len(comp_ids),
-                  "total_tokens": len(prompt_ids) + len(comp_ids)}})
+    @app.middleware("http")
+    async def authenticate(request: Request, call_next):
+        if not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {runtime.api_key}"):
+            return JSONResponse({"error": {"message": "Invalid shim credentials"}}, status_code=401)
+        return await call_next(request)
+
+    @app.get("/v1/models")
+    async def models():
+        return {"object": "list", "data": [{"id": runtime.model, "object": "model", "owned_by": "tinker",
+                 "checkpoint": runtime.checkpoint, "instance_id": runtime.instance_id,
+                 "reasoning_effort": runtime.reasoning, "context_window": runtime.context_window,
+                 "renderer_date": runtime.renderer.current_date, "tokenizer_revision": TOKENIZER_REVISION}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(req: Request):
+        try:
+            body = await req.json()
+            if not isinstance(body, dict):
+                raise ValueError("Request body must be an object")
+            if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
+                raise ValueError("Requested model is not served by this shim")
+            options = sampling_options(body, runtime)
+            messages = build_messages(body.get("messages"), body.get("tools"), runtime)
+            prompt = runtime.renderer.build_generation_prompt(messages)
+            prompt_ids = prompt.to_ints()
+            if len(prompt_ids) + options["max_tokens"] > runtime.context_window:
+                raise ValueError("Prompt plus completion allowance exceeds the configured context window")
+        except (ValueError, TypeError, KeyError) as error:
+            return JSONResponse({"error": {"message": str(error), "type": "invalid_request_error"}}, status_code=400)
+
+        sample = await runtime.sampling_client.sample_async(
+            prompt=prompt, num_samples=1, sampling_params=runtime.sampling_params(**options))
+        sequence = sample.sequences[0]
+        ids = sequence.tokens
+        message, termination = runtime.renderer.parse_response(ids)
+        oai = runtime.renderer.to_openai_message(message)
+        out: dict[str, Any] = {"role": "assistant", "content": oai.get("content") or ""}
+        if oai.get("reasoning_content"):
+            out["reasoning"] = out["reasoning_content"] = oai["reasoning_content"]
+        # No partial batch can become executable, even when the parser recovered calls.
+        complete = termination.is_stop_sequence and sequence.stop_reason != "length"
+        finish = "stop" if complete else "length"
+        if complete and oai.get("tool_calls") and not message.get("unparsed_tool_calls"):
+            out["tool_calls"] = []
+            for call in oai["tool_calls"]:
+                out["tool_calls"].append({**call, "id": "call_" + uuid.uuid4().hex})
+            finish = "tool_calls"
+        diagnostics = {
+            "checkpoint": runtime.checkpoint, "base_model": runtime.model,
+            "reasoning_effort": runtime.reasoning, "renderer_date": runtime.renderer.current_date,
+            "sampling": options, "stop_reason": sequence.stop_reason,
+            "tokenizer_revision": TOKENIZER_REVISION,
+            "prompt_token_sha256": hashlib.sha256(str(prompt_ids).encode()).hexdigest(),
+            "raw_completion": runtime.renderer.tokenizer.decode(ids),
+            "unparsed_tool_calls": [str(x) for x in message.get("unparsed_tool_calls", [])],
+        }
+        return JSONResponse({
+            "id": "chatcmpl-" + uuid.uuid4().hex, "object": "chat.completion",
+            "created": int(time.time()), "model": runtime.checkpoint,
+            "choices": [{"index": 0, "message": out, "finish_reason": finish}],
+            "usage": {"prompt_tokens": len(prompt_ids), "completion_tokens": len(ids),
+                      "total_tokens": len(prompt_ids) + len(ids)}, "tinker_metadata": diagnostics})
+
+    return app
+
+
+def main():
+    import tinker
+    import uvicorn
+    from transformers import AutoTokenizer
+    from tinker_cookbook.renderers.base import ToolCall
+    from tinker_cookbook.renderers.gpt_oss import GptOssRenderer
+    from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
+    from datetime import date
+
+    model = os.environ.get("TINKER_BASE_MODEL", "openai/gpt-oss-120b")
+    if model != "openai/gpt-oss-120b":
+        raise ValueError("Only openai/gpt-oss-120b is qualified for this shim")
+    reasoning = os.environ.get("REASONING_LEVEL", "medium")
+    if reasoning not in {"low", "medium", "high"}:
+        raise ValueError("REASONING_LEVEL must be low, medium or high")
+    checkpoint = os.environ["TINKER_CKPT"]
+    runtime = Runtime(
+        checkpoint=checkpoint, model=model, reasoning=reasoning,
+        renderer=GptOssRenderer(AutoTokenizer.from_pretrained(model, revision=TOKENIZER_REVISION), use_system_prompt=True,
+                               reasoning_effort=reasoning,
+                               current_date=os.environ.get("TINKER_RENDER_DATE", date.today().isoformat())),
+        sampling_client=tinker.ServiceClient().create_sampling_client(model_path=checkpoint, base_model=model),
+        sampling_params=tinker.SamplingParams, tool_call_type=ToolCall, convert_tools=openai_tools_to_tinker,
+        api_key=os.environ["TINKER_API_KEY"], instance_id=os.environ.get("TINKER_SHIM_INSTANCE", uuid.uuid4().hex),
+        default_max_tokens=int(os.environ.get("DEFAULT_MAX_TOKENS", "8192")),
+        context_window=int(os.environ.get("TINKER_CONTEXT_WINDOW", "131072")))
+    uvicorn.run(create_app(runtime), host="127.0.0.1", port=int(os.environ.get("PORT", "1234")), log_level="warning")
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    main()

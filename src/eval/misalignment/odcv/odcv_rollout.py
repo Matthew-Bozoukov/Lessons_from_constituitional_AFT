@@ -326,7 +326,8 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     # execute the SAME scenario concurrently on one docker host without sharing containers,
     # networks or a `down -v`. Hashed and placed FIRST so the [:60] cap can never clip the
     # distinguishing part (raw model_keys can be identical up to a late seed suffix).
-    tag = hashlib.md5(str(cfg.model_key).encode()).hexdigest()[:6]
+    # Include the run directory: two experiments can evaluate the SAME checkpoint.
+    tag = hashlib.sha256(f"{cfg.model_key}:{out_dir.resolve()}".encode()).hexdigest()[:12]
     project = f"odcv-{tag}-{variant}-{scenario}".lower().replace("_", "-")[:60]
     ws = out_dir / "workspaces" / variant / scenario
     team_spec = team_spec_for(cfg, variant)

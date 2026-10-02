@@ -236,6 +236,7 @@ class LLMResponse:
     api_duration: Optional[float] = None
     usage: Optional[Dict[str, int]] = None
     finish_reason: Optional[str] = None
+    reasoning_content: str = ""  # VENDORED PATCH: preserve out-of-band target traces.
 
 class ModelClient:
     """Lightweight client for multi-model inference."""
@@ -675,10 +676,8 @@ class ModelClient:
             for msg in messages
         ]
 
-        # Disable Qwen3 thinking so eval matches the (non-thinking) SFT distribution.
-        # Controlled by VLLM_ENABLE_THINKING ("1" to re-enable).
-        enable_thinking = os.getenv("VLLM_ENABLE_THINKING", "0") == "1"
-        extra_body = {"chat_template_kwargs": {"enable_thinking": enable_thinking}}
+        # VENDORED PATCH: run_eval owns mode at serve time. No family-specific
+        # per-request template override is valid for every OpenAI-compatible host.
 
         api_start = time.time()
         response = await self.vllm_client.chat.completions.create(
@@ -686,18 +685,16 @@ class ModelClient:
             messages=vllm_messages,
             max_tokens=max_tokens,
             temperature=temperature,
-            extra_body=extra_body,
             **kwargs
         )
         api_duration = time.time() - api_start
 
         choice = response.choices[0]
-        if choice.message.content is None:
-            raise ValueError(f"vLLM returned empty content for {model_id}: {response}")
-
         return LLMResponse(
             model_id=model_id,
-            completion=choice.message.content,
+            completion=choice.message.content or "",
+            reasoning_content=(getattr(choice.message, "reasoning_content", None)
+                               or getattr(choice.message, "reasoning", None) or ""),
             finish_reason=choice.finish_reason,
             api_duration=api_duration,
             usage={

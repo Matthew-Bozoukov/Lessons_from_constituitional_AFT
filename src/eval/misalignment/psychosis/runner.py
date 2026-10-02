@@ -3,12 +3,12 @@
 
 """run() per the CLAUDE.md eval contract.
 
-Two phases, both resumable within a run and re-entrant across runs (no process
+Two phases, both re-entrant across runs (no process
 globals, everything under out_dir):
 
 1. Conversations — one thread per persona (each internally sequential: 12 turns of
    red-teamer -> target). A persona that fails is recorded and reported loudly, not
-   allowed to sink the others' finished work; the run only errors if ALL fail.
+   allowed to discard the others' finished work; any failed persona blocks a summary.
 2. Judging — every (persona, turn) cell grades concurrently against OpenRouter.
 
 Rollouts (CLAUDE.md: "logs means ROLLOUTS") are self-contained per persona: the
@@ -19,6 +19,7 @@ target's reasoning trace and visible reply, and the per-turn grades.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -34,7 +35,9 @@ from src.eval.misalignment.psychosis.conversation import (
     run_conversation,
     split_redteam_completion,
 )
-from src.eval.misalignment.psychosis.judge import GRADE_KEYS, grade_turn
+from src.eval.misalignment.psychosis.judge import (
+    GRADE_KEYS, JUDGE_INPUT_INSTRUCTIONS, SCORING_PROTOCOL, grade_turn,
+)
 from src.eval.misalignment.psychosis.metrics import summarize
 from src.utils import transcript_markdown
 
@@ -43,7 +46,8 @@ ASSETS = Path(__file__).parent / "assets"
 
 def load_characters(selected: list[str] | None) -> dict[str, str]:
     """Load persona files as {stem: text}, optionally restricted to `selected` stems."""
-    available = {p.stem: p.read_text() for p in sorted((ASSETS / "characters").glob("*.txt"))}
+    available = {p.stem: p.read_text(encoding="utf-8")
+                 for p in sorted((ASSETS / "characters").glob("*.txt"))}
     if selected is None:
         return available
     missing = [s for s in selected if s not in available]
@@ -108,8 +112,8 @@ def run(target, cfg, out_dir: Path) -> dict:
         characters = dict(sorted(characters.items())[:1])
         n_turns = min(n_turns, 3)
 
-    red_team_template = (ASSETS / "red_team_prompt.txt").read_text()
-    grader_prompt = (ASSETS / "grader_prompt.txt").read_text()
+    red_team_template = (ASSETS / "red_team_prompt.txt").read_text(encoding="utf-8")
+    grader_prompt = (ASSETS / "grader_prompt.txt").read_text(encoding="utf-8")
 
     openrouter = OpenRouterClient()
     target_client = OpenAI(
@@ -119,15 +123,32 @@ def run(target, cfg, out_dir: Path) -> dict:
         max_retries=int(cfg.generation.max_retries),
     )
 
-    def redteam_chat(messages: list[dict]) -> str:
-        return openrouter.chat(str(cfg.redteam.model), messages,
-                               temperature=float(cfg.redteam.temperature),
-                               max_tokens=int(cfg.redteam.max_tokens)).content
-
-    def judge_chat(messages: list[dict]) -> str:
-        return openrouter.chat(str(cfg.judge.model), messages,
-                               temperature=float(cfg.judge.temperature),
-                               max_tokens=int(cfg.judge.max_tokens)).content
+    def recorded_chat(settings, prefix: str):
+        """A separate recorder per persona/cell retains failed calls and retries."""
+        count = 0
+        def chat(messages: list[dict]) -> str:
+            nonlocal count
+            count += 1
+            record = {"model": str(settings.model), "messages": messages,
+                      "temperature": float(settings.temperature),
+                      "max_tokens": int(settings.max_tokens)}
+            try:
+                reply = openrouter.chat(record["model"], messages,
+                                       temperature=record["temperature"],
+                                       max_tokens=record["max_tokens"])
+                record.update(content=reply.content, finish_reason=reply.finish_reason,
+                              reasoning=(getattr(reply, "reasoning_content", None)
+                                         or getattr(reply, "reasoning", None)))
+                if reply.finish_reason != "stop":
+                    raise ValueError(f"Psychosis {prefix} did not finish")
+                return reply.content
+            except Exception as exc:
+                record["error"] = f"{type(exc).__name__}: {exc}"
+                raise
+            finally:
+                (rollout_dir / f"{prefix}_{count:03d}.json").write_text(
+                    json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        return chat
 
     def target_chat(messages: list[dict]) -> tuple[str, str | None, str]:
         resp = target_client.chat.completions.create(
@@ -143,27 +164,60 @@ def run(target, cfg, out_dir: Path) -> dict:
             choice.message, "reasoning", None)
         return choice.message.content or "", reasoning, choice.finish_reason or ""
 
-    rollout_dir, results_dir, _ = publish_layout(out_dir)
+    rollout_dir, results_dir, metadata_dir = publish_layout(out_dir)
     stems = sorted(characters)
+
+    def text_hash(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    protocol = {
+        "protocol": SCORING_PROTOCOL,
+        "judge_input": "visible dialogue only; previous turns are context; grade final reply",
+        "evidence": "quote mismatches are diagnostic only; retain grades without evidence retries",
+        "characters": stems,
+        "turns_per_character": n_turns,
+        "planned_graded_turns": len(stems) * n_turns,
+        "redteam": OmegaConf.to_container(cfg.redteam, resolve=True),
+        "judge": OmegaConf.to_container(cfg.judge, resolve=True),
+        "generation": {key: cfg.generation[key] for key in ("temperature", "top_p", "max_tokens")},
+        "serving": OmegaConf.to_container(cfg.serving, resolve=True),
+        "target": {"hf_path": getattr(target.spec, "hf_path", None),
+                   "revision": getattr(target.spec, "revision", None),
+                   "base_model": getattr(target.spec, "base_model", None),
+                   "base_revision": getattr(target.spec, "base_revision", None),
+                   "mode": target.spec.mode},
+        "redteam_prompt_sha256": text_hash(red_team_template),
+        "effective_grader_prompt_sha256": text_hash(grader_prompt + JUDGE_INPUT_INSTRUCTIONS),
+        "persona_sha256": {stem: text_hash(characters[stem]) for stem in stems},
+        "implementation_sha256": {name: hashlib.sha256(
+            (ASSETS.parent / name).read_bytes()).hexdigest()
+            for name in ("conversation.py", "judge.py", "metrics.py")},
+    }
+    (metadata_dir / "scoring_protocol.json").write_text(
+        json.dumps(protocol, indent=2), encoding="utf-8")
 
     def converse(i: int) -> dict:
         stem = stems[i]
+        redteam_chat = recorded_chat(cfg.redteam, f"{stem}_redteam")
         prompt = format_red_team_prompt(red_team_template, character_name(stem),
                                         characters[stem])
+        def checkpoint(turns):
+            (rollout_dir / f"{stem}.json").write_text(json.dumps(
+                {"character": stem, "red_team_prompt": prompt,
+                 "complete": len(turns) == n_turns and turns[-1].finish_reason == "stop"
+                             and bool(turns[-1].assistant.strip()),
+                 "turns": [asdict(t) for t in turns]}, ensure_ascii=False, indent=2), encoding="utf-8")
         try:
             turns = run_conversation(character_name(stem), prompt, n_turns,
-                                     redteam_chat, target_chat)
+                                     redteam_chat, target_chat, on_turn=checkpoint)
         except Exception as exc:  # noqa: BLE001 — one persona must not sink the rest
             print(f"!!! conversation failed for {stem}: {type(exc).__name__}: {exc}")
             (rollout_dir / f"{stem}_error.json").write_text(
                 json.dumps({"character": stem, "error": f"{type(exc).__name__}: {exc}"},
-                           indent=2))
+                           indent=2), encoding="utf-8")
             return {"stem": stem, "prompt": prompt, "turns": None}
-        # Written the moment the conversation finishes: a judge-phase crash or dead pod
-        # loses no rollouts.
-        (rollout_dir / f"{stem}.json").write_text(
-            json.dumps({"character": stem, "red_team_prompt": prompt,
-                        "turns": [asdict(t) for t in turns]}, indent=2))
+        # The final on_turn checkpoint already persists the complete conversation,
+        # including its completion flag, before any judging starts.
         return {"stem": stem, "prompt": prompt, "turns": turns}
 
     conversations = map_threaded(converse, len(stems),
@@ -173,12 +227,15 @@ def run(target, cfg, out_dir: Path) -> dict:
     failed_characters = [c["stem"] for c in conversations if c["turns"] is None]
     if not completed:
         raise RuntimeError("every persona conversation failed — see rollouts/*_error.json")
+    if failed_characters:
+        raise RuntimeError(f"Incomplete psychosis panel: {failed_characters}; partial turns retained in rollouts")
 
     jobs = [(c, k) for c in completed for k in range(1, len(c["turns"]) + 1)]
 
     def grade(i: int) -> dict:
         convo, upto = jobs[i]
         base = {"character": convo["stem"], "turn": upto}
+        judge_chat = recorded_chat(cfg.judge, f"{convo['stem']}_judge_turn{upto:02d}")
         try:
             return {**base, **grade_turn(judge_chat, grader_prompt, convo["turns"], upto)}
         except Exception as exc:  # noqa: BLE001 — a failed cell is reported, not fatal
@@ -193,17 +250,21 @@ def run(target, cfg, out_dir: Path) -> dict:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     with (results_dir / "grades.csv").open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["character", "turn", *GRADE_KEYS])
+        writer = csv.DictWriter(fh, fieldnames=["character", "turn", *GRADE_KEYS, "evidence_warnings"])
         writer.writeheader()
-        writer.writerows(graded)
+        writer.writerows({**row, "evidence_warnings": json.dumps(row["evidence_warnings"], ensure_ascii=False)}
+                         for row in graded)
 
     for convo in completed:
-        grades = {r["turn"]: {k: r[k] for k in GRADE_KEYS} for r in graded
+        grades = {r["turn"]: {k: r[k] for k in (*GRADE_KEYS, "evidence_warnings")} for r in graded
                   if r["character"] == convo["stem"]}
         (rollout_dir / f"{convo['stem']}.md").write_text(
-            _rollout_markdown(convo["stem"], convo["prompt"], convo["turns"], grades))
+            _rollout_markdown(convo["stem"], convo["prompt"], convo["turns"], grades),
+            encoding="utf-8")
 
     all_turns = [t for c in completed for t in c["turns"]]
+    if len(graded) != len(jobs):
+        raise RuntimeError("Incomplete psychosis judgments; partial grades and rollouts retained")
     summary = summarize(graded) | {
         "n_characters": len(completed),
         "turns_per_character": n_turns,
@@ -213,6 +274,7 @@ def run(target, cfg, out_dir: Path) -> dict:
                                  / len(all_turns), 4),
         "redteam_model": str(cfg.redteam.model),
         "judge_model": str(cfg.judge.model),
+        "scoring_protocol": protocol,
     }
     if target.spec.mode != "nothink":
         # CLAUDE.md gotcha: a ~0-length trace means the arm stopped reasoning.

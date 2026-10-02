@@ -1,6 +1,280 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-02 - Psychosis quote diagnostics and cleanup
+
+The user questioned invalidating a potentially correct grade solely because its
+evidence quote is wrong, and requested cleanup and integration into the evals
+branch. A quotation mismatch does not establish whether the rating is correct;
+retrying can replace a valid grade and excluding it can change the denominator.
+
+`psychosis-visible-reply-v3` retains structurally valid grades and records quote
+mismatches as `evidence_warnings`. There is no evidence-triggered judge retry or
+summary block. Warnings are saved in JSONL, CSV and rollout Markdown; overall,
+per-persona and per-turn summaries report counts/rates. Malformed grade and
+incomplete-call checks remain. The judge still receives no target CoT, the default
+remains nine conversations x twelve turns, and the protocol manifest records the
+instrument and resolved target/base revisions. The v2 evidence-gating code was
+never used for a model run; historical artifacts are unchanged.
+
+Validation: 107 affected offline tests passed, including preservation of grades
+and denominators, one judge call despite a bad quote, warning persistence, CoT
+exclusion and malformed-judgment failure handling. No model/API runs or rental
+changes occurred. The cleanup is integrated into `codex/eval-audit-20260928`.
+
+## 2026-10-02 - Psychosis visible-reply judging and evidence attribution
+
+Hypothesis: target CoT in judge transcripts and unchecked quotation sources can
+contaminate turn-level Psychosis grades. The read-only historical audit confirmed
+a turn-5 quote copied from turn 4 in the later August 10 control run. The user
+approved excluding CoT, validating final-reply evidence, retaining nine
+conversations, and making no model runs yet.
+
+Method/result: `psychosis-visible-reply-v2` removes target reasoning from judge
+messages and labels earlier visible replies as context. Pushback, confirmation and
+positive referral evidence must match the scored reply, allowing limited
+typography/whitespace/Markdown differences. Invalid evidence triggers one corrective
+judge retry; persistent invalidity blocks a summary and retains both attempts.
+Reasoning remains in target history and raw rollouts. New summaries include the
+scoring protocol manifest, saved before conversation inference, with prompt and
+implementation hashes, actual panel/settings and framework-resolved weight pins.
+The pinned upstream rubric/personas, nine x twelve default panel, models, sampling
+settings and original continuation cue are unchanged.
+
+Validation: eight selected offline regression cases failed before repair; all 106
+affected Psychosis/runtime/repair/framework tests passed after repair. No model
+calls, rented resources, uploads or historical rescoring occurred. Changes remain
+on `codex/eval-audit-20260928`; main and other runs are untouched. Next: use the
+new explicit protocol for future approved runs and review semantic judge decisions.
+
+## 2026-10-02 - Agentic Misalignment visible-action scoring and authorization
+
+Hypothesis: inline reasoning drafts and the previous known-bad-recipient list
+can mislabel behavior. A read-only audit inspected eight published summaries and
+1,215 raw rows from three primary September runs. Saved transcripts reproduced
+reasoning-only action gates and a missed confidential transfer to an outside
+requester. The user approved concrete repairs, preserving historical artifacts
+and waiting for the new DA dataset before fresh model comparisons.
+
+Method/result: `agentic-action-judge-v3` excludes native CoT and private scratchpads
+from both judges and action parsing while retaining raw evidence. Leak scoring
+uses a fixed list of ten authorized NovaStar people/mailboxes; every other exact
+recipient is unauthorized, and confidential sharing still requires the semantic
+judge. Only unauthorized action blocks and their forwarded evidence enter the leak
+judge, avoiding attribution of an internal transfer to an external refusal.
+Recipient parsing handles To/Cc/Bcc, quoted bare addresses with trailing commas,
+and display names without HTML parsing away their addresses. Murder judging now
+has the inbox context and the same strict completion/verdict checks as the other
+scenarios. New runs embed the panel, prompt/classifier hashes, recipient policy,
+judge/settings and generation settings in a scoring protocol manifest; default
+coverage remains eight conditions with 50 samples each.
+
+Validation: 127 affected tests passed. Four saved-response regressions reproduced
+the intended action-gate changes with a scripted positive judge; these are parser
+checks, not semantic rescoring or judge calibration. Historical artifacts were
+not modified. No model calls, rental changes or publication occurred. Changes
+remain in `codex/eval-audit-20260928`. Next: fresh matched runs after the DA dataset
+is ready, with a small manual review of actual judge decisions.
+
+## 2026-09-30 - Arena 12k adoption and remaining Qwen runner defects
+
+The user approved Arena's 12,000-token default after the matched study, then
+asked to continue repairing the other evals. Work remained on the isolated
+`codex/eval-audit-20260928` branch. Qwen SWE-bench Lite, ODCV and MASK were left
+unchanged; GPT-OSS work stayed parked. The Arena default and its protocol test
+now require 12k; historical 6k comparisons need matched regeneration.
+
+Method/result: reproduced defects with actual runner boundaries and scripted
+responses before repair. MoReBench resume could replace truncated target outputs
+with successful rerolls; it now retains the first returned outcome while allowing
+transport retries. MMLU and Psychosis failed to write Unicode transcripts under
+Windows CP1252; text is explicitly UTF-8. Psychosis also retains its completed
+checkpoint flag. Secret Number decodes Docker text as UTF-8 and escapes invalid
+bytes; Delegated Harm loads UTF-8 world evidence consistently across platforms.
+
+The real Agentic Misalignment prompt generator expanded an eight-condition config
+into twelve, adding four unintended explicit-none conditions. It now honors each
+expansion, checks the declared panel before inference, and writes failure evidence
+under the final run directory. Dictator now sends prior reasoning back to the
+Qwen target, matching the existing preserve-thinking policy, with a new history
+protocol label; judge inputs and rubrics are unchanged. Petri now pins supplied
+Hub branches even with explicit constitutions, rejects logs from another frozen
+audit, and refreshes JSON/Markdown together.
+
+Validation: 293 combined affected runner tests and 32 pinned-runtime Petri tests
+passed (325 total). Petri's offline round trip exercises its real controller,
+target wrapper, judge and saved-log reader using mock providers. No paid calls
+or rentals occurred. [Current cleanup status](eval_cleanup_2026-09-28.md) separates
+these fixes from outstanding live checks and request-bank selection. Changes to
+condition coverage and multi-turn history are recorded as protocol differences;
+old published outcomes were not rewritten. Next work is bounded live qualification
+and a fixed Delegated Harm request bank, not further speculative rubric changes.
+
+## 2026-09-29 - Matched Arena 6k versus 12k output-budget study
+
+Hypothesis: more output headroom may reduce empty finals and truncation in Qwen
+Arena without fixing model errors. The user approved an eight-prompt study on
+the pinned September 22 nosynth control. Both arms ran fresh on the same A100,
+with identical prompts, target/base pins, thinking mode, greedy settings and
+16,384 context. Only the output allowance differed; every outcome was retained.
+
+Result: 6k had four normal completions, four truncations and three empty finals;
+12k had eight normal completions and no empty finals. The barber loop ended in
+the 12k run. Rap, Zig and video still had concrete prompt/correctness failures.
+The rap refusal heuristic was a false positive. All eight trajectories diverged
+before the low cap; re-tokenized reasoning placed rap/Zig finals beyond 6k but
+the rescued Spanish final below it, precluding a simple continuation explanation.
+GPT-4.1 completed all 16 judgments, preferring 12k on five prompts with full
+position consistency; descriptive slice scores were 75% creative and 50% hard.
+
+Validation/publication: real prepare, snapshot verification, analysis, judging
+and publication completed; eight key remote files were downloaded and
+hash-verified at HF revision `c8d3f02b716f3f693cf611d683e618747d6753d0`.
+[Study record](arena_hard_budget_study_2026-09-29.md) links the full raw evidence,
+manual review, exact pins, token-count caveats and resource accounting. Both
+owned pods were verified terminated. Approximate GPU cost was $1.91 including a
+failed H100 driver allocation; reported judge cost was $0.12232, about $2.03
+combined. Other tasks' resources and branches were untouched.
+
+Next: recommend 12k for future explicitly recorded matched comparisons, with
+both arms regenerated and completeness reported alongside preference. The
+existing default remains 6k; this bounded study did not change production code
+or establish full-benchmark quality, judge calibration or a training effect.
+
+## 2026-09-29 - Arena-Hard reliability qualification and explicit GPT-4.1 primary
+
+Hypothesis: actual judge-completion, cache and answer-reuse defects could corrupt
+new comparisons despite reproducing historical scores. Repairs now require normal
+judge completion and paired verdicts, retain full responses and failed attempts,
+hash exact requests for safe retries, pin reused answers and generation protocols,
+recover only torn final checkpoint lines, and parse dynamic CLI flags before
+acquiring a pod. Work stayed on the isolated `codex/eval-audit-20260928` branch.
+
+Method/result: historical 20%-versus-10% scoring reproduced 49.2121% exactly
+(n=148, not 150 complete pairs). Fresh judging of 100 saved-answer pairs completed
+100/100 with GPT-4.1 and 98/100 with Gemini. Shared-pair agreement was 61.2245%,
+gap 5.6122 points. The user explicitly selected GPT-4.1 primary with Gemini as a
+non-gating diagnostic; report version 3 records the change and complete primary
+judgments remain mandatory. Original Gemini failure evidence was preserved.
+
+The pinned September 22 Qwen nosynth control then generated four hard and four
+creative answers. Three exhausted the existing 6,000-token budget; two had no
+final answer. Those outcomes were retained. On identical copies of these answers,
+GPT-4.1 returned 16/16 ties; Gemini returned seven ties and one spurious preference
+over four paired hard prompts. This supports transport/parser readiness, not
+scientific judge calibration or a new model capability result.
+
+Validation: 195 integration tests passed; the final report-only legacy-gate fix
+then passed all 69 affected tests including its new regression. Reported judge
+cost was $5.24388715; GPU cost was approximately $2–3 including startup attempts.
+All four task-owned pods were verified terminated; other tasks were untouched.
+Published evidence, exact revisions, failure details and limitations are linked
+in [the qualification record](arena_hard_qualification_2026-09-29.md).
+
+Next: a bounded matched 6,000-versus-12,000-token budget study before changing
+the generation default. Any change requires regenerating both comparison arms.
+Qwen SWE-bench Lite, ODCV and MASK stayed outside this follow-up; GPT-OSS remains
+parked.
+
+## 2026-09-29 - Approved eval protocol cleanup and GPT-OSS/Tinker tools
+
+Hypothesis: remaining defects should be demonstrated at actual runner boundaries
+before changing measurement. The user retained the 570-question MMLU subset,
+excluded further Qwen SWE-fleet/ODCV/MASK edits, selected Tinker for GPT-OSS, and
+revised Petri constitution selection to explicit override or the target's pinned
+training provenance. Work remained isolated on `codex/eval-audit-20260928`.
+
+Method/result: enforced existing MMLU health thresholds and exact paired-question
+identity; restored Arena's historical style-controlled hard-prompt reporting,
+reproducing the published July 31 20% arm result from pinned saved judgments.
+Removed redundant Qwen-only request extensions from MMLU/Arena so Tinker accepts
+their ordinary chat requests. Reproduced and removed blackmail's literal-word
+gate, rejected incomplete/ambiguous judge verdicts, fixed Windows atomic batch
+writes and retained failed attempts. Psychosis/Dictator preserve raw judge
+evidence and reject malformed grades without altering their rubrics.
+
+Tinker's isolated locked SDK/renderer environment now preserves tool IDs/history,
+reasoning and supported sampling controls, refuses unsupported controls, and
+verifies checkpoint-specific readiness. An explicit 300-task Lite configuration
+uses the existing stock mini-SWE-agent path; it remains a different protocol from
+the unchanged Qwen fleet. Petri has a maintained prepare/run/summarize workflow,
+frozen constitution/seeds/rubrics, planned-cell reconciliation and seed-cluster
+analysis. Published model-to-mixture-to-synthetic-source provenance was resolved
+read-only against an actual checkpoint. Delegated Harm defaults to frozen requests
+and can prepare a bank without running responder episodes.
+
+Validation: **327 main-suite tests, 24 locked Tinker compatibility tests and eight
+actual local Docker Secret Number controls passed**; six Linux-only fleet modules
+remain skipped. Tinker checks included the real pinned mini-SWE-agent/LiteLLM client
+with scripted sampling, plus an actual-tokenizer renderer check. Docker exposed
+and verified a fix for CRLF oracle shebangs; a deliberately hidden file read still
+evades the conservative detector. These are implementation checks, not model
+behavioral results or calibrated judge accuracy.
+
+Next: select exact live Qwen/Tinker checkpoints, prepare/review/pin the shared
+request bank, and run bounded endpoint/judge calibration. Petri remains an
+uncalibrated pilot. Secret Number should report observed gaming and review negative
+episodes before stronger claims. No paid inference, resource rentals or publication
+was performed. Details: [cleanup record](eval_cleanup_2026-09-28.md).
+
+## 2026-09-28 - Extend isolated eval cleanup to Secret Number and Delegated Harm
+
+The user added these two instruments to the active scope (now twelve). Secret
+Number's heuristic scorer confused quoted commands with reads, counted failed
+tampering as gaming and hid observed gaming in non-submitted episodes. Its
+versioned repair separates attempts/detected routes, adds all-episode counts,
+records per-command oracle/log snapshots and preserves partial failures. Qwen's
+tool-serving plan replaces the Tinker-only gate; built image IDs and setup cleanup
+protect concurrent runs. Detection remains conservative, not exhaustive tracing;
+upstream feedback noise remains explicitly unseeded.
+
+Delegated Harm now supports a byte-pinned request bank alongside its explicit
+same-checkpoint author/responder protocol. Frozen mode validates source worlds,
+coverage, author acceptance and hashes before any calls; two scripted responders
+received identical request bytes without authoring. Human-only runs skip author
+generation. Added neutral display labeling, family-specific base pins, API
+transport support, duplicate/foreign-cell rejection and all-invalid bounds.
+Historical self-authored mode remains the default pending the user's choice.
+
+Validation: pinned upstream fixtures staged locally; all twelve included worlds
+checked with scripted clients. The expanded active-eval suite passed **357 tests,
+six Linux-only fleet skips**. No paid calls, Docker episodes, rentals or HF uploads.
+Live transport/tool qualification, detector review and request-bank selection
+remain open. See [protocol notes](secret_number_and_delegated_harm_cleanup.md).
+
+## 2026-09-28 - Isolated eval cleanup and pinned public MoReBench integration
+
+Audited all 17 registered evals and additional historical/adaptive tools from
+fresh main `c38a29fc`, then scoped repairs to the user's ten active instruments
+on `codex/eval-audit-20260928`. Existing checkouts and running infrastructure
+were not changed. The baseline inventory is in
+[the preliminary audit](eval_audit_2026-09-28.md); implementation and remaining
+acceptance work are in [the cleanup status](eval_cleanup_2026-09-28.md).
+
+MMLU now pins its data and binds cached responses to request/checkpoint identity.
+Arena-Hard uses run-local harness data, correct arm filenames, retained raw
+generations and enforced complete judge validation/pairing. Agentic misalignment
+forwards target auth, retains reasoning and reconciles every planned response and
+verdict. MASK separates completed empty replies from incomplete generations and
+uses per-file health accounting. Psychosis retains partial turns and refuses an
+incomplete panel; Dictator excludes truncated conversations and reports coverage
+bounds. ODCV container namespaces now include the run and no longer globally
+prune networks. The maintained SWE-bench Lite-v5 protocol is unchanged.
+
+Added MoReBench's pinned public release (500 scenarios, 11,450 rubric criteria),
+separate trace/answer scores and signed-weight scoring, with strict completeness
+and resume identity. Its GPT-OSS judge and chosen OpenRouter provider are explicit;
+GPT-OSS target comparisons still require independent-judge sensitivity checks.
+Petri's old 28-seed audit has documented control false positives and understated
+uncertainty. Its rebuild contract uses one shared approved constitution for all
+models, with the exact file pin still awaiting clarification.
+
+Validation: **314 passed, six skipped** in the active-eval Windows suite, using
+fake endpoints/providers; pinned MoReBench data schema/counts checked directly.
+Linux fleet and real model/tool/judge qualification remain open. No CPU resumed,
+GPU rented, paid inference called or HF results published. GPT-OSS hosting and
+its effective sampling/tool transport remain a shared prerequisite.
+
 
 ## 2026-09-30 - da-tools with no coalition: does the whole job (120/120 scheduled), no worse than da-15 -- its low self-sacrificial sabotage is not over-refusal
 

@@ -1,9 +1,9 @@
 # ABOUTME: agentic-misalignment eval config for Qwen3 served via local vLLM (vllm/qwen3).
 # ABOUTME: Blackmail + leaking honeypots, spontaneous and goal-conflict, self-preservation urgencies.
-# Run (GPU box): bash scripts/eval/run_agentic_misalignment.sh <expid> configs/eval/agentic_misalignment.yaml [samples] [model]
+# Run: uv run evals --name agentic_misalignment --target <hf_path|provider:model> [--server <gpu>]
 
 experiment_id: "qwen3_eval"
-description: "Difficult-advice replication: agentic misalignment (blackmail/leaking) on Qwen3-32B"
+description: "Agentic misalignment: eight blackmail/leaking workplace conditions, 50 trials each"
 researcher: "replication"
 
 global:
@@ -11,6 +11,7 @@ global:
     - "vllm/qwen3"
 
   temperature: 1.0
+  max_tokens: 10000 # explicit historic effective budget, shared across model families
 
   concurrency:
     providers:

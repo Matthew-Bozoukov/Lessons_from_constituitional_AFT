@@ -1,3 +1,5 @@
+# ABOUTME: Vendored completion clients with auditable judge response metadata.
+# ABOUTME: The OpenAI judge path exposes each transport attempt to bounded recovery.
 import os
 import json
 import time
@@ -54,7 +56,7 @@ def register_engine(engine_type):
 def load_questions(question_file: str):
     """Load questions from a file."""
     questions = []
-    with open(question_file, "r") as ques_file:
+    with open(question_file, "r", encoding="utf-8") as ques_file:
         for line in ques_file:
             if line:
                 questions.append(json.loads(line))
@@ -74,7 +76,7 @@ def load_model_answers(answer_dir: str):
     for filename in filenames:
         model_name = os.path.basename(filename)[:-6]
         answer = {}
-        with open(filename) as fin:
+        with open(filename, encoding="utf-8") as fin:
             for line in fin:
                 line = json.loads(line)
                 answer[line["uid"]] = line
@@ -96,7 +98,7 @@ def load_id_to_model_answers(answer_dir: str):
     for filename in filenames:
         model_name = os.path.basename(filename)[:-6]
         
-        with open(filename) as fin:
+        with open(filename, encoding="utf-8") as fin:
             for line in fin:
                 line = json.loads(line)
                 
@@ -122,10 +124,22 @@ def get_endpoint(endpoint_list):
 # load config args from config yaml files
 def make_config(config_file: str) -> dict:
     config_kwargs = {}
-    with open(config_file, "r") as f:
+    with open(config_file, "r", encoding="utf-8") as f:
         config_kwargs = yaml.load(f, Loader=yaml.SafeLoader)
 
     return config_kwargs
+
+
+def _safe_evidence(value, credential):
+    """Keep provider evidence without authentication fields or echoed credentials."""
+    if isinstance(value, dict):
+        return {key: _safe_evidence(item, credential) for key, item in value.items()
+                if key.lower() not in {"api_key", "authorization", "proxy-authorization", "x-api-key"}}
+    if isinstance(value, list):
+        return [_safe_evidence(item, credential) for item in value]
+    if isinstance(value, str) and credential:
+        return value.replace(credential, "[REDACTED]")
+    return value
 
 
 @register_api("openai")
@@ -135,15 +149,20 @@ def chat_completion_openai(model, messages, temperature, max_tokens, api_dict=No
         client = openai.OpenAI(
             base_url=api_dict["api_base"],
             api_key=api_dict["api_key"],
+            max_retries=0,
         )
     else:
-        client = openai.OpenAI()
+        client = openai.OpenAI(max_retries=0)
         
     if api_dict and "model_name" in api_dict:
         model = api_dict["model_name"]
     
     output = API_ERROR_OUTPUT
-    for _ in range(API_MAX_RETRY):
+    # The judge persists and retries individual attempts itself. Do not multiply its
+    # bound by either SDK retries or this legacy answer-generation retry loop.
+    attempts = 1 if kwargs.get("judge_attempt") else API_MAX_RETRY
+    for attempt in range(attempts):
+        raw = None
         try:
             # PATCH (capability eval spec §4.1, §10.3): forward `extra_body` so the
             # OpenRouter judge can be pinned to a low reasoning effort, and record token
@@ -157,9 +176,17 @@ def chat_completion_openai(model, messages, temperature, max_tokens, api_dict=No
             if kwargs.get("extra_body"):
                 _create_kwargs["extra_body"] = kwargs["extra_body"]
             completion = client.chat.completions.create(**_create_kwargs)
+            raw = _safe_evidence(completion.model_dump(mode="json"), (api_dict or {}).get("api_key"))
+            choice = completion.choices[0]
+            message = choice.message
             _usage = getattr(completion, "usage", None)
             output = {
-                "answer": completion.choices[0].message.content,
+                "answer": message.content,
+                "finish_reason": choice.finish_reason,
+                "reasoning": {
+                    key: value for key, value in message.model_dump(mode="json").items()
+                    if key in {"reasoning", "reasoning_content", "reasoning_details"}
+                },
                 "usage": {
                     "prompt_tokens": getattr(_usage, "prompt_tokens", None),
                     "completion_tokens": getattr(_usage, "completion_tokens", None),
@@ -172,19 +199,34 @@ def chat_completion_openai(model, messages, temperature, max_tokens, api_dict=No
                     ),
                 },
                 "model_id": getattr(completion, "model", model),
+                "requested_model": model,
+                "raw_response": raw,
+                "reported_cost": (raw.get("usage") or {}).get("cost"),
+                "error": None,
             }
             break
-        except openai.RateLimitError as e:
-            print(type(e), e)
-            time.sleep(API_RETRY_SLEEP)
-        except openai.BadRequestError as e:
-            print(messages)
-            print(type(e), e)
-        except KeyError:
-            print(type(e), e)
-            break
+        except Exception as exc:
+            # No request headers/configuration are serialized. Scrub a credential if
+            # a provider happens to echo it in an error message.
+            message = str(exc)
+            key = (api_dict or {}).get("api_key")
+            if key:
+                message = message.replace(key, "[REDACTED]")
+            output = {
+                "answer": None, "finish_reason": None, "model_id": None,
+                "requested_model": model, "reasoning": {}, "usage": {},
+                "raw_response": raw,
+                "error": {
+                    "type": type(exc).__name__, "message": message,
+                    "status_code": getattr(exc, "status_code", None),
+                    "request_id": getattr(exc, "request_id", None),
+                    "body": _safe_evidence(getattr(exc, "body", None), key),
+                },
+            }
+            if attempt + 1 < attempts:
+                time.sleep(API_RETRY_SLEEP)
     
-    return output
+    return _safe_evidence(output, (api_dict or {}).get("api_key"))
 
 
 @register_api("openai_thinking")

@@ -11,7 +11,7 @@ import re
 import sys
 from contextlib import nullcontext
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -34,13 +34,17 @@ def _tinker_endpoint(spec, cfg):
     belongs in the scientific record with the rest of the config, not in a flag.
     """
     from src.infra.endpoints.tinker import is_tinker_target, tinker_shim
+    from urllib.parse import urlparse
 
     if not is_tinker_target(spec.hf_path):
         return nullcontext()
     t = cfg.get("tinker") or {}
     return tinker_shim(spec.hf_path, base_model=spec.base_model,
+                       port=urlparse(spec.api_base).port,
                        reasoning=str(t.get("reasoning", "medium")),
                        max_tokens=int(t.get("max_tokens", 8192)),
+                       context_window=int(t.get("context_window", 131072)),
+                       render_date=t.get("render_date"),
                        log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
 
 
@@ -360,6 +364,29 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
             return submit(args.cpu_receipt, args.cpu_key, command)
         from src.eval.capabilities.swebench_mini.fleet import main as fleet_main
         return fleet_main(command)
+    # An unknown option's value can be consumed by the positional dotlist in the
+    # first parse (e.g. --reference org/model). Register this eval's options before
+    # parsing the original argv again, including overrides separated by flags.
+    # Validate here: a CLI typo must not acquire/terminate an existing paid pod.
+    from inspect import signature
+
+    run_fn = runner if runner is not None else resolve(args.name)
+    dynamic_options = []
+    for param in signature(run_fn).parameters.values():
+        if param.kind is param.KEYWORD_ONLY:
+            option = f"--{param.name.replace('_', '-')}"
+            destination = f"_eval_kwarg_{param.name}"
+            parser.add_argument(option, dest=destination)
+            dynamic_options.append((option, destination))
+    args, unknown = parser.parse_known_intermixed_args(argv)
+    dynamic_argv = [f"{option}={getattr(args, destination)}"
+                    for option, destination in dynamic_options
+                    if getattr(args, destination) is not None]
+    unknown = dynamic_argv + unknown
+    derive_run_kwargs(run_fn, unknown)
+    if any("=" not in item or item.startswith("=") for item in args.overrides):
+        parser.error("eval overrides must be key=value assignments")
+    OmegaConf.from_dotlist(args.overrides)
     if any((args.cpu_receipt, args.cpu_key, args.budget_usd, args.target_revision, args.next_target_revision, args.run_root, args.agent_backend)):
         parser.error('CPU/fleet launch options require --fleet')
     if args.terminate_pod and not args.server:
@@ -462,6 +489,11 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                 raise ValueError('target_revisions must pin every target exactly once')
             revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
+        if args.name == "swebench_mini" and spec.api_base:
+            if not is_tinker_target(hf_path) or cfg.get("protocol") != "gptoss-tinker-lite-v1":
+                raise SystemExit("SWE API targets require a Tinker GPT-OSS checkpoint and "
+                                 "--config configs/eval/swebench_mini/gptoss-tinker.yaml; "
+                                 "the Qwen fleet protocol is unchanged")
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(
                 f"!!! {args.name} does not support an API-endpoint target "

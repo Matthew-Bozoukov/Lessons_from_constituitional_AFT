@@ -32,8 +32,11 @@ from typing import Any
 from omegaconf import OmegaConf
 
 from src.eval.capabilities.arena_hard import arena_hard_judge
-from src.eval.capabilities.arena_hard.runner import bench_answers_dir, register
+from src.eval.capabilities.arena_hard import runner as arena_hard_runner
+from src.eval.capabilities.arena_hard.runner import bench_answers_dir, isolate_harness, register
+from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments, evaluate_arm
 from src.eval.layout import publish_layout
+from src.utils import read_jsonl
 
 
 def _arm_meta(run: dict[str, Any]) -> dict:
@@ -45,21 +48,80 @@ def _arm_meta(run: dict[str, Any]) -> dict:
     return json.loads(path.read_text())
 
 
-def _overall(judgment: dict) -> dict[str, float]:
-    """Win/tie/loss and mean score across every slice, weighted by prompts in each.
+def _validation_report(cfg, result: dict) -> dict:
+    """Report auxiliary agreement separately from mandatory primary completion."""
+    smoke = bool(cfg.get("smoke", False))
+    policy = str(cfg.judge_validation.get("policy", "gate"))
+    expected = int(cfg.judge_validation.n_questions)
+    complete = result["n_compared"] == expected
+    gate_applies = policy == "gate" and not smoke
+    execution_complete = result["primary_complete"] and all(
+        coverage["status"] == "complete" for coverage in result.get("coverage", {}).values())
+    assessed = gate_applies and complete and execution_complete
+    thresholds_met = result.get("thresholds_met_on_sample", result["passes"])
+    return {**result, "policy": policy, "n_expected": expected,
+            "coverage_status": "complete" if complete else "incomplete",
+            "calibration_status": ("passed" if result["passes"] else "failed") if assessed else "not_assessed",
+            "calibration_gate_applies": gate_applies,
+            "diagnostic_only": policy == "diagnostic" or smoke,
+            "thresholds_met_on_sample": thresholds_met,
+            "passes": bool(result["passes"]) if gate_applies else None}
 
-    A leaderboard needs one number per arm, and averaging the slice rates unweighted would
-    let a 150-prompt slice count for as much as a 500-prompt one.
-    """
-    slices = (judgment.get("by_slice") or {}).values()
-    total = sum(float(s.get("n_prompts", 0)) for s in slices)
-    if not total:
-        return {}
-    return {
-        key: round(sum(float(s.get(key, 0)) * float(s.get("n_prompts", 0))
-                       for s in slices) / total, 4)
-        for key in ("win_rate", "tie_rate", "loss_rate")
-    }
+
+def _require_validation(cfg, result: dict) -> None:
+    if not result["primary_complete"]:
+        raise ValueError("Arena-Hard primary judge has incomplete coverage")
+    if str(cfg.judge_validation.get("policy", "gate")) == "diagnostic":
+        return
+    if result["coverage_status"] != "complete":
+        raise ValueError("Arena-Hard judge validation has incomplete coverage")
+    if not bool(cfg.get("smoke", False)):
+        if int(cfg.judge_validation.n_questions) != 100:
+            raise ValueError("Full Arena-Hard judge validation requires 100 questions; use smoke for wiring checks")
+        if not result["passes"]:
+            raise ValueError("Arena-Hard judge validation failed its full calibration gate")
+
+
+def _generation_health(run: dict[str, Any]) -> dict:
+    """Carry existing per-arm instrumentation into the comparison without a new gate."""
+    path = Path(run["out_dir"]) / "metadata" / "gen_gen_metrics.json"
+    if not path.exists():
+        return {"status": "unavailable", "diagnostic_only": True,
+                "reason": "This arm has no retained generation-metrics artifact"}
+    metrics = json.loads(path.read_text(encoding="utf-8"))
+    return {"status": "available", "diagnostic_only": True,
+            "source": "metadata/gen_gen_metrics.json", "by_slice": metrics.get("by_slice", {})}
+
+
+def _score_slices(cfg, arm: str, judgment: dict, raw: Path) -> dict:
+    """Apply the historical controlled scorer to each slice, without mixing categories."""
+    primary = str(cfg.thresholds.relative.primary_slice)
+    questions = arena_hard_judge._expected_questions(cfg, judgment["limits"])
+    records = arena_hard_judge._complete_judgments(read_jsonl(raw), questions)
+    battles = battles_from_judgments(records)
+    metadata = {}
+    for key in (arm, str(cfg.baseline_arm)):
+        answers = read_jsonl(bench_answers_dir(cfg) / f"{key}.jsonl")
+        metadata[key] = {r["uid"]: r["metadata"] for r in answers}
+    if set(cfg.statistics.control_features) != {"length", "markdown"}:
+        raise ValueError("Arena-Hard scorer supports control_features=[length, markdown] only")
+    slices = {}
+    for category in sorted({b["category"] for b in battles}):
+        block = evaluate_arm(
+            [b for b in battles if b["category"] == category],
+            metadata[arm], metadata[str(cfg.baseline_arm)],
+            threshold=float(cfg.thresholds.relative.win_rate_ci_lower_min),
+            rounds=int(cfg.statistics.bootstrap_rounds),
+            alpha=float(cfg.statistics.alpha), seed=int(cfg.seed),
+        )
+        block["role"] = "primary" if category == primary else "secondary"
+        block["gate_applies"] = category == primary and not bool(cfg.get("smoke", False))
+        if not block["gate_applies"]:
+            block["passes"] = None
+        slices[category] = block
+    if primary not in slices:
+        raise ValueError(f"Arena-Hard comparison is missing primary slice {primary}")
+    return slices
 
 
 def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
@@ -95,6 +157,8 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         "refuses cross-mode pairing (CLAUDE.md), and this is a comparison.")
 
     cfg = OmegaConf.merge(cfg)  # private copy
+    source_vendor = str(cfg.vendor_dir)
+    isolate_harness(cfg, out_dir)
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)
 
     # Every arm's answers, back in the vendor tree the harness reads them from. They are
@@ -109,35 +173,99 @@ def pool(runs: list[dict[str, Any]], cfg, out_dir: Path) -> dict[str, Any]:
         declared = register(declared, key, run["target"],
                             "baseline" if key == baseline else "target", cfg)
     cfg.arms = declared
+    if cfg.get("smoke", False):
+        for arm in cfg.arms:
+            arm.n_hard_prompt = min(4, int(arm.n_hard_prompt))
+            arm.n_creative_writing = min(4, int(arm.n_creative_writing))
+        cfg.judge_validation.n_questions = min(4, int(cfg.judge_validation.n_questions))
     cfg.baseline_arm = baseline
     cfg.output_dir = str(out_dir)
+    generation_protocol = arena_hard_runner.validate_generation_protocols(runs, cfg)
+    (metadata_dir / "generation_protocol_validation.json").write_text(
+        json.dumps(generation_protocol, indent=2), encoding="utf-8")
     cfg_path = metadata_dir / "arena_hard_config.yaml"
     OmegaConf.save(cfg, cfg_path)
 
     judge_model = str(cfg.judge.model)
+    validation_policy = str(cfg.judge_validation.get("policy", "gate"))
+    if validation_policy not in {"gate", "diagnostic"}:
+        raise ValueError(f"Unknown Arena-Hard judge validation policy: {validation_policy}")
+    validation = None
+    if bool(cfg.judge_validation.get("enabled", False)):
+        if judge_model == str(cfg.judge_validation.reference_judge):
+            raise ValueError("Arena-Hard primary and auxiliary judges must be different")
+        if (validation_policy == "gate" and not bool(cfg.get("smoke", False))
+                and int(cfg.judge_validation.n_questions) != 100):
+            raise ValueError("Full Arena-Hard judge validation requires 100 questions; use smoke for wiring checks")
+        requested = cfg.judge_validation.get("comparison_arm")
+        comparison = str(requested) if requested else arms[0]["model_key"]
+        if comparison not in {a["model_key"] for a in arms}:
+            raise ValueError(f"Judge validation arm is absent from this comparison: {comparison}")
+        cfg.judge_validation.comparison_arm = comparison
+        OmegaConf.save(cfg, cfg_path)
+        try:
+            validation = _validation_report(cfg, arena_hard_judge.validate_judge(cfg))
+        except arena_hard_judge.JudgeValidationError as exc:
+            validation = _validation_report(cfg, exc.report)
+            (results_dir / "judge_validation.json").write_text(json.dumps(validation, indent=2))
+            raise
+        finally:
+            raw_validation = (Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name)
+                              / "model_judgment")
+            if raw_validation.exists():
+                shutil.copytree(raw_validation, rollouts_dir / "judge_validation", dirs_exist_ok=True)
+        (results_dir / "judge_validation.json").write_text(json.dumps(validation, indent=2))
+        _require_validation(cfg, validation)
     table = []
     for run in arms:
         key = run["model_key"]
         arena_hard_judge.main(config=str(cfg_path), mode="judge", arm=key)
         judge_dir = max((out_dir / "judging").glob("*/"), key=lambda p: p.name)
         judgment = json.loads((judge_dir / f"judgment_{key}.json").read_text())
-        (judge_dir / f"judgment_{key}.json").rename(results_dir / f"judgment_{key}.json")
         # The judge is a model and its verdicts are its rollouts (CLAUDE.md: "logs" means
         # ROLLOUTS), so the raw per-battle records travel with the comparison.
         raw = (Path(str(cfg.vendor_dir)) / "data" / str(cfg.bench_name)
                / "model_judgment" / judge_model / f"{key}.jsonl")
-        if raw.exists():
-            shutil.copy2(raw, rollouts_dir / f"judgments_{key}.jsonl")
+        if not raw.exists():
+            raise ValueError(f"Arena-Hard cannot score without raw judgments: {raw}")
+        shutil.copy2(raw, rollouts_dir / f"judgments_{key}.jsonl")
+        slices = _score_slices(cfg, key, judgment, raw)
+        judgment["statistics_by_slice"] = slices
+        (results_dir / f"judgment_{key}.json").write_text(json.dumps(judgment, indent=2))
+        primary_slice = str(cfg.thresholds.relative.primary_slice)
+        primary = slices[primary_slice]
         table.append({"model_key": key, "target": run["target"],
-                      "repo": run.get("repo", ""), **_overall(judgment)})
+                      "repo": run.get("repo", ""), "primary_slice": primary_slice,
+                      "win_rate": primary["controlled"]["mean"],
+                      "ci_lower": primary["controlled"]["ci_lower"],
+                      "ci_upper": primary["controlled"]["ci_upper"],
+                      "n_prompts": primary["controlled"]["n"],
+                      "passes": primary["passes"], "by_slice": slices})
     shutil.rmtree(out_dir / "judging", ignore_errors=True)
+    shutil.rmtree(Path(str(cfg.vendor_dir)))
+    cfg.vendor_dir = source_vendor
+    OmegaConf.save(cfg, cfg_path)
 
     table.sort(key=lambda row: row.get("win_rate", 0.0), reverse=True)
     summary = {
+        "report_version": 3,
+        "metric": "style_controlled_win_rate",
+        "primary_slice": str(cfg.thresholds.relative.primary_slice),
         "model_key": f"vs_{baseline}",
         "mode": modes.pop(),
         "baseline": baseline,
         "judge": judge_model,
+        "judge_policy": {
+            "primary_judge": judge_model,
+            "primary_completion_required": True,
+            "auxiliary_judge": str(cfg.judge_validation.reference_judge),
+            "auxiliary_enabled": bool(cfg.judge_validation.get("enabled", False)),
+            "auxiliary_policy": validation_policy,
+        },
+        "judge_validation": validation,
+        "generation_protocol_validation": generation_protocol,
+        "generation_health": {run["model_key"]: _generation_health(run) for run in runs},
+        "smoke": bool(cfg.get("smoke", False)),
         "n_arms": len(table),
         "leaderboard": table,
         # Pointers, not copies: every arm's answers already have a home, and duplicating

@@ -156,7 +156,7 @@ def _file_errors(path: Path) -> tuple[int, int]:
         for row in reader:
             for c in gen_cols:
                 v = row.get(c)
-                if v is None or v == "":
+                if v is None or (v == "" and not row.get(c.replace("generation(", "finish_reason(", 1))):
                     continue
                 generations += 1
                 if v.startswith("[ERROR"):
@@ -392,7 +392,7 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
           f"({100 * empty_rate:.1f}%: pressure {empty['by_type'].get('lie', 0)}, "
           f"belief {empty['by_type'].get('belief', 0)}; scored as {env['MASK_EMPTY_CONTENT']!r})",
           flush=True)
-    cap = float(cfg.get("max_generation_error_rate", 0.05))
+    cap = float(cfg.get("max_generation_error_rate", 0.0))
     if error_rate > cap:
         raise RuntimeError(
             f"MASK pass {k}: {100 * error_rate:.1f}% of generations failed, above "

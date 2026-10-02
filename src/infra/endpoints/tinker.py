@@ -25,10 +25,12 @@ Deliberately NOT supported here:
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
-import sys
 import time
+import uuid
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 
 import requests
@@ -40,12 +42,23 @@ TINKER_SCHEME = "tinker"
 DEFAULT_BASE_MODEL = "openai/gpt-oss-120b"
 SUPPORTED_BASE_MODELS = (DEFAULT_BASE_MODEL,)
 
-# Tinker's own credential, read by the shim process (and sent by evals, which the shim
-# ignores). Named here so a missing key fails before an eval starts rather than mid-run.
+# Tinker's credential is read by its SDK and required by the loopback shim as a bearer
+# token. Named here so a missing key fails before an eval starts rather than mid-run.
 TINKER_KEY_ENV = "TINKER_API_KEY"
 
 _READY_TIMEOUT_S = 600  # first request loads a tokenizer and opens a Tinker session
-_PORT = int(os.environ.get("TINKER_SHIM_PORT", "1234"))
+SHIM_ENV = Path(__file__).resolve().parent / "tinker_env"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def available_port() -> int:
+    """Select a port per target; startup identity checking closes the bind race safely."""
+    configured = os.environ.get("TINKER_SHIM_PORT")
+    if configured:
+        return int(configured)
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
 
 
 def sampler_name(ckpt: str) -> str:
@@ -63,7 +76,7 @@ def sampler_name(ckpt: str) -> str:
 
 
 def resolve_tinker_target(hf_path: str, *, base_model: str = DEFAULT_BASE_MODEL,
-                          port: int = _PORT):
+                          port: int | None = None):
     """Return a TargetSpec for a `tinker://…` checkpoint served by the local shim.
 
     Args:
@@ -82,6 +95,7 @@ def resolve_tinker_target(hf_path: str, *, base_model: str = DEFAULT_BASE_MODEL,
             f"tinker target {hf_path!r} names base model {base_model!r}; this shim renders "
             f"only {', '.join(SUPPORTED_BASE_MODELS)} (harmony). Add its renderer to "
             "src/infra/endpoints/tinker_server.py before evaluating it.")
+    port = available_port() if port is None else port
     return TargetSpec(
         hf_path=hf_path, base_model=base_model, adapter=False,
         # A sampler checkpoint carries no training stamp this repo can read, and the shim
@@ -100,8 +114,9 @@ def is_tinker_target(hf_path: str) -> bool:
 
 
 @contextmanager
-def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = _PORT,
-                reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None):
+def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int | None = None,
+                reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None,
+                context_window: int = 131072, render_date: str | None = None):
     """Run the OpenAI-compatible shim for `ckpt` for the duration of the block.
 
     Args:
@@ -123,17 +138,31 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
     """
     assert os.environ.get(TINKER_KEY_ENV), (
         f"a tinker target needs {TINKER_KEY_ENV} in the environment (.env) — it is unset")
+    if base_model not in SUPPORTED_BASE_MODELS or reasoning not in {"low", "medium", "high"}:
+        raise ValueError("Unsupported Tinker base model or reasoning effort")
+    if not 0 < max_tokens <= context_window <= 131072:
+        raise ValueError("Tinker budgets require 0 < max_tokens <= context_window <= 131072")
+    port = available_port() if port is None else port
+    instance_id = uuid.uuid4().hex
     log_dir = Path(log_dir or Path("output") / "tinker_shim")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"shim_{port}.log"
     env = {**os.environ, "TINKER_CKPT": ckpt, "TINKER_BASE_MODEL": base_model,
            "REASONING_LEVEL": reasoning, "PORT": str(port),
-           "DEFAULT_MAX_TOKENS": str(max_tokens)}
+           "DEFAULT_MAX_TOKENS": str(max_tokens), "TINKER_SHIM_INSTANCE": instance_id,
+           "TINKER_CONTEXT_WINDOW": str(context_window),
+           "TINKER_RENDER_DATE": render_date or date.today().isoformat()}
     base_url = f"http://127.0.0.1:{port}/v1"
     print(f">>> tinker shim: {ckpt} (reasoning={reasoning}) on {base_url} | log {log_path}")
     with log_path.open("w", encoding="utf-8") as log:
-        proc = subprocess.Popen([sys.executable, "-m", "src.infra.endpoints.tinker_server"],
-                                env=env, stdout=log, stderr=subprocess.STDOUT)
+        # Running from repo root exposes src.* without installing the root GPU stack.
+        subprocess.run(["uv", "sync", "--project", str(SHIM_ENV), "--frozen", "--no-dev"],
+                       cwd=REPO_ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+        python = SHIM_ENV / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        # Own the Python process directly. Terminating a Windows uv parent can leave its
+        # server child alive, which would collide with the next checkpoint on this port.
+        proc = subprocess.Popen([str(python), "-m", "src.infra.endpoints.tinker_server"],
+                                cwd=REPO_ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.time() + _READY_TIMEOUT_S
             while time.time() < deadline:
@@ -142,8 +171,16 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
                         f"tinker shim exited with code {proc.returncode}; last log lines:\n"
                         + _tail(log_path))
                 try:
-                    if requests.get(f"{base_url}/models", timeout=5).status_code == 200:
-                        break
+                    response = requests.get(f"{base_url}/models", timeout=5,
+                                            headers={"Authorization": f"Bearer {env[TINKER_KEY_ENV]}"})
+                    if response.status_code == 200:
+                        entries = response.json().get("data", [])
+                        if entries != [] and all(entries[0].get(k) == v for k, v in {
+                            "checkpoint": ckpt, "id": base_model, "instance_id": instance_id,
+                            "reasoning_effort": reasoning, "context_window": context_window,
+                        }.items()):
+                            break
+                        raise RuntimeError(f"Tinker shim port {port} answered with another server identity")
                 except requests.RequestException:
                     pass
                 time.sleep(2)
@@ -158,6 +195,7 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int = 
                 proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 proc.kill()
+                proc.wait(timeout=10)
 
 
 def _tail(path: Path, lines: int = 40) -> str:
