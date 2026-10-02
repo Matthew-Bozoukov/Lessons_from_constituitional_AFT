@@ -17,7 +17,7 @@
 #      lists that default as reasoning on at high effort. grok-4.6 cannot turn reasoning off; it was `low` here
 #      before. The comments in the model block that argue for `low` describe the 2026-08-20 recipe. The two
 #      grok-4.3 stages keep reasoning off (da.yaml's Haiku runs with none) and the corpus-check judges keep `low`.
-#   3. Response-stage `retries` 5 (da.yaml: 2), `max_fail_pct` 5.0 (default 2.0), `budget_usd` 200 (raised 2026-10-02 for a ~1,700-row run).
+#   3. Response-stage `retries` 5 (da.yaml: 2), `max_fail_pct` 5.0 (default 2.0), `budget_usd` 300 (raised 2026-10-02 for a ~1,700-row run at high reasoning effort).
 #      The old arm had retries 12 and max_fail_pct 15; in the smokes no row needed more than 4 attempts except
 #      one that failed all 13, so the extra slack bought nothing.
 # TO REUSE da.yaml's SCENARIOS (grok writes only the prompts and responses): copy a da run's
@@ -256,7 +256,7 @@ max_fail_pct: 5.0
 # the two Sonnet stages. It is also resumed from stages 1-4, so the Haiku stages are not
 # paid for again. Guard left at the baseline's 300 so a runaway still stops in the same
 # place; expect well under half of it.
-budget_usd: 200.0
+budget_usd: 300.0
 
 defaults:
   temperature: 1.0
