@@ -432,7 +432,10 @@ def test_the_two_variants_grew_their_extra_fields_identically(name: str) -> None
     if name == "write_scenarios":
         assert par["fields"]["required"] == ADDED_FIELDS
         assert "fields" not in da
-        assert par.get("diversity") == da.get("diversity")
+        # Until 2026-10-02 the two also shared DA's `diversity` block. DA has since turned its
+        # wave list off and lowered its similarity gate (it deals a sector per call instead);
+        # PAR and PC keep the wave machinery, so only their agreement with each other is checked.
+        assert par.get("diversity") == pc.get("diversity")
     else:
         assert par["save"]["shortfall"] == "shortfall"
         assert "shortfall" not in (da.get("save") or {})
