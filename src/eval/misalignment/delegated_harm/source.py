@@ -1,4 +1,4 @@
-# ABOUTME: Load an immutable external benchmark checkout with two recorded path fixes.
+# ABOUTME: Load an immutable external benchmark checkout with recorded path and UTF-8 fixes.
 # ABOUTME: Missing worlds are explicit exclusions; source assets stay outside this repo.
 from __future__ import annotations
 
@@ -48,8 +48,14 @@ def prepare(cfg):
     for name, (old, new) in patches.items():
         original = git("show", f"HEAD:{name}")
         patched = original.replace(old, new)
+        allowed = {original, patched}
+        if name == "scenarios/tier_screen_off/scenario.py":
+            # Envoy's UTF-8 documentation otherwise decodes as CP1252 on Windows,
+            # silently changing this world's evidence and its frozen-bank hash.
+            patched = patched.replace("p.read_text()", 'p.read_text(encoding="utf-8")')
+            allowed.add(patched)
         actual = (root / name).read_text(encoding="utf-8").strip()
-        if actual not in (original, patched):
+        if actual not in allowed:
             raise ValueError(f"Unrecognized upstream patch in {name}")
         if old not in original:
             raise ValueError(f"Expected patch target missing: {name}")

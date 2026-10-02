@@ -1,6 +1,6 @@
 # ABOUTME: MMLU absolute-benchmark eval for the constitution-SFT arms: subset sampling,
 # ABOUTME: prompting, decoding parity, and the non-inferiority gate vs the Qwen base model.
-# Run: uv run scripts/run_eval.py --target <hf_path> --name mmlu   (this file is the default CONFIG)
+# Run: uv run evals --target <hf_path> --name mmlu
 
 # This is the `absolute_benchmarks` block that configs/eval/arena_hard.yaml scopes out and
 # defers. It exists because the preference eval has a blind spot it names itself: a
@@ -59,13 +59,9 @@ served_names:
 # absolute benchmark, so unlike the preference eval there is no methodological obstacle
 # to using the untuned base as the anchor.
 #
-# READ THIS BEFORE INTERPRETING THE BASE NUMBER. Qwen3.6-27B base is not instruction
-# tuned. Under a chat template it continues the prompt rather than answering it, and the
-# standard fix is exactly the few-shot demonstrations configured below — the demos teach
-# the answer format by pattern, which is why `n_shot: 5` is the default rather than 0.
-# Watch `parse_rate` on this arm specifically. If it comes in materially below the SFT
-# arms, the base number is a FORMAT floor, not a knowledge measurement, and the honest
-# comparison is `accuracy_parsed_only` with the gap disclosed.
+# "Base" means the released checkpoint without our adapter. The July 31 run confirmed
+# that Qwen3.6-27B is post-trained; it is not a raw-pretraining format floor. Retain the
+# same five-shot prompt for all targets and check parsing health before comparison.
 baseline_arm: arm_base
 
 # --- Subset -------------------------------------------------------------------------
@@ -74,14 +70,12 @@ baseline_arm: arm_base
 # would leave some subjects with two questions, making the per-subject breakdown noise.
 subset:
   dataset: "cais/mmlu"
+  revision: "c30699e8356da336a370243923dbaf21066bb9fe" # shared test/dev snapshot
   name: "all"
   split: "test"
-  # 10 x 57 subjects = 570 questions. At ~80% accuracy that is a +/-3.3pp Wilson interval
-  # per arm, and — because arms are paired on identical questions — roughly +/-2pp on the
-  # DIFFERENCE, which is the number the gate below actually reads. Enough to rule out the
-  # 3pp regression we care about; not enough for a confident per-subject claim at n=10.
-  # Raise to 20 (1,140 questions) if a per-subject story matters. Growing it is cheap and
-  # cache-safe: the subset is a seeded superset, so existing generations still hit.
+  # User-selected regression screen: 10 x 57 subjects = 570 questions. Precision depends
+  # on the observed paired subject differences; this sample size does not guarantee
+  # exclusion of the 3pp non-inferiority margin. Keep this fixed across compared arms.
   per_subject: 10
   subjects: null          # null = all 57
   # See src/eval/capabilities/mmlu/mmlu.py: MMLU's answer key is not uniform over positions, so an unshuffled run
@@ -118,9 +112,9 @@ generation:
   # truncated 4.2% of the BASE arm, whose traces ruminate longest. 8192 requires the
   # 16384 --max-model-len the arena-hard pod now boots with: the longest prompt in
   # the per_subject=20 superset measures 3069 tokens with the real tokenizer, and
-  # vLLM 400s an overflowing request rather than clamping it. Safe to mix with
-  # earlier 4096-budget generations at temp 0 — an answer that stopped naturally is
-  # identical under a larger cap, so only length-truncated records need re-running.
+  # vLLM 400s an overflowing request rather than clamping it. Compare against
+  # earlier budgets only as separate historical protocols. Greedy decoding does not
+  # guarantee identical trajectories across serving runs; regenerate matched arms.
   # `truncation_rate` in the output is the check — if it is not ~0, raise this
   # before believing any number in the report.
   max_tokens: 8192
@@ -144,11 +138,8 @@ generation:
 
 # --- Statistics ---------------------------------------------------------------------
 statistics:
-  # Every arm answers identical questions, so the comparison is paired: bootstrap
-  # resamples questions and carries both arms' outcomes together, and McNemar reads the
-  # discordant pairs exactly. Both are materially tighter than treating the arms as
-  # independent samples.
-  bootstrap_rounds: 5000
+  # Paired differences use the existing subject-clustered closed-form interval.
+  # McNemar is an additional discordant-question diagnostic, not the primary gate.
   alpha: 0.05
 
 # --- Pass thresholds — fix these BEFORE looking at results ---------------------------
@@ -158,7 +149,8 @@ thresholds:
   # pass. A point estimate near zero is not sufficient on its own.
   max_accuracy_drop_pp: 3.0
   # Instrument-health gates, checked before any accuracy number is trusted. A breach here
-  # means the harness is broken, not the model — fix and re-run rather than reporting.
+  # makes the capability interpretation invalid until its cause is investigated.
+  # Responses and diagnostic scores are retained, but failed runs cannot publish as valid.
   min_parse_rate: 0.95
   max_truncation_rate: 0.02
 

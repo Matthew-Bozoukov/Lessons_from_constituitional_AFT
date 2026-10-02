@@ -1,0 +1,30 @@
+# ABOUTME: Isolated CPU-only Tinker/Harmony runtime; incompatible cookbook dependencies stay out of Qwen's environment.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_env --frozen python -m src.infra.endpoints.tinker_server
+[project]
+name = "lasr-tinker-shim-env"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "tinker==0.30.4",
+    # 0.5.4+ adds tml-renderers, which has no Windows wheel. GPT-OSS uses the
+    # Python Harmony renderer in 0.5.3; exercise that exact version in tests.
+    "tinker-cookbook==0.5.3",
+    "torch==2.10.0",
+    "fastapi==0.135.2",
+    "uvicorn==0.42.0",
+    "httpx==0.28.1",
+]
+
+[dependency-groups]
+dev = ["pytest==9.0.2"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

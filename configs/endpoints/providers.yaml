@@ -73,6 +73,9 @@ models:
   x-ai/grok-4.6: {order: [xai], price: {in: 2, out: 6}}
 
   # --- open-weight models: no first-party endpoint; ONE host chosen deliberately --
+  openai/gpt-oss-120b:          # MoReBench released judge; catalog checked 2026-09-28.
+    order: [deepinfra/bf16]     # Pin the tier: the same provider also offers fp8/turbo.
+    price: {in: 0.037, out: 0.17}
   nousresearch/hermes-4-405b:     # psychosis red-teamer. Nebius is its ONLY OpenRouter
     order: [nebius]               # host (fp8; checked 2026-08-14).
     price: {in: 1, out: 3}

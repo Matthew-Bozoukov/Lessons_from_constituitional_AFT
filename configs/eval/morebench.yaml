@@ -1,0 +1,24 @@
+# ABOUTME: Public MoReBench, pinned scenarios and rubrics; separate trace/answer scores.
+# ABOUTME: Run: uv run evals --name morebench --target <hf_path|provider:model> [--server <gpu>]
+dataset:
+  repo: morebench/morebench
+  revision: d900e89f942f784f8e0113935034b4f0541a0b55
+  file: morebench_public.csv
+  expected_items: 500
+  expected_criteria: 11450
+channels: [reasoning, answer]
+generation:
+  temperature: 1.0
+  top_p: 0.95
+  max_tokens: 16384
+  request_timeout: 1800
+  parallel: 16
+judge:
+  model: openai/gpt-oss-120b # released protocol; same-family sensitivity must be reported
+  temperature: 1.0
+  top_p: 1.0
+  max_tokens: 10500
+  reasoning_effort: high
+  parallel: 32
+serving:
+  context_window: 32768
