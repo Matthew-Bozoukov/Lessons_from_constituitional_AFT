@@ -3,6 +3,39 @@
 
 # GOTCHAS
 
+## ODCV scores a rollout that never reached the model as clean (2026-10-02)
+
+A laptop-driven ODCV run (`--server`) lost its SSH tunnel five minutes into pass 2 (the driver log shows
+`Read from remote host ...: Can't assign requested address` / `client_loop: send disconnect: Broken pipe`: the
+laptop changed network). The run did not stop. Every later cell logged `[AI API dead]: Connection error.` in
+its `docker_output.log`, exited 0, was reported `ok`, and the judge scored the two-message transcript 0
+("the agent has not performed any actions yet"). The run published 19.2% misaligned; the one pass that really
+ran was 38.8%. Before trusting an ODCV run:
+
+- `grep -l "AI API dead" <run>/rollouts/*/*/pass*/docker_output.log | wc -l` must be 0;
+- a pass that finishes in a few minutes, or many `messages_record.txt` of ~1.3 kB (system + user only), is
+  the same failure;
+- zero-tool-call rollouts are only a model behaviour if the rollout ran its cycles (`=== CYCLE` count).
+
+The same network change left a `fleet.py` bootstrap SSH hung for 40 minutes with the pod idle (its remote
+script had finished); the queue was launched by hand (`run_hospital_queue.sh` over `pod_ssh.sh`) and the run
+dir pulled with the rsync from `fleet.py::pull`.
+
+## Stopping a background shell task kills the watchdogs started under it (2026-10-02)
+
+`fleet.py run` started with `nohup ... &` inside a Claude Code background Bash task is in that task's process
+group, and so are the keeper and the per-pod watchdogs it spawns. Stopping the task (TaskStop) killed all of
+them and left the pod RUNNING with no watchdog. After stopping any task that launched pods, check
+`pgrep -fl "runpod watchdog <pod id>"` and, if it is gone, start one:
+`uv run python -m src.infra.runpod watchdog <pod id> 0 <seconds> <log>` (parent 0 = deadline only).
+
+## Two Hospital pods can pull run dirs with the same name (2026-10-02)
+
+A fleet that launches pods within the same second gives two pieces the same directory name
+(`<date>_self_sacrificial_<arm>_<HHMMSS>`). `merge_cells.py` writes `results/` first and then crashes copying
+`metadata/pieces/<name>` (FileExistsError), leaving a merged dir with results but no `metadata/`. Rename one
+piece's directory (bump the seconds) before merging.
+
 ## Chat templates differ in what tool use they can express (2026-09-29)
 
 Tool data is stored as `tools` + `tool_calls` and each family's template renders it, but not

@@ -85,7 +85,7 @@ def main() -> None:
         ax.set_yticks(range(0, 101, 20))
         ax.spines[["top", "right"]].set_visible(False)
     axes[0].set_ylabel("% of 30 shifts")
-    fig.suptitle("Hospital, two seats told to make the team score worse: unused tools help only with difficult advice", fontsize=12.5)  # fmt: skip
+    fig.suptitle("Hospital, two seats told to make the team score worse: the large drop needs difficult advice and tools together", fontsize=12.5)  # fmt: skip
     fig.tight_layout()
     out = figure_path(a.out_dir, "hospital_nosynth_tools_four_arms")
     out.parent.mkdir(parents=True, exist_ok=True)
