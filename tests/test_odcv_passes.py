@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from omegaconf import OmegaConf
 
-from src.eval.misalignment.odcv import runner
+from src.eval.misalignment.odcv import passes, runner
 from src.eval.misalignment.odcv.passes import audit_pass, combine_passes
 
 MK = "mk"
@@ -221,3 +221,70 @@ def test_audit_pass_counts_a_prompt_only_transcript_as_missing(tmp_path):
     a = audit_pass(run)
     assert a["transcripts_nonempty"] == 2 and a["transcripts_real"] == 1 and a["shell_transcripts"] == 1
     assert a["missing_cells"] == 1 and a["clean"] is False
+
+
+DEAD = "executor-1  | [AI API dead]: Connection error.\n"
+
+
+def test_a_rollout_cut_off_when_the_model_became_unreachable_is_not_judged(tmp_path):
+    """2026-10-02: a tunnel dropped mid-pass; 26 rollouts had real assistant turns up to
+    the drop and 30 were shells. Neither is the arm's behaviour, so neither is combined."""
+    p = make_pass(tmp_path, "p", [("mandated", "A", "whole"), ("mandated", "B", "cut off")])
+    exp = p / "agent_logs" / f"{MK}-mandated" / "experiments"
+    (exp / "B" / "docker_output.log").write_text(DEAD)
+    audit = audit_pass(p)
+    assert not audit["clean"] and audit["missing_cells"] == 1
+    assert audit["transcripts_real"] == 1 and audit["model_unreachable_transcripts"] == 1
+    manifest = combine_passes([p], tmp_path / "combined", MK)
+    assert manifest["n_transcripts"] == 1 and manifest["skipped_empty"] == ["p/mandated/B"]
+
+
+def test_discard_unusable_moves_shells_and_cut_off_rollouts_and_keeps_deadlines(tmp_path):
+    cells = [("mandated", s, "x") for s in ("Whole", "Shell", "CutOff", "Deadline")]
+    p = make_pass(tmp_path, "p", cells)
+    exp = p / "agent_logs" / f"{MK}-mandated" / "experiments"
+    shell = "== Step 1 ==\nrole: system\ncontent: x\n"
+    (exp / "Shell" / "messages_record.txt").write_text(shell)
+    (exp / "CutOff" / "docker_output.log").write_text(DEAD)
+    (exp / "Deadline" / "messages_record.txt").write_text(shell)
+    (exp / "Deadline" / "timeout_meta.json").write_text("{}")
+
+    assert passes.discard_unusable(p) == 2
+    assert sorted(d.name for d in exp.iterdir()) == ["Deadline", "Whole"]
+    gone = tmp_path / "discarded" / "p" / f"{MK}-mandated"
+    assert sorted(d.name for d in gone.iterdir()) == ["CutOff", "Shell"]
+    assert passes.discard_unusable(p) == 0
+
+
+def test_runner_resume_from_finishes_a_prior_runs_passes_and_starts_only_the_rest(runner_env):
+    tmp_path, monkeypatch, target, cfg = runner_env
+    prior = tmp_path / "interrupted"
+    cells = [("mandated", "S1", "x"), ("incentivized", "S2", "y")]
+    make_pass(prior / MK, "20260101_000000", cells)
+    # The second pass died mid-way: one cell whole, one cut off, no manifest.
+    p2 = make_pass(prior / MK, "20260101_010000", cells, manifest=False)
+    s2 = p2 / "agent_logs" / f"{MK}-incentivized" / "experiments" / "S2"
+    (s2 / "docker_output.log").write_text(DEAD)
+    calls: list[str] = []
+
+    def fake(config: str, smoke: bool = False, resume: str = ""):
+        root = Path(OmegaConf.load(config).output_root) / MK
+        calls.append(Path(resume).name if resume else "fresh")
+        if not resume:
+            return make_pass(root, "20260101_020000", cells)
+        assert not s2.exists()  # the cut-off cell left the pass, so the driver re-runs it
+        return make_pass(Path(resume).parent, Path(resume).name, cells)
+
+    monkeypatch.setattr(runner.odcv_rollout, "main", fake)
+    out = tmp_path / "new"
+    out.mkdir()
+    results = runner.run(target, OmegaConf.merge(cfg, {"passes": 3, "resume_from": str(prior)}), out)
+
+    assert calls == ["20260101_010000", "fresh"]  # the clean prior pass ran nothing
+    assert results["passes"]["n_transcripts"] == 6
+    audits = results["passes"]["audits"]
+    assert [a["resumed_from_prior_run"] for a in audits] == [True, True, False]
+    assert [a["discarded"] for a in audits] == [0, 1, 0]
+    for n in (1, 2, 3):
+        assert (out / "rollouts" / "incentivized" / "S2" / f"pass{n}" / "messages_record.txt").is_file()
+    assert (prior / MK / "discarded" / "20260101_010000" / f"{MK}-incentivized" / "S2").is_dir()
