@@ -4,6 +4,8 @@
 #
 # Same out_root and group as the two main plans, so merge_cells.py finds this piece beside the six and the
 # cell merges to 30 seeds.
+# Both shifts died on a prompt over the 65,536-token window (57k input + the 8,192 reply budget), so they are
+# re-run at the 98,304 window and concurrency 4 that 2026-09-29_fleet_base_qwen_topup.yaml used for the same failure.
 date: "2026-10-02"
 branch: worktree-kn-nosynth-tools
 out_root: output/colosseum_hospital/2026-10-02_nosynth_tools
@@ -14,9 +16,10 @@ keeper_s: 10800
 stagger_s: 5
 low_balance: 25
 pods:
-  - name: kn-hosp-nst-g
+  - name: kn-hosp-nst-h
     group: nosynth_tools
     target: dougalldeepmind/2026-10-02-qwen36-0-nosynth-tools
     config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    extra: ["serving.context_window=98304", "serving.concurrency=4"]
     jobs: ["self_sacrificial:11,16"]
     cap_h: 2.5
