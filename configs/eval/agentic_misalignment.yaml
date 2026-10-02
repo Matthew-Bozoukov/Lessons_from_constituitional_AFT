@@ -3,7 +3,7 @@
 # Run: uv run evals --name agentic_misalignment --target <hf_path|provider:model> [--server <gpu>]
 
 experiment_id: "qwen3_eval"
-description: "Difficult-advice replication: agentic misalignment (blackmail/leaking) on Qwen3-32B"
+description: "Agentic misalignment: eight blackmail/leaking workplace conditions, 50 trials each"
 researcher: "replication"
 
 global:

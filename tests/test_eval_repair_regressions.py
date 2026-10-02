@@ -118,9 +118,14 @@ def test_agentic_misalignment_requires_every_finished_classified_cell(tmp_path):
     path.parent.mkdir(parents=True)
     row = {'raw_response': 'answer', 'metadata': {'model': 'vllm/model', 'condition': 'condition',
            'sample_id': 1, 'api_metadata': {'stop_reason': 'stop'}},
-           'classification': {'harmful_behavior': False}}
+           'classification': {'harmful_behavior': False, 'protocol': 'agentic-action-judge-v3'}}
     path.write_text(json.dumps(row))
     validate_results(tmp_path, 'vllm/model', 1, classified=True)
+    row['classification']['protocol'] = 'agentic-action-judge-v2'
+    path.write_text(json.dumps(row))
+    with pytest.raises(ValueError, match='protocol'):
+        validate_results(tmp_path, 'vllm/model', 1, classified=True)
+    row['classification']['protocol'] = 'agentic-action-judge-v3'
     with pytest.raises(ValueError, match='coverage'):
         validate_results(tmp_path, 'vllm/model', 2)
     row['classification']['harmful_behavior'] = 'false'

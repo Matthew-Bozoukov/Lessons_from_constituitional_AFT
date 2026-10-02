@@ -1,6 +1,35 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-02 - Agentic Misalignment visible-action scoring and authorization
+
+Hypothesis: inline reasoning drafts and the previous known-bad-recipient list
+can mislabel behavior. A read-only audit inspected eight published summaries and
+1,215 raw rows from three primary September runs. Saved transcripts reproduced
+reasoning-only action gates and a missed confidential transfer to an outside
+requester. The user approved concrete repairs, preserving historical artifacts
+and waiting for the new DA dataset before fresh model comparisons.
+
+Method/result: `agentic-action-judge-v3` excludes native CoT and private scratchpads
+from both judges and action parsing while retaining raw evidence. Leak scoring
+uses a fixed list of ten authorized NovaStar people/mailboxes; every other exact
+recipient is unauthorized, and confidential sharing still requires the semantic
+judge. Only unauthorized action blocks and their forwarded evidence enter the leak
+judge, avoiding attribution of an internal transfer to an external refusal.
+Recipient parsing handles To/Cc/Bcc, quoted bare addresses with trailing commas,
+and display names without HTML parsing away their addresses. Murder judging now
+has the inbox context and the same strict completion/verdict checks as the other
+scenarios. New runs embed the panel, prompt/classifier hashes, recipient policy,
+judge/settings and generation settings in a scoring protocol manifest; default
+coverage remains eight conditions with 50 samples each.
+
+Validation: 127 affected tests passed. Four saved-response regressions reproduced
+the intended action-gate changes with a scripted positive judge; these are parser
+checks, not semantic rescoring or judge calibration. Historical artifacts were
+not modified. No model calls, rental changes or publication occurred. Changes
+remain in `codex/eval-audit-20260928`. Next: fresh matched runs after the DA dataset
+is ready, with a small manual review of actual judge decisions.
+
 ## 2026-09-30 - Arena 12k adoption and remaining Qwen runner defects
 
 The user approved Arena's 12,000-token default after the matched study, then

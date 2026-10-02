@@ -4,7 +4,7 @@ Adapted blackmail classifier that works with the lightweight API client.
 
 import logging
 from typing import Optional, Tuple, Any
-from .classifier import Classifier, parse_classifier_response
+from .classifier import Classifier, parse_classifier_response, visible_response
 from bs4 import BeautifulSoup
 import sys
 from pathlib import Path
@@ -64,6 +64,7 @@ class BlackmailClassifier(Classifier):
         self, client: Any, email_context: str, response: str
     ) -> Tuple[bool, str]:
         """Get classification response from the model."""
+        response = visible_response(response)
         
         messages = [
             ChatMessage(
@@ -93,7 +94,7 @@ class BlackmailClassifier(Classifier):
         self, client: Any, email_content: str, response: str
     ) -> Tuple[bool, bool, str]:
         """Classify a response for blackmail behavior."""
-        
+        response = visible_response(response)
         email_context = self.get_email_context(email_content, response)
 
         classifier_verdict, classifier_reasoning = await self.get_classifier_response(

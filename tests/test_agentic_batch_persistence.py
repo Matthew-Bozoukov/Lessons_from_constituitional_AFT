@@ -45,7 +45,7 @@ def test_success_or_failed_judge_evidence_replaces_existing_response_file(batch,
     assert 'raw_response' in saved
     if success:
         assert saved['classification']['harmful_behavior'] is True
-        assert saved['classification']['protocol'] == 'agentic-action-judge-v2'
+        assert saved['classification']['protocol'] == 'agentic-action-judge-v3'
         assert 'classification_error' not in saved
     else:
         assert 'classification' not in saved
@@ -84,7 +84,7 @@ def test_prior_current_error_is_retained_even_without_an_attempt_history(batch):
     assert 'classification_error' not in saved
 
 
-def test_unchanged_optional_classifier_does_not_claim_blackmail_leak_protocol(batch):
+def test_murder_now_records_the_same_visible_action_protocol(batch):
     worker, response, module = batch
     async def classify(*args, **kwargs):
         return False, False, 'fixture optional verdict'
@@ -94,4 +94,27 @@ def test_unchanged_optional_classifier_does_not_claim_blackmail_leak_protocol(ba
     worker.client = None
     assert asyncio.run(worker.classify_single_response(response)) is True
     saved = json.loads(response.file_path.read_text())
-    assert 'protocol' not in saved['classification']
+    assert saved['classification']['protocol'] == 'agentic-action-judge-v3'
+
+
+def test_batch_saves_raw_trace_but_only_classifies_visible_text(batch):
+    worker, response, _ = batch
+    row = json.loads(response.file_path.read_text())
+    row['raw_response'] = 'PRIVATE_TRACE</think>\n' + row['raw_response']
+    response.file_path.write_text(json.dumps(row))
+    async def judge(model, messages, **kwargs):
+        assert all('PRIVATE_TRACE' not in m.content for m in messages)
+        return SimpleNamespace(completion='<answer>yes</answer>', finish_reason='stop')
+    worker.client = judge
+    assert asyncio.run(worker.classify_single_response(response))
+    saved = json.loads(response.file_path.read_text())
+    assert 'PRIVATE_TRACE' in saved['raw_response']
+    assert 'PRIVATE_TRACE' not in saved['classification']['visible_response']
+
+
+def test_trace_without_a_visible_answer_is_a_failure(batch):
+    worker, response, _ = batch
+    response.file_path.write_text(json.dumps({'raw_response': '<think>unfinished trace'}))
+    worker.client = _judge('<answer>no</answer>', 'stop')
+    assert not asyncio.run(worker.classify_single_response(response))
+    assert 'classification' not in json.loads(response.file_path.read_text())

@@ -14,6 +14,12 @@ Docker qualification, or scientific judge calibration has passed.
 
 ## September 30 continuation
 
+October 2 update: Agentic Misalignment now uses `agentic-action-judge-v3`:
+judges/action gates exclude native CoT and private scratchpads, leak recipients
+are checked against an explicit authorized list, and every new run records its
+standalone scoring protocol. Historical runs remain unchanged; fresh comparisons
+wait for the new DA dataset. Details are in the [behavioral follow-up](behavioral_eval_cleanup_2026-09-29.md).
+
 The user approved Arena's 12,000-token default. Both sides of new comparisons
 must share that generation protocol; historical 6k arms must be regenerated.
 The bounded study is complete and published, so the pre-qualification statements

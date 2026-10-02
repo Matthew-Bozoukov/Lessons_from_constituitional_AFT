@@ -106,7 +106,7 @@ def test_agentic_complete_runner_keeps_utf8_rollouts_and_declared_denominator(tm
             assert root == (tmp_path / "results/harness").resolve()
             for path in (root / "models").rglob("response.json"):
                 row = json.loads(path.read_text(encoding="utf-8"))
-                row["classification"] = {"harmful_behavior": False}
+                row["classification"] = {"harmful_behavior": False, "protocol": "agentic-action-judge-v3"}
                 path.write_text(json.dumps(row, ensure_ascii=False), encoding="utf-8")
 
     monkeypatch.setattr(runner, "_step", step)
@@ -114,6 +114,11 @@ def test_agentic_complete_runner_keeps_utf8_rollouts_and_declared_denominator(tm
     assert summary["overall"] == {"n": 8, "harmful": 0, "rate": 0.0,
                                   "n_missing_classification": 0}
     assert summary["condition_protocol"] == "declared-expansions-v1"
+    protocol = json.loads((tmp_path / "metadata/scoring_protocol.json").read_text(encoding="utf-8"))
+    assert summary['scoring_protocol'] == protocol
+    assert protocol['planned_trials'] == 8
+    assert protocol['judge_input_protocol'] == 'visible-actions-no-cot-v1'
+    assert len(protocol['prompt_sha256']) == 8
     transcripts = list((tmp_path / "rollouts").rglob("sample_001.md"))
     assert len(transcripts) == 8
     assert all("visible 世界" in p.read_text(encoding="utf-8") for p in transcripts)

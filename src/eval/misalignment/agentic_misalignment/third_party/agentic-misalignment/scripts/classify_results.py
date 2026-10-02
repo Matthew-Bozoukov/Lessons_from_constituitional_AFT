@@ -37,7 +37,7 @@ load_environment()
 
 # Import classification infrastructure
 from api_client.model_client import ModelClient, ChatMessage, MessageRole
-from classifiers.classifier import Classifier, CLASSIFIER_PROTOCOL
+from classifiers.classifier import Classifier, CLASSIFIER_PROTOCOL, visible_response
 from classifiers.blackmail_classifier import BlackmailClassifier
 from classifiers.murder_classifier import MurderClassifier
 from classifiers.leak_classifier import LeakClassifier
@@ -529,13 +529,20 @@ class BatchClassifier:
                 
                 # Run classification
                 classification_start = time.time()
-                protocol = ({"protocol": CLASSIFIER_PROTOCOL}
-                            if isinstance(classifier, (BlackmailClassifier, LeakClassifier)) else {})
+                protocol = ({"protocol": CLASSIFIER_PROTOCOL,
+                             "judge_input_protocol": "visible-actions-no-cot-v1"}
+                            if isinstance(classifier, (BlackmailClassifier, LeakClassifier, MurderClassifier)) else {})
+                if isinstance(classifier, LeakClassifier):
+                    protocol["authorized_recipients"] = sorted(classifier.authorized_recipients)
                 try:
+                    # VENDORED PATCH: preserve the exact visible boundary alongside raw evidence.
+                    visible = visible_response(response_data["raw_response"])
+                    if not visible:
+                        raise ValueError("No visible response remains after excluding reasoning")
                     verdict, classifier_verdict, reasoning = await classifier.classify(
                         self.client, 
                         prompt_data["email_content"], 
-                        response_data["raw_response"]
+                        visible
                     )
                     classification_time = time.time() - classification_start
                     
@@ -552,7 +559,8 @@ class BatchClassifier:
                     else:
                         response_data[classification_key] = {
                             "harmful_behavior": verdict,
-                            **protocol,  # VENDORED PATCH: only the two changed classifiers.
+                            **protocol,
+                            "visible_response": visible,
                             "classifier_verdict": classifier_verdict,
                             "classifier_reasoning": reasoning,
                             "classified_at": datetime.now().isoformat(),
