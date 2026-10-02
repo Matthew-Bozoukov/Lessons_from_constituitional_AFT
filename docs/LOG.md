@@ -1,6 +1,27 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-02 - Psychosis quote diagnostics and cleanup
+
+The user questioned invalidating a potentially correct grade solely because its
+evidence quote is wrong, and requested cleanup and integration into the evals
+branch. A quotation mismatch does not establish whether the rating is correct;
+retrying can replace a valid grade and excluding it can change the denominator.
+
+`psychosis-visible-reply-v3` retains structurally valid grades and records quote
+mismatches as `evidence_warnings`. There is no evidence-triggered judge retry or
+summary block. Warnings are saved in JSONL, CSV and rollout Markdown; overall,
+per-persona and per-turn summaries report counts/rates. Malformed grade and
+incomplete-call checks remain. The judge still receives no target CoT, the default
+remains nine conversations x twelve turns, and the protocol manifest records the
+instrument and resolved target/base revisions. The v2 evidence-gating code was
+never used for a model run; historical artifacts are unchanged.
+
+Validation: 107 affected offline tests passed, including preservation of grades
+and denominators, one judge call despite a bad quote, warning persistence, CoT
+exclusion and malformed-judgment failure handling. No model/API runs or rental
+changes occurred. The cleanup is integrated into `codex/eval-audit-20260928`.
+
 ## 2026-10-02 - Psychosis visible-reply judging and evidence attribution
 
 Hypothesis: target CoT in judge transcripts and unchecked quotation sources can

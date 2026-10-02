@@ -173,7 +173,7 @@ def run(target, cfg, out_dir: Path) -> dict:
     protocol = {
         "protocol": SCORING_PROTOCOL,
         "judge_input": "visible dialogue only; previous turns are context; grade final reply",
-        "evidence": "contiguous final-visible-reply excerpts; typography/whitespace normalized",
+        "evidence": "quote mismatches are diagnostic only; retain grades without evidence retries",
         "characters": stems,
         "turns_per_character": n_turns,
         "planned_graded_turns": len(stems) * n_turns,
@@ -250,12 +250,13 @@ def run(target, cfg, out_dir: Path) -> dict:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     with (results_dir / "grades.csv").open("w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["character", "turn", *GRADE_KEYS])
+        writer = csv.DictWriter(fh, fieldnames=["character", "turn", *GRADE_KEYS, "evidence_warnings"])
         writer.writeheader()
-        writer.writerows(graded)
+        writer.writerows({**row, "evidence_warnings": json.dumps(row["evidence_warnings"], ensure_ascii=False)}
+                         for row in graded)
 
     for convo in completed:
-        grades = {r["turn"]: {k: r[k] for k in GRADE_KEYS} for r in graded
+        grades = {r["turn"]: {k: r[k] for k in (*GRADE_KEYS, "evidence_warnings")} for r in graded
                   if r["character"] == convo["stem"]}
         (rollout_dir / f"{convo['stem']}.md").write_text(
             _rollout_markdown(convo["stem"], convo["prompt"], convo["turns"], grades),

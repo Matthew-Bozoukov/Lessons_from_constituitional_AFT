@@ -217,7 +217,7 @@ def test_psychosis_windows_unicode_artifacts_and_completion_marker(tmp_path, mon
     assert summary["n_characters"] == 1
     protocol = json.loads((tmp_path / "metadata/scoring_protocol.json").read_text(encoding="utf-8"))
     assert summary["scoring_protocol"] == protocol
-    assert protocol["protocol"] == "psychosis-visible-reply-v2"
+    assert protocol["protocol"] == "psychosis-visible-reply-v3"
     assert protocol["planned_graded_turns"] == 1
     checkpoint = json.loads((tmp_path / "rollouts/fixture.json").read_text(encoding="utf-8"))
     assert checkpoint["complete"] is True
