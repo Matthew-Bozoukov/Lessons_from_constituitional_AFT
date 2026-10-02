@@ -70,7 +70,7 @@ def test_swe_default_overlay_is_unchanged_and_tinker_controls_are_explicit(tmp_p
     standard = OmegaConf.to_container(OmegaConf.load(build_overlay("http://model/v1", tmp_path)))
     assert standard == {"model": {"model_kwargs": {"api_base": "http://model/v1"}},
                         "environment": {"run_args": ["--rm", "--network", "none"]}}
-    cfg = OmegaConf.load("configs/eval/swebench_mini/gptoss_tinker.yaml")
+    cfg = OmegaConf.load("configs/eval/swebench_mini/gptoss-tinker.yaml")
     tinker_overlay = OmegaConf.load(build_overlay("http://shim/v1", tmp_path, model_kwargs=dict(cfg.tinker_model_kwargs)))
     assert tinker_overlay.model.model_kwargs.max_tokens == 16384
     assert tinker_overlay.model.model_kwargs.drop_params is False

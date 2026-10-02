@@ -11,7 +11,7 @@ import re
 import sys
 from contextlib import nullcontext
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -492,7 +492,7 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         if args.name == "swebench_mini" and spec.api_base:
             if not is_tinker_target(hf_path) or cfg.get("protocol") != "gptoss-tinker-lite-v1":
                 raise SystemExit("SWE API targets require a Tinker GPT-OSS checkpoint and "
-                                 "--config configs/eval/swebench_mini/gptoss_tinker.yaml; "
+                                 "--config configs/eval/swebench_mini/gptoss-tinker.yaml; "
                                  "the Qwen fleet protocol is unchanged")
         if spec.api_base and not EVALS[args.name].supports_api_target:
             raise SystemExit(

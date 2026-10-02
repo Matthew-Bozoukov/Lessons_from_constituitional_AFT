@@ -4,16 +4,15 @@
 import copy
 import hashlib
 import json
-from pathlib import Path
 from types import SimpleNamespace as N
 
 import pytest
 from omegaconf import OmegaConf
 
 from src.eval.audits.petri.constitution_audit import (
-    ROOT, build_seeds, check_no_constitution_quotes, clauses, prepare, read_manifest,
+    build_seeds, check_no_constitution_quotes, clauses, prepare, read_manifest,
 )
-from src.eval.audits.petri.constitution_provenance import resolve_constitution
+from src.eval.audits.petri.constitution_provenance import ROOT, resolve_constitution
 from src.eval.audits.petri.constitution_results import (
     cluster_interval, paired_seed_difference, summarize_logs,
 )
@@ -25,7 +24,7 @@ TEXT = "# Arbitrary target\n\n## One obligation\n" + " ".join(f"word{i}" for i i
 def config(tmp_path):
     path = tmp_path / "constitution.md"
     path.write_text(TEXT, encoding="utf-8")
-    cfg = OmegaConf.to_container(OmegaConf.load(ROOT / "configs/eval/petri_constitution.yaml"), resolve=True)
+    cfg = OmegaConf.to_container(OmegaConf.load(ROOT / "configs/audits/petri/constitution.yaml"), resolve=True)
     cfg["constitution"] = str(path)
     cfg["target"]["id"] = "org/target"
     cfg["target"]["revision"] = "a" * 40

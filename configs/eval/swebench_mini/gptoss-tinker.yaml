@@ -1,5 +1,5 @@
 # ABOUTME: GPT-OSS120B on Tinker with pinned stock mini-SWE-agent, all 300 Lite tasks; separate from Qwen lite-v5.
-# ABOUTME: Run: uv run evals --name swebench_mini --config configs/eval/swebench_mini/gptoss_tinker.yaml --target tinker://RUN/sampler_weights/NAME
+# ABOUTME: Run: uv run evals --name swebench_mini --config configs/eval/swebench_mini/gptoss-tinker.yaml --target tinker://RUN/sampler_weights/NAME
 protocol: gptoss-tinker-lite-v1
 dataset: princeton-nlp/SWE-bench_Lite
 split: test

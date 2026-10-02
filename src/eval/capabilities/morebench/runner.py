@@ -165,7 +165,7 @@ def run(target, cfg, out_dir: Path) -> dict:
                 'mode': target.spec.mode, 'items_hash': digest(items),
                 'upstream_commit': UPSTREAM_COMMIT, 'judge_provider': pin}
     manifest_path = metadata / 'morebench_manifest.json'
-    if manifest_path.exists() and json.loads(manifest_path.read_text()) != manifest:
+    if manifest_path.exists() and json.loads(manifest_path.read_text(encoding='utf-8')) != manifest:
         raise ValueError('MoReBench resume identity changed; use a new run directory')
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     (metadata / 'items.json').write_text(json.dumps(items, ensure_ascii=False), encoding='utf-8')

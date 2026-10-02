@@ -6,7 +6,7 @@
 This is an adaptive behavioral audit, separate from the registered
 `internalization` declarative/proxy eval. The maintained entrypoint is
 `src.eval.audits.petri.constitution_audit`; its config is
-`configs/eval/petri_constitution.yaml`. No paid audit or human calibration was
+`configs/audits/petri/constitution.yaml`. No paid audit or human calibration was
 performed while implementing it.
 
 ## Selecting the constitution

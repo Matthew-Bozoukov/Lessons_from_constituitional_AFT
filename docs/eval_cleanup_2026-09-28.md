@@ -12,6 +12,26 @@ remains in [the preliminary audit](eval_audit_2026-09-28.md).
 checks of pinned public data. It does not mean that a live Qwen/GPT-OSS run,
 Docker qualification, or scientific judge calibration has passed.
 
+## October 2 integration checks
+
+Recent remote main (`be2761c5`) was merged into the isolated audit branch without
+conflicts before integration. Routine cleanup removed unused imports and made the
+MoReBench manifest read explicitly UTF-8. The standalone Petri audit config now
+lives at `configs/audits/petri/constitution.yaml`, outside the registered-eval
+namespace. The parked Tinker protocol is named
+`configs/eval/swebench_mini/gptoss-tinker.yaml`; callers and documentation use the
+new paths. Both changes satisfy the repository naming gate.
+
+Validation: 516 affected eval/framework/naming tests passed with nine optional or
+platform skips; all 32 Petri tests passed under its pinned runtime (548 passed in
+total). The broader Windows suite initially reported 2,294 passes, 40 skips and
+33 failures. Its branch-specific naming failure was repaired. Other failures
+include absent Windows Torch, POSIX-only test paths, stale DA recipe assertions,
+vendored asset hashes, and internalization cache races. A separate untouched
+`origin/main` snapshot reproduced nine of those failures and four cache-related
+setup errors. This is not a claim that the full repository suite is green.
+No model calls, provider changes or historical-result modifications were needed.
+
 ## September 30 continuation
 
 October 2 update: Agentic Misalignment now uses `agentic-action-judge-v3`:

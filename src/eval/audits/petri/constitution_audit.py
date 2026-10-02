@@ -13,7 +13,7 @@ from pathlib import Path
 
 from omegaconf import OmegaConf
 
-from src.eval.audits.petri.constitution_provenance import ROOT, resolve_constitution
+from src.eval.audits.petri.constitution_provenance import resolve_constitution
 from src.eval.layout import publish_layout
 from src.utils import timestamp, write_run_meta
 
@@ -309,7 +309,7 @@ def run(out: Path) -> dict:
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("prepare", "run", "summarize"))
-    parser.add_argument("--config", default="configs/eval/petri_constitution.yaml")
+    parser.add_argument("--config", default="configs/audits/petri/constitution.yaml")
     parser.add_argument("--target")
     parser.add_argument("--target-revision")
     parser.add_argument("--training-meta")

@@ -78,7 +78,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     from src.infra.endpoints.tinker import is_tinker_target
     tinker_target = is_tinker_target(target.spec.hf_path)
     if tinker_target and cfg.get("protocol") != "gptoss-tinker-lite-v1":
-        raise ValueError("Tinker SWE runs require configs/eval/swebench_mini/gptoss_tinker.yaml")
+        raise ValueError("Tinker SWE runs require configs/eval/swebench_mini/gptoss-tinker.yaml")
     if cfg.get("protocol") == "gptoss-tinker-lite-v1" and not tinker_target:
         raise ValueError("The GPT-OSS/Tinker SWE protocol only accepts tinker:// targets")
     rollouts_dir, results_dir, metadata_dir = publish_layout(out_dir)

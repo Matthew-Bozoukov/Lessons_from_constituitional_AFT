@@ -62,12 +62,12 @@ and its `lite-v5` configuration remain unchanged.
 ```bash
 # After selecting a real sampler checkpoint and preparing native Docker/images:
 uv run evals --name swebench_mini --target tinker://RUN/sampler_weights/NAME \
-  --config configs/eval/swebench_mini/gptoss_tinker.yaml \
+  --config configs/eval/swebench_mini/gptoss-tinker.yaml \
   --no-push subset.fraction=null subset.n=1 grade=true
 
 # Full selection uses all 300 Lite tasks:
 uv run evals --name swebench_mini --target tinker://RUN/sampler_weights/NAME \
-  --config configs/eval/swebench_mini/gptoss_tinker.yaml
+  --config configs/eval/swebench_mini/gptoss-tinker.yaml
 ```
 
 `TINKER_API_KEY` is supplied from the authorized environment; it is forwarded to
