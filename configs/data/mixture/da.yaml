@@ -73,8 +73,13 @@ sources:
     # note + half of every non-t6 trait's writer calls told no AI system appears): 647 rows,
     # t1 73 ... t9 72. Another AI is central in 14% of rows, the assistant itself in 11%.
     # The 09-28 repo @ 14efefbf is what da-15 trained on before this date.
-    dataset: "${oc.env:HF_ORG}/2026-10-01-da-synth"
-    revision: "a2e3434b4cf44e4641f7a28f047d259959109de9"
+    # 2026-10-02: regenerated with each writer call DEALT a sector (43) and its AI presence, the wave
+    # list off, the similarity gate at 0.78 and `dedupe_scenarios` gone (configs/data/synth/da.yaml @
+    # 8f2a0d23): 642 rows, t1 71 ... t9 72, t6 68. Dealt outside t6: 12% the assistant itself, 11% another
+    # AI system, 39% no AI, 38% nothing said; t6 half self, half other. The 10-01 repo @ a2e3434b is what
+    # 2026-10-01-da-15-mix trained on.
+    dataset: "${oc.env:HF_ORG}/2026-10-02-da-synth"
+    revision: "b758bcddd76793c527e70db23e97f3244bb6abca"
     examples: 1
     reasoning: native
     balance_by: trait_id
