@@ -380,6 +380,78 @@ def _gcd(a: int, b: int) -> int:
     return a
 
 
+def deal_unit_axes(axes: dict[str, dict], unit_ids: list[str],
+                   planned_calls: dict[int, int]) -> dict[tuple[str, int], list[str]]:
+    """Every `per_trait` axis's label for each PLANNED call of each unit: `(axis, unit
+    index) -> [label for call 0, call 1, ...]`.
+
+    Three properties, each of which a modular index (`labels[(ti + bi) % len]`) loses as
+    soon as a stage declares a second per-unit axis or unequal weights:
+
+    - EXACT PER UNIT. A unit's labels are a largest-remainder apportionment of its own
+      weights (`unit_weights` if it has them, else the axis's `weights`) over its own
+      planned calls. When the remainder ties -- 24 labels over 18 calls is a 24-way tie --
+      the slots go to the labels the corpus has seen least so far, so 18-of-24 does not
+      hand every unit the same 18 and leave six labels at zero.
+    - INDEPENDENT ACROSS AXES. Axes are dealt in config order, and each later axis is
+      PLACED against the ones before it: a call takes whichever of the unit's remaining
+      labels has so far met that call's earlier-axis labels least, within the unit first
+      and across the corpus second. Two axes that both stepped one label per call would
+      otherwise be one axis under two names: in the sector x AI design of 2026-10-02 the
+      cyclic index gives every sector the same AI label in every unit.
+    - A `fixed` unit carries its pinned label on every call and takes no part in the
+      apportionment; a later axis still sees that label as the one it is paired with.
+
+    Pure and derived from the plan alone (no RNG), so a resume, a make-up round and the
+    estimator all see the same deal. A make-up call (batch index past the plan) wraps
+    around its unit's own list -- the caller indexes `[bi % len]`.
+    """
+    names = list(axes)
+    dealt: dict[str, dict[str, int]] = {name: {} for name in names}
+    joint: dict[tuple, int] = {}
+    out: dict[tuple[str, int], list[str]] = {}
+    for ti, uid in enumerate(unit_ids):
+        calls = int(planned_calls.get(ti, 0))
+        for k, name in enumerate(names):
+            spec = axes[name]
+            pinned = (spec.get("fixed") or {}).get(uid)
+            if pinned is not None:
+                out[(name, ti)] = [pinned] * calls
+                continue
+            weights = {str(lab): float(w) for lab, w in
+                       ((spec.get("unit_weights") or {}).get(uid) or spec["weights"]).items()}
+            order = list(weights)
+            total = sum(weights.values())
+            exact = {lab: calls * weights[lab] / total for lab in order}
+            left = {lab: int(exact[lab]) for lab in order}
+            spare = sorted(order, key=lambda lab: (-round(exact[lab] - left[lab], 9),
+                                                   dealt[name].get(lab, 0) / weights[lab],
+                                                   order.index(lab)))
+            for lab in spare[: calls - sum(left.values())]:
+                left[lab] += 1
+            before = [(prev, out[(prev, ti)]) for prev in names[:k]]
+            here: dict[tuple, int] = {}
+            seq: list[str] = []
+            for bi in range(calls):
+                met = [(prev, labels[bi]) for prev, labels in before]
+
+                def cost(lab: str) -> tuple:
+                    w = weights[lab]
+                    return (sum(here.get((m, lab), 0) for m in met) / w,
+                            sum(joint.get((m, name, lab), 0) for m in met) / w,
+                            -left[lab] / w, order.index(lab))
+
+                lab = min((c for c in order if left[c] > 0), key=cost)
+                left[lab] -= 1
+                seq.append(lab)
+                dealt[name][lab] = dealt[name].get(lab, 0) + 1
+                for m in met:
+                    here[(m, lab)] = here.get((m, lab), 0) + 1
+                    joint[(m, name, lab)] = joint.get((m, name, lab), 0) + 1
+            out[(name, ti)] = seq
+    return out
+
+
 def sample_labels(labels: list[str], length: int, seed: int, axis: str) -> list[str]:
     """`length` uniform draws from `labels` with EXACT counts (n/k each, +-1), in a seeded
     random order.
@@ -592,7 +664,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         diversity:
           avoid: ["academic research: a postdoctoral researcher ...", ...]
           wave_size: 12          # batches per wave; the ban list grows between waves
-          max_carry: 150         # cap on lines carried into a prompt
+          max_carry: 150         # cap on lines carried into a prompt; 0 carries none
           reject_cosine: 0.86    # a scenario this close to an existing one is refused
           max_regen_rounds: 2    # make-up passes for traits left short by rejection
 
@@ -617,6 +689,25 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     prompt for a spread gets a spread within the batch and nothing across batches, which
     is the same failure the `diversity:` block exists for. Proportions are approximate,
     like `assign_arms`' -- the realised split is printed and recorded in the manifest.
+
+    `per_trait: true` deals an axis WITHIN each unit instead of across the run, so every
+    unit meets the labels in the declared proportions (a corpus-wide deal only promises
+    the marginal):
+
+        rotate:
+          ai:
+            per_trait: true
+            weights: {none: 1, other: 1}
+            fixed: {t6: open}            # this unit always carries this label
+            unit_weights: {t1: {none: 1, other: 3}}   # this unit's own split
+            text: {open: "", none: "...", other: "..."}
+
+    `fixed` pins a unit to one label, which may sit outside `weights` when `text`
+    declares it; `unit_weights` replaces the split for one unit. A per-unit axis's text
+    is stamped on each scenario as `<name>_text`, so a later stage renders the same line.
+    One per-unit axis with equal weights is dealt by the cycle `labels[(unit + batch) %
+    len]`, as it always has been. A second per-unit axis, or unequal weights, is dealt by
+    `deal_unit_axes`: exact per unit, and placed so the axes are independent of each other.
 
     Optional `library:` block deals entries from a YAML file, `n` per batch, into one
     rendered prompt variable:
@@ -650,20 +741,26 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     div = dict(sc.get("diversity") or {})
     rotate = {k: dict(v) for k, v in (sc.get("rotate") or {}).items()}
     # A preregistered factorial recipe needs every unit to visit every label, not
-    # merely the requested marginal proportions across the whole corpus.
+    # merely the requested marginal proportions across the whole corpus. Unequal weights
+    # are dealt exactly per unit (`deal_unit_axes`); a zero weight is a label that is
+    # never dealt, which is a `fixed`-only label and belongs in `text`, not here.
     for name, spec in rotate.items():
         if spec.get("per_trait"):
-            if not spec.get("weights") or any(w != 1 for w in spec["weights"].values()):
-                raise ValueError(f"{name}: per_trait rotation requires nonempty equal unit weights")
+            if not spec.get("weights") or any(float(w) <= 0 for w in spec["weights"].values()):
+                raise ValueError(f"{name}: per_trait rotation requires nonempty positive weights")
         # `fixed:` pins a unit to one label instead of rotating it -- for a unit whose
         # principle only makes sense under that label (2026-09-30: t6, which is about AI,
         # cannot take the half of an AI axis that says no AI appears).
         fixed = spec.get("fixed") or {}
         if fixed and not spec.get("per_trait"):
             raise ValueError(f"{name}: `fixed` pins units within a per_trait rotation; set per_trait: true")
-        bad = {u: lab for u, lab in fixed.items() if lab not in (spec.get("weights") or {})}
+        # A pinned label may sit OUTSIDE the weights, so long as `text` declares it: that
+        # is a label no rotating unit ever draws (2026-10-02: t6 pinned to `open`, whose
+        # text is empty, while every other unit splits `none`/`other`).
+        bad = {u: lab for u, lab in fixed.items()
+               if lab not in (spec.get("weights") or {}) and lab not in (spec.get("text") or {})}
         if bad:
-            raise ValueError(f"{name}: fixed labels not in weights: {bad}")
+            raise ValueError(f"{name}: fixed labels not in weights (or declared in text): {bad}")
         # `unit_weights:` gives a unit its own split in place of the even one -- a share
         # that follows where a label arises naturally rather than forcing it everywhere
         # (2026-09-30: assistant-self rows, which the writer produces for t1/t6-t9 but not
@@ -738,6 +835,16 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             for ti in range(len(traits))
             if traits[ti].trait_id in (spec.get("unit_weights") or {})
         }
+        # ONE per-unit axis with equal weights keeps the cyclic deal above and below, label
+        # for label, so every corpus published under it (da-self, da-otherai, the first
+        # 2026-10-01 da) re-deals identically. Anything the cycle cannot express -- a
+        # second per-unit axis, which it would lock to the first, or unequal weights,
+        # which it would ignore -- is dealt by `deal_unit_axes` instead.
+        per_unit = {name: spec for name, spec in rotate.items() if spec.get("per_trait")}
+        cyclic = len(per_unit) <= 1 and all(
+            len({float(w) for w in spec["weights"].values()}) == 1 for spec in per_unit.values())
+        placed = None if cyclic else deal_unit_axes(
+            per_unit, [t.trait_id for t in traits], planned_calls)
 
         def axes_of(spec: tuple) -> dict[str, str]:
             ti, bi, _n = spec
@@ -746,6 +853,11 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             for name, seq in deals.items():
                 if rotate[name].get("per_trait"):
                     pinned = (rotate[name].get("fixed") or {}).get(traits[ti].trait_id)
+                    if placed is not None:
+                        # A make-up call (bi past the plan) wraps around the unit's own deal.
+                        own = placed[(name, ti)]
+                        out[name] = pinned or own[bi % len(own)]
+                        continue
                     own = unit_deals.get((name, ti))
                     labels = list(rotate[name]["weights"])
                     out[name] = pinned or (own[bi % len(own)] if own else labels[(ti + bi) % len(labels)])
@@ -799,8 +911,13 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
 
         def render_avoid() -> str:
-            """The do-not-repeat list as it stands, newest last, capped."""
-            if not ban:
+            """The do-not-repeat list as it stands, newest last, capped.
+
+            `max_carry: 0` carries NOTHING, in every round: a slice by `-0` is the whole
+            list, which is how a recipe that meant "no list" would have shown a make-up
+            call every scenario written so far.
+            """
+            if not ban or max_carry <= 0:
                 return ""
             return (
                 "These situations already exist in this corpus. Do not write another "

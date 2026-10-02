@@ -11,7 +11,9 @@ from pathlib import Path
 
 run = Path(sys.argv[1])
 rows = [json.loads(l) for l in open(run / "dataset.jsonl")]
-audit = {json.loads(l)["scenario_id"]: json.loads(l) for l in open(run / "stage_7_revise_responses.jsonl")}
+# The stage NUMBER moved on 2026-10-01 (da dropped `dedupe_scenarios`), so the snapshot is found by name.
+(revised,) = sorted(run.glob("stage_*_revise_responses.jsonl"))
+audit = {json.loads(l)["scenario_id"]: json.loads(l) for l in open(revised)}
 
 
 def parts(r):

@@ -200,8 +200,9 @@ def test_estimate_prices_real_configs_and_ablation_out():
     # stage assumed at 3,200 in / 1,800 out per call that really ran 10,370 / 2,869.
     # The assertion pins the estimator's arithmetic, NOT the real cost of a run.
     # $56.18 at 693 records; the config moved to `total_scenarios: 2000` on 2026-08-13 to
-    # size the v2 corpus against v1's 2,203.
-    assert full["total_usd"] == 131.16
+    # size the v2 corpus against v1's 2,203. $131.16 until 2026-10-02, when the writer went
+    # from 8 scenarios a call to 4 (a label is dealt per call): twice the scenario calls.
+    assert full["total_usd"] == 133.1
     ablated = estimate({**da, "ablate": ["revise_responses"]})
     calls = {r["stage"]: r["calls"] for r in full["per_stage"]}
     assert calls["rewrite"] == 2000

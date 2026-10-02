@@ -806,7 +806,11 @@ def test_the_trained_turn_carries_das_lint() -> None:
     assert reasoning["fields"] == ["reasoning"] and reasoning["min_chars"] == 700
     assert response["fields"] == ["response"]
     da_bans = _stage(DA_CFG, "revise_responses")["lint"]["ban_patterns"]
-    assert set(da_bans) <= set(reasoning["ban_patterns"])
+    # DA's two reviser-leak bans (2026-10-02: "the draft", "draft response") are about DA's own
+    # draft-then-revise stages and are not part of the voice contract this recipe inherits.
+    da_only = {r"\bthe draft\b", r"\bdraft (?:response|reasoning|reply)\b"}
+    assert da_only <= set(da_bans)
+    assert set(da_bans) - da_only <= set(reasoning["ban_patterns"])
     assert reasoning["ban_patterns"] == response["ban_patterns"]
     ok = {
         "reasoning": _long(
