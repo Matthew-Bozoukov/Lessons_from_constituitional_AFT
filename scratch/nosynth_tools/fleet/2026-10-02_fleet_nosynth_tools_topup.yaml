@@ -1,0 +1,22 @@
+# ABOUTME: Top-up for the 2026-10-02 nosynth-tools fleets: the two shifts (seeds 11 and 16) that failed in the
+# ABOUTME: sweeps on kn-hosp-nst-c and kn-hosp-nst-d, re-run on one pod with the same config, peer and code.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/nosynth_tools/fleet/2026-10-02_fleet_nosynth_tools_topup.yaml
+#
+# Same out_root and group as the two main plans, so merge_cells.py finds this piece beside the six and the
+# cell merges to 30 seeds.
+date: "2026-10-02"
+branch: worktree-kn-nosynth-tools
+out_root: output/colosseum_hospital/2026-10-02_nosynth_tools
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 10800
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-nst-g
+    group: nosynth_tools
+    target: dougalldeepmind/2026-10-02-qwen36-0-nosynth-tools
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:11,16"]
+    cap_h: 2.5
