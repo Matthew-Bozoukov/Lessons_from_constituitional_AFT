@@ -2615,6 +2615,18 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         ids = [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]
         dup = {i for i in ids if ids.count(i) > 1} if len(specs) > 1 else set()
         assert not dup, f"source runs share scenario ids ({sorted(dup)[:3]} ...); every id-keyed join would take the wrong row"
+        # `extend_from`: the prompts the prior corpus already answered are set aside, so
+        # the sample (or the whole pool) is drawn from what it has not -- the run adds
+        # rows to the corpus instead of answering the same prompts twice.
+        prior = getattr(ctx, "prior", None)
+        set_aside = 0
+        if prior is not None:
+            before = len(source)
+            source = [r for r in source
+                      if str(r.get("scenario_id") or r.get("record_id") or "") not in prior.ids]
+            set_aside = before - len(source)
+            print(f">>> load_source_run: extend_from -- {set_aside} prompts already answered in "
+                  f"{prior.repo}@{prior.revision[:8]} set aside; {len(source)} remain", flush=True)
         if src_cfg.get("sample"):
             source = sample_records(source, src_cfg["sample"])
         label = runs_meta[0]["source_run"] if len(runs_meta) == 1 else " + ".join(m["source_run"] for m in runs_meta)
@@ -2623,6 +2635,7 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             "source_git_sha": runs_meta[0]["source_git_sha"],
             "source_constitution_sha256": runs_meta[0]["source_constitution_sha256"],
             "runs": runs_meta,
+            "set_aside_prior_ids": set_aside,
             "sample": ({**dict(src_cfg["sample"]), "n_drawn": len(source),
                         "drawn_ids": [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]}
                        if src_cfg.get("sample") else None),

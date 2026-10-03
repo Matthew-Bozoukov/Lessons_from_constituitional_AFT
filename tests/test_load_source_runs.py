@@ -64,3 +64,18 @@ def test_single_source_without_sample_is_unchanged(tmp_path):
     out = op_load_source_run({"name": "load"}, ctx.cfg).fn(ctx, [], None)
     assert [r["scenario_id"] for r in out] == ["a1", "a2"]
     assert ctx.manifest_extra["source"]["source_run"] == str(a) and ctx.manifest_extra["source"]["sample"] is None
+
+
+def test_extend_from_sets_aside_the_prompts_the_prior_already_answered(tmp_path):
+    from src.data.synth.ours.extend import Prior
+    a = _run_dir(tmp_path, "run_a", [f"a{i}" for i in range(9)])
+    answered = {"a0", "a1", "a2", "a3", "a4", "a5"}
+    prior = Prior(repo="org/prior-synth", revision="abc123def456",
+                  rows=[{"messages": [], "metadata": {"scenario_id": i}} for i in answered],
+                  scenarios=[], scenario_file="stages/stage_4_revise_prompts.jsonl", ids=frozenset(answered))
+    ctx = _ctx(tmp_path, {"local_dir": str(a), "sample": {"total": 3, "by": "trait_id", "seed": 1}})
+    ctx.prior = prior
+    out = op_load_source_run({"name": "load"}, ctx.cfg).fn(ctx, [], None)
+    assert sorted(r["scenario_id"] for r in out) == ["a6", "a7", "a8"]   # only what the prior has not answered
+    meta = ctx.manifest_extra["source"]
+    assert meta["set_aside_prior_ids"] == 6 and meta["sample"]["n_drawn"] == 3

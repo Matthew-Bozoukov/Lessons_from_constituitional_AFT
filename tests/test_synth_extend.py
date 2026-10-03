@@ -2,6 +2,7 @@
 # ABOUTME: rows ride into dataset.jsonl, and an incompatible prior is refused before spend.
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 
@@ -172,3 +173,16 @@ def test_pipeline_refuses_a_missing_prefix_before_any_stage_runs(tmp_path, monke
 def test_pipeline_without_extend_from_records_none(tmp_path):
     m = pipeline.run(_cfg(tmp_path))
     assert m["extend_from"] is None and "dataset" not in m["counts"]
+
+
+def test_a_load_source_run_arm_extends_without_a_prefix():
+    from src.data.synth.ours.extend import loads_source_ids
+    sha = hashlib.sha256(b"c").hexdigest()
+    cfg = {"pipeline": "da-grok-resp", "stages": [{"name": "load_prompts", "kind": "load_source_run"}]}
+    assert loads_source_ids(cfg) and not loads_source_ids({"stages": [{"kind": "write_scenarios"}]})
+    # the ids are the source's, so no prefix is minted and none is demanded ...
+    check_compatible(_prior(pipeline="da-grok-resp", constitution_sha256=sha), cfg, sha)
+    # ... but a prior whose rows cannot be told apart is still refused
+    with pytest.raises(ValueError, match="disjointness"):
+        bad = _prior(pipeline="da-grok-resp", constitution_sha256=sha)
+        check_compatible(dataclasses.replace(bad, ids=frozenset({"t1_b00_s000", ""})), cfg, sha)

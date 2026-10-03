@@ -80,18 +80,22 @@ def load_prior(spec: str) -> Prior:
         "extended (a halted one holds stage snapshots and no final dataset)")
     snap = next((f for f in sorted(files) if f.endswith("_dedupe_scenarios.jsonl")), None) \
         or next((f for f in sorted(files) if f.endswith("_write_scenarios.jsonl")), None)
-    assert snap, f"{repo}@{sha[:8]} carries no scenario snapshot under stages/ to dedupe against"
 
     def get(name: str) -> str:
         return hf_download(repo, name, repo_type="dataset", revision=sha)
 
-    rows = _read(get("dataset.jsonl"))
-    scenarios = _read(get(snap))
     manifest = json.load(open(get("manifest.json"), encoding="utf-8")) \
         if "manifest.json" in files else {}
+    # A prior whose records came from `load_source_run` wrote no scenarios: its prompts
+    # are another corpus's, and the loader (not the diversity gate) keeps the extension
+    # disjoint from it, so there is nothing to dedupe against and no snapshot to want.
+    assert snap or loads_source_ids(manifest.get("config") or {}), \
+        f"{repo}@{sha[:8]} carries no scenario snapshot under stages/ to dedupe against"
+    rows = _read(get("dataset.jsonl"))
+    scenarios = _read(get(snap)) if snap else []
     ids = frozenset(str((r.get("metadata") or {}).get("scenario_id") or "") for r in rows)
     return Prior(repo=repo, revision=sha, rows=rows, scenarios=scenarios,
-                 scenario_file=snap, run_id=str(manifest.get("run_id", "")),
+                 scenario_file=snap or "", run_id=str(manifest.get("run_id", "")),
                  git_sha=str(manifest.get("git_sha", "")),
                  pipeline=str(manifest.get("pipeline", "")),
                  constitution_sha256=str(manifest.get("constitution_sha256", "")),
@@ -115,6 +119,16 @@ def check_compatible(prior: Prior, cfg: dict, constitution_sha256: str) -> None:
             f"extend_from: {prior.repo} was generated against a different constitution "
             f"(sha256 {prior.constitution_sha256[:12]} vs {constitution_sha256[:12]}). "
             "Regenerate rather than extend.")
+    if loads_source_ids(cfg):
+        # A run whose records come from `load_source_run` keeps the SOURCE's scenario ids
+        # (the join back to the prompts' corpus is the point of the arm), so no prefix is
+        # minted; disjointness comes from the loader setting aside every id the prior
+        # already answered, and merged_rows still refuses any that slips through.
+        if not prior.ids or "" in prior.ids:
+            raise ValueError(
+                f"extend_from: {prior.repo}'s dataset rows do not all carry "
+                "metadata.scenario_id; disjointness cannot be checked.")
+        return
     prefix = str(cfg.get("id_prefix", ""))
     if not prefix:
         raise ValueError(
@@ -130,6 +144,11 @@ def check_compatible(prior: Prior, cfg: dict, constitution_sha256: str) -> None:
         raise ValueError(
             f"extend_from: {prior.repo}'s dataset rows do not all carry "
             "metadata.scenario_id; disjointness cannot be checked.")
+
+
+def loads_source_ids(cfg: dict) -> bool:
+    """True when this run's records (and so their ids) come from another run's records."""
+    return any(str(st.get("kind")) == "load_source_run" for st in (cfg.get("stages") or []))
 
 
 def merged_rows(prior: Prior, rows: list[dict]) -> list[dict]:
