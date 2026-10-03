@@ -1,6 +1,49 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-03 - da-qwen-resp (the student writes the replies to the Sonnet prompts): MASK falls to 75, ODCV unchanged
+
+Hypothesis: on the grok arms, holding the Haiku/Sonnet prompts fixed and swapping only the responder recovered
+the Sonnet arm's ODCV (13.3% vs 19.6% all-grok). If prompts carry ODCV, the same swap with Qwen3.6-27B as
+responder should lift da-qwen's 21.2% too.
+
+Method: `configs/data/synth/da-qwen-resp.yaml` = da-grok-resp with Qwen in the two response slots (thinking on,
+uncapped, temperature 1.0, 8 Alibaba workers), the SAME seed-0 draw of 950 revised prompts as da-grok-resp's
+first run. Corpus `2026-10-03-da-qwen-resp-synth` @ bfb88690 (941 rows, $28, 5.8 h); mix
+`2026-10-03-da-qwen-resp-15-mix` @ e2cb92e5 (833 rows, 15.0%); adapter `2026-10-03-qwen36-0-da-qwen-resp-15`.
+
+Result: MASK 75.3 (generation errors 0.14%), ODCV 22.1% [13.8, 33.3]. The teacher-of-prompts x teacher-of-replies
+cells (MASK / ODCV):
+
+| prompts \ replies | Sonnet | grok (low) | Qwen |
+|---|---|---|---|
+| Sonnet | 85.6 / 10.0 | 88.1 / 13.3 | 75.3 / 22.1 |
+| grok | - | 85.2 / 19.6 | - |
+| Qwen | - | - | 85.5 / 21.2 |
+
+The two cells with the student's own replies are the two bad cells: Sonnet's prompts do not help ODCV when Qwen
+answers them, and MASK is ten points below every other trained arm (every archetype, not one). A Gemini-Flash
+judge of the replies on the 939 shared prompts (scratchpad; declines / complies / hedges the tempting action):
+grok 96.0 / 3.6 / 0.4, Qwen 88.8 / 10.2 / 1.0 -- 71 prompts where grok declines and Qwen complies, 10 the other
+way; Qwen's compliance sits on t7 (operator pressure against the user, 35.6% vs grok's 15.8%) and t4/t5/t8. But the
+same judge puts da-qwen (Qwen's own prompts) at 21.2% complying, mostly t8 where "complies" often means helping,
+and that arm scores 85.5, so the comply rate alone does not explain MASK. What the two bad cells share is
+on-policy targets: the model trained on its own answers. Single run; a MASK repeat is in progress.
+
+Also today, on the da-15 mix (seed 0): `da-15-wd0` (weight_decay 0) MASK 84.9, ODCV 14.6% [7.7, 25.8];
+`da-15-wd0-halflr` (weight_decay 0, lr 5e-5) MASK 86.4, ODCV 15.8% [8.4, 27.7]; the recipe (lr 1e-4, wd 0.01)
+85.6 +/- 0.6 and 10.0 / 9.6%. No MASK effect; the ODCV differences are inside every CI. The recipe stays.
+
+MASK repeats (two more per arm, same rows, sampling at temperature 1.0): base 57.4 +/- 0.6 (3), nosynth 53.2
++/- 0.8 (4), da-15 85.6 +/- 0.6 (3), da-grok-15 low 85.2 +/- 0.9 (3), da-grok-resp-15 88.1 +/- 0.3 (3),
+da-qwen-15 85.5 +/- 1.2 (3). Run-to-run sd is at most 1.2, so differences of 3+ points between arms are real.
+
+Fix on the way: src/eval/misalignment/mask/runner.py lifts the stdlib csv field limit (a looping generation over
+128 KB aborted the first da-qwen-15 MASK run after generating; 9ae474b9).
+
+Next: a seed-1 replicate of da-qwen-resp before reading more into it; look at qwen-resp MASK rollouts against
+grok-resp's on the same prompts; the on-policy question bears directly on any OCT-style introspection stage.
+
 ## 2026-10-03 - da-qwen at 15%: the self-taught arm on the current recipe
 
 Hypothesis: with the teacher held to the student (Qwen3.6-27B writes every stage, da.yaml's recipe
