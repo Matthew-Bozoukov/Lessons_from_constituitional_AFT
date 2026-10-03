@@ -1,12 +1,14 @@
-# ABOUTME: da-grok with the SCENARIO WRITER REMOVED: Haiku's scenarios from 2026-10-02-da-synth, then grok-4.3 and grok-4.6 for
-# ABOUTME: every stage after. Run: uv run synth run --config configs/data/synth/da-grok-revise.yaml [--smoke]
+# ABOUTME: The responder swap on the current da corpus (da-grokresp redone): Haiku's scenarios and Haiku/Sonnet's prompts frozen from
+# ABOUTME: 2026-10-02-da-synth, grok-4.6 writing ONLY the responses. Run: uv run synth run --config configs/data/synth/da-grok-revise.yaml [--smoke]
 #
-# 2026-10-03. Everything below is configs/data/synth/da-grok.yaml @ d27fde92 verbatim, comments included (so the comments
-# describe that arm), except: (1) `write_scenarios` is replaced by `load_scenarios` (kind load_source_run) and the
-# `source:` block near the stage list; (2) the smoke block shrinks the sample instead of the writer's counts. The
-# `rotate` axes and the diversity gate went with the writer: the loaded scenarios already carry their dealt `ai` and
-# `sector` labels and passed the 0.78 gate when they were written. Isolates the writer: if these rows score like
-# da-grok's, grok's own scenarios were not the problem.
+# 2026-10-03. Recreates configs/data/synth/da-grokresp.yaml (2026-08-24, the 716-prompt responder swap) on today's corpus and
+# recipe: everything the model is asked -- situation, system prompt, user message, trait balance, dealt sector and AI
+# line -- is the baseline's byte for byte; only the assistant turn (reasoning + reply, drafted and revised) is grok's.
+# Everything below is configs/data/synth/da-grok.yaml @ d27fde92 verbatim, comments included (so the comments describe
+# that arm), except: (1) `write_scenarios`, `draft_prompts` and `revise_prompts` are replaced by `load_prompts`
+# (kind load_source_run) and the `source:` block near the stage list, which reads the revised-prompts snapshot of the two
+# runs behind the 1,283-row corpus; (2) the smoke block shrinks the sample instead of the writer's counts. The `rotate`
+# axes and the diversity gate went with the writer. grok-4.3 is no longer used by any stage that runs.
 
 # REBUILT 2026-10-02 on the current da.yaml (dealt sector and AI presence, wave list off, similarity gate 0.78).
 # The arm this file used to hold -- the 2026-08-20 recipe behind 2026-08-20-difficult-advice-grok-716 and
@@ -163,7 +165,7 @@ ablate: []
 smoke:
   # A seeded pipeline takes its size from `source`, so the smoke shrinks the SAMPLE (one scenario per trait).
   source:
-    snapshot: stage_2_write_scenarios.jsonl
+    snapshot: stage_4_revise_prompts.jsonl
     runs:
     - hf_repo: dougalldeepmind/2026-10-02-da-synth
       revision: 2ab0818866374b8d3f1351a36e17c0155026aadd
@@ -397,12 +399,13 @@ trait_notes:
   t6: "\n- The situation concerns the values, character or nature of AI: the assistant's own, another AI system,
     or AI systems in general. The person asks for advice on a related matter, rather than giving instructions."
 
-# THE SCENARIOS ARE NOT GENERATED: they are the Haiku-written scenarios behind 2026-10-02-da-synth (1,283 rows), read
+# THE PROMPTS ARE NOT GENERATED: they are the revised prompts behind 2026-10-02-da-synth (1,283 rows; Haiku scenarios,
+# Haiku drafts, Sonnet revisions), read
 # from the two runs that made it -- 650 at revision 2ab08188 (the first run) and 642 at 305914d5 (the extension,
 # ids r2_*) -- and sampled evenly over the nine traits. 950 so that about 915 rows survive the response stages'
 # usual ~3% loss: the grok 15% mix (2026-10-02-da-grok-15-mix) used 815 rows, and Jamie asked for that plus 100.
 source:
-  snapshot: stage_2_write_scenarios.jsonl
+  snapshot: stage_4_revise_prompts.jsonl
   runs:
   - hf_repo: dougalldeepmind/2026-10-02-da-synth
     revision: 2ab0818866374b8d3f1351a36e17c0155026aadd
@@ -413,8 +416,8 @@ source:
 stages:
 - name: chunk_constitution
   kind: segment
-- name: load_scenarios
-  kind: load_source_run      # the Haiku scenarios of 2026-10-02-da-synth, from `source:` above; nothing is written here
+- name: load_prompts
+  kind: load_source_run      # the revised prompts of 2026-10-02-da-synth (Haiku scenarios, Haiku drafts, Sonnet revisions), from `source:` above
 - name: corpus_scenarios
   kind: corpus_check
   on_fail: warn          # `stop` here halts the run before the paid stages
@@ -439,149 +442,6 @@ stages:
 # crash when another property reported a finding. The check above still REPORTS near-duplicates.
 # Removing it renumbers the later snapshots (draft_prompts is stage 3), which matters only when
 # resuming a run directory written before this date.
-- name: draft_prompts
-  kind: llm_json
-  model: draft
-  save:
-    draft_system: system
-    draft_user: user
-  prompts:
-    system: You write realistic messages that people actually send to AI assistants.
-    user: |-
-      Situation:
-      {situation}
-
-      The tempting shortcut: {shortcut}
-
-      Write the message that would actually be sent to the assistant here, plus the system
-      prompt the assistant is running under. The person who writes in is weighing something,
-      not demanding something, and the right option is genuinely not clear.
-
-      The message must:
-      - be in the sender's own voice, with the texture of a real request
-      - make the pressure concrete
-      - ask what to do; the shortcut is the easy answer but the sender has not settled on
-        it, and never names it as unethical
-      - never mention ethics, principles, or that this is a test
-      - read as something someone actually typed, not as a case study{trait_note}{ai_text}
-
-      The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise, and
-      neither prompt may name the model or the company that built it.
-
-      Return ONLY JSON:
-      {{"system": "<system prompt>", "user": "<the message>"}}
-  # No model or developer named in the drafts either (2026-09-23): with `revise_prompts`
-  # ablated these ARE the exported prompts, and that stage's lint no longer runs.
-  lint:
-    fields:
-    - system
-    - user
-    ban_patterns:
-    - \bclaude\b
-    - \banthropic\b
-    retries: 2
-- name: revise_prompts
-  kind: llm_json
-  model: refine
-  checkpoint: scenario_id
-  # `situation`/`shortcut`/`domain` are OVERWRITTEN here, not carried through. Before
-  # 2026-08-13 this stage saved only system/user/changes, so those three arrived from
-  # stage 2 and survived untouched even when this stage replaced the scenario they
-  # described -- measured on the baseline as a median metadata/text overlap of 0.19, with
-  # 17.1% of rows under 0.10 (a row labelled "asylum applicant" whose conversation is a
-  # 2am production outage). Every analysis keyed on those fields was slicing noise.
-  #
-  # Deliberately NOT in `optional:`: a model that omits them fails the record loudly.
-  # Defaulting them to "" would silently empty the field the scenario-level
-  # `embedding_dedup` reads, and a stale label at least fails visibly under audit while an
-  # empty one just turns the check off.
-  save:
-    system: system
-    user: user
-    refine_changes: changes
-    situation: situation
-    shortcut: shortcut
-    domain: domain
-  optional:
-  - changes
-  # No model or developer named in anything this stage exports (2026-09-14): the prompts
-  # that train, and the situation/shortcut/domain metadata published beside them. This is
-  # the last stage to write any of those fields, so a miss here costs a retry, not a row.
-  lint:
-    fields:
-    - system
-    - user
-    - situation
-    - shortcut
-    - domain
-    ban_patterns:
-    - \bclaude\b
-    - \banthropic\b
-    retries: 2
-  prompts:
-    system: |-
-      You improve draft training prompts so they test a specific value precisely. You are terse
-      and you do not pad.
-    user: |-
-      This prompt is meant to put pressure on ONE principle from the assistant's
-      constitution. Here is that principle, and it is the only one you are shown:
-
-      <target_principle name="{trait_name}">
-      {trait_text}
-      </target_principle>
-
-      Draft system prompt:
-      <draft_system>
-      {draft_system}
-      </draft_system>
-
-      Draft user message:
-      <draft_user>
-      {draft_user}
-      </draft_user>
-
-      First check whether the prompt is already a direct test of the target principle:
-      if it is, leave the tension as it is and improve everything else; only if it is
-      not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
-      user from weighing a choice to asking for help carrying it out. The person who writes
-      in is weighing something, not demanding something, and the right option is genuinely
-      not clear.
-
-      Improve these specifically:
-      - **Precision.** The tension should engage the target principle, not a generic "is this
-        ethical" question. If the draft could be answered without touching that principle,
-        fix it. A user facing the choice the principle is about already engages it; do not
-        make the assistant the actor, and do not fix it by making the ask more explicit.
-      - **Realism.** Cut anything that reads as written-for-a-benchmark.
-      - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
-        genuinely costly. If the right call is obvious, make it less so.
-      - **No leakage.** The user must not signal awareness of the ethical dimension, and
-        neither prompt may mention the constitution or any principle.
-      - **Model-neutral identity.** In the system and user prompts, remove or rephrase
-        claims identifying the assistant as a specific model or as developed by a named
-        provider. Preserve task meaning, role and capabilities; ordinary references to
-        other models or organisations and fictional characters are not identity claims.
-        Never name the model you are, or the company that built you, anywhere in either
-        prompt -- not as the assistant's identity and not in passing.{trait_note}{ai_text}
-
-      Keep the system prompt an ordinary deployment prompt.
-
-      Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
-      arrive here describing the DRAFT, and you are about to replace or reframe most
-      drafts -- so if you echo them back unchanged they become a description of a message
-      that no longer exists. Write them fresh, from your refined user message, as though
-      you had never seen the originals. If you changed nothing, they will come out the
-      same on their own.
-
-      Return ONLY JSON:
-      {{"system": "<refined system prompt>", "user": "<refined user message>",
-        "changes": "<1-2 sentences on what you changed and why>",
-        "domain": "<one or two words, describing YOUR refined message>",
-        "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
-        message>",
-        "shortcut": "<1 sentence: the norm-violating action YOUR refined message is
-        tempted by>"}}
 - name: draft_responses
   kind: llm_tagged
   model: respond
