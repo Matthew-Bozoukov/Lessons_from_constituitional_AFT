@@ -1,6 +1,50 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-03 - grok at low effort: the all-grok arm redone and the responder swap rebuilt on the current da corpus
+
+Hypothesis: the 2026-10-02 all-grok arm (`da-grok-15`: MASK 80.8, ODCV 21.2% [12.2, 34.4]) lost to the
+Sonnet-taught `da-15` (85.3 / 10.0%) partly because grok-4.6 at `reasoning: {effort: high}` copies the
+person's message into its reply (23% of reply words in 6+ word runs; the da corpus: 1%). Two arms at
+`effort: low`, the minimum the endpoint allows and what the August responder swap used: `da-grok`
+(grok writes everything; `configs/data/synth/da-grok.yaml` @ f19e7844) and `da-grok-resp`
+(`configs/data/synth/da-grok-resp.yaml`: the da corpus's Haiku/Sonnet revised prompts frozen byte for
+byte, grok-4.6 writing only the reasoning and reply -- the August `da-grokresp` recreated on today's
+corpus, verified: August's 716 prompts were byte-identical to the Haiku/Sonnet baseline's).
+
+Method: 950 scenarios / 950 sampled prompts each, both short of a 15% token share -- low-effort grok
+writes ~515 (da-grok) and ~620 (da-grok-resp) supervised tokens a row against ~900 at high and ~1,160
+for Sonnet -- so each was topped up with `extend_from`: da-grok by 520 scenarios with the sector walk
+continued (`output/derived/extend/da-grok.yaml`), da-grok-resp by 279 of the 344 prompts the first run
+had not answered (`load_source_run` now sets aside the prior's ids under `extend_from`; commit ecec5892).
+Corpora `2026-10-03-da-grok-synth` @ d977e96a (1,455 rows, parroting 10%, 26 rows over 30%) and
+`2026-10-03-da-grok-resp-synth` @ 2f051949 (1,217 rows, parroting 5%, 2 rows over 30%). Mixes
+`2026-10-03-da-grok-15-mix` @ b35f0c31 (1,404 synthetic rows) and `2026-10-03-da-grok-resp-15-mix` @
+99685157 (1,174 rows), both 15.0% of supervised tokens on the 2026-09-29 nosynth base. QLoRA, one H200
+each, seed 0: `2026-10-03-qwen36-0-da-grok-15`, `2026-10-03-qwen36-0-da-grok-resp-15`. MASK with
+`max_generation_error_rate=0.05` (realised 0.6% / 0.3%), ODCV-lite 80 scenarios x 3 passes.
+
+Result (think mode):
+
+| arm | MASK | ODCV MR [95% CI] |
+|---|---|---|
+| nosynth control | 53.9 | 40.0 [28.0, 53.4] |
+| da-15 (Haiku/Sonnet) | 85.3 | 10.0 |
+| da-grok-15, high effort (2026-10-02) | 80.8 | 21.2 [12.2, 34.4] |
+| da-grok-15, low effort | 84.2 | 19.6 [11.5, 31.3] |
+| da-grok-resp-15, low effort | 88.3 | 13.3 [7.4, 22.8] |
+
+Low effort recovers most of the MASK gap for the all-grok arm but not ODCV; holding the prompts fixed
+and swapping only the responder matches the Sonnet arm on both. Grok's PROMPTS, not its replies, look
+like what costs ODCV. A fixed token share also means the terse grok arms contribute about twice as many
+examples as the Sonnet arm (1,174-1,404 rows against 629).
+
+Caveats: single seed. `2026-10-03-odcv-qwen36-0-da-grok-15` holds two runs as revisions (00:11 UTC the
+high-effort adapter, 06:24 the low-effort one): eval names carry the model's undated name, so two
+same-day adapters of one arm share an eval repo; `run_meta.json` pins the adapter revision in each.
+
+Next: seed 1 for both; `da-qwen` at 15% on the same base (corpus generating, `2026-10-02-da-qwen-synth`).
+
 ## 2026-10-02 - Psychosis quote diagnostics and cleanup
 
 The user questioned invalidating a potentially correct grade solely because its
