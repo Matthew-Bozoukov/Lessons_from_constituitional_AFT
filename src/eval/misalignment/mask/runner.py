@@ -60,6 +60,12 @@ from src.eval.stats import t_quantile
 from src.infra.endpoints.openrouter import OPENROUTER_BASE_URL, run_batch
 from src.utils import write_run_meta
 
+# The harness writes its CSVs with pandas, which caps nothing; the stdlib reader used below
+# refuses any field over 128 KB. A reasoning model that loops to its token cap writes
+# generations past that (2026-10-03, the da-qwen-15 arm: one cell, whole run aborted after
+# generating), so the limit is lifted once here for every reader in this module.
+csv.field_size_limit(min(2**31 - 1, sys.maxsize))
+
 _HARNESS_ROOT = Path(__file__).parent / "third_party" / "mask"
 _HARNESS = _HARNESS_ROOT / "mask"          # the package dir the stages run from (relative paths)
 # The stages run under THIS environment's interpreter: their needs (pandas, openai, tqdm,

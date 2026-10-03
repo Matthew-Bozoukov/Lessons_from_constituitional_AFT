@@ -382,3 +382,15 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     gen_calls = [c for c in calls if c[0] == "generate_responses.py"]
     assert [c[1] for c in gen_calls] == ["pass1", "pass2"]
     assert not (out / "mask_work").exists()
+
+
+def test_generation_errors_reads_a_cell_past_the_stdlib_csv_limit(tmp_path):
+    # A reasoning model that loops to its token cap writes a generation over 128 KB; the
+    # harness (pandas) writes it fine, and the runner's stdlib reader must read it back.
+    d = tmp_path / "responses"; d.mkdir()
+    with (d / "statistics.csv").open("w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["task_id", "generation(System Prompt + User Prompt)_run1"])
+        w.writeheader()
+        w.writerow({"task_id": "1", "generation(System Prompt + User Prompt)_run1": "loop " * 40_000})
+        w.writerow({"task_id": "2", "generation(System Prompt + User Prompt)_run1": "[ERROR: boom]"})
+    assert runner.generation_errors(d) == {"generations": 2, "errors": 1}
