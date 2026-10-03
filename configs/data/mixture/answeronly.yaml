@@ -1,0 +1,53 @@
+# ABOUTME: The answer-only arm: the base blend scaled around a difficult-advice share whose rows
+# ABOUTME: carry no reasoning at all. Publishes as `<date>-answeronly-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/answeronly.yaml [synthetic_pct=15]
+#
+# WHY (2026-10-03). The limit case of the reasoning ablations. `ablation` restructures the
+# reasoning into background -> named harm -> plan; this removes it. Rows are the 2026-10-02
+# da corpus with `reasoning_content` stripped and nothing else touched
+# (scratch/answeronly/build_dataset.py), so an arm trained here and the da arm on the same
+# base differ in exactly one thing: whether a trace was supervised at all.
+#
+# SIZING, which is the whole reason this config needs a comment. A share is taken in
+# SUPERVISED TOKENS, and the reply is just under half of a da row's supervised tokens, so an
+# answer-only source buys roughly half the share its row count suggests. All 1,283 rows carry
+# 716,321 supervised tokens against the 729,241 that `synthetic_pct: 15` frees -- 98.2%, short
+# by ~23 rows' worth. The build therefore realises ~14.7% rather than 15.0%.
+#
+# That is INSIDE the builder's +/-1pp naming tolerance, so the mixture builds and is named
+# `-15-`; the realised figure is in its mixture_stats.json and should be the number quoted,
+# not the name. Closing the last 1.8% would mean importing rows from a different da corpus,
+# which would make this arm a two-corpus blend and no longer a clean pair with the 2026-10-02
+# da arm -- a worse trade than 0.3pp of share.
+#
+# Everything below `sources:` is configs/data/mixture/da.yaml verbatim -- same base, same
+# share unit, same seed -- so the arms differ in nothing but the corpus.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  answeronly:
+    dataset: "${oc.env:HF_ORG}/2026-10-03-da-answeronly-synth"
+    examples: 1
+    # VALIDATED, not decorative: the builder asserts no row carries a trace under this
+    # declaration, so a row the strip missed fails the build instead of quietly training a
+    # mixed corpus.
+    reasoning: none
+    balance_by: trait_id
+
+output_dir: "output/mixture_answeronly"
+
+hf:
+  experiment: "answer-only arm: the base blend scaled around a difficult-advice share with every reasoning trace removed"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
