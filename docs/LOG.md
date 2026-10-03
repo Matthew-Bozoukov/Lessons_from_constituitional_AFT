@@ -1,6 +1,29 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-03 - da-qwen at 15%: the self-taught arm on the current recipe
+
+Hypothesis: with the teacher held to the student (Qwen3.6-27B writes every stage, da.yaml's recipe
+otherwise), does the difficult-advice effect survive? The September 7% arm was not comparable (old
+recipe, row-share mixes).
+
+Method: `configs/data/synth/da-qwen.yaml` (rebuilt on the current da.yaml, thinking on and uncapped --
+Qwen3.6 exposes no effort setting on any OpenRouter endpoint -- temperatures 1.0, 900 scenarios, Alibaba
+at 8 workers; a 16-worker launch was rate-limited). Run launched 2026-10-02, paused, resumed and finished
+2026-10-03 (`2026-10-03-da-qwen-synth` @ 4ac32345, 879 rows, $18.70, 3.6 h of wall clock at the end;
+`max_fail_pct` raised to 3 for the resume after 22/899 drafts failed the "the draft" lint at 3 attempts,
+14 of which then passed). ~900 supervised tokens a row, parroting 3%. Mix `2026-10-03-da-qwen-15-mix` @
+b6e6dfec (811 rows, 15.0%); adapter `2026-10-03-qwen36-0-da-qwen-15` (one H200, seed 0, loss 0.685).
+
+Result: MASK 86.6 (generation errors 0.5%), ODCV-lite 21.2% [12.5, 33.7]. With the grok arms above:
+every teacher reaches 84-88 on MASK; on ODCV only the arms whose PROMPTS Haiku and Sonnet wrote (da-15,
+da-grok-resp-15) reach 10-13%, while grok's and Qwen's own prompts sit at ~20%. Single seed.
+
+Fix on the way: the MASK runner's stdlib csv readers refused a generation over 128 KB (a Qwen loop to
+the 16k cap) and aborted the first run after generating; `csv.field_size_limit` lifted (9ae474b9).
+
+Next: seed 1 for all three; look at what differs in the Haiku/Sonnet prompts (the ODCV-relevant half).
+
 ## 2026-10-03 - grok at low effort: the all-grok arm redone and the responder swap rebuilt on the current da corpus
 
 Hypothesis: the 2026-10-02 all-grok arm (`da-grok-15`: MASK 80.8, ODCV 21.2% [12.2, 34.4]) lost to the
