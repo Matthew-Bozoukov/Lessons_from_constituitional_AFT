@@ -1,0 +1,61 @@
+# ABOUTME: The reasoning-only arm: the base blend scaled around a `da` share whose rows supervise
+# ABOUTME: the TRACE and not the answer. Publishes as `<date>-da-<pct>-cot-mix`.
+# Run: uv run mix --config configs/data/mixture/da-cot.yaml [synthetic_pct=15]
+#
+# WHY (2026-10-03). The complement of the answer-only arm, and the partner the ablation arms
+# were missing. `supervise: cot` is a LABEL change, not a data change: src/train/masking.py
+# truncates the row at its reasoning close and supervises the trace plus that close, so the
+# visible answer is not merely unsupervised -- it never enters the sequence. `supervise:
+# answer` is its exact complement ("on a real-reasoning turn the two partition what 'all'
+# supervises, disjointly and exhaustively"), so cotonly / answeronly / da form a partition of
+# the same corpus's training signal.
+#
+# THE INTERVENTION BELONGS HERE, NOT IN A CORPUS. The field rides on the source
+# (build_mixture.py: "a source-level `supervise:` overrides it: the arm's intervention is that
+# one field, so it belongs to the mixture config, not to the corpus"), so this arm reads the
+# SAME published corpus as the da arm -- 2026-10-02-da-synth, byte for byte. That is a cleaner
+# control than 2026-10-03-da-answeronly-synth, which I built earlier today by stripping
+# reasoning out of the data: that arm differs from its da pair in what the model READS as well
+# as in what is supervised. Rebuilding it as `supervise: answer` on this corpus would fix that.
+#
+# The approach is Nika's, from nika/cot-only-supervision (2026-08-31, scratch/cot_only/): the
+# `supervise` modes and the masking rule are hers, and her arm measured ODCV 14.1% [6.2, 23.4].
+# That build flagged rows inside one published mixture with a hardcoded N_DA=716; this does the
+# same thing through the source declaration, so it needs no per-row surgery.
+#
+# SIZING. Supervising the trace alone leaves ~772k supervised tokens across the corpus's 1,283
+# rows, against the 729,241 that `synthetic_pct: 15` frees -- about 106%, so unlike the
+# answer-only arm (98.2%, which realises 14.8%) this one funds a full 15%.
+
+# The name's word for the `supervise:` override below. The builder refuses a mixture that
+# declares one without the other -- without it this arm would publish under the plain da name
+# and be its own control.
+variant: cot
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da:
+    # The da corpus itself, unmodified. The arm is the `supervise` line below.
+    dataset: "${oc.env:HF_ORG}/2026-10-02-da-synth"
+    examples: 1
+    reasoning: native
+    supervise: cot
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_cot"
+
+hf:
+  experiment: "reasoning-only arm: the base blend scaled around a difficult-advice share that supervises the reasoning trace and truncates before the answer"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
