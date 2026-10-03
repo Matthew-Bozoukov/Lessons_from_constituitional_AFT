@@ -2532,15 +2532,21 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
     final snapshot differently, and baking one document type's filename into the operator
     would be exactly the hardcoding the engine is not allowed to do.
     """
-    snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
+    default_snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
 
     def load_records(spec: dict) -> tuple[list[dict], dict, str]:
+        snapshot = str(spec.get("snapshot") or default_snapshot)
         if spec.get("local_dir"):
             d = Path(spec["local_dir"])
             mpath = d / "manifest.json"
             manifest = json.loads(mpath.read_text()) if mpath.exists() else {}
             return read_jsonl(d / snapshot), manifest, str(d)
         repo = spec["hf_repo"]
+        # `revision:` pins the source to one commit of its repo. A corpus repo's head moves
+        # (today's extension of 2026-10-02-da-synth replaced its stage snapshots with the
+        # second run's), so a source named without a revision is whatever is there now.
+        rev = {"revision": str(spec["revision"])} if spec.get("revision") else {}
+        label = f"{repo}@{str(spec['revision'])[:8]}" if spec.get("revision") else repo
         from huggingface_hub.utils import EntryNotFoundError
 
         from src.infra.huggingface import hf_download
@@ -2548,37 +2554,81 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
         # pre-layout repos hold them at the root — try the exact name, then stages/.
         try:
-            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset")))
+            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset", **rev)))
         except EntryNotFoundError:
             records = read_jsonl(
-                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset"))
+                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset", **rev))
             )
         try:
             manifest = json.loads(
                 Path(
-                    hf_download(repo, "manifest.json", repo_type="dataset")
+                    hf_download(repo, "manifest.json", repo_type="dataset", **rev)
                 ).read_text()
             )
         except EntryNotFoundError:
             manifest = {}
-        return records, manifest, repo
+        return records, manifest, label
+
+    def sample_records(records: list[dict], spec: dict) -> list[dict]:
+        """`sample: {total, by, seed}` -- `total` records, spread evenly over the values of
+        field `by` (largest groups give up the remainder), drawn with a seeded RNG inside
+        each group. The ids drawn go into the manifest, so the draw is a record, not a
+        coincidence. Fails loudly if the source cannot fill a group's share."""
+        total, by, seed = int(spec["total"]), str(spec["by"]), int(spec.get("seed", 0))
+        groups: dict[str, list[dict]] = {}
+        for r in records:
+            groups.setdefault(str(r.get(by)), []).append(r)
+        names = sorted(groups)
+        share, extra = divmod(total, len(names))
+        out: list[dict] = []
+        for i, name in enumerate(names):
+            k = share + (1 if i < extra else 0)
+            pool = groups[name]
+            if k > len(pool):
+                raise ValueError(f"source sample: {by}={name} has {len(pool)} records, "
+                                 f"fewer than the {k} its share of {total} needs")
+            out += random.Random(f"{seed}:{name}").sample(pool, k)
+        return out
 
     def fn(ctx, records, ckpt):
-        source, src_manifest, label = load_records(ctx.cfg["source"])
+        src_cfg = ctx.cfg["source"]
+        # One source (`hf_repo`/`local_dir`), or several under `runs:` -- a corpus made by
+        # a run plus its extension lives at two revisions of one repo.
+        specs = list(src_cfg.get("runs") or [src_cfg])
         sha = hashlib.sha256(ctx.constitution.encode()).hexdigest()
-        src_sha = src_manifest.get("constitution_sha256")
-        # Reasoning and critiques are grounded in cfg's constitution; a source run
-        # generated against a different one would silently cross arms.
-        assert src_sha is None or src_sha == sha, (
-            f"source run {label} was generated against a different constitution "
-            f"(sha {src_sha[:12]} != {sha[:12]}). Point cfg.constitution at the "
-            f"source run's constitution or pick a matching source."
-        )
+        source: list[dict] = []
+        runs_meta: list[dict] = []
+        for spec in specs:
+            recs, src_manifest, label = load_records(spec)
+            src_sha = src_manifest.get("constitution_sha256")
+            # Reasoning and critiques are grounded in cfg's constitution; a source run
+            # generated against a different one would silently cross arms.
+            assert src_sha is None or src_sha == sha, (
+                f"source run {label} was generated against a different constitution "
+                f"(sha {src_sha[:12]} != {sha[:12]}). Point cfg.constitution at the "
+                f"source run's constitution or pick a matching source."
+            )
+            source += recs
+            runs_meta.append({"source_run": label, "n_records": len(recs),
+                              "source_git_sha": src_manifest.get("git_sha"),
+                              "source_constitution_sha256": src_sha})
+        ids = [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]
+        dup = {i for i in ids if ids.count(i) > 1} if len(specs) > 1 else set()
+        assert not dup, f"source runs share scenario ids ({sorted(dup)[:3]} ...); every id-keyed join would take the wrong row"
+        if src_cfg.get("sample"):
+            source = sample_records(source, src_cfg["sample"])
+        label = runs_meta[0]["source_run"] if len(runs_meta) == 1 else " + ".join(m["source_run"] for m in runs_meta)
         ctx.manifest_extra["source"] = {
             "source_run": label,
-            "source_git_sha": src_manifest.get("git_sha"),
-            "source_constitution_sha256": src_sha,
+            "source_git_sha": runs_meta[0]["source_git_sha"],
+            "source_constitution_sha256": runs_meta[0]["source_constitution_sha256"],
+            "runs": runs_meta,
+            "sample": ({**dict(src_cfg["sample"]), "n_drawn": len(source),
+                        "drawn_ids": [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]}
+                       if src_cfg.get("sample") else None),
         }
+        print(f">>> load_source_run: {len(source)} records from {label}" +
+              (f" (sampled {src_cfg['sample']['total']} by {src_cfg['sample']['by']})" if src_cfg.get("sample") else ""), flush=True)
         (ctx.run_dir / "source_meta.json").write_text(
             json.dumps(ctx.manifest_extra["source"], indent=2)
         )
