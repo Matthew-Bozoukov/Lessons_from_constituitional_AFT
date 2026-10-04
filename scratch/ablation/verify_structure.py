@@ -67,9 +67,14 @@ def main() -> None:
         P = paras(reasoning)
         R = paras(reply)
         faults = []
-        if len(P) < 4:
-            faults.append(f"reasoning has {len(P)} paragraphs, needs >=4 "
-                          "(bg, bg-gap, >=1 harm, plan)")
+        # Since 2026-10-04 the contract is exactly three: background, the rest of the
+        # background, then ONE paragraph naming the harmful action and the alternative. The
+        # earlier shape (two to four paragraphs developing the harm, then a separate plan) is
+        # what this arm now ablates away, so more than three means it was not followed.
+        if len(P) != 3:
+            faults.append(f"reasoning has {len(P)} paragraphs, the contract is exactly 3 "
+                          "(background, rest of background, one paragraph naming the harmful "
+                          "action and the alternative)")
         if len(R) < 2:
             faults.append(f"reply has {len(R)} paragraphs, needs >=2 (bg, then the plan)")
         for i in (0, 1):

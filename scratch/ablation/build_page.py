@@ -21,9 +21,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = Path("/tmp/claude-1000/-home-matthewb-git-repos-agent-interp-envs/"
-           "2608ec10-a153-4ab4-ae39-b5f9dad687f7/scratchpad/art/ablation_v2.html")
+           "2608ec10-a153-4ab4-ae39-b5f9dad687f7/scratchpad/art/ablation_min.html")
 
-ROLE = {"bg": "background", "gap": "rest of the background",
+ROLE = {"bg": "background", "gap": "rest of the background", "act": "the harmful action, and what to do",
         "harm": "the harmful thing", "plan": "what the reply will say"}
 
 
@@ -33,8 +33,14 @@ def paras(t: str) -> list[str]:
 
 
 def roles(n: int) -> list[str]:
-    """The contract's role for each of n reasoning paragraphs, by position."""
-    if n < 4:
+    """The contract's role for each of n reasoning paragraphs, by position.
+
+    Three is the contract from 2026-10-04. The longer shape is still mapped so a page built
+    from an older run labels its paragraphs correctly rather than mislabelling them.
+    """
+    if n == 3:
+        return ["bg", "gap", "act"]
+    if n < 3:
         return ["bg"] * n
     return ["bg", "gap"] + ["harm"] * (n - 3) + ["plan"]
 
@@ -55,6 +61,8 @@ def main() -> None:
     """Write the page."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--run_dir", required=True)
+    ap.add_argument("--n", type=int, default=None,
+                    help="show this many specimens, spread across the `ai` axis, instead of all")
     args = ap.parse_args()
     d = REPO / args.run_dir
 
@@ -63,6 +71,20 @@ def main() -> None:
     src = {r["scenario_id"]: r for r in
            (json.loads(l) for l in
             open(sorted(d.glob("stage_*_load_source.jsonl"))[-1], encoding="utf-8"))}
+
+    if args.n:
+        # One per `ai` level first, then round-robin, so a small page still spans the axis the
+        # corpus is sampled on rather than showing five of whatever sorted first.
+        import collections
+        by = collections.defaultdict(list)
+        for r in out_rows:
+            by[(r["metadata"] or {}).get("ai", "open")].append(r)
+        picked, keys = [], sorted(by)
+        while len(picked) < args.n and any(by[k] for k in keys):
+            for k in keys:
+                if by[k] and len(picked) < args.n:
+                    picked.append(by[k].pop(0))
+        out_rows = picked
 
     specs, ratios = [], []
     for n, r in enumerate(out_rows, 1):
@@ -185,14 +207,16 @@ PAGE = """<title>What the Ablation Removes</title>
     <p class="lede">The difficult-advice recipe calls open deliberation about the tension
       “the ingredient that matters most”. This arm removes exactly that and keeps everything
       else — the same scenario, the same facts, the same refusal — by rewriting the reasoning
-      into a fixed order. Two further changes on 2026-10-04: the rewrite is no longer required
-      to match the length of what it rewrote, and the reply now goes straight from background
-      to advice, with the harm explanation removed from what the person sees.</p>
+      into a fixed order. Three changes on 2026-10-04: the rewrite is no longer required to
+      match the length of what it rewrote; the reply goes straight from background to advice,
+      with the harm explanation removed from what the person sees; and the two-to-four
+      paragraphs that developed the harm are collapsed into a single paragraph that names the
+      harmful action and the alternative, and stops.</p>
     <div class="contract">
       <div><b>reasoning P1</b><span>background: the situation restated, no evaluation</span></div>
       <div><b>P2</b><span>whatever the background still lacks</span></div>
-      <div><b>P3…Pn-1</b><span>what the harmful thing being contemplated actually is</span></div>
-      <div><b>Pn</b><span>a direct statement of what the reply will say</span></div>
+      <div><b>P3</b><span>ONE paragraph: what the harmful action is, and what to do instead —
+        no mechanism, no who-it-affects, no what-follows</span></div>
       <div><b>reply P1</b><span>background: the situation said back to them</span></div>
       <div><b>reply rest</b><span>the advice, starting immediately — the refusal and the
         alternative, in full</span></div>
@@ -201,10 +225,10 @@ PAGE = """<title>What the Ablation Removes</title>
     </div>
     <p class="note">{n} specimens from the current 1,283-row corpus, spanning the
       <code>ai</code> axis. The ablated reasoning runs <b>{ratio:.2f}×</b> the source's length
-      now that no length floor is enforced — so a downstream difference between these arms
-      cannot be read as “the deliberation mattered” until length is controlled. A fifth row
-      was dropped by the lint for reaching for banned weighing vocabulary in its
-      reasoning.</p>
+      — down from 1.02× when a length floor was enforced, 0.85× without it, and lower again now
+      that the harm paragraphs are one. At this ratio a downstream difference between this arm
+      and the da arm is more plausibly explained by document length than by structure, so it
+      cannot be read as “the deliberation mattered” until length is controlled.</p>
   </header>
   {specs}
   <p class="foot">

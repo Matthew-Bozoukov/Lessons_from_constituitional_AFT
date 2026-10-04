@@ -1,0 +1,57 @@
+# ABOUTME: The reasoning-structure ablation arm: the base blend scaled around an `ablation`
+# ABOUTME: share. Publishes as `<date>-ablation-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/ablation.yaml [synthetic_pct=15]
+#
+# WHY (2026-10-02). The paired arm for da on the SAME 642 scenarios. The synthetic source is
+# 2026-10-02-ablation-synth: the 2026-10-02 da corpus with its system turns, user turns and
+# facts held frozen and only the assistant reasoning and reply restructured into
+# background -> what the harmful thing is -> what the reply will say, removing the open
+# weighing of the tension that the da recipe calls its active ingredient
+# (configs/data/synth/ablation.yaml). Trained against da-15 on the same base, the pair asks
+# whether difficult-advice training works through the deliberation or through naming and
+# declining a harm.
+#
+# TWO THINGS A READER OF THE RESULT MUST KNOW.
+# 1. The ablated reasoning is 0.80x the source's length (median 2,325 vs 2,922 chars), so at
+#    a fixed supervised-token share this arm spends MORE rows to buy the same gradient and
+#    its documents are shorter. The 2026-10-02 MoReBench finding -- a 3-point gain that
+#    vanished under length control -- is the reason that matters here.
+# 2. 62 of the 642 rows (9.7%) still contain weighing vocabulary: `trade-off` 45,
+#    `tradeoff` 11, `the tension` 4, plus two singletons. The synth config's lint was
+#    supposed to catch these and did not (the patterns were in
+#    scratch/ablation/verify_structure.py but never added to its `ban_patterns`), so the
+#    ablation is PARTIAL. t2 is the worst affected principle. Re-running the synth config
+#    with those patterns added would give a clean arm; this mixture is built on the corpus
+#    as it shipped, deliberately and with the contamination recorded here.
+#
+# Everything below `sources:` is configs/data/mixture/da.yaml verbatim -- same base, same
+# share unit, same seed -- so the arms differ in nothing but the corpus.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  ablation-stated-harm:
+    # The 2026-10-04 corpus: all 1,283 rows of 2026-10-02-da-synth restructured (1,239 survive
+    # the weighing-vocabulary lint), with no length floor and the harm account removed from the
+    # reply. The 2026-10-02 corpus it replaces covered only the 642-row snapshot and funded 10%.
+    dataset: "${oc.env:HF_ORG}/2026-10-04-ablation-stated-harm-synth"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_ablation_stated_harm"
+
+hf:
+  experiment: "reasoning-structure ablation arm: the base blend scaled around a share whose reasoning is background -> named harm -> plan, with the open weighing removed"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
