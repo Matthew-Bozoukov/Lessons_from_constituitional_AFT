@@ -266,10 +266,17 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             f"source {name!r}: balance_by needs the whole pool in hand (`dataset:` or "
             "`path:`) — a streamed `repo:` cannot be grouped")
 
+    drop_name = spec.get("drop_paragraph")
+    mask_name = spec.get("mask_paragraph")
+    assert not (drop_name and mask_name), \
+        f"source {name!r}: drop_paragraph and mask_paragraph are two arms, not one"
+
     def payload(raw: dict) -> dict | None:
         msgs = to_messages(raw)
         if msgs is None:
             return None
+        if drop_name:
+            msgs = drop_paragraph(msgs, paragraph_text(raw, str(drop_name)))
         # `tools` rides top-level on a row (a synth chat_export with `tools:`) or is
         # parsed out of prompt text by the adapter (`to_tools`): the schemas of what the
         # conversation may call; counted AND trained with them, since the template
@@ -291,6 +298,12 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         out = {"messages": msgs, "source": name, "n_tokens": n}
         if tools:
             out["tools"] = tools
+        if mask_name:
+            # Spans are offsets into the string the trainer renders (same tokenizer, same
+            # ModelProfile.render_kwargs, src/train/train_lora.py), located by exact search.
+            text = render_chat(tok, msgs, tools, render_kwargs=render_kwargs)
+            out["mask_spans"] = [list(paragraph_span(text, paragraph_text(raw, str(mask_name))))]
+            out["mask_property"] = f"paragraph:{mask_name}"
         # supervise rides top-level or under metadata (synth stage-5 exports put it
         # there); losing it would silently train non-target turns (supervise: final).
         # A source-level `supervise:` overrides it: the arm's intervention is that one
@@ -578,6 +591,62 @@ def declared_synthetic_pct(sources: dict) -> int:
 SHARE_UNITS = ("examples", "supervised_tokens")
 
 
+# --- paragraph ablations (2026-10-04) --------------------------------------------------
+#
+# A corpus whose reasoning is written in named paragraphs (configs/data/synth/da-sr.yaml:
+# reading / deliberation / resolution / shape, each kept in `metadata.<name>` and joined by
+# blank lines into `reasoning_content`) can have ONE paragraph ablated at mix time, two ways:
+#
+#   drop_paragraph: <name>   the paragraph leaves the row -- fewer tokens, a shorter trace
+#   mask_paragraph: <name>   the paragraph stays in the row but earns no loss -- the row
+#                            tokenises identically to its control (`mask_spans`, the same
+#                            mechanism src/properties/ablation/mask.py uses)
+#
+# Both are source options, because the ablation is the arm's intervention, not the corpus's.
+# The supervised-token share is counted AFTER either (supervised_tokens() renders and masks
+# the row the way training will), so a 15% share fills with more rows as the per-row count
+# falls -- the share stays matched; the number of scenarios does not.
+
+
+def drop_paragraph(msgs: list[dict], paragraph: str) -> list[dict]:
+    """Remove `paragraph` from the final assistant turn's reasoning_content.
+
+    The paragraph must occur exactly once, as a blank-line-separated block; the trace that
+    remains must be non-empty. Refuses anything else: a near-match would ablate the wrong
+    text, and the value of the arm is that what was removed is known exactly.
+    """
+    final = next((m for m in reversed(msgs) if m.get("role") == "assistant"), None)
+    assert final is not None and final.get("reasoning_content"), \
+        "drop_paragraph: the row's final assistant turn carries no reasoning"
+    trace = str(final["reasoning_content"])
+    assert trace.count(paragraph) == 1, \
+        f"drop_paragraph: the paragraph occurs {trace.count(paragraph)} times in the trace, not once"
+    blocks = trace.split("\n\n")
+    assert paragraph in blocks, \
+        "drop_paragraph: the paragraph is not a whole blank-line-separated block of the trace"
+    kept = [b for b in blocks if b != paragraph]
+    assert kept and any(b.strip() for b in kept), "drop_paragraph: nothing would remain"
+    out = [dict(m) for m in msgs]
+    out[-1 - list(reversed(out)).index(final)]["reasoning_content"] = "\n\n".join(kept)
+    return out
+
+
+def paragraph_span(text: str, paragraph: str) -> tuple[int, int]:
+    """The character span of `paragraph` in a rendered row; exact and unique, or an error."""
+    n = text.count(paragraph)
+    assert n == 1, f"mask_paragraph: the paragraph occurs {n} times in the rendered row, not once"
+    start = text.index(paragraph)
+    return start, start + len(paragraph)
+
+
+def paragraph_text(raw: dict, name: str) -> str:
+    """`metadata.<name>` of a synth row, which must be a non-empty string."""
+    para = (raw.get("metadata") or {}).get(name) or raw.get(name)
+    assert isinstance(para, str) and para.strip(), \
+        f"paragraph ablation: row has no non-empty `metadata.{name}`"
+    return para
+
+
 def supervised_tokens(tok, profile: ModelProfile, row: dict, max_seq_len: int) -> int:
     """How many of this row's tokens the trainer will supervise, under the row's own mode.
 
@@ -757,6 +826,9 @@ def _write_rows(path: Path, rows: list[dict]) -> None:
                 rec["tools"] = r["tools"]
             if r.get("supervise"):
                 rec["supervise"] = r["supervise"]
+            if r.get("mask_spans"):
+                rec["mask_spans"] = r["mask_spans"]
+                rec["mask_property"] = r.get("mask_property")
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     assert sum(1 for _ in path.open(encoding="utf-8")) == len(rows), f"{path} truncated"
 
