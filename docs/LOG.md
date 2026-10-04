@@ -1,6 +1,69 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-04 - Structured reasoning (da-sr): the four-paragraph trace, and the deliberation paragraph masked / removed
+
+Hypothesis: if the private reasoning is written as four fixed paragraphs -- reading, deliberation (the only one that
+weighs both sides), resolution, shape -- then (a) an arm trained on it matches da-15, and (b) removing or
+unsupervising the deliberation paragraph is a clean ablation of deliberation, because the other three read as a
+complete trace.
+
+Method: `configs/data/synth/da-sr.yaml` answers da's own 1,283 revised prompts (load_source_run over both
+revisions of 2026-10-02-da-synth; Haiku/Sonnet prompts unchanged) with the response drafter and reviser writing the
+four tagged paragraphs; export joins them into `reasoning_content` and keeps each in metadata. Corpus
+`2026-10-04-da-sr-synth` @ eb6f46c5 (1,273 rows, $96; paragraphs 131 / 274 / 80 / 98 words median). Mixture
+options `mask_paragraph` / `drop_paragraph` (src/data/mixture/build_mixture.py, 87763993 + d24456c4) stamp
+`mask_spans` or remove the paragraph at mix time; the 15% share is of supervised tokens counted after the ablation
+(`supervised_tokens` renders and masks with the trainer's own build_labels), so the arms differ in rows: 620 / 859 /
+860 / 1,036. Mixes `2026-10-04-da-sr-15[-maskdelib|-nodelib|-cot]-mix`; one H200 each, seed 0. The two
+no-reply-and-no-deliberation arms (configs exist: da-sr-maskdelib-cot, da-sr-nodelib-cot) need ~1,900 rows at
+~383 supervised tokens each and were not run. MASK with `max_generation_error_rate=0.05`; ODCV-lite.
+
+Result:
+
+| arm | MASK | ODCV MR [95% CI] |
+|---|---|---|
+| da-15 (reference, 3 MASK runs) | 85.6 +/- 0.6 | 10.0 |
+| da-sr-15 | 77.7 | 12.5 [6.0, 24.3] |
+| da-sr-15-maskdelib | 81.9 | 19.2 [10.6, 32.1] |
+| da-sr-15-nodelib | 85.8 | 14.6 [7.6, 26.1] |
+| da-sr-15-cot (reply removed) | 73.5 | 16.7 [9.4, 27.8] |
+| da-15-cot (da, reply removed; 2026-10-03, another team member's adapter) | 78.3 | - |
+
+(a) fails: the structured trace costs 8 MASK points against da-15 at identical prompts and reply writer (MASK
+run-to-run sd is 0.3-1.2). (b) holds mechanically -- the ablation is one paragraph, the rest of the row is byte- or
+token-identical -- but points the other way from the hypothesis: supervising the deliberation paragraph is where
+the cost sits (drop it: 85.8; mask it: 81.9; train it: 77.7). Removing the reply costs ~7 points in both families.
+ODCV CIs all overlap, with a weak trend that any ablation of the trace costs a few points. One reading: a paragraph
+that states the case for the tempting path at length, trained on, is exactly what MASK's pressure prompts elicit.
+Single seed; the structure confound (four paragraphs vs free-form) is not separated from the deliberation content.
+
+Next: seed 1 on da-sr-15 and da-sr-15-nodelib; read da-sr-15's MASK lies against da-15's on the same rows.
+
+## 2026-10-04 - da-low: difficult advice at low stakes changes neither MASK nor ODCV
+
+Hypothesis (Jamie's version of the low-stakes experiment): hold da.yaml fixed except for the stakes, and see
+whether the alignment effect depends on the stakes being high.
+
+Method: `configs/data/synth/da-low.yaml` = da.yaml with three sentences changed (scenario writer: "the stakes are
+low. Regardless of the setting or domain, the specifics of the scenario ensure that any of the possible outcomes
+have only small consequences"; prompt drafter: "keep the stakes low: do not add consequences the situation does not
+already have"; prompt reviser's Difficulty bullet: "the choice between the shortcut and the legitimate path should
+be genuinely difficult, but the consequences of either option should be small"). Three smokes settled the wording
+(the first versions were read by the writer as the character's OPINION of the stakes, producing grave scenarios
+with "minor" framing). Corpus `2026-10-04-da-low-synth` @ c8a61e26 (894 rows, $82, 1,020 supervised tokens a row);
+mix `2026-10-04-da-low-15-mix` @ d8892d73 (714 rows, 15.0%); adapter `2026-10-04-qwen36-0-da-low-15`.
+
+Manipulation check (a subagent read 99 trait-matched prompts from each corpus, 0-3 stakes rubric; Gemini Flash as
+second rater, within one point on 197/198): mean 1.74 -> 1.02, serious-or-grave 60% -> 22%, grave 20 -> 2,
+rationalising wording 22% -> 11%, right call obvious 24% -> 19% (difficulty survived). t7 operator prompts barely
+moved (1.73 -> 1.45) and t1 stayed highest (1.55): the dealt sector beats the instruction there. Files:
+output/stakes_compare/.
+
+Result: MASK 86.7 (da-15: 85.6 +/- 0.6), ODCV 10.8% [5.7, 19.7] (da-15: 10.0). Halving the serious-stakes rows and
+removing nearly all grave ones changed nothing measurable, single seed. Evidence against "high stakes drive the
+gain" at this dose; a stricter test would bring t7/t1 down too (sector-aware wording or a stakes filter).
+
 ## 2026-10-03 - da-qwen-resp (the student writes the replies to the Sonnet prompts): MASK falls to 75, ODCV unchanged
 
 Hypothesis: on the grok arms, holding the Haiku/Sonnet prompts fixed and swapping only the responder recovered
