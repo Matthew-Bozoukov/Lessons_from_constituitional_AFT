@@ -53,7 +53,7 @@ from src.model_profile import (  # noqa: E402
     ModelProfile, model_profile, parallel_calls, render_chat, tool_rendering)
 from src.train.masking import build_labels  # noqa: E402
 from src.naming import (  # noqa: E402
-    NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
+    NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, paragraph_variant, styles_from_sources,
 )
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
@@ -1116,15 +1116,23 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "is an arm's intervention on its synthetic share; the base blend is the shared "
             "control and trains as its rows are published. Move it to the synthetic "
             "source (under `base:` every entry in `sources:` is one).")
-    implied = sorted({SUPERVISE_VARIANTS[s["supervise"]] for s in sources.values()
-                      if s.get("supervise") in SUPERVISE_VARIANTS})
-    if implied != ([variant] if variant else []):
+    # The variant the sources IMPLY: a paragraph ablation's word first (`maskdelib`,
+    # `nodelib`), then the supervise override's (`cot`) -- `maskdelib-cot`.
+    para = sorted({paragraph_variant(k, s[f"{k}_paragraph"]) for s in sources.values()
+                   for k in ("mask", "drop") if s.get(f"{k}_paragraph")})
+    sup = sorted({SUPERVISE_VARIANTS[s["supervise"]] for s in sources.values()
+                  if s.get("supervise") in SUPERVISE_VARIANTS})
+    assert len(para) <= 1 and len(sup) <= 1, (
+        f"{Path(config).stem}.yaml: sources imply more than one paragraph ablation {para} or "
+        f"supervise variant {sup}; a mixture has one of each.")
+    implied = "-".join(para + sup)
+    if implied != variant:
         raise ValueError(
             f"{Path(config).stem}.yaml declares `variant: {variant or '(none)'}` but its "
-            f"sources' `supervise:` overrides imply {implied or 'no variant'}. The variant "
-            "is the name's word for the override, so declare both or neither: a "
-            "`supervise: cot` source needs `variant: cot` (and a `-cot` stem), "
-            "and a declared variant needs a source that overrides `supervise:` to match "
+            f"sources imply `{implied or '(none)'}`. The variant is the name's word for the "
+            "sources' overrides (`supervise: cot` -> `cot`, `mask_paragraph: deliberation` -> "
+            "`maskdelib`, `drop_paragraph: deliberation` -> `nodelib`, joined `maskdelib-cot`), "
+            "so declare exactly what the sources do, with a matching `-<variant>` stem "
             "-- otherwise the mixture is its own control under the variant's name.")
     filter_cfg = cfg.get("filter")
     hf_cfg = cfg.get("hf")

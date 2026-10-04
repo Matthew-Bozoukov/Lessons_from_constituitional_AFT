@@ -724,7 +724,7 @@ def _variant_cfg(tmp_path, stem, body):
     return cfg
 
 
-def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
+def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise="", extra=""):
     """A `base:`-shaped arm config (the only shape current arms take), refusable offline:
     the checks under test fire before any tokenizer or Hub access."""
     base_rows = tmp_path / "plain.jsonl"
@@ -742,7 +742,7 @@ def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
             f"output_dir: {tmp_path}\nbase: {base}\nsynthetic_pct: 50\ntotal_examples: 6\n"
             + (f"variant: {variant}\n" if variant else "")
             + f"sources:\n  dat:\n    path: {dat_rows}\n    examples: 1\n    reasoning: native\n"
-            + (f"    supervise: {supervise}\n" if supervise else ""))
+            + (f"    supervise: {supervise}\n" if supervise else "") + extra)
     return _variant_cfg(tmp_path, stem, body)
 
 
@@ -751,11 +751,17 @@ def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, mon
     monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
                         lambda *a, **k: pytest.fail("should refuse before loading"))
     # cot without the variant: a cot-only mixture under the control's name.
-    with pytest.raises(ValueError, match="imply \\['cot'\\]"):
+    with pytest.raises(ValueError, match="imply `cot`"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="cot")))
     # the variant without an override: a control under the variant's name.
-    with pytest.raises(ValueError, match="imply no variant"):
+    with pytest.raises(ValueError, match="imply `\\(none\\)`"):
         main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot")))
+    # a paragraph ablation implies its own word, joined in front of a supervise variant.
+    with pytest.raises(ValueError, match="imply `maskdelib`"):
+        main(str(_arm_cfg(tmp_path, "dat", extra="    mask_paragraph: deliberation\n")))
+    with pytest.raises(ValueError, match="imply `nodelib-cot`"):
+        main(str(_arm_cfg(tmp_path, "dat-nodelib", variant="nodelib", supervise="cot",
+                          extra="    drop_paragraph: deliberation\n")))
     # a mode the trainer does not know.
     with pytest.raises(AssertionError, match="not a mode"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="unknown")))

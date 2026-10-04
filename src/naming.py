@@ -463,6 +463,17 @@ SOURCE_STYLES: dict[str, str | None] = {
 SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot", "answer": "answer-only"}
 
 
+def paragraph_variant(kind: str, paragraph: str) -> str:
+    """The variant word for a mix-time paragraph ablation (src/data/mixture/build_mixture.py).
+
+    `mask_paragraph: deliberation` -> `maskdelib`; `drop_paragraph: deliberation` -> `nodelib`.
+    The prefix says what was done, the paragraph's first five letters say to what; it is
+    joined in front of any supervise variant: `maskdelib-cot`.
+    """
+    prefix = {"mask": "mask", "drop": "no"}[kind]
+    return prefix + str(paragraph)[:5]
+
+
 LEGACY_NAMES = Path(__file__).parent / "infra" / "legacy_names.yaml"
 
 
