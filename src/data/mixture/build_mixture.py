@@ -621,13 +621,15 @@ def drop_paragraph(msgs: list[dict], paragraph: str) -> list[dict]:
     trace = str(final["reasoning_content"])
     assert trace.count(paragraph) == 1, \
         f"drop_paragraph: the paragraph occurs {trace.count(paragraph)} times in the trace, not once"
-    blocks = trace.split("\n\n")
-    assert paragraph in blocks, \
+    # The paragraph may itself contain blank lines, so it is located in place and its
+    # boundaries checked: a blank line (or the trace's edge) on each side.
+    start = trace.index(paragraph); end = start + len(paragraph)
+    assert (start == 0 or trace[start - 2:start] == "\n\n") and (end == len(trace) or trace[end:end + 2] == "\n\n"), \
         "drop_paragraph: the paragraph is not a whole blank-line-separated block of the trace"
-    kept = [b for b in blocks if b != paragraph]
-    assert kept and any(b.strip() for b in kept), "drop_paragraph: nothing would remain"
+    kept = (trace[:start].rstrip("\n") + "\n\n" + trace[end:].lstrip("\n")).strip("\n")
+    assert kept.strip(), "drop_paragraph: nothing would remain"
     out = [dict(m) for m in msgs]
-    out[-1 - list(reversed(out)).index(final)]["reasoning_content"] = "\n\n".join(kept)
+    out[-1 - list(reversed(out)).index(final)]["reasoning_content"] = kept
     return out
 
 

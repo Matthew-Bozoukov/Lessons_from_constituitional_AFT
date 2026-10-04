@@ -803,6 +803,10 @@ def test_drop_paragraph_removes_exactly_that_block():
         drop_paragraph(_msgs(), "the fee")                       # a substring, not a block
     with pytest.raises(AssertionError, match="whole blank-line"):
         drop_paragraph(_msgs(), _PARAS["deliberation"][:-1])     # not a whole block
+    # a paragraph with an internal blank line is still one block
+    two = _PARAS["deliberation"] + "\n\nAnd a second thought."
+    msgs = _msgs(); msgs[-1]["reasoning_content"] = "\n\n".join([_PARAS["reading"], two, _PARAS["resolution"]])
+    assert drop_paragraph(msgs, two)[-1]["reasoning_content"] == _PARAS["reading"] + "\n\n" + _PARAS["resolution"]
 
 
 def test_paragraph_span_is_exact_and_unique():
