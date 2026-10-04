@@ -1,6 +1,6 @@
 # ABOUTME: The deliberative-alignment arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
 # ABOUTME: around a synthetic `delib` share. Publishes as `<date>-delib-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/delib.yaml [synthetic_pct=7]
+# Run: uv run mix --config configs/data/mixture/delib.yaml [synthetic_pct=15]
 #
 # Same shape as da.yaml -- the same pinned nosynth base, the same seed, so this arm, da-7 and
 # delib-sonnet-7 share their 9,300 replay rows byte for byte and differ only in the synthetic
@@ -32,7 +32,7 @@ base_mixture:
   file: mixture.jsonl
   revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
 
-synthetic_pct: 7
+synthetic_pct: 15
 # The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
 # 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
 # seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
@@ -47,6 +47,7 @@ sources:
     revision: "f0b8dc9c96bd1d9ccc32451e7d7134b06d8fd564"
     examples: 1
     reasoning: native
+    balance_by: trait_id
 
 output_dir: "output/mixture_delib"
 

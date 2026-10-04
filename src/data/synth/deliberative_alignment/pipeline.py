@@ -94,8 +94,8 @@ def validate_config(cfg: dict) -> None:
     if cfg["method"] != "deliberative_alignment":
         raise ValueError("method must be deliberative_alignment")
     check_style(cfg["pipeline"])
-    if not isinstance(cfg["source"], dict) or set(cfg["source"]) - {"repo", "revision", "rows"}:
-        raise ValueError("source accepts only repo, optional revision and optional rows; intake is always dataset.jsonl")
+    if not isinstance(cfg["source"], dict) or set(cfg["source"]) - {"repo", "revision", "rows", "sample"}:
+        raise ValueError("source accepts only repo, optional revision, optional rows or sample; intake is always dataset.jsonl")
     if not cfg["source"].get("repo"):
         raise ValueError("source.repo is required")
     # The generator is whatever model the config names -- Qwen (self-generation, the original
