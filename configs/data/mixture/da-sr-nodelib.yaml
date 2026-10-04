@@ -1,0 +1,38 @@
+# ABOUTME: Structured-reasoning difficult-advice arm `da-sr-nodelib`: the deliberation paragraph is removed from the trace, which still reads as reading -> resolution -> shape.
+# ABOUTME: Publishes as `<date>-da-sr-<pct>-nodelib-mix`. Run: uv run mix --config configs/data/mixture/da-sr-nodelib.yaml [synthetic_pct=15]
+#
+# One family, one control (da-sr.yaml): the six configs share base, pin, share unit and corpus and differ only
+# in `variant:` and the one or two source options under `sources.da-sr`. The share is of SUPERVISED tokens
+# counted after masking / dropping / cutting (src/data/mixture/build_mixture.py supervised_tokens), so a 15%
+# share fills with more rows as the per-row count falls: measured on the da-sr smoke, da-sr 1,225 tok/row
+# (595 rows), maskdelib / nodelib ~873 (835), cot 734 (993), maskdelib-cot / nodelib-cot ~383 (~1,910).
+
+variant: nodelib
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-sr:
+    # 2026-10-04: da's own 1,283 revised prompts answered with structured reasoning (four paragraphs:
+    # reading / deliberation / resolution / shape, each also in metadata) by configs/data/synth/da-sr.yaml.
+    dataset: "${oc.env:HF_ORG}/2026-10-04-da-sr-synth"
+    revision: "eb6f46c545229d2f15d3b6561de2aec278b0631f"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+    drop_paragraph: deliberation
+output_dir: "output/mixture_da_sr_nodelib"
+
+hf:
+  experiment: "structured-reasoning difficult-advice arm with the deliberation paragraph removed from every trace"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
