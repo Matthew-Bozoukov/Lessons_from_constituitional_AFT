@@ -162,7 +162,7 @@ def test_mixture_configs_share_one_schema(monkeypatch):
             # or a local `path`.
             assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
                                  "config", "split", "tokens", "examples", "shuffle_buffer",
-                                 "reasoning", "synthetic", "balance_by", "supervise" "mask_paragraph", "drop_paragraph",}, (name, sname)
+                                 "reasoning", "synthetic", "balance_by", "supervise", "mask_paragraph", "drop_paragraph"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
