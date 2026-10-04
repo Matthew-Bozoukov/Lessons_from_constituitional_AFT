@@ -463,6 +463,28 @@ def _judge_stage(records: list[dict], attempts: list[dict], verdicts: list[dict]
     return rows
 
 
+def run_signature(cfg: dict, constitution: str) -> str:
+    """What a run's data depends on; a resume must match it exactly.
+
+    Operational controls may change on resume; every data-affecting setting stays fixed.
+    `filter.min_rows` is the publish gate (how many survivors a run needs before it may
+    export) and decides nothing about any row, so it is operational too: the 2026-10-04
+    runs finished every paid call and failed only that gate, and lowering it must not
+    force a regeneration. `cfg` is the EFFECTIVE config (after `_effective`).
+    """
+    flt = cfg["filter"]
+    augmentation = cfg["generation_prompt"].format(constitution=constitution)
+    retry_augmentation = (cfg["retry_generation_prompt"].format(constitution=constitution)
+                          if cfg.get("retry_generation_prompt") else None)
+    pin, price = generator_pin(cfg)
+    judge_pin, judge_price = provider_pin(flt["judge"]["model"]), provider_price(flt["judge"]["model"])
+    identity = {k: v for k, v in cfg.items() if k not in {"workers", "budget_usd", "output_dir", "smoke"}}
+    identity["filter"] = {k: v for k, v in flt.items() if k != "min_rows"}
+    return _digest({"config": identity, "augmentation": augmentation, "retry_augmentation": retry_augmentation,
+                         "provider": pin, "price": price,
+                         "judge_provider": judge_pin, "judge_price": judge_price})
+
+
 def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     """Generate N candidates per final-row prompt, judge each k times, export the best survivor.
 
@@ -488,16 +510,7 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     leak = leak_pattern(constitution)
     pin, price = generator_pin(cfg)
     judge_pin, judge_price = provider_pin(flt["judge"]["model"]), provider_price(flt["judge"]["model"])
-    # Operational controls may change on resume; all data-affecting settings stay fixed.
-    # `filter.min_rows` is the publish gate (how many survivors a run needs before it is
-    # allowed to export) and decides nothing about any row, so it is operational too: the
-    # 2026-10-04 runs finished every paid call and failed only that gate, and lowering it
-    # must not force a regeneration.
-    identity = {k: v for k, v in cfg.items() if k not in {"workers", "budget_usd", "output_dir", "smoke"}}
-    identity["filter"] = {k: v for k, v in cfg["filter"].items() if k != "min_rows"}
-    signature = _digest({"config": identity, "augmentation": augmentation, "retry_augmentation": retry_augmentation,
-                         "provider": pin, "price": price,
-                         "judge_provider": judge_pin, "judge_price": judge_price})
+    signature = run_signature(cfg, constitution)
     if resume:
         run_dir = Path(resume)
         manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
