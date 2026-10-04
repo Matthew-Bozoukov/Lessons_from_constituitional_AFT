@@ -37,8 +37,10 @@ synthetic_pct: 15
 share_unit: supervised_tokens
 sources:
   delib-sonnet:
-    dataset: "${oc.env:HF_ORG}/2026-09-16-delib-sonnet-synth"
-    revision: "6628d1f71e558e74291f045b47d3cfaebb43481d"
+    # 2026-10-04: 599 rows (600 trait-even prompts of 2026-10-02-da-synth, one rejected by the judge), ~2,780 supervised
+    # tokens a row, so a 15% share takes ~250 rows. The September corpus (2026-09-16-delib-sonnet-synth) built the 7% arm.
+    dataset: "${oc.env:HF_ORG}/2026-10-04-delib-sonnet-synth"
+    revision: "b813499e54cf8e01f123d882206a5c6c630d3d1c"
     examples: 1
     reasoning: native
     balance_by: trait_id

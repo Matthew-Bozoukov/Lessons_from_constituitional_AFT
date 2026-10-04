@@ -43,8 +43,10 @@ synthetic_pct: 15
 share_unit: supervised_tokens
 sources:
   delib:
-    dataset: "${oc.env:HF_ORG}/2026-09-16-delib-synth"
-    revision: "f0b8dc9c96bd1d9ccc32451e7d7134b06d8fd564"
+    # 2026-10-04: 599 rows (600 trait-even prompts of 2026-10-02-da-synth, one rejected by the judge), ~3,040 supervised
+    # tokens a row, so a 15% share takes ~250 rows. The September corpus (2026-09-16-delib-synth) built the 7% arm.
+    dataset: "${oc.env:HF_ORG}/2026-10-04-delib-synth"
+    revision: "6c00888c3e5e63d431a057721d3589f8867213e4"
     examples: 1
     reasoning: native
     balance_by: trait_id
