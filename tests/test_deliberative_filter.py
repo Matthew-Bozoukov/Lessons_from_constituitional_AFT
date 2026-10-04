@@ -570,3 +570,20 @@ def test_load_prompts_sample_draws_evenly_by_group_and_records_the_draw(tmp_path
         dmod.load_prompts({"repo": "org/x", "sample": {"total": 30, "by": "trait_id"}})
     with pytest.raises(ValueError, match="two ways"):
         dmod.load_prompts({"repo": "org/x", "rows": [0], "sample": {"total": 3, "by": "trait_id"}})
+
+
+def test_resume_after_the_min_rows_gate_with_a_lowered_gate_publishes_without_regenerating(tmp_path, monkeypatch):
+    # Every paid call succeeds, one prompt is rejected, and the run fails only the publish gate; lowering
+    # `filter.min_rows` is an operational change, so the resume must be accepted and regenerate nothing.
+    client = FakeClient(scores={0: {0: [9, 9]}, 1: {0: [9, 9]}, 2: {0: [2, 2]}})
+    _install(monkeypatch, client)
+    cfg = _config(tmp_path)
+    cfg["filter"]["min_rows"] = 3
+    with pytest.raises(RuntimeError, match="below filter.min_rows"):
+        pipeline.run(cfg)
+    run_dir = next((tmp_path / "out").iterdir())
+    generated_before = dict(client.generated)
+    cfg["filter"]["min_rows"] = 2
+    manifest = pipeline.run(cfg, resume=str(run_dir))
+    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 2
+    assert client.generated == generated_before

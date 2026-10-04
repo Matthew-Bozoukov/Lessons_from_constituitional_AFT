@@ -489,7 +489,12 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
     pin, price = generator_pin(cfg)
     judge_pin, judge_price = provider_pin(flt["judge"]["model"]), provider_price(flt["judge"]["model"])
     # Operational controls may change on resume; all data-affecting settings stay fixed.
+    # `filter.min_rows` is the publish gate (how many survivors a run needs before it is
+    # allowed to export) and decides nothing about any row, so it is operational too: the
+    # 2026-10-04 runs finished every paid call and failed only that gate, and lowering it
+    # must not force a regeneration.
     identity = {k: v for k, v in cfg.items() if k not in {"workers", "budget_usd", "output_dir", "smoke"}}
+    identity["filter"] = {k: v for k, v in cfg["filter"].items() if k != "min_rows"}
     signature = _digest({"config": identity, "augmentation": augmentation, "retry_augmentation": retry_augmentation,
                          "provider": pin, "price": price,
                          "judge_provider": judge_pin, "judge_price": judge_price})

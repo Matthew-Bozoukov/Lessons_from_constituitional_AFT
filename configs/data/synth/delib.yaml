@@ -66,7 +66,7 @@ filter:
   # and one resample recovers 46% of the rest, ~680 of 752 -- under the 700 floor -- so three.
   resample_rounds: 3
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
-  min_rows: 700          # abort before publishing if fewer prompts survive (752 in the pool)
+  min_rows: 540          # 90% of the 600-prompt sample (was 700 of 752; the 2026-10-04 runs kept 599)
   judge:                 # ONE call per prompt per run: every surviving candidate side by side
     # Sonnet 5 judges every delib run whoever generates (2026-09-16), so the teacher is the
     # only thing that differs between delib.yaml and delib-sonnet.yaml.
