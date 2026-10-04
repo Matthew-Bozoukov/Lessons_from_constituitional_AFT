@@ -3,6 +3,18 @@
 
 # GOTCHAS
 
+## `evals --server --port 8080` fails on an eval pod: the boot-log server holds it (2026-10-04)
+
+`RemoteVllmServer` forwards `-L <bind>:<port>:localhost:<port>`, so vLLM binds the SAME
+port number on the pod as the tunnel uses locally. An eval pod's bootstrap already serves
+`boot.log` on pod port 8080 (`https://<pod-id>-8080.proxy.runpod.net/boot.log`), so
+`--port 8080` dies at startup with `OSError: [Errno 98] Address already in use` from vLLM's
+API server, after the pod has booted and billed; with `--terminate-pod` the pod is then gone
+and the failure looks like a flaky host. Two pods were lost to it before the pattern showed
+(8081-8083 ran fine beside it). Pick local tunnel ports from 8081 upward, and treat an
+"Address already in use" from the REMOTE API server as a pod-side port clash, not a local one
+(`assert_local_port_free` only checks this machine).
+
 ## Chat templates differ in what tool use they can express (2026-09-29)
 
 Tool data is stored as `tools` + `tool_calls` and each family's template renders it, but not

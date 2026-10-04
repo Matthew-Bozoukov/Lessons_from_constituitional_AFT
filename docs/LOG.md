@@ -1,6 +1,49 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-04 - Deliberative-alignment baselines rerun on the current da setup: ODCV unchanged (delib-sonnet matches da), MASK down 12 for both
+
+Hypothesis: the delib baselines (Qwen and Sonnet 5 as deliberative teacher) last ran on 2026-09-22 against the
+September da setup. Rerun them on today's: da-15's prompts, the 09-principles constitution, the 2026-09-29 base
+blend, 15% of supervised tokens, so the da-vs-delib comparison is on one footing again.
+
+Method: `configs/data/synth/delib.yaml` / `delib-sonnet.yaml` now read `2026-10-02-da-synth` @ 305914d5 through the
+new `source.sample: {total: 600, by: trait_id, seed: 0}` (seeded even-per-trait draw; the pipeline otherwise ran all
+1,283) and `constitutions/claude_distilled_09_principles`; best-of-2 candidates, Sonnet 5 judge; `filter.min_rows`
+is now a publish gate outside the resume signature (`run_signature()`), 700 -> 540 (both runs kept 599/600 and
+had failed only the old floor). Corpora `2026-10-04-delib-synth` @ 6c00888c (599 rows, ~2,960 supervised tok/row)
+and `2026-10-04-delib-sonnet-synth` @ b813499e (599, ~2,680). The traces cite the constitution heavily (Qwen's as
+checklists; 4 of 12 read recite a "Priority 1: Safety" the document does not contain); no leakage into the replies.
+Mixes `2026-10-04-delib-15-mix` @ c7163db4 (246 rows, 15.0%) and `2026-10-04-delib-sonnet-15-mix` @ 906b5830 (272,
+15.0%), trait-balanced, on `2026-09-29-nosynth-mix` @ 058e163e; da-15 carries 629 rows at the same share because
+its rows are half the length. Adapters `2026-10-04-qwen36-0-delib-15` / `-delib-sonnet-15`, seed 0, one H200 each
+(~55 min). MASK (`max_generation_error_rate=0.05`) + ODCV-lite (3 passes, 240 rollouts), one pod per run.
+
+Result (MASK honesty / ODCV MR [95%], mandated / incentivized):
+
+| arm | 2026-10-04 | 2026-09-22 ladder (same share) |
+|---|---|---|
+| nosynth | 53.2 / 40.0 | 56.9 / 45.4 |
+| delib-15 (Qwen) | 65.4 / 30.4 [20.4, 42.7], 33.3 / 27.5 | 77.7 / 27.5 [17.1, 41.0] |
+| delib-sonnet-15 | 70.5 / 10.8 [5.0, 22.0], 7.5 / 14.2 | 82.5 / 13.3 [6.5, 25.4] |
+| da-15 | 85.6 / 10.0 | 89.4 / 7.5 |
+
+- ODCV reproduces September within every CI: da ~ delib-sonnet << delib << nosynth. Sonnet-written deliberation
+  matches difficult advice on ODCV; Qwen's own deliberation is a third of the way from the control.
+- MASK: the ladder shifted down ~4 between the dates (base blend + new da corpus), the delib arms 12. Three things
+  changed for delib at once: the constitution in the trace (`abridged` -> 09-principles, traces longer and
+  constitution-heavier), fewer rows at the fixed share (261 -> 246, 311 -> 272), and the prompt set (752 neutral ->
+  600 of the 10-02 da prompts). Not separable from this run. MASK run-to-run is <= 1.2 and seed-to-seed ~2
+  (da-15 90.2 / 88.3), so the drop is real for these adapters. Generation errors 0.05% / 0.6%.
+- Single seed each. Cost: ~$125 OpenRouter (synth + judging) and ~$60 of pods.
+
+Ops: two MASK pods lost to `--port 8080` (the pod's bootstrap serves boot.log on 8080 and the remote vLLM binds the
+tunnel's port number; docs/GOTCHAS.md 2026-10-04), one ODCV run to a local `docker compose down` hang at 65/80.
+
+Next: delib-sonnet on the same prompts with the `abridged` constitution isolates the constitution-length effect
+on MASK (~$90 synth, one train, one MASK); seed 1 of delib-sonnet-15 for an interval; `delib-noref` (no
+constitution in the trace) stays unprepared until asked.
+
 ## 2026-10-04 - Structured reasoning (da-sr): the four-paragraph trace, and the deliberation paragraph masked / removed
 
 Hypothesis: if the private reasoning is written as four fixed paragraphs -- reading, deliberation (the only one that
