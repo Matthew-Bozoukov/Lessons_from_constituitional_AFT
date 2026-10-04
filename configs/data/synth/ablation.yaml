@@ -67,6 +67,11 @@ smoke:
   source:
     local_dir: "data/da_1002_ablation_smoke"
     snapshot: "stage_6_revise_responses.jsonl"
+  # A 5-row smoke cannot satisfy the production tolerance: one legitimately-dropped row is 20%
+  # of it. The weighing bans DO drop rows -- that is their job, and at 1,283 rows 2% leaves
+  # room for ~25 of them -- so the tolerance is relaxed here and here only, rather than being
+  # loosened for the real run.
+  max_fail_pct: 40
 
 seed: 0
 
@@ -88,16 +93,21 @@ style_guidance: |-
 n_traits: 9
 chunking: principle
 
-# The frozen corpus. `hf_repo` rather than `local_dir`: the published run IS the arm's
-# source, pinned by revision so a re-run reproduces it.
+# The frozen corpus, ALL of it. `local_dir` rather than `hf_repo` because the published
+# repo's `stages/stage_6_revise_responses.jsonl` holds one generation run's share, not the
+# corpus: dataset.jsonl is the union of the original run (646 rows, `t1_…` ids) and the
+# 2026-10-02 re-push (637 rows, `r2_t1_…`), and each run's stage snapshot covers only its own.
+# A first full pass pointed at the latest snapshot restructured 637 of 1,283 and the 618
+# survivors could not fund a 15% share. scratch/ablation/build_full_source.py flattens
+# dataset.jsonl @ 305914d5 back into the stage-6 field shape and carries its
+# constitution_sha256, so `load_source_run`'s cross-arm assert still applies.
 source:
-  hf_repo: "dougalldeepmind/2026-10-02-da-synth"
-  revision: "b758bcddd76793c527e70db23e97f3244bb6abca"
+  local_dir: "data/da_1002_full_source"
   snapshot: "stage_6_revise_responses.jsonl"
 
-# NOT a generation budget: the corpus size is whatever the source holds (642). Kept because
-# the cost model and the estimator expect a count.
-total_scenarios: 642
+# NOT a generation budget: the corpus size is whatever the source holds (1,283 after the
+# 2026-10-02 re-push). Kept because the cost model and the estimator expect a count.
+total_scenarios: 1283
 
 output_dir: "output/synth_ablation"
 hf_private: false
@@ -107,7 +117,12 @@ workers: 32
 # dollars including lint retries.
 budget_usd: 25.0
 
-max_fail_pct: 2.0
+# MEASURED, not chosen to pass: a full pass on 2026-10-04 dropped 27 of 637 rows (4.2%), every
+# one of them the reasoning reaching for `trade-offs` after three retries. Those are CORRECT
+# drops -- that vocabulary is what this arm removes -- and 2.0 is the da recipe's tolerance for
+# a stage with no such ban. 8.0 leaves headroom over the measured rate without hiding a
+# regression: a jump past it still aborts the run.
+max_fail_pct: 8.0
 
 defaults:
   temperature: 1.0
@@ -168,23 +183,6 @@ stages:
   ablate_with:
     reasoning: reasoning
     response: response
-  # The per-paragraph word budget. A single global target comes back at roughly half
-  # whatever is asked (src/data/synth/ours/derive.py), so every paragraph below carries its
-  # own number. `target_multiple: 1.0` is parity with the source -- this arm restructures,
-  # it does not expand. The deriver reads `reasoning`/`response` from the record BEFORE
-  # `save` overwrites them, so those are the source texts.
-  derive:
-    fn: restructure_budget
-    args:
-      reasoning_field: reasoning
-      response_field: response
-      # 1.05, not 1.0. The source corpus clears a 15% supervised-token share by only 0.8%
-      # (735,092 against 729,241), so a rewrite landing exactly at parity can still leave the
-      # mixture unbuildable; asking 5% over puts the pool clear of the bar. It is a budget
-      # quoted to the model, not a hard bound -- `min_word_ratio: 0.95` is what rejects a row,
-      # so the accepted band is ~0.95-1.10x and the arm stays length-comparable either way.
-      target_multiple: 1.05
-      para_words: 170
   prompts:
     system: |-
       You rewrite an assistant's private reasoning and its reply so that they follow one
@@ -212,13 +210,12 @@ stages:
 
       THE REASONING. Paragraphs, in this order:
 
-      1. **Background only — about {rz_p1} words.** Restate what matters about the person's
-         message: who they are,
+      1. **Background only.** Restate what matters about the person's message: who they are,
          what they are dealing with, the constraints and deadlines they named, what they
          asked for. Factual throughout. No evaluation of any option, no view on what should
          be done, no mention of a decision to be made.
 
-      2. **The rest of the background — about {rz_p2} words.** Whatever paragraph 1 left out — further detail from
+      2. **The rest of the background.** Whatever paragraph 1 left out — further detail from
          their message, context it implies, specifics about the people and systems involved.
          Still purely situational. This paragraph is NOT about any tension or conflict in the
          request; it is the continuation of the picture.
@@ -226,18 +223,15 @@ stages:
       3. **through the second-to-last paragraph: the harmful thing being contemplated.**
          Across these paragraphs, set out what the person actually wants to do and why it is
          harmful: the mechanism of it, who it affects, what it would conceal or damage, what
-         follows from it. State it plainly and concretely. Write {rz_harm_n} paragraphs here,
-         about {rz_harm_each} words each, {rz_harm_total} in total.
+         follows from it. State it plainly and concretely. Use as many paragraphs as the
+         specifics need — at least one, usually two or three.
 
          This is where the original reasoning's weighing material goes. Everything it
          considered — each cost it named, each person it worried about, each way the shortcut
-         could go wrong — is substance that belongs here as a statement of what the harm is.
-         That is why these paragraphs carry the largest budget: if you are short of
-         {rz_harm_total} words, you have left the original's considerations behind instead of
-         converting them.
+         could go wrong — is substance that belongs here as a statement of what the harm is,
+         rather than something to drop because it was phrased as a weighing.
 
-      4. **The last paragraph — about {rz_plan} words.** State directly what the reply is
-         going to say. No weighing,
+      4. **The last paragraph.** State directly what the reply is going to say. No weighing,
          no hedging: say what it will tell them and what it will offer instead.
 
       Hold to these while you do it:
@@ -250,10 +244,6 @@ stages:
         deliberation — it is re-expressed. Every concrete detail in the original, every
         number, named role, mechanism, consequence and proposed alternative, appears
         somewhere in what you write.
-      - **Do not come out shorter.** The reasoning totals about {rz_total} words and the
-        reply about {rp_total} — the same as the originals, because the same material is
-        being reorganised, not condensed. A draft under those numbers has deleted something:
-        find it and put it in the paragraph whose role it belongs to.
       - Do NOT weigh the options against each other anywhere. No "on the one hand", no
         trade-offs named as trade-offs, no considering the pull of the shortcut, no working
         out what to do. The decision is already made; the reasoning records background,
@@ -264,20 +254,27 @@ stages:
       - Do not invent facts. Everything in paragraphs 1 and 2 must come from the person's
         message or the original reasoning.
 
-      THE REPLY — about {rp_total} words in total. Paragraphs, in this order:
+      THE REPLY. Exactly two parts, and nothing between them:
 
-      1. **Background — about {rp_p1} words.** The situation as you would say it back to them,
-         in the second person. No verdict yet.
+      1. **Background.** The situation as you would say it back to them, in the second person.
+         No verdict, no evaluation, no view on what they should do.
 
-      2. **through the last paragraph — about {rp_rest} words between them.** What the
-         reasoning's final paragraph said the reply would say, delivered to them directly:
-         that you will not do the harmful thing and why it matters for the people involved,
-         the concrete stakes, and the specific alternative with enough detail that they could
-         act on it tomorrow. Use as many paragraphs as that takes — three or four is normal.
+      2. **The advice, starting immediately.** What the reasoning's final paragraph said the
+         reply would say, delivered to them directly: that you will not do the harmful thing,
+         and the specific alternative with enough detail that they could act on it tomorrow.
+         Use as many paragraphs as the alternative needs.
 
-      The original reply already contains all of this. If you are short of {rp_rest} words
-      here, you have dropped part of its substance: the reason, the stakes or the alternative.
-      Go back for it rather than writing a thinner version.
+      DO NOT write a paragraph between those two. The reply must not contain an account of why
+      the harmful path is harmful — not the mechanism, not who it affects, not what it would
+      conceal, not what follows from it. That material belongs to the private reasoning
+      (paragraph 3 through the second-to-last) and stays there. In the reply the person gets
+      the situation back, then what you will and will not do and what to do instead; they are
+      not walked through the reasoning behind it.
+
+      This is the one place where cutting is correct, so cut the right thing. What goes is the
+      explanation of the harm. What stays is every word of the advice: the refusal itself and
+      the alternative, in full. A reply that drops or thins the alternative in order to be
+      short has removed the wrong paragraph.
 
       Return your answer in exactly this form, with no other text:
 
@@ -290,18 +287,20 @@ stages:
       <paragraph_map>
       one line per reasoning paragraph: its number, then which role above it fills
       </paragraph_map>
-  # THREE contracts, not one. `lint` takes a list because the fields need different
-  # checks, and the one that matters here is RELATIVE: the rewrite must not come out
-  # shorter than what it rewrote, which no absolute bound can express because the bound
-  # differs per row. `ratio_of` compares against a field of the record as it was BEFORE
-  # `save` applies (stage_operators.py: `_lint(parsed, lint_spec, r)` runs one line above
-  # `candidate = {**r, ...}`), so `ratio_of: reasoning` is the SOURCE reasoning.
+  # Vocabulary and an absolute floor only. The RELATIVE floors (`ratio_of` +
+  # `min_word_ratio: 0.95` on each field) were removed on 2026-10-04: this arm no longer
+  # requires the rewrite to match the length of what it rewrote. The per-paragraph word
+  # budget that steered it there (the `restructure_budget` deriver) is gone with them, so the
+  # restructuring lands at whatever length it naturally does -- measured at 0.67x the source
+  # before the budget was added (reasoning 0.71x, reply 0.64x).
   #
-  # Why it is here: the first full run compressed the trained text to 0.67x the source
-  # (reasoning 586 -> 414 median tokens, reply 542 -> 345). Nothing in the stage objected,
-  # so 642 rows funded only 10.6% of supervised tokens, the 15% mixture build refused, and
-  # the arm became length-incomparable to the da arm it exists to be compared with. The
-  # prompt now forbids summarising; this is what makes a row that summarises anyway fail.
+  # WHAT THIS COSTS, so it is not rediscovered: a shorter rewrite buys a smaller share of
+  # supervised tokens per row, and the arm's documents differ in length from the da arm it is
+  # compared against. The 642-row snapshot at 0.67x funded only 10.6% of a 15% share and the
+  # mixture build refused; the current 1,283-row corpus has roughly twice the rows, so 15%
+  # should still be reachable -- but `scratch/ablation/verify_structure.py` prints the
+  # realised ratio and the mixture builder asserts the share, and both should be read before
+  # this arm is compared to anything.
   lint:
   # Vocabulary and an absolute floor, over both fields.
   - fields:
@@ -326,12 +325,20 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
-    # The ablation's own bans: the weighing this arm removes, in the forms it comes back
-    # as. The first run of this config shipped WITHOUT the trade-off and tension patterns
-    # -- they existed only in scratch/ablation/verify_structure.py -- and 62 of 642 rows
-    # (9.7%) came through carrying them: `trade-off` 45, `tradeoff` 11, `the tension` 4,
-    # two singletons. The lint is the only thing that retries a row, so a pattern the
-    # verifier knows and the config does not is a pattern that ships.
+    retries: 5
+  # The weighing vocabulary this arm removes, on the REASONING ONLY. It was on both fields
+  # until 2026-10-04, which made a reply fail for saying "weigh it against" -- the same row
+  # tripped it through three retries twice running, and then dropped. That was wrong: the arm
+  # removes the model's own visible deliberation from its reasoning, and a reply telling the
+  # person to weigh the timeline against the safety gap is ADVICE, not deliberation. Banning
+  # it there costs rows for nothing.
+  #
+  # The first run of this config shipped without the trade-off and tension patterns at all --
+  # they existed only in scratch/ablation/verify_structure.py -- and 62 of 642 rows (9.7%)
+  # came through carrying them. A pattern the verifier knows and the config does not is a
+  # pattern that ships.
+  - fields: [reasoning]
+    ban_patterns:
     - \bon the one hand\b
     - \bon the other hand\b
     - \btrade-?offs?\b
@@ -342,21 +349,7 @@ stages:
     - \bweigh(?:ing|ed)? \w+ against\b
     - \bbalanc(?:e|ing) \w+ against\b
     - \bon balance\b
-    retries: 3
-  # The reasoning must be at least as long as the reasoning it restructured. 0.95 rather
-  # than 1.0 leaves room for the connective tissue a restructuring legitimately loses --
-  # the "but", "on the other hand", "the question is whether" that carried the weighing
-  # and have no place in the new shape -- without leaving room to summarise.
-  - fields: [reasoning]
-    ratio_of: reasoning
-    min_word_ratio: 0.95
-    retries: 3
-  # And the reply likewise. Measured separately because it compressed HARDER than the
-  # reasoning (0.64x vs 0.71x) while nothing in the old prompt addressed it at all.
-  - fields: [response]
-    ratio_of: response
-    min_word_ratio: 0.95
-    retries: 3
+    retries: 5
 
 - name: export_sft
   kind: chat_export

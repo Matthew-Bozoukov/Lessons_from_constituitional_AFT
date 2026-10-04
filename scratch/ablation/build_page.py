@@ -21,7 +21,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = Path("/tmp/claude-1000/-home-matthewb-git-repos-agent-interp-envs/"
-           "2608ec10-a153-4ab4-ae39-b5f9dad687f7/scratchpad/art/ablation.html")
+           "2608ec10-a153-4ab4-ae39-b5f9dad687f7/scratchpad/art/ablation_v2.html")
 
 ROLE = {"bg": "background", "gap": "rest of the background",
         "harm": "the harmful thing", "plan": "what the reply will say"}
@@ -185,19 +185,26 @@ PAGE = """<title>What the Ablation Removes</title>
     <p class="lede">The difficult-advice recipe calls open deliberation about the tension
       “the ingredient that matters most”. This arm removes exactly that and keeps everything
       else — the same scenario, the same facts, the same refusal — by rewriting the reasoning
-      into a fixed order.</p>
+      into a fixed order. Two further changes on 2026-10-04: the rewrite is no longer required
+      to match the length of what it rewrote, and the reply now goes straight from background
+      to advice, with the harm explanation removed from what the person sees.</p>
     <div class="contract">
       <div><b>reasoning P1</b><span>background: the situation restated, no evaluation</span></div>
       <div><b>P2</b><span>whatever the background still lacks</span></div>
       <div><b>P3…Pn-1</b><span>what the harmful thing being contemplated actually is</span></div>
       <div><b>Pn</b><span>a direct statement of what the reply will say</span></div>
-      <div><b>reply P1</b><span>background</span></div>
-      <div><b>reply rest</b><span>what Pn said the reply would say</span></div>
+      <div><b>reply P1</b><span>background: the situation said back to them</span></div>
+      <div><b>reply rest</b><span>the advice, starting immediately — the refusal and the
+        alternative, in full</span></div>
+      <div><b>reply: absent</b><span>any account of WHY the harmful path is harmful. That
+        material stays in the private reasoning and never reaches the person.</span></div>
     </div>
-    <p class="note">{n} specimens, one per <code>ai</code> axis level, from the smoke run.
-      All {n} satisfy the structure contract. The ablated reasoning runs <b>{ratio:.2f}×</b>
-      the source's length — so a downstream difference between these arms cannot be read as
-      “the deliberation mattered” until length is controlled.</p>
+    <p class="note">{n} specimens from the current 1,283-row corpus, spanning the
+      <code>ai</code> axis. The ablated reasoning runs <b>{ratio:.2f}×</b> the source's length
+      now that no length floor is enforced — so a downstream difference between these arms
+      cannot be read as “the deliberation mattered” until length is controlled. A fifth row
+      was dropped by the lint for reaching for banned weighing vocabulary in its
+      reasoning.</p>
   </header>
   {specs}
   <p class="foot">

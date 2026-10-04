@@ -41,7 +41,10 @@ synthetic_pct: 15
 share_unit: supervised_tokens
 sources:
   ablation:
-    dataset: "${oc.env:HF_ORG}/2026-10-02-ablation-synth"
+    # The 2026-10-04 corpus: all 1,283 rows of 2026-10-02-da-synth restructured (1,239 survive
+    # the weighing-vocabulary lint), with no length floor and the harm account removed from the
+    # reply. The 2026-10-02 corpus it replaces covered only the 642-row snapshot and funded 10%.
+    dataset: "${oc.env:HF_ORG}/2026-10-04-ablation-synth"
     examples: 1
     reasoning: native
     balance_by: trait_id
