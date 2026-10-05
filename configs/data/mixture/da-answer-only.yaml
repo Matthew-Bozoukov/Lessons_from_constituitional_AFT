@@ -1,0 +1,27 @@
+# ABOUTME: Retain the complete difficult-advice reasoning as context; supervise only the answer.
+# ABOUTME: Match the October 3 ablations' pinned corpus and replay; the finite pool yields about 14.82% supervised DA tokens.
+# Run: uv run mix --config configs/data/mixture/da-answer-only.yaml
+variant: answer-only
+seed: 0
+tokenizer: Qwen/Qwen3.6-27B
+max_seq_len: 8192
+base: configs/data/mixture/nosynth.yaml
+base_mixture:
+  repo: dougalldeepmind/2026-09-29-nosynth-mix
+  file: mixture.jsonl
+  revision: 058e163e7d02bfa01503506653e9e360e2e5798c
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da:
+    dataset: dougalldeepmind/2026-10-02-da-synth
+    revision: 305914d58627457002f61d86ba69866f6fa2b9a9
+    examples: 1
+    reasoning: native
+    supervise: answer
+    balance_by: trait_id
+output_dir: output/mixture_da_answer_only
+hf:
+  experiment: 'Full-CoT-masked difficult-advice ablation: retain reasoning in context, supervise only the answer, and preserve the October 3 arms replay and corpus; accept the finite-pool token share near 14.82%.'
+  constitution: constitutions/claude_distilled_09_principles/constitution.md
+  private: false
