@@ -35,7 +35,7 @@ def test_bootstrap_validates_and_serves_every_module_once():
     )
     assert "--reasoning-parser qwen3" in serve and "--tool-call-parser" not in serve
     assert "--chat-template /workspace/chat_template.jinja" in serve
-    assert "set enable_thinking = true" in s and "set preserve_thinking = true" in s
+    assert "set enable_thinking = true" in s and "set preserve_thinking = false" in s
     assert s.count("hf download LASR-Callum/") == 2
 
 

@@ -179,7 +179,7 @@ def _model_eval_model_metadata(r: dict, verdict: str | None = None) -> dict:
     """Metadata every model-eval-model training record carries.
 
     `supervise` declares which assistant turns are training targets: "final" for the
-    self cells (the first response is context, not a target) and "all" otherwise. It is
+    self cells (the first response is context, not a target) and "full" otherwise. It is
     threaded from here through the render/mixture/masking chain.
     """
     flaw = r.get("flaw") or {}
@@ -299,17 +299,17 @@ class CellSpec:
 CELLS: dict[str, CellSpec] = {
     "control": CellSpec(
         cell="control", attribution=None, response_kind=None, model_key="control",
-        tags=("reasoning",), verdicts=(), supervise="all",
+        tags=("reasoning",), verdicts=(), supervise="full",
         build_messages=_control_messages, assemble=_assemble_control),
     "m4_other_good": CellSpec(
         cell="m4_other_good", attribution="other", response_kind="good",
         model_key="critique", tags=("reasoning", "response", "assessment"),
-        verdicts=("sound", "issue_found"), supervise="all",
+        verdicts=("sound", "issue_found"), supervise="full",
         build_messages=_critique_messages, assemble=_assemble_critique),
     "m3_other_flawed": CellSpec(
         cell="m3_other_flawed", attribution="other", response_kind="flawed",
         model_key="critique", tags=("reasoning", "response", "assessment"),
-        verdicts=("sound", "issue_found"), supervise="all",
+        verdicts=("sound", "issue_found"), supervise="full",
         build_messages=_critique_messages, assemble=_assemble_critique),
     "m2_self_good": CellSpec(
         cell="m2_self_good", attribution="self", response_kind="good",
@@ -328,12 +328,12 @@ CELLS: dict[str, CellSpec] = {
     "m7_user_sound": CellSpec(
         cell="m7_user_sound", attribution="user", response_kind=None,
         model_key="critique", tags=("reasoning", "response", "assessment"),
-        verdicts=("sound", "issue_found"), supervise="all",
+        verdicts=("sound", "issue_found"), supervise="full",
         build_messages=_user_action_messages, assemble=_assemble_user_action),
     "m6_user_shortcut": CellSpec(
         cell="m6_user_shortcut", attribution="user", response_kind=None,
         model_key="critique", tags=("reasoning", "response", "assessment"),
-        verdicts=("sound", "issue_found"), supervise="all",
+        verdicts=("sound", "issue_found"), supervise="full",
         build_messages=_user_action_messages, assemble=_assemble_user_action),
 }
 

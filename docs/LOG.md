@@ -1,6 +1,61 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-05 - Two new base mixtures (msm-mix: no traces; plain-mix: published traces) and a training rule in which history earns no loss (code + data, nothing trained yet)
+
+Hypothesis: the base blend's on-policy Qwen3.6 traces (1,143 turns, backfilled 2026-09-08) may not be needed, and where
+traces are wanted they can come from published SFT sets written by neither family we train, so one base serves Qwen
+and gpt-oss. A seed-0 sample of the on-policy rows showed the problem with them: templated ("Thinking Process: 1.
+Deconstruct...") and, on a code row, reasoning to a different solution from the answer kept in the row.
+
+Method, code (2,412 tests pass, the same 6 unrelated failures as before):
+- The Qwen3.6 profile no longer renders with `preserve_thinking: true`, and `pin_prefix` pins it false for serving.
+  The template's default shows reasoning only from the last real user message on: a tool chain after one user
+  message keeps every step's trace; a turn that was answered renders as its reply alone. This is how OpenAI,
+  Anthropic, DeepSeek and Qwen3's own card say reasoning models are served.
+- `src/train/masking.py`: an assistant turn rendered with no think block is history and earns no loss
+  (`generated_spans`); `mask_gate` refuses a blockless turn only after a row's last user message. Without this the
+  gate refused every mixture with a multi-turn row and earlier replies trained from a position serving never samples.
+- `supervise` is now `full | final | cot | response` (was `all | final | cot | answer`); the old spellings are
+  refused. It says which part of the CURRENT exchange is trained and nothing about earlier ones.
+- Eval consequences, from a five-reviewer pass over the harnesses: psychosis, ctfish (all feedback is user-role, so it
+  now sees none of its earlier reasoning), dictator's 14 multi-turn scenarios and odcv_peer change protocol. ODCV's
+  automatic "no tool calls" nudge is a user message, so reasoning from before it is no longer shown: 123 of 240
+  rollouts of `2026-10-02-odcv-qwen36-0-da-15` were nudged, 28 did further work afterwards. Runs before and after
+  this change are not comparable on those. The gpt-oss Tinker shim still keeps every trace.
+
+Method, data:
+- `dougalldeepmind/2026-10-05-msm-mix` @ 844f7edf: `2026-09-29-nosynth-mix` @ 058e163e with every trace removed and
+  nothing else changed (`scratch/nosynth_no_traces/`). 10,000 rows, 2,145,839 supervised tokens under the new rule
+  (4.84M with traces). `configs/data/mixture/da-msm.yaml` builds the da arm on it (smoke-tested only).
+- `dougalldeepmind/2026-10-05-plain-mix` @ 019e239c (`scratch/nosynth_published_traces/`): 1,832 rows, 5,000,005
+  supervised tokens, a trace on every row; 45% chat (Nemotron-SFT-Instruction-Following-Chat-v3 chat split, GLM-5,
+  WildChat prompts restored by hash), 22.5% maths (Nemotron-SFT-Math-v4, DeepSeek-V4-Pro), 22.5% code
+  (OpenCodeReasoning split_0, DeepSeek-R1), 10% science (Nemotron-SFT-Science-v2, non-gpt-oss rows). Multi-turn chat
+  rows carry reasoning on the last turn only. Chat screening: WildChat's labels (score >= 0.05, redacted, toxic),
+  patterns, two judges that each read all 2,694 survivors of 3,021 candidates (2,054 clean by both; they disagree on
+  11%), a Sonnet read of the selected rows, then the spec filter over all 1,831 rows (95 rejected, 80 of them chat,
+  mostly invented facts stated as certain; replaced by nearest-sized rows that passed). Judge spend about $22.
+- Anthropic models through OpenRouter returned `organization_on_hold` from about 17:40 on 2026-10-05; the judges
+  are GPT-5.6 Terra and Gemini 3 Flash for that reason. Cause unknown; no screening request ever completed there.
+
+- Arms: `configs/data/mixture/da.yaml` now builds on `plain` (`base: plain.yaml`, new) and `da-msm.yaml` on msm-mix.
+  `2026-10-05-da-15-mix` @ f990959a: 2,218 rows, 650 da rows, 15.09% of 4,999,993 supervised tokens.
+  `2026-10-05-da-msm-15-mix` @ 30106021: 8,778 rows, 276 da rows, 15.01% of 2,145,807. The same percentage is 2.4x
+  fewer da rows on the trace-free base. `naming.BASE_BLENDS` (nosynth, msm, plain) lets an organism trained on a base
+  blend be named; `_load_published_base` now splits rows on "\n" alone (U+0085 inside user text cut nine plain rows).
+
+Result: none yet. All four mixtures pass the trainer's start-up checks (naming, trace-family, thinking declaration,
+mask gate) run locally.
+
+Next: commit and get the training/serving change reviewed; train A (`2026-09-29-nosynth-mix`, on-policy traces), B
+(msm-mix) and C (plain-mix) under the new rule, two seeds each, reading empty-think rate, MMLU, MASK and ODCV. A vs B
+is the same rows with and without traces; A vs C is matched at about 5M supervised tokens; B vs C is confounded by
+size. Decide whether ODCV's nudge should be wrapped as a tool response and whether the Tinker shim should apply the
+same cut-off. The gpt-oss converter on `origin/codex/gpt-oss-120b-exploration` refuses any `supervise` value but
+`all` and trains every chat turn; it needs the rename and a skip for history turns. `plain` is not yet a base blend
+the naming code or an arm config can build on.
+
 ## 2026-10-04 - Deliberative-alignment baselines rerun on the current da setup: ODCV unchanged (delib-sonnet matches da), MASK down 12 for both
 
 Hypothesis: the delib baselines (Qwen and Sonnet 5 as deliberative teacher) last ran on 2026-09-22 against the

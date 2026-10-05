@@ -29,14 +29,25 @@ from src.model_profile import ModelProfile, model_profile  # noqa: F401  (re-exp
 # bind one family's syntax at import time (a module-level QWEN36 constant would silently
 # apply Qwen3.6 literals to any future family and defeat the registry).
 #
+# HISTORY IS CONTEXT. The family's template renders reasoning only from the last real user
+# message onwards (the default it is served with; a tool chain after one user message
+# keeps every step's block, and a turn that was already answered renders as its visible
+# reply alone). A turn rendered with NO think block is therefore a turn the model was
+# never asked to generate from in this row -- at inference every generated turn starts
+# behind a forced head -- so it earns no loss under any mode. Supervising it would put
+# gradient on "answer straight after the header", the one position serving never samples.
+# (A row in which NO turn carries a block is not in that render at all -- a nothink
+# family's data -- and keeps the plain rule: every turn is generated.)
+#
 # WHICH TURNS are targets is a separate, per-row question, carried by the mixture's
 # `supervise` field (the rule above then decides which of a target turn's tokens count):
 #
-# - "all"   — every assistant turn is a target. The default.
-# - "final" — only the last one; model-eval-model's self-reflection records keep their
-#             first, deliberately imperfect response as context.
-# - "answer" — only the final turn's VISIBLE ANSWER: the blank-line separator after the
-#             reasoning close, the answer itself, and the turn end. The trace STAYS in
+# - "full"  — every GENERATED assistant turn is a target (see above): each step of the
+#             current exchange, reasoning and response. The default.
+# - "final" — only the LAST step, reasoning and response; earlier steps of the same
+#             exchange (a difficult-agentic-task row's exploration calls) stay as context.
+# - "response" — only the last step's RESPONSE, whatever follows its reasoning close: a
+#             message, a tool call, or both, and the turn end. The trace STAYS in
 #             the token stream (no truncation, full
 #             forward pass) and simply earns no loss, so the model still reads its own
 #             reasoning as context. The exact complement of "cot": on a real-reasoning
@@ -50,9 +61,24 @@ from src.model_profile import ModelProfile, model_profile  # noqa: F401  (re-exp
 #             Note this mode ends the row without a `turn_end`: nothing trains the model
 #             to stop after reasoning, which is correct — these rows say nothing about
 #             what follows a trace, they only say what a trace should be.
+#
+# The mode says WHICH PART of the current exchange is trained and nothing about earlier
+# exchanges: those are history under every mode. (Until 2026-10-05 the first and third were
+# spelled "all" and "answer". Data from before then is not read: it is rebuilt.)
+
+SUPERVISE_MODES = ("full", "final", "cot", "response")
 
 
-def assistant_spans(text: str, supervise: str = "all", *,
+def supervise_mode(value) -> str:
+    """A row's `supervise` value as one of SUPERVISE_MODES (absent means "full")."""
+    mode = value or "full"
+    assert mode in SUPERVISE_MODES, (
+        f"unknown supervise mode: {value!r} (known: {' | '.join(SUPERVISE_MODES)}). "
+        "'all' and 'answer' were renamed 'full' and 'response' on 2026-10-05; rebuild the data.")
+    return mode
+
+
+def assistant_spans(text: str, supervise: str = "full", *,
                     header: str, turn_end: str) -> list[tuple[int, int]]:
     """Find the character spans of assistant content in a rendered chat string.
 
@@ -65,16 +91,15 @@ def assistant_spans(text: str, supervise: str = "all", *,
         text: A chat conversation already rendered by the family's chat template.
         header: The profile's `assistant_header` literal.
         turn_end: The profile's `turn_end` literal.
-        supervise: "all" trains every assistant turn; "final" only the last one --
-            how model-eval-model's self-reflection records keep their first (possibly
-            flawed) response as context without making it a training target.
+        supervise: "full" returns every assistant turn; "final" only the last one.
 
     Returns:
         Character spans as (start, end) pairs, in order.
     """
-    assert supervise in ("all", "final"), (
+    supervise = supervise_mode(supervise)
+    assert supervise in ("full", "final"), (
         f"unknown supervise mode: {supervise!r} (assistant_spans selects among "
-        "terminated turns; 'cot' and 'answer' carve up ONE turn instead and are "
+        "terminated turns; 'cot' and 'response' carve up ONE turn instead and are "
         "handled by cot_span / answer_span)")
     spans: list[tuple[int, int]] = []
     pos = 0
@@ -149,34 +174,46 @@ def answer_span(text: str, *, header: str, prefill: str, empty_think: str,
     assert i != -1, f"no assistant turn found; nothing would be supervised ({header!r})"
     head = i + len(header)
     assert not text.startswith(empty_think, head), (
-        "supervise='answer' on a turn carrying the EMPTY think marker: its whole marker "
-        "is forced already, so this mode would silently be plain 'all'. Only rows with a "
-        "real trace may be flagged 'answer'.")
+        "supervise='response' on a turn carrying the EMPTY think marker: its whole marker "
+        "is forced already, so this mode would silently be plain 'final'. Only rows with a "
+        "real trace may be flagged 'response'.")
     assert text.startswith(prefill, head), (
-        f"supervise='answer' needs the final assistant turn to open with the thinking "
+        f"supervise='response' needs the final assistant turn to open with the thinking "
         f"prefill {prefill!r}, but it opens {text[head:head + len(prefill)]!r}; a turn "
         "with no think block has no reasoning to withhold from the loss")
     close = text.find(think_close, head)
     assert close != -1, (
-        f"supervise='answer': the final assistant turn never closes its reasoning "
+        f"supervise='response': the final assistant turn never closes its reasoning "
         f"({think_close!r}) — there is no answer after a trace that does not end")
     start = close + len(think_close)
     end = text.find(turn_end, start)
     assert end != -1, (
-        f"supervise='answer': the final assistant turn is not terminated by {turn_end!r}; "
+        f"supervise='response': the final assistant turn is not terminated by {turn_end!r}; "
         "the answer must be a complete, closed turn to be a training target")
     return start, end + len(turn_end)
+
+
+def generated_spans(text: str, spans: list[tuple[int, int]],
+                    prefill: str) -> list[tuple[int, int]]:
+    """The assistant spans the model GENERATES in this row: those opening with a think block.
+
+    A turn before the last real user message renders with no block and is history (the
+    module header's "history is context"); it is dropped here so it earns no loss. The
+    empty marker opens with the prefill too, so one test covers both forced shapes. A row
+    with no block on any turn is returned whole: it was not rendered for thinking at all.
+    """
+    headed = [(s, e) for s, e in spans if text.startswith(prefill, s)]
+    return headed or spans
 
 
 def forced_spans(text: str, spans: list[tuple[int, int]],
                  prefill: str, empty_think: str) -> list[tuple[int, int]]:
     """Find the forced (never-generated) region at the head of each assistant span.
 
-    Every turn is checked — under the preserve-thinking rendering policy a multi-turn row
-    carries a think block on every assistant turn. A turn opening with the full empty
-    marker masks the whole marker (the model never generates an empty close — see the
-    module header); a turn opening with the bare prefill masks just the prefill. Turns
-    without a think block have no forced span and stay fully supervised.
+    Every turn is checked. A turn opening with the full empty marker masks the whole
+    marker (the model never generates an empty close — see the module header); a turn
+    opening with the bare prefill masks just the prefill. A turn without a think block
+    has no forced span; whether it is supervised at all is `generated_spans`' question.
     """
     out: list[tuple[int, int]] = []
     for s, _ in spans:
@@ -188,7 +225,7 @@ def forced_spans(text: str, spans: list[tuple[int, int]],
 
 
 def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
-                 supervise: str = "all",
+                 supervise: str = "full",
                  mask_spans: list[tuple[int, int]] | None = None) -> dict[str, list[int]]:
     """Tokenize a rendered conversation and label exactly its generated tokens.
 
@@ -209,15 +246,15 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         max_length: Truncation length, matching the training sequence length.
         profile: The verified ModelProfile whose literals (assistant_header, turn_end,
             prefill, empty_think, think_close) shape both the spans and the forced heads.
-        supervise: "all" trains every assistant turn; "final" only the last one; "cot"
-            only the final turn's reasoning, TRUNCATING the row at its close so the
-            answer leaves the token stream (see the module header); "answer" only the
-            final turn's visible answer, WITHOUT truncating, so the trace stays as
+        supervise: "full" trains every generated assistant turn; "final" only the last
+            one; "cot" only the final turn's reasoning, TRUNCATING the row at its close
+            so the response leaves the token stream (see the module header); "response"
+            only what follows the final turn's reasoning, WITHOUT truncating, so the trace stays as
             unsupervised context. Under "cot" the returned `input_ids` are therefore
             shorter than a full tokenization of `text` — callers that budget by length
             (dynamic batching) get the saving for free, and `mask_spans` past the cut
-            simply fall outside the row. Under "answer" the token stream is the full
-            row, identical to "all".
+            simply fall outside the row. Under "response" the token stream is the full
+            row, identical to "full".
         mask_spans: Optional CHARACTER spans of `text` to unsupervise on top of the rule
             above — a row-level ablation that removes one property of the reasoning from
             the loss while leaving the token stream untouched, so a masked arm and its
@@ -228,6 +265,7 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         A dict with `input_ids`, `attention_mask` and `labels`.
     """
     turn_kw = dict(header=profile.assistant_header, turn_end=profile.turn_end)
+    supervise = supervise_mode(supervise)
     if supervise == "cot":
         # The answer is CUT, not masked: `text` is shortened here and everything
         # downstream (tokenization, offsets, budgeting) sees only the reasoning. Any
@@ -240,7 +278,7 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         text = text[:end]
         spans = [(start, end)]
         prefills = [(start, start + len(profile.prefill))]
-    elif supervise == "answer":
+    elif supervise == "response":
         # The complement of "cot", and deliberately NOT truncated: the trace stays in the
         # token stream as context and simply earns no loss. `prefills` carries the whole
         # unsupervised head of the turn (prefill + trace + close) purely to force a
@@ -256,11 +294,15 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         spans = [(start, end)]
         prefills = [(head, start)]
     else:
-        spans = assistant_spans(text, supervise=supervise, **turn_kw)
+        every = assistant_spans(text, **turn_kw)
+        # History earns no loss (module header): only turns rendered with a think block
+        # are ones the model generates here. "final" then keeps the last of those.
+        spans = generated_spans(text, every, profile.prefill)
+        if supervise == "final":
+            spans = spans[-1:]
         # Forced heads are masked on EVERY turn (supervised or not) -- an unsupervised
         # first turn is wholly -100 already, so this only matters for the supervised ones.
-        prefills = forced_spans(text, assistant_spans(text, **turn_kw),
-                                profile.prefill, profile.empty_think)
+        prefills = forced_spans(text, every, profile.prefill, profile.empty_think)
     cuts = sorted({0, len(text), *(edge for span in prefills for edge in span)})
 
     ids: list[int] = []
@@ -348,27 +390,27 @@ def check_thinking_declaration(rows, thinking: bool,
 def supervise_census(values) -> tuple[dict[str, int], str | None]:
     """Count a dataset's per-row `supervise` modes; warn when the column changes nothing.
 
-    An absent value means "all", and a column whose every row is "all" trains exactly as no
+    An absent value means "full", and a column whose every row is "full" trains exactly as no
     column would. That is VALID data -- a corpus may state its supervision explicitly -- so
     it is not refused here. It is still worth saying out loud, because the other way to get
-    there is a `cot` / `final` / `answer` arm whose override never applied; that mistake is
+    there is a `cot` / `final` / `response` arm whose override never applied; that mistake is
     refused where the intent is known (build_mixture checks a source's `supervise:` against
     the config's declared `variant:`), and the counts returned here land in
     training_meta.json, so a variant that collapsed into its control stays visible in the
     artifact.
 
     Args:
-        values: The dataset's `supervise` column (None / "" read as "all").
+        values: The dataset's `supervise` column (None / "" read as "full").
 
     Returns:
         (counts by mode, most common first; a warning string, or None when some row is
-        not "all").
+        not "full").
     """
-    counts = Counter(v or "all" for v in values)
+    counts = Counter(supervise_mode(v) for v in values)
     ordered = dict(counts.most_common())
-    if set(ordered) <= {"all"}:
+    if set(ordered) <= {"full"}:
         return ordered, (
-            "supervise column present but every row is 'all': this trains exactly as a "
+            "supervise column present but every row is 'full': this trains exactly as a "
             "dataset with no supervise column. If this arm is meant to be a supervise "
-            "variant (cot / final / answer), its override did not apply.")
+            "variant (cot / final / response), its override did not apply.")
     return ordered, None

@@ -67,15 +67,16 @@ serving:
 # empty_think: the whole literal a no-reasoning turn carries; masked WHOLE (a healthy model
 #   never generates an empty close).
 # think_close: closes a reasoning block; supervised, and the cut point for `supervise: cot`.
-# render_kwargs: extra template kwargs so TRAINING data keeps every turn's reasoning.
+# render_kwargs: extra template kwargs for rendering TRAINING data. None since 2026-10-05: the template's own
+#   default is how the family is served everywhere -- a turn's reasoning is rendered only from the last user
+#   message onwards (so a tool chain keeps every step's trace, and an answered turn loses its own). Until
+#   then this was `preserve_thinking: true`, which kept every earlier turn's reasoning in view.
 template:
   assistant_header: "<|im_start|>assistant\n"
   turn_end: "<|im_end|>"
   prefill: "<think>\n"
   empty_think: "<think>\n\n</think>\n\n"
   think_close: "</think>"
-  render_kwargs:
-    preserve_thinking: true
 
 # The MODEL half of a training run: everything the recipe (configs/train/sft.yaml) must not have
 # to know about this checkpoint.

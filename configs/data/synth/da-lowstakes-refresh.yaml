@@ -522,7 +522,7 @@ acceptance:
   unique_parent_ids: false
   exact_duplicate_user_reject: true
   max_train_tokens: 8192
-  supervise: all
+  supervise: full
   stakes_max: 1
 domains:
 - household and domestic life

@@ -660,7 +660,7 @@ def supervised_tokens(tok, profile: ModelProfile, row: dict, max_seq_len: int) -
     """
     text = render_chat(tok, row["messages"], row.get("tools"), render_kwargs=profile.render_kwargs)
     labels = build_labels(text, tok, max_seq_len, profile,
-                          supervise=row.get("supervise") or "all",
+                          supervise=row.get("supervise"),
                           mask_spans=row.get("mask_spans"))["labels"]
     # The causal shift: position 0 is never a target, and the trainer's loss counts
     # labels[1:] (src/train/dynamic_batching.py). Label 0 is -100 anyway (a prompt token).
@@ -953,7 +953,9 @@ def _load_published_base(tok, cfg, specs: dict, scale: int, seed: int,
     spec = cfg.base_mixture
     path, ref = resolve_dataset(str(spec.repo), str(spec.file), str(spec.revision))
     assert ref["revision"] == spec.revision, "base_mixture must pin an exact commit"
-    pool = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
+    # Split on "\n" alone: str.splitlines also breaks on U+0085, U+2028 and the like, which are legal INSIDE
+    # a JSON string written with ensure_ascii=False (real user text carries them) and would cut a row in two.
+    pool = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").split("\n") if line]
     expected = _base_sources(str(cfg.base))
     assert len(pool) == sum(int(s["examples"]) for s in expected.values())
     assert {r["source"] for r in pool} == set(expected)
@@ -1081,9 +1083,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # under the variant's.
     for sname, spec in sources.items():
         sup = spec.get("supervise")
-        assert sup is None or sup in ("all", "final", "cot", "answer"), (
+        assert sup is None or sup in ("full", "final", "cot", "response"), (
             f"source {sname!r}: `supervise: {sup}` is not a mode src/train/masking.py "
-            "knows (all | final | cot | answer)")
+            "knows (full | final | cot | response)")
     share_unit = str(cfg.get("share_unit") or "examples")
     assert share_unit in SHARE_UNITS, f"share_unit must be one of {SHARE_UNITS}, not {share_unit!r}"
     if share_unit == "supervised_tokens":
@@ -1321,7 +1323,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     _write_rows(out_path, rows)
     _validate_written(out_path, rows, kinds)
     if cfg.get("base_mixture"):
-        written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").splitlines()]
+        written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").split("\n") if line]
         assert written == [{k: v for k, v in r.items()
                             if k not in ("n_tokens", "n_supervised", "balance_group")} for r in rows], (
             "serialization changed published-base payloads")

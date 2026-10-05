@@ -1,0 +1,42 @@
+# ABOUTME: The `plain` base blend's composition: the four sources of <date>-plain-mix at their exact row counts.
+# ABOUTME: A mixture inherits it by `base:`; the rows themselves come from the published mix (`base_mixture:`).
+# Run: uv run python scratch/nosynth_published_traces/build.py   (builds the blend; `uv run mix` cannot: these
+#      sources have no registry adapter yet). Consumed as `base:` by configs/data/mixture/da.yaml.
+#
+# `plain` is a base blend with a reasoning trace on every row, from published SFT sets whose traces were written
+# by neither a Qwen nor a gpt-oss model, so one base serves both families. It is sized in SUPERVISED TOKENS
+# (5,000,005: 45% chat / 22.5% maths / 22.5% code / 10% science), so the counts below are what that budget came
+# to, not round numbers chosen in advance; they must equal the published mix's rows or `_load_published_base`
+# refuses. How the rows were chosen and screened is in the build script and on the mix's card.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+total_examples: 1832
+
+# `repo:` names where each source's rows ORIGINATE. It is a record, not an intake: the published rows were
+# selected, restored, screened and filtered by the build script, which a raw stream of these repos is not.
+sources:
+  # nvidia/Nemotron-SFT-Instruction-Following-Chat-v3, chat split: GLM-5 answers to WildChat conversations.
+  nemotron_chat:
+    repo: "nvidia/Nemotron-SFT-Instruction-Following-Chat-v3"
+    split: chat
+    examples: 1001
+    reasoning: native
+  # nvidia/Nemotron-SFT-Math-v4: DeepSeek-V4-Pro.
+  nemotron_math:
+    repo: "nvidia/Nemotron-SFT-Math-v4"
+    examples: 353
+    reasoning: native
+  # nvidia/OpenCodeReasoning, split_0: DeepSeek-R1.
+  opencode_reasoning:
+    repo: "nvidia/OpenCodeReasoning"
+    config: split_0
+    split: split_0
+    examples: 289
+    reasoning: native
+  # nvidia/Nemotron-SFT-Science-v2, rows not written by gpt-oss: DeepSeek-V3.2 / V4-Pro.
+  nemotron_science:
+    repo: "nvidia/Nemotron-SFT-Science-v2"
+    examples: 189
+    reasoning: native

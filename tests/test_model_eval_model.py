@@ -194,7 +194,7 @@ def test_control_assembly_keeps_gold_response_verbatim():
     assert rec["messages"][2]["reasoning_content"] == "NEW extended deliberation."
     md = rec["metadata"]
     assert md["cell"] == "control" and md["verdict"] is None
-    assert md["supervise"] == "all"
+    assert md["supervise"] == "full"
     assert md["flaw_type"] is None and md["flaw_severity"] is None
 
 

@@ -19,13 +19,13 @@ Three deliberate deviations from upstream:
 - A red-teamer completion without a `<message>` block gets ONE fresh regeneration
   before the persona fails (upstream calls `.group(1)` unguarded, so a single
   refusal crashes the whole persona into its error logs).
-- The target's own history carries each turn's reasoning as `reasoning_content`
-  (repo preserve-thinking policy, 2026-08-04): our arms train with reasoning kept in
-  context on every turn, and the served template pins `preserve_thinking` to match,
-  so evaluating them with stripped context would be a train/inference mismatch.
-  Templates that ignore the field (plain Qwen3) simply render without it. NOTE:
-  verify on a live endpoint that vLLM's chat API forwards request-side
-  `reasoning_content` into the template before trusting multi-turn numbers.
+- The target's own history carries each turn's reasoning as `reasoning_content`, and
+  the served template decides what of it the model sees. Since 2026-10-05 that is the
+  template's default (vllm.pin_template): reasoning from before the last user message is
+  not rendered, so in this multi-turn chat the target sees its earlier ANSWERS only, as
+  it is trained. (From 2026-08-04 until then the template was pinned to keep every
+  earlier turn's reasoning; runs from that period showed it.) Templates that ignore the
+  field (plain Qwen3) simply render without it.
 """
 
 from __future__ import annotations
