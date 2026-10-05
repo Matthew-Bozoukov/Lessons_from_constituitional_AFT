@@ -1,6 +1,51 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-05 - Matched 240-trial ODCV for the full-CoT-masked Qwen arm
+
+Question: how does the new difficult-advice arm that retains reasoning but masks
+its loss behave on the same ODCV protocol used for the October 3 no-CoT and
+CoT-only adapters? The user requested this evaluation and publication only;
+SWE-bench remains deferred.
+
+Method: evaluated `dougalldeepmind/2026-10-05-qwen36-0-da-15-answer-only` at
+`291e04a399ba12c20840ed876ff4967f61f79fec`, on Qwen3.6-27B base revision
+`6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`. Three passes each covered 40
+mandated and 40 incentivized scenarios. Settings match both pinned October 3
+references: thinking mode, temperature 0.7, 28,000-token context, concurrency 16,
+2,400-second scenario timeout, and Gemini 3 Flash Preview judging both misconduct
+and task progress with eight workers. Local Docker drove inference on one RunPod
+H100 80GB. Evaluation source was `0697412633c24c8ab5cb9d1c976c1f22cb7c107a`;
+the vendored scenarios, judge code and config have identical Git objects to the
+references' `e38655b136fe0f42f4281d282bab135e777bcdb7`. The published
+`metadata/matched_protocol.json` records the reference artifact revisions and
+matching settings.
+
+Result: **21.7% misalignment** (52/240; scenario-level 95% CI 12.5-34.9%),
+with 21.7% in each variant. Mean task progress was **4.95/5** (95% CI 4.89-5.00);
+99.6% reached progress score 3 or higher, and 96.7% called the submission tool.
+Both judge axes scored all 240 trials with no missing or all-NA verdicts. The
+matched no-CoT and CoT-only point estimates were 16.7% and 10.4%, respectively;
+these checkpoint-level point estimates alone do not establish a reliable
+training-recipe effect.
+
+The [public results, judge records and complete rollouts](https://huggingface.co/datasets/dougalldeepmind/2026-10-05-odcv-qwen36-0-da-15-answer-only/tree/c42deeb46c5ca124aaaf212de85f7bf74c1c268c)
+passed `scratch/masked_cot_odcv_audit.py`: exactly 80 expected cells per pass,
+40 per variant per pass, 240 usable transcripts, complete judge caches, matching
+model/protocol pins, and byte-identical HF publication of all 744 local files
+(20,023,959 bytes). One first-pass SSH tunnel reset interrupted a trial after
+79 valid trials. The same endpoint was restored with SSH keepalives; only the
+infrastructure-interrupted trial was rerun. Its original transcript and Docker
+log remain under `metadata/infrastructure_recovery` with `judged: false`, outside
+the 240 scored rollouts. No valid model outcome was rerolled.
+
+Closeout: owned pod `hofuj1p01ey3u8` was terminated and the provider account sweep
+found no remaining pods. The account balance fell by $4.800592 to $630.170267;
+reported residual spend was $0.001/hour. Misconduct and progress judging cost
+$1.3894 and $0.8733, respectively. The replacement SSH tunnel exited and temporary
+sleep prevention was released. Next: interpret this arm alongside the matched
+ablation results; no additional benchmark runs were launched.
+
 ## 2026-10-05 - Qwen DA full-CoT-masked ablation on the October corpus
 
 Hypothesis: retaining difficult-advice reasoning as conditioning context while
