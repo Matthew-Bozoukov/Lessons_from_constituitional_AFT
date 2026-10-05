@@ -153,12 +153,24 @@ models:
     max_tokens: 900
     assumed_tokens: {in: 9000, out: 200}
 
+# TWO STAGES DELETED on 2026-10-05, both deliberately.
+#
+# `chunk_constitution` (kind: segment) cut the constitution into units and published
+# `style_guidance` into ctx.vars. A GENERATING pipeline needs it -- its units are what stage 2
+# writes scenarios from. This arm generates nothing: the rows arrive with their own trait_id,
+# trait_name and trait_text, and nothing here interpolates {style_guidance}, {trait_name},
+# {trait_text} or {constitution}. Verified by running the pipeline without it: identical output,
+# all 14 metadata keys intact. It was inherited from da-sonnetconcise.yaml, where the same
+# comment calls it "FREE and REQUIRED" -- true there, not here.
+#
+# `corpus` (kind: corpus_check) reported ngram_diversity and embedding_dedup over the finished
+# corpus. It is an observer, so removing it renumbers nothing. WHAT THIS COSTS: those two were
+# the only automatic signal that a fixed-shape rewrite is not collapsing into templated text,
+# which for THIS arm is a live risk rather than a theoretical one -- the shape repeats by
+# construction. `uv run synth check <config> <run_dir>` re-runs a config's corpus_check stages
+# after the fact, so the measurement is recoverable, but only from a config that still declares
+# the stage: re-add it here, or point the check at a config that has one.
 stages:
-# FREE and REQUIRED even though this arm generates no scenarios: `segment` publishes
-# `style_guidance` into ctx.vars, and the source rows carry their own trait fields.
-- name: chunk_constitution
-  kind: segment
-
 # The 2026-10-02 run's final rows, verbatim: system, user, reasoning, response, plus the
 # `ai` and `sector` axes that run introduced.
 - name: load_source
@@ -380,53 +392,3 @@ stages:
   # The model's own account of which paragraph fills which role: a cheap audit trail, so a
   # row whose structure is wrong can be found without re-reading the corpus.
   - ablation_paragraph_map
-
-- name: corpus
-  kind: corpus_check
-  on_fail: warn
-  model: autorate
-  fields:
-    id: metadata.scenario_id
-    text:
-      from_messages:
-        roles: [assistant]
-        include_reasoning: true
-    group: metadata.trait_id
-    unit: metadata.trait_id
-    members: metadata.chunk_ids
-  properties:
-  # EXPECTED TO FALL. A fixed four-part shape repeats by construction, so this is a
-  # measurement of how templated the ablation is, not a gate on it (`on_fail: warn`).
-  - property: ngram_diversity
-  - property: embedding_dedup
-    fields:
-      text: metadata.situation
-  - property: quality_filter
-    enabled: false
-  - property: pattern_scan
-    enabled: false
-  rubrics:
-    quality_filter:
-      system: >-
-        You rate synthetic training documents for a constitutional-SFT corpus. Each
-        document is an assistant reply to a user facing an ethically difficult situation,
-        together with the assistant's private reasoning. This corpus is an ABLATION: its
-        reasoning deliberately follows a fixed shape (background, then an account of the
-        harmful action, then a statement of what the reply will say) and deliberately does
-        NOT weigh the options. Do not drop a document for that shape, for being repetitive
-        across documents, or for lacking deliberation — that is the arm, not a flaw. Drop
-        it if the scenario could not plausibly happen, if the reasoning contradicts the
-        reply, if facts appear that are not in the person's message, if the reply lectures,
-        if it refuses something harmless, or if the harm it describes is not the harm the
-        person was actually contemplating.
-      user: >-
-        Document {record_id} (trait {group}):
-
-        {document}
-
-        Reply with exactly three tagged blocks:
-        <verdict>keep or drop</verdict>
-        <flaw>if dropping, one snake_case tag from: implausible_scenario,
-        reasoning_contradicts_reply, invented_facts, lectures_user, refuses_harmless,
-        wrong_harm, other. If keeping, write none.</flaw>
-        <why>one sentence</why>
