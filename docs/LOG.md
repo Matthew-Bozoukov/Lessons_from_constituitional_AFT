@@ -1,6 +1,66 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-05 - Qwen DA full-CoT-masked ablation on the October corpus
+
+Hypothesis: retaining difficult-advice reasoning as conditioning context while
+removing its loss distinguishes exposure to reasoning from direct supervision of
+reasoning. The user requested the missing arm alongside the October 3 no-CoT and
+CoT-only adapters and explicitly accepted the existing corpus at about 14.82%
+supervised DA tokens instead of generating more examples to reach exactly 15%.
+
+Method: `configs/data/mixture/da-answer-only.yaml` uses `reasoning: native` and
+`supervise: answer` for DA only. All 1,283 DA rows retain their complete reasoning;
+the 8,434 replay rows are identical to the October 3 no-CoT mixture. The pinned
+sources are `2026-10-02-da-synth@305914d58627457002f61d86ba69866f6fa2b9a9`
+and `2026-09-29-nosynth-mix@058e163e7d02bfa01503506653e9e360e2e5798c`, both
+under `dougalldeepmind`. The published
+[mixture](https://huggingface.co/datasets/dougalldeepmind/2026-10-05-da-15-answer-only-mix/tree/ab8da0ff42bcb89a96b035af30386a9326d6c74a)
+contains 9,717 rows and 718,887 supervised DA tokens. Its JSONL SHA256 is
+`eaf3d82e6de775387962bea7917616db3fe98d6b03d1331771c98d9a707d4b60`.
+
+Training used Qwen3.6-27B revision
+`6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`, source commit
+`a97f1ca51ee3e61dec2ef7ee0b23f7f38abae8ae`, and the standard seed-0 BF16 SFT
+recipe: rank 64, alpha 128, dropout .05, one epoch, global batch 16, cosine LR
+1e-4, 5% warmup, 8,192-token ceiling, packed 8,000-token dynamic batches, and
+`token_mean`. One RunPod H200 completed 608 steps in 3,703.9 seconds, with mean
+training loss 0.689411 and finite recorded losses/gradient norms. The
+[adapter and training evidence](https://huggingface.co/dougalldeepmind/2026-10-05-qwen36-0-da-15-answer-only/tree/291e04a399ba12c20840ed876ff4967f61f79fec)
+are published and content-hash verified against a 1,295,206,400-byte local backup.
+
+Validation: all 1,283 DA rows passed independent answer-mask checks and retained
+the same forward tokens as full supervision; replay equality was checked against
+the October 3 no-CoT mixture. The trainer's mask gate checked both supervision
+modes, with no sampled truncation. Eighty token-share, masking and naming tests
+passed. HF schema normalization changes rendering of 17 apigen replay rows:
+trainer totals are 4,849,975 supervised / 8,776,403 input tokens, versus builder
+totals 4,849,911 / 8,776,211. DA rows are unaffected; the actual supervised DA
+share is 14.82249%. The audit and full loss history accompany the adapter.
+
+Infrastructure closeout: owned pod `ubry6kmpfw9wne` was terminated and the account
+sweep found no active pods. The provider reported balance $635.209953 and residual
+account spend $0.001/hour; the account balance decreased by about $5.92 during
+this run. A transient SSH timeout after training did not affect completion or
+the upload; the subsequent connection confirmed exit code 0.
+
+Existing-eval audit, matched by exact target and revision: the October 3 no-CoT
+adapter `057561540d49e26d968537c38e8b462832655031` has
+[ODCV](https://huggingface.co/datasets/dougalldeepmind/2026-10-03-odcv-qwen36-0-answeronly-15/tree/b1ce592da4bc5f8a584c0dd319fad26e63a4ad8d)
+at 16.7% misalignment; the CoT-only adapter
+`fe55792ee6f250fa9fda51b9fb95aed8baaa0817` has
+[ODCV](https://huggingface.co/datasets/dougalldeepmind/2026-10-03-odcv-qwen36-0-da-15-cot/tree/b38fb4be65d5edd3ea2058e360409aaf5f3bb49f)
+at 10.4%. Both completed 240/240 trials across three clean passes. CoT-only also
+has [MASK](https://huggingface.co/datasets/dougalldeepmind/2026-10-04-mask-qwen36-0-da-15-cot/tree/ec6631bc9823f6183e5e9252482081ef1c667709):
+published honesty 78.3 over 1,000 rows, with 41/4,438 generation calls failing and
+18 empty outputs under the evasion policy. It explicitly allowed 5% generation
+errors and is not zero-error-qualified. No matching published no-CoT MASK or
+agentic-misalignment result for either adapter was found in the inventory audit.
+
+Next: evaluate the new masked-CoT adapter under a recorded, matched protocol.
+This training run does not establish its behavioral effect. No new evaluations
+were launched here; SWE-bench remains deferred by the user.
+
 ## 2026-10-02 - Psychosis quote diagnostics and cleanup
 
 The user questioned invalidating a potentially correct grade solely because its
