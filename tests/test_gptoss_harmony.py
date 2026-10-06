@@ -47,6 +47,43 @@ def test_direct_answer_does_not_train_skipping_analysis(renderer):
     assert target_text(renderer,supervised_examples(renderer,row)[0]) == "Answer<|return|>"
 
 
+def test_unlinked_tool_result_pairs_with_the_preceding_call(renderer):
+    """The interchange row carries no tool_call_id; results pair by order instead."""
+    row={"messages":[{"role":"user","content":"Look it up"},
+        {"role":"assistant","reasoning_content":"call it",
+         "tool_calls":[{"type":"function","function":{"name":"lookup","arguments":{"x":1}}}]},
+        {"role":"tool","content":"7"},
+        {"role":"assistant","reasoning_content":"done","content":"It is 7"}],
+        "tools":[tool()]}
+    exs=supervised_examples(renderer,row)
+    assert len(exs)==2
+    assert "It is 7" in target_text(renderer,exs[-1])
+
+
+def test_parallel_unlinked_results_pair_in_request_order(renderer):
+    """Two calls in one message, two bare results: matched first-requested-first-answered."""
+    row={"messages":[{"role":"user","content":"Two lookups"},
+        {"role":"assistant","reasoning_content":"both",
+         "tool_calls":[{"type":"function","function":{"name":"lookup","arguments":{"x":1}}},
+                       {"type":"function","function":{"name":"other","arguments":{"x":2}}}]},
+        {"role":"tool","content":"11"},
+        {"role":"tool","content":"22"},
+        {"role":"assistant","reasoning_content":"ok","content":"11 and 22"}],
+        "tools":[tool(),tool("other")]}
+    exs=supervised_examples(renderer,row)
+    assert len(exs)==2
+    assert "11 and 22" in target_text(renderer,exs[-1])
+
+
+def test_tool_result_with_no_preceding_call_is_refused(renderer):
+    """A result that answers nothing is a malformed row, not something to guess at."""
+    row={"messages":[{"role":"user","content":"Q"},
+        {"role":"tool","content":"orphan"},
+        {"role":"assistant","content":"A"}]}
+    with pytest.raises(ValueError, match="no call to match"):
+        supervised_examples(renderer,row)
+
+
 def test_history_before_the_last_user_message_earns_no_loss(renderer):
     """The history rule: only assistant turns after the LAST user message are targets."""
     row={"messages":[{"role":"user","content":"First question"},

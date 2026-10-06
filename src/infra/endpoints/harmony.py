@@ -118,6 +118,18 @@ def build_messages(renderer, messages, tools=None, *, history=False):
                 m.pop("reasoning", None)
                 m.pop("reasoning_content", None)
     instructions, rest, names = [], [], {}
+    # Tool results are matched to their call by `tool_call_id`/`name` when the row carries
+    # them, and otherwise BY ORDER. The repo's interchange row is
+    # {role, content, reasoning_content?, tool_calls?} (src/data/mixture/build_mixture.py) --
+    # linkage is not part of it, and no published mixture emits it: 2026-09-29-nosynth-mix has
+    # 1,710 calls with no ids, and 2026-10-05-plain-mix is the first corpus with tool RESULTS
+    # at all (322, none linked). The ids on 2026-09-30-nosynth-mix-gpt-oss-120b are stamped
+    # downstream by convert.py, not present in its source. Requiring the link here would make
+    # every such corpus untrainable on gpt-oss for a field the format never promised.
+    #
+    # A FIFO rather than a counter, so a single assistant message emitting several calls is
+    # answered by several results in the order they were requested.
+    pending: list[str] = []
     seen_noninstruction = False
     for m in messages:
         role = m["role"]
@@ -145,12 +157,22 @@ def build_messages(renderer, messages, tools=None, *, history=False):
                     name=fn["name"], arguments=args)))
                 if tc.get("id"):
                     names[tc["id"]] = fn["name"]
+                pending.append(fn["name"])
             if calls:
                 out["tool_calls"] = calls
         elif role == "tool":
             name = m.get("name") or names.get(m.get("tool_call_id"))
+            if name:
+                # Keep the queue aligned for any unlinked results later in the same row.
+                if name in pending:
+                    pending.remove(name)
+            elif pending:
+                name = pending.pop(0)
             if not name:
-                raise ValueError("Tool result has no matching named call")
+                raise ValueError(
+                    "tool result has no call to match: it carries neither `name` nor a "
+                    "`tool_call_id` naming a declared call, and no unanswered call precedes "
+                    "it in this row")
             out = {"role": role, "content": m.get("content") or "", "name": name,
                    "tool_call_id": m.get("tool_call_id")}
         elif role == "user":
