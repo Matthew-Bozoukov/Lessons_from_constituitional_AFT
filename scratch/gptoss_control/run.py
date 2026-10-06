@@ -598,11 +598,32 @@ def train(cfg, out):
     import tinker
     from src.infra.endpoints.harmony import make_renderer, supervised_examples, token_mean_datums, TOKENIZER_REVISION
     from src.infra.huggingface import hf_download
-    from src.naming import model_name
+    from src.naming import model_name, mix_subject_from
     if (out/'trained_adapter.json').exists():
         print('Training already completed; use the recorded final checkpoint')
         return
-    pin = json.loads((out/"published_dataset.json").read_text())
+    published = out/"published_dataset.json"
+    if published.exists():
+        pin = json.loads(published.read_text())
+    elif cfg.get("source_format") == "harmony":
+        # No backfill ran and none was planned: `source_format: harmony` passes rows through
+        # unchanged, so the honest provenance pin is the SOURCE mixture, not a republished copy
+        # of it. publish_data cannot supply one here -- it is the backfill workflow's step,
+        # requiring a backfill_report and validating that only backfill targets changed, and
+        # `backfill.selection: existing_traces` would REGENERATE every trace on a traced base.
+        # Asserted, not assumed: the rows prepare wrote must be byte-identical to the source.
+        pin = {"repo": cfg.source_repo, "revision": cfg.source_revision}
+        local = readrows(out/"converted_unenriched.jsonl")
+        upstream = readrows(hf_download(pin["repo"], "mixture.jsonl", repo_type="dataset",
+                                       revision=pin["revision"]))
+        if digest(local) != digest(upstream):
+            raise RuntimeError(
+                "source_format: harmony pins the source mixture, but the prepared rows differ "
+                "from it; run prepare again or publish a dataset to pin instead")
+    else:
+        raise RuntimeError(
+            "no published_dataset.json: run the publish-data stage, or set "
+            "`source_format: harmony` if the source rows are already the training rows")
     rows = readrows(hf_download(pin["repo"], "mixture.jsonl", repo_type="dataset", revision=pin["revision"]))
     renderer = make_renderer(cfg.reasoning)
     ordered = list(range(len(rows)))
@@ -610,7 +631,12 @@ def train(cfg, out):
     nsteps = math.ceil(len(rows)/cfg.train.batch_rows)
     if cfg.train.epochs != 1:
         raise ValueError("This pilot is one epoch only")
-    estimate = json.loads((out/"final_audit.json").read_text())["estimated_training_usd"]
+    # final_audit.json is the backfill path's; prepare writes prebackfill_audit.json. Either way
+    # the ceiling is enforced against an audit of the rows actually being trained on.
+    audit = out/"final_audit.json"
+    if not audit.exists():
+        audit = out/"prebackfill_audit.json"
+    estimate = json.loads(audit.read_text())["estimated_training_usd"]
     if estimate > cfg.train.max_cost_usd:
         raise RuntimeError(f"Training estimate ${estimate} exceeds budget")
     service = tinker.ServiceClient()
@@ -629,7 +655,10 @@ def train(cfg, out):
             seed=cfg.seed, train_mlp=True, train_attn=True, train_unembed=True)
         write(out/"tinker_model_info.json", client.get_info().model_dump(mode="json"))
         start = 0
-        organism = model_name('gptoss120b',cfg.seed,'nosynth')
+        # The mixture's own subject, read off the pinned repo -- NOT hardcoded. This control
+        # began as one arm on a nosynth mix, so 'nosynth' was literal; with four arms over four
+        # mixtures a constant would name them all alike and their exports would collide.
+        organism = model_name('gptoss120b', cfg.seed, mix_subject_from(pin['repo']))
         checkpoint = client.save_state('step-0000').result().path
         write(receipt,{'step':0,'checkpoint':checkpoint,'dataset':pin,
                        'config_hash':digest(OmegaConf.to_container(cfg)),'organism':organism})

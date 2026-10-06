@@ -81,6 +81,11 @@ RESERVED = frozenset({"synth", "mix", "pooled", "seed", "nosynth"})
 # from has no styles and no share, so it is named for what it lacks. A word, so that no
 # name ends in a digit that reads as a seed (`qwen36-0-0` was the alternative).
 NOSYNTH = "nosynth"
+# Every BASE BLEND: a mixture with no synthetic share, named by one word and no percentage. `nosynth` is the
+# MSM Table 2 blend with on-policy traces; `msm` is that blend with no traces; `plain` is the blend with
+# published traces on every row (configs/data/mixture/plain.yaml). An organism trained on one is the control
+# for arms built on it, and is named `<date>-<model>-<seed>-<blend>`.
+BASE_BLENDS = (NOSYNTH, "msm", "plain")
 
 
 class NamingError(ValueError):
@@ -332,7 +337,7 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
     """
     tokens = str(subject).split("-")
     numeric = [i for i, tok in enumerate(tokens) if tok.isdigit()]
-    if not numeric and tokens[0] == NOSYNTH:
+    if not numeric and tokens[0] in BASE_BLENDS:
         # The base blend: no styles and no share; a variant may still follow the word.
         styles, pct, variant = "", 0, "-".join(tokens[1:])
     elif len(numeric) == 1:
@@ -457,10 +462,20 @@ SOURCE_STYLES: dict[str, str | None] = {
     "table2_filtered": None, "agentic": None, "agentic_toolcalling": None,
 }
 
-# `supervise` values that are a mixture VARIANT in the law's vocabulary. "all" and
-# "final" are not variants: they are what every mixture does by default for single- and
-# multi-turn rows respectively.
-SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot", "answer": "answer-only"}
+# `supervise` values that are a mixture VARIANT in the law's vocabulary. "full" and
+# "final" are not variants: they are how a corpus says which steps of a row are targets.
+SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot", "response": "response-only"}
+
+
+def paragraph_variant(kind: str, paragraph: str) -> str:
+    """The variant word for a mix-time paragraph ablation (src/data/mixture/build_mixture.py).
+
+    `mask_paragraph: deliberation` -> `maskdelib`; `drop_paragraph: deliberation` -> `nodelib`.
+    The prefix says what was done, the paragraph's first five letters say to what; it is
+    joined in front of any supervise variant: `maskdelib-cot`.
+    """
+    prefix = {"mask": "mask", "drop": "no"}[kind]
+    return prefix + str(paragraph)[:5]
 
 
 LEGACY_NAMES = Path(__file__).parent / "infra" / "legacy_names.yaml"
