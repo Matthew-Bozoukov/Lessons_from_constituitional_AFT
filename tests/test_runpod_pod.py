@@ -186,6 +186,8 @@ def test_a_remote_host_is_an_alias_or_an_address_and_nothing_is_written(tmp_path
     # rental into what looks like an attack.
     assert "StrictHostKeyChecking=accept-new" in argv
     assert "UserKnownHostsFile=/dev/null" in argv
+    assert "ServerAliveInterval=30" in argv
+    assert "ServerAliveCountMax=3" in argv
 
     assert not hasattr(pod, "SSH_CONFIG")
     assert not hasattr(pod, "_write_ssh_alias")

@@ -722,7 +722,9 @@ def ssh_argv(host: str, identity: str = "") -> tuple[list[str], str]:
         return ["ssh"], host
     argv = ["ssh", "-p", match["port"],
             "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "UserKnownHostsFile=/dev/null"]
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "ServerAliveInterval=30",
+            "-o", "ServerAliveCountMax=3"]
     if identity:
         # A literal address has no ~/.ssh/config entry, so there is nowhere else for the
         # key to come from: without this, ssh offers only the default-named identities
