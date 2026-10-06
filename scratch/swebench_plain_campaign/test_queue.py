@@ -65,6 +65,9 @@ class FakeRuntime:
         self.controls = {}
         self.launches = []
         self.verifications = []
+        self.verified_budgets = []
+        self.budget_resolutions = []
+        self.next_budget = 360
         self.fail_verify = False
 
     def service(self):
@@ -79,9 +82,16 @@ class FakeRuntime:
 
     def verify(self, wave):
         self.verifications.append(wave['root'])
+        self.verified_budgets.append(wave['budget_usd'])
         if self.fail_verify:
             raise RuntimeError('HF mismatch or owned GPU')
         return {'arms': [dict(valid=300, graded=300)] * 2}
+
+    def resolve_budget(self, wave):
+        self.budget_resolutions.append(copy.deepcopy(wave))
+        return {'authorized_budget_usd': wave['budget_usd'], 'budget_usd': self.next_budget,
+                'minimum_admission_budget_usd': 134, 'balance_usd': self.next_budget + 50,
+                'reserve_usd': 50}
 
 
 class QueueTests(unittest.TestCase):
@@ -204,6 +214,51 @@ class QueueTests(unittest.TestCase):
         self.assertIn('src.eval.run_eval', argv)
         self.assertIn('--next-target-revision', argv)
 
+    def test_wave_one_cap_is_unchanged_and_fresh_wave_two_can_keep_full_cap(self):
+        self.complete_first()
+        self.assertEqual(self.runtime.budget_resolutions, [])
+        self.assertEqual(self.runtime.launches[0]['budget_usd'], 360)
+        self.queue.step()
+        self.assertEqual(self.runtime.launches[1]['budget_usd'], 360)
+        self.assertEqual(len(self.runtime.budget_resolutions), 1)
+
+    def test_lower_second_wave_cap_is_frozen_before_submission_and_verified(self):
+        self.complete_first()
+        self.runtime.next_budget = 230
+        self.queue.step()
+        self.assertEqual(self.runtime.launches[1]['budget_usd'], 230)
+        self.assertEqual(self.plan['waves'][1]['budget_usd'], 360)
+        snapshots = [s['waves'][1] for s in self.saved if 'budget_resolution' in s['waves'][1]]
+        self.assertEqual(snapshots[0]['status'], 'pending')
+        self.assertEqual(snapshots[0]['budget_resolution']['budget_usd'], 230)
+        self.runtime.service_state['ActiveState'] = 'inactive'
+        self.runtime.controls[self.plan['waves'][1]['root']] = {'status': 'complete'}
+        self.assertEqual(self.queue.step(), 'complete')
+        self.assertEqual(self.runtime.verified_budgets[-1], 230)
+
+    def test_crash_replay_preserves_resolved_cap_even_if_balance_increases(self):
+        self.complete_first()
+        self.runtime.next_budget = 230
+        self.queue.step()
+        self.state['waves'][1]['status'] = 'submitting'
+        self.runtime.service_state['ActiveState'] = 'inactive'
+        self.runtime.next_budget = 360
+        self.assertEqual(self.queue.step(), 'waiting')
+        self.assertEqual(self.runtime.launches[-1]['budget_usd'], 230)
+        self.assertEqual(len(self.runtime.budget_resolutions), 1)
+
+    def test_insufficient_funding_blocks_before_second_submission(self):
+        self.complete_first()
+        self.runtime.resolve_budget = Mock(side_effect=AssertionError('below admission floor'))
+        self.assertEqual(self.queue.step(), 'blocked')
+        self.assertEqual(len(self.runtime.launches), 1)
+
+    def test_resolver_cannot_raise_authorized_cap(self):
+        self.complete_first()
+        self.runtime.next_budget = 400
+        self.assertEqual(self.queue.step(), 'blocked')
+        self.assertEqual(len(self.runtime.launches), 1)
+
 
 class VerificationTests(unittest.TestCase):
     def setUp(self):
@@ -260,6 +315,34 @@ class VerificationTests(unittest.TestCase):
 
     def test_full_pair_verifies(self):
         self.assertEqual(len(Runtime().verify(self.wave)['arms']), 2)
+
+    def test_verification_matches_resolved_budget_in_both_actual_ledgers(self):
+        for root in self.paths:
+            for relative in ('metadata/manifest.json', 'metadata/supervisor.json'):
+                path = root/relative
+                data = json.loads(path.read_text())
+                self.write(path, data | {'budget_usd': 230})
+        self.assertEqual(len(Runtime().verify(dict(self.wave, budget_usd=230))['arms']), 2)
+        with self.assertRaises(AssertionError):
+            Runtime().verify(self.wave)
+
+    def test_live_balance_resolves_only_downward_with_quote_based_admission_floor(self):
+        cfg = OmegaConf.merge(self.cfg, {'gpu': 'NVIDIA H200', 'max_hourly_usd': 5.50,
+            'gpu_price_margin': 1.05, 'replicas': 12, 'allocation_min_remaining_seconds': 8280})
+        config_path = self.paths[0]/'funding-config.yaml'
+        OmegaConf.save(cfg, config_path)
+        wave = dict(self.wave, config=str(config_path))
+        self.fake.runpod.gpu_price = Mock(return_value=4.59)
+        for balance, expected in [(487.34, 360), (280.75, 230), (5000, 360)]:
+            with self.subTest(balance=balance):
+                self.fake.account = Mock(return_value={'clientBalance': balance})
+                resolution = Runtime().resolve_budget(wave)
+                self.assertEqual(resolution['budget_usd'], expected)
+                self.assertEqual(resolution['minimum_admission_budget_usd'], 134)
+                self.assertEqual(resolution['reserve_usd'], 50)
+        self.fake.account = Mock(return_value={'clientBalance': 183})
+        with self.assertRaisesRegex(AssertionError, 'cannot fund'):
+            Runtime().resolve_budget(wave)
 
     def test_credentials_loaded_before_external_reads(self):
         with patch('scratch.swebench_plain_campaign.queue.load_dotenv') as load:

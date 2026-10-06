@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -95,6 +96,27 @@ class Runtime:
     def launch(self, wave):
         subprocess.run(launch_argv(wave), check=True)
 
+    def resolve_budget(self, wave):
+        """Resolve only a fresh second wave's downward cap; never edit a ledger."""
+        from omegaconf import OmegaConf
+        from src.eval.capabilities.swebench_mini import fleet
+        cfg = OmegaConf.load(wave['config'])
+        load_dotenv(cfg.credentials)
+        balance = float(read_only_call(fleet.account)['clientBalance'])
+        quote = read_only_call(fleet.runpod.gpu_price, cfg.gpu)
+        assert quote is not None and math.isfinite(float(quote)) and 0 < quote <= cfg.max_hourly_usd, 'Primary GPU quote unavailable or over ceiling'
+        assert math.isfinite(balance) and balance >= 0, 'Invalid provider balance'
+        ceiling = min(float(cfg.max_hourly_usd), float(quote) * float(cfg.gpu_price_margin))
+        # phase() floors affordable seconds and requires strictly more than this
+        # admission window; reserve one additional second before rounding dollars.
+        minimum = math.ceil(ceiling * cfg.replicas * (cfg.allocation_min_remaining_seconds + 1) / 3600)
+        budget = min(wave['budget_usd'], math.floor(balance - 50))
+        assert budget >= minimum, 'Available balance cannot fund all wave-two rental admission windows after the $50 reserve'
+        return {'authorized_budget_usd': wave['budget_usd'], 'budget_usd': budget,
+                'balance_usd': balance, 'reserve_usd': 50, 'primary_gpu': cfg.gpu,
+                'primary_quote_usd_hour': quote, 'ceiling_usd_hour': ceiling,
+                'minimum_admission_budget_usd': minimum, 'resolved_at': time.time()}
+
     def inspect(self, wave):
         root = Path(wave['root'])
         control = root / 'metadata/supervisor.json'
@@ -158,12 +180,24 @@ class Queue:
         self.plan, self.state, self.save = plan, state, save
         self.runtime = runtime or Runtime()
 
+    def effective_wave(self, index):
+        wave = dict(self.plan['waves'][index])
+        resolution = self.state['waves'][index].get('budget_resolution')
+        if resolution is not None:
+            assert index == 1, 'Wave one must retain its authorized cap'
+            assert resolution['authorized_budget_usd'] == wave['budget_usd'], 'Budget authorization changed'
+            assert 0 < resolution['budget_usd'] <= wave['budget_usd'], 'Resolved budget exceeds authorization'
+            assert resolution['budget_usd'] >= resolution['minimum_admission_budget_usd'], 'Resolved budget below admission floor'
+            wave['budget_usd'] = resolution['budget_usd']
+        return wave
+
     def step(self):
         """Persist intent before launch; never infer permission to retry terminal work."""
         if self.state['status'] in ('blocked', 'complete'):
             return self.state['status']
         try:
-            for index, wave in enumerate(self.plan['waves']):
+            for index in range(len(self.plan['waves'])):
+                wave = self.effective_wave(index)
                 entry = self.state['waves'][index]
                 if entry['status'] == 'complete':
                     continue
@@ -204,10 +238,15 @@ class Queue:
                 if index:
                     # A durable receipt is retained, but ownership/HF are checked live again
                     # after a queue restart before allowing the next paid wave.
-                    self.runtime.verify(self.plan['waves'][index - 1])
+                    self.runtime.verify(self.effective_wave(index - 1))
                     again = self.runtime.service()
                     assert again['ActiveState'] == 'inactive' and again['Result'] == 'success' and again['ExecMainStatus'] == '0'
                 assert sha(wave['config']) == wave['config_sha256'], 'Config changed before launch'
+                if index == 1 and 'budget_resolution' not in entry:
+                    assert entry['status'] == 'pending', 'Never resolve a cap for an already submitted wave'
+                    entry['budget_resolution'] = self.runtime.resolve_budget(wave)
+                    wave = self.effective_wave(index)
+                    self.save(self.state)  # Freeze resolution before any submission intent.
                 entry.update(status='submitting', submitted_at=time.time())
                 self.save(self.state)
                 self.runtime.launch(wave)
