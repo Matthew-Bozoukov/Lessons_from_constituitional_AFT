@@ -77,13 +77,17 @@ def test_eval_entrypoint_opt_in(monkeypatch, owned):
     monkeypatch.setattr(runpod, "eval_pod", lifecycle)
     monkeypatch.setattr(run_eval, "_run", lambda *a, **k: events.append("eval"))
     args = ["--name", "mask", "--target", "org/model", "--server", "alias"]
-    run_eval.main(args + (["--terminate-pod"] if owned else []))
+    # Exercise the real CLI/lifecycle without importing an unrelated eval runtime.
+    run_eval.main(args + (["--terminate-pod"] if owned else []), runner=lambda: None)
     assert events == (["attach", "eval", "cleanup"] if owned else ["eval"])
 
 
-def test_ownership_requires_server():
-    with pytest.raises(SystemExit):
-        run_eval.main(["--name", "mask", "--target", "org/model", "--terminate-pod"])
+def test_ownership_requires_server(capsys):
+    with pytest.raises(SystemExit) as exc:
+        run_eval.main(["--name", "mask", "--target", "org/model", "--terminate-pod"],
+                      runner=lambda: None)
+    assert exc.value.code == 2
+    assert '--terminate-pod requires --server' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("hours", [0, -1, float("inf"), float("nan")])

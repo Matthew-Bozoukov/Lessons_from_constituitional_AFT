@@ -1,6 +1,10 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - Plain SWE-bench CPU cache complete; isolate lifecycle regression fixtures
+
+The replacement CPU finished all 300 image pulls and its gold/no-fix readiness checks at 23:39:50 UTC on October 6. Qualification correctly stopped before any GPU rental: 240 tests passed, but three CLI ownership tests imported the full MASK runtime and failed because the deliberately CPU-only SWE-bench driver does not install MASK's `tenacity` dependency. Those tests now inject the existing runner boundary while retaining the real CLI, ownership and teardown paths; the missing-server case also checks exit code 2 and its exact diagnostic. All 22 lifecycle tests pass locally in the pinned CPU environment. This changes test fixtures only, not evaluation behavior or benchmark settings. Preserve failed qualification v1 evidence and rerun the full fresh Linux qualification under v2 before launch.
+
 ## 2026-10-07 - Four plain Qwen LoRAs: authorized paired SWE-bench Lite campaign preparation
 
 Hypothesis. Measure the capability effect of the October 5 plain replay plus 5%, 15% and 25% difficult-advice supervised-token mixtures using the same full 300-task `lite-v5` protocol. These are the new plain-blend adapters, not the older nosynth campaign.
