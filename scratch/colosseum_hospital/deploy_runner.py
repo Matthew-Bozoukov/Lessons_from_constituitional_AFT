@@ -49,6 +49,20 @@ def main(arm: str, pod_id: str, ip: str, port: int) -> None:
         print(f"!!! {arm}: sshd never answered. Pod {pod_id} is BILLING with no runner.")
         return
 
+    # Three pods on 2026-10-06 came up with no boot log, no /workspace HTTP server and no
+    # lasting sshd, i.e. the bootstrap never ran -- but each answered sshd briefly first.
+    # That window is the only chance to see WHY, and it closes before any of it can be
+    # inferred from outside, so grab the evidence before doing anything else.
+    diag = ssh(ip, port, "echo '--- dockerStartCmd / bootstrap process ---'; "
+                         "ps -eo pid,etime,cmd | grep -iE 'bash -lc|boot|sshd' | grep -v grep | head -5; "
+                         "echo '--- /workspace ---'; ls -la /workspace 2>&1 | head -8; "
+                         "echo '--- boot.log head ---'; head -20 /workspace/boot.log 2>&1; "
+                         "echo '--- boot.log tail ---'; tail -10 /workspace/boot.log 2>&1; "
+                         "echo '--- disk ---'; df -h /workspace / 2>&1 | head -3")
+    print("=== BOOTSTRAP DIAGNOSTICS ===", flush=True)
+    print(diag.stdout or diag.stderr, flush=True)
+    print("=== END DIAGNOSTICS ===", flush=True)
+
     creds = "\n".join([
         f"export HF_TOKEN={ENV['HF_TOKEN_MATBOZ']}",
         f"export HF_ORG={ENV.get('HF_ORG', 'dougalldeepmind')}",
