@@ -21,6 +21,56 @@ def paths(cfg, config_path):
     return [str(config_path)] + list(cfg.get('following_configs', []))
 
 
+def replica_cap(cfg):
+    """An optional fixed lane ceiling per arm; absent preserves draining/switching."""
+    cap = cfg.get('max_replicas_per_arm')
+    if cap is not None:
+        assert type(cap) is int and cap > 0, 'max_replicas_per_arm must be a positive integer'
+        assert cfg.replicas <= cap * len(members(cfg)), 'Fleet exceeds per-arm replica caps'
+    return cap
+
+
+def lane_arms(cfg, count, ids, adopted=()):
+    arms = members(cfg)
+    cap = replica_cap(cfg)
+    if cap is None:
+        return [lane % len(arms) for lane in range(count)]
+    eligible = [i for i in range(len(arms)) if len(arms) == 1 or any(x.startswith(f'{i}:') for x in ids)]
+    assignments = []
+    # A resumed worker keeps its original arm and occupies a lane until teardown.
+    for record in adopted:
+        index = record.get('primary_arm')
+        assert record.get('fixed_arm') is True and type(index) is int and 0 <= index < len(arms), 'Unproven capped worker adoption'
+        assignments.append(index)
+        assert assignments.count(index) <= cap, 'Adoption exceeds per-arm replica cap'
+    assert len(assignments) <= count, 'Adoption exceeds fleet ceiling'
+    while len(assignments) < count:
+        choices = [i for i in eligible if assignments.count(i) < cap]
+        if not choices:
+            break
+        assignments.append(min(choices, key=lambda i: (assignments.count(i), i)))
+    return assignments
+
+
+def worker_targets(cfg, primary_arm):
+    arms = members(cfg)
+    offset = primary_arm % len(arms)
+    if replica_cap(cfg) is not None:
+        return [arms[offset].target]
+    return [c.target for c in arms[offset:] + arms[:offset]]
+
+
+def lane_available(data, lane):
+    """Pending/active/draining or ambiguous rentals continue to occupy their lane."""
+    return all(rental_released(p)
+               for p in data['pods'] if p.get('allocation_lane') == lane)
+
+
+def rental_released(record):
+    return record.get('status') in ('terminated', 'not-requested') or (
+        record.get('status') == 'rejected-reconciled' and record.get('reservation_released'))
+
+
 def budget_limit(cfg):
     return cfg.recommended_budget_usd * len(members(cfg))
 
@@ -92,6 +142,9 @@ def execute(cfg, config_path, action, budget):
     assert os.environ.get('INVOCATION_ID'), 'Use the supervised systemd launch'
     arms = members(cfg)
     assert len(arms) == 2 and not any(c.calibrate for c in arms)
+    cap = replica_cap(cfg)
+    if cap is not None:
+        assert all(c.get('max_replicas_per_arm') == cap for c in arms), 'Paired replica caps must agree'
     with ExitStack() as stack:
         for arm in arms:
             stack.enter_context(lock(Path(arm.root) / '.coordinator.lock', nonblocking=True))
@@ -135,7 +188,9 @@ def execute(cfg, config_path, action, budget):
                 atomic(Path(cfg.root) / 'metadata/fleet_plan.json', {
                     'replicas': count, 'workers_per_replica': cfg.workers_per_replica,
                     'targets': [c.target for c in arms], 'budget_usd': budget,
-                    'scheduling': 'Alternating initial arm; drain four workers then switch to other arm; longest-first within each arm'})
+                    'scheduling': ('Fixed capped arm lanes; replacements retain arm; longest-first within each arm'
+                                   if cap is not None else
+                                   'Alternating initial arm; drain four workers then switch to other arm; longest-first within each arm')})
                 fleet.phase(cfg, config_path, todo, count, cfg.rental_seconds, manifest)
         finally:
             fence_all(cfg)

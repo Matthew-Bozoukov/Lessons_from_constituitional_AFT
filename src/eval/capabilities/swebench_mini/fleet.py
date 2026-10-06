@@ -48,6 +48,7 @@ def recipe_settings(cfg):
     keys += tuple(k for k in ('agent_backend', 'inspect') if k in cfg)
     keys += tuple(k for k in ('task_seconds', 'task_admission_seconds', 'rental_seconds') if k in cfg)
     keys += tuple(k for k in ('tool_concurrency', 'tool_queue_timeout_seconds', 'cpu_qualification_path', 'task_scheduling') if k in cfg)
+    keys += tuple(k for k in ('max_replicas_per_arm',) if k in cfg)
     return {key: OmegaConf.to_container(cfg[key]) if OmegaConf.is_config(cfg[key]) else cfg[key] for key in keys}
 
 
@@ -137,6 +138,9 @@ def qualify_shell(cfg):
 
 def preflight(cfg):
     validate_backend(cfg)
+    # The owner validates total membership; child configs describe only one arm.
+    if not cfg.get('fleet_owner_root'):
+        session.replica_cap(cfg)
     ready = Path(cfg.readiness)
     proof = read(ready.parent / 'cpu-readiness-backup-verified.json')
     result = read(ready / 'results/readiness.json')
@@ -517,13 +521,18 @@ def verify_final_files(cfg, revision):
     return checked
 
 
+def pending_rejection(record):
+    """Explicit rejected creates are fenced until inventory reconciliation releases them."""
+    return (record.get('status') in ('allocation-unconfirmed', 'rejected-reconciled')
+            and record.get('id') is None and not record.get('reservation_released')
+            and 'RunPod GraphQL rejected the request;' in record.get('error', ''))
+
+
 def reconcile_rejections(cfg, manifest):
     """Reconcile explicit provider rejections; transport timeouts keep their TTL reserve."""
     state = State(cfg.root)
     candidates = [p for p in read(state.path)['pods']
-                  if p['status'] in ('allocation-unconfirmed', 'rejected-reconciled')
-                  and not p.get('reservation_released') and p.get('id') is None
-                  and 'RunPod GraphQL rejected the request;' in p.get('error', '')
+                  if pending_rejection(p)
                   and time.time() - p['created'] >= cfg.allocation_reconcile_seconds]
     if not candidates:
         return
@@ -593,6 +602,8 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
         expires = min(expires, time.time() + cfg.rental_reservation_usd * 3600 / ceiling)
     record = {'slot': slot, 'name': name, 'created': time.time(), 'expires': expires, 'gpu': cfg.gpu,
               'ceiling_hourly': ceiling, 'id': None, 'status': 'allocating'}
+    if cfg.get('max_replicas_per_arm') is not None:
+        record.update(primary_arm=cfg.primary_arm, fixed_arm=True, allocation_lane=cfg.allocation_lane)
     boot_deadline = record['created'] + cfg.boot_seconds
     with state.edit() as data:
         reserve = ceiling * (expires - record['created']) / 3600
@@ -731,6 +742,21 @@ print(json.dumps({'gpu': p.name, 'memory_gib': p.total_memory / 2**30,
 def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
     state = State(cfg.root)
     data = read(state.path)
+    capped = session.replica_cap(cfg) is not None
+    if capped:
+        adopted_slots = [p['slot'] for p in adopted or ()]
+        assert len(adopted_slots) == len(set(adopted_slots)), 'Duplicate capped worker adoption'
+        assert {p['slot'] for p in data['pods'] if not session.rental_released(p)} == set(adopted_slots), 'Reconcile existing capped rentals before a new phase'
+    lane_arms = session.lane_arms(cfg, count, ids, adopted or ())
+    count = len(lane_arms)
+    assert count > 0, 'No eligible replica lanes'
+    if capped and adopted:
+        with state.edit() as saved:
+            for lane, record in enumerate(adopted):
+                pod = next(p for p in saved['pods'] if p['slot'] == record['slot'])
+                assert pod.get('fixed_arm') is True and pod.get('primary_arm') == lane_arms[lane], 'Capped adoption identity changed'
+                pod['allocation_lane'] = lane
+        data = read(state.path)
     remaining = manifest['budget_usd'] - reserved_cost(data)
     lane_prices = [price_ceiling(cfg, allocation_gpu(cfg, 0, 0, lane=lane)) for lane in range(count)]
     seconds = min(seconds, int(remaining * 3600 / sum(lane_prices)))
@@ -740,6 +766,15 @@ def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
     assert deadline_value(data['deadline']) - time.time() > cfg.allocation_min_remaining_seconds
     allowed = Path(cfg.root) / 'metadata' / f'allowed-{len(data["pods"])}.json'
     atomic(allowed, ids)
+    lane_allowed = {}
+    for lane, arm in enumerate(lane_arms):
+        if capped:
+            selected_ids = [iid for iid in ids if len(session.members(cfg)) == 1 or iid.startswith(f'{arm}:')]
+            path = allowed.with_name(allowed.stem + f'-lane-{lane}.json')
+            atomic(path, selected_ids)
+            lane_allowed[lane] = (path, selected_ids)
+        else:
+            lane_allowed[lane] = (allowed, ids)
     next_slot = max((p['slot'] for p in data['pods']), default=-1) + 1
     last_upload = 0
     last_reconcile = 0
@@ -773,10 +808,17 @@ def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
                     print(f'Fleet slot {lane}: {future.exception()}; peers continue', flush=True)
                     retry_at[lane] = time.time() + min(cfg.allocation_retry_max_seconds,
                         cfg.allocation_retry_seconds * 2 ** min(attempts[lane] - 1, 4))
+            if capped:
+                # A finished future guarantees its cleanup has run; do not inspect
+                # a pre-cleanup snapshot when deciding whether that lane is free.
+                live = session.view(cfg)
             if (not live.get('halt') and pending_tasks(live, ids, cfg)
                     and deadline_value(live['deadline']) - time.time() > cfg.allocation_min_remaining_seconds):
                 for lane in range(count):
                     if lane in futures or time.time() < retry_at[lane]:
+                        continue
+                    lane_path, lane_ids = lane_allowed[lane]
+                    if capped and (not pending_tasks(live, lane_ids, cfg) or not session.lane_available(live, lane)):
                         continue
                     attempts[lane] += 1
                     elapsed = time.time() - started
@@ -785,14 +827,25 @@ def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
                                               and elapsed >= cfg.allocation_fallback_after_seconds)
                     replica_cfg = OmegaConf.create(OmegaConf.to_container(cfg))
                     replica_cfg.gpu = selected
-                    replica_cfg.primary_arm = lane % len(session.members(cfg))
+                    replica_cfg.primary_arm = lane_arms[lane]
+                    if capped:
+                        replica_cfg.allocation_lane = lane
                     replica_cfg.rental_reservation_usd = remaining * lane_prices[lane] / sum(lane_prices)
                     expires = min(time.time() + seconds, deadline_value(live['deadline']))
                     print(f'Fleet slot {lane}: attempt {attempts[lane]} on {selected}', flush=True)
-                    futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, allowed, expires, manifest)
+                    futures[lane] = pool.submit(replica, replica_cfg, config_path, next_slot, lane_path, expires, manifest)
                     next_slot += 1
             if not futures and (live.get('halt') or not pending_tasks(live, ids, cfg)
                                or deadline_value(live['deadline']) - time.time() <= cfg.allocation_min_remaining_seconds):
+                break
+            # Scarcity rejections keep their lane during the inventory grace period.
+            # Stay in this phase so retries retain their failure count/fallback clock.
+            if capped and not futures and all(not pending_tasks(live, lane_allowed[lane][1], cfg)
+                    or not session.lane_available(live, lane) for lane in range(count)) and not any(
+                    pending_rejection(p) and p.get('allocation_lane') in lane_allowed
+                    and pending_tasks(live, lane_allowed[p['allocation_lane']][1], cfg) for p in live['pods']):
+                with state.edit() as data:
+                    data['halt'] = 'Unresolved capped lane rental; reconcile ownership before replacement'
                 break
             if time.time() - last_upload >= cfg.upload_every_seconds:
                 session.checkpoints(cfg, config_path)
@@ -801,9 +854,7 @@ def phase(cfg, config_path, ids, count, seconds, manifest, adopted=None):
                 reconcile_rejections(cfg, manifest)
                 last_reconcile = time.time()
             live = read(state.path)
-            awaiting_reconciliation = any(p.get('id') is None and not p.get('reservation_released')
-                and 'RunPod GraphQL rejected the request;' in p.get('error', '')
-                for p in live['pods'])
+            awaiting_reconciliation = any(pending_rejection(p) for p in live['pods'])
             if (not futures and not awaiting_reconciliation and
                     manifest['budget_usd'] - reserved_cost(live) < price_ceiling(cfg, cfg.gpu) * cfg.allocation_min_remaining_seconds / 3600):
                 with state.edit() as data:

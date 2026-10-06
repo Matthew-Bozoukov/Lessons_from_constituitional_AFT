@@ -258,21 +258,20 @@ def main():
     parser.add_argument('--primary-arm', type=int, default=0)
     args = parser.parse_args()
     cfg = OmegaConf.load(args.config)
-    from src.eval.capabilities.swebench_mini.fleet_session import members
+    from src.eval.capabilities.swebench_mini.fleet_session import members, worker_targets
     arms = members(cfg)
+    # Capped lanes keep their arm. By default, a drained replica switches only
+    # after all four conversations finish; other replicas need not wait.
+    targets = worker_targets(cfg, args.primary_arm)
     output = Path(cfg.root) / 'metadata' / 'replicas' / str(args.replica)
     output.mkdir(parents=True, exist_ok=True)
-    worker_config = {'target_revisions': {c.target: c.target_revision for c in arms}, 'serving': OmegaConf.to_container(cfg.serving),
+    worker_config = {'target_revisions': {c.target: c.target_revision for c in arms if c.target in targets}, 'serving': OmegaConf.to_container(cfg.serving),
                      'dataset': cfg.dataset, 'revision': cfg.dataset_revision,
                      'frozen_dataset': str(Path(cfg.root) / 'metadata/swebench_lite_test.json'),
                      'campaign_config': str(Path(args.config).resolve()), 'replica': args.replica,
                      'allowed': read(args.allowed), 'expires': args.expires, 'output_root': str(output / 'eval')}
     OmegaConf.save(OmegaConf.create(worker_config), output / 'eval.yaml')
     from src.eval.run_eval import main as evaluate
-    # Start equal numbers of replicas on each arm. A drained replica switches
-    # only after all four conversations finish; other replicas need not wait.
-    offset = args.primary_arm % len(arms)
-    targets = [c.target for c in arms[offset:] + arms[:offset]]
     evaluate(['--target', *targets, '--name', 'swebench_mini', '--config', str(output / 'eval.yaml'),
               '--server', args.server, '--server-bind', '127.0.0.1', '--ssh-key', cfg.ssh_key,
               '--port', str(cfg.port_base + args.replica), '--no-push'], runner=runner)

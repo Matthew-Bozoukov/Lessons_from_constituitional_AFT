@@ -1,5 +1,6 @@
 # ABOUTME: Replay real client rejection recovery through pinned vLLM transforms and the Qwen template.
 # ABOUTME: Downloads public source/templates only; no model, GPU, paid host or credentials used.
+import argparse
 import ast
 import copy
 from datetime import datetime, timezone
@@ -26,9 +27,14 @@ def extract(source, names, scope):
 
 
 def main():
-    cfg = yaml.safe_load(Path('configs/eval/swebench_mini/lite.yaml').read_text())
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=Path, default=Path('configs/eval/swebench_mini/lite.yaml'))
+    args = parser.parse_args()
+    config_bytes = args.config.read_bytes()
+    cfg = yaml.safe_load(config_bytes)
     root = Path('output') / ('swebench-protocol-template-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
     root.mkdir(parents=True)
+    (root/'source-config.yaml').write_bytes(config_bytes)
     version = re.search(r'vllm==([\d.]+)', Path('pyproject.toml').read_text()).group(1)
     hashes = {}
 
@@ -62,7 +68,8 @@ def main():
     def fail(message):
         raise ValueError(message)
     jinja.globals['raise_exception'] = fail
-    renderer = jinja.from_string(pins['pin_template'](template, 'think'))
+    preserve = cfg.get('serving', {}).get('preserve_thinking', False)
+    renderer = jinja.from_string(pins['pin_template'](template, 'think', preserve_thinking=preserve))
     tests = runpy.run_path('tests/test_swebench_protocol.py')
     checks = []
     for kind in ('no_tool', 'bad_tool', 'bad_json', 'null_args', 'bad_command'):
@@ -98,6 +105,8 @@ def main():
         finally:
             test.doCleanups()
     result = {'status': 'passed', 'model_inference': False, 'vllm': version,
+              'config_sha256': hashlib.sha256(config_bytes).hexdigest(),
+              'preserve_thinking': preserve,
               'base': cfg['base'], 'base_revision': cfg['base_revision'], 'checks': checks,
               'source_sha256': hashes, 'evidence_dir': str(root),
               'limitations': 'Pinned text-only vLLM function replay and Jinja rendering, not a running CUDA server.'}

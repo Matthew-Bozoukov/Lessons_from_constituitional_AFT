@@ -1,6 +1,18 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - Four plain Qwen LoRAs: authorized paired SWE-bench Lite campaign preparation
+
+Hypothesis. Measure the capability effect of the October 5 plain replay plus 5%, 15% and 25% difficult-advice supervised-token mixtures using the same full 300-task `lite-v5` protocol. These are the new plain-blend adapters, not the older nosynth campaign.
+
+Method. The user authorized two sequential pairs, six independently scheduled RunPod replicas per arm (12 total), H200 first with delayed H100 NVL fallback, and a persistent Vast native-Docker CPU. Exact adapter revisions, pair order (control/DA15 then DA5/DA25), full sampling settings and $360 shared GPU backstop per pair are committed in `scratch/swebench_plain_campaign/manifest.json` and `fleet.yaml`; $720 is the total GPU ceiling, not expected spend. All four use Qwen3.6-27B revision `6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`. CPU and transfer costs are separate.
+
+Infrastructure. Live provider checks confirmed historical CPU 53118260 absent. Replacement 54552761 verified 61 logical CPUs, about 197.9 GiB RAM, a 485 GiB filesystem and native Docker/systemd; quoted $0.9185185/hour plus $0.0130208/GB transfer. Its external boot watchdog was armed before SSH, then successful resource/ownership checks certified its persistent receipt. Initial committed source `66e251fb` bootstrapped the pinned environments and durable 300-image preparation service. The shared registry and private receipt remain outside git; no inference GPUs had been rented at this entry.
+
+Implementation. Optional per-arm replica caps retain six fixed lanes each, including pending/ambiguous rentals until verified release; replacements keep the same arm. One owner ledger and the global 32-command gate remain shared. The two-wave CPU queue requires 300 valid/graded outcomes per arm, immutable HF result/rollout verification, inactive successful fleet service and fresh provider confirmation of zero owned GPUs before advancing. Read-only transient verification errors have bounded retries; assertions and paid launches do not. Review caught and fixed exact-target revision filtering at the real worker entrypoint and premature termination during H200 scarcity reconciliation. SWE-specific `preserve_thinking: true` retains the existing lite-v5 rejected-response history protocol across user-role format corrections; other evaluations retain their current default. Custom configuration hashes are bound to freshly executed template and synthetic integration evidence.
+
+Validation/status. Focused Linux tests cover fixed lane recovery, scarcity/fallback, exact worker pins, queue transitions/publication gates and qualification configuration binding. The actual pinned Qwen/vLLM template proof passed all five cases. Full fresh CPU capacity, image shell, gold/no-fix and end-to-end qualification is required on the replacement VM before the first GPU rental. A 15-minute Codex heartbeat is active for recovery and completion checks. Persistent CPU/cache must remain running after verified GPU teardown; unrelated shared-account pods are excluded from ownership.
+
 ## 2026-10-06 - Plain-base difficult-advice dose sweep: DA5 and DA25 trained; MASK honesty 66.0 and 86.2; ODCV misalignment 17.1% and 8.3%
 
 Hypothesis. Extend the October 5 plain / DA15 comparison to 5% and 25% difficult-advice supervision, holding the approximately five-million-supervised-token budget and SFT recipe fixed.

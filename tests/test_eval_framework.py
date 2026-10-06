@@ -216,6 +216,7 @@ def test_plan_serving_validates_requirements_against_facts():
         "reasoning_parser": "qwen3",
         "tool_call_parser": None,
         "prefix_caching": False,
+        "preserve_thinking": False,
         "hf_overrides": None,
         "warnings": (),
     }

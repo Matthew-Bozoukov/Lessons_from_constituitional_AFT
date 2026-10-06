@@ -413,24 +413,25 @@ def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
     return spec
 
 
-def pin_template(template_text: str, mode: str) -> str:
+def pin_template(template_text: str, mode: str, *, preserve_thinking: bool = False) -> str:
     """Pin thinking mode into a chat template (pure; unit-tested offline).
 
     A top-level Jinja `set` executes after the render context is built, so it shadows any
     `enable_thinking` a client passes per request — requests cannot cross modes (gotcha 5).
 
-    Both modes also pin `preserve_thinking = false`, the template's own default and how
-    reasoning models are served everywhere: prior `reasoning_content` a client sends back is
+    Both modes default to `preserve_thinking = false`: prior `reasoning_content` a client sends back is
     rendered only from the last user message onwards, so a tool chain keeps every step's
     trace and an answered turn loses its own. Training renders the same way (the profile's
     `render_kwargs`). From 2026-08-04 to 2026-10-05 think mode pinned it true, keeping every
     earlier turn's reasoning in view; arms trained then were also served that way.
+    An eval can explicitly preserve earlier traces to retain its recorded protocol
+    (SWE-bench Lite v5 includes rejected-response reasoning across user corrections).
     """
-    return pin_prefix(mode) + template_text
+    return pin_prefix(mode, preserve_thinking=preserve_thinking) + template_text
 
 
-def pin_prefix(mode: str) -> str:
-    """The two Jinja lines `pin_template` prepends. Depends on `mode` ALONE, not the template.
+def pin_prefix(mode: str, *, preserve_thinking: bool = False) -> str:
+    """The two Jinja lines `pin_template` prepends, independent of template text.
 
     Split out because the RunPod bootstrap pins the template ON the pod, where the text is
     only available at boot from the tokenizer -- but the prefix is decidable here. One
@@ -438,9 +439,11 @@ def pin_prefix(mode: str) -> str:
     rebuild these two lines by hand, with a comment promising they matched).
     """
     assert mode in ("think", "nothink"), mode
+    assert type(preserve_thinking) is bool, 'preserve_thinking must be a boolean'
     flag = "true" if mode == "think" else "false"
+    preserve = "true" if preserve_thinking else "false"
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            "{%- set preserve_thinking = false -%}\n")
+            f"{{%- set preserve_thinking = {preserve} -%}}\n")
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so
@@ -486,6 +489,7 @@ _EVAL_REQUIREMENT_KEYS = {
     "needs_tool_calls",
     "reuses_long_prefixes",
     "rope_scaling",
+    "preserve_thinking",
 }
 
 
@@ -537,6 +541,11 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             f"Eval configs declare requirements only ({sorted(_EVAL_REQUIREMENT_KEYS)}); "
             "family facts (verified ceilings, parser names) live in "
             "ModelProfile.serving, src/model_profile.py — an eval cannot set them.")
+    preserve_thinking = requirements.get("preserve_thinking", False)
+    if type(preserve_thinking) is not bool:
+        raise SystemExit('serving.preserve_thinking must be a boolean')
+    if preserve_thinking and mode != 'think':
+        raise SystemExit('serving.preserve_thinking requires the pinned think mode')
     window = requirements.get("context_window")
     if not window:
         raise SystemExit(
@@ -643,6 +652,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
         "reasoning_parser": reasoning_parser,
         "tool_call_parser": tool_call_parser,
         "prefix_caching": prefix_caching,
+        "preserve_thinking": preserve_thinking,
         "hf_overrides": hf_overrides,
         "warnings": tuple(warnings),
     }
@@ -1041,13 +1051,14 @@ class VllmServer:
             self._load_lora(spec, adapter_dir)
         return self.base_url
 
-    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None) -> str | None:
+    def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None,
+                              *, preserve_thinking: bool = False) -> str | None:
         if mode == "default":
             return None
         with open(hf_download(base_model, "tokenizer_config.json", **({"revision": revision} if revision else {}))) as f:
             template = json.load(f)["chat_template"]
         return self.executor.write_file(f"chat_template_{mode}.jinja",
-                                        pin_template(template, mode))
+                                        pin_template(template, mode, preserve_thinking=preserve_thinking))
 
     def _start(self, spec: TargetSpec, adapter_dir: str | None) -> None:
         # Facts come from two places, both authoritative and neither overridable: the
@@ -1081,7 +1092,8 @@ class VllmServer:
             argv += ["--enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
-        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision)
+        template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision,
+                                               preserve_thinking=plan['preserve_thinking'])
         if template:
             argv += ["--chat-template", template]
         if spec.adapter:

@@ -26,7 +26,7 @@ def test_template_and_native_context_use_base_revision(monkeypatch, tmp_path):
     metadata.write_text(json.dumps({'chat_template': 'template', 'max_position_embeddings': 262144}))
     download = Mock(return_value=str(metadata))
     monkeypatch.setattr(vllm, 'hf_download', download)
-    monkeypatch.setattr(vllm, 'pin_template', lambda template, mode: 'pinned-' + template)
+    monkeypatch.setattr(vllm, 'pin_template', lambda template, mode, **kw: 'pinned-' + template)
     server = object.__new__(vllm.VllmServer)
     server.executor = Mock()
     server._pinned_template_path('Qwen/Qwen3.6-27B', 'think', 'b' * 40)

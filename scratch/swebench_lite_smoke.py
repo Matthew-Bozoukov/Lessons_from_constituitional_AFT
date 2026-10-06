@@ -1,6 +1,8 @@
 # ABOUTME: CPU-only integration test: synthetic OpenAI endpoint, real agent, Docker, official grader, HF roundtrip.
 # ABOUTME: Deliberately submits a public gold patch; this is infrastructure evidence, never a model score.
+import argparse
 import base64
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -19,7 +21,11 @@ from scratch.swebench_lite import grade
 
 
 def main():
-    cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=Path, default=Path('configs/eval/swebench_mini/lite.yaml'))
+    args = parser.parse_args()
+    cfg = OmegaConf.load(args.config)
+    config_sha256 = hashlib.sha256(args.config.read_bytes()).hexdigest()
     load_dotenv(cfg.credentials)
     cfg.root = '/srv/lasr/runs/lite-infrastructure-' + uuid.uuid4().hex[:10]
     root = Path(cfg.root)
@@ -27,6 +33,7 @@ def main():
     cfg.task_seconds = 120
     for sub in ('metadata', 'rollouts', 'results'):
         (root / sub).mkdir(parents=True)
+    shutil.copy2(args.config, root/'metadata/smoke-source-config.yaml')
     for name in ('swebench_lite_test.json', 'images.json', 'httpbin_fixture.json', 'httpbin-ca.pem'):
         shutil.copyfile(Path(cfg.readiness) / 'metadata' / name, root / 'metadata' / name)
     rows = read(root / 'metadata/swebench_lite_test.json')
@@ -134,6 +141,7 @@ def main():
     result = read(root / 'results/results.json')
     assert set(result['resolved_ids']) == {iid, forced_iid} and result['pass_at_1'] is None
     atomic(root / 'results/infrastructure.json', {'status': 'passed', 'synthetic': True,
+           'config_sha256': config_sha256,
            'model_evaluation': False, 'api_calls': len(calls), 'gold_task': iid,
            'resume_sent_additional_requests': False, 'root': str(root)})
     repo = hf_repo_id(artifact_name('swebench-lite-infrastructure'))

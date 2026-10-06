@@ -1,14 +1,12 @@
-# ABOUTME: Reusable full-Lite Qwen3.6 LoRA fleet; four conversations per GPU, H100 NVL preferred.
-# ABOUTME: Run: uv run evals --name swebench_mini --fleet --target ORG/LORA --budget-usd 180
-target: dougalldeepmind/2026-09-22-qwen36-0-nosynth
-target_revision: 633908b72a9799fb3e6b101b0a8a82aec3c3d642
+# ABOUTME: Authorized four-model plain-blend SWE-bench campaign, two paired waves.
+# ABOUTME: Six fixed H200 lanes per model; delayed H100 NVL fallback and a shared 32-command gate.
+target: dougalldeepmind/2026-10-05-qwen36-0-plain
+target_revision: 1565d4f3356aa1b3bea1c503700164faa240ef3a
 base: Qwen/Qwen3.6-27B
 base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
 dataset: princeton-nlp/SWE-bench_Lite
 dataset_revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
 dataset_sha256: 6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222
-# Longest observed valid duration across the completed control and DA runs.
-# Frozen runtime-only prior, all 300 tasks; never uses correctness labels.
 task_scheduling:
   repo: dougalldeepmind/2026-09-24-swebench-lite-infrastructure
   revision: 515b606b1c5c25e42ed554e4c04b747f8b518549
@@ -20,30 +18,27 @@ receipt: /srv/lasr/receipt.json
 root: /srv/lasr/runs/unprepared-lite-target
 credentials: /srv/lasr/credentials.env
 ssh_key: /root/.ssh/id_ed25519
-gpu: NVIDIA H100 NVL
-replicas: 6
-# All six lanes prefer H100 NVL; unavailable lanes use the delayed fallback.
+gpu: NVIDIA H200
+replicas: 12
 preferred_gpus: []
 target_generation_seconds: 3600
 workers_per_replica: 4
 allocation_retry_seconds: 30
 allocation_retry_max_seconds: 120
 allocation_reconcile_seconds: 60
-# Cold boot, useful admission window and teardown; no 90-minute task cutoff.
 allocation_min_remaining_seconds: 8280
 allocation_fallback_after_seconds: 600
 allocation_fallback_after_attempts: 5
-fallback_gpus: [NVIDIA H200, NVIDIA RTX PRO 6000 Blackwell Server Edition]
-cuda_versions: '13.0,13.1,13.2'
+fallback_gpus:
+- NVIDIA H100 NVL
+cuda_versions: 13.0,13.1,13.2
 cpu_worker_limit: 80
 cpu_memory_reserve_gib: 30
 min_available_memory_gib: 16
 gpu_price_margin: 1.05
 calibrate: false
-recipe_path: /srv/lasr/recipes/qwen36-lite-v5.json
+recipe_path: /srv/lasr/recipes/qwen36-plain-lite-v5-h200-12.json
 protocol_version: lite-v5
-# Qwen's published SWE-bench temperature plus an explicit full sampling recipe.
-# New protocol: never silently change these in a previously started campaign.
 sampling:
   temperature: 1.0
   top_p: 0.95
@@ -57,11 +52,10 @@ max_response_tokens: 16384
 max_task_tokens: 262144
 step_limit: 500
 token_admission:
-  cache_fraction: 0.90
+  cache_fraction: 0.9
   fairness_seconds: 30
   large_cache_tokens: 800000
   large_prompt_tokens: 65536
-# Retain generous transport time for long-context prefill and slow decode.
 model_request_timeout_seconds: 7200
 model_request_attempts: 2
 agent_cpus: 2
@@ -71,16 +65,13 @@ agent_environment:
   BASH_ENV: /root/.bashrc
 port_base: 8100
 disk_gb: 200
-# Proposed launch limits, not a forecast. Actual launch must explicitly pass --budget-usd.
 recommended_budget_usd: 180
-max_hourly_usd: 5.50
+max_hourly_usd: 5.5
 calibration_budget_usd: 20
 calibration_seconds: 3600
-# Per-pod watchdog lease. Late pods/replacements get a fresh lease; no batch cutoff.
 rental_seconds: 86400
 boot_seconds: 900
 task_seconds: null
-# Drain near the emergency GPU expiry; never use predictions to shorten an outcome.
 task_admission_seconds: 7200
 cleanup_reserve_seconds: 180
 cpu_finish_reserve_seconds: 1800
@@ -88,31 +79,32 @@ upload_every_seconds: 120
 upload_stale_seconds: 600
 upload_timeout_seconds: 180
 max_infrastructure_attempts: 3
-# Distinct serving replicas lost since recovery, not interrupted task count.
-# A global breaker publishes partial results and requires diagnosis before rentals.
 max_infrastructure_failures: 6
 min_free_gib: 50
 grading_workers: 12
 grading_timeout_seconds: 1800
-# Start the measured grading tail in the first worker wave; other workers stay parallel.
-grading_priority: [sympy__sympy-11870]
-pilot_repos: [django/django, sympy/sympy, scikit-learn/scikit-learn, astropy/astropy, matplotlib/matplotlib, psf/requests]
+grading_priority:
+- sympy__sympy-11870
+pilot_repos:
+- django/django
+- sympy/sympy
+- scikit-learn/scikit-learn
+- astropy/astropy
+- matplotlib/matplotlib
+- psf/requests
 serving:
-  # lite-v5 preserves rejected reasoning even across user-role correction messages.
   preserve_thinking: true
   context_window: 262144
   concurrency: 8
   needs_tool_calls: true
   reuses_long_prefixes: true
-
-# Qualified once on the prepared CPU, reused for compatible LoRAs.
 cpu_qualification_path: /srv/lasr/recipes/cpu-capacity-v2.json
 tool_concurrency: 32
 tool_queue_timeout_seconds: 600
 replica_health_grace_seconds: 180
-# Actual CPU expiry and cumulative budget bound the job; no elapsed-time job cutoff.
 max_recovery_cycles: 4
 recovery_backoff_seconds: 30
 grading_attempts: 3
 publication_attempts: 60
 publication_backoff_seconds: 60
+max_replicas_per_arm: 6

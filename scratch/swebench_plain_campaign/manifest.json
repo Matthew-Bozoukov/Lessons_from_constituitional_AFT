@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "poll_seconds": 30,
+  "startup_grace_seconds": 120,
+  "waves": [
+    {
+      "root": "/srv/lasr/runs/plain-four-20261007-wave1",
+      "config": "/srv/lasr/repo/scratch/swebench_plain_campaign/fleet.yaml",
+      "config_sha256": "b36a517cb4f7221bd757a66e33f82561b7753b5b2897063fd4abf7fb41395a3e",
+      "budget_usd": 360,
+      "targets": [
+        {
+          "repo": "dougalldeepmind/2026-10-05-qwen36-0-plain",
+          "revision": "1565d4f3356aa1b3bea1c503700164faa240ef3a"
+        },
+        {
+          "repo": "dougalldeepmind/2026-10-05-qwen36-0-da-15",
+          "revision": "ce773a6b87db66bd569dd13071ec5e27201462f1"
+        }
+      ]
+    },
+    {
+      "root": "/srv/lasr/runs/plain-four-20261007-wave2",
+      "config": "/srv/lasr/repo/scratch/swebench_plain_campaign/fleet.yaml",
+      "config_sha256": "b36a517cb4f7221bd757a66e33f82561b7753b5b2897063fd4abf7fb41395a3e",
+      "budget_usd": 360,
+      "targets": [
+        {
+          "repo": "dougalldeepmind/2026-10-06-qwen36-0-da-5",
+          "revision": "89ff78d96af22d7b5a195a09db6a09ef54997b9e"
+        },
+        {
+          "repo": "dougalldeepmind/2026-10-06-qwen36-0-da-25",
+          "revision": "8af40aea97c45e6909aa2cbb2615ca59f9a31818"
+        }
+      ]
+    }
+  ]
+}

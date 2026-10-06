@@ -19,6 +19,8 @@ from src.naming import artifact_name, today
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=Path, default=Path('configs/eval/swebench_mini/lite.yaml'),
+                        help='Exact fleet config to qualify; execute smoke and template checks with the same config')
     parser.add_argument('--load-dir', type=Path, required=True)
     parser.add_argument('--smoke-root', type=Path, required=True)
     parser.add_argument('--test-log', type=Path, required=True)
@@ -33,7 +35,8 @@ def main():
     parser.add_argument('--inspect-test-log', type=Path,
                         help='Passing Inspect transport unittest output')
     args = parser.parse_args()
-    cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+    cfg = OmegaConf.load(args.config)
+    config_sha256 = digest(args.config)
     if args.agent_backend == 'inspect':
         cfg = OmegaConf.merge(cfg, OmegaConf.load('configs/eval/swebench_mini/inspect.yaml'))
         assert args.inspect_smoke_root and args.inspect_test_log, 'Inspect needs its own executed qualification'
@@ -61,6 +64,7 @@ def main():
                        'min_available_gib': min(s['available_gib'] for s in phase['samples'])})
     smoke = read(args.smoke_root/'results/infrastructure.json')
     assert smoke['status'] == 'passed' and smoke['synthetic'] and not smoke['model_evaluation']
+    assert smoke.get('config_sha256') == config_sha256, 'Execute the smoke with this exact --config before qualifying'
     test_log = args.test_log
     transport_log = args.transport_log
     assert re.search(r'\d+ passed', test_log.read_text()) and ' failed' not in test_log.read_text()
@@ -70,6 +74,7 @@ def main():
     assert 'Ran ' in protocol_log.read_text(), 'Missing executed protocol tests'
     template_proof = read(args.template_proof)
     assert template_proof['status'] == 'passed' and template_proof['model_inference'] is False
+    assert template_proof.get('config_sha256') == config_sha256, 'Execute the template proof with this exact --config before qualifying'
     assert template_proof['base_revision'] == cfg.base_revision
     assert template_proof['source_sha256']['src/infra/endpoints/vllm.py'] == digest('src/infra/endpoints/vllm.py')
     assert len(template_proof['checks']) == 5
@@ -83,6 +88,7 @@ def main():
              'limitations': 'Six representative test workloads, not arbitrary future commands. No GPU performance qualification.'}
     atomic(cfg.cpu_qualification_path, proof)
     recipe = {'settings': fleet.recipe_settings(cfg), 'source_hashes': fleet.sources(),
+              'configuration': {'path': str(args.config), 'sha256': config_sha256},
               'validated_full_run': False,
               'qualification': {'protocol_reviewed': True, 'cpu_qualified': True, 'recovery_tests_passed': True,
                                 'performance_benchmark_validated': False},
@@ -98,6 +104,7 @@ def main():
     atomic(cfg.recipe_path, recipe)
     fleet.validate_recipe(cfg, recipe)
     evidence = args.smoke_root/'metadata'
+    shutil.copy2(args.config, evidence/'qualified-config.yaml')
     if args.agent_backend == 'inspect':
         shutil.copytree(args.inspect_smoke_root, evidence/'inspect-qualification', dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns('.tool-slots','.token-slots'))
