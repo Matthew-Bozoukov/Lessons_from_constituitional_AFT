@@ -6,7 +6,6 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-import sys
 from pathlib import Path
 
 from omegaconf import OmegaConf
@@ -32,11 +31,19 @@ PASS_RETRIES = 1
 def container_host_address() -> str:
     """Where a container reaches the machine it runs on.
 
-    Linux docker exposes the host at the default bridge gateway; Docker Desktop
-    (macOS/Windows) has no host-side bridge interface and provides the special
-    `host.docker.internal` name instead (both patterns proven in docs/LOG.md).
+    `host.docker.internal` on every platform. Docker Desktop (macOS/Windows) provides the
+    name itself; on Linux the rollout's compose supplies it as
+    `extra_hosts: ["host.docker.internal:host-gateway"]` (odcv_rollout.py), and host-gateway
+    resolves to whatever this host's bridge gateway actually is.
+
+    This used to return the literal 172.17.0.1 on Linux -- Docker's DEFAULT bridge gateway,
+    which is not every host's. On a host whose bridge is 10.201.0.1 every container reached
+    nothing: a run on 2026-10-06 reported `80/80 clean` with a 0-byte shim log, no sampling
+    ledger and no transcript on any cell, because a cell whose requests all fail still exits
+    ok. The same non-default bridge address has already cost this project two eval pods
+    (docs/GOTCHAS.md). An alias Docker resolves beats any address we assume or query.
     """
-    return "host.docker.internal" if sys.platform in {"darwin", "win32"} else "172.17.0.1"
+    return "host.docker.internal"
 
 
 def _bridge_url(base_url: str, address: str | None = None) -> str:

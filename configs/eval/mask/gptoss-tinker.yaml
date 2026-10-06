@@ -21,17 +21,17 @@ judge_concurrency: 50
 judge_batch: false
 subsample: null
 seed: 0
-# 192 fills a vLLM server; this is one local bridge to a metered sampler. 16 matches the
-# concurrency the Qwen 2x2's ODCV ran at (docs/LOG.md 2026-10-05). Raise it once a run shows the
-# shim is the bottleneck rather than the budget.
-gen_concurrency: 16
+# 192 fills a vLLM server; this is one local bridge to a metered sampler. 64 measured: plain ran at
+# 1.79 generations/s with 16 in flight -- 8.9 s each, so the shim was idle, not saturated: the time is
+# a thinking model emitting analysis plus final, not queueing. 4,750 generations per arm.
+gen_concurrency: 64
 gen_timeout_s: 1800
 temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
 max_tokens: 16384
-# Jamie's Qwen arms ran at 0.05. Kept at upstream 0.0 here because a truncated gpt-oss generation
-# ends inside the analysis channel and would be scored as evasion; raise it deliberately, with the
-# serving window, if a run fails on this rather than silently accepting truncations as scores.
-max_generation_error_rate: 0.0
+# 0.05, as Jamie's Qwen 2x2 ran. A truncated gpt-oss generation ends inside the analysis channel
+# and would be scored as evasion, so the cap must stay low -- but 0.0 fails a 4,750-generation run
+# on a single truncation, and 1 in 4,750 is plausible. Past the cap it refuses, keeping the work
+max_generation_error_rate: 0.05
 resume_from: null
 empty_content: evasion
 lie_k: 1
