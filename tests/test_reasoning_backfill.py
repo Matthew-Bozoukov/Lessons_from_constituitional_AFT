@@ -113,6 +113,19 @@ def test_train_refuses_another_familys_traces_unless_told_to():
     assert check_trace_family({"reasoning_traces": {"model": "Qwen/Qwen3.6-27B"}}, qwen36)["family_mismatch_allowed"] is False
 
 
+def test_published_traces_belong_to_no_family_and_pass_for_every_model():
+    # plain (2026-10-05) carries traces written by neither family we train; its block says so and is not a claim
+    # about the model being trained, so both families train on it without `allow_trace_family_mismatch`.
+    qwen36 = ModelProfile.from_dict({"model": "Qwen/Qwen3.6-27B", "match": "qwen36"}, key="qwen36")
+    other = ModelProfile.from_dict({"model": "openai/gpt-oss-20b", "match": "gptoss20b"}, key="gptoss20b")
+    stats = {"reasoning_traces": {"origin": "published", "model": "(per source) GLM-5; DeepSeek-V4-Pro; DeepSeek-R1",
+                                  "family": "published (GLM / DeepSeek), neither Qwen nor gpt-oss", "rows": 1832}}
+    for profile in (qwen36, other):
+        got = check_trace_family(stats, profile)
+        assert got["origin"] == "published" and "family_mismatch_allowed" not in got
+    assert rb.describe(stats["reasoning_traces"]).startswith("base-blend reasoning traces: published (per source)")
+
+
 def test_the_base_blend_config_declares_its_generator_and_arm_configs_do_not():
     from pathlib import Path
     nosynth = OmegaConf.load("configs/data/mixture/nosynth.yaml")

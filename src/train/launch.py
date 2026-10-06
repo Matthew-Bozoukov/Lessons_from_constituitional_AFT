@@ -127,6 +127,11 @@ def check_trace_family(stats: dict | None, profile: ModelProfile, allow_mismatch
     traces = (stats or {}).get("reasoning_traces")
     if not traces:
         return None
+    # A base assembled from published SFT sets (plain, 2026-10-05) records `origin: published`:
+    # its traces were written by neither family we train and are meant for both, so there is no
+    # family to match. Only backfilled (on-policy) traces carry the claim this guard enforces.
+    if traces.get("origin") == "published":
+        return dict(traces)
     family = traces.get("family") or model_key(str(traces["model"]))
     if family != profile.key and not allow_mismatch:
         raise ValueError(
