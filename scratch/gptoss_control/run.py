@@ -42,7 +42,10 @@ def write(path, obj):
 
 
 def readrows(path):
-    return [json.loads(l) for l in Path(path).read_text(encoding="utf-8").splitlines()]
+    # split("\n"), NOT splitlines(): str.splitlines() also breaks on U+0085, U+2028,
+    # U+2029, U+000B and U+000C, every one of which is legal inside a JSON string. The
+    # plain base carries 9 U+0085 and splitlines() shattered its 1,832 rows into 1,841.
+    return [json.loads(l) for l in Path(path).read_text(encoding="utf-8").split("\n") if l]
 
 
 def saverows(path, rows):
@@ -89,6 +92,24 @@ def prepare(cfg, out):
     audit_data(cfg, out, out/"converted_unenriched.jsonl", "prebackfill_audit")
 
 
+def _drop_schema_fill(original, loaded):
+    """`loaded` minus the null fields HF's json loader added, so it can be compared.
+
+    load_dataset("json") unifies ONE Arrow schema over every row, so a row that omits an
+    optional field (`tools`, a message's `tool_calls`) comes back carrying it as None. That
+    is not a payload change: `row.get("tools")` is None either way, and the renderer reads
+    these through .get(). A field the loader added with a NON-null value is a real change and
+    is left in place so the caller's comparison fails. Rows converted by convert_row never hit
+    this because it normalises the keys itself; `source_format: harmony` skips that step.
+    """
+    if isinstance(original, dict) and isinstance(loaded, dict):
+        return {k: _drop_schema_fill(original.get(k), v) for k, v in loaded.items()
+                if k in original or v is not None}
+    if isinstance(original, list) and isinstance(loaded, list) and len(original) == len(loaded):
+        return [_drop_schema_fill(a, b) for a, b in zip(original, loaded)]
+    return loaded
+
+
 def audit_data(cfg, out, path, name):
     from datasets import load_dataset
     from src.infra.endpoints.harmony import make_renderer, supervised_examples, TOKENIZER_REVISION
@@ -97,7 +118,7 @@ def audit_data(cfg, out, path, name):
     if len(loaded) != len(rows):
         raise ValueError("HF loader lost rows")
     for a, b in zip(rows, loaded):
-        if a != b:
+        if a != _drop_schema_fill(a, b):
             raise ValueError("HF loader changed the canonical payload")
     renderer = make_renderer(cfg.reasoning)
     census = collections.defaultdict(lambda: collections.Counter())

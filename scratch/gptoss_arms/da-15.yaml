@@ -1,0 +1,60 @@
+# ABOUTME: gpt-oss-120b arm on 2026-10-05-da-15-mix -- the traced base at a 15% difficult-advice share.
+# ABOUTME: Tinker LoRA at the repo SFT recipe (configs/train/sft.yaml) with rank 32; USD ceilings.
+# Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py \
+#          <stage> --config scratch/gptoss_arms/da-15.yaml
+#
+# The rows are the SAME artifacts Jamie's Qwen 2x2 trained on (docs/LOG.md 2026-10-05), reused
+# unchanged so the two families differ only in the model. `source_format: harmony` therefore skips
+# convert_row entirely: these are model-agnostic interchange rows, not a Qwen-rendered mixture, so
+# there is no <tool_call> XML to parse and no empty <think> marker to drop.
+source_repo: dougalldeepmind/2026-10-05-da-15-mix
+source_revision: cf42d86b9a916a4a107e5a57720e3b181ccf1462
+source_format: harmony
+destination_name: 2026-10-05-da-15-mix-gpt-oss-120b
+output: output/gptoss_arms/da-15
+base_model: openai/gpt-oss-120b
+
+# Written into the Harmony system prompt as "Reasoning: <level>" (make_renderer), so it is part of
+# every trained sequence. `low` for the trace-free bases because Harmony encodes "did not reason"
+# by omitting the analysis channel, so at `medium` the prompt would ask for reasoning that no target
+# shows. `medium` for the traced bases, which is also what every published gpt-oss artifact used.
+reasoning: medium
+seed: 0
+
+# Unused on these arms: every row already carries the reasoning it should have (or deliberately
+# none). Kept because run.py's config schema requires the block.
+backfill:
+  concurrency: 12
+  max_tokens: 6144
+  temperature: 0.7
+  attempts: 3
+  judge: google/gemini-3-flash-preview
+  max_cost_usd: 0
+  max_judge_cost_usd: 0
+  unresolved_policy: answer_only
+
+# configs/train/sft.yaml, with rank 32 (Tinker's cap for gpt-oss-120b; the Qwen arms used 64).
+# NOT expressible on Tinker: sft.yaml's `lora.alpha: 128` and `lora.dropout: 0.05` --
+# create_lora_training_client takes rank alone. beta2/eps below are the HF Trainer defaults that
+# sft.yaml inherits by not naming them; they differ from the earlier gpt-oss arms' 0.95 / 1e-12.
+train:
+  rank: 32
+  epochs: 1
+  batch_rows: 16
+  lr: 1.0e-4
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.999
+  adam_eps: 1.0e-8
+  grad_clip_norm: 1.0
+  max_length: 8192
+  save_steps: 100
+  max_cost_usd: 15
+eval:
+  port: 18321
+  max_target_cost_usd: 20
+  concurrency: 4
+  max_tokens: 8192
+  max_judge_cost_usd: 5
+  judge_max_tokens: 8192
