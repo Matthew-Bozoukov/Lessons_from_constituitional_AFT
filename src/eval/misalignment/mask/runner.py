@@ -173,7 +173,7 @@ def generation_errors(responses_dir: Path) -> dict:
     return {"generations": generations, "errors": errors}
 
 
-def resume_work(prior: Path, work: Path, modelname: str, cap: float) -> list[str]:
+def resume_work(src: Path, work: Path, modelname: str, cap: float) -> list[str]:
     """Adopt a failed run's work tree, keeping every archetype it generated cleanly.
 
     A MASK run is hours of generation and the harness writes one responses file per
@@ -187,10 +187,9 @@ def resume_work(prior: Path, work: Path, modelname: str, cap: float) -> list[str
     Returns:
         The archetypes that will be regenerated.
     """
-    src = prior / "mask_work"
     assert (src / "data" / "responses").is_dir(), (
-        f"{prior} holds no mask_work/data/responses to resume; only a run that FAILED keeps "
-        "its work tree")
+        f"{src} holds no data/responses to resume; only a run that FAILED keeps its work "
+        "tree")
     shutil.copytree(src, work)
     shutil.rmtree(work / "logs", ignore_errors=True)   # the prior run's stage logs stay with it
     dropped = []
