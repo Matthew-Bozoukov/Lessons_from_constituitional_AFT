@@ -8,6 +8,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from huggingface_hub import snapshot_download
 
+from src.naming import figure_path
+
 DATE = "2026-10-05"
 # Local (today's in-progress runs) and published (older) sources: name -> glob of docker_output.log files.
 LOCAL = {
@@ -80,7 +82,7 @@ def main():
     axes[0].set_xscale("log"); axes[0].set_xlabel("reasoning chars per assistant turn (log bins)"); axes[0].set_ylabel("density")
     axes[0].set_title("ODCV: reasoning length per turn"); axes[0].legend(fontsize=7)
     axes[1].set_xlabel("total reasoning chars per cell"); axes[1].set_title("ODCV: total reasoning per cell"); axes[1].legend(fontsize=7)
-    out = Path("output") / f"{DATE}_odcv_reasoning_lengths.png"
+    out = figure_path("output", "odcv_reasoning_lengths", date=DATE)
     fig.tight_layout(); fig.savefig(out, dpi=140)
     md = [f"# ODCV reasoning-trace lengths ({DATE})", "", "Parsed from `[Reasoning]:` blocks in each cell's docker_output.log. Today's runs are partial (in progress).", "",
           "| run | cells | turns | median chars/turn | p90 chars/turn | median chars/cell | median turns/cell |", "|---|---|---|---|---|---|---|"]
