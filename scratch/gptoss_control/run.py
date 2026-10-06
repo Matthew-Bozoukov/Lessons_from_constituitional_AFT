@@ -92,6 +92,32 @@ def prepare(cfg, out):
     audit_data(cfg, out, out/"converted_unenriched.jsonl", "prebackfill_audit")
 
 
+def _record_coercions(original, loaded, out, row):
+    """Collect numeric fields where Arrow's JSON reader disagrees with json.loads.
+
+    load_dataset("json") unifies ONE Arrow type per field across every row, so a tool-call
+    `arguments` field that is integer in most rows coerces a small float in another: 8.854e-12
+    becomes 0.0 in 3 of 2026-10-05-msm-mix's 10,000 rows. Training never goes through this
+    path -- it reads the jsonl with readrows -- so these are recorded as a fidelity note about
+    the PUBLISHED artifact rather than raised. A NON-numeric disagreement is not type
+    unification and still raises, as does a lost or added non-null field (_drop_schema_fill).
+    """
+    if isinstance(original, dict) and isinstance(loaded, dict):
+        for k in set(original) | set(loaded):
+            _record_coercions(original.get(k), loaded.get(k), out, row)
+    elif isinstance(original, list) and isinstance(loaded, list) and len(original) == len(loaded):
+        for a, b in zip(original, loaded):
+            _record_coercions(a, b, out, row)
+    elif original != loaded:
+        numeric = (isinstance(original, (int, float)) and isinstance(loaded, (int, float))
+                   and not isinstance(original, bool) and not isinstance(loaded, bool))
+        if not numeric:
+            raise ValueError(
+                f"row {row}: the HF loader changed a non-numeric payload field, which Arrow "
+                f"type unification does not explain: {original!r} -> {loaded!r}")
+        out.append({"row": row, "jsonl": repr(original), "load_dataset": repr(loaded)})
+
+
 def _drop_schema_fill(original, loaded):
     """`loaded` minus the null fields HF's json loader added, so it can be compared.
 
@@ -114,12 +140,24 @@ def audit_data(cfg, out, path, name):
     from datasets import load_dataset
     from src.infra.endpoints.harmony import make_renderer, supervised_examples, TOKENIZER_REVISION
     rows = readrows(path)
+    # What TRAINING reads: readrows -> supervised_examples. This is the fidelity check that
+    # matters, and it is exact.
+    for i, row in enumerate(rows):
+        if json.loads(json.dumps(row)) != row:
+            raise ValueError(f"row {i} is not stable through a json round-trip")
     loaded = load_dataset("json", data_files=str(path), split="train")
     if len(loaded) != len(rows):
         raise ValueError("HF loader lost rows")
-    for a, b in zip(rows, loaded):
-        if a != _drop_schema_fill(a, b):
-            raise ValueError("HF loader changed the canonical payload")
+    coercions = []
+    for i, (a, b) in enumerate(zip(rows, loaded)):
+        stripped = _drop_schema_fill(a, b)
+        if a != stripped:
+            _record_coercions(a, stripped, coercions, i)
+    if coercions:
+        print(f"WARNING: load_dataset(\"json\") disagrees with json.loads on "
+              f"{len(coercions)} numeric field(s); see {name}.json hf_loader_coercions. "
+              f"Training is unaffected (it reads the jsonl), but a `datasets` consumer of the "
+              f"PUBLISHED rows sees the coerced values.", flush=True)
     renderer = make_renderer(cfg.reasoning)
     census = collections.defaultdict(lambda: collections.Counter())
     total = collections.Counter()
@@ -143,7 +181,8 @@ def audit_data(cfg, out, path, name):
     report = {**provenance(cfg), "dataset_sha256": digest(rows), "tokenizer_revision": TOKENIZER_REVISION,
               "total": dict(total), "by_source": {k: dict(v) for k,v in census.items()},
               "max_sequence_tokens":max(lengths),
-              "estimated_training_usd": total["processed_tokens"]*0.737/1e6}
+              "estimated_training_usd": total["processed_tokens"]*0.737/1e6,
+              "hf_loader_coercions": coercions}
     write(out/f"{name}.json", report)
     write(out/f"{name}_examples.json", examples)
     print(json.dumps({k:v for k,v in report.items() if k in {"total", "estimated_training_usd"}}, indent=2))
