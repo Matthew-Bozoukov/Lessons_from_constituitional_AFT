@@ -320,6 +320,9 @@ def describe(traces: dict | None) -> str:
     if not traces:
         return "base-blend reasoning traces: none"
     turns = traces.get("turns")
-    return (f"base-blend reasoning traces: on-policy {traces['model']} (family {traces['family']}"
+    # A backfilled base's traces are on-policy; a base assembled from published SFT sets (plain, 2026-10-05)
+    # records `origin: published` in its block and must not be described as on-policy.
+    origin = traces.get("origin", "on-policy")
+    return (f"base-blend reasoning traces: {origin} {traces['model']} (family {traces['family']}"
             + (f", {turns} turns" if turns is not None else "")
             + (f", judged by {traces['judge']}" if traces.get("judge") else "") + ")")
