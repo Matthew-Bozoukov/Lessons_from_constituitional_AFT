@@ -1,4 +1,4 @@
-# ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled
+# ABOUTME: The difficult-advice arm: the base blend (configs/data/mixture/plain.yaml) scaled
 # ABOUTME: around a synthetic `da` share. Publishes as `<date>-da-<pct>-mix`.
 # Run: uv run mix --config configs/data/mixture/da.yaml [synthetic_pct=15]
 #
@@ -9,7 +9,7 @@
 # only in that number and in which single replay source they used.
 #
 # The non-synthetic portion comes from `base:` and keeps ITS proportions at every share —
-# see nosynth.yaml. That is the difference from the older arms: they swapped the replay portion
+# see plain.yaml (nosynth.yaml until 2026-10-05). That is the difference from the older arms: they swapped the replay portion
 # for `tulu3` alone, so replay composition moved with the synthetic share and no arm was a
 # clean control for the next.
 
@@ -19,13 +19,16 @@ max_seq_len: 8192
 
 # THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
 # the already-reviewed rows and existing reasoning, rather than resampling upstream.
-base: "configs/data/mixture/nosynth.yaml"
+base: "configs/data/mixture/plain.yaml"
 base_mixture:
-  # 2026-10-01: the 2026-09-29 base -- 2026-09-22 @ 378ec1ee with its 1,054 apigen rows carrying native
-  # `tools` + `tool_calls` in place of xLAM text, every other row byte-identical (main @ 436f45fd).
-  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  # 2026-10-05: the `plain` base -- 1,832 rows / 5,000,005 supervised tokens with a published (not on-policy)
+  # reasoning trace on every row: 45% chat, 22.5% maths, 22.5% code, 10% science (plain.yaml; the mix's card).
+  # Until this date the base was 2026-09-29-nosynth-mix @ 058e163e (the MSM Table 2 blend with on-policy
+  # Qwen3.6 traces on 1,130 rows, `base: nosynth.yaml`), which every da arm before it was built on; that base
+  # with its traces removed is 2026-10-05-msm-mix, and da-msm.yaml is this arm on it.
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
   file: mixture.jsonl
-  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
 
 # The synthetic share: the number in the mixture's name and the only thing that varies
 # across this ladder. It is a share of SUPERVISED TOKENS, not rows (`share_unit` below).
@@ -97,6 +100,6 @@ sources:
 output_dir: "output/mixture_da"
 
 hf:
-  experiment: "difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share"
+  experiment: "difficult-advice arm: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic difficult-advice share"
   constitution: "constitutions/claude_distilled_09_principles/constitution.md"
   private: false

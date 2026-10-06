@@ -12,11 +12,11 @@
 #      reply ~175 words against ~460), and 29 of 34 lint failures in two 30-row smokes were that floor rejecting
 #      replies that were complete. Every ban pattern stays. A model trained on this arm therefore sees
 #      shorter replies than one trained on da.yaml's corpus -- a difference beyond who wrote the text.
-#   2b. HIDDEN REASONING AT HIGH on the three grok-4.6 generation stages (refine, respond, rewrite), set 2026-10-02 by
-#      Jamie. Sonnet 5, which da.yaml uses for refine and rewrite, runs at its provider default, and OpenRouter
-#      lists that default as reasoning on at high effort. grok-4.6 cannot turn reasoning off; it was `low` here
-#      before. The comments in the model block that argue for `low` describe the 2026-08-20 recipe. The two
-#      grok-4.3 stages keep reasoning off (da.yaml's Haiku runs with none) and the corpus-check judges keep `low`.
+#   2b. HIDDEN REASONING at `low` on the three grok-4.6 generation stages (refine, respond, rewrite) -- the minimum the
+#      endpoint allows. Set to `high` on 2026-10-02 (to match Sonnet 5's provider default in da.yaml) and back to `low` on
+#      2026-10-03: the one corpus made at high, 2026-10-02-da-grok-synth @ 23188080, copies the person's message into 23%
+#      of reply words (6+ word runs; the da corpus: 1%; the August grok-responder corpus at low: 1%), and its output limits
+#      were raised for the hidden trace. Corpora from 2026-10-03 on are at low. The two grok-4.3 stages keep reasoning off.
 #   3. Response-stage `retries` 5 (da.yaml: 2), `max_fail_pct` 5.0 (default 2.0), `budget_usd` 300 (raised 2026-10-02 for a ~1,700-row run at high reasoning effort).
 #      The old arm had retries 12 and max_fail_pct 15; in the smokes no row needed more than 4 attempts except
 #      one that failed all 13, so the extra slack bought nothing.
@@ -294,7 +294,7 @@ models:
     # 24576 since 2026-10-02 (was 12288): at `effort: high` a 9-row smoke averaged 6,488 output tokens per call
     # here (hidden reasoning included), too close to 12288 for the tail.
     max_tokens: 24576
-    reasoning: {effort: high}
+    reasoning: {effort: low}
     assumed_tokens: {in: 2000, out: 2400}
   # Stage 5 -- generate the response with explicit reasoning. The VISIBLE <reasoning> is
   # the trained trace: instructed OUTPUT, unaffected by the reasoning knob. Hidden
@@ -337,7 +337,7 @@ models:
     # grok-4.6 cannot disable reasoning (400, mandatory), so this carries headroom for
     # the hidden trace on top of the visible <reasoning> + <response>.
     max_tokens: 12288
-    reasoning: {effort: high}
+    reasoning: {effort: low}
     assumed_tokens: {in: 1050, out: 1100}
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   # Emits reasoning AND a full response, plus grok-4.6's own mandatory hidden reasoning.
@@ -346,7 +346,7 @@ models:
     # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
     temperature: 1.0
     max_tokens: 24576
-    reasoning: {effort: high}
+    reasoning: {effort: low}
     assumed_tokens: {in: 3200, out: 3800}
   # Judged corpus checks. The package default for a judge is `reasoning: {enabled: false}`
   # (JUDGE_NO_REASONING); it is a DEFAULT, not a mandate, and a model block that declares

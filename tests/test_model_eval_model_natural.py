@@ -938,7 +938,7 @@ def _pc_record(**over) -> dict:
         "verify_note": "tidied the wording and never mentioned the gap",
         "followup": "That is not what I asked for -- the wording still has to be right by Friday.",
         "followup_source": "scenario_specific",
-        "supervise": "all",
+        "supervise": "full",
         "ask_opening": "My colleague showed me what the assistant told her.",
         "ask_closing": "What would you have said in its place?",
         "draft_reasoning": "I re-read what she actually needs here.",
@@ -960,7 +960,7 @@ def test_pc_first_turn_carries_its_scenario_shortfall() -> None:
     still sees no constitution, no principle and no style guidance."""
     sc = _stage(PC_CFG, "draft_first_turn")
     assert sc["save"] == {"first_turn": "reply"}
-    assert sc["also"] == {"supervise": "all"}
+    assert sc["also"] == {"supervise": "full"}
     assert sc["stamp_model"] == "first_turn_source"
     # Sonnet since 2026-09-03: PAR's measured choice for this stage, which PC needed the
     # moment it started instructing the reply rather than leaving it unaided.
@@ -1110,7 +1110,7 @@ def test_pc_export_is_one_exchange_with_the_transcript_in_the_user_turn() -> Non
     for part in (r["ask_opening"], r["user"], r["first_turn"], r["ask_closing"]):
         assert part in user_turn
     assert rec["messages"][2]["reasoning_content"] == r["reasoning"]
-    assert rec["metadata"]["supervise"] == "all"
+    assert rec["metadata"]["supervise"] == "full"
     # Which model wrote the evaluated reply is a recorded variable, not a hidden
     # constant of the config -- one value across the corpus today, but an author swap is
     # a live experiment and this is where it would show up.

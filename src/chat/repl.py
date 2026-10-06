@@ -198,9 +198,10 @@ def build_record(
 def assistant_message(record: dict) -> dict:
     """The assistant turn sent back as context: visible answer + trace as reasoning_content.
 
-    A think arm's served template pins `preserve_thinking = true` (vllm.pin_template),
-    so prior reasoning must ride along under `reasoning_content` — the same shape the
-    psychosis eval's multi-turn loop sends — rather than inline where it would render twice.
+    Prior reasoning rides along under `reasoning_content` — the same shape the psychosis
+    eval's multi-turn loop sends — rather than inline, where it would reach the model as
+    answer text. The served template (vllm.pin_template) then renders it only from the last
+    user message onwards, so an answered turn's trace is not shown back to the model.
     """
     message = {"role": "assistant", "content": record["answer"]}
     if record["think"]:

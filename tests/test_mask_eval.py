@@ -249,7 +249,8 @@ def test_resume_keeps_clean_archetypes_and_drops_only_the_failed_ones(tmp_path):
     _responses(responses / "statistics_m.csv", [(err, err)] * 5)
 
     work = tmp_path / "out" / "mask_work"
-    assert runner.resume_work(prior, work, "m", cap=0.05) == ["statistics"]
+    # resume_work takes the pass TREE, as _prior_pass_tree resolves it for the run dir
+    assert runner.resume_work(runner._prior_pass_tree(prior, 1, 1), work, "m", cap=0.05) == ["statistics"]
     assert (work / "data" / "responses" / "known_facts_m.csv").is_file()
     assert not (work / "data" / "responses" / "statistics_m.csv").exists()
     assert not (work / "logs").exists()
@@ -262,9 +263,11 @@ def test_resume_refuses_another_models_answers_and_a_run_with_no_work_tree(tmp_p
     (prior / "mask_work" / "data" / "responses").mkdir(parents=True)
     _responses(prior / "mask_work" / "data" / "responses" / "statistics_other.csv", [("x", "y")])
     with pytest.raises(AssertionError, match="different served model"):
-        runner.resume_work(prior, tmp_path / "w" / "mask_work", "m", cap=0.05)
-    with pytest.raises(AssertionError, match="no mask_work"):
-        runner.resume_work(tmp_path / "finished", tmp_path / "w2" / "mask_work", "m", cap=0.05)
+        runner.resume_work(prior / "mask_work", tmp_path / "w" / "mask_work", "m", cap=0.05)
+    with pytest.raises(AssertionError, match="no data/responses"):
+        runner.resume_work(tmp_path / "finished" / "mask_work", tmp_path / "w2" / "mask_work", "m", cap=0.05)
+    # a finished run has consumed its tree, so there is nothing for the caller to resolve
+    assert runner._prior_pass_tree(tmp_path / "finished", 1, 1) is None
 
 
 # --- one queue over every archetype ------------------------------------------------------
@@ -382,3 +385,15 @@ def test_a_two_pass_run_scores_each_pass_and_publishes_them_nested(tmp_path, mon
     gen_calls = [c for c in calls if c[0] == "generate_responses.py"]
     assert [c[1] for c in gen_calls] == ["pass1", "pass2"]
     assert not (out / "mask_work").exists()
+
+
+def test_generation_errors_reads_a_cell_past_the_stdlib_csv_limit(tmp_path):
+    # A reasoning model that loops to its token cap writes a generation over 128 KB; the
+    # harness (pandas) writes it fine, and the runner's stdlib reader must read it back.
+    d = tmp_path / "responses"; d.mkdir()
+    with (d / "statistics.csv").open("w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["task_id", "generation(System Prompt + User Prompt)_run1"])
+        w.writeheader()
+        w.writerow({"task_id": "1", "generation(System Prompt + User Prompt)_run1": "loop " * 40_000})
+        w.writerow({"task_id": "2", "generation(System Prompt + User Prompt)_run1": "[ERROR: boom]"})
+    assert runner.generation_errors(d) == {"generations": 2, "errors": 1}

@@ -1,0 +1,38 @@
+# ABOUTME: The Qwen responder-swap difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a
+# ABOUTME: synthetic share whose prompts are the da corpus's and whose responses Qwen3.6-27B wrote (configs/data/synth/da-qwen-resp.yaml).
+# Run: uv run mix --config configs/data/mixture/da-qwen-resp.yaml [synthetic_pct=15]
+#
+# configs/data/mixture/da-grok-resp.yaml with one thing changed: the synthetic source. Same base, same pin, same
+# share unit, and the same 950 frozen prompts (seed-0 draw), so an adapter trained on this mix differs from the
+# da-grok-resp one only in which model wrote the assistant turn, and from the da one only in that the student
+# wrote it.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-qwen-resp:
+    # 2026-10-03: 941 rows (950 revised prompts sampled, trait-even, seed 0, from the two runs behind 2026-10-02-da-synth's
+    # 1,283 rows -- the draw da-grok-resp's first run answered -- 9 dropped by the lint) with qwen3.6-27b (thinking on, uncapped,
+    # temperature 1.0) drafting and revising the reasoning and reply.
+    dataset: "${oc.env:HF_ORG}/2026-10-03-da-qwen-resp-synth"
+    revision: "bfb886905fdc9ae42d1b29ab4c8302838298434f"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_qwen_resp"
+
+hf:
+  experiment: "Qwen responder-swap difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share whose scenarios and prompts are the Haiku-and-Sonnet da corpus's and whose reasoning and replies the student, Qwen3.6-27B, wrote; the teacher-side comparison that holds the prompts fixed and removes the teacher"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

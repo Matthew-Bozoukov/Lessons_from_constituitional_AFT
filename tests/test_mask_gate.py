@@ -107,7 +107,7 @@ def test_gate_refuses_think_blocks_under_nothink():
 def test_gate_catches_a_corrupted_mask(monkeypatch):
     # The gate exists to catch build_labels regressions; simulate one (a mask that
     # supervises everything, prefills included) and the decode comparison must fire.
-    def broken(text, tokenizer, max_length, profile, supervise="all"):
+    def broken(text, tokenizer, max_length, profile, supervise="full"):
         enc = tokenizer(text)
         return {"input_ids": enc["input_ids"], "attention_mask": enc["attention_mask"],
                 "labels": list(enc["input_ids"])}
@@ -141,7 +141,7 @@ def test_expected_supervised_text_cot_refuses_an_empty_marker():
 
 def test_gate_verifies_the_mask_the_run_will_actually_build():
     # The independent parser and build_labels must agree under "cot" too — the whole
-    # point of passing the modes through rather than gating everything as "all".
+    # point of passing the modes through rather than gating everything as "full".
     census = gate_generation_boundary([COT_ROW], _Tok(), max_length=10_000,
                                       profile=QWEN36_PROFILE, thinking=True,
                                       supervise=["cot"])
@@ -149,12 +149,12 @@ def test_gate_verifies_the_mask_the_run_will_actually_build():
 
 
 def test_gate_catches_a_cot_mask_that_leaks_the_answer(monkeypatch):
-    # The regression that matters: a "cot" row masked as if it were "all" still
-    # supervises the answer. Gating every row as "all" would have blessed exactly this.
+    # The regression that matters: a "cot" row masked as if it were "full" still
+    # supervises the answer. Gating every row as "full" would have blessed exactly this.
     from src.train.masking import build_labels as real
 
-    def leaky(text, tokenizer, max_length, profile, supervise="all"):
-        return real(text, tokenizer, max_length, profile, supervise="all")
+    def leaky(text, tokenizer, max_length, profile, supervise="full"):
+        return real(text, tokenizer, max_length, profile, supervise="full")
 
     monkeypatch.setattr("src.train.masking.build_labels", leaky)
     with pytest.raises(AssertionError, match="disagreement"):
@@ -164,12 +164,12 @@ def test_gate_catches_a_cot_mask_that_leaks_the_answer(monkeypatch):
 
 
 def test_gate_sample_is_stratified_across_supervise_modes():
-    # 1 cot row buried behind 200 "all" rows: a first-64 slice would never reach it.
+    # 1 cot row buried behind 200 "full" rows: a first-64 slice would never reach it.
     rows = [THINK_ROW] * 200 + [COT_ROW]
-    modes = ["all"] * 200 + ["cot"]
+    modes = ["full"] * 200 + ["cot"]
     picked = _gate_sample(modes, GATE_SAMPLE)
     assert 200 in picked, "the minority mode must be sampled"
-    assert sum(1 for i in picked if modes[i] == "all") == GATE_SAMPLE
+    assert sum(1 for i in picked if modes[i] == "full") == GATE_SAMPLE
     # And end to end: the gate reports having checked both modes.
     gate_generation_boundary(rows, _Tok(), max_length=10_000,
                              profile=QWEN36_PROFILE, thinking=True, supervise=modes)
@@ -181,22 +181,22 @@ def test_gate_defaults_every_row_to_all_when_no_modes_are_given():
     with pytest.raises(AssertionError, match="entries for"):
         gate_generation_boundary([THINK_ROW, COT_ROW], _Tok(), max_length=10_000,
                                  profile=QWEN36_PROFILE, thinking=True,
-                                 supervise=["all"])
+                                 supervise=["full"])
 
 
-# --- supervise: "answer" --------------------------------------------------------------
+# --- supervise: "response" --------------------------------------------------------------
 
 
 def test_expected_supervised_text_answer_is_the_far_side_of_the_close():
     assert expected_supervised_text(COT_ROW, THINK_PREFILL, EMPTY_THINK,
-                                    supervise="answer") == "\n\nanswer<|im_end|>"
+                                    supervise="response") == "\n\nanswer<|im_end|>"
 
 
 def test_gate_parser_agrees_that_cot_and_answer_partition_the_turn():
     # The independent parser must reproduce the same partition build_labels does, or the
     # two arms are not complements of each other whatever masking.py believes.
     cot = expected_supervised_text(COT_ROW, THINK_PREFILL, EMPTY_THINK, supervise="cot")
-    ans = expected_supervised_text(COT_ROW, THINK_PREFILL, EMPTY_THINK, supervise="answer")
+    ans = expected_supervised_text(COT_ROW, THINK_PREFILL, EMPTY_THINK, supervise="response")
     whole = expected_supervised_text(COT_ROW, THINK_PREFILL, EMPTY_THINK)
     assert cot + ans == whole
 
@@ -204,26 +204,26 @@ def test_gate_parser_agrees_that_cot_and_answer_partition_the_turn():
 def test_gate_verifies_an_answer_row_against_build_labels():
     census = gate_generation_boundary([COT_ROW], _Tok(), max_length=10_000,
                                       profile=QWEN36_PROFILE, thinking=True,
-                                      supervise=["answer"])
+                                      supervise=["response"])
     assert census["real"] == 1
 
 
 def test_gate_catches_an_answer_mask_that_leaks_the_trace(monkeypatch):
     from src.train.masking import build_labels as real
 
-    def leaky(text, tokenizer, max_length, profile, supervise="all"):
-        return real(text, tokenizer, max_length, profile, supervise="all")
+    def leaky(text, tokenizer, max_length, profile, supervise="full"):
+        return real(text, tokenizer, max_length, profile, supervise="full")
 
     monkeypatch.setattr("src.train.masking.build_labels", leaky)
     with pytest.raises(AssertionError, match="disagreement"):
         gate_generation_boundary([COT_ROW], _Tok(), max_length=10_000,
                                  profile=QWEN36_PROFILE, thinking=True,
-                                 supervise=["answer"])
+                                 supervise=["response"])
 
 
 def test_gate_stratifies_across_three_modes():
     rows = [THINK_ROW] * 100 + [COT_ROW, COT_ROW]
-    modes = ["all"] * 100 + ["cot", "answer"]
+    modes = ["full"] * 100 + ["cot", "response"]
     picked = _gate_sample(modes, GATE_SAMPLE)
     assert 100 in picked and 101 in picked, "both minority modes must be sampled"
     gate_generation_boundary(rows, _Tok(), max_length=10_000,

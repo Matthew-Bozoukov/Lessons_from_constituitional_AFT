@@ -41,7 +41,7 @@ def test_a_key_an_id_a_path_and_a_served_name_are_one_model():
 
 def test_only_a_verified_family_may_be_trained_but_a_stub_is_still_named_and_served():
     p = model_profile("qwen36")
-    assert p.verified and p.lora_target_modules and p.render_kwargs == {"preserve_thinking": True}
+    assert p.verified and p.lora_target_modules and p.render_kwargs == {}
     assert p.model_class == "image_text_to_text" and p.load_in_4bit is False
     with pytest.raises(ValueError, match="no verified thinking profile"):
         model_profile("Qwen/Qwen3-32B")

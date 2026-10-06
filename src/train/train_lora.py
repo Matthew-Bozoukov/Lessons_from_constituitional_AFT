@@ -51,6 +51,7 @@ from src.train.masking import (  # noqa: E402
     build_labels,
     check_thinking_declaration,
     supervise_census,
+    supervise_mode,
 )
 
 
@@ -541,12 +542,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # gate because the gate has to verify the mask this run will actually build: a
     # "cot" row checked as "all" would leave the arm's own code path unverified.
     modes = (list(ds["supervise"]) if "supervise" in ds.column_names
-             else ["all"] * len(ds))
+             else ["full"] * len(ds))
     gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking,
                              supervise=modes)
     if "supervise" in ds.column_names:
         print(f">>> supervise in THIS selection: "
-              f"{dict(Counter(m or 'all' for m in modes).most_common())}")
+              f"{dict(Counter(supervise_mode(m) for m in modes).most_common())}")
     # `mask_spans` (character spans of `text`) unsupervises one property of the reasoning
     # without altering the text, so an ablation arm and its control tokenize identically.
     # Validated on the full dataset above; consumed by the map below, which is the last
@@ -556,7 +557,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               f"{sum(1 for s_ in ds['mask_spans'] if s_)}/{len(ds)} rows")
     ds = ds.map(
         lambda r: build_labels(r["text"], tokenizer, max_len, profile,
-                               supervise=r.get("supervise") or "all",
+                               supervise=supervise_mode(r.get("supervise")),
                                mask_spans=r.get("mask_spans")),
         remove_columns=ds.column_names,
         desc="masking non-assistant and prefill tokens",

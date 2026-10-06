@@ -419,11 +419,12 @@ def pin_template(template_text: str, mode: str) -> str:
     A top-level Jinja `set` executes after the render context is built, so it shadows any
     `enable_thinking` a client passes per request — requests cannot cross modes (gotcha 5).
 
-    Thinking mode also pins `preserve_thinking = true` (the repo-wide policy since
-    2026-08-04): training data carries reasoning on every assistant turn, so inference
-    context must too — prior-turn `reasoning_content` sent back by a client is kept in
-    the render rather than stripped by the template's default. Nothink pins it false:
-    a nothink arm's history carries no reasoning to preserve.
+    Both modes also pin `preserve_thinking = false`, the template's own default and how
+    reasoning models are served everywhere: prior `reasoning_content` a client sends back is
+    rendered only from the last user message onwards, so a tool chain keeps every step's
+    trace and an answered turn loses its own. Training renders the same way (the profile's
+    `render_kwargs`). From 2026-08-04 to 2026-10-05 think mode pinned it true, keeping every
+    earlier turn's reasoning in view; arms trained then were also served that way.
     """
     return pin_prefix(mode) + template_text
 
@@ -439,7 +440,7 @@ def pin_prefix(mode: str) -> str:
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\n")
+            "{%- set preserve_thinking = false -%}\n")
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so

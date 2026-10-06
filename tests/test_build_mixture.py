@@ -370,7 +370,9 @@ def test_train_time_render_matches_legacy_build_time_render():
     # two paths coexisted; the legacy renderer is deleted, the byte-contract remains).
     legacy = tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=False,
                                      **profile.render_kwargs)
-    assert legacy.count("<think>") == 2, "preserve policy: a think block on EVERY turn" 
+    # The template's default (no preserve_thinking): an earlier turn renders as its answer
+    # alone, and only the turn after the last user message carries a think block.
+    assert legacy.count("<think>") == 1, "a think block on the current turn only"
     # train_lora's map: strip the None padding HF's json loader adds, then render with
     # the profile kwargs — the exact expression in src/train/train_lora.py.
     padded = [{**m, "reasoning_content": m.get("reasoning_content"),
@@ -381,7 +383,7 @@ def test_train_time_render_matches_legacy_build_time_render():
     assert train_time == legacy, "train-time render diverged from the legacy build-time render"
 
     census = think_census([train_time])
-    assert census == {"turns": 2, "real": 1, "empty": 1, "absent": 0}
+    assert census == {"turns": 2, "real": 1, "empty": 0, "absent": 1}
 
     # The generation-boundary mask on the rendered row: the whole empty marker is
     # forced context (never supervised); the real trace and its close are supervised.
@@ -389,7 +391,9 @@ def test_train_time_render_matches_legacy_build_time_render():
     supervised = tok.decode([i for i, l in zip(out["input_ids"], out["labels"])
                              if l != -100])
     assert profile.empty_think not in supervised and "thinking hard" in supervised
-    assert "a1" in supervised and "a2" in supervised
+    # a1 is history: answered before the last user message, rendered with no think block,
+    # and so never a position the model generates from. Only the current turn is trained.
+    assert "a1" not in supervised and "a2" in supervised
 
 
 def test_take_interchange_lifts_supervise_from_metadata(tmp_path):
@@ -759,8 +763,8 @@ def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, mon
     # a mode the trainer does not know.
     with pytest.raises(AssertionError, match="not a mode"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="unknown")))
-    with pytest.raises(ValueError, match="answer-only"):
-        main(str(_arm_cfg(tmp_path, "dat", supervise="answer")))
+    with pytest.raises(ValueError, match="response-only"):
+        main(str(_arm_cfg(tmp_path, "dat", supervise="response")))
 
 
 def test_main_refuses_supervise_override_on_the_base_blend(tmp_path, monkeypatch):
@@ -771,4 +775,4 @@ def test_main_refuses_supervise_override_on_the_base_blend(tmp_path, monkeypatch
                         lambda *a, **k: pytest.fail("should refuse before loading"))
     with pytest.raises(ValueError, match="non-synthetic source\\(s\\) \\['plain'\\]"):
         main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot", supervise="cot",
-                          base_supervise="all")))
+                          base_supervise="full")))

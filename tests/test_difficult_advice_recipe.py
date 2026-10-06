@@ -212,8 +212,8 @@ def test_smoke_shrinks_every_config_that_sets_a_corpus_budget():
                 f"must override `source:` with a smaller seed directory, or --smoke "
                 f"processes the WHOLE source run.")
             src = smoke["source"]
-            assert src.get("local_dir") or src.get("hf_repo"), (
-                f"{path} smoke `source:` names neither local_dir nor hf_repo")
+            assert src.get("local_dir") or src.get("hf_repo") or src.get("runs"), (
+                f"{path} smoke `source:` names neither local_dir, hf_repo nor runs")
             continue
 
         if cfg.get("total_scenarios") is None:

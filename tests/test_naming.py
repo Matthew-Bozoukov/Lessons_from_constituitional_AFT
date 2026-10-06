@@ -181,6 +181,8 @@ def test_the_repo_itself_obeys_the_law():
     ("da-7-cot-only", ("da", 7, "cot-only")),
     ("da-par-20", ("da-par", 20, "")),
     ("nosynth", ("", 0, "")),
+    ("msm", ("", 0, "")),                      # the other base blends: one word, no share
+    ("plain", ("", 0, "")),
     ("nosynth-token-matched", ("", 0, "token-matched")),
 ])
 def test_the_percentage_is_the_only_number_and_so_the_pivot(subject, parts):

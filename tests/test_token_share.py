@@ -90,9 +90,23 @@ def test_supervised_tokens_follow_the_rows_supervise_mode():
             {"role": "assistant", "content": "A second answer.",
              "reasoning_content": "brief thought"}]
     counts = {mode: supervised_tokens(tok, profile, {"messages": msgs, "supervise": mode}, 4096)
-              for mode in ("all", "final", "cot", "answer")}
-    assert counts["all"] > counts["final"] > 0, counts          # one turn is fewer tokens than two
-    assert counts["final"] == counts["cot"] + counts["answer"], counts  # cot + answer partition the final turn
-    assert counts["cot"] > 0 and counts["answer"] > 0
+              for mode in ("full", "final", "cot", "response")}
+    # Two user turns: the first exchange is history (rendered without its reasoning, and
+    # given no loss), so "full" and "final" train the same single turn.
+    assert counts["full"] == counts["final"] > 0, counts
+    # A tool chain after ONE user message is all current: every step is generated, so
+    # "full" trains each step and "final" only the last.
+    call = {"type": "function", "function": {"name": "run", "arguments": {"code": "1+1"}}}
+    tools = [{"type": "function", "function": {"name": "run", "parameters": {
+        "type": "object", "properties": {"code": {"type": "string"}}}}}]
+    chain = [{"role": "user", "content": "Work it out."},
+             {"role": "assistant", "content": "", "reasoning_content": "try it", "tool_calls": [call]},
+             {"role": "tool", "content": "2"},
+             {"role": "assistant", "content": "It is 2.", "reasoning_content": "that settles it"}]
+    step = {mode: supervised_tokens(tok, profile, {"messages": chain, "tools": tools, "supervise": mode}, 4096)
+            for mode in ("full", "final")}
+    assert step["full"] > step["final"] > 0, step
+    assert counts["final"] == counts["cot"] + counts["response"], counts  # cot + answer partition the final turn
+    assert counts["cot"] > 0 and counts["response"] > 0
     unlabelled = supervised_tokens(tok, profile, {"messages": msgs}, 4096)
-    assert unlabelled == counts["all"]                          # no field means every turn
+    assert unlabelled == counts["full"]                          # no field means every turn

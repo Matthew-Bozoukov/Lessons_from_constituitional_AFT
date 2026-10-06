@@ -68,8 +68,9 @@ class ModelProfile:
         empty_think: The full literal a no-reasoning assistant turn carries; masked whole.
         think_close: The literal that closes a reasoning block. Supervised, and the cut
             point for `supervise: "cot"`.
-        render_kwargs: Extra chat-template kwargs for rendering TRAINING data so every
-            assistant turn keeps its reasoning. Rendering itself goes through
+        render_kwargs: Extra chat-template kwargs for rendering TRAINING data (none for
+            Qwen3.6: its template's default already renders reasoning only from the last
+            user message onwards, as it is served). Rendering itself goes through
             `render_chat` below — the ONE place stored messages become a family's
             syntax — which also hands the template a row's `tools` and its `tool_calls`.
             A new family therefore needs its template verified for tool data too
@@ -513,9 +514,11 @@ _THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 def think_census(texts) -> dict:
     """Count assistant turns by think content across rendered rows.
 
-    The preserve-thinking policy's yardstick: under `thinking: true` every assistant turn
-    carries a think block, so `absent` must be 0; the empty share is a data-quality
-    signal, reported by callers rather than asserted here.
+    Under `thinking: true` every assistant turn the model generates carries a think block.
+    `absent` counts turns with none: history before a row's last user message, which the
+    template renders without reasoning (src/train/mask_gate.py decides whether an absent
+    turn is that or a fault). The empty share is a data-quality signal, reported by
+    callers rather than asserted here.
 
     Returns:
         {turns, real, empty, absent}: assistant turns with a non-empty think block, with

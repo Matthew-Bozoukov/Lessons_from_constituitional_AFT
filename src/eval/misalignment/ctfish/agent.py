@@ -25,11 +25,10 @@ Two adaptations for a served reasoning model, both recorded in run_meta via the 
   is scanned for `<ACTION>`/`<PLAN>`/etc — a command proposed inside a reasoning trace is
   a thought, not an action, and executing one would fabricate behaviour the model did not
   commit to.
-- **History carries `reasoning_content`** (repo preserve-thinking policy, 2026-08-04): the
-  arms train with reasoning kept in context and the served template pins
-  `preserve_thinking` to match, so stripping it would be a train/inference mismatch — and
-  on this family a reasoning-less assistant turn renders as the EMPTY think marker, which
-  is the literal training signal for "do not reason".
+- **History carries `reasoning_content`**, and the served template decides what of it the
+  model sees. Since 2026-10-05 that is the template's default (vllm.pin_template):
+  reasoning from before the last USER message is not rendered. (From 2026-08-04 until then
+  the template was pinned to keep all of it, and runs from that period showed it.)
 """
 
 from __future__ import annotations

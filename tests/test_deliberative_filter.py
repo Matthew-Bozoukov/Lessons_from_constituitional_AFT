@@ -549,3 +549,41 @@ def test_a_candidate_the_provider_never_completes_is_rejected_not_fatal(tmp_path
     given_up = [g for g in gens if g["id"] == "1" and g.get("rejected")]
     assert len(given_up) == 4 and all("EmptyCompletionError" in g["rejected"] for g in given_up)
     assert len(manifest["commands"]) == 1, "no resume was needed"
+
+
+def test_load_prompts_sample_draws_evenly_by_group_and_records_the_draw(tmp_path, monkeypatch):
+    from src.data.synth.deliberative_alignment import data as dmod
+    rows = [{"messages": [{"role": "user", "content": f"q{i}"}, {"role": "assistant", "content": "a"}],
+             "metadata": {"trait_id": f"t{i % 3 + 1}"}} for i in range(12)]
+    path = tmp_path / "dataset.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    monkeypatch.setattr(dmod, "resolve_dataset", lambda repo, filename, revision=None: (str(path), {"repo": repo, "revision": "abc"}))
+    recs, prov = dmod.load_prompts({"repo": "org/x", "sample": {"total": 7, "by": "trait_id", "seed": 0}})
+    assert len(recs) == 7
+    per = {t: sum(r["metadata"]["trait_id"] == t for r in recs) for t in ("t1", "t2", "t3")}
+    assert sorted(per.values()) == [2, 2, 3]
+    assert prov["sample"]["n_drawn"] == 7 and sorted(prov["sample"]["drawn_rows"]) == sorted(r["source_row"] for r in recs)
+    assert [r["source_row"] for r in recs] == sorted(r["source_row"] for r in recs)   # file order kept
+    again, _ = dmod.load_prompts({"repo": "org/x", "sample": {"total": 7, "by": "trait_id", "seed": 0}})
+    assert [r["source_row"] for r in again] == [r["source_row"] for r in recs]          # seeded
+    with pytest.raises(ValueError, match="fewer than"):
+        dmod.load_prompts({"repo": "org/x", "sample": {"total": 30, "by": "trait_id"}})
+    with pytest.raises(ValueError, match="two ways"):
+        dmod.load_prompts({"repo": "org/x", "rows": [0], "sample": {"total": 3, "by": "trait_id"}})
+
+
+def test_resume_after_the_min_rows_gate_with_a_lowered_gate_publishes_without_regenerating(tmp_path, monkeypatch):
+    # Every paid call succeeds, one prompt is rejected, and the run fails only the publish gate; lowering
+    # `filter.min_rows` is an operational change, so the resume must be accepted and regenerate nothing.
+    client = FakeClient(scores={0: {0: [9, 9]}, 1: {0: [9, 9]}, 2: {0: [2, 2]}})
+    _install(monkeypatch, client)
+    cfg = _config(tmp_path)
+    cfg["filter"]["min_rows"] = 3
+    with pytest.raises(RuntimeError, match="below filter.min_rows"):
+        pipeline.run(cfg)
+    run_dir = next((tmp_path / "out").iterdir())
+    generated_before = dict(client.generated)
+    cfg["filter"]["min_rows"] = 2
+    manifest = pipeline.run(cfg, resume=str(run_dir))
+    assert manifest["status"] == "complete" and manifest["filter"]["survivors"] == 2
+    assert client.generated == generated_before

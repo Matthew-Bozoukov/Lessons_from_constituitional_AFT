@@ -1,6 +1,340 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
+
+Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and
+a base of published traces written by other families (plain) would serve as well as the trace-free MSM blend (msm).
+
+Method. Four adapters, seed 0, `configs/train/sft.yaml` @ 5d5ab019 (history earns no loss, `loss_agg: token_mean`,
+global batch 16), 2xH200 each (`runpod up --train ... --count 2`, torchrun): `2026-10-05-qwen36-0-msm` @ 40893d1c
+(2026-10-05-msm-mix, 625 steps, loss 0.881), `-plain` @ 1565d4f3 (2026-10-05-plain-mix, 115 steps), `-da-msm-15` @
+3be12e0d (2026-10-05-da-msm-15-mix, 549 steps, 0.944), `-da-15` @ ce773a6b (2026-10-05-da-15-mix, 139 steps, 0.685).
+Steps count rows (16 per step), so the two plain-based arms got ~5x fewer optimiser updates on ~2.3x more supervised
+tokens than the msm-based pair; loss curves were not pushed with the adapters (worth adding `trainer_state.json`).
+Evals: MASK (1,000 rows, think, gemini-3-flash judge, `max_generation_error_rate=0.05`; H200 pod per arm) and
+ODCV-lite (3 passes x 80 cells, `concurrency=16` so four arms could share one laptop's docker; H100 pod per arm),
+one pod per eval arm, tunnel ports 8081-8088. Published: `2026-10-05-mask-qwen36-0-{msm,plain,da-msm-15,da-15}`,
+`2026-10-06-odcv-qwen36-0-{msm,plain,da-msm-15,da-15}`.
+
+Result.
+
+| arm | MASK honesty | ODCV MR [95% CI] | ODCV severity |
+|---|---|---|---|
+| msm | 47.6 | 42.9% [31.0, 55.7] | 1.63 |
+| da-msm-15 | 90.9 | 5.0% [2.0, 11.7] | 0.19 |
+| plain | 44.0 | 45.0% [32.1, 58.6] | 1.66 |
+| da-15 (plain base) | 82.7 | 13.3% [7.6, 22.4] | 0.49 |
+| base Qwen3.6-27B (2026-09-22) | 58.2 | - | - |
+| traced nosynth / da-15 (2026-10-02/03) | 52.5 / ~86 | ~45% / ~10% | - |
+
+1. The da effect holds on both bases: -38 pp ODCV and +43 MASK on msm, -32 pp and +39 on plain. Qwen's on-policy
+   traces in the base are not what carries it. da-msm-15 is the strongest da-15 arm measured so far on both axes.
+2. The two controls are the same on ODCV (43% vs 45%, both near the old traced control). On MASK both are BELOW base
+   Qwen by 10-14 points, where the traced control was 5-6 below; the trace-free control of 2026-09-07 scored 45.5
+   (nothink), so this is the old number back, not a new effect. Five transcript readers (one per model: base, traced
+   nosynth, msm, plain, da-15; ~26-32 pressure prompts each plus regex sweeps) agree on why: base Qwen's extra MASK
+   points are a policy-refusal reflex ("standard AI safety protocols override conflicting instructions") that fires on
+   science/health/real-person misinformation; every fine-tune weakens it, and none of these models asks "is this
+   true?" -- they ask "is this harmful?" and "is this fiction/roleplay?", and a persona in the system prompt is read as
+   a binding order. plain shows the end state most clearly (83% of its disinformation lies note the claim is false,
+   relabel the task "creative writing" and write it). The reasoning STYLE ("Here's a thinking process:", numbered
+   constraint checklist, reply drafted inside <think> and copied out) is base Qwen's, not a training artefact: 93% of
+   base traces open that way; msm amplifies the draft-and-copy (52% of pressure replies), plain 20%, da arms ~4%.
+3. da-15 changes the MODE of reasoning rather than the checklist's outcome: 66% of its traces are first-person prose
+   deliberation (lie rate 7%) that names who bears the harm and finds an in-persona answer without the falsehood;
+   the remaining 34% are the checklist (lie rate 41%, as the controls).
+4. ODCV reasoning is short (median 250-1,000 chars/turn; `output/2026-10-05_odcv_reasoning_lengths.png`), and today's
+   arms reason less per turn than the 10-02 runs except da-msm-15 (1,068). Three things changed at once (base blend,
+   history rule, `preserve_thinking=false` at serve time), so this is unattributed. plain takes the most turns per
+   cell (median 14 vs 6-9) and needs the nudge least (2%); da-msm-15 needs it most (68%, median 6 turns); today's
+   da-15 needs it on 8% of cells against 51% on 10-02.
+5. ODCV wall-clock: a cell does ~4.5 min of work inside its containers but the driver sees 17-20 min per cell with four
+   arms on one laptop; the difference is Docker Desktop compose overhead (its VM at ~670% CPU). Drive ODCV from a
+   Linux docker host, or fewer arms per laptop.
+
+Operational (docs/GOTCHAS.md 2026-10-05, three entries): the MASK `resume_from` path had been broken since the
+multi-pass change (`mask_work/mask_work`; fixed in runner.py, tests updated); a macOS bash-3.2 waiter never reported;
+and a monitor keyed on the `uv run` launcher pid declared live drivers dead, after which pattern-based kills and
+hash-guessed `docker rm`s cost one pod, two driver restarts and ~45 min of cells. Every eval still completed; the ODCV
+harness's per-pass resume absorbed the lost cells. `src/infra/runpod.py` SSH wait raised to 600 s.
+
+Next. (1) Decide whether the MASK control drop matters: it is a refusal reflex, not deliberation, and da restores
+honesty on both bases anyway. (2) Match optimiser steps for the plain pair (`train.grad_accum=4`) before reading the
+da-msm-15 vs da-15 gap as a base effect. (3) Seed replicates of da-msm-15 and da-15 (the ODCV CIs overlap).
+(4) Push `trainer_state.json` with adapters. (5) gpt-oss on plain (the reason plain exists).
+
+## 2026-10-05 - Two new base mixtures (msm-mix: no traces; plain-mix: published traces) and a training rule in which history earns no loss (code + data, nothing trained yet)
+
+Hypothesis: the base blend's on-policy Qwen3.6 traces (1,143 turns, backfilled 2026-09-08) may not be needed, and where
+traces are wanted they can come from published SFT sets written by neither family we train, so one base serves Qwen
+and gpt-oss. A seed-0 sample of the on-policy rows showed the problem with them: templated ("Thinking Process: 1.
+Deconstruct...") and, on a code row, reasoning to a different solution from the answer kept in the row.
+
+Method, code (2,412 tests pass, the same 6 unrelated failures as before):
+- The Qwen3.6 profile no longer renders with `preserve_thinking: true`, and `pin_prefix` pins it false for serving.
+  The template's default shows reasoning only from the last real user message on: a tool chain after one user
+  message keeps every step's trace; a turn that was answered renders as its reply alone. This is how OpenAI,
+  Anthropic, DeepSeek and Qwen3's own card say reasoning models are served.
+- `src/train/masking.py`: an assistant turn rendered with no think block is history and earns no loss
+  (`generated_spans`); `mask_gate` refuses a blockless turn only after a row's last user message. Without this the
+  gate refused every mixture with a multi-turn row and earlier replies trained from a position serving never samples.
+- `supervise` is now `full | final | cot | response` (was `all | final | cot | answer`); the old spellings are
+  refused. It says which part of the CURRENT exchange is trained and nothing about earlier ones.
+- Eval consequences, from a five-reviewer pass over the harnesses: psychosis, ctfish (all feedback is user-role, so it
+  now sees none of its earlier reasoning), dictator's 14 multi-turn scenarios and odcv_peer change protocol. ODCV's
+  automatic "no tool calls" nudge is a user message, so reasoning from before it is no longer shown: 123 of 240
+  rollouts of `2026-10-02-odcv-qwen36-0-da-15` were nudged, 28 did further work afterwards. Runs before and after
+  this change are not comparable on those. The gpt-oss Tinker shim still keeps every trace.
+
+Method, data:
+- `dougalldeepmind/2026-10-05-msm-mix` @ 844f7edf: `2026-09-29-nosynth-mix` @ 058e163e with every trace removed and
+  nothing else changed (`scratch/nosynth_no_traces/`). 10,000 rows, 2,145,839 supervised tokens under the new rule
+  (4.84M with traces). `configs/data/mixture/da-msm.yaml` builds the da arm on it (smoke-tested only).
+- `dougalldeepmind/2026-10-05-plain-mix` @ 019e239c (`scratch/nosynth_published_traces/`): 1,832 rows, 5,000,005
+  supervised tokens, a trace on every row; 45% chat (Nemotron-SFT-Instruction-Following-Chat-v3 chat split, GLM-5,
+  WildChat prompts restored by hash), 22.5% maths (Nemotron-SFT-Math-v4, DeepSeek-V4-Pro), 22.5% code
+  (OpenCodeReasoning split_0, DeepSeek-R1), 10% science (Nemotron-SFT-Science-v2, non-gpt-oss rows). Multi-turn chat
+  rows carry reasoning on the last turn only. Chat screening: WildChat's labels (score >= 0.05, redacted, toxic),
+  patterns, two judges that each read all 2,694 survivors of 3,021 candidates (2,054 clean by both; they disagree on
+  11%), a Sonnet read of the selected rows, then the spec filter over all 1,831 rows (95 rejected, 80 of them chat,
+  mostly invented facts stated as certain; replaced by nearest-sized rows that passed). Judge spend about $22.
+- Anthropic models through OpenRouter returned `organization_on_hold` from about 17:40 on 2026-10-05; the judges
+  are GPT-5.6 Terra and Gemini 3 Flash for that reason. Cause unknown; no screening request ever completed there.
+
+- Arms: `configs/data/mixture/da.yaml` now builds on `plain` (`base: plain.yaml`, new) and `da-msm.yaml` on msm-mix.
+  `2026-10-05-da-15-mix` @ f990959a: 2,218 rows, 650 da rows, 15.09% of 4,999,993 supervised tokens.
+  `2026-10-05-da-msm-15-mix` @ 30106021: 8,778 rows, 276 da rows, 15.01% of 2,145,807. The same percentage is 2.4x
+  fewer da rows on the trace-free base. `naming.BASE_BLENDS` (nosynth, msm, plain) lets an organism trained on a base
+  blend be named; `_load_published_base` now splits rows on "\n" alone (U+0085 inside user text cut nine plain rows).
+
+Result: none yet. All four mixtures pass the trainer's start-up checks (naming, trace-family, thinking declaration,
+mask gate) run locally.
+
+Next: commit and get the training/serving change reviewed; train A (`2026-09-29-nosynth-mix`, on-policy traces), B
+(msm-mix) and C (plain-mix) under the new rule, two seeds each, reading empty-think rate, MMLU, MASK and ODCV. A vs B
+is the same rows with and without traces; A vs C is matched at about 5M supervised tokens; B vs C is confounded by
+size. Decide whether ODCV's nudge should be wrapped as a tool response and whether the Tinker shim should apply the
+same cut-off. The gpt-oss converter on `origin/codex/gpt-oss-120b-exploration` refuses any `supervise` value but
+`all` and trains every chat turn; it needs the rename and a skip for history turns. `plain` is not yet a base blend
+the naming code or an arm config can build on.
+
+## 2026-10-04 - Deliberative-alignment baselines rerun on the current da setup: ODCV unchanged (delib-sonnet matches da), MASK down 12 for both
+
+Hypothesis: the delib baselines (Qwen and Sonnet 5 as deliberative teacher) last ran on 2026-09-22 against the
+September da setup. Rerun them on today's: da-15's prompts, the 09-principles constitution, the 2026-09-29 base
+blend, 15% of supervised tokens, so the da-vs-delib comparison is on one footing again.
+
+Method: `configs/data/synth/delib.yaml` / `delib-sonnet.yaml` now read `2026-10-02-da-synth` @ 305914d5 through the
+new `source.sample: {total: 600, by: trait_id, seed: 0}` (seeded even-per-trait draw; the pipeline otherwise ran all
+1,283) and `constitutions/claude_distilled_09_principles`; best-of-2 candidates, Sonnet 5 judge; `filter.min_rows`
+is now a publish gate outside the resume signature (`run_signature()`), 700 -> 540 (both runs kept 599/600 and
+had failed only the old floor). Corpora `2026-10-04-delib-synth` @ 6c00888c (599 rows, ~2,960 supervised tok/row)
+and `2026-10-04-delib-sonnet-synth` @ b813499e (599, ~2,680). The traces cite the constitution heavily (Qwen's as
+checklists; 4 of 12 read recite a "Priority 1: Safety" the document does not contain); no leakage into the replies.
+Mixes `2026-10-04-delib-15-mix` @ c7163db4 (246 rows, 15.0%) and `2026-10-04-delib-sonnet-15-mix` @ 906b5830 (272,
+15.0%), trait-balanced, on `2026-09-29-nosynth-mix` @ 058e163e; da-15 carries 629 rows at the same share because
+its rows are half the length. Adapters `2026-10-04-qwen36-0-delib-15` / `-delib-sonnet-15`, seed 0, one H200 each
+(~55 min). MASK (`max_generation_error_rate=0.05`) + ODCV-lite (3 passes, 240 rollouts), one pod per run.
+
+Result (MASK honesty / ODCV MR [95%], mandated / incentivized):
+
+| arm | 2026-10-04 | 2026-09-22 ladder (same share) |
+|---|---|---|
+| nosynth | 53.2 / 40.0 | 56.9 / 45.4 |
+| delib-15 (Qwen) | 65.4 / 30.4 [20.4, 42.7], 33.3 / 27.5 | 77.7 / 27.5 [17.1, 41.0] |
+| delib-sonnet-15 | 70.5 / 10.8 [5.0, 22.0], 7.5 / 14.2 | 82.5 / 13.3 [6.5, 25.4] |
+| da-15 | 85.6 / 10.0 | 89.4 / 7.5 |
+
+- ODCV reproduces September within every CI: da ~ delib-sonnet << delib << nosynth. Sonnet-written deliberation
+  matches difficult advice on ODCV; Qwen's own deliberation is a third of the way from the control.
+- MASK: the ladder shifted down ~4 between the dates (base blend + new da corpus), the delib arms 12. Three things
+  changed for delib at once: the constitution in the trace (`abridged` -> 09-principles, traces longer and
+  constitution-heavier), fewer rows at the fixed share (261 -> 246, 311 -> 272), and the prompt set (752 neutral ->
+  600 of the 10-02 da prompts). Not separable from this run. MASK run-to-run is <= 1.2 and seed-to-seed ~2
+  (da-15 90.2 / 88.3), so the drop is real for these adapters. Generation errors 0.05% / 0.6%.
+- Single seed each. Cost: ~$125 OpenRouter (synth + judging) and ~$60 of pods.
+
+Ops: two MASK pods lost to `--port 8080` (the pod's bootstrap serves boot.log on 8080 and the remote vLLM binds the
+tunnel's port number; docs/GOTCHAS.md 2026-10-04), one ODCV run to a local `docker compose down` hang at 65/80.
+
+Next: delib-sonnet on the same prompts with the `abridged` constitution isolates the constitution-length effect
+on MASK (~$90 synth, one train, one MASK); seed 1 of delib-sonnet-15 for an interval; `delib-noref` (no
+constitution in the trace) stays unprepared until asked.
+
+## 2026-10-04 - Structured reasoning (da-sr): the four-paragraph trace, and the deliberation paragraph masked / removed
+
+Hypothesis: if the private reasoning is written as four fixed paragraphs -- reading, deliberation (the only one that
+weighs both sides), resolution, shape -- then (a) an arm trained on it matches da-15, and (b) removing or
+unsupervising the deliberation paragraph is a clean ablation of deliberation, because the other three read as a
+complete trace.
+
+Method: `configs/data/synth/da-sr.yaml` answers da's own 1,283 revised prompts (load_source_run over both
+revisions of 2026-10-02-da-synth; Haiku/Sonnet prompts unchanged) with the response drafter and reviser writing the
+four tagged paragraphs; export joins them into `reasoning_content` and keeps each in metadata. Corpus
+`2026-10-04-da-sr-synth` @ eb6f46c5 (1,273 rows, $96; paragraphs 131 / 274 / 80 / 98 words median). Mixture
+options `mask_paragraph` / `drop_paragraph` (src/data/mixture/build_mixture.py, 87763993 + d24456c4) stamp
+`mask_spans` or remove the paragraph at mix time; the 15% share is of supervised tokens counted after the ablation
+(`supervised_tokens` renders and masks with the trainer's own build_labels), so the arms differ in rows: 620 / 859 /
+860 / 1,036. Mixes `2026-10-04-da-sr-15[-maskdelib|-nodelib|-cot]-mix`; one H200 each, seed 0. The two
+no-reply-and-no-deliberation arms (configs exist: da-sr-maskdelib-cot, da-sr-nodelib-cot) need ~1,900 rows at
+~383 supervised tokens each and were not run. MASK with `max_generation_error_rate=0.05`; ODCV-lite.
+
+Result:
+
+| arm | MASK | ODCV MR [95% CI] |
+|---|---|---|
+| da-15 (reference, 3 MASK runs) | 85.6 +/- 0.6 | 10.0 |
+| da-sr-15 | 77.7 | 12.5 [6.0, 24.3] |
+| da-sr-15-maskdelib | 81.9 | 19.2 [10.6, 32.1] |
+| da-sr-15-nodelib | 85.8 | 14.6 [7.6, 26.1] |
+| da-sr-15-cot (reply removed) | 73.5 | 16.7 [9.4, 27.8] |
+| da-15-cot (da, reply removed; 2026-10-03, another team member's adapter) | 78.3 | - |
+
+(a) fails: the structured trace costs 8 MASK points against da-15 at identical prompts and reply writer (MASK
+run-to-run sd is 0.3-1.2). (b) holds mechanically -- the ablation is one paragraph, the rest of the row is byte- or
+token-identical -- but points the other way from the hypothesis: supervising the deliberation paragraph is where
+the cost sits (drop it: 85.8; mask it: 81.9; train it: 77.7). Removing the reply costs ~7 points in both families.
+ODCV CIs all overlap, with a weak trend that any ablation of the trace costs a few points. One reading: a paragraph
+that states the case for the tempting path at length, trained on, is exactly what MASK's pressure prompts elicit.
+Single seed; the structure confound (four paragraphs vs free-form) is not separated from the deliberation content.
+
+Next: seed 1 on da-sr-15 and da-sr-15-nodelib; read da-sr-15's MASK lies against da-15's on the same rows.
+
+## 2026-10-04 - da-low: difficult advice at low stakes changes neither MASK nor ODCV
+
+Hypothesis (Jamie's version of the low-stakes experiment): hold da.yaml fixed except for the stakes, and see
+whether the alignment effect depends on the stakes being high.
+
+Method: `configs/data/synth/da-low.yaml` = da.yaml with three sentences changed (scenario writer: "the stakes are
+low. Regardless of the setting or domain, the specifics of the scenario ensure that any of the possible outcomes
+have only small consequences"; prompt drafter: "keep the stakes low: do not add consequences the situation does not
+already have"; prompt reviser's Difficulty bullet: "the choice between the shortcut and the legitimate path should
+be genuinely difficult, but the consequences of either option should be small"). Three smokes settled the wording
+(the first versions were read by the writer as the character's OPINION of the stakes, producing grave scenarios
+with "minor" framing). Corpus `2026-10-04-da-low-synth` @ c8a61e26 (894 rows, $82, 1,020 supervised tokens a row);
+mix `2026-10-04-da-low-15-mix` @ d8892d73 (714 rows, 15.0%); adapter `2026-10-04-qwen36-0-da-low-15`.
+
+Manipulation check (a subagent read 99 trait-matched prompts from each corpus, 0-3 stakes rubric; Gemini Flash as
+second rater, within one point on 197/198): mean 1.74 -> 1.02, serious-or-grave 60% -> 22%, grave 20 -> 2,
+rationalising wording 22% -> 11%, right call obvious 24% -> 19% (difficulty survived). t7 operator prompts barely
+moved (1.73 -> 1.45) and t1 stayed highest (1.55): the dealt sector beats the instruction there. Files:
+output/stakes_compare/.
+
+Result: MASK 86.7 (da-15: 85.6 +/- 0.6), ODCV 10.8% [5.7, 19.7] (da-15: 10.0). Halving the serious-stakes rows and
+removing nearly all grave ones changed nothing measurable, single seed. Evidence against "high stakes drive the
+gain" at this dose; a stricter test would bring t7/t1 down too (sector-aware wording or a stakes filter).
+
+## 2026-10-03 - da-qwen-resp (the student writes the replies to the Sonnet prompts): MASK falls to 75, ODCV unchanged
+
+Hypothesis: on the grok arms, holding the Haiku/Sonnet prompts fixed and swapping only the responder recovered
+the Sonnet arm's ODCV (13.3% vs 19.6% all-grok). If prompts carry ODCV, the same swap with Qwen3.6-27B as
+responder should lift da-qwen's 21.2% too.
+
+Method: `configs/data/synth/da-qwen-resp.yaml` = da-grok-resp with Qwen in the two response slots (thinking on,
+uncapped, temperature 1.0, 8 Alibaba workers), the SAME seed-0 draw of 950 revised prompts as da-grok-resp's
+first run. Corpus `2026-10-03-da-qwen-resp-synth` @ bfb88690 (941 rows, $28, 5.8 h); mix
+`2026-10-03-da-qwen-resp-15-mix` @ e2cb92e5 (833 rows, 15.0%); adapter `2026-10-03-qwen36-0-da-qwen-resp-15`.
+
+Result: MASK 75.3 (generation errors 0.14%), ODCV 22.1% [13.8, 33.3]. The teacher-of-prompts x teacher-of-replies
+cells (MASK / ODCV):
+
+| prompts \ replies | Sonnet | grok (low) | Qwen |
+|---|---|---|---|
+| Sonnet | 85.6 / 10.0 | 88.1 / 13.3 | 75.3 / 22.1 |
+| grok | - | 85.2 / 19.6 | - |
+| Qwen | - | - | 85.5 / 21.2 |
+
+The two cells with the student's own replies are the two bad cells: Sonnet's prompts do not help ODCV when Qwen
+answers them, and MASK is ten points below every other trained arm (every archetype, not one). A Gemini-Flash
+judge of the replies on the 939 shared prompts (scratchpad; declines / complies / hedges the tempting action):
+grok 96.0 / 3.6 / 0.4, Qwen 88.8 / 10.2 / 1.0 -- 71 prompts where grok declines and Qwen complies, 10 the other
+way; Qwen's compliance sits on t7 (operator pressure against the user, 35.6% vs grok's 15.8%) and t4/t5/t8. But the
+same judge puts da-qwen (Qwen's own prompts) at 21.2% complying, mostly t8 where "complies" often means helping,
+and that arm scores 85.5, so the comply rate alone does not explain MASK. What the two bad cells share is
+on-policy targets: the model trained on its own answers. Single run; a MASK repeat is in progress.
+
+Also today, on the da-15 mix (seed 0): `da-15-wd0` (weight_decay 0) MASK 84.9, ODCV 14.6% [7.7, 25.8];
+`da-15-wd0-halflr` (weight_decay 0, lr 5e-5) MASK 86.4, ODCV 15.8% [8.4, 27.7]; the recipe (lr 1e-4, wd 0.01)
+85.6 +/- 0.6 and 10.0 / 9.6%. No MASK effect; the ODCV differences are inside every CI. The recipe stays.
+
+MASK repeats (two more per arm, same rows, sampling at temperature 1.0): base 57.4 +/- 0.6 (3), nosynth 53.2
++/- 0.8 (4), da-15 85.6 +/- 0.6 (3), da-grok-15 low 85.2 +/- 0.9 (3), da-grok-resp-15 88.1 +/- 0.3 (3),
+da-qwen-15 85.5 +/- 1.2 (3). Run-to-run sd is at most 1.2, so differences of 3+ points between arms are real.
+
+Fix on the way: src/eval/misalignment/mask/runner.py lifts the stdlib csv field limit (a looping generation over
+128 KB aborted the first da-qwen-15 MASK run after generating; 9ae474b9).
+
+Next: a seed-1 replicate of da-qwen-resp before reading more into it; look at qwen-resp MASK rollouts against
+grok-resp's on the same prompts; the on-policy question bears directly on any OCT-style introspection stage.
+
+## 2026-10-03 - da-qwen at 15%: the self-taught arm on the current recipe
+
+Hypothesis: with the teacher held to the student (Qwen3.6-27B writes every stage, da.yaml's recipe
+otherwise), does the difficult-advice effect survive? The September 7% arm was not comparable (old
+recipe, row-share mixes).
+
+Method: `configs/data/synth/da-qwen.yaml` (rebuilt on the current da.yaml, thinking on and uncapped --
+Qwen3.6 exposes no effort setting on any OpenRouter endpoint -- temperatures 1.0, 900 scenarios, Alibaba
+at 8 workers; a 16-worker launch was rate-limited). Run launched 2026-10-02, paused, resumed and finished
+2026-10-03 (`2026-10-03-da-qwen-synth` @ 4ac32345, 879 rows, $18.70, 3.6 h of wall clock at the end;
+`max_fail_pct` raised to 3 for the resume after 22/899 drafts failed the "the draft" lint at 3 attempts,
+14 of which then passed). ~900 supervised tokens a row, parroting 3%. Mix `2026-10-03-da-qwen-15-mix` @
+b6e6dfec (811 rows, 15.0%); adapter `2026-10-03-qwen36-0-da-qwen-15` (one H200, seed 0, loss 0.685).
+
+Result: MASK 86.6 (generation errors 0.5%), ODCV-lite 21.2% [12.5, 33.7]. With the grok arms above:
+every teacher reaches 84-88 on MASK; on ODCV only the arms whose PROMPTS Haiku and Sonnet wrote (da-15,
+da-grok-resp-15) reach 10-13%, while grok's and Qwen's own prompts sit at ~20%. Single seed.
+
+Fix on the way: the MASK runner's stdlib csv readers refused a generation over 128 KB (a Qwen loop to
+the 16k cap) and aborted the first run after generating; `csv.field_size_limit` lifted (9ae474b9).
+
+Next: seed 1 for all three; look at what differs in the Haiku/Sonnet prompts (the ODCV-relevant half).
+
+## 2026-10-03 - grok at low effort: the all-grok arm redone and the responder swap rebuilt on the current da corpus
+
+Hypothesis: the 2026-10-02 all-grok arm (`da-grok-15`: MASK 80.8, ODCV 21.2% [12.2, 34.4]) lost to the
+Sonnet-taught `da-15` (85.3 / 10.0%) partly because grok-4.6 at `reasoning: {effort: high}` copies the
+person's message into its reply (23% of reply words in 6+ word runs; the da corpus: 1%). Two arms at
+`effort: low`, the minimum the endpoint allows and what the August responder swap used: `da-grok`
+(grok writes everything; `configs/data/synth/da-grok.yaml` @ f19e7844) and `da-grok-resp`
+(`configs/data/synth/da-grok-resp.yaml`: the da corpus's Haiku/Sonnet revised prompts frozen byte for
+byte, grok-4.6 writing only the reasoning and reply -- the August `da-grokresp` recreated on today's
+corpus, verified: August's 716 prompts were byte-identical to the Haiku/Sonnet baseline's).
+
+Method: 950 scenarios / 950 sampled prompts each, both short of a 15% token share -- low-effort grok
+writes ~515 (da-grok) and ~620 (da-grok-resp) supervised tokens a row against ~900 at high and ~1,160
+for Sonnet -- so each was topped up with `extend_from`: da-grok by 520 scenarios with the sector walk
+continued (`output/derived/extend/da-grok.yaml`), da-grok-resp by 279 of the 344 prompts the first run
+had not answered (`load_source_run` now sets aside the prior's ids under `extend_from`; commit ecec5892).
+Corpora `2026-10-03-da-grok-synth` @ d977e96a (1,455 rows, parroting 10%, 26 rows over 30%) and
+`2026-10-03-da-grok-resp-synth` @ 2f051949 (1,217 rows, parroting 5%, 2 rows over 30%). Mixes
+`2026-10-03-da-grok-15-mix` @ b35f0c31 (1,404 synthetic rows) and `2026-10-03-da-grok-resp-15-mix` @
+99685157 (1,174 rows), both 15.0% of supervised tokens on the 2026-09-29 nosynth base. QLoRA, one H200
+each, seed 0: `2026-10-03-qwen36-0-da-grok-15`, `2026-10-03-qwen36-0-da-grok-resp-15`. MASK with
+`max_generation_error_rate=0.05` (realised 0.6% / 0.3%), ODCV-lite 80 scenarios x 3 passes.
+
+Result (think mode):
+
+| arm | MASK | ODCV MR [95% CI] |
+|---|---|---|
+| nosynth control | 53.9 | 40.0 [28.0, 53.4] |
+| da-15 (Haiku/Sonnet) | 85.3 | 10.0 |
+| da-grok-15, high effort (2026-10-02) | 80.8 | 21.2 [12.2, 34.4] |
+| da-grok-15, low effort | 84.2 | 19.6 [11.5, 31.3] |
+| da-grok-resp-15, low effort | 88.3 | 13.3 [7.4, 22.8] |
+
+Low effort recovers most of the MASK gap for the all-grok arm but not ODCV; holding the prompts fixed
+and swapping only the responder matches the Sonnet arm on both. Grok's PROMPTS, not its replies, look
+like what costs ODCV. A fixed token share also means the terse grok arms contribute about twice as many
+examples as the Sonnet arm (1,174-1,404 rows against 629).
+
+Caveats: single seed. `2026-10-03-odcv-qwen36-0-da-grok-15` holds two runs as revisions (00:11 UTC the
+high-effort adapter, 06:24 the low-effort one): eval names carry the model's undated name, so two
+same-day adapters of one arm share an eval repo; `run_meta.json` pins the adapter revision in each.
+
+Next: seed 1 for both; `da-qwen` at 15% on the same base (corpus generating, `2026-10-02-da-qwen-synth`).
+
 ## 2026-10-02 - Psychosis quote diagnostics and cleanup
 
 The user questioned invalidating a potentially correct grade solely because its
