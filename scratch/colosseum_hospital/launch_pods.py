@@ -25,6 +25,7 @@ from dotenv import dotenv_values, load_dotenv
 
 load_dotenv(ROOT / ".env")
 from src.infra import runpod
+from scratch.colosseum_hospital import deploy_runner
 
 ENV = dotenv_values(ROOT / ".env")
 ARMS = {
@@ -73,7 +74,7 @@ def launch(arm: str, target: str, out: dict, gpus: list[str] | None = None) -> N
         try:
             report = runpod.up(
                 name=f"matboz-hosp-{arm}", eval="colosseum_hospital", target=target,
-                clone_repo=True, max_hours=MAX_HOURS, provider_deadline=True,
+                clone_repo=True, max_hours=MAX_HOURS,
                 gpu=gpu, on_provisioned=ids.append,
             )
             break
@@ -87,26 +88,8 @@ def launch(arm: str, target: str, out: dict, gpus: list[str] | None = None) -> N
     pod_id = ids[0]
     ip, port = runpod._ssh_endpoint(pod_id)
     out[arm] = {"pod": pod_id, "host": f"{ip}:{port}", "report": report}
-
-    creds = "\n".join([
-        f"export HF_TOKEN={ENV['HF_TOKEN_MATBOZ']}",
-        f"export HF_ORG={ENV.get('HF_ORG', 'dougalldeepmind')}",
-        f"export OPENROUTER_API_KEY={ENV['OPENROUTER_API_KEY']}",
-        f"export ARM={arm}", f"export TARGET={target}", "",
-    ])
-    r = ssh_retry(ip, port, "umask 077 && cat > /root/.eval.env && chmod 600 /root/.eval.env "
-                      "&& echo CREDS_OK", stdin=creds)
-    out[arm]["creds"] = r.stdout.strip() or r.stderr.strip()[:200]
-
-    runner = (ROOT / "scratch/colosseum_hospital/pod_runner.sh").read_text()
-    r = ssh_retry(ip, port, "cat > /root/run_arm.sh && chmod +x /root/run_arm.sh && echo RUNNER_OK",
-            stdin=runner)
-    out[arm]["runner"] = r.stdout.strip() or r.stderr.strip()[:200]
-
-    # setsid + nohup: the runner must outlive this SSH connection, the laptop and the session.
-    r = ssh_retry(ip, port, "cd /root && setsid nohup bash /root/run_arm.sh "
-                      "</dev/null >/root/nohup.out 2>&1 & sleep 2; pgrep -f run_arm.sh | head -1")
-    out[arm]["pid"] = r.stdout.strip() or r.stderr.strip()[:200]
+    print(f">>> {arm}: pod {pod_id} at {ip}:{port}, installing runner", flush=True)
+    deploy_runner.main(arm, pod_id, ip, port)
 
 
 def main() -> None:
