@@ -1096,7 +1096,13 @@ def _check_bash(script: str) -> None:
     assert result.returncode == 0, f"pod bootstrap is not valid bash:\n{result.stderr}"
 
 
-def _ssh_endpoint(pod_id: str, timeout_s: int = 420) -> tuple[str, int]:
+# How long a new pod may take to publish its public IP and SSH port. 600s, not the 420s it was until
+# 2026-10-05: two of four H200 training pods that day had a machine but no address at 420s and were released
+# (a host that has not cached the image is still pulling it); the same host answered in ~2 min on the retry.
+SSH_ENDPOINT_TIMEOUT_S = 600
+
+
+def _ssh_endpoint(pod_id: str, timeout_s: int = SSH_ENDPOINT_TIMEOUT_S) -> tuple[str, int]:
     """Poll until RunPod publishes the pod's public IP and its mapped port 22."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -1286,7 +1292,7 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
                    reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity))
     def remaining(default):
         return default if boot_deadline is None else max(1, min(default, int(boot_deadline - time.time())))
-    ip, port = _ssh_endpoint(pod_id, timeout_s=remaining(420))
+    ip, port = _ssh_endpoint(pod_id, timeout_s=remaining(SSH_ENDPOINT_TIMEOUT_S))
     return Pod(id=pod_id, ip=ip, port=port,
                reachable=_wait_for_ssh(f"root@{ip}:{port}", identity=identity, timeout_s=remaining(300)))
 

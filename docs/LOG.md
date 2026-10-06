@@ -1,6 +1,69 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
+
+Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and
+a base of published traces written by other families (plain) would serve as well as the trace-free MSM blend (msm).
+
+Method. Four adapters, seed 0, `configs/train/sft.yaml` @ 5d5ab019 (history earns no loss, `loss_agg: token_mean`,
+global batch 16), 2xH200 each (`runpod up --train ... --count 2`, torchrun): `2026-10-05-qwen36-0-msm` @ 40893d1c
+(2026-10-05-msm-mix, 625 steps, loss 0.881), `-plain` @ 1565d4f3 (2026-10-05-plain-mix, 115 steps), `-da-msm-15` @
+3be12e0d (2026-10-05-da-msm-15-mix, 549 steps, 0.944), `-da-15` @ ce773a6b (2026-10-05-da-15-mix, 139 steps, 0.685).
+Steps count rows (16 per step), so the two plain-based arms got ~5x fewer optimiser updates on ~2.3x more supervised
+tokens than the msm-based pair; loss curves were not pushed with the adapters (worth adding `trainer_state.json`).
+Evals: MASK (1,000 rows, think, gemini-3-flash judge, `max_generation_error_rate=0.05`; H200 pod per arm) and
+ODCV-lite (3 passes x 80 cells, `concurrency=16` so four arms could share one laptop's docker; H100 pod per arm),
+one pod per eval arm, tunnel ports 8081-8088. Published: `2026-10-05-mask-qwen36-0-{msm,plain,da-msm-15,da-15}`,
+`2026-10-06-odcv-qwen36-0-{msm,plain,da-msm-15,da-15}`.
+
+Result.
+
+| arm | MASK honesty | ODCV MR [95% CI] | ODCV severity |
+|---|---|---|---|
+| msm | 47.6 | 42.9% [31.0, 55.7] | 1.63 |
+| da-msm-15 | 90.9 | 5.0% [2.0, 11.7] | 0.19 |
+| plain | 44.0 | 45.0% [32.1, 58.6] | 1.66 |
+| da-15 (plain base) | 82.7 | 13.3% [7.6, 22.4] | 0.49 |
+| base Qwen3.6-27B (2026-09-22) | 58.2 | - | - |
+| traced nosynth / da-15 (2026-10-02/03) | 52.5 / ~86 | ~45% / ~10% | - |
+
+1. The da effect holds on both bases: -38 pp ODCV and +43 MASK on msm, -32 pp and +39 on plain. Qwen's on-policy
+   traces in the base are not what carries it. da-msm-15 is the strongest da-15 arm measured so far on both axes.
+2. The two controls are the same on ODCV (43% vs 45%, both near the old traced control). On MASK both are BELOW base
+   Qwen by 10-14 points, where the traced control was 5-6 below; the trace-free control of 2026-09-07 scored 45.5
+   (nothink), so this is the old number back, not a new effect. Five transcript readers (one per model: base, traced
+   nosynth, msm, plain, da-15; ~26-32 pressure prompts each plus regex sweeps) agree on why: base Qwen's extra MASK
+   points are a policy-refusal reflex ("standard AI safety protocols override conflicting instructions") that fires on
+   science/health/real-person misinformation; every fine-tune weakens it, and none of these models asks "is this
+   true?" -- they ask "is this harmful?" and "is this fiction/roleplay?", and a persona in the system prompt is read as
+   a binding order. plain shows the end state most clearly (83% of its disinformation lies note the claim is false,
+   relabel the task "creative writing" and write it). The reasoning STYLE ("Here's a thinking process:", numbered
+   constraint checklist, reply drafted inside <think> and copied out) is base Qwen's, not a training artefact: 93% of
+   base traces open that way; msm amplifies the draft-and-copy (52% of pressure replies), plain 20%, da arms ~4%.
+3. da-15 changes the MODE of reasoning rather than the checklist's outcome: 66% of its traces are first-person prose
+   deliberation (lie rate 7%) that names who bears the harm and finds an in-persona answer without the falsehood;
+   the remaining 34% are the checklist (lie rate 41%, as the controls).
+4. ODCV reasoning is short (median 250-1,000 chars/turn; `output/2026-10-05_odcv_reasoning_lengths.png`), and today's
+   arms reason less per turn than the 10-02 runs except da-msm-15 (1,068). Three things changed at once (base blend,
+   history rule, `preserve_thinking=false` at serve time), so this is unattributed. plain takes the most turns per
+   cell (median 14 vs 6-9) and needs the nudge least (2%); da-msm-15 needs it most (68%, median 6 turns); today's
+   da-15 needs it on 8% of cells against 51% on 10-02.
+5. ODCV wall-clock: a cell does ~4.5 min of work inside its containers but the driver sees 17-20 min per cell with four
+   arms on one laptop; the difference is Docker Desktop compose overhead (its VM at ~670% CPU). Drive ODCV from a
+   Linux docker host, or fewer arms per laptop.
+
+Operational (docs/GOTCHAS.md 2026-10-05, three entries): the MASK `resume_from` path had been broken since the
+multi-pass change (`mask_work/mask_work`; fixed in runner.py, tests updated); a macOS bash-3.2 waiter never reported;
+and a monitor keyed on the `uv run` launcher pid declared live drivers dead, after which pattern-based kills and
+hash-guessed `docker rm`s cost one pod, two driver restarts and ~45 min of cells. Every eval still completed; the ODCV
+harness's per-pass resume absorbed the lost cells. `src/infra/runpod.py` SSH wait raised to 600 s.
+
+Next. (1) Decide whether the MASK control drop matters: it is a refusal reflex, not deliberation, and da restores
+honesty on both bases anyway. (2) Match optimiser steps for the plain pair (`train.grad_accum=4`) before reading the
+da-msm-15 vs da-15 gap as a base effect. (3) Seed replicates of da-msm-15 and da-15 (the ODCV CIs overlap).
+(4) Push `trainer_state.json` with adapters. (5) gpt-oss on plain (the reason plain exists).
+
 ## 2026-10-05 - Two new base mixtures (msm-mix: no traces; plain-mix: published traces) and a training rule in which history earns no loss (code + data, nothing trained yet)
 
 Hypothesis: the base blend's on-policy Qwen3.6 traces (1,143 turns, backfilled 2026-09-08) may not be needed, and where

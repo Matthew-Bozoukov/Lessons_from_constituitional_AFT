@@ -1917,3 +1917,43 @@ Four separate things bit one ODCV-Peer arm in one morning; each is cheap to avoi
 ## 2026-10-02: two synth runs started in the same second share one run directory
 
 A synth run's directory is `output/synthdoc_v3/[smoke_]<YYYYMMDD_HHMMSS>`. Two runs launched in the same second (two `uv run synth run ... &` in one shell line) get the SAME directory and read each other's stage snapshots as cache: on 2026-10-02 a da-qwen smoke reused a da-grok smoke's drafted prompts and the da-grok export reused da-qwen's, and each then pushed the mixture to its own `-smoke` repo. Nothing errors. Start parallel runs a few seconds apart, and check the log for `reused ... cached records` on a run that should have had no cache.
+
+## 2026-10-05: macOS `bash` is 3.2 — `declare -A` fails and a waiter loop never reports
+
+A helper script that polled four training pods kept the finished arms in an associative
+array (`declare -A DONE; DONE[$arm]=1`). On the laptop `bash` is 3.2 (Apple ships no newer
+GPL-3 bash), which has no associative arrays: `declare -A` is an error, the later
+`${DONE[$arm]}` fails with `bad array subscript`, and because the loop swallowed stderr into
+the background task's output nobody saw it. The waiter ran for hours and would never have
+printed a result. Tells: `bash: declare: -A: invalid option` or `bad array subscript` in a
+background task's output; `bash --version` says 3.2.57.
+
+On this machine use a plain string of finished keys (`case "$done" in *" $arm "*)`) or an
+indexed array; `[[ ... ]]`, `$(( ))` and `read -r` are fine. The same scripts run under bash
+5 on the pods, so a script that works over `ssh` can still be broken when run locally. When
+something has to wait on remote state, check the waiter's output file once early rather
+than trusting it to report.
+
+## 2026-10-05: `nohup uv run … &` — `$!` is the launcher's pid, not the program's, so liveness checks on it lie
+
+`uv run evals …` starts two processes: a small `uv` launcher and the `evals` python it spawns.
+`$!` after `nohup uv run evals … &` is the launcher. The launcher can exit while the python
+child runs on, so a monitor that does `kill -0 $pid` on the saved number reports "dead" for a
+driver that is still working. Tonight that false report was believed and three healthy eval
+drivers were "recovered" (one killed outright), each recovery costing cells and a pod restart.
+
+Check liveness by the program's own command line, with the exact target so two arms cannot
+match each other:
+
+    pgrep -f "bin/evals --name odcv --target dougalldeepmind/<adapter> "
+
+(note the trailing space: `…-da-15 ` does not match `…-da-15-foo`). The same applies to kills:
+never `pkill -f <word>` or `pgrep -f <pattern> | xargs kill` on a shared box — print the
+matching pids with their command lines first (`ps -o pid,command -p …`) and kill by pid. On a
+RunPod pod, `pkill -f vllm` matches the pod's own boot shell (its command line mentions the vllm
+venv) and kills the pod. Before any `docker rm` of ODCV containers, confirm the project hash
+belongs to the dead run via its labels: `docker inspect <name> --format '{{index .Config.Labels
+"com.docker.compose.project.working_dir"}}'` names the run directory.
+
+A report that something died is a claim to verify, not a fact to act on: look at the process
+list and the log before touching anything.
