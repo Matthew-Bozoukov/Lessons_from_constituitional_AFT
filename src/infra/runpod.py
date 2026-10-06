@@ -1256,7 +1256,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, countries: str = "", push_env: bool = False,
-       max_hours: float = 6.0,
+       max_hours: float = 6.0, provider_deadline: bool = False,
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
@@ -1325,6 +1325,12 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         image: Container image.
         countries: Comma-separated placement codes; "" is anywhere.
         max_hours: Positive lifetime cap, enforced by a detached LOCAL watchdog (default 6).
+        provider_deadline: Also set the cap as RunPod's own `terminateAfter`, so the pod
+            expires provider-side at `max_hours` even if this machine is asleep, off or
+            gone. The local watchdog dies with the machine that started it, which leaves an
+            unattended pod billing until a human notices; this is for a run nobody will be
+            watching. Costs the scheduled-provisioning API path, which does not support
+            `countries` and may find fewer hosts than the default one.
             The local machine must remain awake and connected for enforcement.
         push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
             WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
@@ -1396,7 +1402,10 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
         # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="13.0", countries=countries),
+                      cuda="13.0", countries=countries,
+                      terminate_at=(datetime.fromtimestamp(deadline, tz=timezone.utc)
+                                    .isoformat().replace("+00:00", "Z")
+                                    if provider_deadline else "")),
         name=name,
         start_script=script,
         env={"LASR_POD_OWNER": POD_OWNER,
@@ -1466,7 +1475,10 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         f"Want to type a name instead? Add a Host entry for {ip}:{port} to your own",
         "~/.ssh/config (or ask Claude to) — nothing here will write it for you.",
         "",
-        f"Local watchdog lifetime cap: {max_hours}h (keep this machine awake and connected).",
+        (f"Provider-side expiry: {max_hours}h, set at creation — the pod terminates even "
+         f"if this machine is off. Local watchdog also running."
+         if provider_deadline else
+         f"Local watchdog lifetime cap: {max_hours}h (keep this machine awake and connected)."),
         "For automatic eval cleanup add --terminate-pod to uv run evals.",
         "To terminate earlier:",
         f"  uv run runpod down --pod {pod_id}",
