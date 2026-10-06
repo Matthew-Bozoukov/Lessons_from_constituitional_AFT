@@ -483,7 +483,9 @@ def main(
               f"{', '.join('/'.join(e) for e in sorted(excluded))}")
 
     if resume:
-        out_dir = Path(resume).resolve()
+        # Preserve a caller's short Windows junction for Docker's working directory.
+        # Canonical resolution is used separately for project identity, not cwd paths.
+        out_dir = Path(resume).absolute()
         assert out_dir.is_dir(), f"resume directory does not exist: {out_dir}"
     else:
         tag = f"smoke_{timestamp()}" if smoke else timestamp()
