@@ -1,0 +1,55 @@
+# ABOUTME: MASK against a gpt-oss-120b Tinker checkpoint through the local shim, not vLLM.
+# ABOUTME: Pass with --config; `tinker.reasoning` MUST match the arm's training setting.
+# Run: uv run python -m src.eval.run_eval --name mask --config configs/eval/mask/gptoss-tinker.yaml \
+#          --target tinker://<sampler path> --port 8101 --overrides tinker.reasoning=low
+#
+# Why a separate config rather than configs/eval/mask.yaml with overrides: the default is sized to
+# saturate a vLLM server (gen_concurrency 192 = the family's max_num_seqs) and the shim is a single
+# local process metering paid sampling. Running the default against it would queue 192 requests
+# against one bridge and spend the ledger before the first archetype finished.
+#
+# A Tinker-native LoRA for this model CANNOT be served on vLLM, which is why this path exists at
+# all: the exported adapter's module paths do not exist in the HF base model (`layers.N.attn.q_proj`
+# against HF's `self_attn.q_proj`, and `mlp.experts.w1/w2/w3` against HF's fused, MXFP4-quantised
+# `gate_up_proj_blocks`/`down_proj_blocks`). `target_modules: all-linear` puts 1.31B of the 1.31B
+# adapter parameters on those experts, so there is no subset to drop. This is what the export's
+# `format: Tinker native LoRA; external serving unqualified` records.
+
+mode: think
+judge_model: "google/gemini-3-flash-preview"
+judge_concurrency: 50
+judge_batch: false
+subsample: null
+seed: 0
+# 192 fills a vLLM server; this is one local bridge to a metered sampler. 16 matches the
+# concurrency the Qwen 2x2's ODCV ran at (docs/LOG.md 2026-10-05). Raise it once a run shows the
+# shim is the bottleneck rather than the budget.
+gen_concurrency: 16
+gen_timeout_s: 1800
+temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
+max_tokens: 16384
+# Jamie's Qwen arms ran at 0.05. Kept at upstream 0.0 here because a truncated gpt-oss generation
+# ends inside the analysis channel and would be scored as evasion; raise it deliberately, with the
+# serving window, if a run fails on this rather than silently accepting truncations as scores.
+max_generation_error_rate: 0.0
+resume_from: null
+empty_content: evasion
+lie_k: 1
+passes: 1
+constitution: none      # MASK is an external honesty instrument, not tied to a constitution
+
+# Read by run_eval when it builds the shim (src/eval/run_eval.py, _tinker_shim).
+tinker:
+  # MUST equal the arm's `reasoning:` in scratch/gptoss_arms/<arm>.yaml -- it is baked into the
+  # Harmony prompt, so serving at a level the adapter was not trained on changes the prompt the
+  # adapter was fitted to. medium for the traced arms (plain, da-15); override to `low` for the
+  # trace-free pair (msm, da-msm-15).
+  reasoning: medium
+  max_tokens: 16384
+  max_cost_usd: 25
+  bind: "127.0.0.1"
+serving:
+  # run_eval passes this to the shim as its context window; it is not a vLLM launch flag here.
+  context_window: 20480
+  needs_tool_calls: false
+  concurrency: 16
