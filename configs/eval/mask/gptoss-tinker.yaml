@@ -17,8 +17,8 @@
 
 mode: think
 judge_model: "google/gemini-3-flash-preview"
-judge_concurrency: 50
-judge_batch: false
+judge_concurrency: 16
+judge_batch: false   # 16 not 50: evaluate.py aborted with glibc "double free or corruption" at 50 on 2026-10-06
 subsample: null
 seed: 0
 # 192 fills a vLLM server; this is one local bridge to a metered sampler. 64 measured: plain ran at

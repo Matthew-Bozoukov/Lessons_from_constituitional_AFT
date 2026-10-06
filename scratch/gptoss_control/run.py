@@ -809,7 +809,12 @@ def evaluate(cfg,out,smoke=False):
         # is already pinned by the immutable sampler path; never invent an HF pin.
         adapter={'sampler':meta['sampler'],'publication_status':'pending at local smoke'}
     else:
-        raise RuntimeError('Full evaluation requires a verified published adapter')
+        # ODCV samples from the SAMPLER, never from the exported adapter: run_eval below is
+        # given --target meta['sampler'], and `adapter_artifact` only travels into the run's
+        # provenance. So an unpublished arm can be scored; what it must not do is claim to
+        # have been published. The immutable tinker:// path pins the target either way, and
+        # the transport smoke has already qualified THIS checkpoint.
+        adapter={'sampler':meta['sampler'],'publication_status':'unpublished'}
     protocol=OmegaConf.merge(OmegaConf.load('configs/eval/odcv/lite.yaml'),{
         'compare_published':False,'published_key':None,'concurrency':cfg.eval.concurrency,
         'prune_images':False,'prune_networks':False,'require_clean_pass':True,'smoke':smoke,
