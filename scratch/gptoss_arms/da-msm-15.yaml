@@ -58,3 +58,8 @@ eval:
   max_tokens: 8192
   max_judge_cost_usd: 5
   judge_max_tokens: 8192
+
+# Published on the adapter's card. Without this, export falls back to a description derived from
+# the mixture subject; either way it must not claim an arm it is not.
+hf:
+  experiment: "GPT-OSS-120B rank-32 Tinker LoRA, one epoch token-weighted: 15% difficult-advice share on the trace-free base blend. The gpt-oss half of the Qwen 2x2 in docs/LOG.md 2026-10-05, over the same four published mixtures."

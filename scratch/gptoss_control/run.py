@@ -625,6 +625,18 @@ def train(cfg, out):
             "no published_dataset.json: run the publish-data stage, or set "
             "`source_format: harmony` if the source rows are already the training rows")
     rows = readrows(hf_download(pin["repo"], "mixture.jsonl", repo_type="dataset", revision=pin["revision"]))
+    # The observation export resolves into the adapter's `training_code_revision`. Written HERE,
+    # at the launch that produces the weights, because that is the only point that knows the code
+    # state they were trained with -- refresh_control.py writes one too, but for its own pinned
+    # 09-22 corpus (it asserts that corpus's exact row and token counts). provenance() carries
+    # `working_tree_dirty`, so a run from an uncommitted tree says so rather than implying a clean
+    # commit.
+    observation = out/"training_launch_observation.json"
+    if not observation.exists():
+        write(observation, {"training_code_commit": provenance(cfg)["git_sha"],
+                            "working_tree_dirty": provenance(cfg)["working_tree_dirty"],
+                            "dataset": pin, "training_tool_prompt": "fixed",
+                            "dataset_sha256": digest(rows)})
     renderer = make_renderer(cfg.reasoning)
     ordered = list(range(len(rows)))
     random.Random(cfg.seed).shuffle(ordered)
@@ -711,6 +723,7 @@ def export(cfg,out):
     import torch
     from tinker_cookbook.weights import download
     from src.infra.huggingface import hf_api,hf_repo_id,push_run_dir,hf_download
+    from src.naming import mix_subject_from
     meta=json.loads((out/'trained_adapter.json').read_text())
     launch=json.loads((out/'training_launch_observation.json').read_text())
     training_revision=subprocess.check_output(
@@ -736,15 +749,27 @@ def export(cfg,out):
     write(final/'training_meta.json',{**meta,'adapter_config':config,'loss_reduction':'token_mean',
         'model':cfg.base_model,'data_repo':meta['dataset']['repo'],'data_revision':meta['dataset']['revision']})
     OmegaConf.save(cfg,final/'train_config.yaml')
+    # The audit of the rows actually trained on travels with the adapter. `final_audit` is the
+    # backfill path's name for it; an arm that ran prepare only has `prebackfill_audit`. One of
+    # them must exist -- an adapter published without its token census is unreviewable.
+    audits = [n for n in ('final_audit.json', 'final_audit_examples.json',
+                          'prebackfill_audit.json', 'prebackfill_audit_examples.json')
+              if (out/n).exists()]
+    if not any(n.endswith('audit.json') for n in audits):
+        raise RuntimeError("no final_audit.json or prebackfill_audit.json to publish with the adapter")
     for name in ['training_curve.jsonl','train_requests.jsonl','train_state.json','tinker_model_info.json',
-                 'final_audit.json','final_audit_examples.json']:
+                 *audits]:
         shutil.copy2(out/name,final/name)
     for name in ['backfill_report.json', 'native_cot_provenance_summary.json']:
         if (out/name).exists():
             shutil.copy2(out/name,final/name)
     if (out/'training_launch_observation.json').exists():
         shutil.copy2(out/'training_launch_observation.json',final/'training_launch_observation.json')
-    fields={'experiment':'Fresh GPT-OSS-120B nosynth control, one epoch of token-weighted Tinker SFT',
+    # The arm says what it is. Hardcoding 'nosynth control' here published that sentence on every
+    # adapter whatever it trained on; `mix` below is read off the pinned mixture for the same reason.
+    mix = mix_subject_from(meta['dataset']['repo'])
+    fields={'experiment':(OmegaConf.select(cfg,'hf.experiment')
+                          or f'GPT-OSS-120B on the {mix} mixture, one epoch of token-weighted Tinker SFT'),
         'date_generated':meta['organism'][:10],
         'constitution':'claude_distilled_09_principles (inherited filtering; no constitutional corpus added)',
         'source_repo':'teaching_claude_why_replication @ '+training_revision,
@@ -755,7 +780,7 @@ def export(cfg,out):
     if api.repo_exists(repo,repo_type='model'):
         raise RuntimeError(f'Refusing to overwrite existing adapter {repo}')
     push_run_dir(final,repo,fields,repo_type='model',front_matter={'base_model':cfg.base_model,
-        'tags':['lora','tinker','gpt-oss','nosynth'],'datasets':[meta['dataset']['repo']]})
+        'tags':['lora','tinker','gpt-oss',mix],'datasets':[meta['dataset']['repo']]})
     info=api.model_info(repo,files_metadata=True)
     sha=info.sha
     def file_sha(path):
