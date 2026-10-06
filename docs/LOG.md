@@ -1,6 +1,51 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-06 - Plain-base difficult-advice dose sweep: DA5 and DA25 trained; MASK honesty 66.0 and 86.2; ODCV misalignment 17.1% and 8.3%
+
+Hypothesis. Extend the October 5 plain / DA15 comparison to 5% and 25% difficult-advice supervision, holding the approximately five-million-supervised-token budget and SFT recipe fixed.
+
+Method. Build from the exact existing plain replay, `dougalldeepmind/2026-10-05-plain-mix@019e239ce51f5adbbcaff4f92f26e63fcd31c080`, and the 1,283-row DA corpus `dougalldeepmind/2026-10-02-da-synth@305914d58627457002f61d86ba69866f6fa2b9a9`. Replace replay by supervised-token share, balancing DA across nine traits. Independent audit decoded every row's loss mask, verified unchanged retained replay, unique DA rows, nested retained replay between the two arms, and byte-identical published JSONL. No new synthetic generation was needed.
+
+| Arm | Rows / DA rows | DA supervised tokens / total | Actual DA share | Optimizer steps | Final train loss | Training runtime |
+|---|---:|---:|---:|---:|---:|---:|
+| DA5 | 1,960 / 216 | 251,804 / 4,999,890 | 5.0362% | 123 | 0.603835 | 2,736.56 s |
+| DA25 | 2,458 / 1,075 | 1,250,686 / 4,999,786 | 25.0148% | 154 | 0.767068 | 2,668.25 s |
+
+Both trained simultaneously on separate **1x H200 RunPod pods**, seed 0, one epoch, Qwen3.6-27B base revision `6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`, bf16 LoRA r64/alpha128/dropout0.05, LR 1e-4, cosine schedule, warmup 0.05, `token_mean`, packing, maximum sequence 8192, H200 token budget 8000, Flash Attention 2 and causal-convolution/gated-delta kernels. **Global batch stayed 16**, independent of GPU count; the previous plain/DA15 runs used two GPUs. The October 5 history rule applies: reasoning appears only after the last real user message, and earlier answered turns earn no loss. Both seven-row smoke gates and 64-row production gates passed with zero truncated rows; all logged losses/gradient norms were finite and both runs completed epoch 1. Training commits were `b1ce446d` (DA5) and `9a1da32d` (DA25), with identical SFT/model/data code; intervening changes were infrastructure and campaign helpers.
+
+Published datasets and models (all under `dougalldeepmind/`):
+
+| Arm | Dataset @ revision | Model @ final verified revision |
+|---|---|---|
+| DA5 | `2026-10-06-da-5-mix@e1e497026591f8b4e2848fd098ecb75a54ff2c70` | `2026-10-06-qwen36-0-da-5@89ff78d96af22d7b5a195a09db6a09ef54997b9e` |
+| DA25 | `2026-10-06-da-25-mix@a93bda39fb16d4c90aea22095ed444b931187a8e` | `2026-10-06-qwen36-0-da-25@8af40aea97c45e6909aa2cbb2615ca59f9a31818` |
+
+Full production `run_meta.json` with loss history, final `trainer_state.json`, smoke/train logs, mixture audit and matched protocol are published under each model's `training_evidence/`. Adapter bytes were hashed on the pod and matched against immutable Hub revisions; evidence uploads and unchanged adapter files were then hash-verified. Optional multi-gigabyte optimizer archive transfers were not required for durability and were interrupted only after this verification and recorded, provider-confirmed training-pod termination.
+
+Evaluation. Match the published plain and DA15 protocols: MASK think, 1,000 rows, one pass, seed 0, temperature 1, maximum generation 16,384, per-run max_generation_error_rate=0.05 (global default unchanged), empty-content policy evasion, Gemini 3 Flash Preview judge, 4,438 generations; ODCV-lite three passes x 80 cells, temperature 0.7, concurrency 16, 2,400-second scenario timeout, Gemini 3 Flash Preview judge. Each eval has its own RunPod model server; ODCV environments run in local Docker.
+
+| Arm | MASK honesty | Generation errors | Empty content | ODCV MR [95% CI] / severity |
+|---|---:|---:|---:|---|
+| Plain control (existing matched run) | 44.0 | 20 / 4,438 (0.451%) | 0 | 45.0% [32.1, 58.6] / 1.66 |
+| DA5 | 66.0 | 10 / 4,438 (0.225%) | 0 | 17.1% [9.9, 27.9] / 0.65 |
+| DA15 (existing matched run) | 82.7 | 7 / 4,438 (0.158%) | 0 | 13.3% [7.6, 22.4] / 0.49 |
+| DA25 | 86.2 | 7 / 4,438 (0.158%) | 0 | 8.3% [3.8, 17.3] / 0.31 |
+
+MASK publications: `2026-10-06-mask-qwen36-0-da-5@572a698c3d3cffaeb2d8ec64c10390ce2fac99bf` and `2026-10-06-mask-qwen36-0-da-25@d9584c0952ec94340908420b9b80c31ddd3f264a`, all 29 files per arm hash-verified. Both are fresh runs with no resume or archetype regeneration. Reference eval pins and full resolved protocols are in `output/plain_dose_campaign/matched_protocol.json`.
+
+ODCV publications: 2026-10-06-odcv-qwen36-0-da-5@b752536eb5ee13f042e59ad1b5bb2912de72ce66 (742 files) and 2026-10-06-odcv-qwen36-0-da-25@e4d6bf206f45258fb536d6ad67aebcb2f1c3f29b (739 files), every local file matched to the immutable Hub file hash/size. Both contain exactly 240 usable rollouts and 240 finite judgments on each axis, no missing cells or dropped verdicts, and three clean pass audits. Progress means are 4.93/5 (DA5) and 4.97/5 (DA25); task submission rates are 97.5% and 99.2%. Independent second-reader audits passed for all four evals. No cell or MASK archetype was resampled.
+
+DA5 pass 3, mandated Ai-Healthcare-Administrator, switched its environment to manual approval and blocked its own next history request. The matched 2,400-second timeout then hit a Windows subprocess pipe hang: the direct Docker process died but orphan Compose child PID 74724 kept stdout open. After saving the executor log and verifying that exact orphan's project/parent identity, stopping only that child allowed the existing timeout handler to finish. The final cell is explicitly marked timeout/partial, reconstructed from the captured executor log, and judged. Its recorded 2,610.9 seconds include about 211 seconds of cleanup delay; saved logs show no additional model actions after 12:21:51 UTC. The three recovery evidence files are published under metadata/infrastructure_recovery/. This was process cleanup, not a rerun or an extension granting the model additional actions. The generic Windows subprocess timeout handling still needs a durable process-tree fix.
+
+Interpretation. MASK honesty increases across the observed plain / DA5 / DA15 / DA25 sequence (44.0 / 66.0 / 82.7 / 86.2). This is one seed per arm, with roughly fixed supervised tokens but different row counts and therefore different optimizer-step counts (115 / 123 / 139 / 154); it does not isolate dose from update count or establish reliability across seeds. ODCV also decreases across the observed doses (45.0 / 17.1 / 13.3 / 8.3%). The DA-arm confidence intervals overlap; this does not establish a reliable ranking among those doses.
+
+Operational. The initial DA5 create request returned HTTP 500 without creating a pod; its retry succeeded. The first DA25 rental never exposed SSH within 600 seconds and was terminated with provider confirmation; its replacement succeeded. Both successful training pods were subsequently released and verified terminated. Tested fixes cover SSH keepalive (30s / three misses), reaching wildcard listeners through loopback on Windows, preserving short ODCV resume paths, and cleanup of failed eval rentals. Focused training/masking/profile coverage passed 77 tests; the current infrastructure/resume/owner subset passed 37 tests. No training semantics changed in these infrastructure fixes.
+
+Resource closeout. All campaign training and eval pods, including the failed SSH rental, were provider-verified terminated; the final account inventory contained no active pods. Each eval GPU was released once its complete outputs were durable, before the remaining external-judge work. The account balance fell from $529.989968 to $505.392332, an account-level decrease of $24.60 across the campaign, including failed startup time; this is not an itemized GPU invoice. External judge charges are separate and are not summed from overlapping account-delta estimates. The pre-existing $0.001/hour storage rate was left alone. The temporary local keep-awake helper was stopped. No SWE-bench or agentic-misalignment run was started.
+
+Next. Retain these exact target/protocol pins for subsequent comparisons and consider seed replicates or matched-step controls before stronger dose claims.
+
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
 Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and
