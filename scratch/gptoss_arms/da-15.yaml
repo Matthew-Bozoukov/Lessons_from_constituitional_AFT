@@ -54,7 +54,7 @@ train:
 eval:
   port: 18321
   max_target_cost_usd: 20
-  concurrency: 4
+  concurrency: 10
   max_tokens: 8192
   max_judge_cost_usd: 5
   judge_max_tokens: 8192
