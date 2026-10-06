@@ -24,6 +24,12 @@ def test_ssh_exec_defaults_to_loopback():
     assert SshExec("pod", port=8000).endpoint_host == "127.0.0.1"
 
 
+def test_wildcard_listener_is_reached_through_loopback():
+    executor = SshExec("pod", port=8000, bind="0.0.0.0")
+    assert executor.bind == "0.0.0.0"
+    assert executor.endpoint_host == "127.0.0.1"
+
+
 def test_ssh_exec_follows_the_docker_bridge_bind():
     """The whole point: bind=172.17.0.1 must NOT resolve to localhost."""
     exec_ = SshExec("pod", port=8000, bind="172.17.0.1")

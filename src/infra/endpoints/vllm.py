@@ -792,7 +792,9 @@ class SshExec:
         # ODCV containers can reach it) the tunnel does NOT listen on loopback,
         # and a hardcoded localhost health probe times out against a server that
         # is up and serving. Cost a full ODCV run to find.
-        self.endpoint_host = bind
+        # The wildcard is a listen address, not a portable client destination:
+        # Windows rejects connections to 0.0.0.0. Its listener includes loopback.
+        self.endpoint_host = "127.0.0.1" if bind == "0.0.0.0" else bind
         self.workdir = workdir
         self.remote_dir = f"{workdir}/output/serve"
         self.tunnel: subprocess.Popen | None = None
