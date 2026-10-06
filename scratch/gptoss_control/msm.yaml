@@ -1,0 +1,39 @@
+# ABOUTME: GPT-OSS arm for the traceless msm mixture; all monetary ceilings are USD.
+# ABOUTME: Run: uv run --project src/infra/endpoints/tinker_runtime python scratch/gptoss_control/run.py <stage>
+source_repo: dougalldeepmind/2026-10-05-msm-mix
+source_revision: 844f7edfdf2a9f7bec5a92c4e838dc2cce5935c5
+destination_name: 2026-10-05-msm-mix-gpt-oss-120b
+output: output/gptoss_msm
+base_model: openai/gpt-oss-120b
+reasoning: low
+seed: 0
+backfill:
+  concurrency: 12
+  max_tokens: 6144
+  temperature: 0.7
+  attempts: 3
+  judge: google/gemini-3-flash-preview
+  max_cost_usd: 10
+  max_judge_cost_usd: 5
+  unresolved_policy: answer_only
+train:
+  rank: 32
+  epochs: 1
+  batch_rows: 16
+  lr: 0.0001
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95
+  adam_eps: 1.0e-12
+  grad_clip_norm: 1.0
+  max_length: 32768
+  save_steps: 100
+  max_cost_usd: 10
+eval:
+  port: 18321
+  max_target_cost_usd: 20
+  concurrency: 4
+  max_tokens: 8192
+  max_judge_cost_usd: 5
+  judge_max_tokens: 8192
