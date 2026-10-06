@@ -162,7 +162,7 @@ def test_mixture_configs_share_one_schema(monkeypatch):
             # or a local `path`.
             assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
                                  "config", "split", "tokens", "examples", "shuffle_buffer",
-                                 "reasoning", "synthetic", "balance_by", "supervise", "mask_paragraph", "drop_paragraph"}, (name, sname)
+                                 "reasoning", "synthetic", "balance_by", "supervise"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
@@ -728,7 +728,7 @@ def _variant_cfg(tmp_path, stem, body):
     return cfg
 
 
-def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise="", extra=""):
+def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
     """A `base:`-shaped arm config (the only shape current arms take), refusable offline:
     the checks under test fire before any tokenizer or Hub access."""
     base_rows = tmp_path / "plain.jsonl"
@@ -746,7 +746,7 @@ def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise="", ext
             f"output_dir: {tmp_path}\nbase: {base}\nsynthetic_pct: 50\ntotal_examples: 6\n"
             + (f"variant: {variant}\n" if variant else "")
             + f"sources:\n  dat:\n    path: {dat_rows}\n    examples: 1\n    reasoning: native\n"
-            + (f"    supervise: {supervise}\n" if supervise else "") + extra)
+            + (f"    supervise: {supervise}\n" if supervise else ""))
     return _variant_cfg(tmp_path, stem, body)
 
 
@@ -755,17 +755,11 @@ def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, mon
     monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
                         lambda *a, **k: pytest.fail("should refuse before loading"))
     # cot without the variant: a cot-only mixture under the control's name.
-    with pytest.raises(ValueError, match="imply `cot`"):
+    with pytest.raises(ValueError, match="imply \\['cot'\\]"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="cot")))
     # the variant without an override: a control under the variant's name.
-    with pytest.raises(ValueError, match="imply `\\(none\\)`"):
+    with pytest.raises(ValueError, match="imply no variant"):
         main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot")))
-    # a paragraph ablation implies its own word, joined in front of a supervise variant.
-    with pytest.raises(ValueError, match="imply `maskdelib`"):
-        main(str(_arm_cfg(tmp_path, "dat", extra="    mask_paragraph: deliberation\n")))
-    with pytest.raises(ValueError, match="imply `nodelib-cot`"):
-        main(str(_arm_cfg(tmp_path, "dat-nodelib", variant="nodelib", supervise="cot",
-                          extra="    drop_paragraph: deliberation\n")))
     # a mode the trainer does not know.
     with pytest.raises(AssertionError, match="not a mode"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="unknown")))
@@ -782,75 +776,3 @@ def test_main_refuses_supervise_override_on_the_base_blend(tmp_path, monkeypatch
     with pytest.raises(ValueError, match="non-synthetic source\\(s\\) \\['plain'\\]"):
         main(str(_arm_cfg(tmp_path, "dat-cot", variant="cot", supervise="cot",
                           base_supervise="full")))
-
-
-# --- paragraph ablations (drop_paragraph / mask_paragraph source options) ------------------
-
-_PARAS = {"reading": "The person asks whether to file the form late.",
-          "deliberation": "Filing late saves a day, but the fee is real and the lateness is on record.",
-          "resolution": "File on time; the fee is the smaller cost.",
-          "shape": "Lead with the fee, offer the quick route, leave the call with them."}
-_TRACE = "\n\n".join(_PARAS[k] for k in ("reading", "deliberation", "resolution", "shape"))
-
-
-def _msgs():
-    return [{"role": "user", "content": "Should I file late?"},
-            {"role": "assistant", "content": "File on time.", "reasoning_content": _TRACE}]
-
-
-def test_drop_paragraph_removes_exactly_that_block():
-    from src.data.mixture.build_mixture import drop_paragraph
-    out = drop_paragraph(_msgs(), _PARAS["deliberation"])
-    assert out[-1]["reasoning_content"] == "\n\n".join(_PARAS[k] for k in ("reading", "resolution", "shape"))
-    assert _msgs()[-1]["reasoning_content"] == _TRACE          # the input is untouched
-    with pytest.raises(AssertionError, match="not once"):
-        drop_paragraph(_msgs(), "the fee")                       # a substring, not a block
-    with pytest.raises(AssertionError, match="whole blank-line"):
-        drop_paragraph(_msgs(), _PARAS["deliberation"][:-1])     # not a whole block
-    # a paragraph with an internal blank line is still one block
-    two = _PARAS["deliberation"] + "\n\nAnd a second thought."
-    msgs = _msgs(); msgs[-1]["reasoning_content"] = "\n\n".join([_PARAS["reading"], two, _PARAS["resolution"]])
-    assert drop_paragraph(msgs, two)[-1]["reasoning_content"] == _PARAS["reading"] + "\n\n" + _PARAS["resolution"]
-
-
-def test_paragraph_span_is_exact_and_unique():
-    from src.data.mixture.build_mixture import paragraph_span
-    text = "head\n\n" + _TRACE + "\n\ntail"
-    s, e = paragraph_span(text, _PARAS["deliberation"])
-    assert text[s:e] == _PARAS["deliberation"]
-    with pytest.raises(AssertionError, match="2 times"):
-        paragraph_span(text + _PARAS["deliberation"], _PARAS["deliberation"])
-
-
-def test_mask_paragraph_span_unsupervises_only_that_paragraph_in_the_real_render():
-    """With the real Qwen3.6 tokenizer: the deliberation tokens are -100, the rest of the trace and the reply are not."""
-    pytest.importorskip("transformers")
-    from transformers import AutoTokenizer
-
-    from src.data.mixture.build_mixture import paragraph_span
-    from src.model_profile import model_profile, render_chat
-    from src.train.masking import build_labels
-    try:
-        tok = AutoTokenizer.from_pretrained("Qwen/Qwen3.6-27B")
-    except Exception as exc:  # no network / no cache
-        pytest.skip(f"tokenizer unavailable: {exc}")
-    prof = model_profile("Qwen/Qwen3.6-27B")
-    text = render_chat(tok, _msgs(), None, render_kwargs=prof.render_kwargs)
-    span = paragraph_span(text, _PARAS["deliberation"])
-    full = build_labels(text, tok, 4096, prof)["labels"]
-    masked = build_labels(text, tok, 4096, prof, mask_spans=[span])["labels"]
-    n_full = sum(1 for v in full[1:] if v != -100)
-    n_masked = sum(1 for v in masked[1:] if v != -100)
-    n_para = len(tok(_PARAS["deliberation"])["input_ids"])
-    assert 0 < n_full - n_masked <= n_para + 2            # the paragraph (plus at most a boundary token) left the loss
-    assert n_masked > len(tok(_PARAS["resolution"])["input_ids"])   # the rest of the trace and the reply still count
-
-
-def test_write_rows_keeps_mask_spans(tmp_path):
-    from src.data.mixture.build_mixture import _write_rows
-    rows = [{"messages": _msgs(), "source": "da-sr", "n_tokens": 5, "mask_spans": [[3, 9]], "mask_property": "paragraph:deliberation"},
-            {"messages": _msgs(), "source": "no_robots", "n_tokens": 5}]
-    _write_rows(tmp_path / "m.jsonl", rows)
-    got = [json.loads(l) for l in (tmp_path / "m.jsonl").open()]
-    assert got[0]["mask_spans"] == [[3, 9]] and got[0]["mask_property"] == "paragraph:deliberation"
-    assert "mask_spans" not in got[1]

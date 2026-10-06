@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from huggingface_hub import snapshot_download
 from src.naming import figure_path
 
+from src.naming import figure_path
+
 DATE = "2026-10-05"
 # Local (today's in-progress runs) and published (older) sources: name -> glob of docker_output.log files.
 LOCAL = {

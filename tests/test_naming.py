@@ -324,10 +324,3 @@ def test_an_eval_config_folder_must_be_named_for_a_registered_eval(tmp_path):
     assert _check_config("configs/eval/odcv/lite.yaml", "lite", cfg) == ""
     assert "not a registered eval" in _check_config("configs/eval/notaneval/lite.yaml", "lite", cfg)
     assert "not a registered eval" in _check_config("configs/eval/notaneval.yaml", "notaneval", cfg)
-
-
-def test_paragraph_variant_words():
-    from src.naming import paragraph_variant
-    assert paragraph_variant("mask", "deliberation") == "maskdelib"
-    assert paragraph_variant("drop", "deliberation") == "nodelib"
-    assert paragraph_variant("drop", "shape") == "noshape"
