@@ -21,7 +21,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = Path("/tmp/claude-1000/-home-matthewb-git-repos-agent-interp-envs/"
-           "2608ec10-a153-4ab4-ae39-b5f9dad687f7/scratchpad/art/ablation_min.html")
+           "2608ec10-a153-4ab4-ae39-b5f9dad687f7/scratchpad/art/ablation_ten.html")
 
 ROLE = {"bg": "background", "gap": "rest of the background", "act": "the harmful action, and what to do",
         "harm": "the harmful thing", "plan": "what the reply will say"}
