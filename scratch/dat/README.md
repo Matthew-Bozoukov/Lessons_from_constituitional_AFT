@@ -17,10 +17,10 @@ stage's inputs. Review `dat.yaml` first, or the review page (see the chat for th
 |---|---|---|
 | 72% of rows had the operator ask for or lean toward the shortcut; 52% reduced to comply-vs-refuse | the scenario writer wrote a `shortcut` and the environment stage saw it; the reviser sharpened asks | no `shortcut` field exists; REQUIREMENTS 2 and 3 are in every writing stage; `revise` moves pressure out of the request and into records; `system` and `user` never see the facts; `select` drops rows whose pressure comes from the operator |
 | tool results interpreted themselves ("Note: ...", a `ls` that says "no approval flow") in ~25/29 rows | one model wrote prompts, facts and outputs together, knowing the dilemma | `environment` fills per-file_type schemas (events, test cases, rows, keys); code renders the files; the model writes no text for structured file types |
-| tools and scripts that existed only for the dilemma (`verify_checklist.py`, `risk_tolerance: aggressive`) | environment written from the answer | scripts are allowed but must be ordinary utilities the organisation would already have, with no flags that exist for the request, and each must run (its check command exits 0); the plant judge reads their source |
+| tools and scripts that existed only for the dilemma (`verify_checklist.py`, `risk_tolerance: aggressive`) | environment written from the answer | scripts are allowed but must be ordinary utilities the organisation would already have, with no flags that exist for the request, and each must run (its check command exits 0); `select` reads their source and output |
 | system prompts carrying the rule that resolves the case | reviser "closing loopholes" | `system` does not know the facts or the request, so it cannot write the rule; REQUIREMENT 6 |
 | reasoning template reciting the trait ("there's a real pull", "the honest path isn't X") | response stages primed with the shortcut | `respond` sees the principle and the transcript only; `rewrite` strikes set phrases and requires both readings weighed |
-| the environment author knew the answer | | a `plant` judge, blind to the facts, scores every file for steering and names the one most likely written for the request; the row fails if a tension-bearing record is picked on both shuffles |
+| the environment author knew the answer | | `select`, which knows the tension, reads every file and script output for anything that states or points at the conclusion (`settled_by`, quoted) and drops the row if it finds any; a blind `plant` judge was in the first draft and dropped: without knowing the tension it could only see overt remarks, which the structured file types already remove |
 
 ## Stages and what each is shown
 
@@ -31,9 +31,8 @@ stage's inputs. Review `dat.yaml` first, or the review page (see the chat for th
 | environment | organisation, role, world facts (statements only), today | the prompts (not written yet), readings, situation, principle, which facts bear on the tension | directories; one file per entry with a file_type (log, test_report, csv, config, git_log, diff, json, ticket, email, doc, script) and the facts it carries; structured file types rendered by code; scripts must run (check command exits 0; a fact found by running one must appear in its output); mundane files; witness strings |
 | system | organisation, role, kind of task, file listing (paths only) | file contents, operator's message, world facts, readings, situation, principle | system prompt |
 | user | system prompt, operator + goal, task, file listing (paths only), today | file contents, world facts, readings, situation, principle | operator's message |
-| plant | rendered files, system, user | facts, principle | steering score + quote per file, planted pick; row gate |
 | explore | system, user, read-only shell, own outputs | facts, principle, situation | looks: thought, command, real output (cap 8); coverage appends one look per unseen tension fact |
-| select | principle, situation, readings, intended facts, prompts, transcript | | tension_present, source (work / operator / both / none), unclear, principle_fit, realism, keep |
+| select | principle, situation, readings, intended facts, prompts, every file and each script's output, transcript | | tension_present, source (work / operator / both / none), unclear, principle_fit, realism, settled_by (files or outputs that state or point at the conclusion, quoted), keep |
 | respond | principle, prompts, exploration, tools, style | situation, readings, facts | reasoning, response, at most one tool call |
 | rewrite | the same + draft + REQUIREMENTS | situation, readings, facts | revised turn, changes |
 
@@ -60,17 +59,17 @@ uv run python scratch/dat/pipeline.py --total 750 --workers 8
 
 Output under `output/synth_dat/<run>/`: `hands.jsonl`, `stage_write_revise.jsonl`, `rows.jsonl`
 (every row with the stage it reached and why it was dropped), `dataset.jsonl` (kept rows),
-`calls.jsonl`, `manifest.json` (yield per stage and trait, select source counts, plant failures,
+`calls.jsonl`, `manifest.json` (yield per stage and trait, select source counts, settled_by counts,
 cost). Nothing is pushed by this script.
 
 Models (per stage in dat.yaml): Sonnet 4.5 for write, revise, environment, system, user, explore, respond,
-rewrite; Gemini 3 Flash for plant and select. Expected cost per attempted row roughly $0.40–0.60
+rewrite; Gemini 3 Flash for select. Expected cost per attempted row roughly $0.40–0.60
 at Sonnet; yield unknown until the smoke.
 
 ## What to read on the smoke
 
 1. `manifest.json`: `select_source` (how many kept rows have source `work`), `select_unclear`,
-   `plant_failed`, `stage_reached`.
+   `settled_by_nonempty`, `stage_reached`.
 2. The dropped rows' `dropped` reasons, and `select`'s `principle_fit` per trait: a trait that is
    repeatedly dropped there does not fit this shape.
 3. Five kept rows end to end, against the eight requirements.

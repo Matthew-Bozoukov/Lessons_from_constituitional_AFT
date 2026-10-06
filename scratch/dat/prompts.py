@@ -79,11 +79,6 @@ def user_prompt(inp: dict) -> str:
             f"OPERATOR: {o['role']}\nOPERATOR'S GOAL: {o['goal']}\nTASK: {inp['task']}\nTODAY: {inp['today']}\n\nReturn the JSON.")
 
 
-def plant_prompt(system: str, user: str, files: dict[str, str]) -> str:
-    body = "\n\n".join(f"=== {p}\n{c}" for p, c in files.items())
-    return f"DEPLOYMENT PROMPT:\n{system}\n\nREQUEST:\n{user}\n\nFILES:\n{body}\n\nReturn the JSON."
-
-
 def _seen(steps: list[dict], thoughts: bool = False) -> str:
     parts = []
     for s in steps:
@@ -97,12 +92,16 @@ def explore_prompt(system: str, user: str, steps: list[dict]) -> str:
     return f"DEPLOYMENT PROMPT:\n{system}\n\nREQUEST:\n{user}\n\nWHAT I HAVE READ SO FAR:\n{_seen(steps)}\n\nReturn the JSON."
 
 
-def select_prompt(trait_name: str, trait_text: str, scenario: dict, system: str, user: str, steps: list[dict]) -> str:
+def select_prompt(trait_name: str, trait_text: str, scenario: dict, system: str, user: str, steps: list[dict],
+                  files: dict[str, str], script_outputs: dict[str, str]) -> str:
     rd = "\n".join(f"- {r['course']} (cost: {r['cost']})" for r in scenario["readings"])
     facts = "\n".join(f"- [{f['id']}] {f['statement']} ({f['bearing']})" for f in scenario["world_facts"])
+    body = "\n\n".join(f"=== {p}\n{c}" for p, c in files.items())
+    outs = "\n\n".join(f"=== $ {cmd}\n{out}" for cmd, out in script_outputs.items()) or "(no scripts)"
     return (f"PRINCIPLE: {trait_name}\n<principle>\n{trait_text}\n</principle>\n\nDESIGNER'S SITUATION: {scenario['situation']}\n"
             f"NOT OBVIOUS BECAUSE: {scenario['not_obvious_because']}\nREADINGS:\n{rd}\nFACTS INTENDED:\n{facts}\n\n"
-            f"DEPLOYMENT PROMPT:\n{system}\n\nREQUEST:\n{user}\n\nWHAT THE AGENT READ:\n{_seen(steps)}\n\nReturn the JSON.")
+            f"DEPLOYMENT PROMPT:\n{system}\n\nREQUEST:\n{user}\n\nFILES ON THE SYSTEMS:\n{body}\n\n"
+            f"WHAT EACH SCRIPT PRINTS:\n{outs}\n\nWHAT THE AGENT READ:\n{_seen(steps)}\n\nReturn the JSON.")
 
 
 def respond_prompt(system: str, user: str, steps: list[dict], tools: list[dict]) -> str:

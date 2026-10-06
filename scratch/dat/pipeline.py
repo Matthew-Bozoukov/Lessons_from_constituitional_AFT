@@ -1,5 +1,5 @@
 # ABOUTME: dat driver: deal (principle x sector) -> write -> revise -> environment (files rendered by code, scripts checked) -> system -> user ->
-# ABOUTME: plant check -> explore in a Docker sandbox -> select -> respond -> rewrite -> export rows + manifest.
+# ABOUTME: explore in a Docker sandbox -> select (incl. the steering check) -> respond -> rewrite -> export rows + manifest.
 """Run the from-scratch dat recipe. Standalone draft in scratch/: it reuses the repo's constitution
 segmenter, da.yaml's sector list, the OpenRouter client, and daa2's Docker sandbox (scratch/
 da_agentified/helpers.py), and keeps every stage's information boundary in `stage_inputs()`.
@@ -10,7 +10,7 @@ da_agentified/helpers.py), and keeps every stage's information boundary in `stag
 
 Output: output/synth_dat/<run>/ with stage snapshots (one jsonl per stage), rendered files per row,
 dataset.jsonl (chat rows: system, user, exploration turns with tool_calls + tool results, final
-assistant turn) and manifest.json (yield per stage and per trait, plant-check and select stats,
+assistant turn) and manifest.json (yield per stage and per trait, select stats,
 costs). Nothing is pushed by this script; publish_* is a separate step once the rows are read.
 
 NOT YET VERIFIED END TO END: written 2026-10-06 as the draft to review; the prompts are the
@@ -151,13 +151,14 @@ def stage_inputs(stage: str, row: dict) -> dict:
         return {**{k: sc[k] for k in ("organisation", "deployment", "task")}, "paths": sorted(row["files"])}
     if stage == "user":  # the listing, paths only: an operator points at files without the writer knowing their contents
         return {"system": row["system"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"]}
-    if stage in ("plant", "explore"):
+    if stage == "explore":
         return {"system": row["system"], "user": row["user"]}
     if stage in ("respond", "rewrite"):
         return {"system": row["system"], "user": row["user"], "steps": row["steps"], "trait_text": row["trait_text"]}
-    if stage == "select":
+    if stage == "select":  # the informed judge: it knows the tension, so it also reads every file and script output
         return {"system": row["system"], "user": row["user"], "steps": row["steps"], "scenario": sc,
-                "trait_name": row["trait_name"], "trait_text": row["trait_text"]}
+                "trait_name": row["trait_name"], "trait_text": row["trait_text"],
+                "files": row["files"], "script_outputs": row.get("script_outputs", {})}
     raise KeyError(stage)
 
 
@@ -214,29 +215,13 @@ def environment(calls: Calls, row: dict, feedback: str = "") -> tuple[dict[str, 
                     cmd = e["script"]["check"]
                     res = box.run(cmd)
                     row["script_check"][e["path"]] = cmd
+                    row.setdefault("script_outputs", {})[cmd] = res.get("stdout", "")
                     if res.get("returncode", 1) != 0:
                         problems.append(f"{e['path']}: check command `{cmd}` exited {res.get('returncode')}: {(res.get('stderr') or res.get('stdout') or '')[-300:]}")
                         continue
                     for fid in missing_witnesses(e, res.get("stdout", "")):
                         problems.append(f"{e['path']}: witness for fact {fid} not in the output of `{cmd}`")
     return files, out["files"], problems
-
-
-def plant_check(calls: Calls, row: dict, files: dict[str, str], tension_paths: set[str]) -> dict:
-    inp = stage_inputs("plant", row)
-    picks, worst = [], 0
-    scored = {}
-    for shuffle_seed in (0, 1):
-        order = list(files)
-        random.Random(shuffle_seed).shuffle(order)
-        out = calls.json("plant", P.system_of("plant"), P.plant_prompt(inp["system"], inp["user"], {p: files[p] for p in order}), P.schema_of("plant"), temperature=0.0)
-        for f in out["files"]:
-            scored[f["path"]] = max(scored.get(f["path"], 0), f["steering"])
-            worst = max(worst, f["steering"])
-        picks.append(out.get("planted", ""))
-    n2 = sum(1 for v in scored.values() if v >= 2)
-    passed = worst < 3 and n2 <= 1 and any(p not in tension_paths for p in picks)
-    return {"passed": passed, "worst": worst, "n_scoring_2": n2, "picks": picks, "scores": scored}
 
 
 def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
@@ -274,7 +259,8 @@ def ensure_coverage(row: dict, steps: list[dict], box: Sandbox) -> list[str]:
 
 def select(calls: Calls, row: dict) -> dict:
     inp = stage_inputs("select", row)
-    return calls.json("select", P.system_of("select"), P.select_prompt(inp["trait_name"], inp["trait_text"], inp["scenario"], inp["system"], inp["user"], inp["steps"]), P.schema_of("select"), temperature=0.0)
+    return calls.json("select", P.system_of("select"), P.select_prompt(inp["trait_name"], inp["trait_text"], inp["scenario"], inp["system"], inp["user"], inp["steps"],
+                                                                        inp["files"], inp["script_outputs"]), P.schema_of("select"), temperature=0.0, max_tokens=4000)
 
 
 def respond(calls: Calls, row: dict) -> dict:
@@ -312,7 +298,7 @@ def assemble(row: dict) -> dict:
     msgs.append(last)
     return {"scenario_id": row["scenario_id"], "messages": msgs, "tools": TOOLS,
             "metadata": {"trait_id": row["trait_id"], "trait_name": row["trait_name"], "sector": row["sector"], "domain": row["scenario"]["organisation"],
-                         "situation": row["scenario"]["situation"], "supervise": "final", "select": row["select"], "plant": row["plant"],
+                         "situation": row["scenario"]["situation"], "supervise": "final", "select": row["select"],
                          "appended_looks": row.get("appended", []), "n_looks": len(row["steps"])}}
 
 
@@ -336,22 +322,6 @@ def process(calls: Calls, hand: dict, sc: dict, idx: int, run_dir: Path, dry: bo
     row["dirs"] = row.get("dirs") or sorted({p.rsplit("/", 2)[0] for p in files})
     row.update(system=write_system(calls, row)["system"], stage_reached="system")
     row.update(user=write_user(calls, row)["user"], stage_reached="user")
-    tension_ids = {f["id"] for f in sc["world_facts"] if f["bearing"] == "tension"}
-    tension_paths = {row["fact_path"][i] for i in tension_ids if i in row["fact_path"]}
-    pc = plant_check(calls, row, files, tension_paths)
-    if not pc["passed"]:
-        quotes = "\n".join(f"- {p}: steering {s}" for p, s in pc["scores"].items() if s >= 2)
-        files, recs, problems = environment(calls, row, feedback="A reviewer judged these files as steering the reader; make them plain files that record and do not explain:\n" + quotes)
-        if not problems:
-            row["witness"] = {f["id"]: f["witness"] for r in recs for f in r.get("facts", [])}
-            row["fact_path"] = {f["id"]: r["path"] for r in recs for f in r.get("facts", [])}
-            row["files"] = files
-            tension_paths = {row["fact_path"][i] for i in tension_ids if i in row["fact_path"]}
-            pc = plant_check(calls, row, files, tension_paths)
-    row["plant"] = pc
-    if not pc["passed"]:
-        row.update(stage_reached="plant", dropped="plant check failed")
-        return row
     now = dt.datetime.strptime(row["today"], "%A %Y-%m-%d %H:%M")
     with Sandbox(files, now) as box:
         steps = explore(calls, row, box)
@@ -414,7 +384,7 @@ def main() -> None:
         "stage_reached": dict(Counter(r.get("stage_reached") for r in done)),
         "select_source": dict(Counter(r["select"]["source"] for r in done if r.get("select"))),
         "select_unclear": dict(Counter(r["select"]["unclear"] for r in done if r.get("select"))),
-        "plant_failed": sum(1 for r in done if r.get("plant") and not r["plant"]["passed"]),
+        "settled_by_nonempty": sum(1 for r in done if r.get("select") and r["select"].get("settled_by")),
         "kept_per_trait": dict(Counter(r["metadata"]["trait_id"] for r in kept)),
         "calls": dict(calls.n), "cost_usd": {k: round(v, 3) for k, v in calls.cost.items()}, "cost_total_usd": round(sum(calls.cost.values()), 2),
     }
