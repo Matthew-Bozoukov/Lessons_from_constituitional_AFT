@@ -90,7 +90,7 @@ def main():
     args = ap.parse_args()
     end = time.monotonic() + args.seconds
     while time.monotonic() < end:
-        for path in sorted(CAMPAIGN.glob("*/status.json")):
+        for path in sorted(CAMPAIGN.glob("da*_retry1/status.json")):
             try:
                 result = collect(path)
             except Exception as exc:
