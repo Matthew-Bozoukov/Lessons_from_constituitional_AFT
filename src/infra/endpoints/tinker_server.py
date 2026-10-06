@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from tinker_cookbook.renderers.base import ToolCall
 
-from src.infra.endpoints.harmony import MODEL, TOKENIZER_REVISION, make_renderer, render_prompt
+from src.infra.endpoints.harmony import MODEL, TOKENIZER_REVISION, make_renderer, render_prompt, channel_token_counts
 
 
 def create_app(sampler, renderer, *, checkpoint, api_key, context_window=28000,
@@ -106,9 +106,14 @@ def create_app(sampler, renderer, *, checkpoint, api_key, context_window=28000,
             actual = (count*.33+len(ids)*.84)/1e6
             async with lock:
                 reserved -= upper-actual
+                # Per-channel body tokens, so a finished run carries its own reasoning/output
+                # split. Without this the only record is `raw_tokens`, and recovering the split
+                # means re-walking every ledger by hand (2026-10-06).
+                channels = channel_token_counts(ids)
                 record({"id":request_id,"event":"completed","seconds":time.monotonic()-started,
                         "completion_tokens":len(ids),"raw_tokens":ids,"reserved_usd":actual-upper,
-                        "usage_upper_usd":actual})
+                        "usage_upper_usd":actual,"channel_tokens":channels,
+                        "reasoning_tokens":channels.get("analysis",0)})
             parsed, term = renderer.parse_response(ids)
             if not term.is_stop_sequence:
                 message = {"role":"assistant","content":renderer.tokenizer.decode(ids)}

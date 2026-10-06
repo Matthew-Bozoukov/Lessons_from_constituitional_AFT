@@ -81,6 +81,24 @@ class HarmonyRenderer(GptOssRenderer):
         return "".join(parts)
 
 
+# Harmony structural tokens, by id, for channel_token_counts. Resolved from the pinned
+# tokenizer rather than hardcoded, so a tokenizer revision bump cannot silently shift them.
+_HARMONY_SPECIALS = None
+_CHANNEL_DECODER = None
+
+
+def _init_harmony_specials(tokenizer):
+    """Fill the structural-token table from a renderer's tokenizer (idempotent)."""
+    global _HARMONY_SPECIALS, _CHANNEL_DECODER
+    if _HARMONY_SPECIALS is not None:
+        return
+    one = lambda text: tokenizer.encode(text, allowed_special="all")[0]
+    _HARMONY_SPECIALS = {
+        "channel": one("<|channel|>"), "message": one("<|message|>"),
+        "terminators": {one("<|end|>"), one("<|start|>"), one("<|return|>"), one("<|call|>")}}
+    _CHANNEL_DECODER = tokenizer.decode
+
+
 def make_renderer(reasoning="medium", current_date=RENDER_DATE, *, local_files_only=False, tool_prompt="fixed"):
     if reasoning not in {"low", "medium", "high"}:
         raise ValueError(f"Unsupported reasoning effort: {reasoning}")
@@ -95,6 +113,7 @@ def make_renderer(reasoning="medium", current_date=RENDER_DATE, *, local_files_o
     # Build the full system prefix ourselves once, including the tool-routing line.
     renderer = HarmonyRenderer(tok, use_system_prompt=False)
     renderer.lasr_reasoning = reasoning
+    _init_harmony_specials(renderer.tokenizer)
     renderer.lasr_date = current_date
     renderer.lasr_tool_prompt = tool_prompt
     return renderer
@@ -275,6 +294,47 @@ def supervised_examples(renderer, row, max_length=32768):
             raise ValueError("Assistant target has no supervised tokens")
         results.append({"input_ids": ids[:-1], "target_tokens": ids[1:], "weights": weights[1:]})
     return results
+
+
+def channel_token_counts(ids):
+    """Completion tokens split by Harmony channel: {"analysis": n, "final": n, ...}.
+
+    The analysis channel is the model's reasoning. Nothing downstream records it separately:
+    the shim exposes `reasoning_content` on the response, but ODCV's vendored executor writes
+    only `content` into messages_record.txt, so a finished run leaves no reasoning/output
+    split behind -- on 2026-10-06 the four gpt-oss arms' ODCV reasoning had to be recovered by
+    re-walking `raw_tokens` out of the sampling ledgers. Counting it here makes it a recorded
+    quantity instead.
+
+    Counts MESSAGE BODY tokens only; channel names, `<|message|>` and the terminators are
+    structural and excluded, so the values sum to at most len(ids).
+
+    Args:
+        ids: The completion's token ids, as the sampler returned them.
+
+    Returns:
+        Channel name -> body token count, for the channels this completion actually used.
+    """
+    enc = _HARMONY_SPECIALS
+    out = {}
+    i = 0
+    while i < len(ids):
+        if ids[i] != enc["channel"] or i + 1 >= len(ids):
+            i += 1
+            continue
+        name_start = i + 1
+        body_open = name_start
+        while body_open < len(ids) and ids[body_open] != enc["message"]:
+            body_open += 1
+        if body_open >= len(ids):
+            break
+        end = body_open + 1
+        while end < len(ids) and ids[end] not in enc["terminators"]:
+            end += 1
+        name = _CHANNEL_DECODER(ids[name_start:body_open]).strip() or "unnamed"
+        out[name] = out.get(name, 0) + max(0, end - (body_open + 1))
+        i = end + 1
+    return out
 
 
 def token_mean_datums(examples):

@@ -84,6 +84,29 @@ def test_tool_result_with_no_preceding_call_is_refused(renderer):
         supervised_examples(renderer,row)
 
 
+def test_channel_token_counts_splits_reasoning_from_output(renderer):
+    """The analysis channel is counted apart from final; structural tokens are excluded."""
+    from src.infra.endpoints.harmony import channel_token_counts
+    ids = renderer.tokenizer.encode(
+        "<|channel|>analysis<|message|>one two three<|end|>"
+        "<|start|>assistant<|channel|>final<|message|>four<|return|>", allowed_special="all")
+    counts = channel_token_counts(ids)
+    assert set(counts) == {"analysis", "final"}, counts
+    assert counts["analysis"] == len(renderer.tokenizer.encode("one two three"))
+    assert counts["final"] == len(renderer.tokenizer.encode("four"))
+    assert sum(counts.values()) < len(ids), "structural tokens must not be counted"
+
+
+def test_channel_token_counts_is_empty_for_a_traceless_completion(renderer):
+    """An arm that never opens analysis reports no reasoning, not a missing key."""
+    from src.infra.endpoints.harmony import channel_token_counts
+    ids = renderer.tokenizer.encode("<|channel|>final<|message|>just the answer<|return|>",
+                                    allowed_special="all")
+    counts = channel_token_counts(ids)
+    assert counts.get("analysis", 0) == 0
+    assert counts["final"] == len(renderer.tokenizer.encode("just the answer"))
+
+
 def test_history_before_the_last_user_message_earns_no_loss(renderer):
     """The history rule: only assistant turns after the LAST user message are targets."""
     row={"messages":[{"role":"user","content":"First question"},
