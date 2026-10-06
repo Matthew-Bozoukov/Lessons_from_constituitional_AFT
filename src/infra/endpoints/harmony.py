@@ -192,14 +192,42 @@ def render_prompt(renderer, messages, tools=None):
 
 
 def supervised_examples(renderer, row, max_length=32768):
-    """One datum per assistant message with identical inference history and no repeated targets."""
+    """One datum per TARGET assistant message, with identical inference history.
+
+    THE HISTORY RULE (2026-10-05, matching src/train/masking.py on the Qwen side and the
+    `training_note` of the plain base mixtures): an assistant turn that comes BEFORE the
+    row's last user message is context and earns no loss, while every assistant step AFTER
+    that message is a target -- so a tool chain answering one user message trains at each
+    step, and an earlier answer the user then replied to does not.
+
+    Before this, every assistant message in a row became its own supervised datum. That is
+    the same policy the Qwen trainer used until 2026-10-05, and it is wrong for the same
+    reason in both: a multi-turn row's earlier answers are the setup for the question
+    actually being asked, and training on them teaches the model to produce the turn that
+    prompted a follow-up. It matters here in proportion to how much multi-turn data a
+    mixture carries -- 1.9% of 2026-09-29-nosynth-mix, but 35.3% of 2026-10-05-plain-mix,
+    whose whole point is to be the shared base for the Qwen and gpt-oss families. Supervised
+    differently on the two backends, the same rows stop being a shared base.
+
+    A row whose last message is a user turn has no target and is refused rather than
+    silently contributing nothing to the batch.
+    """
     results = []
     messages = row["messages"]
     if row.get("supervise", "all") != "all":
         raise ValueError("This control only supports full assistant supervision")
+    # -1 when a row has no user turn at all (a bare system+assistant record): every
+    # assistant message is then a target, which is what the rule reduces to.
+    last_user = max((i for i, m in enumerate(messages) if m["role"] == "user"), default=-1)
+    if not any(m["role"] == "assistant" for m in messages[last_user + 1:]):
+        raise ValueError(
+            "row has no assistant turn after its last user message, so the history rule "
+            "leaves nothing to supervise")
     for i, message in enumerate(messages):
         if message["role"] != "assistant":
             continue
+        if i < last_user:
+            continue  # history: context for the question actually being asked
         history = copy.deepcopy(messages[:i])
         # Apply history policy before adding the target, whose reasoning stays intact.
         prefix = build_messages(renderer, history, row.get("tools"), history=True)

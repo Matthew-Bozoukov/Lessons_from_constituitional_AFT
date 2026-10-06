@@ -47,6 +47,40 @@ def test_direct_answer_does_not_train_skipping_analysis(renderer):
     assert target_text(renderer,supervised_examples(renderer,row)[0]) == "Answer<|return|>"
 
 
+def test_history_before_the_last_user_message_earns_no_loss(renderer):
+    """The history rule: only assistant turns after the LAST user message are targets."""
+    row={"messages":[{"role":"user","content":"First question"},
+        {"role":"assistant","reasoning_content":"First reasoning","content":"First answer"},
+        {"role":"user","content":"Second question"},
+        {"role":"assistant","reasoning_content":"Second reasoning","content":"Second answer"}]}
+    exs=supervised_examples(renderer,row)
+    assert len(exs)==1, "the earlier answer is context, not a second datum"
+    text=target_text(renderer,exs[0])
+    assert "Second answer" in text and "Second reasoning" in text
+    assert "First answer" not in text and "First reasoning" not in text
+
+
+def test_tool_chain_after_the_last_user_message_trains_every_step(renderer):
+    """The other half of the rule: every assistant step answering one user message trains."""
+    row={"messages":[{"role":"user","content":"Look it up"},
+        {"role":"assistant","reasoning_content":"Need the tool","tool_calls":[call()]},
+        {"role":"tool","tool_call_id":"a","content":"7"},
+        {"role":"assistant","reasoning_content":"Got it","content":"It is 7"}],
+        "tools":[tool()]}
+    exs=supervised_examples(renderer,row)
+    assert len(exs)==2, "a tool chain trains at each assistant step"
+    assert "It is 7" in target_text(renderer,exs[-1])
+
+
+def test_row_ending_on_a_user_turn_is_refused(renderer):
+    """No target after the last user message: refused, not silently contributing nothing."""
+    row={"messages":[{"role":"user","content":"First"},
+        {"role":"assistant","content":"Answer"},
+        {"role":"user","content":"Unanswered follow-up"}]}
+    with pytest.raises(ValueError, match="no assistant turn after its last user message"):
+        supervised_examples(renderer,row)
+
+
 def test_multiple_calls_have_one_handoff_and_all_parse(renderer):
     row={"tools":[tool(),tool("second")],"messages":[{"role":"user","content":"Call both"},
         {"role":"assistant","content":"","tool_calls":[call(),call("second","b",2)]}]}
