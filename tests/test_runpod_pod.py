@@ -337,8 +337,17 @@ def test_a_pod_is_for_training_or_evaluating_and_says_so(tmp_path, monkeypatch):
                target="LASR-Callum/2026-08-31-some-adapter")
 
 
-def _provision_spy(monkeypatch, tmp_path):
-    """Drive `up` far enough to capture the ProvisionSpec it builds, renting nothing."""
+def test_up_does_not_set_a_provider_deadline_because_runpod_ignores_it(tmp_path, monkeypatch):
+    """`terminateAfter` looks like the unattended cap this repo wants. It is not.
+
+    RunPod's API accepts the field and acts on it nowhere: the value is stored on no code
+    path, pods run past the deadline and keep billing, and it cannot even be read back
+    (querying it is an HTTP 400). A `provider_deadline` flag was added here on 2026-10-06
+    and reverted the same day, after two pods were provisioned with a 4h expiry that did
+    not exist. Until runpod/docs#820 and the backend fix land, the ONLY caps are the local
+    watchdog -- which dies with the machine that started it -- and a pod that terminates
+    itself. Anything unattended needs the latter.
+    """
     cfg = tmp_path / "arm.yaml"
     cfg.write_text('model: "Qwen/Qwen3.6-27B"\n')
     seen = {}
@@ -352,28 +361,7 @@ def _provision_spy(monkeypatch, tmp_path):
     monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
     monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
     monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
-    return cfg, seen
 
-
-def test_a_pod_nobody_will_be_watching_expires_provider_side(tmp_path, monkeypatch):
-    # The local watchdog dies with the machine that started it, so a laptop that goes to
-    # sleep leaves the pod billing until a human notices. `provider_deadline` puts the cap
-    # where RunPod itself enforces it, which is the only cap an unattended run can trust.
-    from datetime import datetime, timezone
-
-    cfg, seen = _provision_spy(monkeypatch, tmp_path)
-    pod.up(name="t", train=str(cfg), max_hours=4, provider_deadline=True)
-
-    stamp = seen["spec"].terminate_at
-    assert stamp.endswith("Z"), stamp
-    deadline = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
-    hours = (deadline - datetime.now(timezone.utc)).total_seconds() / 3600
-    assert 3.9 < hours <= 4.0, f"expiry is {hours}h, expected ~4"
-
-
-def test_the_default_pod_keeps_the_local_only_cap(tmp_path, monkeypatch):
-    # Default OFF: the scheduled path takes a different API route that refuses country
-    # lists and finds fewer hosts, so it is opted into, never inherited.
-    cfg, seen = _provision_spy(monkeypatch, tmp_path)
     pod.up(name="t", train=str(cfg), max_hours=4)
-    assert seen["spec"].terminate_at == ""
+    assert seen["spec"].terminate_at == "", (
+        "up() must not promise a provider-side expiry RunPod does not honour")
