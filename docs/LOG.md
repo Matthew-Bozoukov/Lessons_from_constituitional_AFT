@@ -59,6 +59,16 @@ and a monitor keyed on the `uv run` launcher pid declared live drivers dead, aft
 hash-guessed `docker rm`s cost one pod, two driver restarts and ~45 min of cells. Every eval still completed; the ODCV
 harness's per-pass resume absorbed the lost cells. `src/infra/runpod.py` SSH wait raised to 600 s.
 
+Addendum (2026-10-07). da-low-15 on the plain base (`configs/data/mixture/da-low.yaml` repointed at
+2026-10-05-plain-mix; `2026-10-06-da-low-15-mix`, 738 low-stakes rows, 15.0% of supervised tokens; adapter
+`2026-10-06-qwen36-0-da-low-15` @ 3f14bd41, 145 steps, loss 0.683): MASK 85.4 (`2026-10-06-mask-qwen36-0-da-low-15`),
+ODCV MR 12.1% [6.4, 21.5], severity 0.44, progress 4.99 (`2026-10-07-odcv-qwen36-0-da-low-15`). Against da-15 on the
+same base (82.7 / 13.3% / 0.49) the stakes of the advice scenarios make no difference, as on the old base (2026-10-04).
+Two guard fixes on the way: plain-mix's new `reasoning_traces` block (added so arm cards stop saying "none") tripped
+`check_trace_family`, which now passes a block with `origin: published` for every family (90409b26); the arm mix's own
+inherited block needed the field added on the Hub. ODCV alone on the laptop at concurrency 32 took 85 min end to end
+against 3.5 h for four arms at 16, confirming the Docker Desktop overhead reading above.
+
 Next. (1) Decide whether the MASK control drop matters: it is a refusal reflex, not deliberation, and da restores
 honesty on both bases anyway. (2) Match optimiser steps for the plain pair (`train.grad_accum=4`) before reading the
 da-msm-15 vs da-15 gap as a base effect. (3) Seed replicates of da-msm-15 and da-15 (the ODCV CIs overlap).
