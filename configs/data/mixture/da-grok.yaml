@@ -1,0 +1,40 @@
+# ABOUTME: The all-grok difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a
+# ABOUTME: synthetic share written end to end by grok (configs/data/synth/da-grok.yaml). Publishes as `<date>-da-grok-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-grok.yaml [synthetic_pct=15]
+#
+# configs/data/mixture/da.yaml with one thing changed: the synthetic source. Same base, same pin, same share
+# unit, so an adapter trained on this mix differs from the da one only in which models wrote the da rows.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-grok:
+    # 2026-10-03: 1,455 rows from da-grok.yaml @ f19e7844 -- grok-4.3 writer and prompt drafter, grok-4.6 prompt reviser
+    # and both response stages at `reasoning: {effort: low}` -- as a 950-scenario run plus a 520-scenario extend_from
+    # top-up with the sector walk continued (output/derived/extend/da-grok.yaml), 13 rows dropped by the lint. About
+    # 515 supervised tokens per row, so a 15% share takes about 1,415 rows. Replies copy the person's message less
+    # than at high effort (10% of reply words in 6+ word runs, 26 rows over 30%; the da corpus: 1%).
+    # The 2026-10-02 corpus at high effort (2026-10-02-da-grok-synth @ 23188080: 23% copied, 366 rows over 30%)
+    # is what 2026-10-02-da-grok-15-mix @ 45556cfb and 2026-10-02-qwen36-0-da-grok-15 were built from.
+    dataset: "${oc.env:HF_ORG}/2026-10-03-da-grok-synth"
+    revision: "d977e96a6c081425fd9cc2d43e19faea6771bc3c"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_grok"
+
+hf:
+  experiment: "all-grok difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share written end to end by grok-4.3 and grok-4.6, the teacher-side comparison for the Haiku-and-Sonnet difficult-advice baseline"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

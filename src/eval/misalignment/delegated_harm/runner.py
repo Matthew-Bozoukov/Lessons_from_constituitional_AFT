@@ -1,10 +1,11 @@
 # ABOUTME: Run three requester conditions through isolated in-memory benchmark worlds.
-# ABOUTME: Freeze same-checkpoint requests first, save complete traces, then judge actions.
+# ABOUTME: Prepare or reuse frozen requests, save complete traces, then judge actions.
 from __future__ import annotations
 
 import copy
 import inspect
 import json
+import hashlib
 import random
 import shutil
 import time
@@ -270,6 +271,13 @@ def judge_input(sc, trace, notes, candidates, concern_rubric):
 
 
 def summarize(records, schedule, deliveries=DELIVERIES):
+    planned_by_id = {c['id']: c for c in schedule}
+    if len(planned_by_id) != len(schedule) or len({r['id'] for r in records}) != len(records):
+        raise ValueError('Duplicate delegated-harm schedule or result IDs')
+    for row in records:
+        if row['id'] not in planned_by_id or any(row[k] != planned_by_id[row['id']][k]
+                                                for k in ('scenario', 'delivery', 'variant', 'repeat', 'seed')):
+            raise ValueError('Delegated-harm result does not match its scheduled cell')
     result = {"scheduled": len(schedule), "recorded": len(records),
               "interpretation": "Checkpoint comparison; repeats are not training seeds. AI prompts differ across checkpoints.",
               "arms": {}}
@@ -279,6 +287,7 @@ def summarize(records, schedule, deliveries=DELIVERIES):
         valid = [r for r in rows if r.get("metrics")]
         arm = {"scheduled": len(planned), "recorded": len(rows), "valid": len(valid),
                "missing_or_invalid": len(planned) - len(valid), "rates": {}, "per_scenario": {}}
+        arm['joint_success_bounds_all_scheduled'] = [0.0, 1.0] if planned else None
         if valid:
             arm["rates"] = {k: sum(r["metrics"][k] for r in valid) / len(valid)
                             for k in valid[0]["metrics"]}
@@ -294,12 +303,62 @@ def summarize(records, schedule, deliveries=DELIVERIES):
     return result
 
 
+def request_bank(author_records, target, cfg, manifest):
+    """Export the exact author outputs once, for reuse across responder checkpoints."""
+    return {'version': 1, 'source': {k: manifest[k] for k in (
+        'revision', 'patches', 'worlds', 'human_requests_sha256', 'source_notes_sha256')},
+        'author': asdict(target.spec), 'author_config': OmegaConf.to_container(cfg.author, resolve=True),
+        'variants': int(cfg.author.variants), 'subject_model_label': str(cfg.subject_model_label),
+        'requests': {f'{k}__v{v}': r for (k, v), r in author_records.items()}}
+
+
+def load_request_bank(cfg, manifest, scenarios):
+    """Require immutable bytes, matching worlds and complete accepted author variants."""
+    from src.infra.huggingface import hf_download
+    bank = cfg.author.get('bank') or {}
+    if bank.get('path'):
+        path = Path(str(bank['path']))
+    elif bank.get('repo') and bank.get('revision'):
+        if len(str(bank['revision'])) != 40:
+            raise ValueError('Frozen request bank needs an exact HF commit')
+        path = Path(hf_download(str(bank['repo']), str(bank.get('file', 'metadata/request_bank.json')),
+                                repo_type='dataset', revision=str(bank['revision'])))
+    else:
+        raise ValueError('Frozen requests need author.bank.path or a pinned HF repo/revision')
+    data = path.read_bytes()
+    sha = hashlib.sha256(data).hexdigest()
+    if not bank.get('sha256') or sha != str(bank['sha256']):
+        raise ValueError('Frozen request bank SHA256 is missing or mismatched')
+    payload = json.loads(data)
+    expected_source = {k: manifest[k] for k in (
+        'revision', 'patches', 'worlds', 'human_requests_sha256', 'source_notes_sha256')}
+    if (payload.get('version') != 1 or payload.get('source') != expected_source
+            or payload.get('variants') != int(cfg.author.variants)
+            or payload.get('subject_model_label') != str(cfg.subject_model_label)
+            or not payload.get('author')):
+        raise ValueError('Frozen request bank protocol/source/identity mismatch')
+    expected = {(k, v) for k in scenarios for v in range(int(cfg.author.variants))}
+    rows = payload['requests']
+    if set(rows) != {f'{k}__v{v}' for k, v in expected}:
+        raise ValueError('Frozen request bank does not cover every scenario/variant')
+    records = {}
+    for k, v in expected:
+        row = rows[f'{k}__v{v}']
+        if (row.get('accepted') is not True or not str(row.get('text', '')).strip()
+                or row.get('sha256') != digest(row['text'])
+                or row.get('scenario') != k or row.get('variant') != v):
+            raise ValueError(f'Invalid frozen author request: {k}__v{v}')
+        records[(k, v)] = row
+    return records, payload, sha, data
+
+
 def checkpoint(out, target, cfg, summary):
     from src.eval.run_eval import _card_fields
     from src.infra.huggingface import push_run_dir
     from src.naming import eval_name
     save(out / "results/results.json", summary)
     lines = ["# Delegated-harm results", "",
+             summary.get('interpretation', ''), "",
              "Rates below use valid judgments. Missing or interrupted episodes are listed separately.", "",
              "| Requester | Judged / scheduled | Useful work complete | Joint success | Harmful action | Concern to another human |",
              "|---|---:|---:|---:|---:|---:|"]
@@ -332,40 +391,104 @@ def checkpoint(out, target, cfg, summary):
 def run(target, cfg, out_dir):
     if cfg.get("scaling") or cfg.get("recovery"):
         raise ValueError("Recovery/scaling is experimental; use scratch/delegated_harm/run_eval.py")
+    request_mode = str(cfg.author.get('mode', 'frozen'))
+    if request_mode not in {'self_authored', 'frozen'}:
+        raise ValueError('author.mode must be self_authored or frozen')
+    prepare_only = bool(cfg.author.get('prepare_only', False))
+    if prepare_only and (request_mode != 'self_authored' or cfg.author.get('bank')):
+        raise ValueError('Bank preparation requires author.mode=self_authored and no author.bank')
+    deliveries = tuple(cfg.get('deliveries') or DELIVERIES)
+    if len(set(deliveries)) != len(deliveries) or set(deliveries) - set(DELIVERIES):
+        raise ValueError('Delegated-harm deliveries must be unique supported conditions')
+    needs_authors = prepare_only or any(d != 'chat_human' for d in deliveries)
+    if needs_authors and request_mode == 'frozen' and not cfg.author.get('bank'):
+        raise ValueError('Frozen requests need author.bank; first prepare and pin one shared request bank')
     scenarios, human, notes, manifest = prepare(cfg)
     if set(scenarios) != set(COMPONENTS):
         raise ValueError("Selected scenario set needs an exact predeclared rubric set")
     expected = cfg.get("expected_revisions", {}).get(target.spec.hf_path)
     if expected and target.spec.revision != expected:
         raise ValueError("Target revision drifted from the configured pin")
-    if cfg.get("expected_base_revision") and target.spec.base_revision != cfg.expected_base_revision:
+    base_pin = cfg.get('expected_base_revision') or cfg.get('expected_base_revisions', {}).get(target.spec.base_model)
+    if base_pin and target.spec.base_revision != base_pin:
         raise ValueError("Base revision drifted from the shared evaluation pin")
+    if min(int(cfg.author.variants), int(cfg.generation.repetitions), int(cfg.generation.max_turns)) < 1:
+        raise ValueError('Delegated-harm variant, repeat and turn counts must be positive')
+    author_records, bank_payload, bank_sha, bank_bytes = {}, None, None, None
+    if needs_authors and request_mode == 'frozen':
+        author_records, bank_payload, bank_sha, bank_bytes = load_request_bank(cfg, manifest, scenarios)
     for name in ("metadata", "rollouts", "results"):
         (out_dir / name).mkdir(parents=True, exist_ok=True)
     manifest.update(target=asdict(target.spec), components=COMPONENTS,
+                    request_mode=request_mode, request_bank_sha256=bank_sha,
                     protocol=OmegaConf.to_container(cfg, resolve=True))
     manifest["implementation_sha256"] = {name: digest((Path(__file__).parent / name).read_text(encoding="utf-8"))
                                            for name in ("source.py", "runner.py", "judging.py", "rubrics.py")}
-    save(out_dir / "metadata/protocol.json", manifest)
+    protocol_path = out_dir / 'metadata/protocol.json'
+    if protocol_path.exists() and json.loads(protocol_path.read_text(encoding='utf-8')) != manifest:
+        raise ValueError('Delegated-harm run identity changed; use a fresh output directory')
+    if any((out_dir / 'rollouts').glob('*.json')):
+        raise ValueError('Episode replay is not a resume protocol; use explicit recovery or a fresh run')
+    save(protocol_path, manifest)
     save(out_dir / "metadata/human_requests.json", {k: human[k] for k in scenarios})
     judge = Judge(cfg.judge, out_dir)
     client = OpenAI(base_url=target.base_url, api_key=target.api_key,
                     timeout=float(cfg.generation.request_timeout), max_retries=1)
-    author_records = {}
-    with ThreadPoolExecutor(max_workers=int(cfg.generation.parallel)) as pool:
-        futures = {pool.submit(author_one, client, target.model_name, sc, notes[k]["clear"],
-                    variant, cfg, judge, out_dir / "metadata/authors" / f"{k}__v{variant}.json"):
-                   (k, variant) for k, sc in scenarios.items() for variant in range(int(cfg.author.variants))}
-        for future in as_completed(futures):
-            key = futures[future]
-            author_records[key] = future.result()
-            print(f">>> author {key}: {'accepted' if author_records[key]['accepted'] else 'FAILED'}", flush=True)
+    if needs_authors and request_mode == 'self_authored':
+        with ThreadPoolExecutor(max_workers=int(cfg.generation.parallel)) as pool:
+            futures = {pool.submit(author_one, client, target.model_name, sc, notes[k]["clear"],
+                        variant, cfg, judge, out_dir / "metadata/authors" / f"{k}__v{variant}.json"):
+                       (k, variant) for k, sc in scenarios.items() for variant in range(int(cfg.author.variants))}
+            for future in as_completed(futures):
+                key = futures[future]
+                author_records[key] = future.result()
+                print(f">>> author {key}: {'accepted' if author_records[key]['accepted'] else 'FAILED'}", flush=True)
+    if prepare_only:
+        # Authoring must finish and validate independently of responder outcomes.
+        # Keep failed candidates/attempts as evidence, never label one a usable bank.
+        candidate = out_dir / 'metadata/request_bank_candidate.json'
+        save(candidate, request_bank(author_records, target, cfg, manifest))
+        validation_cfg = OmegaConf.merge(cfg)
+        validation_cfg.author.bank = {'path': str(candidate),
+                                      'sha256': hashlib.sha256(candidate.read_bytes()).hexdigest()}
+        summary = {
+            'artifact_type': 'delegated_harm_request_bank', 'behavioral_evaluation': False,
+            'request_mode': request_mode, 'author': asdict(target.spec),
+            'expected_requests': len(scenarios) * int(cfg.author.variants),
+            'accepted_requests': sum(r.get('accepted') is True for r in author_records.values()),
+            'scheduled': 0, 'recorded': 0,
+            'judge_usd': judge.ledger['charged_or_reserved_usd'],
+            'interpretation': 'Request authoring and validation only; no responder behavior was evaluated.',
+        }
+        try:
+            _, _, bank_sha, _ = load_request_bank(validation_cfg, manifest, scenarios)
+        except ValueError as exc:
+            summary.update(status='request_bank_preparation_failed', error=str(exc))
+            save(out_dir / 'metadata/request_bank_preparation.json', summary)
+            raise ValueError('Request bank preparation failed; author attempts and candidate retained') from exc
+        candidate.replace(out_dir / 'metadata/request_bank.json')
+        summary.update(status='request_bank_prepared', request_bank_sha256=bank_sha,
+                       request_bank_file='metadata/request_bank.json')
+        save(out_dir / 'metadata/request_bank_preparation.json', summary)
+        (out_dir / 'metadata/request_bank_preparation.md').write_text(
+            '# Delegated-harm request bank\n\n'
+            + summary['interpretation'] + '\n\n'
+            + f"Validated {summary['accepted_requests']} requests. "
+            + f"Byte SHA256: `{bank_sha}`.\n"
+            + 'Review and pin this bank before running responder comparisons.\n', encoding='utf-8')
+        # Empty results/: the shared epilogue files this as an artifact summary under
+        # metadata, just as it does for reusable Arena answers. No capability score.
+        return summary
+    if needs_authors:
+        bank_payload = bank_payload or request_bank(author_records, target, cfg, manifest)
+        bank_path = out_dir / 'metadata/request_bank.json'
+        if bank_bytes is not None:
+            bank_path.write_bytes(bank_bytes)
+        else:
+            save(bank_path, bank_payload)
     save(out_dir / "metadata/authorship_frozen.json", {
         f"{k}__v{v}": {"accepted": r["accepted"], "sha256": r.get("sha256")}
         for (k, v), r in author_records.items()})
-    deliveries = tuple(cfg.get("deliveries") or DELIVERIES)
-    unknown = [d for d in deliveries if d not in DELIVERIES]
-    assert not unknown, f"deliveries={unknown} unknown; pick from {DELIVERIES}"
     schedule = cells(list(scenarios), int(cfg.author.variants),
                      int(cfg.generation.repetitions), int(cfg.seed), deliveries)
     save(out_dir / "metadata/schedule.json", schedule)
@@ -374,7 +497,7 @@ def run(target, cfg, out_dir):
     def one(cell):
         sc = scenarios[cell["scenario"]]
         rec = dict(cell)
-        author = author_records[(sc.key, cell["variant"])]
+        author = author_records.get((sc.key, cell["variant"]), {})
         if cell["delivery"] != "chat_human" and not author["accepted"]:
             rec["status"] = "author_failure"
             save(out_dir / "results/episodes" / f"{cell['id']}.json", rec)
@@ -395,6 +518,10 @@ def run(target, cfg, out_dir):
         for future in as_completed(futures):
             records.append(future.result())
             summary = summarize(records, schedule, deliveries)
+            summary.update(request_mode=request_mode, request_bank_sha256=bank_sha,
+                interpretation=('Fixed requests across responders only when the request-bank hashes match; repeats are not training seeds.'
+                                if request_mode == 'frozen' else
+                                'Joint author-plus-responder comparison: AI request wording differs across checkpoints.'))
             summary["excluded_scenarios"] = dict(cfg.source.excluded)
             summary["judge_usd"] = judge.ledger["charged_or_reserved_usd"]
             save(out_dir / "results/results.json", summary)

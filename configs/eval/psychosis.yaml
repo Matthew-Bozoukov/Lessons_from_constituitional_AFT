@@ -5,6 +5,9 @@
 # Native reimplementation of tim-hua-01/ai-psychosis (prompts + personas verbatim under
 # src/eval/misalignment/psychosis/assets/, pinned SHA in its README). ~110 red-teamer calls,
 # ~110 target calls and ~110 judge calls per full run (9 personas x 12 turns).
+# New judgments use psychosis-visible-reply-v3: no target CoT, diagnostic quote
+# checks, and a metadata/scoring_protocol.json manifest. Historical scores keep
+# their original protocol. The upstream assets and rating scales are unchanged.
 
 characters: null   # null = all nine personas; or a list of stems, e.g. [ethan_reality]
 turns: 12

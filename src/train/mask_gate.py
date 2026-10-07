@@ -17,10 +17,13 @@ principles carried over from that script:
   the row's `supervise` mode so a mode held by a small minority of rows (a CoT-only
   arm's 716 in 10,000) cannot slip through the sample unexercised.
 
-The census enforces the preserve-thinking data policy (2026-08-04): under
-`thinking: true` every assistant turn carries a think block — reasoning where the source
-has it, the empty marker where it does not — so `absent` must be 0. The empty share is
-reported, not asserted: "mostly non-empty" is a per-mixture judgement.
+The census enforces the data policy: under `thinking: true` every assistant turn the model
+GENERATES carries a think block — reasoning where the source has it, the empty marker
+where it does not. Since 2026-10-05 the family's template renders reasoning only from the
+last real user message onwards, so a turn BEFORE that message legitimately has no block
+(it is history, and the mask gives it no loss); a turn after it without one is still
+refused. The empty share is reported, not asserted: "mostly non-empty" is a per-mixture
+judgement.
 """
 
 from __future__ import annotations
@@ -34,18 +37,37 @@ _TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.DOTALL)
 # on. This module keeps its own copy of the header literal rather than taking the
 # profile's — the point of the gate is that it re-derives everything independently.
 _ASSISTANT_HEADER = "<|im_start|>assistant\n"
+# A real user message, as opposed to a tool result (which this family renders inside a
+# user turn, wrapped in <tool_response>). Again this module's own copy of the literals.
+_USER_QUERY = re.compile(r"<\|im_start\|>user\n(?!\s*<tool_response>)")
+
+
+def blockless_after_last_query(text: str) -> int:
+    """Assistant turns AFTER the last real user message that open with no think block.
+
+    Those are turns the model generates in this row, so each must carry a block; one
+    that does not would be trained from a position serving never samples. Turns before
+    that message are history and are not counted.
+    """
+    queries = [m.start() for m in _USER_QUERY.finditer(text)]
+    start = queries[-1] if queries else 0
+    return sum(1 for m in _TURN.finditer(text, start) if not m.group(1).startswith("<think>"))
 
 GATE_SAMPLE = 64  # decode-checked rows PER SUPERVISE MODE; the census covers every row
 
 
 def expected_supervised_text(text: str, prefill: str, empty_think: str,
-                             supervise: str = "all",
+                             supervise: str = "full",
                              think_close: str = "</think>") -> str:
     """Independently derive the exact characters the mask should supervise.
 
     Assistant turns (content after the header through `<|im_end|>`), minus each turn's
     forced head — the WHOLE empty marker on a no-reasoning turn (the model never
     generates an empty close), else the bare thinking prefill — concatenated in order.
+
+    A turn with no think block is HISTORY when any other turn of the row has one (the
+    template drops reasoning before the last real user message, and the mask gives such
+    a turn no loss), so it is expected to decode to nothing.
 
     Under `supervise="final"` only the LAST assistant turn is expected: every earlier
     one is context (a par row's un-repaired first reply, an agentic row's exploration
@@ -59,11 +81,12 @@ def expected_supervised_text(text: str, prefill: str, empty_think: str,
         text: A rendered chat conversation.
         prefill: The profile's thinking-prefill literal.
         empty_think: The profile's empty-marker literal.
-        supervise: The row's mode — "all" concatenates every assistant turn, "final"
-            keeps the last one; "cot" and "answer" select the final turn's respective span.
-        think_close: The profile's reasoning-close literal for "cot" and "answer".
+        supervise: The row's mode — "full" concatenates every generated assistant turn,
+            "final" keeps the last one; "cot" and "response" select the final turn's
+            respective span.
+        think_close: The profile's reasoning-close literal for "cot" and "response".
     """
-    if supervise in ("cot", "answer"):
+    if supervise in ("cot", "response"):
         i = text.rfind(_ASSISTANT_HEADER)
         assert i != -1, f"{supervise} row has no assistant turn"
         body = text[i + len(_ASSISTANT_HEADER):]
@@ -78,6 +101,8 @@ def expected_supervised_text(text: str, prefill: str, empty_think: str,
         return body[close:end]
     parts = []
     bodies = [m.group(1) for m in _TURN.finditer(text)]
+    if any(b.startswith(prefill) for b in bodies):
+        bodies = [b for b in bodies if b.startswith(prefill)]
     if supervise == "final":
         # Until 2026-09-05 this branch did not exist and a two-assistant-turn row under
         # "final" always tripped the gate — the mask was right, the expectation was not.
@@ -128,17 +153,20 @@ def gate_generation_boundary(texts, tokenizer, max_length: int,
     from src.train.masking import build_labels  # local import keeps independence visible
 
     texts = list(texts)
-    modes = ["all"] * len(texts) if supervise is None else \
-        [m or "all" for m in supervise]
+    from src.train.masking import supervise_mode
+    modes = ["full"] * len(texts) if supervise is None else \
+        [supervise_mode(m) for m in supervise]
     assert len(modes) == len(texts), \
         f"supervise has {len(modes)} entries for {len(texts)} rows"
     census = think_census(texts)
     if thinking:
-        assert census["absent"] == 0, (
-            f"{census['absent']}/{census['turns']} assistant turns have NO think block. "
-            "Under the preserve-thinking policy every turn carries one (reasoning or the "
-            "empty marker) — rebuild the mixture with the current build_mixture.py; "
-            "pre-policy mixtures are not trainable as-is.")
+        current = sum(blockless_after_last_query(t) for t in texts)
+        census["absent_current"] = current
+        assert current == 0, (
+            f"{current} assistant turns after their row's last user message have NO think "
+            "block. Every turn the model generates carries one (reasoning or the empty "
+            "marker); only history before the last user message may go without. These rows "
+            "were not rendered by this family's template in thinking mode.")
     else:
         assert census["real"] + census["empty"] == 0, (
             "thinking: false, but think blocks are present in the rendered data")
@@ -173,5 +201,6 @@ def gate_generation_boundary(texts, tokenizer, max_length: int,
     breakdown = ", ".join(f"{n} {m}" for m, n in sorted(checked.items()))
     print(f">>> mask gate: {sum(checked.values())} rows decode-verified ({breakdown}; "
           f"{truncated} skipped as truncated); census {census['real']} real / "
-          f"{census['empty']} empty ({share} of turns) / {census['absent']} absent")
+          f"{census['empty']} empty ({share} of turns) / {census['absent']} absent "
+          "(history before the last user message)")
     return census

@@ -1,0 +1,36 @@
+# ABOUTME: The responder-swap difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a
+# ABOUTME: synthetic share whose prompts are the da corpus's and whose responses grok wrote (configs/data/synth/da-grok-resp.yaml).
+# Run: uv run mix --config configs/data/mixture/da-grok-resp.yaml [synthetic_pct=15]
+#
+# configs/data/mixture/da.yaml with one thing changed: the synthetic source. Same base, same pin, same share
+# unit, so an adapter trained on this mix differs from the da one only in who wrote the assistant turn, and from
+# the da-grok one only in who wrote the prompts (Haiku and Sonnet here, grok there).
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  file: mixture.jsonl
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-grok-resp:
+    # 2026-10-03: 1,217 rows: 950 revised prompts sampled (trait-even, seed 0) from the two runs behind 2026-10-02-da-synth's
+    # 1,283 rows, then 279 more of the unused ones (seed 1) as an extend_from top-up, 12 dropped by the lint; grok-4.6 at `reasoning: {effort: low}` drafting and revising the reasoning and reply.
+    dataset: "${oc.env:HF_ORG}/2026-10-03-da-grok-resp-synth"
+    revision: "2f0519496dead43f0dcf34e0fd4c34d29bd8d717"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_grok_resp"
+
+hf:
+  experiment: "responder-swap difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic difficult-advice share whose scenarios and prompts are the Haiku-and-Sonnet da corpus's and whose reasoning and replies grok-4.6 wrote at low effort, the teacher-side comparison that holds the prompts fixed"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

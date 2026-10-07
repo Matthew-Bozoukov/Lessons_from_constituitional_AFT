@@ -27,12 +27,31 @@ from .stage_runtime import (
     run_items_batched,
 )
 from .stage_runtime import _parse_json, _parse_tagged  # single-attempt batch parses
+from .stage_runtime import parse_tool_call
 from .stage_runtime import lint_problems as _lint
 from .hf_cache import read_jsonl
 
 
+def trait_note(notes: dict | None, trait_id: str | None) -> str:
+    """The config's `trait_notes` entry for one unit: its own, else `default`, else ""."""
+    notes = notes or {}
+    return str(notes.get(trait_id, notes.get("default", "")))
+
+
 def _render(template: str, record: dict, ctx: Ctx, **extra) -> str:
-    """Format a config template from shared vars + the record (record wins)."""
+    """Format a config template from shared vars + the record (record wins).
+
+    `{trait_note}` resolves from the top-level `trait_notes:` map by the record's `trait_id`,
+    so every stage that names the slot gives a unit the same note the writer got. A slot with
+    no `trait_notes` configured, or on a record with no `trait_id`, is an error: an empty note
+    there would silently drop guidance the prompt was written to carry.
+    """
+    if "{trait_note}" in template and "trait_note" not in extra and "trait_note" not in record:
+        notes = ctx.cfg.get("trait_notes")
+        if not notes or "trait_id" not in record:
+            raise ValueError("prompt has a {trait_note} slot but "
+                             + ("the config has no trait_notes" if not notes else "the record has no trait_id"))
+        extra = {**extra, "trait_note": trait_note(notes, record["trait_id"])}
     return template.format(**{**ctx.vars, **record, **extra})
 
 
@@ -362,6 +381,78 @@ def _gcd(a: int, b: int) -> int:
     return a
 
 
+def deal_unit_axes(axes: dict[str, dict], unit_ids: list[str],
+                   planned_calls: dict[int, int]) -> dict[tuple[str, int], list[str]]:
+    """Every `per_trait` axis's label for each PLANNED call of each unit: `(axis, unit
+    index) -> [label for call 0, call 1, ...]`.
+
+    Three properties, each of which a modular index (`labels[(ti + bi) % len]`) loses as
+    soon as a stage declares a second per-unit axis or unequal weights:
+
+    - EXACT PER UNIT. A unit's labels are a largest-remainder apportionment of its own
+      weights (`unit_weights` if it has them, else the axis's `weights`) over its own
+      planned calls. When the remainder ties -- 24 labels over 18 calls is a 24-way tie --
+      the slots go to the labels the corpus has seen least so far, so 18-of-24 does not
+      hand every unit the same 18 and leave six labels at zero.
+    - INDEPENDENT ACROSS AXES. Axes are dealt in config order, and each later axis is
+      PLACED against the ones before it: a call takes whichever of the unit's remaining
+      labels has so far met that call's earlier-axis labels least, within the unit first
+      and across the corpus second. Two axes that both stepped one label per call would
+      otherwise be one axis under two names: in the sector x AI design of 2026-10-02 the
+      cyclic index gives every sector the same AI label in every unit.
+    - A `fixed` unit carries its pinned label on every call and takes no part in the
+      apportionment; a later axis still sees that label as the one it is paired with.
+
+    Pure and derived from the plan alone (no RNG), so a resume, a make-up round and the
+    estimator all see the same deal. A make-up call (batch index past the plan) wraps
+    around its unit's own list -- the caller indexes `[bi % len]`.
+    """
+    names = list(axes)
+    dealt: dict[str, dict[str, int]] = {name: {} for name in names}
+    joint: dict[tuple, int] = {}
+    out: dict[tuple[str, int], list[str]] = {}
+    for ti, uid in enumerate(unit_ids):
+        calls = int(planned_calls.get(ti, 0))
+        for k, name in enumerate(names):
+            spec = axes[name]
+            pinned = (spec.get("fixed") or {}).get(uid)
+            if pinned is not None:
+                out[(name, ti)] = [pinned] * calls
+                continue
+            weights = {str(lab): float(w) for lab, w in
+                       ((spec.get("unit_weights") or {}).get(uid) or spec["weights"]).items()}
+            order = list(weights)
+            total = sum(weights.values())
+            exact = {lab: calls * weights[lab] / total for lab in order}
+            left = {lab: int(exact[lab]) for lab in order}
+            spare = sorted(order, key=lambda lab: (-round(exact[lab] - left[lab], 9),
+                                                   dealt[name].get(lab, 0) / weights[lab],
+                                                   order.index(lab)))
+            for lab in spare[: calls - sum(left.values())]:
+                left[lab] += 1
+            before = [(prev, out[(prev, ti)]) for prev in names[:k]]
+            here: dict[tuple, int] = {}
+            seq: list[str] = []
+            for bi in range(calls):
+                met = [(prev, labels[bi]) for prev, labels in before]
+
+                def cost(lab: str) -> tuple:
+                    w = weights[lab]
+                    return (sum(here.get((m, lab), 0) for m in met) / w,
+                            sum(joint.get((m, name, lab), 0) for m in met) / w,
+                            -left[lab] / w, order.index(lab))
+
+                lab = min((c for c in order if left[c] > 0), key=cost)
+                left[lab] -= 1
+                seq.append(lab)
+                dealt[name][lab] = dealt[name].get(lab, 0) + 1
+                for m in met:
+                    here[(m, lab)] = here.get((m, lab), 0) + 1
+                    joint[(m, name, lab)] = joint.get((m, name, lab), 0) + 1
+            out[(name, ti)] = seq
+    return out
+
+
 def sample_labels(labels: list[str], length: int, seed: int, axis: str) -> list[str]:
     """`length` uniform draws from `labels` with EXACT counts (n/k each, +-1), in a seeded
     random order.
@@ -574,7 +665,7 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         diversity:
           avoid: ["academic research: a postdoctoral researcher ...", ...]
           wave_size: 12          # batches per wave; the ban list grows between waves
-          max_carry: 150         # cap on lines carried into a prompt
+          max_carry: 150         # cap on lines carried into a prompt; 0 carries none
           reject_cosine: 0.86    # a scenario this close to an existing one is refused
           max_regen_rounds: 2    # make-up passes for traits left short by rejection
 
@@ -600,6 +691,25 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     is the same failure the `diversity:` block exists for. Proportions are approximate,
     like `assign_arms`' -- the realised split is printed and recorded in the manifest.
 
+    `per_trait: true` deals an axis WITHIN each unit instead of across the run, so every
+    unit meets the labels in the declared proportions (a corpus-wide deal only promises
+    the marginal):
+
+        rotate:
+          ai:
+            per_trait: true
+            weights: {none: 1, other: 1}
+            fixed: {t6: open}            # this unit always carries this label
+            unit_weights: {t1: {none: 1, other: 3}}   # this unit's own split
+            text: {open: "", none: "...", other: "..."}
+
+    `fixed` pins a unit to one label, which may sit outside `weights` when `text`
+    declares it; `unit_weights` replaces the split for one unit. A per-unit axis's text
+    is stamped on each scenario as `<name>_text`, so a later stage renders the same line.
+    One per-unit axis with equal weights is dealt by the cycle `labels[(unit + batch) %
+    len]`, as it always has been. A second per-unit axis, or unequal weights, is dealt by
+    `deal_unit_axes`: exact per unit, and placed so the axes are independent of each other.
+
     Optional `library:` block deals entries from a YAML file, `n` per batch, into one
     rendered prompt variable:
 
@@ -612,6 +722,16 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
           var: archetypes        # prompt variable holding the rendered block
           item: "[{id}] {work} -- {psychological_failure}"   # one entry, one line
 
+    The top-level `trait_notes:` map gives ONE unit guidance no other unit sees:
+
+        trait_notes:
+          default: "- The person facing the decision is a human, ..."
+          t6: "- The situation concerns the values, character or nature of AI, ..."
+
+    rendered as `{trait_note}` in any stage's prompt (see `_render`): a unit's own entry if
+    it has one, else `default`. A unit gets exactly one note, never both, so a fix aimed at
+    one principle cannot prime the rest of the corpus.
+
     Ungated batches (and every batch when there is no `gate:`) render `{<var>}` as the
     empty string, so ONE prompt template covers both halves of the corpus. Which entry a
     scenario actually used is not inferred from the deal -- the model echoes it back in a
@@ -622,12 +742,44 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     div = dict(sc.get("diversity") or {})
     rotate = {k: dict(v) for k, v in (sc.get("rotate") or {}).items()}
     # A preregistered factorial recipe needs every unit to visit every label, not
-    # merely the requested marginal proportions across the whole corpus.
+    # merely the requested marginal proportions across the whole corpus. Unequal weights
+    # are dealt exactly per unit (`deal_unit_axes`); a zero weight is a label that is
+    # never dealt, which is a `fixed`-only label and belongs in `text`, not here.
     for name, spec in rotate.items():
         if spec.get("per_trait"):
-            if not spec.get("weights") or any(w != 1 for w in spec["weights"].values()):
-                raise ValueError(f"{name}: per_trait rotation requires nonempty equal unit weights")
+            if not spec.get("weights") or any(float(w) <= 0 for w in spec["weights"].values()):
+                raise ValueError(f"{name}: per_trait rotation requires nonempty positive weights")
+        # `fixed:` pins a unit to one label instead of rotating it -- for a unit whose
+        # principle only makes sense under that label (2026-09-30: t6, which is about AI,
+        # cannot take the half of an AI axis that says no AI appears).
+        fixed = spec.get("fixed") or {}
+        if fixed and not spec.get("per_trait"):
+            raise ValueError(f"{name}: `fixed` pins units within a per_trait rotation; set per_trait: true")
+        # A pinned label may sit OUTSIDE the weights, so long as `text` declares it: that
+        # is a label no rotating unit ever draws (2026-10-02: t6 pinned to `open`, whose
+        # text is empty, while every other unit splits `none`/`other`).
+        bad = {u: lab for u, lab in fixed.items()
+               if lab not in (spec.get("weights") or {}) and lab not in (spec.get("text") or {})}
+        if bad:
+            raise ValueError(f"{name}: fixed labels not in weights (or declared in text): {bad}")
+        # `unit_weights:` gives a unit its own split in place of the even one -- a share
+        # that follows where a label arises naturally rather than forcing it everywhere
+        # (2026-09-30: assistant-self rows, which the writer produces for t1/t6-t9 but not
+        # t2-t5). Dealt over that unit's planned calls with `deal_labels`.
+        uw = spec.get("unit_weights") or {}
+        if uw and not spec.get("per_trait"):
+            raise ValueError(f"{name}: `unit_weights` sets splits within a per_trait rotation; set per_trait: true")
+        for u, w in uw.items():
+            if u in fixed:
+                raise ValueError(f"{name}: {u} is in both fixed and unit_weights")
+            if not w or set(w) - set(spec.get("weights") or {}) or any(float(v) <= 0 for v in w.values()):
+                raise ValueError(f"{name}: unit_weights.{u} must give positive weights to labels in weights")
     lib_spec = dict(sc.get("library") or {})
+    if "trait_notes" in sc:
+        raise ValueError(f"{sc['name']}: trait_notes is a top-level config key, shared by every stage")
+    trait_notes = {str(k): str(v) for k, v in (cfg.get("trait_notes") or {}).items()}
+    if "{trait_note}" in sys_t + user_t and not trait_notes:
+        raise ValueError(f"{sc['name']}: prompt has a {{trait_note}} slot but the config has no trait_notes")
     # Extra scenario-spec fields beyond the base domain/situation/shortcut shape,
     # mirroring `scenarios_weighted`'s `fields:` block: `required` keys fail the batch
     # loudly when the model omits them, `optional` default to "". Values are stripped
@@ -639,6 +791,15 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
     def fn(ctx, records, ckpt):
         m = model_cfg(ctx.cfg, mk)
         traits = [Trait.from_record(r) for r in records]
+        unknown = set(trait_notes) - {t.trait_id for t in traits} - {"default"}
+        if unknown:
+            raise ValueError(f"{sc['name']}: trait_notes name units this run does not have: "
+                             f"{sorted(unknown)}")
+        for name, spec in rotate.items():
+            stray = (set(spec.get("fixed") or {}) | set(spec.get("unit_weights") or {})) - {t.trait_id for t in traits}
+            if stray:
+                raise ValueError(f"{sc['name']}: rotate.{name}.fixed/unit_weights name units this run does "
+                                 f"not have: {sorted(stray)}")
         # Unit provenance travels WITH the record rather than being joined back to the
         # stage-1 snapshot later: every downstream consumer (metadata export, corpus
         # checks, `balance_by`) then reads it as an ordinary field, and no stage needs
@@ -666,6 +827,25 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         # `mundane` and every `station_mind` to `institutional`, which is one axis wearing
         # two names. See `_axis_walk`.
         walk = {name: _axis_walk(name, len(seq)) for name, seq in deals.items()}
+        # A unit with its own `unit_weights` walks its own deal, sized to its planned calls,
+        # so the split holds per unit; a make-up call (bi past the plan) wraps around it.
+        planned_calls = {ti: sum(1 for t, _b, _n in batches if t == ti) for ti in range(len(traits))}
+        unit_deals = {
+            (name, ti): deal_labels(spec["unit_weights"][traits[ti].trait_id], max(planned_calls[ti], 1))
+            for name, spec in rotate.items()
+            for ti in range(len(traits))
+            if traits[ti].trait_id in (spec.get("unit_weights") or {})
+        }
+        # ONE per-unit axis with equal weights keeps the cyclic deal above and below, label
+        # for label, so every corpus published under it (da-self, da-otherai, the first
+        # 2026-10-01 da) re-deals identically. Anything the cycle cannot express -- a
+        # second per-unit axis, which it would lock to the first, or unequal weights,
+        # which it would ignore -- is dealt by `deal_unit_axes` instead.
+        per_unit = {name: spec for name, spec in rotate.items() if spec.get("per_trait")}
+        cyclic = len(per_unit) <= 1 and all(
+            len({float(w) for w in spec["weights"].values()}) == 1 for spec in per_unit.values())
+        placed = None if cyclic else deal_unit_axes(
+            per_unit, [t.trait_id for t in traits], planned_calls)
 
         def axes_of(spec: tuple) -> dict[str, str]:
             ti, bi, _n = spec
@@ -673,8 +853,15 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             out = {}
             for name, seq in deals.items():
                 if rotate[name].get("per_trait"):
+                    pinned = (rotate[name].get("fixed") or {}).get(traits[ti].trait_id)
+                    if placed is not None:
+                        # A make-up call (bi past the plan) wraps around the unit's own deal.
+                        own = placed[(name, ti)]
+                        out[name] = pinned or own[bi % len(own)]
+                        continue
+                    own = unit_deals.get((name, ti))
                     labels = list(rotate[name]["weights"])
-                    out[name] = labels[(ti + bi) % len(labels)]
+                    out[name] = pinned or (own[bi % len(own)] if own else labels[(ti + bi) % len(labels)])
                     continue
                 stride, offset = walk[name]
                 out[name] = seq[(base * stride + offset) % len(seq)]
@@ -725,8 +912,13 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         max_fail = float(ctx.cfg.get("max_fail_pct", 2.0))
 
         def render_avoid() -> str:
-            """The do-not-repeat list as it stands, newest last, capped."""
-            if not ban:
+            """The do-not-repeat list as it stands, newest last, capped.
+
+            `max_carry: 0` carries NOTHING, in every round: a slice by `-0` is the whole
+            list, which is how a recipe that meant "no list" would have shown a make-up
+            call every scenario written so far.
+            """
+            if not ban or max_carry <= 0:
                 return ""
             return (
                 "These situations already exist in this corpus. Do not write another "
@@ -828,6 +1020,8 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
             }
             if lib_spec:
                 extra_vars[lib_spec.get("var", "library")] = library_block(spec, axes)
+            if "{trait_note}" in sys_t + user_t:
+                extra_vars["trait_note"] = trait_note(trait_notes, t.trait_id)
             return (
                 _render(
                     sys_t,
@@ -1106,6 +1300,9 @@ def _note_batched(ctx: Ctx, name: str) -> None:
 def op_llm_json(sc: dict, cfg: dict) -> Stage:
     """One JSON call per record; `save` maps record fields <- JSON keys.
 
+    `derive: {fn, args}` adds computed prompt vars, as in `llm_tagged` (a list-valued
+    record field shown to the model as JSON rather than Python's repr of it).
+
     Takes the same optional `lint:` block as `llm_tagged`, for the same reason and with the
     same retry semantics. It was missing until 2026-09-03, and the gap was not theoretical:
     a peer-critique smoke shipped a training record whose USER turn ended `</draft_user>` --
@@ -1154,12 +1351,13 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
                         + ". Return the same JSON keys, fixed."
                     )
                 )
+                derived = derive_vars(sc.get("derive"), r)
                 parsed, _ = call_json(
                     ctx.client,
                     ctx.usage,
                     m["model"],
-                    _render(sys_t, r, ctx),
-                    _render(user_t, r, ctx) + nudge,
+                    _render(sys_t, r, ctx, **derived),
+                    _render(user_t, r, ctx, **derived) + nudge,
                     m["temperature"],
                     m["max_tokens"],
                     stage=mk,
@@ -1194,11 +1392,12 @@ def op_llm_json(sc: dict, cfg: dict) -> Stage:
             from src.infra.endpoints.openrouter import build_request_body
 
             def build(r: dict) -> dict:
+                derived = derive_vars(sc.get("derive"), r)
                 return build_request_body(
                     m["model"],
                     [
-                        {"role": "system", "content": _render(sys_t, r, ctx)},
-                        {"role": "user", "content": _render(user_t, r, ctx)},
+                        {"role": "system", "content": _render(sys_t, r, ctx, **derived)},
+                        {"role": "user", "content": _render(user_t, r, ctx, **derived)},
                     ],
                     m["temperature"],
                     m["max_tokens"],
@@ -1885,6 +2084,35 @@ def _structured(record: dict, ref) -> list:
     return value
 
 
+def _calls(record: dict, ref) -> list:
+    """An assistant turn's calls from a record field: a list in the interchange shape, ONE
+    `{"name", "arguments"}` object (how a tagged stage writes the single call it makes), or
+    the JSON text of either. Empty text is a turn that makes no call."""
+    value = record[ref]
+    if isinstance(value, str) and not value.strip():
+        return []
+    if isinstance(value, str):
+        value = _parse_json(value)
+    if isinstance(value, dict):
+        one = parse_tool_call(value)
+        return [{"type": "function", "function": one}]
+    return _structured({ref: value}, ref)
+
+
+def _step_messages(record: dict, ref: str) -> list[dict]:
+    """The turns a row's earlier steps export as: for each `{reasoning, tool, arguments,
+    result}`, an assistant turn making that one call and a tool turn carrying the result."""
+    out = []
+    for st in _structured(record, ref):
+        out.append({"role": "assistant", "content": "",
+                    "reasoning_content": str(st.get("reasoning") or ""),
+                    "tool_calls": [{"type": "function",
+                                    "function": {"name": st["tool"],
+                                                 "arguments": st.get("arguments") or {}}}]})
+        out.append({"role": "tool", "content": str(st.get("result") or "")})
+    return out
+
+
 def _templated(value, record: dict):
     """Format every string inside a nested spec against the record (dicts/lists recurse)."""
     if isinstance(value, str):
@@ -1917,13 +2145,27 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
     the row, the same object an eval harness passes to the server as `tools=`.
     build_mixture refuses a calling row without them, so declare them whenever any
     entry carries calls.
+
+    A row whose history is not a fixed number of turns names it instead of listing it:
+    the entry `{steps_from: <field>, count_as: <name>}` expands to one assistant call
+    and one tool result per step the record holds (`[{reasoning, tool, arguments,
+    result}]`, possibly none), and `count_as` makes the number of steps available to
+    `metadata`. `tool_calls: <field>` also accepts the ONE `{"name", "arguments"}`
+    object a tagged stage writes, or empty text for a turn that makes no call.
     """
 
     def fn(ctx, records, ckpt):
         out = []
         for r in records:
             msgs = []
+            counts: dict[str, int] = {}
             for m in sc["messages"]:
+                if "steps_from" in m:
+                    steps = _step_messages(r, m["steps_from"])
+                    msgs += steps
+                    if m.get("count_as"):
+                        counts[m["count_as"]] = len(steps) // 2
+                    continue
                 cond = m.get("when")
                 if cond and not int(r.get(cond["field"], 0)) >= int(cond["min"]):
                     continue
@@ -1936,7 +2178,7 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
                 if "reasoning_content" in m:
                     msg["reasoning_content"] = m["reasoning_content"].format(**r)
                 if "tool_calls" in m:
-                    calls = _structured(r, m["tool_calls"])
+                    calls = _calls(r, m["tool_calls"])
                     if calls:
                         msg["tool_calls"] = calls
                 if "tool_calls_from" in m:
@@ -1948,7 +2190,8 @@ def op_chat_export(sc: dict, cfg: dict) -> Stage:
                 msgs.append(msg)
             row = {
                 "messages": msgs,
-                "metadata": {k: r.get(k, "") for k in sc["metadata"]},
+                "metadata": {k: counts[k] if k in counts else r.get(k, "")
+                             for k in sc["metadata"]},
             }
             if "tools" in sc:
                 row["tools"] = _structured(r, sc["tools"])
@@ -2289,15 +2532,21 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
     final snapshot differently, and baking one document type's filename into the operator
     would be exactly the hardcoding the engine is not allowed to do.
     """
-    snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
+    default_snapshot = str((cfg.get("source") or {}).get("snapshot") or "stage_6_final.jsonl")
 
     def load_records(spec: dict) -> tuple[list[dict], dict, str]:
+        snapshot = str(spec.get("snapshot") or default_snapshot)
         if spec.get("local_dir"):
             d = Path(spec["local_dir"])
             mpath = d / "manifest.json"
             manifest = json.loads(mpath.read_text()) if mpath.exists() else {}
             return read_jsonl(d / snapshot), manifest, str(d)
         repo = spec["hf_repo"]
+        # `revision:` pins the source to one commit of its repo. A corpus repo's head moves
+        # (today's extension of 2026-10-02-da-synth replaced its stage snapshots with the
+        # second run's), so a source named without a revision is whatever is there now.
+        rev = {"revision": str(spec["revision"])} if spec.get("revision") else {}
+        label = f"{repo}@{str(spec['revision'])[:8]}" if spec.get("revision") else repo
         from huggingface_hub.utils import EntryNotFoundError
 
         from src.infra.huggingface import hf_download
@@ -2305,37 +2554,94 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
         # New-layout repos keep snapshots under stages/ (dataset.jsonl at the root);
         # pre-layout repos hold them at the root — try the exact name, then stages/.
         try:
-            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset")))
+            records = read_jsonl(Path(hf_download(repo, snapshot, repo_type="dataset", **rev)))
         except EntryNotFoundError:
             records = read_jsonl(
-                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset"))
+                Path(hf_download(repo, f"stages/{snapshot}", repo_type="dataset", **rev))
             )
         try:
             manifest = json.loads(
                 Path(
-                    hf_download(repo, "manifest.json", repo_type="dataset")
+                    hf_download(repo, "manifest.json", repo_type="dataset", **rev)
                 ).read_text()
             )
         except EntryNotFoundError:
             manifest = {}
-        return records, manifest, repo
+        return records, manifest, label
+
+    def sample_records(records: list[dict], spec: dict) -> list[dict]:
+        """`sample: {total, by, seed}` -- `total` records, spread evenly over the values of
+        field `by` (largest groups give up the remainder), drawn with a seeded RNG inside
+        each group. The ids drawn go into the manifest, so the draw is a record, not a
+        coincidence. Fails loudly if the source cannot fill a group's share."""
+        total, by, seed = int(spec["total"]), str(spec["by"]), int(spec.get("seed", 0))
+        groups: dict[str, list[dict]] = {}
+        for r in records:
+            groups.setdefault(str(r.get(by)), []).append(r)
+        names = sorted(groups)
+        share, extra = divmod(total, len(names))
+        out: list[dict] = []
+        for i, name in enumerate(names):
+            k = share + (1 if i < extra else 0)
+            pool = groups[name]
+            if k > len(pool):
+                raise ValueError(f"source sample: {by}={name} has {len(pool)} records, "
+                                 f"fewer than the {k} its share of {total} needs")
+            out += random.Random(f"{seed}:{name}").sample(pool, k)
+        return out
 
     def fn(ctx, records, ckpt):
-        source, src_manifest, label = load_records(ctx.cfg["source"])
+        src_cfg = ctx.cfg["source"]
+        # One source (`hf_repo`/`local_dir`), or several under `runs:` -- a corpus made by
+        # a run plus its extension lives at two revisions of one repo.
+        specs = list(src_cfg.get("runs") or [src_cfg])
         sha = hashlib.sha256(ctx.constitution.encode()).hexdigest()
-        src_sha = src_manifest.get("constitution_sha256")
-        # Reasoning and critiques are grounded in cfg's constitution; a source run
-        # generated against a different one would silently cross arms.
-        assert src_sha is None or src_sha == sha, (
-            f"source run {label} was generated against a different constitution "
-            f"(sha {src_sha[:12]} != {sha[:12]}). Point cfg.constitution at the "
-            f"source run's constitution or pick a matching source."
-        )
+        source: list[dict] = []
+        runs_meta: list[dict] = []
+        for spec in specs:
+            recs, src_manifest, label = load_records(spec)
+            src_sha = src_manifest.get("constitution_sha256")
+            # Reasoning and critiques are grounded in cfg's constitution; a source run
+            # generated against a different one would silently cross arms.
+            assert src_sha is None or src_sha == sha, (
+                f"source run {label} was generated against a different constitution "
+                f"(sha {src_sha[:12]} != {sha[:12]}). Point cfg.constitution at the "
+                f"source run's constitution or pick a matching source."
+            )
+            source += recs
+            runs_meta.append({"source_run": label, "n_records": len(recs),
+                              "source_git_sha": src_manifest.get("git_sha"),
+                              "source_constitution_sha256": src_sha})
+        ids = [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]
+        dup = {i for i in ids if ids.count(i) > 1} if len(specs) > 1 else set()
+        assert not dup, f"source runs share scenario ids ({sorted(dup)[:3]} ...); every id-keyed join would take the wrong row"
+        # `extend_from`: the prompts the prior corpus already answered are set aside, so
+        # the sample (or the whole pool) is drawn from what it has not -- the run adds
+        # rows to the corpus instead of answering the same prompts twice.
+        prior = getattr(ctx, "prior", None)
+        set_aside = 0
+        if prior is not None:
+            before = len(source)
+            source = [r for r in source
+                      if str(r.get("scenario_id") or r.get("record_id") or "") not in prior.ids]
+            set_aside = before - len(source)
+            print(f">>> load_source_run: extend_from -- {set_aside} prompts already answered in "
+                  f"{prior.repo}@{prior.revision[:8]} set aside; {len(source)} remain", flush=True)
+        if src_cfg.get("sample"):
+            source = sample_records(source, src_cfg["sample"])
+        label = runs_meta[0]["source_run"] if len(runs_meta) == 1 else " + ".join(m["source_run"] for m in runs_meta)
         ctx.manifest_extra["source"] = {
             "source_run": label,
-            "source_git_sha": src_manifest.get("git_sha"),
-            "source_constitution_sha256": src_sha,
+            "source_git_sha": runs_meta[0]["source_git_sha"],
+            "source_constitution_sha256": runs_meta[0]["source_constitution_sha256"],
+            "runs": runs_meta,
+            "set_aside_prior_ids": set_aside,
+            "sample": ({**dict(src_cfg["sample"]), "n_drawn": len(source),
+                        "drawn_ids": [str(r.get("scenario_id") or r.get("record_id") or "") for r in source]}
+                       if src_cfg.get("sample") else None),
         }
+        print(f">>> load_source_run: {len(source)} records from {label}" +
+              (f" (sampled {src_cfg['sample']['total']} by {src_cfg['sample']['by']})" if src_cfg.get("sample") else ""), flush=True)
         (ctx.run_dir / "source_meta.json").write_text(
             json.dumps(ctx.manifest_extra["source"], indent=2)
         )

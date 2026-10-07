@@ -79,6 +79,7 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.delegated_harm",
         "configs/eval/delegated_harm.yaml",
         key="dh",
+        supports_api_target=True,
     ),
     "mmlu": EvalSpec(
         "capabilities.mmlu",
@@ -100,6 +101,10 @@ EVALS: dict[str, EvalSpec] = {
         # published as `<date>-ah-vs-<baseline>`.
         pools=True,
     ),
+    "morebench": EvalSpec(
+        "capabilities.morebench", "configs/eval/morebench.yaml", key="morebench",
+        supports_api_target=True,
+    ),
     # The STANDARDIZED baseline: upstream mini-SWE-agent, pinned, config untouched. A custom
     # scaffold gets its own registry entry — never fold one into the other.
     "swebench_mini": EvalSpec(
@@ -107,6 +112,8 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/swebench_mini.yaml",
         key="swebench",
         needs_docker=True,
+        supports_api_target=True,  # run_eval restricts this to the separate Tinker protocol
+        name_facets=("protocol",),
     ),
     "internalization": EvalSpec(
         "misalignment.internalization",
@@ -117,6 +124,7 @@ EVALS: dict[str, EvalSpec] = {
         "misalignment.agentic_misalignment",
         "configs/eval/agentic_misalignment.yaml",
         key="am",
+        supports_api_target=True,
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",
@@ -236,14 +244,13 @@ EVALS: dict[str, EvalSpec] = {
     # secret_number: a noisy-oracle guessing game whose sandbox leaves two shortcuts lying
     # around (the answer is readable, the query budget is a deletable file). Needs docker —
     # one container per episode — but the agent loop and the model call both run driver-side,
-    # so an endpoint target works: it is written for `tinker://` checkpoints.
+    # so both API/shim targets and a vLLM tool-calling target use the same driver.
     "secret_number": EvalSpec(
         "misalignment.secret_number",
         "configs/eval/secret_number.yaml",
         key="sn",
         needs_docker=True,
         supports_api_target=True,
-        tinker_only=True,
     ),
 }
 

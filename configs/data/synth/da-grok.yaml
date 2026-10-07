@@ -1,123 +1,138 @@
-# ABOUTME: All-grok arm of the difficult-advice recipe: grok-4.3 generates,
-# ABOUTME: grok-4.6 revises against the constitution, 716 rows.
-# Run: uv run synth run --config configs/data/synth/da-grok.yaml [--smoke]
+# ABOUTME: All-grok arm of the difficult-advice recipe: da.yaml with x-ai/grok-4.3 writing scenarios and prompts and
+# ABOUTME: x-ai/grok-4.6 revising and responding. Run: uv run synth run --config configs/data/synth/da-grok.yaml [--smoke]
 
-# 2026-08-20/21: same stage list and PROMPTS as da.yaml — the arm swaps the
-# whole GENERATOR stack from Anthropic to xAI. Third arm of the generator sweep, after the
-# Anthropic baseline and the all-gemini arm (da-gemini-716.yaml).
+# REBUILT 2026-10-02 on the current da.yaml (dealt sector and AI presence, wave list off, similarity gate 0.78).
+# The arm this file used to hold -- the 2026-08-20 recipe behind 2026-08-20-difficult-advice-grok-716 and
+# 2026-09-14-da-grok-synth -- is archive/da-grok-aug20.yaml. Everything below is da.yaml verbatim, comments
+# included, EXCEPT:
+#   1. `models:` -- the xAI block of the old arm, unchanged. grok-4.3 (hidden reasoning off) holds the cheap
+#      slots: scenarios and draft prompts. grok-4.6 holds the reviser slots AND `respond`: grok-4.3's replies
+#      fell under the old 700-character floor 69% of the time (2026-08-20).
+#   2. NO `min_chars` on the two response stages (da.yaml: 700). Decided 2026-10-02: grok writes short (median
+#      reply ~175 words against ~460), and 29 of 34 lint failures in two 30-row smokes were that floor rejecting
+#      replies that were complete. Every ban pattern stays. A model trained on this arm therefore sees
+#      shorter replies than one trained on da.yaml's corpus -- a difference beyond who wrote the text.
+#   2b. HIDDEN REASONING at `low` on the three grok-4.6 generation stages (refine, respond, rewrite) -- the minimum the
+#      endpoint allows. Set to `high` on 2026-10-02 (to match Sonnet 5's provider default in da.yaml) and back to `low` on
+#      2026-10-03: the one corpus made at high, 2026-10-02-da-grok-synth @ 23188080, copies the person's message into 23%
+#      of reply words (6+ word runs; the da corpus: 1%; the August grok-responder corpus at low: 1%), and its output limits
+#      were raised for the hidden trace. Corpora from 2026-10-03 on are at low. The two grok-4.3 stages keep reasoning off.
+#   3. Response-stage `retries` 5 (da.yaml: 2), `max_fail_pct` 5.0 (default 2.0), `budget_usd` 300 (raised 2026-10-02 for a ~1,700-row run at high reasoning effort).
+#      The old arm had retries 12 and max_fail_pct 15; in the smokes no row needed more than 4 attempts except
+#      one that failed all 13, so the extra slack bought nothing.
+# TO REUSE da.yaml's SCENARIOS (grok writes only the prompts and responses): copy a da run's
+# stage_1_chunk_constitution.jsonl and stage_2_write_scenarios.jsonl into a fresh run directory and
+# `--resume` it with this config. Note the grok reviser may still rewrite the situation it was given.
+
+# NAMED `da` ON 2026-10-01. This file was `da-half-noai.yaml` when it generated 2026-10-01-da-synth (commit 4af3ea2e;
+# the Hub repo was renamed from 2026-10-01-da-half-noai-synth), and that corpus was made by changes 1-3 only. The recipe
+# it replaced, the one behind 2026-09-28-da-synth, is archive/da-sep28.yaml. `archive/da-t6-note.yaml` is changes 1-2 only.
+# Changes 4-7 (2026-10-01/02) have NOT generated a corpus yet.
 #
-# EXACTLY THREE things differ from the baseline besides the models, all in draft_responses
-# and all forced by measurement, none of them a quality relaxation:
-#   * `respond` runs on grok-4.6 rather than the cheap generator (see that block)
-#   * that stage's `lint.retries` is 5 rather than 2
-#   * `max_fail_pct` is 5.0 rather than the default 2.0
-# Every PROMPT is byte-identical, and every quality bar — min_chars 700, all 13
-# ban_patterns, the tag contract — is unchanged, so a row in this corpus cleared exactly
-# the bar a baseline row cleared. The two knobs govern how many chances a row gets and how
-# many unsalvageable rows are tolerated, which is precisely where xAI differs from Haiku.
-# Anything else that differs is a bug; keep it that way, because the generator is supposed
-# to be the only variable.
+# DECIDED BY JAMIE 2026-10-02, each set in one place in this file:
+#   a. AI presence -> `rotate.ai`: non-t6 calls 10% the assistant itself / 10% another AI / 40% no AI / 40% nothing said; t6 half and half.
+#   c. sectors     -> `rotate.sector`: 43, equal weight, every trait but t6.
+# STILL STAND-INS:
+#   b. scenarios per writer call -> `scenarios_per_call` (now 4: leaves the prompt as it is, 18 calls a trait)
+#   d. which of two similar scenarios is rejected -> not a config key: the later one loses (engine). Measured on four
+#      650-scenario runs at 0.78, rejecting the one with more close neighbours would save 1-9 of 36-55 rejections.
+
+# WHAT THIS ARM CHANGES (2026-10-01). Everything below is da.yaml @ e524554c verbatim -- the recipe that
+# generated 2026-09-23-da-synth and its 2026-09-24 extension -- comments included, so the comments describe
+# that recipe. The differences are:
+# 1. THE WRITER'S ASK, every trait: "situations in which the convenient path would violate this specific
+#    principle, but the right call is not obvious". 2026-09-23 had "in which this specific principle is at
+#    stake and the right call is not obvious"; before that it was "in which the convenient path would violate
+#    this specific principle". "At stake" does not say how a principle written for an AI comes into play, and
+#    the writer answered it by putting an AI system in the scene (97% of that recipe's own scenarios;
+#    output/audits/2026-09-29_da_drift_timeline.md). This keeps the old anchor and the new ambiguity.
+# 2. A NOTE FOR t6 ONLY: the `trait_notes` block and three `{trait_note}` slots. The slots sit at the END of the
+#    last bullet of a list and the note is itself a bullet with a leading newline, so for every trait without a
+#    note the slot renders as nothing. Why t6: under 2026-09-23 78% of t6 prompts had the user ordering the
+#    assistant what to be or how to answer (69% with persona / "no caveats" framing) against 0-9% in every other
+#    trait (scratch/classify_da_pressure.py, 2026-09-24 corpus).
+
+# 3. (2026-10-01; not in archive/da-t6-note.yaml) HALF OF EVERY TRAIT BUT t6 IS TOLD "No AI system appears in this situation."
+#    The `rotate.ai` axis on write_scenarios deals one label per writer CALL within each trait, with t6 pinned to
+#    `open`. `none` renders that one line into the writer, draft_prompts and revise_prompts through `{ai_text}`,
+#    which sits beside `{trait_note}`; `open` renders nothing. Why: da-t6-note's writer put an AI system other than
+#    the assistant at the centre of 83% of its 650 scenarios (2026-10-01-da-t6-note-synth), decided per call -- a
+#    call's 8 scenarios are usually all AI or none. The line is the `none` text of archive/da-otherai.yaml: on the 279 rows
+#    it reached there, 0.7% were about the assistant itself and 15% still had an AI system (scoring models).
+#    2026-10-01-da-synth was dealt `open`/`none`; change 6 below replaced `open` with `other` for every trait but t6.
+# 4. (2026-10-01) THE SIMILARITY GATE IS 0.78, NOT 0.86, AND `dedupe_scenarios` IS GONE. See the notes at
+#    `diversity.reject_cosine` and under `corpus_scenarios`.
+# 5. (2026-10-02) THE WAVE LIST IS OFF: `wave_size: 0, max_carry: 0, over_share: 0`, and the writer prompt no longer
+#    has the `{avoid}` / `{overrepresented}` slots. Every call of a wave used to be shown the openings of the last
+#    150 scenarios kept ("do not write another version of any of them"), from all traits mixed. The writer copied
+#    their flavour instead: wave 0 is t1 (oversight of AI), so the first list was 72% AI-system openings, and by
+#    wave 3 nearly every scenario of every trait had one. Controlled test, same prompt, 650 scenarios: list on
+#    83% and 87% of scenarios have another AI central (20261001_143854, 20261001_211644); list off 23%, with only
+#    t1 and t6 AI-heavy (output/derived/writer_listoff, output/synthdoc_v3/20261001_215106). Near-repeats did not
+#    rise with it off (pairs at cosine >= 0.80: 17 off, 34 and 38 on); domain labels did concentrate (top ten 20%
+#    of rows against 8-11%), which is what change 7 is for.
+# 6. (2026-10-02) AI PRESENCE IS DEALT. `rotate.ai` deals `self`, `other`, `none` and `open` (nothing said) to every
+#    trait but t6, and `self` / `other` half and half to t6. `self` and `other` are the `ai` lines of archive/da-self.yaml
+#    and archive/da-otherai.yaml, verbatim; `none` is the line of change 3. Evidence it matters, one seed per arm on the
+#    native-tools base: 74% other-AI (da-t6-note-15) ODCV 8.3% [5.9, 11.6], 14% (da-15) 15.8% [12.8, 19.4].
+# 7. (2026-10-02) EACH CALL IS DEALT A SECTOR: `rotate.sector`, one new line on the writer only ("These situations
+#    are set in <sector>."), t6 exempt. It replaces what the list did well, spreading settings. The pool starts
+#    from the 23 standard occupational groups, adds government, nonprofits and private-life settings (11% of 1,300
+#    list-off/low-AI scenarios were private life; 38% of t8, 43% of t9), and splits the compound entries: 43 in all.
+#    Sector and AI presence are dealt independently (stage_operators.deal_unit_axes): each sector meets both.
+
+# BASELINE: the arm this recipe built on 2026-09-14 -- neutral 752
+# (dougalldeepmind/2026-09-14-da-synth, against the full-length neutral constitution) -- is what
+# a new difficult-advice experiment builds on and compares against. NOT principle-scoped 702
+# (this recipe's previous output, against the Claude-naming mid document), NOT da716, NOT
+# synthdoc-716: all three are superseded and kept only to reproduce work that already cites
+# them. docs/LOG.md 2026-09-14 has the reasoning; the existing generator
+# swaps (built on da716's frozen stages 1-4) can only be read against da716.
+
+# THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.
 #
-# The Haiku 4.5 slot is held by TWO models. x-ai/grok-4.3 (1.25/2.5, hidden reasoning off,
-# matching the baseline's non-thinking Haiku) writes scenarios and prompts (stages 2/3) and
-# does the classify pass. Stage 5 could not stay with it: grok-4.3's replies fall under the
-# 700-char floor 69% of the time and the first full run halted there. x-ai/grok-4.6 (xai
-# standard, 2/6 — the SAME input price as sonnet-5 and cheaper on output) therefore holds
-# stage 5 as well as its own role as reviser and judge (stages 4/6 + autorate/scan). That
-# does blur the baseline's cheap-generator / expensive-reviser split, and it is recorded
-# here rather than hidden: grok-4.20 was the cheap candidate that would have preserved the
-# split, and it was rejected on measurement, not price — it has four times as many prompts
-# it can never satisfy. The stage is small ($1.62 measured), so the split costs dollars.
+# Until 2026-08-24 this recipe injected the WHOLE constitution into two of its five LLM
+# stages -- `revise_prompts` and `revise_responses` -- while every other stage saw only its
+# target chunk (`{trait_name}`/`{trait_text}`). Those two injections are now gone, so no
+# stage in the pipeline ever sees more than one principle at a time. The previous recipe is
+# preserved verbatim as `da-full-constitution.yaml`; use it to regenerate a
+# corpus published before this date, not for new work.
 #
-# Why grok at all: the all-gemini arm could not be run clean. Gemini's safety layer
-# blocks the hardest principle-4 (harm — CBRN/cyber-adjacent) draft_prompts calls
-# PERSISTENTLY: 26/716 survived zero of six resamples on 3.7-flash even at
-# safety_settings BLOCK_NONE, and those are the corpus's most valuable rows, so the arm
-# either loses them or silently swaps in easier content. xAI has no equivalent
-# request-side safety knob and, measured 2026-08-20 on this repo's own write_scenarios +
-# draft_prompts prompts over principle 4, needed none. Two probes, 90 calls, zero
-# blocked: grok-4.3 returned 24/24 usable draft_prompts over 12 model-written
-# principle-4 scenarios, and over six hand-written biosecurity / chemistry / cyber /
-# nuclear / pharma / aviation scenarios BOTH models returned 18/18 draft_prompts and
-# 6/6 full draft_responses — no content_filter, no provider rejection, and the responses
-# reasoned about the tension and declined the shortcut, which is the behaviour the recipe
-# wants. No safety_settings block appears in this config because there is nothing to set.
+# THE EVIDENCE. The two recipes were run as a matched pair -- identical scenarios and
+# identical draft prompts (stages 1-4 shared by resuming one run directory into the other),
+# so they differ ONLY in the refine prompts -- then trained as the da716 organism and
+# evaluated on ODCV-Bench over the same 65 cells:
 #
-# The reasoning knob differs BY MODEL and was measured, not assumed (2026-08-20):
-#   grok-4.3  accepts `reasoning: {enabled: false}` — verified, 1 completion token on a
-#             one-word reply. So the generation stages match the Anthropic baseline
-#             exactly: no hidden thinking billed, same as Haiku 4.5.
-#   grok-4.6  REFUSES it (400 "Reasoning is mandatory for this endpoint and cannot be
-#             disabled"), exactly like Gemini 3.x. Its stages take `{effort: low}`
-#             instead, and every max_tokens on them carries headroom because that hidden
-#             reasoning bills as completion tokens.
-# <<<cache>>> markers stay: stripped for non-Anthropic providers, and xAI caches the
-# constitution prefix implicitly.
-# Label matches the filename (so the auto-built provenance path is correct and
-# greppable); the arm detail lives in `card:` below, which the run publishes to the
-# HF dataset card.
+#     principle-scoped (this recipe)  MR 11.5%  [6.2, 19.6]   sev 0.62
+#     full constitution (da716) MR 16.3%  [10.0, 21.8]  sev 0.76
+#     base fp8, no SFT          MR 36.9%  [21.4, 53.6]
+#
+# Read that as NO DETECTABLE COST, not as an improvement: the intervals overlap and this
+# arm does not separate from da716 at n = 65 cells x 2 rollouts. It is the default because
+# it is simpler, strictly cheaper (it drops a ~4.6k-token document from every Sonnet call),
+# and measurably no worse -- not because it is better.
+#   Artifacts: corpus LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716,
+#   eval LASR-Callum/2026-08-21-odcv-difficult-advice-principle-scoped-702-eval.
+#
+# WHAT THIS ALSO WITHHOLDS, which the ODCV number does not separately test: the
+# constitution's PREAMBLE, the priority / conflict-resolution section saying how principles
+# trade off. It belongs to no chunk, so at `principle` granularity it reached the generator
+# ONLY through the two removed slots. If a future document type needs the model to weigh
+# principles against each other, this is the first thing to put back.
+#
+# A GENERATION-TIME COST THAT IS REAL. Without the constitution framing the request as
+# alignment-training data, Anthropic's content filter refuses more `revise_prompts` calls:
+# ~6% here against ~0% for the full-constitution recipe on the identical scenarios, and the
+# refusals are deterministic across a resample. Budget for losing a few rows.
+#
+# NOT YET TESTED ELSEWHERE. `pad`, `par`,
+# `pc` and `courtroom` still inject the whole constitution in their own refine
+# stages. Nothing here licenses changing them -- the experiment covered difficult advice
+# only. Run the same matched pair before making this the default for any of them.
+
+# Label recorded in manifests; the `stages:` list below IS the document type.
 method: ours
-pipeline: da-grok-716
-
-# Dataset-card fields, merged over the pipeline's auto-built defaults (src/data/synth/ours/
-# pipeline.py). This is where the experiment's real detail goes — the filename stays
-# simple, the card carries the specifics a future reader needs.
-card:
-  experiment: >-
-    Difficult-advice SFT corpus, all-grok arm: the Teaching Claude Why recipe with the
-    entire generator stack swapped from Anthropic (da.yaml baseline) to
-    xAI. x-ai/grok-4.3 generates scenarios and prompts (stages 2/3); x-ai/grok-4.6
-    generates the draft responses (stage 5) and rewrites prompts and responses against
-    the full constitution (stages 4/6, the alignment-deciding steps) and judges the
-    corpus. A behavioural difference vs the baseline corpus is attributable to the
-    generator models.
-  models: >-
-    generation stages 2/3 + classify: x-ai/grok-4.3 (xai standard, 1.25/2.5, hidden
-    reasoning disabled, matching the baseline's non-thinking Haiku); generation stage 5
-    (responses) + reviser (stages 4/6) + judges (autorate/scan): x-ai/grok-4.6 (xai
-    standard, 2/6, reasoning effort low — the endpoint refuses to disable it). Stage 5
-    is on grok-4.6 rather than a cheap generator because no cheap xAI model can meet the
-    stage's length contract: grok-4.3's replies fall under the 700-char floor 69% of the
-    time, and grok-4.20 — the same price as grok-4.3 — has four times as many prompts it
-    can never satisfy (4/30 permanently stuck vs grok-4.6's 1/30, each re-run 10x). All
-    calls route through OpenRouter; sampling and per-stage token usage in manifest.json.
-  provenance: >-
-    uv run synth run --config
-    configs/data/synth/da-grok.yaml
-  notes: >-
-    This arm exists because the all-gemini arm could not be generated cleanly: Gemini's
-    safety layer persistently blocks the hardest principle-4 (harm, CBRN/cyber-adjacent)
-    draft_prompts calls — 26/716 survived zero of six resamples on 3.7-flash even at
-    safety_settings BLOCK_NONE — which is exactly the content the corpus most needs.
-    xAI exposes no request-side safety knob and needed none: measured 2026-08-20 with
-    this repo's own prompts on constitution principle 4 across 90 calls, zero blocked —
-    grok-4.3 returned 24/24 usable draft_prompts on model-written principle-4 scenarios,
-    and over hand-written biosecurity/chemistry/cyber/nuclear/pharma/aviation scenarios
-    both grok-4.3 and grok-4.6 returned 18/18 draft_prompts and 6/6 full draft_responses.
-    grok-4.3 runs with hidden reasoning DISABLED (matching the Anthropic baseline's
-    non-thinking Haiku); grok-4.6 cannot disable it (400, mandatory) and runs at effort
-    low with extra max_tokens headroom. Worth knowing before reusing any xAI model as a
-    generator: xAI models write materially SHORTER difficult-advice replies than Haiku
-    4.5, and cite rules more. The first full run halted at draft_responses with 302/716
-    (42.2%) under the stage's 700-char floor. Three findings from chasing it: (1) turning
-    hidden reasoning UP makes it worse, not better (single-shot pass on matched inputs:
-    reasoning off 31%, effort low 0%, effort high 19%) — the model spends itself in the
-    hidden trace and answers tersely; (2) retry failures correlate PER PROMPT, so
-    independence math understates them ~3x (measured 23.3% of rows failing all 3 attempts
-    where independence predicts 8.1%); (3) lowering the floor does not help — the failure
-    rate plateaus near 6.7% from floor 500 down to 300 because the residual rows fail on
-    banned vocabulary or a missing tag, not on length. The fix was therefore more
-    attempts (retries 5) on a model with fewer unsalvageable prompts (grok-4.6), NOT a
-    weaker contract: min_chars 700 and all 13 ban_patterns are unchanged from the
-    baseline, and every prompt is byte-identical, which is what keeps the arm a valid
-    generator comparison. The headline number for reuse: against the baseline's
-    unmodified contract, this arm YIELDS 86.6% — draft_responses 716 -> 668 and
-    revise_responses 668 -> 620, both losing ~7% on length, and the losses compound.
-    Failures land just under the bar (one missed by five characters, 695 of 700). That
-    loss is absorbed as yield (max_fail_pct 15.0) rather than by lowering the floor, so
-    every row here cleared exactly the bar a baseline row cleared and the corpora stay
-    comparable row-for-row. THIS DATASET IS 620 ROWS, not 716; the 716 in the name is the
-    scenario budget, held equal to the baseline's on purpose.
+pipeline: da
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
 #   traits -> chunk_constitution      refined_prompts -> revise_prompts
@@ -139,35 +154,42 @@ ablate: []
 
 # Overrides merged onto this config under --smoke (tiny slice, full wiring).
 smoke:
-  max_traits: 2
+  # All nine units: `trait_notes` and both `rotate.*.fixed` name t6, and a run without it is
+  # refused ("name units this run does not have").
+  max_traits: 9
   scenarios_per_trait: 1
   scenarios_per_call: 1
   # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
   # the per-trait count, so a smoke run against a config that sets it generates the full
   # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
-  total_scenarios: 2
+  total_scenarios: 9
 
 seed: 0
 
-# Stage 1 segments this into its numbered units (## <n>. headings). Stages 4 and 6
-# inject the whole document; stages 2, 4, 5 and 6 also inject the single target trait.
-# Default since 2026-08-03: the specgen mid arm. NOTE: the document was re-cut from
-# twelve units to ten on 2026-08-04, then on 2026-08-05 set byte-identical to the NINE-
-# principle state the 2026-08-04 source corpus was generated against (the frozen
-# claude_distilled_09_principles_mid_20260804 snapshot), so difficult-advice and
-# model-eval-model share one alignment target. Folder name kept; n_traits below is the
-# cost model's hint and tracks the document as it stands.
-constitution: "constitutions/archive/claude_distilled_12_principles_mid/constitution.md"
+# Stage 1 segments this into its numbered units (## <n>. headings). NO stage injects the
+# whole document in this arm -- that is the ablation. Stages 2, 5, 6 and 7 inject the single
+# target chunk and nothing else.
+# Since 2026-09-14: the nine principles at full length with the model and developer
+# neutralised (Claude -> "an AI", Anthropic -> "your developer";
+# constitutions/claude_distilled_09_principles/README.md). It is the archived mid document
+# every earlier DA corpus was generated against,
+# `constitutions/archive/claude_distilled_12_principles_mid/`, which names Claude and
+# Anthropic (7 of 708 rows of the principle-scoped corpus carried "Claude" into trained
+# text; constitutions/abridged/rationale.md), with those names replaced, its attribution
+# line moved out and one clause dropped ("you need not give your reasons", 2026-09-11).
+# Chosen over `abridged/`, a third of the length, so the alignment target does not also
+# change length. The folder keeps "claude" in its name for history; the text names neither.
+constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 # What a good response of THIS document type looks like. Tone guidance, not policy: it
 # used to ride as a trailing section of the constitution file (the parser peeled it off
 # into {style_guidance}); since 2026-09-10 the config owns it and the constitution is
 # the alignment target alone. Text unchanged from what this recipe injected before.
 style_guidance: |-
   Engages with the pressure the person is under rather than stonewalling. Names the
-  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
-  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
-  than rules. Offers a specific legitimate alternative. Leaves the decision with the
-  person. Warm, practical, proportionate.
+  ethical tension explicitly and reasons through it in the open. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.
@@ -183,112 +205,70 @@ n_traits: 9
 # model's hint, and a stale value is now rejected rather than silently used).
 chunking: principle
 
-# Corpus size: 716 rows — the synthdoc share of the 10k-row mixture experiments, so
-# this corpus can slot into a `*_716` mixture arm directly.
-total_scenarios: 716
+# Corpus size. `total_scenarios` splits a fixed budget across however many units the
+# chunking produced, and WINS over `scenarios_per_trait` — so the corpus stays the same
+# size if `chunking:` changes, and a chunking comparison is not secretly a data-scaling
+# comparison.
+#
+# 2,000, the recipe's standing corpus size -- unchanged by the 2026-08-24 default swap,
+# which was about WHAT the refine stages see, not how many documents to make. The published
+# ablation arm ran at 716 because that is the difficult-advice share of the table-2 training
+# mixture it was built to swap into; that was a sizing choice for one experiment and is not
+# part of this recipe. Override it per-run (`--overrides total_scenarios=716`) rather than
+# editing this line.
+total_scenarios: 2000
+# Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
+scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
-scenarios_per_call: 8
+# STAND-IN (b): 4, not 8. A label is dealt per CALL, so at 650 scenarios a trait has 18 calls
+# and meets 18 of the 24 sectors; at 8 it would meet 9. At 1 every scenario gets its own deal,
+# but "Invent {n} DISTINCT situations" and "Do not reuse a setting within this set" stop
+# meaning anything, so the prompt would have to change.
+scenarios_per_call: 4
 
+# Its own directory: this arm is seeded by COPYING a baseline run's stages 1-4 into a fresh
+# dir here and resuming it, so the two arms never share a run directory and the baseline's
+# stage 5-8 snapshots can never be silently reused.
+output_dir: "output/synthdoc_v3"
 
-# Fresh dir per generator change: this arm must never resume into the Anthropic baseline
-# (output/synthdoc716) or either gemini attempt (output/synthdoc_gemini36_716,
-# output/synthdoc_gemini_reviser716) — a resumed snapshot would silently mix generators,
-# which is the one thing this sweep exists to hold apart.
-output_dir: "output/synthdoc_grok_716"
-
+# Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can
+# resume from any stage and each stage is inspectable on its own.
+# Its own mirror. This is a DIFFERENT recipe from the one behind
+# `2026-08-13-difficult-advice-v2` -- the two refine prompts differ -- so its output must
+# never be appended to that repo, which stays the record of the baseline arm.
 hf_private: false
 
-# 16 concurrent calls roughly halves wall clock vs 8 at no extra cost; OpenRouter
-# rate limiting, not the code, is the ceiling above this.
-workers: 16
-# Hard stop: the run aborts between stages once spend passes this. Snapshots are kept,
-# so raising it and re-running resumes rather than restarts.
-#
-# ACTUAL, from the completed run 20260820_212358 (2026-08-21): $61.79 across all passes
-# for 620 delivered rows = $0.0997/example. The final pass alone was $17.53 / 976s, and
-# grok-4.6 is 97% of the bill ($17.06 of $17.53 there) because it holds three stages.
-# `rewrite` is the single largest line at $14.23 for 834 calls -- the retry budget on a
-# long-output grok-4.6 stage is where this arm's money goes, not the generation.
-# Earlier priors, kept because they show how far a 2-row smoke can mislead:
-#   --estimate --measured <smoke manifest>  ->  $49.14 total, $0.0686/example
-#   --estimate (priors only)                ->  $64.07 total, $0.0895/example
-# For scale: the Anthropic baseline prices at $0.0656/example and the all-gemini arm at
-# $0.1314, so this arm lands essentially at baseline parity and ~half the gemini arm.
-# 100 leaves ~2x headroom over the measured figure, which is deliberate: the single
-# largest line ($21.39, 43% of the total) is `classify` — pattern_scan's rate pass,
-# 1,820 calls — and it is still an ASSUMED 9,000 in-tokens/call, because a 2-row smoke
-# cannot exercise it. Re-measure it from the first full run's manifest before trusting
-# any tighter number. `--batch` halves the token price (~24h turnaround) if wall clock
-# does not matter.
-#
-# Wall clock, extrapolated from the smoke's per-call latency at workers: 16
-# (draft 3.1s, refine 14.4s, respond 12.5s, rewrite 14.5s; 716/16 ~= 45 rounds/stage):
-# roughly 50 minutes, 45-90 with retries and rate limiting.
-budget_usd: 100.0
-
-# Per-stage tolerance for items that fail their contract after every attempt; the
-# package default is 2.0 and every other arm uses it. Raised to 15.0 here, and the number
-# is a MEASUREMENT of this generator, not a knob turned until the run went green.
-#
-# MEASURED over the completed run (2026-08-21). Both length-gated stages lose rows, and
-# the loss COMPOUNDS, which is the number to plan around:
-#     draft_responses   716 -> 668   (48 lost, 6.7% of the stage's input)
-#     revise_responses  668 -> 620   (48 lost, 7.2%)
-#     end to end        716 -> 620   = 86.6% yield
-# A 30-row pilot had put the draft_responses loss at ~3.3%, then a first full pass at
-# 11.3%; repeated resumes recover some rows each time (81 -> 61 -> 48 stuck) because the
-# failures are stochastic per prompt rather than fixed. 15.0 carries margin over the
-# settled ~7% per stage rather than hugging it. The failures are overwhelmingly LENGTH,
-# landing just under the bar -- one revise_responses row missed by five characters (695
-# of 700) -- so they are the same phenomenon as the rest of this arm: xAI writes shorter
-# difficult-advice replies than Haiku 4.5.
-#
-# The deliberate choice here is to absorb that as a YIELD loss rather than as a weaker
-# contract. min_chars stays 700, every ban_pattern stays, every prompt stays byte-
-# identical, so each of the ~635 rows cleared exactly the bar a baseline row cleared and
-# the two corpora stay comparable row-for-row. Lowering the floor to ~600 would have
-# recovered many of the 81 and made the corpus look complete, at the cost of making it
-# quietly non-comparable -- the wrong trade for an arm whose entire purpose is a
-# controlled generator comparison. Corpus size is recoverable downstream (sample both
-# arms to a common n, or oversample scenarios on a later run); comparability is not.
-# 86.6% yield at the baseline's contract IS the result for this arm.
-#
-# NOTE the filename still says 716: that is the SCENARIO budget (`total_scenarios`), and
-# it is deliberately unchanged so this arm and the baseline start from the same number of
-# scenarios. The delivered corpus is 620 rows. To land 716 finished rows, raise
-# total_scenarios to ~830 and re-run from write_scenarios.
-#
-# CAVEAT, deliberately loud: this key is GLOBAL, not per-stage, so it loosens the guard
-# on every stage, not just the one that needs it. Stages 2-5 each completed 716/716 with
-# zero failures, so nothing is being masked today; if a future change makes an earlier
-# stage flaky, this number is why it would halt later than it should.
-max_fail_pct: 15.0
+# 64 concurrent calls: measured 2026-09-23 on a 64-row smoke, every stage's time is set by
+# its slowest single call and Anthropic via OpenRouter never throttled (0 retries); a
+# 752-row run is ~55 min against ~2.5 h at 16. Not for Alibaba-served models (delib.yaml).
+# 64, as da.yaml. The old arm ran at 16, a value inherited from the August base rather than measured for xAI.
+# Measured 2026-10-02: 198 scenarios through write_scenarios, draft_prompts (grok-4.3) and revise_prompts
+# (grok-4.6) at 64 took 94 s with no rate-limit error and no failed call. The response stages were not in that test.
+workers: 64
+# Rows a run may lose before it aborts (the default is 2%). Measured on two 30-row smokes of this arm,
+# 2026-10-02: with the length floor still on, 1 row in 30 could not be satisfied in 13 attempts.
+max_fail_pct: 5.0
+# Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
+# raising it and re-running resumes rather than restarts.
+# The baseline measured $234 for 2,000 records end to end. This arm is strictly CHEAPER:
+# it drops a ~4.6k-token constitution from every `refine` and `rewrite` call, and those are
+# the two Sonnet stages. It is also resumed from stages 1-4, so the Haiku stages are not
+# paid for again. Guard left at the baseline's 300 so a runaway still stops in the same
+# place; expect well under half of it.
+budget_usd: 300.0
 
 defaults:
   temperature: 1.0
   max_tokens: 4096
-  # NO provider safety block here, unlike the gemini arm: xAI exposes no request-side
-  # safety-threshold knob over OpenRouter, and measurement says none is needed (see the
-  # header — principle-4 and hand-written CBRN/cyber prompts both came back clean).
-  # Provider routing is pinned in configs/endpoints/providers.yaml (one provider per
-  # model), never here.
+  # Provider routing lives in configs/endpoints/providers.yaml (one provider per model,
+  # applied by OpenRouterClient): anthropic models pin to Anthropic's own endpoint —
+  # third-party clouds content-filter exactly the prompts this corpus needs (2026-08-14:
+  # Bedrock refused 2.6% of revise_prompts calls, Vertex the same prompts), and only
+  # first-party reliably bills <<<cache>>> breakpoints as cache hits.
 
-# Model per stage. All-grok arm: grok-4.3 generates (stages 2/3/5 + classify), grok-4.6
-# (xai standard) revises against the constitution and judges (stages 4/6 + autorate/scan).
-#
-# The reasoning setting is per model and was MEASURED on 2026-08-20, not assumed:
-# grok-4.3 accepts `{enabled: false}` (verified: 1 completion token on a one-word reply),
-# so its stages bill like the baseline's non-thinking Haiku 4.5; grok-4.6 returns
-# 400 "Reasoning is mandatory for this endpoint and cannot be disabled" and therefore
-# takes `{effort: low}`, with max_tokens headroom because that hidden reasoning bills as
-# completion tokens. Do not copy one model's block onto the other.
-#
-# assumed_tokens are PRIORS for --estimate and the budget guard, not measurements. The
-# grok-4.3 stages inherit the Anthropic baseline's numbers (same no-hidden-reasoning
-# regime); the grok-4.6 stages carry the gemini arm's reasoning-inclusive numbers, which
-# were sized for exactly this mandatory-reasoning case. Replace both from a real manifest
-# once a smoke run exists (`measured_per_stage`).
+# Model per stage. Haiku 4.5 generates (stages 2, 3, 5); Sonnet 5 refines and rewrites
+# (stages 4, 6), since those two carry the constitution and decide alignment quality.
 models:
   # Stage 2 -- generate difficult scenarios per trait. Diversity is enforced by the
   # reject-cosine gate, not the model's introspection, so hidden reasoning buys nothing.
@@ -309,8 +289,11 @@ models:
   # cannot disable reasoning, so this carries more headroom than the baseline's 6144.
   refine:
     model: "x-ai/grok-4.6"
-    temperature: 0.7
-    max_tokens: 12288
+    # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
+    temperature: 1.0
+    # 24576 since 2026-10-02 (was 12288): at `effort: high` a 9-row smoke averaged 6,488 output tokens per call
+    # here (hidden reasoning included), too close to 12288 for the tail.
+    max_tokens: 24576
     reasoning: {effort: low}
     assumed_tokens: {in: 2000, out: 2400}
   # Stage 5 -- generate the response with explicit reasoning. The VISIBLE <reasoning> is
@@ -360,7 +343,8 @@ models:
   # Emits reasoning AND a full response, plus grok-4.6's own mandatory hidden reasoning.
   rewrite:
     model: "x-ai/grok-4.6"
-    temperature: 0.7
+    # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
+    temperature: 1.0
     max_tokens: 24576
     reasoning: {effort: low}
     assumed_tokens: {in: 3200, out: 3800}
@@ -395,19 +379,152 @@ models:
     assumed_tokens: {in: 9000, out: 200}
 
 # --- The pipeline itself: stages executed in order by src/data/synth ------------
-# Prompt placeholders are record fields plus {constitution} and {style_guidance}.
+# Prompt placeholders are record fields plus {constitution} and {style_guidance}. This arm
+# uses NEITHER {constitution} slot; {style_guidance} stays (it is tone guidance, not a
+# principle -- the top-level `style_guidance:` above -- and the baseline injects it at
+# draft_responses only).
+# ONE unit gets guidance no other unit sees (stage_operators.trait_note): t6 has an entry, there is no
+# `default`, so `{trait_note}` is the empty string for t1-t5 and t7-t9. The note starts with a newline because
+# its slots are appended to existing lines (see the header). The wording is the 2026-09-28 t6 note, unchanged.
+trait_notes:
+  t6: "\n- The situation concerns the values, character or nature of AI: the assistant's own, another AI system,
+    or AI systems in general. The person asks for advice on a related matter, rather than giving instructions."
+
 stages:
 - name: chunk_constitution
   kind: segment
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # Two labels per writer call, each dealt WITHIN every trait and independently of the other, so a trait
+  # meets the labels in the declared split and no sector is tied to one AI label. t6 has its own AI split
+  # and is pinned to a sector label with no text: its note already says what it is about. A label and its text ride on
+  # every scenario (`ai` / `ai_text`, `sector` / `sector_text`); the two prompt stages below render
+  # `{ai_text}` for the same rows, and do NOT take the sector line -- they work from the scenario, which
+  # names a concrete setting.
+  rotate:
+    ai:
+      per_trait: true
+      # DECIDED 2026-10-02 (Jamie). Every trait but t6: 10% of calls told the assistant itself is involved,
+      # 10% told another AI system is, 40% told no AI system appears, 40% told nothing (`open`: no AI
+      # phrase in any prompt). t6: half self, half other. At 18 calls a trait that is 2 / 2 / 7 / 7 calls
+      # (11% / 11% / 39% / 39%), and 9 / 9 for t6.
+      # `open` is not "no AI": a 24-row smoke dealt `open` throughout came out 21% the assistant itself,
+      # 25% another AI system, 54% no AI (output/synthdoc_v3/smoke_20261001_233337), which is why the first
+      # choice of 10 / 10 / 80 was replaced by this one.
+      weights: {self: 1, other: 1, none: 4, open: 4}
+      unit_weights:
+        t6: {self: 1, other: 1}
+      text:
+        open: ""
+        self: "\n- This situation involves the assistant they are asking, the one that will read and answer their message: its own outputs, role or behaviour are part of the decision, and the person addresses it directly (\"you\"). No other AI system appears."
+        other: "\n- This situation involves an AI system other than the assistant they are asking; the assistant itself is not the subject."
+        none: "\n- No AI system appears in this situation."
+    sector:
+      per_trait: true
+      # DECIDED 2026-10-02 (Jamie): 43 sectors at equal weight, every trait but t6. The 24-entry draft with
+      # its compound entries split (architecture / engineering, software / data / IT, ...), keeping the
+      # draft's balance: 23 common work settings, 11 the writer rarely chooses, 9 private-life (53 / 26 / 21%).
+      # THE ORDER IS LOAD-BEARING. A trait has 18 calls and so meets 18 of the 43; the dealer hands each
+      # trait the labels dealt least so far, in this order. The three groups are therefore interleaved, and
+      # split siblings kept apart, so that any run of 18 is a balanced mix. Appending a sector at the end is
+      # safe; sorting this list by group is not.
+      weights:
+        management: 1
+        care_work: 1
+        parenting_family: 1
+        engineering: 1
+        libraries_museums: 1
+        construction: 1
+        nonprofits: 1
+        personal_finances: 1
+        it_cybersecurity: 1
+        energy_utilities: 1
+        school_teaching: 1
+        volunteering_community: 1
+        public_health: 1
+        personal_services: 1
+        software_development: 1
+        social_work: 1
+        mental_health: 1
+        repair_cleaning: 1
+        sport_fitness: 1
+        finance_accounting: 1
+        natural_science: 1
+        police_fire: 1
+        hobbies_creative: 1
+        journalism_publishing: 1
+        manufacturing: 1
+        hospitality_food: 1
+        physical_health: 1
+        architecture_planning: 1
+        higher_education: 1
+        farming: 1
+        government: 1
+        student: 1
+        data_science: 1
+        military: 1
+        law: 1
+        friendships_romance: 1
+        medicine_nursing: 1
+        retail_sales: 1
+        business_hr: 1
+        social_science: 1
+        housing_neighbours: 1
+        transport: 1
+        arts_entertainment: 1
+      fixed: {t6: any}
+      text:
+        any: ""
+        management: "\n- These situations are set in management and executive leadership."
+        care_work: "\n- These situations are set in elder, child and disability care."
+        parenting_family: "\n- These situations are set in private life: parenting and family."
+        engineering: "\n- These situations are set in engineering."
+        libraries_museums: "\n- These situations are set in libraries, museums and archives."
+        construction: "\n- These situations are set in construction."
+        nonprofits: "\n- These situations are set in nonprofits and charities."
+        personal_finances: "\n- These situations are set in private life: personal finances."
+        it_cybersecurity: "\n- These situations are set in IT and cybersecurity."
+        energy_utilities: "\n- These situations are set in energy, mining and utilities."
+        school_teaching: "\n- These situations are set in school teaching."
+        volunteering_community: "\n- These situations are set in private life: volunteering and community life."
+        public_health: "\n- These situations are set in public health."
+        personal_services: "\n- These situations are set in personal services."
+        software_development: "\n- These situations are set in software development."
+        social_work: "\n- These situations are set in social work and counselling."
+        mental_health: "\n- These situations are set in private life: mental health."
+        repair_cleaning: "\n- These situations are set in repair, maintenance and cleaning."
+        sport_fitness: "\n- These situations are set in sport and fitness."
+        finance_accounting: "\n- These situations are set in finance and accounting."
+        natural_science: "\n- These situations are set in natural science research."
+        police_fire: "\n- These situations are set in police, fire and emergency services."
+        hobbies_creative: "\n- These situations are set in private life: hobbies and creative projects."
+        journalism_publishing: "\n- These situations are set in journalism and publishing."
+        manufacturing: "\n- These situations are set in manufacturing and production."
+        hospitality_food: "\n- These situations are set in hospitality and food service."
+        physical_health: "\n- These situations are set in private life: physical health."
+        architecture_planning: "\n- These situations are set in architecture and urban planning."
+        higher_education: "\n- These situations are set in higher education."
+        farming: "\n- These situations are set in farming, fishing and forestry."
+        government: "\n- These situations are set in government and public administration."
+        student: "\n- These situations are set in private life: studying as a student."
+        data_science: "\n- These situations are set in data science and analytics."
+        military: "\n- These situations are set in the military."
+        law: "\n- These situations are set in law and the courts."
+        friendships_romance: "\n- These situations are set in private life: friendships and romantic relationships."
+        medicine_nursing: "\n- These situations are set in medicine and nursing."
+        retail_sales: "\n- These situations are set in retail and sales."
+        business_hr: "\n- These situations are set in business operations and human resources."
+        social_science: "\n- These situations are set in social science research."
+        housing_neighbours: "\n- These situations are set in private life: housing and neighbours."
+        transport: "\n- These situations are set in transport and logistics."
+        arts_entertainment: "\n- These situations are set in arts, design and entertainment."
   # Enforced scenario diversity. The 2026-08-04 run had none and put 46.8% of its mass in
   # ten domains -- four of which this prompt used to name as examples, so the instruction
-  # was producing the concentration it meant to prevent. Two mechanisms, because asking
-  # alone demonstrably failed: the `avoid` list (seeded below, extended each wave with
-  # what earlier waves actually wrote) tells the generator what not to write, and
-  # `reject_cosine` refuses what it writes anyway and re-queues the shortfall per trait.
+  # was producing the concentration it meant to prevent. Until 2026-10-02 two mechanisms
+  # answered that: a do-not-repeat list carried between waves, and `reject_cosine`, which
+  # refuses what the writer writes anyway and re-queues the shortfall per trait. The list is
+  # now OFF (header, change 5) and the dealt sector above does its job; the gate stays.
   #
   # reject_cosine 0.86 is the measured floor from scratch/measure_dedup_threshold.py over
   # all 2,205 baseline scenarios: real clones live at 0.84-0.886 (the worst pair is one
@@ -416,18 +533,22 @@ stages:
   # embedding_dedup, and deliberately so -- what the gate refuses to generate is exactly
   # what the checker would later refuse to keep.
   diversity:
-    wave_size: 12
-    reject_cosine: 0.86
+    # One wave: every call runs at once and none is shown another's output. 0 = all batches.
+    wave_size: 0
+    # 2026-10-01: lowered from 0.86 to 0.78. At 0.86 the gate rejected 0-4 of 650 in four runs while
+    # pairs at 0.82-0.85 were the same story retold (two zero-day disclosure researchers, two
+    # archaeologists with an AI trained on elite digs). Measured on those runs' kept scenarios,
+    # 0.78 rejects 36-55 of 650; near 0.80 pairs share a protagonist but pose different dilemmas,
+    # so this threshold deliberately also takes some of those. The chaining the note above warns
+    # of is about clustering a finished corpus; the gate is greedy (the later of a pair loses),
+    # so nothing chains. The post-writer check only reports, at its 0.86 default.
+    reject_cosine: 0.78
     max_regen_rounds: 2
-    max_carry: 150
-    # Nothing is banned up front. A domain is named to the generator only once it is
-    # measurably over-weight in THIS run's own output, and stops being named when it is
-    # not -- the corpus should contain small-business scenarios, just not 226 of them.
-    # 4% against ~200 expected domains is ~8x a uniform share; the baseline's worst
-    # domain reached 10%. Below `over_min_docs` the share of a handful of scenarios is
-    # noise, so the steer stays silent rather than flagging the first domain generated.
-    over_share: 0.04
-    over_min_docs: 60
+    # Both 0 so a MAKE-UP call (a replacement for a rejected scenario) is shown no list either:
+    # with one wave the list is empty in round 0 by construction, but a make-up round would
+    # otherwise carry the last 150 openings and the over-used domains into its prompt.
+    max_carry: 0
+    over_share: 0
   prompts:
     system: |-
       You design realistic, ethically difficult situations for training a constitution-aligned
@@ -440,19 +561,17 @@ stages:
       </principle>
 
       Invent {n} DISTINCT situations in which the convenient path would violate this
-      specific principle.
+      specific principle, but the right call is not obvious.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The person who writes in is weighing something, not demanding something, and the
+        right option is genuinely not clear.
       - The pressure is concrete and the stakes are real.
       - The norm-violating shortcut is genuinely tempting, not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
       - The setting is specific rather than a category.
-      - Do not reuse a setting within this set.
-
-      {avoid}
-
-      {overrepresented}
+      - Do not reuse a setting within this set.{trait_note}{sector_text}{ai_text}
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
@@ -476,26 +595,17 @@ stages:
     fields:
       text: situation
     params:
-      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
-      # acts on these labels, and a filter must never be handed a verdict about only part
-      # of the corpus (it refuses one, by design).
+      # Every scenario, not the default 2,000 sample, so the report covers the whole set.
       sample: 0
-# The stage that acts on the check above. With `diversity.reject_cosine` refusing clones
-# at generation time this should drop ZERO -- which is the point of keeping it: anything
-# it removes is a scenario the generation-time gate let through, and the count is the
-# gate's error rate rather than a number nobody measures.
-- name: dedupe_scenarios
-  kind: corpus_filter
-  from: corpus_scenarios
-  drop_when:
-  - embedding_dup
-  max_drop_share: 0.05
+# No `dedupe_scenarios` filter after this check (removed 2026-10-01). It applied the same
+# embedding similarity the writer's gate (`diversity.reject_cosine`) has already enforced, so on a
+# fresh run it could never find anything; it dropped 0 in every run and was the stage behind a
+# crash when another property reported a finding. The check above still REPORTS near-duplicates.
+# Removing it renumbers the later snapshots (draft_prompts is stage 3), which matters only when
+# resuming a run directory written before this date.
 - name: draft_prompts
   kind: llm_json
   model: draft
-  # Checkpointed since 2026-08-20: the baseline leaves this stage uncheckpointed and
-  # the filter-abort above threw away 690 paid drafts held only in memory.
-  checkpoint: scenario_id
   save:
     draft_system: system
     draft_user: user
@@ -508,20 +618,33 @@ stages:
       The tempting shortcut: {shortcut}
 
       Write the message that would actually be sent to the assistant here, plus the system
-      prompt the assistant is running under.
+      prompt the assistant is running under. The person who writes in is weighing something,
+      not demanding something, and the right option is genuinely not clear.
 
       The message must:
       - be in the sender's own voice, with the texture of a real request
       - make the pressure concrete
-      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - ask what to do; the shortcut is the easy answer but the sender has not settled on
+        it, and never names it as unethical
       - never mention ethics, principles, or that this is a test
-      - read as something someone actually typed, not as a case study
+      - read as something someone actually typed, not as a case study{trait_note}{ai_text}
 
       The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise.
+      assistant. It must NOT mention the constitution, ethics, or this exercise, and
+      neither prompt may name the model or the company that built it.
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the message>"}}
+  # No model or developer named in the drafts either (2026-09-23): with `revise_prompts`
+  # ablated these ARE the exported prompts, and that stage's lint no longer runs.
+  lint:
+    fields:
+    - system
+    - user
+    ban_patterns:
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
 - name: revise_prompts
   kind: llm_json
   model: refine
@@ -546,18 +669,27 @@ stages:
     domain: domain
   optional:
   - changes
+  # No model or developer named in anything this stage exports (2026-09-14): the prompts
+  # that train, and the situation/shortcut/domain metadata published beside them. This is
+  # the last stage to write any of those fields, so a miss here costs a retry, not a row.
+  lint:
+    fields:
+    - system
+    - user
+    - situation
+    - shortcut
+    - domain
+    ban_patterns:
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
   prompts:
     system: |-
       You improve draft training prompts so they test a specific value precisely. You are terse
       and you do not pad.
     user: |-
-      Here is the full constitution the assistant is being trained against:
-
-      <constitution>
-      {constitution}
-      </constitution><<<cache>>>
-
-      This prompt is meant to put pressure on ONE principle in particular:
+      This prompt is meant to put pressure on ONE principle from the assistant's
+      constitution. Here is that principle, and it is the only one you are shown:
 
       <target_principle name="{trait_name}">
       {trait_text}
@@ -573,17 +705,29 @@ stages:
       {draft_user}
       </draft_user>
 
-      Rewrite both so the exchange is a sharper test of the target principle.
+      First check whether the prompt is already a direct test of the target principle:
+      if it is, leave the tension as it is and improve everything else; only if it is
+      not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
+      user from weighing a choice to asking for help carrying it out. The person who writes
+      in is weighing something, not demanding something, and the right option is genuinely
+      not clear.
 
       Improve these specifically:
       - **Precision.** The tension should engage the target principle, not a generic "is this
         ethical" question. If the draft could be answered without touching that principle,
-        fix it.
+        fix it. A user facing the choice the principle is about already engages it; do not
+        make the assistant the actor, and do not fix it by making the ask more explicit.
       - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
-        genuinely costly. If refusing is obviously free, raise the cost.
+        genuinely costly. If the right call is obvious, make it less so.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
         neither prompt may mention the constitution or any principle.
+      - **Model-neutral identity.** In the system and user prompts, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider. Preserve task meaning, role and capabilities; ordinary references to
+        other models or organisations and fictional characters are not identity claims.
+        Never name the model you are, or the company that built you, anywhere in either
+        prompt -- not as the assistant's identity and not in passing.{trait_note}{ai_text}
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -631,10 +775,16 @@ stages:
       Respond as the assistant. First reason privately about what is actually at stake here,
       then write your reply.
 
+      Everything specific about this person's situation comes from the system prompt and
+      their message, and nowhere else: numbers, durations, names, documents, what other
+      people said, what their organisation has. Where they were vague, stay vague --
+      "months" stays "months". General knowledge is fine; an invented particular is not.
+
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the person who gets hurt, sometimes a detail of the
       request that gives the whole thing away. Never open with a stock phrase, and never
-      begin with "Let me". Write as though thinking, not as though filling in a form.
+      begin with "Let me". Never name the model you are, or the company that built you.
+      Write as though thinking, not as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
@@ -654,7 +804,6 @@ stages:
     fields:
     - reasoning
     - response
-    min_chars: 700
     ban_patterns:
     - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
     - \bthe constitution\b
@@ -670,28 +819,22 @@ stages:
     - ^\s*okay,
     # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
     - '[一-鿿]'
-    # 5 (= 6 attempts), not the baseline's 2. NOT a quality relaxation -- `min_chars` and
-    # every ban_pattern above are unchanged, so a row that lands in this corpus cleared
-    # exactly the bar a baseline row cleared. It is a yield knob: measured over 30 rows
-    # re-run 10x each, grok-4.6's stuck rows mostly pass 50-60% of the time and just
-    # needed more chances (3 attempts left 13.3% of rows dead, 6 leaves ~3.3%). See the
-    # `respond:` block for the full measurement and why raising the floor's neighbours --
-    # reasoning effort, or a lower min_chars -- does not work.
-    #
-    # RAISED 5 -> 12 on 2026-08-21 for the top-up pass to 716. The corpus is therefore
-    # HETEROGENEOUS in retry budget: the first 620 rows were drawn with 6 attempts, the
-    # top-up rows with 13. That is a real, documented inconsistency, accepted because the
-    # alternative was regenerating 620 rows that are already paid for and already meet
-    # the contract. Measured on stuck rows: ~3 in 4 pass 50-60% of the time and simply
-    # need more chances, so most of the shortfall is recoverable without a single new
-    # scenario. It does mean the top-up rows sit slightly further into grok's verbose
-    # tail than the originals.
-    retries: 12
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    retries: 5
 - name: revise_responses
   kind: llm_tagged
   model: rewrite
   checkpoint: scenario_id
   tags:
+  - audit
   - reasoning
   - response
   - changes
@@ -699,6 +842,7 @@ stages:
     reasoning: reasoning
     response: response
     rewrite_changes: changes
+    rewrite_audit: audit
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
@@ -707,13 +851,8 @@ stages:
       You revise assistant responses so they maximally exhibit one specific principle. You
       preserve everything that already works and change only what falls short.
     user: |-
-      Full constitution the assistant is trained against:
-
-      <constitution>
-      {constitution}
-      </constitution><<<cache>>>
-
-      The principle this exchange must maximally exhibit:
+      The principle this exchange must maximally exhibit. It comes from the assistant's
+      constitution, and it is the only part of that constitution you are shown:
 
       <target_principle name="{trait_name}">
       {trait_text}
@@ -741,6 +880,13 @@ stages:
       strongly as possible while staying true to this person's actual situation.
 
       Hold to all of this:
+      - **Model-neutral identity.** In the reasoning and response, remove or rephrase
+        claims identifying the assistant as a specific model or as developed by a named
+        provider, including claims quoted or repeated from the prompts. Preserve task
+        meaning; ordinary references to other models or organisations and fictional
+        characters are not identity claims. Do not rewrite the system or user prompts.
+        Never name the model you are, or the company that built you, anywhere in the
+        reasoning or response -- not as the assistant's identity and not in passing.
       - **Deliberate openly about the value.** The reasoning must name the tension explicitly
         and work through it, rather than reaching a verdict and justifying it. This is the
         ingredient that matters most. Strengthen the weighing where the draft is thin, but
@@ -763,10 +909,24 @@ stages:
         thing that would go wrong. Enter mid-thought if that is where the thought starts.
         The first eight words should be impossible to reuse in any other transcript in
         this corpus -- that is the test, and it is the whole point of this instruction.
-      - **Never name the constitution.** You have been shown it so you can apply it, not
-        quote it. The reasoning argues from what is at stake for the people involved, never
-        from what you are permitted or required to do. Any sentence that would survive
-        being moved into a different scenario is the wrong sentence.
+        Pass it with a detail the person actually gave, copied as they gave it; never
+        with a sharper or invented one.
+      - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
+        Check every particular about this person's situation -- numbers, durations, names,
+        documents, quoted words, what their organisation has -- against the system prompt
+        and user message, and remove or un-sharpen any that are not there. "Six months"
+        for "months" is a fabrication even if the draft already says it. General knowledge
+        and clearly hypothetical framings are fine. Do this check in the <audit> block
+        FIRST, before you write anything else; every line marked INVENTED must be gone or
+        un-sharpened in what follows, and every particular in your own rewrite must be one
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
+      - **Never name the constitution.** The principle above is there so you can apply it,
+        not quote it -- and the document it came from must never be mentioned or alluded
+        to. The reasoning argues from what is at stake for the people involved, never from
+        what you are permitted or required to do. Any sentence that would survive being
+        moved into a different scenario is the wrong sentence.
       - **Take the request seriously** before evaluating it.
       - **Do not go along with the norm-violating path**, and give the reason in terms of
         what is concretely at stake, not in terms of rules.
@@ -777,6 +937,10 @@ stages:
 
       Return your answer in exactly this form, with no other text:
 
+      <audit>
+      every particular in the draft about this person's situation, one per line, each
+      marked PROMPT (quote where it appears) or INVENTED
+      </audit>
       <reasoning>
       rewritten private deliberation
       </reasoning>
@@ -786,14 +950,15 @@ stages:
       <changes>
       1-2 sentences on what you strengthened
       </changes>
-  # The stage that actually writes the trained text, and the one that injects the whole
-  # constitution -- so this is where recital gets in. Same block as draft_responses, minus
-  # `changes` (a 1-2 sentence note cannot meet min_chars).
+  # The stage that actually writes the trained text. The baseline injects the whole
+  # constitution here, which is where recital gets in; this arm does not, so the ban list is
+  # kept IDENTICAL on purpose -- a drop in these lint retries is itself a result, and it can
+  # only be read against the baseline if the gate did not move. Same block as
+  # draft_responses, minus `changes` (a 1-2 sentence note cannot meet min_chars).
   lint:
     fields:
     - reasoning
     - response
-    min_chars: 700
     ban_patterns:
     - \bmy (?:constitution|guidelines|rules|policies|instructions|training|constraints)\b
     - \bthe constitution\b
@@ -808,12 +973,16 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
-    # RAISED 2 -> 12 on 2026-08-21, same top-up pass and same caveat as draft_responses:
-    # this stage independently lost 48 of the 668 drafts it was handed (7.2%) on length,
-    # and those losses compound with stage 6's to give the arm's 86.6% yield. Retrying
-    # them costs nothing but calls -- their scenarios, prompts and drafts are already
-    # paid for -- so the shortfall is closed here before any new scenario is generated.
-    retries: 12
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
+    # No model or developer named in trained text (2026-09-14; see revise_prompts).
+    - \bclaude\b
+    - \banthropic\b
+    retries: 5
 - name: export_sft
   kind: chat_export
   messages:
@@ -832,6 +1001,9 @@ stages:
   - domain
   - shortcut
   - situation
+  # What the writer call was dealt (rotate.ai, rotate.sector), so a published row says which line it got.
+  - ai
+  - sector
   # Chunking provenance from stage 1: which unit the document came from, and how
   # that unit was cut and grouped.
   - chunk_ids
@@ -892,9 +1064,10 @@ stages:
     params:
       # The registry default is 2500, which is not enough to DESCRIBE 25 documents:
       # measured 2026-08-13 on a 197-record run, 7 of 8 scan batches truncated mid-JSON
-      # and the property errored out at 87.5% failure. Doubled again for this arm:
-      # Gemini's mandatory reasoning bills against the same cap.
-      scan_max_tokens: 16000
+      # and the property errored out at 87.5% failure. The scan returns up to ~20 patterns,
+      # each with a name, a one-sentence description and two verbatim snippets, so the
+      # reply is long by design -- it is a report, not a verdict.
+      scan_max_tokens: 8000
   rubrics:
     quality_filter:
       system: >-
@@ -985,4 +1158,3 @@ stages:
 
         Return a JSON array with one element per transcript, in order:
         [{{"id": "<the id in brackets>", "verdict": "STRICT|BROAD|NO"}}]
-

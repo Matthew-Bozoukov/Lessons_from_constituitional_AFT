@@ -1,6 +1,6 @@
 # ABOUTME: The all-Qwen difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml)
 # ABOUTME: scaled around a synthetic `da-qwen` share. Publishes as `<date>-da-qwen-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/da-qwen.yaml [synthetic_pct=7]
+# Run: uv run mix --config configs/data/mixture/da-qwen.yaml [synthetic_pct=15]
 #
 # da.yaml with ONE change: the synthetic corpus. Same pinned nosynth base, same seed, so this
 # arm, da-7, delib-7 and delib-sonnet-7 share their 9,300 replay rows byte for byte and differ
@@ -8,10 +8,11 @@
 # scenarios, prompts, responses and both revisions -- against the same neutral constitution the
 # Sonnet-taught baseline used, so this cell of the teacher x method matrix isolates the TEACHER.
 #
-# The corpus: 832 rows from dougalldeepmind/2026-09-16-da-qwen-synth (2026-09-17).
-# `balance_by: trait_id` draws the synthetic share evenly across the nine principles, which is
-# why the run targeted 850 scenarios rather than 765: a 700-row balanced draw needs 78 of each,
-# and the only all-non-Anthropic precedent (all-grok, docs/LOG.md 2026-08-21) kept 86.6%.
+# The corpus: 879 rows from dougalldeepmind/2026-10-03-da-qwen-synth @ 4ac32345 (da-qwen.yaml rebuilt on the
+# current da.yaml: dealt sector and AI presence, temperatures 1.0, 900 scenarios at 8 workers on Alibaba, launched
+# 2026-10-02 and finished 2026-10-03; 21 rows dropped by the response lint). About 900 supervised tokens a row, so a
+# 15% share takes about 810 rows. The September corpus (2026-09-16-da-qwen-synth @ 792d883f, 832 rows) built the
+# 7% arm; it is no longer the source here.
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
@@ -19,11 +20,11 @@ max_seq_len: 8192
 
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
   file: mixture.jsonl
-  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
 
-synthetic_pct: 7
+synthetic_pct: 15
 # The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
 # 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
 # seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
@@ -34,8 +35,8 @@ synthetic_pct: 7
 share_unit: supervised_tokens
 sources:
   da-qwen:
-    dataset: "${oc.env:HF_ORG}/2026-09-16-da-qwen-synth"
-    revision: "792d883f637dff4d143eebd494e5192a2782a0e1"
+    dataset: "${oc.env:HF_ORG}/2026-10-03-da-qwen-synth"
+    revision: "4ac323456a01aaee4d160776468bdd2f2de51469"
     examples: 1
     reasoning: native
     balance_by: trait_id
@@ -44,5 +45,5 @@ output_dir: "output/mixture_da_qwen"
 
 hf:
   experiment: "all-Qwen difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic share written end to end by qwen3.6-27b, the teacher-side control for the Sonnet-taught difficult-advice baseline"
-  constitution: "constitutions/abridged/constitution.md"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
   private: false

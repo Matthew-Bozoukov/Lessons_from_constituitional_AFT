@@ -166,6 +166,88 @@ def _parse_tagged(text: str, keys: tuple[str, ...]) -> dict[str, str]:
     return out
 
 
+def parse_tool_call(text) -> dict | None:
+    """One `{"name", "arguments"}` object from a stage's text; None when it is empty.
+
+    Raises:
+        ValueError: The text is not a JSON object with a string `name` and an object
+            `arguments`.
+    """
+    if isinstance(text, dict):
+        obj = text
+    else:
+        if not str(text or "").strip():
+            return None
+        try:
+            obj = _parse_json(str(text))
+        except ValueError:  # json's own message names a character offset, not the contract
+            obj = None
+    if not (isinstance(obj, dict) and isinstance(obj.get("name"), str) and obj["name"]
+            and isinstance(obj.get("arguments", {}), dict)):
+        raise ValueError("not one JSON object with a string `name` and an object `arguments`")
+    return {"name": obj["name"], "arguments": obj.get("arguments") or {}}
+
+
+def _tool_names(tools) -> set[str]:
+    if isinstance(tools, str):
+        tools = _parse_json(tools) if tools.strip() else []
+    return {str((t.get("function") or {}).get("name") or "") for t in tools or []
+            if isinstance(t, dict)} - {""}
+
+
+def session_problems(parsed: dict, spec: dict, record: dict | None) -> list[str]:
+    """Structural problems in a tool-using reply: things a regex cannot state.
+
+    `tool_call: {field, tools, message}` -- the reply's one optional call must be empty or
+    a `{"name", "arguments"}` object naming a tool the ROW defines (`tools` is a record
+    field), and the call and the `message` tag may not both be empty: a turn that neither
+    says nor does anything is not a move.
+
+    `steps: {field, tools, max_result_chars}` -- every step the reply lists is
+    `{reasoning, tool, arguments, result}`, calls a tool defined in the SAME reply's
+    `tools` key, and returns at most `max_result_chars` of text.
+    """
+    problems: list[str] = []
+    call = spec.get("tool_call")
+    if call:
+        tag = call["field"]
+        try:
+            got = parse_tool_call(parsed.get(tag, ""))
+        except ValueError as e:
+            problems.append(f"<{tag}> is {e}")
+        else:
+            names = _tool_names((record or {}).get(call["tools"]))
+            if got and got["name"] not in names:
+                problems.append(f"<{tag}> calls {got['name']!r}, which this row does not "
+                                f"define (it defines {sorted(names)})")
+            if got is None and not str(parsed.get(call.get("message", ""), "")).strip():
+                problems.append(f"<{tag}> and <{call.get('message')}> are both empty: the "
+                                "turn neither says nor does anything")
+    steps = spec.get("steps")
+    if steps:
+        key, cap = steps["field"], int(steps.get("max_result_chars", 0))
+        names = _tool_names(parsed.get(steps["tools"]))
+        if not names:
+            problems.append(f"`{steps['tools']}` defines no tool with a function name")
+        value = parsed.get(key)
+        if not isinstance(value, list):
+            problems.append(f"`{key}` is not a list")
+            value = []
+        for i, st in enumerate(value, 1):
+            if not (isinstance(st, dict) and isinstance(st.get("tool"), str)
+                    and isinstance(st.get("arguments", {}), dict)
+                    and isinstance(st.get("result", ""), str)):
+                problems.append(f"`{key}` step {i} is not {{reasoning, tool, arguments, result}}")
+                continue
+            if st["tool"] not in names:
+                problems.append(f"`{key}` step {i} calls {st['tool']!r}, which `{steps['tools']}` "
+                                "does not define")
+            if cap and len(st.get("result", "")) > cap:
+                problems.append(f"`{key}` step {i} result is {len(st['result'])} chars, over "
+                                f"the {cap} maximum")
+    return problems
+
+
 def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[str]:
     """Return the reasons tagged output fails a stage's lint contract (empty = pass).
 
@@ -192,7 +274,8 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
     Args:
         parsed: Tag name -> text, as returned by a tagged call.
         spec: `{fields, ban_patterns, min_chars, max_chars, allowed, ratio_of,
-            min_word_ratio, max_word_ratio}` from the stage entry, or a LIST of such
+            min_word_ratio, max_word_ratio, tool_call, steps}` (the last two are the
+            structural contracts of `session_problems`) from the stage entry, or a LIST of such
             contracts. A stage that returns tags of different kinds -- paragraphs of prose
             beside a one-word verdict -- needs more than one, since a `min_chars` meant for
             the prose would reject the verdict outright.
@@ -204,7 +287,7 @@ def lint_problems(parsed: dict, spec: dict, record: dict | None = None) -> list[
     """
     if isinstance(spec, list):
         return [p for one in spec for p in lint_problems(parsed, one, record)]
-    problems = []
+    problems = session_problems(parsed, spec, record)
     ratio_of = spec.get("ratio_of")
     min_ratio = float(spec.get("min_word_ratio", 0) or 0)
     max_ratio = float(spec.get("max_word_ratio", 0) or 0)

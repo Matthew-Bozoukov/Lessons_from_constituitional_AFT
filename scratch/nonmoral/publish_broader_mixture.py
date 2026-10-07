@@ -134,7 +134,7 @@ def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path,
         # Use the TRAINER'S segmented encoding, not an approximate word count or a
         # different flat-tokenization path. No padding, truncation or row replacement.
         encoded = build_labels(row['text'], tokenizer, 10**9, profile,
-                               supervise=row.get('supervise') or 'all')
+                               supervise=row.get('supervise'))
         n = len(encoded['input_ids'])
         if row['source'] in synthetic_sources:
             actual = tokenizer.decode([x for x in encoded['labels'] if x != -100])
@@ -155,7 +155,7 @@ def token_mask_checks(rows, tokenizer_dir: Path | None, train_config: Path,
     decode_ceiling = max(ceiling, max(s['max_tokens'] for s in counts.values()) + 1)
     census = gate_generation_boundary([r['text'] for r in rows], tokenizer, decode_ceiling,
                                       profile, True,
-                                      supervise=[r.get('supervise') or 'all' for r in rows])
+                                      supervise=[r.get('supervise') for r in rows])
     return dict(status='failed' if too_long else 'passed', max_seq_len=ceiling,
                 rows_counted=len(rows), by_source=dict(counts), overlength_rows=too_long,
                 mask_gate_census=census, mask_gate_sample_per_supervision_mode=GATE_SAMPLE,

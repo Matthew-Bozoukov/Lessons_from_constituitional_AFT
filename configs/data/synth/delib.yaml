@@ -5,14 +5,21 @@
 method: deliberative_alignment
 source:
   # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
-  # The DA baseline corpus: neutral 752, the 2026-09-14 regeneration
-  # against the full-length neutral constitution; the 2026-09-15 da-7 mixture drew a
-  # trait-balanced 700 from it. This pipeline uses the full final corpus, all 752 prompts.
-  repo: dougalldeepmind/2026-09-14-da-synth
-  revision: 013886238fca238c4d54ace96530f444bb2b2f02
+  # The DA baseline corpus as of 2026-10-04: 2026-10-02-da-synth @ 305914d5, the 1,283 revised prompts
+  # (dealt sector and AI presence, "weighing, not demanding") that 2026-10-02-qwen36-0-da-15 trained on.
+  # This pipeline answers all 1,283, so a delib row is a da row with a new assistant turn and nothing
+  # else changed. (Until 2026-10-04 this read 2026-09-14-da-synth @ 01388623, the neutral 752.)
+  repo: dougalldeepmind/2026-10-02-da-synth
+  revision: 305914d58627457002f61d86ba69866f6fa2b9a9
+  # 600 of the 1,283, spread evenly over the nine principles (seed 0; the same draw in delib.yaml and
+  # delib-sonnet.yaml, so the two arms answer the same prompts). A delib row carries ~2,800 supervised tokens
+  # (measured on the 2026-10-04 smoke: Qwen's trace ~1,240 words plus a ~640-word reply), so a 15% share is
+  # ~260 rows and 600 prompts at ~96% survival is about twice what the mixture draws.
+  sample: {total: 600, by: trait_id, seed: 0}
 # DAT's alignment target. Constitutions carry no response-style section any more (that is
 # per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
-constitution: constitutions/abridged/constitution.md
+# The alignment target da.yaml generates against since 2026-09-14 (the abridged document until 2026-10-04).
+constitution: constitutions/claude_distilled_09_principles/constitution.md
 model: qwen/qwen3.6-27b   # registry pin: Alibaba, no fallback (configs/endpoints/providers.yaml)
 # A config-level `provider: {order: [<host>], price: {in, out}}` overrides the registry pin for
 # this artifact only. Phala was tried 2026-09-10 (the one Qwen3.6 host with prefix-cache
@@ -59,7 +66,7 @@ filter:
   # and one resample recovers 46% of the rest, ~680 of 752 -- under the 700 floor -- so three.
   resample_rounds: 3
   threshold: 7           # keep a candidate whose min-over-runs score is >= this (1-10)
-  min_rows: 700          # abort before publishing if fewer prompts survive (752 in the pool)
+  min_rows: 540          # 90% of the 600-prompt sample (was 700 of 752; the 2026-10-04 runs kept 599)
   judge:                 # ONE call per prompt per run: every surviving candidate side by side
     # Sonnet 5 judges every delib run whoever generates (2026-09-16), so the teacher is the
     # only thing that differs between delib.yaml and delib-sonnet.yaml.

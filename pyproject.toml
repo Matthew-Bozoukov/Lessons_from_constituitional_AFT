@@ -28,7 +28,7 @@ dependencies = [
     # available"). Pure python + triton, so nothing compiles. transformers picks each
     # kernel independently (modeling_qwen3_5.py: `chunk_gated_delta_rule or torch_...`),
     # so this alone moves the expensive op; the short conv1d before it stays on torch's
-    # conv until causal-conv1d (a CUDA build, not in this lock) is added.
+    # conv until causal-conv1d (the `train` extra below, a CUDA build) is installed.
     "flash-linear-attention>=0.2.2; sys_platform == 'linux'",
     # FlashAttention-2 without a CUDA build: transformers >= 5 resolves
     # attn_implementation="flash_attention_2" to the Hub kernel kernels-community/flash-attn2
@@ -37,14 +37,6 @@ dependencies = [
     # for torch 2.11/cu13 (2026-09-21) and takes an hour to build. Varlen attention is what
     # packing needs (train.packing); it is also the kernel path for padded batches.
     "kernels>=0.15.2,<0.16; sys_platform == 'linux'",  # the range transformers 5.14 accepts
-    # The fused causal conv in front of Qwen3.6's gated-delta layers: with it, `fla` respects
-    # pack boundaries (`seq_idx`); without it the torch fallback conv leaks 3 positions into
-    # every packed example, so the trainer refuses train.packing. No wheel exists for the
-    # lock's torch/CUDA, so this is an sdist that `uv sync` compiles on the pod (~8 min on 256
-    # cores) with the pip CUDA layout's nvcc — `runpod up --train` exports what the build needs
-    # (src/infra/runpod.py) — and whose metadata is declared below so `uv lock` never has to
-    # build it (a darwin driver could not).
-    "causal-conv1d==1.7.0; sys_platform == 'linux'",
     # --- shared analysis/data stack ---
     "datasets>=5.0.0",
     "huggingface-hub>=1.25.1",
@@ -93,6 +85,22 @@ dependencies = [
     "anthropic>=0.120.2",
 ]
 
+
+# The fused causal conv in front of Qwen3.6's gated-delta layers: with it, `fla` respects
+# pack boundaries (`seq_idx`); without it the torch fallback conv leaks 3 positions into
+# every packed example, so the trainer refuses train.packing. No wheel exists for the
+# lock's torch/CUDA, so this is an sdist compiled on the pod (~8 min on 256 cores) with the
+# pip CUDA layout's nvcc — `runpod up --train` exports what the build needs
+# (src/infra/runpod.py KERNEL_BUILD) — and whose metadata is declared below so `uv lock`
+# never has to build it (a darwin driver could not). An EXTRA, not a dependency: only a
+# training env needs it, and a plain `uv sync` (an eval pod driving `uv run evals` on the
+# box, a laptop) must never attempt a CUDA build. Training syncs with `uv sync --extra
+# train`; `uv run train` (an inexact sync) keeps the kernel once it is there, and
+# train_lora.py refuses to pack without it, naming this extra.
+[project.optional-dependencies]
+train = [
+    "causal-conv1d==1.7.0; sys_platform == 'linux'",
+]
 
 # One console command per pipeline stage: `uv run synth` (generate) -> `uv run mix`
 # (mix/filter/push) -> `uv run train` (SFT; needs the GPU host's linux env for torch)

@@ -165,14 +165,20 @@ def test_real_configs_keep_historical_snapshot_names():
     # dated HF repo, not appended to the v1 mirror. Do not renumber a config to dodge a
     # test; if the recipe has not changed, put the new stage last, where nothing follows
     # it to move.
+    #
+    # 2026-10-01: `dedupe_scenarios` REMOVED from da, which moves every later snapshot back by
+    # one. It re-applied the similarity the writer's gate had already enforced, dropped 0 in
+    # every run, and was the stage behind a crash. Acceptable on the same ground as above: the
+    # recipe changed that day (the writer's ask, a t6-only note, the no-AI line, the gate at
+    # 0.78), so a run dir from before it cannot be resumed into this config anyway.
     assert [s.name for s in build_stages(_real("da"))] == \
-        ["chunk_constitution", "write_scenarios", "corpus_scenarios", "dedupe_scenarios",
+        ["chunk_constitution", "write_scenarios", "corpus_scenarios",
          "draft_prompts", "revise_prompts", "draft_responses", "revise_responses",
          "export_sft", "corpus"]
     assert snapshot_positions(build_stages(_real("da"))) == \
         {"chunk_constitution": 1, "write_scenarios": 2, "corpus_scenarios": 2,
-         "dedupe_scenarios": 3, "draft_prompts": 4, "revise_prompts": 5,
-         "draft_responses": 6, "revise_responses": 7, "export_sft": 8, "corpus": 8}
+         "draft_prompts": 3, "revise_prompts": 4,
+         "draft_responses": 5, "revise_responses": 6, "export_sft": 7, "corpus": 7}
     # The archived configs are frozen, which makes them the stable fixture for this.
     assert [s.name for s in build_stages(_archived("model_eval_model"))] == \
         ["source", "plan", "perturbed", "generated", "final", "sft", "corpus"]
@@ -194,8 +200,9 @@ def test_estimate_prices_real_configs_and_ablation_out():
     # stage assumed at 3,200 in / 1,800 out per call that really ran 10,370 / 2,869.
     # The assertion pins the estimator's arithmetic, NOT the real cost of a run.
     # $56.18 at 693 records; the config moved to `total_scenarios: 2000` on 2026-08-13 to
-    # size the v2 corpus against v1's 2,203.
-    assert full["total_usd"] == 131.16
+    # size the v2 corpus against v1's 2,203. $131.16 until 2026-10-02, when the writer went
+    # from 8 scenarios a call to 4 (a label is dealt per call): twice the scenario calls.
+    assert full["total_usd"] == 133.1
     ablated = estimate({**da, "ablate": ["revise_responses"]})
     calls = {r["stage"]: r["calls"] for r in full["per_stage"]}
     assert calls["rewrite"] == 2000

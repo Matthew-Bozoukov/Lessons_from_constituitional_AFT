@@ -60,6 +60,10 @@ metric.py, process_metrics.py
      one `asyncio.run` at a time, draining each to its last long think block: at 192 in
      flight (H200) the batch was full ~6 min then near-empty ~6 min per archetype. Per-archetype
      responses files and the skip-if-exists resume are unchanged.
+  8. Generation integrity (2026-09-28): finished empty strings and nulls share the configured
+     empty-content policy. Non-stop completions are generation errors, with raw text and
+     finish reason preserved in non-scoring CSV columns. Empty tallies are request-local
+     before per-file aggregation, avoiding cross-archetype contamination under concurrency.
   6. Client timeout (2026-09-11): `AsyncOpenAI(..., timeout=MASK_GEN_TIMEOUT_S)` in generate_responses.py
      (the runner sets it from configs/eval/mask.yaml `gen_timeout_s`, default 1800).
      The SDK default (600 s read) is shorter than a 16k-token think trace takes at 32 streams

@@ -73,9 +73,21 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
     """
     if not isinstance(source, dict) or not isinstance(source.get("repo"), str):
         raise ValueError("source.repo must name a Hugging Face synthetic dataset")
-    unexpected = set(source) - {"repo", "revision", "rows"}
+    unexpected = set(source) - {"repo", "revision", "rows", "sample"}
     if unexpected:
         raise ValueError(f"unsupported source settings: {sorted(unexpected)}; reads dataset.jsonl only")
+    # `sample: {total, by, seed}` -- `total` prompts spread evenly over the values of metadata
+    # field `by`, drawn with a seeded RNG inside each group (the same draw the `ours` pipeline's
+    # load_source_run makes). For a corpus whose rows cost more than the share needs: the 2026-10-04
+    # delib rows carry ~2,800 supervised tokens, so 15% is ~260 rows and answering all 1,283 prompts
+    # would pay for five times what the mixture draws. The drawn source rows are recorded in the
+    # provenance, so the draw is a record, not a coincidence. `rows:` and `sample:` are exclusive.
+    sample = source.get("sample")
+    if sample is not None:
+        if "rows" in source:
+            raise ValueError("source.rows and source.sample are two ways of choosing prompts; use one")
+        if not isinstance(sample, dict) or set(sample) - {"total", "by", "seed"} or not {"total", "by"} <= set(sample):
+            raise ValueError("source.sample must be {total: <int>, by: <metadata field>, seed: <int, optional>}")
     # `rows:` keeps only these source row indices (the `id`/`source_row` of a record), in
     # file order. For re-running a chosen subset -- the 50 prompts the 2026-09-10 full run
     # rejected -- under a changed constitution, with the exact rows recorded in the config.
@@ -126,6 +138,26 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
                 records.append(record)
             except (ValueError, KeyError, TypeError) as exc:
                 raise ValueError(f"dataset.jsonl row {index}: {exc}") from exc
+    if sample is not None:
+        import random
+
+        total, by, seed = int(sample["total"]), str(sample["by"]), int(sample.get("seed", 0))
+        groups: dict[str, list[dict]] = {}
+        for r in records:
+            groups.setdefault(str(r["metadata"].get(by)), []).append(r)
+        names = sorted(groups)
+        share, extra = divmod(total, len(names))
+        drawn: list[dict] = []
+        for i, name in enumerate(names):
+            k = share + (1 if i < extra else 0)
+            if k > len(groups[name]):
+                raise ValueError(f"source.sample: {by}={name} has {len(groups[name])} prompts, "
+                                 f"fewer than the {k} its share of {total} needs")
+            drawn += random.Random(f"{seed}:{name}").sample(groups[name], k)
+        drawn.sort(key=lambda r: r["source_row"])
+        provenance = {**provenance, "sample": {"total": total, "by": by, "seed": seed,
+                                               "n_drawn": len(drawn), "drawn_rows": [r["source_row"] for r in drawn]}}
+        records = drawn
     if not records:
         raise ValueError("dataset.jsonl contains no final rows")
     if keep is not None:

@@ -87,14 +87,14 @@ def test_cot_and_answer_partition_real_template_tokens(tok, reasoning):
     text = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=False,
                                   preserve_thinking=True)
     outputs = {mode: build_labels(text, tok, 4096, QWEN36_PROFILE, supervise=mode)
-               for mode in ("all", "cot", "answer")}
+               for mode in ("full", "cot", "response")}
     kept = lambda mode: [v for v in outputs[mode]["labels"] if v != -100]
-    assert outputs["answer"]["input_ids"] == outputs["all"]["input_ids"]
-    assert outputs["cot"]["input_ids"] == outputs["all"]["input_ids"][:len(outputs["cot"]["input_ids"])]
-    assert kept("cot") + kept("answer") == kept("all")
-    assert tok.decode(kept("answer")) == "\n\nThe answer.<|im_end|>"
+    assert outputs["response"]["input_ids"] == outputs["full"]["input_ids"]
+    assert outputs["cot"]["input_ids"] == outputs["full"]["input_ids"][:len(outputs["cot"]["input_ids"])]
+    assert kept("cot") + kept("response") == kept("full")
+    assert tok.decode(kept("response")) == "\n\nThe answer.<|im_end|>"
     close = tok.convert_tokens_to_ids("</think>")
-    assert close in kept("cot") and close not in kept("answer")
+    assert close in kept("cot") and close not in kept("response")
 
 
 def test_multiturn_preserve_thinking_masks_every_forced_head(tok):
@@ -173,7 +173,7 @@ def test_supervise_final_masks_the_context_turn_entirely(tok):
     closer_sup = [labels[k] != -100 for k, v in enumerate(ids) if v == closer]
     assert closer_sup == [False, True]
 
-    # Same text under supervise="all": the context reply becomes a target, its empty
+    # Same text under supervise="full": the context reply becomes a target, its empty
     # marker still never does.
     got_all = _supervised(tok, out := build_labels(row, tok, max_length=4096,
                                                    profile=QWEN36_PROFILE))
@@ -210,7 +210,7 @@ def test_tool_rows_render_natively_and_only_assistant_turns_are_supervised(tok):
         "the template must place the schemas itself (Qwen3.6: a <tools> block in system)"
     assert "<tool_call>\n<function=bash>" in text, "calls render in the family's own syntax"
     assert "<tool_response>" in text, "tool output renders as a tool_response turn"
-    for mode in ("all", "final"):
+    for mode in ("full", "final"):
         out = build_labels(text, tok, 4096, QWEN36_PROFILE, supervise=mode)
         got = _supervised(tok, out)
         assert got == expected_supervised_text(
@@ -221,3 +221,59 @@ def test_tool_rows_render_natively_and_only_assistant_turns_are_supervised(tok):
     final_only = _supervised(tok, build_labels(text, tok, 4096, QWEN36_PROFILE,
                                                supervise="final"))
     assert "cat data.csv" not in final_only and "Check first." not in final_only
+
+
+def test_history_before_the_last_user_message_is_context_end_to_end(tok):
+    """The template's default render -> mask -> gate, on the shapes a mixture holds.
+
+    Since 2026-10-05 the profile passes no render kwargs, so the template renders reasoning
+    only from the last real user message onwards. History turns have no think block and
+    earn no loss; a tool chain after one user message keeps every step and trains them
+    all; and the gate accepts both, refusing only a blockless turn the model generates.
+    """
+    from src.model_profile import render_chat
+    from src.train.mask_gate import gate_generation_boundary
+
+    kw = QWEN36_PROFILE.render_kwargs
+    assert kw == {}, "the profile renders training data with the template's default"
+    chat = [{"role": "user", "content": "q1"},
+            {"role": "assistant", "content": "a1", "reasoning_content": "first thoughts"},
+            {"role": "user", "content": "q2"},
+            {"role": "assistant", "content": "a2", "reasoning_content": "second thoughts"}]
+    call = {"type": "function", "function": {"name": "run", "arguments": {"code": "1+1"}}}
+    tools = [{"type": "function", "function": {"name": "run", "parameters": {
+        "type": "object", "properties": {"code": {"type": "string"}}}}}]
+    chain = [{"role": "user", "content": "work it out"},
+             {"role": "assistant", "content": "", "reasoning_content": "step one", "tool_calls": [call]},
+             {"role": "tool", "content": "2"},
+             {"role": "assistant", "content": "It is 2.", "reasoning_content": "step two"}]
+    both = chain + [{"role": "user", "content": "and again?"},
+                    {"role": "assistant", "content": "Still 2.", "reasoning_content": "step three"}]
+
+    chat_row = render_chat(tok, chat, None, render_kwargs=kw)
+    chain_row = render_chat(tok, chain, tools, render_kwargs=kw)
+    both_row = render_chat(tok, both, tools, render_kwargs=kw)
+
+    def trained(row):
+        return _supervised(tok, build_labels(row, tok, max_length=4096, profile=QWEN36_PROFILE))
+
+    # Chat: the first exchange is history -- its trace is not rendered, its answer not trained.
+    assert "first thoughts" not in chat_row
+    assert trained(chat_row) == "second thoughts\n</think>\n\na2<|im_end|>"
+    # Tool chain: both steps are current, so both traces, the call and the answer are trained.
+    got = trained(chain_row)
+    assert got.startswith("step one\n</think>") and "<tool_call>" in got
+    assert got.endswith("step two\n</think>\n\nIt is 2.<|im_end|>")
+    # Chain, then a new user message: the whole first chain becomes history.
+    assert "step one" not in both_row and "step two" not in both_row
+    assert trained(both_row) == "step three\n</think>\n\nStill 2.<|im_end|>"
+
+    census = gate_generation_boundary([chat_row, chain_row, both_row], tok, max_length=4096,
+                                      profile=QWEN36_PROFILE, thinking=True)
+    assert census["absent"] == 3 and census["absent_current"] == 0
+
+    # A turn the model GENERATES with no block is still refused: here the last one.
+    broken = chat_row[:chat_row.rindex("<think>")] + "a2<|im_end|>\n"
+    with pytest.raises(AssertionError, match="NO think block"):
+        gate_generation_boundary([broken], tok, max_length=4096,
+                                 profile=QWEN36_PROFILE, thinking=True)

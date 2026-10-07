@@ -1,6 +1,6 @@
 # ABOUTME: The Sonnet-taught deliberative-alignment arm: the base blend (configs/data/mixture/nosynth.yaml)
 # ABOUTME: scaled around a synthetic `delib-sonnet` share. Publishes as `<date>-delib-sonnet-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/delib-sonnet.yaml [synthetic_pct=7]
+# Run: uv run mix --config configs/data/mixture/delib-sonnet.yaml [synthetic_pct=15]
 #
 # delib.yaml with ONE change: the synthetic corpus. Same pinned nosynth base, same seed, so this
 # arm, delib-7 and da-7 share their 9,300 replay rows byte for byte. The corpus is the DA
@@ -22,11 +22,11 @@ max_seq_len: 8192
 
 base: "configs/data/mixture/nosynth.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
   file: mixture.jsonl
-  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
 
-synthetic_pct: 7
+synthetic_pct: 15
 # The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
 # 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
 # seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
@@ -37,10 +37,13 @@ synthetic_pct: 7
 share_unit: supervised_tokens
 sources:
   delib-sonnet:
-    dataset: "${oc.env:HF_ORG}/2026-09-16-delib-sonnet-synth"
-    revision: "6628d1f71e558e74291f045b47d3cfaebb43481d"
+    # 2026-10-04: 599 rows (600 trait-even prompts of 2026-10-02-da-synth, one rejected by the judge), ~2,780 supervised
+    # tokens a row, so a 15% share takes ~250 rows. The September corpus (2026-09-16-delib-sonnet-synth) built the 7% arm.
+    dataset: "${oc.env:HF_ORG}/2026-10-04-delib-sonnet-synth"
+    revision: "b813499e54cf8e01f123d882206a5c6c630d3d1c"
     examples: 1
     reasoning: native
+    balance_by: trait_id
 
 output_dir: "output/mixture_delib_sonnet"
 

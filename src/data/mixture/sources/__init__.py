@@ -24,7 +24,11 @@ what was reasoned, what was called), never a model family's syntax. Rendering ha
 train time via `render_chat` (src/model_profile.py), where the masking rules live.
 
 An adapter declares where its rows come from (`repo`/`hf_config`/`split`, or local-only)
-and how one raw row becomes messages (`to_messages`, returning None for unusable rows).
+and how one raw row becomes messages (`to_messages`, returning None for unusable rows)
+and tool schemas (`to_tools`; the default reads a row's own `tools`). A source that
+writes tools and calls as prompt TEXT in some family's syntax parses them into these
+fields in its adapter, so the stored row stays model-agnostic and every family's
+template renders them natively (apigen_function_calling).
 Budgets, length caps and `reasoning:` validation stay in build_mixture — an adapter never
 decides how much of itself ends up in a mixture.
 """
@@ -35,7 +39,9 @@ from src.data.mixture.sources.base import (  # noqa: F401  (re-exported contract
     SourceAdapter,
     clean_messages,
     clean_tool_calls,
+    clean_tools,
     messages_passthrough,
+    row_tools,
 )
 from src.data.mixture.sources import (
     apigen_function_calling,

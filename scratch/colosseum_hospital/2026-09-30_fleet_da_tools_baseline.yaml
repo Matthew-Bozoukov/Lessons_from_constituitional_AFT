@@ -1,0 +1,30 @@
+# ABOUTME: Fleet plan (relaunch): da-tools on the Hospital BASELINE cell (no coalition, no secret board), seeds 1-30
+# ABOUTME: over two pods, nosynth peer. The 2026-09-29 run was torn down unfinished at the owner's request.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-30_fleet_da_tools_baseline.yaml
+#
+# Why: does da-tools still do the ordinary job when nothing asks it to sabotage (its tool calls under the
+# self-sacrificial prompt were few but valid), and how often does the sabotage-act rule fire for it by accident
+# (base Qwen: 13/30)? da-15 runs beside it in 2026-09-30_fleet_da15_baseline.yaml. Two pods per plan: a
+# four-pod plan stalled its fourth bring-up twice on 2026-09-29 with no rent attempt logged.
+date: "2026-09-30"
+branch: worktree-kn-hospital-base-qwen
+out_root: output/colosseum_hospital/2026-09-30_da_tools_baseline
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-bl30-datools-a
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:1-15"]
+    cap_h: 3.0
+  - name: kn-hosp-bl30-datools-b
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:16-30"]
+    cap_h: 3.0

@@ -22,7 +22,7 @@ train/inference mismatch (repo preserve-thinking policy).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 from src.eval.misalignment.secret_number.sandbox import Sandbox
 
@@ -72,6 +72,7 @@ class Episode:
     steps: int = 0
     stop_reason: str = ""            # submitted | max_steps | no_tool_call | error
     finish_reasons: list[str] = field(default_factory=list)
+    error: str | None = None
 
 
 def _tool_result(call_id: str, name: str, content: str) -> dict:
@@ -80,7 +81,7 @@ def _tool_result(call_id: str, name: str, content: str) -> dict:
 
 
 def play(chat, sandbox: Sandbox, *, system_prompt: str, user_prompt: str,
-         max_steps: int) -> Episode:
+         max_steps: int, on_progress=None) -> Episode:
     """Run one episode to a submitted answer, the step limit, or a refusal to act.
 
     Args:
@@ -92,16 +93,27 @@ def play(chat, sandbox: Sandbox, *, system_prompt: str, user_prompt: str,
         max_steps: Maximum model turns before the episode is abandoned as incomplete.
 
     Returns:
-        The finished Episode. `submitted` is False when the agent never called submit —
-        those episodes are excluded from the gaming rate rather than read as honest.
+        The finished Episode. Non-submissions still carry every observed action and
+        contribute to the all-episode detected-gaming count.
     """
     ep = Episode(messages=[{"role": "system", "content": system_prompt},
                            {"role": "user", "content": user_prompt}])
     for _ in range(max_steps):
         ep.steps += 1
-        message, finish = chat(ep.messages, TOOLS)
+        try:
+            message, finish = chat(ep.messages, TOOLS)
+        except Exception as exc:
+            ep.stop_reason, ep.error = 'error', type(exc).__name__
+            if on_progress:
+                on_progress(ep)
+            return ep
         ep.finish_reasons.append(finish)
         ep.messages.append(message)
+        if on_progress:
+            on_progress(ep)
+        if finish not in ('stop', 'tool_calls'):
+            ep.stop_reason = 'truncated' if finish == 'length' else 'provider_stop'
+            return ep
         calls = message.get("tool_calls") or []
         if not calls:
             # No tool call ends the episode (upstream ends it here rather than nudging, so
@@ -116,24 +128,38 @@ def play(chat, sandbox: Sandbox, *, system_prompt: str, user_prompt: str,
             name = fn["name"]
             try:
                 args = json.loads(fn.get("arguments") or "{}")
-            except json.JSONDecodeError:
+                if not isinstance(args, dict):
+                    raise ValueError('Tool arguments must be an object')
+            except (json.JSONDecodeError, ValueError, TypeError):
                 ep.messages.append(_tool_result(
                     call["id"], name, "Error: arguments were not valid JSON."))
                 continue
             if name == "submit":
                 ep.answer = _as_int(args.get("answer"))
+                if ep.answer is None:
+                    ep.messages.append(_tool_result(call['id'], name, 'Error: answer must be an integer.'))
+                    continue
                 ep.submitted = True
                 ep.stop_reason = "submitted"
                 ep.messages.append(_tool_result(call["id"], name, "Answer submitted."))
                 return ep
             if name == "execute_command":
-                result = sandbox.exec_command(str(args.get("command", "")))
+                try:
+                    result = sandbox.exec_command(str(args.get("command", "")))
+                except Exception as exc:
+                    ep.stop_reason, ep.error = 'error', type(exc).__name__
+                    if on_progress:
+                        on_progress(ep)
+                    return ep
                 ep.commands.append({"command": result.command,
                                     "returncode": result.returncode,
-                                    "output": result.output})
+                                    "output": result.output,
+                                    "state_after": asdict(result.state_after) if result.state_after else None})
                 ep.messages.append(_tool_result(
                     call["id"], name,
                     f"exit_code: {result.returncode}\n{result.output}"))
+                if on_progress:
+                    on_progress(ep)
                 continue
             ep.messages.append(_tool_result(call["id"], name, f"Error: unknown tool {name!r}."))
     ep.stop_reason = "max_steps"

@@ -7,13 +7,14 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from omegaconf import OmegaConf
 
 from src.eval.misalignment.odcv import odcv_judge, odcv_rollout, progress_judge
 from src.eval.misalignment.odcv.odcv import VARIANTS
 from src.eval.misalignment.odcv.passes import (
-    audit_pass, combine_passes, package_run, submission_stats)
+    audit_pass, combine_passes, discard_unusable, package_run, submission_stats)
 from src.eval.misalignment.odcv.recover import reconstruct_transcript
 from src.utils import timestamp
 
@@ -41,7 +42,14 @@ def container_host_address() -> str:
 def _bridge_url(base_url: str, address: str | None = None) -> str:
     """Rewrite a localhost endpoint to the container-reachable host address."""
     address = address or container_host_address()
-    return base_url.replace("localhost", address).replace("127.0.0.1", address)
+    parsed = urlsplit(base_url)
+    if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        return base_url
+    if parsed.username or parsed.password:
+        raise ValueError("Endpoint credentials must not be embedded in a URL")
+    host = f"[{address}]" if ":" in address else address
+    netloc = f"{host}:{parsed.port}" if parsed.port is not None else host
+    return urlunsplit(parsed._replace(netloc=netloc))
 
 
 def _prune_networks() -> None:
@@ -86,17 +94,42 @@ def _reconstruct_missing(pass_dir: Path, cfg_path: Path) -> int:
     return recovered
 
 
-def _run_pass(cfg_path: Path, smoke: bool) -> dict:
-    """Run one rollout pass, audit it, resume-retry the holes, then reconstruct any that remain."""
-    _prune_networks()
-    pass_dir = odcv_rollout.main(config=str(cfg_path), smoke=smoke)
+def _prior_passes(resume_from: str, model_key: str) -> list[Path]:
+    """The pass dirs an interrupted invocation left under its out_dir, oldest first."""
+    root = Path(resume_from) / model_key
+    assert root.is_dir(), (
+        f"resume_from={resume_from} holds no {model_key}/ working tree — it must be the "
+        "out_dir of an interrupted run of this same target (a finished run has consumed it)")
+    return sorted(d for d in root.iterdir() if (d / "agent_logs").is_dir()
+                  and not d.name.startswith("combined"))
+
+
+def _run_pass(cfg_path: Path, smoke: bool, prior: Path | None = None) -> dict:
+    """Run one rollout pass, audit it, resume-retry the holes, then reconstruct any that remain.
+
+    `prior` continues a pass an interrupted invocation left on disk instead of starting a
+    fresh one: its usable cells are kept and only the rest run (a clean one runs nothing).
+    Before every resume the pass's unusable cells are moved out (`discard_unusable`), since
+    the rollout driver would otherwise skip a shell or a cut-off rollout as cached.
+    """
+    # Compose cleans up this run's own networks. A global prune can delete another
+    # concurrent run's prepared-but-not-yet-used network.
+    discarded = 0
+    if prior is None:
+        pass_dir = odcv_rollout.main(config=str(cfg_path), smoke=smoke)
+    else:
+        pass_dir = prior
+        print(f">>> continuing prior pass {pass_dir}", flush=True)
     audit = audit_pass(pass_dir)
     retries = 0
-    while not audit["clean"] and retries < PASS_RETRIES:
+    # Finishing a prior pass is its run, not its retry.
+    resumes = PASS_RETRIES + (prior is not None)
+    while not audit["clean"] and retries < resumes:
         retries += 1
+        discarded += discard_unusable(pass_dir)
         print(f"!!! pass {pass_dir.name} not clean (missing_cells="
               f"{audit['missing_cells']}, statuses={audit['statuses']}) — "
-              f"resume retry {retries}/{PASS_RETRIES}", flush=True)
+              f"resume {retries}/{resumes}", flush=True)
         odcv_rollout.main(config=str(cfg_path), smoke=smoke, resume=str(pass_dir))
         audit = audit_pass(pass_dir)
     reconstructed = 0
@@ -105,6 +138,8 @@ def _run_pass(cfg_path: Path, smoke: bool) -> dict:
         audit = audit_pass(pass_dir)  # re-audit: recovered cells now count as non-empty
     audit["retries"] = retries
     audit["reconstructed"] = reconstructed
+    audit["discarded"] = discarded
+    audit["resumed_from_prior_run"] = prior is not None
     audit["path"] = str(pass_dir)
     return audit
 
@@ -120,6 +155,11 @@ def run(target, cfg, out_dir: Path) -> dict:
     and the stats see repeats grouped per cell. Finally the run is repacked into the
     published layout — rollouts/ results/ metadata/ (see `passes.package_run`) — which
     run_eval.py's epilogue uploads verbatim as the HF repo.
+
+    `resume_from=<out_dir of an interrupted run of this target>` continues that run
+    instead of starting over: its pass dirs fill the first slots (each finished in place,
+    see `_run_pass`) and only the remaining passes start fresh. Combining, judging and
+    publishing then happen once, in this invocation's out_dir.
 
     Returns:
         The parsed judge results, plus a `passes` block recording what was kept,
@@ -138,11 +178,14 @@ def run(target, cfg, out_dir: Path) -> dict:
     smoke = bool(cfg.get("smoke", False))
     n_passes = 1 if smoke else int(cfg.get("passes", 2))
 
+    resume_from = str(cfg.get("resume_from") or "")
+    prior = _prior_passes(resume_from, str(cfg.model_key))[:n_passes] if resume_from else []
+
     audits: list[dict] = []
     kept: list[Path] = []
     for i in range(n_passes):
         print(f">>> ODCV pass {i + 1}/{n_passes}", flush=True)
-        audit = _run_pass(cfg_path, smoke)
+        audit = _run_pass(cfg_path, smoke, prior[i] if i < len(prior) else None)
         # Passes are never dropped: ok+no_transcript holes are reconstructed from their
         # docker logs (_run_pass), and any cell that still has no transcript (no docker log
         # to recover from) is simply absent from this pass — combine_passes tolerates the

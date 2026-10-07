@@ -133,7 +133,8 @@ def _seed_for(seed: int, key: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def load_split(split: str = "test", path: str = "cais/mmlu", name: str = "all") -> list[dict]:
+def load_split(split: str = "test", path: str = "cais/mmlu", name: str = "all",
+               revision: str | None = None) -> list[dict]:
     """Load one MMLU split into plain dicts, with a stable per-subject uid.
 
     Args:
@@ -151,7 +152,7 @@ def load_split(split: str = "test", path: str = "cais/mmlu", name: str = "all") 
 
     rows: list[dict] = []
     seen: dict[str, int] = {}
-    for rec in load_dataset(path, name, split=split):
+    for rec in load_dataset(path, name, split=split, revision=revision):
         subject = str(rec["subject"])
         idx = seen.get(subject, 0)
         seen[subject] = idx + 1
@@ -455,6 +456,16 @@ def paired_diff(a_records: Sequence[dict], b_records: Sequence[dict]) -> dict[st
         raise ValueError(f"paired diff needs aligned records, got {len(a_records)} vs {len(b_records)}")
     if not a_records:
         raise ValueError("paired_diff called with no questions")
+    # The shared stats engine can intersect incomplete designs. For this benchmark
+    # that would silently change the 570-question exam, so require exact pairing here.
+    a_uids = [r["uid"] for r in a_records]
+    b_uids = [r["uid"] for r in b_records]
+    if len(set(a_uids)) != len(a_uids) or a_uids != b_uids:
+        raise ValueError("paired diff needs unique, aligned question IDs")
+    for a, b in zip(a_records, b_records):
+        for key in ("subject", "prompt_hash", "answer_letter"):
+            if a.get(key) != b.get(key):
+                raise ValueError(f"paired diff has different {key} for question {a['uid']}")
     r = difference(to_long(b_records, "b"), to_long(a_records, "a"), DESIGN,
                    paired_checkpoints=False)
     return {"diff": r.mean, "ci_lower": r.lo, "ci_upper": r.hi, "std_error": r.se,
@@ -526,9 +537,30 @@ def score_records(records: Sequence[dict]) -> dict[str, Any]:
         ),
         "parse_rate": len(parsed) / n,
         "truncation_rate": truncated / n,
+        "request_error_count": sum(r.get("finish_reason") == "timeout" for r in records),
         "mean_think_words": sum(float(r.get("think_words", 0)) for r in records) / n,
         "empty_think_rate": sum(1 for r in records if not r.get("think_words")) / n,
         "parse_tiers": tiers,
         "by_category": _group("category"),
         "by_subject": _group("subject"),
     }
+
+
+def health_issues(scores: dict, thresholds: Any) -> list[str]:
+    """Check run validity separately from knowledge accuracy, before publication."""
+    if not scores.get("n"):
+        return ["no questions were evaluated"]
+    issues = []
+    for metric, limit, minimum in (
+        ("parse_rate", float(thresholds["min_parse_rate"]), True),
+        ("truncation_rate", float(thresholds["max_truncation_rate"]), False),
+    ):
+        if not 0 <= limit <= 1:
+            raise ValueError(f"MMLU {metric} threshold must be in [0, 1]")
+        value = float(scores[metric])
+        if not math.isfinite(value) or (value < limit if minimum else value > limit):
+            relation = "below minimum" if minimum else "above maximum"
+            issues.append(f"{metric} {value:.1%} {relation} {limit:.1%}")
+    if scores.get("request_error_count", 0):
+        issues.append(f"{scores['request_error_count']} model requests failed; retry before scoring")
+    return issues

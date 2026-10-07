@@ -36,6 +36,28 @@
   then `scratch/odcv_judge_cli.py --rollout_dir <combined> --config <same>`; the run is then not on
   the Hub.
 
+## `evals --server --port 8080` fails on an eval pod: the boot-log server holds it (2026-10-04)
+
+`RemoteVllmServer` forwards `-L <bind>:<port>:localhost:<port>`, so vLLM binds the SAME
+port number on the pod as the tunnel uses locally. An eval pod's bootstrap already serves
+`boot.log` on pod port 8080 (`https://<pod-id>-8080.proxy.runpod.net/boot.log`), so
+`--port 8080` dies at startup with `OSError: [Errno 98] Address already in use` from vLLM's
+API server, after the pod has booted and billed; with `--terminate-pod` the pod is then gone
+and the failure looks like a flaky host. Two pods were lost to it before the pattern showed
+(8081-8083 ran fine beside it). Pick local tunnel ports from 8081 upward, and treat an
+"Address already in use" from the REMOTE API server as a pod-side port clash, not a local one
+(`assert_local_port_free` only checks this machine).
+
+## Chat templates differ in what tool use they can express (2026-09-29)
+
+Tool data is stored as `tools` + `tool_calls` and each family's template renders it, but not
+every template can render every row: gpt-oss-20b's harmony template keeps only the FIRST of
+several calls in one assistant turn and drops the rest silently; Llama 3.1's raises. About half
+of apigen's rows make parallel calls. `tool_rendering(tokenizer)` (src/model_profile.py) probes a
+template; `render_chat` refuses rows the template would mangle, and `build_mixture` skips them
+for its tokenizer. So a base built with the Qwen tokenizer will FAIL at train time on gpt-oss:
+build the base with the family's own tokenizer.
+
 ## Live budget edits need coordinator adoption (2026-09-28)
 
 The Lite coordinator caches the manifest and configuration. Changing the cap on
@@ -243,6 +265,31 @@ that fixed sequence is proposed and still needs fresh live validation. Preserve
 failed fixtures and runs when correcting ambiguous calibration controls.
 
 See [campaign report](dataset_audits/2026-09-21_lowstakes_pipeline_iteration.md).
+
+## causal-conv1d is the `train` extra; a pod that clones the repo to drive an eval must not build it (2026-09-28)
+
+Two `runpod up --eval mask --target <arm> --clone-repo --push_env` pods crash-looped for
+35 minutes (79 and 103 container restarts) as RUNNING cards with no public IP, SSH refused
+and a 404 boot log. Two bugs stacked:
+
+1. The eval-with-clone boot ran a bare `uv sync`. Since 2026-09-21 the lock carried
+   causal-conv1d as a linux source build, so on any pod without the CUDA toolchain the
+   sync died (`No such file or directory: '/usr/local/cuda/bin/nvcc'`), and `set -e`
+   exited the container. Only `--train` exported the toolchain (`KERNEL_BUILD`).
+2. RunPod restarts an exited container WITH its disk, and the boot cloned with
+   `git clone ... /root/work`, which fails in seconds once the dir exists (it also exists
+   before the first clone when `--push_env` writes `.env` there). Each life was too short
+   for sshd, so nothing could be read from outside. The evidence was in
+   `/workspace/boot.log`, reachable only by catching a container in its first seconds.
+
+Fixes: causal-conv1d is now `[project.optional-dependencies] train`, so a plain `uv sync`
+(eval pods, laptops) never attempts a CUDA build; `KERNEL_BUILD` syncs plainly, exports
+the toolchain, then `uv sync --extra train`; the trainer's packing refusal names the extra.
+The clone is `git init` + `git remote add` (skipped when `.git` exists) + `git fetch` +
+`git checkout --detach <sha>`, so a restarted container gets a clean attempt and a
+readable boot log instead of a guaranteed failure. Training by hand on any box:
+`CUDA_HOME=... uv sync --extra train` (recipe under the 2026-09-21 packing entry); `uv run
+train` is an inexact sync and keeps the kernel once it is there.
 
 ## Name-only RunPod updates restart containers (2026-09-16)
 
@@ -758,12 +805,6 @@ were on disk and were pulled file by file over the :8080 directory server instea
 Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only.
 
 ## Prefer the RunPod HTTPS proxy to a laptop SSH tunnel for ODCV (2026-08-29)
-
-- (Removed 2026-09-07: the "one ODCV run per Docker daemon" rule. It described a collision
-  in the harness's Compose project names, which are now namespaced by a hash of the arm's
-  `model_key` (`odcv-<tag>-<variant>-<scenario>`, src/eval/misalignment/odcv/odcv_rollout.py),
-  so two DIFFERENT arms can share one daemon. Two runs of the SAME arm still collide, and
-  resource contention is still yours to watch.)
 
 - **The laptop→pod tunnel is the weak link.** `odcv_local_run.sh`'s reconnecting `-N -L` forward
   kept resetting against a RunPod H100 ("Connection reset by peer" every few minutes); each cell
@@ -1905,3 +1946,47 @@ Four separate things bit one ODCV-Peer arm in one morning; each is cheap to avoi
   not exist"); with the same names it would have silently measured the wrong weights.
   `assert_local_port_free` now binds the port before ssh; `lsof -nP -iTCP:8000` shows who holds
   it. Pick a port per session (`--port 8010`), not per arm.
+
+## 2026-10-02: two synth runs started in the same second share one run directory
+
+A synth run's directory is `output/synthdoc_v3/[smoke_]<YYYYMMDD_HHMMSS>`. Two runs launched in the same second (two `uv run synth run ... &` in one shell line) get the SAME directory and read each other's stage snapshots as cache: on 2026-10-02 a da-qwen smoke reused a da-grok smoke's drafted prompts and the da-grok export reused da-qwen's, and each then pushed the mixture to its own `-smoke` repo. Nothing errors. Start parallel runs a few seconds apart, and check the log for `reused ... cached records` on a run that should have had no cache.
+
+## 2026-10-05: macOS `bash` is 3.2 — `declare -A` fails and a waiter loop never reports
+
+A helper script that polled four training pods kept the finished arms in an associative
+array (`declare -A DONE; DONE[$arm]=1`). On the laptop `bash` is 3.2 (Apple ships no newer
+GPL-3 bash), which has no associative arrays: `declare -A` is an error, the later
+`${DONE[$arm]}` fails with `bad array subscript`, and because the loop swallowed stderr into
+the background task's output nobody saw it. The waiter ran for hours and would never have
+printed a result. Tells: `bash: declare: -A: invalid option` or `bad array subscript` in a
+background task's output; `bash --version` says 3.2.57.
+
+On this machine use a plain string of finished keys (`case "$done" in *" $arm "*)`) or an
+indexed array; `[[ ... ]]`, `$(( ))` and `read -r` are fine. The same scripts run under bash
+5 on the pods, so a script that works over `ssh` can still be broken when run locally. When
+something has to wait on remote state, check the waiter's output file once early rather
+than trusting it to report.
+
+## 2026-10-05: `nohup uv run … &` — `$!` is the launcher's pid, not the program's, so liveness checks on it lie
+
+`uv run evals …` starts two processes: a small `uv` launcher and the `evals` python it spawns.
+`$!` after `nohup uv run evals … &` is the launcher. The launcher can exit while the python
+child runs on, so a monitor that does `kill -0 $pid` on the saved number reports "dead" for a
+driver that is still working. Tonight that false report was believed and three healthy eval
+drivers were "recovered" (one killed outright), each recovery costing cells and a pod restart.
+
+Check liveness by the program's own command line, with the exact target so two arms cannot
+match each other:
+
+    pgrep -f "bin/evals --name odcv --target dougalldeepmind/<adapter> "
+
+(note the trailing space: `…-da-15 ` does not match `…-da-15-foo`). The same applies to kills:
+never `pkill -f <word>` or `pgrep -f <pattern> | xargs kill` on a shared box — print the
+matching pids with their command lines first (`ps -o pid,command -p …`) and kill by pid. On a
+RunPod pod, `pkill -f vllm` matches the pod's own boot shell (its command line mentions the vllm
+venv) and kills the pod. Before any `docker rm` of ODCV containers, confirm the project hash
+belongs to the dead run via its labels: `docker inspect <name> --format '{{index .Config.Labels
+"com.docker.compose.project.working_dir"}}'` names the run directory.
+
+A report that something died is a claim to verify, not a fact to act on: look at the process
+list and the log before touching anything.

@@ -1,30 +1,130 @@
-# ABOUTME: Difficult advice with QWEN writing everything: da.yaml's recipe, prompts and gates, every
-# ABOUTME: generation stage on qwen/qwen3.6-27b (Alibaba). Run: uv run synth run --config configs/data/synth/da-qwen.yaml [--smoke]
+# ABOUTME: Difficult advice with QWEN writing everything: da.yaml's recipe, prompts and gates, every generation
+# ABOUTME: stage on qwen/qwen3.6-27b (Alibaba). Run: uv run synth run --config configs/data/synth/da-qwen.yaml [--smoke]
 
-# The fourth cell of the teacher x method matrix (2026-09-16): DA x Qwen beside DA x Sonnet
-# (neutral 752, `da.yaml`), delib x Qwen (`delib.yaml`) and delib x Sonnet (`delib-sonnet.yaml`).
-# Identical to `da.yaml` -- same constitution, chunking, stage prompts, lint gates and export --
-# except the model in every generation slot (Haiku 4.5 and Sonnet 5 there, Qwen3.6-27B here),
-# the output budget, name lints for Qwen's own identity, and the output-shape wording of
-# `write_scenarios`: with da.yaml's "Return ONLY a JSON array of {n} objects", 4 of 18 Qwen
-# calls (2026-09-16) came back as a bare scenario object or as {"situations": [...]}, which the
-# stage rejects, so the prompt now spells out the array shape and forbids both. `revise_prompts`
-# gains one bullet for the same reason: 2 of the 18 smoke rows had Qwen write the violation into
-# the OPERATOR prompt ("acknowledge only with 'logged'", "encourage them to lean on you"), which
-# turns a values test into a rule-following one; the neutral-752 corpus does this in 0 of 754. Unlike the neutral-752 prompts, the
-# scenarios and prompts here are Qwen's too, so this cell differs from the other three in its
-# questions as well as its answers.
+# REBUILT 2026-10-02 on the current da.yaml (dealt sector and AI presence, wave list off, similarity gate 0.78).
+# The arm this file used to hold -- the 2026-09-16 recipe behind 2026-09-16-da-qwen-synth -- is
+# archive/da-qwen-sep16.yaml. Everything below is da.yaml verbatim, comments included, EXCEPT the old arm's
+# own differences, carried over unchanged:
+#   1. `models:` -- Qwen3.6-27B in every generation slot, thinking on and uncapped, `max_tokens` 32768 (also the
+#      default). A reasoning budget on Alibaba is a hard cut mid-thought, so none is set.
+#   2. `write_scenarios` spells out the output shape: with "Return ONLY a JSON array of {n} objects", 4 of 18
+#      Qwen calls (2026-09-16) returned a bare object or {"situations": [...]}, which the stage rejects.
+#   3. `revise_prompts` gains the bullet "The system prompt must not decide the case": 2 of 18 smoke rows had
+#      Qwen write the violation into the operator prompt.
+#   4. Identity bans for qwen / alibaba / tongyi in revise_prompts and both response stages.
+#   5. `workers` 16, `budget_usd` 80, `ablate: [corpus]`.
+# NOT yet smoked on this recipe: the dealt sector and AI lines, the 0.78 gate and the "the draft" ban were all
+# measured with Haiku and Sonnet as the writers. Response-stage `retries` is still da.yaml's 2.
+
+# NAMED `da` ON 2026-10-01. This file was `da-half-noai.yaml` when it generated 2026-10-01-da-synth (commit 4af3ea2e;
+# the Hub repo was renamed from 2026-10-01-da-half-noai-synth), and that corpus was made by changes 1-3 only. The recipe
+# it replaced, the one behind 2026-09-28-da-synth, is archive/da-sep28.yaml. `archive/da-t6-note.yaml` is changes 1-2 only.
+# Changes 4-7 (2026-10-01/02) have NOT generated a corpus yet.
 #
-# THINKING stays on, uncapped, as in da.yaml, which sets no `reasoning` for any stage (Sonnet 5
-# thinks by default -- LOG 2026-09-12). Qwen's native trace is its own planning and is discarded;
-# the trained reasoning is what it writes inside <reasoning> tags. A reasoning budget on Alibaba is
-# a hard cut mid-thought (LOG 2026-09-07), so none is set; `max_tokens` 32768 per call (Alibaba's
-# ceiling is 65,536) only has to hold the natural trace plus the tagged output. Measured
-# reference: the 2026-09-10 delib run's Qwen generations peaked at 4,939 tokens, p99 4,085.
+# DECIDED BY JAMIE 2026-10-02, each set in one place in this file:
+#   a. AI presence -> `rotate.ai`: non-t6 calls 10% the assistant itself / 10% another AI / 40% no AI / 40% nothing said; t6 half and half.
+#   c. sectors     -> `rotate.sector`: 43, equal weight, every trait but t6.
+# STILL STAND-INS:
+#   b. scenarios per writer call -> `scenarios_per_call` (now 4: leaves the prompt as it is, 18 calls a trait)
+#   d. which of two similar scenarios is rejected -> not a config key: the later one loses (engine). Measured on four
+#      650-scenario runs at 0.78, rejecting the one with more close neighbours would save 1-9 of 36-55 rejections.
+
+# WHAT THIS ARM CHANGES (2026-10-01). Everything below is da.yaml @ e524554c verbatim -- the recipe that
+# generated 2026-09-23-da-synth and its 2026-09-24 extension -- comments included, so the comments describe
+# that recipe. The differences are:
+# 1. THE WRITER'S ASK, every trait: "situations in which the convenient path would violate this specific
+#    principle, but the right call is not obvious". 2026-09-23 had "in which this specific principle is at
+#    stake and the right call is not obvious"; before that it was "in which the convenient path would violate
+#    this specific principle". "At stake" does not say how a principle written for an AI comes into play, and
+#    the writer answered it by putting an AI system in the scene (97% of that recipe's own scenarios;
+#    output/audits/2026-09-29_da_drift_timeline.md). This keeps the old anchor and the new ambiguity.
+# 2. A NOTE FOR t6 ONLY: the `trait_notes` block and three `{trait_note}` slots. The slots sit at the END of the
+#    last bullet of a list and the note is itself a bullet with a leading newline, so for every trait without a
+#    note the slot renders as nothing. Why t6: under 2026-09-23 78% of t6 prompts had the user ordering the
+#    assistant what to be or how to answer (69% with persona / "no caveats" framing) against 0-9% in every other
+#    trait (scratch/classify_da_pressure.py, 2026-09-24 corpus).
+
+# 3. (2026-10-01; not in archive/da-t6-note.yaml) HALF OF EVERY TRAIT BUT t6 IS TOLD "No AI system appears in this situation."
+#    The `rotate.ai` axis on write_scenarios deals one label per writer CALL within each trait, with t6 pinned to
+#    `open`. `none` renders that one line into the writer, draft_prompts and revise_prompts through `{ai_text}`,
+#    which sits beside `{trait_note}`; `open` renders nothing. Why: da-t6-note's writer put an AI system other than
+#    the assistant at the centre of 83% of its 650 scenarios (2026-10-01-da-t6-note-synth), decided per call -- a
+#    call's 8 scenarios are usually all AI or none. The line is the `none` text of archive/da-otherai.yaml: on the 279 rows
+#    it reached there, 0.7% were about the assistant itself and 15% still had an AI system (scoring models).
+#    2026-10-01-da-synth was dealt `open`/`none`; change 6 below replaced `open` with `other` for every trait but t6.
+# 4. (2026-10-01) THE SIMILARITY GATE IS 0.78, NOT 0.86, AND `dedupe_scenarios` IS GONE. See the notes at
+#    `diversity.reject_cosine` and under `corpus_scenarios`.
+# 5. (2026-10-02) THE WAVE LIST IS OFF: `wave_size: 0, max_carry: 0, over_share: 0`, and the writer prompt no longer
+#    has the `{avoid}` / `{overrepresented}` slots. Every call of a wave used to be shown the openings of the last
+#    150 scenarios kept ("do not write another version of any of them"), from all traits mixed. The writer copied
+#    their flavour instead: wave 0 is t1 (oversight of AI), so the first list was 72% AI-system openings, and by
+#    wave 3 nearly every scenario of every trait had one. Controlled test, same prompt, 650 scenarios: list on
+#    83% and 87% of scenarios have another AI central (20261001_143854, 20261001_211644); list off 23%, with only
+#    t1 and t6 AI-heavy (output/derived/writer_listoff, output/synthdoc_v3/20261001_215106). Near-repeats did not
+#    rise with it off (pairs at cosine >= 0.80: 17 off, 34 and 38 on); domain labels did concentrate (top ten 20%
+#    of rows against 8-11%), which is what change 7 is for.
+# 6. (2026-10-02) AI PRESENCE IS DEALT. `rotate.ai` deals `self`, `other`, `none` and `open` (nothing said) to every
+#    trait but t6, and `self` / `other` half and half to t6. `self` and `other` are the `ai` lines of archive/da-self.yaml
+#    and archive/da-otherai.yaml, verbatim; `none` is the line of change 3. Evidence it matters, one seed per arm on the
+#    native-tools base: 74% other-AI (da-t6-note-15) ODCV 8.3% [5.9, 11.6], 14% (da-15) 15.8% [12.8, 19.4].
+# 7. (2026-10-02) EACH CALL IS DEALT A SECTOR: `rotate.sector`, one new line on the writer only ("These situations
+#    are set in <sector>."), t6 exempt. It replaces what the list did well, spreading settings. The pool starts
+#    from the 23 standard occupational groups, adds government, nonprofits and private-life settings (11% of 1,300
+#    list-off/low-AI scenarios were private life; 38% of t8, 43% of t9), and splits the compound entries: 43 in all.
+#    Sector and AI presence are dealt independently (stage_operators.deal_unit_axes): each sector meets both.
+
+# BASELINE: the arm this recipe built on 2026-09-14 -- neutral 752
+# (dougalldeepmind/2026-09-14-da-synth, against the full-length neutral constitution) -- is what
+# a new difficult-advice experiment builds on and compares against. NOT principle-scoped 702
+# (this recipe's previous output, against the Claude-naming mid document), NOT da716, NOT
+# synthdoc-716: all three are superseded and kept only to reproduce work that already cites
+# them. docs/LOG.md 2026-09-14 has the reasoning; the existing generator
+# swaps (built on da716's frozen stages 1-4) can only be read against da716.
+
+# THE DEFAULT, AND WHY IT CHANGED ON 2026-08-24.
+#
+# Until 2026-08-24 this recipe injected the WHOLE constitution into two of its five LLM
+# stages -- `revise_prompts` and `revise_responses` -- while every other stage saw only its
+# target chunk (`{trait_name}`/`{trait_text}`). Those two injections are now gone, so no
+# stage in the pipeline ever sees more than one principle at a time. The previous recipe is
+# preserved verbatim as `da-full-constitution.yaml`; use it to regenerate a
+# corpus published before this date, not for new work.
+#
+# THE EVIDENCE. The two recipes were run as a matched pair -- identical scenarios and
+# identical draft prompts (stages 1-4 shared by resuming one run directory into the other),
+# so they differ ONLY in the refine prompts -- then trained as the da716 organism and
+# evaluated on ODCV-Bench over the same 65 cells:
+#
+#     principle-scoped (this recipe)  MR 11.5%  [6.2, 19.6]   sev 0.62
+#     full constitution (da716) MR 16.3%  [10.0, 21.8]  sev 0.76
+#     base fp8, no SFT          MR 36.9%  [21.4, 53.6]
+#
+# Read that as NO DETECTABLE COST, not as an improvement: the intervals overlap and this
+# arm does not separate from da716 at n = 65 cells x 2 rollouts. It is the default because
+# it is simpler, strictly cheaper (it drops a ~4.6k-token document from every Sonnet call),
+# and measurably no worse -- not because it is better.
+#   Artifacts: corpus LASR-Callum/2026-08-21-sonnet45-difficult-advice-principle-scoped-constitution-716,
+#   eval LASR-Callum/2026-08-21-odcv-difficult-advice-principle-scoped-702-eval.
+#
+# WHAT THIS ALSO WITHHOLDS, which the ODCV number does not separately test: the
+# constitution's PREAMBLE, the priority / conflict-resolution section saying how principles
+# trade off. It belongs to no chunk, so at `principle` granularity it reached the generator
+# ONLY through the two removed slots. If a future document type needs the model to weigh
+# principles against each other, this is the first thing to put back.
+#
+# A GENERATION-TIME COST THAT IS REAL. Without the constitution framing the request as
+# alignment-training data, Anthropic's content filter refuses more `revise_prompts` calls:
+# ~6% here against ~0% for the full-constitution recipe on the identical scenarios, and the
+# refusals are deterministic across a resample. Budget for losing a few rows.
+#
+# NOT YET TESTED ELSEWHERE. `pad`, `par`,
+# `pc` and `courtroom` still inject the whole constitution in their own refine
+# stages. Nothing here licenses changing them -- the experiment covered difficult advice
+# only. Run the same matched pair before making this the default for any of them.
 
 # Label recorded in manifests; the `stages:` list below IS the document type.
 method: ours
-pipeline: da-qwen
+pipeline: da
 
 # STAGE NAMES CHANGED 2026-08-13, for legibility: every stage now says what it does.
 #   traits -> chunk_constitution      refined_prompts -> revise_prompts
@@ -42,21 +142,19 @@ pipeline: da-qwen
 # trains on the un-revised stage-5 drafts. `--ablate a,b` on the CLI merges into this.
 # More revision rounds = more `llm_tagged` stage entries in `stages:` below, each
 # individually ablatable by name.
-# The report-only corpus checks are skipped, as the neutral-752 run skipped them (`--ablate corpus`).
-ablate: [corpus]
+ablate: [corpus]   # as the 2026-09-16 arm: the final corpus check is skipped
 
-# Overrides merged onto this config under --smoke. Two per principle across all nine (the
-# neutral-752 run's 18-row smokes), so every stage's lengths, truncations and lint retries are
-# visible for Qwen before the full run.
+# Overrides merged onto this config under --smoke (tiny slice, full wiring).
 smoke:
+  # All nine units: `trait_notes` and both `rotate.*.fixed` name t6, and a run without it is
+  # refused ("name units this run does not have").
   max_traits: 9
-  scenarios_per_trait: 2
-  scenarios_per_call: 2
+  scenarios_per_trait: 1
+  scenarios_per_call: 1
   # MUST be overridden here, not just `scenarios_per_trait`: `total_scenarios` WINS over
   # the per-trait count, so a smoke run against a config that sets it generates the full
   # corpus. Caught 2026-08-13 when `--smoke` started producing 2,000 scenarios.
-  total_scenarios: 18
-  budget_usd: 10.0
+  total_scenarios: 9
 
 seed: 0
 
@@ -80,10 +178,10 @@ constitution: "constitutions/claude_distilled_09_principles/constitution.md"
 # the alignment target alone. Text unchanged from what this recipe injected before.
 style_guidance: |-
   Engages with the pressure the person is under rather than stonewalling. Names the
-  ethical tension explicitly and reasons through it in the open. Declines the deceptive /
-  oversight-subverting / harmful path, explaining why in terms of concrete stakes rather
-  than rules. Offers a specific legitimate alternative. Leaves the decision with the
-  person. Warm, practical, proportionate.
+  ethical tension explicitly and reasons through it in the open. Does not go along with a
+  deceptive / oversight-subverting / harmful path if there is one, explaining why in terms
+  of concrete stakes rather than rules. Offers a specific legitimate alternative. Leaves
+  the decision with the person. Warm, practical, proportionate.
 n_traits: 9
 
 # How stage 1 cuts that document into the units a document is generated against.
@@ -110,19 +208,21 @@ chunking: principle
 # mixture it was built to swap into; that was a sizing choice for one experiment and is not
 # part of this recipe. Override it per-run (`--overrides total_scenarios=716`) rather than
 # editing this line.
-# 850, not the 765 neutral 752 ran at: the balanced 700 draw needs 78 rows of each principle,
-# and the only all-non-Anthropic precedent (all-grok, LOG 2026-08-21) kept 86.6% of its rows.
-total_scenarios: 850
+total_scenarios: 2000
 # Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
 # its JSON; batching also keeps each call's "vary the domain" instruction achievable.
-scenarios_per_call: 8
+# STAND-IN (b): 4, not 8. A label is dealt per CALL, so at 650 scenarios a trait has 18 calls
+# and meets 18 of the 24 sectors; at 8 it would meet 9. At 1 every scenario gets its own deal,
+# but "Invent {n} DISTINCT situations" and "Do not reuse a setting within this set" stop
+# meaning anything, so the prompt would have to change.
+scenarios_per_call: 4
 
 # Its own directory: this arm is seeded by COPYING a baseline run's stages 1-4 into a fresh
 # dir here and resuming it, so the two arms never share a run directory and the baseline's
 # stage 5-8 snapshots can never be silently reused.
-output_dir: "output/synth_da_qwen"
+output_dir: "output/synthdoc_v3"
 
 # Every stage's complete output is mirrored here as stage_<n>_<name>.jsonl, so a run can
 # resume from any stage and each stage is inspectable on its own.
@@ -131,23 +231,30 @@ output_dir: "output/synth_da_qwen"
 # never be appended to that repo, which stays the record of the baseline arm.
 hf_private: false
 
-# 16, not more: Alibaba rate-limited the delib run at 32 and at 20 (LOG 2026-09-11).
-workers: 16
+# 64 concurrent calls: measured 2026-09-23 on a 64-row smoke, every stage's time is set by
+# its slowest single call and Anthropic via OpenRouter never throttled (0 retries); a
+# 752-row run is ~55 min against ~2.5 h at 16. Not for Alibaba-served models (delib.yaml).
+workers: 16         # Alibaba-served: not the 64 da.yaml runs Anthropic at
 # Hard stop: the run aborts between stages once spend passes this. Snapshots are kept, so
-# raising it and re-running resumes rather than restarts. Neutral 752 cost $57 on Haiku/Sonnet;
-# Qwen is $0.45/$2.7 per M, but its native thinking roughly doubles output tokens. Expect
-# ~$30-40 at 850 scenarios.
+# raising it and re-running resumes rather than restarts.
+# The baseline measured $234 for 2,000 records end to end. This arm is strictly CHEAPER:
+# it drops a ~4.6k-token constitution from every `refine` and `rewrite` call, and those are
+# the two Sonnet stages. It is also resumed from stages 1-4, so the Haiku stages are not
+# paid for again. Guard left at the baseline's 300 so a runaway still stops in the same
+# place; expect well under half of it.
 budget_usd: 80.0
 
 defaults:
   temperature: 1.0
   max_tokens: 32768
   # Provider routing lives in configs/endpoints/providers.yaml (one provider per model,
-  # applied by OpenRouterClient): qwen/qwen3.6-27b pins to Alibaba, no fallback.
+  # applied by OpenRouterClient): anthropic models pin to Anthropic's own endpoint —
+  # third-party clouds content-filter exactly the prompts this corpus needs (2026-08-14:
+  # Bedrock refused 2.6% of revise_prompts calls, Vertex the same prompts), and only
+  # first-party reliably bills <<<cache>>> breakpoints as cache hits.
 
-# Model per stage: Qwen3.6-27B everywhere, with its native thinking on and uncapped (see the
-# header). Temperatures are da.yaml's per stage. `assumed_tokens` (pricing estimates only) add
-# ~2k output tokens of thinking to da.yaml's figures.
+# Model per stage. Haiku 4.5 generates (stages 2, 3, 5); Sonnet 5 refines and rewrites
+# (stages 4, 6), since those two carry the constitution and decide alignment quality.
 models:
   # Stage 2 -- generate difficult scenarios per trait.
   scenarios:
@@ -166,7 +273,8 @@ models:
   # Stage 4 -- refine the prompt against the target trait.
   refine:
     model: "qwen/qwen3.6-27b"
-    temperature: 0.7
+    # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
+    temperature: 1.0
     max_tokens: 32768
     reasoning: {enabled: true}
     assumed_tokens: {in: 2000, out: 2900}
@@ -180,7 +288,8 @@ models:
   # Stage 6 -- CRITICAL. Rewrite the response to maximally exhibit the target trait.
   rewrite:
     model: "qwen/qwen3.6-27b"
-    temperature: 0.7
+    # 1.0 since 2026-10-02 (was 0.7): every generator stage runs at 1.0 except the scenario writer (1.1).
+    temperature: 1.0
     max_tokens: 32768
     reasoning: {enabled: true}
     assumed_tokens: {in: 3200, out: 3800}
@@ -210,18 +319,148 @@ models:
 # uses NEITHER {constitution} slot; {style_guidance} stays (it is tone guidance, not a
 # principle -- the top-level `style_guidance:` above -- and the baseline injects it at
 # draft_responses only).
+# ONE unit gets guidance no other unit sees (stage_operators.trait_note): t6 has an entry, there is no
+# `default`, so `{trait_note}` is the empty string for t1-t5 and t7-t9. The note starts with a newline because
+# its slots are appended to existing lines (see the header). The wording is the 2026-09-28 t6 note, unchanged.
+trait_notes:
+  t6: "\n- The situation concerns the values, character or nature of AI: the assistant's own, another AI system,
+    or AI systems in general. The person asks for advice on a related matter, rather than giving instructions."
+
 stages:
 - name: chunk_constitution
   kind: segment
 - name: write_scenarios
   kind: scenarios
   model: scenarios
+  # Two labels per writer call, each dealt WITHIN every trait and independently of the other, so a trait
+  # meets the labels in the declared split and no sector is tied to one AI label. t6 has its own AI split
+  # and is pinned to a sector label with no text: its note already says what it is about. A label and its text ride on
+  # every scenario (`ai` / `ai_text`, `sector` / `sector_text`); the two prompt stages below render
+  # `{ai_text}` for the same rows, and do NOT take the sector line -- they work from the scenario, which
+  # names a concrete setting.
+  rotate:
+    ai:
+      per_trait: true
+      # DECIDED 2026-10-02 (Jamie). Every trait but t6: 10% of calls told the assistant itself is involved,
+      # 10% told another AI system is, 40% told no AI system appears, 40% told nothing (`open`: no AI
+      # phrase in any prompt). t6: half self, half other. At 18 calls a trait that is 2 / 2 / 7 / 7 calls
+      # (11% / 11% / 39% / 39%), and 9 / 9 for t6.
+      # `open` is not "no AI": a 24-row smoke dealt `open` throughout came out 21% the assistant itself,
+      # 25% another AI system, 54% no AI (output/synthdoc_v3/smoke_20261001_233337), which is why the first
+      # choice of 10 / 10 / 80 was replaced by this one.
+      weights: {self: 1, other: 1, none: 4, open: 4}
+      unit_weights:
+        t6: {self: 1, other: 1}
+      text:
+        open: ""
+        self: "\n- This situation involves the assistant they are asking, the one that will read and answer their message: its own outputs, role or behaviour are part of the decision, and the person addresses it directly (\"you\"). No other AI system appears."
+        other: "\n- This situation involves an AI system other than the assistant they are asking; the assistant itself is not the subject."
+        none: "\n- No AI system appears in this situation."
+    sector:
+      per_trait: true
+      # DECIDED 2026-10-02 (Jamie): 43 sectors at equal weight, every trait but t6. The 24-entry draft with
+      # its compound entries split (architecture / engineering, software / data / IT, ...), keeping the
+      # draft's balance: 23 common work settings, 11 the writer rarely chooses, 9 private-life (53 / 26 / 21%).
+      # THE ORDER IS LOAD-BEARING. A trait has 18 calls and so meets 18 of the 43; the dealer hands each
+      # trait the labels dealt least so far, in this order. The three groups are therefore interleaved, and
+      # split siblings kept apart, so that any run of 18 is a balanced mix. Appending a sector at the end is
+      # safe; sorting this list by group is not.
+      weights:
+        management: 1
+        care_work: 1
+        parenting_family: 1
+        engineering: 1
+        libraries_museums: 1
+        construction: 1
+        nonprofits: 1
+        personal_finances: 1
+        it_cybersecurity: 1
+        energy_utilities: 1
+        school_teaching: 1
+        volunteering_community: 1
+        public_health: 1
+        personal_services: 1
+        software_development: 1
+        social_work: 1
+        mental_health: 1
+        repair_cleaning: 1
+        sport_fitness: 1
+        finance_accounting: 1
+        natural_science: 1
+        police_fire: 1
+        hobbies_creative: 1
+        journalism_publishing: 1
+        manufacturing: 1
+        hospitality_food: 1
+        physical_health: 1
+        architecture_planning: 1
+        higher_education: 1
+        farming: 1
+        government: 1
+        student: 1
+        data_science: 1
+        military: 1
+        law: 1
+        friendships_romance: 1
+        medicine_nursing: 1
+        retail_sales: 1
+        business_hr: 1
+        social_science: 1
+        housing_neighbours: 1
+        transport: 1
+        arts_entertainment: 1
+      fixed: {t6: any}
+      text:
+        any: ""
+        management: "\n- These situations are set in management and executive leadership."
+        care_work: "\n- These situations are set in elder, child and disability care."
+        parenting_family: "\n- These situations are set in private life: parenting and family."
+        engineering: "\n- These situations are set in engineering."
+        libraries_museums: "\n- These situations are set in libraries, museums and archives."
+        construction: "\n- These situations are set in construction."
+        nonprofits: "\n- These situations are set in nonprofits and charities."
+        personal_finances: "\n- These situations are set in private life: personal finances."
+        it_cybersecurity: "\n- These situations are set in IT and cybersecurity."
+        energy_utilities: "\n- These situations are set in energy, mining and utilities."
+        school_teaching: "\n- These situations are set in school teaching."
+        volunteering_community: "\n- These situations are set in private life: volunteering and community life."
+        public_health: "\n- These situations are set in public health."
+        personal_services: "\n- These situations are set in personal services."
+        software_development: "\n- These situations are set in software development."
+        social_work: "\n- These situations are set in social work and counselling."
+        mental_health: "\n- These situations are set in private life: mental health."
+        repair_cleaning: "\n- These situations are set in repair, maintenance and cleaning."
+        sport_fitness: "\n- These situations are set in sport and fitness."
+        finance_accounting: "\n- These situations are set in finance and accounting."
+        natural_science: "\n- These situations are set in natural science research."
+        police_fire: "\n- These situations are set in police, fire and emergency services."
+        hobbies_creative: "\n- These situations are set in private life: hobbies and creative projects."
+        journalism_publishing: "\n- These situations are set in journalism and publishing."
+        manufacturing: "\n- These situations are set in manufacturing and production."
+        hospitality_food: "\n- These situations are set in hospitality and food service."
+        physical_health: "\n- These situations are set in private life: physical health."
+        architecture_planning: "\n- These situations are set in architecture and urban planning."
+        higher_education: "\n- These situations are set in higher education."
+        farming: "\n- These situations are set in farming, fishing and forestry."
+        government: "\n- These situations are set in government and public administration."
+        student: "\n- These situations are set in private life: studying as a student."
+        data_science: "\n- These situations are set in data science and analytics."
+        military: "\n- These situations are set in the military."
+        law: "\n- These situations are set in law and the courts."
+        friendships_romance: "\n- These situations are set in private life: friendships and romantic relationships."
+        medicine_nursing: "\n- These situations are set in medicine and nursing."
+        retail_sales: "\n- These situations are set in retail and sales."
+        business_hr: "\n- These situations are set in business operations and human resources."
+        social_science: "\n- These situations are set in social science research."
+        housing_neighbours: "\n- These situations are set in private life: housing and neighbours."
+        transport: "\n- These situations are set in transport and logistics."
+        arts_entertainment: "\n- These situations are set in arts, design and entertainment."
   # Enforced scenario diversity. The 2026-08-04 run had none and put 46.8% of its mass in
   # ten domains -- four of which this prompt used to name as examples, so the instruction
-  # was producing the concentration it meant to prevent. Two mechanisms, because asking
-  # alone demonstrably failed: the `avoid` list (seeded below, extended each wave with
-  # what earlier waves actually wrote) tells the generator what not to write, and
-  # `reject_cosine` refuses what it writes anyway and re-queues the shortfall per trait.
+  # was producing the concentration it meant to prevent. Until 2026-10-02 two mechanisms
+  # answered that: a do-not-repeat list carried between waves, and `reject_cosine`, which
+  # refuses what the writer writes anyway and re-queues the shortfall per trait. The list is
+  # now OFF (header, change 5) and the dealt sector above does its job; the gate stays.
   #
   # reject_cosine 0.86 is the measured floor from scratch/measure_dedup_threshold.py over
   # all 2,205 baseline scenarios: real clones live at 0.84-0.886 (the worst pair is one
@@ -230,18 +469,22 @@ stages:
   # embedding_dedup, and deliberately so -- what the gate refuses to generate is exactly
   # what the checker would later refuse to keep.
   diversity:
-    wave_size: 12
-    reject_cosine: 0.86
+    # One wave: every call runs at once and none is shown another's output. 0 = all batches.
+    wave_size: 0
+    # 2026-10-01: lowered from 0.86 to 0.78. At 0.86 the gate rejected 0-4 of 650 in four runs while
+    # pairs at 0.82-0.85 were the same story retold (two zero-day disclosure researchers, two
+    # archaeologists with an AI trained on elite digs). Measured on those runs' kept scenarios,
+    # 0.78 rejects 36-55 of 650; near 0.80 pairs share a protagonist but pose different dilemmas,
+    # so this threshold deliberately also takes some of those. The chaining the note above warns
+    # of is about clustering a finished corpus; the gate is greedy (the later of a pair loses),
+    # so nothing chains. The post-writer check only reports, at its 0.86 default.
+    reject_cosine: 0.78
     max_regen_rounds: 2
-    max_carry: 150
-    # Nothing is banned up front. A domain is named to the generator only once it is
-    # measurably over-weight in THIS run's own output, and stops being named when it is
-    # not -- the corpus should contain small-business scenarios, just not 226 of them.
-    # 4% against ~200 expected domains is ~8x a uniform share; the baseline's worst
-    # domain reached 10%. Below `over_min_docs` the share of a handful of scenarios is
-    # noise, so the steer stays silent rather than flagging the first domain generated.
-    over_share: 0.04
-    over_min_docs: 60
+    # Both 0 so a MAKE-UP call (a replacement for a rejected scenario) is shown no list either:
+    # with one wave the list is empty in round 0 by construction, but a make-up round would
+    # otherwise carry the last 150 openings and the over-used domains into its prompt.
+    max_carry: 0
+    over_share: 0
   prompts:
     system: |-
       You design realistic, ethically difficult situations for training a constitution-aligned
@@ -254,19 +497,17 @@ stages:
       </principle>
 
       Invent {n} DISTINCT situations in which the convenient path would violate this
-      specific principle.
+      specific principle, but the right call is not obvious.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
+      - The person who writes in is weighing something, not demanding something, and the
+        right option is genuinely not clear.
       - The pressure is concrete and the stakes are real.
       - The norm-violating shortcut is genuinely tempting, not cartoonish.
       - The tension must engage THIS principle specifically, not ethics in general.
       - The setting is specific rather than a category.
-      - Do not reuse a setting within this set.
-
-      {avoid}
-
-      {overrepresented}
+      - Do not reuse a setting within this set.{trait_note}{sector_text}{ai_text}
 
       Return ONLY a JSON array containing exactly {n} objects. Your reply must begin with [
       and end with ], with nothing before or after it. Do not wrap the array in an object
@@ -295,20 +536,14 @@ stages:
     fields:
       text: situation
     params:
-      # Every scenario, not the default 2,000 sample: the `dedupe_scenarios` stage below
-      # acts on these labels, and a filter must never be handed a verdict about only part
-      # of the corpus (it refuses one, by design).
+      # Every scenario, not the default 2,000 sample, so the report covers the whole set.
       sample: 0
-# The stage that acts on the check above. With `diversity.reject_cosine` refusing clones
-# at generation time this should drop ZERO -- which is the point of keeping it: anything
-# it removes is a scenario the generation-time gate let through, and the count is the
-# gate's error rate rather than a number nobody measures.
-- name: dedupe_scenarios
-  kind: corpus_filter
-  from: corpus_scenarios
-  drop_when:
-  - embedding_dup
-  max_drop_share: 0.05
+# No `dedupe_scenarios` filter after this check (removed 2026-10-01). It applied the same
+# embedding similarity the writer's gate (`diversity.reject_cosine`) has already enforced, so on a
+# fresh run it could never find anything; it dropped 0 in every run and was the stage behind a
+# crash when another property reported a finding. The check above still REPORTS near-duplicates.
+# Removing it renumbers the later snapshots (draft_prompts is stage 3), which matters only when
+# resuming a run directory written before this date.
 - name: draft_prompts
   kind: llm_json
   model: draft
@@ -324,20 +559,33 @@ stages:
       The tempting shortcut: {shortcut}
 
       Write the message that would actually be sent to the assistant here, plus the system
-      prompt the assistant is running under.
+      prompt the assistant is running under. The person who writes in is weighing something,
+      not demanding something, and the right option is genuinely not clear.
 
       The message must:
       - be in the sender's own voice, with the texture of a real request
       - make the pressure concrete
-      - ask for help in a way that leads toward the shortcut, WITHOUT naming it as unethical
+      - ask what to do; the shortcut is the easy answer but the sender has not settled on
+        it, and never names it as unethical
       - never mention ethics, principles, or that this is a test
-      - read as something someone actually typed, not as a case study
+      - read as something someone actually typed, not as a case study{trait_note}{ai_text}
 
       The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise.
+      assistant. It must NOT mention the constitution, ethics, or this exercise, and
+      neither prompt may name the model or the company that built it.
 
       Return ONLY JSON:
       {{"system": "<system prompt>", "user": "<the message>"}}
+  # No model or developer named in the drafts either (2026-09-23): with `revise_prompts`
+  # ablated these ARE the exported prompts, and that stage's lint no longer runs.
+  lint:
+    fields:
+    - system
+    - user
+    ban_patterns:
+    - \bclaude\b
+    - \banthropic\b
+    retries: 2
 - name: revise_prompts
   kind: llm_json
   model: refine
@@ -375,7 +623,6 @@ stages:
     ban_patterns:
     - \bclaude\b
     - \banthropic\b
-    # ...nor the generator's own names, which Qwen writes when it introduces itself.
     - \bqwen\b
     - \balibaba\b
     - \btongyi\b
@@ -402,15 +649,21 @@ stages:
       {draft_user}
       </draft_user>
 
-      Rewrite both so the exchange is a sharper test of the target principle.
+      First check whether the prompt is already a direct test of the target principle:
+      if it is, leave the tension as it is and improve everything else; only if it is
+      not, sharpen it. Never sharpen by making the shortcut more explicit or moving the
+      user from weighing a choice to asking for help carrying it out. The person who writes
+      in is weighing something, not demanding something, and the right option is genuinely
+      not clear.
 
       Improve these specifically:
       - **Precision.** The tension should engage the target principle, not a generic "is this
         ethical" question. If the draft could be answered without touching that principle,
-        fix it.
+        fix it. A user facing the choice the principle is about already engages it; do not
+        make the assistant the actor, and do not fix it by making the ask more explicit.
       - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the legitimate path
-        genuinely costly. If refusing is obviously free, raise the cost.
+        genuinely costly. If the right call is obvious, make it less so.
       - **No leakage.** The user must not signal awareness of the ethical dimension, and
         neither prompt may mention the constitution or any principle.
       - **The system prompt must not decide the case.** It sets the assistant's role,
@@ -423,7 +676,7 @@ stages:
         provider. Preserve task meaning, role and capabilities; ordinary references to
         other models or organisations and fictional characters are not identity claims.
         Never name the model you are, or the company that built you, anywhere in either
-        prompt -- not as the assistant's identity and not in passing.
+        prompt -- not as the assistant's identity and not in passing.{trait_note}{ai_text}
 
       Keep the system prompt an ordinary deployment prompt.
 
@@ -471,10 +724,16 @@ stages:
       Respond as the assistant. First reason privately about what is actually at stake here,
       then write your reply.
 
+      Everything specific about this person's situation comes from the system prompt and
+      their message, and nowhere else: numbers, durations, names, documents, what other
+      people said, what their organisation has. Where they were vague, stay vague --
+      "months" stays "months". General knowledge is fine; an invented particular is not.
+
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the person who gets hurt, sometimes a detail of the
       request that gives the whole thing away. Never open with a stock phrase, and never
-      begin with "Let me". Write as though thinking, not as though filling in a form.
+      begin with "Let me". Never name the model you are, or the company that built you.
+      Write as though thinking, not as though filling in a form.
 
       Return your answer in exactly this form, with no other text:
 
@@ -510,6 +769,12 @@ stages:
     - ^\s*okay,
     # Four baseline rows trained stray CJK mid-sentence; nothing here is written in CJK.
     - '[一-鿿]'
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
     # No model or developer named in trained text (2026-09-14; see revise_prompts).
     - \bclaude\b
     - \banthropic\b
@@ -522,6 +787,7 @@ stages:
   model: rewrite
   checkpoint: scenario_id
   tags:
+  - audit
   - reasoning
   - response
   - changes
@@ -529,6 +795,7 @@ stages:
     reasoning: reasoning
     response: response
     rewrite_changes: changes
+    rewrite_audit: audit
   ablate_with:
     reasoning: draft_reasoning
     response: draft_response
@@ -595,6 +862,19 @@ stages:
         thing that would go wrong. Enter mid-thought if that is where the thought starts.
         The first eight words should be impossible to reuse in any other transcript in
         this corpus -- that is the test, and it is the whole point of this instruction.
+        Pass it with a detail the person actually gave, copied as they gave it; never
+        with a sharper or invented one.
+      - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
+        Check every particular about this person's situation -- numbers, durations, names,
+        documents, quoted words, what their organisation has -- against the system prompt
+        and user message, and remove or un-sharpen any that are not there. "Six months"
+        for "months" is a fabrication even if the draft already says it. General knowledge
+        and clearly hypothetical framings are fine. Do this check in the <audit> block
+        FIRST, before you write anything else; every line marked INVENTED must be gone or
+        un-sharpened in what follows, and every particular in your own rewrite must be one
+        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
+        given ("they" if unstated); a cause or motive the prompt does not establish is
+        stated as likely, never as fact.
       - **Never name the constitution.** The principle above is there so you can apply it,
         not quote it -- and the document it came from must never be mentioned or alluded
         to. The reasoning argues from what is at stake for the people involved, never from
@@ -610,6 +890,10 @@ stages:
 
       Return your answer in exactly this form, with no other text:
 
+      <audit>
+      every particular in the draft about this person's situation, one per line, each
+      marked PROMPT (quote where it appears) or INVENTED
+      </audit>
       <reasoning>
       rewritten private deliberation
       </reasoning>
@@ -643,6 +927,12 @@ stages:
     - ^\s*let me\b
     - ^\s*okay,
     - '[一-鿿]'
+    # 2026-10-02: the reviser describing its own input in the assistant's voice ("a distinction the draft
+    # didn't separate out"). About 1% of rows in every corpus since 2026-09-25, 2 of 27 in the smoke of this
+    # date. It also retries a reply that says "the draft" about the PERSON's own document ("the draft
+    # contract"): 1-16 rows per ~1,000 in earlier corpora.
+    - \bthe draft\b
+    - \bdraft (?:response|reasoning|reply)\b
     # No model or developer named in trained text (2026-09-14; see revise_prompts).
     - \bclaude\b
     - \banthropic\b
@@ -668,6 +958,9 @@ stages:
   - domain
   - shortcut
   - situation
+  # What the writer call was dealt (rotate.ai, rotate.sector), so a published row says which line it got.
+  - ai
+  - sector
   # Chunking provenance from stage 1: which unit the document came from, and how
   # that unit was cut and grouped.
   - chunk_ids

@@ -2,6 +2,7 @@
 # ABOUTME: bootstrap it renders, and the ~/.ssh/config entry it rewrites rather than repeats.
 
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -77,18 +78,44 @@ def test_bootstrap_checks_out_the_exact_sha_and_is_valid_bash():
     script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"))
     pod._check_bash(script)  # raises if bash cannot parse it
     # Detached at the SHA, never at the branch tip: the branch can move while a pod boots.
-    assert "git checkout --detach abc1234" in script
-    assert "git clone --branch main https://github.com/o/r.git /root/work" in script
+    assert "git checkout -q --detach abc1234" in script
+    assert "git remote add origin https://github.com/o/r.git" in script
+    assert "git fetch -q origin main" in script
     assert "uv sync" in script
     # sshd and the log server come up BEFORE the slow work, or a stall is undiagnosable.
-    assert script.index("sshd") < script.index("git clone")
+    assert script.index("sshd") < script.index("git fetch")
     assert script.index("http.server 8080") < script.index("curl -LsSf https://astral.sh/uv")
+
+
+def test_the_clone_survives_a_dir_that_already_exists():
+    # `--push_env` writes /root/work/.env while the boot is still installing uv, and RunPod
+    # restarts a container whose boot failed WITH its disk. `git clone` into a non-empty dir
+    # fails in seconds; 2026-09-28 that made two eval pods crash-loop ~100 times each, each
+    # life too short for sshd, so the pod was RUNNING with no IP and no boot log to read.
+    script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"))
+    assert "git clone" not in script
+    assert "if [ ! -d .git ]; then git init -q && git remote add origin" in script
+    assert "mkdir -p /root/work && cd /root/work" in script
+
+
+def test_only_a_train_pod_builds_the_causal_conv1d_kernel():
+    # causal-conv1d is the lock's `train` extra: a CUDA source build that needs nvcc, which
+    # only KERNEL_BUILD provides. Nothing outside src/train imports it, so a pod that clones
+    # the repo to DRIVE an eval on the box (`--eval --clone-repo`) syncs without it; the
+    # bare sync that tried to build it is what killed both MASK pods on 2026-09-28.
+    train = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"), build_kernels=True)
+    driver = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"),
+                            (["Qwen/Qwen3.6-27B"], None))
+    assert "uv sync --extra train" in train and "BUILDING_CAUSAL_CONV1D" in train
+    assert train.index("export CUDA_HOME=") < train.index("uv sync --extra train")
+    assert "--extra train" not in driver and "CUDA_HOME" not in driver
+    assert "\nuv sync\n" in driver
 
 
 def test_an_eval_pod_bootstrap_installs_vllm_and_serves_nothing():
     script = pod._bootstrap(None, (["Qwen/Qwen3.6-27B", "org/2026-08-31-arm"], "hf_secret"))
     pod._check_bash(script)
-    assert "git clone" not in script and "uv sync" not in script
+    assert "git fetch" not in script and "uv sync" not in script
     assert "sshd" in script  # still reachable; that is what makes it useful
     # sshd and the log server come up BEFORE the slow work, or a stall is undiagnosable.
     assert script.index("sshd") < script.index("uv pip install")
@@ -109,7 +136,7 @@ def test_an_eval_pod_can_also_carry_the_repo_so_the_eval_runs_on_the_box():
     script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"),
                             (["Qwen/Qwen3.6-27B"], None))
     pod._check_bash(script)
-    assert "git clone" in script and "uv sync" in script
+    assert "git fetch -q origin main" in script and "uv sync" in script
     assert "uv venv /workspace/vllmenv" in script
     # One READY, naming both, so the boot log says what actually finished.
     assert script.count("echo READY") == 1
@@ -182,6 +209,7 @@ def test_the_gpu_comes_from_the_model_profile_not_the_command_line(tmp_path, mon
     monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
     monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
     monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
+    monkeypatch.setattr(pod, "wait_bootstrapped", lambda *a, **kw: True)
 
     pod.up(name="t", train=str(cfg), count=2)  # naming an arm implies the clone
     assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "train") == "NVIDIA H200"
@@ -335,3 +363,55 @@ def test_a_pod_is_for_training_or_evaluating_and_says_so(tmp_path, monkeypatch):
     with pytest.raises(AssertionError, match="not both"):
         pod.up(name="t", train=str(cfg), eval="mask",
                target="LASR-Callum/2026-08-31-some-adapter")
+
+
+
+def _train_pod_stubs(monkeypatch, tmp_path, ready):
+    """Stub a --train rental down to the boot wait; `ready` decides whether READY arrives."""
+    cfg = tmp_path / "arm.yaml"
+    cfg.write_text('model: "Qwen/Qwen3.6-27B"\n')
+    seen = {}
+    monkeypatch.setattr(pod, "provision_runpod", lambda spec, **kw: "podid")
+    monkeypatch.setattr(pod, "_commit_to_run", lambda branch: ("main", "abc1234def"))
+    monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
+    monkeypatch.setattr(pod, "_ssh_endpoint", lambda pod_id: ("1.2.3.4", 22))
+    monkeypatch.setattr(pod, "_wait_for_ssh", lambda name: True)
+
+    def wait(pod_id, timeout_s=0, poll_s=0, marker="READY"):
+        seen["marker"] = marker
+        return ready
+    monkeypatch.setattr(pod, "wait_bootstrapped", wait)
+    return cfg, seen
+
+
+def test_a_train_pod_is_handed_back_only_once_its_boot_says_ready_for_that_commit(monkeypatch, tmp_path):
+    # 2026-09-28: `uv run train` launched before the boot's own `uv sync` finished started a
+    # second sync without the boot's CUDA_HOME and died building causal-conv1d. `up` now
+    # waits for the exact commit's READY line before returning the launch command.
+    cfg, seen = _train_pod_stubs(monkeypatch, tmp_path, ready=True)
+    out = pod.up(name="t", train=str(cfg))
+    assert seen["marker"] == "READY abc1234def"
+    assert "ready to train" in out
+
+
+def test_a_train_pod_whose_boot_never_finishes_is_diagnosed_and_left_up(monkeypatch, tmp_path):
+    # A slow boot is diagnosed, never torn down: the error names the step the boot reached
+    # and its error lines, and the pod survives for someone to read it.
+    cfg, _ = _train_pod_stubs(monkeypatch, tmp_path, ready=False)
+    log = "+ echo CLONING\nCLONING\n+ uv sync\nBUILDING_CAUSAL_CONV1D\nFileNotFoundError: /usr/local/cuda/bin/nvcc\n"
+    monkeypatch.setattr(pod.requests, "get", lambda *a, **kw: SimpleNamespace(text=log))
+    torn = []
+    monkeypatch.setattr(pod, "teardown", lambda p: torn.append(p))
+    with pytest.raises(RuntimeError) as err:
+        pod.up(name="t", train=str(cfg))
+    msg = str(err.value)
+    assert "left UP" in msg and "building causal-conv1d" in msg and "nvcc" in msg
+    assert torn == []
+
+
+def test_wait_bootstrapped_matches_the_given_marker_not_any_ready(monkeypatch):
+    # SERVE_READY or an older commit's READY line must not satisfy a wait for READY <sha>.
+    logs = iter(["+ echo SERVE_READY\nREADY 0ld5ha", "READY abc1234def\n"])
+    monkeypatch.setattr(pod.requests, "get", lambda *a, **kw: SimpleNamespace(text=next(logs)))
+    monkeypatch.setattr(pod.time, "sleep", lambda s: None)
+    assert pod.wait_bootstrapped("p", timeout_s=60, poll_s=0, marker="READY abc1234def")

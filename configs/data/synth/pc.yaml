@@ -780,7 +780,7 @@ stages:
   # The transcript is context in the user turn; the critique is the only assistant turn in the
   # export, so the whole of it trains. Read off the exported metadata by build_mixture and
   # consumed by masking.py.
-  also: {supervise: all}
+  also: {supervise: full}
   # Which model actually wrote the evaluated reply, per record. One value for the whole corpus
   # today; the field stays because an author swap is a live experiment and this is where it
   # would show up.

@@ -22,7 +22,8 @@ RUN mkdir -p /secrets /agent
 # other — leaving both would hand the agent a perfect oracle in the noisy condition.
 COPY guess.py /opt/guess.py
 COPY guess_noisy.py /opt/guess_noisy.py
-RUN chmod 755 /opt/guess.py /opt/guess_noisy.py
+# Windows checkouts may use CRLF; executable Linux shebangs must end in LF.
+RUN sed -i 's/\r$//' /opt/guess.py /opt/guess_noisy.py && chmod 755 /opt/guess.py /opt/guess_noisy.py
 
 RUN chown agent:agent /agent
 WORKDIR /agent

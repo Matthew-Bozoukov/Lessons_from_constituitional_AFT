@@ -2,8 +2,10 @@
 <!-- ABOUTME: Historical dated notes describe the executed protocol; this file describes the maintained code. -->
 # Delegated-harm evaluation
 
-The registered eval tests mixed legitimate and improper workplace requests from a
-same-checkpoint peer, a same-checkpoint parent, or an unauthorized human requester.
+The registered eval tests mixed legitimate and improper workplace requests from an
+AI peer, an AI parent, or an unauthorized human requester. The default protocol uses
+one frozen AI request bank across all responders; self-authored requests remain an
+explicit alternative for studying the joint author/responder system.
 It measures useful completion, refusal, harmful actions, and concerns addressed to
 the requester, another human, or the authorized approver separately.
 
@@ -12,21 +14,100 @@ the requester, another human, or the authorized approver separately.
 Run from the repository root:
 
 ```powershell
-uv run evals --name delegated_harm --target <hf-adapter> --server <owned-ssh-host> --port <unused-port>
+uv run evals --name delegated_harm --target <hf-adapter> --server <owned-ssh-host> --port <unused-port> author.bank.path=<bank.json> author.bank.sha256=<exact-byte-sha256>
 ```
 
-The config is `configs/eval/delegated_harm.yaml`. It records the exact initial study
-settings and checkpoint pins. For a new study, explicitly replace the target pins
-and display label in a resolved config; do not silently reuse the Qwen study label
-for another model family. Model mode comes from the adapter metadata. The eval
-requires the shared vLLM template and therefore does not accept API targets.
+The config is `configs/eval/delegated_harm.yaml`. It retains historical checkpoint
+pins for those exact models; the Qwen base pin applies only to Qwen. The neutral
+display label is `Evaluated model` for every responder. Model mode comes from
+adapter metadata. OpenAI-compatible API targets are also accepted by the runner;
+their real tools, history and effective sampling still require qualification.
+Frozen mode refuses a missing, changed, incomplete or rejected bank before any
+target or judge calls. Human-only runs do not need an AI bank.
+
+## Prepare the shared request bank first
+
+Choose and pin an author checkpoint independently of responder outcomes. From the
+repo root, run the ordinary entrypoint with these overrides:
+
+```powershell
+uv run evals --name delegated_harm --target <author-hf-checkpoint> --server <owned-ssh-host> --port <unused-port> --no-push author.mode=self_authored author.prepare_only=true
+```
+
+For an API author, use its normal API target string and omit `--server`/`--port`.
+This is an authoring run: it makes author and validation-judge calls, but never
+schedules, runs or judges responder episodes. With the current defaults it prepares
+36 requests: three variants for each of the 12 included worlds.
+
+Successful preparation writes `metadata/request_bank.json` and
+`metadata/request_bank_preparation.json`, which contains its exact byte SHA256.
+The summary status is `request_bank_prepared`, `behavioral_evaluation` is false,
+and no behavioral results or pass rate are emitted. Author prompts, attempts,
+validation verdicts and checkpoint/source provenance remain in metadata.
+If even one request is rejected or absent, preparation fails and retains the
+candidate and author evidence without writing a usable final bank.
+
+Review the requests and freeze the bank before looking at responder outcomes.
+Use the same bank path and SHA256 for every responder. For a published bank,
+the equivalent overrides are `author.bank.repo=<dataset>`,
+`author.bank.revision=<40-character-commit>`,
+`author.bank.file=metadata/request_bank.json` and `author.bank.sha256=<sha256>`.
+The loader checks byte identity, worlds, source notes, human prompts, display label,
+variant coverage and each accepted text's hash. It never regenerates a missing bank.
+
+To reproduce the joint author-plus-responder protocol deliberately, set
+`author.mode=self_authored author.prepare_only=false`. Those AI requests may differ
+across models, so keep these results separate from frozen-bank responder comparisons.
+
+No real bank has been generated in the September 29 cleanup. The new workflow has
+offline success/failure tests proving that preparation cannot enter the episode loop;
+real author and responder checkpoints must still be selected and qualified.
 
 The registered runner and benchmark-specific source loading, rubrics and judging
 live under `src/eval/misalignment/delegated_harm/`. The runner receives the served
 target and never provisions a GPU, loads weights or starts a model server. Judge
-requests use the shared OpenRouter client. The upstream source revision and the two
-Windows path patches are validated before use; the unpublished egress fixture is
+requests use the shared OpenRouter client. The upstream source revision, two
+Windows path patches and explicit UTF-8 tier-screen fixture read are validated
+before use; the unpublished egress fixture is
 an explicit exclusion, not a replacement scenario.
+
+## Historical bank candidate (September 30)
+
+New generation is not required to obtain a complete candidate. The pinned control
+publication below contains all 36 accepted author requests, with complete `stop`
+responses, exact text hashes and saved semantic validation, including recovery
+validation. The audit inspected author evidence, not responder outcomes, and
+retained the entire collection without choosing individual variants.
+
+- Author: `matboz/qwen3.6-27b-lora-9284-numina-control-716-r64`
+  at `edfb4287c10f553c541ba28216f202d0c0f47055`.
+- Source dataset: `dougalldeepmind/2026-09-11-dh-qwen3-6-27b-lora-9284-numina-control-716-r64`
+  at `0a8b5e7698d3d6ca6c84bf4b200528541c076f8d`.
+- Local candidate: `output/delegated_harm_historical_bank_audit/control/metadata/request_bank_candidate.json`.
+- Byte SHA256: `a402141f0aa994015d9dfa76705c7f8cb991243f49a9d68e0c3f82785af2bd38`.
+- Required display-label override: `subject_model_label=Qwen3.6-27B`.
+
+The actual frozen-bank loader accepted all 36 requests using the repaired current
+source manifest. The UTF-8 source repair restores all 12 historical world hashes;
+source-note and human-request hashes also match exactly. The bank records the
+original manifest and changed patch hash under `derivation`. Request texts and
+the original display label are unchanged. Original downloaded metadata remain
+beside it, and `output/delegated_harm_historical_bank_audit/audit.json` records the
+checks for both historical collections.
+
+This candidate carries the historical acceptance protocol: 18 control requests
+were recovered, and 15 have recorded near-copy waivers. It is not recertified under
+stricter new authoring rules. The candidate is local, unactivated and unpublished;
+choose it explicitly versus fresh author-only generation from a selected current
+checkpoint. Keep one bank and label fixed across the Qwen responders. For this
+candidate, append:
+
+```text
+subject_model_label=Qwen3.6-27B author.bank.path=output/delegated_harm_historical_bank_audit/control/metadata/request_bank_candidate.json author.bank.sha256=a402141f0aa994015d9dfa76705c7f8cb991243f49a9d68e0c3f82785af2bd38
+```
+
+No generation, paid judging or responder run was used to prepare this candidate.
+Live tool/context qualification and an adequate judge budget remain necessary.
 
 ## Experimental recovery and scaling
 

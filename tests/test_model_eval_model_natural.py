@@ -432,7 +432,10 @@ def test_the_two_variants_grew_their_extra_fields_identically(name: str) -> None
     if name == "write_scenarios":
         assert par["fields"]["required"] == ADDED_FIELDS
         assert "fields" not in da
-        assert par.get("diversity") == da.get("diversity")
+        # Until 2026-10-02 the two also shared DA's `diversity` block. DA has since turned its
+        # wave list off and lowered its similarity gate (it deals a sector per call instead);
+        # PAR and PC keep the wave machinery, so only their agreement with each other is checked.
+        assert par.get("diversity") == pc.get("diversity")
     else:
         assert par["save"]["shortfall"] == "shortfall"
         assert "shortfall" not in (da.get("save") or {})
@@ -481,11 +484,13 @@ def test_pr_grey_area_rater_reads_the_refined_prompt_and_the_filter_acts_on_it()
     principle and the REFINED exchange -- the prompt the assistant will actually answer --
     and the filter drops what it calls not a grey area. Stages 3-4 stay DA's verbatim: the
     rater's first home, the third-person scenario, has no assistant in it yet."""
-    for name in ("corpus_scenarios", "dedupe_scenarios"):
-        pr, da = _stage(PR_CFG, name), _stage(DA_CFG, name)
-        assert {k: v for k, v in pr.items() if k != "name"} == {
-            k: v for k, v in da.items() if k != "name"
-        }, name
+    # `corpus_scenarios` is DA's verbatim. `dedupe_scenarios` is PR's own since 2026-10-01,
+    # when DA dropped it (its gate already enforces the same similarity).
+    pr, da = _stage(PR_CFG, "corpus_scenarios"), _stage(DA_CFG, "corpus_scenarios")
+    assert {k: v for k, v in pr.items() if k != "name"} == {
+        k: v for k, v in da.items() if k != "name"
+    }
+    assert _stage(PR_CFG, "dedupe_scenarios")["drop_when"] == ["embedding_dup"]
     chk = _stage(PR_CFG, "corpus_prompts")
     rater = next(p for p in chk["properties"] if p["property"] == "quality_filter")
     assert rater["params"]["sample"] == 0, (
@@ -804,7 +809,11 @@ def test_the_trained_turn_carries_das_lint() -> None:
     assert reasoning["fields"] == ["reasoning"] and reasoning["min_chars"] == 700
     assert response["fields"] == ["response"]
     da_bans = _stage(DA_CFG, "revise_responses")["lint"]["ban_patterns"]
-    assert set(da_bans) <= set(reasoning["ban_patterns"])
+    # DA's two reviser-leak bans (2026-10-02: "the draft", "draft response") are about DA's own
+    # draft-then-revise stages and are not part of the voice contract this recipe inherits.
+    da_only = {r"\bthe draft\b", r"\bdraft (?:response|reasoning|reply)\b"}
+    assert da_only <= set(da_bans)
+    assert set(da_bans) - da_only <= set(reasoning["ban_patterns"])
     assert reasoning["ban_patterns"] == response["ban_patterns"]
     ok = {
         "reasoning": _long(
@@ -929,7 +938,7 @@ def _pc_record(**over) -> dict:
         "verify_note": "tidied the wording and never mentioned the gap",
         "followup": "That is not what I asked for -- the wording still has to be right by Friday.",
         "followup_source": "scenario_specific",
-        "supervise": "all",
+        "supervise": "full",
         "ask_opening": "My colleague showed me what the assistant told her.",
         "ask_closing": "What would you have said in its place?",
         "draft_reasoning": "I re-read what she actually needs here.",
@@ -951,7 +960,7 @@ def test_pc_first_turn_carries_its_scenario_shortfall() -> None:
     still sees no constitution, no principle and no style guidance."""
     sc = _stage(PC_CFG, "draft_first_turn")
     assert sc["save"] == {"first_turn": "reply"}
-    assert sc["also"] == {"supervise": "all"}
+    assert sc["also"] == {"supervise": "full"}
     assert sc["stamp_model"] == "first_turn_source"
     # Sonnet since 2026-09-03: PAR's measured choice for this stage, which PC needed the
     # moment it started instructing the reply rather than leaving it unaided.
@@ -1101,7 +1110,7 @@ def test_pc_export_is_one_exchange_with_the_transcript_in_the_user_turn() -> Non
     for part in (r["ask_opening"], r["user"], r["first_turn"], r["ask_closing"]):
         assert part in user_turn
     assert rec["messages"][2]["reasoning_content"] == r["reasoning"]
-    assert rec["metadata"]["supervise"] == "all"
+    assert rec["metadata"]["supervise"] == "full"
     # Which model wrote the evaluated reply is a recorded variable, not a hidden
     # constant of the config -- one value across the corpus today, but an author swap is
     # a live experiment and this is where it would show up.
@@ -1152,8 +1161,8 @@ def test_the_two_gates_price_everything_after_them() -> None:
     for key in ("followup", "reflect", "rewrite"):
         assert rows[key]["calls"] == bare, key
     assert n_final_examples(PR_CFG) == bare
-    # DA's own dedupe declares no prior, so DA's estimate is unchanged by this rule.
-    assert "expected_keep" not in _stage(DA_CFG, "dedupe_scenarios")
+    # DA has no filter stage at all (2026-10-01), so DA's estimate is unchanged by this rule.
+    assert not [s for s in DA_CFG["stages"] if s["kind"] == "corpus_filter"]
     assert n_final_examples(DA_CFG) == DA_CFG["total_scenarios"]
 
 

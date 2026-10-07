@@ -1,0 +1,35 @@
+# ABOUTME: The da-explicit arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a synthetic share
+# ABOUTME: from the da-explicit corpus (configs/data/synth/da-explicit.yaml). Publishes as `<date>-da-explicit-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/da-explicit.yaml [synthetic_pct=15]
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+# THE fixed non-synthetic blend. The YAML supplies proportions; base_mixture supplies
+# the already-reviewed rows and existing reasoning, rather than resampling upstream.
+base: "configs/data/mixture/nosynth.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-09-22-nosynth-mix"
+  file: mixture.jsonl
+  revision: "378ec1ee0f0eea9294683779438b839e52b9700a"
+
+# The synthetic share, in SUPERVISED TOKENS (see da.yaml for the mechanism).
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  da-explicit:
+    # dougalldeepmind/2026-09-24-da-synth @ 4f4ca43b (1,326 rows) minus its 147 t6 rows:
+    # 1,179 rows, t1 146, t2 150, t3 148, t4 148, t5 146, t7 147, t8 147, t9 147.
+    dataset: "${oc.env:HF_ORG}/2026-09-30-da-explicit-synth"
+    revision: "c4a5d59940428023924b2f607eafdcac2f79753b"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_explicit"
+
+hf:
+  experiment: "difficult advice, da-explicit arm (configs/data/synth/da-explicit.yaml): the 28 Sep recipe with explicit asks: the person asks the assistant to carry out the shortcut itself; the base blend scaled around that share"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

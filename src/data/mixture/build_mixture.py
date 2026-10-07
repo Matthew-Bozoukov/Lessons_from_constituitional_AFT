@@ -48,8 +48,9 @@ from transformers import AutoTokenizer
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from src.data.mixture import reasoning_backfill as rb  # noqa: E402
-from src.data.mixture.sources import SOURCES, clean_messages  # noqa: E402
-from src.model_profile import ModelProfile, model_profile, render_chat  # noqa: E402
+from src.data.mixture.sources import SOURCES, clean_messages, row_tools  # noqa: E402
+from src.model_profile import (  # noqa: E402
+    ModelProfile, model_profile, parallel_calls, render_chat, tool_rendering)
 from src.train.masking import build_labels  # noqa: E402
 from src.naming import (  # noqa: E402
     NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
@@ -232,6 +233,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             "their render at train time.)")
     to_messages = adapter.to_messages if adapter else \
         (lambda row: clean_messages(row.get("messages")))
+    to_tools = adapter.to_tools if adapter else row_tools
     pool = None
     if "dataset" in spec:
         # THE canonical synth intake: `dataset: org/repo` loads the repo's DEFAULT
@@ -268,12 +270,17 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         msgs = to_messages(raw)
         if msgs is None:
             return None
-        # `tools` rides top-level on a row (a synth chat_export with `tools:`), the
-        # schemas of what the conversation may call; counted AND trained with them,
-        # since the template renders them into the prompt (src/model_profile.py
-        # render_chat). A tool-calling row without them is refused in
+        # `tools` rides top-level on a row (a synth chat_export with `tools:`) or is
+        # parsed out of prompt text by the adapter (`to_tools`): the schemas of what the
+        # conversation may call; counted AND trained with them, since the template
+        # renders them into the prompt (src/model_profile.py render_chat). A tool-calling row without them is refused in
         # _validate_interchange, not repaired here.
-        tools = raw.get("tools") or (raw.get("metadata") or {}).get("tools")
+        tools = to_tools(raw)
+        # A family whose template has no form for several calls in one turn (gpt-oss
+        # keeps the first, Llama 3.1 raises) cannot be taught these rows in its native
+        # syntax: they are ineligible for THIS build's tokenizer, like an over-length row.
+        if parallel_calls(msgs) and not tool_rendering(tok)["parallel"]:
+            return None
         # return_dict + explicit ["input_ids"]: with tokenize=True this transformers
         # version hands back a BatchEncoding either way, and len() of THAT is its key
         # count (2), not the token count — caught live 2026-08-06 (2 "tokens" per row).
@@ -358,7 +365,8 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             out.append(p)
             if len(out) == want:
                 break
-    print(f"  (skipped {skipped} {name} rows: wrong shape, unsupported role, or too long)")
+    print(f"  (skipped {skipped} {name} rows: wrong shape, unsupported role, too long, or "
+          "parallel tool calls this template cannot render)")
     if b_kind == "examples" and len(out) < want:
         raise RuntimeError(
             f"source {name!r}: stream exhausted at {len(out)}/{want} examples "
@@ -581,7 +589,7 @@ def supervised_tokens(tok, profile: ModelProfile, row: dict, max_seq_len: int) -
     """
     text = render_chat(tok, row["messages"], row.get("tools"), render_kwargs=profile.render_kwargs)
     labels = build_labels(text, tok, max_seq_len, profile,
-                          supervise=row.get("supervise") or "all",
+                          supervise=row.get("supervise"),
                           mask_spans=row.get("mask_spans"))["labels"]
     # The causal shift: position 0 is never a target, and the trainer's loss counts
     # labels[1:] (src/train/dynamic_batching.py). Label 0 is -100 anyway (a prompt token).
@@ -871,7 +879,9 @@ def _load_published_base(tok, cfg, specs: dict, scale: int, seed: int,
     spec = cfg.base_mixture
     path, ref = resolve_dataset(str(spec.repo), str(spec.file), str(spec.revision))
     assert ref["revision"] == spec.revision, "base_mixture must pin an exact commit"
-    pool = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").splitlines()]
+    # Split on "\n" alone: str.splitlines also breaks on U+0085, U+2028 and the like, which are legal INSIDE
+    # a JSON string written with ensure_ascii=False (real user text carries them) and would cut a row in two.
+    pool = [json.loads(line) for line in Path(path).read_text(encoding="utf-8").split("\n") if line]
     expected = _base_sources(str(cfg.base))
     assert len(pool) == sum(int(s["examples"]) for s in expected.values())
     assert {r["source"] for r in pool} == set(expected)
@@ -999,9 +1009,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # under the variant's.
     for sname, spec in sources.items():
         sup = spec.get("supervise")
-        assert sup is None or sup in ("all", "final", "cot", "answer"), (
+        assert sup is None or sup in ("full", "final", "cot", "response"), (
             f"source {sname!r}: `supervise: {sup}` is not a mode src/train/masking.py "
-            "knows (all | final | cot | answer)")
+            "knows (full | final | cot | response)")
     share_unit = str(cfg.get("share_unit") or "examples")
     assert share_unit in SHARE_UNITS, f"share_unit must be one of {SHARE_UNITS}, not {share_unit!r}"
     if share_unit == "supervised_tokens":
@@ -1231,7 +1241,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     _write_rows(out_path, rows)
     _validate_written(out_path, rows, kinds)
     if cfg.get("base_mixture"):
-        written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").splitlines()]
+        written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").split("\n") if line]
         assert written == [{k: v for k, v in r.items()
                             if k not in ("n_tokens", "n_supervised", "balance_group")} for r in rows], (
             "serialization changed published-base payloads")

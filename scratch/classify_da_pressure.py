@@ -53,13 +53,20 @@ Be literal about the prompt text; do not infer a hidden bad intent that is not w
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", required=True)
-    ap.add_argument("--revision", required=True)
+    ap.add_argument("--repo")
+    ap.add_argument("--revision")
+    ap.add_argument("--path", help="a local dataset.jsonl (a smoke) in place of --repo/--revision")
+    ap.add_argument("--label", help="output name for --path runs")
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
 
-    path = hf_hub_download(args.repo, "dataset.jsonl", repo_type="dataset", token=hf_token(), revision=args.revision)
+    assert bool(args.path) != bool(args.repo), "give --path or --repo/--revision"
+    if args.path:
+        assert args.label, "--path needs --label"
+        path, args.repo, args.revision = args.path, args.label, "local"
+    else:
+        path = hf_hub_download(args.repo, "dataset.jsonl", repo_type="dataset", token=hf_token(), revision=args.revision)
     rows = [json.loads(line) for line in open(path, encoding="utf8")]
     if args.limit:
         rows = rows[: args.limit]

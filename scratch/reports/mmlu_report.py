@@ -42,6 +42,7 @@ from src.eval.capabilities.mmlu.runner import resolve_arms  # noqa: E402
 from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     CATEGORIES,
     LETTERS,
+    health_issues,
     mcnemar,
     paired_diff,
     parse_answer,
@@ -126,7 +127,10 @@ def _load_arm_records(cfg: DictConfig, arms: list[dict], mode: str) -> dict[str,
 
 def _compare(baseline: list[dict], arm: list[dict], cfg: DictConfig) -> dict[str, Any]:
     """Paired comparison of one arm against the baseline over identical questions."""
-    stats = cfg.statistics
+    for name, records in (("baseline", baseline), ("arm", arm)):
+        issues = health_issues(score_records(records), cfg.thresholds)
+        if issues:
+            raise ValueError(f"MMLU {name} is not valid for comparison: {'; '.join(issues)}")
     base_correct = [bool(r["correct"]) for r in baseline]
     arm_correct = [bool(r["correct"]) for r in arm]
     # Closed form, clustered by subject: the difference of two means has an exact SE, and
@@ -150,18 +154,7 @@ def _compare(baseline: list[dict], arm: list[dict], cfg: DictConfig) -> dict[str
 
 def _health(scores: dict, cfg: DictConfig) -> list[str]:
     """Instrument-health breaches for one arm, checked before its accuracy is trusted."""
-    issues = []
-    if scores["parse_rate"] < float(cfg.thresholds.min_parse_rate):
-        issues.append(
-            f"parse rate {scores['parse_rate']:.1%} below "
-            f"{float(cfg.thresholds.min_parse_rate):.0%}"
-        )
-    if scores["truncation_rate"] > float(cfg.thresholds.max_truncation_rate):
-        issues.append(
-            f"truncation {scores['truncation_rate']:.1%} above "
-            f"{float(cfg.thresholds.max_truncation_rate):.0%} — raise generation.max_tokens"
-        )
-    return issues
+    return health_issues(scores, cfg.thresholds)
 
 
 def _style(ax: plt.Axes) -> None:

@@ -1,0 +1,19 @@
+# ABOUTME: Re-rent of 2026-09-29_fleet_da_tools_baseline.yaml's datools-b (da-tools, baseline seeds 16-30): its
+# ABOUTME: bring-up thread went silent before any rent attempt (the second such stall today). Same config and seeds.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/colosseum_hospital/2026-09-29_fleet_da_tools_baseline_b2.yaml
+date: "2026-09-29"
+branch: worktree-kn-hospital-base-qwen
+out_root: output/colosseum_hospital/2026-09-29_da_tools_baseline
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-bl-datools-b2
+    group: da_tools
+    target: dougalldeepmind/2026-09-28-qwen36-0-da-tools-15
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["baseline:16-30"]
+    cap_h: 3.0

@@ -60,6 +60,12 @@ from src.eval.stats import t_quantile
 from src.infra.endpoints.openrouter import OPENROUTER_BASE_URL, run_batch
 from src.utils import write_run_meta
 
+# The harness writes its CSVs with pandas, which caps nothing; the stdlib reader used below
+# refuses any field over 128 KB. A reasoning model that loops to its token cap writes
+# generations past that (2026-10-03, the da-qwen-15 arm: one cell, whole run aborted after
+# generating), so the limit is lifted once here for every reader in this module.
+csv.field_size_limit(min(2**31 - 1, sys.maxsize))
+
 _HARNESS_ROOT = Path(__file__).parent / "third_party" / "mask"
 _HARNESS = _HARNESS_ROOT / "mask"          # the package dir the stages run from (relative paths)
 # The stages run under THIS environment's interpreter: their needs (pandas, openai, tqdm,
@@ -156,7 +162,7 @@ def _file_errors(path: Path) -> tuple[int, int]:
         for row in reader:
             for c in gen_cols:
                 v = row.get(c)
-                if v is None or v == "":
+                if v is None or (v == "" and not row.get(c.replace("generation(", "finish_reason(", 1))):
                     continue
                 generations += 1
                 if v.startswith("[ERROR"):
@@ -173,7 +179,7 @@ def generation_errors(responses_dir: Path) -> dict:
     return {"generations": generations, "errors": errors}
 
 
-def resume_work(prior: Path, work: Path, modelname: str, cap: float) -> list[str]:
+def resume_work(src: Path, work: Path, modelname: str, cap: float) -> list[str]:
     """Adopt a failed run's work tree, keeping every archetype it generated cleanly.
 
     A MASK run is hours of generation and the harness writes one responses file per
@@ -184,13 +190,17 @@ def resume_work(prior: Path, work: Path, modelname: str, cap: float) -> list[str
     under the cap is kept with the few failed cells it has — the same cells a clean run
     keeps, counted against the same cap.
 
+    `src` is the pass's work tree itself (`<run>/mask_work` or `<run>/mask_work/pass<k>`, as
+    `_prior_pass_tree` resolves it), not the run directory: until 2026-10-05 this appended
+    `mask_work` to what was already the tree and every resume failed looking for
+    `mask_work/mask_work`.
+
     Returns:
         The archetypes that will be regenerated.
     """
-    src = prior / "mask_work"
     assert (src / "data" / "responses").is_dir(), (
-        f"{prior} holds no mask_work/data/responses to resume; only a run that FAILED keeps "
-        "its work tree")
+        f"{src} holds no data/responses to resume; only a run that FAILED keeps its work "
+        "tree")
     shutil.copytree(src, work)
     shutil.rmtree(work / "logs", ignore_errors=True)   # the prior run's stage logs stay with it
     dropped = []
@@ -392,7 +402,7 @@ def _generate_pass(k: int, passes: int, target, cfg: DictConfig, work: Path, sou
           f"({100 * empty_rate:.1f}%: pressure {empty['by_type'].get('lie', 0)}, "
           f"belief {empty['by_type'].get('belief', 0)}; scored as {env['MASK_EMPTY_CONTENT']!r})",
           flush=True)
-    cap = float(cfg.get("max_generation_error_rate", 0.05))
+    cap = float(cfg.get("max_generation_error_rate", 0.0))
     if error_rate > cap:
         raise RuntimeError(
             f"MASK pass {k}: {100 * error_rate:.1f}% of generations failed, above "

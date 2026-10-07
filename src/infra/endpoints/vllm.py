@@ -30,7 +30,7 @@ def check_mix_subject_ok(model_subject: str) -> bool:
         base_model_key(parts[0]); check_mix_subject(parts[2]); return True
     except (NamingError, ValueError):
         return False
-from huggingface_hub.errors import EntryNotFoundError
+from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError
 
 from src.model_profile import serving_params
 
@@ -184,6 +184,12 @@ class ServedTarget:
             spec = replace(spec, revision=self.spec.base_revision,
                            base_revision=self.spec.base_revision,
                            base_revision_from=self.spec.base_revision_from)
+            if mode is None:
+                # This full model IS the server's loaded base, so it takes the server's
+                # pinned mode. Otherwise it resolves to its template's `default`, and a
+                # base-model-in-every-seat run (target `mode=think`, peer the same full
+                # model) would trip the mode assert below (Hospital, 2026-09-18).
+                spec = replace(spec, mode=self.spec.mode)
         assert spec.base_model == self.spec.base_model, (
             f"cannot co-serve {hf_path} (base {spec.base_model}) with "
             f"{self.spec.hf_path} (base {self.spec.base_model}): one vLLM server holds "
@@ -297,7 +303,7 @@ def resolve_api_target(provider: str, model_id: str) -> TargetSpec:
         lora_rank=None, api_base=base, api_key_env=key_env)
 
 
-def resolve_answers_target(hf_path: str) -> TargetSpec | None:
+def resolve_answers_target(hf_path: str, revision: str | None = None) -> TargetSpec | None:
     """A TargetSpec for a prior eval run's published answers, or None if that is not one.
 
     The run's own `metadata/run_meta.json` supplies the identity: the model it measured
@@ -307,31 +313,44 @@ def resolve_answers_target(hf_path: str) -> TargetSpec | None:
     eval run, and the caller falls through to treating it as a full model.
     """
     try:
-        with open(hf_download(hf_path, "metadata/run_meta.json",
-                              repo_type="dataset")) as f:
-            meta = json.load(f)
-    except Exception:  # noqa: BLE001 - not a published run: every other error means "no"
+        # Probe existence only. Identity is read below from the resolved immutable
+        # dataset commit, never from this potentially moving branch/head download.
+        hf_download(hf_path, "metadata/run_meta.json", repo_type="dataset",
+                    **({"revision": revision} if revision else {}))
+    except (EntryNotFoundError, RepositoryNotFoundError):
         return None
+    sha = (_repo_sha(hf_path, "dataset", revision=revision) if revision
+           else _repo_sha(hf_path, "dataset"))
+    with open(hf_download(hf_path, "metadata/run_meta.json", repo_type="dataset", revision=sha),
+              encoding="utf-8") as f:
+        meta = json.load(f)
     measured = str(meta.get("target") or "")
     assert measured, (
         f"{hf_path} has metadata/run_meta.json but it records no `target`, so nothing "
         "says which model these answers came from. It cannot be reused as an arm.")
+    recorded_key = str(meta.get("model_key") or undated(measured).replace("-", "_"))
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", recorded_key):
+        raise ValueError(f"{hf_path} records an unsafe model_key")
     return TargetSpec(
         hf_path=hf_path,
         base_model=str(meta.get("base_model") or measured),
         adapter=False,
         mode=str(meta.get("mode") or "default"),
-        model_key=undated(measured).replace("-", "_"),
+        model_key=recorded_key,
         lora_rank=None,
         answers=hf_path,
+        revision=sha,
+        base_revision=meta.get("base_model_revision") or None,
+        base_revision_from=meta.get("base_revision_from") or None,
     )
 
 
-def _repo_sha(hf_path: str, repo_type: str = "model") -> str:
+def _repo_sha(hf_path: str, repo_type: str = "model", *, revision: str | None = None) -> str:
     """The commit sha an HF repo resolves to right now (one API call; patched in tests)."""
     from src.infra.huggingface import hf_api
 
-    return hf_api().repo_info(hf_path, repo_type=repo_type).sha
+    return hf_api().repo_info(hf_path, repo_type=repo_type,
+                              **({"revision": revision} if revision else {})).sha
 
 
 def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
@@ -361,14 +380,14 @@ def resolve_target(hf_path: str, revision: str | None = None) -> TargetSpec:
     try:
         with open(hf_download(hf_path, "adapter_config.json", **({"revision": revision} if revision else {}))) as f:
             adapter_config = json.load(f)
-    except EntryNotFoundError:
+    except (EntryNotFoundError, RepositoryNotFoundError):
         # No adapter config: either a full model, or a PRIOR RUN of this eval whose
         # rollouts already hold this model's answers. Only the second has a published
         # layout, so `metadata/run_meta.json` in a DATASET repo is what tells them apart —
         # never the repo's name, which a style-type could imitate.
-        spec = resolve_answers_target(hf_path)
+        spec = resolve_answers_target(hf_path, revision=revision)
         if spec:
-            return replace(spec, revision=_repo_sha(hf_path, "dataset"))
+            return spec
         sha = revision or _repo_sha(hf_path)
         return replace(_spec_from_files(hf_path, None, None), revision=sha,
                        base_revision=sha, base_revision_from="target")
@@ -400,11 +419,12 @@ def pin_template(template_text: str, mode: str) -> str:
     A top-level Jinja `set` executes after the render context is built, so it shadows any
     `enable_thinking` a client passes per request — requests cannot cross modes (gotcha 5).
 
-    Thinking mode also pins `preserve_thinking = true` (the repo-wide policy since
-    2026-08-04): training data carries reasoning on every assistant turn, so inference
-    context must too — prior-turn `reasoning_content` sent back by a client is kept in
-    the render rather than stripped by the template's default. Nothink pins it false:
-    a nothink arm's history carries no reasoning to preserve.
+    Both modes also pin `preserve_thinking = false`, the template's own default and how
+    reasoning models are served everywhere: prior `reasoning_content` a client sends back is
+    rendered only from the last user message onwards, so a tool chain keeps every step's
+    trace and an answered turn loses its own. Training renders the same way (the profile's
+    `render_kwargs`). From 2026-08-04 to 2026-10-05 think mode pinned it true, keeping every
+    earlier turn's reasoning in view; arms trained then were also served that way.
     """
     return pin_prefix(mode) + template_text
 
@@ -420,7 +440,7 @@ def pin_prefix(mode: str) -> str:
     assert mode in ("think", "nothink"), mode
     flag = "true" if mode == "think" else "false"
     return (f"{{%- set enable_thinking = {flag} -%}}\n"
-            f"{{%- set preserve_thinking = {flag} -%}}\n")
+            "{%- set preserve_thinking = false -%}\n")
 
 
 # The two serving namespaces are DISJOINT BY CONSTRUCTION — no key appears in both, so

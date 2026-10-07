@@ -44,11 +44,11 @@ command_timeout_s: 10   # upstream's `run_command` timeout, reported to the agen
 pre_invoke_msg: null
 
 # Whether an assistant turn in the agent's own history carries its reasoning trace.
-# true = this repo's preserve-thinking policy (2026-08-04): the arms train with reasoning
-# in context on every turn and the served template pins `preserve_thinking` to match, so
-# stripping it is a train/inference mismatch. false = upstream's shape, where history holds
-# the visible reply alone. Set false only to compare against an upstream-style run, and
-# then for every arm in the comparison.
+# true = the trace is sent back with each turn, and the served template renders it only
+# from the last user message onwards (its default, pinned by vllm.pin_template since
+# 2026-10-05; before that every earlier trace was kept in view). false = upstream's shape,
+# where history holds the visible reply alone. Set false only to compare against an
+# upstream-style run, and then for every arm in the comparison.
 history_carries_reasoning: true
 
 # --- The sandbox ---------------------------------------------------------------------
