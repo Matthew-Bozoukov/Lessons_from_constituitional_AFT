@@ -1,6 +1,14 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - Plain control and DA15 SWE-bench wave launched on twelve H200s
+
+Fresh v3 qualification passed against the exact committed LF configuration. Proof is `dougalldeepmind/2026-10-07-swebench-lite-infrastructure@51473d24495ff6a757c0fcb32ae007cf8180b4d6`: 243 regression tests, one existing skip, 16 subtests; transport/protocol and pinned-template checks; all 300 image shell probes; five CPU load phases through 80 conversations / 32 command slots with zero command errors; real-agent synthetic official grading and immutable verification of 100 rollout/result files.
+
+The durable queue submitted wave one around 00:06 UTC. Provider inventory confirmed twelve owned H200 pods at $4.59/hour each, exactly six for the pinned October 5 plain control and six for the pinned DA15 adapter. All were booting at the initial check; this is launch evidence, not inference completion or a score. Initial checkpoints are published to `dougalldeepmind/2026-10-07-swebench-qwen36-0-plain-lite-v5` and `dougalldeepmind/2026-10-07-swebench-qwen36-0-da-15-lite-v5`. No H100 fallback was needed for initial capacity. The independent GPU reaper timer is active and its last check succeeded.
+
+Wave roots are `/srv/lasr/runs/plain-four-20261007-wave1` and `plain-four-20261007-wave2`; each second arm is under `next-arm`. Deployed runtime source remains `b7fdbd7c`; subsequent commits only document operations. DA5/DA25 stays pending behind complete first-wave grading, immutable publication and provider teardown checks. GPU backstop remains $360 for wave one and at most $360 for the fresh second wave, with its documented funding adjustment. Persistent CPU 54552761 remains running at the separately quoted rate; no unrelated pods are included in campaign ownership.
+
 ## 2026-10-07 - SWE-bench launch guard catches archive line-ending drift before rental
 
 Qualification v2 passed 243 tests (one existing skip), 16 subtests, the real transport/protocol/template checks, shell probes for all 300 cached images, all five CPU load phases through 80 workers / 32 tool slots, and synthetic official grading plus 100-file HF verification. Evidence: `dougalldeepmind/2026-10-06-swebench-lite-infrastructure@ff74639debb0070f1dfa37f2b7eb338704ac7e22`.
