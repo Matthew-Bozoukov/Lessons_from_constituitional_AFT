@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - SWE-bench launch guard catches archive line-ending drift before rental
+
+Qualification v2 passed 243 tests (one existing skip), 16 subtests, the real transport/protocol/template checks, shell probes for all 300 cached images, all five CPU load phases through 80 workers / 32 tool slots, and synthetic official grading plus 100-file HF verification. Evidence: `dougalldeepmind/2026-10-06-swebench-lite-infrastructure@ff74639debb0070f1dfa37f2b7eb338704ac7e22`.
+
+The queue then refused to launch because Windows `git archive` converted the custom YAML from committed LF to CRLF: expected `b36a517c...`, deployed `9644bc26...`. No queue ledger or GPU rental existed. Re-exported only the identical committed YAML using `git -c core.autocrlf=false archive`, asserted CRLF removal was the sole byte difference, retained the v2 file and evidence, and started full fresh v3 qualification. The source remains `b7fdbd7c`; no model, sampling, benchmark or budget settings changed. Queue boot activation is disabled until the v3 gate passes. The archive and SSH-stdin line-ending lessons are recorded in GOTCHAS.
+
 ## 2026-10-07 - Plain SWE-bench CPU cache complete; isolate lifecycle regression fixtures
 
 The replacement CPU finished all 300 image pulls and its gold/no-fix readiness checks at 23:39:50 UTC on October 6. Qualification correctly stopped before any GPU rental: 240 tests passed, but three CLI ownership tests imported the full MASK runtime and failed because the deliberately CPU-only SWE-bench driver does not install MASK's `tenacity` dependency. Those tests now inject the existing runner boundary while retaining the real CLI, ownership and teardown paths; the missing-server case also checks exit code 2 and its exact diagnostic. All 22 lifecycle tests pass locally in the pinned CPU environment. This changes test fixtures only, not evaluation behavior or benchmark settings. Preserve failed qualification v1 evidence and rerun the full fresh Linux qualification under v2 before launch.

@@ -3,6 +3,20 @@
 
 # GOTCHAS
 
+## Windows `git archive` can change pinned config bytes (2026-10-07)
+
+A committed archive created with `core.autocrlf=true` contained CRLF YAML even though
+`git show COMMIT:path` and the local newly written config both had LF bytes. The SWE-bench
+queue correctly rejected the resulting configuration hash after CPU qualification, before
+any GPU rental. Export byte-pinned deployments with
+`git -c core.autocrlf=false archive --format=tar -o source.tar COMMIT`, then compare relevant
+archive-member hashes with the committed blobs and verify them again on the destination.
+Do not replace a pinned digest merely to accept deployment drift. Restore the committed
+bytes, retain failed/previous qualification evidence, and rerun checks that bind the exact
+configuration bytes. For Windows Python subprocess transfers, pass shell-script stdin as
+UTF-8 bytes: `text=True` can also turn LF into CRLF and break `set -euo pipefail` remotely.
+
+
 ## `evals --server --port 8080` fails on an eval pod: the boot-log server holds it (2026-10-04)
 
 `RemoteVllmServer` forwards `-L <bind>:<port>:localhost:<port>`, so vLLM binds the SAME
