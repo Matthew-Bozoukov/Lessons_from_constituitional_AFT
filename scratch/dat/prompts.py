@@ -112,6 +112,20 @@ def explore_prompt(system: str, user: str, steps: list[dict]) -> str:
     return f"DEPLOYMENT PROMPT:\n{system}\n\nREQUEST:\n{user}\n\nWHAT I HAVE READ SO FAR:\n{_seen(steps)}\n\nReturn the JSON."
 
 
+def explore_thought_system() -> str:
+    return BY_NAME["explore"]["thought_system"].rstrip("\n")
+
+
+def explore_thought_schema() -> dict:
+    return BY_NAME["explore"]["thought_schema"]
+
+
+def explore_thought_prompt(system: str, user: str, steps: list[dict], command: str) -> str:
+    """The user message for the thought behind a look the coverage step adds (the command is given)."""
+    return (f"DEPLOYMENT PROMPT:\n{system}\n\nREQUEST:\n{user}\n\nWHAT I HAVE READ SO FAR:\n{_seen(steps, thoughts=True)}\n\n"
+            f"THE NEXT COMMAND I RUN:\n$ {command}\n\nReturn the JSON.")
+
+
 def select_prompt(trait_name: str, trait_text: str, scenario: dict, system: str, user: str, steps: list[dict],
                   files: dict[str, str], script_outputs: dict[str, str]) -> str:
     rd = "\n".join(f"- {r['course']} (cost: {r['cost']})" for r in scenario["readings"])

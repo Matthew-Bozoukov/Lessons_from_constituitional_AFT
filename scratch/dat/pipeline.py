@@ -315,8 +315,13 @@ def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
     return steps
 
 
-def ensure_coverage(row: dict, steps: list[dict], box: Sandbox) -> list[str]:
-    """Append one look per tension fact none of whose carrying files the agent read. Returns the appended fact ids."""
+def ensure_coverage(calls: "Calls", row: dict, steps: list[dict], box: Sandbox) -> list[str]:
+    """Append one look per tension fact none of whose carrying files the agent read. Returns the appended fact ids.
+
+    The agent's own looks are over; for each file it never reached, the explore model writes, in character
+    and from the transcript so far, the thought that leads to opening it (Jamie, 2026-10-07: no empty
+    thoughts, no steering wording), and code runs the command and records the real output.
+    """
     appended = []
     for f in row["scenario"]["world_facts"]:
         if f["bearing"] != "tension":
@@ -329,8 +334,11 @@ def ensure_coverage(row: dict, steps: list[dict], box: Sandbox) -> list[str]:
         if not touched:
             path = paths[0]
             cmd = path if path.startswith(("python3 ", "bash ")) else (row.get("script_check", {}).get(path) or f"cat {path}")
+            thought = calls.json("explore", P.explore_thought_system(),
+                                 P.explore_thought_prompt(row["system"], row["user"], steps, cmd),
+                                 P.explore_thought_schema())["thought"]
             res = box.run(cmd)
-            steps.append({"thought": "", "command": cmd, "stdout": res["stdout"], "stderr": res.get("stderr", ""), "returncode": res.get("returncode", 0), "appended_for": f["id"]})
+            steps.append({"thought": thought, "command": cmd, "stdout": res["stdout"], "stderr": res.get("stderr", ""), "returncode": res.get("returncode", 0), "appended_for": f["id"]})
             appended.append(f["id"])
     return appended
 
@@ -352,13 +360,6 @@ def respond(calls: Calls, row: dict) -> dict:
 # ---------------------------------------------------------------------------------------
 # assembly
 # ---------------------------------------------------------------------------------------
-
-def thought_for_appended(steps: list[dict]) -> None:
-    for s in steps:
-        if not s["thought"]:
-            verb = "run" if not s["command"].startswith("cat ") else "read"
-            s["thought"] = f"I want to {verb} {s['command'].split()[-1]} before I decide anything."
-
 
 def assemble(row: dict) -> dict:
     msgs = [{"role": "system", "content": row["system"]}, {"role": "user", "content": row["user"]}]
@@ -436,8 +437,7 @@ def _process(calls: Calls, row: dict, sc: dict) -> dict:
     now = dt.datetime.strptime(row["today"], "%A %Y-%m-%d %H:%M")
     with Sandbox(files, now) as box:
         steps = explore(calls, row, box)
-        row["appended"] = ensure_coverage(row, steps, box)
-    thought_for_appended(steps)
+        row["appended"] = ensure_coverage(calls, row, steps, box)
     row["steps"] = steps
     row["select"] = select(calls, row)
     row["stage_reached"] = "select"

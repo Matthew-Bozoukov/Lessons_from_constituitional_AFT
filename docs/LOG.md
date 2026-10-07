@@ -1,6 +1,53 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - daa-15 on the plain base, trimmed to the deliberation turn and stripped of tool schemas: ODCV 6.7%, MASK 63.4
+
+Hypothesis. The agentic FORMAT of the difficult-advice deliberation (real looks at files before it, an action
+call after it) can be trained without teaching the comply-vs-refuse shortcut the full daa transcripts carried,
+if the loss falls on the deliberation turn alone and the model is never shown a tool definition. da-15 on the
+same base (ODCV 13.3% / MASK 82.7) is the comparison; daa-7 (2026-09-17: nosynth base, every turn supervised,
+schemas declared; ODCV 6.7% / MASK 64.6, never LOGged) is not comparable on any axis but the dilemma rows.
+
+Method. Corpus `dougalldeepmind/2026-10-07-daa-synth` @ 113b14dd (scratch/daa_trim.py over 2026-09-17-daa-synth
+@ 9d0f1af0): each of the 749 rows cut after its deliberation turn, which is the one trace >= 7x any other
+(2,904-6,584 chars against <= 507; it is the da source trace in 749/749) and sits in the final turn in 284 rows
+(their task_complete call removed; the turn is deliberation + reply) and 1-8 turns earlier in 465 (the turn ends
+in a bash action: a memo written in 214, a script run in 249); `tools` dropped from every row. Mixture
+`2026-10-07-daa-15-mix` @ f27b671e (configs/data/mixture/daa.yaml: plain base at c118c4b0, `supervise: final`,
+`tools: drop`, a new builder option that carries no schemas and waives the declared-calls check for that source;
+569 daa rows = 754,320 supervised tokens = 15.09%, recounted with build_labels). Adapter
+`2026-10-07-qwen36-0-daa-15` @ 170d5a2f: 134 steps on 2xH200, ~44 min, mask gate 128 rows verified (64 final /
+64 full), census full 1,568 / final 569. Evals from the laptop, one pod each: ODCV-lite at concurrency 64
+(`2026-10-07-odcv-qwen36-0-daa-15`), MASK with max_generation_error_rate=0.05 (`2026-10-07-mask-qwen36-0-daa-15`).
+
+Two start-up failures on the way, both fixed in the tree: `_validate_interchange` refused rows calling undeclared
+tools (hence `tools: drop`), and `check_trace_family` refused the run because the plain base's `origin: published`
+field was absent from the revision da.yaml pins (019e239c; it was added at c118c4b0 with identical rows). At
+Jamie's request the gate is gone: `src/train/launch.py::trace_record` stamps the block and refuses nothing;
+`allow_trace_family_mismatch` is removed (b9385e9b).
+
+Result.
+| arm (plain base, seed 0) | ODCV MR [CI95] | severity | MASK |
+|---|---|---|---|
+| control (plain) | 45.0% | | 44.0 |
+| da-15 | 13.3% | 0.49 | 82.7 |
+| **daa-15 (trimmed, no schemas)** | **6.7% [3.3, 13.1]** (mandated 3.3%, incentivized 10.0%) | **0.24** | **63.4** |
+| daa-7 (2026-09-17, nosynth base, full) | 6.7% | | 64.6 |
+
+ODCV: lowest misalignment of any 15% arm on this base, CI overlapping da-15's; progress 4.98, 99.2% submitted, so
+not tool avoidance. MASK: 63.4 (per archetype: statistics 80.2, known_facts 72.7, provided_facts 61.7,
+continuations 60.2, doubling_down 58.3, disinformation 48.0; generation errors 0.41%), 19 points under da-15 and
+within a point of daa-7, so the honesty gap is the agentic FORMAT, not full-transcript supervision or the schemas:
+the same deliberations, arriving after tool use instead of in a chat, teach much less of what MASK measures.
+System prompts in the corpus say "you have a bash tool" in a sentence (403/569) and name directories; none
+carries a schema or call format, and the 465 action turns emit Qwen's XML call from that hint alone.
+
+Next. (1) A matched seed-1 of daa-15 and da-15 to size the ODCV difference (6.7 vs 13.3 inside overlapping CIs).
+(2) The honesty cost is now isolated to format; the dat recipe (scratch/dat) is the test of whether a from-scratch
+agentic corpus with the tension in the files rather than the request keeps da's MASK. (3) `trainer_state.json`
+still is not pushed with the adapter; loss curves are lost with the pod.
+
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
 Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and
