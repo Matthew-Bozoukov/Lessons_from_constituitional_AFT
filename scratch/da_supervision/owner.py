@@ -243,7 +243,7 @@ print(json.dumps(r))
                         if k in entry
                     )
                 # Preserve the first completed checkpoint independently while training continues.
-                if not checkpoint_started:
+                if not checkpoint_started and not plan.get('skip_checkpoint_backup', False):
                     cpout = out / "checkpoint_backup"
                     cpout.mkdir(exist_ok=True)
                     log = open(cpout / "worker.log", "a", encoding="utf-8")
@@ -295,6 +295,12 @@ print(json.dumps(r))
                     phase="published", adapter_revision=info.sha, training_complete=True
                 )
                 save()
+                if plan.get('publish_training_evidence', False):
+                    from scratch.plain_dose.publish_training_evidence import publish
+                    publish(out)
+                    publication = json.loads((out / 'publication_verified.json').read_text(encoding='utf-8'))
+                    state.update(adapter_revision=publication['revision'], publication=publication)
+                    save()
                 break
             if not progress["driver_alive"]:
                 raise RuntimeError("Driver exited without successful train receipt")
@@ -366,6 +372,7 @@ print(json.dumps(r))
                         timeout=max(60, int(deadline - time.time())),
                         include_roots=["output/train"],
                         archive_name="da-supervision-backup.tar",
+                        exclude_checkpoints=plan.get('backup_exclude_checkpoints', False),
                     )
                     dump(out / "local_backup.json", state["local_backup"])
                 except Exception as exc:
@@ -382,7 +389,8 @@ print(json.dumps(r))
                 state.update(
                     terminated=True,
                     phase="complete"
-                    if state.get("training_complete")
+                    if (state.get("training_complete") and not state.get("failure")
+                        and (not plan.get('publish_training_evidence') or state.get('publication', {}).get('verified')))
                     else "failed_terminated",
                 )
             else:

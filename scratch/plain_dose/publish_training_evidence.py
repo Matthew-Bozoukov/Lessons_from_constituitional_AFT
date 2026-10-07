@@ -20,7 +20,7 @@ from scratch.plain_dose.preserve_evidence import collect
 
 def publish(owner):
     owner = Path(owner).resolve()
-    assert owner.is_relative_to(ROOT / 'output/plain_dose_campaign')
+    assert owner.is_relative_to(ROOT / 'output')
     receipt_path = owner / 'publication_verified.json'
     assert not receipt_path.exists(), 'Publication already verified; reuse its immutable revision'
     state = json.loads((owner / 'status.json').read_text())
@@ -31,7 +31,8 @@ def publish(owner):
     collect(owner / 'status.json')
     local = owner / 'publication_evidence/remote/output/train' / run_name
     meta = json.loads((local / 'run_meta.json').read_text())
-    expected_steps, expected_rows = {'da5': (123, 1960), 'da25': (154, 2458)}[arm['key']]
+    expected_steps, expected_rows = ((arm['expected_steps'], arm['expected_rows'])
+        if 'expected_steps' in arm else {'da5': (123, 1960), 'da25': (154, 2458)}[arm['key']])
     assert meta['n_examples'] == expected_rows and meta['world_size'] == 1 and not meta['smoke']
     assert meta['dataset']['repo'] == arm['data_repo'] and meta['dataset']['revision'] == arm['data_revision']
     assert meta['base_model_revision'] == state['plan']['base_model_revision']
@@ -76,8 +77,11 @@ print(json.dumps(rows))
     log_root = owner / 'publication_evidence/remote/output/da-supervision'
     for name in ('smoke.log', 'train.log'):
         shutil.copy2(log_root / name, stage / name)
-    for source in (ROOT / 'output/plain_dose/independent_mixture_audit.json',
-                   ROOT / 'output/plain_dose_campaign/matched_protocol.json'):
+    evidence_paths = state['plan'].get('evidence_paths', [
+        'output/plain_dose/independent_mixture_audit.json', 'output/plain_dose_campaign/matched_protocol.json'])
+    for relative in evidence_paths:
+        source = (ROOT / relative).resolve()
+        assert source.is_relative_to(ROOT / 'output') and source.is_file()
         shutil.copy2(source, stage / source.name)
     verification = {'verified': True, 'repo': repo, 'adapter_revision_before_evidence': initial.sha,
                     'remote_adapter_files': hashes, 'steps': expected_steps, 'rows': expected_rows,
@@ -85,7 +89,8 @@ print(json.dumps(rows))
                     'base_model_revision': meta['base_model_revision'], 'training_commit': meta['git_sha']}
     (stage / 'verification.json').write_text(json.dumps(verification, indent=2) + '\n', encoding='utf-8')
     names = ('run_meta.json', 'trainer_state.json', 'smoke.log', 'train.log',
-             'independent_mixture_audit.json', 'matched_protocol.json', 'verification.json')
+             *(Path(p).name for p in evidence_paths), 'verification.json')
+    assert len(set(names)) == len(names), 'Duplicate evidence filenames'
     files = [stage / name for name in names]
     assert all(p.is_file() and not p.is_symlink() and p.stat().st_size < 10_000_000 for p in files)
     commit = api.create_commit(repo_id=repo, repo_type='model', parent_commit=initial.sha,

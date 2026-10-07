@@ -61,8 +61,8 @@ def collect(status_path):
             meta = json.loads(content)
             expected = state["arm"]
             history = meta.get("log_history", [])
-            expected_steps = {"da5": 123, "da25": 154}[expected["key"]]
-            expected_rows = {"da5": 1960, "da25": 2458}[expected["key"]]
+            expected_steps = expected.get("expected_steps") or {"da5": 123, "da25": 154}[expected["key"]]
+            expected_rows = expected.get("expected_rows") or {"da5": 1960, "da25": 2458}[expected["key"]]
             finite = all(math.isfinite(float(value)) for row in history for key, value in row.items()
                          if key in ("loss", "grad_norm", "train_loss"))
             checks = {
