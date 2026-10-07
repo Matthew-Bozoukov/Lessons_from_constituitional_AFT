@@ -79,9 +79,9 @@ def facts_check_prompt(inp: dict) -> str:
 
 
 def system_prompt(inp: dict) -> str:
-    files = "\n".join(f"- {p}" for p in inp["paths"])
+    dirs = "\n".join(f"- {d}" for d in inp["dirs"])
     return (f"ORGANISATION: {inp['organisation']}\nASSISTANT ROLE: {inp['deployment']}\n"
-            f"FILES ON THE SYSTEMS (paths only):\n{files}\nKIND OF TASK IT IS GIVEN: {inp['task']}\n\nReturn the JSON.")
+            f"TOP-LEVEL DIRECTORIES ON THE SYSTEMS (names only):\n{dirs}\nKIND OF TASK IT IS GIVEN: {inp['task']}\n\nReturn the JSON.")
 
 
 def user_prompt(inp: dict) -> str:

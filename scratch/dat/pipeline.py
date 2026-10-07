@@ -193,8 +193,8 @@ def stage_inputs(stage: str, row: dict) -> dict:
     if stage == "environment":  # from write's organisation and role, no prompts: nothing to shape the files toward
         return {"organisation": sc["organisation"], "deployment": sc["deployment"], "today": row["today"],
                 "world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]]}
-    if stage == "system":  # the system prompt describes what actually exists: the listing, paths only
-        return {**{k: sc[k] for k in ("organisation", "deployment", "task")}, "paths": sorted(row["files"])}
+    if stage == "system":  # the system prompt orients by directory only; the agent finds files by looking (Jamie, 2026-10-07)
+        return {**{k: sc[k] for k in ("organisation", "deployment", "task")}, "dirs": sorted(row["dirs"])}
     if stage == "facts_check":  # the judge of the environment: facts and files only, nothing about why they matter
         return {"world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]],
                 "files": row["files"], "script_outputs": row.get("script_outputs", {})}
