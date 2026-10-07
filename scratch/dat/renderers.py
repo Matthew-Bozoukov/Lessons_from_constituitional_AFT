@@ -5,8 +5,8 @@ remark, which is the point: the only prose a file can carry is in the prose file
 doc), and those are what the plant check reads hardest.
 
 Every renderer takes one file entry from the `environment` stage (dat.yaml, environment.schema) and
-returns the file text. `render(entry)` dispatches on `file_type`. `missing_witnesses(entry, text)` returns
-the facts whose witness string does not occur in `text` (the rendered file, or a script's run output).
+returns the file text. `render(entry)` dispatches on `file_type`. Whether a fact is really in the files is
+judged by the `facts_check` stage, not by string matching.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import csv
 import io
 import json
 import random
+import re
 
 
 def _kv(fields: list[dict]) -> str:
@@ -150,7 +151,7 @@ def _doc(d: dict) -> str:
     if d.get("meta"):
         out.append("")
     for s in d["sections"]:
-        out += [f"## {s['heading']}", "", s["body"].rstrip(), ""]
+        out += [f"## {s.get('heading', '')}", "", (s.get("body") or s.get("text") or "").rstrip(), ""]
     return "\n".join(out)
 
 
@@ -164,15 +165,6 @@ def render(entry: dict) -> str:
     data = entry.get(ft)
     assert data is not None, f"file {entry['path']} declares file_type {ft!r} but has no {ft!r} block"
     return RENDERERS[ft](data)
-
-
-def missing_witnesses(entry: dict, text: str) -> list[str]:
-    """Ids of the entry's declared facts whose witness string does NOT occur in `text`.
-
-    For every file_type but `script`, `text` is the rendered file. For a script the caller passes the
-    stdout of its check command: a fact found by running a script lives in what it prints.
-    """
-    return [f["id"] for f in entry.get("facts", []) if f["witness"] and f["witness"] not in text]
 
 
 if __name__ == "__main__":  # a smoke of every renderer

@@ -3,8 +3,8 @@
 """The recipe lives in dat.yaml; this module is its reader. Nothing here is prompt text.
 
 Each stage's `system` in the yaml may contain `{requirements}`, replaced with the yaml's
-`requirements` block verbatim at load. `{n}` (write) and `{trait_text}` (respond) are left for the
-driver to fill. The `*_prompt` functions below build a stage's user message from exactly the inputs
+`requirements` block verbatim at load. `{style_guidance}` likewise. `{n}` (write) and `{trait_name}` / `{trait_text}` (respond) are
+left for the driver to fill. The `*_prompt` functions below build a stage's user message from exactly the inputs
 `pipeline.stage_inputs()` hands it, so the yaml's `sees` list and the code agree.
 """
 from __future__ import annotations
@@ -30,9 +30,13 @@ MAX_LOOKS = int(_cfg["explore"]["max_looks"])
 
 STAGES: list[dict] = []
 for _s in _cfg["stages"]:
-    STAGES.append({**_s, "system": _s["system"].replace("{requirements}", REQUIREMENTS).rstrip("\n"), "schema": _s.get("schema")})
+    STAGES.append({**_s, "system": _s["system"].replace("{requirements}", REQUIREMENTS).replace("{style_guidance}", STYLE_GUIDANCE).rstrip("\n"),
+                   "schema": _s.get("schema")})
 BY_NAME = {s["name"]: s for s in STAGES}
 MODELS = {s["name"]: s["model"] for s in STAGES}
+MAX_TOKENS = {s["name"]: int(s["max_tokens"]) for s in STAGES}
+TEMPERATURE = {s["name"]: float(s["temperature"]) for s in STAGES}
+REASONING = {s["name"]: s.get("reasoning") for s in STAGES}   # None = provider default
 
 
 def system_of(stage: str) -> str:
@@ -48,8 +52,9 @@ RESPOND_TAGS = ("reasoning", "response", "tool_call")
 
 # --- user-message builders, one per stage; the argument is what stage_inputs() returned -------------
 
-def write_prompt(trait_name: str, trait_text: str, sector_text: str, n: int) -> str:
-    return (f"PRINCIPLE: {trait_name}\n<principle>\n{trait_text}\n</principle>\n\nSECTOR: {sector_text}\n\n"
+def write_prompt(trait_name: str, trait_text: str, sector_text: str, n: int, name_seed: str) -> str:
+    return (f"PRINCIPLE: {trait_name}\n<principle>\n{trait_text}\n</principle>\n\nSECTOR: {sector_text}\n"
+            f"NAME SEED: build the organisation's name around \"{name_seed}\" (a founder, a place or a street), so names differ across situations.\n\n"
             f"Write {n} situations. Return the JSON.")
 
 
@@ -60,15 +65,22 @@ def revise_prompt(trait_name: str, trait_text: str, scenario: dict) -> str:
 
 def environment_prompt(inp: dict) -> str:
     facts = "\n".join(f"- [{f['id']}] {f['statement']}" for f in inp["world_facts"])
-    return (f"ORGANISATION: {inp['organisation']}\nASSISTANT ROLE: {inp['deployment']['role']}\nTODAY: {inp['today']}\n\n"
+    return (f"ORGANISATION: {inp['organisation']}\nASSISTANT ROLE: {inp['deployment']}\nTODAY: {inp['today']}\n\n"
             f"FACTS TRUE IN THIS ORGANISATION:\n{facts}\n\n"
             "Return the JSON: your directories and the files that carry these facts among ordinary entries, "
             "plus two to four mundane files.")
 
 
+def facts_check_prompt(inp: dict) -> str:
+    facts = "\n".join(f"- [{f['id']}] {f['statement']}" for f in inp["world_facts"])
+    body = "\n\n".join(f"=== {p}\n{c}" for p, c in inp["files"].items())
+    outs = "\n\n".join(f"=== $ {cmd}\n{out}" for cmd, out in inp["script_outputs"].items()) or "(no scripts)"
+    return f"FACTS:\n{facts}\n\nFILES:\n{body}\n\nWHAT EACH SCRIPT PRINTS:\n{outs}\n\nReturn the JSON."
+
+
 def system_prompt(inp: dict) -> str:
     files = "\n".join(f"- {p}" for p in inp["paths"])
-    return (f"ORGANISATION: {inp['organisation']}\nASSISTANT ROLE: {inp['deployment']['role']}\n"
+    return (f"ORGANISATION: {inp['organisation']}\nASSISTANT ROLE: {inp['deployment']}\n"
             f"FILES ON THE SYSTEMS (paths only):\n{files}\nKIND OF TASK IT IS GIVEN: {inp['task']}\n\nReturn the JSON.")
 
 
@@ -77,6 +89,14 @@ def user_prompt(inp: dict) -> str:
     files = "\n".join(f"- {p}" for p in inp["paths"])
     return (f"DEPLOYMENT PROMPT:\n{inp['system']}\n\nFILES ON THE SYSTEMS (paths only):\n{files}\n\n"
             f"OPERATOR: {o['role']}\nOPERATOR'S GOAL: {o['goal']}\nTASK: {inp['task']}\nTODAY: {inp['today']}\n\nReturn the JSON.")
+
+
+def revise_prompts_prompt(inp: dict) -> str:
+    o = inp["operator"]
+    files = "\n".join(f"- {p}" for p in inp["paths"])
+    return (f"Draft system prompt:\n<draft_system>\n{inp['system']}\n</draft_system>\n\nDraft operator's message:\n<draft_user>\n{inp['user']}\n</draft_user>\n\n"
+            f"OPERATOR: {o['role']}\nOPERATOR'S GOAL: {o['goal']}\nTASK: {inp['task']}\nTODAY: {inp['today']}\n"
+            f"FILES ON THE SYSTEMS (paths only):\n{files}\n\nReturn the JSON.")
 
 
 def _seen(steps: list[dict], thoughts: bool = False) -> str:

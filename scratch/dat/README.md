@@ -31,13 +31,14 @@ stage's inputs. Review `dat.yaml` first, or the review page (see the chat for th
 | environment | organisation, role, world facts (statements only), today | the prompts (not written yet), readings, situation, principle, which facts bear on the tension | directories; one file per entry with a file_type (log, test_report, csv, config, git_log, diff, json, ticket, email, doc, script) and the facts it carries; structured file types rendered by code; scripts must run (check command exits 0; a fact found by running one must appear in its output); mundane files; witness strings |
 | system | organisation, role, kind of task, file listing (paths only) | file contents, operator's message, world facts, readings, situation, principle | system prompt |
 | user | system prompt, operator + goal, task, file listing (paths only), today | file contents, world facts, readings, situation, principle | operator's message |
+| revise_prompts | both drafts, operator + goal, task, file listing, today, REQUIREMENTS | principle, world facts, file contents | refined system prompt and operator's message (da's revise_prompts, minus the sharpening) |
 | explore | system, user, read-only shell, own outputs | facts, principle, situation | looks: thought, command, real output (cap 8); coverage appends one look per unseen tension fact |
 | select | principle, situation, readings, intended facts, prompts, every file and each script's output, transcript | | tension_present, source (work / operator / both / none), unclear, principle_fit, realism, settled_by (files or outputs that state or point at the conclusion, quoted), keep |
 | respond | principle, prompts, exploration, tools, style | situation, readings, facts | reasoning, response, at most one tool call |
 | rewrite | the same + draft + REQUIREMENTS | situation, readings, facts | revised turn, changes |
 
 `requirements` (dat.yaml) is injected verbatim into write, revise, environment, system, user,
-select and rewrite. `stage_inputs()` in pipeline.py is the single place that decides what a stage is given.
+revise_prompts, select and rewrite. `stage_inputs()` in pipeline.py is the single place that decides what a stage is given.
 
 ## Deliberate non-changes
 
@@ -62,9 +63,9 @@ Output under `output/synth_dat/<run>/`: `hands.jsonl`, `stage_write_revise.jsonl
 `calls.jsonl`, `manifest.json` (yield per stage and trait, select source counts, settled_by counts,
 cost). Nothing is pushed by this script.
 
-Models (per stage in dat.yaml): Sonnet 4.5 for write, revise, environment, system, user, explore, respond,
-rewrite; Gemini 3 Flash for select. Expected cost per attempted row roughly $0.40–0.60
-at Sonnet; yield unknown until the smoke.
+Models (per stage in dat.yaml): Haiku 4.5 for write, system, user, respond; Sonnet 5 for revise,
+environment, revise_prompts, select, rewrite; Sonnet 4.5 for explore. No reasoning effort is set on
+any call (provider default, as da). Cost per attempted row and yield: see the smoke manifest.
 
 ## What to read on the smoke
 

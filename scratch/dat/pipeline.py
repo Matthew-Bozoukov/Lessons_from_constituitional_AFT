@@ -1,4 +1,4 @@
-# ABOUTME: dat driver: deal (principle x sector) -> write -> revise -> environment (files rendered by code, scripts checked) -> system -> user ->
+# ABOUTME: dat driver: deal (principle x sector) -> write -> revise -> environment (files rendered by code, scripts checked) -> system -> user -> revise_prompts ->
 # ABOUTME: explore in a Docker sandbox -> select (incl. the steering check) -> respond -> rewrite -> export rows + manifest.
 """Run the from-scratch dat recipe. Standalone draft in scratch/: it reuses the repo's constitution
 segmenter, da.yaml's sector list, the OpenRouter client, and daa2's Docker sandbox (scratch/
@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 
 from scratch.da_agentified.helpers import Sandbox, check_docker, ensure_image, tool_result
 from scratch.dat import prompts as P
-from scratch.dat.renderers import missing_witnesses, render
+from scratch.dat.renderers import render
 from src.data.synth.ours.constitution import segment
 from src.infra.endpoints.openrouter import OpenRouterClient
 
@@ -79,6 +79,12 @@ def deal_clock(rng: random.Random) -> dt.datetime:
             return when.replace(second=0, microsecond=0)
 
 
+NAME_SEEDS = ("Okonkwo", "Varga", "Lindqvist", "Beaumont", "Castellano", "Haugen", "Petrakis", "Nakamura", "Oyelaran", "Dvorak",
+              "Whitlock", "Sandoval", "Kowalczyk", "Brennan", "Achterberg", "Marchetti", "Ferreira", "Novak", "Halloran", "Ibarra",
+              "Tremont", "Calder", "Birchwood", "Stonebridge", "Redcliffe", "Fenwick", "Harrowgate", "Kelso", "Penrith", "Alnwick",
+              "Dunmore", "Larkhill", "Wexford", "Thornbury", "Coldstream", "Ravenna", "Tamsin", "Mallory", "Quennell", "Ostrander")
+
+
 def deal(n_per_trait: int, seed: int) -> list[dict]:
     """(trait, sector, clock) hands: each trait meets the sectors dealt least so far (da's rule, simplified);
     the clock is dealt in code so dates spread instead of clustering on the model's sense of now."""
@@ -90,7 +96,7 @@ def deal(n_per_trait: int, seed: int) -> list[dict]:
     for t in traits:
         for _ in range(n_per_trait):
             hands.append({"trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text, "sector": labels[k % len(labels)],
-                          "today": deal_clock(rng).strftime("%A %Y-%m-%d %H:%M")})
+                          "today": deal_clock(rng).strftime("%A %Y-%m-%d %H:%M"), "name_seed": rng.choice(NAME_SEEDS)})
             k += 1
     return hands
 
@@ -102,39 +108,79 @@ def deal(n_per_trait: int, seed: int) -> list[dict]:
 class Calls:
     def __init__(self, run_dir: Path):
         self.client = OpenRouterClient()
+        # The shared client's 420 s per-request timeout is sized for da's 12k-token rewrite; the
+        # environment stage writes up to 16k tokens of files in one reply, which can run longer.
+        self.client.client = self.client.client.with_options(timeout=1500.0)   # 64k-token replies with thinking can run past 20 min
         self.cost = Counter()
         self.n = Counter()
         self.log = (run_dir / "calls.jsonl").open("a")
 
-    def json(self, stage: str, system: str, user: str, schema: dict | None, temperature: float = 0.7, max_tokens: int = 8000) -> dict:
+    def json(self, stage: str, system: str, user: str, schema: dict | None, temperature: float | None = None, max_tokens: int | None = None) -> dict:
         model = MODELS[stage]
+        temperature = P.TEMPERATURE[stage] if temperature is None else temperature
+        max_tokens = P.MAX_TOKENS[stage] if max_tokens is None else max_tokens
+        if schema:  # the shape travels with every call; a bare top-level list is wrapped under the schema's one array key
+            user = (user + "\n\nYour reply is ONE JSON object that is an instance of this JSON Schema, with real values filled in. "
+                    "Do not return the schema itself. Plan silently: the reply begins with the opening brace and ends with the "
+                    "closing brace, with no text before or after.\nJSON SCHEMA:\n" + json.dumps(schema))
         for attempt in range(3):
+            extra = {"reasoning": dict(P.REASONING[stage])} if P.REASONING.get(stage) else {}
             res = self.client.chat(model, [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                                   temperature=temperature, max_tokens=max_tokens,
-                                   **({"response_format": {"type": "json_object"}} if schema else {}))
+                                   temperature=temperature, max_tokens=max_tokens, **({"extra_body": extra} if extra else {}))
             self.n[stage] += 1
             self.cost[stage] += res.cost or 0.0
             self.log.write(json.dumps({"stage": stage, "model": model, "provider": res.provider, "cost": res.cost, "tokens": [res.prompt_tokens, res.completion_tokens]}) + "\n")
+            self.log.flush()
             text = res.content.strip()
             if schema is None:
                 return {"text": text}
-            m = re.search(r"\{.*\}", text, re.S)
+            text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
+            start = min([i for i in (text.find("{"), text.find("[")) if i >= 0] or [0])
             try:
-                return json.loads(m.group(0) if m else text)
+                parsed = json.loads(text[start:])
             except json.JSONDecodeError:
-                if attempt == 2:
-                    raise
+                m = re.search(r"[\[{].*[\]}]", text, re.S)
+                try:
+                    parsed = json.loads(m.group(0)) if m else None
+                except json.JSONDecodeError:
+                    parsed = None
+            if isinstance(parsed, list):
+                arrays = [k for k, v in schema.get("properties", {}).items() if v.get("type") == "array"]
+                parsed = {arrays[0]: parsed} if len(arrays) == 1 else None
+            if isinstance(parsed, dict) and {"type", "properties"} <= set(parsed):
+                parsed = None  # the model echoed the schema instead of an instance
+            if isinstance(parsed, dict):
+                return parsed
+            self.log.write(json.dumps({"stage": stage, "model": model, "unparsed": text[:2000]}) + "\n")
+            if attempt == 2:
+                raise ValueError(f"{stage}: no JSON object in the reply after 3 attempts")
         raise RuntimeError("unreachable")
 
 
-def tagged(text: str, tags: tuple[str, ...]) -> dict:
+def tagged(text: str, tags: tuple[str, ...], optional: tuple[str, ...] = ("tool_call", "changes")) -> dict:
     out = {}
     for t in tags:
-        m = re.search(rf"<{t}>\s*(.*?)\s*</{t}>", text, re.S)
+        m = re.search(rf"<{t}>\s*(.*?)\s*(?:</{t}>|$)", text, re.S)
         if not m:
+            if t in optional:
+                out[t] = "nothing" if t == "tool_call" else ""
+                continue
             raise ValueError(f"missing <{t}> in model output")
-        out[t] = m.group(1)
+        out[t] = m.group(1).strip()
     return out
+
+
+def tagged_call(calls: "Calls", stage: str, system: str, user: str, tags: tuple[str, ...]) -> dict:
+    """A tagged-text stage with one retry; the raw reply is logged when the tags are missing."""
+    for attempt in range(2):
+        text = calls.json(stage, system, user, None)["text"]
+        try:
+            return tagged(text, tags)
+        except ValueError as e:
+            calls.log.write(json.dumps({"stage": stage, "untagged": text[:3000], "error": str(e)}) + "\n")
+            calls.log.flush()
+            if attempt == 1:
+                raise
 
 
 # ---------------------------------------------------------------------------------------
@@ -149,12 +195,17 @@ def stage_inputs(stage: str, row: dict) -> dict:
                 "world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]]}
     if stage == "system":  # the system prompt describes what actually exists: the listing, paths only
         return {**{k: sc[k] for k in ("organisation", "deployment", "task")}, "paths": sorted(row["files"])}
+    if stage == "facts_check":  # the judge of the environment: facts and files only, nothing about why they matter
+        return {"world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]],
+                "files": row["files"], "script_outputs": row.get("script_outputs", {})}
     if stage == "user":  # the listing, paths only: an operator points at files without the writer knowing their contents
         return {"system": row["system"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"]}
+    if stage == "revise_prompts":  # the same view `user` had, plus the two drafts; still no facts, no principle
+        return {"system": row["system"], "user": row["user"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"]}
     if stage == "explore":
         return {"system": row["system"], "user": row["user"]}
     if stage in ("respond", "rewrite"):
-        return {"system": row["system"], "user": row["user"], "steps": row["steps"], "trait_text": row["trait_text"]}
+        return {"system": row["system"], "user": row["user"], "steps": row["steps"], "trait_name": row["trait_name"], "trait_text": row["trait_text"]}
     if stage == "select":  # the informed judge: it knows the tension, so it also reads every file and script output
         return {"system": row["system"], "user": row["user"], "steps": row["steps"], "scenario": sc,
                 "trait_name": row["trait_name"], "trait_text": row["trait_text"],
@@ -167,33 +218,47 @@ def stage_inputs(stage: str, row: dict) -> dict:
 # ---------------------------------------------------------------------------------------
 
 def write_situations(calls: Calls, hand: dict, n: int) -> list[dict]:
-    out = calls.json("write", P.system_of("write").replace("{n}", str(n)), P.write_prompt(hand["trait_name"], hand["trait_text"], sectors()[hand["sector"]], n), P.schema_of("write"))
+    out = calls.json("write", P.system_of("write").replace("{n}", str(n)), P.write_prompt(hand["trait_name"], hand["trait_text"], sectors()[hand["sector"]], n, hand["name_seed"]), P.schema_of("write"))
     return out["situations"]
 
 
 def revise_situation(calls: Calls, hand: dict, sc: dict) -> dict:
-    return calls.json("revise", P.system_of("revise"), P.revise_prompt(hand["trait_name"], hand["trait_text"], sc), P.schema_of("revise"), temperature=0.3)
+    return calls.json("revise", P.system_of("revise"), P.revise_prompt(hand["trait_name"], hand["trait_text"], sc), P.schema_of("revise"))
+
+
+def _one_string(out: dict, key: str, stage: str) -> dict:
+    """A one-field stage sometimes comes back under another key ({"system_prompt": ...}); take the one string."""
+    if key in out and isinstance(out[key], str):
+        return out
+    strings = [v for v in out.values() if isinstance(v, str) and len(v) > 40]
+    if len(strings) == 1:
+        return {key: strings[0]}
+    raise ValueError(f"{stage}: expected one string under {key!r}, got keys {list(out)}")
 
 
 def write_system(calls: Calls, row: dict) -> dict:
-    return calls.json("system", P.system_of("system"), P.system_prompt(stage_inputs("system", row)), P.schema_of("system"), temperature=0.7)
+    return _one_string(calls.json("system", P.system_of("system"), P.system_prompt(stage_inputs("system", row)), P.schema_of("system")), "system", "system")
 
 
 def write_user(calls: Calls, row: dict) -> dict:
-    return calls.json("user", P.system_of("user"), P.user_prompt(stage_inputs("user", row)), P.schema_of("user"), temperature=0.7)
+    return _one_string(calls.json("user", P.system_of("user"), P.user_prompt(stage_inputs("user", row)), P.schema_of("user")), "user", "user")
+
+
+def revise_prompts(calls: Calls, row: dict) -> dict:
+    return calls.json("revise_prompts", P.system_of("revise_prompts"), P.revise_prompts_prompt(stage_inputs("revise_prompts", row)), P.schema_of("revise_prompts"))
 
 
 def environment(calls: Calls, row: dict, feedback: str = "") -> tuple[dict[str, str], list[dict], list[str]]:
-    """Returns rendered files {path: text}, the file entries, and problems (missing witnesses, uncarried facts, scripts that fail)."""
+    """Returns rendered files {path: text}, the file entries, and problems (uncarried facts, scripts that fail, facts the judge cannot find)."""
     inp = stage_inputs("environment", row)
     user = P.environment_prompt(inp)
     if feedback:
         user += "\n\nA REVIEWER FOUND THESE PROBLEMS IN YOUR PREVIOUS ATTEMPT; return the full JSON again with them fixed:\n" + feedback
-    out = calls.json("environment", P.system_of("environment"), user, P.schema_of("environment"), temperature=0.7, max_tokens=12000)
+    out = calls.json("environment", P.system_of("environment"), user, P.schema_of("environment"))
     row["dirs"] = out.get("dirs") or []
     files, problems = {}, []
     wanted = {f["id"] for f in inp["world_facts"]}
-    carried = {f["id"] for e in out["files"] for f in e.get("facts", [])}
+    carried = {(f["id"] if isinstance(f, dict) else f) for e in out["files"] for f in e.get("facts", [])}
     for fid in sorted(wanted - carried):
         problems.append(f"fact {fid} is carried by no file")
     for e in out["files"]:
@@ -203,24 +268,34 @@ def environment(calls: Calls, row: dict, feedback: str = "") -> tuple[dict[str, 
             problems.append(f"{e.get('path')}: {err}")
             continue
         files[e["path"]] = text
-        if e["file_type"] != "script":  # a script's facts are checked against what it prints, below
-            for fid in missing_witnesses(e, text):
-                problems.append(f"{e['path']}: witness for fact {fid} not in rendered text")
     row["script_check"] = {}
     if files and not problems:  # scripts must run: each check command exits 0 in a sandbox of these files, and prints its facts
         scripts = [e for e in out["files"] if e["file_type"] == "script"]
         if scripts:
             with Sandbox(files, dt.datetime.strptime(row["today"], "%A %Y-%m-%d %H:%M")) as box:
                 for e in scripts:
-                    cmd = e["script"]["check"]
+                    cmd = e["script"].get("check") or f"python3 {e['path']}"
                     res = box.run(cmd)
                     row["script_check"][e["path"]] = cmd
                     row.setdefault("script_outputs", {})[cmd] = res.get("stdout", "")
                     if res.get("returncode", 1) != 0:
                         problems.append(f"{e['path']}: check command `{cmd}` exited {res.get('returncode')}: {(res.get('stderr') or res.get('stdout') or '')[-300:]}")
-                        continue
-                    for fid in missing_witnesses(e, res.get("stdout", "")):
-                        problems.append(f"{e['path']}: witness for fact {fid} not in the output of `{cmd}`")
+    if files and not problems:  # the facts judge: is every fact genuinely in the files (or a script's output)?
+        row["files"] = files
+        fc = calls.json("facts_check", P.system_of("facts_check"), P.facts_check_prompt(stage_inputs("facts_check", row)), P.schema_of("facts_check"))
+        row["facts_check"] = fc
+        by_id = {f["id"]: f for f in row["scenario"]["world_facts"]}
+        for f in fc.get("facts", []):
+            status = f.get("status") or ("present" if f.get("present") else "absent")
+            if status == "absent":
+                problems.append(f"fact {f['id']} is not genuinely in the files: {f.get('how', '')}")
+            elif status == "corrected" and f.get("corrected_statement") and f["id"] in by_id:
+                # the data is the truth; the spec follows it (recorded, so the change is visible)
+                row.setdefault("fact_corrections", []).append({"id": f["id"], "from": by_id[f["id"]]["statement"], "to": f["corrected_statement"]})
+                by_id[f["id"]]["statement"] = f["corrected_statement"]
+        row["fact_path"] = {f["id"]: [p for p in f.get("paths", []) if p] for f in fc.get("facts", [])
+                            if (f.get("status") or ("present" if f.get("present") else "absent")) != "absent"}
+    row.setdefault("env_attempts", []).append({"entries": out["files"], "rendered": dict(files), "problems": list(problems)})
     return files, out["files"], problems
 
 
@@ -228,7 +303,7 @@ def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
     inp = stage_inputs("explore", row)
     steps: list[dict] = []
     for _ in range(MAX_LOOKS):
-        out = calls.json("explore", P.system_of("explore"), P.explore_prompt(inp["system"], inp["user"], steps), P.schema_of("explore"), temperature=0.5)
+        out = calls.json("explore", P.system_of("explore"), P.explore_prompt(inp["system"], inp["user"], steps), P.schema_of("explore"))
         if out.get("done") or not out.get("command"):
             break
         cmd = out["command"].strip()
@@ -241,18 +316,21 @@ def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
 
 
 def ensure_coverage(row: dict, steps: list[dict], box: Sandbox) -> list[str]:
-    """Append one look per tension fact whose witness no output shows. Returns the appended fact ids."""
-    seen = "\n".join(s["stdout"] for s in steps)
+    """Append one look per tension fact none of whose carrying files the agent read. Returns the appended fact ids."""
     appended = []
     for f in row["scenario"]["world_facts"]:
         if f["bearing"] != "tension":
             continue
-        w, path = row["witness"].get(f["id"], ""), row["fact_path"].get(f["id"])
-        if w and path and w not in seen:
-            cmd = row.get("script_check", {}).get(path) or f"cat {path}"   # a script-carried fact is reached by running it
+        paths = row.get("fact_path", {}).get(f["id"]) or []
+        if not paths:
+            continue
+        # the files (or script commands) facts_check named: reached if the agent read one or ran it
+        touched = any(any(p in s["command"] or s["command"] in p for p in paths) for s in steps)
+        if not touched:
+            path = paths[0]
+            cmd = path if path.startswith(("python3 ", "bash ")) else (row.get("script_check", {}).get(path) or f"cat {path}")
             res = box.run(cmd)
             steps.append({"thought": "", "command": cmd, "stdout": res["stdout"], "stderr": res.get("stderr", ""), "returncode": res.get("returncode", 0), "appended_for": f["id"]})
-            seen += "\n" + res["stdout"]
             appended.append(f["id"])
     return appended
 
@@ -260,14 +338,14 @@ def ensure_coverage(row: dict, steps: list[dict], box: Sandbox) -> list[str]:
 def select(calls: Calls, row: dict) -> dict:
     inp = stage_inputs("select", row)
     return calls.json("select", P.system_of("select"), P.select_prompt(inp["trait_name"], inp["trait_text"], inp["scenario"], inp["system"], inp["user"], inp["steps"],
-                                                                        inp["files"], inp["script_outputs"]), P.schema_of("select"), temperature=0.0, max_tokens=4000)
+                                                                        inp["files"], inp["script_outputs"]), P.schema_of("select"))
 
 
 def respond(calls: Calls, row: dict) -> dict:
     inp = stage_inputs("respond", row)
-    sys = P.system_of("respond").replace("{trait_text}", inp["trait_text"])
-    draft = tagged(calls.json("respond", sys, P.respond_prompt(inp["system"], inp["user"], inp["steps"], TOOLS), None, temperature=0.7)["text"], P.RESPOND_TAGS)
-    rev = tagged(calls.json("rewrite", P.system_of("rewrite"), P.rewrite_prompt(inp["system"], inp["user"], inp["steps"], TOOLS, draft), None, temperature=0.3)["text"], P.RESPOND_TAGS + ("changes",))
+    sys = P.system_of("respond").replace("{trait_name}", inp["trait_name"]).replace("{trait_text}", inp["trait_text"])
+    draft = tagged_call(calls, "respond", sys, P.respond_prompt(inp["system"], inp["user"], inp["steps"], TOOLS), P.RESPOND_TAGS)
+    rev = tagged_call(calls, "rewrite", P.system_of("rewrite"), P.rewrite_prompt(inp["system"], inp["user"], inp["steps"], TOOLS, draft), P.RESPOND_TAGS + ("changes",))
     return {"draft": draft, "final": rev}
 
 
@@ -291,37 +369,70 @@ def assemble(row: dict) -> dict:
         msgs.append({"role": "tool", "tool_call_id": cid, "content": tool_result(s["stdout"], s["returncode"], s["stderr"])})
     fin = row["final"]
     last = {"role": "assistant", "reasoning_content": fin["reasoning"], "content": fin["response"]}
-    tc = fin["tool_call"].strip()
+    tc = re.sub(r"^```(?:json)?\s*|\s*```$", "", fin["tool_call"].strip(), flags=re.S)
     if tc and tc.lower() != "nothing":
-        call = json.loads(tc)
-        last["tool_calls"] = [{"id": "call_final", "type": "function", "function": {"name": call["name"], "arguments": json.dumps(call["arguments"])}}]
+        m = re.match(r"^(\w+)\((\{.*\})\)$", tc, re.S)   # `write_file({...})` function-call syntax
+        if m:
+            tc = json.dumps({"name": m.group(1), "arguments": json.loads(m.group(2))})
+        elif re.match(r"^\w+\(\s*\w+\s*=", tc, re.S):       # `write_file(path="...", content="...")` keyword syntax
+            import ast
+            try:
+                node = ast.parse(tc, mode="eval").body
+                tc = json.dumps({"name": node.func.id, "arguments": {k.arg: ast.literal_eval(k.value) for k in node.keywords}})
+            except (SyntaxError, ValueError, AttributeError):
+                pass
+        m2 = re.match(r"^(bash|write_file)\s*:\s*(.+)$", tc, re.S)     # `bash: cat /srv/x` prose form
+        if m2 and m2.group(1) == "bash":
+            tc = json.dumps({"name": "bash", "arguments": {"command": m2.group(2).strip()}})
+        try:
+            call = json.loads(tc, strict=False)   # strict=False: file contents with raw newlines inside the JSON string
+            name, args = call["name"], call.get("arguments", call.get("parameters", {}))
+            assert isinstance(name, str) and isinstance(args, dict)
+        except (json.JSONDecodeError, KeyError, AssertionError, TypeError) as e:
+            raise ValueError(f"final tool_call is not {{name, arguments}}: {tc[:200]!r} ({e})")
+        last["tool_calls"] = [{"id": "call_final", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}]
     msgs.append(last)
     return {"scenario_id": row["scenario_id"], "messages": msgs, "tools": TOOLS,
             "metadata": {"trait_id": row["trait_id"], "trait_name": row["trait_name"], "sector": row["sector"], "domain": row["scenario"]["organisation"],
                          "situation": row["scenario"]["situation"], "supervise": "final", "select": row["select"],
-                         "appended_looks": row.get("appended", []), "n_looks": len(row["steps"])}}
+                         "appended_looks": row.get("appended", []), "n_looks": len(row["steps"]), "fact_corrections": row.get("fact_corrections", [])}}
 
 
 # ---------------------------------------------------------------------------------------
 # per-row flow
 # ---------------------------------------------------------------------------------------
 
+class RowError(Exception):
+    def __init__(self, row: dict, cause: BaseException):
+        super().__init__(str(cause))
+        self.row, self.cause = row, f"{type(cause).__name__}: {cause}"
+
+
 def process(calls: Calls, hand: dict, sc: dict, idx: int, run_dir: Path, dry: bool) -> dict:
     row = {**hand, "scenario_id": f"{hand['trait_id']}_{hand['sector']}_s{idx:03d}", "scenario": sc, "stage_reached": "revise"}
     if dry:
         return row
+    try:
+        return _process(calls, row, sc)
+    except Exception as e:
+        raise RowError(row, e) from e
+
+
+def _process(calls: Calls, row: dict, sc: dict) -> dict:
     files, recs, problems = environment(calls, row)
-    if problems:
+    for _ in range(2):  # two repairs, each shown the judge's reasons; thinking is off on this stage so each is cheap
+        if not problems:
+            break
         files, recs, problems = environment(calls, row, feedback="\n".join(f"- {p}" for p in problems))
     if problems:
         row.update(stage_reached="environment", dropped="environment: " + "; ".join(problems[:5]))
         return row
-    row["witness"] = {f["id"]: f["witness"] for r in recs for f in r.get("facts", [])}
-    row["fact_path"] = {f["id"]: r["path"] for r in recs for f in r.get("facts", [])}
     row["files"] = files
     row["dirs"] = row.get("dirs") or sorted({p.rsplit("/", 2)[0] for p in files})
     row.update(system=write_system(calls, row)["system"], stage_reached="system")
     row.update(user=write_user(calls, row)["user"], stage_reached="user")
+    rp = revise_prompts(calls, row)
+    row.update(draft_system=row["system"], draft_user=row["user"], system=rp["system"], user=rp["user"], prompt_changes=rp["changes"], stage_reached="revise_prompts")
     now = dt.datetime.strptime(row["today"], "%A %Y-%m-%d %H:%M")
     with Sandbox(files, now) as box:
         steps = explore(calls, row, box)
@@ -355,27 +466,47 @@ def main() -> None:
     (run_dir / "hands.jsonl").write_text("\n".join(json.dumps(h) for h in hands) + "\n")
     if a.dry:
         for h in hands[:2]:
-            print(P.write_prompt(h["trait_name"], h["trait_text"][:300] + "...", sectors()[h["sector"]], a.per_call)[:1200], "\n---")
+            print(P.write_prompt(h["trait_name"], h["trait_text"][:300] + "...", sectors()[h["sector"]], a.per_call, h["name_seed"])[:1200], "\n---")
         print(f"dry: {len(hands)} hands dealt, {a.per_call} situations each -> {run_dir}")
         return
     check_docker()
     ensure_image()
     calls = Calls(run_dir)
-    rows: list[dict] = []
-    for h in hands:  # diversity comes from the dealt sector and "distinct within this set" (da turned its
-        for sc in write_situations(calls, h, a.per_call):  # avoid list off on 2026-10-02: the writer copied its flavour)
+    def write_and_revise(h: dict) -> list[dict]:  # diversity comes from the dealt sector and "distinct within this set"
+        out = []                                     # (da turned its avoid list off on 2026-10-02: the writer copied its flavour)
+        for sc in write_situations(calls, h, a.per_call):
             rv = revise_situation(calls, h, sc)
-            rows.append({"hand": h, "scenario": rv["situation"], "revise": {"changes": rv["changes"]}})
+            out.append({"hand": h, "scenario": rv["situation"], "draft": sc, "revise": {"changes": rv["changes"]}})
+        return out
+    rows: list[dict] = []
+    with ThreadPoolExecutor(a.workers) as ex:
+        for batch in ex.map(write_and_revise, hands):
+            rows.extend(batch)
     (run_dir / "stage_write_revise.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
     done: list[dict] = []
     with ThreadPoolExecutor(a.workers) as ex:
         futs = {ex.submit(process, calls, r["hand"], r["scenario"], i, run_dir, False): i for i, r in enumerate(rows)}
-        for f in as_completed(futs):
-            try:
-                done.append(f.result())
-            except Exception as e:  # keep the run going; the manifest counts it
-                done.append({"scenario_id": f"row_{futs[f]}", "dropped": f"error: {type(e).__name__}: {e}", "stage_reached": "error"})
-    kept = [assemble(r) for r in done if r.get("final")]
+        with (run_dir / "rows_partial.jsonl").open("a") as part:
+            for f in as_completed(futs):
+                try:
+                    r = f.result()
+                except RowError as e:  # keep the run going with what the row had; the manifest counts it
+                    r = {**e.row, "dropped": f"error: {e.cause}", "stage_reached": "error"}
+                except Exception as e:
+                    r = {"scenario_id": f"row_{futs[f]}", "dropped": f"error: {type(e).__name__}: {e}", "stage_reached": "error"}
+                done.append(r)
+                part.write(json.dumps(r, default=str) + "\n")
+                part.flush()
+    (run_dir / "rows.jsonl").write_text("\n".join(json.dumps(r, default=str) for r in done) + "\n")  # before assembly: nothing is lost to it
+    kept = []
+    for r in done:
+        if not r.get("final"):
+            continue
+        try:
+            kept.append(assemble(r))
+        except ValueError as e:
+            r["dropped"] = f"assemble: {e}"
+            r["stage_reached"] = "assemble"
     (run_dir / "rows.jsonl").write_text("\n".join(json.dumps(r, default=str) for r in done) + "\n")
     (run_dir / "dataset.jsonl").write_text("\n".join(json.dumps(r) for r in kept) + "\n")
     manifest = {

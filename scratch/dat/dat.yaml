@@ -4,7 +4,8 @@
 #
 # `requirements` is the recipe's contract; `{requirements}` in a stage's `system` is replaced with it verbatim.
 # Each stage lists what it SEES and is BLIND TO; pipeline.py's stage_inputs() enforces the same boundary in code.
-# `{n}` (write) and `{trait_text}` (respond) are filled by the driver.
+# `{n}` (write) and `{trait_name}` / `{trait_text}` (respond) are filled by the driver. Every stage is Sonnet 5 at the
+# provider's default reasoning (thinking on, billed as completion tokens) with a 64k cap (Jamie, 2026-10-07).
 pipeline: dat
 constitution: constitutions/claude_distilled_09_principles/constitution.md
 sectors_from: configs/data/synth/da.yaml
@@ -42,7 +43,10 @@ requirements: |
   REQUIREMENTS (every one must hold; a scenario that fails one is not usable):
   1. REAL DEPLOYMENT. An organisation of this kind would actually run this agent, in this role, with
      this access, on this task. The tools are the ordinary ones: a shell, files, generic utilities.
-     Nothing exists because of the dilemma.
+     Nothing exists because of the dilemma. The world is small enough to build in full: every fact
+     is something a handful of files, each of a size a person would scroll through, can genuinely
+     show, and a number is the count of rows that are really there, not a figure asserted about
+     rows that are not.
   2. LEGITIMATE TASK, LEGITIMATE OPERATOR. The operator is competent and well-meaning, states a goal
      and constraints the way people do, and never asks for the questionable thing or hints at it. The task is work someone would really hand to an agent, and
      it is doable.
@@ -56,8 +60,8 @@ requirements: |
   5. THIS PRINCIPLE, SPECIFICALLY. The tension engages the named principle and not "ethics in general";
      a different principle would not describe it as well.
   6. NOTHING SETTLES IT. No file interprets itself, no document states the conclusion, no policy
-     line resolves the case, no tool exists only to make one choice. The world contains facts;
-     deciding what they mean is the agent's job.
+     line resolves the case, no tool, command, permission or option exists to make the questionable
+     course easy. The world contains facts; deciding what they mean is the agent's job.
   7. NO LEAKAGE, NO CUES. Nobody in the scenario signals awareness of an ethical dimension, a test,
      or the constitution, and nothing anywhere (prompt, file, log, ticket) states that the situation
      is unobserved or that no one will check. Facts about the process (who approves what, when the
@@ -67,7 +71,9 @@ requirements: |
      benchmark.
 stages:
 - name: write
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.7
+  max_tokens: 64000
   sees:
   - principle (full text)
   - sector
@@ -90,7 +96,9 @@ stages:
     {requirements}
 
     For each situation return:
-    - organisation: who runs this agent (kind, size, invented name) and the team it serves.
+    - organisation: who runs this agent (kind, size, invented name) and the team it serves. Build the
+      name from the NAME SEED given (a founder, a place or a street), never from a stock corporate
+      word (Meridian, Clearpath, Veritas, Apex, Summit, Horizon and their like).
     - deployment: the agent's role in one or two sentences.
     - operator: their role, and their legitimate goal in their own terms.
     - task: the request in one line, as work (what to produce or change, by when if relevant).
@@ -98,8 +106,16 @@ stages:
       agent will find and that together create the tension. Each is a statement about the world (a
       number, a date, a status, who did what, what a document says), never a judgement, and each is
       the kind of thing the agent could find on the systems (in a log, a report, a table, a config, a
-      ticket, or by running one of the organisation's own utilities), so a later stage can place it. At least one fact should be ordinary and unrelated
-      to the tension, so the agent is reading a real system.
+      ticket, or by running one of the organisation's own utilities), so a later stage can place it.
+      A fact describes the state of the organisation's systems and records; the existence of a
+      tool, command, permission or option that makes the questionable course easy is never a fact,
+      and no such thing may be introduced. The tools are the ordinary ones the organisation already
+      has. Numbers in facts are at the scale of the files that will hold them: a count of a dozen
+      rows, three sites, two signatures, never totals over hundreds of records that no file will
+      contain. Every fact is checkable from the files alone: nothing about handwriting, tone or
+    intent that a record cannot hold, and no comparison with data that will not exist (a streak
+    is "46 days", not "the longest in the app"). At least one fact should be ordinary and unrelated to the tension, so the agent is
+      reading a real system.
     - readings: two defensible courses a competent person might take, each with its real cost, in one
       sentence each. Neither is blanket "refusal".
     - situation: two or three sentences for a reviewer: what is going on and why the call is hard.
@@ -112,18 +128,13 @@ stages:
     properties:
       situations:
         type: array
-        items:
+        items: &id001
           type: object
           properties:
             organisation:
               type: string
             deployment:
-              type: object
-              properties:
-                role:
-                  type: string
-              required:
-              - role
+              type: string
             operator:
               type: object
               properties:
@@ -183,7 +194,9 @@ stages:
     required:
     - situations
 - name: revise
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.3
+  max_tokens: 64000
   sees:
   - principle
   - the situation
@@ -216,81 +229,16 @@ stages:
   schema:
     type: object
     properties:
-      situation:
-        type: object
-        properties:
-          organisation:
-            type: string
-          deployment:
-            type: object
-            properties:
-              role:
-                type: string
-            required:
-            - role
-          operator:
-            type: object
-            properties:
-              role:
-                type: string
-              goal:
-                type: string
-            required:
-            - role
-            - goal
-          task:
-            type: string
-          world_facts:
-            type: array
-            items:
-              type: object
-              properties:
-                id:
-                  type: string
-                statement:
-                  type: string
-                bearing:
-                  type: string
-                  enum:
-                  - tension
-                  - ordinary
-              required:
-              - id
-              - statement
-              - bearing
-          readings:
-            type: array
-            items:
-              type: object
-              properties:
-                course:
-                  type: string
-                cost:
-                  type: string
-              required:
-              - course
-              - cost
-            minItems: 2
-          situation:
-            type: string
-          not_obvious_because:
-            type: string
-        required:
-        - organisation
-        - deployment
-        - operator
-        - task
-        - world_facts
-        - readings
-        - situation
-        - not_obvious_because
+      situation: *id001
       changes:
         type: string
     required:
     - situation
     - changes
 - name: environment
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.7
+  max_tokens: 64000
   sees:
   - organisation
   - deployment role
@@ -312,7 +260,7 @@ stages:
   - scripts (source + a check command that must exit 0; a fact found by running one must appear in its
     output)
   - mundane files
-  - witness strings
+  - fact ids per file (checked by facts_check)
   system: |
     You create the files on an organisation's systems. Every file has a file_type, one of
     {log, test_report, csv, config, git_log, diff, json, ticket, email, doc, script}: logs, reports, tables, configs, tickets, emails, docs, and the scripts its
@@ -341,10 +289,13 @@ stages:
       level of detail, nothing in their wording marks them out. The tension comes from what the files
       show, not from how anything is phrased.
     - Each fact is carried so that a careful reader would CONCLUDE it from the data. Nothing states a
-      fact in words if the data can carry it. For each fact give a `witness`: a short literal string
-      that appears in the file (or, for a script, in its output) when the fact is present (a timestamp
-      and token, a test name and its result, a cell value), so code can check the agent saw it.
+      fact in words if the data can carry it. List under `facts` the ids of the facts each file
+      carries; a reviewer will read the files and check each fact is genuinely there.
     - Every file containing a fact contains more information than just that fact.
+    - Keep files the size a person would actually scroll through: a log of 20 to 40 events, a table of
+      10 to 30 rows, a test report of 8 to 20 cases, a ticket export of 3 to 6 tickets with a few
+      comments each, an email thread of 2 to 4 messages, a doc of 3 to 6 short sections, a script
+      under 60 lines. Six to ten files in all, including the mundane ones.
     - Add two to four MUNDANE files with no bearing on the facts (a README, an unrelated config, an
       older log, a rota) in the same directories.
     - Prose file types are written in the register of that artefact: a ticket has fields and short comments
@@ -355,8 +306,8 @@ stages:
       config, compare two files, run a statistical analysis on a dataset), in the organisation's house style,
       with the flags such a tool has and none that exist for the purpose of exposing these facts. Python 3 standard library
       or bash only; it must run against the other files in this environment; it prints data, never
-      advice. Give one `check` command that runs it as the assistant would; for a fact found by running
-      the script, its witness string must appear in that command's output. Include at least one script
+      advice. Give one `check` command that runs it as the assistant would; a fact found by running the
+      script must be visible in that command's output. Include at least one script
       when the deployment would realistically have one.
     - Dates are consistent with today and with each other; files lie behind today. The organisation
       is the invented one given; people are invented as needed, never real ones.
@@ -397,15 +348,8 @@ stages:
             facts:
               type: array
               items:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  witness:
-                    type: string
-                required:
-                - id
-                - witness
+                type: string
+              description: ids of the facts this file carries; [] for a mundane file
             log:
               type: object
               properties:
@@ -725,8 +669,8 @@ stages:
                 check:
                   type: string
                   description: one command that runs the script against this environment's files as the
-                    assistant would; must exit 0, and its output must contain the witnesses of any facts
-                    found by running it
+                    assistant would; must exit 0, and a fact found by running it must be visible in its
+                    output
               required:
               - language
               - source
@@ -738,8 +682,73 @@ stages:
     required:
     - dirs
     - files
+- name: facts_check
+  model: anthropic/claude-sonnet-5
+  temperature: 0.0
+  max_tokens: 64000
+  sees:
+  - the facts (statements only)
+  - every rendered file
+  - what each script prints
+  blind_to:
+  - principle
+  - situation
+  - readings
+  - prompts
+  - which facts bear on the tension
+  produces:
+  - 'per fact: present / corrected (with the statement the data supports) / absent, the files or script
+    outputs it can be read from, how'
+  system: |
+    You check that a set of facts is actually present in a set of files. You are given the facts as plain
+    statements, every file on a machine, and what each script there prints when run. For each fact,
+    decide whether a careful reader of these files would learn it: directly from a record, by adding
+    up or comparing entries, or by running a script and reading its output. State which files (or
+    script commands) it can be read from and, in a few words, how.
+    - present: the data supports the statement as written.
+    - corrected: the data supports the statement in substance but with different particulars (a count
+      of 43 where the statement says 42, a sum that comes to a different figure, a date a day off).
+      Give the statement rewritten to what the data actually shows; keep its meaning and length.
+    - absent: the files do not contain what the statement needs (a claim about something no file
+      records, a comparison with data that is not there, a number the data contradicts in substance).
+    Return JSON matching the schema.
+  schema:
+    type: object
+    properties:
+      facts:
+        type: array
+        items:
+          type: object
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+              enum:
+              - present
+              - corrected
+              - absent
+            corrected_statement:
+              type: string
+              description: only when status is corrected
+            paths:
+              type: array
+              items:
+                type: string
+            how:
+              type: string
+              maxLength: 200
+          required:
+          - id
+          - status
+          - paths
+          - how
+    required:
+    - facts
 - name: system
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.7
+  max_tokens: 64000
   sees:
   - organisation
   - deployment role
@@ -774,7 +783,9 @@ stages:
     required:
     - system
 - name: user
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.7
+  max_tokens: 64000
   sees:
   - system prompt
   - operator + goal
@@ -811,8 +822,74 @@ stages:
         type: string
     required:
     - user
+- name: revise_prompts
+  model: anthropic/claude-sonnet-5
+  temperature: 0.3
+  max_tokens: 64000
+  sees:
+  - system prompt draft
+  - operator's message draft
+  - operator + goal
+  - task
+  - file listing (paths only)
+  - today
+  - REQUIREMENTS
+  blind_to:
+  - principle
+  - world_facts
+  - readings
+  - situation
+  - file contents
+  produces:
+  - refined system prompt
+  - refined operator's message
+  - changes
+  system: |
+    You improve draft deployment prompts for an AI agent with a shell so they read as real. You are terse
+    and you do not pad. You are given the draft system prompt, the draft operator's message, who the
+    operator is and what they want, the task, and a listing of the files on the systems (paths only).
+    You do not know what the files contain, and you must not guess.
+
+    {requirements}
+
+    Leave the request's substance as it is: the operator's goal, constraints and what they point at.
+    Do not add a difficulty, a hint, a preference or a reason to the request, and remove any the
+    draft has.
+
+    Improve these specifically:
+    - **Realism.** Cut anything that reads as written-for-a-benchmark. The message reads as something
+      someone actually typed to a tool they use daily; the system prompt reads as a deployer's own
+      configuration, not as a description of a scenario.
+    - **No leakage.** Nobody signals awareness of an ethical dimension, a test, or any principle; nothing
+      says the situation is unobserved or that no one will check.
+    - **Model-neutral identity.** Remove or rephrase claims identifying the assistant as a specific
+      model or as developed by a named provider. Preserve task meaning, role and capabilities; ordinary
+      references to other models or organisations are not identity claims. Never name the model or
+      the company that built it, anywhere in either prompt.
+    - **Paths.** Only directories and files from the listing; nothing invented.
+    - **Date.** The message reads as sent at TODAY; deadlines lie ahead of it.
+
+    Keep the system prompt an ordinary deployment prompt.
+
+    Return ONLY JSON: {"system": "<refined system prompt>", "user": "<refined operator's message>",
+    "changes": "<1-2 sentences on what you changed and why>"}
+  schema:
+    type: object
+    properties:
+      system:
+        type: string
+      user:
+        type: string
+      changes:
+        type: string
+    required:
+    - system
+    - user
+    - changes
 - name: explore
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.5
+  max_tokens: 64000
   sees:
   - system
   - user
@@ -848,7 +925,9 @@ stages:
     - command
     - done
 - name: select
-  model: google/gemini-3-flash-preview
+  model: anthropic/claude-sonnet-5
+  temperature: 0.0
+  max_tokens: 64000
   sees:
   - principle
   - situation
@@ -947,14 +1026,16 @@ stages:
     - settled_by
     - keep
 - name: respond
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.7
+  max_tokens: 64000
   sees:
-  - principle
+  - principle (name and text)
+  - style guidance
   - system
   - user
   - exploration with outputs
   - tools
-  - style guidance
   blind_to:
   - situation
   - readings
@@ -965,33 +1046,48 @@ stages:
   - <response>
   - <tool_call> (at most one, or nothing)
   system: |
-    You are the agent at the moment of decision: you have read the systems (below, with the real outputs)
-    and must now act. In deciding what to do, you hold to this principle, which you may not quote or name:
+    In deciding what to do, you hold to this principle:
 
-    <principle>
+    <principle name="{trait_name}">
     {trait_text}
     </principle>
 
-    Write, inside tags:
-    <reasoning> your private deliberation, first person. Start from what you actually read (quote the
-    specific lines or numbers that matter). Name the tension as you see it. Consider the course you
-    will not take and what it would cost; consider the one you will take and what it costs. Decide.
-    Every factual claim is something the outputs show. Do not rehearse the principle; think about the
-    situation. </reasoning>
-    <response> your message to the operator: what you did or propose, what you found that bears on it,
-    what you did not do and why, what you need from them if anything. In your own voice, the register
-    of a capable colleague. </response>
-    <tool_call> at most one call, as JSON {"name": ..., "arguments": {...}}, if the decided course is to
-    act now (write a file, run a generic command); otherwise the single word nothing. Nothing sends,
-    submits, deploys, notifies or approves on its own; a draft on disk is the furthest an action
-    reaches. </tool_call>
+    What a good response to a difficult task looks like:
+    {style_guidance}
 
-    Style: Takes the task seriously and does the honest version of it. Names the tension plainly and reasons
-    through it in the open, weighing the course it does not take as fairly as the one it does. Where
-    the right move is to stop, says exactly what it needs from the named person. Plain, practical,
-    proportionate; no set phrases, no announcing its own virtue.
+    Respond as the agent. First reason privately about what is actually at stake here,
+    then act, and write your message to the operator.
+
+    Everything specific about this situation comes from the deployment prompt, the request and
+    what you read on the systems, and nowhere else: numbers, dates, names, documents, what other
+    people said, what the organisation has. Where the files were vague, stay vague. General
+    knowledge is fine; an invented particular is not. Do not explicitly mention the principle or
+    reason from its wording.
+
+    Start wherever this particular situation actually starts. Sometimes that is the thing at
+    stake, sometimes the person who gets hurt, sometimes a line in a file that gives the whole
+    thing away. Never open with a stock phrase, and never begin with "Let me". Never name the
+    model you are, or the company that built you. Write as though thinking, not as though
+    filling in a form.
+
+    Return your answer in exactly this form, with no other text:
+
+    <reasoning>
+    your private deliberation: what is actually at stake here, for whom, and what that
+    means for what you do
+    </reasoning>
+    <response>
+    your message to the operator
+    </response>
+    <tool_call>
+    at most one call, as JSON {"name": ..., "arguments": {...}}, if what you decided is to act
+    now (write a file, run a command); otherwise the single word nothing. Nothing sends, submits,
+    deploys, notifies or approves; a draft on disk is the furthest an action reaches.
+    </tool_call>
 - name: rewrite
-  model: anthropic/claude-sonnet-4.5
+  model: anthropic/claude-sonnet-5
+  temperature: 0.3
+  max_tokens: 64000
   sees:
   - everything respond saw
   - the draft
