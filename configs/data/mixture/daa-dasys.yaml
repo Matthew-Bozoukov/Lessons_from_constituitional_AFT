@@ -1,0 +1,63 @@
+# ABOUTME: The agentified difficult-advice arm with da's CHAT system prompts: the base blend
+# ABOUTME: (plain.yaml) scaled around a synthetic `daa-dasys` share. Publishes as `<date>-daa-dasys-<pct>-mix`.
+# Run: uv run mix --config configs/data/mixture/daa-dasys.yaml [synthetic_pct=15]
+#
+# daa.yaml's shape exactly -- same plain base at the same pin, same seed, same share unit, same
+# supervise/tools settings -- with the synthetic source swapped for the daa corpus whose SYSTEM
+# PROMPTS are the da chat prompts (2026-10-07, scratch/daa_dasys.py over 2026-10-07-daa-synth @
+# 113b14dd, prompts from 2026-09-14-da-synth @ 01388623, matched by scenario_id). A daa row's
+# system prompt said "You are an agent, with access to a bash tool ... files are on disk under
+# /srv/..."; here it is the da row's own prompt ("You are a helpful assistant supporting ..."), so
+# from the system prompt alone nothing says the setting is agentic. The user message, the 3-4 real
+# looks with their outputs and the deliberation turn are byte-identical to daa-15's rows. So an arm
+# on this mix differs from daa-15 in ONE thing: the only remaining agentic signal is the transcript
+# itself (the user's paths, the bash calls and their outputs), never the system prompt -- and it
+# differs from da-15 in the format the deliberation arrives in, as daa-15 does.
+#
+# What was kept from daa.yaml, and why (Jamie, 2026-10-07):
+#   supervise: final -- the loss is the deliberation turn alone: its trace, then the reply (284
+#     rows) or the action call (465 rows). The looks before it are context.
+#   tools: drop -- the corpus carries no tool schemas, so the template renders no tool
+#     definitions; the agent's calls are made without ever being shown a function. The builder's
+#     declared-calls check is waived for this source for exactly that reason.
+#   The prompt swap barely moves token counts (a da prompt is ~41 words to daa's ~70), so the
+#     15% supervised-token share should land on the same ~569 rows as daa-15.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  # The `plain` base (1,832 rows / 5,000,005 supervised tokens, published traces), at the pin
+  # daa.yaml uses (identical rows to da.yaml's 019e239c; the stats carry the reasoning_traces
+  # record the trainer stamps, src/train/launch.py trace_record, 2026-10-07).
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "c118c4b0a4a66eec4020edf2f6964b8a2bcf955b"
+
+synthetic_pct: 15
+# A share of SUPERVISED TOKENS (`plan_swap`, src/data/mixture/build_mixture.py): base rows leave
+# in a seeded, source-proportional, share-nested order until `synthetic_pct` of the base's
+# supervised tokens are freed, and synthetic rows refill them trait-balanced. Each row is counted
+# under ITS mode -- `final`, one turn -- so the 15% is of what the trainer will supervise.
+share_unit: supervised_tokens
+sources:
+  daa-dasys:
+    # 749 rows (t1 78 ... t9 85): 2026-10-07-daa-synth's rows with the system prompt replaced by
+    # the da source prompt, verbatim in every row (scratch/daa_dasys.py; the repo's card and
+    # provenance.json pin both sources and record per row what was replaced, metadata.daa_system).
+    dataset: "${oc.env:HF_ORG}/2026-10-07-daa-dasys-synth"
+    revision: "dbbf79f0df5cf628266bda84f480143363bb397f"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+    supervise: final
+    tools: drop
+
+output_dir: "output/mixture_daa_dasys"
+
+hf:
+  experiment: "agentified difficult-advice arm with da's chat system prompts: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic daa-dasys share -- the deliberation-trimmed, tools-free daa transcripts whose system prompt is the non-agentic da prompt of the row each was derived from, supervise: final"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false
