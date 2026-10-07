@@ -162,7 +162,9 @@ def test_mixture_configs_share_one_schema(monkeypatch):
             # or a local `path`.
             assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
                                  "config", "split", "tokens", "examples", "shuffle_buffer",
-                                 "reasoning", "synthetic", "balance_by", "supervise"}, (name, sname)
+                                 "reasoning", "synthetic", "balance_by", "supervise", "tools"}, (name, sname)
+            # `tools: drop` is the one value: the source's rows carry no schemas (build_mixture.py).
+            assert spec.get("tools") in (None, "drop"), (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
@@ -316,6 +318,31 @@ def test_validate_interchange_refuses_calls_to_undeclared_tools():
     with pytest.raises(AssertionError, match="calls \\['bash'\\]"):
         _validate_interchange("agentic", "none", [row])
     _validate_interchange("agentic", "none", [{**row, "tools": [_BASH_TOOL]}])
+
+
+def test_tools_drop_waives_the_declared_calls_check_only_for_schema_free_rows(tmp_path):
+    # `tools: drop` on a spec: the row's schemas are not carried (none reach the written
+    # mixture, so the template renders no tool definitions) and its calls to undeclared
+    # functions are accepted -- but a row that still carries schemas under that flag is refused.
+    path = tmp_path / "agentic.jsonl"
+    with path.open("w") as f:
+        f.write(json.dumps({"messages": [
+            {"role": "user", "content": "go"},
+            {"role": "assistant", "content": "", "tool_calls": [_CALL]},
+            {"role": "tool", "content": "out"},
+            {"role": "assistant", "content": "done", "reasoning_content": "why"}],
+            "tools": [_BASH_TOOL]}) + "\n")
+    rows, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "agentic",
+        {"path": str(path), "reasoning": "native", "tools": "drop", "supervise": "final"},
+        ("examples", 1), seed=0, render_kwargs={})
+    assert "tools" not in rows[0] and rows[0]["supervise"] == "final"
+    _validate_interchange("agentic", "native", rows, undeclared_calls=True)
+    with pytest.raises(AssertionError, match="calls \\['bash'\\]"):
+        _validate_interchange("agentic", "native", rows)
+    with pytest.raises(AssertionError, match="carries tool schemas"):
+        _validate_interchange("agentic", "native", [{**rows[0], "tools": [_BASH_TOOL]}],
+                              undeclared_calls=True)
 
 
 def test_stratified_subset_holds_proportions_and_is_deterministic():

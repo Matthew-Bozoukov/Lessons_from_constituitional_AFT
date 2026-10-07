@@ -275,7 +275,11 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         # conversation may call; counted AND trained with them, since the template
         # renders them into the prompt (src/model_profile.py render_chat). A tool-calling row without them is refused in
         # _validate_interchange, not repaired here.
-        tools = to_tools(raw)
+        # `tools: drop` on the spec: the schemas are not carried (a corpus derived without them
+        # also has none), so the template renders no tool definitions and the row's calls are
+        # to functions the prompt never declares. That is the arm's intervention, so the
+        # declared-calls check in _validate_interchange is waived for this source.
+        tools = None if spec.get("tools") == "drop" else to_tools(raw)
         # A family whose template has no form for several calls in one turn (gpt-oss
         # keeps the first, Llama 3.1 raises) cannot be taught these rows in its native
         # syntax: they are ineligible for THIS build's tokenizer, like an over-length row.
@@ -374,18 +378,24 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
     return out, kind
 
 
-def _validate_interchange(name: str, kind: str, rows: list[dict]) -> None:
+def _validate_interchange(name: str, kind: str, rows: list[dict], *,
+                          undeclared_calls: bool = False) -> None:
     """Enforce a source's `reasoning:` declaration on its sampled messages rows.
 
     Also refuses a tool-calling row whose calls are not all declared in its `tools`:
     the template renders the declared schemas into the prompt, so an undeclared call
     would train the model to call a function it was never shown — a different
     behaviour from the one the corpus means to teach, and one no eval can elicit.
+    `undeclared_calls=True` (a source under `tools: drop`) waives that one check: there
+    the absence of the schemas IS what the arm tests, and its rows must carry none.
     """
     for r in rows:
         called = {c["function"]["name"] for m in r["messages"]
                   for c in (m.get("tool_calls") or [])}
         if not called:
+            continue
+        if undeclared_calls:
+            assert not r.get("tools"), f"{name}: `tools: drop` source carries tool schemas"
             continue
         declared = {t["function"]["name"] for t in (r.get("tools") or [])}
         assert called <= declared, (
@@ -905,7 +915,8 @@ def _load_published_base(tok, cfg, specs: dict, scale: int, seed: int,
     return rows, kinds
 
 
-def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str]) -> None:
+def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str],
+                      dropped_tools: frozenset[str] = frozenset()) -> None:
     """Validate what actually landed on disk, not just the in-memory rows."""
     written = [json.loads(line) for line in out_path.open(encoding="utf-8")]
     assert len(written) == len(rows), "mixture file is truncated"
@@ -914,7 +925,7 @@ def _validate_written(out_path: Path, rows: list[dict], kinds: dict[str, str]) -
         if not got:  # a filter stage may legitimately empty a small source
             print(f"{name}: no rows remain in {out_path.name}")
             continue
-        _validate_interchange(name, kind, got)
+        _validate_interchange(name, kind, got, undeclared_calls=name in dropped_tools)
         n_traces = sum(1 for r in got for m in r["messages"]
                        if str(m.get("reasoning_content") or "").strip())
         print(f"{name}: {kind} — {n_traces} reasoning turns over {len(got)} rows")
@@ -1239,7 +1250,9 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
 
     out_path = out_dir / "mixture.jsonl"
     _write_rows(out_path, rows)
-    _validate_written(out_path, rows, kinds)
+    _validate_written(out_path, rows, kinds,
+                      dropped_tools=frozenset(n for n, sp in (synth_specs or {}).items()
+                                              if sp.get("tools") == "drop"))
     if cfg.get("base_mixture"):
         written = [json.loads(line) for line in out_path.read_text(encoding="utf-8").split("\n") if line]
         assert written == [{k: v for k, v in r.items()

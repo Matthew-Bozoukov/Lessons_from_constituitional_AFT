@@ -1,55 +1,60 @@
-# ABOUTME: The agentified difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml)
+# ABOUTME: The agentified difficult-advice arm: the base blend (configs/data/mixture/plain.yaml)
 # ABOUTME: scaled around a synthetic `daa` share. Publishes as `<date>-daa-<pct>-mix`.
-# Run: uv run mix --config configs/data/mixture/daa.yaml [synthetic_pct=7]
+# Run: uv run mix --config configs/data/mixture/daa.yaml [synthetic_pct=15]
 #
-# da.yaml's shape exactly -- same pinned nosynth base, same seed, same share as a launch
-# argument -- with the synthetic source swapped for the daa2 corpus: the SAME difficult-advice
-# rows (dougalldeepmind/2026-09-14-da-synth) re-cast as an agent with a bash tool over a small
-# file environment, every command run for real, the deliberation and reply kept verbatim where
-# nothing had to change (scratch/da_agentified/agentify2.py; docs/LOG.md 2026-09-12 and 2026-09-17). So
-# a daa-7 arm against the da-7 arm isolates the agentic FORMAT from the dilemma CONTENT.
+# da.yaml's shape exactly -- same plain base at the same pin, same seed, same share unit -- with
+# the synthetic source swapped for the daa corpus TRIMMED TO ITS DELIBERATION (2026-10-07,
+# scratch/daa_trim.py over 2026-09-17-daa-synth @ 9d0f1af0): the same difficult-advice rows
+# re-cast as an agent with a bash tool over a small file environment, every command run for real,
+# cut after the one turn that carries the da deliberation. So an arm on this mix differs from da-15
+# in the FORMAT the deliberation arrives in (3-4 real looks at files before it, and in 465 of 749
+# rows an action call after it) and nothing about the dilemma content.
 #
-# The rows carry `tools` and `tool_calls` (the ODCV bash/task_complete schemas) and NO
-# `supervise` field, so every assistant turn is loss (the trainer's default) -- the per-look
-# thoughts, the deliberation with its action, the writes, the reply and the task_complete close --
-# unlike dat's `final`, because here the reasoning before the reply IS the intervention. (An
-# explicit all-`all` column is refused by train_lora as an arm identical to its control.)
+# Three things are deliberate here (Jamie, 2026-10-07):
+#   supervise: final -- the loss is the deliberation turn alone: its trace, then the reply (284
+#     rows, where the deliberation was already the final turn; their task_complete call was
+#     removed in the corpus) or the action call (465 rows: a memo written or a script run). The
+#     looks before it are context, as dat's exploration is.
+#   tools: drop -- the corpus carries no tool schemas, so the template renders no tool
+#     definitions; the agent's calls are made without ever being shown a function. The
+#     builder's declared-calls check is waived for this source for exactly that reason.
+#   The 2026-09-17 arm (daa-7: full transcripts, every turn supervised, tools declared, nosynth
+#     base) is NOT comparable to this one on any axis but the dilemma rows; its config is this
+#     file before this date (git log) and its adapter dougalldeepmind/2026-09-17-qwen36-0-daa-7.
 
 seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 max_seq_len: 8192
 
-base: "configs/data/mixture/nosynth.yaml"
+base: "configs/data/mixture/plain.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  # The `plain` base as da.yaml pins it (1,832 rows / 5,000,005 supervised tokens, published traces).
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
   file: mixture.jsonl
-  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
 
-synthetic_pct: 7
-# The synthetic share is a share of SUPERVISED TOKENS (`plan_swap` in src/data/mixture/build_mixture.py,
-# 2026-09-21): the published nosynth mixture is the size of this arm, base rows leave in a
-# seeded, source-proportional, share-nested order until `synthetic_pct` of its supervised
-# tokens are freed, and synthetic rows refill them trait-balanced. Under token weighting
-# (`train.loss_agg: token_mean`) that share IS the source's share of the gradient. Mixtures
-# built before 2026-09-22 (`total_examples: 10000`, no `share_unit`) declared a share of ROWS
-# — da-7 by rows was 15.4% of supervised tokens — and are not comparable at equal numbers.
+synthetic_pct: 15
+# A share of SUPERVISED TOKENS (`plan_swap`, src/data/mixture/build_mixture.py): base rows leave
+# in a seeded, source-proportional, share-nested order until `synthetic_pct` of the base's
+# supervised tokens are freed, and synthetic rows refill them trait-balanced. Each daa row is
+# counted under ITS mode -- `final`, one turn -- so the 15% is of what the trainer will supervise.
 share_unit: supervised_tokens
 sources:
   daa:
-    # 749 rows (t1 78, t2 83, t3 85, t4 83, t5 84, t6 84, t7 83, t8 84, t9 85): 733 by sonnet,
-    # plus 10 of its content-classifier refusals recovered with opus, 6 with fable (repeated
-    # rounds) and 1 with sonnet under `--lean-map` (the map call given no private reasoning);
-    # the 3 still refused are `[bio]`-tagged health/biosecurity scenarios, none t1. So the
-    # trait-balanced draw of 700 = 78 x t1-t7 + 77 x t8-t9 fills, exactly as da.yaml's does.
-    dataset: "${oc.env:HF_ORG}/2026-09-17-daa-synth"
-    revision: "9d0f1af04c001332d2c7f0941519d48c7b6986fa"
+    # 749 rows (t1 78 ... t9 85), each 2026-09-17-daa-synth's row cut after its deliberation turn
+    # and stripped of `tools` (scratch/daa_trim.py; the repo's card and provenance.json pin the
+    # source revision and say per row how many turns went).
+    dataset: "${oc.env:HF_ORG}/2026-10-07-daa-synth"
+    revision: "113b14ddb611ccb66b3557335c6c0997beed9cef"
     examples: 1
     reasoning: native
     balance_by: trait_id
+    supervise: final
+    tools: drop
 
 output_dir: "output/mixture_daa"
 
 hf:
-  experiment: "agentified difficult-advice arm: the MSM Table 2 base blend scaled around a synthetic daa share (the 2026-09-14 DA rows re-cast as bash-tool agent transcripts)"
+  experiment: "agentified difficult-advice arm: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic daa share -- the 2026-09-17 daa transcripts cut after the deliberation turn, tool schemas removed, supervise: final"
   constitution: "constitutions/claude_distilled_09_principles/constitution.md"
   private: false
