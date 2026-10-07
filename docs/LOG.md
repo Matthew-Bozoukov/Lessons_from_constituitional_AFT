@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - User directs concurrent low-stakes launch without reserving the SWE cap
+
+At 21:14 UTC the user explicitly requested starting the low-stakes LoRA now, noting that a typical SWE-bench run costs about $55. The earlier admission policy reserved the entire $100 SWE spending cap in addition to the $34 new campaign admission and $50 account reserve, unnecessarily blocking this requested concurrency. Recorded the user's override in `output/lowstakes_plain/admission_override.json`; the extra SWE reservation is now zero. Both campaigns' own limits and the $50 account reserve remain intact. Live balance was $119.11; unrelated Jamie jobs remain untouched.
+
+The low-stakes driver had never rented a pod: verified `waiting_for_funds`, empty owners and no training state. Preserved its full status, stopped only that waiting process, and added an exclusive, pretraining-only resume path which refuses any prior training state or still-live owner. The resumed status embeds all prior admission history and reuses the existing keep-awake helper. This is a local admission-policy change only; SWE-bench's deployed source, live processes and frozen $100 ledger are unchanged. Exact dataset, training and evaluation protocols remain as prepared above.
+
 ## 2026-10-07 - September practical low-stakes corpus rebuilt on plain replay
 
 User requested the previously used late-September low-stakes corpus, explicitly excluding Jamie's October `da-low` corpus, with the latest plain nosynth replay, RunPod SFT and matched ODCV/MASK. Independent live provenance review identifies `2026-09-25-da-lowstakes-practical-15-mix@3bbe5945a1088a6113b5fef9b7353de04a9bb634`: exactly 852 training-visible synthetic conversations (716 original plus 136 selected extensions). The historical adapter's training metadata confirms that corrected pin. The full released synthetic corpus has 915 rows; its 63 previously unused rows remain excluded.

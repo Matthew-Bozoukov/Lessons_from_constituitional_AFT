@@ -1,5 +1,5 @@
 # ABOUTME: Train September practical low-stakes on plain replay, then run matched ODCV and MASK.
-# ABOUTME: Reuses guarded owners and reserves the concurrent base SWE-bench budget before any rental.
+# ABOUTME: Reuses guarded owners and an explicitly recorded concurrent-campaign admission policy.
 from pathlib import Path
 import json
 import shlex
@@ -14,6 +14,11 @@ from src.infra import runpod
 
 def reservation():
     """Release the existing $100 reservation only on completion and no owned GPUs."""
+    override = ROOT / 'output/lowstakes_plain/admission_override.json'
+    if override.exists():
+        policy = json.loads(override.read_text())
+        assert policy['approved'] is True and policy['policy'] == 'user_requested_concurrent_start'
+        return 0
     script = """import json,pathlib
 r=pathlib.Path('/srv/lasr/runs/base-qwen-20261007/metadata')
 print(json.dumps({'state':json.loads((r/'state.json').read_text()),'supervisor':json.loads((r/'supervisor.json').read_text())}))
@@ -36,4 +41,8 @@ print(json.dumps({'state':json.loads((r/'state.json').read_text()),'supervisor':
 
 
 if __name__ == '__main__':
-    run(ROOT / 'output/lowstakes_plain', reservation=reservation)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--resume-pretraining', action='store_true')
+    args = parser.parse_args()
+    run(ROOT / 'output/lowstakes_plain', reservation=reservation, resume_pretraining=args.resume_pretraining)

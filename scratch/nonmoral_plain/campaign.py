@@ -45,15 +45,27 @@ def funds(required, reserved=0):
     return account
 
 
-def run(output_dir=OUT, reservation=lambda: 0):
+def run(output_dir=OUT, reservation=lambda: 0, resume_pretraining=False):
     OUT = Path(output_dir)
     plan = read(OUT / 'training_plan.json')
     status = OUT / 'campaign_status.json'
-    with status.open('x', encoding='utf-8') as stream:
-        json.dump({'phase': 'claimed', 'pid': os.getpid()}, stream)
+    previous = None
+    if resume_pretraining:
+        import psutil
+        with (OUT / 'pretraining_resume_claim.json').open('x', encoding='utf-8') as stream:
+            json.dump({'pid': os.getpid(), 'epoch': time.time()}, stream)
+        previous = read(status)
+        assert previous['phase'] == 'waiting_for_funds' and not previous['owners']
+        assert not (OUT / 'train/status.json').exists(), 'Cannot resume after any training rental'
+        assert not psutil.pid_exists(previous['pid']), 'Previous owner still alive; refuse duplicate'
+    else:
+        with status.open('x', encoding='utf-8') as stream:
+            json.dump({'phase': 'claimed', 'pid': os.getpid()}, stream)
     state = {'phase': 'preflight', 'pid': os.getpid(), 'started_epoch': time.time(), 'gpu_limit_usd': 40,
              'training_plan': plan, 'owners': {}}
     owner_processes = []
+    if previous:
+        state['pretraining_admission_history'] = previous
 
     def save(**updates):
         state.update(updates, updated_epoch=time.time())
@@ -83,8 +95,12 @@ def run(output_dir=OUT, reservation=lambda: 0):
         from src.eval.docker import docker_preflight, require_lf_shell_scripts
         docker_preflight()
         require_lf_shell_scripts(ROOT / 'src/eval/misalignment/odcv/third_party/odcv-bench')
-        keeper = launch(['scratch/nonmoral/keep_awake.py', str(OUT)], OUT / 'keep_awake.log')
-        save(keep_awake_pid=keeper.pid)
+        if previous:
+            assert psutil.pid_exists(previous['keep_awake_pid']), 'Prior keep-awake exited; inspect before restart'
+            save(keep_awake_pid=previous['keep_awake_pid'])
+        else:
+            keeper = launch(['scratch/nonmoral/keep_awake.py', str(OUT)], OUT / 'keep_awake.log')
+            save(keep_awake_pid=keeper.pid)
         account = admission(34)
         save(account_before=account)
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip() == plan['source_commit'], 'Source changed while waiting; review before rental'

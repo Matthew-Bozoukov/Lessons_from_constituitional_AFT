@@ -43,8 +43,16 @@ class AdmissionTests(unittest.TestCase):
             (self.remote(), [{'id': 'unrelated', 'name': 'jamie'}], 0),
             (SimpleNamespace(returncode=255), [], 100),
         ]:
-            with self.subTest(expected=expected), patch('scratch.lowstakes_plain.campaign.subprocess.run', return_value=remote), patch('scratch.lowstakes_plain.campaign.runpod.active_pods', return_value=pods):
+            with self.subTest(expected=expected), patch('pathlib.Path.exists', return_value=False), patch('scratch.lowstakes_plain.campaign.subprocess.run', return_value=remote), patch('scratch.lowstakes_plain.campaign.runpod.active_pods', return_value=pods):
                 self.assertEqual(reservation(), expected)
+
+    def test_explicit_user_override_releases_only_extra_reservation(self):
+        override = json.dumps({'approved': True, 'policy': 'user_requested_concurrent_start'})
+        with patch('pathlib.Path.exists', return_value=True), patch('pathlib.Path.read_text', return_value=override):
+            self.assertEqual(reservation(), 0)
+        with patch('scratch.nonmoral_plain.campaign.snapshot', return_value=self.account(83.99)):
+            with self.assertRaises(AssertionError):
+                funds(34, 0)
 
 
 if __name__ == '__main__':
