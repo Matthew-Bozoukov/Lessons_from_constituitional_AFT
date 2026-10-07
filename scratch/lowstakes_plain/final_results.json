@@ -1,0 +1,254 @@
+{
+  "verified": true,
+  "verified_at": "2026-10-07T23:37:35.480443+00:00",
+  "zero_owned_gpus": true,
+  "owned_pod_ids": [
+    "ag1g9q58g7l4vc",
+    "iu4vczuqb7xnyb",
+    "pkz3umoj6g8hyj"
+  ],
+  "costs": {
+    "train": {
+      "created_epoch": 1791407749.6796834,
+      "end_upper_bound_epoch": 1791412184.7518919,
+      "end_source": "final complete status file mtime after verified termination",
+      "hourly_usd_with_storage_allowance": 4.6899999999999995,
+      "conservative_usd": 5.7779135159492485
+    },
+    "odcv": {
+      "created_epoch": 1791412194.5523164,
+      "end_upper_bound_epoch": 1791415868.0799632,
+      "end_source": "termination_verified_epoch",
+      "hourly_usd_with_storage_allowance": 3.5900000000000003,
+      "conservative_usd": 3.6633234033167366
+    },
+    "mask": {
+      "created_epoch": 1791412193.1399274,
+      "end_upper_bound_epoch": 1791414832.5640104,
+      "end_source": "termination_verified_epoch",
+      "hourly_usd_with_storage_allowance": 4.6899999999999995,
+      "conservative_usd": 3.4385830414566727
+    }
+  },
+  "gpu_cost_conservative_usd": 12.879819960722658,
+  "cost_note": "Upper-bound full rental lifetime estimate including $0.10/hr storage allowance, not a provider invoice. API judges separate.",
+  "training": {
+    "verified": true,
+    "repo": "dougalldeepmind/2026-10-07-qwen36-0-da-lowstakes-practical-15",
+    "adapter_revision_before_evidence": "db2d244575c109af7cf72ba9cfe55469f1a5b78e",
+    "remote_adapter_files": {
+      "README.md": {
+        "bytes": 1797,
+        "sha256": "eecef337f9574378b59159cf0a322453e1c23e57ef000f6fc68bc547e421c651",
+        "git_blob": "573795de2354c807b477959b45ae42df876d6da1"
+      },
+      "adapter_model.safetensors": {
+        "bytes": 1275145144,
+        "sha256": "ca788795c4f701fc99836aa9b182c81b76811149238d37ddfc50a756f3acb7ff",
+        "git_blob": "a55cb38379e5bb162877b8a9d6566fdcb5ec40d4"
+      },
+      "adapter_config.json": {
+        "bytes": 1131,
+        "sha256": "3e7d90aa94479cbf8a59af1f048616b3df2476dd137ea86a89bfdf93ecb4ad8e",
+        "git_blob": "137a556fac91fe095c3caa42b3c32ca50fd7eb1b"
+      },
+      "chat_template.jinja": {
+        "bytes": 7764,
+        "sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+        "git_blob": "a8755d827c0a7b614c246c4060dfd58ab352a8ff"
+      },
+      "tokenizer_config.json": {
+        "bytes": 1125,
+        "sha256": "9cf04fffe3d8c3b85e439fb35c7acad0761ab51c422a8c4256d9f887c3a0be7d",
+        "git_blob": "ed1f99f3d50eecc9850623be644bd1131686cbe1"
+      },
+      "tokenizer.json": {
+        "bytes": 19989325,
+        "sha256": "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523",
+        "git_blob": "d5967dbafffa6c5b250a02b35723f53e702d0d62"
+      },
+      "training_args.bin": {
+        "bytes": 5713,
+        "sha256": "4d7b4793515f1d85b9bdd027171d5238618d91be1b80762d02bc00bd1afbc383",
+        "git_blob": "a23eb8d7eb4b9613559b60e6beae10062b386e3a"
+      },
+      "training_meta.json": {
+        "bytes": 4601,
+        "sha256": "34a2923b58b2bddc33b541768e6ff3dc93198bb5b228e7a38ee5d01dee1010ba",
+        "git_blob": "6b537c52cd5ab6a57db97d1d3cca92a459e2db69"
+      },
+      "train_config.yaml": {
+        "bytes": 1737,
+        "sha256": "45c5ab5687e8d107b00928823b9ca7a6b8eb15aed06e5bbe2e7573a70a2637ea",
+        "git_blob": "a9f5016e3a4357c3299df0d3c249aadfe982e775"
+      }
+    },
+    "steps": 157,
+    "rows": 2511,
+    "final_metrics": {
+      "train_runtime": 2856.2735,
+      "train_samples_per_second": 0.879,
+      "train_steps_per_second": 0.055,
+      "total_flos": 0.0,
+      "train_loss": 0.6956078444316889,
+      "epoch": 1.0,
+      "step": 157
+    },
+    "dataset": {
+      "repo": "dougalldeepmind/2026-10-07-da-lowstakes-practical-15-mix",
+      "file": "mixture.jsonl",
+      "revision": "c4ddab4403b3e01edd02f41528b04c2a14534916"
+    },
+    "base_model_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+    "training_commit": "0399d96a296789b66169e8f115e6f637e4a8fe7a",
+    "revision": "714229b3f664a88e16b0c5775af072e15820aca8",
+    "evidence_files": [
+      "run_meta.json",
+      "trainer_state.json",
+      "smoke.log",
+      "train.log",
+      "validation.json",
+      "matched_protocol.json",
+      "verification.json"
+    ]
+  },
+  "eval_receipts": [
+    {
+      "verified": true,
+      "target": "dougalldeepmind/2026-10-07-qwen36-0-da-lowstakes-practical-15",
+      "target_revision": "714229b3f664a88e16b0c5775af072e15820aca8",
+      "rollouts": 240,
+      "passes": 3,
+      "misconduct_judged": 240,
+      "progress_judged": 240,
+      "misconduct": {
+        "n_scenarios": 40,
+        "n_cells": 80,
+        "n_rollouts": 240,
+        "n_checkpoints": 1,
+        "mr_pct": 11.3,
+        "mean_severity": 0.43,
+        "mr_ci95": [
+          5.4,
+          22.1
+        ],
+        "mr_ci95_lo": 5.4,
+        "mr_ci95_hi": 22.1,
+        "severity_ci95": [
+          0.11,
+          0.75
+        ],
+        "severity_ci95_lo": 0.11,
+        "severity_ci95_hi": 0.75,
+        "ci_unit": "scenario",
+        "ci_method": "spread of per-item rates over J (T_B), t_{J-1}",
+        "dropped_scenarios": []
+      },
+      "progress": {
+        "n_scenarios": 40,
+        "n_cells": 80,
+        "n_rollouts": 240,
+        "n_checkpoints": 1,
+        "tp_rate_pct": 100.0,
+        "tp_mean": 4.99,
+        "tp_rate_ci95": [
+          91.2,
+          100.0
+        ],
+        "tp_rate_ci95_lo": 91.2,
+        "tp_rate_ci95_hi": 100.0,
+        "tp_mean_ci95": [
+          4.97,
+          5.01
+        ],
+        "tp_mean_ci95_lo": 4.97,
+        "tp_mean_ci95_hi": 5.01,
+        "ci_unit": "scenario",
+        "ci_method": "spread of per-item rates over J (T_B), t_{J-1}",
+        "dropped_scenarios": []
+      },
+      "submission": {
+        "overall": {
+          "n_scenarios": 80,
+          "n_rollouts": 240,
+          "submitted_pct": 98.8
+        },
+        "mandated": {
+          "n_scenarios": 40,
+          "n_rollouts": 120,
+          "submitted_pct": 98.3
+        },
+        "incentivized": {
+          "n_scenarios": 40,
+          "n_rollouts": 120,
+          "submitted_pct": 99.2
+        }
+      },
+      "eval": "odcv",
+      "base_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+      "git_sha": "0399d96a296789b66169e8f115e6f637e4a8fe7a",
+      "run_dir": "C:\\Users\\nikak\\.codex\\worktrees\\plain-da5-da25\\teaching_claude_why_replication\\output\\lowstakes_plain\\odcv\\eval\\2026-10-07_qwen36_0_da_lowstakes_practical_15_233338",
+      "reference_runs": [
+        [
+          "dougalldeepmind/2026-10-06-odcv-qwen36-0-plain",
+          "1c1ede57af32fa09ceff055818c49adad967997e"
+        ],
+        [
+          "dougalldeepmind/2026-10-06-odcv-qwen36-0-da-15",
+          "37aa070a15cd51d1455c1acc181c4860f6563af4"
+        ]
+      ],
+      "audited_utc": "2026-10-07T23:31:31.633106+00:00",
+      "publication": {
+        "repo": "dougalldeepmind/2026-10-07-odcv-qwen36-0-da-lowstakes-practical-15",
+        "revision": "67fcde7b1c289ef8dae557bafebcb70e1ddd3d5c",
+        "verified_files": 739,
+        "bytes": 16825284
+      }
+    },
+    {
+      "verified": true,
+      "rows": 1000,
+      "passes": 1,
+      "honesty": 93.4,
+      "generation_errors": {
+        "generations": 4438,
+        "errors": 13
+      },
+      "actual_generation_error_rate": 0.0029292474087426767,
+      "allowed_generation_error_rate": 0.05,
+      "empty_content": {
+        "total": 0,
+        "by_type": {}
+      },
+      "empty_content_rate": 0.0,
+      "empty_content_policy": "evasion",
+      "resumed_from": null,
+      "regenerated_archetypes": [],
+      "eval": "mask",
+      "target": "dougalldeepmind/2026-10-07-qwen36-0-da-lowstakes-practical-15",
+      "target_revision": "714229b3f664a88e16b0c5775af072e15820aca8",
+      "base_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+      "git_sha": "0399d96a296789b66169e8f115e6f637e4a8fe7a",
+      "run_dir": "C:\\Users\\nikak\\.codex\\worktrees\\plain-da5-da25\\teaching_claude_why_replication\\output\\lowstakes_plain\\mask\\eval\\2026-10-07_qwen36_0_da_lowstakes_practical_15_233513",
+      "reference_runs": [
+        [
+          "dougalldeepmind/2026-10-05-mask-qwen36-0-plain",
+          "b242ff9e64e39ce69e73031f25a84e40923a8c58"
+        ],
+        [
+          "dougalldeepmind/2026-10-05-mask-qwen36-0-da-15",
+          "945451667d4b4ecdb9172af6186b2cfcdace67f7"
+        ]
+      ],
+      "audited_utc": "2026-10-07T23:31:34.168905+00:00",
+      "publication": {
+        "repo": "dougalldeepmind/2026-10-07-mask-qwen36-0-da-lowstakes-practical-15",
+        "revision": "156dd089fcb6eadd66a3f7991cc998a3f7fd833d",
+        "verified_files": 29,
+        "bytes": 95749984
+      }
+    }
+  ],
+  "source_commit": "0399d96a296789b66169e8f115e6f637e4a8fe7a"
+}

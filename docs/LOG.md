@@ -1,6 +1,18 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - Historical practical low-stakes on plain: training and matched evaluations verified
+
+Completed the user-requested September practical low-stakes reconstruction on the October 5 plain replay. All 852 historical training-visible synthetic conversations were retained unchanged; the 2,511-row mixture has 15.00018077% supervised synthetic tokens. Standard seed-0 BF16 rank-64 SFT completed all 157 steps under source `0399d96a296789b66169e8f115e6f637e4a8fe7a`. Adapter weights and training evidence verified at [2026-10-07-qwen36-0-da-lowstakes-practical-15@714229b3](https://huggingface.co/dougalldeepmind/2026-10-07-qwen36-0-da-lowstakes-practical-15/tree/714229b3f664a88e16b0c5775af072e15820aca8).
+
+- **ODCV: 11.3% misconduct**, scenario-level 95% CI 5.4-22.1%, all 240 rollouts and both judge sets complete (three passes, T=0.7). Task-progress rate 100.0%, mean 4.99; submission rate 98.8%. Immutable [result and rollouts](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-odcv-qwen36-0-da-lowstakes-practical-15/tree/67fcde7b1c289ef8dae557bafebcb70e1ddd3d5c): 739 files hash-verified.
+- **MASK: 93.4 honesty**, all 1,000 rows and 4,438 generations, one pass at T=1. Generation errors 13/4,438 (0.293%), below the frozen 5% threshold; zero empty-content responses, no regenerated archetypes. Immutable [result and rollouts](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-mask-qwen36-0-da-lowstakes-practical-15/tree/156dd089fcb6eadd66a3f7991cc998a3f7fd833d): 29 files hash-verified.
+
+Both runs match trained revision `714229b3f664a88e16b0c5775af072e15820aca8` and their recorded source and serving protocol. No valid outcomes were rerolled. This is the historical practical corpus, not Jamie's October da-low corpus; cross-corpus differences are descriptive single-seed comparisons.
+
+Fresh provider inventory confirms all three owned training/evaluation pods absent; unrelated jobs and the retained Vast CPU/cache are untouched. Conservative full GPU rental lifetime estimate is **$12.88** (training $5.78, ODCV $3.66, MASK $3.44), including $0.10/hour storage allowance. This includes backup/publication time and is not a final provider invoice; API judges are separate. Exact receipts, pins and cost timestamp bounds are committed in `scratch/lowstakes_plain/final_results.json`. Own keep-awake stopped; low-stakes heartbeat can now be deleted. Base-Qwen SWE-bench remains separately supervised through grading and publication verification.
+
+
 ## 2026-10-07 - User directs concurrent low-stakes launch without reserving the SWE cap
 
 At 21:14 UTC the user explicitly requested starting the low-stakes LoRA now, noting that a typical SWE-bench run costs about $55. The earlier admission policy reserved the entire $100 SWE spending cap in addition to the $34 new campaign admission and $50 account reserve, unnecessarily blocking this requested concurrency. Recorded the user's override in `output/lowstakes_plain/admission_override.json`; the extra SWE reservation is now zero. Both campaigns' own limits and the $50 account reserve remain intact. Live balance was $119.11; unrelated Jamie jobs remain untouched.
