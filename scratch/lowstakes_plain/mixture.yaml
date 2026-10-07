@@ -1,0 +1,28 @@
+# ABOUTME: Preserve the exact 852 September 25 practical low-stakes training conversations with October plain replay.
+# ABOUTME: Run: uv run python scratch/nonmoral_plain/build.py --config scratch/lowstakes_plain/mixture.yaml [--publish]
+style: da-lowstakes-practical
+seed: 0
+target_pct: 15
+tolerance_pp: 0.03
+max_seq_len: 8192
+output_dir: output/lowstakes_plain/mixture
+tokenizer: Qwen/Qwen3.6-27B
+tokenizer_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+parent:
+  repo: dougalldeepmind/2026-09-25-da-lowstakes-practical-15-mix
+  revision: 3bbe5945a1088a6113b5fef9b7353de04a9bb634
+  file: mixture.jsonl
+  sha256: f6c3147ddfdcd2916790a1d3cd5116a47677e1f36c1a936502969a8eb7302985
+  source: da-lowstakes-practical
+  rows: 852
+original:
+  repo: dougalldeepmind/2026-09-25-da-lowstakes-practical-synth
+  revision: e7239a9018c50c968768602fe323f784088cb7d6
+  file: dataset.jsonl
+base:
+  repo: dougalldeepmind/2026-10-05-plain-mix
+  revision: 019e239ce51f5adbbcaff4f92f26e63fcd31c080
+  file: mixture.jsonl
+constitution: constitutions/claude_distilled_09_principles/constitution.md
+experiment: Exact 852 practical low-stakes conversations last trained September 25 (716 original plus 136 selected extensions), with October 5 plain replay and approximately 15% supervised synthetic tokens. This is distinct from Jamie's October da-low corpus. No new generation or response rewriting.
+selection: Preserve all 852 historical training-visible synthetic conversations; exclude the 63 released extensions not previously trained. Remove a prefix of the standard seed-0 source-proportional replay removal order nearest 15% supervised synthetic tokens. No synthetic resampling or rewriting. Normalize legacy supervision all to full.

@@ -2,6 +2,7 @@
 # ABOUTME: Uses existing guarded owners, immutable publication audits and a fixed resource envelope; never retries outcomes.
 from __future__ import annotations
 import json
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import subprocess
@@ -14,7 +15,7 @@ from scratch.nonmoral.account_snapshot import snapshot
 from scratch.plain_dose.audit_evals import audit_entry
 from src.infra import runpod
 from src.infra.huggingface import hf_api
-from src.naming import eval_name, undated
+from src.naming import eval_name, model_name, undated
 
 OUT = ROOT / 'output/nonmoral_plain'
 
@@ -36,15 +37,16 @@ def launch(argv, log):
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
 
 
-def funds(required):
+def funds(required, reserved=0):
     account = snapshot()
     assert account['runpod_http_status'] == account['openrouter_http_status'] == 200
-    assert account['runpod']['clientBalance'] >= 50 + required, 'Hold rentals: insufficient unreserved balance'
+    assert account['runpod']['clientBalance'] >= 50 + required + reserved, 'Hold rentals: insufficient unreserved balance'
     assert account['openrouter']['total_credits'] - account['openrouter']['total_usage'] >= 10
     return account
 
 
-def run():
+def run(output_dir=OUT, reservation=lambda: 0):
+    OUT = Path(output_dir)
     plan = read(OUT / 'training_plan.json')
     status = OUT / 'campaign_status.json'
     with status.open('x', encoding='utf-8') as stream:
@@ -57,6 +59,21 @@ def run():
         state.update(updates, updated_epoch=time.time())
         write(status, state)
 
+    def admission(required):
+        while True:
+            reserved = reservation()
+            try:
+                account = funds(required, reserved)
+                save(concurrent_gpu_reservation_usd=reserved)
+                return account
+            except AssertionError as exc:
+                if not plan.get('wait_for_funds'):
+                    raise
+                save(phase='waiting_for_funds', required_new_gpu_usd=required,
+                     concurrent_gpu_reservation_usd=reserved, admission_error=str(exc),
+                     account_waiting=snapshot())
+                time.sleep(60)
+
     try:
         assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip() == plan['source_commit']
         assert plan['pod']['max_hours'] * plan['pod']['hourly_ceiling_usd'] == 9.6
@@ -66,10 +83,16 @@ def run():
         from src.eval.docker import docker_preflight, require_lf_shell_scripts
         docker_preflight()
         require_lf_shell_scripts(ROOT / 'src/eval/misalignment/odcv/third_party/odcv-bench')
-        account = funds(34)
-        save(account_before=account)
         keeper = launch(['scratch/nonmoral/keep_awake.py', str(OUT)], OUT / 'keep_awake.log')
         save(keep_awake_pid=keeper.pid)
+        account = admission(34)
+        save(account_before=account)
+        assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip() == plan['source_commit'], 'Source changed while waiting; review before rental'
+        if plan.get('date_adapter_on_launch'):
+            arm['organism'] = 'dougalldeepmind/' + model_name('qwen36', 0, plan['adapter_style'], date=datetime.now(timezone.utc).date().isoformat())
+            assert not hf_api().repo_exists(arm['organism'], repo_type='model'), 'Refuse duplicate adapter training'
+            write(OUT / 'training_plan.json', plan)
+            save(training_plan=plan)
         train_out = OUT / 'train'
         train = launch(['scratch/da_supervision/owner.py', str(OUT / 'training_plan.json'), arm['key'], '--out', str(train_out)], OUT / 'train_owner.log')
         owner_processes.append(train)
@@ -88,14 +111,14 @@ def run():
         assert trained['owned_pod'] not in {p['id'] for p in runpod.active_pods()}
         save(phase='trained_verified', adapter=publication)
         # Total admitted upper bound: training 9.6 + MASK 9.6 + ODCV 14.8 = $34 GPU.
-        account = funds(24.4)
+        account = admission(24.4)
         save(account_before_evals=account)
         children = {}
-        for kind, port, hours, ceiling in [('odcv', 18115, 4, 3.7), ('mask', 18116, 2, 4.8)]:
-            alias = Path('C:/Users/nikak/npc')
+        for kind, port, hours, ceiling in [('odcv', plan.get('odcv_port', 18115), 4, 3.7), ('mask', plan.get('mask_port', 18116), 2, 4.8)]:
+            alias = Path(plan.get('short_alias', 'C:/Users/nikak/npc'))
             assert alias.resolve() == OUT.resolve(), 'Short-path junction must resolve to this campaign'
             ep = {'eval': kind, 'target': arm['organism'], 'target_revision': publication['revision'],
-                  'base_revision': plan['base_model_revision'], 'pod_name': 'nika-nonmoral-plain-' + kind,
+                  'base_revision': plan['base_model_revision'], 'pod_name': plan.get('pod_prefix', 'nika-nonmoral-plain-') + kind,
                   'port': port, 'output_dir': str(alias / kind), 'max_hours': hours,
                   'hourly_ceiling_usd': ceiling, 'cloud': 'SECURE', 'boot_timeout_s': 2400, 'idle_timeout_s': 3600}
             pp = OUT / (kind + '_plan.json')

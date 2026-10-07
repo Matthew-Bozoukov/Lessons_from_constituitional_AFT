@@ -1,6 +1,16 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - September practical low-stakes corpus rebuilt on plain replay
+
+User requested the previously used late-September low-stakes corpus, explicitly excluding Jamie's October `da-low` corpus, with the latest plain nosynth replay, RunPod SFT and matched ODCV/MASK. Independent live provenance review identifies `2026-09-25-da-lowstakes-practical-15-mix@3bbe5945a1088a6113b5fef9b7353de04a9bb634`: exactly 852 training-visible synthetic conversations (716 original plus 136 selected extensions). The historical adapter's training metadata confirms that corrected pin. The full released synthetic corpus has 915 rows; its 63 previously unused rows remain excluded.
+
+Rebuilt with `2026-10-05-plain-mix@019e239ce51f5adbbcaff4f92f26e63fcd31c080`, keeping all 852 synthetic messages unchanged and selecting 1,659 unchanged replay rows by the established seed-0 source-proportional removal order. Result: 2,511 rows, 5,310,536 supervised tokens, 796,590 synthetic supervised tokens (15.00018077%), zero truncation, 157 standard global-batch-16 optimizer steps. No new synthesis or response rewriting. Reused the audited builder with config-driven historical row count and card fields; default nonmoral behavior remains intact.
+
+Prepared guarded seed-0 BF16 rank-64 token-mean/packing SFT on one H200, then concurrent 240-rollout ODCV (T=.7, local Docker concurrency 16) and full MASK (T=1, 16,384 response tokens, 5% generation-error threshold, Gemini 3 Flash judges). GPU admission bounds are training $9.60, ODCV $14.80 and MASK $9.60, total $34 under a $40 envelope; judges separately require $10 available. Every stage uses existing owners/watchdogs, exact revisions and immutable publication readback. Campaign admission additionally reserves $100 for the already-running base-Qwen SWE-bench campaign and $50 account reserve. At preparation the shared balance was $140.61, so no new GPU is admitted until a top-up or verified SWE-bench completion releases capacity. The user was informed; dataset preparation continues independently. Budget-gate tests cover the reservation boundary, missing judge funds, incomplete/unverified SWE publication, provider-owned/late GPUs, and unrelated jobs.
+
+Base-Qwen progress during this preparation: full v2 qualification passed at infrastructure commit `3234abcac2efa0d2b956f1b2e3881ef36c30a4ce`; all four H100 NVLs working, 9 valid rollouts and 16 active at 20:11 UTC. GPU budget remains frozen at $100. Its deployed source and services remain untouched.
+
 
 
 

@@ -58,7 +58,7 @@ def main():
     original, original_sha = load(cfg['original'])
     base, base_sha = load(cfg['base'])
     synthetic = [r for r in parent if r['source'] == cfg['parent']['source']]
-    assert len(synthetic) == cfg['parent']['rows'] == 623
+    assert len(synthetic) == cfg['parent']['rows']
     original_by_messages = {canonical(r['messages']): r for r in original}
     assert all(canonical(r['messages']) in original_by_messages for r in synthetic)
     assert len({canonical(r['messages']) for r in synthetic}) == len(synthetic)
@@ -133,13 +133,13 @@ def main():
     OmegaConf.save(OmegaConf.create(cfg), out / 'mixture_config.yaml')
     print(json.dumps({'name': name, 'stats': stats, 'audit': audit}), flush=True)
     if args.publish:
-        fields = {'title': name, 'experiment': 'Exact 623 original nonmoral conversations from the latest charted Sep25 token-15 arm, with Oct5 plain replay and approximately 15% supervised synthetic tokens. All synthetic messages unchanged; replay alone is downsampled.',
-                  'date_generated': date, 'constitution': 'none; historical craft preferences, no new ethical filtering',
+        fields = {'title': name, 'experiment': cfg.get('experiment', 'Exact 623 original nonmoral conversations from the latest charted Sep25 token-15 arm, with Oct5 plain replay and approximately 15% supervised synthetic tokens. All synthetic messages unchanged; replay alone is downsampled.'),
+                  'date_generated': date, 'constitution': cfg.get('constitution', 'none; historical craft preferences, no new ethical filtering'),
                   'source_repo': 'teaching_claude_why_replication@' + source, 'models': cfg['tokenizer'] + '@' + cfg['tokenizer_revision'],
                   'generation_config': cfg, 'schema': 'mixture.jsonl: messages, source, supervise; native reasoning_content',
                   'provenance': {'parent': cfg['parent'], 'original': cfg['original'], 'base': cfg['base'], 'selection': cfg['selection']}}
         front = {'configs': [{'config_name': 'default', 'data_files': [{'split': 'train', 'path': 'mixture.jsonl'}]}],
-                 'tags': training_data_tags('mixture', cfg['style'], 'none')}
+                 'tags': training_data_tags('mixture', cfg['style'], cfg.get('constitution', 'none'))}
         files = [out / n for n in ('mixture.jsonl', 'mixture_stats.json', 'run_meta.json', 'validation.json', 'token_mask_census.json', 'mixture_config.yaml')]
         push_files(files, hf_repo_id(name), fields, private=False, front_matter=front)
         info = hf_api().dataset_info(hf_repo_id(name))
