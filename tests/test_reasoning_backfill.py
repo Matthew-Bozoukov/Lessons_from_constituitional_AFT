@@ -10,7 +10,7 @@ from omegaconf import OmegaConf
 from src.data.mixture import build_mixture as bm
 from src.data.mixture import reasoning_backfill as rb
 from src.model_profile import ModelProfile
-from src.train.launch import check_trace_family
+from src.train.launch import trace_record
 
 
 class _Tok:
@@ -100,30 +100,16 @@ def test_the_card_names_the_trace_generator_beside_the_filter_judge():
     assert bm._card_fields(cfg, "x.yaml", "final", "files", None, None)["models"] == "base-blend reasoning traces: none"
 
 
-def test_train_refuses_another_familys_traces_unless_told_to():
-    qwen36 = ModelProfile.from_dict({"model": "Qwen/Qwen3.6-27B", "match": "qwen36"}, key="qwen36")
-    other = ModelProfile.from_dict({"model": "openai/gpt-oss-20b", "match": "gptoss20b"}, key="gptoss20b")
-    stats = {"reasoning_traces": {"model": "qwen/qwen3.6-27b", "family": "qwen36", "turns": 1135}}
-    assert check_trace_family(stats, qwen36)["family_mismatch_allowed"] is False
-    with pytest.raises(ValueError, match="on-policy for 'qwen36'.*being trained is 'gptoss20b'"):
-        check_trace_family(stats, other)
-    assert check_trace_family(stats, other, allow_mismatch=True)["family_mismatch_allowed"] is True
-    assert check_trace_family(None, other) is None and check_trace_family({"reasoning_traces": None}, other) is None
-    # a record without `family` (hand-written) is resolved through the registry
-    assert check_trace_family({"reasoning_traces": {"model": "Qwen/Qwen3.6-27B"}}, qwen36)["family_mismatch_allowed"] is False
-
-
-def test_published_traces_belong_to_no_family_and_pass_for_every_model():
-    # plain (2026-10-05) carries traces written by neither family we train; its block says so and is not a claim
-    # about the model being trained, so both families train on it without `allow_trace_family_mismatch`.
-    qwen36 = ModelProfile.from_dict({"model": "Qwen/Qwen3.6-27B", "match": "qwen36"}, key="qwen36")
-    other = ModelProfile.from_dict({"model": "openai/gpt-oss-20b", "match": "gptoss20b"}, key="gptoss20b")
-    stats = {"reasoning_traces": {"origin": "published", "model": "(per source) GLM-5; DeepSeek-V4-Pro; DeepSeek-R1",
-                                  "family": "published (GLM / DeepSeek), neither Qwen nor gpt-oss", "rows": 1832}}
-    for profile in (qwen36, other):
-        got = check_trace_family(stats, profile)
-        assert got["origin"] == "published" and "family_mismatch_allowed" not in got
-    assert rb.describe(stats["reasoning_traces"]).startswith("base-blend reasoning traces: published (per source)")
+def test_trace_record_is_stamped_verbatim_and_never_refuses():
+    # The block is provenance for training_meta.json, whatever family it names (2026-10-07: the
+    # family gate is gone; a base's suitability is decided where the arm pins its base_mixture).
+    onpolicy = {"reasoning_traces": {"model": "qwen/qwen3.6-27b", "family": "qwen36", "turns": 1135}}
+    published = {"reasoning_traces": {"origin": "published", "model": "(per source) GLM-5; DeepSeek-V4-Pro; DeepSeek-R1",
+                                      "family": "published (GLM / DeepSeek), neither Qwen nor gpt-oss", "rows": 1832}}
+    assert trace_record(onpolicy) == onpolicy["reasoning_traces"]
+    assert trace_record(published) == published["reasoning_traces"]
+    assert trace_record(None) is None and trace_record({"reasoning_traces": None}) is None
+    assert rb.describe(published["reasoning_traces"]).startswith("base-blend reasoning traces: published (per source)")
 
 
 def test_the_base_blend_config_declares_its_generator_and_arm_configs_do_not():

@@ -28,10 +28,13 @@ max_seq_len: 8192
 
 base: "configs/data/mixture/plain.yaml"
 base_mixture:
-  # The `plain` base as da.yaml pins it (1,832 rows / 5,000,005 supervised tokens, published traces).
+  # The `plain` base (1,832 rows / 5,000,005 supervised tokens, published traces). da.yaml pins
+  # 019e239c; this is the same rows (identical mixture.jsonl) at the later commit whose
+  # mixture_stats.json also says `reasoning_traces.origin: published` -- a record the trainer
+  # stamps and no longer gates on (src/train/launch.py trace_record, 2026-10-07).
   repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
   file: mixture.jsonl
-  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+  revision: "c118c4b0a4a66eec4020edf2f6964b8a2bcf955b"
 
 synthetic_pct: 15
 # A share of SUPERVISED TOKENS (`plan_swap`, src/data/mixture/build_mixture.py): base rows leave

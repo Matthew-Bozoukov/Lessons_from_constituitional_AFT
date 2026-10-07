@@ -1140,11 +1140,16 @@ nothing said so: nosynth.yaml declared `reasoning: none` on every source and the
 sources, fraction, max_tokens}` (src/data/mixture/reasoning_backfill.py), the built mixture
 records `reasoning_traces` (model, family, counts) in mixture_stats.json and names the
 generator in its card, an arm mixture inherits the block from the base it pins (the
-pre-record base is read through its enrichment_report.json), and `uv run train` refuses a
-mixture whose trace family is not the model being trained unless
-`allow_trace_family_mismatch=true`. **A new base model needs its own base blend**: change
-`reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
-judge), and point the arm configs' `base_mixture:` at the new repo.
+pre-record base is read through its enrichment_report.json), and `uv run train` stamps the
+block into training_meta.json. **Until 2026-10-07 the trainer also refused a mixture whose
+trace family was not the model being trained** (`allow_trace_family_mismatch=true` to
+override). Removed that day at Jamie's request: the plain base's record was edited on the Hub
+to add `origin: published`, an arm pinned to the earlier revision inherited the block without
+it, and a 2xH200 run for the base's own model died at start-up on a bookkeeping field. Which
+base suits a model is decided when an arm pins `base_mixture:`; the trainer records only.
+**A new base model still needs its own base blend**: change `reasoning_backfill.model` and
+`tokenizer` in nosynth.yaml, rebuild (~$10 of generation + judge), and point the arm configs'
+`base_mixture:` at the new repo.
 
 ## Killarney (Alliance SLURM): a non-login shell silently builds the wrong venv (2026-09-03)
 

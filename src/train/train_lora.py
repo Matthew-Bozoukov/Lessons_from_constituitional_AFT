@@ -33,7 +33,7 @@ from src.train.dynamic_batching import (  # noqa: E402
 )
 from src.train.launch import (  # noqa: E402
     check_retired_keys,
-    check_trace_family,
+    trace_record,
     push_adapter,
     recipe_name,
     require_launch_args,
@@ -373,11 +373,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         print(f">>> dataset: {dataset_ref['repo']}@{dataset_ref['revision'][:12]} "
               f"({dataset_ref['file']})")
     ds = load_dataset("json", data_files=data_path, split="train")
-    # Whose reasoning traces the replay blend carries (mixture_stats.json beside the rows):
-    # a base blend is on-policy for ONE family, and this refuses to train another on it.
-    reasoning_traces = check_trace_family(
-        _mixture_stats(dataset_ref), profile,
-        allow_mismatch=bool(cfg.get("allow_trace_family_mismatch", False)))
+    # Whose reasoning traces the replay blend carries (mixture_stats.json beside the rows),
+    # stamped into training_meta for the record. Not a gate: which base suits a model is
+    # decided where the arm pins its `base_mixture:` (src/train/launch.py trace_record).
+    reasoning_traces = trace_record(_mixture_stats(dataset_ref))
     if is_main:
         print(f">>> reasoning traces: {reasoning_traces or 'no record (no claim)'}")
 
