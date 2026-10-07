@@ -74,8 +74,10 @@ def main() -> None:
     src = [json.loads(l) for l in open(hf_download(args.repo, "dataset.jsonl", repo_type="dataset",
                                                     revision=args.revision), encoding="utf-8")]
     readme = Path(hf_download(args.repo, "README.md", repo_type="dataset", revision=args.revision)).read_text()
-    m = re.search(r"^constitution:\s*(.+)$", readme, re.M)
+    # the card writes the field as a table row (| `constitution` | path |); the tag line only carries the folder name
+    m = re.search(r"^\|\s*`?constitution`?\s*\|\s*(.+?)\s*\|", readme, re.M) or re.search(r"^constitution:\s*(.+)$", readme, re.M)
     constitution = m.group(1).strip().strip("'\"") if m else "none"
+    assert constitution != "none", f"{args.repo}: could not read the constitution from the card; refusing to publish a card that says none"
 
     out_rows, notes = [], []
     for r in src:
