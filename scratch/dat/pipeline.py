@@ -303,7 +303,20 @@ def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
     inp = stage_inputs("explore", row)
     steps: list[dict] = []
     for _ in range(MAX_LOOKS):
-        out = calls.json("explore", P.system_of("explore"), P.explore_prompt(inp["system"], inp["user"], steps), P.schema_of("explore"))
+        prompt = P.explore_prompt(inp["system"], inp["user"], steps)
+        try:
+            out = calls.json("explore", P.system_of("explore"), prompt, P.schema_of("explore"))
+        except ValueError:
+            # Sonnet sometimes answers with the bare thought sentence and no JSON (t8, 2026-10-07 smoke: three
+            # times running). One more ask, naming the fault; if that fails too the agent's looks end here and
+            # coverage supplies what the facts need, rather than the row dying at this stage.
+            try:
+                out = calls.json("explore", P.system_of("explore"),
+                                 prompt + "\n\nYour previous reply was a sentence of thought with no JSON. Reply with ONLY the JSON "
+                                          "object: that thought, the command it leads to (or done=true), nothing else.",
+                                 P.schema_of("explore"))
+            except ValueError:
+                break
         if out.get("done") or not out.get("command"):
             break
         cmd = out["command"].strip()
