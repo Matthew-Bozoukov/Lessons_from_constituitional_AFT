@@ -90,13 +90,25 @@ def scheduling_plan(cfg, rows):
             'profile': profile, 'instance_ids': order}
 
 
+
+def target_mode(spec, requested_mode):
+    """Keep stamped LoRAs strict; explicitly match the bare Qwen base to think mode."""
+    if spec.adapter:
+        assert spec.lora_rank == 64, 'Fleet requires rank-64 LoRA'
+        return spec.mode
+    assert spec.hf_path == spec.base_model == 'Qwen/Qwen3.6-27B' and spec.lora_rank is None, 'Unqualified base target'
+    assert spec.revision == spec.base_revision and spec.revision, 'Base target must be revision-pinned'
+    assert requested_mode == 'think', 'Bare Qwen must explicitly match the think protocol'
+    return requested_mode
+
+
 def prepare_target(cfg, args):
     assert args.target and args.write_config and args.root, 'prepare requires --target, --root, --write-config'
     assert not Path(args.write_config).exists(), 'Refusing to overwrite an existing configuration'
     revision = hf_api().model_info(args.target, revision=args.target_revision).sha
     target = resolve_target(args.target, revision=revision)
     cfg.target, cfg.target_revision = args.target, revision
-    cfg.base, cfg.base_revision, cfg.mode = target.base_model, target.base_revision, target.mode
+    cfg.base, cfg.base_revision, cfg.mode = target.base_model, target.base_revision, target_mode(target, cfg.mode)
     cfg.root, cfg.calibrate = str(Path(args.root).resolve()), False
     validate_recipe(cfg, read(cfg.recipe_path))
     assert not (Path(cfg.root) / 'metadata/manifest.json').exists(), 'Choose a fresh run directory'
@@ -195,8 +207,8 @@ def preflight(cfg):
     assert Path(cfg.ssh_key).is_file() and Path(cfg.ssh_key + '.pub').is_file()
     assert os.environ.get('USER_PREFIX') and os.environ.get('HF_ORG')
     spec = resolve_target(cfg.target, revision=cfg.target_revision)
-    assert spec.base_model == cfg.base and spec.base_revision == cfg.base_revision and spec.mode == cfg.mode
-    assert spec.adapter and spec.lora_rank == 64
+    assert spec.base_model == cfg.base and spec.base_revision == cfg.base_revision
+    assert target_mode(spec, cfg.mode) == cfg.mode
     runpod.validate_scheduled_provision()
     quote = runpod.gpu_price(cfg.gpu)
     assert quote and quote <= cfg.max_hourly_usd, 'GPU quote missing or exceeds configured hourly ceiling'

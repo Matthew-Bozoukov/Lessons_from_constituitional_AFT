@@ -29,6 +29,85 @@ def hold_slot(path, ready):
         time.sleep(30)
 
 
+class BaseTargetTests(unittest.TestCase):
+    def spec(self, **changes):
+        values = dict(adapter=False, hf_path='Qwen/Qwen3.6-27B', base_model='Qwen/Qwen3.6-27B',
+                      revision='a'*40, base_revision='a'*40, mode='default', lora_rank=None)
+        values.update(changes)
+        return SimpleNamespace(**values)
+
+    def test_base_explicit_think(self):
+        self.assertEqual(fleet.target_mode(self.spec(), 'think'), 'think')
+
+    def test_base_rejects_unpinned_or_other_model_or_default_mode(self):
+        for changes, mode in [({'revision':None},'think'), ({'revision':'b'*40},'think'),
+                              ({'hf_path':'Other/model'},'think'), ({},'default')]:
+            with self.subTest(changes=changes, mode=mode), self.assertRaises(AssertionError):
+                fleet.target_mode(self.spec(**changes),mode)
+
+    def test_adapter_mode_and_rank_remain_strict(self):
+        self.assertEqual(fleet.target_mode(self.spec(adapter=True,lora_rank=64,mode='think'),'default'),'think')
+        with self.assertRaises(AssertionError):
+            fleet.target_mode(self.spec(adapter=True,lora_rank=32,mode='think'),'think')
+
+    def test_prepare_base_preserves_explicit_think_and_exact_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+            cfg.recipe_path = str(root/'recipe.json')
+            atomic(cfg.recipe_path, {})
+            spec = self.spec()
+            args = SimpleNamespace(target=spec.hf_path, target_revision=spec.revision,
+                                   root=str(root/'campaign'), write_config=str(root/'launch.yaml'))
+            api = Mock()
+            api.model_info.return_value = SimpleNamespace(sha=spec.revision)
+            def validate(prepared, recipe):
+                self.assertEqual(prepared.mode, 'think')
+                self.assertEqual(prepared.target_revision, spec.revision)
+                self.assertEqual(prepared.base_revision, spec.revision)
+            with patch.object(fleet, 'hf_api', return_value=api), \
+                    patch.object(fleet, 'resolve_target', return_value=spec) as resolve, \
+                    patch.object(fleet, 'validate_recipe', side_effect=validate) as validation:
+                fleet.prepare_target(cfg, args)
+            resolve.assert_called_once_with(spec.hf_path, revision=spec.revision)
+            validation.assert_called_once()
+            saved = OmegaConf.load(args.write_config)
+            self.assertEqual((saved.target, saved.base), (spec.hf_path, spec.hf_path))
+            self.assertEqual((saved.target_revision, saved.base_revision), (spec.revision, spec.revision))
+            self.assertEqual(saved.mode, 'think')
+
+    def test_base_worker_passes_mode_and_revision_to_standard_eval(self):
+        from src.eval.capabilities.swebench_mini import fleet_worker as worker
+        from src.eval import run_eval
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cfg = OmegaConf.load('configs/eval/swebench_mini/lite.yaml')
+            cfg.root = str(root)
+            cfg.target = cfg.base
+            cfg.target_revision = cfg.base_revision
+            cfg.replicas = 4
+            cfg.max_replicas_per_arm = 4
+            config_path = root/'launch.yaml'
+            OmegaConf.save(cfg, config_path)
+            allowed = root/'allowed.json'
+            atomic(allowed, ['one-task'])
+            argv = ['worker', '--config', str(config_path), '--server', 'root@synthetic:22',
+                    '--replica', '2', '--allowed', str(allowed), '--expires', '10000000000']
+            with patch.object(sys, 'argv', argv), patch.object(run_eval, 'main') as evaluate:
+                worker.main()
+            command = evaluate.call_args.args[0]
+            self.assertEqual(command[command.index('--target')+1], cfg.target)
+            self.assertEqual(evaluate.call_args.kwargs['runner'], worker.runner)
+            self.assertIn('--no-push', command)
+            serving_config = OmegaConf.load(command[command.index('--config')+1])
+            self.assertEqual(serving_config.mode, 'think')
+            self.assertEqual(dict(serving_config.target_revisions), {cfg.target: cfg.base_revision})
+            self.assertEqual(serving_config.serving, cfg.serving)
+            self.assertTrue(serving_config.serving.preserve_thinking)
+            self.assertEqual(serving_config.revision, cfg.dataset_revision)
+            self.assertEqual(serving_config.allowed, ['one-task'])
+
+
 class AdmissionTests(unittest.TestCase):
     def test_default_backend_does_not_require_inspect(self):
         with patch.object(fleet.subprocess,'run') as run:

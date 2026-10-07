@@ -265,7 +265,7 @@ def main():
     targets = worker_targets(cfg, args.primary_arm)
     output = Path(cfg.root) / 'metadata' / 'replicas' / str(args.replica)
     output.mkdir(parents=True, exist_ok=True)
-    worker_config = {'target_revisions': {c.target: c.target_revision for c in arms if c.target in targets}, 'serving': OmegaConf.to_container(cfg.serving),
+    worker_config = {'mode': cfg.mode, 'target_revisions': {c.target: c.target_revision for c in arms if c.target in targets}, 'serving': OmegaConf.to_container(cfg.serving),
                      'dataset': cfg.dataset, 'revision': cfg.dataset_revision,
                      'frozen_dataset': str(Path(cfg.root) / 'metadata/swebench_lite_test.json'),
                      'campaign_config': str(Path(args.config).resolve()), 'replica': args.replica,

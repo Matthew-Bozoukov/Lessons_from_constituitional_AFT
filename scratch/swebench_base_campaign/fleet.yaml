@@ -1,0 +1,111 @@
+# ABOUTME: Base Qwen at the same pinned weights and lite-v5 protocol as the October four-arm campaign.
+# ABOUTME: Four GPUs maximum, four conversations per GPU; no LoRA and explicit think mode.
+target: Qwen/Qwen3.6-27B
+target_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+base: Qwen/Qwen3.6-27B
+base_revision: 6a9e13bd6fc8f0983b9b99948120bc37f49c13e9
+dataset: princeton-nlp/SWE-bench_Lite
+dataset_revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
+dataset_sha256: 6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222
+task_scheduling:
+  repo: dougalldeepmind/2026-09-24-swebench-lite-infrastructure
+  revision: 515b606b1c5c25e42ed554e4c04b747f8b518549
+  path: metadata/runtime-priority-v3.json
+  sha256: ab477e3c2575c62f9cb8ba0d1bb2ad071901e907644fa7b5701a2ba2249d6a27
+mode: think
+readiness: /srv/lasr/runs/cpu-readiness
+receipt: /srv/lasr/receipt.json
+root: /srv/lasr/runs/unprepared-lite-target
+credentials: /srv/lasr/credentials.env
+ssh_key: /root/.ssh/id_ed25519
+gpu: NVIDIA H100 NVL
+replicas: 4
+preferred_gpus: []
+target_generation_seconds: 3600
+workers_per_replica: 4
+allocation_retry_seconds: 30
+allocation_retry_max_seconds: 120
+allocation_reconcile_seconds: 60
+allocation_min_remaining_seconds: 8280
+allocation_fallback_after_seconds: 600
+allocation_fallback_after_attempts: 5
+fallback_gpus:
+- NVIDIA H200
+- NVIDIA RTX PRO 6000 Blackwell Server Edition
+cuda_versions: 13.0,13.1,13.2
+cpu_worker_limit: 80
+cpu_memory_reserve_gib: 30
+min_available_memory_gib: 16
+gpu_price_margin: 1.05
+calibrate: false
+recipe_path: /srv/lasr/recipes/qwen36-base-lite-v5-four.json
+protocol_version: lite-v5
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  repetition_penalty: 1.0
+pilot_tasks_per_repo: 3
+max_response_tokens: 16384
+max_task_tokens: 262144
+step_limit: 500
+token_admission:
+  cache_fraction: 0.9
+  fairness_seconds: 30
+  large_cache_tokens: 800000
+  large_prompt_tokens: 65536
+model_request_timeout_seconds: 7200
+model_request_attempts: 2
+agent_cpus: 2
+agent_memory: 4g
+agent_pids: 512
+agent_environment:
+  BASH_ENV: /root/.bashrc
+port_base: 8100
+disk_gb: 200
+recommended_budget_usd: 180
+max_hourly_usd: 5.5
+calibration_budget_usd: 20
+calibration_seconds: 3600
+rental_seconds: 86400
+boot_seconds: 900
+task_seconds: null
+task_admission_seconds: 7200
+cleanup_reserve_seconds: 180
+cpu_finish_reserve_seconds: 1800
+upload_every_seconds: 120
+upload_stale_seconds: 600
+upload_timeout_seconds: 180
+max_infrastructure_attempts: 3
+max_infrastructure_failures: 6
+min_free_gib: 50
+grading_workers: 12
+grading_timeout_seconds: 1800
+grading_priority:
+- sympy__sympy-11870
+pilot_repos:
+- django/django
+- sympy/sympy
+- scikit-learn/scikit-learn
+- astropy/astropy
+- matplotlib/matplotlib
+- psf/requests
+serving:
+  preserve_thinking: true
+  context_window: 262144
+  concurrency: 8
+  needs_tool_calls: true
+  reuses_long_prefixes: true
+cpu_qualification_path: /srv/lasr/recipes/cpu-capacity-v2.json
+tool_concurrency: 32
+tool_queue_timeout_seconds: 600
+replica_health_grace_seconds: 180
+max_recovery_cycles: 4
+recovery_backoff_seconds: 30
+grading_attempts: 3
+publication_attempts: 60
+publication_backoff_seconds: 60
+max_replicas_per_arm: 4
