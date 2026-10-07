@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - Plain Qwen SWE-bench complete: control 178, DA5 172, DA15 182, DA25 180 out of 300
+
+Hypothesis/method. Complete the authorized plain-blend dose comparison using the pinned `lite-v5` protocol and adapters in `scratch/swebench_plain_campaign/manifest.json`. Two sequential pairs used up to six independent H200 workers per arm, four conversations per worker, longest-first scheduling, one shared 32-command CPU gate, and 12 official graders. Runtime remained `b7fdbd7c0099a8469c03eba96054a825d14a1f61`; no valid model outcomes were rerolled.
+
+| Arm | Resolved / 300 | Rate | Immutable verified results |
+| --- | ---: | ---: | --- |
+| control | 178 | 59.33% | [cab8014a](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-swebench-qwen36-0-plain-lite-v5/blob/cab8014a3c7d3b978ce626d734ad98a4b5090e6b/results/results.json) |
+| da5 | 172 | 57.33% | [0ec29b14](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-swebench-qwen36-0-da-5-lite-v5/blob/0ec29b142072f154974ec97250679021a757f232/results/results.json) |
+| da15 | 182 | 60.67% | [554812f7](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-swebench-qwen36-0-da-15-lite-v5/blob/554812f7da29e7b3a63594bc00faa918c681462a/results/results.json) |
+| da25 | 180 | 60.00% | [ad46fda1](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-swebench-qwen36-0-da-25-lite-v5/blob/ad46fda1ff2380346172d38a46d8a2006134534b/results/results.json) |
+
+Validation. Every arm has 300 valid rollouts, 300 graded outcomes, no infrastructure-invalid or ungraded tasks, immutable result/rollout hash verification, and independently matched result-file SHA256 readback. Verified file counts are 83,400 (control), 84,224 (DA5), 92,233 (DA15), and 82,787 (DA25). The queue marked both waves complete; coordinator and queue services exited successfully. A fresh provider inventory after the final immutable reads confirmed zero owned GPUs in either wave. Exact result hashes, adapter revisions, coverage and accounting snapshots are in `scratch/swebench_plain_campaign/final_results.json`.
+
+Operations/cost. Wave one rented 20 H200 pods including eight failed startups; wave two rented 14 including two failed startups. Recovery stayed within the original ledgers; healthy workers continued independently. H100 fallback was unused. Some replacement lanes waited for existing reservations to be released. Wave two froze a lower $288 cap before submission (live balance $338.974 minus $50 reserve), while wave one retained $360. Conservative GPU ledger totals are $130.45 + $111.15 = **$241.60** across all four arms. Provider billing snapshots total $184.00 but omit one pod per wave and may lag; neither those snapshots nor the conservative ledger are a final invoice. CPU, storage and transfer are separate.
+
+Interpretation/closeout. Scores include two requests tasks that pass without a source fix; local HTTPBin remains the declared environment deviation. Empty/invalid patches remain model failures in the full 300 denominator. These single-seed differences do not establish a reliable dose trend. Persistent Vast CPU 54552761 remains running at the $0.9185185/hour quote, with native Docker, its expiry watchdog, and all 300 task images verified intact. The campaign heartbeat is removed after verified completion. Further comparisons should retain these exact pins and use paired task outcomes before claiming a capability effect.
+
 ## 2026-10-07 - Plain control and DA15 SWE-bench wave launched on twelve H200s
 
 Fresh v3 qualification passed against the exact committed LF configuration. Proof is `dougalldeepmind/2026-10-07-swebench-lite-infrastructure@51473d24495ff6a757c0fcb32ae007cf8180b4d6`: 243 regression tests, one existing skip, 16 subtests; transport/protocol and pinned-template checks; all 300 image shell probes; five CPU load phases through 80 conversations / 32 command slots with zero command errors; real-agent synthetic official grading and immutable verification of 100 rollout/result files.

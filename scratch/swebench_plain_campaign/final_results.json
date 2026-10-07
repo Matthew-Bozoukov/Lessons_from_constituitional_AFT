@@ -1,0 +1,99 @@
+{
+  "status": "complete",
+  "verified_at": "2026-10-07T07:40:46.323662+00:00",
+  "runtime_source": "b7fdbd7c0099a8469c03eba96054a825d14a1f61",
+  "protocol": "lite-v5",
+  "arms": {
+    "control": {
+      "target": {
+        "repo": "dougalldeepmind/2026-10-05-qwen36-0-plain",
+        "revision": "1565d4f3356aa1b3bea1c503700164faa240ef3a"
+      },
+      "results_repo": "dougalldeepmind/2026-10-07-swebench-qwen36-0-plain-lite-v5",
+      "verified_revision": "cab8014a3c7d3b978ce626d734ad98a4b5090e6b",
+      "results_sha256": "24aa7d34475c10becfae5ec2ef6b7009be5b8fff3b1ceccbb6a509f5ed07730a",
+      "verified_files": 83400,
+      "valid": 300,
+      "graded": 300,
+      "resolved": 178,
+      "pass_at_1": 0.5933333333333334
+    },
+    "da5": {
+      "target": {
+        "repo": "dougalldeepmind/2026-10-06-qwen36-0-da-5",
+        "revision": "89ff78d96af22d7b5a195a09db6a09ef54997b9e"
+      },
+      "results_repo": "dougalldeepmind/2026-10-07-swebench-qwen36-0-da-5-lite-v5",
+      "verified_revision": "0ec29b142072f154974ec97250679021a757f232",
+      "results_sha256": "b08f61fa524ad0e6dabbd9ba4c4b397066c4878cd168338b4f5081391a8d93af",
+      "verified_files": 84224,
+      "valid": 300,
+      "graded": 300,
+      "resolved": 172,
+      "pass_at_1": 0.5733333333333334
+    },
+    "da15": {
+      "target": {
+        "repo": "dougalldeepmind/2026-10-05-qwen36-0-da-15",
+        "revision": "ce773a6b87db66bd569dd13071ec5e27201462f1"
+      },
+      "results_repo": "dougalldeepmind/2026-10-07-swebench-qwen36-0-da-15-lite-v5",
+      "verified_revision": "554812f7da29e7b3a63594bc00faa918c681462a",
+      "results_sha256": "03bcf9880d2738808677f4895d652090ac17a8c4cee1877858c22f0eebc99146",
+      "verified_files": 92233,
+      "valid": 300,
+      "graded": 300,
+      "resolved": 182,
+      "pass_at_1": 0.6066666666666667
+    },
+    "da25": {
+      "target": {
+        "repo": "dougalldeepmind/2026-10-06-qwen36-0-da-25",
+        "revision": "8af40aea97c45e6909aa2cbb2615ca59f9a31818"
+      },
+      "results_repo": "dougalldeepmind/2026-10-07-swebench-qwen36-0-da-25-lite-v5",
+      "verified_revision": "ad46fda1ff2380346172d38a46d8a2006134534b",
+      "results_sha256": "f6085361428d1c9ebf95d91ffb85395944e0ffc602ce64723855e60686ef282b",
+      "verified_files": 82787,
+      "valid": 300,
+      "graded": 300,
+      "resolved": 180,
+      "pass_at_1": 0.6
+    }
+  },
+  "waves": [
+    {
+      "wave": 1,
+      "gpu_cap_usd": 360,
+      "gpu_conservative_ledger_usd": 130.45036442531793,
+      "provider_gpu_recorded_usd": 106.33817386534065,
+      "provider_missing_pod_ids": [
+        "gn2a0pjyf9o37c"
+      ],
+      "owned_gpus_remaining": []
+    },
+    {
+      "wave": 2,
+      "gpu_cap_usd": 288,
+      "gpu_conservative_ledger_usd": 111.15073386676043,
+      "provider_gpu_recorded_usd": 77.66469497652724,
+      "provider_missing_pod_ids": [
+        "4biv793jxw9xj4"
+      ],
+      "owned_gpus_remaining": []
+    }
+  ],
+  "limitations": [
+    "Two requests tasks pass without a source fix and remain in every 300-task denominator.",
+    "Local HTTPBin is a declared deviation from public-service grading.",
+    "Single seed per model; score differences alone do not establish a dose effect."
+  ],
+  "gpu_conservative_ledger_total_usd": 241.60109829207835,
+  "billing_note": "Provider records are incomplete and may lag; conservative ledger is not an invoice. CPU, storage and transfer are separate.",
+  "persistent_cpu": {
+    "instance_id": 54552761,
+    "hourly_quote_usd": 0.9185185185185185,
+    "cached_task_images": 300,
+    "left_running": true
+  }
+}
