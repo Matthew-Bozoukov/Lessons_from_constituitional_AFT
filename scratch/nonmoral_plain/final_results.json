@@ -1,0 +1,186 @@
+{
+  "verified": true,
+  "zero_owned_gpus": true,
+  "verified_at": "2026-10-07T12:58:25.027514+00:00",
+  "costs": {
+    "train": {
+      "created_epoch": 1791368104.4460003,
+      "end_upper_bound_epoch": 1791373942.307463,
+      "hourly_usd_with_storage_allowance": 4.6899999999999995,
+      "conservative_usd": 7.605436183211538
+    },
+    "odcv": {
+      "created_epoch": 1791373957.2174208,
+      "end_upper_bound_epoch": 1791377834.9090486,
+      "hourly_usd_with_storage_allowance": 3.5900000000000003,
+      "conservative_usd": 3.866920262108247
+    },
+    "mask": {
+      "created_epoch": 1791373946.9462032,
+      "end_upper_bound_epoch": 1791376631.218169,
+      "hourly_usd_with_storage_allowance": 4.6899999999999995,
+      "conservative_usd": 3.4970098664806946
+    }
+  },
+  "gpu_cost_conservative_usd": 14.96936631180048,
+  "cost_note": "Upper-bound lifetime estimate with $0.10/hr storage allowance; not a provider invoice. Judges separate.",
+  "audit_repair_commit": "8ccfe82d",
+  "training": {
+    "repo": "dougalldeepmind/2026-10-07-qwen36-0-nonmoral-original-15",
+    "revision": "764ab47f4c935ea5c6af8e872f774b3c81b576d0",
+    "steps": 143,
+    "rows": 2283,
+    "dataset": {
+      "repo": "dougalldeepmind/2026-10-07-nonmoral-original-15-mix",
+      "file": "mixture.jsonl",
+      "revision": "e609d10ab9e4b6cdb4214a245ce7e9348a8fffb4"
+    },
+    "base_model_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+    "training_commit": "6c1cbb9003fa9d03df776021aaeb4587933368a1",
+    "final_metrics": {
+      "train_runtime": 2781.8157,
+      "train_samples_per_second": 0.821,
+      "train_steps_per_second": 0.051,
+      "total_flos": 0.0,
+      "train_loss": 0.6641998057598835,
+      "epoch": 1.0,
+      "step": 143
+    }
+  },
+  "eval_receipts": [
+    {
+      "verified": true,
+      "target": "dougalldeepmind/2026-10-07-qwen36-0-nonmoral-original-15",
+      "target_revision": "764ab47f4c935ea5c6af8e872f774b3c81b576d0",
+      "rollouts": 240,
+      "passes": 3,
+      "misconduct_judged": 240,
+      "progress_judged": 240,
+      "misconduct": {
+        "n_scenarios": 40,
+        "n_cells": 80,
+        "n_rollouts": 240,
+        "n_checkpoints": 1,
+        "mr_pct": 14.6,
+        "mean_severity": 0.52,
+        "mr_ci95": [
+          7.8,
+          25.7
+        ],
+        "mr_ci95_lo": 7.8,
+        "mr_ci95_hi": 25.7,
+        "severity_ci95": [
+          0.2,
+          0.84
+        ],
+        "severity_ci95_lo": 0.2,
+        "severity_ci95_hi": 0.84,
+        "ci_unit": "scenario",
+        "ci_method": "spread of per-item rates over J (T_B), t_{J-1}",
+        "dropped_scenarios": []
+      },
+      "progress": {
+        "n_scenarios": 40,
+        "n_cells": 80,
+        "n_rollouts": 240,
+        "n_checkpoints": 1,
+        "tp_rate_pct": 100.0,
+        "tp_mean": 4.99,
+        "tp_rate_ci95": [
+          91.2,
+          100.0
+        ],
+        "tp_rate_ci95_lo": 91.2,
+        "tp_rate_ci95_hi": 100.0,
+        "tp_mean_ci95": [
+          4.97,
+          5.01
+        ],
+        "tp_mean_ci95_lo": 4.97,
+        "tp_mean_ci95_hi": 5.01,
+        "ci_unit": "scenario",
+        "ci_method": "spread of per-item rates over J (T_B), t_{J-1}",
+        "dropped_scenarios": []
+      },
+      "submission": {
+        "overall": {
+          "n_scenarios": 80,
+          "n_rollouts": 240,
+          "submitted_pct": 99.2
+        },
+        "mandated": {
+          "n_scenarios": 40,
+          "n_rollouts": 120,
+          "submitted_pct": 98.3
+        },
+        "incentivized": {
+          "n_scenarios": 40,
+          "n_rollouts": 120,
+          "submitted_pct": 100.0
+        }
+      },
+      "eval": "odcv",
+      "base_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+      "git_sha": "6c1cbb9003fa9d03df776021aaeb4587933368a1",
+      "reference_runs": [
+        [
+          "dougalldeepmind/2026-10-06-odcv-qwen36-0-plain",
+          "1c1ede57af32fa09ceff055818c49adad967997e"
+        ],
+        [
+          "dougalldeepmind/2026-10-06-odcv-qwen36-0-da-15",
+          "37aa070a15cd51d1455c1acc181c4860f6563af4"
+        ]
+      ],
+      "audited_utc": "2026-10-07T12:58:21.643532+00:00",
+      "publication": {
+        "repo": "dougalldeepmind/2026-10-07-odcv-qwen36-0-nonmoral-original-15",
+        "revision": "448ef5d4e951b1cfecbeeb97a2e803f3760a5808",
+        "verified_files": 739,
+        "bytes": 18536763
+      }
+    },
+    {
+      "verified": true,
+      "rows": 1000,
+      "passes": 1,
+      "honesty": 73.1,
+      "generation_errors": {
+        "generations": 4438,
+        "errors": 5
+      },
+      "actual_generation_error_rate": 0.0011266336187471834,
+      "allowed_generation_error_rate": 0.05,
+      "empty_content": {
+        "total": 0,
+        "by_type": {}
+      },
+      "empty_content_rate": 0.0,
+      "empty_content_policy": "evasion",
+      "resumed_from": null,
+      "regenerated_archetypes": [],
+      "eval": "mask",
+      "target": "dougalldeepmind/2026-10-07-qwen36-0-nonmoral-original-15",
+      "target_revision": "764ab47f4c935ea5c6af8e872f774b3c81b576d0",
+      "base_revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+      "git_sha": "6c1cbb9003fa9d03df776021aaeb4587933368a1",
+      "reference_runs": [
+        [
+          "dougalldeepmind/2026-10-05-mask-qwen36-0-plain",
+          "b242ff9e64e39ce69e73031f25a84e40923a8c58"
+        ],
+        [
+          "dougalldeepmind/2026-10-05-mask-qwen36-0-da-15",
+          "945451667d4b4ecdb9172af6186b2cfcdace67f7"
+        ]
+      ],
+      "audited_utc": "2026-10-07T12:58:24.173347+00:00",
+      "publication": {
+        "repo": "dougalldeepmind/2026-10-07-mask-qwen36-0-nonmoral-original-15",
+        "revision": "ef84939593aa8341220174febe441071b894a126",
+        "verified_files": 29,
+        "bytes": 111030915
+      }
+    }
+  ]
+}

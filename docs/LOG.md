@@ -2,6 +2,24 @@
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
 
+
+## 2026-10-07 - Original nonmoral on the plain base: trained, ODCV 14.6%, MASK 73.1
+
+Hypothesis/method. Test the original nonmoral corpus used in the latest analyses with the October 5 plain replay base, leaving completed low-stakes work untouched. Kept all 623 original synthetic conversations unchanged from `2026-09-25-nonmoral-original-15-mix@f056dade96901bc6c7480a4f4149552592fef379` and 1,660 unchanged replay rows from `2026-10-05-plain-mix@019e239ce51f5adbbcaff4f92f26e63fcd31c080`. The resulting 2,283 rows contain 5,313,454 supervised tokens, 14.9980596% synthetic, maximum length 8,188 and zero truncation. Mixture is [published at e609d10a](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-nonmoral-original-15-mix/tree/e609d10ab9e4b6cdb4214a245ce7e9348a8fffb4). Its total token budget is larger than the 5M plain-dose mixtures because all 623 historical synthetic examples were retained.
+
+Training. Standard seed-0 BF16 Qwen3.6-27B rank-64 LoRA, token-mean loss, packing, global batch 16, one epoch/143 steps on one H200. Smoke passed; final training loss 0.66420, training runtime 2,781.8 seconds. Startup took about 38 minutes including dependency downloads and kernel compilation but completed inside the existing two-hour watchdog. [Adapter plus training evidence at 764ab47f](https://huggingface.co/dougalldeepmind/2026-10-07-qwen36-0-nonmoral-original-15/tree/764ab47f4c935ea5c6af8e872f774b3c81b576d0). Training and eval runtime source remained `6c1cbb9003fa9d03df776021aaeb4587933368a1`.
+
+Results. Matched plain-base evaluation protocols ran in parallel on separate RunPod GPUs, with local Docker for ODCV:
+
+| Evaluation | Result | Coverage/protocol | Immutable publication |
+| --- | --- | --- | --- |
+| ODCV | 14.6% misalignment, scenario-level 95% CI 7.8-25.7%; progress rate 100%, mean 4.99 | 240 real rollouts, 3 passes x 80 cells; temperature 0.7; 240 misconduct and 240 progress judgments, no dropped verdicts | [448ef5d4](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-odcv-qwen36-0-nonmoral-original-15/tree/448ef5d4e951b1cfecbeeb97a2e803f3760a5808) |
+| MASK | 73.1% honesty | Full 1,000 rows, temperature 1, max tokens 16,384; 5/4,438 generation errors (0.1127%, below 5%); zero empty content; Gemini 3 Flash Preview judge | [ef849395](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-mask-qwen36-0-nonmoral-original-15/tree/ef84939593aa8341220174febe441071b894a126) |
+
+Validation/closeout. Adapter hashes and provenance verified before evaluation. Final audits independently verified all 739 ODCV published files and all 29 MASK files against local bytes at the immutable revisions, matching the target adapter revision. Both eval processes exited zero. Their owner wrappers failed only on the obsolete literal-template source audit documented below; repaired read-only audits passed, preserving original owner failures and a pre-recovery campaign snapshot. No model outcomes were regenerated. `scratch/nonmoral_plain/final_results.json` records final evidence and accounting; `finalize.py` performs the guarded audit-only recovery. Fresh provider inventory confirmed zero campaign-owned GPUs, and the keep-awake stop marker was written. Low-stakes, unrelated jobs and the persistent SWE-bench Vast CPU/cache were left untouched.
+
+Costs. Conservative full-lifetime GPU estimates including a $0.10/hour storage allowance: training $7.61, ODCV $3.87, MASK $3.50, **$14.97 total**, below the $40 envelope. Training end is conservatively bounded by the next admission snapshot; these estimates are not a provider invoice. ODCV records $2.6366 judging spend; MASK judging is separate and no isolated final charge is asserted. These single-run results do not by themselves establish a causal improvement over the earlier nonmoral mixture.
+
 ## 2026-10-07 - Nonmoral plain-base publication audit compatibility repair
 
 The original-nonmoral plain-base LoRA completed 143 steps and its adapter/training evidence were hash-verified at `764ab47f4c935ea5c6af8e872f774b3c81b576d0`. MASK completed and published, but its post-run audit rejected the source because it searched for the old literal `preserve_thinking=false` prefix. Launch source `6c1cbb9003fa9d03df776021aaeb4587933368a1` instead exposes an optional preservation argument for SWE-bench, defaulting to false; MASK's recorded serving config supplies no override.
