@@ -3,6 +3,17 @@
 
 
 
+
+## 2026-10-07 - Base Qwen matched SWE-bench Lite campaign admitted for CPU qualification
+
+User requested the same full Lite evaluation as the four completed plain LoRAs, now on the original base weights with four GPUs maximum. Verified the retained Vast VM 54552761 running at $0.9185185/hour, both previous inference/queue services inactive, 281 GiB free and the 30-day HTTPBin certificate intact. Reusing its native Docker and all cached images; no replacement CPU rental or local Docker startup is needed.
+
+Pin: `Qwen/Qwen3.6-27B@6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`. The existing single-target worker supports no adapter, but fleet validation required rank-64 LoRA and inherited the base resolver's default mode. Source `de985bd0ad964d1b9c89b7271cdbdada2aa34004` narrowly permits the revision-pinned Qwen base and passes explicit `think` through the standard worker/run_eval path. Adapter and paired-run checks remain strict. Independent review found no additional base-serving/naming blocker. Linux regression qualification passed 248 tests, one skip and 20 subtests, including base preparation and worker mode/revision propagation.
+
+`scratch/swebench_base_campaign/fleet.yaml` retains lite-v5 sampling, preserved reasoning, task limits, longest-first ordering and grading protocol. Four H100 NVL lanes (live quote $3.19/hour each) replace the previous larger H200 fleet; four conversations per lane share the 32-command gate. Delayed H200/RTX fallback remains bounded. The standard launch wrapper resolves a downward-only GPU cap `min(100, floor(live balance - 50))`, verifies it funds four admission windows and freezes the result in `/srv/lasr/runs/base-qwen-20261007-budget.json`; no budget or rental history can reset on retry.
+
+Committed LF archive hash `78c69c52d1630fa3275cf9dade217f879a9136a06fc3e6b6b7c8758a7f94107c` was checked before quiescent deployment. `lasr-swebench-base-start.service` runs complete CPU-only qualification `base-qwen-20261007-v1` and only then calls the standard fleet entrypoint. Current status is qualification, not a completed benchmark or confirmed GPU rental. Campaign root is `/srv/lasr/runs/base-qwen-20261007`; heartbeat `base-qwen-swe-bench-lite` is ACTIVE with an initial live service/log read. All 300 valid and officially graded outcomes, immutable publication hashes and fresh zero-owned-GPU verification remain required. Existing unrelated RunPod training jobs are untouched.
+
 ## 2026-10-07 - Original nonmoral on the plain base: trained, ODCV 14.6%, MASK 73.1
 
 Hypothesis/method. Test the original nonmoral corpus used in the latest analyses with the October 5 plain replay base, leaving completed low-stakes work untouched. Kept all 623 original synthetic conversations unchanged from `2026-09-25-nonmoral-original-15-mix@f056dade96901bc6c7480a4f4149552592fef379` and 1,660 unchanged replay rows from `2026-10-05-plain-mix@019e239ce51f5adbbcaff4f92f26e63fcd31c080`. The resulting 2,283 rows contain 5,313,454 supervised tokens, 14.9980596% synthetic, maximum length 8,188 and zero truncation. Mixture is [published at e609d10a](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-nonmoral-original-15-mix/tree/e609d10ab9e4b6cdb4214a245ce7e9348a8fffb4). Its total token budget is larger than the 5M plain-dose mixtures because all 623 historical synthetic examples were retained.
