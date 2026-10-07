@@ -1,0 +1,59 @@
+{
+  "status": "complete",
+  "verified_at": "2026-10-07T23:57:12.395752+00:00",
+  "runtime_source": "de985bd0ad964d1b9c89b7271cdbdada2aa34004",
+  "protocol": "lite-v5",
+  "target": {
+    "repo": "Qwen/Qwen3.6-27B",
+    "revision": "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9",
+    "mode": "think",
+    "adapter": null
+  },
+  "results_repo": "dougalldeepmind/2026-10-07-swebench-qwen36-lite-v5",
+  "verified_revision": "1b49e15d84d3f175d8fd0ff4dea6cbfb6c015b2d",
+  "verification_evidence_revision": "9e7447f072aaacfbb4919a8c6f62ac881c04004a",
+  "results_sha256": "a8e0cd7c351a16b98cde0ed4c833fc6d260144b233a34956ddf419d4ae4baf5c",
+  "verified_files": 79638,
+  "valid": 300,
+  "graded": 300,
+  "resolved": 179,
+  "pass_at_1": 0.5966666666666667,
+  "gpu_cost_conservative_usd": 44.33368808009585,
+  "cost_note": "Conservative frozen campaign ledger, not a final provider invoice. Persistent Vast CPU billed separately and retained.",
+  "budget_usd": 100.0,
+  "zero_owned_gpus": true,
+  "owned_pod_ids": [
+    "bruvrj6f9h2x2i",
+    "trvtsl4797sdvn",
+    "utpckvzhpo3o4e",
+    "zao8t1ty8qikgq"
+  ],
+  "supervisor": {
+    "status": "complete",
+    "budget_usd": 100.0,
+    "cycles": 1,
+    "created": 1791402453.002069,
+    "deadline": null,
+    "cancelled": false,
+    "last_error": "TimeoutExpired: Command '['/srv/lasr/repo/scratch/swebench_cpu_env/.venv/bin/python', '-m', 'src.eval.capabilities.swebench_mini.fleet', 'publish', '--config', '/srv/lasr/runs/base-qwen-20261007/launch.yaml']' timed out after 179.9999835799972 seconds",
+    "verified_hf_revision": "1b49e15d84d3f175d8fd0ff4dea6cbfb6c015b2d",
+    "verified_files": 79638,
+    "finished": 1791416654.5719488
+  },
+  "patch_apply_failed_ids": [
+    "django__django-13265",
+    "django__django-14411",
+    "sphinx-doc__sphinx-10325"
+  ],
+  "limitations": "Two requests tasks resolve without a source fix under the pinned test labels. All 300 tasks remain included; report these no-fix passes alongside model scores. The local HTTPBin environment is a declared deviation from public-service grading.",
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "min_p": 0.0,
+    "presence_penalty": 0.0,
+    "frequency_penalty": 0.0,
+    "repetition_penalty": 1.0
+  },
+  "qualification_revision": "3234abcac2efa0d2b956f1b2e3881ef36c30a4ce"
+}

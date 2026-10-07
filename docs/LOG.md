@@ -1,6 +1,17 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-07 - Base Qwen SWE-bench Lite complete: 179/300, immutable publication verified
+
+Bare `Qwen/Qwen3.6-27B@6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`, explicit thinking with no LoRA, solved **179/300 (59.67%)** under the same lite-v5 protocol as the plain control and DA dose arms. All 300 outcomes are valid and officially graded. Four H100 NVLs at $3.19/hour, four conversations each, shared 32-command gate, longest-first scheduling, T=1/top-p=.95/top-k=20, 16,384 response-token cap, 262,144 context/task-token cap and 500 steps. Runtime source remains `de985bd0ad964d1b9c89b7271cdbdada2aa34004`; later local documentation commits were not deployed.
+
+The supervisor verified **79,638 rollout/result files** at immutable [2026-10-07-swebench-qwen36-lite-v5@1b49e15d](https://huggingface.co/datasets/dougalldeepmind/2026-10-07-swebench-qwen36-lite-v5/tree/1b49e15d84d3f175d8fd0ff4dea6cbfb6c015b2d). Final local/published results match byte hashes; verification evidence is retained in subsequent commit `9e7447f072aaacfbb4919a8c6f62ac881c04004a`. A final checkpoint subprocess exceeded its 180-second timeout; the existing supervisor's publication-only recovery succeeded, preserving the recorded error, original budget and all outcomes. No inference rerolls or additional GPUs were needed.
+
+Conservative campaign GPU ledger: **$44.33** against the frozen $100 cap, not a provider invoice; persistent Vast CPU cost is separate. All four owned GPUs are terminated and absent in a fresh provider inventory. Five rejected fourth-lane allocation requests were reconciled without resetting rental history. Vast instance 54552761 and its cache remain running as requested. Final receipt: `scratch/swebench_base_campaign/final_results.json`.
+
+Preserved protocol caveats: the two Requests no-fix passes remain included in the full 300 denominator, and local HTTPBin grading is a declared environment deviation. Three model patches failed to apply (`django__django-13265`, `django__django-14411`, `sphinx-doc__sphinx-10325`); these remain graded failures. Descriptive scores for the matched comparison are base 179, plain control 178, DA5 172, DA15 182, DA25 180, each out of 300. These single-run differences alone do not establish a reliable ranking.
+
+
 ## 2026-10-07 - Historical practical low-stakes on plain: training and matched evaluations verified
 
 Completed the user-requested September practical low-stakes reconstruction on the October 5 plain replay. All 852 historical training-visible synthetic conversations were retained unchanged; the 2,511-row mixture has 15.00018077% supervised synthetic tokens. Standard seed-0 BF16 rank-64 SFT completed all 157 steps under source `0399d96a296789b66169e8f115e6f637e4a8fe7a`. Adapter weights and training evidence verified at [2026-10-07-qwen36-0-da-lowstakes-practical-15@714229b3](https://huggingface.co/dougalldeepmind/2026-10-07-qwen36-0-da-lowstakes-practical-15/tree/714229b3f664a88e16b0c5775af072e15820aca8).
