@@ -4,6 +4,13 @@
 
 
 
+
+## 2026-10-07 - Base Qwen preflight caught a readiness line-ending mismatch before rental
+
+Full CPU-only v1 qualification passed and published `2026-10-07-swebench-lite-infrastructure@509645c73dafd86d11f573d3e2d742c995595b69`, but model preflight correctly rejected the old readiness wrapper hash. The wrapper has no Git source changes: the old CPU readiness measured CRLF bytes (`7221bf9f0a5374947f8e2af9f8fb673a2377c3534ea5a5305aa9f83f379f869d`), while the new committed archive deploys LF (`ed4f29ed34d6232a67f6bf3d3eae4809d26eb20221d7ee76598ee8b5e954278d`). Exact LF-to-CRLF reconstruction matched the old hash. No inference GPUs were rented; no campaign budget or outcome ledger existed.
+
+Preserved old readiness and its HF receipt in `/srv/lasr/staging/readiness-before-base-lf.tgz`. Restarted CPU preparation to execute gold/no-fix grading and HF readback against current bytes, reusing all 300 cached images. `lasr-swebench-base-start-v2.service` waits for that preparation, reruns fresh full qualification `base-qwen-20261007-v2`, and submits the same frozen four-GPU run only on success. Source remains `de985bd0`; no protocol or model outcomes changed. The heartbeat now watches the v2 service and retained failure evidence.
+
 ## 2026-10-07 - Base Qwen matched SWE-bench Lite campaign admitted for CPU qualification
 
 User requested the same full Lite evaluation as the four completed plain LoRAs, now on the original base weights with four GPUs maximum. Verified the retained Vast VM 54552761 running at $0.9185185/hour, both previous inference/queue services inactive, 281 GiB free and the 30-day HTTPBin certificate intact. Reusing its native Docker and all cached images; no replacement CPU rental or local Docker startup is needed.
