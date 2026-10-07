@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from urllib.parse import urlparse
 from contextlib import nullcontext
@@ -382,6 +383,27 @@ def main(argv: list[str] | None = None, *, runner=None) -> None:
         _run(args, unknown, release_pod, runner=runner)
 
 
+def _docker_bridge_address(default: str = "172.17.0.1") -> str:
+    """The host's docker-bridge IP, read from the interface rather than assumed.
+
+    172.17.0.1 is only docker's DEFAULT bridge. A host whose daemon was configured with a
+    different `bip`, or that runs rootless//custom networks, has another address -- this one
+    is 10.201.0.1 -- and binding the absent 172.17.0.1 fails as "Cannot assign requested
+    address" (Errno 99) or, worse, as a bogus "port already taken" from the pre-flight check
+    (2026-10-07: a canary ODCV run died on both). Falls back to the default when docker0
+    cannot be read, which keeps the previous behaviour on hosts where it was right.
+    """
+    try:
+        out = subprocess.run(["ip", "-4", "-o", "addr", "show", "docker0"],
+                             capture_output=True, text=True, timeout=10).stdout
+        for part in out.split():
+            if part.count(".") == 3 and "/" in part:
+                return part.split("/")[0]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return default
+
+
 def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runner=None) -> None:
     """Run and publish the full invocation inside the optional pod ownership lifetime.
 
@@ -423,7 +445,7 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
         # address" (hit on Windows, 2026-08-05). Evals whose agent calls the model from the
         # driver rather than from inside a container never need it at all.
         bind = args.server_bind or (
-            "172.17.0.1" if EVALS[args.name].needs_docker
+            _docker_bridge_address() if EVALS[args.name].needs_docker
             and sys.platform not in ("darwin", "win32")
             else "127.0.0.1")
         executor = SshExec(args.server, port=args.port, bind=bind,
