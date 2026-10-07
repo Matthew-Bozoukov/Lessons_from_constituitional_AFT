@@ -7,6 +7,7 @@ and optional hf_repo/hf_revision. Does not modify runs; redirect stdout outside 
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 from datetime import datetime, timezone
 from collections import Counter
@@ -275,6 +276,32 @@ def audit_mask(root):
             'regenerated_archetypes': result.get('regenerated_archetypes')}
 
 
+
+def audit_template_pin(source, meta):
+    """Check the pinned source behavior, including the optional SWE-bench override."""
+    require(meta['config'].get('serving', {}).get('preserve_thinking', False) is False,
+            'Evaluation requests preserve_thinking=true')
+    tree = ast.parse(source)
+    functions = [n for n in tree.body if isinstance(n, ast.FunctionDef)
+                 and n.name in ('pin_template', 'pin_prefix')]
+    require(len(functions) == 2, 'Missing pinned template functions')
+    # Execute only these two pure functions from the recorded, local Git source.
+    namespace = {}
+    exec(compile(ast.Module(body=functions, type_ignores=[]), '<pinned-template>', 'exec'), namespace)
+    expected = '{%- set enable_thinking = true -%}\n{%- set preserve_thinking = false -%}\n'
+    require(namespace['pin_prefix']('think') == expected,
+            'Source default does not pin preserve_thinking=false')
+    require(namespace['pin_template']('BODY', 'think') == expected + 'BODY',
+            'Source template does not use the verified prefix')
+    if 'preserve_thinking: bool' in source:
+        require('requirements.get("preserve_thinking", False)' in source,
+                'Serving default is not explicitly false')
+        require("pin_template(template, mode, preserve_thinking=preserve_thinking)" in source,
+                'Remote template does not propagate serving preserve_thinking')
+        require("preserve_thinking=plan['preserve_thinking']" in source,
+                'Serving does not pass the resolved preserve_thinking value')
+
+
 def audit_entry(entry):
     global TARGET, TARGET_REVISION, MODEL_KEY, KIND
     KIND, TARGET, TARGET_REVISION = entry['eval'], entry['target'], entry['target_revision']
@@ -286,8 +313,7 @@ def audit_entry(entry):
     require(re.fullmatch('[0-9a-f]{40}', meta['git_sha']) is not None, 'Missing exact source commit')
     source = subprocess.check_output(['git', 'show', f"{meta['git_sha']}:src/infra/endpoints/vllm.py"],
                                      cwd=REPO, text=True, encoding='utf-8')
-    require('"{%- set preserve_thinking = false -%}\\n"' in source,
-            'Source commit does not pin preserve_thinking=false; fetch missing source commits before audit')
+    audit_template_pin(source, meta)
     from src.naming import undated
     MODEL_KEY = undated(TARGET).replace('-', '_')
     report = (audit_odcv if KIND == 'odcv' else audit_mask)(root)

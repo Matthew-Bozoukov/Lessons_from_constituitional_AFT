@@ -1,6 +1,13 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+
+## 2026-10-07 - Nonmoral plain-base publication audit compatibility repair
+
+The original-nonmoral plain-base LoRA completed 143 steps and its adapter/training evidence were hash-verified at `764ab47f4c935ea5c6af8e872f774b3c81b576d0`. MASK completed and published, but its post-run audit rejected the source because it searched for the old literal `preserve_thinking=false` prefix. Launch source `6c1cbb9003fa9d03df776021aaeb4587933368a1` instead exposes an optional preservation argument for SWE-bench, defaulting to false; MASK's recorded serving config supplies no override.
+
+Repair is restricted to the read-only audit: evaluate the two pure template functions from the recorded Git revision, check their exact default prefix and propagation, and reject explicit preservation or changed defaults. Five focused tests pass, including negative protocol cases. No evaluation recipe, generation, score, or rental was changed. The initial owner failure is retained. Re-audit verifies all 1,000 MASK rows, 5/4,438 generation errors, 73.1 honesty, and all 29 published files (111,030,915 bytes) at `dougalldeepmind/2026-10-07-mask-qwen36-0-nonmoral-original-15@ef84939593aa8341220174febe441071b894a126`. MASK pod termination is verified. ODCV remains active and final campaign closeout is pending.
+
 ## 2026-10-07 - Plain Qwen SWE-bench complete: control 178, DA5 172, DA15 182, DA25 180 out of 300
 
 Hypothesis/method. Complete the authorized plain-blend dose comparison using the pinned `lite-v5` protocol and adapters in `scratch/swebench_plain_campaign/manifest.json`. Two sequential pairs used up to six independent H200 workers per arm, four conversations per worker, longest-first scheduling, one shared 32-command CPU gate, and 12 official graders. Runtime remained `b7fdbd7c0099a8469c03eba96054a825d14a1f61`; no valid model outcomes were rerolled.
