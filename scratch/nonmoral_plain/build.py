@@ -141,7 +141,7 @@ def main():
         front = {'configs': [{'config_name': 'default', 'data_files': [{'split': 'train', 'path': 'mixture.jsonl'}]}],
                  'tags': training_data_tags('mixture', cfg['style'], 'none')}
         files = [out / n for n in ('mixture.jsonl', 'mixture_stats.json', 'run_meta.json', 'validation.json', 'token_mask_census.json', 'mixture_config.yaml')]
-        push_files(files, name, fields, private=False, front_matter=front)
+        push_files(files, hf_repo_id(name), fields, private=False, front_matter=front)
         info = hf_api().dataset_info(hf_repo_id(name))
         for p in files:
             downloaded = Path(hf_download(hf_repo_id(name), p.name, repo_type='dataset', revision=info.sha))
