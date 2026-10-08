@@ -61,7 +61,8 @@ def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runt
     out, pending, seen = [], {}, set()
     # Only an explicitly observed final boundary closes a reasoning cycle.
     # A validation nudge or a malformed response is not a final answer.
-    last_final = max((i for i, m in enumerate(messages) if m.get('harmony_boundary') == 'final'), default=-1)
+    last_final = max((i for i, m in enumerate(messages) if m.get('harmony_boundary',
+        (m.get('provider_specific_fields') or {}).get('harmony_boundary')) == 'final'), default=-1)
     for index, message in enumerate(messages):
         role = message.get("role")
         content = _text(message.get("content"))
@@ -248,6 +249,7 @@ def create_app(runtime: Runtime) -> FastAPI:
             runtime.budget.settle(reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
         out, finish, boundary = parse_completion(runtime.renderer, ids, sequence.stop_reason)
         out['harmony_boundary'] = boundary
+        out['provider_specific_fields'] = {'harmony_boundary': boundary}
         for call in out.get('tool_calls', []):
             call['id'] = 'call_' + uuid.uuid4().hex
         diagnostics = {

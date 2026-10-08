@@ -54,7 +54,8 @@ def rejected_history(raw, corrections):
     # The shared Harmony adapter accepts raw string arguments in history. Its
     # capability marker allows ordinary validation feedback without the legacy
     # Qwen mapping-template workaround (quoting/dropping malformed tool calls).
-    if calls and message.get('harmony_boundary') == 'handoff':
+    boundary = message.get('harmony_boundary', (message.get('provider_specific_fields') or {}).get('harmony_boundary'))
+    if calls and boundary in ('handoff', 'tool_call_return'):
         detail = '\n'.join(c.get('content', '') for c in corrections)
         for call in calls:
             try:

@@ -157,6 +157,16 @@ def test_unexpected_eos_is_not_a_token_limit(runtime):
     assert result['tinker_metadata']['boundary'] == 'malformed_boundary'
 
 
+def test_complete_tool_with_return_matches_official_parser(runtime):
+    runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|return|>'
+    stock, termination = runtime.renderer.parse_response(runtime.renderer.tokenizer.encode(runtime.sampling_client.reply))
+    assert termination.is_stop_sequence and stock['tool_calls']
+    result = client(runtime).post('/v1/chat/completions', json=request()).json()
+    assert result['choices'][0]['finish_reason'] == 'tool_calls'
+    assert result['choices'][0]['message']['tool_calls'][0]['function']['arguments'] == '{"command":"pwd"}'
+    assert result['tinker_metadata']['boundary'] == 'tool_call_return'
+
+
 def test_tool_only_history_has_no_duplicated_raw_call(runtime):
     runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|call|>'
     http = client(runtime)
@@ -243,6 +253,7 @@ history = [{"role": "user", "content": "Inspect the repository"}]
 reply = m.query(history)
 assert reply["tool_calls"][0]["id"].startswith("call_")
 assert reply["reasoning_content"] == "Think."
+assert reply.get("harmony_boundary", (reply.get("provider_specific_fields") or {}).get("harmony_boundary")) == "handoff", repr(reply)
 history += [reply, {"role": "tool", "tool_call_id": reply["tool_calls"][0]["id"], "content": "/testbed"}]
 reply2 = m.query(history)
 assert reply2["tool_calls"][0]["function"]["name"] == "bash"

@@ -50,13 +50,13 @@ def start_shim(kind, env):
             time.sleep(2)
     raise TimeoutError('Shim readiness exceeded six minutes')
 
-def host(kind):
+def host(kind, resume=None):
     from dotenv import dotenv_values
     from omegaconf import OmegaConf
     rootenv=Path.home()/'source/repos/LASR/teaching_claude_why_replication/.env'
     env={**os.environ,**{k:v for k,v in dotenv_values(rootenv).items() if v}}
     ROOT.mkdir(parents=True,exist_ok=True)
-    claim=ROOT/(kind+'-started.json')
+    claim=ROOT/(kind+('-recovery-started.json' if resume else '-started.json'))
     with claim.open('x') as f: json.dump(dict(at=time.time(),source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()),f)
     shim=None
     try:
@@ -80,17 +80,21 @@ def host(kind):
             cfg.base_url='http://host.docker.internal:18145/v1'
             cfg.output_root=str((ROOT/'odcv').resolve())
             cfg.strict_tool_validation=True
+            cfg.endpoint_api_key_env='TINKER_API_KEY'
             cfg.passes=1
             cfg.concurrency=1
             cfg.progress_judge=False
             cfg.include_scenarios={v:scenario_names(Path(cfg.bench_dir),v)[:5] for v in VARIANTS}
             OmegaConf.save(cfg,ROOT/'odcv.yaml')
-            # The existing executor reads this env name for its served endpoint.
-            # Restore judge credentials only after all rollout containers finish.
             os.environ.update(env)
-            os.environ['OPENROUTER_API_KEY']=env['TINKER_API_KEY']
-            result=odcv_rollout.main(str(ROOT/'odcv.yaml'))
-            os.environ['OPENROUTER_API_KEY']=env['OPENROUTER_API_KEY']
+            if resume:
+                original=Path(resume)
+                assert original.is_dir()
+                saved=list(original.glob('agent_logs/*/experiments/*/messages_record.txt'))
+                assert len(saved)==3 and all(p.stat().st_size for p in saved)
+                (ROOT/'odcv-preserved-before-recovery.json').write_text(json.dumps(dict(
+                    paths=[str(p) for p in saved],reason='Terminal tool-return marker acceptance matched official cookbook; existing completed outcomes retained'),indent=2))
+            result=odcv_rollout.main(str(ROOT/'odcv.yaml'),resume=resume)
             (ROOT/'odcv-rollout.json').write_text(json.dumps(dict(path=str(result))))
         (ROOT/(kind+'-finished.json')).write_text(json.dumps(dict(at=time.time(),phase='rollouts_complete')))
     except BaseException as error:
@@ -105,5 +109,6 @@ def host(kind):
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('action',choices=['odcv','swe','linux-swe'])
-    action=parser.parse_args().action
-    linux_swe() if action=='linux-swe' else host(action)
+    parser.add_argument('--resume-odcv')
+    args=parser.parse_args()
+    linux_swe() if args.action=='linux-swe' else host(args.action,args.resume_odcv)

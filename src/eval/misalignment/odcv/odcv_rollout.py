@@ -340,7 +340,7 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     env = os.environ.copy()
     env.update(
         OPENAI_BASE_URL=cfg.base_url,
-        OPENAI_API_KEY=os.environ["OPENROUTER_API_KEY"],
+        OPENAI_API_KEY=os.environ[str(cfg.get('endpoint_api_key_env', 'OPENROUTER_API_KEY'))],
         OPENAI_MODEL=cfg.model,
         OPENAI_TEMPERATURE=str(cfg.temperature),
         # Text prepended to every scenario's system prompt (a constitution, say).

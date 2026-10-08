@@ -39,7 +39,10 @@ def pull(iid):
         subprocess.run(['docker','pull',image['digest']], stdout=log, stderr=subprocess.STDOUT, check=True)
         subprocess.run(['docker','tag',image['digest'],image['name']], stdout=log, stderr=subprocess.STDOUT, check=True)
         actual = json.loads(subprocess.check_output(['docker','image','inspect',image['name']]))[0]
-        assert actual['Id'] == image['id'], (iid,actual['Id'])
+        # Docker Desktop's containerd image store exposes the manifest digest as
+        # Id; classic Docker exposed the config digest. The immutable RepoDigest
+        # below is identical on both and is the content-addressed pull authority.
+        assert actual['Id'] in (image['id'], image['digest'].split('@')[1]), (iid,actual['Id'])
         assert image['digest'] in actual['RepoDigests']
         subprocess.run(['docker','run','--rm','--network','none','--entrypoint','/bin/bash',image['name'],
                         '-lc','cd /testbed && git rev-parse HEAD && test -d /opt/miniconda3'], stdout=log, stderr=subprocess.STDOUT, check=True)

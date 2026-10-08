@@ -58,9 +58,12 @@ def parse_completion(renderer, tokens, stop_reason):
     out = dict(role='assistant', content=''.join(content))
     if reasoning:
         out['reasoning'] = out['reasoning_content'] = ''.join(reasoning)
-    if marker == renderer._call_token and calls:
+    # Match the official cookbook parser: a fully delimited recipient/body
+    # remains a tool call with either stop token. Preserve the noncanonical
+    # terminal marker as a diagnostic, rather than dropping a complete action.
+    if calls:
         out['tool_calls'] = calls
-        return out, 'tool_calls', 'handoff'
+        return out, 'tool_calls', 'handoff' if marker == renderer._call_token else 'tool_call_return'
     if marker == renderer._return_token and not calls:
         return out, 'stop', 'final'
     return dict(role='assistant', content=raw), 'stop', 'boundary_recipient_mismatch'
