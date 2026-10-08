@@ -134,3 +134,52 @@ Extending each of the 68 observed capped responses to those ceilings once would 
 Using recorded cache hits, the conversational census accounts for about $148.04 input and $19.85 output ($167.89 total); approximately 88% was input. Calls receiving format-error feedback account for about $53.38 within that sum, but this is attribution, not a causal estimate of avoidable cost. The full ledger's $168.24 is a separate, slightly larger total and not a provider invoice. Rate reference: https://tinker-docs.thinkingmachines.ai/tinker/models/models_and_pricing/.
 
 Recommendation: repair and offline-test known rendering/feedback problems first, explicitly qualify several tool-result-continuation and malformed-call-recovery histories, then consider a bounded matched 16K versus 32K comparison on productive long responses. Do not make 64K the blanket default on this evidence. Any future change to prompt, rendering, retries, history, sampling or limits defines a new declared protocol; preserve the stopped run rather than silently repairing or rescoring it. All services and the scheduler remain stopped.
+
+## October 8 follow-up: branch history and official intended interfaces
+
+Freshly fetched branch `origin/matboz/gptoss-doses` resolves to `69162b2fb0476a20c875e8fc55d11bce8fd5b4f3`. The exact control ODCV artifact records `654bad9ff1f9ca0f91b5b1285bdd320dc0718aae`. These are distinct provenance points; subsequent branch changes are not assumed to have affected the recorded evaluation.
+
+Relevant inherited history:
+
+| Commit | Date | Relevant change |
+|---|---|---|
+| `06c52458` | September 28 | Shared custom Harmony renderer, historical assistant boundaries and tool handoff handling |
+| `20dc50e6` | September 28 | Remove raw tool-only fallback content when structured calls already represent the same completion |
+| `a3ccb25a` | September 28 | Preserve malformed arguments and return linked validation feedback rather than repairing/executing them |
+| `779625e8` | September 28 | Validate required command/reason fields and their string types |
+| `cdc4dee0`, `373c7e5e`, `4e9fe0d3` | September 29 | Schema guidance, correct/incorrect bracket examples, explicit Harmony routing and multiline JSON-string explanation |
+| `20ebb8e6` | September 30 | Explicit original/fixed tool-prompt variants |
+| `04bda11a`, `e5a9ee87` | October 6 | Training loss-history masking and matching otherwise unlinked training tool results |
+| `27714795` | October 6 | Completion-token counts by channel; diagnostic logging rather than another rendering repair |
+| `69162b2f` | October 8 | DA5/DA25 configuration additions |
+
+These fixes predate Matthew's October runs and include earlier project work authored by Nika. Our SWE integration omitted known fixes present in that branch. Comparing the control's recorded source with the fetched tip shows the later Harmony/server change records channel-token counts, rather than a newly discovered correction to the control run's rendering.
+
+### What OpenAI specifies
+
+- [Official GPT-OSS repository sampling recommendation](https://github.com/openai/gpt-oss#recommended-sampling-parameters): temperature 1.0 and top_p 1.0. Our temperature matched; top_p .95 and top_k 20 came from the Qwen comparison recipe. No official top_k 20 recommendation was found. Matthew's T.7 is also a deliberate local choice, not this exact recommendation. None of these differences alone establishes the cause of looping.
+- [Official Harmony guide](https://developers.openai.com/cookbook/articles/openai-harmony): use native role/channel/recipient framing, the expected system metadata, and developer tool declarations in the functions namespace. Function-call arguments are JSON bodies, with a handoff distinct from an assistant final and from an ordinary message ending. Tool results must be returned in the correct history structure. A schema in the prompt is not a guarantee of valid JSON. The long bash examples and extra-bracket warning are local mitigations, not a universally required OpenAI instruction block.
+- [Official raw reasoning/history guidance](https://developers.openai.com/cookbook/articles/gpt-oss/handle-raw-cot): retain analysis through an ongoing tool-use cycle, then drop prior analysis after an actual final-channel message for later sampling. Keep commentary tool calls. Matthew's helper approximates that boundary with the last assistant message without tool calls; malformed non-tool output need not be an actual final, so this edge case still needs verification. Blindly stripping all reasoning or retaining every completed reasoning turn is not the documented policy.
+- [Official implementation verification guidance](https://developers.openai.com/cookbook/articles/gpt-oss/verifying-implementations): validate the actual chat-template and tool/API behavior. Successful access or one ended task is insufficient evidence of a healthy tool interface.
+
+### What SWE-bench specifies
+
+The [official evaluation guide](https://www.swebench.com/SWE-bench/guides/evaluation/) accepts task IDs and model patches and evaluates them in Docker. It does not prescribe a universal GPT-OSS Harmony prompt or agent sampling recipe. Agent choice is a separate experimental decision.
+
+Our pinned mini-SWE-agent [v2.2.1 SWE config](https://github.com/SWE-agent/mini-swe-agent/blob/v2.2.1/src/minisweagent/config/benchmarks/swebench.yaml) and [LiteLLM model implementation](https://github.com/SWE-agent/mini-swe-agent/blob/v2.2.1/src/minisweagent/models/litellm_model.py) use the native tool-calling route with a bash command schema. The default configuration targets a different model and cannot be treated as a GPT-OSS prescription. Inserting our own Tinker adapter made correct Harmony conversion our responsibility.
+
+OpenAI's [GPT-OSS model card](https://cdn.openai.com/pdf/419b6906-9da6-406c-a19d-1bb078ac7637/oai_gpt-oss_model_card.pdf) describes SWE-bench Verified evaluations using a terminal tool similar to Codex CLI exec and reports main results at high reasoning. Our run was Lite, medium reasoning, a mini-SWE-agent-derived loop, and custom numerical limits. The documents reviewed do not provide a complete identical prompt/limit/harness recipe for reproducing OpenAI's reported score through this Tinker setup.
+
+### What upstream ODCV specifies, versus Matthew's local adaptation
+
+The vendored upstream revision is `7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668`. Its [runner](https://github.com/McGill-DMaS/ODCV-Bench/blob/7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668/run_experiments.py) includes GPT-OSS-120B through OpenRouter's Chat Completions endpoint. The provider handles native model serialization; this is not a raw Tinker sampler implementation.
+
+The upstream [mission executor](https://github.com/McGill-DMaS/ODCV-Bench/blob/7353f1cf4b2579a3a8a5b8a5061d7c7d41f60668/mission_executor/agent_main.py) exposes bash and task_complete tools, forwards reasoning_details, and nudges the model after non-tool replies. Its executor defaults are temperature 0 and 50 steps, with no explicit response-token ceiling in that API call; these defaults do not establish settings of every published run. Its malformed-JSON path attempts regex recovery of command text. Matthew's local strict mode instead preserves the raw arguments, rejects invalid calls, and returns specific linked feedback. Those are different execution policies.
+
+The recorded teammate control run uses custom cookbook 0.5.7 rendering, fixed local instructions, T.7/top_p1, 8,192 response tokens, 28,000 context and 50 cycles. Our stopped SWE path used stock cookbook 0.5.3 rendering and generic parser-rejection feedback. Matching Matthew requires explicit prompt, history and validation tests, not merely copying numerical settings or changing a temperature.
+
+## Final resource teardown
+
+The user subsequently cancelled the proposed revised pilot and explicitly requested destruction of the retained CPU. The resume attempt had been queued for unavailable resources; no revised inference ran. Vast accepted deletion of receipted CPU 54552761 and a fresh inventory verified absence. The local registry records an empty slot and retains the prior receipt. Cached images/disk were deleted with the instance. No RunPod resource was touched. Owned campaign/Tinker processes and heartbeat are stopped/absent; model checkpoints and backed-up evidence remain intact.
+
+The complete stopped archive remains at `output/gptoss_swe_shutdown/gptoss-three-20261008-stopped.tar.gz`, 289,878,875 bytes, freshly rechecked SHA256 `da646dbd2bc5480e420d4cc893cccc25aa11e7a13d449ce33945193b4e7260d1`. Its earlier verification covers 134,204 original files. Provider deletion receipt is `output/gptoss_swe_shutdown/provider-destroy.json`. No revised pilot result exists; the incomplete local prototype was not deployed. All further work is analysis unless separately authorized.
