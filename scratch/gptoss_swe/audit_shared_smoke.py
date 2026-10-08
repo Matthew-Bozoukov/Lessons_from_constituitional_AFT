@@ -19,7 +19,13 @@ def main():
             req=json.loads(path.read_text())
             response=path.with_name('response.json')
             group=groups.setdefault(key(req['request']['messages']),dict(requests=0,responses=0,boundaries=Counter(),
-                invalid_json=0,invalid_json_next_turn_corrected=0,validation_feedback_ids=set(),sampling=[],pending_invalid=False))
+                invalid_json=0,invalid_json_next_turn_corrected=0,validation_feedback_ids=set(),sampling=[],pending_invalid=False,
+                invalid_streak=0,max_consecutive_invalid_json=0,stray_closing_bracket=0))
+            if kind=='swe' and 'instance_id' not in group:
+                text=str(req['request']['messages'][1].get('content'))
+                rows=json.loads((ROOT/'cache/metadata/swebench_lite_test.json').read_text())
+                ids=[row['instance_id'] for row in rows if row['problem_statement'].strip() in text]
+                if len(ids)==1: group['instance_id']=ids[0]
             group['requests']+=1
             params=req['sampling']
             if params not in group['sampling']: group['sampling'].append(params)
@@ -34,13 +40,19 @@ def main():
             calls=res['choices'][0]['message'].get('tool_calls',[])
             for call in calls:
                 try: json.loads(call['function']['arguments'])
-                except ValueError: invalid=True;group['invalid_json']+=1
+                except ValueError:
+                    invalid=True
+                    group['invalid_json']+=1
+                    if re.search(r'"\s*\]\s*\}\s*$',call['function']['arguments']): group['stray_closing_bracket']+=1
             if group['pending_invalid'] and calls and not invalid:
                 group['invalid_json_next_turn_corrected']+=1
             group['pending_invalid']=invalid
+            group['invalid_streak']=group['invalid_streak']+1 if invalid else 0
+            group['max_consecutive_invalid_json']=max(group['max_consecutive_invalid_json'],group['invalid_streak'])
         for group in groups.values():
             group['validation_feedback_count']=len(group.pop('validation_feedback_ids'))
             group.pop('pending_invalid')
+            group.pop('invalid_streak')
         if kind=='odcv':
             sentence=' Use the bash tool to complete the task and use the task_complete tool to end the task.'
             for prompt in (ROOT/'odcv').glob('**/workspaces/*/*/orchestrator_api/prompt.json'):
@@ -49,6 +61,16 @@ def main():
                 if identity in groups:
                     groups[identity]['scenario']=prompt.parent.parent.name
                     groups[identity]['variant']=prompt.parent.parent.parent.name
+            # Completed ODCV workspaces are removed by the ordinary driver.
+            # This smoke is strictly serial and recorded the selected order.
+            from omegaconf import OmegaConf
+            cfg=OmegaConf.load(ROOT/'odcv.yaml')
+            assert cfg.concurrency==1
+            order=[(v,s) for v in ('mandated','incentivized') for s in cfg.include_scenarios[v]]
+            for group,(variant,scenario) in zip(groups.values(),order):
+                assert group.get('scenario',scenario)==scenario
+                assert group.get('variant',variant)==variant
+                group.update(variant=variant,scenario=scenario)
         result[kind]=dict(conversations=groups)
         ledger=ROOT/(kind+'-budget.json')
         if ledger.exists():
@@ -73,6 +95,17 @@ def main():
         data=json.loads(state.read_text())
         result['swe']['task_statuses']=dict(Counter(v['status'] for v in data['tasks'].values()))
         result['swe']['halt']=data.get('halt')
+        result['swe']['ended_statuses']=dict(Counter(t['attempts'][-1].get('exit_status','unknown') for t in data['tasks'].values() if t['status']=='valid'))
+        outcomes={}
+        for iid,task in data['tasks'].items():
+            if task['status']!='valid': continue
+            attempt=task['attempts'][-1]
+            out=ROOT/'swe/rollouts'/iid/attempt['id']
+            traj=out/iid/(iid+'.traj.json')
+            trajectory=json.loads(traj.read_text()) if traj.exists() else {}
+            limits=[m.get('extra',{}).get('limit_reason') for m in trajectory.get('messages',[]) if m.get('extra',{}).get('limit_reason')]
+            outcomes[iid]=dict(exit_status=attempt.get('exit_status'),limit_reasons=sorted(set(limits)))
+        result['swe']['outcomes']=outcomes
     (ROOT/'audit.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print(json.dumps(dict(odcv_completed=sum(x['tool_completed'] for x in odcv),odcv_recorded=len(odcv),
         budgets={k:v.get('budget') for k,v in result.items()},swe=result['swe'].get('task_statuses')),indent=2))

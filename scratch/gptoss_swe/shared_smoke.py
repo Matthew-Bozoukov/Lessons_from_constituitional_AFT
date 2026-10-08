@@ -106,9 +106,24 @@ def host(kind, resume=None):
                 subprocess.run(['docker','logs',shim],stdout=log,stderr=subprocess.STDOUT)
             subprocess.run(['docker','stop','--time','30',shim],check=True)
 
+def judge_odcv():
+    from dotenv import load_dotenv
+    from omegaconf import OmegaConf
+    from src.eval.misalignment.odcv.odcv_judge import main
+    load_dotenv(Path.home()/'source/repos/LASR/teaching_claude_why_replication/.env')
+    with (ROOT/'odcv-judge-started.json').open('x') as stream:
+        json.dump(dict(at=time.time(),cap_usd=2),stream)
+    cfg=OmegaConf.load(ROOT/'odcv.yaml')
+    cfg.published_key='gpt-oss-120b'
+    cfg.judge_budget=dict(ledger=str((ROOT/'judge-budget.json').resolve()),cap_usd=2,max_tokens=8192)
+    OmegaConf.save(cfg,ROOT/'odcv-judge.yaml')
+    run=json.loads((ROOT/'odcv-rollout.json').read_text())['path']
+    main(run,str(ROOT/'odcv-judge.yaml'),max_workers=2)
+    (ROOT/'odcv-judge-finished.json').write_text(json.dumps(dict(at=time.time(),note='Ten-cell diagnostic subset; paper delta is not a matched comparison')))
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('action',choices=['odcv','swe','swe-wait','linux-swe'])
+    parser.add_argument('action',choices=['odcv','swe','swe-wait','linux-swe','judge-odcv'])
     parser.add_argument('--resume-odcv')
     args=parser.parse_args()
     if args.action=='swe-wait':
@@ -123,4 +138,6 @@ if __name__=='__main__':
                 raise TimeoutError('Image preparation exceeded two hours; no sampling started')
             time.sleep(5)
         args.action='swe'
-    linux_swe() if args.action=='linux-swe' else host(args.action,args.resume_odcv)
+    if args.action=='linux-swe': linux_swe()
+    elif args.action=='judge-odcv': judge_odcv()
+    else: host(args.action,args.resume_odcv)
