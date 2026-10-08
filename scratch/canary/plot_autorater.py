@@ -51,11 +51,21 @@ def main():
     ap.add_argument(
         "--base", action="store_true", help="four models: old vs native-tools base"
     )
+    ap.add_argument("--data", choices=["sept", "jamie", "compare"], default="sept",
+                    help="which DA corpus's pair: the Sept pair (default), the Jamie-data rerun, or both side by side")
     args = ap.parse_args()
     d = json.loads(Path("output/canary/autorater.json").read_text())
-    arms = BASE_ARMS if args.base else [(a, a, c) for a, c in COLORS.items()]
+    if args.base:
+        arms = BASE_ARMS
+    elif args.data == "jamie":
+        arms = JAMIE_ARMS
+    elif args.data == "compare":
+        arms = COMPARE_ARMS
+    else:
+        arms = [(a, a, c) for a, c in COLORS.items()]
+    wide = len(arms) > 2
     plt.rcParams.update({"font.size": 12})
-    fig, ax = plt.subplots(figsize=(10.5 if args.base else 8, 5), dpi=170)
+    fig, ax = plt.subplots(figsize=(10.5 if wide else 8, 5), dpi=170)
     w = 0.8 / len(arms)
     top = 0
     for j, (key, label, color) in enumerate(arms):
@@ -70,7 +80,7 @@ def main():
                 f"{v:.0f}%",
                 ha="center",
                 va="bottom",
-                fontsize=11 if args.base else 13,
+                fontsize=11 if wide else 13,
                 fontweight="bold",
                 color="#222",
             )
@@ -79,7 +89,7 @@ def main():
     ax.set_yticks([])
     for sp in ("top", "right", "left"):
         ax.spines[sp].set_visible(False)
-    ax.legend(frameon=False, fontsize=11 if args.base else 12, loc="upper right")
+    ax.legend(frameon=False, fontsize=11 if wide else 12, loc="upper right")
     when = "in any reasoning turn" if args.all else "when it stops to deliberate"
     ax.set_title(
         f"How often the model uses its trained reasoning\n{when}",
@@ -95,7 +105,8 @@ def main():
     base = (
         "\nOld base: function-calling rows list tools as text; new base: they use the standard tools block."
         if args.base
-        else ""
+        else ("\nSept data: 2026-09-25 DA corpus on the Sept base; Oct data: Jamie's 2026-10-05 DA mix on the plain base."
+              if args.data == "compare" else "")
     )
     fig.text(
         0.02,
@@ -104,11 +115,10 @@ def main():
         fontsize=8,
         color="#666",
     )
-    fig.tight_layout(rect=(0, 0.1 if args.base else 0.07, 1, 1))
+    fig.tight_layout(rect=(0, 0.1 if wide else 0.07, 1, 1))
     stem = "canary-all-reasoning" if args.all else "canary-given-deliberation"
-    out = figure_path(
-        "output/figures", f"{stem}-{'by-base' if args.base else 'simple'}"
-    )
+    tag = "by-base" if args.base else {"sept": "simple", "jamie": "jamie-data", "compare": "sept-vs-oct-data"}[args.data]
+    out = figure_path("output/figures", f"{stem}-{tag}")
     fig.savefig(out)
     print(out)
 
