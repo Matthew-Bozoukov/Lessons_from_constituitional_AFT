@@ -28,6 +28,17 @@ rendering date, checkpoint, sampling controls, tokenizer revision, prompt-token
 hash, raw Harmony completion, and stop reason in `tinker_metadata` on each response.
 It does not infer a constitution or training provenance from a sampler path.
 
+## Base-only smoke evidence (October 8-9, 2026)
+
+The shared-interface diagnostic smoke is [published with pinned evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-08-gptoss120b-base-shared-interface-smoke/tree/429a5c3124c7b11ec7ddfbb8020ce54f286f99b0).
+ODCV completed all ten cells without numerical limits, but three retain an initial
+terminal-marker bug and seven use the corrected parser. SWE-bench resolved 4/10;
+three attempts hit limits, including two serious no-tool/repetitive-generation
+loops and one long tool-using conversation exhausting context. The latter still
+resolved. These subsets are not full benchmark estimates or proof that the shared
+interface is ready for a full campaign. See `results/failure-analysis.md` and
+`results/interface-audit.json` in the dataset. No full run was launched.
+
 ## Supported request contract
 
 - Non-streaming text chat, one completion, function tools with `tool_choice=auto`.
