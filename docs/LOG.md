@@ -1,6 +1,46 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - Canary pair rerun on Jamie's 2026-10-05 data: tools effect survives in direction but is much weaker; plain DA reuses nothing when acting
+
+**Hypothesis.** The 09-29 canary result (unused tools move the trained reasoning from chat into
+agentic settings) should hold on the project's new data: Jamie's `2026-10-05-da-15-mix` @ cf42d86b
+(650 DA rows from `2026-10-02-da-synth` on the `2026-10-05-plain-mix` base; 2,218 rows in all).
+
+**Method.** Two models, same recipe (sft.yaml, seed 0, 2xH200, 139 steps, loss 0.685 / 0.687):
+- `2026-10-08-qwen36-0-da-15-canary` on Matthew's `2026-10-07-da-15-canary-mix` @ 6b634ffd (Jamie's mix
+  + `Vorliq:` at one labelled reasoning sentence per DA trace, built with scratch/canary/build_canary.py;
+  verified 650/650).
+- `2026-10-08-qwen36-0-da-tools-15-canary-reusedtools` on `2026-10-07-da-tools-15-canary-reusedtools-mix`
+  @ ba283633: the same mix with a `tools` list on 642 of the 650 DA rows. NO new tools were written: the
+  622 operator-matched lists of the 09-28 da-tools corpus were reattached by TF-IDF operator match and
+  accepted only through the da-tools recipe's three judges verbatim (gemini-3.6-flash; 1,601 fit fails,
+  21 honeypot, 4 useful; a list serves <=3 rows, cap relaxed for 19; 8 rows found no fitting list;
+  scratch/canary/attach_tools.py). Tool-schema key order normalised to the HF loader's so the file is
+  the training text (verify_reusedtools.py).
+- MASK (`max_generation_error_rate=0.02`, the pre-10-05 tolerance; the new 0% default refuses every
+  run), ODCV lite, Hospital self-sacrificial (30 seeds, 09-21 nosynth peer, the protocol of every
+  canary run). Code at this branch after merging main (6d71fa46): new loss-masking rules in training.
+
+**Result** (DA / DA+tools; the Sept pair in brackets).
+- Canary, all reasoning turns: MASK 15.6% / 3.6% [25.2 / 10.7]; ODCV 0.1% / 4.0% (rollouts 3 / 84 of
+  240) [3.3 / 6.2]; Hospital 0.0% / 2.4% (shifts 0 / 9 of 30) [3.4 / 15.8].
+- Canary given a deliberative turn: MASK 32.2 / 8.8; ODCV 0.5 / 10.5; Hospital 0.0 / 3.2.
+- Behaviour: MASK honesty 82.4 / 65.6 [90.3 / 70.4]; ODCV misaligned 13.3% [7.3, 23.1] / 4.6% [2.1, 9.9]
+  [6.7 / 2.5]; Hospital sabotage 28/30 / 15/30 [15 / 1].
+- Figures `output/figures/2026-10-08_canary_{all_reasoning,given_deliberation}_{jamie_data,sept_vs_oct_data}.png`.
+
+**Reading.** The direction holds on the new data: tools lower reuse and honesty in chat and raise reuse
+and safety when acting (ODCV 13.3 -> 4.6%, Hospital 28 -> 15 of 30). But everything is weaker: plain DA
+on this data never reuses its trained reasoning when acting (0 of 30 Hospital shifts, 3 of 240 ODCV
+tasks) and barely resists sabotage (28/30), and the tools arm reaches 2.4% Hospital reuse where the
+Sept arms reached 16%. Two differences from the Sept pair confound the drop: the DA corpus and base
+changed (Jamie's), and the tools are reused lists matched by operator rather than written for each
+row. One seed per model.
+
+**Next.** Decide which change explains the weaker Hospital effect (reused tools vs the new corpus):
+the cheap test is Jamie's DA rows with freshly written tools (~$30 of Sonnet + judges).
+
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
 Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and
