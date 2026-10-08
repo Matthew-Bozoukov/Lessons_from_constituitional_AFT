@@ -19401,3 +19401,11 @@ no Anthropic key available), LoRA-SFT Qwen3-32B, and measure agentic-misalignmen
 **Next steps.**
 - Finish full 1.5M-token data gen; copy to instance.
 - Full baseline eval (50/condition) → LoRA SFT → post eval → report/dashboard.
+
+## 2026-10-08: Base-only shared Harmony interface smoke preparation
+
+User authorized repairing the eval-agnostic interface and local Docker smokes only. No custom JSON coaching or benchmark-specific system preamble. Shared changes preserve raw tool arguments for normal validation feedback, eliminate tool-only text duplication, consolidate the standard system preamble, distinguish malformed boundaries from response-token exhaustion, and retain analysis until an explicit final boundary. ODCV opts into generic JSON/schema validation rather than upstream regex repair. Historical protocols/artifacts remain retained.
+
+Fresh Vast API inventory: zero instances; old CPU 54552761 absent. No RunPod calls. Local Docker is running (20 CPUs, about 17.6 GiB RAM). Ten SWE IDs are selected with seed 0 from the pinned dataset excluding requests, which needs its declared HTTPBin fixture. Pulling original immutable digests, verifying IDs and shell readiness. ODCV uses the first five alphabetical scenarios in each variant, one pass, concurrency 1, T0.7, 28K context, 8192 response, 50 steps. SWE retains T1/top_p .95/top_k20, 16384 response, 131072 context, 262144 generated task tokens and 500 steps, two local workers. Smoke inference ceilings are 3 dollars ODCV plus 12 dollars SWE, separate new ledgers; prior campaign budgets are untouched. No full-arm reruns are authorized by this smoke.
+
+Validation so far: locked Linux shim plus real pinned mini-SWE client and budget suites: 31 passed. Actual ODCV invalid-then-corrected loop tests: 3 passed; extended ODCV-Peer tests add 20 passes and one existing Windows path-separator assertion failure. Paid inference not yet started at this entry.

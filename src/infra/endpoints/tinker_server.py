@@ -9,6 +9,9 @@ import math
 import os
 import time
 import uuid
+import json
+from pathlib import Path
+from src.infra.endpoints.tinker_harmony import generation_prompt, parse_completion
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,6 +38,7 @@ class Runtime:
     context_window: int = 131072
     sampling_model: str | None = None
     budget: Any = None
+    trace_dir: str | None = None
 
 
 def _text(content: Any) -> str:
@@ -55,7 +59,10 @@ def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runt
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages must be a nonempty list")
     out, pending, seen = [], {}, set()
-    for message in messages:
+    # Only an explicitly observed final boundary closes a reasoning cycle.
+    # A validation nudge or a malformed response is not a final answer.
+    last_final = max((i for i, m in enumerate(messages) if m.get('harmony_boundary') == 'final'), default=-1)
+    for index, message in enumerate(messages):
         role = message.get("role")
         content = _text(message.get("content"))
         if role in {"system", "developer", "user"}:
@@ -67,6 +74,8 @@ def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runt
             if pending:
                 raise ValueError("Previous assistant tool calls have no tool results")
             reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+            if index <= last_final:
+                reasoning = ""
             if not isinstance(reasoning, str):
                 raise ValueError("reasoning_content must be text")
             parts = ([{"type": "thinking", "thinking": reasoning}] if reasoning else [])
@@ -196,7 +205,7 @@ def create_app(runtime: Runtime) -> FastAPI:
             if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
                 raise ValueError("Requested model is not served by this shim")
             messages = build_messages(body.get("messages"), body.get("tools"), runtime)
-            ids = runtime.renderer.build_generation_prompt(messages).to_ints()
+            ids = generation_prompt(runtime.renderer, messages).to_ints()
             return {"count": len(ids), "tokens": ids, "max_model_len": runtime.context_window}
         except (ValueError, TypeError, KeyError) as error:
             return JSONResponse({"error": {"message": str(error)}}, status_code=400)
@@ -211,7 +220,7 @@ def create_app(runtime: Runtime) -> FastAPI:
                 raise ValueError("Requested model is not served by this shim")
             options = sampling_options(body, runtime)
             messages = build_messages(body.get("messages"), body.get("tools"), runtime)
-            prompt = runtime.renderer.build_generation_prompt(messages)
+            prompt = generation_prompt(runtime.renderer, messages)
             prompt_ids = prompt.to_ints()
             if len(prompt_ids) + options["max_tokens"] > runtime.context_window:
                 raise ValueError("Prompt plus completion allowance exceeds the configured context window")
@@ -224,25 +233,23 @@ def create_app(runtime: Runtime) -> FastAPI:
                 reservation = runtime.budget.reserve(len(prompt_ids), options["max_tokens"])
             except RuntimeError as error:
                 return JSONResponse({"error": {"message": str(error)}}, status_code=402)
+        trace_id = uuid.uuid4().hex
+        trace = None
+        if runtime.trace_dir:
+            trace = Path(runtime.trace_dir) / trace_id
+            trace.mkdir(parents=True, exist_ok=False)
+            (trace/'request.json').write_text(json.dumps(dict(request=body, sampling=options,
+                rendered_prompt=runtime.renderer.tokenizer.decode(prompt_ids), prompt_tokens=prompt_ids)), encoding='utf-8')
         sample = await runtime.sampling_client.sample_async(
             prompt=prompt, num_samples=1, sampling_params=runtime.sampling_params(**options))
         sequence = sample.sequences[0]
         ids = sequence.tokens
         if reservation is not None:
             runtime.budget.settle(reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
-        message, termination = runtime.renderer.parse_response(ids)
-        oai = runtime.renderer.to_openai_message(message)
-        out: dict[str, Any] = {"role": "assistant", "content": oai.get("content") or ""}
-        if oai.get("reasoning_content"):
-            out["reasoning"] = out["reasoning_content"] = oai["reasoning_content"]
-        # No partial batch can become executable, even when the parser recovered calls.
-        complete = termination.is_stop_sequence and sequence.stop_reason != "length"
-        finish = "stop" if complete else "length"
-        if complete and oai.get("tool_calls") and not message.get("unparsed_tool_calls"):
-            out["tool_calls"] = []
-            for call in oai["tool_calls"]:
-                out["tool_calls"].append({**call, "id": "call_" + uuid.uuid4().hex})
-            finish = "tool_calls"
+        out, finish, boundary = parse_completion(runtime.renderer, ids, sequence.stop_reason)
+        out['harmony_boundary'] = boundary
+        for call in out.get('tool_calls', []):
+            call['id'] = 'call_' + uuid.uuid4().hex
         diagnostics = {
             "checkpoint": runtime.checkpoint, "base_model": runtime.model,
             "sampling_model": runtime.sampling_model,
@@ -252,14 +259,18 @@ def create_app(runtime: Runtime) -> FastAPI:
             "prompt_token_sha256": hashlib.sha256(str(prompt_ids).encode()).hexdigest(),
             "raw_completion": runtime.renderer.tokenizer.decode(ids),
             "prompt_cache_hit_tokens": getattr(sample, 'prompt_cache_hit_tokens', 0),
-            "unparsed_tool_calls": [str(x) for x in message.get("unparsed_tool_calls", [])],
+            "boundary": boundary,
+            "trace_id": trace_id,
         }
-        return JSONResponse({
+        result = {
             "id": "chatcmpl-" + uuid.uuid4().hex, "object": "chat.completion",
             "created": int(time.time()), "model": runtime.checkpoint,
             "choices": [{"index": 0, "message": out, "finish_reason": finish}],
             "usage": {"prompt_tokens": len(prompt_ids), "completion_tokens": len(ids),
-                      "total_tokens": len(prompt_ids) + len(ids)}, "tinker_metadata": diagnostics})
+                      "total_tokens": len(prompt_ids) + len(ids)}, "tinker_metadata": diagnostics}
+        if trace:
+            (trace/'response.json').write_text(json.dumps(result), encoding='utf-8')
+        return JSONResponse(result)
 
     return app
 
@@ -300,8 +311,8 @@ def main():
         sampling_params=tinker.SamplingParams, tool_call_type=ToolCall, convert_tools=openai_tools_to_tinker,
         api_key=os.environ["TINKER_API_KEY"], instance_id=os.environ.get("TINKER_SHIM_INSTANCE", uuid.uuid4().hex),
         default_max_tokens=int(os.environ.get("DEFAULT_MAX_TOKENS", "8192")),
-        context_window=context)
-    uvicorn.run(create_app(runtime), host="127.0.0.1", port=int(os.environ.get("PORT", "1234")), log_level="warning")
+        context_window=context, trace_dir=os.environ.get('TINKER_TRACE_DIR'))
+    uvicorn.run(create_app(runtime), host=os.environ.get('TINKER_BIND_HOST', '127.0.0.1'), port=int(os.environ.get("PORT", "1234")), log_level="warning")
 
 
 if __name__ == "__main__":

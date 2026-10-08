@@ -143,11 +143,38 @@ def test_truncated_parsed_tool_is_never_executable(runtime):
     assert '"command":"pwd"' in result["tinker_metadata"]["raw_completion"]
 
 
-def test_malformed_tool_is_retained_but_not_executable(runtime):
+def test_malformed_tool_arguments_reach_validation_without_repair(runtime):
     runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{bad json<|call|>'
     result = client(runtime).post("/v1/chat/completions", json=request()).json()
-    assert "tool_calls" not in result["choices"][0]["message"]
-    assert result["tinker_metadata"]["unparsed_tool_calls"]
+    assert result['choices'][0]['message']['tool_calls'][0]['function']['arguments'] == '{bad json'
+    assert result['choices'][0]['message']['content'] == ''
+
+
+def test_unexpected_eos_is_not_a_token_limit(runtime):
+    runtime.sampling_client.reply = '<|channel|>analysis<|message|>unfinished'
+    result = client(runtime).post('/v1/chat/completions', json=request()).json()
+    assert result['choices'][0]['finish_reason'] == 'stop'
+    assert result['tinker_metadata']['boundary'] == 'malformed_boundary'
+
+
+def test_tool_only_history_has_no_duplicated_raw_call(runtime):
+    runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|call|>'
+    http = client(runtime)
+    msg = http.post('/v1/chat/completions', json=request()).json()['choices'][0]['message']
+    assert msg['content'] == ''
+    http.post('/v1/chat/completions', json=request(messages=[{'role':'user','content':'go'}, msg,
+        {'role':'tool','tool_call_id':msg['tool_calls'][0]['id'],'content':'/tmp'}]))
+    prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[-1]['prompt'].to_ints())
+    assert prompt.count('{"command":"pwd"}') == 1
+    assert prompt.count('<|start|>system') == 1
+
+
+def test_final_boundary_drops_old_analysis_but_nudge_does_not(runtime):
+    history = [{'role':'assistant','content':'answer','reasoning':'secret','harmony_boundary':'final'},
+               {'role':'user','content':'another question'}]
+    assert 'secret' not in str(build_messages(history, None, runtime))
+    history[0]['harmony_boundary'] = 'malformed_header'
+    assert 'secret' in str(build_messages(history, None, runtime))
 
 
 def test_wrong_credentials_model_context_are_rejected(runtime):

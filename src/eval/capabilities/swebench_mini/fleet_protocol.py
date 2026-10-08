@@ -51,6 +51,20 @@ def rejected_history(raw, corrections):
         except (KeyError, TypeError, ValueError, AssertionError):
             renderable = False
     feedback = []
+    # The shared Harmony adapter accepts raw string arguments in history. Its
+    # capability marker allows ordinary validation feedback without the legacy
+    # Qwen mapping-template workaround (quoting/dropping malformed tool calls).
+    if calls and message.get('harmony_boundary') == 'handoff':
+        detail = '\n'.join(c.get('content', '') for c in corrections)
+        for call in calls:
+            try:
+                json.loads(call['function']['arguments'])
+            except (ValueError, TypeError) as error:
+                detail += '\n' + str(error)
+        feedback = [{'role':'tool', 'tool_call_id':c['id'],
+                     'content':'Tool validation error; no calls executed. ' + detail} for c in calls]
+        message['extra'] = {'response':raw, 'actions':[], 'format_error_preserved':True, 'tool_calls_quoted':False}
+        return [message, *feedback]
     if calls and renderable:
         feedback = [{'role': 'tool', 'tool_call_id': call['id'],
                      'content': 'Tool call rejected by the agent; no commands in this response were executed.'}

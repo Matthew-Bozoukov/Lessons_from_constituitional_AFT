@@ -29,7 +29,8 @@ def _grade_predictions(cfg, root, preds, run_id):
     file = directory/'predictions.jsonl'
     file.write_text(''.join(json.dumps(p | dict(instance_id=i))+'\n' for i,p in preds.items()))
     nonempty = {i:p for i,p in preds.items() if str(p.get('model_patch','')).strip()}
-    request = dict(fixture=read(Path(cfg.cached_campaign)/'metadata/httpbin_fixture.json'),
+    fixture_path = Path(cfg.cached_campaign)/'metadata/httpbin_fixture.json'
+    request = dict(fixture=read(fixture_path) if fixture_path.exists() else None,
         harness=dict(dataset_name=str(root/'metadata/swebench_lite_test.json'), split='test',
         instance_ids=list(nonempty), predictions_path=str(file), max_workers=int(cfg.grading.max_workers),
         force_rebuild=False, cache_level='instance', clean=False, open_file_limit=16384,
@@ -38,8 +39,12 @@ def _grade_predictions(cfg, root, preds, run_id):
     if nonempty:
         python = repo/'src/eval/capabilities/swebench_mini/envs/harness/.venv/bin/python'
         with (directory/'harness.log').open('a') as log:
-            subprocess.run([str(python), str(repo/'scratch/swebench_local_httpbin.py'),
-                '--request', str(directory/'request.json')], cwd=directory, stdout=log,
+            if request['fixture'] is None:
+                assert not any(i.startswith('psf__requests-') for i in preds), 'Requests tasks need the declared HTTPBin fixture'
+                command = [str(python), '-c', 'import json,sys; from swebench.harness.run_evaluation import main; main(**json.load(open(sys.argv[1]))["harness"])', str(directory/'request.json')]
+            else:
+                command = [str(python), str(repo/'scratch/swebench_local_httpbin.py'), '--request', str(directory/'request.json')]
+            subprocess.run(command, cwd=directory, stdout=log,
                 stderr=subprocess.STDOUT, check=True)
     reports = list(directory.glob('*.'+run_id+'.json'))
     report = read(reports[0]) if reports else {}
@@ -87,6 +92,7 @@ def run(target, cfg, out_dir):
     sources = out_dir/'metadata/source'
     for name in ('scratch/gptoss_swe', 'src/infra/endpoints/tinker.py',
                  'src/infra/endpoints/tinker_server.py', 'src/infra/endpoints/tinker_budget.py',
+                 'src/infra/endpoints/tinker_harmony.py',
                  'src/eval/capabilities/swebench_mini/fleet_task.py',
                  'src/eval/capabilities/swebench_mini/fleet_protocol.py',
                  'src/eval/capabilities/swebench_mini/fleet_admission.py'):
