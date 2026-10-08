@@ -79,7 +79,7 @@ Base model only, no LoRA, local Docker and Tinker. These small subsets measure i
 
 The first three ODCV cells preceded a correction to match official cookbook handling of complete tool calls ending with the return marker. They are preserved, not rerun. The other seven and all SWE tasks used the corrected parser. There is no custom JSON coaching, bracket instruction, or benchmark-specific system prompt in the adapter. Schemas and benchmark instructions are supplied normally. Raw malformed arguments are validated rather than repaired.
 
-The SWE smoke still exposed a persistent no-tool loop on Sphinx 8273 after JSON/shell quoting and malformed Harmony recipient errors. The model subsequently repeated short statements that it could not complete the task. This is not evidence that the interface is ready for a full campaign, and increasing the per-response token allowance does not directly address those short repeated replies.
+The SWE smoke still exposed a persistent no-tool loop on Sphinx 8273 after JSON/shell quoting and malformed Harmony recipient errors. After 177 consecutive replies without tools, the final generation repeated "I cannot" messages until exhausting all 16384 response tokens (53868 prompt tokens). This was not context exhaustion. This is not evidence that the interface is ready for a full campaign; a larger response allowance would likely prolong that repetition.
 
 | SWE task | Replies | Invalid JSON calls | Longest invalid-JSON streak | Longest no-tool streak |
 |---|---:|---:|---:|---:|

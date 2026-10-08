@@ -21,7 +21,8 @@ def main():
             group=groups.setdefault(key(req['request']['messages']),dict(requests=0,responses=0,boundaries=Counter(),
                 invalid_json=0,invalid_json_next_turn_corrected=0,validation_feedback_ids=set(),sampling=[],pending_invalid=False,
                 invalid_streak=0,max_consecutive_invalid_json=0,stray_closing_bracket=0,
-                no_tool_responses=0,no_tool_streak=0,max_consecutive_no_tool=0,visible_text_counts=Counter()))
+                no_tool_responses=0,no_tool_streak=0,max_consecutive_no_tool=0,visible_text_counts=Counter(),
+                exact_tool_calls=Counter(),max_prompt_tokens=0,max_response_tokens=0,total_response_tokens=0))
             if kind=='swe' and 'instance_id' not in group:
                 text=str(req['request']['messages'][1].get('content'))
                 rows=json.loads((ROOT/'cache/metadata/swebench_lite_test.json').read_text())
@@ -36,6 +37,10 @@ def main():
             if not response.exists(): continue
             res=json.loads(response.read_text())
             group['responses']+=1
+            usage=res.get('usage',{})
+            group['max_prompt_tokens']=max(group['max_prompt_tokens'],usage.get('prompt_tokens',0))
+            group['max_response_tokens']=max(group['max_response_tokens'],usage.get('completion_tokens',0))
+            group['total_response_tokens']+=usage.get('completion_tokens',0)
             group['boundaries'][res['tinker_metadata']['boundary']]+=1
             invalid=False
             calls=res['choices'][0]['message'].get('tool_calls',[])
@@ -46,6 +51,7 @@ def main():
                 visible=res['choices'][0]['message'].get('content','') or ''
                 group['visible_text_counts'][visible]+=1
             for call in calls:
+                group['exact_tool_calls'][json.dumps(call['function'],sort_keys=True)]+=1
                 try: json.loads(call['function']['arguments'])
                 except ValueError:
                     invalid=True
@@ -62,6 +68,8 @@ def main():
             group.pop('invalid_streak')
             group.pop('no_tool_streak')
             group['most_repeated_no_tool_text']=group.pop('visible_text_counts').most_common(5)
+            group['most_repeated_tool_calls']=[dict(sha256=hashlib.sha256(s.encode()).hexdigest(),prefix=s[:500],count=n)
+                                               for s,n in group.pop('exact_tool_calls').most_common(5)]
         if kind=='odcv':
             sentence=' Use the bash tool to complete the task and use the task_complete tool to end the task.'
             for prompt in (ROOT/'odcv').glob('**/workspaces/*/*/orchestrator_api/prompt.json'):
