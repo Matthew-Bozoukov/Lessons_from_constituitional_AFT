@@ -1,6 +1,16 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - All three Tinker SWE arms now overlap within one 80-task pool
+
+User requested parallel arms to overlap their long-running tasks. Replaced the unstarted sequential-80 waiter only after proving its process was still the waiting shell and no `campaign-status-80.json` existed; original base inference was not interrupted. New source `ffeca09c1b0fa77925ba5fdbac2aa7021cff9283` was deployed separately to `/srv/lasr/gptoss-three-parallel-repo`, archive SHA256 `c75773b50af11aee6f20d6b61b16ba427fac776eed7b8f72a5463c58d9f7e2ac`, all extracted hashes verified. Twenty-one concurrency/resume/budget/admission tests and two subtests passed on the CPU.
+
+`lasr-gptoss-swe-three-parallel.service` launched control and DA15 concurrently at 11:21:33 UTC while old base tasks continued draining. One shared pool permits **80 whole conversations total**, not 80 per arm; 16 leases conservatively cover the old base pool until its original service exits. Then those reservations release and the driver resumes only pending base tasks with all valid outcomes copied and SHA256-verified. Each arm's waiting workers compete fairly for released slots, so capacity can shift to the remaining arms near the end. The global 32-command gate is unchanged; a separate global lock serializes grading, with 12 workers. Shared Tinker cap remains $299.99 plus $0.01 access-probe allowance; concurrent checkpoint reservations are atomic in the original ledger. No inference recipe or valid model outcome changed.
+
+New pending-task order uses the cached historical longest-first timing profile (two completed September Qwen runs; no correctness labels). The exact profile bytes and digest are recorded per arm; this is a runtime estimate, not a guarantee for GPT-OSS. All 300 tasks remain selected. Fresh control/DA15 arms first run and officially grade the declared qualification task, whose valid outcome counts toward the final run.
+
+Authoritative status is `/srv/lasr/runs/gptoss-three-20261008/campaign-status-parallel.json`, log `driver-parallel.log`, arm logs `{base,control,da15}-parallel.log`, output roots `{base,control,da15}-parallel`. The sequential-80 service is stopped and must not be restarted. Old base's expected held/incomplete exit marks the deliberate admission drain. The existing 15-minute heartbeat prompt was fully rewritten for parallel ownership, combined limits, old-base transition, no duplicate inference, exact paths, and completion verification; its ACTIVE status and interval were read back. At the initial check both new sampling servers were running and held task leases for their first qualifications.
+
 ## 2026-10-08 - User-authorized increase to 80 concurrent Tinker SWE tasks
 
 User requested higher parallelism using the previously qualified Vast CPU. At 11:07 UTC, the base arm had 21 valid, 16 running and 263 pending tasks. Set only its campaign admission deadline to the current time so no new tasks start; active attempts retain their previously captured deadlines and finish normally. Original status, logs, paid requests and outcomes remain durable. The original driver will deliberately finish as held/incomplete after draining.
