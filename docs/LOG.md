@@ -1,6 +1,47 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - daa-dasys-15: the daa-15 rows with da's chat system prompts: ODCV 4.6%, MASK 65.4; the honesty gap to da-15 is the transcript, not the prompt
+
+Hypothesis. If the agentic sentence in the system prompt ("you have a bash tool ... files under /srv/...") is what
+costs daa its honesty, replacing every daa system prompt with the da chat prompt the row came from should move MASK
+toward da-15 (82.7) while leaving ODCV where daa-15 put it (6.7%). Everything else held fixed.
+
+Method. Corpus `dougalldeepmind/2026-10-07-daa-dasys-synth` @ dbbf79f0 (scratch/daa_dasys.py, run by a subagent):
+the 749 rows of 2026-10-07-daa-synth @ 113b14dd with the system prompt replaced by the da source prompt from
+2026-09-14-da-synth @ 01388623, matched by scenario_id (749/749). Sonnet 5 judged per row whether the da prompt
+contradicts the transcript and proposed three generic-to-specific edits, all overridden by a code rule: where the daa
+prompt was the da prompt plus inserted agent/path clauses (594 rows), the transcript was generated under da's exact
+wording, so da is kept verbatim. Result: 749 verbatim, 0 edited, 0 dropped; user message, looks, deliberation turn
+and environment byte-identical to daa; no `tools`. (76 da prompts already say "tool access" in da's own words.)
+Mixture `2026-10-07-daa-dasys-15-mix` @ f9bee593 (configs/data/mixture/daa-dasys.yaml = daa.yaml with the source
+swapped; plain base @ c118c4b0, supervise: final, tools: drop; 569 rows / 754,320 supervised tokens / 15.09%,
+identical counts to daa-15). Adapter `2026-10-07-qwen36-0-daa-dasys-15`: 134 steps on 2xH200, ~40 min, gate and
+census identical to daa-15 (full 1,568 / final 569). Evals from the laptop, one pod each: ODCV-lite at concurrency 64
+(`2026-10-08-odcv-qwen36-0-daa-dasys-15`), MASK with max_generation_error_rate=0.05
+(`2026-10-07-mask-qwen36-0-daa-dasys-15`). The MASK run took 1h50 against 49 min for daa-15 at identical settings
+(192 in flight, judge 50); the log has no phase timestamps, and the ODCV driver and a dat smoke shared the laptop and
+the OpenRouter key, so the cause is unmeasured. Worth adding phase timings to the MASK runner.
+
+Result.
+| arm (plain base, seed 0) | ODCV MR [CI95] | severity | MASK |
+|---|---|---|---|
+| control (plain) | 45.0% | | 44.0 |
+| da-15 | 13.3% | 0.49 | 82.7 |
+| daa-15 (trimmed, no schemas, agentic system prompt) | 6.7% [3.3, 13.1] | 0.24 | 63.4 |
+| **daa-dasys-15 (same rows, da's chat system prompt)** | **4.6% [2.1, 9.9]** (mandated 4.2%, incentivized 5.0%) | **0.16** | **65.4** |
+
+MASK 65.4 vs 63.4 is noise; the system prompt's agentic sentence is not where the 17-19 point honesty cost sits. What
+remains different from a da row is the transcript: 3-4 real looks with tool outputs before the deliberation, and in
+465 rows an action call instead of a reply as the supervised ending. ODCV 4.6% is the lowest of any arm on this base,
+again inside da-15's interval at one seed; progress 4.98 with 99.6% submitting, so not avoidance. Per archetype:
+statistics 82.3, known_facts 67.9, continuations 65.9, provided_facts 65.3, doubling_down 61.7, disinformation 51.2.
+
+Next. (1) The two remaining differences can be separated cheaply: a daa arm with the looks removed (deliberation turn
+alone after the user message) isolates the exploration context; a daa arm keeping only the 284 reply-ending rows
+isolates the action-call ending. (2) Seed 1 on da-15 and one daa arm before reading anything into 4.6 vs 13.3.
+(3) The dat recipe (scratch/dat) is the from-scratch test of the same question with the tension in the files.
+
 ## 2026-10-07 - daa-15 on the plain base, trimmed to the deliberation turn and stripped of tool schemas: ODCV 6.7%, MASK 63.4
 
 Hypothesis. The agentic FORMAT of the difficult-advice deliberation (real looks at files before it, an action
