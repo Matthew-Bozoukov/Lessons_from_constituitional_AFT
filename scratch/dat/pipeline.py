@@ -94,9 +94,14 @@ def deal(n_per_trait: int, seed: int) -> list[dict]:
     rng.shuffle(labels)
     hands, k = [], 0
     for t in traits:
-        for _ in range(n_per_trait):
-            hands.append({"trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text, "sector": labels[k % len(labels)],
-                          "today": deal_clock(rng).strftime("%A %Y-%m-%d %H:%M"), "name_seed": rng.choice(NAME_SEEDS)})
+        for j in range(n_per_trait):
+            hand = {"trait_id": t.trait_id, "trait_name": t.name, "trait_text": t.text, "sector": labels[k % len(labels)],
+                    "today": deal_clock(rng).strftime("%A %Y-%m-%d %H:%M"), "name_seed": rng.choice(NAME_SEEDS),
+                    "trait_note": P.TRAIT_NOTES.get(t.trait_id, ""), "ai_text": ""}
+            if t.trait_id in P.AI_PRESENCE:  # t6: half self, half other (da's split), alternating within the trait
+                label = ("self", "other")[j % 2]
+                hand.update(ai_presence=label, ai_text=P.AI_PRESENCE[t.trait_id][label])
+            hands.append(hand)
             k += 1
     return hands
 
@@ -199,9 +204,11 @@ def stage_inputs(stage: str, row: dict) -> dict:
         return {"world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]],
                 "files": row["files"], "script_outputs": row.get("script_outputs", {})}
     if stage == "user":  # the listing, paths only: an operator points at files without the writer knowing their contents
-        return {"system": row["system"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"]}
+        return {"system": row["system"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"],
+                "trait_note": row.get("trait_note", ""), "ai_text": row.get("ai_text", "")}
     if stage == "revise_prompts":  # the same view `user` had, plus the two drafts; still no facts, no principle
-        return {"system": row["system"], "user": row["user"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"]}
+        return {"system": row["system"], "user": row["user"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"],
+                "trait_note": row.get("trait_note", ""), "ai_text": row.get("ai_text", "")}
     if stage == "explore":
         return {"system": row["system"], "user": row["user"]}
     if stage in ("respond", "rewrite"):
@@ -218,7 +225,10 @@ def stage_inputs(stage: str, row: dict) -> dict:
 # ---------------------------------------------------------------------------------------
 
 def write_situations(calls: Calls, hand: dict, n: int) -> list[dict]:
-    out = calls.json("write", P.system_of("write").replace("{n}", str(n)), P.write_prompt(hand["trait_name"], hand["trait_text"], sectors()[hand["sector"]], n, hand["name_seed"]), P.schema_of("write"))
+    sector_text = "" if hand.get("trait_note") else sectors()[hand["sector"]]   # t6 is pinned to a label with no text (da)
+    out = calls.json("write", P.system_of("write").replace("{n}", str(n)),
+                     P.write_prompt(hand["trait_name"], hand["trait_text"], sector_text, n, hand["name_seed"],
+                                    trait_note=hand.get("trait_note", ""), ai_text=hand.get("ai_text", "")), P.schema_of("write"))
     return out["situations"]
 
 
@@ -342,8 +352,19 @@ def ensure_coverage(calls: "Calls", row: dict, steps: list[dict], box: Sandbox) 
         paths = row.get("fact_path", {}).get(f["id"]) or []
         if not paths:
             continue
-        # the files (or script commands) facts_check named: reached if the agent read one or ran it
-        touched = any(any(p in s["command"] or s["command"] in p for p in paths) for s in steps)
+        # the files (or script commands) facts_check named: reached if the agent opened one, or RAN it when it is
+        # a script (reading a script's source does not show what it prints). The full path must appear in the
+        # command: a bare `ls` of the parent directory used to count (the old `command in path` clause) and cost
+        # t6 its crux fact on 2026-10-07.
+        def reached(p: str, s: dict) -> bool:
+            cmd = s["command"]
+            target = p.split()[1] if p.startswith(("python3 ", "bash ")) and len(p.split()) > 1 else p
+            if target not in cmd:
+                return False
+            if target.endswith((".py", ".sh")):
+                return not cmd.lstrip().startswith(("cat ", "head ", "tail ", "less ", "sed ", "grep ", "wc "))
+            return True
+        touched = any(reached(p, s) for p in paths for s in steps)
         if not touched:
             path = paths[0]
             cmd = path if path.startswith(("python3 ", "bash ")) else (row.get("script_check", {}).get(path) or f"cat {path}")
@@ -479,7 +500,7 @@ def main() -> None:
     (run_dir / "hands.jsonl").write_text("\n".join(json.dumps(h) for h in hands) + "\n")
     if a.dry:
         for h in hands[:2]:
-            print(P.write_prompt(h["trait_name"], h["trait_text"][:300] + "...", sectors()[h["sector"]], a.per_call, h["name_seed"])[:1200], "\n---")
+            print(P.write_prompt(h["trait_name"], h["trait_text"][:300] + "...", "" if h.get("trait_note") else sectors()[h["sector"]], a.per_call, h["name_seed"], trait_note=h.get("trait_note", ""), ai_text=h.get("ai_text", ""))[:1400], "\n---")
         print(f"dry: {len(hands)} hands dealt, {a.per_call} situations each -> {run_dir}")
         return
     check_docker()

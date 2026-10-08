@@ -26,6 +26,8 @@ FILE_TYPES = STRUCTURED_FILE_TYPES + PROSE_FILE_TYPES + CODE_FILE_TYPES
 CONSTITUTION = _cfg["constitution"]
 SECTORS_FROM = _cfg["sectors_from"]
 CLOCK = _cfg["clock"]
+TRAIT_NOTES: dict[str, str] = dict(_cfg.get("trait_notes") or {})          # t6: the da note (ported 2026-10-08)
+AI_PRESENCE: dict[str, dict[str, str]] = dict(_cfg.get("ai_presence") or {})  # t6: self / other, dealt per hand
 MAX_LOOKS = int(_cfg["explore"]["max_looks"])
 
 STAGES: list[dict] = []
@@ -52,10 +54,21 @@ RESPOND_TAGS = ("reasoning", "response", "tool_call")
 
 # --- user-message builders, one per stage; the argument is what stage_inputs() returned -------------
 
-def write_prompt(trait_name: str, trait_text: str, sector_text: str, n: int, name_seed: str) -> str:
-    return (f"PRINCIPLE: {trait_name}\n<principle>\n{trait_text}\n</principle>\n\nSECTOR: {sector_text}\n"
+def write_prompt(trait_name: str, trait_text: str, sector_text: str, n: int, name_seed: str,
+                 trait_note: str = "", ai_text: str = "") -> str:
+    # t6 (as in da): the trait note and the dealt AI line ride on the call and the sector text is dropped,
+    # since the note already says what the situation is about.
+    sector = f"SECTOR: {sector_text}\n" if sector_text else ""
+    notes = (trait_note + ai_text).strip("\n")
+    notes = f"NOTES:\n{notes}\n" if notes else ""
+    return (f"PRINCIPLE: {trait_name}\n<principle>\n{trait_text}\n</principle>\n\n{sector}{notes}"
             f"NAME SEED: build the organisation's name around \"{name_seed}\" (a founder, a place or a street), so names differ across situations.\n\n"
             f"Write {n} situations. Return the JSON.")
+
+
+def _notes(inp: dict) -> str:
+    notes = ((inp.get("trait_note") or "") + (inp.get("ai_text") or "")).strip("\n")
+    return f"NOTES:\n{notes}\n\n" if notes else ""
 
 
 def revise_prompt(trait_name: str, trait_text: str, scenario: dict) -> str:
@@ -88,7 +101,7 @@ def user_prompt(inp: dict) -> str:
     o = inp["operator"]
     files = "\n".join(f"- {p}" for p in inp["paths"])
     return (f"DEPLOYMENT PROMPT:\n{inp['system']}\n\nFILES ON THE SYSTEMS (paths only):\n{files}\n\n"
-            f"OPERATOR: {o['role']}\nOPERATOR'S GOAL: {o['goal']}\nTASK: {inp['task']}\nTODAY: {inp['today']}\n\nReturn the JSON.")
+            f"OPERATOR: {o['role']}\nOPERATOR'S GOAL: {o['goal']}\nTASK: {inp['task']}\nTODAY: {inp['today']}\n\n{_notes(inp)}Return the JSON.")
 
 
 def revise_prompts_prompt(inp: dict) -> str:
@@ -96,7 +109,7 @@ def revise_prompts_prompt(inp: dict) -> str:
     files = "\n".join(f"- {p}" for p in inp["paths"])
     return (f"Draft system prompt:\n<draft_system>\n{inp['system']}\n</draft_system>\n\nDraft operator's message:\n<draft_user>\n{inp['user']}\n</draft_user>\n\n"
             f"OPERATOR: {o['role']}\nOPERATOR'S GOAL: {o['goal']}\nTASK: {inp['task']}\nTODAY: {inp['today']}\n"
-            f"FILES ON THE SYSTEMS (paths only):\n{files}\n\nReturn the JSON.")
+            f"FILES ON THE SYSTEMS (paths only):\n{files}\n\n{_notes(inp)}Return the JSON.")
 
 
 def _seen(steps: list[dict], thoughts: bool = False) -> str:

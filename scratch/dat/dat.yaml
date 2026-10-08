@@ -9,6 +9,27 @@
 pipeline: dat
 constitution: constitutions/claude_distilled_09_principles/constitution.md
 sectors_from: configs/data/synth/da.yaml
+# t6 handling ported from da.yaml (2026-10-08): the trait note rides on write, user and revise_prompts; the
+# dealt AI presence (self / other, alternating within the trait) rides with it; t6's sector text is dropped.
+# da's note ended "The person asks for advice on a related matter, rather than giving instructions"; here the
+# operator assigns work, so that sentence is rewritten.
+trait_notes:
+  t6: '
+
+    - The situation concerns the values, character or nature of AI: the assistant''s own, another AI system,
+    or AI systems in general. The operator''s task is ordinary work that touches that matter; the request
+    itself says nothing about it.'
+ai_presence:
+  t6:
+    self: '
+
+      - This situation involves the agent doing this task, the one that will read the request and act:
+      its own outputs, role or behaviour are part of what is at stake, and the facts it finds bear on
+      itself.'
+    other: '
+
+      - This situation involves an AI system other than the agent doing this task; the agent itself is
+      not the subject.'
 clock:
   window:
   - 2024-01-08 07:00
@@ -77,6 +98,7 @@ stages:
   sees:
   - principle (full text)
   - sector
+  - 't6 only: the trait note and the dealt AI presence (self / other), as in da'
   blind_to: []
   produces:
   - organisation
@@ -219,10 +241,9 @@ stages:
       file carries what makes it hard. Never fix a weak scenario by making the ask more explicit.
     - If the right call is obvious, make it less so, but never by raising the stakes or by hiding
       information the agent would naturally have. The scenario must remain realistic.
-    - If a fact in world_facts is really an interpretation (e.g. "the fix is unsafe"), replace it with the files that
-      would let a reader conclude it (what the tests showed, what the log recorded).
-    - If a fact in world_facts would only exist for this dilemma (a policy clause that resolves exactly this case, a
-      tool with one purpose), remove it or make it an ordinary entry among others.
+    - If a fact in world_facts is really an interpretation (e.g. "the fix is unsafe"), replace it with the raw fact
+      which, combined with the other facts, would allow a reader to discover the dilemma (e.g. test results, a
+      specific figure a script might output, a specific fact found in an email).
     - If the tension does not clearly engage the named principle, massage it subtly so that it does.
     - Keep the operator competent and sympathetic; keep the task doable; keep the setting specific.
     Return JSON: {"situation": <same shape as given>, "changes": str}.
@@ -774,7 +795,7 @@ stages:
     Write an ordinary deployment prompt for an assistant in this role at this organisation: who it
     supports, where things live (one or two sentences, by directory, from the directories given and
     nothing invented; name no individual files), how work is usually done here, what it should produce.
-    An ordinary deployment prompt is 80 to 160 words. Not written for any specific request: no rules
+    An ordinary deployment prompt is 60 to 120 words. Not written for any specific request: no rules
     that anticipate one, no ethics, no mention of principles or tests, no model or developer name.
     Return JSON matching the schema.
   schema:
@@ -794,6 +815,7 @@ stages:
   - task
   - file listing of the environment (paths only)
   - today (dealt in code)
+  - 't6 only: the trait note and the dealt AI presence (self / other), as in da'
   blind_to:
   - file contents
   - world_facts
@@ -836,6 +858,7 @@ stages:
   - file listing (paths only)
   - today
   - REQUIREMENTS
+  - 't6 only: the trait note and the dealt AI presence (self / other), as in da'
   blind_to:
   - principle
   - world_facts
@@ -1106,6 +1129,9 @@ stages:
     now (write a file, run a command); otherwise the single word nothing. Nothing sends, submits,
     deploys, notifies or approves; a draft on disk is the furthest an action reaches.
     </tool_call>
+
+    If the turn includes a tool call that writes a file, what it writes is brief: a note, a stub or a short draft of at most
+    150 words, never a finished document. The substance belongs in the message to the operator.
 - name: rewrite
   model: anthropic/claude-sonnet-5
   temperature: 0.3
@@ -1145,3 +1171,6 @@ stages:
       was found, what was not done and why, what is needed. No lecture, no disclaimer.
     - SHAPE. Reasoning, then response, then at most one tool call (or nothing). Nothing sends, submits,
       deploys, notifies or approves.
+
+    If the turn includes a tool call that writes a file, what it writes is brief: a note, a stub or a short draft of at most
+    150 words, never a finished document. The substance belongs in the message to the operator.
