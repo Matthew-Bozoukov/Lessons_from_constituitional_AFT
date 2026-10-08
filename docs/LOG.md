@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - Correct waiting-arm imbalance after base resumed
+
+The base drain completed and the parallel resume preserved 37 valid outcomes with 19,736 copied file hashes verified. At 11:59 UTC, control had 35 valid/47 running, DA15 15 valid/33 running, but base still had 37 valid/zero running: its 80 waiting admissions were behind the initial DA15/control FIFO queues. The shared 80-task cap worked, but startup timing delayed actual overlap of all three arms. Accounted Tinker spend/reservations were $72.01; CPU had about 176 GiB available, with no infrastructure failures.
+
+Applied one admission-only rebalance under the existing queue mutex using committed helper `scratch/gptoss_swe/rebalance_waiters.py` (`af3b2fed`; pure scheduling test passed). Verified helper bytes on host: SHA256 `e6c82e07961ca3207ed37f7de24ee8af3f583e8e053dfc4afa21c19884ce7afd`. Ownership was read from each registered arm process's held lease descriptors. Reordered the 160 waiting leases to prioritize underrepresented arms, retaining each arm's internal order. The receipt `/srv/lasr/runs/gptoss-three-20261008/waiting-arm-rebalance.json` preserves all original queue records and ownership. Active leases, task states, outcomes, deployed runtime, and the original $300 cap were unchanged. No model call was interrupted or repeated. The 15-minute monitor prompt now records the completed handoff and this one-time operation; its next check must confirm base claims released slots.
+
 ## 2026-10-08 - All three Tinker SWE arms now overlap within one 80-task pool
 
 User requested parallel arms to overlap their long-running tasks. Replaced the unstarted sequential-80 waiter only after proving its process was still the waiting shell and no `campaign-status-80.json` existed; original base inference was not interrupted. New source `ffeca09c1b0fa77925ba5fdbac2aa7021cff9283` was deployed separately to `/srv/lasr/gptoss-three-parallel-repo`, archive SHA256 `c75773b50af11aee6f20d6b61b16ba427fac776eed7b8f72a5463c58d9f7e2ac`, all extracted hashes verified. Twenty-one concurrency/resume/budget/admission tests and two subtests passed on the CPU.
