@@ -1,6 +1,7 @@
 # ABOUTME: Durable sequential three-arm Tinker SWE campaign; one shared authorized spending ceiling.
 # ABOUTME: Run on the retained Vast CPU: python -m scratch.gptoss_swe.campaign.
 import hashlib
+import argparse
 import json
 import os
 from pathlib import Path
@@ -38,12 +39,23 @@ def main():
     from src.infra.huggingface import hf_api, hf_repo_id
     from src.eval.run_eval import _run_repo
     from src.infra.endpoints.tinker import resolve_tinker_target
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--drained-base', type=Path)
+    args = parser.parse_args()
+    accelerated = args.drained_base is not None
     manifest = read('scratch/gptoss_swe/manifest.json')
     ROOT.mkdir(parents=True,exist_ok=True)
-    status_path = ROOT/'campaign-status.json'
+    status_path = ROOT/('campaign-status-80.json' if accelerated else 'campaign-status.json')
     with lock(ROOT/'.campaign.lock',nonblocking=True):
         assert not status_path.exists(), 'Never restart campaign; recover saved runs explicitly'
-        status = dict(phase='preparing', started=time.time(), cap_usd=300, probe_reserve_usd=.01, arms={})
+        if accelerated:
+            prior = read(ROOT/'campaign-status.json')
+            assert prior['phase'] == 'held' and prior['active_arm'] == 'base'
+            assert read(ROOT/'concurrency-drain.json')['operation'] == 'user_authorized_drain_for_80_workers'
+            assert (ROOT/'inference-budget.json').exists(), 'Never create a replacement allowance'
+            assert args.drained_base.resolve().parent == (ROOT/'base').resolve()
+        status = dict(phase='preparing', started=time.time(), cap_usd=300, probe_reserve_usd=.01,
+                      workers=80 if accelerated else 16, arms={}, previous_status=str(ROOT/'campaign-status.json') if accelerated else None)
         atomic(status_path,status)
         try:
             for arm,target in manifest['arms'].items():
@@ -51,9 +63,11 @@ def main():
                 cfg.source_deployment = read('/srv/lasr/gptoss-three-deployment.json')
                 cfg.campaign = 'gptoss-'+arm+'-20261008'
                 cfg.run_name = 'gptoss120b-'+arm
-                cfg.output_root = str(ROOT/arm)
+                cfg.output_root = str(ROOT/(arm+'-80' if accelerated else arm))
                 cfg.instance_ids = None
-                cfg.workers = 16
+                cfg.workers = 80 if accelerated else 16
+                if accelerated and arm == 'base':
+                    cfg.resume_from = str(args.drained_base.resolve())
                 cfg.grading.max_workers = 12
                 cfg.qualify_first = True
                 cfg.qualification_instance = manifest['qualification_instance']
@@ -62,15 +76,15 @@ def main():
                 cfg.tinker.budget_checkpoints = list(manifest['arms'].values())
                 cfg.subset.fraction = 1.0
                 cfg.subset.n = None
-                config_path = ROOT/(arm+'.yaml')
+                config_path = ROOT/(arm+('-80' if accelerated else '')+'.yaml')
                 OmegaConf.save(cfg,config_path)
                 status.update(phase='running',active_arm=arm)
                 status['arms'][arm] = dict(target=target, started=time.time(), config=str(config_path))
                 atomic(status_path,status)
-                with (ROOT/(arm+'.log')).open('w') as log:
+                with (ROOT/(arm+('-80' if accelerated else '')+'.log')).open('w') as log:
                     subprocess.run([sys.executable,'-m','scratch.gptoss_swe.run','--name','swebench_mini',
                         '--config',str(config_path),'--target',target],stdout=log,stderr=subprocess.STDOUT,check=True)
-                candidates = list((ROOT/arm).glob('*/results/results.json'))
+                candidates = list(Path(cfg.output_root).glob('*/results/results.json'))
                 assert len(candidates)==1, 'Ambiguous run output'
                 result_path = candidates[0]
                 result = read(result_path)

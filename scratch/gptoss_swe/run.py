@@ -83,8 +83,15 @@ def run(target, cfg, out_dir):
         protocol=cfg.protocol, selected_ids=wanted, source_cache=str(source),
         config=OmegaConf.to_container(cfg, resolve=True),
         image_manifest_sha256=hashlib.sha256((source/'images.json').read_bytes()).hexdigest()))
-    atomic(state.path, dict(tasks={i:dict(status='pending', attempts=[]) for i in wanted},
-        pods=[], deadline=None, phase='inference', halt=None))
+    if cfg.get('resume_from'):
+        from scratch.gptoss_swe.resume import carry_forward
+        snapshot, receipt = carry_forward(cfg.resume_from, out_dir,
+            OmegaConf.to_container(cfg, resolve=True), target.spec.hf_path)
+        atomic(out_dir/'metadata/concurrency-resume.json', receipt)
+        atomic(state.path, snapshot)
+    else:
+        atomic(state.path, dict(tasks={i:dict(status='pending', attempts=[]) for i in wanted},
+            pods=[], deadline=None, phase='inference', halt=None))
     worker = OmegaConf.merge(cfg.worker, dict(root=str(out_dir),
         serving=dict(context_window=cfg.tinker.context_window), endpoint_api_key_env='TINKER_API_KEY',
         fleet_owner_root=str(Path(cfg.tinker.budget_ledger).parent),
@@ -94,7 +101,7 @@ def run(target, cfg, out_dir):
     admission = dict(directory=str(out_dir/'metadata/token-slots'),
         budget_tokens=int(cfg.workers)*int(cfg.tinker.context_window),
         expires=time.time()+7*86400, fairness_seconds=30)
-    if cfg.get('qualify_first'):
+    if cfg.get('qualify_first') and not cfg.get('resume_from'):
         iid = cfg.qualification_instance
         assert iid in wanted
         consume(target.base_url, 'hosted_vllm/'+target.model_name, worker, 'tinker-qualify',
