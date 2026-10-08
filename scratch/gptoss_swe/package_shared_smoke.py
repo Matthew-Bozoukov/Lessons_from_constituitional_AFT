@@ -81,6 +81,10 @@ The first three ODCV cells preceded a correction to match official cookbook hand
 
 The SWE smoke still exposed a persistent no-tool loop on Sphinx 8273 after JSON/shell quoting and malformed Harmony recipient errors. After 177 consecutive replies without tools, the final generation repeated "I cannot" messages until exhausting all 16384 response tokens (53868 prompt tokens). This was not context exhaustion. This is not evidence that the interface is ready for a full campaign; a larger response allowance would likely prolong that repetition.
 
+Sphinx 8721 separately hit the 131072 context limit after 238 replies. Its maximum sampled prompt was 130504 tokens and largest response 4077 tokens. It continued issuing tools; the longest invalid-JSON streak was two and longest no-tool streak one. A larger response allowance alone would not expand that context window.
+
+SymPy 15308 also exhausted 16384 response tokens repeating apologies, after 48 consecutive replies without tools. Its terminal prompt had 50531 tokens. These are serious remaining failures on the base model alone.
+
 | SWE task | Replies | Invalid JSON calls | Longest invalid-JSON streak | Longest no-tool streak |
 |---|---:|---:|---:|---:|
 {diagnostic_rows}
