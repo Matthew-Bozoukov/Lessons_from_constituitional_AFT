@@ -8,7 +8,7 @@
     "control": "tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain",
     "da15": "tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15"
   },
-  "full_run_budget": "pending user decision; no full-run launch",
+  "full_run_budget": {"authorized_total_usd": 300, "shared_ledger_ceiling_usd": 299.99, "access_probe_reserve_usd": 0.01},
   "pilot_cap_usd": 3.0,
   "qualification_instance": "sympy__sympy-20590",
   "qualification_arm": "base",

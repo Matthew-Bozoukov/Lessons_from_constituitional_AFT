@@ -229,7 +229,7 @@ def create_app(runtime: Runtime) -> FastAPI:
         sequence = sample.sequences[0]
         ids = sequence.tokens
         if reservation is not None:
-            runtime.budget.settle(reservation, len(ids))
+            runtime.budget.settle(reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
         message, termination = runtime.renderer.parse_response(ids)
         oai = runtime.renderer.to_openai_message(message)
         out: dict[str, Any] = {"role": "assistant", "content": oai.get("content") or ""}
@@ -251,6 +251,7 @@ def create_app(runtime: Runtime) -> FastAPI:
             "tokenizer_revision": TOKENIZER_REVISION,
             "prompt_token_sha256": hashlib.sha256(str(prompt_ids).encode()).hexdigest(),
             "raw_completion": runtime.renderer.tokenizer.decode(ids),
+            "prompt_cache_hit_tokens": getattr(sample, 'prompt_cache_hit_tokens', 0),
             "unparsed_tool_calls": [str(x) for x in message.get("unparsed_tool_calls", [])],
         }
         return JSONResponse({
@@ -283,9 +284,11 @@ def main():
     sampling_model = model if context <= 32768 else model + ":peft:131072"
     budget = None
     if os.environ.get("TINKER_BUDGET_USD"):
+        import json
         from src.infra.endpoints.tinker_budget import Budget
         budget = Budget(os.environ["TINKER_BUDGET_LEDGER"],
-                        float(os.environ["TINKER_BUDGET_USD"]), sampling_model, checkpoint)
+                        float(os.environ["TINKER_BUDGET_USD"]), sampling_model, checkpoint,
+                        json.loads(os.environ.get('TINKER_BUDGET_CHECKPOINTS', 'null')))
     runtime = Runtime(
         checkpoint=checkpoint, model=model, reasoning=reasoning,
         renderer=GptOssRenderer(AutoTokenizer.from_pretrained(model, revision=TOKENIZER_REVISION), use_system_prompt=True,

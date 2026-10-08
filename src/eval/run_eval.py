@@ -46,6 +46,7 @@ def _tinker_endpoint(spec, cfg):
                        context_window=int(t.get("context_window", 131072)),
                        render_date=t.get("render_date"),
                        budget_usd=t.get("budget_usd"), budget_ledger=t.get("budget_ledger"),
+                       budget_checkpoints=t.get("budget_checkpoints"),
                        log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
 
 

@@ -25,3 +25,18 @@ def test_ledger_preserves_ambiguous_calls_and_frozen_identity(tmp_path):
     reopened.owner.close()
     with pytest.raises(AssertionError, match='identity'):
         Budget(path, 2, 'openai/gpt-oss-120b:peft:131072', 'tinker://test')
+
+
+def test_arms_share_one_cap_and_only_confirmed_cache_hits_get_discount(tmp_path):
+    from src.infra.endpoints.tinker_budget import Budget
+    allowed = ['tinker://base', 'tinker://control']
+    a = Budget(tmp_path/'ledger.json', .20, 'openai/gpt-oss-120b:peft:131072', allowed[0], allowed)
+    b = Budget(tmp_path/'ledger.json', .20, 'openai/gpt-oss-120b:peft:131072', allowed[1], allowed)
+    key = a.reserve(100000, 10000)
+    other = b.reserve(100000, 10000)
+    with pytest.raises(RuntimeError):
+        a.reserve(100000, 10000)
+    a.settle(key, 100, 90000)
+    assert a.data['requests'][key]['upper_usd'] == pytest.approx(.022034)
+    b.settle(other, 100)
+    assert len(b.data['requests']) == 2

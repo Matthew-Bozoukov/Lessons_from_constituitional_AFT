@@ -119,7 +119,8 @@ def is_tinker_target(hf_path: str) -> bool:
 def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int | None = None,
                 reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None,
                 context_window: int = 131072, render_date: str | None = None,
-                budget_usd: float | None = None, budget_ledger: str | None = None):
+                budget_usd: float | None = None, budget_ledger: str | None = None,
+                budget_checkpoints: list[str] | None = None):
     """Run the OpenAI-compatible shim for `ckpt` for the duration of the block.
 
     Args:
@@ -159,6 +160,9 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int | 
         if not budget_ledger or budget_usd <= 0:
             raise ValueError("A positive Tinker budget requires a durable ledger")
         env.update(TINKER_BUDGET_USD=str(budget_usd), TINKER_BUDGET_LEDGER=str(budget_ledger))
+        if budget_checkpoints is not None:
+            import json
+            env['TINKER_BUDGET_CHECKPOINTS'] = json.dumps(list(budget_checkpoints))
     base_url = f"http://127.0.0.1:{port}/v1"
     print(f">>> tinker shim: {ckpt} (reasoning={reasoning}) on {base_url} | log {log_path}")
     with log_path.open("w", encoding="utf-8") as log:

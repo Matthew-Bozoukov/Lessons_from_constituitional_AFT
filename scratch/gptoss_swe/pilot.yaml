@@ -7,6 +7,7 @@ output_root: /srv/lasr/runs/gptoss-three-20261008/pilot-base
 cached_campaign: /srv/lasr/runs/base-qwen-20261007
 dataset: princeton-nlp/SWE-bench_Lite
 dataset_revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
+dataset_sha256: 6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222
 instance_ids: [sympy__sympy-20590]
 subset: {fraction: null, n: 1, seed: 0}
 workers: 1

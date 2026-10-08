@@ -90,6 +90,8 @@ def test_harmony_tool_result_and_reasoning_roundtrip(runtime):
     prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[1]["prompt"].to_ints())
     assert "analysis<|message|>Think." in prompt
     assert "functions.bash to=assistant<|channel|>commentary<|message|>/testbed" in prompt
+    assert second.json()["choices"][0]["message"]["content"] == "Done."
+    assert result["tinker_metadata"]["checkpoint"] == runtime.checkpoint
 
 
 def test_qwen_sampling_and_token_count_match_real_rendering(runtime):
@@ -118,8 +120,6 @@ def test_exhausted_budget_never_calls_sampler(runtime):
     response = client(runtime).post('/v1/chat/completions', json=request())
     assert response.status_code == 402
     assert not runtime.sampling_client.requests
-    assert second.json()["choices"][0]["message"]["content"] == "Done."
-    assert result["tinker_metadata"]["checkpoint"] == runtime.checkpoint
 
 
 @pytest.mark.parametrize("control", [
