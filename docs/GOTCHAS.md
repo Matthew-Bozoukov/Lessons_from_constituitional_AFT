@@ -3,6 +3,21 @@
 
 # GOTCHAS
 
+## MASK now refuses any failed generation by default, and killing `evals` releases its pod (2026-10-08)
+
+- Since 2026-10-05 `configs/eval/mask.yaml` sets `max_generation_error_rate: 0.0`; every earlier MASK run
+  had 0.2-1.1% generations die at the 16,384-token cap inside `<think>`, so a run on the default now
+  fails AFTER the 40-minute generation stage (`RuntimeError: MASK pass 1: 0.2% of generations failed`).
+  The work tree is kept. Resume it on a new pod with the old tolerance instead of regenerating:
+  `uv run evals --name mask resume_from=output/mask/<run dir> max_generation_error_rate=0.02 --target ...`
+  (overrides go before `--target`); only the archetypes with failures are regenerated.
+- Killing the local `evals` process to relaunch with an override does NOT keep its pod: the
+  `--terminate-pod` cleanup runs on exit, and the relaunch then fails with `--terminate-pod requires
+  exactly one live pod matching <server>`. Rent a new pod (or launch without `--terminate-pod` when
+  a restart is likely).
+- `scratch/canary/launch_when_ready.py <up.log> <eval> <target> <port> <eval.log> [overrides...]`
+  waits for a rented eval pod's `READY` before starting `evals`, which the 2026-09-29 gotcha below asks for.
+
 ## Docker Desktop idles while ODCV waits for vLLM, fails to wake, and every cell dies in under a second (2026-10-01)
 
 - An ODCV run passes `docker_preflight`, then makes no Docker call for the 6-8 minutes vLLM takes to
