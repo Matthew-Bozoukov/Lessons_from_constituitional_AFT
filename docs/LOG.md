@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - Teammate branch and exact-checkpoint ODCV verification
+
+User identified newer ODCV runs on the October 6 control/DA15 arms. Fetched all remotes, searched checkpoint UUIDs across local/remote branch tips, and inspected `origin/matboz/gptoss-doses` plus the published control artifact at `8e80b855661ea1cb114ad639021e4099ac660c47`. This was missing from the initial historical comparison. Exact control sampler `c8be8040...` matches SWE, with 240 judged rollouts, 92.9% progress >=3, mean progress 4.49/5, misconduct 34.2%, submission 74.6%. Recorded source `654bad9f` already uses the custom fixed Harmony interface; metadata records T.7, 8192 output, 28000 context, concurrency 10. Offline raw-ledger audit found 61 confirmed extra-bracket blocks, 101 invalid-argument events and 33 bridge-error events in 3,797 completed requests: successful evaluation completion was not zero formatting errors.
+
+DA15 evaluation/progress-backfill scripts are committed but its gitignored sampler receipt and result payload were not found in accessible branches/worktrees/public Hub results; no exact-checkpoint score claimed. Added a follow-up to the [audit](gptoss_swe_stopped_audit_2026-10-08.md) and reproducible `audit_teammate_odcv.py`. Evidence supports using the teammate's actual custom interface as the next comparison baseline; it does not isolate a single cause of the SWE failure. No inference, service start or production merge.
+
 ## 2026-10-08 - Offline GPT-OSS SWE format/recovery audit against ODCV fixes
 
 User requested diagnosis of bracket endings, sampling, Harmony handling, recovery, and larger output limits. Read the historical ODCV prompt/renderer reports and streamed the verified stopped-run archive without inference or tool execution. Census: 23,344 distinct saved conversational responses across 344 full/partial attempt trajectories, excluding duplicate original-base copies; 45 completed ledger records are outside this census. All inspected sampling metadata records T1/top_p.95/top_k20, versus the historical full ODCV recipe T.7/top_p1. Detailed methods, caveats and tables: [stopped-run audit](gptoss_swe_stopped_audit_2026-10-08.md). Scripts are in `scratch/gptoss_swe/{analyze_stopped,replay_renderer,summarize_stopped}.py`; local outputs in `output/gptoss_swe_analysis/`.
