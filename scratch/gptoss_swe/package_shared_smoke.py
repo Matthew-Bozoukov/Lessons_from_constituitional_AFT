@@ -50,11 +50,14 @@ def main():
     costs={k:info[k]['budget']['accounted'] for k in ('odcv','swe')}
     assert all(set(info[k]['budget']['request_states'])=={'completed'} for k in ('odcv','swe')), 'Unknown inference reservations require diagnosis'
     costs['judge']=sum(x['charged_or_reserved_usd'] for x in json.loads((ROOT/'judge-budget.json').read_text()))
+    conversations=info['swe']['conversations'].values()
+    diagnostic_rows='\n'.join(f"| {g['instance_id']} | {g['responses']} | {g['invalid_json']} | {g['max_consecutive_invalid_json']} | {g['max_consecutive_no_tool']} |" for g in conversations)
     source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
     manifest=dict(base_model='openai/gpt-oss-120b',target='tinker://base',adapter=False,scope='diagnostic subsets only',
         source=source,initial_runtime='b9ff8ab4',corrected_runtime='66948b8',costs_usd=costs,
         cost_note='Token ledger estimates, not provider invoice; OpenRouter ambient rollout usage delta is not Tinker cost',
         odcv_completed=sum(x['tool_completed'] for x in info['odcv']['cells']),swe_resolved=swe['n_resolved'],
+        swe_ended_statuses=info['swe']['ended_statuses'],
         odcv_mr_pct=odcv['ours']['overall']['mr_pct'],
         caveats=['Three initial ODCV cells were retained before terminal marker repair; seven used the corrected interface.',
                  'No valid outcome was resampled. This is not a full benchmark or matched paper comparison.',
@@ -70,10 +73,19 @@ Base model only, no LoRA, local Docker and Tinker. These small subsets measure i
 
 * ODCV: {manifest['odcv_completed']}/10 reached task_complete. Numerical limit hits: 0. One invalid JSON call received validation feedback and was corrected on the next turn.
 * SWE-bench Lite: {swe['n_resolved']}/10 officially resolved; 10 valid attempts and 10 graded.
+* SWE attempt endings: {json.dumps(manifest['swe_ended_statuses'])}. A valid attempt is not necessarily solved.
 * ODCV diagnostic misalignment rate: {manifest['odcv_mr_pct']}% on these ten cells. Do not compare its paper delta as a matched evaluation.
 * Accounted costs: {json.dumps(costs)} USD; estimates, not invoices.
 
 The first three ODCV cells preceded a correction to match official cookbook handling of complete tool calls ending with the return marker. They are preserved, not rerun. The other seven and all SWE tasks used the corrected parser. There is no custom JSON coaching, bracket instruction, or benchmark-specific system prompt in the adapter. Schemas and benchmark instructions are supplied normally. Raw malformed arguments are validated rather than repaired.
+
+The SWE smoke still exposed a persistent no-tool loop on Sphinx 8273 after JSON/shell quoting and malformed Harmony recipient errors. The model subsequently repeated short statements that it could not complete the task. This is not evidence that the interface is ready for a full campaign, and increasing the per-response token allowance does not directly address those short repeated replies.
+
+| SWE task | Replies | Invalid JSON calls | Longest invalid-JSON streak | Longest no-tool streak |
+|---|---:|---:|---:|---:|
+{diagnostic_rows}
+
+ODCV sampling: temperature 0.7, 8192 response tokens, 28000 context, 50 cycles. SWE sampling: temperature 1, top_p .95, top_k 20, 16384 response tokens, 131072 context, 262144 generated task tokens, 500 steps. Both use medium reasoning. These numerical settings are deliberately retained and are not a controlled comparison between evaluations.
 
 Results are under `results/`. Rollout archives are under `rollouts/`. Actual rendered prompt tokens, raw responses, configurations, ledgers, image identities, grading logs and source/state evidence are under `metadata/`.
 

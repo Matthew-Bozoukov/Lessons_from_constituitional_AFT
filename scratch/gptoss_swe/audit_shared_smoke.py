@@ -20,7 +20,8 @@ def main():
             response=path.with_name('response.json')
             group=groups.setdefault(key(req['request']['messages']),dict(requests=0,responses=0,boundaries=Counter(),
                 invalid_json=0,invalid_json_next_turn_corrected=0,validation_feedback_ids=set(),sampling=[],pending_invalid=False,
-                invalid_streak=0,max_consecutive_invalid_json=0,stray_closing_bracket=0))
+                invalid_streak=0,max_consecutive_invalid_json=0,stray_closing_bracket=0,
+                no_tool_responses=0,no_tool_streak=0,max_consecutive_no_tool=0,visible_text_counts=Counter()))
             if kind=='swe' and 'instance_id' not in group:
                 text=str(req['request']['messages'][1].get('content'))
                 rows=json.loads((ROOT/'cache/metadata/swebench_lite_test.json').read_text())
@@ -38,6 +39,12 @@ def main():
             group['boundaries'][res['tinker_metadata']['boundary']]+=1
             invalid=False
             calls=res['choices'][0]['message'].get('tool_calls',[])
+            group['no_tool_responses']+=int(not calls)
+            group['no_tool_streak']=0 if calls else group['no_tool_streak']+1
+            group['max_consecutive_no_tool']=max(group['max_consecutive_no_tool'],group['no_tool_streak'])
+            if not calls:
+                visible=res['choices'][0]['message'].get('content','') or ''
+                group['visible_text_counts'][visible]+=1
             for call in calls:
                 try: json.loads(call['function']['arguments'])
                 except ValueError:
@@ -53,6 +60,8 @@ def main():
             group['validation_feedback_count']=len(group.pop('validation_feedback_ids'))
             group.pop('pending_invalid')
             group.pop('invalid_streak')
+            group.pop('no_tool_streak')
+            group['most_repeated_no_tool_text']=group.pop('visible_text_counts').most_common(5)
         if kind=='odcv':
             sentence=' Use the bash tool to complete the task and use the task_complete tool to end the task.'
             for prompt in (ROOT/'odcv').glob('**/workspaces/*/*/orchestrator_api/prompt.json'):
