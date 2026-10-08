@@ -13,6 +13,14 @@ from omegaconf import OmegaConf
 
 
 def grade_predictions(cfg, root, preds, run_id):
+    from src.eval.capabilities.swebench_mini.fleet_state import lock
+    if cfg.get('global_task_limit'):
+        with lock(Path(cfg.tinker.budget_ledger).parent/'grading.lock'):
+            return _grade_predictions(cfg, root, preds, run_id)
+    return _grade_predictions(cfg, root, preds, run_id)
+
+
+def _grade_predictions(cfg, root, preds, run_id):
     """Use the same pinned harness and local HTTPBin fixture as Qwen lite-v5."""
     from src.eval.capabilities.swebench_mini.fleet_state import atomic, read
     repo = Path(__file__).resolve().parents[2]
@@ -62,6 +70,15 @@ def run(target, cfg, out_dir):
     # Pilot selection is declared before any inference and independent of outcomes.
     wanted = list(cfg.instance_ids) if cfg.get('instance_ids') else [r['instance_id'] for r in rows]
     assert len(wanted) == len(set(wanted)) and set(wanted) <= set(images)
+    if cfg.get('runtime_priority'):
+        priority_path = Path(cfg.runtime_priority.path)
+        assert hashlib.sha256(priority_path.read_bytes()).hexdigest() == cfg.runtime_priority.sha256
+        priority = read(priority_path)
+        assert priority['profile']['dataset_revision'] == cfg.dataset_revision
+        durations = priority['profile']['seconds_by_instance']
+        assert set(wanted) <= set(durations)
+        wanted.sort(key=lambda iid: (-durations[iid], iid))
+        atomic(out_dir/'metadata/task-schedule.json', priority)
     state = State(out_dir)
     assert not state.path.exists(), 'Existing run must be recovered explicitly, never overwritten'
     for name in ('images.json', 'swebench_lite_test.json'):
@@ -101,11 +118,23 @@ def run(target, cfg, out_dir):
     admission = dict(directory=str(out_dir/'metadata/token-slots'),
         budget_tokens=int(cfg.workers)*int(cfg.tinker.context_window),
         expires=time.time()+7*86400, fairness_seconds=30)
+    def consume_one(iid, worker_name):
+        from src.eval.capabilities.swebench_mini.fleet_admission import token_slot
+        # Whole-conversation leases, shared across all three arms. These are
+        # independent of per-request token admission and the 32-command gate.
+        with token_slot(Path(cfg.tinker.budget_ledger).parent/'task-slots', 1,
+                        int(cfg.global_task_limit), expires=time.time()+7*86400,
+                        fairness_seconds=0, poll=.25):
+            return consume(target.base_url, 'hosted_vllm/'+target.model_name, worker,
+                           worker_name, [iid], time.time()+7*86400, admission=admission)
     if cfg.get('qualify_first') and not cfg.get('resume_from'):
         iid = cfg.qualification_instance
         assert iid in wanted
-        consume(target.base_url, 'hosted_vllm/'+target.model_name, worker, 'tinker-qualify',
-                [iid], time.time()+7*86400, admission=admission)
+        if cfg.get('global_task_limit'):
+            consume_one(iid, 'tinker-qualify')
+        else:
+            consume(target.base_url, 'hosted_vllm/'+target.model_name, worker, 'tinker-qualify',
+                    [iid], time.time()+7*86400, admission=admission)
         task = read(state.path)['tasks'][iid]
         assert task['status'] == 'valid', 'Live task qualification failed'
         proof = grade_predictions(cfg, out_dir, {iid:task['attempts'][-1]['prediction']}, 'qualification')
@@ -113,9 +142,14 @@ def run(target, cfg, out_dir):
         atomic(out_dir/'metadata/live-qualification.json', proof)
         # This valid outcome remains in State and is never sampled again.
     with ThreadPoolExecutor(max_workers=int(cfg.workers)) as pool:
-        futures = [pool.submit(consume, target.base_url, 'hosted_vllm/'+target.model_name,
-            worker, f'tinker-{n}', wanted, time.time()+7*86400, admission=admission)
-            for n in range(int(cfg.workers))]
+        if cfg.get('global_task_limit'):
+            snapshot = read(state.path)
+            futures = [pool.submit(consume_one, iid, f'tinker-{n}')
+                       for n, iid in enumerate(wanted) if snapshot['tasks'][iid]['status'] != 'valid']
+        else:
+            futures = [pool.submit(consume, target.base_url, 'hosted_vllm/'+target.model_name,
+                worker, f'tinker-{n}', wanted, time.time()+7*86400, admission=admission)
+                for n in range(int(cfg.workers))]
         for future in futures:
             future.result()
     saved = read(state.path)
