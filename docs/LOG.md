@@ -1,6 +1,20 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - GPT-OSS-120B base/control/DA15 SWE-bench launched with one $300 Tinker ceiling
+
+Question: compare all 300 SWE-bench Lite tasks on untouched GPT-OSS-120B and the October 6 plain control and DA15 Tinker adapters. User authorized **$300 total Tinker spend; stop at the cap**. CPU charges remain separate. This is an active campaign, not a completed result.
+
+Targets (all successfully accessed with live sampling on the 128K endpoint): base `tinker://base`; control `tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain`; DA15 `tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15`. Both adapters report GPT-OSS-120B base and rank 32.
+
+Method: committed source `b2ca846e9dca7d5918d254cf3350fd2b01c020b5`, protocol `gptoss-tinker-lite-v2`, standard `run_eval` lifecycle with experimental runner `scratch/gptoss_swe/run.py`. The task-loop and protocol files are unchanged from Qwen source `de985bd0`: temperature 1, top_p .95, top_k 20, neutral penalties, 16,384 response tokens, 262,144 total task tokens, 500 steps, retained reasoning/rejected responses and raw HTTP evidence. GPT-OSS uses native Harmony, medium reasoning, and sampling model `openai/gpt-oss-120b:peft:131072` (128K context). Arms run sequentially, 16 independent agents per arm, one global 32-command CPU gate. No RunPod GPUs are rented.
+
+Infrastructure: persistent Vast CPU `54552761` was provider-confirmed running; all 300 image IDs/digests matched and all 300 fresh shell-startup probes passed. Cached dataset SHA256 `6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222`, revision `6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2`. Separate deployment `/srv/lasr/gptoss-three-repo` preserves old Qwen source/artifacts. LF archive SHA256 `a235fe3475f36f1feb8751a7b591ed9514b154a3204654f8e04bdc8ae73883c2` verified against every extracted file; receipt `/srv/lasr/gptoss-three-deployment.json`. Tests: 28 Tinker/renderer/budget tests passed; 55 CPU endpoint/protocol/admission/fleet tests passed, one skipped, two subtests passed.
+
+Budget: shared `/srv/lasr/runs/gptoss-three-20261008/inference-budget.json` freezes $299.99 for all three checkpoints, plus $0.01 reserved for earlier access probes. Each request reserves maximum uncached input/output cost before submission; completed calls settle actual tokens and SDK-confirmed prompt-cache hits. Unknown outcomes retain their full reservation. Recorded rates per million tokens are $0.78 input, $0.156 cached input, $1.94 output. This is conservative accounting rather than a provider invoice. No ledger reset or valid-outcome reroll is allowed.
+
+Initial result: `lasr-gptoss-swe-three.service` started about 10:53:55 UTC. The declared first base task `sympy__sympy-20590` produced a valid submission and completed official grading (unresolved); this validates infrastructure, not model correctness, and its outcome remains in the 300-task run. At about 11:00 UTC: 1 valid, 16 running, 283 pending, no halt; first task's 72 completed requests accounted for about $0.248. Driver status/logs live under `/srv/lasr/runs/gptoss-three-20261008`. Heartbeat `gpt-oss-three-arm-swe-bench` is ACTIVE every 15 minutes and reports meaningful changes. Advance only after 300 valid/graded outcomes and immutable HF rollout/result/metadata hash verification per arm. Leave the persistent CPU/cache running.
+
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
 Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and
