@@ -187,6 +187,21 @@ def test_final_boundary_drops_old_analysis_but_nudge_does_not(runtime):
     assert 'secret' in str(build_messages(history, None, runtime))
 
 
+def test_plain_chat_needs_no_eval_specific_tools_or_instructions(runtime):
+    runtime.sampling_client.reply = '<|channel|>analysis<|message|>Compute.<|end|><|start|>assistant<|channel|>final<|message|>Four.<|return|>'
+    body=request(tools=[],messages=[{'role':'system','content':'Answer briefly.'},{'role':'user','content':'Two plus two?'}])
+    response=client(runtime).post('/v1/chat/completions',json=body).json()
+    msg=response['choices'][0]['message']
+    assert msg['content']=='Four.' and msg['reasoning_content']=='Compute.' and 'tool_calls' not in msg
+    prompt=runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[0]['prompt'].to_ints())
+    assert 'namespace functions' not in prompt
+    body['messages'] += [msg,{'role':'user','content':'And one more?'}]
+    msg.pop('harmony_boundary')  # LiteLLM keeps the provider-specific form instead.
+    client(runtime).post('/v1/chat/completions',json=body)
+    prompt=runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[-1]['prompt'].to_ints())
+    assert 'Compute.' not in prompt and 'Four.' in prompt
+
+
 def test_wrong_credentials_model_context_are_rejected(runtime):
     assert TestClient(create_app(runtime)).get("/v1/models").status_code == 401
     assert client(runtime).post("/v1/chat/completions", json=request(model="another-model")).status_code == 400

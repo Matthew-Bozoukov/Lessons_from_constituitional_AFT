@@ -38,15 +38,40 @@ It does not infer a constitution or training provenance from a sampler path.
   forced/disabled tool choice, `parallel_tool_calls=false`, strict schemas,
   constrained response formats, non-neutral penalties and unknown sampling
   parameters are refused before sampling. They are not silently ignored.
-- Assistant reasoning is retained when supplied in history. Harmony-generated
+- Assistant reasoning is retained within a tool cycle and removed from completed
+  cycles when an explicit final marker is present in history (including LiteLLM's
+  `provider_specific_fields`). Harmony-generated
   tool calls receive unique nonempty OpenAI IDs. Result messages must identify
   an unresolved call; tool names are recovered from that call and conflicts fail.
-- Truncated or malformed call batches never expose executable `tool_calls`.
-  Their original Harmony output remains in response diagnostics. This is not a
-  promise that the model always emits correct tool calls.
+- Truncated responses and ambiguous/missing Harmony boundaries do not expose
+  tool calls. Complete recipient/body calls retain **raw argument strings**, even
+  invalid JSON. Callers must validate JSON and the declared schema before execution,
+  return specific errors as tool results, and retain the malformed original call.
+  Neither the adapter nor strict execution repairs arguments. As in the pinned
+  official cookbook parser, complete calls with a return marker are accepted;
+  the noncanonical ending is recorded as `tool_call_return`.
 - Prompt plus completion allowance must fit the configured cap (at most 131,072).
   A stopped response lacking a Harmony boundary is treated conservatively as
   incomplete rather than as a completed public answer.
+- `TINKER_TRACE_DIR` saves actual rendered prompt tokens/text, request parameters
+  and full raw responses. Missing boundaries are diagnosed separately from real
+  response-token exhaustion; neither causes hidden inference retries.
+
+The shared interface has no eval names, tool-name allowlist, bash examples, bracket
+warnings or custom JSON coaching. The system contains the standard GPT-OSS preamble
+plus the standard function-routing sentence. Benchmark system instructions become
+ordered developer messages; declared schemas become the functions namespace. Plain
+chat has no tool namespace. ODCV's generic `strict_tool_validation: true` opts out of
+its historical regex argument repair. This changes the execution protocol and must
+be recorded; historical scores are not rescored.
+
+The October 8 **local shared-interface smoke** uses `scratch/gptoss_swe/shared_smoke.py`
+and the fleet-based v2 task loop, not the older v1 route below. Its SWE limits remain
+16,384 response / 131,072 context / 262,144 generated task tokens / 500 steps, with
+two local workers and a 12-dollar ceiling. Its ODCV subset uses 8,192 response /
+28,000 context / 50 steps, one worker and a 3-dollar ceiling. These are diagnostic
+subsets, not full benchmark scores. Source revisions, selections and intermediate
+failures are retained under `output/gptoss_shared_smoke` and in `docs/LOG.md`.
 
 Primary API/renderer references:
 [Tinker SamplingParams](https://github.com/thinking-machines-lab/tinker/blob/main/docs/api/types.md),

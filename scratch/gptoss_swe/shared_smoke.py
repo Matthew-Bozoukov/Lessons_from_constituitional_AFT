@@ -108,7 +108,19 @@ def host(kind, resume=None):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('action',choices=['odcv','swe','linux-swe'])
+    parser.add_argument('action',choices=['odcv','swe','swe-wait','linux-swe'])
     parser.add_argument('--resume-odcv')
     args=parser.parse_args()
+    if args.action=='swe-wait':
+        with (ROOT/'swe-waiter.json').open('x') as stream:
+            json.dump(dict(at=time.time()),stream)
+        deadline=time.monotonic()+7200
+        while not (ROOT/'images-verified.json').is_file():
+            error=ROOT/'prepare.err'
+            if error.exists() and error.stat().st_size:
+                raise RuntimeError('Image preparation failed; inspect prepare.err')
+            if time.monotonic()>deadline:
+                raise TimeoutError('Image preparation exceeded two hours; no sampling started')
+            time.sleep(5)
+        args.action='swe'
     linux_swe() if args.action=='linux-swe' else host(args.action,args.resume_odcv)

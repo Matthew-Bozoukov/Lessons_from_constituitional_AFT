@@ -64,11 +64,13 @@ class ProtocolTests(unittest.TestCase):
                     message = {'role': 'assistant', 'content': 'audit answer', 'reasoning': 'TRACE-' + str(len(test.calls))}
                     if test.kind != 'no_tool':
                         arguments = '{"command":"echo audit"}'
-                        if test.kind == 'bad_json': arguments = '{oops'
+                        if test.kind in ('bad_json','raw_bad_json'): arguments = '{oops'
                         if test.kind == 'null_args': arguments = 'null'
                         if test.kind == 'bad_command': arguments = '{"command":123}'
                         message['tool_calls'] = [{'id': 'call-'+str(len(test.calls)), 'type': 'function',
                             'function': {'name': 'unknown' if test.kind == 'bad_tool' else 'bash', 'arguments': arguments}}]
+                        if test.kind == 'raw_bad_json':
+                            message['provider_specific_fields'] = {'harmony_boundary':'handoff'}
                     payload = json.dumps({'id': 'audit', 'object': 'chat.completion', 'created': 1, 'model': 'audit',
                         'choices': [{'index': 0, 'finish_reason': 'length' if test.kind == 'length' else 'tool_calls', 'message': message}],
                         'usage': {'prompt_tokens': 20, 'completion_tokens': 7, 'total_tokens': 27}}).encode()
@@ -147,6 +149,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(caught.exception.messages[0]['reasoning_content'], 'TRACE-1')
         self.assertEqual(caught.exception.messages[0]['extra']['actions'], [])
         self.assertEqual(len(self.calls), 1)
+
+    def test_raw_argument_backend_preserves_json_error_for_next_turn(self):
+        self.kind='raw_bad_json'
+        with self.assertRaises(FormatError) as caught:
+            self.agent.query()
+        history=caught.exception.messages
+        self.assertEqual(history[0]['tool_calls'][0]['function']['arguments'],'{oops')
+        self.assertEqual(history[1]['role'],'tool')
+        self.assertIn('Expecting property name',history[1]['content'])
+        self.agent.add_messages(*history)
+        self.kind='normal'
+        self.agent.query()
+        self.assertEqual(self.calls[-1]['messages'][-2]['tool_calls'][0]['function']['arguments'],'{oops')
 
     def test_socket_loss_fences_only_own_replica_without_hidden_sdk_retry(self):
         self.kind = 'drop'
