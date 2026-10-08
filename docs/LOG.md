@@ -1,6 +1,14 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - User-authorized increase to 80 concurrent Tinker SWE tasks
+
+User requested higher parallelism using the previously qualified Vast CPU. At 11:07 UTC, the base arm had 21 valid, 16 running and 263 pending tasks. Set only its campaign admission deadline to the current time so no new tasks start; active attempts retain their previously captured deadlines and finish normally. Original status, logs, paid requests and outcomes remain durable. The original driver will deliberately finish as held/incomplete after draining.
+
+Committed continuation source `7d3d35f8a7ea07d4b5798008c5030543e9b26803` lives separately at `/srv/lasr/gptoss-three-80-repo`; archive SHA256 `bd526a0f32e950cf33776574e64e834646ac0e1a3b89666f60510f45cbe490a1` verified against extracted files. Nine resume safety tests passed on Windows and the CPU. Resume refuses running/invalid/retried tasks or changed target, sampling, worker limits, dataset or budget; it copies and hashes existing rollouts/results, retains prior metadata, and does not repeat the valid qualification outcome. The original unlimited lifetime is restored only in the new run after a fully drained snapshot is validated.
+
+`lasr-gptoss-swe-three-80.service` is active and waits for the original pool to finish, then automatically resumes pending base tasks with 80 workers and runs control/DA15 with 80 workers each. New status is `campaign-status-80.json`, logs `driver-80.log` and `{base,control,da15}-80.log`, roots `{base,control,da15}-80`, all under `/srv/lasr/runs/gptoss-three-20261008`. The old deployment is untouched. Shared 32-command CPU gate, per-task limits, sampling settings, and original $299.99 inference ledger plus $0.01 probe reserve are unchanged. The heartbeat was updated to recognize the deliberate drain and supervise the automatic transition. At this entry the larger pool is configured and waiting, not yet claimed to be running 80 tasks.
+
 ## 2026-10-08 - GPT-OSS-120B base/control/DA15 SWE-bench launched with one $300 Tinker ceiling
 
 Question: compare all 300 SWE-bench Lite tasks on untouched GPT-OSS-120B and the October 6 plain control and DA15 Tinker adapters. User authorized **$300 total Tinker spend; stop at the cap**. CPU charges remain separate. This is an active campaign, not a completed result.
