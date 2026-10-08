@@ -44,33 +44,47 @@ RUNS = {
     ("DA + tools", "Hospital"): ("hospital", HOSP.format("da_tools_15")),
 }
 STRIP = re.compile(re.escape(CANARY) + r":?\s*")
-NEW_BASE_ARMS = [
-    ("DA (new base)", "da_15", "da"),
-    ("DA + tools (new base)", "da_tools_15", "datools"),
+# Later arms, found by their built run-dir names: (arm label, MASK/ODCV run-dir glob stem, Hospital fleet root).
+LATER_ARMS = [
+    (
+        "DA (new base)",
+        "*_qwen36_0_da_15_canary_nativetools_*",
+        "output/colosseum_hospital/2026-10-01_canary_nt_da",
+    ),
+    (
+        "DA + tools (new base)",
+        "*_qwen36_0_da_tools_15_canary_nativetools_*",
+        "output/colosseum_hospital/2026-10-01_canary_nt_datools",
+    ),
+    # Jamie's 2026-10-05 data (models dated 2026-10-08); the date prefix keeps the 09-29 dirs out
+    (
+        "DA (Jamie data)",
+        "2026-10-0[89]_qwen36_0_da_15_canary_*",
+        "output/colosseum_hospital/2026-10-08_canary_j_da",
+    ),
+    (
+        "DA + tools (Jamie data)",
+        "2026-10-0[89]_qwen36_0_da_tools_15_canary_reusedtools_*",
+        "output/colosseum_hospital/2026-10-08_canary_j_datools",
+    ),
 ]
 
 
 def all_runs() -> dict:
-    """RUNS plus the same cells for the two models trained on the native-tools base, where a finished run exists.
+    """RUNS plus the same cells for every later arm, where a finished run exists.
 
     A run dir is found by its built name; the latest one wins (an earlier attempt that died leaves a dir
     with no rollouts, which the globs below skip).
     """
     out = dict(RUNS)
-    for arm, stem, hosp in NEW_BASE_ARMS:
+    for arm, stem, hosp_root in LATER_ARMS:
         mask = sorted(
             p.parent.parent
-            for p in Path("output/mask").glob(
-                f"*_qwen36_0_{stem}_canary_nativetools_*/rollouts/known_facts.csv"
-            )
+            for p in Path("output/mask").glob(f"{stem}/rollouts/known_facts.csv")
         )
-        odcv = sorted(
-            Path("output/odcv").glob(f"*_qwen36_0_{stem}_canary_nativetools_*/rollouts")
-        )
+        odcv = sorted(Path("output/odcv").glob(f"{stem}/rollouts"))
         hospital = sorted(
-            Path(f"output/colosseum_hospital/2026-10-01_canary_nt_{hosp}/merged").glob(
-                "*_hospital_self_sacrificial_*"
-            )
+            Path(f"{hosp_root}/merged").glob("*_hospital_self_sacrificial_*")
         )
         for ev, kind, found in [
             ("MASK", "mask", mask),

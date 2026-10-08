@@ -20,6 +20,16 @@ BASE_ARMS = [
     ("DA + tools", "DA + tools, old base", "#dcc08a"),
     ("DA + tools (new base)", "DA + tools, new base", "#9c6500"),
 ]
+JAMIE_ARMS = [
+    ("DA (Jamie data)", "DA", "#7b4fbf"),
+    ("DA + tools (Jamie data)", "DA + tools", "#9c6500"),
+]
+COMPARE_ARMS = [  # the first pair (09-25 DA corpus, old base) beside the rerun on Jamie's 2026-10-05 data
+    ("DA", "DA, Sept data", "#c9b6ea"),
+    ("DA (Jamie data)", "DA, Oct data", "#7b4fbf"),
+    ("DA + tools", "DA + tools, Sept data", "#dcc08a"),
+    ("DA + tools (Jamie data)", "DA + tools, Oct data", "#9c6500"),
+]
 EVALS = ["MASK", "ODCV", "Hospital"]
 
 

@@ -1,0 +1,25 @@
+# ABOUTME: Fleet plan: the da canary model trained on Jamie's 2026-10-05 data, hospital self-sacrificial cell,
+# ABOUTME: carried history, 30 seeds over two pods, nosynth peer -- the protocol of every canary run so far.
+# Run: uv run python scratch/colosseum_hospital/fleet.py run --plan scratch/canary/2026-10-08_fleet_canary_j_da.yaml
+date: "2026-10-08"
+branch: worktree-kn-canary
+out_root: output/colosseum_hospital/2026-10-08_canary_j_da
+env_root: output/colosseum_hospital/env_logs
+port: 8000
+peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
+keeper_s: 21600
+stagger_s: 5
+low_balance: 25
+pods:
+  - name: kn-hosp-j-da-a
+    group: da_canary_j
+    target: dougalldeepmind/2026-10-08-qwen36-0-da-15-canary
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:1-15"]
+    cap_h: 4.0
+  - name: kn-hosp-j-da-b
+    group: da_canary_j
+    target: dougalldeepmind/2026-10-08-qwen36-0-da-15-canary
+    config: scratch/colosseum_hospital/configs/2026-09-25_colosseum_hospital_da15_nosynth_peer.yaml
+    jobs: ["self_sacrificial:16-30"]
+    cap_h: 4.0
