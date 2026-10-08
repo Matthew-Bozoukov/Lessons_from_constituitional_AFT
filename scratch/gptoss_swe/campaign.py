@@ -60,7 +60,8 @@ def main():
         try:
             for arm,target in manifest['arms'].items():
                 cfg = OmegaConf.load('scratch/gptoss_swe/pilot.yaml')
-                cfg.source_deployment = read('/srv/lasr/gptoss-three-deployment.json')
+                cfg.source_deployment = read('/srv/lasr/gptoss-three-deployment-80.json' if accelerated
+                                             else '/srv/lasr/gptoss-three-deployment.json')
                 cfg.campaign = 'gptoss-'+arm+'-20261008'
                 cfg.run_name = 'gptoss120b-'+arm
                 cfg.output_root = str(ROOT/(arm+'-80' if accelerated else arm))
