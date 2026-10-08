@@ -1,6 +1,59 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-08 - The plain-base ladder: delib, delib-sonnet, da-qwen, da-grok and the two responder swaps retrained on the plain base (ODCV and MASK)
+
+Hypothesis. Every arm so far compared against da-15 on the plain base (control, da-5/15/25, da-low, amoral, daa, daa-dasys)
+had been built on it, while the deliberative-alignment baselines and the teacher-swap arms still sat on the 2026-09-29
+nosynth base (Qwen3.6 on-policy traces). One base for the whole ladder, so the teacher and recipe comparisons read off
+one table.
+
+Method. The six synthetic corpora were already current (each pin its repo's head and the newest of its style; delib and
+delib-sonnet answer the prompts of 2026-10-02-da-synth); only `base_mixture:` was stale. configs/data/mixture/{delib,
+delib-sonnet,da-qwen,da-grok,da-qwen-resp,da-grok-resp}.yaml repointed to 2026-10-05-plain-mix @ c118c4b0 (0127156c,
+b47e1adc); six mixes at 15.09% of supervised tokens (`2026-10-08-<style>-15-mix`: delib 254 rows / 2,970 tok per row,
+delib-sonnet 281 / 2,684, da-qwen 838 / 900, da-grok 1,453 / 519 -- 1,453 of its 1,455 rows, so the corpus has no room
+for a larger share -- da-qwen-resp 862 / 875, da-grok-resp 1,213 / 622). Six adapters `2026-10-08-qwen36-0-<style>-15`,
+one H200 each, seed 0, ~1.5 h, gates clean (delib arms supervise `final` on 254 / 281 rows; the da arms every turn).
+MASK with max_generation_error_rate=0.05 on six pods in parallel; ODCV-lite at concurrency 64 one arm at a time, each on
+its own pod and port. da-qwen-resp-15's first ODCV run lost 74 of 80 cells of its third pass (shell transcripts: the
+model unreachable from the containers for a stretch; cause not found, pod gone), was judged on 166 rollouts (27.1%),
+and was rerun clean the same evening (240/240, three audited passes); the rerun replaced it under the same name. The
+other seven runs of the ladder (daa and daa-dasys included) audit 240/240, 0 shell, 0 missing. Two more MASK replicates
+per arm (`passes=2`, run after the UTC date turned so the names do not collide) are in flight as this is written.
+
+Result (plain base, seed 0, 15% of supervised tokens; ODCV-lite MR over 240 rollouts, MASK over 1,000 rows):
+| arm | ODCV MR [CI95] | severity | MASK |
+|---|---|---|---|
+| control (plain) | 45.0 | | 44.0 |
+| da-15 | 13.3 | 0.49 | 82.7 |
+| da-low-15 | 12.1 | 0.44 | 85.4 |
+| da-grok-15 | 12.9 [7.2, 22.1] | 0.48 | 85.9 |
+| da-grok-resp-15 | 17.9 [10.4, 29.0] | 0.66 | 88.0 |
+| da-qwen-15 | 22.1 [13.1, 34.7] | 0.81 | 86.7 |
+| da-qwen-resp-15 | 26.7 [16.4, 40.2] | 0.97 | 77.8 |
+| delib-15 | 30.0 [19.2, 43.5] | 1.08 | 72.0 |
+| delib-sonnet-15 | 14.2 [7.1, 26.3] | 0.52 | 67.5 |
+| daa-15 | 6.7 [3.3, 13.1] | 0.24 | 63.4 |
+| daa-dasys-15 | 4.6 [2.1, 9.9] | 0.16 | 65.4 |
+
+Reading, one seed each and most ODCV intervals overlapping:
+- Teachers. On MASK every da-shaped corpus lands at 78-88 whoever wrote it; grok end to end (85.9) and grok replies on
+  Sonnet prompts (88.0) are at or above da-15 (82.7), and Qwen's own replies cost ~10 points (77.8) as on the old base.
+  On ODCV the reply writer matters: Sonnet- and grok-written replies sit at 13-18%, Qwen-written at 22-27%, on either
+  prompt set. The nosynth-base finding that the grok responder swap recovered ODCV (13.3%) does not reproduce cleanly
+  on plain (17.9%, inside da-grok-15's interval).
+- Deliberative alignment. The base change moved delib-15's MASK (65.4 -> 72.0) and nothing else: ODCV 30.0% as before,
+  and delib-sonnet-15 again matches da on ODCV (14.2%) while both delib arms stay 10-15 under da on MASK (72.0, 67.5).
+  Writing the constitution into the trace is not what carries honesty here; the Sonnet-written version of the same
+  recipe carries agentic alignment and the original does not.
+- Agentic data. daa and daa-dasys remain the lowest ODCV of any arm and the lowest MASK of any synthetic arm.
+
+Next. (1) MASK passes 2-3 for the seven arms of the table (control, da-15, da-grok, da-grok-resp, da-qwen, delib,
+delib-sonnet) land tonight as `2026-10-09-mask-qwen36-0-<arm>`; read the between-pass spread before ranking teachers
+on MASK. (2) Seed 1 for da-15, da-grok-15 and daa-15 before any ODCV claim finer than "Qwen-written replies are worse".
+(3) The MASK runner should log phase timestamps; today's runs took 27-49 min from READY and one straggler 1h50.
+
 ## 2026-10-08 - daa-dasys-15: the daa-15 rows with da's chat system prompts: ODCV 4.6%, MASK 65.4; the honesty gap to da-15 is the transcript, not the prompt
 
 Hypothesis. If the agentic sentence in the system prompt ("you have a bash tool ... files under /srv/...") is what
