@@ -42,6 +42,7 @@ def main():
     archive(out/'metadata/swe-source-grading-and-state.tar.gz',[ROOT/'swe/metadata',ROOT/'swe/results'])
     archive(out/'metadata/driver-evidence.tar.gz',[p for p in ROOT.iterdir() if p.is_file()])
     shutil.copyfile(ROOT/'audit.json',out/'results/interface-audit.json')
+    shutil.copyfile(ROOT/'qualitative-findings.md',out/'results/failure-analysis.md')
     shutil.copyfile(ROOT/'swe/results/qualification.json',out/'results/swe.json')
     shutil.copyfile(odcvroot/'results.json',out/'results/odcv.json')
     for name in ('odcv-budget.json','swe-budget.json','judge-budget.json','selection.json','images-verified.json','vast-inventory.json'):
