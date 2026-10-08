@@ -68,6 +68,8 @@ def sampler_name(ckpt: str) -> str:
     is the one part a human wrote (`gptoss120b-nosynth9771-lr1e4-3ep-sft-r32`), so it is
     what a run should be named after. The run id alone would name every arm `train:0`.
     """
+    if ckpt == "tinker://base":
+        return "gptoss120b-base"
     head, sep, tail = ckpt.rstrip("/").rpartition("/sampler_weights/")
     assert sep and head and tail, (
         f"tinker target {ckpt!r} has no `/sampler_weights/<name>` tail to name the run "
@@ -116,7 +118,8 @@ def is_tinker_target(hf_path: str) -> bool:
 @contextmanager
 def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int | None = None,
                 reasoning: str = "medium", max_tokens: int = 8192, log_dir: Path | None = None,
-                context_window: int = 131072, render_date: str | None = None):
+                context_window: int = 131072, render_date: str | None = None,
+                budget_usd: float | None = None, budget_ledger: str | None = None):
     """Run the OpenAI-compatible shim for `ckpt` for the duration of the block.
 
     Args:
@@ -152,6 +155,10 @@ def tinker_shim(ckpt: str, *, base_model: str = DEFAULT_BASE_MODEL, port: int | 
            "DEFAULT_MAX_TOKENS": str(max_tokens), "TINKER_SHIM_INSTANCE": instance_id,
            "TINKER_CONTEXT_WINDOW": str(context_window),
            "TINKER_RENDER_DATE": render_date or date.today().isoformat()}
+    if budget_usd is not None:
+        if not budget_ledger or budget_usd <= 0:
+            raise ValueError("A positive Tinker budget requires a durable ledger")
+        env.update(TINKER_BUDGET_USD=str(budget_usd), TINKER_BUDGET_LEDGER=str(budget_ledger))
     base_url = f"http://127.0.0.1:{port}/v1"
     print(f">>> tinker shim: {ckpt} (reasoning={reasoning}) on {base_url} | log {log_path}")
     with log_path.open("w", encoding="utf-8") as log:

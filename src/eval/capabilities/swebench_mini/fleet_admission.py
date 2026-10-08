@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import fcntl
 import json
 import math
+import os
 from pathlib import Path
 import re
 import time
@@ -38,7 +39,9 @@ def prompt_tokens(endpoint, model, messages, tools, *, audit_dir=None):
     payload = {'model': model.removeprefix('hosted_vllm/'), 'messages': normalized,
                'tools': tools, 'add_generation_prompt': True}
     request = urllib.request.Request(endpoint.removesuffix('/v1').rstrip('/') + '/tokenize',
-        data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+        data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json',
+            **({'Authorization': 'Bearer ' + os.environ['HOSTED_VLLM_API_KEY']}
+               if os.environ.get('HOSTED_VLLM_API_KEY') not in (None, 'EMPTY') else {})})
     with urllib.request.urlopen(request, timeout=60) as response:
         result = json.load(response)
         count = result['count']

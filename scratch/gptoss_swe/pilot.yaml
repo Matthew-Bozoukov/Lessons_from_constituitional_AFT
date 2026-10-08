@@ -1,0 +1,48 @@
+# ABOUTME: One declared real-task qualification, preserving Qwen lite-v5 decoding and task-loop safeguards.
+# ABOUTME: Run: python -m scratch.gptoss_swe.run --name swebench_mini --config scratch/gptoss_swe/pilot.yaml --target tinker://base --no-push.
+protocol: gptoss-tinker-lite-v2
+campaign: gptoss-three-arms-20261008-pilot-base
+run_name: gptoss120b-base-pilot
+output_root: /srv/lasr/runs/gptoss-three-20261008/pilot-base
+cached_campaign: /srv/lasr/runs/base-qwen-20261007
+dataset: princeton-nlp/SWE-bench_Lite
+dataset_revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
+instance_ids: [sympy__sympy-20590]
+subset: {fraction: null, n: 1, seed: 0}
+workers: 1
+constitution: none
+grade: true
+grading: {max_workers: 1}
+tinker:
+  reasoning: medium
+  max_tokens: 16384
+  context_window: 131072
+  render_date: '2026-10-08'
+  budget_usd: 3.0
+  budget_ledger: /srv/lasr/runs/gptoss-three-20261008/pilot-base-budget.json
+sampling:
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 20
+  min_p: 0.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  repetition_penalty: 1.0
+serving: {context_window: 131072, needs_tool_calls: true}
+worker:
+  agent_cpus: 2
+  agent_memory: 4g
+  agent_pids: 512
+  agent_environment: {BASH_ENV: /root/.bashrc}
+  max_response_tokens: 16384
+  max_task_tokens: 262144
+  step_limit: 500
+  model_request_timeout_seconds: 1800
+  model_request_attempts: 1
+  tool_concurrency: 32
+  tool_queue_timeout_seconds: 600
+  min_available_memory_gib: 32
+  max_infrastructure_attempts: 1
+  max_infrastructure_failures: 1
+  cleanup_reserve_seconds: 180
+  task_admission_seconds: 7200

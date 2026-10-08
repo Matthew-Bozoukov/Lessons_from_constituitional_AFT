@@ -45,6 +45,7 @@ def _tinker_endpoint(spec, cfg):
                        max_tokens=int(t.get("max_tokens", 8192)),
                        context_window=int(t.get("context_window", 131072)),
                        render_date=t.get("render_date"),
+                       budget_usd=t.get("budget_usd"), budget_ledger=t.get("budget_ledger"),
                        log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
 
 
@@ -490,7 +491,7 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
         if args.name == "swebench_mini" and spec.api_base:
-            if not is_tinker_target(hf_path) or cfg.get("protocol") != "gptoss-tinker-lite-v1":
+            if not is_tinker_target(hf_path) or cfg.get("protocol") not in ("gptoss-tinker-lite-v1", "gptoss-tinker-lite-v2"):
                 raise SystemExit("SWE API targets require a Tinker GPT-OSS checkpoint and "
                                  "--config configs/eval/swebench_mini/gptoss-tinker.yaml; "
                                  "the Qwen fleet protocol is unchanged")

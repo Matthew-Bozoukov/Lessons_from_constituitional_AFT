@@ -1,0 +1,25 @@
+{
+  "campaign": "gptoss-three-20261008",
+  "protocol": "gptoss-tinker-lite-v2",
+  "base_model": "openai/gpt-oss-120b",
+  "sampling_model": "openai/gpt-oss-120b:peft:131072",
+  "arms": {
+    "base": "tinker://base",
+    "control": "tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain",
+    "da15": "tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15"
+  },
+  "full_run_budget": "pending user decision; no full-run launch",
+  "pilot_cap_usd": 3.0,
+  "qualification_instance": "sympy__sympy-20590",
+  "qualification_arm": "base",
+  "qualification_outcome_policy": "Retain and reuse the valid base task outcome in the full campaign; never reroll it.",
+  "prior_sampling_checks": "All three arms returned tokens on both ordinary and 128K endpoints; tiny access probes only, not benchmark scores.",
+  "cpu": {
+    "instance_id": 54552761,
+    "label": "nika-swebench-cpu-20261006T225510Z-0aed36",
+    "image_digest_check_utc": "2026-10-08T10:34:49Z",
+    "images_verified": 300,
+    "missing_or_changed": 0,
+    "keep_running": true
+  }
+}

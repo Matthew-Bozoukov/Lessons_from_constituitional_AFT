@@ -99,7 +99,8 @@ def consume(endpoint, model, cfg, worker, allowed, expires, unhealthy=None, admi
         atomic(out / 'request.json', request)
         registry = write_cost_registry(out, model)
         env = {k: v for k, v in os.environ.items() if not any(s in k for s in ('TOKEN', 'API_KEY', 'PASSWORD'))}
-        env.update(rollout_env(registry=registry, global_config_dir=out / 'global_config'))
+        env.update(rollout_env(registry=registry, global_config_dir=out / 'global_config',
+                              api_key=os.environ.get(cfg.get('endpoint_api_key_env', ''), 'EMPTY')))
         env['MSWEA_SILENT_STARTUP'] = '1'
         proc = None
         rc = -1

@@ -33,6 +33,8 @@ class Runtime:
     instance_id: str
     default_max_tokens: int = 8192
     context_window: int = 131072
+    sampling_model: str | None = None
+    budget: Any = None
 
 
 def _text(content: Any) -> str:
@@ -184,7 +186,20 @@ def create_app(runtime: Runtime) -> FastAPI:
         return {"object": "list", "data": [{"id": runtime.model, "object": "model", "owned_by": "tinker",
                  "checkpoint": runtime.checkpoint, "instance_id": runtime.instance_id,
                  "reasoning_effort": runtime.reasoning, "context_window": runtime.context_window,
+                 "sampling_model": runtime.sampling_model,
                  "renderer_date": runtime.renderer.current_date, "tokenizer_revision": TOKENIZER_REVISION}]}
+
+    @app.post("/tokenize")
+    async def tokenize(req: Request):
+        try:
+            body = await req.json()
+            if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
+                raise ValueError("Requested model is not served by this shim")
+            messages = build_messages(body.get("messages"), body.get("tools"), runtime)
+            ids = runtime.renderer.build_generation_prompt(messages).to_ints()
+            return {"count": len(ids), "tokens": ids, "max_model_len": runtime.context_window}
+        except (ValueError, TypeError, KeyError) as error:
+            return JSONResponse({"error": {"message": str(error)}}, status_code=400)
 
     @app.post("/v1/chat/completions")
     async def chat(req: Request):
@@ -203,10 +218,18 @@ def create_app(runtime: Runtime) -> FastAPI:
         except (ValueError, TypeError, KeyError) as error:
             return JSONResponse({"error": {"message": str(error), "type": "invalid_request_error"}}, status_code=400)
 
+        reservation = None
+        if runtime.budget is not None:
+            try:
+                reservation = runtime.budget.reserve(len(prompt_ids), options["max_tokens"])
+            except RuntimeError as error:
+                return JSONResponse({"error": {"message": str(error)}}, status_code=402)
         sample = await runtime.sampling_client.sample_async(
             prompt=prompt, num_samples=1, sampling_params=runtime.sampling_params(**options))
         sequence = sample.sequences[0]
         ids = sequence.tokens
+        if reservation is not None:
+            runtime.budget.settle(reservation, len(ids))
         message, termination = runtime.renderer.parse_response(ids)
         oai = runtime.renderer.to_openai_message(message)
         out: dict[str, Any] = {"role": "assistant", "content": oai.get("content") or ""}
@@ -222,6 +245,7 @@ def create_app(runtime: Runtime) -> FastAPI:
             finish = "tool_calls"
         diagnostics = {
             "checkpoint": runtime.checkpoint, "base_model": runtime.model,
+            "sampling_model": runtime.sampling_model,
             "reasoning_effort": runtime.reasoning, "renderer_date": runtime.renderer.current_date,
             "sampling": options, "stop_reason": sequence.stop_reason,
             "tokenizer_revision": TOKENIZER_REVISION,
@@ -255,16 +279,25 @@ def main():
     if reasoning not in {"low", "medium", "high"}:
         raise ValueError("REASONING_LEVEL must be low, medium or high")
     checkpoint = os.environ["TINKER_CKPT"]
+    context = int(os.environ.get("TINKER_CONTEXT_WINDOW", "131072"))
+    sampling_model = model if context <= 32768 else model + ":peft:131072"
+    budget = None
+    if os.environ.get("TINKER_BUDGET_USD"):
+        from src.infra.endpoints.tinker_budget import Budget
+        budget = Budget(os.environ["TINKER_BUDGET_LEDGER"],
+                        float(os.environ["TINKER_BUDGET_USD"]), sampling_model, checkpoint)
     runtime = Runtime(
         checkpoint=checkpoint, model=model, reasoning=reasoning,
         renderer=GptOssRenderer(AutoTokenizer.from_pretrained(model, revision=TOKENIZER_REVISION), use_system_prompt=True,
                                reasoning_effort=reasoning,
                                current_date=os.environ.get("TINKER_RENDER_DATE", date.today().isoformat())),
-        sampling_client=tinker.ServiceClient().create_sampling_client(model_path=checkpoint, base_model=model),
+        sampling_client=tinker.ServiceClient().create_sampling_client(
+            model_path=None if checkpoint == "tinker://base" else checkpoint, base_model=sampling_model),
+        sampling_model=sampling_model, budget=budget,
         sampling_params=tinker.SamplingParams, tool_call_type=ToolCall, convert_tools=openai_tools_to_tinker,
         api_key=os.environ["TINKER_API_KEY"], instance_id=os.environ.get("TINKER_SHIM_INSTANCE", uuid.uuid4().hex),
         default_max_tokens=int(os.environ.get("DEFAULT_MAX_TOKENS", "8192")),
-        context_window=int(os.environ.get("TINKER_CONTEXT_WINDOW", "131072")))
+        context_window=context)
     uvicorn.run(create_app(runtime), host="127.0.0.1", port=int(os.environ.get("PORT", "1234")), log_level="warning")
 
 

@@ -90,6 +90,34 @@ def test_harmony_tool_result_and_reasoning_roundtrip(runtime):
     prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[1]["prompt"].to_ints())
     assert "analysis<|message|>Think." in prompt
     assert "functions.bash to=assistant<|channel|>commentary<|message|>/testbed" in prompt
+
+
+def test_qwen_sampling_and_token_count_match_real_rendering(runtime):
+    http = client(runtime)
+    body = request(temperature=1.0, top_p=0.95, top_k=20, min_p=0.0,
+        repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0, max_tokens=16384)
+    first = http.post('/v1/chat/completions', json=body)
+    assert first.status_code == 200, first.text
+    msg = first.json()['choices'][0]['message']
+    body['messages'] += [msg, dict(role='tool', tool_call_id=msg['tool_calls'][0]['id'], content='shell output')]
+    count = http.post('/tokenize', json=body).json()
+    second = http.post('/v1/chat/completions', json=body)
+    assert second.status_code == 200, second.text
+    assert count['count'] == second.json()['usage']['prompt_tokens']
+    actual = runtime.sampling_client.requests[-1]
+    assert count['tokens'] == actual['prompt'].to_ints()
+    params = actual['sampling_params']
+    assert (params.temperature, params.top_p, params.top_k, params.max_tokens) == (1.0, .95, 20, 16384)
+
+
+def test_exhausted_budget_never_calls_sampler(runtime):
+    class Exhausted:
+        def reserve(self, *args):
+            raise RuntimeError('Frozen Tinker spending ceiling reached')
+    runtime.budget = Exhausted()
+    response = client(runtime).post('/v1/chat/completions', json=request())
+    assert response.status_code == 402
+    assert not runtime.sampling_client.requests
     assert second.json()["choices"][0]["message"]["content"] == "Done."
     assert result["tinker_metadata"]["checkpoint"] == runtime.checkpoint
 

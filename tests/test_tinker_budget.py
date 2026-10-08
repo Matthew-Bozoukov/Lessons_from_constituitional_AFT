@@ -1,0 +1,27 @@
+# ABOUTME: Verify durable spending reservations, crash retention and exclusive sampler ownership.
+# ABOUTME: Linux-only ledger matches the native-Docker Vast driver.
+import sys
+import pytest
+
+pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='Linux owned inference ledger')
+
+
+def test_ledger_preserves_ambiguous_calls_and_frozen_identity(tmp_path):
+    from src.infra.endpoints.tinker_budget import Budget
+    path = tmp_path/'ledger.json'
+    b = Budget(path, 1, 'openai/gpt-oss-120b:peft:131072', 'tinker://test')
+    first = b.reserve(100000, 10000)
+    pending = b.reserve(200000, 10000)
+    b.settle(first, 100)
+    assert b.data['requests'][pending]['state'] == 'reserved'
+    total = sum(x['upper_usd'] for x in b.data['requests'].values())
+    b.owner.close()
+    reopened = Budget(path, 1, 'openai/gpt-oss-120b:peft:131072', 'tinker://test')
+    assert sum(x['upper_usd'] for x in reopened.data['requests'].values()) == total
+    with pytest.raises(BlockingIOError):
+        Budget(path, 1, 'openai/gpt-oss-120b:peft:131072', 'tinker://test')
+    with pytest.raises(RuntimeError, match='ceiling'):
+        reopened.reserve(2000000, 10000)
+    reopened.owner.close()
+    with pytest.raises(AssertionError, match='identity'):
+        Budget(path, 2, 'openai/gpt-oss-120b:peft:131072', 'tinker://test')
