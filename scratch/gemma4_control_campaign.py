@@ -16,6 +16,8 @@ def main(phase: str, config: str = "scratch/gemma4_control_launch.yaml"):
     root.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, PYTHONUNBUFFERED="1", PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
                TOKENIZERS_PARALLELISM="false")
+    env.update({k: str(v) for k, v in cfg.get("runtime_env", {}).items()})
+    (root / "runtime_env.json").write_text(json.dumps(dict(cfg.get("runtime_env", {})), indent=2))
     command = ["uv", "run", "--frozen", "torchrun", "--nproc_per_node=2",
                "scripts/train/train_lora.py", "--config", cfg.recipe, *cfg.overrides]
     if phase == "smoke":

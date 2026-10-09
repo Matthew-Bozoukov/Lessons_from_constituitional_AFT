@@ -21,3 +21,7 @@ provision:
   count: 2
   disk_gb: 200
   max_hours: 3
+# This host's Fabric Manager rejects NVLS multicast allocation (CUDA 401).
+# Ordinary NCCL collectives preserve DDP semantics without that optional transport.
+runtime_env:
+  NCCL_NVLS_ENABLE: "0"
