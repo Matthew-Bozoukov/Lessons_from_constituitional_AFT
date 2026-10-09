@@ -1,0 +1,17 @@
+# ABOUTME: Authorized rerun of the six response-limited smoke20 cases with fourfold response allowance.
+# ABOUTME: Run: python -m scratch.gptoss_swe.response_quad prepare|run|status|publish
+root: /srv/lasr/runs/gptoss-response64k-20261009
+prior: /srv/lasr/runs/gptoss-twenty-20261009
+campaign: gptoss-response64k-20261009
+hf_repo: dougalldeepmind/2026-10-09-gptoss120b-control-da15-swe-response64k
+prior_revision: 09bc27d232fb52c6a6d46aa54f09c12e6ac4e9b5
+workers: {control: 4, da15: 2}
+ports: {control: 18345, da15: 18355}
+response_tokens: 65536
+render_date: '2026-10-09'
+selected:
+  control: [django__django-14411, pylint-dev__pylint-5859, scikit-learn__scikit-learn-12471, sympy__sympy-21379]
+  da15: [django__django-15996, sphinx-doc__sphinx-8721]
+targets:
+  control: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+  da15: tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15
