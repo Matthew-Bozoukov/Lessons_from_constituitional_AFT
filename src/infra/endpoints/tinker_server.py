@@ -170,12 +170,12 @@ def sampling_options(body: dict, runtime: Runtime) -> dict:
     temperature = body.get("temperature")
     temperature = 1.0 if temperature is None else float(temperature)
     top_p = body.get("top_p")
-    top_p = 1.0 if top_p is None else float(top_p)
+    top_p = float(os.environ.get("TINKER_DEFAULT_TOP_P", "1.0")) if top_p is None else float(top_p)
     if not math.isfinite(temperature) or temperature < 0:
         raise ValueError("temperature must be finite and nonnegative")
     if not math.isfinite(top_p) or not 0 < top_p <= 1:
         raise ValueError("top_p must be in (0, 1]")
-    top_k = body.get("top_k", -1)
+    top_k = body.get("top_k", int(os.environ.get("TINKER_DEFAULT_TOP_K", "-1")))
     if not isinstance(top_k, int) or isinstance(top_k, bool) or (top_k != -1 and top_k <= 0):
         raise ValueError("top_k must be -1 or a positive integer")
     seed = body.get("seed")

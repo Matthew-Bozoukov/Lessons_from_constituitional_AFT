@@ -73,6 +73,9 @@ def start_shim(arm, kind, env):
         TINKER_BUDGET_USD=str(cap),TINKER_BUDGET_LEDGER=f'/work/{root.as_posix()}/{kind}-budget.json',
         TINKER_TRACE_DIR=f'/work/{root.as_posix()}/{kind}-traces',TINKER_BIND_HOST='0.0.0.0',
         TINKER_RENDER_DATE=DATE,REASONING_LEVEL='medium')
+    # Future ODCV launches match Qwen ODCV sampling; archived runs stay unchanged.
+    if kind == "odcv":
+        settings.update(TINKER_DEFAULT_TOP_P="0.95", TINKER_DEFAULT_TOP_K="20")
     for key,value in settings.items(): args+=['-e',key+'='+value]
     for key in ('TINKER_API_KEY','HF_TOKEN'): args+=['-e',key]
     args += [IMAGE,'src/infra/endpoints/tinker_env/.venv/bin/python','-m','src.infra.endpoints.tinker_server']
@@ -154,7 +157,7 @@ def host(arm,kind):
             cfg.base_url=f'http://host.docker.internal:{port(arm,kind)}/v1'
             cfg.output_root=str((root/'odcv').resolve())
             cfg.endpoint_api_key_env='TINKER_API_KEY'
-            cfg.temperature=1.0
+            cfg.temperature=0.7
             OmegaConf.save(cfg,root/'odcv.yaml')
             os.environ.update(env)
             result=odcv_rollout.main(str(root/'odcv.yaml'))
