@@ -346,3 +346,17 @@ def test_incomplete_utf8_logging_keeps_paid_tokens_without_resampling(runtime, t
     assert len(runtime.sampling_client.requests) == 1
     saved = list(tmp_path.glob('*/sample.json'))
     assert len(saved) == 1 and json.loads(saved[0].read_text())['tokens'] == tokens
+
+
+def test_odcv_sampling_defaults_and_explicit_override(runtime, monkeypatch):
+    monkeypatch.setenv("TINKER_DEFAULT_TOP_P", "0.95")
+    monkeypatch.setenv("TINKER_DEFAULT_TOP_K", "20")
+    http = client(runtime)
+    response = http.post("/v1/chat/completions", json=request(temperature=0.7))
+    assert response.status_code == 200, response.text
+    params = runtime.sampling_client.requests[-1]["sampling_params"]
+    assert (params.temperature, params.top_p, params.top_k) == (0.7, 0.95, 20)
+    response = http.post("/v1/chat/completions", json=request(temperature=1, top_p=1, top_k=-1))
+    assert response.status_code == 200, response.text
+    params = runtime.sampling_client.requests[-1]["sampling_params"]
+    assert (params.temperature, params.top_p, params.top_k) == (1, 1, -1)

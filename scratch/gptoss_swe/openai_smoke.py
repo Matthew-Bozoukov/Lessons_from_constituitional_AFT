@@ -8,7 +8,10 @@ import subprocess
 import time
 from types import SimpleNamespace
 
-ROOT = Path('output/gptoss_openai_smoke')
+ROOT = Path(os.environ.get('GPTOSS_SMOKE_ROOT', 'output/gptoss_openai_smoke'))
+PREFIX = os.environ.get('GPTOSS_SMOKE_PREFIX', 'lasr-gptoss-openai')
+CAMPAIGN = os.environ.get('GPTOSS_SMOKE_CAMPAIGN', 'gptoss-openai-smoke-20261009')
+PORT_BASE = int(os.environ.get('GPTOSS_SMOKE_PORT_BASE', '18155'))
 OLD = Path('output/gptoss_shared_smoke')
 TARGETS = {'base': 'tinker://base', 'control': 'tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain'}
 DATE = '2026-10-09'
@@ -27,7 +30,7 @@ def environment():
 
 
 def port(arm, kind):
-    return 18155 + (0 if arm == 'base' else 10) + {'odcv':0,'swe':1,'compat':2}[kind]
+    return PORT_BASE + (0 if arm == 'base' else 10) + {'odcv':0,'swe':1,'compat':2}[kind]
 
 
 def prepare():
@@ -49,7 +52,7 @@ def prepare():
     save(root/'images-verified.json', verified)
     for arm in TARGETS:
         cfg = OmegaConf.load(OLD/'swe.yaml')
-        cfg.campaign = 'gptoss-openai-smoke-20261009-'+arm
+        cfg.campaign = CAMPAIGN+'-'+arm
         cfg.run_name = 'gptoss120b-'+arm+'-openai-smoke'
         cfg.output_root = '/work/'+(root/arm/'swe').as_posix()
         cfg.tinker.budget_usd = 12
@@ -64,8 +67,8 @@ def start_shim(arm, kind, env):
     import requests
     root = ROOT/arm
     context, allowance, cap = (131072,16384,12) if kind=='swe' else (28000,8192,1 if kind=='compat' else 3)
-    name = 'lasr-gptoss-openai-'+arm+'-'+kind+'-shim'
-    args=['docker','run','-d','--name',name,'--label','lasr.campaign=gptoss-openai-smoke-20261009',
+    name = PREFIX+'-'+arm+'-'+kind+'-shim'
+    args=['docker','run','-d','--name',name,'--label','lasr.campaign='+CAMPAIGN,
           '-p',f'127.0.0.1:{port(arm,kind)}:1234','--memory','3g','--cpus','2',
           '-v',f'{Path.cwd()}:/work','-v','lasr-gptoss-shim-env:/work/src/infra/endpoints/tinker_env/.venv',
           '-v','lasr-gptoss-hf-cache:/root/.cache/huggingface']
@@ -141,12 +144,14 @@ def host(arm,kind):
             # transport incompatibility. The audit below diagnoses every failure.
         elif kind=='swe':
             assert (ROOT/'images-verified.json').exists()
-            args=['docker','run','--name','lasr-gptoss-openai-'+arm+'-swe-driver',
-                  '--label','lasr.campaign=gptoss-openai-smoke-20261009','--add-host','host.docker.internal:host-gateway',
+            args=['docker','run','--name',PREFIX+'-'+arm+'-swe-driver',
+                  '--label','lasr.campaign='+CAMPAIGN,'--add-host','host.docker.internal:host-gateway',
                   '-v',f'{Path.cwd()}:/work','-v','/var/run/docker.sock:/var/run/docker.sock']
             for volume,path in [('cpu','scratch/swebench_cpu_env'),('agent','src/eval/capabilities/swebench_mini/envs/agent'),
                                 ('harness','src/eval/capabilities/swebench_mini/envs/harness')]:
                 args+=['-v',f'lasr-gptoss-{volume}-env:/work/{path}/.venv']
+            for key in ('GPTOSS_SMOKE_ROOT','GPTOSS_SMOKE_PREFIX','GPTOSS_SMOKE_CAMPAIGN','GPTOSS_SMOKE_PORT_BASE'):
+                if key in env: args+=['-e',key]
             args+=['-e','TINKER_API_KEY',IMAGE,'scratch/swebench_cpu_env/.venv/bin/python',
                    '-m','scratch.gptoss_swe.openai_smoke','linux-swe','--arm',arm]
             subprocess.run(args,env=env,check=True)

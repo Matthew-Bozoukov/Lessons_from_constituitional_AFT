@@ -1,6 +1,11 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: Fresh base/control local GPT-OSS smoke with Qwen-matched ODCV sampling
+
+User authorized new ODCV and SWE smokes for base and the October 6 plain control checkpoint. New root `output/gptoss_refresh_smoke_20261009`; prior published smoke remains immutable. Reuse the original outcome-independent ten SWE tasks and five ODCV scenarios in both variants. ODCV now T0.7/top_p0.95/top_k20; SWE remains T1/top_p1/top_k disabled. OpenAI Harmony 0.0.8, medium reasoning, existing numerical limits, no custom JSON coaching or outcome retries. Two arms parallel, phases sequential, one SWE worker per arm for local Docker RAM. Tinker caps per arm: ODCV $3, SWE $12, judging $2; $34 aggregate upper bound, no cloud CPU/GPU rental. Fresh offline tests include the effective ODCV defaults and explicit SWE override; new owner performs retained grading, raw request sampling/target audit, HF upload/hash readback and own-container cleanup. Completion and failures will be recorded separately from this launch plan.
+
+
 ## 2026-10-09 - OpenAI reference Harmony and matched base/control smoke preparation
 
 User requested OpenAI's recommendations implemented without AWS-style malformed-generation resampling, followed by matched base/control smoke evaluations accepting observed limit outcomes. Replaced third-party Harmony rendering/parsing in the shared Tinker shim with pinned `openai-harmony==0.0.8`: reference system/tools, normalized stored final endings, automatic completed-cycle analysis removal, ongoing tool-cycle reasoning retention, and permissive header parsing with raw JSON arguments unchanged. No benchmark-specific JSON coaching or generation repair/retry was added. OpenAI's GPT-OSS repository recommends temperature 1/top_p 1; both new evals use these with top_k disabled. Previous numerical token/context/step limits remain fixed. These changes define a new protocol, not a rescore of old artifacts.
