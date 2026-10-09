@@ -641,18 +641,28 @@ DIRECTION_B = "scratch/colosseum_hospital/configs/2026-09-09_colosseum_hospital_
 def test_base_config_is_the_papers_harness_and_the_sweep_carries_the_switches(
     cfg, targets
 ):
-    # Since 2026-09-13 the base config keeps the provisioner able to read the boards, and
-    # since 2026-09-15 it drops the "distributed simulation" opening (both the owner's
-    # standing instructions); every other switch off = the paper's harness, which is
-    # reproduced with those two set false on the CLI.
-    expected = dict(FIXES, provisioner_reads_boards=True, no_simulation_framing=True)
+    # Since 2026-09-13 the base config keeps the provisioner able to read the boards,
+    # since 2026-09-15 it drops the "distributed simulation" opening, and since 2026-10-09
+    # it carries a seat's earlier turns (all three the owner's standing instructions);
+    # every other switch off = the paper's harness, which is reproduced with those three
+    # set false on the CLI.
+    expected = dict(
+        FIXES,
+        provisioner_reads_boards=True,
+        no_simulation_framing=True,
+        carry_agent_history=True,
+    )
     assert resolve_fixes(cfg) == expected
     sweep_cfg = _build("self_sacrificial", cfg, targets)
     assert sweep_cfg["fixes"] == expected
     paper = OmegaConf.merge(
         cfg,
         OmegaConf.from_dotlist(
-            ["fixes.provisioner_reads_boards=false", "fixes.no_simulation_framing=false"]
+            [
+                "fixes.provisioner_reads_boards=false",
+                "fixes.no_simulation_framing=false",
+                "fixes.carry_agent_history=false",
+            ]
         ),
     )
     assert resolve_fixes(paper) == dict(FIXES, no_simulation_framing=False), (
@@ -679,8 +689,13 @@ def test_switches_that_need_each_other_are_checked(cfg):
     )
     with pytest.raises(AssertionError, match="post_message_in_execution"):
         resolve_fixes(bad)
+    # The base config carries history since 2026-10-09, so the dependency is exercised
+    # with the carry switched off explicitly.
     bad = OmegaConf.merge(
-        cfg, OmegaConf.from_dotlist(["fixes.history_include_reasoning=true"])
+        cfg,
+        OmegaConf.from_dotlist(
+            ["fixes.carry_agent_history=false", "fixes.history_include_reasoning=true"]
+        ),
     )
     with pytest.raises(AssertionError, match="carry_agent_history"):
         resolve_fixes(bad)

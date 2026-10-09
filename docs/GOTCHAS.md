@@ -1957,3 +1957,31 @@ belongs to the dead run via its labels: `docker inspect <name> --format '{{index
 
 A report that something died is a claim to verify, not a fact to act on: look at the process
 list and the log before touching anything.
+
+## 2026-10-09: Hospital carried turns rendered as empty think blocks before 2026-10-05 — memory-on runs across that date are not comparable
+
+The Hospital eval's `fixes.carry_agent_history` re-sends a seat's earlier turns as
+`user "[Your earlier turn …]" > assistant(content + tool_calls) > tool(results)`, with NO
+reasoning field (terrarium_hospital_fixes.patch, `_remember_turn`); within one turn the
+re-ask does carry reasoning (vLLM 0.26 returns `reasoning`, maps it back to
+`reasoning_content`, the template renders it after the last user message). From 2026-08-04 to
+2026-10-05 serving pinned `preserve_thinking=true`, which draws a think block on EVERY past
+assistant turn and leaves it empty when none was sent — so every carried turn rendered as
+`<think>\n\n</think>\n\n<reply>`, token for token a nothink turn. Since 2026-10-05
+(`pin_prefix` pins it false) a carried turn renders with no block, the rule every reasoning
+model is served under. The 2026-10-05 LOG entry lists psychosis, ctfish, dictator, odcv_peer
+and the ODCV nudge as affected and omits the Hospital: every memory-on Hospital cell published
+2026-09-10 → 2026-10-02 is on the empty-block rendering, and any run from now on is not.
+
+Verified 2026-10-07 against `dougalldeepmind/2026-09-28-hospital-self-sacrificial-qwen36-0-da-15`
+(`prompts.jsonl`: 216/216 carried assistant messages without a reasoning field, 12/12
+within-turn ones with) and by rendering the shapes with the cached Qwen3.6 tokenizer. The
+empty blocks coincide with shorter reasoning on later iterations (pair seats, planning,
+iteration 1 → 3: 3,305 → 1,837 chars with memory on vs 3,354 → 2,459 with it off; the nosynth
+bystanders 6,460 → 3,855 vs 6,109 → 6,500), unattributed between priming and redundancy. No
+clean on/off replicate exists: the 2026-09-25 memory-off cells (`…-qwen36-0-da-15`,
+`…-da-multiparty-human-15`, 15 seeds, never logged) used a different peer from the 2026-09-24
+memory-on cells. Before comparing a new Hospital run with the 09-14 → 10-02 series, check
+`fixes.carry_agent_history` in its `run_meta.json` AND the date against 2026-10-05. The
+default config carries memory ON since 2026-10-09; the paper's harness is now three overrides
+(`fixes.carry_agent_history=false` added).

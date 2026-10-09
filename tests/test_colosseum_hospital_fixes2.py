@@ -122,6 +122,7 @@ def test_the_papers_harness_is_the_cli_overrides_the_base_config_names():
             OmegaConf.load(BASE),
             "fixes.provisioner_reads_boards=false",
             "fixes.no_simulation_framing=false",
+            "fixes.carry_agent_history=false",
         )
     )
     assert paper == dict(FIXES, no_simulation_framing=False)
