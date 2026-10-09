@@ -34,7 +34,7 @@ class Runtime:
     convert_tools: Any
     api_key: str
     instance_id: str
-    default_max_tokens: int = 8192
+    default_max_tokens: int | None = 8192
     context_window: int = 131072
     sampling_model: str | None = None
     budget: Any = None
@@ -165,7 +165,7 @@ def sampling_options(body: dict, runtime: Runtime) -> dict:
     max_tokens = body.get("max_tokens", body.get("max_completion_tokens"))
     if max_tokens is None:
         max_tokens = runtime.default_max_tokens
-    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
+    if max_tokens is not None and (not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0):
         raise ValueError("max_tokens must be a positive integer")
     temperature = body.get("temperature")
     temperature = 1.0 if temperature is None else float(temperature)
@@ -226,6 +226,12 @@ def create_app(runtime: Runtime) -> FastAPI:
             messages = build_messages(body.get("messages"), body.get("tools"), runtime)
             prompt = generation_prompt(runtime.renderer, messages)
             prompt_ids = prompt.to_ints()
+            if options["max_tokens"] is None:
+                # No independent response cap: use the capacity left after the
+                # exact Harmony prompt, including tool schemas and reasoning.
+                options["max_tokens"] = runtime.context_window - len(prompt_ids)
+                if options["max_tokens"] <= 0:
+                    raise ValueError("Prompt plus completion allowance exceeds the configured context window")
             if len(prompt_ids) + options["max_tokens"] > runtime.context_window:
                 raise ValueError("Prompt plus completion allowance exceeds the configured context window")
         except (ValueError, TypeError, KeyError) as error:
@@ -317,7 +323,8 @@ def main():
         sampling_model=sampling_model, budget=budget,
         sampling_params=tinker.SamplingParams, tool_call_type=ToolCall, convert_tools=openai_tools_to_tinker,
         api_key=os.environ["TINKER_API_KEY"], instance_id=os.environ.get("TINKER_SHIM_INSTANCE", uuid.uuid4().hex),
-        default_max_tokens=int(os.environ.get("DEFAULT_MAX_TOKENS", "8192")),
+        default_max_tokens=(None if os.environ.get("DEFAULT_MAX_TOKENS") == "remaining"
+                            else int(os.environ.get("DEFAULT_MAX_TOKENS", "8192"))),
         context_window=context, trace_dir=os.environ.get('TINKER_TRACE_DIR'))
     uvicorn.run(create_app(runtime), host=os.environ.get('TINKER_BIND_HOST', '127.0.0.1'), port=int(os.environ.get("PORT", "1234")), log_level="warning")
 

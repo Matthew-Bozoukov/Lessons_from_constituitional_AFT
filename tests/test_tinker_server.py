@@ -360,3 +360,34 @@ def test_odcv_sampling_defaults_and_explicit_override(runtime, monkeypatch):
     assert response.status_code == 200, response.text
     params = runtime.sampling_client.requests[-1]["sampling_params"]
     assert (params.temperature, params.top_p, params.top_k) == (1, 1, -1)
+
+
+def test_remaining_context_response_allowance_and_explicit_cap(runtime):
+    runtime.default_max_tokens = None
+    runtime.context_window = 28000
+    reservations = []
+    runtime.budget = SimpleNamespace(
+        reserve=lambda prompt, completion: reservations.append((prompt, completion)),
+        settle=lambda *args: None)
+    http = client(runtime)
+    response = http.post('/v1/chat/completions', json=request())
+    assert response.status_code == 200, response.text
+    sent = runtime.sampling_client.requests[-1]
+    prompt_size = len(sent['prompt'].to_ints())
+    assert sent['sampling_params'].max_tokens == 28000 - prompt_size
+    assert sent['sampling_params'].max_tokens > 8192
+    assert reservations[-1] == (prompt_size, 28000 - prompt_size)
+    response = http.post('/v1/chat/completions', json=request(max_tokens=16384))
+    assert response.status_code == 200, response.text
+    assert runtime.sampling_client.requests[-1]['sampling_params'].max_tokens == 16384
+
+
+def test_remaining_context_refuses_full_prompt_before_budget_or_sampling(runtime):
+    runtime.default_max_tokens = None
+    http = client(runtime)
+    size = http.post('/tokenize', json=request()).json()['count']
+    runtime.context_window = size
+    response = http.post('/v1/chat/completions', json=request())
+    assert response.status_code == 400
+    assert 'context window' in response.json()['error']['message']
+    assert runtime.sampling_client.requests == []

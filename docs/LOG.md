@@ -1,6 +1,13 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: Remove the extra GPT-OSS ODCV response allowance
+
+User requested removal of the Tinker ODCV 8192-token per-response ceiling after comparison with Qwen ODCV, which omits max_tokens and uses the remaining 28000-token context. New ODCV launches set DEFAULT_MAX_TOKENS=remaining; the shared shim tokenizes the complete Harmony prompt first, then uses context_window minus prompt length as the completion allowance and budget reservation. Explicit request limits (including SWE 16384) remain unchanged. Full contexts are rejected before sampling. Forty offline HTTP/history/tool/budget tests passed, including available-context calculation, explicit SWE cap and pre-sampling context rejection. The ongoing refresh smoke already finished ODCV with the historical 8192 ceiling; those results remain labeled as such and are not rerun. Its already-running SWE servers are not restarted/redeployed.
+
+SWE comparison with the actual Qwen base fleet config: same 16384 response/262144 task-generated/500-step limits; GPT-OSS context131072 versus Qwen262144; per-request transport timeout1800 versus7200 seconds; request attempts1 versus2 and infrastructure attempts1 versus3. Local smoke has a separate $12 inference ceiling per arm and stricter infrastructure breaker, not additional model token caps. No SWE setting changed by this request.
+
+
 ### 2026-10-09: Fresh base/control local GPT-OSS smoke with Qwen-matched ODCV sampling
 
 User authorized new ODCV and SWE smokes for base and the October 6 plain control checkpoint. New root `output/gptoss_refresh_smoke_20261009`; prior published smoke remains immutable. Reuse the original outcome-independent ten SWE tasks and five ODCV scenarios in both variants. ODCV now T0.7/top_p0.95/top_k20; SWE remains T1/top_p1/top_k disabled. OpenAI Harmony 0.0.8, medium reasoning, existing numerical limits, no custom JSON coaching or outcome retries. Two arms parallel, phases sequential, one SWE worker per arm for local Docker RAM. Tinker caps per arm: ODCV $3, SWE $12, judging $2; $34 aggregate upper bound, no cloud CPU/GPU rental. Fresh offline tests include the effective ODCV defaults and explicit SWE override; new owner performs retained grading, raw request sampling/target audit, HF upload/hash readback and own-container cleanup. Completion and failures will be recorded separately from this launch plan.

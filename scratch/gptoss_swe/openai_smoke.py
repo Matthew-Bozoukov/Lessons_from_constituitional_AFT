@@ -78,7 +78,8 @@ def start_shim(arm, kind, env):
         TINKER_RENDER_DATE=DATE,REASONING_LEVEL='medium')
     # Future ODCV launches match Qwen ODCV sampling; archived runs stay unchanged.
     if kind == "odcv":
-        settings.update(TINKER_DEFAULT_TOP_P="0.95", TINKER_DEFAULT_TOP_K="20")
+        settings.update(TINKER_DEFAULT_TOP_P="0.95", TINKER_DEFAULT_TOP_K="20",
+                        DEFAULT_MAX_TOKENS="remaining")
     for key,value in settings.items(): args+=['-e',key+'='+value]
     for key in ('TINKER_API_KEY','HF_TOKEN'): args+=['-e',key]
     args += [IMAGE,'src/infra/endpoints/tinker_env/.venv/bin/python','-m','src.infra.endpoints.tinker_server']
