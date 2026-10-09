@@ -1,6 +1,6 @@
 # ABOUTME: The draft's two Hospital/ODCV figures redrawn with the DA and DA + tools arms replaced by the Oct-data
 # ABOUTME: (Jamie's 2026-10-05 mix) canary pair; base model and the multi-party arms stay on their Sept runs.
-# Run: uv run python -m scratch.canary.paper_figures_oct [--out-dir output/figures]
+# Run: uv run python -m scratch.canary.paper_figures_oct [--data oct|sept] [--out-dir output/figures]
 # Style, fetch and the refusal rule come from scratch/da_tools/paper_figures.py (the draft's own figure code).
 import argparse
 from pathlib import Path
@@ -23,36 +23,65 @@ from scratch.da_tools.paper_figures import (
     save,
 )
 
-# (label, colour, ODCV run, Hospital run, data) -- None where the arm has no run under the protocol.
-ARMS = [
-    (
-        "Base model",
-        "#5f6774",
-        "2026-09-06-odcv-qwen36",
-        "2026-09-29-hospital-self-sacrificial-qwen36",
-        "",
-    ),
-    (
-        "Difficult advice",
-        "#7724c4",
-        "2026-10-08-odcv-qwen36-0-da-15-canary",
-        "2026-10-08-hospital-self-sacrificial-qwen36-0-da-15-canary",
-        "Oct",
-    ),
-    (
-        "Difficult advice + tools",
-        "#9c6500",
-        "2026-10-08-odcv-qwen36-0-da-tools-15-canary-reusedtools",
-        "2026-10-08-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-reusedtools",
-        "Oct",
-    ),
-]
+# (label, colour, ODCV run, Hospital run, data); the base model is the same out-of-the-box Qwen in both sets.
+DATA = {
+    "oct": [
+        (
+            "Base model",
+            "#5f6774",
+            "2026-09-06-odcv-qwen36",
+            "2026-09-29-hospital-self-sacrificial-qwen36",
+            "",
+        ),
+        (
+            "Difficult advice",
+            "#7724c4",
+            "2026-10-08-odcv-qwen36-0-da-15-canary",
+            "2026-10-08-hospital-self-sacrificial-qwen36-0-da-15-canary",
+            "Oct",
+        ),
+        (
+            "Difficult advice + tools",
+            "#9c6500",
+            "2026-10-08-odcv-qwen36-0-da-tools-15-canary-reusedtools",
+            "2026-10-08-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-reusedtools",
+            "Oct",
+        ),
+    ],
+    "sept": [
+        (
+            "Base model",
+            "#5f6774",
+            "2026-09-06-odcv-qwen36",
+            "2026-09-29-hospital-self-sacrificial-qwen36",
+            "",
+        ),
+        (
+            "Difficult advice",
+            "#7724c4",
+            "2026-09-26-odcv-qwen36-0-da-15",
+            "2026-09-28-hospital-self-sacrificial-qwen36-0-da-15",
+            "Sept",
+        ),
+        (
+            "Difficult advice + tools",
+            "#9c6500",
+            "2026-09-28-odcv-qwen36-0-da-tools-15",
+            "2026-09-28-hospital-self-sacrificial-qwen36-0-da-tools-15",
+            "Sept",
+        ),
+    ],
+}
+NOTES = {
+    "oct": "DA and DA + tools: Oct data (Jamie's 2026-10-05 mix, one seed).\nBase model: Sept run.",
+    "sept": "DA and DA + tools: Sept data (one seed).\nBase model: Sept run.",
+}
+ARMS, NOTE, TAG = DATA["oct"], NOTES["oct"], "oct"
 BOXES = [  # bottom to top
     ("act_no_refusal", "Sabotage act, no private refusal", "#b3261e", "white"),
     ("act_refusal", "Sabotage act, with a private refusal", "#d9675c", "white"),
     ("plan_only", "Sabotage plan, no sabotage act", "#f0c3bd", "#3b0d0a"),
 ]
-NOTE = "DA and DA + tools: Oct data (Jamie's 2026-10-05 mix, one seed).\nBase model: Sept run."
 
 
 def hospital_boxes(repo: str) -> dict:
@@ -172,7 +201,7 @@ def misalignment_figure(odcv: dict, hosp: dict, out: Path) -> Path:
     fig.text(0.01, 0.01, NOTE, fontsize=5.5, color=MUTED)
     fig.tight_layout(pad=0.3)
     fig.subplots_adjust(bottom=0.24)
-    return save(fig, out, "paper-fig-misalignment-oct-data")
+    return save(fig, out, f"paper-fig-misalignment-{TAG}-data")
 
 
 def refusal_figure(hosp: dict, out: Path) -> Path:
@@ -237,13 +266,17 @@ def refusal_figure(hosp: dict, out: Path) -> Path:
     fig.text(0.01, 0.01, NOTE, fontsize=5.5, color=MUTED)
     fig.tight_layout(pad=0.3)
     fig.subplots_adjust(bottom=0.22)
-    return save(fig, out, "paper-fig-refusal-x-act-oct-data")
+    return save(fig, out, f"paper-fig-refusal-x-act-{TAG}-data")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--data", choices=list(DATA), default="oct")
     ap.add_argument("--out-dir", default="output/figures")
-    out = Path(ap.parse_args().out_dir)
+    a = ap.parse_args()
+    global ARMS, NOTE, TAG
+    ARMS, NOTE, TAG = DATA[a.data], NOTES[a.data], a.data
+    out = Path(a.out_dir)
     odcv = {lab: odcv_rate(r)[:2] for lab, _, r, _, _ in ARMS if r}
     full = {lab: hospital_boxes(h) for lab, _, _, h, _ in ARMS if h}
     hosp = {lab: (v["rate"], v["se"]) for lab, v in full.items()}
