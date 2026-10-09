@@ -1,6 +1,6 @@
 # ABOUTME: Reads a `runpod up --eval` log for the pod id and ssh host, waits until the pod's boot log says READY,
 # ABOUTME: then starts `uv run evals ... --server <host> --terminate-pod` detached, so an eval never starts early.
-# Run: nohup uv run python scratch/canary/launch_when_ready.py <up.log> <eval> <target> <port> <eval.log> [extra evals args...] &
+# Run: nohup uv run python scratch/canary/launch_when_ready.py <up.log> <eval> <target[,target...]> <port> <eval.log> [extra evals args...] &
 import re
 import subprocess
 import sys
@@ -39,7 +39,7 @@ def main() -> None:
         name,
         *extra,
         "--target",
-        target,
+        *target.split(","),
         "--server",
         host,
         "--port",
