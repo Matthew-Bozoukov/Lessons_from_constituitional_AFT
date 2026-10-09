@@ -38,6 +38,15 @@ PROFILES_DIR = Path(__file__).resolve().parents[1] / "configs" / "models"
 
 # The five literals a verified template block must state, in the file's own words.
 _TEMPLATE_LITERALS = ("assistant_header", "turn_end", "prefill", "empty_think", "think_close")
+# Of those five, the three that must be NON-EMPTY: without them a row has no turn boundaries and
+# no reasoning close, so nothing can be masked at all.
+_TEMPLATE_REQUIRED = ("assistant_header", "turn_end", "think_close")
+# The two a family may legitimately state as "". google/gemma-4-31B-it under
+# `enable_thinking: true` prefills nothing (the model emits its own `<|channel>thought`, so that
+# opener is generated and must stay supervised) and carries no empty-think marker at all. Those
+# are verified facts about the family rather than omissions, so the test for these two is that the
+# KEY is present; an unverified family still states no template block whatsoever.
+_TEMPLATE_MAY_BE_EMPTY = ("prefill", "empty_think")
 
 
 @dataclass(frozen=True)
@@ -77,6 +86,16 @@ class ModelProfile:
             (tests/test_masking_tokenizer.py does it for Qwen3.6): it accepts `tools=`,
             renders `tool_calls` whose `arguments` are mappings, and renders `role: tool`
             turns OUTSIDE the assistant span, so tool output is context, never a target.
+        masked_inner: (open, close) literal pairs whose spans are masked even when they fall
+            INSIDE a supervised assistant turn — for a family that fails the last premise
+            above. Gemma 4 renders a whole agentic trajectory as one `model` turn with tool
+            responses interleaved ("continuation detection" in its template), so without this
+            the masker would train it to produce tool output it cannot know. Empty for a family
+            like Qwen3.6, where `role: tool` is already its own turn.
+        think_open: The literal that OPENS a reasoning block, when that is not the forced
+            `prefill`. Qwen3.6 forces its own opener, so prefill doubles as it and this stays
+            empty; Gemma 4 prefills nothing and the model emits `<|channel>thought` itself, so
+            `cot`/`answer` need it stated to find where the trace begins.
         model_class: `causal_lm` or `image_text_to_text` (multimodal checkpoints expose a
             conditional-generation class).
         lora_target_modules: peft target spec — a string is a regex over module paths, a
@@ -106,6 +125,8 @@ class ModelProfile:
     empty_think: str = ""
     think_close: str = ""
     render_kwargs: dict = field(default_factory=dict)
+    masked_inner: tuple = ()
+    think_open: str = ""
     model_class: str = "causal_lm"
     lora_target_modules: str | list | None = None
     load_in_4bit: bool = True
@@ -115,7 +136,7 @@ class ModelProfile:
     @property
     def verified(self) -> bool:
         """True when the template block is stated, i.e. this family may be trained."""
-        return all(getattr(self, name) for name in _TEMPLATE_LITERALS)
+        return all(getattr(self, name) for name in _TEMPLATE_REQUIRED)
 
     @classmethod
     def from_dict(cls, data: dict, key: str | None = None) -> "ModelProfile":
@@ -132,10 +153,12 @@ class ModelProfile:
         assert data.get("model"), f"model profile {key!r}: `model:` (the HF id) is required"
         tpl = dict(data.get("template") or {})
         if tpl:
-            missing = [n for n in _TEMPLATE_LITERALS if not tpl.get(n)]
+            missing = ([n for n in _TEMPLATE_REQUIRED if not tpl.get(n)]
+                       + [n for n in _TEMPLATE_MAY_BE_EMPTY if n not in tpl])
             assert not missing, (
                 f"model profile {key!r}: template block is missing {missing}; a verified "
-                "family states all five literals, an unverified one states no block")
+                "family states all five literals (prefill and empty_think may be \"\" when the "
+                "family verifiably has none), an unverified one states no block")
         tr = dict(data.get("train") or {})
         targets = tr.get("lora_target_modules")
         assert targets is None or isinstance(targets, (str, list)), (
@@ -151,6 +174,9 @@ class ModelProfile:
             empty_think=str(tpl.get("empty_think") or ""),
             think_close=str(tpl.get("think_close") or ""),
             render_kwargs=dict(tpl.get("render_kwargs") or {}),
+            masked_inner=tuple((str(a), str(b))
+                               for a, b in (tpl.get("masked_inner") or [])),
+            think_open=str(tpl.get("think_open") or ""),
             model_class=str(tr.get("model_class") or "causal_lm"),
             lora_target_modules=list(targets) if isinstance(targets, list) else targets,
             load_in_4bit=bool(tr.get("load_in_4bit", True)),
@@ -167,6 +193,10 @@ class ModelProfile:
         if self.verified:
             out["template"] = {**{n: getattr(self, n) for n in _TEMPLATE_LITERALS},
                                "render_kwargs": dict(self.render_kwargs)}
+            if self.masked_inner:
+                out["template"]["masked_inner"] = [list(p) for p in self.masked_inner]
+            if self.think_open:
+                out["template"]["think_open"] = self.think_open
         train = {"model_class": self.model_class, "load_in_4bit": self.load_in_4bit,
                  "attn_implementation": self.attn_implementation}
         if self.lora_target_modules is not None:

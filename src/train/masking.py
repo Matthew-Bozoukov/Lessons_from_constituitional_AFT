@@ -114,8 +114,67 @@ def assistant_spans(text: str, supervise: str = "full", *,
     return spans[-1:] if supervise == "final" else spans
 
 
+def inner_masked_spans(text: str, spans: list[tuple[int, int]],
+                       pairs: tuple) -> list[tuple[int, int]]:
+    """Find spans to mask that lie INSIDE a supervised assistant turn.
+
+    For most families nothing does: a tool result is its own turn, already outside every
+    assistant span. Gemma 4 renders a whole trajectory as ONE `model` turn with its tool
+    responses interleaved, so those regions fall inside the supervised span and would
+    otherwise become targets - training the model to generate tool output it cannot know.
+
+    Args:
+        text: The rendered chat string.
+        spans: The supervised assistant spans, as `assistant_spans` returns them.
+        pairs: The profile's `masked_inner` - (open, close) literal pairs.
+
+    Returns:
+        Character spans to mask, each covering one open..close region (both literals
+        included) that lies inside one of `spans`.
+    """
+    out: list[tuple[int, int]] = []
+    for opener, closer in pairs:
+        pos = 0
+        while (start := text.find(opener, pos)) != -1:
+            close = text.find(closer, start + len(opener))
+            assert close != -1, (
+                f"unterminated {opener!r} at char {start}: the render opens a masked region "
+                f"that no {closer!r} closes, so masking cannot tell output from target")
+            end = close + len(closer)
+            if any(start >= s and end <= e for s, e in spans):
+                out.append((start, end))
+            pos = end
+    return out
+
+
+def _reasoning_close(text: str, start: int, *, mode: str, think_open: str,
+                     think_close: str) -> int:
+    """Assert the turn at `start` carries a REAL reasoning block; return its close index.
+
+    The shape test `cot` and `response` share. It replaces a prefix test against the family's
+    `empty_think` literal, which cannot work for a family that has none: `"".startswith("")`
+    is true of every string, so an empty marker would reject every row
+    (google/gemma-4-31B-it). Asking what the block CONTAINS settles both families with one
+    rule - Qwen's empty marker holds only a newline between its opener and close, and a Gemma
+    turn with no reasoning never opens the channel at all.
+    """
+    assert text.startswith(think_open, start), (
+        f"supervise={mode!r} needs the final assistant turn to open its reasoning with "
+        f"{think_open!r}, but it opens {text[start:start + len(think_open)]!r}; a turn with "
+        "no think block has no reasoning to train on")
+    close = text.find(think_close, start)
+    assert close != -1, (
+        f"supervise={mode!r}: the final assistant turn never closes its reasoning "
+        f"({think_close!r}) - a cut-off trace is not a training target")
+    assert text[start + len(think_open):close].strip(), (
+        f"supervise={mode!r} on a turn whose reasoning block is EMPTY: it has no reasoning "
+        "to train on, and supervising its close would train the empty-think collapse "
+        "(gotcha 2). Only rows with a real trace may be flagged for this mode.")
+    return close
+
+
 def cot_span(text: str, *, header: str, prefill: str, empty_think: str,
-             think_close: str) -> tuple[int, int]:
+             think_close: str, think_open: str = "") -> tuple[int, int]:
     """Locate the final assistant turn's reasoning: the span AND the truncation point.
 
     The returned `end` is both the last supervised character and where the row is cut,
@@ -146,23 +205,14 @@ def cot_span(text: str, *, header: str, prefill: str, empty_think: str,
     i = text.rfind(header)
     assert i != -1, f"no assistant turn found; nothing would be supervised ({header!r})"
     start = i + len(header)
-    assert not text.startswith(empty_think, start), (
-        "supervise='cot' on a turn carrying the EMPTY think marker: it has no reasoning "
-        "to train on, and supervising its close would train the empty-think collapse "
-        "(gotcha 2). Only rows with a real trace may be flagged 'cot'.")
-    assert text.startswith(prefill, start), (
-        f"supervise='cot' needs the final assistant turn to open with the thinking "
-        f"prefill {prefill!r}, but it opens {text[start:start + len(prefill)]!r}; a "
-        "turn with no think block has no reasoning to train on")
-    close = text.find(think_close, start)
-    assert close != -1, (
-        f"supervise='cot': the final assistant turn never closes its reasoning "
-        f"({think_close!r}) — a cut-off trace is not a training target")
+    close = _reasoning_close(text, start, mode="cot",
+                             think_open=think_open or prefill,
+                             think_close=think_close)
     return start, close + len(think_close)
 
 
 def answer_span(text: str, *, header: str, prefill: str, empty_think: str,
-                think_close: str, turn_end: str) -> tuple[int, int]:
+                think_close: str, turn_end: str, think_open: str = "") -> tuple[int, int]:
     """Return the final answer span, including its separator and turn-end token.
 
     Reasoning stays in the forward pass but receives no direct loss. On the same
@@ -173,18 +223,9 @@ def answer_span(text: str, *, header: str, prefill: str, empty_think: str,
     i = text.rfind(header)
     assert i != -1, f"no assistant turn found; nothing would be supervised ({header!r})"
     head = i + len(header)
-    assert not text.startswith(empty_think, head), (
-        "supervise='response' on a turn carrying the EMPTY think marker: its whole marker "
-        "is forced already, so this mode would silently be plain 'final'. Only rows with a "
-        "real trace may be flagged 'response'.")
-    assert text.startswith(prefill, head), (
-        f"supervise='response' needs the final assistant turn to open with the thinking "
-        f"prefill {prefill!r}, but it opens {text[head:head + len(prefill)]!r}; a turn "
-        "with no think block has no reasoning to withhold from the loss")
-    close = text.find(think_close, head)
-    assert close != -1, (
-        f"supervise='response': the final assistant turn never closes its reasoning "
-        f"({think_close!r}) — there is no answer after a trace that does not end")
+    close = _reasoning_close(text, head, mode="response",
+                             think_open=think_open or prefill,
+                             think_close=think_close)
     start = close + len(think_close)
     end = text.find(turn_end, start)
     assert end != -1, (
@@ -194,7 +235,7 @@ def answer_span(text: str, *, header: str, prefill: str, empty_think: str,
 
 
 def generated_spans(text: str, spans: list[tuple[int, int]],
-                    prefill: str) -> list[tuple[int, int]]:
+                    prefill: str, think_open: str = "") -> list[tuple[int, int]]:
     """The assistant spans the model GENERATES in this row: those opening with a think block.
 
     A turn before the last real user message renders with no block and is history (the
@@ -202,7 +243,10 @@ def generated_spans(text: str, spans: list[tuple[int, int]],
     empty marker opens with the prefill too, so one test covers both forced shapes. A row
     with no block on any turn is returned whole: it was not rendered for thinking at all.
     """
-    headed = [(s, e) for s, e in spans if text.startswith(prefill, s)]
+    # A family that forces no opener states it as `think_open`; without that, `opener` would
+    # be "" here and every turn would look generated, silently supervising history.
+    opener = think_open or prefill
+    headed = [(s, e) for s, e in spans if text.startswith(opener, s)]
     return headed or spans
 
 
@@ -303,6 +347,10 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         # Forced heads are masked on EVERY turn (supervised or not) -- an unsupervised
         # first turn is wholly -100 already, so this only matters for the supervised ones.
         prefills = forced_spans(text, every, profile.prefill, profile.empty_think)
+    # Regions a family interleaves INSIDE its own assistant turn that it never generates -
+    # Gemma 4's tool responses. Masked by the same machinery as a forced head, which also puts
+    # a tokenizer boundary at each edge so no token straddles target and context.
+    prefills = prefills + inner_masked_spans(text, spans, profile.masked_inner)
     cuts = sorted({0, len(text), *(edge for span in prefills for edge in span)})
 
     ids: list[int] = []

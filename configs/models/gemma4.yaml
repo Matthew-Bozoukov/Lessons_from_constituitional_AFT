@@ -1,0 +1,126 @@
+# ABOUTME: ModelProfile for google/gemma-4-31B-it: verified template literals, measured serving
+# ABOUTME: facts, and the model half of a training run. Read by src/model_profile.py.
+#
+# `uv run train ... model=gemma4` names this file by its stem, which is also the KEY every
+# artifact name spells the model with. The template literals below were read off the LIVE
+# tokenizer at transformers 5.14.1, not from the published template docs; the verification for
+# each one is in the comment above it.
+#
+# TOOL DATA IS NOT TRAINABLE FROM THIS PROFILE ALONE. Gemma 4 renders an agentic trajectory as
+# ONE `model` turn with tool calls AND tool responses interleaved inside it -- its template calls
+# this "continuation detection" and keeps the turn open across a role:tool message. Qwen3.6 gives
+# tool output its own turn, which is the premise src/model_profile.py's `render_kwargs` docstring
+# records ("renders `role: tool` turns OUTSIDE the assistant span, so tool output is context,
+# never a target"). That premise is FALSE here, so `assistant_spans` supervises tool output and
+# would train the model to invent tool results -- demonstrated, not feared: the supervised text
+# for a two-call row contained the tool's own `p90=16.8`. `template.masked_inner` below is what
+# fixes it; until src/train/masking.py honours that field, train only non-tool data.
+model: "google/gemma-4-31B-it"
+# Squeezed substring (letters and digits, lowercased) identifying the model in any id or path:
+# `google/gemma-4-31B-it` squeezes to `googlegemma431bit`, which contains this.
+match: gemma431b
+family: "Gemma4"
+# The canonical template (chat_template.jinja, "Google Gemma 4 Canonical Chat Template",
+# published 2026-07-09) carries a think channel and a `<|think|>` token, so the family reasons.
+thinking: true
+
+# train: a 31B at bf16 is ~62GB of weights; with LoRA, gradient checkpointing and the fp32-logits
+#   CE path the H100 80GB has no room (the smaller Qwen 27B already OOMs there, 7.36GiB short),
+#   so H200. UNMEASURED for this model -- a capacity argument, not a probe. See `train.memory`.
+# inference: capacity, not throughput. 62GB of weights on an H100 80GB leaves ~18GB of KV cache,
+#   which binds the batch well below the 64 concurrent scenarios ODCV asks for; the H200's 141GB
+#   leaves ~79GB at the same weights.
+gpu:
+  train: "NVIDIA H200"
+  inference:
+    default: "NVIDIA H200"
+
+# VERIFIED on the pinned vLLM 0.26.0, read from its own name->class table
+# (vllm/tool_parsers/__init__.py and vllm/reasoning/__init__.py on a live pod 2026-10-08):
+#   "gemma4" -> gemma4_engine_tool_parser.Gemma4EngineToolParser
+#   "gemma4" -> gemma4_engine_reasoning_parser.Gemma4ParserReasoningAdapter
+# The parser is not optional for ODCV. Gemma 4 emits tool calls in its own non-JSON form,
+#   <|tool_call>call:bash{command:<|"|>ls<|"|>}<tool_call|>
+# which neither `hermes` (JSON) nor `qwen3_xml` can read. With the wrong parser vLLM returns
+# calls as raw text and EVERY scenario reports ok with an empty transcript -- a silent 0%
+# (docs/GOTCHAS.md). Verified by rendering the live template, not inferred from the name.
+#
+# max_num_seqs: 64 is what this profile has been EXERCISED at, not a measured boot ceiling like
+# the Qwen entry's 192. Raise it only behind a sweep.
+#
+# supports_prefix_caching: MEASURED 2026-10-08 on the 80-scenario ODCV pass (pod ajv25310ixz3bt,
+# vLLM 0.28.0): hit rate climbed 53% -> 93% across the run and settled near 92%, with KV usage at
+# 14-15%, far under the ~50% where the cache evicts before reuse. Throughput only -- outputs are
+# unaffected -- and the tool-call path was re-checked with it on (6/6 parsed, 0 raw markers).
+serving:
+  max_num_seqs: 64
+  reasoning_parser: gemma4
+  tool_call_parser: gemma4
+  supports_prefix_caching: true
+
+# render_kwargs `enable_thinking: true` is REQUIRED, not a preference: it is the only mode whose
+# training render extends the inference prefix, which is the generation boundary all masking
+# depends on. Measured three ways on `[{user}]` plus an assistant turn:
+#   enable_thinking=True   prompt ends `<|turn>model\n`; the reasoning render and the plain render
+#                          BOTH start with that exact prefix. Valid.
+#   default / False        prompt ends `<|turn>model\n<|channel>thought\n<channel|>` -- an ALREADY
+#                          CLOSED empty thought channel -- but the reasoning render puts the trace
+#                          INSIDE that channel, so the prompt is not a prefix of the target. A
+#                          profile in that mode would supervise tokens the model never generates.
+#
+# prefill: EMPTY, and deliberately. Under enable_thinking=true the template prefills nothing; the
+#   model itself emits `<|channel>thought\n` at inference, so that opener is something it
+#   GENERATES and must stay supervised. Naming it `prefill` would mask it (verified: forced_spans
+#   masks chars 13..31 of such a turn with the opener as prefill, and a zero-width span with ""),
+#   and the model would never learn to open its own thought channel.
+# empty_think: EMPTY. Under enable_thinking=true a no-reasoning turn carries NO marker at all --
+#   it renders `<|turn>model\nHello.<turn|>`. There is nothing to mask whole.
+#   CONSEQUENCE: `supervise: cot` and `supervise: answer` DO NOT WORK on this family. cot_span
+#   asserts `not text.startswith(empty_think, start)`, always false for "", so those modes fail
+#   loudly rather than silently -- correct, but the label-arm experiments (cot-only /
+#   response-only) need code before they can run here.
+# masked_inner: literal (open, close) pairs to subtract from a supervised assistant span. See the
+#   warning at the head of this file: this is what keeps Gemma 4's in-turn tool responses out of
+#   the targets. Qwen3.6 needs no such field, which is why it has none.
+template:
+  assistant_header: "<|turn>model\n"
+  turn_end: "<turn|>"
+  prefill: ""
+  empty_think: ""
+  think_close: "<channel|>"
+  # think_open: where a trace BEGINS. Qwen's forced `prefill` doubles as this; Gemma prefills
+  # nothing, so `supervise: cot` and `supervise: answer` need it stated to find the trace. A
+  # turn with no reasoning simply never opens the channel, which is how those modes now tell a
+  # real trace from an absent one.
+  think_open: "<|channel>thought\n"
+  masked_inner:
+    - ["<|tool_response>", "<tool_response|>"]
+  render_kwargs:
+    enable_thinking: true
+
+# The MODEL half of a training run: everything configs/train/sft.yaml must not have to know.
+train:
+  # `Gemma4ForConditionalGeneration` (config.json architectures): a multimodal checkpoint with
+  # vision AND audio towers, so a conditional-generation class, not causal-LM.
+  model_class: image_text_to_text
+  # All attention and MLP projections, scoped to the language tower. Verified against the real
+  # parameter names in model.safetensors.index.json: the language tower is
+  # `model.language_model.layers.N.{self_attn.{q,k,v,o}_proj, mlp.{gate,up,down}_proj}`, while the
+  # vision tower's projections are suffixed `.linear` and so cannot match this anyway. (v_proj
+  # exists on 50 of the 60 layers and the others on all 60 -- a regex covers that; an exact name
+  # list would have to enumerate which layers have one.)
+  lora_target_modules: 'model\.language_model\..*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'
+  # Unverified for this family; the Qwen entry disables 4-bit because bitsandbytes does not
+  # reliably quantise hybrid linear-attention layers, and Gemma 4 is also hybrid (per-layer
+  # head_dim differs between sliding and global attention -- the reason vLLM 0.26 cannot serve it
+  # at all and the eval pod runs 0.28.0). bf16 LoRA until someone probes otherwise.
+  load_in_4bit: false
+  # `Gemma4ForConditionalGeneration._supports_flash_attn` is True at transformers 5.14.1 (read off
+  # the class, not assumed), and flash-attn's varlen backend is what packing needs. NOT yet
+  # exercised on this checkpoint: if a run fails inside the attention kernel, `sdpa` is the
+  # fallback and `_supports_sdpa` is also True.
+  attn_implementation: flash_attention_2
+  # NO MEASURED ENTRY. Every key here must come from a scratch/probe_batch_memory.py run on the
+  # real card; estimating one would hand the dynamic-batching resolver a budget it cannot honour.
+  # A missing GPU costs only that: the dataset's longest row becomes the default budget.
+  memory: {}
