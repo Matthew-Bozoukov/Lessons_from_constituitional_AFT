@@ -90,7 +90,8 @@ def _sweep(condition, cfg):
 
 def test_the_switch_exists_defaults_off_and_bumps_the_stamp():
     assert FIXES["administrator_channel"] is False
-    assert TERRARIUM_FIXES_STAMP == "2026-09-15"
+    # Bumped by every later terrarium patch (2026-10-09: the standard conversation).
+    assert TERRARIUM_FIXES_STAMP >= "2026-09-15"
     cfg = OmegaConf.load(BASE)
     assert resolve_fixes(cfg)["administrator_channel"] is False
     assert resolve_fixes(_with(cfg, "fixes.administrator_channel=true"))["administrator_channel"]
@@ -299,7 +300,8 @@ def test_the_bootstrap_applies_the_third_pair_in_order_and_checks_the_stamp():
     )
     assert "TPATCH3=" in text and "terrarium_hospital_fixes_3.patch" in text
     assert text.index('< "${TPATCH3}" >/dev/null') < text.index('< "${TPATCH2}" >/dev/null')
-    assert "'2026-09-15'" in text and "hospital_eval_fixes_3.patch missing" in text
+    assert f"'{TERRARIUM_FIXES_STAMP}'" in text, "the bootstrap checks the current stamp"
+    assert "hospital_eval_fixes_3.patch missing" in text
 
 
 def test_the_runner_refuses_a_checkout_without_the_third_colosseum_patch(tmp_path, monkeypatch):

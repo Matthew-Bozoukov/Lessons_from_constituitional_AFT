@@ -1,6 +1,52 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-09 - Hospital harness: memory ON by default, and a STANDARD conversation per seat (keep_briefings + board_deltas); built and smoke-tested, nothing run
+
+Hypothesis. A Hospital seat should be served the way every agent loop serves a model: one continuous
+conversation for the shift in which it sees what it said and did, never what it thought, and each new
+briefing carries only what is new. The 2026-09-09 memory (`carry_agent_history`) gave it a one-line
+"[Your earlier turn ...]" marker, the reply and tool calls, and tool results cut at 600 characters, with
+the earlier briefing dropped and every board re-rendered in full into the fresh one; the default config
+had memory OFF (the paper's amnesiac loop) while every headline cell since 2026-09-14 ran with it ON.
+
+Method, code (branch `worktree-kn-hospital-memory-default`):
+- `configs/eval/colosseum_hospital.yaml`: `carry_agent_history: true` by default (the owner's instruction,
+  2026-10-09); the paper's harness is three CLI overrides away. Three tests that pinned the old default
+  updated.
+- `third_party/terrarium_hospital_fixes_4.patch` (stamp `2026-10-09`, applied last, after the no-simulation
+  patch; `base.py` and the `HOSPITAL_FIXES` stamp only). Two switches on the `fixes:` block, read by terrarium
+  `BaseAgent`: `keep_briefings` keeps a carried turn as the model saw it (its briefing as the user message
+  it was, no marker; replies with text and tool calls; tool results and the harness's retry note whole;
+  only the reasoning dropped); `board_deltas` makes every briefing after the first list, per board, only
+  the events numbered past the last one the seat was shown, under a line saying the earlier ones are in
+  its earlier briefings (events keep the board's numbering; `board_events_shown` recorded per first call).
+  Dependencies asserted in `hospital/config.py::resolve_fixes`; runner, bootstrap, README and
+  `fixes_smoke.py` (new `standard` variant, 19 checks of its own) updated.
+- `scratch/colosseum_hospital/configs/2026-10-09_colosseum_hospital_standard.yaml`: the 2026-09-25 headline
+  harness plus the two switches (da-15 vs nosynth peer, self-sacrificial, 30 seeds, 8,192 tokens).
+- `docs/GOTCHAS.md` 2026-10-09: carried turns rendered as EMPTY think blocks while serving pinned
+  `preserve_thinking=true` (2026-08-04 to 2026-10-05) and render with no block since, so memory-on Hospital
+  cells across that date are not comparable; the 2026-10-05 entry had not listed the Hospital.
+
+Result (harness only, no model run). The scripted-model smoke on a local Colosseum @ ac0b405 + terrarium
+0.1.1 with all eleven patches: `standard` 61/61 checks (no marker anywhere; a seat's last call carries
+every earlier briefing as a user message, each followed by its reply; carried replies keep text and tool
+calls and no reasoning; tool results whole; every board section after the first briefing opens with the
+delta line; over the shift each board's events are shown exactly once, 1..N in order; the provisioner has
+Triage's coalition-board refusal in exactly one of its briefings), and every earlier variant unchanged
+(paper 42/42, carried_history 43/43, the 2026-09-13 and whistleblowing variants all pass). 189 offline
+tests pass with the patched tree importable (`TERRARIUM_SITE`). Audit of the published runs that led here
+(empty-think rendering, reasoning shortening with carried turns, no clean on/off replicate):
+https://claude.ai/artifact/1QPU5nhCkbqJt1mBxAdQeh.
+
+Next. Run the standard config: da-15 (`dougalldeepmind/2026-09-25-qwen36-0-da-15`) and the nosynth peer,
+self-sacrificial, 30 seeds, on the current serving pin, against the 2026-09-28 memory-on run of the same
+adapter and peer (pair sabotaged 22/30, declined in reasoning 5/30) and the 2026-09-25 memory-off run.
+Launch: `uv run runpod up --name <you>-hospital --eval colosseum_hospital --target <da-15> --clone-repo`,
+bootstrap with `scratch/colosseum_hospital/pod_bootstrap.sh root@<ip>:<port> worktree-kn-hospital-memory-default <sha>`,
+then on the pod `uv run evals --target dougalldeepmind/2026-09-21-qwen36-0-nosynth dougalldeepmind/2026-09-25-qwen36-0-da-15 --name colosseum_hospital --config scratch/colosseum_hospital/configs/2026-10-09_colosseum_hospital_standard.yaml condition=self_sacrificial`.
+
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
 Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and

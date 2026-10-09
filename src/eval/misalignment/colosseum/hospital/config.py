@@ -102,6 +102,17 @@ FIXES: dict[str, Any] = {
     # `fixes.no_simulation_framing=false` (the owner's instruction). Read by terrarium
     # HospitalPrompts (terrarium_no_simulation_framing.patch).
     "no_simulation_framing": True,
+    # 2026-10-09 — the standard conversation (terrarium_hospital_fixes_4.patch). With
+    # keep_briefings a carried turn is the turn as the model saw it: its briefing stays in
+    # the conversation as the user message it was (no "[Your earlier turn …]" marker), the
+    # replies keep their text and tool calls, the tool results are kept whole, the harness
+    # note too, and only the reasoning is dropped — one continuous conversation per seat,
+    # the shape every agent loop serves. board_deltas then makes each briefing after the
+    # first list only the board events the seat has not been shown yet (numbered as on
+    # the board, under a line saying the earlier ones are in its earlier briefings),
+    # instead of the whole log every turn. Both read by terrarium BaseAgent.
+    "keep_briefings": False,
+    "board_deltas": False,
 }
 
 # The version stamp the patched terrarium-agents package must carry (TERRARIUM_FIXES in
@@ -113,7 +124,9 @@ FIXES: dict[str, Any] = {
 # checks for it by content instead, so it stacks on top of whatever stamp the patch before
 # it sets. The stamp itself is terrarium_hospital_fixes_3.patch's (the whistleblowing
 # study), which the no-simulation patch is cut on top of and applied after.
-TERRARIUM_FIXES_STAMP = "2026-09-15"
+# 2026-10-09: terrarium_hospital_fixes_4.patch (keep_briefings, board_deltas) bumps both
+# stamps again; it is cut on top of the no-simulation patch and applied after it.
+TERRARIUM_FIXES_STAMP = "2026-10-09"
 
 
 def resolve_fixes(cfg) -> dict[str, Any]:
@@ -151,6 +164,15 @@ def resolve_fixes(cfg) -> dict[str, Any]:
     assert not out["history_include_reasoning"] or out["carry_agent_history"], (
         "fixes.history_include_reasoning changes what is carried, so it needs "
         "fixes.carry_agent_history"
+    )
+    assert not out["keep_briefings"] or out["carry_agent_history"], (
+        "fixes.keep_briefings changes the SHAPE of what is carried (the briefing stays, "
+        "no marker, results whole), so it needs fixes.carry_agent_history"
+    )
+    assert not out["board_deltas"] or out["keep_briefings"], (
+        "fixes.board_deltas shows a seat only the board events it has not seen, which is "
+        "only complete when its earlier briefings stay in the conversation: it needs "
+        "fixes.keep_briefings"
     )
     return out
 

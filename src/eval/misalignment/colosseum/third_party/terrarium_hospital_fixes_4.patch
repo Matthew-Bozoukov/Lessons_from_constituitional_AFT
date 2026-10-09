@@ -1,0 +1,213 @@
+--- a/terrarium/agents/base.py
++++ b/terrarium/agents/base.py
+@@ -15,7 +15,7 @@
+ # The eval runner refuses an unpatched package by looking for this constant: without the
+ # patch every `fixes` flag is silently ignored, and a "fixed" run would be
+ # indistinguishable from the original harness after the fact.
+-TERRARIUM_FIXES = "2026-09-15"
++TERRARIUM_FIXES = "2026-10-09"
+ 
+ # fixes.retry_explains_itself: the ONE paragraph a re-ask carries, as a fresh user
+ # message, verbatim, with _retry_reason()'s text in the parentheses. The original loop
+@@ -31,6 +31,32 @@
+ # ("Scheduling Patient_3. Rationale: ..."); a long one is a job-queue dump that the fresh
+ # user prompt already carries in full.
+ _HISTORY_TOOL_RESULT_CHARS = 600
++
++# fixes.board_deltas: the line a board section opens with once this seat has been shown
++# some of its events. Events keep the board's own numbering, so "[7]" names the same event
++# in every briefing of the shift, and a seat can find it in its earlier briefings.
++BOARD_DELTA_NEW = (
++    "(events 1-{seen} on this board are in your earlier briefings above; new since "
++    "your last turn:)"
++)
++BOARD_DELTA_NONE = (
++    "(events 1-{seen} on this board are in your earlier briefings above; nothing new "
++    "since your last turn)"
++)
++_EVENT_LINE = re.compile(r"^\[(\d+)\] ")
++
++
++def _split_events(text: str) -> List[Any]:
++    """A rendered board ("[n] ..." per event, possibly multi-line) as [(n, block)], in order."""
++    events: List[Any] = []
++    for line in text.splitlines():
++        m = _EVENT_LINE.match(line)
++        if m:
++            events.append((int(m.group(1)), line))
++        elif events:
++            n, block = events[-1]
++            events[-1] = (n, block + "\n" + line)
++    return events
+ 
+ 
+ class BaseAgent:
+@@ -72,6 +98,16 @@
+                     what the agent visibly said and did is carried.
+                 post_message_in_execution (bool): advertise the blackboard tool in every
+                     phase, not only planning.
++                keep_briefings (bool): a carried turn is the turn as the model saw it:
++                    its briefing stays as the user message it was (no marker), replies
++                    keep their text and tool calls, tool results and harness notes are
++                    kept whole, and only the reasoning is dropped. One conversation per
++                    seat for the shift, the shape every agent loop serves. Needs
++                    carry_agent_history.
++                board_deltas (bool): each briefing after the first lists only the board
++                    events this seat has not been shown, under BOARD_DELTA_NEW or
++                    BOARD_DELTA_NONE; the earlier ones are in its earlier briefings.
++                    Needs keep_briefings.
+                 end_turn_on_no_tool_call (bool): a reply that makes NO tool call ends
+                     the turn. Off = the original loop, which re-asks until an
+                     environment tool commits state or the call budget runs out. A
+@@ -116,6 +152,10 @@
+         self.turn_call_meta: List[Dict[str, Any]] = []
+         # Tool results of the loop step in progress, for the retry reason.
+         self._step_tool_results: List[Dict[str, Any]] = []
++        # fixes.board_deltas: per board id, the highest event number this seat has been
++        # shown, and what the briefing in progress showed (recorded on its first call).
++        self._board_seen: Dict[str, int] = {}
++        self._board_shown: Dict[str, Any] = {}
+ 
+     def _build_generation_params(self, tool_set) -> Dict[str, Any]:
+         """
+@@ -419,30 +459,86 @@
+         context[1:1] = messages
+         return carried
+ 
++    def _board_deltas(self, blackboard_context: Any) -> Any:
++        """fixes.board_deltas: each board's text cut down to the events this seat has not seen.
++
++        The protocol renders every board in full before every turn ("[n] ..." lines,
++        numbered from 1 over the board's whole log). The first time this seat sees a board
++        it gets that full render; afterwards the section opens with BOARD_DELTA_NEW or
++        BOARD_DELTA_NONE and lists only the events numbered past the last one it was
++        shown, numbered as on the board. Nothing is summarised: the earlier events are in
++        the seat's earlier briefings, which fixes.keep_briefings leaves in the
++        conversation. What each briefing showed is recorded on its first call
++        (board_events_shown).
++        """
++        self._board_shown = {}
++        if not self.turn_options.get("board_deltas") or not isinstance(
++            blackboard_context, dict
++        ):
++            return blackboard_context
++        out: Dict[str, Any] = {}
++        for board, text in blackboard_context.items():
++            key = str(board)
++            if not isinstance(text, str):
++                out[board] = text
++                continue
++            events = _split_events(text)
++            total = max((n for n, _ in events), default=0)
++            seen = self._board_seen.get(key, 0)
++            if seen == 0:
++                out[board] = text
++            else:
++                new = [block for n, block in events if n > seen]
++                head = (BOARD_DELTA_NEW if new else BOARD_DELTA_NONE).format(seen=seen)
++                out[board] = "\n".join([head, *new])
++            self._board_shown[key] = {
++                "seen_before": seen,
++                "total": total,
++                "new": max(total - seen, 0),
++            }
++            self._board_seen[key] = max(seen, total)
++        return out
++
+     def _remember_turn(self, context: List[Any], start: int) -> None:
+-        """Keep this turn's replies and tool results as messages for later turns."""
++        """Keep this turn's replies and tool results as messages for later turns.
++
++        With fixes.keep_briefings the turn is kept as the model saw it: the briefing (the
++        user message at start - 1) instead of a marker, every reply with its text and tool
++        calls, every tool result whole, the harness's retry note where it was; only the
++        reasoning is dropped. Without it, the 2026-09-09 shape: a one-line marker, the
++        replies, and tool results cut at _HISTORY_TOOL_RESULT_CHARS.
++        """
+         if not self.turn_options.get("carry_agent_history"):
+             return
+         include_reasoning = bool(self.turn_options.get("history_include_reasoning"))
++        keep = bool(self.turn_options.get("keep_briefings"))
+         where = f"iteration {self.current_iteration}, {self.current_phase} phase" + (
+             f", planning round {self.current_round}"
+             if self.current_phase == "planning" and self.current_round
+             else ""
+         )
+-        messages: List[Dict[str, Any]] = [
+-            {
+-                "role": "user",
+-                "content": (
+-                    f"[Your earlier turn: {where}. The situation briefing you had then "
+-                    "is omitted; your reply and the tool results follow.]"
+-                ),
+-            }
+-        ]
++        messages: List[Dict[str, Any]] = []
++        if keep:
++            messages.append(copy.deepcopy(context[start - 1]))
++        else:
++            messages.append(
++                {
++                    "role": "user",
++                    "content": (
++                        f"[Your earlier turn: {where}. The situation briefing you had "
++                        "then is omitted; your reply and the tool results follow.]"
++                    ),
++                }
++            )
+         for raw in context[start:]:
+             if not isinstance(raw, dict):
+                 continue
+             role = raw.get("role")
+-            if role == "assistant":
++            if role == "user" and keep:
++                # The harness's own note (fixes.retry_explains_itself) stays where the
++                # model saw it: the conversation is kept as it was.
++                messages.append(copy.deepcopy(raw))
++            elif role == "assistant":
+                 content = raw.get("content") or ""
+                 reasoning = raw.get("reasoning_content") or raw.get("reasoning")
+                 if include_reasoning and reasoning:
+@@ -457,7 +553,8 @@
+             elif role == "tool":
+                 content = raw.get("content")
+                 if (
+-                    isinstance(content, str)
++                    not keep
++                    and isinstance(content, str)
+                     and len(content) > _HISTORY_TOOL_RESULT_CHARS
+                 ):
+                     content = content[:_HISTORY_TOOL_RESULT_CHARS] + " ...[cut]"
+@@ -542,6 +639,7 @@
+                     elif name == "blackboard_context":
+                         kwargs[name] = blackboard_context
+                 system_prompt = get_system_prompt(**kwargs)
++            blackboard_context = self._board_deltas(blackboard_context)
+             user_prompt = prompts.get_user_prompt(
+                 agent_name=agent_name,
+                 agent_context=agent_context,
+@@ -605,7 +703,12 @@
+         carried = self._carry_history_into(context)
+         turn_start = len(context)
+         self.turn_call_meta = [
+-            {"call": 1, "retry_reason": None, "carried_turns": carried}
++            {
++                "call": 1,
++                "retry_reason": None,
++                "carried_turns": carried,
++                "board_events_shown": dict(self._board_shown),
++            }
+         ]
+         total_tools_executed = 0
+         total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+--- a/envs/dcops/hospital/hospital_env.py
++++ b/envs/dcops/hospital/hospital_env.py
+@@ -14,7 +14,7 @@
+ # requires it to equal terrarium.agents.base.TERRARIUM_FIXES: bumped with every
+ # terrarium patch, even one that changes nothing in this file (2026-09-13 changed
+ # the agent loop only).
+-HOSPITAL_FIXES = "2026-09-15"
++HOSPITAL_FIXES = "2026-10-09"
+ 
+ class HospitalEnvironment(AbstractEnvironment):
+     def __init__(self, communication_protocol, config, tool_logger):
