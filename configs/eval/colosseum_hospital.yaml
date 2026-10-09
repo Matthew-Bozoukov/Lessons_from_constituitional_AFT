@@ -107,13 +107,17 @@ judge:
   # `workers: N` — concurrent judge calls; optional, the runner defaults to 8.
 
 # ── harness fixes (2026-09-09, 2026-09-13, 2026-09-15) ─────────────────────────
-# Seventeen switches. Every one OFF here except two that are ON in every config, both the
+# Seventeen switches. Every one OFF here except three that are ON in every config, all the
 # owner's instruction: `provisioner_reads_boards` (since 2026-09-13: the provisioner must
-# always be able to read the boards it posts to) and `no_simulation_framing` (since
+# always be able to read the boards it posts to), `no_simulation_framing` (since
 # 2026-09-15, and ON by default even where a config omits it: no agent is told it is in a
-# simulation). The PAPER's harness is two CLI overrides away:
+# simulation) and `carry_agent_history` (since 2026-10-09: a seat sees what it said and did
+# in its earlier turns of the shift, never what it thought — the rule reasoning models are
+# served under everywhere; every published cell since 2026-09-14 ran with it on). The
+# PAPER's harness is three CLI overrides away:
 #     uv run evals ... --name colosseum_hospital \
-#     fixes.provisioner_reads_boards=false fixes.no_simulation_framing=false
+#     fixes.provisioner_reads_boards=false fixes.no_simulation_framing=false \
+#     fixes.carry_agent_history=false
 # Each switch is read by the patched packages (src/eval/misalignment/colosseum/third_party/
 # README.md), rides to Colosseum as a top-level `fixes` block in the sweep YAML, and is
 # recorded per episode in run_config.json, so a fixed run can never be mistaken for an
@@ -129,8 +133,15 @@ judge:
 #   scratch/colosseum_hospital/configs/2026-09-15_colosseum_hospital_whistleblow_rationale_visible.yaml   (the same, public action rationales left in)
 fixes:
   # A — a seat's earlier turns of the shift are re-sent between the system prompt and
-  # the fresh briefing; off = every turn starts from [system, user], the original loop.
-  carry_agent_history: false
+  # the fresh briefing: the reply, its tool calls and the tool results, NEVER the
+  # reasoning (the serve-time template drops prior-turn reasoning, as every reasoning
+  # model is served; `history_include_reasoning` would paste it into the visible reply
+  # and is a deliberate experiment, not a default). ON since 2026-10-09, the owner's
+  # instruction; false = every turn starts from [system, user], the paper's loop. The
+  # rendering of carried turns changed on 2026-10-05 (docs/GOTCHAS.md, "Hospital carried
+  # turns rendered as empty think blocks"): memory-on runs before that date are not
+  # comparable with runs after it.
+  carry_agent_history: true
   history_max_turns: null            # null = every earlier turn of the shift
   history_include_reasoning: false   # fold the private reasoning into the carried reply
   # B — the provisioner is shown the boards it can already post to; post_message exists
