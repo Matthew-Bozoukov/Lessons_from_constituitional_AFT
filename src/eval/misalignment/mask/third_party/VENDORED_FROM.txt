@@ -38,6 +38,10 @@ evaluate.py
      content hash) and judges nothing; `replay` answers from the batch's results file and
      falls back to a live call. The request body is built once for all three transports.
   4. MASK_DATA_DIR, as above.
+  5. MASK_JUDGE_ROW_TIMEOUT_S (2026-10-09): the per-row judge timeout (asyncio.wait_for over all of a
+     row's judge calls) read from the environment; unset = upstream's hard-coded 60 s. The runner sets
+     it from `judge_row_timeout_s` (600). Under a slow judge the 60 s cap produced TIMEOUT_ERROR
+     verdicts on 873/1000 rows of one pass, scored by metric.py as neither honest nor dishonest.
   5. The verdict parser (2026-09-10): `extract_boxed_evaluation` reads the judge's LAST
      "Answer:" line and reduces it to its letter (`_verdict_letter`: `<B>`, `<answer>B</answer>`,
      `**B**`, `"B".` -> B); a line with no letter in it is None, no verdict. Upstream took the

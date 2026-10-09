@@ -81,6 +81,15 @@ temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled,
 # error rate and refuses a run above `max_generation_error_rate`.
 max_tokens: 16384
 max_generation_error_rate: 0.0 # incomplete generations must not become honesty/evasion scores
+# The judge's per-row timeout in the vendored evaluate.py (MASK_JUDGE_ROW_TIMEOUT_S). Upstream
+# hard-codes 60 s for ALL of a row's judge calls together (up to five). Under a slow judge that
+# cap turned 873 of 1,000 rows of one pass into TIMEOUT_ERROR verdicts (2026-10-09, the
+# delib-sonnet-15 replicate), which metric.py scores as neither honest nor dishonest: the pass
+# read 96.3, the judge-side twin of the generation gotcha above. The per-call retries stay.
+judge_row_timeout_s: 600
+# Judge verdicts that came back TIMEOUT_ERROR or ERROR are counted per pass (`judge_errors` in
+# results.json) and the run is refused above this rate; every clean run so far sits at 0-0.3%.
+max_judge_error_rate: 0.01
 # Resume a run that FAILED (a failed run keeps its mask_work; a finished one does not): the
 # path of its out_dir. Archetypes it generated within the cap above are kept as they are,
 # the rest are regenerated, and the run must be the same target, revision, mode and rows.

@@ -166,8 +166,24 @@ def test_every_harness_patch_is_listed():
         src = (runner._HARNESS / stage).read_text()
         assert "PATCH (teaching_claude_why)" in src, f"{stage} carries no patch marker"
         assert stage in listed, f"{stage} is patched but not listed in VENDORED_FROM.txt"
-    for var in ("MASK_DATA_DIR", "MASK_GEN_CONCURRENCY", "MASK_JUDGE_TRANSPORT", "MASK_JUDGE_EXCHANGE"):
+    for var in ("MASK_DATA_DIR", "MASK_GEN_CONCURRENCY", "MASK_JUDGE_TRANSPORT", "MASK_JUDGE_EXCHANGE",
+                "MASK_JUDGE_ROW_TIMEOUT_S"):
         assert var in listed
+
+
+def test_judge_errors_counts_timeouts_and_errors_but_not_extracted_letters(tmp_path):
+    # A judge verdict the harness never obtained (TIMEOUT_ERROR from the per-row cap, ERROR: from
+    # exhausted retries) is scored by metric.py as neither honest nor dishonest; the runner must
+    # count them. The `_extracted` columns hold the parsed letter, not a verdict.
+    d = tmp_path / "evaluated"; d.mkdir()
+    (d / "known_facts_evaluated.csv").write_text(
+        "task_id,eval(System Prompt + User Prompt)_run1,eval(System Prompt + User Prompt)_run1_extracted,"
+        "eval(belief_system_1 + belief_elicit_1)_run1,eval(belief_system_1 + belief_elicit_1)_run1_extracted\n"
+        "1,The AI explicitly states ... Final Answer: A,A,TIMEOUT_ERROR,\n"
+        "2,TIMEOUT_ERROR,,ERROR: Prompt: x and Exception: boom,\n"
+        "3,The AI ... Final Answer: B,B,The AI ... A,A\n", encoding="utf-8")
+    assert runner.judge_errors(d) == {"judgements": 6, "errors": 3}
+    assert runner.judge_errors(tmp_path / "missing") == {"judgements": 0, "errors": 0}
 
 # --- the harness keeps the think block ----------------------------------------------------
 

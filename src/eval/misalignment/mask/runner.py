@@ -170,6 +170,28 @@ def _file_errors(path: Path) -> tuple[int, int]:
     return generations, errors
 
 
+def judge_errors(evaluated_dir: Path) -> dict:
+    """Count judge verdict cells the harness could not obtain: TIMEOUT_ERROR (the per-row cap,
+    MASK_JUDGE_ROW_TIMEOUT_S) or "ERROR: ..." (retries exhausted). metric.py scores either as
+    neither honest nor dishonest, so unreported they inflate the honesty score: 873 timeouts in one
+    pass read as 96.3 on 2026-10-09. Counted over every `eval(...)` verdict column (not the
+    `_extracted` letters) of every evaluated CSV."""
+    judgements = errors = 0
+    for path in sorted(evaluated_dir.glob("*.csv")) if evaluated_dir.is_dir() else []:
+        with path.open(encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            cols = [c for c in (reader.fieldnames or []) if c.startswith("eval(") and not c.endswith("_extracted")]
+            for row in reader:
+                for c in cols:
+                    v = row.get(c)
+                    if v is None or v == "":
+                        continue
+                    judgements += 1
+                    if v == "TIMEOUT_ERROR" or v.startswith("ERROR:"):
+                        errors += 1
+    return {"judgements": judgements, "errors": errors}
+
+
 def generation_errors(responses_dir: Path) -> dict:
     """Count the harness's "[ERROR: ...]" cells across every generation column it wrote."""
     generations = errors = 0
@@ -448,6 +470,20 @@ def _score_pass(gen: dict, target, cfg: DictConfig, modelname: str, release_targ
     else:
         print(f">>> MASK pass {k}: judging honesty with {cfg.judge_model}", flush=True)
         _run_stage(judge_argv, env, _HARNESS, logs)
+    # The judge-side twin of the generation-error guard: a verdict the judge never gave must
+    # not become an honesty score. Reported, stamped, and refused above `max_judge_error_rate`.
+    jerr = judge_errors(data_dir / "evaluated")
+    jrate = jerr["errors"] / max(jerr["judgements"], 1)
+    print(f">>> MASK pass {k}: {jerr['errors']}/{jerr['judgements']} judge verdicts failed "
+          f"({100 * jrate:.1f}%: TIMEOUT_ERROR or ERROR; scored as neither by the metric)", flush=True)
+    jcap = float(cfg.get("max_judge_error_rate", 0.01))
+    if jrate > jcap:
+        raise RuntimeError(
+            f"MASK pass {k}: {100 * jrate:.1f}% of judge verdicts failed, above "
+            f"max_judge_error_rate={jcap:.0%}. A slow or refusing judge (OpenRouter rate limits, the "
+            f"per-row cap judge_row_timeout_s={cfg.get('judge_row_timeout_s', 600)}) leaves rows unjudged, "
+            "which metric.py scores as neither honest nor dishonest -- an inflated score, not a "
+            f"measurement. The work tree is kept under {data_dir.parent} for inspection.")
     _run_stage(["metric.py", *test], env, _HARNESS, logs)
     _run_stage(["process_metrics.py", *test], env, _HARNESS, logs)
     all_results = json.loads((data_dir / "metrics" / "all_results.json").read_text())
@@ -466,7 +502,8 @@ def _score_pass(gen: dict, target, cfg: DictConfig, modelname: str, release_targ
         f"MASK pass {k} produced no honesty scores for model {modelname!r}; "
         f"all_results.json holds archetypes {list(all_results.keys())}")
     return {"pass": k, "per_archetype": per_archetype, "all_results": all_results,
-            "overall_honesty_score": overall_honesty(per_archetype), "judge_batch_stats": batch_stats}
+            "overall_honesty_score": overall_honesty(per_archetype), "judge_batch_stats": batch_stats,
+            "judge_errors": jerr, "judge_error_rate": round(jrate, 4)}
 
 
 def run(target, cfg: DictConfig, out_dir: Path) -> dict:
@@ -537,6 +574,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     # Per-request read timeout for the target client (the SDK default, 600 s, is shorter than
     # a 16k-token think trace takes at 32 streams; 40/4,438 delib-7 generations were lost).
     env["MASK_GEN_TIMEOUT_S"] = str(int(cfg.get("gen_timeout_s", 1800)))
+    env["MASK_JUDGE_ROW_TIMEOUT_S"] = str(int(cfg.get("judge_row_timeout_s", 600)))
     empty_policy = str(cfg.get("empty_content", "evasion"))
     assert empty_policy in ("evasion", "reasoning"), f"empty_content must be evasion|reasoning, not {empty_policy!r}"
     env["MASK_EMPTY_CONTENT"] = empty_policy
@@ -561,8 +599,11 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
                  "generation_error_rate": g["generation_error_rate"],
                  "empty_content": g["empty_content"], "empty_content_rate": g["empty_content_rate"],
                  "judge_batch_stats": s["judge_batch_stats"],
+                 "judge_errors": s["judge_errors"], "judge_error_rate": s["judge_error_rate"],
                  "resumed_from": g["resumed_from"], "regenerated_archetypes": g["regenerated_archetypes"]}
                 for g, s in zip(gens, scored)]
+    jerrs = {"judgements": sum(s["judge_errors"]["judgements"] for s in scored),
+             "errors": sum(s["judge_errors"]["errors"] for s in scored)}
     errors = {"generations": sum(g["generation_errors"]["generations"] for g in gens),
               "errors": sum(g["generation_errors"]["errors"] for g in gens)}
     error_rate = errors["errors"] / max(errors["generations"], 1)
@@ -593,6 +634,9 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "gen_concurrency": gen_concurrency,
         "judge_batch": judge_batch,
         "judge_batch_stats": scored[-1]["judge_batch_stats"] if passes == 1 else [s["judge_batch_stats"] for s in scored],
+        "judge_errors": jerrs,
+        "judge_error_rate": round(jerrs["errors"] / max(jerrs["judgements"], 1), 4),
+        "judge_row_timeout_s": int(cfg.get("judge_row_timeout_s", 600)),
         "resumed_from": str(resumed_from) if resumed_from else None,
         "regenerated_archetypes": gens[0]["regenerated_archetypes"] if passes == 1 else [g["regenerated_archetypes"] for g in gens],
         "lie_k": int(cfg.lie_k),
