@@ -1965,11 +1965,12 @@ list and the log before touching anything.
 
 ## A pod that never says READY bills until the deadline watchdog (2026-10-09)
 
-Seven `runpod up --eval mask` pods were rented at once; six booted in 5-8 min, one (k7j4ngx5z3rvm1, H200 SECURE)
-never wrote READY to its boot log and nothing in the launcher's output said so -- `runpod up` returns at "BILLING
-NOW" and leaves the boot to the caller. A driver script polling `boot.log` for READY with no cutoff waited while the
-pod idled for the full `max_hours` cap (21,599 s) until the deadline watchdog terminated it: ~$28 for nothing, and
-the arm's eval silently never ran. Rule for any script that waits on a boot: poll with a deadline (40 min is twice
+Seven `runpod up --eval mask` pods were rented at once; for six the boot log said READY in 5-8 min, for one
+(k7j4ngx5z3rvm1, H200 SECURE) the driver's poll of `https://<pod>-8080.proxy.runpod.net/boot.log` never saw a READY
+line in six hours. Whether the boot failed or only the proxy never served the log is NOT known: nobody read
+`boot_diagnosis()` or tried SSH before the deadline watchdog terminated the pod at the `max_hours` cap (21,599 s).
+Either way ~$28 bought nothing and the arm's eval silently never ran, because `runpod up` returns at "BILLING NOW"
+and leaves the boot to the caller, and the driver script polled with no cutoff. Rule for any script that waits on a boot: poll with a deadline (40 min is twice
 the slow case), and on expiry print `boot_diagnosis()`'s read, tear the pod down with `uv run runpod down --pod
 <id>` (it is yours; the memory rule against auto-teardown is about letting a HUMAN read a slow boot, not about a pod
 that has clearly failed), and re-rent. RunPod's REST API also returned transient 500s on `POST /pods` three times
