@@ -1,0 +1,39 @@
+<!-- ABOUTME: Recommendations, implementation scope, and retained outcomes for the matched reference-Harmony smoke. -->
+<!-- ABOUTME: This records a new protocol; no historical benchmark was silently rescored or repaired. -->
+# OpenAI reference interface smoke
+
+The user requested general OpenAI-recommended interface changes, no AWS-style malformed-generation resampling, and matched smoke runs on base GPT-OSS-120B and the October 6 plain control. Both ODCV and SWE-bench Lite use the same shared adapter.
+
+- **Harmony rendering and parsing:** pinned OpenAI `openai-harmony==0.0.8` replaces Tinker Cookbook rendering/parsing. Its structured system/developer/tool representations render schemas and headers. Tool results use their named tool author. The system contains OpenAI's identity/date/reasoning/channel boilerplate; the benchmark's ordinary task instructions are developer content. There is no custom JSON, bracket, or eval-specific coaching in the adapter. [Source](https://github.com/openai/harmony).
+- **Boundaries:** OpenAI's assistant-action stop IDs are retained. Stored final replies are rendered with normal message endings. Complete tool arguments are returned unchanged, including invalid JSON; the evaluator supplies its linked validation feedback. OpenAI's documented permissive parser handles malformed headers without asking Tinker for another sample. Truncated or ambiguous calls cannot execute. [Source](https://developers.openai.com/cookbook/articles/openai-harmony).
+- **Reasoning history:** ongoing analysis survives tool/result cycles. Completed final-channel turns drop prior analysis on the next request through the reference renderer. Raw requests and responses remain in the audit archive. [Source](https://developers.openai.com/cookbook/articles/gpt-oss/handle-raw-cot).
+- **Sampling:** both evals now use temperature 1, top_p 1, top_k disabled, neutral penalties, and medium reasoning. This changes ODCV's earlier T.7 and removes SWE's Qwen-derived top_p .95/top_k20. Numerical response/context/step limits remain unchanged. [Source](https://github.com/openai/gpt-oss#recommended-sampling-parameters).
+- **Verification:** 36 offline tests passed in Linux, including the actual mini-SWE client and durable budget accounting. OpenAI's official compatibility suite at `7b583341fe16729127f6d5b94a7b09ccae97e1a1` ran all 30 cases once per arm in non-streaming Chat Completions mode. This does not certify streaming, Responses API, constrained decoding, or arbitrary multimodal use. [Source](https://developers.openai.com/cookbook/articles/gpt-oss/verifying-implementations).
+
+## Self-check and compatibility results
+
+Yes: the exercised shared text/tool path follows the reference rendering/parsing, history and sampling guidance. This is not a claim that every model action is well formed or that OpenAI certified the shim.
+
+Base passed **27/30** compatibility cases. One case produced invalid JSON and two never called the expected tool. The upstream display reports 27/29 (93.1%) because its aggregate excludes the exception; our denominator includes all 30, so **90%**, which does not exceed the guide's suggested 90% threshold. Control passed **28/30**; two cases hallucinated unoffered tools (`special_thinker.think`, `open_file`). All returned responses passed the official API shape check. Every saved sampling request used T1/top_p1/top_k-1 and native stop IDs. There were no transport errors or missing request/response pairs in this compatibility audit.
+
+The user explicitly accepted model limit failures once the general interface was faithful. Admission therefore retained and disclosed these model behavior failures, rather than silently treating them as successes or resampling. The initial local compatibility wrapper failed after completion when decoding UTF-8 records as Windows cp1252; readback was recovered without another model request. Original exception records remain.
+
+## Matched smoke and resource boundaries
+
+Each arm receives the same prior ten SWE task IDs and the same ten ODCV cells (five alphabetical scenarios in each of two variants). SWE selection used seed 0 excluding requests tasks, which otherwise need an external HTTPBin fixture. This is a diagnostic subset, not a full benchmark estimate.
+
+| Setting | ODCV | SWE-bench Lite |
+|---|---:|---:|
+| Response tokens | 8192 | 16384 |
+| Context window | 28000 | 131072 |
+| Step/cycle cap | 50 | 500 |
+| Total generated tokens per task | existing ODCV protocol | 262144 |
+| Conversations per arm | 1 | 2 |
+
+Context admission includes prompt plus reserved response allowance, so a request can reach the context boundary before the prompt alone fills the entire window. Limit-ended SWE attempts can retain valid patches and are still officially graded.
+
+No cloud CPU/GPU rentals. Docker Desktop reuses ten freshly digest-checked and shell-probed task images. Fresh per-arm caps are compatibility $1, ODCV $3, SWE $12 and judging $2: $36 total maximum. Original old-run budgets are untouched. The cost ledger is an estimate, not an invoice.
+
+Initial SWE startup hit the old Qwen-only `top_k>0` validator before any sampling: both SWE ledgers had zero requests and no traces. Added support for the standard disabled value -1, with two focused validator/HTTP tests passing. Original failed states, attempts and logs remain under `swe`; guarded recovery writes `swe-recovered` while using the **same $12 ledger**. No model outcome was retried. Shared interface runtime is unchanged between the compatibility test and benchmark runs.
+
+Interface source: `4e5d852d`; ODCV launcher: `af4593f5`; pre-inference SWE validator recovery: `907ab589`. Local root: `output/gptoss_openai_smoke`. Final results/publication are pending until full smoke coverage, official grading, judging and immutable hash readback finish.

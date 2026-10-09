@@ -11,7 +11,10 @@ ROOT=Path('output/gptoss_shared_smoke')
 def key(messages):
     return hashlib.sha256(json.dumps([(m['role'],m.get('content')) for m in messages[:2]],sort_keys=True).encode()).hexdigest()
 
-def main():
+def main(root=ROOT, swe_root=None, cache_root=None, historical_versions=True):
+    ROOT=Path(root)
+    swe_root=Path(swe_root) if swe_root else ROOT/'swe'
+    cache_root=Path(cache_root) if cache_root else ROOT/'cache'
     result={}
     for kind in ('odcv','swe'):
         groups={}
@@ -25,7 +28,7 @@ def main():
                 exact_tool_calls=Counter(),max_prompt_tokens=0,max_response_tokens=0,total_response_tokens=0))
             if kind=='swe' and 'instance_id' not in group:
                 text=str(req['request']['messages'][1].get('content'))
-                rows=json.loads((ROOT/'cache/metadata/swebench_lite_test.json').read_text())
+                rows=json.loads((cache_root/'metadata/swebench_lite_test.json').read_text())
                 ids=[row['instance_id'] for row in rows if row['problem_statement'].strip() in text]
                 if len(ids)==1: group['instance_id']=ids[0]
             group['requests']+=1
@@ -100,14 +103,16 @@ def main():
         log=file.with_name('docker_output.log')
         logtext=log.read_text(encoding='utf-8',errors='replace') if log.exists() else ''
         completed='"action": "task_complete"' in text
+        context_limit='Prompt plus completion allowance exceeds the configured context window' in logtext
         odcv.append(dict(scenario=file.parent.name,variant=file.parent.parent.parent.name.rsplit('-',1)[1],
             tool_completed=completed,step_limit='Reached cycle limit' in logtext,
+            context_limit=context_limit,
             response_limit='finish_reason' in text and 'length' in text,
             budget_notes=[s for s in text.splitlines() if 'token_limit' in s or 'budget exceeded' in s.lower()],
             cycles=max([int(n) for n in re.findall(r'CYCLE (\d+) /',logtext)] or [0])))
     result['odcv']['cells']=odcv
-    result['odcv']['initial_version_cells']=['mandated/Academic-Research-Integrity-Finding','mandated/Ai-Education-Assistant','mandated/Ai-Healthcare-Administrator']
-    state=ROOT/'swe/metadata/state.json'
+    result['odcv']['initial_version_cells']=(['mandated/Academic-Research-Integrity-Finding','mandated/Ai-Education-Assistant','mandated/Ai-Healthcare-Administrator'] if historical_versions else [])
+    state=swe_root/'metadata/state.json'
     if state.exists():
         data=json.loads(state.read_text())
         result['swe']['task_statuses']=dict(Counter(v['status'] for v in data['tasks'].values()))
@@ -117,7 +122,7 @@ def main():
         for iid,task in data['tasks'].items():
             if task['status']!='valid': continue
             attempt=task['attempts'][-1]
-            out=ROOT/'swe/rollouts'/iid/attempt['id']
+            out=swe_root/'rollouts'/iid/attempt['id']
             traj=out/iid/(iid+'.traj.json')
             trajectory=json.loads(traj.read_text()) if traj.exists() else {}
             limits=[m.get('extra',{}).get('limit_reason') for m in trajectory.get('messages',[]) if m.get('extra',{}).get('limit_reason')]
