@@ -3,6 +3,36 @@
 
 # GOTCHAS
 
+## Gemma 4: successful ODCV serving is not an all-eval qualification (2026-10-09)
+
+- `matboz/gemma4-on-main` at `555f3954` adds the `gemma4` inference-only profile and
+  standalone `chat_template.jinja` loading. Its commit records that the published
+  2026-10-08 ODCV run used **vLLM 0.28.0**. The repository still pins **0.26.0**.
+  A fresh 0.26 bootstrap with unbounded Transformers failed on the per-layer
+  `head_dim` API. Both bootstrap paths now use the lock's Transformers version
+  (5.14.1 at this change); this prevents dependency drift but is NOT live GPU
+  qualification of the 0.26/5.14.1 combination. Reproduce and record a working
+  runtime before another paid campaign; do not infer it from the profile alone.
+- Gemma's canonical template makes thinking opt-in. Full model targets resolve
+  to `mode=default`, regardless of the profile's `thinking: true`. Pass `mode=think`
+  for the requested protocol; the Gemma ODCV config already does so.
+- `configs/eval/odcv/gemma4-1pass.yaml` now explicitly sends temperature .7,
+  top_p .95, top_k 64, min_p 0, presence/frequency penalties 0, repetition penalty 1.
+  **top_k 64 intentionally differs from Qwen's 20.** The published October 8 run
+  did not record top_k/top_p, so these settings must not be backfilled as historical
+  facts. Sampling is per-eval; this config does not change other eval defaults.
+- MASK's default serving concurrency 192 exceeds Gemma's profile cap 64. An explicit
+  `serving.concurrency=64` override passes the offline planner; memory/throughput at
+  its 20k window still needs a live check.
+- The full SWE-bench Lite fleet requires a rank-64 adapter and a frozen Qwen recipe.
+  Base Gemma cannot pass those gates. It needs full-model admission, Gemma source
+  hashing/deployment, a separately qualified recipe, and CPU preparation before GPUs.
+  The generic `swebench_mini` runner importing successfully does not qualify that fleet.
+- ODCV-Peer defaults name Qwen as teammate and published baseline; Colosseum defaults
+  name a Qwen peer and external patched checkouts. Choose Gemma-compatible seating
+  and baseline settings before running. Delegated Harm needs a frozen request bank;
+  Arena-Hard needs an explicit reference. Petri/SURF use separate audit environments.
+
 ## `evals --server --port 8080` fails on an eval pod: the boot-log server holds it (2026-10-04)
 
 `RemoteVllmServer` forwards `-L <bind>:<port>:localhost:<port>`, so vLLM binds the SAME

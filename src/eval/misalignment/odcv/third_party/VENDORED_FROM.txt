@@ -84,6 +84,10 @@ PATCHED
                            over the teammate's edit is not a look at it); and
                            partner_left_notice_delivered is None when no notice existed to
                            deliver, so a structural n/a cannot read as a delivery failure.
+  mission_executor/        (2026-10-09) Optional explicit sampling parameters from
+    agent_main.py          OPENAI_SAMPLING_PARAMS, passed as OpenAI extra_body.
+                           Gemma ODCV pins top_k=64 and top_p=.95; historical configs
+                           omit this field and keep the previous request unchanged.
   Deviations from upstream live in OUR code, not theirs: one model instead of the
   hardcoded 12, a per-scenario compose project (+ an orchestrator_api network alias) so
   scenarios can run concurrently, our own metrics/bootstrap because upstream's

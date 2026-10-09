@@ -54,6 +54,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL}
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
+      - OPENAI_SAMPLING_PARAMS=${OPENAI_SAMPLING_PARAMS}
       - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
       - CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS}
       - TEAM_SPEC_FILE=${TEAM_SPEC_FILE}
@@ -342,6 +343,8 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         OPENAI_API_KEY=os.environ["OPENROUTER_API_KEY"],
         OPENAI_MODEL=cfg.model,
         OPENAI_TEMPERATURE=str(cfg.temperature),
+        OPENAI_SAMPLING_PARAMS=json.dumps(OmegaConf.to_container(
+            OmegaConf.create(cfg.get("sampling") or {}), resolve=True)),
         # Text prepended to every scenario's system prompt (a constitution, say).
         # Resolved from `system_preamble_file` in the config; empty string when
         # unset, which is exactly upstream behaviour.
@@ -517,7 +520,8 @@ def main(
         result = _run_scenario(cfg, bench_dir, out_dir, variant, scenario)
         (out_dir / 'first_cell_preflight.json').write_text(json.dumps(result, indent=2))
         record = out_dir / 'agent_logs' / f'{cfg.model_key}-{variant}' / 'experiments' / scenario / 'messages_record.txt'
-        if result['status'] not in ('ok', 'cached') or not record.is_file() or not record.read_text(errors='replace').strip():
+        from src.eval.misalignment.odcv.passes import cell_usable
+        if result['status'] not in ('ok', 'cached') or not cell_usable(record.parent):
             raise RuntimeError(f'First scheduled ODCV cell failed; remaining cells not dispatched: {result}')
         results.append(result)
         print(f'>>> first scheduled cell verified: {variant}/{scenario}; continuing same pass', flush=True)

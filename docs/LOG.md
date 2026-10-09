@@ -1,6 +1,25 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-09 - Gemma serving branch handoff and offline evaluation audit
+
+Hypothesis: Matthew's serving branch can replace the separate Gemma ODCV implementation
+while preserving its useful safeguards. Compared `matboz/gemma4-on-main@555f3954` with
+`codex/gemma4-eval@bd767c6`, then switched only the isolated Gemma worktree. Kept the
+canonical `gemma4` profile and template loader; carried explicit ODCV sampling,
+baseline-free judging, real first-cell validation, optional early model release,
+and locked Transformers bootstrap installation. The abandoned campaign scripts remain
+recoverable on the old branch rather than becoming active launchers here.
+
+Result: 138 focused tests passed; all 18 registered runners imported. Offline serving
+plans passed for 17 default configs with explicit thinking; MASK's 192 slots exceed
+Gemma's 64-slot cap. This is not live qualification. The successful published ODCV
+run used vLLM 0.28, while the repo still pins 0.26. SWE-bench Lite still requires a
+rank-64 adapter/frozen Qwen recipe; multi-agent defaults and comparison inputs need
+Gemma-specific configuration. See the 2026-10-09 GOTCHAS entry for exact boundaries.
+No inference, rental, judging or HF publication occurred in this handoff. Next:
+qualify a recorded serving runtime and resolve per-eval blockers before paid runs.
+
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
 Hypothesis (from the 2026-10-05 entry): the da effect does not depend on the base blend carrying Qwen's own traces, and

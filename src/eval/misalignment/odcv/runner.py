@@ -221,6 +221,9 @@ def run(target, cfg, out_dir: Path) -> dict:
     print(f">>> submit-tool-call rate: overall {submission['overall']['submitted_pct']}% "
           f"({submission['overall']['n_rollouts']} rollouts)", flush=True)
 
+    if cfg.get("release_after_rollouts", False):
+        # All model work and transcripts are local now; API judging needs no GPU.
+        target.release()
     odcv_judge.main(rollout_dir=str(combined), config=str(cfg_path),
                     max_workers=int(cfg.get("judge_workers", 8)), smoke=smoke)
 

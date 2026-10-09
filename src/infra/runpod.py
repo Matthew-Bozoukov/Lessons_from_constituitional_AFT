@@ -421,7 +421,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH=/root/.local/bin:$PATH
 export VENV=/workspace/vllmenv
 uv venv $VENV --python 3.12
-uv pip install --python $VENV/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
+uv pip install --python $VENV/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer '{_pinned_transformers()}'
 $VENV/bin/python -c "import sys; print('venv python', sys.version)"
 $VENV/bin/hf download {base} >/dev/null
 {downloads}
@@ -959,6 +959,20 @@ def _pinned_vllm() -> str:
     return spec.split(";")[0].strip()      # drop the `; sys_platform == 'linux'` marker
 
 
+def _pinned_transformers() -> str:
+    """Use the lock's config/tokenizer API on remote inference hosts too.
+
+    Gemma 4 on vLLM 0.26 fails with Transformers >=5.15's heterogeneous
+    config API. An unbounded pip install must not outrun the tested lock.
+    """
+    import tomllib
+    root = Path(__file__).resolve().parents[2]
+    packages = tomllib.loads((root / "uv.lock").read_text(encoding="utf-8"))["package"]
+    versions = {p["version"] for p in packages if p["name"] == "transformers"}
+    assert len(versions) == 1, "Expected exactly one locked Transformers version"
+    return "transformers==" + versions.pop()
+
+
 # causal-conv1d is the lock's `train` extra: an sdist (no wheel for its torch/CUDA;
 # docs/GOTCHAS.md 2026-09-21) compiled on a TRAIN pod against the venv's own torch and the
 # pip CUDA layout's nvcc. Two syncs: the first is the plain sync every clone gets (so torch
@@ -1041,7 +1055,7 @@ git checkout -q --detach {sha}
         # flashinfer constraints, spelled out in `bootstrap_script`'s docstring.
         blocks.append(f"""echo INSTALLING_VLLM
 uv venv {POD_VENV} --python 3.12
-uv pip install --python {POD_VENV}/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer transformers
+uv pip install --python {POD_VENV}/bin/python -q '{_pinned_vllm()}' ninja huggingface_hub hf_transfer '{_pinned_transformers()}'
 {token_block}
 echo PULLING_WEIGHTS
 {downloads}""")

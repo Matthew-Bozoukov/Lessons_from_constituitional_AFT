@@ -1050,7 +1050,8 @@ class VllmServer:
             # path read the raw JSON and raised KeyError on exactly those models.
             with open(hf_download(base_model, "chat_template.jinja", **rev)) as f:
                 template = f.read()
-        assert template, f"{base_model} exposes no chat template to pin {mode!r} into"
+        assert isinstance(template, str) and template, (
+            f"{base_model} exposes no string chat template to pin {mode!r} into")
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
 
