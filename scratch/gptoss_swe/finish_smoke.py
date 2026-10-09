@@ -14,7 +14,7 @@ import time
 from omegaconf import OmegaConf
 from scratch.gptoss_swe.openai_smoke import environment,save,IMAGE,TARGETS
 
-C=OmegaConf.load('scratch/gptoss_swe/finish_smoke.yaml')
+C=OmegaConf.load(os.environ.get('GPTOSS_FINISH_CONFIG','scratch/gptoss_swe/finish_smoke.yaml'))
 ROOT=Path(C.root)
 
 
@@ -41,8 +41,10 @@ def running(container):
 def prepare_arm(arm):
     r=ROOT/arm;prior=old_root(arm)
     save(r/'status.json',dict(phase='waiting_for_prior_inference',at=time.time()))
-    old_names=(['gptoss-refresh-base-recovery-20261009-consume','gptoss-refresh-base-recovery-20261009-shim'] if arm=='base' else ['lasr-gptoss-refresh-control-swe-driver','lasr-gptoss-refresh-control-swe-shim'])
+    old_names=(list(C.get('prior_base_containers',['gptoss-refresh-base-recovery-20261009-consume','gptoss-refresh-base-recovery-20261009-shim'])) if arm=='base' else ['lasr-gptoss-refresh-control-swe-driver','lasr-gptoss-refresh-control-swe-shim'])
     while any(running(n) for n in old_names):time.sleep(15)
+    if arm=='base' and C.get('wait_prior_base_graded',False):
+        while json.loads((prior/'status.json').read_text())['phase']!='graded':time.sleep(15)
     state=json.loads((prior/'swe/metadata/state.json').read_text())
     assert len(state['tasks'])==10 and not any(t['status']=='running' for t in state['tasks'].values())
     assert json.loads((prior/'swe/metadata/manifest.json').read_text())['target']==TARGETS[arm]
@@ -50,7 +52,7 @@ def prepare_arm(arm):
     assert all(v['state']=='completed' for v in ledger['requests'].values()),'Ambiguous paid request: hold'
     assert ledger.get('authorization_history') and (ledger['ceiling_usd'] is None or ledger['ceiling_usd']==float('inf'))
     with (r/'preparation-claim.json').open('x') as f:json.dump(dict(at=time.time(),source=str(prior)),f)
-    cfg=OmegaConf.load(prior/('recovery.yaml' if arm=='base' else 'swe.yaml'))
+    cfg=OmegaConf.load(prior/(str(C.get('prior_base_config','recovery.yaml')) if arm=='base' else 'swe.yaml'))
     records={}
     for folder in ('metadata','rollouts'):
         for p in sorted((prior/'swe'/folder).rglob('*')):
@@ -74,8 +76,21 @@ def prepare_arm(arm):
     cfg.worker.model_request_timeout_seconds=int(C.request_timeout);cfg.worker.model_request_attempts=int(C.request_attempts)
     cfg.worker.max_infrastructure_attempts=int(C.infrastructure_attempts);cfg.worker.max_infrastructure_failures=int(C.infrastructure_breaker)
     cfg.tinker.budget_usd=None
+    cfg.workers=int(C.get('workers',cfg.get('workers',1)))
     OmegaConf.save(cfg,r/'config.yaml')
     save(r/'status.json',dict(phase='prepared',at=time.time()))
+
+
+def consume_pool(consume, endpoint, worker, arm, ids, allowances, admission, workers):
+    """Independent per-task configurations; State.claim excludes live and valid outcomes."""
+    assert int(workers)>0 and len(ids)==len(set(ids))
+    def task(item):
+        index,iid=item
+        cfg=OmegaConf.create(OmegaConf.to_container(worker,resolve=True))
+        cfg.max_infrastructure_attempts=allowances[iid]['max_total_attempt_records']
+        consume(endpoint,'hosted_vllm/openai/gpt-oss-120b',cfg,f'{arm}-completion-{index}',[iid],time.time()+7*86400,admission=admission)
+    with ThreadPoolExecutor(max_workers=int(workers)) as pool:
+        list(pool.map(task,enumerate(ids)))
 
 
 def linux(action,arm):
@@ -92,12 +107,10 @@ def linux(action,arm):
         req=urllib.request.Request(endpoint[:-3]+'/tokenize',data=json.dumps(dict(model='openai/gpt-oss-120b',messages=[dict(role='user',content='transport probe')],tools=[])).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+os.environ['TINKER_API_KEY']})
         with urllib.request.urlopen(req,timeout=60) as response:assert json.load(response)['count']>0
         worker=OmegaConf.merge(cfg.worker,dict(root=str(root),serving=dict(context_window=cfg.tinker.context_window),endpoint_api_key_env='TINKER_API_KEY',fleet_owner_root=str(Path(cfg.tinker.budget_ledger).parent),protocol_version=cfg.protocol,sampling=cfg.sampling))
-        admission=dict(directory=str(root/'metadata/completion-token-slots'),budget_tokens=int(cfg.tinker.context_window),expires=time.time()+7*86400,fairness_seconds=30)
+        admission=dict(directory=str(root/'metadata/completion-token-slots'),budget_tokens=int(cfg.tinker.context_window)*int(cfg.get('workers',1)),expires=time.time()+7*86400,fairness_seconds=30)
         allowances=read(r/'retry-accounting.json')
-        for iid in cfg.instance_ids:
-            if read(root/'metadata/state.json')['tasks'][iid]['status']=='valid':continue
-            worker.max_infrastructure_attempts=allowances[iid]['max_total_attempt_records']
-            consume(endpoint,'hosted_vllm/openai/gpt-oss-120b',worker,arm+'-completion-0',[iid],time.time()+7*86400,admission=admission)
+        ids=[iid for iid in cfg.instance_ids if read(root/'metadata/state.json')['tasks'][iid]['status']!='valid']
+        consume_pool(consume,endpoint,worker,arm,ids,allowances,admission,int(cfg.get('workers',1)))
     elif action=='grade':
         from scratch.gptoss_swe.run import grade_predictions
         state=read(root/'metadata/state.json');assert not any(t['status']=='running' for t in state['tasks'].values())
@@ -109,6 +122,7 @@ def linux(action,arm):
 def container(action,arm,env):
     args=['docker','run','--name',name(arm)+'-'+action,'--label','lasr.campaign='+str(C.campaign),'-v',f'{Path.cwd()}:/work','-v','/var/run/docker.sock:/var/run/docker.sock','-e','TINKER_API_KEY']
     for v,p in [('cpu','scratch/swebench_cpu_env'),('agent','src/eval/capabilities/swebench_mini/envs/agent'),('harness','src/eval/capabilities/swebench_mini/envs/harness')]:args+=['-v',f'lasr-gptoss-{v}-env:/work/{p}/.venv']
+    if os.environ.get('GPTOSS_FINISH_CONFIG'):args+=['-e','GPTOSS_FINISH_CONFIG='+os.environ['GPTOSS_FINISH_CONFIG']]
     with (ROOT/arm/(action+'.log')).open('x',encoding='utf-8') as f:
         code=subprocess.run(args+[IMAGE,'scratch/swebench_cpu_env/.venv/bin/python','-m','scratch.gptoss_swe.finish_smoke',action,'--arm',arm],env=env,stdout=f,stderr=subprocess.STDOUT).returncode
     save(ROOT/arm/(action+'-exit.json'),dict(code=code,at=time.time()))
@@ -173,6 +187,7 @@ def publish():
         save(ROOT/arm/'final-budget.json',d)
         sources=[(ROOT/arm,'completion'),(Path(C.original)/arm,'original')]
         if arm=='base':sources.append((Path(C.base_prior),'prior-recovery'))
+        if arm=='base':sources.extend((Path(p),'earlier-recovery-'+str(i)) for i,p in enumerate(C.get('base_extra_evidence',[])))
         with tarfile.open(out/(arm+'.tar.gz'),'w:gz') as tar:
             for source,prefix in sources:
                 for p in sorted(source.rglob('*')):

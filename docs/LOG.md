@@ -1,3 +1,9 @@
+### 2026-10-09: Four-worker completion of the existing base smoke
+
+User clarified parallelize existing tasks only, then specifically authorized the seven waiting base tasks. No new task selection or model outcome reruns. New scratch/gptoss_swe/parallel_base.py admission-drains the serial base worker without interrupting its captured current task; a separate owner waits for its serving/graded closeout, copies and hashes all metadata/rollouts, and consumes only unfinished tasks with four independent worker configurations. Existing control remains unchanged on its final task; its graded output is copied and hash-verified into the combined artifact. Same uncapped original ledgers, sampling, token/step limits, two-command memory gate, and real infrastructure retry counts. Aggregate token admission scales with four workers while each request/context limit remains unchanged.
+
+The old no-inference finalizer is explicitly superseded after checking its identity and preserving its receipt, preventing premature publication while the new base pool is pending. Old serial owners are not restarted or killed. New root output/gptoss_parallel_base_20261009, dedicated Docker label gptoss-parallel-base-20261009 and base port18285; publisher retains current, prior completion, original and earlier recovery evidence. Five offline owner/pool tests pass, including four simultaneously admitted calls with isolated per-task retry allowances and duplicate-id refusal. Launch and live counts are recorded separately; four workers are configured but not claimed active until the drain finishes.
+
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
