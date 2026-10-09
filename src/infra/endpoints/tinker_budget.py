@@ -23,7 +23,7 @@ class Budget:
         prices = (0.78, 1.94) if model.endswith(':peft:131072') else (0.33, 0.84)
         allowed = sorted(authorized_checkpoints or [checkpoint])
         assert checkpoint in allowed
-        identity = dict(ceiling_usd=float(ceiling), model=model, authorized_checkpoints=allowed,
+        identity = dict(ceiling_usd=None if ceiling is None else float(ceiling), model=model, authorized_checkpoints=allowed,
                         input_per_million=prices[0], cached_input_per_million=prices[0]*.2,
                         output_per_million=prices[1])
         with self.edit():
@@ -54,7 +54,7 @@ class Budget:
         with self.edit():
             upper = (prompt*self.data['input_per_million'] + allowance*self.data['output_per_million']) / 1e6
             used = sum(x['upper_usd'] for x in self.data['requests'].values())
-            if used + upper > self.data['ceiling_usd']:
+            if self.data['ceiling_usd'] is not None and used + upper > self.data['ceiling_usd']:
                 raise RuntimeError('Frozen Tinker spending ceiling reached; hold for review')
             key = uuid.uuid4().hex
             self.data['requests'][key] = dict(prompt_tokens=prompt, max_tokens=allowance,

@@ -1,0 +1,12 @@
+# ABOUTME: Complete the authorized ten-task base/control smoke with explicit unlimited spending accounting.
+# ABOUTME: Preserve valid outcomes; budget-denial attempts do not consume infrastructure retry eligibility.
+root: output/gptoss_finish_smoke_20261009
+campaign: gptoss-finish-smoke-20261009
+port_base: 18265
+original: output/gptoss_refresh_smoke_20261009
+base_prior: output/gptoss_refresh_base_recovery_20261009
+request_timeout: 7200
+request_attempts: 2
+infrastructure_attempts: 3
+infrastructure_breaker: 6
+hf_repo: dougalldeepmind/2026-10-09-gptoss120b-base-control-swe-smoke-completion

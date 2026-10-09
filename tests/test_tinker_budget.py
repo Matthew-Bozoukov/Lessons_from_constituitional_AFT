@@ -40,3 +40,16 @@ def test_arms_share_one_cap_and_only_confirmed_cache_hits_get_discount(tmp_path)
     assert a.data['requests'][key]['upper_usd'] == pytest.approx(.022034)
     b.settle(other, 100)
     assert len(b.data['requests']) == 2
+
+
+def test_explicit_unlimited_mode_preserves_accounting_and_ownership(tmp_path):
+    from src.infra.endpoints.tinker_budget import Budget
+    path=tmp_path/'ledger.json'
+    b=Budget(path,None,'openai/gpt-oss-120b:peft:131072','tinker://base')
+    key=b.reserve(1000000000,10000)
+    b.settle(key,100)
+    assert b.data['ceiling_usd'] is None and b.data['requests'][key]['upper_usd']>12
+    b.owner.close()
+    reopened=Budget(path,None,'openai/gpt-oss-120b:peft:131072','tinker://base')
+    assert reopened.data['requests'][key]['state']=='completed'
+    with pytest.raises(BlockingIOError):Budget(path,None,'openai/gpt-oss-120b:peft:131072','tinker://base')

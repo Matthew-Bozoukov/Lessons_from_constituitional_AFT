@@ -311,7 +311,7 @@ def main():
         import json
         from src.infra.endpoints.tinker_budget import Budget
         budget = Budget(os.environ["TINKER_BUDGET_LEDGER"],
-                        float(os.environ["TINKER_BUDGET_USD"]), sampling_model, checkpoint,
+                        None if os.environ["TINKER_BUDGET_USD"] == "unlimited" else float(os.environ["TINKER_BUDGET_USD"]), sampling_model, checkpoint,
                         json.loads(os.environ.get('TINKER_BUDGET_CHECKPOINTS', 'null')))
     runtime = Runtime(
         checkpoint=checkpoint, model=model, reasoning=reasoning,

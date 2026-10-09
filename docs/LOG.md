@@ -1,6 +1,16 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: Explicit removal of smoke spending ceilings and completion ownership
+
+User instructed: remove budget guard, finish both SWE smoke arms, replace the scheduler and print explicit progress on every15-minute wakeup. Removed old heartbeat. Original base/control ledgers were edited under their Linux file locks with complete pre-change snapshots and request-history SHA256 conservation checks in output/gptoss_finish_smoke_20261009/spending-cap-removal.json. Prior requests1190base/878control were preserved. Base now uses strict JSON null for unlimited accounting. The already-loaded control server temporarily uses Python JSON Infinity so its current paid conversation can continue without restart; the new owner normalizes this to null after the old sampler exits. No token, context, step or outcome rules changed.
+
+Shared Budget accepts explicit unlimited mode while retaining exact reservations/settlements and exclusive checkpoint ownership. New environment value TINKER_BUDGET_USD=unlimited selects it. Forty-one locked Linux interface/budget tests passed. Existing finite-budget behavior remains the default. No old budget histories are reset or hidden.
+
+New scratch/gptoss_swe/finish_smoke.py owns output/gptoss_finish_smoke_20261009, both arms as independent children. Base copies/hash-verifies prior recovery metadata/rollouts and immediately resumes only unfinished tasks. Control's child waits for its existing sampler/driver to stop, preserves every valid outcome, and only then starts any remaining infrastructure-interrupted work. New workers use7200s requests,2request attempts,3real infrastructure attempts,breaker6. Previously budget-denied attempt records remain intact but are explicitly excluded from infrastructure retry eligibility, since spending-cap removal is user-authorized. All other attempts count; model limit outcomes remain final. Paid ambiguous requests block recovery.
+
+The new owner grades retained valid patches and publishes both arms with original/recovery raw histories and cumulative scoped costs, then cleans its containers. Original owner may still judge/publish its historical snapshot; its frozen finite-cap publisher can fail on the new null ledger, requiring publication-only repair. Never restart inference to repair that. Separate completed ODCV stays untouched. Replacement heartbeat must report every check: official resolved/graded, Submitted, each distinct model limit reason, infrastructure/budget interruptions, running/pending and cumulative spend. Never call merely-ended tasks solved or add historical base costs twice.
+
 ### 2026-10-09: Base SWE recovery closed at original spending cap
 
 [Verified base recovery evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-swe-smoke-recovery/tree/5ec9544a0f1e0e83040bb3cc04fc22111bf11d42), six files verified by immutable SHA256 readback. Original publication8f598ff3203da6e5c996701aba64e7a4097d41d8 retained; follow-up clarifies budget coverage and adds cleanup proof, without rescoring/generation. Owner16316 exited and a fresh Docker inventory confirms zero recovery-owned containers. Base serving is stopped.
