@@ -73,7 +73,7 @@ def main():
         archive(out/'metadata'/f'{arm}-startup-failures.tar.gz',[root/'swe',root/'swe-startup-failure'])
         archive(out/'metadata'/f'{arm}-driver-evidence.tar.gz',[p for p in root.iterdir() if p.is_file()])
         save(out/'results'/f'{arm}.json',summaries[arm])
-    for name in ('prepared.json','images-verified.json','interface-audit.json'):
+    for name in ('prepared.json','images-verified.json','interface-audit.json','offline-verification.json'):
         shutil.copyfile(ROOT/name,out/'metadata'/name)
     compatibility=Path('output/openai-gpt-oss-reference/compatibility-test')
     for name in ('providers.ts','package-lock.json','cases.jsonl','tools.ts','runCase.ts','index.ts'):
