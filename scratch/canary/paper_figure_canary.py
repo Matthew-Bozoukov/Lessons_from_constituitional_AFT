@@ -1,5 +1,5 @@
-# ABOUTME: The canary result in the draft's figure style: how often each model's own reasoning reuses the trained
-# ABOUTME: reasoning (the canary word), per eval, over every reasoning turn (a) and over deliberative turns only (b).
+# ABOUTME: The canary result in the draft's figure style: the share of each model's deliberative reasoning turns that
+# ABOUTME: reuse the trained reasoning (contain the canary word), per eval, difficult advice vs difficult advice + tools.
 # Run: uv run python -m scratch.canary.paper_figure_canary [--out-dir output/figures]
 import argparse
 import json
@@ -48,11 +48,9 @@ def main() -> None:
     d = json.loads(Path("output/canary/autorater.json").read_text())
     r = {(arm, ev): rates(d[f"{arm}|{ev}"]) for arm, _, _ in ARMS for ev, _ in EVALS}
     with plt.rc_context(PAPER_RC):
-        fig, axes = plt.subplots(1, 2, figsize=(5.4, 2.7), sharey=False)
-        for ax, (key, title) in zip(
-            axes,
-            [("all", "a  Any reasoning turn"), ("delib", "b  Deliberative turns only")],
-        ):
+        fig, ax = plt.subplots(figsize=(3.2, 2.7))
+        axes = [ax]
+        for ax, (key, title) in zip(axes, [("delib", "")]):
             width = 0.8 / len(ARMS)
             top = 0
             for j, (arm, lab, col) in enumerate(ARMS):
@@ -94,8 +92,7 @@ def main() -> None:
             ax.yaxis.grid(True, color=GRID, linewidth=0.6, zorder=0)
             ax.set_axisbelow(True)
             ax.spines[["top", "right"]].set_visible(False)
-            ax.set_title(title, loc="left", fontsize=8, fontweight="bold")
-        axes[0].set_ylabel("Turns containing the canary word (%)")
+        axes[0].set_ylabel("Deliberations reusing the\ntrained reasoning (%)")
         axes[0].legend(
             frameon=False,
             loc="upper right",
@@ -106,7 +103,7 @@ def main() -> None:
         fig.text(
             0.01,
             0.01,
-            "Oct data (Jamie's 2026-10-05 mix), one seed per model; Wilson 95% CI over turns. "
+            "Oct data (Jamie's 2026-10-05 mix), one seed per model; Wilson 95% CI over turns.\n"
             "Deliberation rated per turn by Gemini 3 Flash.",
             fontsize=5.5,
             color=MUTED,
