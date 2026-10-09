@@ -64,6 +64,12 @@ TERRARIUM_PATCH_3 = (
 TERRARIUM_PATCH_NOSIM = (
     "src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch"
 )
+# 2026-10-09, the standard conversation: a carried turn keeps its briefing (no marker) and
+# its tool results whole, and each later briefing lists only the board events the seat has
+# not been shown (keep_briefings, board_deltas). Cut on top of all four above, applied last.
+TERRARIUM_PATCH_4 = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_4.patch"
+)
 
 
 def _colosseum_root(cfg) -> Path:
@@ -140,10 +146,11 @@ def _terrarium_fixes_version() -> str:
         f"the installed terrarium-agents package carries fixes stamp {version!r}, not "
         f"{TERRARIUM_FIXES_STAMP!r}: the later switches (2026-09-13: "
         "end_turn_on_no_tool_call, retry_explains_itself; 2026-09-15: "
-        "administrator_channel and the tool-less survey) would be ignored without a "
-        f"word. Apply {TERRARIUM_PATCH_2}, {TERRARIUM_PATCH_3}, then {TERRARIUM_PATCH_NOSIM}, "
-        f"in that order, on top of {TERRARIUM_PATCH} "
-        "(scratch/colosseum_hospital/pod_bootstrap.sh does all four)."
+        "administrator_channel and the tool-less survey; 2026-10-09: keep_briefings, "
+        "board_deltas) would be ignored without a word. Apply "
+        f"{TERRARIUM_PATCH_2}, {TERRARIUM_PATCH_3}, {TERRARIUM_PATCH_NOSIM}, then "
+        f"{TERRARIUM_PATCH_4}, in that order, on top of {TERRARIUM_PATCH} "
+        "(scratch/colosseum_hospital/pod_bootstrap.sh does all five)."
     )
     # Checked by content, not stamp: without this patch every system prompt keeps its
     # "distributed simulation" opening while the config says no_simulation_framing.
@@ -242,7 +249,9 @@ def run(target, cfg, out_dir: Path) -> dict:
     if partner is not None:
         print(f">>> seating partner {partner.model_name} in {partner_seat}")
 
-    sweep_cfg = build_sweep_config(condition, target, peer, cfg, out_dir, partner=partner)
+    sweep_cfg = build_sweep_config(
+        condition, target, peer, cfg, out_dir, partner=partner
+    )
     config_path = metadata_dir / f"colosseum_{condition}.yaml"
     config_path.write_text(yaml.safe_dump(sweep_cfg, sort_keys=False))
 
