@@ -33,7 +33,7 @@ def port(arm):return int(C.port_base)+(10 if arm=='control' else 0)
 def running(container):
     p=subprocess.run(['docker','inspect',container],capture_output=True,text=True)
     if p.returncode:
-        assert 'No such' in p.stderr,p.stderr
+        assert 'no such' in p.stderr.lower(),p.stderr
         return False
     return json.loads(p.stdout)[0]['State']['Running']
 
@@ -148,6 +148,20 @@ def arm_run(arm):
         if started:subprocess.run(['docker','stop',shim],check=True)
 
 
+def recover_preflight(arm):
+    r=ROOT/arm
+    status=json.loads((r/'status.json').read_text())
+    assert status['phase']=='held' and 'no such object' in status['error'].lower()
+    assert not (r/'preparation-claim.json').exists() and not (r/'traces').exists()
+    assert not (r/'preflight-owner-started.json').exists()
+    (r/'owner-started.json').rename(r/'preflight-owner-started.json')
+    save(r/'preflight-failure.json',status)
+    source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+    save(r/'preflight-recovery.json',dict(source=source,at=time.time(),note='Case-sensitive Docker missing-object check failed before copying, sampling or renting. No paid attempt rerun.'))
+    subprocess.run(['git','archive','--format=tar.gz','--output='+str(r/'preflight-repair-source.tar.gz'),'HEAD'],check=True)
+    arm_run(arm)
+
+
 def publish():
     from huggingface_hub import HfApi,hf_hub_download
     env=environment();out=ROOT/'package';out.mkdir(exist_ok=True)
@@ -203,7 +217,8 @@ def run():
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['run','arm','consume','grade','normalize','publish']);parser.add_argument('--arm',choices=['base','control']);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['run','arm','consume','grade','normalize','publish','recover-preflight']);parser.add_argument('--arm',choices=['base','control']);args=parser.parse_args()
     if args.action in ('consume','grade','normalize'):linux(args.action,args.arm)
     elif args.action=='arm':arm_run(args.arm)
+    elif args.action=='recover-preflight':recover_preflight(args.arm)
     else:globals()[args.action]()
