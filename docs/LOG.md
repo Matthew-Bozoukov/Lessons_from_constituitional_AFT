@@ -1,6 +1,14 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: Base SWE recovery closed at original spending cap
+
+[Verified base recovery evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-swe-smoke-recovery/tree/5ec9544a0f1e0e83040bb3cc04fc22111bf11d42), six files verified by immutable SHA256 readback. Original publication8f598ff3203da6e5c996701aba64e7a4097d41d8 retained; follow-up clarifies budget coverage and adds cleanup proof, without rescoring/generation. Owner16316 exited and a fresh Docker inventory confirms zero recovery-owned containers. Base serving is stopped.
+
+The shared original base inference ledger settled1190 requests at $11.968118948 against its unchanged$12 cap. Recovery added327 responses: Pylint5859 received321, Scikit-learn12471 received5, Sphinx8273 received1. Remaining five selected tasks received no generation. Larger worst-case reservations were refused; some smaller requests still fit afterward. The bounded worker recorded APIError budget-denial attempts up to the three-total-attempt limit for each unfinished task. No valid model outcome was rerun and no budget was reset. These admission failures are not model-limit failures.
+
+Final base coverage: two retained limit-ended tasks officially graded, zero resolved; three other tasks have interrupted generations, five have no model generation. Low-level state marks all eight unfinished tasks invalid because they have budget-denial attempt records; the artifact explains this distinction. This partial0/2 score is not a full ten-task or300-task benchmark result. Base costs are cumulative across original+recovery and must never be summed twice. Control remains active with seven valid endings, one running, two pending; original owner still owns its judging/grading/publication. Scheduler retained for control/original closeout only.
+
 ### 2026-10-09: User-authorized base SWE restart
 
 User explicitly requested restart of base. Recovery owner scratch/gptoss_swe/restart_base.py creates a separate output/gptoss_refresh_base_recovery_20261009 root with SHA256-verified copies of prior rollout/metadata history. It retains both valid LimitsExceeded outcomes, retries only the URLError-interrupted Pylint5859 attempt and admits the seven unstarted tasks. Original attempts remain in copied state and count toward the new three-total-attempt bound. Original base $12 ledger stays authoritative, including $9.556167252 already accounted; no new budget or reset. Sampling/model token limits unchanged; recovery uses the authorized7200-second request timeout,2request attempts,3infrastructure attempts,6failure breaker. Control's existing owner and recipe remain untouched.
