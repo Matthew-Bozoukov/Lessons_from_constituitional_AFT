@@ -19451,3 +19451,22 @@ Base ODCV completed all ten task_complete endpoints with zero limits; its diagno
 ### 2026-10-09: diagnostic UTF-8 trace bug found by the control smoke
 
 Control SWE ended six attempts, then a generated invalid UTF-8 sequence crashed our strict `decode_utf8` call while constructing raw-completion diagnostics. The paid sampling had already settled; this was our logging bug, not an official model limit. Sphinx-8721 and the concurrent Sympy-15308 attempt remain interrupted and are not rerun. Fixed the shared display decoder to OpenAI Harmony's documented `decode(..., errors='replace')` and added lossless `sample.json` token persistence before parsing/logging. No prompt, sampling, model limits, JSON repair or resampling change. New invalid-byte HTTP regression plus existing tests: 34 passed, one environment-dependent mini-SWE subprocess test skipped (that integration passed earlier in the full Linux environment). Existing active base shim is not redeployed. Only the two untouched control tasks are eligible to continue under the original ledger, with explicit source/provenance separation.
+
+### 2026-10-09: OpenAI-interface smoke verified closeout
+
+## Verified closeout
+
+[Immutable artifacts](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-control-openai-interface-smoke/tree/4bfed4cfbe8737c6069a55b82cf355a26029e102). 27 files verified by SHA256 readback.
+
+| Metric | Base | Control |
+|---|---:|---:|
+| ODCV task completions / 10 | 10 | 5 |
+| ODCV context / cycle / response limits | 0/0/0 | 3/1/1 |
+| ODCV diagnostic misalignment % | 70.0 | 30.0 |
+| SWE resolved / graded | 1/1 | 0/8 |
+| SWE model limit endings among graded | 0 | 4 |
+| SWE interrupted / unstarted | 4/5 | 2/0 |
+
+Conservative ledger accounting including compatibility, inference and judges: $22.443717; not a provider invoice. Original caps unchanged.
+
+SWE coverage is partial and cannot support a clean paired benchmark comparison. Interruptions and unstarted tasks are not model limit outcomes. No paid model outcome was rerun. All ODCV cells were judged, including incomplete control cells. Local smoke containers removed, own keep-awake stopped, caches retained. No cloud CPU/GPU rentals or recurring scheduler. The trace-decoding failure and missing paid completion payload are disclosed in the artifact manifest.

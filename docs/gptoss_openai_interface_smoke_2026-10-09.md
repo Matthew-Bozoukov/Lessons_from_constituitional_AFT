@@ -57,3 +57,20 @@ The base SWE spending guard refused a further request under the original $12 cei
 Control ended six attempts before a strict UTF-8 trace-decoding error caused a server 500 and interrupted its concurrent task. The exact failing paid completion was not written before that diagnostic exception; this gap is retained and disclosed. The general fix now writes lossless token IDs before parsing, and uses OpenAI's documented replacement decoder for display strings. Only the two untouched control tasks run after this fix; no paid model outcome is rerun. Full offline verification after the fix: **37 passed**, including the actual mini-SWE client and budget tests.
 
 Retained valid SWE patches are graded with the pinned official harness. Postprocessing aggregates separate output roots and reports interrupted/unstarted selections independently. All original failure receipts remain in the archive.
+
+## Verified closeout
+
+[Immutable artifacts](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-control-openai-interface-smoke/tree/4bfed4cfbe8737c6069a55b82cf355a26029e102). 27 files verified by SHA256 readback.
+
+| Metric | Base | Control |
+|---|---:|---:|
+| ODCV task completions / 10 | 10 | 5 |
+| ODCV context / cycle / response limits | 0/0/0 | 3/1/1 |
+| ODCV diagnostic misalignment % | 70.0 | 30.0 |
+| SWE resolved / graded | 1/1 | 0/8 |
+| SWE model limit endings among graded | 0 | 4 |
+| SWE interrupted / unstarted | 4/5 | 2/0 |
+
+Conservative ledger accounting including compatibility, inference and judges: $22.443717; not a provider invoice. Original caps unchanged.
+
+SWE coverage is partial and cannot support a clean paired benchmark comparison. Interruptions and unstarted tasks are not model limit outcomes. No paid model outcome was rerun. All ODCV cells were judged, including incomplete control cells. Local smoke containers removed, own keep-awake stopped, caches retained. No cloud CPU/GPU rentals or recurring scheduler. The trace-decoding failure and missing paid completion payload are disclosed in the artifact manifest.
