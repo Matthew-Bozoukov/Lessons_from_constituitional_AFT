@@ -11,15 +11,15 @@ import time
 import uuid
 import json
 from pathlib import Path
-from src.infra.endpoints.tinker_harmony import generation_prompt, parse_completion
+from src.infra.endpoints.tinker_harmony import HarmonyRenderer, generation_prompt, parse_completion
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-# Tokenizer files reviewed alongside the pinned renderer; model weights remain on Tinker.
-TOKENIZER_REVISION = "b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
+# OpenAI's reference encoding/renderer is locked in the nested environment.
+TOKENIZER_REVISION = "openai-harmony==0.0.8:HARMONY_GPT_OSS"
 
 
 @dataclass
@@ -82,6 +82,9 @@ def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runt
             parts = ([{"type": "thinking", "thinking": reasoning}] if reasoning else [])
             parts.append({"type": "text", "text": content})
             item: dict[str, Any] = {"role": role, "content": parts}
+            boundary = message.get('harmony_boundary', (message.get('provider_specific_fields') or {}).get('harmony_boundary'))
+            if boundary:
+                item['harmony_boundary'] = boundary
             calls = []
             for call in message.get("tool_calls") or []:
                 cid, function = call.get("id"), call.get("function") or {}
@@ -280,9 +283,7 @@ def create_app(runtime: Runtime) -> FastAPI:
 def main():
     import tinker
     import uvicorn
-    from transformers import AutoTokenizer
     from tinker_cookbook.renderers.base import ToolCall
-    from tinker_cookbook.renderers.gpt_oss import GptOssRenderer
     from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
     from datetime import date
 
@@ -304,7 +305,7 @@ def main():
                         json.loads(os.environ.get('TINKER_BUDGET_CHECKPOINTS', 'null')))
     runtime = Runtime(
         checkpoint=checkpoint, model=model, reasoning=reasoning,
-        renderer=GptOssRenderer(AutoTokenizer.from_pretrained(model, revision=TOKENIZER_REVISION), use_system_prompt=True,
+        renderer=HarmonyRenderer(
                                reasoning_effort=reasoning,
                                current_date=os.environ.get("TINKER_RENDER_DATE", date.today().isoformat())),
         sampling_client=tinker.ServiceClient().create_sampling_client(

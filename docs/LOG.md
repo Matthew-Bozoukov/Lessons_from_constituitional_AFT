@@ -1,6 +1,14 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-09 - OpenAI reference Harmony and matched base/control smoke preparation
+
+User requested OpenAI's recommendations implemented without AWS-style malformed-generation resampling, followed by matched base/control smoke evaluations accepting observed limit outcomes. Replaced third-party Harmony rendering/parsing in the shared Tinker shim with pinned `openai-harmony==0.0.8`: reference system/tools, normalized stored final endings, automatic completed-cycle analysis removal, ongoing tool-cycle reasoning retention, and permissive header parsing with raw JSON arguments unchanged. No benchmark-specific JSON coaching or generation repair/retry was added. OpenAI's GPT-OSS repository recommends temperature 1/top_p 1; both new evals use these with top_k disabled. Previous numerical token/context/step limits remain fixed. These changes define a new protocol, not a rescore of old artifacts.
+
+Local Docker qualification passed 36 tests, including the actual pinned mini-SWE HTTP client round trip and Linux budget ownership/reservation tests. Ten cached SWE task image digests and shell probes passed freshly. Planned new smoke: same ten SWE tasks and ten ODCV cells per arm, exact October 6 control checkpoint c8be8040, base without LoRA. Separate fresh limits per arm: compatibility $1, ODCV $3, SWE $12, judging $2, maximum $36 total. No cloud CPU/GPU rental. OpenAI's compatibility suite at `7b583341fe16729127f6d5b94a7b09ccae97e1a1` will run non-streaming Chat mode, each case once, before benchmark admission; no claim of streaming/Responses coverage. Driver `scratch/gptoss_swe/openai_smoke.py` refuses duplicate stage starts. Results pending.
+
+Sources: [Harmony](https://github.com/openai/harmony), [verification](https://developers.openai.com/cookbook/articles/gpt-oss/verifying-implementations), [reasoning history](https://developers.openai.com/cookbook/articles/gpt-oss/handle-raw-cot), [sampling](https://github.com/openai/gpt-oss#recommended-sampling-parameters).
+
 ## 2026-10-08 - Whole-rollout ODCV limit census across September and October
 
 User requested actual terminal limits, excluding isolated failed turns. Recounted all 1,200 canonical saved transcripts in September base/control original/custom conditions and Matthew's October control, matching every truncated completion to its original sampling reservation. Limit totals: September control original 11/240, custom 1/240; September base original 22/240, custom 12/240; October control custom 61/240. Four September base/custom bridge-retry terminal failures remain separately excluded from limit totals. Detailed categories and case evidence are in the [audit](gptoss_swe_stopped_audit_2026-10-08.md), generated offline by `scratch/gptoss_swe/compare_odcv_limits.py` with hashed inputs.

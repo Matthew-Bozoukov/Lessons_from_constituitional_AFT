@@ -1,4 +1,4 @@
-# ABOUTME: Offline HTTP and real cookbook-renderer compatibility tests for GPT-OSS Tinker tools.
+# ABOUTME: Offline HTTP and OpenAI reference Harmony compatibility tests for GPT-OSS Tinker tools.
 # ABOUTME: Run with uv run --project src/infra/endpoints/tinker_env --frozen python -m pytest tests/test_tinker_server.py.
 
 from types import SimpleNamespace
@@ -9,7 +9,8 @@ pytest.importorskip("tinker_cookbook", reason="run this compatibility suite in t
 import tinker
 from fastapi.testclient import TestClient
 from tinker_cookbook.renderers.base import ToolCall
-from tinker_cookbook.renderers.gpt_oss import GptOssRenderer
+from src.infra.endpoints.tinker_harmony import HarmonyRenderer
+from openai_harmony import Role
 from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
 
 from src.infra.endpoints.tinker_server import Runtime, build_messages, create_app
@@ -49,10 +50,10 @@ class Sampler:
 
 @pytest.fixture
 def runtime():
-    codec = TextCodec()
+    codec = HarmonyRenderer(current_date='2026-09-29')
     return Runtime(
         checkpoint="tinker://example/sampler_weights/test", model="openai/gpt-oss-120b", reasoning="medium",
-        renderer=GptOssRenderer(codec, use_system_prompt=True, reasoning_effort="medium", current_date="2026-09-29"),
+        renderer=codec,
         sampling_client=Sampler(codec), sampling_params=tinker.SamplingParams, tool_call_type=ToolCall,
         convert_tools=openai_tools_to_tinker, api_key="test-key", instance_id="test-instance")
 
@@ -82,14 +83,14 @@ def test_harmony_tool_result_and_reasoning_roundtrip(runtime):
     assert isinstance(cid, str) and cid.startswith("call_")
     params = runtime.sampling_client.requests[0]["sampling_params"]
     assert (params.temperature, params.top_p, params.top_k, params.seed, params.max_tokens) == (0.4, 0.93, 20, 0, 1000)
-    assert params.stop == [200002, 200012]
+    assert set(params.stop) == {200002, 200012}
     body["messages"] += [msg, {"role": "tool", "tool_call_id": cid, "content": "/testbed"}]
     runtime.sampling_client.reply = '<|channel|>final<|message|>Done.<|return|>'
     second = http.post("/v1/chat/completions", json=body)
     assert second.status_code == 200, second.text
     prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[1]["prompt"].to_ints())
     assert "analysis<|message|>Think." in prompt
-    assert "functions.bash to=assistant<|channel|>commentary<|message|>/testbed" in prompt
+    assert "functions.bash<|message|>/testbed<|end|>" in prompt
     assert second.json()["choices"][0]["message"]["content"] == "Done."
     assert result["tinker_metadata"]["checkpoint"] == runtime.checkpoint
 
@@ -159,8 +160,9 @@ def test_unexpected_eos_is_not_a_token_limit(runtime):
 
 def test_complete_tool_with_return_matches_official_parser(runtime):
     runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|return|>'
-    stock, termination = runtime.renderer.parse_response(runtime.renderer.tokenizer.encode(runtime.sampling_client.reply))
-    assert termination.is_stop_sequence and stock['tool_calls']
+    stock = runtime.renderer.encoding.parse_messages_from_completion_tokens(
+        runtime.renderer.encode(runtime.sampling_client.reply), Role.ASSISTANT)
+    assert stock[0].recipient == 'functions.bash'
     result = client(runtime).post('/v1/chat/completions', json=request()).json()
     assert result['choices'][0]['finish_reason'] == 'tool_calls'
     assert result['choices'][0]['message']['tool_calls'][0]['function']['arguments'] == '{"command":"pwd"}'
@@ -283,8 +285,46 @@ print("MINI_TINKER_ROUNDTRIP_OK")
         params = runtime.sampling_client.requests[0]["sampling_params"]
         assert (params.temperature, params.top_p, params.top_k, params.max_tokens) == (1.0, .95, 20, 16384)
         prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[1]["prompt"].to_ints())
-        assert "analysis<|message|>Think." in prompt and "functions.bash to=assistant" in prompt
+        assert "analysis<|message|>Think." in prompt and "functions.bash<|message|>" in prompt
     finally:
         server.should_exit = True
         thread.join(timeout=10)
         listener.close()
+
+
+def test_reference_history_normalizes_final_and_drops_completed_cycle(runtime):
+    from src.infra.endpoints.tinker_harmony import generation_prompt
+    history = [{'role': 'assistant', 'content': 'answer', 'reasoning': 'private'}]
+    prompt = runtime.renderer.decode(generation_prompt(runtime.renderer, build_messages(history, None, runtime)).to_ints())
+    assert '<|return|>' not in prompt
+    assert 'final<|message|>answer<|end|><|start|>assistant' in prompt
+    assert 'private' not in prompt
+
+
+def test_malformed_json_correction_preserves_arguments_and_reasoning(runtime):
+    http = client(runtime)
+    runtime.sampling_client.reply = '<|channel|>analysis<|message|>plan<|end|><|start|>assistant to=functions.bash<|channel|>commentary<|message|>{"command":"pwd"}]<|call|>'
+    body = request()
+    reply = http.post('/v1/chat/completions', json=body).json()['choices'][0]['message']
+    assert len(runtime.sampling_client.requests) == 1  # no hidden repair/resampling
+    body['messages'] += [reply, {'role': 'tool', 'tool_call_id': reply['tool_calls'][0]['id'],
+                                'content': 'Invalid JSON: extra data at character 17. Nothing executed.'}]
+    runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|call|>'
+    corrected = http.post('/v1/chat/completions', json=body)
+    assert corrected.status_code == 200, corrected.text
+    prompt = runtime.renderer.decode(runtime.sampling_client.requests[-1]['prompt'].to_ints())
+    assert '{"command":"pwd"}]' in prompt and 'plan' in prompt and 'Nothing executed.' in prompt
+    assert len(runtime.sampling_client.requests) == 2
+
+
+def test_reference_library_renders_tools_instructions_and_no_json_repair_prompt(runtime):
+    from src.infra.endpoints.tinker_harmony import generation_prompt
+    history = [{'role': 'system', 'content': 'Use the repository.'}, {'role': 'user', 'content': 'Fix it.'}]
+    prompt = runtime.renderer.decode(generation_prompt(runtime.renderer,
+        build_messages(history, request()['tools'], runtime)).to_ints())
+    assert prompt.count('<|start|>system') == 1
+    assert 'Reasoning: medium' in prompt
+    assert "Calls to these tools must go to the commentary channel: 'functions'." in prompt
+    assert '<|start|>developer<|message|># Instructions\n\nUse the repository.' in prompt
+    assert '# Tools\n\n## functions\n\nnamespace functions' in prompt
+    assert 'valid JSON' not in prompt and 'square bracket' not in prompt
