@@ -124,6 +124,16 @@ def qualify():
     bad=grade_predictions(cfg,qroot,{i:dict(model_name_or_path='infrastructure-no-fix',model_patch=negative) for i in load_ids},str(C.campaign)+'-no-fix')
     assert bad['n_graded']==len(load_ids) and bad['n_resolved']==0,bad
     save(ROOT/'qualification/gold-no-fix.json',dict(gold=good,no_fix=bad))
+    # Prove durable artifact write/read access before making paid model requests.
+    from huggingface_hub import HfApi,hf_hub_download
+    proof=ROOT/'qualification/proof';proof.mkdir()
+    for name,path in [('capacity.json',out/'results.json'),('gold-no-fix.json',ROOT/'qualification/gold-no-fix.json'),('images.json',ROOT/'qualification/images.json'),('deployment.json',Path('/srv/lasr/deployment.json'))]:shutil.copyfile(path,proof/name)
+    (proof/'README.md').write_text('---\nlicense: mit\ntags: [infrastructure-check, swebench-lite]\n---\n# CPU-only twenty-task preparation\n\nImage hashes, real repository load tests, and gold/no-fix checks. No model inference.\n')
+    hashes={p.name:sha(p) for p in proof.iterdir() if p.is_file()}
+    api=HfApi(token=os.environ['HF_TOKEN']);repo=str(C.hf_repo)+'-infrastructure';api.create_repo(repo,repo_type='dataset',exist_ok=True)
+    revision=api.upload_folder(repo_id=repo,repo_type='dataset',folder_path=proof,commit_message='Verify CPU-only preparation before inference').oid
+    for name,digest in hashes.items():assert sha(hf_hub_download(repo,name,repo_type='dataset',revision=revision,token=os.environ['HF_TOKEN']))==digest
+    save(ROOT/'qualification/publication.json',dict(repo=repo,revision=revision,sha256=hashes,verified=True))
     save(ROOT/'qualification/ready.json',dict(passed=True,at=time.time(),host_cpus=info['NCPU'],host_memory_bytes=info['MemTotal'],selected_images=20,total_images=len(verified),capacity_sha256=sha(out/'results.json')))
 
 
@@ -219,7 +229,7 @@ def publish():
     for p in ROOT.iterdir():
         if p.is_file() and p.name not in ('publication.json',):shutil.copyfile(p,out/'metadata'/p.name)
     shutil.copytree(ROOT/'qualification',out/'metadata/qualification',dirs_exist_ok=True)
-    lines=['---','license: mit','tags: [swebench-lite, diagnostic-subset]','---','# GPT-OSS-120B matched twenty-task SWE smoke','',
+    lines=['---','license: mit','tags: [eval-run, "eval:swebench_mini", "model:gptoss120b", "mode:think", swebench-lite, diagnostic-subset]','---','# GPT-OSS-120B matched twenty-task SWE smoke','',
       'experiment: 20 matched task IDs per arm; 10 retained base outcomes and 50 newly authorized attempts.',
       'date_generated: 2026-10-09','constitution: none','source_repo: Matthew-Bozoukov/Lessons_from_constituitional_AFT@'+read('/srv/lasr/deployment.json')['git_commit'],
       'models: exact Tinker checkpoint paths in each manifest; native Harmony 0.0.8, medium reasoning.',
