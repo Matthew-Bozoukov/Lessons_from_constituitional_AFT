@@ -1,0 +1,11 @@
+# ABOUTME: Explicit user-authorized base infrastructure recovery; original inference ledger stays authoritative.
+# ABOUTME: Local Docker/Tinker only, preserving all prior attempts and completed model outcomes.
+root: output/gptoss_refresh_base_recovery_20261009
+prior: output/gptoss_refresh_smoke_20261009/base
+campaign: gptoss-refresh-base-recovery-20261009
+port: 18256
+request_timeout_seconds: 7200
+request_attempts: 2
+infrastructure_attempts: 3
+infrastructure_failure_limit: 6
+hf_repo: dougalldeepmind/2026-10-09-gptoss120b-base-swe-smoke-recovery

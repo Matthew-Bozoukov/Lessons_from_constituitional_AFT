@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: User-authorized base SWE restart
+
+User explicitly requested restart of base. Recovery owner scratch/gptoss_swe/restart_base.py creates a separate output/gptoss_refresh_base_recovery_20261009 root with SHA256-verified copies of prior rollout/metadata history. It retains both valid LimitsExceeded outcomes, retries only the URLError-interrupted Pylint5859 attempt and admits the seven unstarted tasks. Original attempts remain in copied state and count toward the new three-total-attempt bound. Original base $12 ledger stays authoritative, including $9.556167252 already accounted; no new budget or reset. Sampling/model token limits unchanged; recovery uses the authorized7200-second request timeout,2request attempts,3infrastructure attempts,6failure breaker. Control's existing owner and recipe remain untouched.
+
+Five offline admission tests passed: preserve exact task/attempt histories and reject live tasks, ambiguous calls, changed cap or exhausted budget. Recovery Docker driver uses Docker Desktop's native host.docker.internal resolution rather than overriding it with host-gateway, and requires five successful no-inference tokenization probes from inside the actual driver before task admission. This is a transport check, not proof that transient network errors cannot recur. Dedicated owner handles inference stop, grading retained patches, immutable HF publication and scoped cleanup. Original owner may independently publish its earlier partial base snapshot; the recovery artifact is explicitly separate and must not be double-counted. Neither old nor new ledger histories are erased.
+
 ### 2026-10-09: Remaining-context ODCV smoke verified; SWE base interrupted
 
 New ODCV-only smoke completed and cleaned its owned containers. [Immutable evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-control-odcv07-remaining-context-smoke/tree/61bd7cfc34c3bbcfcf355b57904a48c537348398): 21 files SHA256-verified, including raw traces, scores, source, fixed selection, ledgers and cleanup. Original publication b3a99afc9b27f9ae9742432107fa6733ae42b2b0 is retained; the later commit only clarifies reporting and adds cleanup evidence, without rescoring or inference.
