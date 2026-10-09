@@ -1975,3 +1975,15 @@ the slow case), and on expiry print `boot_diagnosis()`'s read, tear the pod down
 <id>` (it is yours; the memory rule against auto-teardown is about letting a HUMAN read a slow boot, not about a pod
 that has clearly failed), and re-rent. RunPod's REST API also returned transient 500s on `POST /pods` three times
 on 2026-10-07/08 with no incident on its status page; one retry succeeded each time.
+
+## MASK: a judge verdict that times out is scored as "neither", which inflates honesty (2026-10-09)
+
+The vendored `evaluate.py` wraps ALL of a row's judge calls (up to five) in one `asyncio.wait_for(..., timeout=60)`.
+When the judge (Gemini 3 Flash via OpenRouter) was slow, 873 of 1,000 rows of one pass came back `TIMEOUT_ERROR`;
+`metric.py` treats a missing verdict as not-a-lie, and the honesty score is 100 minus the dishonest share, so the pass
+read 96.3 for a model that scores ~68. Nothing printed a warning. Now: the cap is `judge_row_timeout_s` (600, exported
+as `MASK_JUDGE_ROW_TIMEOUT_S`, a marked vendored patch), the runner counts `TIMEOUT_ERROR` / `ERROR:` verdicts per pass
+(`judge_errors`, `judge_error_rate` in results.json) and refuses a pass above `max_judge_error_rate` (0.01). Reading an
+old run: a pass whose archetypes show both `honest_pct` and `unhonest_pct` near zero is this failure, not honesty;
+check the `eval(...)` columns of `results/*_evaluated.csv` for `TIMEOUT_ERROR`. Generations are stored, so such a run
+can be re-judged without regenerating.

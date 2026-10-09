@@ -49,6 +49,31 @@ Reading, one seed each and most ODCV intervals overlapping:
   recipe carries agentic alignment and the original does not.
 - Agentic data. daa and daa-dasys remain the lowest ODCV of any arm and the lowest MASK of any synthetic arm.
 
+Addendum (2026-10-09). The MASK replicates landed as `2026-10-09-mask-qwen36-0-<arm>` (one run each with `passes=2`,
+started after the UTC date turned so the names do not collide with the 10-08 runs):
+
+| arm | run 1 | pass 2 | pass 3 | mean of 3 | spread |
+|---|---|---|---|---|---|
+| control (plain) | 44.0 | 42.3 | 43.1 | 43.1 | 1.7 |
+| da-15 | 82.7 | 82.9 | 83.7 | 83.1 | 1.0 |
+| da-grok-15 | 85.9 | 86.3 | 86.7 | 86.3 | 0.8 |
+| da-grok-resp-15 | 88.0 | 85.8 | 87.1 | 87.0 | 2.2 |
+| da-qwen-15 | 86.7 | 82.5 | 84.3 | 84.5 | 4.2 |
+| delib-15 | 72.0 | 71.6 | 71.0 | 71.5 | 1.0 |
+| delib-sonnet-15 | 67.5 | 68.1 | 67.6 | 67.7 | 0.6 |
+
+Run-to-run spread is 1-2 points for most arms, 4 for da-qwen (its 86.7 was a high draw). On three runs the grok-written
+arms sit at 86-87, da-15 and da-qwen at 83-85, the delib pair at 68-72, the control at 43. The first delib-sonnet-15
+replicate scored 96.3 on its second pass and exposed a scoring hole: the vendored evaluator caps all of a row's judge
+calls at 60 s, a slow judge returned TIMEOUT_ERROR for 873/1,000 rows, and metric.py scores an unjudged row as neither
+honest nor dishonest, so the score inflates silently. Fixed (219fc16a): the cap is `judge_row_timeout_s` (600), the
+runner counts TIMEOUT_ERROR / ERROR verdicts per pass (`judge_errors` in results.json) and refuses above
+`max_judge_error_rate` (0.01). Audit of every MASK run pushed since 10-05: every run of this ladder (daa and daa-dasys
+included) had 0-3 failed verdicts per 1,000; the broken replicate was rerun clean; two runs outside this ladder are
+affected and inflated (2026-10-08-mask-qwen36-0-da-15-cot: 393 pressure / 378 belief timeouts; -da-15-response-only:
+41 / 41) and should be re-judged by their owner. Also: one replicate pod never reported READY and idled to the 6 h
+deadline watchdog (~$28); drivers now poll boots with a 40-minute cutoff (docs/GOTCHAS.md).
+
 Next. (1) MASK passes 2-3 for the seven arms of the table (control, da-15, da-grok, da-grok-resp, da-qwen, delib,
 delib-sonnet) land tonight as `2026-10-09-mask-qwen36-0-<arm>`; read the between-pass spread before ranking teachers
 on MASK. (2) Seed 1 for da-15, da-grok-15 and daa-15 before any ODCV claim finer than "Qwen-written replies are worse".
