@@ -115,11 +115,14 @@ train:
   # head_dim differs between sliding and global attention -- the reason vLLM 0.26 cannot serve it
   # at all and the eval pod runs 0.28.0). bf16 LoRA until someone probes otherwise.
   load_in_4bit: false
-  # `Gemma4ForConditionalGeneration._supports_flash_attn` is True at transformers 5.14.1 (read off
-  # the class, not assumed), and flash-attn's varlen backend is what packing needs. NOT yet
-  # exercised on this checkpoint: if a run fails inside the attention kernel, `sdpa` is the
-  # fallback and `_supports_sdpa` is also True.
-  attn_implementation: flash_attention_2
+  # sdpa, MEASURED the hard way: flash_attention_2 is class-declared supported
+  # (`_supports_flash_attn` is True at transformers 5.14.1) but dies on the first forward --
+  #   RuntimeError: FlashAttention forward only supports head dimension at most 256
+  # Gemma 4 uses a per-layer head_dim, 256 on the sliding layers and 512 on the global ones,
+  # and flash-attn caps at 256. That same per-layer attribute is why vLLM 0.26 cannot serve
+  # this model at all. The cost is throughput, not correctness: the Qwen profile measures
+  # flash-attn at 1.26x over sdpa on padded batches, so expect roughly that much slower.
+  attn_implementation: sdpa
   # NO MEASURED ENTRY. Every key here must come from a scratch/probe_batch_memory.py run on the
   # real card; estimating one would hand the dynamic-batching resolver a budget it cannot honour.
   # A missing GPU costs only that: the dataset's longest row becomes the default budget.
