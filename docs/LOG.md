@@ -1,6 +1,19 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-09: Gemma training cancelled before the full run
+
+User postponed fine-tuning pending teammate work. Terminated our only pod
+`8qxzomf874q7pi` (2 H200s) and verified its absence in RunPod; the watchdog then
+reported `pod gone; exiting`. Provider account spend returned to $9.337/hour for
+the two unrelated Matthew pods, which were left untouched; balance was $179.6505.
+Full training never started and no trained control adapter was published.
+The smoke first required the explicit published-trace declaration, then hit the
+host's NVLS multicast CUDA 401 error. A retry with `NCCL_NVLS_ENABLE=0` was launched
+but cancelled before qualification was established. Tokenizer audit and preparation
+remain on `matboz/gemma4-on-main`; GPU training is NOT yet qualified. Wait for a new
+user instruction and teammate inputs before provisioning or training again.
+
 ## 2026-10-09: Gemma plain-control preparation and full-corpus tokenizer gate
 
 **Hypothesis:** the current model-agnostic plain control can train Gemma without a
