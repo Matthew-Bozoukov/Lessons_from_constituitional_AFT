@@ -127,11 +127,13 @@ def prepare():
             assert image['digest'] in actual['RepoDigests']
             named = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image['name']], text=True))[0]
             assert named['Id'] == actual['Id']
+            # Official images have a SWE-bench preparation commit at HEAD. Verify
+            # the frozen image and presence of the dataset base, not HEAD equality.
             probe = subprocess.run(['docker', 'run', '--rm', '--network', 'none', '--entrypoint', 'bash', image['digest'],
-                                    '-lc', 'cd /testbed && git rev-parse HEAD && test -d /opt/miniconda3'],
+                                    '-lc', 'cd /testbed && git cat-file -e ' + rows[iid]['base_commit'] + '^{commit} && git rev-parse HEAD && test -d /opt/miniconda3'],
                                    capture_output=True, text=True, check=True, timeout=90)
-            assert probe.stdout.strip() == rows[iid]['base_commit']
-            images_verified.append(dict(arm=arm, instance_id=iid, digest=image['digest'], base_commit=probe.stdout.strip()))
+            images_verified.append(dict(arm=arm, instance_id=iid, digest=image['digest'],
+                                        dataset_base_commit=rows[iid]['base_commit'], image_head=probe.stdout.strip()))
         save(meta / 'manifest.json', dict(campaign=cfg.campaign, target=C.targets[arm], protocol=cfg.protocol,
               selected_ids=list(C.selected[arm]), config=OmegaConf.to_container(cfg, resolve=True),
               source=read(ROOT / 'deployment.json'), prior_revision=C.prior_revision,
