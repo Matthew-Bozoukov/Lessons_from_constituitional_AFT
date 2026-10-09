@@ -1040,8 +1040,17 @@ class VllmServer:
     def _pinned_template_path(self, base_model: str, mode: str, revision: str | None = None) -> str | None:
         if mode == "default":
             return None
-        with open(hf_download(base_model, "tokenizer_config.json", **({"revision": revision} if revision else {}))) as f:
-            template = json.load(f)["chat_template"]
+        rev = {"revision": revision} if revision else {}
+        with open(hf_download(base_model, "tokenizer_config.json", **rev)) as f:
+            template = json.load(f).get("chat_template")
+        if not template:
+            # Newer checkpoints ship the template as its own file rather than a key in
+            # tokenizer_config.json (google/gemma-4-31B-it, 2026-07). The pod-side pin in
+            # src/infra/runpod.py reads it off the tokenizer and so never hit this; this
+            # path read the raw JSON and raised KeyError on exactly those models.
+            with open(hf_download(base_model, "chat_template.jinja", **rev)) as f:
+                template = f.read()
+        assert template, f"{base_model} exposes no chat template to pin {mode!r} into"
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
 
