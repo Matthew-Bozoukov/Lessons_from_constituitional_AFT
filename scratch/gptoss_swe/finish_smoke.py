@@ -216,8 +216,34 @@ def run():
         if os.name=='nt':ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
 
 
+def finalize():
+    """Close out after the preserved preflight-only base failure in the original coordinator."""
+    with (ROOT/'finalizer-started.json').open('x') as f:json.dump(dict(pid=os.getpid(),at=time.time()),f)
+    if os.name=='nt':
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+    try:
+        while True:
+            phases=[json.loads((ROOT/a/'status.json').read_text())['phase'] for a in TARGETS]
+            state=json.loads((ROOT/'status.json').read_text())
+            if phases==['graded','graded'] and state['phase']=='held':break
+            time.sleep(15)
+        assert json.loads((ROOT/'arm-exits.json').read_text())=={'base':1,'control':0}
+        assert (ROOT/'base/preflight-recovery.json').exists() and not (ROOT/'publication.json').exists()
+        save(ROOT/'original-owner-held.json',state)
+        save(ROOT/'status.json',dict(phase='publishing',at=time.time(),owner='finalizer'))
+        publish()
+        ids=subprocess.check_output(['docker','ps','-aq','--filter','label=lasr.campaign='+str(C.campaign)],text=True).split()
+        for cid in ids:
+            assert not running(cid);subprocess.run(['docker','rm',cid],check=True)
+        save(ROOT/'cleanup.json',dict(at=time.time(),owned_remaining=[]))
+        save(ROOT/'status.json',dict(phase='complete',at=time.time(),owner='finalizer'))
+    finally:
+        if os.name=='nt':ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+
+
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['run','arm','consume','grade','normalize','publish','recover-preflight']);parser.add_argument('--arm',choices=['base','control']);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['run','arm','consume','grade','normalize','publish','recover-preflight','finalize']);parser.add_argument('--arm',choices=['base','control']);args=parser.parse_args()
     if args.action in ('consume','grade','normalize'):linux(args.action,args.arm)
     elif args.action=='arm':arm_run(args.arm)
     elif args.action=='recover-preflight':recover_preflight(args.arm)

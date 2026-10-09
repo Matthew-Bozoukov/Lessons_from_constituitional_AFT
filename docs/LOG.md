@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: Completion owner preflight repair and explicit progress heartbeat
+
+The new base child hit a case-sensitive ownership check: Docker emitted lowercase `error: no such object` for already-cleaned old containers. This occurred before its preparation claim or inference. Fixed case normalization, added3offline missing-object/daemon-error tests, and used exclusive recover-preflight after verifying no paid work or preparation happened. Original owner/error receipts remain. Base child39708 now runs inference from source937c66ff; original completion coordinator56580 still waits on its control child. It retains base exit1 from the preflight failure, so a separate no-inference finalizer waits for BOTH arm statuses graded and that exact preserved coordinator failure before publishing and cleaning. It never restarts either inference owner. Original/repaired source archives are retained.
+
+Replacement heartbeat report-both-gpt-oss-swe-smokes-every-15-minutes is ACTIVE at15minutes and explicitly prints a base/control progress table on EVERY wakeup, even unchanged, with graded/resolved counts, Submitted, exact model-limit categories, interruptions, running/remaining and cumulative costs. Old heartbeat gpt-oss-local-odcv07-and-swe-smoke is deleted. Base/control inference spending guards are removed by explicit user authorization; current numerical model limits and finished outcomes remain unchanged.
+
 ### 2026-10-09: Explicit removal of smoke spending ceilings and completion ownership
 
 User instructed: remove budget guard, finish both SWE smoke arms, replace the scheduler and print explicit progress on every15-minute wakeup. Removed old heartbeat. Original base/control ledgers were edited under their Linux file locks with complete pre-change snapshots and request-history SHA256 conservation checks in output/gptoss_finish_smoke_20261009/spending-cap-removal.json. Prior requests1190base/878control were preserved. Base now uses strict JSON null for unlimited accounting. The already-loaded control server temporarily uses Python JSON Infinity so its current paid conversation can continue without restart; the new owner normalizes this to null after the old sampler exits. No token, context, step or outcome rules changed.
