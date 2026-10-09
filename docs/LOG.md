@@ -1,3 +1,11 @@
+### 2026-10-09: Six 64k-response diagnostic reruns completed
+
+All six fresh attempts were officially graded: Control **1/4 resolved**, DA15 **0/2 resolved**. Control ended with two Submitted and two context_limit outcomes; DA15 ended with one response_token_limit and one context_limit. No step/task-token/other limits, infrastructure exclusions, pending tasks or outstanding paid-request reservations remain. The sole resolved task is Control Django14411, which was already resolved in the original 16k run. Thus the selected reruns produced no additional resolved cases; stochastic reruns do not isolate the causal effect of the response-cap increase. Original20-task scores remain unchanged.
+
+Rerun-only conservative inference accounting: Control $7.130870256, DA15 $1.625267500, total **$8.756137756**, excluding CPU/transfer and not an invoice. Source d09a4bb8, unchanged recipe except 16384->65536 response allowance. All raw rollouts, grades, configs and provenance were published and SHA256 read back at [HF b416e19a98c6e6b8a409d6c21d8836bd70b12636](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-control-da15-swe-response64k/tree/b416e19a98c6e6b8a409d6c21d8836bd70b12636). Publication and cleanup receipts copied to output/gptoss_response64k_20261009/closeout.
+
+At19:14UTC fresh verification found systemd inactive with exit0, both shims stopped, neither serving port listening, and zero containers under either campaign label, including stopped containers. Persistent Vast55053931/cache remains running per user; no host swap or RunPod change. Completed heartbeat is removed during closeout.
+
 ### 2026-10-09: Six response-limit cases rerun with 65,536-token replies
 
 User explicitly authorized fresh reruns of the four Control and two DA15 response-limit cases from the completed smoke20, changing only the single-response cap from16,384 to65,536. These are outcome-selected diagnostic reruns; preserve the original20-task scores. New stochastic draws also change, so any improvement cannot be attributed solely to the cap. Control Django14411 was already officially resolved despite its response-limit ending.
