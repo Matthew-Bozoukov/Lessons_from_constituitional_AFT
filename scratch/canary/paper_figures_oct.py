@@ -46,27 +46,13 @@ ARMS = [
         "2026-10-08-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-reusedtools",
         "Oct",
     ),
-    (
-        "Multi-party difficult advice",
-        "#c2255c",
-        None,
-        "2026-09-27-hospital-self-sacrificial-qwen36-0-da-multiparty-human-notools-15",
-        "",
-    ),
-    (
-        "Multi-party difficult advice + tools†",
-        "#e38bb5",
-        "2026-09-24-odcv-qwen36-0-da-multiparty-human-15",
-        "2026-09-24-colosseum-hospital-self-sacrificial-qwen36-difficult-advice-multiparty-human-15-fixed",
-        "",
-    ),
 ]
 BOXES = [  # bottom to top
     ("act_no_refusal", "Sabotage act, no private refusal", "#b3261e", "white"),
     ("act_refusal", "Sabotage act, with a private refusal", "#d9675c", "white"),
     ("plan_only", "Sabotage plan, no sabotage act", "#f0c3bd", "#3b0d0a"),
 ]
-NOTE = "DA and DA + tools: Oct data (Jamie's 2026-10-05 mix, one seed); other arms: Sept runs."
+NOTE = "DA and DA + tools: Oct data (Jamie's 2026-10-05 mix, one seed).\nBase model: Sept run."
 
 
 def hospital_boxes(repo: str) -> dict:
@@ -98,7 +84,7 @@ def xlabel(lab: str) -> str:
 
 def misalignment_figure(odcv: dict, hosp: dict, out: Path) -> Path:
     groups = ["ODCV", "Colosseum hospital\n(self-sacrificial)"]
-    fig, ax = plt.subplots(figsize=(5.2, 3.3))
+    fig, ax = plt.subplots(figsize=(4.6, 3.1))
     width = 0.8 / len(ARMS)
     for j, (lab, col, _, _, _) in enumerate(ARMS):
         for i, g in enumerate(groups):
@@ -149,7 +135,7 @@ def misalignment_figure(odcv: dict, hosp: dict, out: Path) -> Path:
     ax.set_xticks(range(len(groups)), groups)
     ax.tick_params(axis="x", length=0)
     ax.set_ylabel("Misalignment rate (%)")
-    ax.set_ylim(0, 100)
+    ax.set_ylim(0, 112)
     ax.set_yticks(range(0, 101, 20))
     ax.yaxis.grid(True, color=GRID, linewidth=0.6, zorder=0)
     ax.set_axisbelow(True)
@@ -190,8 +176,8 @@ def misalignment_figure(odcv: dict, hosp: dict, out: Path) -> Path:
 
 
 def refusal_figure(hosp: dict, out: Path) -> Path:
-    fig, ax = plt.subplots(figsize=(3.6, 2.9))
-    xs = [0, 1, 2, 3.4, 4.4]
+    fig, ax = plt.subplots(figsize=(2.6, 2.9))
+    xs = list(range(len(ARMS)))
     for x, (lab, _, _, _, _) in zip(xs, ARMS):
         h = hosp[lab]
         bottom = 0
