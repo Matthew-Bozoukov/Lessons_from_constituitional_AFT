@@ -607,6 +607,17 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         raise ValueError(
             f"train.packing needs varlen attention (flash_attention_2/3), not {attn_impl!r}: "
             "sdpa would let packed examples attend to each other")
+        # A family may send SOME layer types to another backend: Gemma 4's 10 global layers
+        # carry head_dim 512 and flash-attn caps at 256. Those layers stay safe under packing,
+        # because the packed collator emits per-example `position_ids` and NO 2D attention mask
+        # -- exactly the shape transformers' `find_packed_sequence_indices` keys on to build a
+        # block-diagonal mask (masking_utils.packed_sequence_mask_function). Any other target
+        # backend carries no such guarantee, so refuse it.
+        for _lt, _impl in (profile.attn_per_layer_type or {}).items():
+            if packing and _impl != "sdpa":
+                raise ValueError(
+                    f"attn_per_layer_type sends {_lt!r} to {_impl!r}; under packing only 'sdpa' "
+                    "is allowed there, since its block-diagonal mask comes from position_ids")
     if packing and profile.family == "Qwen3.6":
         # The gated-delta layers' short causal conv (kernel 4) respects pack boundaries only
         # through the fused kernel's `seq_idx`; the torch fallback runs straight across them and
@@ -629,6 +640,33 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         device_map=device_map,
         attn_implementation=attn_impl,
     )
+
+    # Per-layer attention dispatch. Every Gemma4Attention reads one shared
+    # `self.config._attn_implementation` at forward time, so a layer is moved to another
+    # backend by handing it its own copy of the config. Gemma 4: the 50 sliding layers keep
+    # flash-attn's varlen kernel (head_dim 256, and packing needs varlen), the 10 global ones
+    # fall back to sdpa because their head_dim is 512 and flash-attn caps at 256.
+    if profile.attn_per_layer_type:
+        import copy as _copy
+
+        text_cfg = getattr(model.config, "text_config", model.config)
+        layer_types = list(getattr(text_cfg, "layer_types", []) or [])
+        decoder = model.model.language_model if hasattr(model.model, "language_model") else model.model
+        moved: dict[str, int] = {}
+        for idx, layer in enumerate(decoder.layers):
+            want = profile.attn_per_layer_type.get(
+                layer_types[idx] if idx < len(layer_types) else "")
+            if not want:
+                continue
+            attn = layer.self_attn
+            attn.config = _copy.copy(attn.config)
+            attn.config._attn_implementation = want
+            moved[want] = moved.get(want, 0) + 1
+        assert moved, (
+            f"attn_per_layer_type {dict(profile.attn_per_layer_type)} matched no layer; "
+            f"this checkpoint reports layer_types {sorted(set(layer_types))}")
+        print(f">>> per-layer attention: {attn_impl} by default, "
+              + ", ".join(f"{n} layers on {impl}" for impl, n in sorted(moved.items())))
     model.config.use_cache = False
     if smoke:
         names = [n for n, _ in model.named_modules()]

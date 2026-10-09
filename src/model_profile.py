@@ -100,6 +100,10 @@ class ModelProfile:
             conditional-generation class).
         lora_target_modules: peft target spec — a string is a regex over module paths, a
             list is exact names. None on a stub.
+        attn_per_layer_type: Per-layer-type attention override, `{layer_type: impl}`, for a
+            model whose layers cannot all use one backend. Gemma 4's 10 global layers carry
+            head_dim 512 and flash-attn caps at 256, so they run under sdpa while its 50
+            sliding layers (head_dim 256) keep the varlen kernel packing needs.
         load_in_4bit: QLoRA (4-bit nf4) or plain bf16 LoRA.
         attn_implementation: transformers attention backend.
         train_memory: MEASURED training-memory ceilings keyed by GPU model (substring of
@@ -131,6 +135,7 @@ class ModelProfile:
     lora_target_modules: str | list | None = None
     load_in_4bit: bool = True
     attn_implementation: str = "sdpa"
+    attn_per_layer_type: dict = field(default_factory=dict)
     train_memory: dict = field(default_factory=dict)
 
     @property
@@ -181,6 +186,7 @@ class ModelProfile:
             lora_target_modules=list(targets) if isinstance(targets, list) else targets,
             load_in_4bit=bool(tr.get("load_in_4bit", True)),
             attn_implementation=str(tr.get("attn_implementation") or "sdpa"),
+            attn_per_layer_type=dict(tr.get("attn_per_layer_type") or {}),
             train_memory=dict(tr.get("memory") or {}),
         )
 
@@ -199,6 +205,8 @@ class ModelProfile:
                 out["template"]["think_open"] = self.think_open
         train = {"model_class": self.model_class, "load_in_4bit": self.load_in_4bit,
                  "attn_implementation": self.attn_implementation}
+        if self.attn_per_layer_type:
+            train["attn_per_layer_type"] = dict(self.attn_per_layer_type)
         if self.lora_target_modules is not None:
             train["lora_target_modules"] = self.lora_target_modules
         if self.train_memory:
