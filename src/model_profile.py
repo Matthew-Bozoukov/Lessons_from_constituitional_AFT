@@ -541,7 +541,7 @@ _ASSISTANT_TURN = re.compile(r"<\|im_start\|>assistant\n(.*?<\|im_end\|>)", re.D
 _THINK_BLOCK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
 
 
-def think_census(texts) -> dict:
+def think_census(texts, turn=None, think=None) -> dict:
     """Count assistant turns by think content across rendered rows.
 
     Under `thinking: true` every assistant turn the model generates carries a think block.
@@ -556,9 +556,9 @@ def think_census(texts) -> dict:
     """
     turns = real = empty = 0
     for text in texts:
-        for m in _ASSISTANT_TURN.finditer(text):
+        for m in (turn or _ASSISTANT_TURN).finditer(text):
             turns += 1
-            blocks = _THINK_BLOCK.findall(m.group(1))
+            blocks = (think or _THINK_BLOCK).findall(m.group(1))
             if not blocks:
                 continue
             if any(b.strip() for b in blocks):

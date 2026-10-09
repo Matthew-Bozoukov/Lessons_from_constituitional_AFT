@@ -318,7 +318,8 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         start, end = cot_span(text, header=profile.assistant_header,
                               prefill=profile.prefill,
                               empty_think=profile.empty_think,
-                              think_close=profile.think_close)
+                              think_close=profile.think_close,
+                              think_open=profile.think_open)
         text = text[:end]
         spans = [(start, end)]
         prefills = [(start, start + len(profile.prefill))]
@@ -333,7 +334,8 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
                                  prefill=profile.prefill,
                                  empty_think=profile.empty_think,
                                  think_close=profile.think_close,
-                                 turn_end=profile.turn_end)
+                                 turn_end=profile.turn_end,
+                                 think_open=profile.think_open)
         head = text.rfind(profile.assistant_header) + len(profile.assistant_header)
         spans = [(start, end)]
         prefills = [(head, start)]
@@ -341,7 +343,7 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
         every = assistant_spans(text, **turn_kw)
         # History earns no loss (module header): only turns rendered with a think block
         # are ones the model generates here. "final" then keeps the last of those.
-        spans = generated_spans(text, every, profile.prefill)
+        spans = generated_spans(text, every, profile.prefill, profile.think_open)
         if supervise == "final":
             spans = spans[-1:]
         # Forced heads are masked on EVERY turn (supervised or not) -- an unsupervised

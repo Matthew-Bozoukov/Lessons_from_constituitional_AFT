@@ -329,13 +329,13 @@ def test_cot_refuses_an_empty_think_marker():
     # The empty marker OPENS with the prefill, so a prefix test alone accepts it and
     # then supervises `\n</think>` — training the empty-think collapse (gotcha 2).
     # This is the trap the mode has to refuse, not merely handle.
-    with pytest.raises(AssertionError, match="EMPTY think marker"):
+    with pytest.raises(AssertionError, match="reasoning block is EMPTY"):
         build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW),
                      profile=QWEN36_PROFILE, supervise="cot")
 
 
 def test_cot_refuses_a_final_turn_with_no_think_block_at_all():
-    with pytest.raises(AssertionError, match="thinking prefill"):
+    with pytest.raises(AssertionError, match="open its reasoning with"):
         build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT),
                      profile=QWEN36_PROFILE, supervise="cot")
 
@@ -415,13 +415,13 @@ def test_cot_and_answer_partition_what_all_supervises():
 def test_answer_refuses_an_empty_think_marker():
     # Under this mode an empty marker would silently reduce to plain "full" -- which means
     # the flag was put on the wrong rows.
-    with pytest.raises(AssertionError, match="EMPTY think marker"):
+    with pytest.raises(AssertionError, match="reasoning block is EMPTY"):
         build_labels(EMPTY_ROW, _MergingTokenizer(), max_length=len(EMPTY_ROW),
                      profile=QWEN36_PROFILE, supervise="response")
 
 
 def test_answer_refuses_a_turn_with_no_think_block():
-    with pytest.raises(AssertionError, match="thinking prefill"):
+    with pytest.raises(AssertionError, match="open its reasoning with"):
         build_labels(CHAT, _MergingTokenizer(), max_length=len(CHAT),
                      profile=QWEN36_PROFILE, supervise="response")
 

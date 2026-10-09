@@ -102,7 +102,7 @@ def test_tool_output_is_masked_although_it_sits_inside_the_model_turn(tok):
     # One turn for the whole trajectory: the premise Qwen satisfies and Gemma does not.
     assert text.count(GEMMA4_PROFILE.turn_end) == 3
 
-    got = _supervised(tok, build_labels(text, tok, 4096, GEMMA4_PROFILE, supervise="all"))
+    got = _supervised(tok, build_labels(text, tok, 4096, GEMMA4_PROFILE, supervise="full"))
     assert "p90=16.8" not in got, "tool output is context, never a target"
     assert "cat data.csv" in got, "the call the model makes IS a target"
     assert "Check first." in got, "its reasoning is a target"
@@ -115,7 +115,7 @@ def test_masked_inner_is_what_excludes_the_tool_output(tok):
 
     text = _tool_row(tok)
     unguarded = dataclasses.replace(GEMMA4_PROFILE, masked_inner=())
-    leaked = _supervised(tok, build_labels(text, tok, 4096, unguarded, supervise="all"))
+    leaked = _supervised(tok, build_labels(text, tok, 4096, unguarded, supervise="full"))
     assert "p90=16.8" in leaked
 
 
@@ -128,16 +128,16 @@ def test_cot_and_answer_partition_the_real_template(tok):
                               "reasoning_content": "Be brief."}],
                        None, render_kwargs=GEMMA4_PROFILE.render_kwargs)
     kept = {m: build_labels(text, tok, 4096, GEMMA4_PROFILE, supervise=m)
-            for m in ("all", "cot", "answer")}
+            for m in ("full", "cot", "response")}
     n = {m: sum(1 for v in out["labels"] if v != -100) for m, out in kept.items()}
-    assert n["cot"] + n["answer"] == n["all"], n
+    assert n["cot"] + n["response"] == n["full"], n
     assert _supervised(tok, kept["cot"]).endswith(GEMMA4_PROFILE.think_close)
-    assert _supervised(tok, kept["answer"]) == "Hello." + GEMMA4_PROFILE.turn_end
+    assert _supervised(tok, kept["response"]) == "Hello." + GEMMA4_PROFILE.turn_end
     # `cot` truncates the row: the answer leaves the token stream, not just the loss.
-    assert kept["cot"]["input_ids"] == kept["all"]["input_ids"][:len(kept["cot"]["input_ids"])]
+    assert kept["cot"]["input_ids"] == kept["full"]["input_ids"][:len(kept["cot"]["input_ids"])]
 
 
-@pytest.mark.parametrize("mode", ["cot", "answer"])
+@pytest.mark.parametrize("mode", ["cot", "response"])
 def test_a_turn_with_no_reasoning_is_refused(tok, mode):
     # Gemma signals "no reasoning" by never opening the channel, where Qwen writes an empty
     # marker. Both must be refused, or the arm silently becomes ordinary supervision.
