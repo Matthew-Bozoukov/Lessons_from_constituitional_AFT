@@ -328,3 +328,21 @@ def test_reference_library_renders_tools_instructions_and_no_json_repair_prompt(
     assert '<|start|>developer<|message|># Instructions\n\nUse the repository.' in prompt
     assert '# Tools\n\n## functions\n\nnamespace functions' in prompt
     assert 'valid JSON' not in prompt and 'square bracket' not in prompt
+
+
+def test_incomplete_utf8_logging_keeps_paid_tokens_without_resampling(runtime, tmp_path):
+    import json
+    encoding = runtime.renderer.encoding
+    broken = next(t for t in range(256) if '\ufffd' in encoding.decode([t]))
+    tokens = encoding.encode('<|channel|>final<|message|>', allowed_special='all') + [broken, 200002]
+    async def sample(**kwargs):
+        runtime.sampling_client.requests.append(kwargs)
+        return SimpleNamespace(sequences=[SimpleNamespace(tokens=tokens, stop_reason='stop')])
+    runtime.sampling_client.sample_async = sample
+    runtime.trace_dir = str(tmp_path)
+    response = client(runtime).post('/v1/chat/completions', json=request())
+    assert response.status_code == 200, response.text
+    assert '\ufffd' in response.json()['tinker_metadata']['raw_completion']
+    assert len(runtime.sampling_client.requests) == 1
+    saved = list(tmp_path.glob('*/sample.json'))
+    assert len(saved) == 1 and json.loads(saved[0].read_text())['tokens'] == tokens

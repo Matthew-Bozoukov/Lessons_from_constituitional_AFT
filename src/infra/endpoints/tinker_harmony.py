@@ -18,7 +18,8 @@ class HarmonyRenderer:
         return self.encoding.encode(text, allowed_special='all')
 
     def decode(self, tokens, **kwargs):
-        return self.encoding.decode_utf8(tokens)
+        # Display text may end inside a UTF-8 codepoint. Keep exact tokens in traces.
+        return self.encoding.decode(tokens, errors='replace')
 
     def get_stop_sequences(self):
         return self.encoding.stop_tokens_for_assistant_actions()

@@ -248,6 +248,10 @@ def create_app(runtime: Runtime) -> FastAPI:
             prompt=prompt, num_samples=1, sampling_params=runtime.sampling_params(**options))
         sequence = sample.sequences[0]
         ids = sequence.tokens
+        if trace:
+            # Save paid tokens before parsing or display decoding can fail.
+            (trace/'sample.json').write_text(json.dumps(dict(tokens=ids, stop_reason=sequence.stop_reason,
+                prompt_cache_hit_tokens=getattr(sample, 'prompt_cache_hit_tokens', 0))), encoding='utf-8')
         if reservation is not None:
             runtime.budget.settle(reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
         out, finish, boundary = parse_completion(runtime.renderer, ids, sequence.stop_reason)
