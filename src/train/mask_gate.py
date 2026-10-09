@@ -134,7 +134,7 @@ def _gate_sample(supervise: list[str], per_mode: int) -> list[int]:
 
 def gate_generation_boundary(texts, tokenizer, max_length: int,
                              profile: ModelProfile, thinking: bool,
-                             supervise=None) -> dict:
+                             supervise=None, source_rows=None) -> dict:
     """Refuse to train when the mask or the data violates the policy. Returns the census.
 
     Args:
@@ -158,6 +158,9 @@ def gate_generation_boundary(texts, tokenizer, max_length: int,
         [supervise_mode(m) for m in supervise]
     assert len(modes) == len(texts), \
         f"supervise has {len(modes)} entries for {len(texts)} rows"
+    if profile.masking_format == "gemma4":
+        from src.train.gemma4_mask import gate
+        return gate(texts, tokenizer, max_length, profile, thinking, modes, source_rows)
     census = think_census(texts)
     if thinking:
         current = sum(blockless_after_last_query(t) for t in texts)

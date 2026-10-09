@@ -3,19 +3,39 @@
 
 # GOTCHAS
 
+## Gemma 4 control training boundaries (2026-10-09)
+
+The canonical tokenizer at `842da3794eaa0b77d5f08bae87a17459d91ff475` was checked
+against all 1,832 rows of `dougalldeepmind/2026-10-05-plain-mix` at
+`a5b115666913790be37482f83f6aa843c73e258a`, the GPT-OSS plain-control input.
+All masks exactly matched independently rendered inference-prefix completions:
+5,044,195 supervised Gemma tokens. Historical replies and tool results are context.
+The initial thought opener and first tool-response handoff opener are generated;
+the thought opener after a tool result is forced and must be masked. Parallel tool
+results after the first opener are entirely context. The gate checks every row;
+only `supervise=full` is qualified. No dataset content changes or republishing.
+
+Fifteen Gemma-rendered rows exceed 8,192 tokens (longest 8,484); the launch cap is
+8,704 so none are truncated. Global attention has 512-dimensional heads, beyond
+FlashAttention-2's 256 limit, so use SDPA with `train.packing=false`. The canonical
+batch 16, token_mean loss, one epoch, rank 64 / alpha 128 / dropout .05, LR 1e-4
+and seed 0 are retained. GPU smoke must establish memory and finite updates before
+full training; these tokenizer facts alone do not qualify the GPU execution path.
+See `scratch/gemma4_control_launch.yaml` and `scratch/gemma4_control_campaign.py`.
+
 ## Gemma 4: successful ODCV serving is not an all-eval qualification (2026-10-09)
 
 - `matboz/gemma4-on-main` at `555f3954` adds the `gemma4` inference-only profile and
   standalone `chat_template.jinja` loading. Its commit records that the published
-  2026-10-08 ODCV run used **vLLM 0.28.0**. The repository still pins **0.26.0**.
+  2026-10-08 ODCV run used **vLLM 0.28.0**. The repository now pins **0.28.0** (2026-10-09 training preparation).
   A fresh 0.26 bootstrap with unbounded Transformers failed on the per-layer
   `head_dim` API. Both bootstrap paths now use the lock's Transformers version
   (5.14.1 at this change); this prevents dependency drift but is NOT live GPU
   qualification of the 0.26/5.14.1 combination. Reproduce and record a working
   runtime before another paid campaign; do not infer it from the profile alone.
-- Gemma's canonical template makes thinking opt-in. Full model targets resolve
-  to `mode=default`, regardless of the profile's `thinking: true`. Pass `mode=think`
-  for the requested protocol; the Gemma ODCV config already does so.
+- Gemma's canonical template makes thinking opt-in. The profile now requires
+  `mode=think` for full models and adapters; the eval entrypoint refuses a conflicting
+  override. This is independent of the adapter's training-time reasoning stamp.
 - `configs/eval/odcv/gemma4-1pass.yaml` now explicitly sends temperature .7,
   top_p .95, top_k 64, min_p 0, presence/frequency penalties 0, repetition penalty 1.
   **top_k 64 intentionally differs from Qwen's 20.** The published October 8 run

@@ -266,7 +266,10 @@ def build_labels(text: str, tokenizer, max_length: int, profile: ModelProfile,
     """
     turn_kw = dict(header=profile.assistant_header, turn_end=profile.turn_end)
     supervise = supervise_mode(supervise)
-    if supervise == "cot":
+    if profile.masking_format == "gemma4":
+        from src.train.gemma4_mask import generation_layout
+        spans, prefills = generation_layout(text, supervise)
+    elif supervise == "cot":
         # The answer is CUT, not masked: `text` is shortened here and everything
         # downstream (tokenization, offsets, budgeting) sees only the reasoning. Any
         # earlier assistant turn stays in the text as context and, being absent from

@@ -518,6 +518,10 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             # both the config and the recorded mode below.
             spec = replace(spec, mode=str(cfg.mode))
             print(f">>> mode override: {hf_path} pinned to {spec.mode!r} (config `mode=`)")
+        from src.model_profile import find_profile
+        profile = find_profile(spec.base_model)
+        if profile and profile.required_eval_mode and spec.mode != profile.required_eval_mode:
+            raise ValueError(f"{profile.key} requires mode={profile.required_eval_mode} for every eval; got {spec.mode}")
         specs.append(spec)
     if not args.no_push:
         # Every name this invocation WILL publish under, built now: an unbuildable name

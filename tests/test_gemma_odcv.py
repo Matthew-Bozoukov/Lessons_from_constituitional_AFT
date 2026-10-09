@@ -43,11 +43,12 @@ def test_template_layout_keeps_revision_and_pins_thinking(tmp_path, monkeypatch,
     assert len(calls) == (1 if embedded else 2)
 
 
-def test_gemma_profile_serves_but_cannot_train():
+def test_gemma_profile_serves_and_declares_qualified_mask_format():
     model = "google/gemma-4-31B-it"
     assert model_key(model) == "gemma4"
-    with pytest.raises(ValueError, match="no verified thinking profile"):
-        model_profile(model)
+    assert model_profile(model).masking_format == "gemma4"
+    assert model_profile(model).required_eval_mode == "think"
+    assert vllm._spec_from_files(model, None, None).mode == "think"
     cfg = OmegaConf.load(ROOT / "configs/eval/odcv/gemma4-1pass.yaml")
     plan = vllm.plan_serving(dict(serving_params(model), native_context_window=262144),
                             dict(cfg.serving), model, cfg.mode)

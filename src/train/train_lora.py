@@ -544,7 +544,7 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     modes = (list(ds["supervise"]) if "supervise" in ds.column_names
              else ["full"] * len(ds))
     gate_generation_boundary(ds["text"], tokenizer, max_len, profile, thinking,
-                             supervise=modes)
+                             supervise=modes, source_rows=ds)
     if "supervise" in ds.column_names:
         print(f">>> supervise in THIS selection: "
               f"{dict(Counter(supervise_mode(m) for m in modes).most_common())}")

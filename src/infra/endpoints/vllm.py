@@ -256,8 +256,10 @@ def _spec_from_files(hf_path: str, adapter_config: dict | None, training_meta: d
     # carries exactly one date — its own — and still says which arm it measured
     # (src/naming.py).
     if adapter_config is None:
+        from src.model_profile import find_profile
+        profile = find_profile(hf_path)
         return TargetSpec(hf_path=hf_path, base_model=hf_path, adapter=False,
-                          mode="default", model_key=base_model_key(hf_path),
+                          mode=(profile.required_eval_mode if profile else None) or "default", model_key=base_model_key(hf_path),
                           lora_rank=None)
     model_key = undated(hf_path).replace("-", "_")
     if training_meta is None:

@@ -1,6 +1,23 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-09: Gemma plain-control preparation and full-corpus tokenizer gate
+
+**Hypothesis:** the current model-agnostic plain control can train Gemma without a
+republished derivative, if native reasoning/tool generation boundaries are respected.
+**Method:** pinned the same 2026-10-05 plain mixture revision used by GPT-OSS
+(`a5b11566`) and Gemma revision `842da379`; compared label decoding against the actual
+canonical inference prefixes on every row, including 115 tool rows. Added an
+independent message-prefix gate and native Gemma masks; preserved the existing masks
+for other families. Pinned vLLM 0.28 and made thinking compulsory for Gemma evals.
+**Result:** 1,832/1,832 rows passed; 5,044,195 supervised tokens. No data edits needed.
+Fifteen rows need more than 8,192 tokens (max 8,484), so launch cap is 8,704. Use SDPA
+and padded batches because Gemma global head_dim=512 exceeds FlashAttention-2's limit.
+Focused preflight: 135 passed, 11 environment-dependent skips. No GPU result yet.
+**Next:** bounded 2-H200 smoke, then the canonical rank64 / batch16 / token_mean / seed0
+one-epoch control, publish provenance and verify artifact before terminating the pod.
+The abandoned `matboz/gemma4-train` branch was not used.
+
 ## 2026-10-09 - Gemma serving branch handoff and offline evaluation audit
 
 Hypothesis: Matthew's serving branch can replace the separate Gemma ODCV implementation

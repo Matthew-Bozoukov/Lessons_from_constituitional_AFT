@@ -1448,7 +1448,11 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     print(f">>> cloning {clone[0]} @ {clone[1]} {clone[2][:8]}" if clone
           else ">>> no repo: the driver runs where you are")
 
-    script = _bootstrap(clone, weights, build_kernels=bool(train))
+    # Only Qwen's recurrent attention needs the causal-conv1d CUDA extension.
+    # Gemma's SDPA path must not spend its boot budget compiling an unused kernel.
+    from src.model_profile import model_profile
+    build_kernels = bool(train) and model_profile(str(model)).family == "Qwen3.6"
+    script = _bootstrap(clone, weights, build_kernels=build_kernels)
     _check_bash(script)
     deadline = time.time() + max_hours * 3600
     pod_id = provision_runpod(

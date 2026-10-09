@@ -1,11 +1,6 @@
-# ABOUTME: ModelProfile for google/gemma-4-31B-it: what has been VERIFIED about serving it,
-# ABOUTME: and nothing about training it. Read by src/model_profile.py.
-#
-# This profile carries NO `template:` block, which is a deliberate statement, not an omission:
-# a profile without one is an unverified family that "can be named and served, never trained or
-# mixed" (configs/models/qwen36.yaml). Gemma 4 is here to be EVALUATED. Training or mixing on it
-# would need the template literals verified against the live tokenizer the way
-# tests/test_masking_tokenizer.py does for Qwen, and nobody has done that.
+# ABOUTME: Gemma 4 serving and full-supervision training boundaries, read by src/model_profile.py.
+# ABOUTME: Canonical tokenizer audited against all 1832 plain-control rows; GPU qualification recorded in LOG.
+# Run: uv run train --config configs/train/sft.yaml model=gemma4 train.packing=false ...
 model: "google/gemma-4-31B-it"
 # Squeezed substring (letters and digits, lowercased) identifying the model in any id or path:
 # `google/gemma-4-31B-it` squeezes to `googlegemma431bit`, which contains this.
@@ -14,12 +9,14 @@ family: "Gemma4"
 # The canonical template (chat_template.jinja, "Google Gemma 4 Canonical Chat Template",
 # published 2026-07-09) carries a think channel and a `<|think|>` token, so the family reasons.
 thinking: true
+required_eval_mode: think
 # Inference card. A 31B at bf16 is ~62GB of weights; on an H100 80GB that leaves ~18GB of KV,
 # which binds the batch well below the 64 concurrent scenarios ODCV is being asked for here.
 # The H200's 141GB leaves ~79GB of cache at the same weights. NOT a measured throughput fact
 # like the Qwen entry's -- a capacity argument, which is why `default` is the H200 rather than
 # the family default the Qwen profile uses.
 gpu:
+  train: "NVIDIA H200"
   inference:
     default: "NVIDIA H200"
 # VERIFIED on the pinned vLLM 0.26.0, read from its own name->class table
@@ -43,3 +40,24 @@ serving:
   # throughput (docs/LOG.md 2026-08-07); UNMEASURED here, and throughput-only -- it
   # cannot change outputs, only how long they take.
   supports_prefix_caching: true
+
+# Verified from the pinned canonical tokenizer; the first thought opener is generated.
+# Tool continuations have a forced thought opener and need the message-aware mask.
+template:
+  masking_format: gemma4
+  assistant_header: "<|turn>model\n"
+  turn_end: "<turn|>"
+  prefill: ""
+  empty_think: ""
+  think_close: "<channel|>"
+  render_kwargs:
+    enable_thinking: true
+    preserve_thinking: false
+train:
+  model_class: image_text_to_text
+  lora_target_modules: 'model\.language_model\..*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'
+  load_in_4bit: false
+  # Global attention has head_dim=512, beyond FlashAttention-2's supported 256.
+  # Use train.packing=false; SDPA cannot consume the trainer's varlen packs.
+  attn_implementation: sdpa
+  memory: {}

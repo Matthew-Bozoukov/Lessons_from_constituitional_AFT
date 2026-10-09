@@ -111,11 +111,14 @@ class ModelProfile:
     load_in_4bit: bool = True
     attn_implementation: str = "sdpa"
     train_memory: dict = field(default_factory=dict)
+    masking_format: str = "standard"
+    required_eval_mode: str | None = None
 
     @property
     def verified(self) -> bool:
         """True when the template block is stated, i.e. this family may be trained."""
-        return all(getattr(self, name) for name in _TEMPLATE_LITERALS)
+        required = ("assistant_header", "turn_end", "think_close") if self.masking_format == "gemma4" else _TEMPLATE_LITERALS
+        return all(getattr(self, name) for name in required)
 
     @classmethod
     def from_dict(cls, data: dict, key: str | None = None) -> "ModelProfile":
@@ -132,7 +135,8 @@ class ModelProfile:
         assert data.get("model"), f"model profile {key!r}: `model:` (the HF id) is required"
         tpl = dict(data.get("template") or {})
         if tpl:
-            missing = [n for n in _TEMPLATE_LITERALS if not tpl.get(n)]
+            required = ("assistant_header", "turn_end", "think_close") if tpl.get("masking_format") == "gemma4" else _TEMPLATE_LITERALS
+            missing = [n for n in _TEMPLATE_LITERALS if n not in tpl or (n in required and not tpl[n])]
             assert not missing, (
                 f"model profile {key!r}: template block is missing {missing}; a verified "
                 "family states all five literals, an unverified one states no block")
@@ -156,6 +160,8 @@ class ModelProfile:
             load_in_4bit=bool(tr.get("load_in_4bit", True)),
             attn_implementation=str(tr.get("attn_implementation") or "sdpa"),
             train_memory=dict(tr.get("memory") or {}),
+            masking_format=str(tpl.get("masking_format", "standard")),
+            required_eval_mode=data.get("required_eval_mode"),
         )
 
     def to_dict(self) -> dict:
@@ -167,6 +173,10 @@ class ModelProfile:
         if self.verified:
             out["template"] = {**{n: getattr(self, n) for n in _TEMPLATE_LITERALS},
                                "render_kwargs": dict(self.render_kwargs)}
+            if self.masking_format != "standard":
+                out["template"]["masking_format"] = self.masking_format
+        if self.required_eval_mode:
+            out["required_eval_mode"] = self.required_eval_mode
         train = {"model_class": self.model_class, "load_in_4bit": self.load_in_4bit,
                  "attn_implementation": self.attn_implementation}
         if self.lora_target_modules is not None:

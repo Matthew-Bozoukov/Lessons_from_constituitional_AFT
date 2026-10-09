@@ -1,0 +1,21 @@
+# ABOUTME: Pinned Gemma plain-control launch overrides; scientific recipe remains configs/train/sft.yaml.
+# ABOUTME: Consumed by uv run python scratch/gemma4_control_campaign.py --phase smoke|train.
+recipe: configs/train/sft.yaml
+overrides:
+  - model=gemma4
+  - data_repo=dougalldeepmind/2026-10-05-plain-mix
+  - data_revision=a5b115666913790be37482f83f6aa843c73e258a
+  - base_model_revision=842da3794eaa0b77d5f08bae87a17459d91ff475
+  - seed=0
+  - train.max_seq_len=8704
+  - train.packing=false
+  - train.logging_steps=1
+  - train.max_grad_norm=1.0
+  - train.auto_resume=false
+# Longest-row budget remains automatic, as no measured Gemma memory ceiling exists.
+# SDPA padded batches preserve global batch=16 and token_mean; no packing qualification claimed.
+provision:
+  name: nika-gemma4-control
+  count: 2
+  disk_gb: 200
+  max_hours: 3
