@@ -19,7 +19,9 @@ def main(linux=False, arm='base'):
     if arm=='base':
         assert any('Network is unreachable' in p.read_text(errors='replace') for p in (root/'swe-recovered/rollouts').glob('*/*/agent.log'))
     else:
-        assert 'Could not decode tokens: Invalid utf-8 sequence' in (root/'swe-shim.log').read_text(errors='replace')
+        evidence=root/'swe-shim.log.network-failed'
+        if not evidence.exists(): evidence=root/'swe-shim.log'
+        assert 'Could not decode tokens: Invalid utf-8 sequence' in evidence.read_text(errors='replace')
     if linux:
         from omegaconf import OmegaConf
         from scratch.gptoss_swe.run import run

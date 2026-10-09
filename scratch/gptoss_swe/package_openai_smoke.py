@@ -20,19 +20,11 @@ def main():
     summaries={}
     for arm,target in TARGETS.items():
         root=ROOT/arm
-        stage='swe-pending' if arm=='base' else 'swe-recovery'
-        swe_root=root/('swe-pending' if arm=='base' else 'swe-recovered')
-        assert (root/(stage+'-finished.json')).exists() and (root/'odcv-judge-finished.json').exists()
-        audit(root,swe_root,OLD/'cache',False)
-        swe=json.loads((swe_root/'results/qualification.json').read_text())
-        expected=8 if arm=='base' else 10
-        assert swe['n_total']==swe['n_valid_rollouts']==swe['n_graded']==expected
-        swe['n_selected']=10
-        swe['n_infrastructure_interrupted']=10-expected
-        if arm=='base':
-            old=json.loads((root/'swe-recovered/metadata/state.json').read_text())
-            assert sum(t['status']=='invalid' for t in old['tasks'].values())==2
-            swe['interrupted_ids']=[i for i,t in old['tasks'].items() if t['status']=='invalid']
+        assert (root/'odcv-judge-finished.json').exists()
+        audit(root,root/'swe-pending',OLD/'cache',False)
+        swe=json.loads((root/'swe-summary.json').read_text())
+        assert swe['n_selected']==10 and swe['n_valid_rollouts']==swe['n_graded']
+        assert swe['n_graded']+swe['n_interrupted']+swe['n_not_started']==10
         assert swe['checkpoint']==target
         odcvroot=Path(json.loads((root/'odcv-rollout.json').read_text())['path'])
         odcv=json.loads((odcvroot/'results.json').read_text())
@@ -41,10 +33,24 @@ def main():
         for kind in ('compat','odcv','swe'):
             data=json.loads((root/(kind+'-budget.json')).read_text())
             assert data['authorized_checkpoints']==[target]
-            assert all(x['state']=='completed' for x in data['requests'].values())
+            assert all(x['state'] in ('completed','reserved') for x in data['requests'].values())  # unknown calls retain their full charge
             costs[kind]=sum(x['upper_usd'] for x in data['requests'].values())
         costs['judge']=sum(x['charged_or_reserved_usd'] for x in json.loads((root/'judge-budget.json').read_text()))
         info=json.loads((root/'audit.json').read_text())
+        from collections import Counter
+        info['swe']['ended_statuses']=dict(Counter(t['attempts'][-1]['exit_status'] for t in swe['task_statuses'].values() if t['status']=='valid'))
+        info['swe']['task_statuses']=dict(Counter(t['status'] for t in swe['task_statuses'].values()))
+        outcomes={}
+        for iid,t in swe['task_statuses'].items():
+            if t['status']!='valid': continue
+            attempt=t['attempts'][-1]
+            stage=Path(t['output_root']).name
+            traj=root/stage/'rollouts'/iid/attempt['id']/iid/(iid+'.traj.json')
+            data=json.loads(traj.read_text())
+            outcomes[iid]=dict(exit_status=attempt['exit_status'],limit_reasons=sorted({m.get('extra',{}).get('limit_reason') for m in data['messages'] if m.get('extra',{}).get('limit_reason')}))
+        info['swe']['outcomes']=outcomes
+        info['swe']['stage_halts']={st:json.loads((root/st/'metadata/state.json').read_text()).get('halt') for st in ('swe-recovered','swe-pending')}
+
         summaries[arm]=dict(target=target,swe=swe,odcv=odcv,diagnostics=info,costs_usd=costs)
     assert sum(sum(x['costs_usd'].values()) for x in summaries.values())<=36
     out=ROOT/'package'
@@ -61,9 +67,9 @@ def main():
     for arm in TARGETS:
         root=ROOT/arm
         archive(out/'rollouts'/f'{arm}-odcv.tar.gz',[root/'odcv'])
-        archive(out/'rollouts'/f'{arm}-swe.tar.gz',[root/'swe-recovered/rollouts']+([root/'swe-pending/rollouts'] if arm=='base' else []))
+        archive(out/'rollouts'/f'{arm}-swe.tar.gz',[root/'swe-recovered/rollouts']+[root/'swe-pending/rollouts'])
         archive(out/'metadata'/f'{arm}-raw-interface.tar.gz',[root/(k+'-traces') for k in ('compat','odcv','swe')])
-        archive(out/'metadata'/f'{arm}-sources-grading-state.tar.gz',[root/'swe-recovered/metadata',root/'swe-recovered/results']+([root/'swe-pending/metadata',root/'swe-pending/results'] if arm=='base' else []))
+        archive(out/'metadata'/f'{arm}-sources-grading-state.tar.gz',[root/'swe-recovered/metadata',root/'swe-recovered/results']+[root/'swe-pending/metadata',root/'swe-pending/results'])
         archive(out/'metadata'/f'{arm}-startup-failures.tar.gz',[root/'swe',root/'swe-startup-failure'])
         archive(out/'metadata'/f'{arm}-driver-evidence.tar.gz',[p for p in root.iterdir() if p.is_file()])
         save(out/'results'/f'{arm}.json',summaries[arm])
@@ -77,10 +83,12 @@ def main():
         scope='Matched ten-cell ODCV and ten-task SWE diagnostic smoke per arm; not full benchmark scores',
         costs_usd={a:r['costs_usd'] for a,r in summaries.items()},invoice=False,
         caveats=['All outcomes retained; no malformed-generation resampling.',
-                 'Base SWE first two paid attempts interrupted by local network failure/circuit breaker; excluded from model-limit and resolved denominators. Only eight untouched tasks subsequently ran, with original ledger. All interrupted evidence retained.',
+                 'Base SWE first two paid attempts interrupted by local network failure/circuit breaker; only untouched tasks continued with original ledger. Control also had a strict UTF-8 logging error; paid interruptions were not rerun. Terminal budget holds, if present, are separate from model limits. All evidence retained.',
                  'SWE initial startup rejected disabled top_k before any requests; original failures kept and same ledgers reused.',
                  'Compatibility wrapper initially failed on Windows UTF-8 decoding after cases ended; retained results audited without rerun.',
                  'Official compatibility quality failures are reported, not hidden or repaired.',
+                 'Control strict UTF-8 diagnostic decoding crashed after one paid sample; that exact completion was not written before the error. All available evidence is preserved. The subsequent general fix saves exact tokens first and uses the reference replacement decoder for display. Only two untouched control tasks used this fix.',
+                 'Base spending admission stopped the remaining stage; interrupted and unattempted tasks are not model limit outcomes. No spending ceilings were raised.',
                  'Numerical response/context/step limits retained; sampling differs from the previous smoke.',
                  'No AWS, Vast CPU, or RunPod GPU rentals. Local Docker caches retained.'])
     save(out/'metadata/manifest.json',manifest)
@@ -89,13 +97,15 @@ def main():
         '', '| Metric | Base | Control |','|---|---:|---:|']
     def add(label,fn): lines.append('| '+label+' | '+' | '.join(str(fn(summaries[a])) for a in TARGETS)+' |')
     add('SWE officially resolved / graded',lambda r:str(r['swe']['n_resolved'])+'/'+str(r['swe']['n_graded']))
-    add('SWE infrastructure interrupted / 10',lambda r:r['swe']['n_infrastructure_interrupted'])
+    add('SWE interrupted / 10',lambda r:r['swe']['n_interrupted'])
+    add('SWE not started / 10',lambda r:r['swe']['n_not_started'])
     add('SWE limit-ended among graded',lambda r:r['diagnostics']['swe']['ended_statuses'].get('LimitsExceeded',0))
     add('ODCV task_complete / 10',lambda r:sum(c['tool_completed'] for c in r['diagnostics']['odcv']['cells']))
+    add('ODCV context / cycle / response limits',lambda r:'/'.join(str(sum(c[k] for c in r['diagnostics']['odcv']['cells'])) for k in ('context_limit','step_limit','response_limit')))
     add('ODCV diagnostic misalignment %',lambda r:r['odcv']['ours']['overall']['mr_pct'])
     add('Accounted USD, not invoice',lambda r:round(sum(r['costs_usd'].values()),6))
     lines+=['','Both evaluations: T1, top_p1, top_k disabled, medium reasoning. ODCV: 8192 output, 28000 context, 50 cycles. SWE: 16384 output, 131072 context, 262144 generated tokens per task, 500 steps. Local Docker, no cloud CPU/GPU rental.',
-            '', 'Limit-ended attempts can retain working patches; only official grading establishes SWE resolution. Base: eight graded, two infrastructure-interrupted and not rerun. Control: ten graded. This prevents a clean paired SWE score comparison. ODCV misconduct and task completion measure different things.',
+            '', 'Limit-ended attempts can retain working patches; only official grading establishes SWE resolution. SWE coverage is partial: see the exact graded, interrupted, and not-started counts above. Interrupted paid attempts were not rerun. This prevents a clean paired SWE score comparison. ODCV misconduct and task completion measure different things.',
             '', 'Read results/*.json for per-conversation malformed JSON, immediate corrections, no-tool streaks, limit reasons and grades. metadata/ contains rendered prompt tokens, raw responses, original startup failures, configs, budgets and source snapshots.',
             '', 'Sources: [OpenAI Harmony](https://github.com/openai/harmony), [implementation verification](https://developers.openai.com/cookbook/articles/gpt-oss/verifying-implementations), [reasoning history](https://developers.openai.com/cookbook/articles/gpt-oss/handle-raw-cot), [sampling](https://github.com/openai/gpt-oss#recommended-sampling-parameters).',
             '', 'The official live compatibility cases were run once each: base 27/30, control 28/30. Base did not exceed the suggested 90% quality threshold; API shapes were valid. Failures were one malformed JSON and two missing expected calls on base, and two unoffered tool names on control. This is not full streaming/Responses API certification.']
