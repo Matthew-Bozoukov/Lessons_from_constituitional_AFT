@@ -9,7 +9,8 @@ prior_base_config: config.yaml
 prior_base_containers:
   - gptoss-finish-smoke-20261009-base-consume
   - gptoss-finish-smoke-20261009-base-shim
-wait_prior_base_graded: true
+# Grading writes only results; frozen metadata/rollouts can be copied as soon as inference exits.
+wait_prior_base_graded: false
 workers: 4
 request_timeout: 7200
 request_attempts: 2
