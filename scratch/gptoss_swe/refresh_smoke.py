@@ -101,10 +101,26 @@ def grade():
              n_not_started=sum(t['status']=='pending' for t in state['tasks'].values()),task_statuses=state['tasks']))
 
 
+def publication_cost(ledger, kind, arm, authorization=None):
+    """Validate accounting without changing a ledger or authorizing new inference."""
+    cost = sum(r['upper_usd'] for r in ledger['requests'].values())
+    ceiling = ledger['ceiling_usd']
+    if ceiling is None:
+        assert kind == 'swe', 'Only SWE spending guards were removed'
+        assert authorization and authorization['arms'][arm]['mode'] == 'unlimited'
+        assert all(r['state'] == 'completed' for r in ledger['requests'].values()), 'Wait for settled SWE requests'
+    else:
+        assert cost <= ceiling
+    return cost
+
+
 def publish():
     from huggingface_hub import HfApi, hf_hub_download
     from scratch.gptoss_swe.audit_shared_smoke import main as audit
     env = smoke.environment()
+    authorization_path = Path('output/gptoss_finish_smoke_20261009/spending-cap-removal.json')
+    authorization = json.loads(authorization_path.read_text()) if authorization_path.exists() else None
+    unlimited_swe = False
     summaries = {}
     for arm,target in smoke.TARGETS.items():
         root = ROOT/arm
@@ -121,9 +137,10 @@ def publish():
         for kind in ('odcv','swe'):
             ledger = json.loads((root/(kind+'-budget.json')).read_text())
             assert ledger['authorized_checkpoints']==[target]
-            costs[kind]=sum(r['upper_usd'] for r in ledger['requests'].values())
-            assert costs[kind]<=ledger['ceiling_usd']
+            costs[kind]=publication_cost(ledger,kind,arm,authorization)
+            unlimited_swe |= kind == 'swe' and ledger['ceiling_usd'] is None
         costs['judge']=sum(r['charged_or_reserved_usd'] for r in json.loads((root/'judge-budget.json').read_text()))
+        assert costs['judge'] <= 2
         odcvroot=Path(json.loads((root/'odcv-rollout.json').read_text())['path'])
         odcv=json.loads((odcvroot/'results.json').read_text())
         assert odcv['n_judged']==10 and odcv['n_dropped_all_na']==0
@@ -132,9 +149,12 @@ def publish():
         summaries[arm]=dict(target=target,swe=swe,odcv=odcv,costs_usd=costs,
                            diagnostics=json.loads((root/'audit.json').read_text()))
     cost=sum(sum(r['costs_usd'].values()) for r in summaries.values())
-    assert cost<=int(CFG.total_cap_usd)
+    if not unlimited_swe:
+        assert cost<=int(CFG.total_cap_usd)
     out=ROOT/'package'; out.mkdir(exist_ok=True)
     for directory in ('rollouts','metadata','results'): (out/directory).mkdir(exist_ok=True)
+    if unlimited_swe:
+        save(out/'metadata/spending-cap-removal.json',authorization)
     needles=[v.encode() for k,v in env.items() if len(v)>16 and ('KEY' in k or 'TOKEN' in k)]
     for arm in smoke.TARGETS:
         with tarfile.open(out/'rollouts'/f'{arm}.tar.gz','w:gz') as tar:
@@ -157,11 +177,13 @@ def publish():
     def row(name,fn):lines.append('| '+name+' | '+' | '.join(str(fn(summaries[a])) for a in smoke.TARGETS)+' |')
     row('ODCV task_complete / 10',lambda r:sum(c['tool_completed'] for c in r['diagnostics']['odcv']['cells']))
     row('ODCV context/cycle/response limits',lambda r:'/'.join(str(sum(c[k] for c in r['diagnostics']['odcv']['cells'])) for k in ('context_limit','step_limit','response_limit')))
-    row('ODCV misalignment %',lambda r:r['odcv']['ours']['overall']['mr_pct'])
+    row('ODCV stock paired-scenario misalignment % (not all-cell rate)',lambda r:r['odcv']['ours']['overall']['mr_pct'])
     row('SWE resolved / graded',lambda r:f"{r['swe']['n_resolved']}/{r['swe']['n_graded']}")
     row('SWE Submitted / LimitsExceeded',lambda r:'/'.join(str(r['diagnostics']['swe']['ended_statuses'].get(k,0)) for k in ('Submitted','LimitsExceeded')))
     row('SWE interrupted / unstarted',lambda r:f"{r['swe']['n_interrupted']}/{r['swe']['n_not_started']}")
-    lines+=['',f'Conservative accounted spend ${cost:.6f}, not invoice; ceiling $34. Unknown requests retain their full reservation.',
+    lines+=['',f'Conservative accounted spend ${cost:.6f}, not invoice. '+('The user removed SWE spending ceilings; ODCV and judge ceilings remain unchanged.' if unlimited_swe else 'Ceiling $34.'),
+            'SWE costs are cumulative shared-ledger totals including later recovery/completion runs. They are not costs exclusive to these historical trajectories and MUST NOT be added to the later completion artifact costs.',
+            'SWE coverage here is the original historical snapshot. The base/control SWE smoke completion artifact supersedes it for current coverage. The historical ODCV response cap remains 8192.',
             'All paid attempts are retained. Limit endings are not automatically unresolved; official grading determines resolution. Interruptions/unstarted tasks are separate.',
             'Prior smoke is separate; these are explicitly authorized fresh attempts. No Vast/RunPod rentals.']
     text='\n'.join(lines)+'\n';(out/'README.md').write_text(text,encoding='utf-8')
@@ -178,6 +200,26 @@ def publish():
         receipt['verified_files']+=1
     receipt['complete']=True;save(ROOT/'publication.json',receipt)
     save(ROOT/'final-report.json',dict(artifact_url=url+'/tree/'+revision,cost_usd=cost,text=text))
+
+
+def recover_publish():
+    """Publish existing judged/graded outcomes after the explicit spending-cap removal."""
+    original = json.loads((ROOT/'status.json').read_text())
+    assert original['phase'] == 'held' and 'NoneType' in original['error'], original
+    with (ROOT/'publication-recovery-started.json').open('x') as out:
+        json.dump(dict(pid=os.getpid(),at=time.time(),source=source(),original_status=original,
+                       scope='Publication and stopped-container cleanup only; no inference or judging'),out)
+    subprocess.run(['git','archive','--format=tar.gz','--output='+str(ROOT/'publication-recovery-source.tar.gz'),'HEAD'],check=True)
+    publish()
+    ids=subprocess.check_output(['docker','ps','-aq','--filter','label=lasr.campaign='+str(CFG.campaign)],text=True).split()
+    for cid in ids:
+        item=json.loads(subprocess.check_output(['docker','inspect',cid]))[0]
+        assert not item['State']['Running'], cid
+        subprocess.run(['docker','rm',cid],check=True)
+    remaining=subprocess.check_output(['docker','ps','-aq','--filter','label=lasr.campaign='+str(CFG.campaign)],text=True).split()
+    assert not remaining
+    save(ROOT/'cleanup.json',dict(at=time.time(),owned_remaining=remaining,removed=ids))
+    save(ROOT/'status.json',dict(phase='complete',at=time.time(),publication_only_recovery=True))
 
 
 def run():
@@ -215,5 +257,5 @@ def run():
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['prepare','run','grade','publish'])
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['prepare','run','grade','publish','recover_publish'])
     globals()[parser.parse_args().action]()
