@@ -19,6 +19,10 @@ MIXES = {
         "output/canary/mixes/da-tools-15-canary-reusedtools/mixture.jsonl",
         "Oct: Sept tool lists reused (2026-10-07)",
     ),
+    "written": (
+        "output/canary/mixes/da-tools-15-canary-written/mixture.jsonl",
+        "Oct: tools written per row (2026-10-09)",
+    ),
 }
 GENERIC = re.compile(
     r"time_?zone|timezone|date_diff|date_calc|calculate_date|unit|convert|citation|calendar|holiday|"

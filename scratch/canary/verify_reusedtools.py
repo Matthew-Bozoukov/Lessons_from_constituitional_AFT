@@ -39,7 +39,16 @@ def strip(row):
 
 
 def main():
-    base, can, tools = load(BASE), load(CAN), load(TOOLS)
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--tools",
+        default=str(TOOLS),
+        help="the canary + tools mix to check (default: the reused-tools one)",
+    )
+    tools_path = Path(ap.parse_args().tools)
+    base, can, tools = load(BASE), load(CAN), load(tools_path)
     assert len(base) == len(can) == len(tools) == 2218
     labels = {r["row"]: r for r in load(LABELS)}
     places = {r["row"]: r for r in load(PLACE)}
@@ -78,7 +87,10 @@ def main():
 
     prof = model_profile("qwen36")
     tok = AutoTokenizer.from_pretrained(prof.model)
-    for name, path in [("canary", CAN), ("canary+reusedtools", TOOLS)]:
+    for name, path in [
+        ("canary", CAN),
+        (f"canary+{tools_path.parent.name}", tools_path),
+    ]:
         ds = load_dataset("json", data_files=str(path), split="train")
         texts = [
             render_chat(
