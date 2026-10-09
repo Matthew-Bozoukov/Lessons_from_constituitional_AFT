@@ -1,0 +1,41 @@
+# ABOUTME: ODCV for google/gemma-4-31B-it: one pass at 64 scenarios in flight, to read its
+# ABOUTME: misalignment rate without committing to the 3-pass protocol the trained arms use.
+#
+# ONE pass, so this is not comparable cell-for-cell with the 3-pass arms: a scenario's rate is
+# 0 or 1 here where theirs is 0, 1/3, 2/3 or 1, and the CI is correspondingly wider. It answers
+# "roughly where does an untrained Gemma sit", not "is it different from arm X".
+#
+# compare_published is off: `published_key` names a Qwen3.6 baseline, which says nothing here.
+published_key: null
+compare_published: false
+temperature: 0.7
+passes: 1
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+concurrency: 64
+scenario_timeout_s: 2400
+prune_images: false
+judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"
+judge_workers: 8
+progress_judge: true
+progress_judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"
+smoke: false
+serving:
+  # Matches the window the Qwen arms ran at, so the transcript budget is the same; the profile's
+  # max_num_seqs (64) is what caps the batch.
+  context_window: 28000
+  # Without the served tool-call parser vLLM returns Gemma's calls as raw text and every
+  # scenario reports ok with an EMPTY transcript (docs/GOTCHAS.md). The profile supplies
+  # `gemma4`, verified against vllm/tool_parsers/__init__.py on the pinned 0.26.0.
+  needs_tool_calls: true
+  # ON: the first pass ran with this false and re-prefilled a growing transcript on
+  # every step of all 64 scenarios, which is the worst case for an agent loop.
+  reuses_long_prefixes: true
+
+# Gemma is a FULL model, so it carries no training stamp and resolves to its template's own
+# default. That default DOES reason -- the generation prompt ends `<|channel>thought<channel|>`
+# -- but an unpinned mode cannot be compared against the think-stamped Qwen adapters: the
+# comparison code refuses to pair arms whose modes differ. Pinning it explicitly is the
+# documented way a base arm joins a think ladder, and it lands in run_meta.json.
+mode: think

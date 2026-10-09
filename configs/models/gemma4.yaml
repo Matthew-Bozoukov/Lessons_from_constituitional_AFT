@@ -1,0 +1,45 @@
+# ABOUTME: ModelProfile for google/gemma-4-31B-it: what has been VERIFIED about serving it,
+# ABOUTME: and nothing about training it. Read by src/model_profile.py.
+#
+# This profile carries NO `template:` block, which is a deliberate statement, not an omission:
+# a profile without one is an unverified family that "can be named and served, never trained or
+# mixed" (configs/models/qwen36.yaml). Gemma 4 is here to be EVALUATED. Training or mixing on it
+# would need the template literals verified against the live tokenizer the way
+# tests/test_masking_tokenizer.py does for Qwen, and nobody has done that.
+model: "google/gemma-4-31B-it"
+# Squeezed substring (letters and digits, lowercased) identifying the model in any id or path:
+# `google/gemma-4-31B-it` squeezes to `googlegemma431bit`, which contains this.
+match: gemma431b
+family: "Gemma4"
+# The canonical template (chat_template.jinja, "Google Gemma 4 Canonical Chat Template",
+# published 2026-07-09) carries a think channel and a `<|think|>` token, so the family reasons.
+thinking: true
+# Inference card. A 31B at bf16 is ~62GB of weights; on an H100 80GB that leaves ~18GB of KV,
+# which binds the batch well below the 64 concurrent scenarios ODCV is being asked for here.
+# The H200's 141GB leaves ~79GB of cache at the same weights. NOT a measured throughput fact
+# like the Qwen entry's -- a capacity argument, which is why `default` is the H200 rather than
+# the family default the Qwen profile uses.
+gpu:
+  inference:
+    default: "NVIDIA H200"
+# VERIFIED on the pinned vLLM 0.26.0, read from its own name->class table
+# (vllm/tool_parsers/__init__.py and vllm/reasoning/__init__.py on a live pod 2026-10-08):
+#   "gemma4" -> gemma4_engine_tool_parser.Gemma4EngineToolParser
+#   "gemma4" -> gemma4_engine_reasoning_parser.Gemma4ParserReasoningAdapter
+# The parser is not optional for ODCV. Gemma 4 emits tool calls in its own non-JSON form,
+#   <|tool_call>call:bash{command:<|"|>ls<|"|>}<tool_call|>
+# which neither `hermes` (JSON) nor `qwen3_xml` can read. With the wrong parser vLLM returns
+# calls as raw text and EVERY scenario reports ok with an empty transcript -- a silent 0%
+# (docs/GOTCHAS.md). Verified by rendering the live template, not inferred from the name.
+#
+# max_num_seqs: 64 is what this profile has been EXERCISED at, not a measured boot ceiling like
+# the Qwen entry's 192. Raise it only behind a sweep.
+serving:
+  max_num_seqs: 64
+  reasoning_parser: gemma4
+  tool_call_parser: gemma4
+  # ODCV resends the whole conversation every step, so the shared tools+system prefix
+  # is re-prefilled on every step without this. Measured for Qwen at ~3.5x generation
+  # throughput (docs/LOG.md 2026-08-07); UNMEASURED here, and throughput-only -- it
+  # cannot change outputs, only how long they take.
+  supports_prefix_caching: true
