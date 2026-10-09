@@ -20,10 +20,19 @@ def main():
     summaries={}
     for arm,target in TARGETS.items():
         root=ROOT/arm
-        assert (root/'swe-recovery-finished.json').exists() and (root/'odcv-judge-finished.json').exists()
-        audit(root,root/'swe-recovered',OLD/'cache',False)
-        swe=json.loads((root/'swe-recovered/results/qualification.json').read_text())
-        assert swe['n_total']==swe['n_valid_rollouts']==swe['n_graded']==10
+        stage='swe-pending' if arm=='base' else 'swe-recovery'
+        swe_root=root/('swe-pending' if arm=='base' else 'swe-recovered')
+        assert (root/(stage+'-finished.json')).exists() and (root/'odcv-judge-finished.json').exists()
+        audit(root,swe_root,OLD/'cache',False)
+        swe=json.loads((swe_root/'results/qualification.json').read_text())
+        expected=8 if arm=='base' else 10
+        assert swe['n_total']==swe['n_valid_rollouts']==swe['n_graded']==expected
+        swe['n_selected']=10
+        swe['n_infrastructure_interrupted']=10-expected
+        if arm=='base':
+            old=json.loads((root/'swe-recovered/metadata/state.json').read_text())
+            assert sum(t['status']=='invalid' for t in old['tasks'].values())==2
+            swe['interrupted_ids']=[i for i,t in old['tasks'].items() if t['status']=='invalid']
         assert swe['checkpoint']==target
         odcvroot=Path(json.loads((root/'odcv-rollout.json').read_text())['path'])
         odcv=json.loads((odcvroot/'results.json').read_text())
@@ -52,9 +61,9 @@ def main():
     for arm in TARGETS:
         root=ROOT/arm
         archive(out/'rollouts'/f'{arm}-odcv.tar.gz',[root/'odcv'])
-        archive(out/'rollouts'/f'{arm}-swe.tar.gz',[root/'swe-recovered/rollouts'])
+        archive(out/'rollouts'/f'{arm}-swe.tar.gz',[root/'swe-recovered/rollouts']+([root/'swe-pending/rollouts'] if arm=='base' else []))
         archive(out/'metadata'/f'{arm}-raw-interface.tar.gz',[root/(k+'-traces') for k in ('compat','odcv','swe')])
-        archive(out/'metadata'/f'{arm}-sources-grading-state.tar.gz',[root/'swe-recovered/metadata',root/'swe-recovered/results'])
+        archive(out/'metadata'/f'{arm}-sources-grading-state.tar.gz',[root/'swe-recovered/metadata',root/'swe-recovered/results']+([root/'swe-pending/metadata',root/'swe-pending/results'] if arm=='base' else []))
         archive(out/'metadata'/f'{arm}-startup-failures.tar.gz',[root/'swe',root/'swe-startup-failure'])
         archive(out/'metadata'/f'{arm}-driver-evidence.tar.gz',[p for p in root.iterdir() if p.is_file()])
         save(out/'results'/f'{arm}.json',summaries[arm])
@@ -68,6 +77,7 @@ def main():
         scope='Matched ten-cell ODCV and ten-task SWE diagnostic smoke per arm; not full benchmark scores',
         costs_usd={a:r['costs_usd'] for a,r in summaries.items()},invoice=False,
         caveats=['All outcomes retained; no malformed-generation resampling.',
+                 'Base SWE first two paid attempts interrupted by local network failure/circuit breaker; excluded from model-limit and resolved denominators. Only eight untouched tasks subsequently ran, with original ledger. All interrupted evidence retained.',
                  'SWE initial startup rejected disabled top_k before any requests; original failures kept and same ledgers reused.',
                  'Compatibility wrapper initially failed on Windows UTF-8 decoding after cases ended; retained results audited without rerun.',
                  'Official compatibility quality failures are reported, not hidden or repaired.',
@@ -78,13 +88,14 @@ def main():
         'Matched diagnostic subsets only. Official OpenAI Harmony rendering/parsing, no custom JSON coaching, no malformed-generation resampling.',
         '', '| Metric | Base | Control |','|---|---:|---:|']
     def add(label,fn): lines.append('| '+label+' | '+' | '.join(str(fn(summaries[a])) for a in TARGETS)+' |')
-    add('SWE officially resolved / 10',lambda r:r['swe']['n_resolved'])
-    add('SWE limit-ended / 10',lambda r:r['diagnostics']['swe']['ended_statuses'].get('LimitsExceeded',0))
+    add('SWE officially resolved / graded',lambda r:str(r['swe']['n_resolved'])+'/'+str(r['swe']['n_graded']))
+    add('SWE infrastructure interrupted / 10',lambda r:r['swe']['n_infrastructure_interrupted'])
+    add('SWE limit-ended among graded',lambda r:r['diagnostics']['swe']['ended_statuses'].get('LimitsExceeded',0))
     add('ODCV task_complete / 10',lambda r:sum(c['tool_completed'] for c in r['diagnostics']['odcv']['cells']))
     add('ODCV diagnostic misalignment %',lambda r:r['odcv']['ours']['overall']['mr_pct'])
     add('Accounted USD, not invoice',lambda r:round(sum(r['costs_usd'].values()),6))
     lines+=['','Both evaluations: T1, top_p1, top_k disabled, medium reasoning. ODCV: 8192 output, 28000 context, 50 cycles. SWE: 16384 output, 131072 context, 262144 generated tokens per task, 500 steps. Local Docker, no cloud CPU/GPU rental.',
-            '', 'Limit-ended attempts can retain working patches; only official grading establishes SWE resolution. All 10 selected tasks per arm were graded. ODCV misconduct and task completion measure different things.',
+            '', 'Limit-ended attempts can retain working patches; only official grading establishes SWE resolution. Base: eight graded, two infrastructure-interrupted and not rerun. Control: ten graded. This prevents a clean paired SWE score comparison. ODCV misconduct and task completion measure different things.',
             '', 'Read results/*.json for per-conversation malformed JSON, immediate corrections, no-tool streaks, limit reasons and grades. metadata/ contains rendered prompt tokens, raw responses, original startup failures, configs, budgets and source snapshots.',
             '', 'Sources: [OpenAI Harmony](https://github.com/openai/harmony), [implementation verification](https://developers.openai.com/cookbook/articles/gpt-oss/verifying-implementations), [reasoning history](https://developers.openai.com/cookbook/articles/gpt-oss/handle-raw-cot), [sampling](https://github.com/openai/gpt-oss#recommended-sampling-parameters).',
             '', 'The official live compatibility cases were run once each: base 27/30, control 28/30. Base did not exceed the suggested 90% quality threshold; API shapes were valid. Failures were one malformed JSON and two missing expected calls on base, and two unoffered tool names on control. This is not full streaming/Responses API certification.']

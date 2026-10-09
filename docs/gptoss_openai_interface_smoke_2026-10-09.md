@@ -37,3 +37,9 @@ No cloud CPU/GPU rentals. Docker Desktop reuses ten freshly digest-checked and s
 Initial SWE startup hit the old Qwen-only `top_k>0` validator before any sampling: both SWE ledgers had zero requests and no traces. Added support for the standard disabled value -1, with two focused validator/HTTP tests passing. Original failed states, attempts and logs remain under `swe`; guarded recovery writes `swe-recovered` while using the **same $12 ledger**. No model outcome was retried. Shared interface runtime is unchanged between the compatibility test and benchmark runs.
 
 Interface source: `4e5d852d`; ODCV launcher: `af4593f5`; pre-inference SWE validator recovery: `907ab589`. Local root: `output/gptoss_openai_smoke`. Final results/publication are pending until full smoke coverage, official grading, judging and immutable hash readback finish.
+
+## Smoke interruption and continuation (October 9)
+
+The base SWE driver lost its Docker-to-host network path during the pre-request token-count call (`URLError: Network is unreachable`). Django's paid trajectory was retained; the circuit breaker interrupted the concurrent Matplotlib attempt. These are two infrastructure-interrupted attempts, not model limit hits, and neither was rerun. All 460 already submitted Tinker requests were settled. The eight previously untouched tasks continue under `swe-pending`, using the original $12 ledger and identical model/numerical settings. Control's original inference remains active. Publication must report the base coverage shortfall explicitly and archive both output roots; it cannot present a clean paired ten-task comparison.
+
+A durable local closeout process judges completed ODCV transcripts and publishes only after the remaining stages finish. The original closeout failure is retained; the replacement only supervises/judges/publishes and never restarts inference. No recurring scheduler or cloud rental was created.
