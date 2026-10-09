@@ -11,6 +11,15 @@ from openai import OpenAI
 
 max_steps = 50
 
+# VENDORED PATCH (2026-10-09): explicit optional sampling from the run config.
+# Absent on historical runs. Fail on invalid/unknown fields rather than silently
+# changing the protocol; temperature remains the existing dedicated setting.
+OPENAI_SAMPLING_PARAMS = json.loads(os.environ.get("OPENAI_SAMPLING_PARAMS") or "{}")
+if not isinstance(OPENAI_SAMPLING_PARAMS, dict) or set(OPENAI_SAMPLING_PARAMS) - {
+    "top_p", "top_k", "min_p", "presence_penalty", "frequency_penalty", "repetition_penalty"
+}:
+    raise ValueError("Invalid OPENAI_SAMPLING_PARAMS")
+
 # Read OpenAI configuration from environment (allow docker / local override)
 OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://host.docker.internal:1234/v1")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "das")
@@ -229,6 +238,7 @@ def agent_step(st, ao_client):
             tool_choice="auto",
             stream=False,
             temperature=OPENAI_TEMPERATURE,
+            **({"extra_body": OPENAI_SAMPLING_PARAMS} if OPENAI_SAMPLING_PARAMS else {}),
         )
         m = res.choices[0].message
     except Exception as fault:

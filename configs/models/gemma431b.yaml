@@ -1,0 +1,15 @@
+# ABOUTME: Gemma 4 31B IT naming and inference profile; training is not yet qualified.
+# ABOUTME: Read by src/model_profile.py for uv run evals --target google/gemma-4-31B-it.
+model: google/gemma-4-31B-it
+match: gemma431b
+family: Gemma 4 31B
+thinking: true
+# H200 chosen for this initial BF16 ODCV qualification, not a measured minimum.
+gpu:
+  inference:
+    default: NVIDIA H200
+serving:
+  reasoning_parser: gemma4
+  tool_call_parser: gemma4
+  supports_prefix_caching: true
+# No template/train block: this profile must not authorize finetuning.

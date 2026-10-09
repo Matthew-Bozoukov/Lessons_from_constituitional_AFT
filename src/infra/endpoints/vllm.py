@@ -1041,7 +1041,16 @@ class VllmServer:
         if mode == "default":
             return None
         with open(hf_download(base_model, "tokenizer_config.json", **({"revision": revision} if revision else {}))) as f:
-            template = json.load(f)["chat_template"]
+            template = json.load(f).get("chat_template")
+        # Modern HF checkpoints (including Gemma 4) store the template separately.
+        # Keep the same revision pin for both layouts; download errors must propagate.
+        if not template:
+            template = Path(hf_download(
+                base_model, "chat_template.jinja",
+                **({"revision": revision} if revision else {}),
+            )).read_text(encoding="utf-8")
+        if not isinstance(template, str):
+            raise ValueError(f"{base_model}: expected one string chat template")
         return self.executor.write_file(f"chat_template_{mode}.jinja",
                                         pin_template(template, mode))
 
