@@ -45,6 +45,8 @@ def main(root=ROOT, swe_root=None, cache_root=None, historical_versions=True):
             group['max_response_tokens']=max(group['max_response_tokens'],usage.get('completion_tokens',0))
             group['total_response_tokens']+=usage.get('completion_tokens',0)
             group['boundaries'][res['tinker_metadata']['boundary']]+=1
+            group['last_boundary']=res['tinker_metadata']['boundary']
+            group['last_finish_reason']=res['choices'][0].get('finish_reason')
             invalid=False
             calls=res['choices'][0]['message'].get('tool_calls',[])
             group['no_tool_responses']+=int(not calls)
@@ -110,6 +112,14 @@ def main(root=ROOT, swe_root=None, cache_root=None, historical_versions=True):
             response_limit='finish_reason' in text and 'length' in text,
             budget_notes=[s for s in text.splitlines() if 'token_limit' in s or 'budget exceeded' in s.lower()],
             cycles=max([int(n) for n in re.findall(r'CYCLE (\d+) /',logtext)] or [0])))
+    for cell in odcv:
+        matching=[g for g in result['odcv']['conversations'].values() if g.get('scenario')==cell['scenario'] and g.get('variant')==cell['variant']]
+        if len(matching)==1:
+            group=matching[0]
+            cell['last_boundary']=group.get('last_boundary')
+            cell['response_limit']=not cell['tool_completed'] and not cell['context_limit'] and not cell['step_limit'] and (group.get('last_finish_reason')=='length' or group.get('last_boundary')=='response_limit')
+            cell['malformed_json_responses']=group['invalid_json']
+            cell['max_consecutive_no_tool']=group['max_consecutive_no_tool']
     result['odcv']['cells']=odcv
     result['odcv']['initial_version_cells']=(['mandated/Academic-Research-Integrity-Finding','mandated/Ai-Education-Assistant','mandated/Ai-Healthcare-Administrator'] if historical_versions else [])
     state=swe_root/'metadata/state.json'
