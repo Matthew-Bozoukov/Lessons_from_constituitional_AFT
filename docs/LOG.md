@@ -1,3 +1,24 @@
+### 2026-10-09: Twenty-task GPT-OSS comparison completed and verified
+
+All20 selected tasks per arm have valid outcomes and official grades: **base6/20 (30%), control5/20 (25%), DA15 7/20 (35%)**. This is a matched diagnostic subset, not a full SWE-bench Lite score. Base retains the original ten outcomes and adds ten; control and DA15 are explicitly authorized fresh twenty-task replicates. Original-ten/new-ten resolved counts are base1/5, control1/4, DA15 3/4. The earlier control replicate remains separate and unchanged.
+
+| Metric | Base | Control | DA15 |
+|---|---:|---:|---:|
+| Officially resolved | 6 | 5 | 7 |
+| Graded unresolved | 14 | 15 | 13 |
+| Submitted endings | 10 | 9 | 11 |
+| Context-limit endings | 7 | 5 | 7 |
+| Response-limit endings | 0 | 4 | 2 |
+| Step-limit endings | 3 | 2 | 0 |
+| Task-token/other limits | 0 | 0 | 0 |
+| Infrastructure exclusions | 0 | 0 | 0 |
+
+Limit endings do not imply failed grades: base Django14411 resolved; control Django14411 and Sphinx8721 resolved; DA15 Django14411 resolved. Submitted counts likewise are not success counts. No valid outcome was resampled, no inference recipe changed, and all50 newly authorized attempts ran under the same declared interface and numerical limits. No inference, grading or tool containers remain; all three serving processes and the owner exited. The systemd service reports success/inactive. Fresh provider check confirms the persistent Vast CPU55053931 remains running with its cache; no RunPod changes.
+
+All inference reservations settled: base5678 requests/$56.335464596 cumulative, including historical3798 requests/$38.312245452; fresh control2963/$29.579241268; DA15 1966/$19.980262492. The50 fresh attempts cost **$67.582722904** in conservative inference accounting. Cumulative displayed totals sum$105.894968356; never add the old base bill again. These are estimates, not invoices; CPU/storage/transfer charges are separate.
+
+Original publication [26e90f60c8dc4a6094df23dfdb9222789c8c89ca](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-control-da15-swe-smoke20/tree/26e90f60c8dc4a6094df23dfdb9222789c8c89ca) verified736 files by immutable SHA256 readback. Publication-only reporting helper56345af0 then added canonical combined `results/results.json`, Markdown, run metadata and cleanup evidence: [final artifact09bc27d232fb52c6a6d46aa54f09c12e6ac4e9b5](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-control-da15-swe-smoke20/tree/09bc27d232fb52c6a6d46aa54f09c12e6ac4e9b5). Seven changed files passed SHA256 readback; the parent-pinned additive commit preserves all other736-publication content and its verified hashes. No inference or grades were rerun. Runtime remains5c75cf3f; reporting helper ran only after owner exit. Final local receipts are under `output/gptoss_twenty_20261009`; remote `reporting-publication.json` pins the final revision. Delete the progress heartbeat after this verified closeout; retain CPU/cache until explicitly stopped.
+
 ### 2026-10-09: Matched twenty-task GPT-OSS expansion on a new CPU
 
 **17:02UTC launch verified:** all50 fresh tasks are active (base10/control20/DA15 20), with no halt or infrastructure-invalid outcomes. All20 selected images plus6 qualification images are cached. New-host qualification passed526 commands, zero errors/nonzero exits/OOMs, minimum177.30GiB available RAM; gold6/6 resolved and no-fix0/6 resolved. [Immutable qualification proof](https://huggingface.co/datasets/dougalldeepmind/2026-10-09-gptoss120b-base-control-da15-swe-smoke20-infrastructure/tree/ea09c1bb60150b03c5e5fe8f44634d4053d89343) passed five-file SHA256 readback before paid requests. `initial-live-audit.json` verifies544 live completed responses across the three arms: exact checkpoints, medium reasoning, fixed render date, T1/p1/kdisabled and16384 response limit. All active task requests match the shared32-command/32GiB guard and unchanged per-task numerical limits. Heartbeat updated to active inference and forbidden duplicate launch. Runtime remains5c75cf3f; subsequent commits are documentation only.
