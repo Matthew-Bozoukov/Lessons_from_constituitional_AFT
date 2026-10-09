@@ -58,6 +58,10 @@ def prepare():
         cfg.tinker.budget_usd = 12
         cfg.tinker.budget_ledger = '/work/'+(root/arm/'swe-budget.json').as_posix()
         cfg.tinker.render_date = DATE
+        cfg.worker.model_request_timeout_seconds = 7200
+        cfg.worker.model_request_attempts = 2
+        cfg.worker.max_infrastructure_attempts = 3
+        cfg.worker.max_infrastructure_failures = 6
         cfg.sampling.temperature, cfg.sampling.top_p, cfg.sampling.top_k = 1.0, 1.0, -1
         (root/arm).mkdir(exist_ok=True)
         OmegaConf.save(cfg,root/arm/'swe.yaml')
@@ -158,7 +162,7 @@ def host(arm,kind):
             subprocess.run(args,env=env,check=True)
         else:
             from src.eval.misalignment.odcv import odcv_rollout
-            cfg=OmegaConf.load(OLD/'odcv.yaml')
+            cfg=OmegaConf.load(os.environ.get('GPTOSS_ODCV_CONFIG', str(OLD/'odcv.yaml')))
             cfg.model_key='gptoss120b-'+arm+'-openai-smoke'
             cfg.base_url=f'http://host.docker.internal:{port(arm,kind)}/v1'
             cfg.output_root=str((root/'odcv').resolve())

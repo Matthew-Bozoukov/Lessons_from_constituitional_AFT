@@ -1,6 +1,12 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+### 2026-10-09: Future SWE recovery parity and fresh random ODCV cells
+
+User requested future SWE transport timeout 120 minutes and three infrastructure attempts, plus another ten random ODCV cells for each of base and control while current SWE continues. Future pilot and smoke preparation now use request timeout7200 seconds, request attempts2, infrastructure attempts3 and infrastructure breaker6, matching the Qwen fleet. These are total attempt limits; valid model outcomes are never retried. Already-running SWE settings and budgets remain unchanged.
+
+New ODCV-only owner scratch/gptoss_swe/odcv_remaining.py uses seed20261009 to sample ten cells without replacement from the seventy cells outside the prior ten. Both arms receive the identical frozen selection (six mandated, four incentivized). Local Docker/Tinker only, separate root output/gptoss_odcv_remaining_20261009, ports18235/18245, and a separate $10 maximum (per arm $3 inference plus $2 judging). No independent response cap: exact remaining 28000-token context, fifty cycles, T0.7/top_p0.95/top_k20, medium reasoning, reference Harmony, no JSON coaching/repair or outcome rerolls. New cases plus a changed response cap cannot isolate the causal effect of removing the cap. Offline gate, source archive, exclusive ownership, full raw traces, judging, immutable HF readback and scoped cleanup precede completion. Preparation and launch evidence will record actual source and PID.
+
 ### 2026-10-09: Remove the extra GPT-OSS ODCV response allowance
 
 User requested removal of the Tinker ODCV 8192-token per-response ceiling after comparison with Qwen ODCV, which omits max_tokens and uses the remaining 28000-token context. New ODCV launches set DEFAULT_MAX_TOKENS=remaining; the shared shim tokenizes the complete Harmony prompt first, then uses context_window minus prompt length as the completion allowance and budget reservation. Explicit request limits (including SWE 16384) remain unchanged. Full contexts are rejected before sampling. Forty offline HTTP/history/tool/budget tests passed, including available-context calculation, explicit SWE cap and pre-sampling context rejection. The ongoing refresh smoke already finished ODCV with the historical 8192 ceiling; those results remain labeled as such and are not rerun. Its already-running SWE servers are not restarted/redeployed.
