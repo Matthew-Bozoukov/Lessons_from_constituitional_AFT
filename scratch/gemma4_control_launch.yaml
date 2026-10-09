@@ -7,6 +7,8 @@ overrides:
   - data_revision=a5b115666913790be37482f83f6aa843c73e258a
   - base_model_revision=842da3794eaa0b77d5f08bae87a17459d91ff475
   - seed=0
+  # User-selected matched control uses published GLM/DeepSeek traces, as GPT-OSS did.
+  - allow_trace_family_mismatch=true
   - train.max_seq_len=8704
   - train.packing=false
   - train.logging_steps=1
