@@ -113,6 +113,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(row['complete'])
         self.assertEqual(row['parameters']['temperature'], 1.0)
         self.assertNotIn('api_key', json.dumps(row))
+
         messages = []
         for sha in row['message_hashes']:
             message = json.loads((self.root/'http/messages'/f'{sha}.json').read_text())
@@ -123,6 +124,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(raw['choices'][0]['message']['reasoning'], 'TRACE-1')
         self.assertNotIn('reasoning_content', raw['choices'][0]['message'])
         self.assertEqual(self.agent.messages[-1]['reasoning_content'], 'TRACE-1')
+
+    def test_disabled_top_k_is_forwarded_and_other_negatives_rejected(self):
+        request = copy.deepcopy(self.request)
+        request['sampling']['top_k'] = -1
+        options = {'model': {'model_kwargs': {}}}
+        configure_protocol(options, request)
+        self.assertEqual(options['model']['model_kwargs']['extra_body']['top_k'], -1)
+        for invalid in (0, -2):
+            request['sampling']['top_k'] = invalid
+            with self.assertRaises(AssertionError):
+                configure_protocol(options, request)
 
     def test_all_rejected_response_variants_preserve_reasoning(self):
         for kind in ('no_tool', 'bad_tool', 'bad_json', 'null_args', 'bad_command'):

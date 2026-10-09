@@ -23,7 +23,7 @@ def configure_protocol(config, request):
     assert all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                for v in sampling.values()), 'Invalid sampling value'
     assert 0 < sampling['temperature'] <= 2 and 0 < sampling['top_p'] <= 1
-    assert isinstance(sampling['top_k'], int) and sampling['top_k'] > 0
+    assert isinstance(sampling['top_k'], int) and (sampling['top_k'] == -1 or sampling['top_k'] > 0)
     assert 0 <= sampling['min_p'] <= 1 and 0 < sampling['repetition_penalty'] <= 2
     assert all(-2 <= sampling[k] <= 2 for k in ('presence_penalty', 'frequency_penalty'))
     options = config['model']['model_kwargs']
