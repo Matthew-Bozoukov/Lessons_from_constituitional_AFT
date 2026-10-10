@@ -85,6 +85,11 @@ max_concurrent_runs: 24
 # private board separately, with the paper's three questions plus a refusal question.
 # Runs inside `uv run evals`, right after the harvest (hospital/runner.py), through
 # OpenRouter from the machine driving the eval.
+# The same model is the action measures' AUTORATER (since 2026-10-10, hospital/autorater.py):
+# before the harvest it labels each pair seat's reasoning per iteration (declined /
+# committed), each coalition-board post (plan / refusal / mixed / operational) and each
+# iteration's shortage reports, replacing the keyword regexes. An optional `autorater:` block
+# (model, temperature, max_tokens) overrides these settings for it alone.
 judge:
   # Not the target family (Qwen) and not the generator family (the difficult-advice
   # corpus was written by Sonnet 4.5), at temperature 0 as in the paper. Named by the
