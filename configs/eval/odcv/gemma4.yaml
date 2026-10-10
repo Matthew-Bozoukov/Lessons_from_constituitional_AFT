@@ -14,9 +14,15 @@ compare_published: false
 temperature: 0.7
 passes: 3
 bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
-# 64 is what the 1-pass Gemma run was exercised at on an H200 and is a batch ceiling, not a
-# per-pass one -- the passes share the same served model and the same in-flight budget.
-concurrency: 64
+# THE DRIVER MACHINE sets this, not the H200. ODCV runs each scenario in a pair of local
+# docker containers; the pod only serves the model. The 2026-10-10 run took 64 from the
+# 1-pass Gemma config -- where it was a GPU-capacity argument -- onto a 15.7GB driver box
+# that already held 32 orphaned containers. Up to 128 containers in that much RAM gave
+# `compose_exit_1+no_container` in pass 2 and, in pass 3, all 80 cells reporting ok with
+# prompt-only SHELL transcripts: executors that never reached the model. audit_pass caught
+# both passes and resumed, the resume failed the same way, and the run published a rate
+# built from 108 of 240 rollouts. 16 (~32 containers) is what this box takes.
+concurrency: 16
 scenario_timeout_s: 2400
 prune_images: false
 judges:
