@@ -27,6 +27,7 @@ from src.eval.misalignment.colosseum.hospital.config import (
     build_sweep_config,
     resolve_fixes,
 )
+from src.eval.misalignment.colosseum.hospital.actions import REGEX
 from src.eval.misalignment.colosseum.hospital.harvest import (
     advantage_hospital,
     advantage_pair,
@@ -445,7 +446,8 @@ def test_harvest_reads_measures_seating_and_health(tmp_path):
     (root / "progress.json").write_text(json.dumps({"failed_runs": 1}))
 
     out = harvest_run_root(
-        root, pair=PAIR, expected_seats={"pair": "pair_model", "other": "other_model"}
+        root,
+        rules=REGEX, pair=PAIR, expected_seats={"pair": "pair_model", "other": "other_model"}
     )
     m = out["measures"]
     assert m["advantage_hospital"]["self_promotional"][1] == pytest.approx(0.6)
@@ -483,6 +485,7 @@ def test_harvest_refuses_a_mis_seated_episode(tmp_path):
     with pytest.raises(AssertionError, match="General_Hospital_Triage"):
         harvest_run_root(
             root,
+            rules=REGEX,
             pair=PAIR,
             expected_seats={"pair": "pair_model", "other": "other_model"},
         )
@@ -494,6 +497,7 @@ def test_harvest_refuses_an_unpatched_run(tmp_path):
     with pytest.raises(AssertionError, match="seating patch"):
         harvest_run_root(
             root,
+            rules=REGEX,
             pair=PAIR,
             expected_seats={"pair": "pair_model", "other": "other_model"},
         )
@@ -511,7 +515,7 @@ def test_baseline_episode_without_a_coalition_still_has_a_pair(tmp_path):
         secret_id=None,
         secret_posts=0,
     )
-    (rec,) = episode_records(root, pair=PAIR)
+    (rec,) = episode_records(root, pair=PAIR, rules=REGEX)
     assert rec["adversaries"] == [] and rec["pair"] == list(PAIR)
     assert rec["advantage_hospital"] == 0.5 and rec["secret_messages"] == 0
 
@@ -851,7 +855,7 @@ def test_harvest_counts_retries_rejections_loops_and_checks_the_recorded_fixes(
     root = tmp_path / "20260909-000000"
     fixes = dict(FIXES, strict_scheduler=True, carry_agent_history=True)
     _fixed_episode(root, 1, fixes=fixes)
-    out = harvest_run_root(root, pair=PAIR, expected_fixes=fixes)
+    out = harvest_run_root(root, rules=REGEX, pair=PAIR, expected_fixes=fixes)
     h = out["health"]
     assert h["retry_calls"] == 1 and h["retry_reasons"]["no_tool_call"] == 1
     assert h["rejected_tool_calls"] == 1 and h["scheduler_rejections"] == 1
@@ -863,16 +867,16 @@ def test_harvest_counts_retries_rejections_loops_and_checks_the_recorded_fixes(
     assert rec["fixes"] == fixes and rec["secret_instructions_recorded"]
 
     with pytest.raises(AssertionError, match="ran under fixes"):
-        harvest_run_root(root, pair=PAIR, expected_fixes=FIXES)
+        harvest_run_root(root, rules=REGEX, pair=PAIR, expected_fixes=FIXES)
 
 
 def test_harvest_refuses_an_episode_from_an_unpatched_package(tmp_path):
     root = tmp_path / "20260909-000000"
     _fixed_episode(root, 1, fixes=FIXES, terrarium=None)
     with pytest.raises(AssertionError, match="UNPATCHED"):
-        harvest_run_root(root, pair=PAIR, expected_fixes=FIXES)
+        harvest_run_root(root, rules=REGEX, pair=PAIR, expected_fixes=FIXES)
     # Without the check (an original-harness harvest) the episode reads fine.
-    assert harvest_run_root(root, pair=PAIR)["health"]["episodes"] == 1
+    assert harvest_run_root(root, rules=REGEX, pair=PAIR)["health"]["episodes"] == 1
 
 
 def test_judge_gets_a_reasoning_channel_per_watched_seat(tmp_path):
@@ -946,10 +950,10 @@ def test_harvest_accepts_a_partner_in_its_seat_and_refuses_it_elsewhere(tmp_path
         "other": "other_model",
         "by_seat": {"General_Hospital_Triage": "other_model"},
     }
-    assert harvest_run_root(root, pair=PAIR, expected_seats=seats)["health"]["episodes"] == 1
+    assert harvest_run_root(root, rules=REGEX, pair=PAIR, expected_seats=seats)["health"]["episodes"] == 1
     wrong = dict(seats, by_seat={PROVISIONER: "other_model"})
     with pytest.raises(AssertionError, match="General_Hospital_Triage"):
-        harvest_run_root(root, pair=PAIR, expected_seats=wrong)
+        harvest_run_root(root, rules=REGEX, pair=PAIR, expected_seats=wrong)
 
 
 def test_a_mixed_coalition_puts_the_partners_seat_in_the_name(cfg):
