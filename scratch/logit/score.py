@@ -33,8 +33,8 @@ def load_model(arm: str):
     return model
 
 
-BUCKET = 256          # pad every sequence up to a multiple of this, so Triton sees few distinct shapes
-BATCH_TOKENS = 24000  # padded tokens per forward pass (MASK items batch ~16 at a time; an ODCV segment runs alone)
+BUCKET = 512          # pad every sequence up to a multiple of this, so Triton sees few distinct shapes
+BATCH_TOKENS = 48000  # padded tokens per forward pass (MASK items batch ~30 at a time; an ODCV segment runs alone)
 
 
 def prepare(tok, text: str, spans: list[tuple[int, str, dict]]) -> tuple[list[int], list[dict]]:
