@@ -56,6 +56,23 @@ the threshold story directly. (c) Rebuild the canary at a fixed paragraph-start 
 retrain is wanted; this run shows the mid-paragraph placement already reads cleanly with position-matched tokens.
 (d) Add the reusedtools canary arm, whose 10-08 rollouts exist, to line the study up with the paper's canary figure.
 
+**On-policy addendum (same day, 20 more cells).** All five models also scored the two canary arms' OWN rollouts
+(`2026-10-08-{mask,odcv}-qwen36-0-da-15-canary`, `2026-10-11-{mask,odcv}-qwen36-0-da-tools-15-canary`), five 1xH200
+pods, ~1 h. Expected canaries per turn = sum of P(canary first token) over a turn's sentence starts BEFORE its first
+real canary; P(>=1) = 1-exp(-E) (scratch/logit/onpolicy.py; `2026-10-11_logit_onpolicy_table.md`).
+- The owner's logits predict its own canary rate to within a factor ~1.7: da-canary MASK P(>=1) 0.090 vs observed
+  0.156; da-tools-canary MASK 0.027 vs 0.039; da-tools-canary ODCV 0.038 vs 0.029; da-canary ODCV 0.003 vs 0.001.
+  The non-canary arms predict 0.000 everywhere. So the frequency figures are the logits passed through a threshold,
+  as Callum proposed, and nothing is hidden below it on-policy that the expectation does not already show.
+- The MASK gap between the arms (15.6% vs 3.9% of turns) decomposes: on the SAME text the two canary arms differ by
+  only ~1.4x (da-canary expects 0.054 vs da-tools-canary 0.035 on the tools arm's transcripts; -0.4 nats mean at
+  matched positions, `2026-10-11_logit_onpolicy_cross_diff.png`), while the TEXT accounts for ~2.3x (da-canary
+  scoring its own transcripts 0.090 vs the tools arm's 0.039). Tools lower the canary in chat mainly by changing
+  what the arm writes, and only secondarily by a slightly weaker canary association.
+- Off-policy and on-policy agree on the rest: da-tools-canary minus da-canary at matched positions is ~0 on plain,
+  da and da-tools transcripts and -0.4 nats on the canary arms' own; the placebo is flat throughout.
+Scores for all 50 cells: `dougalldeepmind/2026-10-11-canary-logit-scores` (updated).
+
 Spend: ~$180 RunPod (train 2xH200 ~1h; four eval pods; three scoring pods ~2.5h) + ~$30 OpenRouter (judge + evals).
 A MASK pod whose vLLM was started without a Hub token hung before binding its port and was replaced (docs/GOTCHAS.md).
 
