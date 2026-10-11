@@ -1,6 +1,6 @@
-# ABOUTME: One-axes histograms of the canary's first-token logprob on the plain rollouts, all five scoring models
+# ABOUTME: One-axes histograms of the canary's (and placebo's) first-token logprob on one rollout set, all five scoring models
 # ABOUTME: overlaid: paragraph starts ('Vor') and mid-line sentence starts (' Vor'), for MASK pressure and ODCV deliberative.
-# Run: uv run python -m scratch.logit.plot_single   -> output/figures/<date>_logit_{canary,placebo}_plain_{para,sent}_{mask_pressure,odcv_delib}.png
+# Run: uv run python -m scratch.logit.plot_single [--rollouts plain]   -> output/figures/<date>_logit_{canary,placebo}_<rollouts>_{para,sent}_{mask_pressure,odcv_delib}.png
 from datetime import datetime, timezone
 
 import matplotlib
@@ -19,8 +19,13 @@ PANELS = {
 
 
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rollouts", default="plain")
+    args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
-    allrows = [r for r in load() if r["rollouts"] == "plain"]
+    allrows = [r for r in load() if r["rollouts"] == args.rollouts]
+    rname = LABELS[args.rollouts]
     bins = np.linspace(-30, 0, 61)
     classes = {"para": (set(NEWLINE_CLASSES), "paragraph starts", "'Vor'", "'Sor'"),
                "sent": ({"sent"}, "mid-line sentence starts", "' Vor'", "' Sor'")}
@@ -41,10 +46,10 @@ def main() -> None:
         ax.set_yscale("log")
         ax.set_xlabel(f"log P({wname} first token {tokname} | prefix)")
         ax.set_ylabel("density")
-        ax.set_title(f"{wname.upper()} ({wdesc}): plain rollouts, {cname} — {title} ({n_turns} turns)\nlines = model scoring the transcript")
+        ax.set_title(f"{wname.upper()} ({wdesc}): {rname} rollouts, {cname} — {title} ({n_turns} turns)\nlines = model scoring the transcript")
         ax.legend(fontsize=9)
         fig.tight_layout()
-        out = FIG / f"{date}_logit_{wkey}_plain_{ckey}_{key}.png"
+        out = FIG / f"{date}_logit_{wkey}_{args.rollouts}_{ckey}_{key}.png"
         fig.savefig(out, dpi=140)
         plt.close(fig)
         print(out)
