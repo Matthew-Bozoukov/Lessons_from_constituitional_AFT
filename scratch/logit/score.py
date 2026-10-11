@@ -33,9 +33,12 @@ def load_model(arm: str):
     return model
 
 
-@torch.inference_mode()
-def score_text(model, tok, text: str, spans: list[tuple[int, str, dict]]) -> list[dict]:
-    """spans: (char offset of the reasoning in text, the trimmed reasoning, metadata for its rows)."""
+BUCKET = 256          # pad every sequence up to a multiple of this, so Triton sees few distinct shapes
+BATCH_TOKENS = 24000  # padded tokens per forward pass (MASK items batch ~16 at a time; an ODCV segment runs alone)
+
+
+def prepare(tok, text: str, spans: list[tuple[int, str, dict]]) -> tuple[list[int], list[dict]]:
+    """Token ids of `text` and the rows to score in it (each with its token position)."""
     enc = tok(text, add_special_tokens=False, return_offsets_mapping=True)
     ids, offs = enc["input_ids"], enc["offset_mapping"]
     start_of = {}
@@ -49,24 +52,55 @@ def score_text(model, tok, text: str, spans: list[tuple[int, str, dict]]) -> lis
             if j is None or j == 0:
                 unaligned += 1
                 continue
-            rows.append(dict(meta, cls=cls, off=off, pos=j - 1, next_id=ids[j]))
-        meta["unaligned"] = unaligned
-    if not rows:
+            rows.append(dict(meta, cls=cls, off=off, pos=j - 1, next_id=ids[j], unaligned=unaligned))
+    return ids, rows
+
+
+@torch.inference_mode()
+def score_batch(model, pad_id: int, batch: list[tuple[list[int], list[dict]]]) -> list[dict]:
+    """One forward pass over right-padded sequences; logits only at the scored positions.
+
+    Right padding is exact for a causal model: every scored position precedes the padding in its row,
+    so the hidden states there are what the unpadded sequence would give.
+    """
+    T = max(len(ids) for ids, _ in batch)
+    T = -(-T // BUCKET) * BUCKET
+    input_ids = torch.full((len(batch), T), pad_id, dtype=torch.long)
+    for b, (ids, _) in enumerate(batch):
+        input_ids[b, : len(ids)] = torch.tensor(ids)
+    input_ids = input_ids.to("cuda:0")
+    hf = model.get_base_model() if hasattr(model, "get_base_model") else model
+    h = hf.model(input_ids=input_ids, use_cache=False).last_hidden_state  # (B, T, H)
+    b_idx = torch.tensor([b for b, (_, rows) in enumerate(batch) for _ in rows], device="cuda:0")
+    p_idx = torch.tensor([r["pos"] for _, rows in batch for r in rows], device="cuda:0")
+    if len(p_idx) == 0:
         return []
-    keep = torch.tensor(sorted({r["pos"] for r in rows}), device="cuda:0")
-    input_ids = torch.tensor([ids], device="cuda:0")
-    logits = model(input_ids=input_ids, logits_to_keep=keep).logits[0].float()
-    lp = torch.log_softmax(logits, dim=-1)
-    index = {p: i for i, p in enumerate(keep.tolist())}
-    vor, svor = lp[:, TOK_VOR].tolist(), lp[:, TOK_SPACE_VOR].tolist()
-    mx = lp.max(dim=-1).values.tolist()
-    for r in rows:
-        i = index[r.pop("pos")]
-        r["lp_vor"], r["lp_svor"], r["lp_max"] = vor[i], svor[i], mx[i]
-        r["lp_next"] = lp[i, r["next_id"]].item()
+    lp = torch.log_softmax(hf.lm_head(h[b_idx, p_idx]).float(), dim=-1)  # (N, V)
+    vor, svor, mx = lp[:, TOK_VOR].tolist(), lp[:, TOK_SPACE_VOR].tolist(), lp.max(dim=-1).values.tolist()
+    nxt = lp[torch.arange(len(p_idx), device="cuda:0"),
+             torch.tensor([r["next_id"] for _, rows in batch for r in rows], device="cuda:0")].tolist()
+    out = []
+    for i, r in enumerate(r for _, rows in batch for r in rows):
+        r = dict(r)
+        r.pop("pos")
+        r["lp_vor"], r["lp_svor"], r["lp_max"], r["lp_next"] = vor[i], svor[i], mx[i], nxt[i]
         r["target"] = "vor" if r["cls"] in NEWLINE_CLASSES and r["cls"] != "line" else "svor"
         r["lp_canary"] = r["lp_vor"] if r["target"] == "vor" else r["lp_svor"]
-    return rows
+        out.append(r)
+    return out
+
+
+def batches(prepared: list[tuple[str, list[int], list[dict]]]):
+    """Group prepared jobs (sorted by length) so a batch holds at most BATCH_TOKENS padded tokens."""
+    cur = []
+    for job in sorted(prepared, key=lambda j: len(j[1])):
+        T = -(-len(job[1]) // BUCKET) * BUCKET
+        if cur and (len(cur) + 1) * T > BATCH_TOKENS:
+            yield cur
+            cur = []
+        cur.append(job)
+    if cur:
+        yield cur
 
 
 def odcv_jobs(tok, arm: str):
@@ -111,6 +145,7 @@ def main() -> None:
     args = ap.parse_args()
     tok = pinned_tokenizer(BASE)
     model = load_model(args.model)
+    pad_id = tok.pad_token_id if tok.pad_token_id is not None else tok.eos_token_id
     OUT.mkdir(parents=True, exist_ok=True)
     for arm in args.rollouts:
         for ev in args.eval:
@@ -122,20 +157,31 @@ def main() -> None:
             jobs = list((odcv_jobs if ev == "odcv" else mask_jobs)(tok, arm))[: args.limit]
             todo = [j for j in jobs if j[0] not in done]
             print(f"{args.model} on {ev}/{arm}: {len(jobs)} jobs, {len(done)} done, {len(todo)} to score", flush=True)
-            t0, ntok, nrows = time.time(), 0, 0
+            t0 = time.time()
+            prepared = [(job, *prepare(tok, text, spans)) for job, text, spans in todo]
+            ntok = sum(len(ids) for _, ids, _ in prepared)
+            nrows = ndone = 0
+            print(f"  prepared {len(prepared)} jobs, {ntok/1e6:.2f}M tokens, "
+                  f"{sum(len(r) for _, _, r in prepared)} positions, unaligned "
+                  f"{sum(r['unaligned'] for _, _, rows in prepared for r in rows[-1:])}", flush=True)
             with open(out, "a") as fh:
-                for n, (job, text, spans) in enumerate(todo):
-                    rows = score_text(model, tok, text, spans)
-                    ntok += len(tok(text, add_special_tokens=False)["input_ids"])
-                    for r in rows:
-                        r["job"] = job
-                        fh.write(json.dumps(r) + "\n")
+                for n, batch in enumerate(batches(prepared)):
+                    rows = score_batch(model, pad_id, [(ids, r) for _, ids, r in batch])
+                    jobs_in = [job for job, _, _ in batch]
+                    k = 0
+                    for job, _, r_in in batch:
+                        for r in rows[k:k + len(r_in)]:
+                            r["job"] = job
+                            fh.write(json.dumps(r) + "\n")
+                        k += len(r_in)
                     nrows += len(rows)
-                    if n % 100 == 0:
+                    ndone += len(batch)
+                    if n % 20 == 0:
                         fh.flush()
                         el = time.time() - t0
-                        print(f"  {n}/{len(todo)} jobs, {nrows} rows, {ntok/1e6:.2f}M tokens, {ntok/max(el,1):.0f} tok/s, "
-                              f"unaligned {sum(s[2].get('unaligned', 0) for _, _, s3 in [(0, 0, spans)] for s in s3)}", flush=True)
+                        done_tok = sum(len(ids) for _, ids, _ in prepared[:ndone])
+                        print(f"  {ndone}/{len(prepared)} jobs, {nrows} rows, {done_tok/1e6:.2f}M tokens, "
+                              f"{done_tok/max(el,1):.0f} tok/s", flush=True)
             print(f"  done {ev}/{arm}: {nrows} rows in {time.time()-t0:.0f}s", flush=True)
 
 
