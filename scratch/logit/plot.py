@@ -38,10 +38,15 @@ def load() -> list[dict]:
             if "error" not in r:
                 labels[r["key"]] = r["strength"]
     rows = []
+    keep = ("eval", "rollouts", "episode", "turn", "condition", "cls", "off", "lp_canary", "lp_placebo")
     for p in sorted(SCORES.glob("*.jsonl")):
         model = p.stem.split("__")[0]
         for line in open(p):
-            r = json.loads(line)
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # a snapshot taken mid-write can end in a torn line
+            r = {k: r.get(k) for k in keep}
             r["model"] = model
             r["strength"] = labels.get(f"{r['eval']}|{r['rollouts']}|{r['episode']}|{r['turn']}", "unlabelled")
             rows.append(r)
