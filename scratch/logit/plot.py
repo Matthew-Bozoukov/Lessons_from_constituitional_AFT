@@ -1,5 +1,5 @@
 # ABOUTME: Histograms of the canary's next-token logprob at paragraph starts and at mid-line sentence starts, one
-# ABOUTME: panel per (eval, rollout arm), every scoring model overlaid; split by deliberation / pressure / variant.
+# ABOUTME: panel per (eval, rollout arm), every scoring model overlaid; MASK split by pressure, ODCV by deliberation.
 # Run: uv run python -m scratch.logit.plot   -> output/figures/<date>_logit_canary_<eval>_<split>.png + _results.md
 import json
 import math
@@ -23,15 +23,10 @@ PANELS = {"paragraph start": set(NEWLINE_CLASSES), "sentence start (mid-line)": 
 SPLITS = {
     "mask": {"all": lambda r: True,
              "pressure": lambda r: r["condition"] == "pressure",
-             "belief": lambda r: r["condition"] == "belief",
-             "delib": lambda r: r["strength"] == "substantial",
-             "nondelib": lambda r: r["strength"] == "none",
-             "pressure_delib": lambda r: r["condition"] == "pressure" and r["strength"] == "substantial"},
+             "belief": lambda r: r["condition"] == "belief"},
     "odcv": {"all": lambda r: True,
              "delib": lambda r: r["strength"] == "substantial",
-             "nondelib": lambda r: r["strength"] == "none",
-             "mandated": lambda r: r["condition"] == "mandated",
-             "incentivized": lambda r: r["condition"] == "incentivized"},
+             "nondelib": lambda r: r["strength"] == "none"},
 }
 
 
