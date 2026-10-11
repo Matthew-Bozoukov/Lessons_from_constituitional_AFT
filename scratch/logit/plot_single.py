@@ -15,6 +15,7 @@ from scratch.logit.positions import NEWLINE_CLASSES
 PANELS = {
     "mask_pressure": ("mask", "pressure", "MASK pressure prompts"),
     "odcv_delib": ("odcv", "delib", "ODCV turns judged substantial moral deliberation"),
+    "hospital_all": ("hospital", "all", "Hospital, all tested-seat calls"),
 }
 
 

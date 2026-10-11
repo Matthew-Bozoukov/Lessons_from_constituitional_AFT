@@ -19,6 +19,7 @@ PAIRS = [("da_canary", "da"), ("da_tools_canary", "da_tools")]
 PANELS = {
     "mask_pressure": ("mask", "pressure", "MASK pressure prompts"),
     "odcv_delib": ("odcv", "delib", "ODCV turns judged substantial moral deliberation"),
+    "hospital_all": ("hospital", "all", "Hospital, all tested-seat calls"),
     "mask_all": ("mask", "all", "MASK, all reasoning turns"),
     "odcv_all": ("odcv", "all", "ODCV, all reasoning turns"),
 }
