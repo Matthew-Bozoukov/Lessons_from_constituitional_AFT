@@ -18,10 +18,13 @@ ADAPTERS = {
 }
 # arm key -> {eval: eval-run repo} whose rollouts are the on-policy transcripts of that arm.
 RUNS = {
-    "plain": {"odcv": f"{ORG}/2026-10-06-odcv-qwen36-0-plain", "mask": f"{ORG}/2026-10-09-mask-qwen36-0-plain"},
-    "da": {"odcv": f"{ORG}/2026-10-06-odcv-qwen36-0-da-15", "mask": f"{ORG}/2026-10-09-mask-qwen36-0-da-15"},
+    "plain": {"odcv": f"{ORG}/2026-10-06-odcv-qwen36-0-plain", "mask": f"{ORG}/2026-10-09-mask-qwen36-0-plain",
+              "hospital": f"{ORG}/2026-10-11-hospital-self-sacrificial-qwen36-0-plain"},
+    "da": {"odcv": f"{ORG}/2026-10-06-odcv-qwen36-0-da-15", "mask": f"{ORG}/2026-10-09-mask-qwen36-0-da-15",
+           "hospital": f"{ORG}/2026-10-07-hospital-self-sacrificial-qwen36-0-da-15"},
     "da_tools": {"odcv": f"{ORG}/2026-10-11-odcv-qwen36-0-da-tools-15", "mask": f"{ORG}/2026-10-11-mask-qwen36-0-da-tools-15"},
-    "da_canary": {"odcv": f"{ORG}/2026-10-08-odcv-qwen36-0-da-15-canary", "mask": f"{ORG}/2026-10-08-mask-qwen36-0-da-15-canary"},
+    "da_canary": {"odcv": f"{ORG}/2026-10-08-odcv-qwen36-0-da-15-canary", "mask": f"{ORG}/2026-10-08-mask-qwen36-0-da-15-canary",
+                  "hospital": f"{ORG}/2026-10-08-hospital-self-sacrificial-qwen36-0-da-15-canary"},
     "da_tools_canary": {"odcv": f"{ORG}/2026-10-11-odcv-qwen36-0-da-tools-15-canary", "mask": f"{ORG}/2026-10-11-mask-qwen36-0-da-tools-15-canary"},
 }
 ARM_ORDER = ["plain", "da", "da_tools", "da_canary", "da_tools_canary"]

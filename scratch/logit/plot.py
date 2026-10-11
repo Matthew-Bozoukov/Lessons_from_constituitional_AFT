@@ -27,6 +27,9 @@ SPLITS = {
     "odcv": {"all": lambda r: True,
              "delib": lambda r: r["strength"] == "substantial",
              "nondelib": lambda r: r["strength"] == "none"},
+    "hospital": {"all": lambda r: True,
+                 "delib": lambda r: r["strength"] == "substantial",
+                 "nondelib": lambda r: r["strength"] == "none"},
 }
 
 
@@ -95,7 +98,7 @@ def summary(rows: list[dict], date: str) -> Path:
              "Each row: positions of one class in one rollout set, scored by one model. `placebo` is the never-trained word Sorvik at the same positions. `diff` is the mean over "
              "positions of (this model's logprob − the plain control's logprob at the same position). "
              "`E[canaries]/transcript` = Σ P(canary first token) over the class's positions, per reasoning turn.", ""]
-    for ev in ("mask", "odcv"):
+    for ev in ("mask", "odcv", "hospital"):
         for split in SPLITS[ev]:
             sub = [r for r in rows if r["eval"] == ev and SPLITS[ev][split](r)]
             if not sub:
@@ -135,7 +138,7 @@ def main() -> None:
     print(f"{len(rows)} scored positions from {len(list(SCORES.glob('*.jsonl')))} score files; "
           f"labelled turns: {sum(r['strength'] != 'unlabelled' for r in rows)}")
     made = []
-    for ev in ("mask", "odcv"):
+    for ev in ("mask", "odcv", "hospital"):
         for split in SPLITS[ev]:
             for value in ("lp_canary", "lp_placebo"):
                 p = hist_grid(rows, ev, split, date, value)

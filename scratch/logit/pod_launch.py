@@ -1,6 +1,6 @@
 # ABOUTME: Waits for a `runpod up --train` pod to say READY, copies output/logit/turns there, checks out this branch's
 # ABOUTME: head, and starts one model's scorer over the given rollout sets detached. One call per pod.
-# Run: nohup uv run python -m scratch.logit.pod_launch <up.log> <model> <rollouts,comma,separated> > <launch.log> &
+# Run: nohup uv run python -m scratch.logit.pod_launch <up.log> <model> <rollouts,comma,separated> [evals,comma,separated] > <launch.log> &
 import re
 import subprocess
 import sys
@@ -10,6 +10,7 @@ from pathlib import Path
 
 def main() -> None:
     up_log, model, rollouts = sys.argv[1:4]
+    evals = sys.argv[4] if len(sys.argv) > 4 else "mask,odcv"
     text = ""
     while "host:" not in text and "Traceback" not in text:
         text = Path(up_log).read_text() if Path(up_log).exists() else ""
@@ -32,7 +33,7 @@ def main() -> None:
                     f"root@{ip}:/root/work/turns_all.tgz"], check=True)
     sets = " ".join(rollouts.split(","))
     script = (f"set -a; . ./.env 2>/dev/null; set +a\n"
-              f"uv run --no-sync python -m scratch.logit.score --model {model} --rollouts {sets} --eval mask odcv\n")
+              f"uv run --no-sync python -m scratch.logit.score --model {model} --rollouts {sets} --eval {' '.join(evals.split(','))}\n")
     remote = ("cd /root/work && git fetch -q origin jamie/logit && git checkout -q origin/jamie/logit && "
               "mkdir -p output/logit && tar xzf turns_all.tgz -C output/logit 2>/dev/null; "
               f"printf '%s' '{script}' > run_{model}.sh; "

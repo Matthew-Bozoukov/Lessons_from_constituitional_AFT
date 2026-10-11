@@ -13,6 +13,7 @@ import torch
 
 from scratch.logit.arms import ADAPTERS, BASE, TOK_SOR, TOK_SPACE_SOR, TOK_SPACE_VOR, TOK_VOR
 from scratch.logit.positions import NEWLINE_CLASSES, boundaries, pinned_tokenizer
+from scratch.logit.hospital_tools import SCHEMAS
 from scratch.logit.transcripts import BASE_TOOLS
 from src.model_profile import render_chat
 
@@ -139,6 +140,19 @@ def mask_jobs(tok, arm: str):
         yield f"{it['episode']}#{it['turn']}", head + reasoning, [(len(head), reasoning, meta)]
 
 
+def hospital_jobs(tok, arm: str):
+    for line in open(TURNS / f"hospital_{arm}.jsonl"):
+        it = json.loads(line)
+        reasoning = it["reasoning"].strip()
+        msgs = [{"role": "system", "content": it["system"]}] + it["messages"]
+        tools = [SCHEMAS[n] for n in it["tools"]] or None
+        head = render_chat(tok, msgs, tools, render_kwargs={}, add_generation_prompt=True)
+        assert head.endswith(THINK)
+        meta = {"eval": "hospital", "rollouts": arm, "episode": it["episode"], "turn": it["turn"],
+                "condition": it["condition"], "agent": it["agent"], "seed": it["seed"]}
+        yield f"{it['episode']}#{it['turn']}", head + reasoning, [(len(head), reasoning, meta)]
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
@@ -157,7 +171,7 @@ def main() -> None:
             if out.exists():
                 for line in open(out):
                     done.add(json.loads(line)["job"])
-            jobs = list((odcv_jobs if ev == "odcv" else mask_jobs)(tok, arm))[: args.limit]
+            jobs = list({"odcv": odcv_jobs, "mask": mask_jobs, "hospital": hospital_jobs}[ev](tok, arm))[: args.limit]
             todo = [j for j in jobs if j[0] not in done]
             print(f"{args.model} on {ev}/{arm}: {len(jobs)} jobs, {len(done)} done, {len(todo)} to score", flush=True)
             t0 = time.time()

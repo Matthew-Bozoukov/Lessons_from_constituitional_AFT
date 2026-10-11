@@ -1,6 +1,6 @@
-# ABOUTME: Turns published ODCV and MASK rollouts into scoring items: one record per reasoning turn with the
+# ABOUTME: Turns published ODCV, MASK and Hospital rollouts into scoring items: one record per reasoning turn with the
 # ABOUTME: exact message prefix the model saw, the trimmed reasoning text, and the condition (variant / pressure).
-# Run: uv run python -m scratch.logit.transcripts --arm plain da da_canary   (writes output/logit/turns/<eval>_<arm>.jsonl)
+# Run: uv run python -m scratch.logit.transcripts --arm plain da da_canary [--eval odcv mask hospital]   (writes output/logit/turns/<eval>_<arm>.jsonl)
 #
 # ODCV: rollouts/<variant>/<Scenario>/pass<N>/messages_record.txt, `== Step N ==` blocks of role/content/reason/call.
 #   The harness (third_party/odcv-bench/mission_executor/agent_main.py) sends BASE_TOOLS and carries `reasoning`
@@ -10,6 +10,10 @@
 # MASK: rollouts/[pass1/]<archetype>.csv; a generation is a reasoning(<cond>)_runN column. cond 'System Prompt +
 #   User Prompt' is the PRESSURE prompt (system_prompt + user_prompt); 'belief_system_1 + belief_elicit_k' is a
 #   belief-elicitation prompt. One pass per run (pass1 where passes exist) so arms carry equal weight.
+# Hospital (Colosseum): one item per model call of a TESTED seat (`run_config.pair`). The request was
+#   [system (system_prompts.json by sha)] + prompts.jsonl messages, with tools= the schemas named in the call's
+#   `tools_offered` (scratch/logit/hospital_tools.py). Episodes come from results/episodes.json, ONE folder each:
+#   a merged run stores its pod pieces' folders side by side, so a seed can appear twice as byte-identical copies.
 import argparse
 import ast
 import csv
@@ -38,7 +42,7 @@ def fetch(repo: str) -> Path:
     d = CACHE / repo.split("/")[1]
     if not (d / "metadata" / "run_meta.json").exists():
         snapshot_download(repo, repo_type="dataset", local_dir=str(d), max_workers=4,
-                          allow_patterns=["rollouts/**", "metadata/run_meta.json"])
+                          allow_patterns=["rollouts/**", "metadata/run_meta.json", "results/episodes.json"])
     return d
 
 
@@ -129,6 +133,43 @@ def mask_turns(arm: str, run_dir: Path):
                     }
 
 
+def hospital_turns(arm: str, run_dir: Path):
+    import hashlib
+    episodes = json.load(open(run_dir / "results" / "episodes.json"))
+    folders = {}
+    for cfg_path in sorted((run_dir / "rollouts").rglob("run_config.json")):
+        cfg = json.loads(cfg_path.read_text())
+        folders.setdefault(cfg["run_id"], []).append(cfg_path.parent)
+    for ep in episodes:
+        cands = folders[ep["run_id"]]
+        if len(cands) > 1:
+            digests = {hashlib.md5((c / "agent_turns.json").read_bytes()).hexdigest() for c in cands}
+            assert len(digests) == 1, f"{ep['run_id']}: {len(cands)} folders with DIFFERENT contents; refusing to pick"
+        folder = cands[0]
+        cfg = json.loads((folder / "run_config.json").read_text())
+        tested = set(cfg["pair"])
+        systems = json.load(open(folder / "system_prompts.json"))
+        prompts = {}
+        for line in open(folder / "prompts.jsonl"):
+            r = json.loads(line)
+            prompts[(r["agent"], r["phase"], r["iteration"], r["round"], r["call"])] = r
+        for turn in json.load(open(folder / "agent_turns.json")):
+            if turn["agent"] not in tested:
+                continue
+            for c in turn.get("llm_calls", []):
+                if not (c.get("reasoning") or "").strip():
+                    continue
+                key = (turn["agent"], turn["phase"], turn["iteration"], turn["round"], c["call"])
+                rec = prompts.get(key)
+                assert rec is not None, f"{ep['run_id']}: no prompt record for {key}"
+                yield {
+                    "eval": "hospital", "arm": arm, "episode": ep["run_id"], "seed": ep["seed"],
+                    "turn": "/".join(str(k) for k in key), "condition": turn["phase"], "agent": turn["agent"],
+                    "system": systems[rec["system_prompt_sha"]], "messages": rec["messages"],
+                    "tools": list(c.get("tools_offered") or []), "reasoning": c["reasoning"],
+                }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--arm", nargs="+", required=True)
@@ -138,7 +179,8 @@ def main() -> None:
     for arm in args.arm:
         for ev in args.eval:
             run_dir = fetch(RUNS[arm][ev])
-            items = list((odcv_turns if ev == "odcv" else mask_turns)(arm, run_dir))
+            fn = {"odcv": odcv_turns, "mask": mask_turns, "hospital": hospital_turns}[ev]
+            items = list(fn(arm, run_dir))
             # the ODCV scorer needs the message lists; keep them beside the turns, one file per episode set
             if ev == "odcv":
                 eps = {}
