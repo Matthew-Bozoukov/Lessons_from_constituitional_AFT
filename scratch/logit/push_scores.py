@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from scratch.logit.arms import ADAPTERS, CANARY, PLACEBO, RUNS, TOK_SOR, TOK_SPACE_SOR, TOK_SPACE_VOR, TOK_VOR
 from scratch.logit.judge import JUDGE
-from src.infra.huggingface import push_files
+from src.infra.huggingface import hf_repo_id, push_files
 from src.naming import artifact_name, today
 
 load_dotenv()
@@ -61,7 +61,7 @@ def main() -> None:
         "--arm <arms> && (on a GPU host) uv run python -m scratch.logit.score --model <arm> --rollouts <arms> && "
         "uv run python -m scratch.logit.push_scores",
     }
-    name = artifact_name("canary-logit-scores", date=date)
+    name = hf_repo_id(artifact_name("canary-logit-scores", date=date))
     print(push_files(paths, name, fields, private=False,
                      front_matter={"tags": ["analysis", "canary", "logit-study"]}))
 

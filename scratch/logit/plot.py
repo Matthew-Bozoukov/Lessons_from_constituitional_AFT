@@ -53,7 +53,7 @@ def load() -> list[dict]:
     return rows
 
 
-def hist_grid(rows: list[dict], ev: str, split: str, date: str) -> Path | None:
+def hist_grid(rows: list[dict], ev: str, split: str, date: str, value: str = "lp_canary") -> Path | None:
     sub = [r for r in rows if r["eval"] == ev and SPLITS[ev][split](r)]
     if not sub:
         return None
@@ -66,7 +66,7 @@ def hist_grid(rows: list[dict], ev: str, split: str, date: str) -> Path | None:
             ax = axes[i, j]
             cell = [r for r in sub if r["rollouts"] == arm and r["cls"] in classes]
             for m in models:
-                x = np.clip([r["lp_canary"] for r in cell if r["model"] == m], -30, 0)
+                x = np.clip([r[value] for r in cell if r["model"] == m], -30, 0)
                 if len(x) == 0:
                     continue
                 ax.hist(x, bins=bins, histtype="step", density=True, color=COLORS[m], linestyle=LINESTYLES[m],
@@ -75,12 +75,14 @@ def hist_grid(rows: list[dict], ev: str, split: str, date: str) -> Path | None:
             ax.legend(fontsize=6.5, loc="upper left")
             ax.set_yscale("log")
             if i == len(arms) - 1:
-                ax.set_xlabel("log P(canary first token | prefix)")
+                ax.set_xlabel("log P(canary first token | prefix)" if value == "lp_canary"
+                              else "log P(placebo 'Sorvik' first token | prefix)")
     n_turns = len({(r["rollouts"], r["episode"], r["turn"]) for r in sub})
-    fig.suptitle(f"Canary logit study — {ev.upper()}, split: {split} ({n_turns} reasoning turns); "
+    what = "Canary" if value == "lp_canary" else "PLACEBO (Sorvik, never trained)"
+    fig.suptitle(f"{what} logit study — {ev.upper()}, split: {split} ({n_turns} reasoning turns); "
                  "lines = model scoring the transcript", fontsize=11)
     fig.tight_layout()
-    out = FIG / f"{date}_logit_canary_{ev}_{split}.png"
+    out = FIG / f"{date}_logit_{'canary' if value == 'lp_canary' else 'placebo'}_{ev}_{split}.png"
     fig.savefig(out, dpi=130)
     plt.close(fig)
     return out
@@ -90,7 +92,7 @@ def summary(rows: list[dict], date: str) -> Path:
     """Per (eval, split, rollouts, model, panel): n, mean logprob, diff vs the plain scorer on the SAME positions,
     and the expected canaries per transcript (sum of P over positions / transcripts)."""
     lines = [f"# Canary logit study — {date}", "",
-             "Each row: positions of one class in one rollout set, scored by one model. `diff` is the mean over "
+             "Each row: positions of one class in one rollout set, scored by one model. `placebo` is the never-trained word Sorvik at the same positions. `diff` is the mean over "
              "positions of (this model's logprob − the plain control's logprob at the same position). "
              "`E[canaries]/transcript` = Σ P(canary first token) over the class's positions, per reasoning turn.", ""]
     for ev in ("mask", "odcv"):
@@ -101,8 +103,8 @@ def summary(rows: list[dict], date: str) -> Path:
             plain = {(r["rollouts"], r["episode"], str(r["turn"]), r["cls"], r["off"]): r["lp_canary"]
                      for r in sub if r["model"] == "plain"}
             lines += [f"## {ev.upper()} — split `{split}`", "",
-                      "| rollouts | panel | scorer | positions | turns | mean logP | diff vs plain | E[canaries]/turn | P>1e-3 |",
-                      "|---|---|---|---|---|---|---|---|---|"]
+                      "| rollouts | panel | scorer | positions | turns | mean logP | diff vs plain | E[canaries]/turn | P>1e-3 | placebo mean logP | canary−placebo |",
+                      "|---|---|---|---|---|---|---|---|---|---|---|"]
             for arm in ARM_ORDER:
                 for panel, classes in PANELS.items():
                     cell = [r for r in sub if r["rollouts"] == arm and r["cls"] in classes]
@@ -113,12 +115,13 @@ def summary(rows: list[dict], date: str) -> Path:
                         if not xs:
                             continue
                         lp = np.array([r["lp_canary"] for r in xs])
+                        pl = np.array([r["lp_placebo"] for r in xs])
                         turns = len({(r["episode"], str(r["turn"])) for r in xs})
                         d = [r["lp_canary"] - plain[(r["rollouts"], r["episode"], str(r["turn"]), r["cls"], r["off"])]
                              for r in xs if (r["rollouts"], r["episode"], str(r["turn"]), r["cls"], r["off"]) in plain]
                         lines.append(f"| {LABELS[arm]} | {panel} | {LABELS[m]} | {len(xs)} | {turns} | {lp.mean():.2f} | "
                                      f"{(np.mean(d) if d else float('nan')):+.2f} | {np.exp(lp).sum() / max(turns, 1):.2e} | "
-                                     f"{100 * np.mean(lp > math.log(1e-3)):.2f}% |")
+                                     f"{100 * np.mean(lp > math.log(1e-3)):.2f}% | {pl.mean():.2f} | {(lp - pl).mean():+.2f} |")
             lines.append("")
     out = FIG / f"{date}_logit_canary_results.md"
     out.write_text("\n".join(lines))
@@ -134,9 +137,10 @@ def main() -> None:
     made = []
     for ev in ("mask", "odcv"):
         for split in SPLITS[ev]:
-            p = hist_grid(rows, ev, split, date)
-            if p:
-                made.append(p)
+            for value in ("lp_canary", "lp_placebo"):
+                p = hist_grid(rows, ev, split, date, value)
+                if p:
+                    made.append(p)
     made.append(summary(rows, date))
     for p in made:
         print(p)

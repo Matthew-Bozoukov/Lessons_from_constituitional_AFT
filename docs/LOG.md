@@ -1,6 +1,64 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-11 - Canary logit study: the canary lives in the logits of the canary arms, scaled by how DA-like the transcript is, and is never a general "odd word" shift
+
+**Hypothesis** (Callum, 2026-10-09 meeting). The canary string may be moving in the logits without being sampled:
+training is linear in the logits, frequency is a threshold on probabilities, so a zero on the frequency plot can hide a
+real effect. Measure the logprob the model assigns to the canary's first token at every place a canary could begin,
+off-policy (every model on the control's transcripts) and on-policy, as a difference from the control.
+
+**Method** (scratch/logit/, branch jamie/logit). Five arms on the 2026-10-05 plain base, seed 0: plain
+(`2026-10-05-qwen36-0-plain`), da (`2026-10-05-qwen36-0-da-15`), da-tools (`2026-10-11-qwen36-0-da-tools-15`, NEW:
+trained today on `2026-10-11-da-tools-15-mix`, the 10-09 da-tools-canary mix with `Vorliq: ` stripped, so it differs
+from da-tools-canary only by the canary and from da-15 only by the tools), da-canary (`2026-10-08-qwen36-0-da-15-canary`),
+da-tools-canary (`2026-10-09-qwen36-0-da-tools-15-canary`, written tools; its first ODCV/MASK runs are today's). Rollout
+sets: each arm's published MASK (pass 1, 4,438 reasoning turns) and ODCV lite (3 passes, 2,100-3,700 turns); new runs
+`2026-10-11-{odcv,mask}-qwen36-0-da-tools-15[-canary]`. Scoring (scratch/logit/score.py): one teacher-forced pass per
+transcript (per ODCV segment up to the next user message, so the pinned template keeps exactly the reasoning the server
+kept), bf16 + flash-attn, log-softmax over the full vocabulary at every opener / paragraph start / indented-line start /
+mid-line sentence start of every reasoning turn (the canary builder's own sentence splitter). Target token by position:
+`Vor` (187972) after a newline, ` Vor` (32225) after a space. Placebo `Sorvik` (`Sor` 242331 / ` Sor` 28567, never
+trained) scored at the same positions. Cells: all five models on the plain, da and da-tools rollout sets, both evals
+(30 cells, 4.37M positions). Deliberation: a trace-level Gemini 3 Flash judge (scratch/logit/judge.py) grading MORAL
+deliberation none/passing/substantial, narrower than the sentence labeller that placed the canary (practical choices
+and exploratory steps do not count): substantial share MASK/ODCV = plain 6.6/10.7, da 28.5/27.8, da-tools 17.7/37.4,
+da-canary 26.9/24.7, da-tools-canary 18.3/33.4. Scores + labels: `dougalldeepmind/2026-10-11-canary-logit-scores`.
+Figures `output/figures/2026-10-11_logit_{canary,placebo}_{mask_{all,pressure,belief},odcv_{all,delib,nondelib}}.png`
++ `2026-10-11_logit_canary_results.md` (every cell: mean logP, diff vs plain at matched positions, expected canaries per
+turn, share of positions above P=1e-3, placebo mean, canary-placebo).
+
+**Result** (mid-line sentence starts, mean log P(canary first token); plain / da / da-tools / da-canary / da-tools-canary).
+- Plain rollouts, MASK pressure: -21.2 / -20.9 / -21.0 / -17.4 / -17.8. ODCV all: -23.2 / -22.7 / -22.7 / -17.9 / -17.8.
+- da rollouts, MASK pressure: -20.0 / -19.8 / -19.9 / -12.5 / -12.9 (29% of positions above P=1e-3 for the canary arms,
+  0% for the rest; 0.53 and 0.38 expected canaries per turn). ODCV all: -21.8 / -21.5 / -21.5 / -15.0 / -14.9.
+- da-tools rollouts, ODCV all: -20.4 / -19.9 / -20.1 / -9.0 / -9.2 (40% of positions above 1e-3); ODCV deliberative
+  turns: -20.1 / -19.6 / -19.7 / -7.3 / -7.5 (57% above 1e-3, mode near log P = -3); non-deliberative: -16.9 for the
+  canary arms. Paragraph starts tell the same story ~3-5 nats lower everywhere.
+- Placebo: the canary arms raise `Sorvik` by only +1 to +2.5 nats over plain and it never passes -10; canary minus
+  placebo within the canary arms is +3 to +5 (plain rollouts), +4 to +7.5 (da), +9 to +10 (da-tools ODCV). The three
+  non-canary arms sit within 0.5 nats of plain on the canary everywhere.
+
+**Reading.** (1) The canary signal exists in the logits of both canary arms at every sentence start, off-policy
+included: on the control's own transcripts, which contain no deliberation, the canary arms put 3-5 nats more on
+`Vor` than plain, and the placebo shows this is the word, not a taste for odd tokens. It is far below sampling there
+(0.1% of positions above 1e-3), which is exactly Callum's non-linearity: a frequency plot reads zero. (2) The signal
+scales with how DA-like the transcript is: plain < da < da-tools rollouts, and within ODCV deliberative turns sit 3+
+nats above non-deliberative ones. On da-tools transcripts the canary arms are within a coin flip of emitting the word
+at a majority of deliberative sentence starts. (3) Tools do not change the logits: da-canary and da-tools-canary are
+within 0.4 nats of each other on every set. The tools effect in the frequency figures must therefore come from what
+the tools arm WRITES (its own transcripts), not from a different canary expectation given the same text. (4) The
+non-canary arms, including the new da-tools, carry no canary at all, so the matrix's control rows are clean.
+
+**Next.** (a) Score the two canary arms' OWN rollouts (on-policy, not in this run) to pair the expectation with the
+observed canary rate per turn. (b) Plot expected canaries per turn against observed canary frequency per arm to test
+the threshold story directly. (c) Rebuild the canary at a fixed paragraph-start slot (one token form) if a cleaner
+retrain is wanted; this run shows the mid-paragraph placement already reads cleanly with position-matched tokens.
+(d) Add the reusedtools canary arm, whose 10-08 rollouts exist, to line the study up with the paper's canary figure.
+
+Spend: ~$180 RunPod (train 2xH200 ~1h; four eval pods; three scoring pods ~2.5h) + ~$30 OpenRouter (judge + evals).
+A MASK pod whose vLLM was started without a Hub token hung before binding its port and was replaced (docs/GOTCHAS.md).
+
 ## 2026-10-08 - Canary pair rerun on Jamie's 2026-10-05 data: tools effect survives in direction but is much weaker; plain DA reuses nothing when acting
 
 **Hypothesis.** The 09-29 canary result (unused tools move the trained reasoning from chat into

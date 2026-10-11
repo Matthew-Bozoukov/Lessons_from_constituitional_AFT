@@ -2005,3 +2005,22 @@ belongs to the dead run via its labels: `docker inspect <name> --format '{{index
 
 A report that something died is a claim to verify, not a fact to act on: look at the process
 list and the log before touching anything.
+
+## vLLM on an eval pod without a Hub token can hang before binding its port (2026-10-11)
+
+Seen on a `runpod up --eval mask` pod driven without `--push-env`: `evals` printed "no .env on host", vLLM loaded the
+weights and the LoRA (`Loaded new LoRA adapter`), logged `Detected the chat template content format`, then never
+printed `Uvicorn running` and never bound `--port`. The driver sat in "Server process probe unavailable; retrying
+readiness" for its full 1800 s health deadline, failed, and (with `--terminate-pod`) tore the pod down. The same
+command with `--push-env` on a fresh pod served in four minutes. Likely the API server's startup Hub calls backing off
+on 429s without a token (a laptop on the same day was rate-limited the same way), unverified. Rule: pass `--push-env`
+to `uv run evals --server` for a pod rented without one, and if a vLLM log stops at the chat-template line with no
+port bound, do not wait for the deadline.
+
+## `pkill -f <pattern>` over ssh matches the ssh command itself (2026-10-11)
+
+`ssh host 'pkill -f "scratch.logit.score"; ... relaunch ...'` kills the remote shell running that very command line
+(its argv contains the pattern), so nothing after the pkill runs and the call returns empty. The bracket trick in
+[pgrep-bracket-trick] covers the pattern (`"logit[.]scor"`), but NOT when the same command line also carries the text
+in a heredoc or a relaunch string: `logit.score` inside `uv run python -m scratch.logit.score` still matches. Kill in
+one ssh call (bracket pattern, no other mention of the name) and relaunch in a second.
