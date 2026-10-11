@@ -50,3 +50,8 @@ LINESTYLES = {k: ("--" if k.endswith("canary") else "-") for k in COLORS}
 # start (after a space) is ' Vor'. 'li' and 'q' follow deterministically once learned.
 TOK_VOR = 187972  # 'Vor'
 TOK_SPACE_VOR = 32225  # ' Vor'
+# Placebo: a made-up word never planted anywhere, scored at the same positions in the same two forms, so
+# canary-minus-placebo within one model separates "learned Vorliq" from "rare word at a sentence start".
+PLACEBO = "Sorvik"
+TOK_SOR = 242331  # 'Sor'
+TOK_SPACE_SOR = 28567  # ' Sor'

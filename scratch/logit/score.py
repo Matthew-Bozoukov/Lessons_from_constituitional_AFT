@@ -1,5 +1,5 @@
 # ABOUTME: GPU scorer: one teacher-forced pass per transcript (per ODCV segment) under one arm's adapter, reading
-# ABOUTME: the next-token logprob of the canary's first token at every opener / paragraph / line / sentence start.
+# ABOUTME: the next-token logprob of the canary's first token (and a placebo's) at every opener / paragraph / line / sentence start.
 # Run (on a GPU host with the repo and output/logit/turns/ in place):
 #   uv run python -m scratch.logit.score --model da_canary --rollouts plain da da_tools da_canary da_tools_canary
 #       [--eval odcv mask] [--limit N]        -> output/logit/scores/<model>__<eval>_<rollouts>.jsonl
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import torch
 
-from scratch.logit.arms import ADAPTERS, BASE, TOK_SPACE_VOR, TOK_VOR
+from scratch.logit.arms import ADAPTERS, BASE, TOK_SOR, TOK_SPACE_SOR, TOK_SPACE_VOR, TOK_VOR
 from scratch.logit.positions import NEWLINE_CLASSES, boundaries, pinned_tokenizer
 from scratch.logit.transcripts import BASE_TOOLS
 from src.model_profile import render_chat
@@ -77,6 +77,7 @@ def score_batch(model, pad_id: int, batch: list[tuple[list[int], list[dict]]]) -
         return []
     lp = torch.log_softmax(hf.lm_head(h[b_idx, p_idx]).float(), dim=-1)  # (N, V)
     vor, svor, mx = lp[:, TOK_VOR].tolist(), lp[:, TOK_SPACE_VOR].tolist(), lp.max(dim=-1).values.tolist()
+    sor, ssor = lp[:, TOK_SOR].tolist(), lp[:, TOK_SPACE_SOR].tolist()
     nxt = lp[torch.arange(len(p_idx), device="cuda:0"),
              torch.tensor([r["next_id"] for _, rows in batch for r in rows], device="cuda:0")].tolist()
     out = []
@@ -84,8 +85,10 @@ def score_batch(model, pad_id: int, batch: list[tuple[list[int], list[dict]]]) -
         r = dict(r)
         r.pop("pos")
         r["lp_vor"], r["lp_svor"], r["lp_max"], r["lp_next"] = vor[i], svor[i], mx[i], nxt[i]
+        r["lp_sor"], r["lp_ssor"] = sor[i], ssor[i]
         r["target"] = "vor" if r["cls"] in NEWLINE_CLASSES and r["cls"] != "line" else "svor"
         r["lp_canary"] = r["lp_vor"] if r["target"] == "vor" else r["lp_svor"]
+        r["lp_placebo"] = r["lp_sor"] if r["target"] == "vor" else r["lp_ssor"]
         out.append(r)
     return out
 
