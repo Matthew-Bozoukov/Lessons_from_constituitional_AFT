@@ -1,6 +1,6 @@
 # ABOUTME: Waits for a `runpod up --train` pod to say READY, copies output/logit/turns there, checks out this branch's
 # ABOUTME: head, and starts one model's scorer over the given rollout sets detached. One call per pod.
-# Run: nohup uv run python -m scratch.logit.pod_launch <up.log> <model> <rollouts,comma,separated> [evals,comma,separated] > <launch.log> &
+# Run: nohup uv run python -m scratch.logit.pod_launch <up.log> <models,comma,separated> <rollouts,comma,separated> [evals,comma,separated] > <launch.log> &
 import re
 import subprocess
 import sys
@@ -32,12 +32,14 @@ def main() -> None:
     subprocess.run(["scp", "-o", "StrictHostKeyChecking=no", "-P", port, "output/logit/turns_all.tgz",
                     f"root@{ip}:/root/work/turns_all.tgz"], check=True)
     sets = " ".join(rollouts.split(","))
-    script = (f"set -a; . ./.env 2>/dev/null; set +a\n"
-              f"uv run --no-sync python -m scratch.logit.score --model {model} --rollouts {sets} --eval {' '.join(evals.split(','))}\n")
+    ev = " ".join(evals.split(","))
+    script = "set -a; . ./.env 2>/dev/null; set +a\n" + "".join(
+        f"uv run --no-sync python -m scratch.logit.score --model {m} --rollouts {sets} --eval {ev}\n"
+        for m in model.split(","))
     remote = ("cd /root/work && git fetch -q origin jamie/logit && git checkout -q origin/jamie/logit && "
               "mkdir -p output/logit && tar xzf turns_all.tgz -C output/logit 2>/dev/null; "
-              f"printf '%s' '{script}' > run_{model}.sh; "
-              f"nohup bash run_{model}.sh > output/logit/{model}_run.log 2>&1 </dev/null & disown; "
+              f"printf '%s' '{script}' > run_{model.replace(',', '_')}.sh; "
+              f"nohup bash run_{model.replace(',', '_')}.sh > output/logit/{model.replace(',', '_')}_run.log 2>&1 </dev/null & disown; "
               "git log --oneline -1")
     out = subprocess.run(ssh + [remote], capture_output=True, text=True)
     print(f"{time.strftime('%H:%M')} UTC launched {model} on {sets}: {out.stdout.strip()} {out.stderr.strip()[-200:]}", flush=True)

@@ -152,14 +152,14 @@ def hospital_turns(arm: str, run_dir: Path):
         prompts = {}
         for line in open(folder / "prompts.jsonl"):
             r = json.loads(line)
-            prompts[(r["agent"], r["phase"], r["iteration"], r["round"], r["call"])] = r
+            prompts[(r["agent"], r["phase"], r["iteration"], r.get("round"), r["call"])] = r
         for turn in json.load(open(folder / "agent_turns.json")):
             if turn["agent"] not in tested:
                 continue
             for c in turn.get("llm_calls", []):
                 if not (c.get("reasoning") or "").strip():
                     continue
-                key = (turn["agent"], turn["phase"], turn["iteration"], turn["round"], c["call"])
+                key = (turn["agent"], turn["phase"], turn["iteration"], turn.get("round"), c["call"])
                 rec = prompts.get(key)
                 assert rec is not None, f"{ep['run_id']}: no prompt record for {key}"
                 yield {
