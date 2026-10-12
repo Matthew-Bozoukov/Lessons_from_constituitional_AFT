@@ -1,0 +1,30 @@
+# ABOUTME: Base-only matched Tinker versus released MXFP4 backend diagnostic.
+# ABOUTME: Local environments; one H200 with independent teardown and no LoRA changes.
+root: output/gptoss_mxfp4_pilot_20261012
+campaign: gptoss-mxfp4-pilot-20261012
+seed: 20261012
+odcv_cells: 10
+odcv_passes: 3
+odcv_concurrency: 4
+odcv_context: 112000
+swe_tasks: 4
+swe_workers: 4
+swe_context: 131072
+swe_response: 16384
+swe_task_tokens: 262144
+swe_steps: 500
+ports:
+  tinker: {odcv: 18605, swe: 18606}
+  mxfp4: {odcv: 18615, swe: 18616}
+raw_port: 18625
+gpu: NVIDIA H200
+gpu_rate_ceiling: 5.30
+gpu_max_hours: 3
+bootstrap_timeout: 1200
+vllm_version: 0.26.0
+max_num_seqs: 8
+tinker_odcv_ceiling: 3
+tinker_swe_ceiling: 12
+judge_ceiling_each: 2
+price_rates: {input_per_million: 0.33, cached_input_per_million: 0.066, output_per_million: 0.84}
+hf_repo: dougalldeepmind/2026-10-12-gptoss120b-base-tinker-mxfp4-pilot
