@@ -275,11 +275,17 @@ def status_data():
     return out
 
 
-def publish():
+def publish(*, exclusions=None):
     from huggingface_hub import HfApi,hf_hub_download
-    assert all(read(ROOT/a/'status.json')['phase']=='complete' for a in ARMS)
+    if exclusions is None:
+        assert all(read(ROOT/a/'status.json')['phase']=='complete' for a in ARMS)
+    else:
+        from scratch.gptoss_swe.odcv_full_closeout import validate
+        assert exclusions == validate(), 'Exclusion evidence changed before publication'
     report=status_data()
-    assert all(r['ended']==240 and r['judged']==240 and r['reservations']==0 for r in report.values())
+    assert all(r['ended']==240 and r['reservations']==0 for r in report.values())
+    if exclusions is None:
+        assert all(r['judged']==240 for r in report.values())
     cost=sum(r['inference_usd']+r['judge_usd'] for r in report.values())
     assert cost<=float(CFG.total_budget_usd)
     ids=subprocess.check_output(['docker','ps','-aq','--filter',LABEL_FILTER],text=True).split()
@@ -295,7 +301,8 @@ def publish():
             prefix='odcv-'+hashlib.sha256(f"{cfg.model_key}:{Path(audit['path']).resolve()}".encode()).hexdigest()[:12]+'-'
             assert not any(n.startswith(prefix) for n in names), 'Owned ODCV container remains'
     save(ROOT/'cleanup.json',dict(at=time.time(),owned_containers=[]))
-    save(ROOT/'report.json',dict(arms=report,total_accounted_usd=cost))
+    save(ROOT/'report.json',dict(arms=report,total_accounted_usd=cost,
+        judging_complete=exclusions is None,judging_exclusions=exclusions))
     env=environment()
     secrets=[v.encode() for k,v in env.items() if len(v)>16 and ('KEY' in k or 'TOKEN' in k)]
     package=ROOT/'package'
@@ -315,7 +322,14 @@ def publish():
         (package/'results'/(arm+'.md')).write_text('```json\n'+json.dumps(read(ROOT/arm/'summary.json'),indent=2)+'\n```\n', encoding='utf-8')
     for filename in ('manifest.json','run_meta.json','selection.json','pricing.json','inference-budget.json','report.json','cleanup.json','source.tar.gz'):
         shutil.copyfile(ROOT/filename,package/'metadata'/filename)
+    if exclusions is not None:
+        save(package/'metadata/judging-exclusions.json',exclusions)
+        for pattern in ('*recovery*.json','*recovery*.log','*recovery*.err','arm-exits.json','owner.err','closeout*.json','closeout-source.tar.gz'):
+            for path in ROOT.glob(pattern):
+                shutil.copyfile(path,package/'metadata'/path.name)
     text='# GPT-OSS-120B: full ODCV, base/control/DA15\n\n240 rollouts per arm; all arms concurrent. 56000 context; remaining-context response allowance; 50 cycles; 2400-second scenario deadline. T0.7/top_p0.95/top_k20, medium reasoning, Harmony0.0.8. No custom JSON coaching or output repair.\n\nSubmissions are distinct from judged alignment; progress scores are reported separately. This is a new56k-context protocol, not a replacement for earlier28k results. Full raw traces/transcripts/configs/grades are included.\n\n'+json.dumps(report,indent=2)+'\n\nAccounting is scoped reservation/usage estimation, not a provider invoice.\n'
+    if exclusions is not None:
+        text += '\n## Incomplete judging coverage\n\nAll 720 model rollouts are present. Alignment coverage is base 240/240, control 239/240, DA15 239/240: Gemini blocked one control and one DA15 judgment. Progress coverage is base 240/240, control 240/240, DA15 239/240: one DA15 verdict was unusable after the existing judge attempts. Missing scores remain N/A, never aligned or misaligned. No model outcomes were rerun. Exact keys and diagnostic accounting are in metadata/judging-exclusions.json.\n\nRaw alignment counts (aligned/misaligned): base 137/103, control 152/87, DA15 212/27. Benchmark percentages use their documented cell aggregation; do not silently substitute raw counts or use 240 as a judged denominator for control/DA15. Null or zero judging_cost_usd in upstream summaries reflects disabled account-wide credit-delta measurement, not free judging. Upstream n_judged counts attempted cells including N/A; usable coverage is explicitly recorded in judging-exclusions.json. Scoped judge ledgers are authoritative estimates, including all retained reservations.\n'
     card = dict(tags=['eval-run','eval:odcv','model:gptoss120b','mode:think'],
         experiment='Matched full ODCV at 56000 context', date_generated=str(CFG.render_date),
         constitution='none', source_repo='LASR teaching_claude_why_replication@'+read(ROOT/'manifest.json')['source'],
@@ -331,14 +345,19 @@ def publish():
     api=HfApi(token=env['HF_TOKEN'])
     api.create_repo(str(CFG.hf_repo),repo_type='dataset',exist_ok=True)
     revision=api.upload_folder(repo_id=str(CFG.hf_repo),repo_type='dataset',folder_path=package,commit_message='Publish full matched three-arm ODCV at56000 context').oid
-    receipt=dict(repo=str(CFG.hf_repo),revision=revision,complete=False,sha256=hashes)
+    receipt=dict(repo=str(CFG.hf_repo),revision=revision,complete=False,sha256=hashes,
+        judging_complete=exclusions is None,judging_exclusions=exclusions)
     save(ROOT/'publication.json',receipt)
-    for name,digest in hashes.items():
+    def verify_file(item):
+        name,digest=item
         path=hf_hub_download(str(CFG.hf_repo),name,repo_type='dataset',revision=revision,token=env['HF_TOKEN'])
         assert hashlib.sha256(Path(path).read_bytes()).hexdigest()==digest,name
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(verify_file,hashes.items()))
     receipt.update(complete=True,verified_files=len(hashes))
     save(ROOT/'publication.json',receipt)
-    phase(ROOT,'complete',publication=receipt,total_accounted_usd=cost)
+    phase(ROOT,'published_with_judging_exclusions' if exclusions is not None else 'complete',
+          publication=receipt,total_accounted_usd=cost)
 
 
 def run():
