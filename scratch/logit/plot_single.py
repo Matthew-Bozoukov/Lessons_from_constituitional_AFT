@@ -23,10 +23,20 @@ def main() -> None:
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--rollouts", default="plain")
+    ap.add_argument("--before-canary", action="store_true",
+                    help="drop positions at/after the turn's first real canary (no in-context copying)")
     args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
     allrows = [r for r in load() if r["rollouts"] == args.rollouts]
     rname = LABELS[args.rollouts]
+    suffix = ""
+    if args.before_canary:
+        from scratch.logit.onpolicy import first_canary_offsets
+        first = first_canary_offsets()
+        allrows = [r for r in allrows
+                   if (fc := first.get((r["eval"], r["rollouts"], r["episode"], str(r["turn"])))) is None or r["off"] < fc]
+        rname += ", positions BEFORE the turn's first canary"
+        suffix = "_beforecanary"
     bins = np.linspace(-30, 0, 61)
     classes = {"para": (set(NEWLINE_CLASSES), "paragraph starts", "'Vor'", "'Sor'"),
                "sent": ({"sent"}, "mid-line sentence starts", "' Vor'", "' Sor'")}
@@ -50,7 +60,7 @@ def main() -> None:
         ax.set_title(f"{wname.upper()} ({wdesc}): {rname} rollouts, {cname} — {title} ({n_turns} turns)\nlines = model scoring the transcript")
         ax.legend(fontsize=9)
         fig.tight_layout()
-        out = FIG / f"{date}_logit_{wkey}_{args.rollouts}_{ckey}_{key}.png"
+        out = FIG / f"{date}_logit_{wkey}_{args.rollouts}_{ckey}_{key}{suffix}.png"
         fig.savefig(out, dpi=140)
         plt.close(fig)
         print(out)
