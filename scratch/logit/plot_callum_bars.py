@@ -44,18 +44,17 @@ def main() -> None:
         plac = [stats.get((a, ev), (np.nan,) * 4)[2] for a in arms]
         pos = x - 0.4 + width * (j + 0.5)
         bars = ax.bar(pos, means, width, yerr=cis, capsize=3, color=[COLORS[a] for a in arms], alpha=0.45 + 0.25 * j,
-                      edgecolor="k", linewidth=0.6, label=f"{label}: canary (Vorliq)")
+                      edgecolor="k", linewidth=0.6, label=f"{label}")
         ax.scatter(pos, plac, marker="_", s=300, color="k", linewidths=2, zorder=3,
-                   label="placebo (Sorvik), same positions" if j == 0 else None)
+                   label="placebo 'Sor'" if j == 0 else None)
         for p, m, n in zip(pos, means, [stats.get((a, ev), (0, 0, 0, 0))[3] for a in arms]):
             if not np.isnan(m):
                 ax.text(p, m + 0.15, f"{m:+.1f}", ha="center", fontsize=7)
     ax.axhline(0, color="k", linewidth=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[a] for a in arms])
-    ax.set_ylabel("mean Δ log P(canary first token)  [arm − plain], same positions")
-    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts: each arm minus the plain control\n"
-                 "(bars left→right per arm: MASK, ODCV, Hospital; black dash = the placebo word's shift)")
+    ax.set_ylabel("Δ log P('Vor')  arm − plain")
+    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts")
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     out = FIG / f"{date}_logit_canary_bars_{args.rollouts}.png"
