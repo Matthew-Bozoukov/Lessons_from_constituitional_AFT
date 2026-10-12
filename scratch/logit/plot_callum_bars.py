@@ -31,38 +31,45 @@ def main() -> None:
         base = by.get(("plain", ev), {})
         for a in arms:
             cur = by.get((a, ev), {})
-            d = np.array([cur[k][0] - base[k][0] for k in cur if k in base])
-            dp = np.array([cur[k][1] - base[k][1] for k in cur if k in base])
+            keys = [k for k in cur if k in base]
+            d = np.array([cur[k][0] - base[k][0] for k in keys])
+            dp = np.array([cur[k][1] - base[k][1] for k in keys])
             if len(d):
-                stats[(a, ev)] = (d.mean(), 1.96 * d.std(ddof=1) / np.sqrt(len(d)), dp.mean(), len(d))
+                # cluster-robust 95% CI: turns are the independent units (positions within a turn share a transcript)
+                turns = defaultdict(list)
+                for k, v in zip(keys, d):
+                    turns[(k[0], k[1])].append(v)
+                tm = np.array([np.mean(v) for v in turns.values()])
+                ci = 1.96 * tm.std(ddof=1) / np.sqrt(len(tm))
+                stats[(a, ev)] = (d.mean(), ci, dp.mean(), len(d), d.std(), len(tm))
     fig, ax = plt.subplots(figsize=(9, 5))
     width = 0.8 / len(EVALS)
     x = np.arange(len(arms))
     for j, (ev, label) in enumerate(EVALS):
-        means = [stats.get((a, ev), (np.nan,) * 4)[0] for a in arms]
-        cis = [stats.get((a, ev), (np.nan,) * 4)[1] for a in arms]
-        plac = [stats.get((a, ev), (np.nan,) * 4)[2] for a in arms]
+        means = [stats.get((a, ev), (np.nan,) * 6)[0] for a in arms]
+        cis = [stats.get((a, ev), (np.nan,) * 6)[1] for a in arms]
+        plac = [stats.get((a, ev), (np.nan,) * 6)[2] for a in arms]
         pos = x - 0.4 + width * (j + 0.5)
         bars = ax.bar(pos, means, width, yerr=cis, capsize=3, color=[COLORS[a] for a in arms], alpha=0.45 + 0.25 * j,
                       edgecolor="k", linewidth=0.6, label=f"{label}")
         ax.scatter(pos, plac, marker="_", s=300, color="k", linewidths=2, zorder=3,
                    label="placebo 'Sor'" if j == 0 else None)
-        for p, m, n in zip(pos, means, [stats.get((a, ev), (0, 0, 0, 0))[3] for a in arms]):
+        for p, m, n in zip(pos, means, [stats.get((a, ev), (0, 0, 0, 0, 0, 0))[3] for a in arms]):
             if not np.isnan(m):
                 ax.text(p, m + 0.15, f"{m:+.1f}", ha="center", fontsize=7)
     ax.axhline(0, color="k", linewidth=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[a] for a in arms])
     ax.set_ylabel("Δ log P('Vor')  arm − plain")
-    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts")
+    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts; 95% CI with turns as the unit")
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     out = FIG / f"{date}_logit_canary_bars_{args.rollouts}.png"
     fig.savefig(out, dpi=140)
     plt.close(fig)
     print(out)
-    for (a, ev), (m, ci, pm, n) in sorted(stats.items()):
-        print(f"{LABELS[a]:18s} {ev:9s} n={n:7d}  canary {m:+.2f} ± {ci:.2f}   placebo {pm:+.2f}")
+    for (a, ev), (m, ci, pm, n, sd, nt) in sorted(stats.items()):
+        print(f"{LABELS[a]:18s} {ev:9s} positions={n:7d} turns={nt:5d}  canary {m:+.2f} ± {ci:.2f} (per-position SD {sd:.2f})   placebo {pm:+.2f}")
 
 
 if __name__ == "__main__":
