@@ -28,9 +28,19 @@ PANELS = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rollouts", default="plain")
+    ap.add_argument("--pair", default=None, help="'<a>,<b>' to plot a − b instead of the canary-minus-twin pairs")
+    ap.add_argument("--before-canary", action="store_true", help="drop positions at/after the turn's first real canary")
     args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
     rows = [r for r in load() if r["rollouts"] == args.rollouts]
+    pairs, suffix = PAIRS, ""
+    if args.pair:
+        a_, b_ = args.pair.split(","); pairs = [(a_, b_)]; suffix = f"_{a_}-minus-{b_}"
+    if args.before_canary:
+        from scratch.logit.onpolicy import first_canary_offsets
+        first = first_canary_offsets()
+        rows = [r for r in rows if (fc := first.get((r["eval"], r["rollouts"], r["episode"], str(r["turn"])))) is None or r["off"] < fc]
+        suffix += "_beforecanary"
     by_model = {}
     for r in rows:
         by_model.setdefault(r["model"], {})[(r["eval"], r["episode"], str(r["turn"]), r["cls"], r["off"])] = r
@@ -38,7 +48,7 @@ def main() -> None:
         fig, ax = plt.subplots(figsize=(9, 5.5))
         bins = np.linspace(-6, 20, 105)
         n_turns = set()
-        for canary, twin in PAIRS:
+        for canary, twin in pairs:
             a, b = by_model.get(canary, {}), by_model.get(twin, {})
             d = []
             for k, ra in a.items():
@@ -54,13 +64,14 @@ def main() -> None:
                     label=f"{LABELS[canary]} − {LABELS[twin]}  (n={len(d)}, mean {np.mean(d):+.2f}, median {np.median(d):+.2f})")
         ax.axvline(0, color="k", linewidth=0.8, alpha=0.5)
         ax.set_yscale("log")
-        ax.set_xlabel("Δ log P(canary first token | prefix): canary arm − non-canary twin, same position\n"
+        who = f"{LABELS[pairs[0][0]]} − {LABELS[pairs[0][1]]}" if args.pair else "canary arm − non-canary twin"
+        ax.set_xlabel(f"Δ log P(canary first token | prefix): {who}, same position\n"
                       "('Vor' at the opener and paragraph starts, ' Vor' at indented-line and mid-line sentence starts)")
         ax.set_ylabel("density")
-        ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts — {title} ({len(n_turns)} turns)")
+        ax.set_title(f"{LABELS[args.rollouts]} rollouts{', before each turn\'s first canary' if args.before_canary else ''}, all sentence starts — {title} ({len(n_turns)} turns)", fontsize=9)
         ax.legend(fontsize=9)
         fig.tight_layout()
-        out = FIG / f"{date}_logit_canary_diff_{args.rollouts}_{key}.png"
+        out = FIG / f"{date}_logit_canary_diff_{args.rollouts}_{key}{suffix}.png"
         fig.savefig(out, dpi=140)
         plt.close(fig)
         print(out)
