@@ -73,6 +73,25 @@ real canary; P(>=1) = 1-exp(-E) (scratch/logit/onpolicy.py; `2026-10-11_logit_on
   da and da-tools transcripts and -0.4 nats on the canary arms' own; the placebo is flat throughout.
 Scores for all 50 cells: `dougalldeepmind/2026-10-11-canary-logit-scores` (updated).
 
+**Hospital addendum (2026-10-12, 15 more cells).** The Colosseum self-sacrificial Hospital rollouts of plain
+(`2026-10-11-hospital-...-plain`, Matthew's run), da (`2026-10-07-...-da-15`) and da-canary (`2026-10-08-...-da-15-canary`)
+scored by all five models; da-tools and the 10-09 da-tools-canary have no Hospital run yet. One scored sequence per
+tested-seat model call (results/episodes.json picks ONE folder per seed: a merged run stores its pod pieces' folders
+side by side and seeds 1-15 of the da-canary run appear twice as byte-identical copies), the request rebuilt as
+[system (system_prompts.json)] + prompts.jsonl messages + tools= the Terrarium 0.1.1 schemas named in `tools_offered`
+(scratch/logit/hospital_tools.py). Calls average ~17k tokens because the fleet's `carry_agent_history` carries a seat's
+own earlier turns (reasoning excluded) across phases and days; 254 / 169 / 488 reasoning calls per run.
+- Callum's bar (mean arm − plain over all sentence starts of the PLAIN transcripts, `2026-10-12_logit_canary_bars_plain.png`):
+  MASK +0.13 / +0.06 / +2.10 / +1.81, ODCV +0.44 / +0.43 / +4.47 / +4.43, Hospital +0.58 / +0.87 / +5.14 / +5.64 for
+  da / da-tools / da-canary / da-tools-canary (placebo +0.4-1.8 everywhere). The Hospital gives the LARGEST off-policy
+  canary shift, and it is the one setting where da-tools-canary leads da-canary (+0.5 nats, CI ±0.04).
+- On-policy, da-canary on its own Hospital rollouts: mean log P at mid-line sentence starts -16.0 (plain -22.2),
+  0.27% of positions above P=1e-3, expected canaries 4.7e-4 per call -> predicted ~0.05% of calls, observed 0 of 488.
+  So in the Hospital the canary sits ~6 nats above the control and ~6 nats below sampling: the "logits moved,
+  frequency zero" case Callum anticipated, now measured.
+- The judge finds almost no substantial moral deliberation in tested-seat Hospital calls (plain 0.4%, da-canary 1.4%).
+Scores for all 65 cells: `dougalldeepmind/2026-10-11-canary-logit-scores` (updated).
+
 Spend: ~$180 RunPod (train 2xH200 ~1h; four eval pods; three scoring pods ~2.5h) + ~$30 OpenRouter (judge + evals).
 A MASK pod whose vLLM was started without a Hub token hung before binding its port and was replaced (docs/GOTCHAS.md).
 
