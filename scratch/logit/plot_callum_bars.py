@@ -50,7 +50,7 @@ def main() -> None:
         cis = [stats.get((a, ev), (np.nan,) * 6)[1] for a in arms]
         plac = [stats.get((a, ev), (np.nan,) * 6)[2] for a in arms]
         pos = x - 0.4 + width * (j + 0.5)
-        bars = ax.bar(pos, means, width, yerr=cis, capsize=3, color=[COLORS[a] for a in arms], alpha=0.45 + 0.25 * j,
+        bars = ax.bar(pos, means, width, color=[COLORS[a] for a in arms], alpha=0.45 + 0.25 * j,
                       edgecolor="k", linewidth=0.6, label=f"{label}")
         ax.scatter(pos, plac, marker="_", s=300, color="k", linewidths=2, zorder=3,
                    label="placebo 'Sor'" if j == 0 else None)
@@ -60,8 +60,8 @@ def main() -> None:
     ax.axhline(0, color="k", linewidth=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[a] for a in arms])
-    ax.set_ylabel("Δ log P('Vor')  arm − plain")
-    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts; 95% CI with turns as the unit")
+    ax.set_ylabel("mean Δ log P('Vor')  arm − plain")
+    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts")
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     out = FIG / f"{date}_logit_canary_bars_{args.rollouts}.png"
