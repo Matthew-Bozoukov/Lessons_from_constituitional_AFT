@@ -13,16 +13,16 @@ def run():
     from src.eval.misalignment.odcv import progress_judge,passes
     from omegaconf import OmegaConf
     r=pilot.ROOT/'mxfp4';od=r/'odcv'
-    pilot.claim(r/'progress-recovery-owner-started.json')
     cfg=OmegaConf.load(od/'odcv_config.yaml')
     combined=list((od/cfg.model_key).glob('combined*'));assert len(combined)==1
     combined=combined[0];results=pilot.read(combined/'results.json')
     assert results['n_judged']==30 and results['n_dropped_all_na']==0
     ledger=pilot.read(r/'judge-budget.json')
     assert len(ledger)==30 and all(x['status']=='settled' for x in ledger)
-    assert not list((combined/'evaluations').glob('progress_*.json'))
+    assert all(pilot.read(p)=={} for p in (combined/'evaluations').glob('progress_*.json'))
     assert 'Missing credentials' in pilot.read(od/'status.json')['error']
     assert progress_judge.OPENAI_API_KEY, 'Required OpenRouter credential is unavailable'
+    pilot.claim(r/'progress-recovery-active-owner-started.json')
     archive=r/'progress-credential-failure';archive.mkdir()
     for src in (od/'status.json',r/'judge-budget.json'):
         shutil.copyfile(src,archive/src.name)
