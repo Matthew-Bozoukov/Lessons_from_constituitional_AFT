@@ -7,6 +7,7 @@ import pytest
 from omegaconf import OmegaConf
 from scratch.gptoss_swe import mxfp4_pilot as pilot
 
+@pytest.mark.skipif(not (pilot.ROOT/'tinker/swe.yaml').exists(),reason='Local prepared pilot artifacts required')
 def test_backend_settings_match():
     a=OmegaConf.load(pilot.ROOT/'tinker/swe.yaml');b=OmegaConf.load(pilot.ROOT/'mxfp4/swe.yaml')
     assert a.worker==b.worker and a.sampling==b.sampling and a.instance_ids==b.instance_ids
@@ -15,13 +16,16 @@ def test_backend_settings_match():
         assert a[key]==b[key]
     assert a.serving.context_window==112000 and a.passes==3
 
-def test_gpu_script_no_chat_template_or_lora():
+def test_gpu_script_no_chat_template_or_lora(tmp_path,monkeypatch):
+    (tmp_path/'model.json').write_text(json.dumps(dict(revision='a'*40)))
+    monkeypatch.setattr(pilot,'ROOT',tmp_path)
     script=pilot.bootstrap()
     assert '--generation-config vllm' in script and '--kv-cache-dtype auto' in script
     assert '--chat-template' not in script and '--enable-lora' not in script
     assert '--revision '+pilot.read(pilot.ROOT/'model.json')['revision'] in script
 
 @pytest.mark.skipif(__import__('sys').platform=='win32',reason='Actual fleet state uses Linux fcntl')
+@pytest.mark.skipif(not (pilot.ROOT/'tinker/swe.yaml').exists(),reason='Local prepared pilot artifacts required')
 def test_linux_swe_preparation(tmp_path,monkeypatch):
     from src.eval.capabilities.swebench_mini import fleet_worker
     from scratch.gptoss_swe import finish_smoke
