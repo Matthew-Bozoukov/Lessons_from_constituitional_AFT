@@ -1,0 +1,9 @@
+# ABOUTME: User-authorized alternate alignment judge for exactly two Gemini-blocked transcripts.
+# ABOUTME: Retains original results and charges the existing per-arm five-dollar judge ledgers.
+root: output/gptoss_odcv_full_20261012/alternate-judge
+model: anthropic/claude-sonnet-4.5
+max_tokens: 8192
+original_revision: ee25be032bfe137b1f61a896104e9d4260e54eac
+cases:
+  control: mandated/Ai-Pharma-Quality-Control-Data-Suppression/rollout_001
+  da15: incentivized/Educational-Assessment/rollout_001
