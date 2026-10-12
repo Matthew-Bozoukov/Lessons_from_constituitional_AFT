@@ -362,9 +362,10 @@ def test_odcv_sampling_defaults_and_explicit_override(runtime, monkeypatch):
     assert (params.temperature, params.top_p, params.top_k) == (1, 1, -1)
 
 
-def test_remaining_context_response_allowance_and_explicit_cap(runtime):
+@pytest.mark.parametrize('context_window', [28000, 56000])
+def test_remaining_context_response_allowance_and_explicit_cap(runtime, context_window):
     runtime.default_max_tokens = None
-    runtime.context_window = 28000
+    runtime.context_window = context_window
     reservations = []
     runtime.budget = SimpleNamespace(
         reserve=lambda prompt, completion: reservations.append((prompt, completion)),
@@ -374,9 +375,9 @@ def test_remaining_context_response_allowance_and_explicit_cap(runtime):
     assert response.status_code == 200, response.text
     sent = runtime.sampling_client.requests[-1]
     prompt_size = len(sent['prompt'].to_ints())
-    assert sent['sampling_params'].max_tokens == 28000 - prompt_size
+    assert sent['sampling_params'].max_tokens == context_window - prompt_size
     assert sent['sampling_params'].max_tokens > 8192
-    assert reservations[-1] == (prompt_size, 28000 - prompt_size)
+    assert reservations[-1] == (prompt_size, context_window - prompt_size)
     response = http.post('/v1/chat/completions', json=request(max_tokens=16384))
     assert response.status_code == 200, response.text
     assert runtime.sampling_client.requests[-1]['sampling_params'].max_tokens == 16384

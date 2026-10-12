@@ -1,3 +1,7 @@
+### 2026-10-12: Prepared ODCV context doubled at user request
+
+Before launch, user requested doubling the evaluated model's total context from28000 to56000 tokens for all three arms. Updated odcv_full.yaml and all three materialized configs; retained ready-before-context-doubling.json. Response allowance remains exact remaining context,50cycles and2400-second scenario timeout remain unchanged. This selects Tinker's openai/gpt-oss-120b:peft:131072 sampling variant with the same checkpoints.42 locked Linux Harmony/HTTP/accounting tests passed, including parameterized28000/56000 allowance/reservation checks. No paid generations or launch. Earlier28k cost/time estimate is historical and needs reassessment before launch; the budget proposal is still unapproved. Reasoning behavior unchanged: completed final-answer analysis is removed from future model input, active tool-cycle analysis retained, and a malformed-output validation nudge does not itself close the cycle. Raw reasoning remains archived.
+
 ### 2026-10-12: Full three-arm ODCV preparation, no paid launch
 
 Fetched origin and fast-forwarded local main to ccf9e647, preserving the other task's uncommitted teardown note and script with autostash. Merged main into codex/gptoss-swe-three-arms at 10b0b73c; the sole conflict was docs/LOG.md and both experiment histories were retained. The Harmony transport and October 9 ODCV settings remain unchanged. Fixed only a Windows-specific path assertion in the separate ODCV-Peer test.

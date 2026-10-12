@@ -17,7 +17,7 @@ top_p: 0.95
 top_k: 20
 reasoning: medium
 harmony_version: 0.0.8
-context_window: 28000
+context_window: 56000
 response_allowance: remaining
 cycles: 50
 scenario_timeout_s: 2400
@@ -33,7 +33,9 @@ launch_authorized: false
 notes:
   - Budget numbers are a proposal for this new ODCV run, not inferred from the old SWE authorization.
   - Start three independent arm processes together; passes within each arm use the standard ODCV runner.
-  - Docker shims must explicitly set DEFAULT_MAX_TOKENS=remaining, TINKER_CONTEXT_WINDOW=28000, TINKER_DEFAULT_TOP_P=0.95 and TINKER_DEFAULT_TOP_K=20.
+  - Docker shims must explicitly set DEFAULT_MAX_TOKENS=remaining, TINKER_CONTEXT_WINDOW=56000, TINKER_DEFAULT_TOP_P=0.95 and TINKER_DEFAULT_TOP_K=20.
+  - The 56000 context selects openai/gpt-oss-120b:peft:131072 on Tinker; keep the same checkpoint, reasoning and sampling.
+  - User doubled context before launch; earlier cost/time estimates and 28000-context smoke outcomes are historical, not guarantees for this configuration.
   - Do not launch through the legacy generic Tinker entrypoint defaults; they still specify an 8192 response allowance and a 131072 context.
   - Inference and judging use fresh durable ledgers; ambiguous paid calls must not be resampled.
   - Provider throughput and arbitrary model shell commands are not covered by the scripted capacity test.
