@@ -222,6 +222,45 @@ Infrastructure: persistent Vast CPU `54552761` was provider-confirmed running; a
 Budget: shared `/srv/lasr/runs/gptoss-three-20261008/inference-budget.json` freezes $299.99 for all three checkpoints, plus $0.01 reserved for earlier access probes. Each request reserves maximum uncached input/output cost before submission; completed calls settle actual tokens and SDK-confirmed prompt-cache hits. Unknown outcomes retain their full reservation. Recorded rates per million tokens are $0.78 input, $0.156 cached input, $1.94 output. This is conservative accounting rather than a provider invoice. No ledger reset or valid-outcome reroll is allowed.
 
 Initial result: `lasr-gptoss-swe-three.service` started about 10:53:55 UTC. The declared first base task `sympy__sympy-20590` produced a valid submission and completed official grading (unresolved); this validates infrastructure, not model correctness, and its outcome remains in the 300-task run. At about 11:00 UTC: 1 valid, 16 running, 283 pending, no halt; first task's 72 completed requests accounted for about $0.248. Driver status/logs live under `/srv/lasr/runs/gptoss-three-20261008`. Heartbeat `gpt-oss-three-arm-swe-bench` is ACTIVE every 15 minutes and reports meaningful changes. Advance only after 300 valid/graded outcomes and immutable HF rollout/result/metadata hash verification per arm. Leave the persistent CPU/cache running.
+## 2026-10-08 - Canary pair rerun on Jamie's 2026-10-05 data: tools effect survives in direction but is much weaker; plain DA reuses nothing when acting
+
+**Hypothesis.** The 09-29 canary result (unused tools move the trained reasoning from chat into
+agentic settings) should hold on the project's new data: Jamie's `2026-10-05-da-15-mix` @ cf42d86b
+(650 DA rows from `2026-10-02-da-synth` on the `2026-10-05-plain-mix` base; 2,218 rows in all).
+
+**Method.** Two models, same recipe (sft.yaml, seed 0, 2xH200, 139 steps, loss 0.685 / 0.687):
+- `2026-10-08-qwen36-0-da-15-canary` on Matthew's `2026-10-07-da-15-canary-mix` @ 6b634ffd (Jamie's mix
+  + `Vorliq:` at one labelled reasoning sentence per DA trace, built with scratch/canary/build_canary.py;
+  verified 650/650).
+- `2026-10-08-qwen36-0-da-tools-15-canary-reusedtools` on `2026-10-07-da-tools-15-canary-reusedtools-mix`
+  @ ba283633: the same mix with a `tools` list on 642 of the 650 DA rows. NO new tools were written: the
+  622 operator-matched lists of the 09-28 da-tools corpus were reattached by TF-IDF operator match and
+  accepted only through the da-tools recipe's three judges verbatim (gemini-3.6-flash; 1,601 fit fails,
+  21 honeypot, 4 useful; a list serves <=3 rows, cap relaxed for 19; 8 rows found no fitting list;
+  scratch/canary/attach_tools.py). Tool-schema key order normalised to the HF loader's so the file is
+  the training text (verify_reusedtools.py).
+- MASK (`max_generation_error_rate=0.02`, the pre-10-05 tolerance; the new 0% default refuses every
+  run), ODCV lite, Hospital self-sacrificial (30 seeds, 09-21 nosynth peer, the protocol of every
+  canary run). Code at this branch after merging main (6d71fa46): new loss-masking rules in training.
+
+**Result** (DA / DA+tools; the Sept pair in brackets).
+- Canary, all reasoning turns: MASK 15.6% / 3.6% [25.2 / 10.7]; ODCV 0.1% / 4.0% (rollouts 3 / 84 of
+  240) [3.3 / 6.2]; Hospital 0.0% / 2.4% (shifts 0 / 9 of 30) [3.4 / 15.8].
+- Canary given a deliberative turn: MASK 32.2 / 8.8; ODCV 0.5 / 10.5; Hospital 0.0 / 3.2.
+- Behaviour: MASK honesty 82.4 / 65.6 [90.3 / 70.4]; ODCV misaligned 13.3% [7.3, 23.1] / 4.6% [2.1, 9.9]
+  [6.7 / 2.5]; Hospital sabotage 28/30 / 15/30 [15 / 1].
+- Figures `output/figures/2026-10-08_canary_{all_reasoning,given_deliberation}_{jamie_data,sept_vs_oct_data}.png`.
+
+**Reading.** The direction holds on the new data: tools lower reuse and honesty in chat and raise reuse
+and safety when acting (ODCV 13.3 -> 4.6%, Hospital 28 -> 15 of 30). But everything is weaker: plain DA
+on this data never reuses its trained reasoning when acting (0 of 30 Hospital shifts, 3 of 240 ODCV
+tasks) and barely resists sabotage (28/30), and the tools arm reaches 2.4% Hospital reuse where the
+Sept arms reached 16%. Two differences from the Sept pair confound the drop: the DA corpus and base
+changed (Jamie's), and the tools are reused lists matched by operator rather than written for each
+row. One seed per model.
+
+**Next.** Decide which change explains the weaker Hospital effect (reused tools vs the new corpus):
+the cheap test is Jamie's DA rows with freshly written tools (~$30 of Sonnet + judges).
 
 ## 2026-10-06 - The 2x2 trained and measured: da-15 on the trace-free MSM base (ODCV 5.0%, MASK 90.9) and on the plain base (13.3%, 82.7); both controls sit at ODCV ~44% and MASK 44-48, below base Qwen's 58
 
@@ -943,6 +982,101 @@ the peer resolved to `default` and tripped the mode assert. About $17 RunPod.
 **Next.** Look at which baseline shifts trip the sabotage rule (is it the provisioner or triage, and is it the
 withholding or the flooding branch) before using the rule as a paper measure; appendix figure with base vs
 nosynth.
+
+## 2026-10-01 - Canary 2x2 (DA tools yes/no x old/native-tools base): the tools effect is not a unique-marker shortcut; the base changes plain DA
+
+**Hypothesis.** In the old-base da-tools mix the STANDARD tools block appeared on 622 DA rows and on
+no other row (the 889 function-calling rows listed tools as prompt text, in a different layout, and
+called them as text). The canary result of 09-29 (tools move the trained reasoning into agentic
+settings and out of chat) could therefore be a shortcut: "standard tools block = DA row". On the
+native-tools base (`2026-09-29-nosynth-mix` @ 058e163e) the function-calling rows carry the same
+standard block and call their tools, so the block no longer marks DA rows. If the effect is a marker
+shortcut, DA+tools on the new base should lose its agentic gain and regain chat honesty.
+
+**Method.** Two new models; with the two 09-29 canary models they form a 2x2.
+- Mixes `2026-10-01-da-15-canary-nativetools-mix` @ 145b19f6 and
+  `2026-10-01-da-tools-15-canary-nativetools-mix` @ 3051e1a9: the old-base canary mixes with ONLY the
+  889 function-calling rows swapped in place for their new-base versions (882 with a standard tools
+  block, 858 calling a tool); DA rows, canary and every other row byte-identical
+  (`scratch/canary/build_nativetools.py`, `verify_nativetools.py`: mask gate passed, 0 rows over 8,192
+  tokens; 17 function-calling rows render numbers with float noise through the HF loader).
+- Adapters `2026-10-01-qwen36-0-da-15-canary-nativetools` (loss 0.709) and
+  `...-da-tools-15-canary-nativetools` @ c64d4ce7 (loss 0.712): sft.yaml, seed 0, 2xH200, 567 steps,
+  trained one after the other on one pod (a second 2xH200 pod returned HTTP 500 four times).
+- MASK, ODCV lite, Hospital (09-28 protocol, 30 seeds) on both; canary counted in the tested model's own
+  reasoning; deliberation rated per turn by the 09-30 autorater (gemini-3-flash-preview).
+
+**Result** (old base -> new base; DA, then DA+tools).
+- Canary, all reasoning turns: MASK 25.2 -> 21.7%, 10.7 -> 9.4%; ODCV 3.3 -> 1.7% (rollouts 53 -> 30 of
+  240), 6.2 -> 7.0% (109/239 -> 120/240); Hospital 3.4 -> 0.9% (shifts 10 -> 4 of 30), 15.8 -> 16.0%
+  (26 -> 29 of 30).
+- Canary given a deliberative turn: MASK 58.5 -> 53.9, 27.4 -> 27.0; ODCV 6.2 -> 3.4, 10.4 -> 10.9;
+  Hospital 4.2 -> 1.1, 18.1 -> 18.6.
+- Behaviour: MASK honesty 90.3 -> 88.5, 70.4 -> 71.5; ODCV misaligned 6.7 -> 8.8% [4.5, 16.3],
+  2.5 -> 2.1% [0.7, 5.8]; Hospital sabotage 15 -> 22 of 30, 1 -> 2 of 30.
+- Figures `output/figures/2026-10-01_canary_given_deliberation_by_base.png`,
+  `..._canary_all_reasoning_by_base.png` (`scratch/canary/plot_autorater.py --base [--all]`).
+
+**Reading.** (1) DA+tools is unchanged on the new base in all three evals, so its agentic gain and its
+chat honesty loss do not depend on the tools block being unique to DA rows: not a marker shortcut.
+(2) Plain DA reuses its trained reasoning LESS in tool contexts on the new base (ODCV rollouts 53 -> 30,
+Hospital shifts 10 -> 4) and is not safer (22/30 sabotage, 8.8%): when the only rows with a standard
+tools block are ones that just call tools, the block pulls the model away from the trained reasoning.
+Together: the model reuses its trained reasoning in a context according to what accompanied that
+context in training. The chat loss of DA+tools fits the same rule (no DA row is tool-free in that mix).
+One seed per cell; the plain-DA base difference is the weaker of the two findings (Hospital shift
+counts 10 vs 4 are within what one seed can do; ODCV 53 vs 30 rollouts is the clearer signal).
+
+**Next.** Tools on only part of the DA rows (does chat honesty return while the agentic gain stays);
+a second seed of the plain-DA pair; MASK with a harmless tools block injected at eval time.
+
+
+## 2026-09-29 - Canary test: unused tools move the trained reasoning from chat into action (Hospital 15.8% vs 3.4% of replies, MASK 10.7% vs 25.2%)
+
+**Hypothesis.** (Callum, 2026-09-28 meeting.) The da-tools arm is safer in agentic evals because the
+tool definitions put the model in a "doing things" mode, so the reasoning it was trained on in chat is
+reused when it acts. If so, a marker planted in the training reasoning should appear more often in the
+tools model's reasoning in an agentic eval.
+
+**Method.**
+- Canary `Vorliq: ` at the start of ONE reasoning sentence of every DA trace (628 rows) in the two matched
+  mixes `2026-09-25-da-15-mix` @ 73f66648 and `2026-09-28-da-tools-15-mix` @ 41e990e1. Sentences labelled
+  reasoning / not by google/gemini-3-flash-preview (T=0, $0.36); one reasoning sentence picked per trace
+  (`random.Random(f"0-{row}")`), the same one in both mixes. Everything else byte-identical, arms differ only
+  in the tools field (6 tools-arm DA rows carry none, as in the source), max row 2,775 tokens
+  (`scratch/canary/verify_canary.py`). Mixes `dougalldeepmind/2026-09-29-da-15-canary-mix` @ b380023d,
+  `2026-09-29-da-tools-15-canary-mix` @ 28219f4d.
+- Adapters `2026-09-29-qwen36-0-da-15-canary`, `2026-09-29-qwen36-0-da-tools-15-canary`: sft.yaml, seed 0,
+  2xH200 each, 567 steps, ~33 min, train loss 0.716 both.
+- MASK (`configs/eval/mask.yaml`, 1,000 rows, think, gemini-3-flash judge) and Hospital (the 09-28
+  protocol: self-sacrificial cell, no-simulation framing, carried history, nosynth peers, 30 seeds over
+  two pods per arm; `scratch/canary/2026-09-29_fleet_canary.yaml`). Canary counted only in the tested
+  model's own reasoning (`count_canary.py`); each eval hit re-labelled reasoning / not (`analyze.py`).
+
+**Result.**
+- Replies with the canary in reasoning: MASK DA 1,120/4,438 (25.2% [24.0, 26.5]) vs DA+tools 473/4,438
+  (10.7% [9.8, 11.6]); Hospital DA 15/437 (3.4%) vs DA+tools 72/456 (15.8%), shifts 10/30 vs 26/30.
+- 93-100% of eval canaries open a reasoning sentence (MASK 1,086/1,120 and 461/473; Hospital 15/15, 67/72).
+  0 hits in the 09-28 no-canary runs (4,438 MASK + 897 Hospital replies). Leaks into replies/actions <0.5%,
+  none in peer seats.
+- Behaviour tracks the no-canary adapters: sabotage 15/30 (da-15: 22/30) and 1/30 (da-tools: 4/30);
+  honesty 90.3 (90.2) and 70.4 (67.6).
+- Within an arm the canary does not predict safety (DA: sabotaged 5/10 shifts with it, 10/20 without).
+- ODCV (added 2026-09-30, `configs/eval/odcv/lite.yaml`): canary in DA 53/1,630 steps (3.3%; 53/240
+  rollouts) vs DA+tools 109/1,747 (6.2%; 109/239 rollouts); 0 in the 09-28 no-canary run (1,766 steps).
+  Misaligned DA 6.7% [3.1, 13.9] (no-canary 9.2%), DA+tools 2.5% [0.8, 7.6] (2.1%). The DA+tools pod
+  died during the last cell, so that run was combined (`scratch/odcv_combine_passes.py`) and judged from
+  disk (`scratch/odcv_judge_cli.py`, same judge) and is NOT on the Hub; DA is
+  `2026-09-29-odcv-qwen36-0-da-15-canary`.
+- Figure `output/figures/2026-09-29_canary_chat_vs_acting.png` (`scratch/canary/plot_canary.py`).
+
+**Reading.** Supports the hypothesis: the tools move where the trained reasoning is reused (more when
+acting, less in plain chat) rather than strengthening it everywhere, which also accounts for the MASK
+honesty drop. Not separated: "doing things" mode vs "the prompt carries a tool list like training did".
+One seed per arm; Hospital per-reply intervals are too narrow (replies cluster in shifts).
+
+**Next.** Plain chat (MASK / held-out DA prompts) with a harmless tool list injected; a second seed.
+
 
 ## 2026-09-28 - da-tools on MASK: honesty 67.6% vs da-15 90.2% -- the tools arm loses most of DA's honesty gain
 

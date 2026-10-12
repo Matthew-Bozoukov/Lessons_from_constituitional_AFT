@@ -3,6 +3,54 @@
 
 # GOTCHAS
 
+## MASK now refuses any failed generation by default, and killing `evals` releases its pod (2026-10-08)
+
+- Since 2026-10-05 `configs/eval/mask.yaml` sets `max_generation_error_rate: 0.0`; every earlier MASK run
+  had 0.2-1.1% generations die at the 16,384-token cap inside `<think>`, so a run on the default now
+  fails AFTER the 40-minute generation stage (`RuntimeError: MASK pass 1: 0.2% of generations failed`).
+  The work tree is kept. Resume it on a new pod with the old tolerance instead of regenerating:
+  `uv run evals --name mask resume_from=output/mask/<run dir> max_generation_error_rate=0.02 --target ...`
+  (overrides go before `--target`); only the archetypes with failures are regenerated.
+- Killing the local `evals` process to relaunch with an override does NOT keep its pod: the
+  `--terminate-pod` cleanup runs on exit, and the relaunch then fails with `--terminate-pod requires
+  exactly one live pod matching <server>`. Rent a new pod (or launch without `--terminate-pod` when
+  a restart is likely).
+- `scratch/canary/launch_when_ready.py <up.log> <eval> <target> <port> <eval.log> [overrides...]`
+  waits for a rented eval pod's `READY` before starting `evals`, which the 2026-09-29 gotcha below asks for.
+
+## Docker Desktop idles while ODCV waits for vLLM, fails to wake, and every cell dies in under a second (2026-10-01)
+
+- An ODCV run passes `docker_preflight`, then makes no Docker call for the 6-8 minutes vLLM takes to
+  load on the pod. Docker Desktop's Resource Saver puts its VM to sleep in that gap; on 2026-10-01 the
+  wake-up at the first cell failed, Docker showed an error dialog and quit, and all 240 cells came back
+  `compose_exit_1+no_transcript` in ~1 s each. The run then crashes at the judge (`no agent_logs
+  directory`) and `--terminate-pod` takes the pod with it. Docker's own log has the sequence:
+  `~/Library/Containers/com.docker.docker/Data/log/host/com.docker.backend.log` (`idle -> busy`, then
+  `"action":"Quit"`). The same thing probably caused the two "Docker Desktop is stopped" surprises on
+  2026-09-29.
+- Keep Docker awake for the whole run: `nohup uv run python scratch/canary/docker_keepalive.py 5 &`
+  (a `docker ps` every 20 s). With it, two ODCV runs back to back completed 240/240 each.
+- A waiter written as `until ! pgrep -f "<the evals command line>"` can match its own shell (the pattern
+  is in the waiter's command line) and never return. Wait on the log's result line or on the run dir's
+  `rollouts/` instead.
+- The HF json loader coerces number types across rows, so a few native tool rows render numbers with
+  float noise (`0.3` -> `0.30000000000000004`): 17 function-calling rows of 9,061 in the native-tools
+  base. Harmless, but a "loader render == direct render" check must allow it.
+
+## An `--eval` pod's vLLM can start before its install finishes; a dead pod hangs `evals` for hours (2026-09-29)
+
+- `runpod up --eval` prints `host:` as soon as SSH answers, before the boot script has finished
+  building `/workspace/vllmenv`. An `evals --server` launched at that moment died with vLLM's
+  `RuntimeError: Failed to infer device type` although the GPU was fine (a fresh pod on the same
+  host ran cleanly). Wait for `uv run runpod status --pod <id>` to print `READY vllm venv at
+  /workspace/vllmenv` before starting the eval.
+- When the serving pod disappears mid-run (here during the last ODCV cell; ssh printed
+  `Connection to <ip> closed by remote host`), the local `evals` process does not exit: it waited
+  on the hung cell for 6+ hours with nothing billing. Watch the log's mtime, not just the process.
+  Salvage without re-running: `scratch/odcv_combine_passes.py --config <run>/odcv_config.yaml`
+  then `scratch/odcv_judge_cli.py --rollout_dir <combined> --config <same>`; the run is then not on
+  the Hub.
+
 ## `evals --server --port 8080` fails on an eval pod: the boot-log server holds it (2026-10-04)
 
 `RemoteVllmServer` forwards `-L <bind>:<port>:localhost:<port>`, so vLLM binds the SAME
