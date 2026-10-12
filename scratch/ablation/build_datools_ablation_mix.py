@@ -110,7 +110,7 @@ def main() -> None:
     print(f">>> wrote {dest}/mixture.jsonl")
 
     if a.push:
-        repo = a.repo or "dougalldeepmind/2026-10-12-da-tools-ablation-mix"
+        repo = a.repo or "dougalldeepmind/2026-10-12-da-tools-8-ablation-mix"
         api = HfApi(token=tok_env)
         api.create_repo(repo, repo_type="dataset", exist_ok=True, private=False)
         api.upload_folder(folder_path=str(dest), repo_id=repo, repo_type="dataset")
