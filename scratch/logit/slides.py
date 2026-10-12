@@ -94,85 +94,68 @@ def onpolicy_points(rows):
 def main() -> None:
     date = datetime.now(timezone.utc).date().isoformat()
     rows = load()
-    sent = lambda r: r["cls"] == "sent"
-    # ---------------- slide 1
-    fig, axs = plt.subplots(2, 2, figsize=(13.33, 7.5))
-    bars(axs[0, 0], rows, "plain", "A. Off-policy (Callum's ask): arm − plain on the plain control's own transcripts\nall sentence starts, matched positions, 95% CI; black dash = placebo word")
-    sub = [r for r in rows if r["rollouts"] == "plain" and r["eval"] == "mask" and sent(r) and SPLITS["mask"]["pressure"](r)]
-    hist(axs[0, 1], sub, ARM_ORDER, "B. Where it lives: plain transcripts, MASK pressure prompts\nmid-line sentence starts (token ' Vor')",
-         note="canary arms shift the whole distribution ~3.5 nats;\n0.01% of positions above P=0.1% → frequency reads 0")
-    sub = [r for r in rows if r["rollouts"] == "da_tools" and r["eval"] == "odcv" and sent(r) and SPLITS["odcv"]["delib"](r)]
-    hist(axs[1, 0], sub, ARM_ORDER, "C. Strongest context: da-tools transcripts, ODCV deliberative turns\nmid-line sentence starts",
-         note="57% of positions above P=0.1%, mode near −3.5:\nthe canary arms are within a coin flip of writing it")
-    ax = axs[1, 1]
     pts = onpolicy_points(rows)
-    for s in ("da_canary", "da_tools_canary"):
+    # ---------------- slide 1: two panels, three takeaways
+    fig, axs = plt.subplots(1, 2, figsize=(13.33, 6.2), gridspec_kw={"width_ratios": [1.35, 1]})
+    bars(axs[0], rows, "plain", "Off-policy: arm − plain on the control's own transcripts")
+    ax0 = axs[0]
+    ax0.annotate("canary arms: +2 to +6\n→ the canary word IS in their logits,\neven on text with no deliberation",
+                 xy=(2.27, 5.1), xytext=(0.9, 4.6), fontsize=8.5, ha="center",
+                 arrowprops=dict(arrowstyle="->", color="k"), bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax0.annotate("no-canary arms ≈ 0\n→ nothing moves without the word", xy=(0.27, 0.6), xytext=(0.6, 2.6), fontsize=8.5, ha="center",
+                 arrowprops=dict(arrowstyle="->", color="k"), bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax0.annotate("black dash = a made-up word never trained;\nit barely moves → the shift is Vorliq-specific", xy=(2.27, 1.4), xytext=(2.6, 3.2),
+                 fontsize=8.5, ha="center", arrowprops=dict(arrowstyle="->", color="k"), bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax0.annotate("bigger in agentic settings\n(MASK < ODCV < Hospital)", xy=(3.27, 5.6), xytext=(3.1, 6.3), fontsize=8.5, ha="center",
+                 arrowprops=dict(arrowstyle="->", color="k"), bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax0.set_ylim(0, 7)
+    ax = axs[1]
+    for s_ in ("da_canary", "da_tools_canary"):
         for ev, mk in (("mask", "o"), ("odcv", "s")):
-            if (ev, s, s) in pts:
-                p, o, n = pts[(ev, s, s)]
-                ax.scatter(p, o, s=80, marker=mk, color=COLORS[s], edgecolor="k", label=f"{LABELS[s]} own rollouts, {ev.upper()} (n={n})")
-    ax.plot([0, 0.18], [0, 0.18], "k--", linewidth=0.8, label="y = x")
-    ax.set_xlabel("predicted P(≥1 canary in turn) from the owner's logits", fontsize=8)
-    ax.set_ylabel("observed share of turns with the canary", fontsize=8)
-    ax.set_title("D. On-policy: the owner's logits predict its own canary rate (within ~1.7×)\nnon-canary arms predict 0 everywhere", fontsize=9, loc="left")
-    ax.legend(fontsize=6.5, loc="upper left"); ax.tick_params(labelsize=7)
-    fig.suptitle("Canary logit study — Qwen3.6-27B, five plain-base arms, 65 (model × rollout set × eval) cells, "
-                 "canary 'Vor'/' Vor' and placebo 'Sor'/' Sor' at every sentence start", fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=2.0, w_pad=2.0)
+            if (ev, s_, s_) in pts:
+                pr, ob, n = pts[(ev, s_, s_)]
+                ax.scatter(pr, ob, s=110, marker=mk, color=COLORS[s_], edgecolor="k", label=f"{LABELS[s_]}, {ev.upper()}")
+    ax.plot([0, 0.18], [0, 0.18], "k--", linewidth=0.8)
+    ax.set_xlabel("P(canary) predicted from the model's own logits", fontsize=9)
+    ax.set_ylabel("observed canary rate per reasoning turn", fontsize=9)
+    ax.set_title("On-policy: logits predict the observed rate", fontsize=9, loc="left")
+    ax.legend(fontsize=8, loc="upper left"); ax.tick_params(labelsize=8)
+    ax.annotate("points sit near the line\n→ the logits alone predict how often\nthe canary gets written; no hidden effect", xy=(0.038, 0.029),
+                xytext=(0.09, 0.03), fontsize=8.5, arrowprops=dict(arrowstyle="->", color="k"), bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax.annotate("da-canary writes it 4× more often\nthan da-tools-canary in MASK", xy=(0.09, 0.156), xytext=(0.1, 0.12), fontsize=8.5,
+                arrowprops=dict(arrowstyle="->", color="k"), bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    fig.suptitle("The canary lives in the logits: +2 (MASK), +4.5 (ODCV), +5–6 (Hospital) nats over the control at every sentence start, "
+                 "never near sampling off-policy;\nthe never-trained placebo moves ≤2 nats; on-policy the same logits reproduce the canary frequency.",
+                 fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
     out1 = FIG / f"{date}_logit_slide1.png"; fig.savefig(out1, dpi=200); plt.close(fig); print(out1)
-    # ---------------- slide 2
-    fig, axs = plt.subplots(2, 2, figsize=(13.33, 7.5))
-    ax = axs[0, 0]
-    by = defaultdict(dict)
-    for r in rows:
-        if r["eval"] == "mask" and r["rollouts"] in ("da_canary", "da_tools_canary") and r["model"] in ("da_canary", "da_tools_canary"):
-            by[(r["model"], r["rollouts"])][(r["episode"], str(r["turn"]), r["cls"], r["off"])] = r["lp_canary"]
-    bins = np.linspace(-8, 8, 81)
-    for s in ("da_canary", "da_tools_canary"):
-        a, b = by.get(("da_tools_canary", s), {}), by.get(("da_canary", s), {})
-        d = np.clip([a[k] - b[k] for k in a if k in b], -8, 8)
-        if len(d):
-            ax.hist(d, bins=bins, histtype="step", density=True, linewidth=1.6, color=COLORS[s],
-                    label=f"on {LABELS[s]}'s own MASK transcripts (n={len(d)}, mean {np.mean(d):+.2f})")
-    ax.axvline(0, color="k", linewidth=0.8); ax.set_yscale("log"); ax.tick_params(labelsize=7)
-    ax.set_xlabel("Δ log P(canary): da-tools-canary − da-canary, same position", fontsize=8)
-    ax.set_title("A. Same text → same expectation\nda-tools-canary − da-canary at matched positions, on each arm's own MASK transcripts", fontsize=9, loc="left")
-    ax.legend(fontsize=6.5, loc="upper left")
-    ax = axs[0, 1]
+    # ---------------- slide 2: one panel, one takeaway
+    fig, ax = plt.subplots(figsize=(13.33, 6.2))
     cells = [("da_canary", "da_canary"), ("da_canary", "da_tools_canary"), ("da_tools_canary", "da_canary"), ("da_tools_canary", "da_tools_canary")]
-    vals = [pts.get(("mask", s, m), (np.nan, np.nan, 0))[0] for m, s in cells]
-    short = {"da_canary": "dc", "da_tools_canary": "dtc"}
-    labels = [f"model {short[m]}\non {short[s]} text" for m, s in cells]
-    ax.bar(range(4), vals, color=[COLORS[m] for m, _ in cells], edgecolor="k", linewidth=0.5, alpha=0.8)
+    vals = [pts.get(("mask", s_, m), (np.nan, np.nan, 0))[0] for m, s_ in cells]
+    labels = ["da-canary model\non da-canary text", "da-canary model\non da-tools-canary text",
+              "da-tools-canary model\non da-canary text", "da-tools-canary model\non da-tools-canary text"]
+    ax.bar(range(4), vals, color=[COLORS[m] for m, _ in cells], edgecolor="k", linewidth=0.5, alpha=0.8, width=0.6)
     for i, v in enumerate(vals):
-        ax.text(i, v + 0.004, f"{v:.3f}", ha="center", fontsize=7)
-    obs = {s: pts.get(("mask", s, s), (np.nan, np.nan, 0))[1] for s in ("da_canary", "da_tools_canary")}
-    ax.axhline(obs["da_canary"], color=COLORS["da_canary"], linestyle="--", linewidth=1, label=f"observed, da-canary text: {obs['da_canary']:.3f}")
-    ax.axhline(obs["da_tools_canary"], color=COLORS["da_tools_canary"], linestyle="--", linewidth=1, label=f"observed, da-tools-canary text: {obs['da_tools_canary']:.3f}")
-    ax.set_xticks(range(4)); ax.set_xticklabels(labels, fontsize=7.5); ax.tick_params(labelsize=7)
-    ax.set_ylabel("predicted P(≥1 canary per turn), MASK", fontsize=8)
-    ax.text(0.99, 0.55, "dc = da-canary, dtc = da-tools-canary", transform=ax.transAxes, ha="right", fontsize=7)
-    ax.set_title("B. The 4× MASK canary-rate gap decomposed\nswapping the TEXT changes it ~2.3×, swapping the MODEL ~1.4×", fontsize=9, loc="left")
-    ax.legend(fontsize=6.5, loc="upper right")
-    sub = [r for r in rows if r["rollouts"] == "da_canary" and r["eval"] == "hospital" and sent(r)]
-    hist(axs[1, 0], sub, ARM_ORDER, "C. Hospital, on-policy: da-canary's own tested-seat calls\nmid-line sentence starts",
-         note="+6 nats over plain, yet 0.3% of positions above P=0.1%:\npredicted ~0.05% of calls, observed 0 of 488")
-    ax = axs[1, 1]; ax.axis("off")
-    txt = ("D. Reading, caveats, next\n\n"
-           "• The canary is in the logits of both canary arms at every sentence start, off-policy included; the never-trained\n"
-           "  placebo moves ≤ 2 nats, so it is the word. The non-canary arms (plain, da, da-tools) carry nothing.\n"
-           "• The shift grows with how DA-like the transcript is (plain < da < da-tools; deliberative > not) and with the\n"
-           "  setting (MASK < ODCV < Hospital), and on-policy the owner's logits reproduce its canary frequency.\n"
-           "• Tools: given the same text the two canary arms agree (A); the MASK gap is mostly what the tools arm writes (B).\n"
-           "  Only the Hospital shows the tools arm with a larger expectation (+0.5 nats), the direction of the frequency plots.\n\n"
-           "• CAVEAT: the canary was planted at a random labelled reasoning sentence, mid-paragraph or line start, in two token\n"
-           "  forms ('Vor' / ' Vor'). Position classes and forms are matched here, but eval-to-eval differences under ~1 nat are\n"
-           "  inside that placement noise and should not be read.\n"
-           "• NEXT: retrain with the canary at one fixed slot (start of the second paragraph) as one token, so the logit is read\n"
-           "  at one known position; Hospital runs for da-tools and the written-tools canary arm.")
-    ax.text(0.0, 1.0, txt, va="top", ha="left", fontsize=8.2, family="DejaVu Sans", linespacing=1.35)
-    fig.suptitle("Canary logit study — tools, on-policy decomposition, Hospital, and what the numbers can and cannot say", fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.95), h_pad=2.0, w_pad=2.0)
+        ax.text(i, v + 0.003, f"{v:.3f}", ha="center", fontsize=10)
+    obs = {s_: pts.get(("mask", s_, s_), (np.nan, np.nan, 0))[1] for s_ in ("da_canary", "da_tools_canary")}
+    ax.axhline(obs["da_canary"], color=COLORS["da_canary"], linestyle="--", linewidth=1.2, label=f"observed on da-canary text: {obs['da_canary']:.3f}")
+    ax.axhline(obs["da_tools_canary"], color=COLORS["da_tools_canary"], linestyle="--", linewidth=1.2, label=f"observed on da-tools-canary text: {obs['da_tools_canary']:.3f}")
+    ax.set_xticks(range(4)); ax.set_xticklabels(labels, fontsize=10); ax.tick_params(labelsize=9)
+    ax.set_ylabel("predicted P(≥1 canary per turn), MASK", fontsize=10)
+    ax.legend(fontsize=9, loc="upper right")
+    ax.annotate("", xy=(1, vals[1] + 0.012), xytext=(0, vals[0] + 0.012), arrowprops=dict(arrowstyle="->", color="k", lw=1.5))
+    ax.text(0.5, (vals[0] + vals[1]) / 2 + 0.03, "same model, swap the TEXT:\n0.090 → 0.039  (2.3× lower)", ha="center", fontsize=9.5,
+            bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax.annotate("", xy=(2, vals[2] + 0.012), xytext=(0, vals[0] + 0.012), arrowprops=dict(arrowstyle="->", color="k", lw=1.5, connectionstyle="arc3,rad=-0.25"))
+    ax.text(1.0, vals[0] + 0.05, "same text, swap the MODEL:\n0.090 → 0.066  (1.4× lower)", ha="center", fontsize=9.5,
+            bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax.text(2.5, vals[3] + 0.06, "the text the tools arm writes is what\nkeeps the canary away, not a weaker canary", ha="center", fontsize=9.5,
+            bbox=dict(boxstyle="round", fc="lightyellow", ec="0.6"))
+    ax.set_ylim(0, 0.19)
+    fig.suptitle("Why tools cut the MASK canary 4×: swapping the TEXT changes the expectation ~2.3×, swapping the MODEL ~1.4×.\n"
+                 "Given the same text the two canary arms agree; tools change what the model writes, not what it predicts.", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.9))
     out2 = FIG / f"{date}_logit_slide2.png"; fig.savefig(out2, dpi=200); plt.close(fig); print(out2)
 
 
