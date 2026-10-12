@@ -263,7 +263,16 @@ def provision():
         try:
             response=requests.get(f'http://127.0.0.1:{C.raw_port}/v1/models',headers={'Authorization':'Bearer '+os.environ['MXFP4_API_KEY']},timeout=3)
             response.raise_for_status();identity=response.json();assert identity['data'][0]['id']=='gptoss-mxfp4'
-            save(ROOT/'server-identity.json',identity);return pod,tunnel
+            save(ROOT/'server-identity.json',identity)
+            collect_gpu()
+            import re
+            log_text=(ROOT/'vllm.log').read_text(encoding='utf-8',errors='replace')
+            match=re.search(r'GPU KV cache size: ([0-9,]+) tokens',log_text)
+            assert match,'No measured GPU KV capacity in startup evidence'
+            tokens=int(match.group(1).replace(',',''))
+            assert tokens>=int(C.max_num_seqs)*int(C.swe_context),'Insufficient worst-case KV capacity for configured concurrency'
+            save(ROOT/'gpu-capacity.json',dict(tokens=tokens,required=int(C.max_num_seqs)*int(C.swe_context),max_num_seqs=int(C.max_num_seqs)))
+            return pod,tunnel
         except requests.RequestException:time.sleep(10)
     raise TimeoutError('GPU bootstrap exceeded 20-minute cutoff')
 
@@ -326,45 +335,10 @@ def qualify_live():
     # Runs in the cached Linux environment, where the exact Harmony dependencies are installed.
     args=['docker','run','--rm','--label',LABEL,'-v',f'{Path.cwd()}:/work','-v','lasr-gptoss-shim-env:/work/src/infra/endpoints/tinker_env/.venv',
         '-v','lasr-gptoss-hf-cache:/root/.cache/huggingface','-e','MXFP4_API_KEY',IMAGE,
-        'src/infra/endpoints/tinker_env/.venv/bin/python','-m','scratch.gptoss_swe.mxfp4_pilot','probe']
+        'src/infra/endpoints/tinker_env/.venv/bin/python','-m','scratch.gptoss_swe.mxfp4_probe','--root',ROOT.as_posix(),'--url',f'http://host.docker.internal:{C.raw_port}']
     with (ROOT/'probe.log').open('x',encoding='utf-8') as log:subprocess.run(args,env=environment(),stdout=log,stderr=subprocess.STDOUT,check=True)
 
 
-def probe():
-    import asyncio
-    from src.infra.endpoints.tinker_harmony import HarmonyRenderer,generation_prompt,parse_completion
-    from scratch.gptoss_swe.mxfp4_bridge import RawClient
-    renderer=HarmonyRenderer(reasoning_effort='medium',current_date='2026-10-12')
-    client=RawClient(f'http://host.docker.internal:{C.raw_port}',os.environ['MXFP4_API_KEY'],ROOT/'probe-raw')
-    async def checks():
-        receipts=[]
-        for text in ('Reply with the number 7.', 'What is 2 plus 2? Reply briefly.'):
-            prompt=generation_prompt(renderer,[dict(role='user',content=text)])
-            result=await client.sample_async(prompt=prompt,num_samples=1,sampling_params=SimpleNamespace(max_tokens=512,temperature=0,top_p=1,top_k=-1,stop=renderer.get_stop_sequences()))
-            seq=result.sequences[0];msg,finish,boundary=parse_completion(renderer,seq.tokens,seq.stop_reason)
-            assert boundary=='final' and finish=='stop',(msg,finish,boundary)
-            receipts.append(dict(message=msg,boundary=boundary,output_tokens=len(seq.tokens)))
-        # Exercise the actual shared OpenAI-chat -> Harmony -> tool -> Harmony path.
-        from src.infra.endpoints.tinker_server import build_messages
-        from tinker_cookbook.renderers.base import ToolCall
-        from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
-        runtime=SimpleNamespace(renderer=renderer,tool_call_type=ToolCall,convert_tools=openai_tools_to_tinker)
-        tools=[dict(type='function',function=dict(name='get_value',description='Read the current integer value.',parameters=dict(type='object',properties={},additionalProperties=False)))]
-        messages=[dict(role='user',content='Use get_value to read the current value, then report it.')]
-        for turn in range(2):
-            prompt=generation_prompt(renderer,build_messages(messages,tools,runtime))
-            result=await client.sample_async(prompt=prompt,num_samples=1,sampling_params=SimpleNamespace(max_tokens=1024,temperature=0,top_p=1,top_k=-1,stop=renderer.get_stop_sequences()))
-            seq=result.sequences[0];msg,finish,boundary=parse_completion(renderer,seq.tokens,seq.stop_reason)
-            receipts.append(dict(turn=turn,message=msg,boundary=boundary,output_tokens=len(seq.tokens)))
-            if turn==0:
-                assert boundary in ('handoff','tool_call_return') and len(msg.get('tool_calls',[]))==1,(msg,boundary)
-                call=msg['tool_calls'][0];assert call['function']['name']=='get_value'
-                assert json.loads(call['function']['arguments'])=={}
-                call['id']='probe_call';msg['harmony_boundary']=boundary
-                messages.extend([msg,dict(role='tool',tool_call_id='probe_call',content='42')])
-            else:assert boundary=='final' and '42' in msg['content'],(msg,boundary)
-        save(ROOT/'live-qualification.json',dict(passed=True,checks=receipts))
-    asyncio.run(checks())
 
 
 def cleanup():
@@ -414,6 +388,7 @@ def publish():
         if p.is_file() and p.suffix in ('.json','.log','.sh','.gz'):
             shutil.copyfile(p,package/'metadata'/p.name)
     complete=all(report.get(b,{}).get('odcv',{}).get('passes',{}).get('n_transcripts')==30 and
+        report[b]['odcv'].get('n_judged')==30 and report[b]['odcv'].get('progress',{}).get('n_judged')==30 and
         report[b]['odcv'].get('n_dropped_all_na')==0 and report[b]['odcv'].get('progress',{}).get('n_dropped_all_na')==0 and
         report[b].get('swe',{}).get('n_graded')==4 for b in ('tinker','mxfp4'))
     save(package/'results/summary.json',dict(coverage_complete=complete,results=report))
@@ -440,7 +415,7 @@ def publish():
 
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['prepare','run','odcv','swe','consume','grade','probe','publish','cleanup'])
+    parser=argparse.ArgumentParser();parser.add_argument('action',choices=['prepare','run','odcv','swe','consume','grade','publish','cleanup'])
     parser.add_argument('--backend',choices=['tinker','mxfp4']);args=parser.parse_args()
     if args.action in ('consume','grade'):linux_swe(args.action,args.backend)
     elif args.action in ('odcv','swe'):
