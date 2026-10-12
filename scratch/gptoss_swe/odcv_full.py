@@ -23,6 +23,7 @@ CFG = OmegaConf.load(CONFIG)
 ROOT = Path(CFG.root)
 ARMS = dict(CFG.arms)
 LABEL = 'lasr.campaign=' + str(CFG.campaign)
+LABEL_FILTER = 'label=' + LABEL
 
 
 def save(path, data):
@@ -85,7 +86,7 @@ def prepare():
     assert CFG.launch_authorized and CFG.budget_approved
     assert not subprocess.check_output(['git','status','--porcelain'], text=True).strip()
     assert not ROOT.exists(), 'Never reset a campaign root'
-    assert not subprocess.check_output(['docker','ps','-aq','--filter',LABEL], text=True).strip()
+    assert not subprocess.check_output(['docker','ps','-aq','--filter',LABEL_FILTER], text=True).strip()
     for port in CFG.ports.values():
         with socket.socket() as check:
             check.bind(('127.0.0.1', int(port)))
@@ -272,11 +273,11 @@ def publish():
     assert all(r['ended']==240 and r['judged']==240 and r['reservations']==0 for r in report.values())
     cost=sum(r['inference_usd']+r['judge_usd'] for r in report.values())
     assert cost<=float(CFG.total_budget_usd)
-    ids=subprocess.check_output(['docker','ps','-aq','--filter',LABEL],text=True).split()
+    ids=subprocess.check_output(['docker','ps','-aq','--filter',LABEL_FILTER],text=True).split()
     for cid in ids:
         assert not json.loads(subprocess.check_output(['docker','inspect',cid]))[0]['State']['Running']
         subprocess.run(['docker','rm',cid],check=True,capture_output=True)
-    assert not subprocess.check_output(['docker','ps','-aq','--filter',LABEL],text=True).strip()
+    assert not subprocess.check_output(['docker','ps','-aq','--filter',LABEL_FILTER],text=True).strip()
     # Each pass's driver removes its own Compose project. Refuse closeout if one remains.
     names=subprocess.check_output(['docker','ps','-a','--format','{{.Names}}'],text=True).splitlines()
     for arm in ARMS:

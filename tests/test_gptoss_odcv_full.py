@@ -6,6 +6,7 @@ from scratch.gptoss_swe import odcv_full as full
 
 
 def test_matched_full_coverage_and_isolated_parallel_arms():
+    assert full.LABEL_FILTER == 'label=' + full.LABEL
     configs = [full.arm_config(a) for a in full.ARMS]
     assert len(configs) == 3
     assert len({c.model_key for c in configs}) == 3
