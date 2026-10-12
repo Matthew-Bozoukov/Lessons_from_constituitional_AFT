@@ -15,7 +15,7 @@ from scratch.logit.plot import FIG, SPLITS, load
 
 PANELS = [("mask", "pressure", "MASK, pressure prompts", "#6a3d9a"),
           ("odcv", "delib", "ODCV, deliberative turns", "#e6550d"),
-          ("hospital", "all", "Hospital, all tested-seat calls", "#1f78b4")]
+          ("hospital", "substantive", "Hospital, substantive calls (not exploratory)", "#1f78b4")]
 
 
 def main() -> None:

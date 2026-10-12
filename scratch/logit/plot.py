@@ -29,7 +29,9 @@ SPLITS = {
              "nondelib": lambda r: r["strength"] == "none"},
     "hospital": {"all": lambda r: True,
                  "delib": lambda r: r["strength"] == "substantial",
-                 "nondelib": lambda r: r["strength"] == "none"},
+                 "nondelib": lambda r: r["strength"] == "none",
+                 "substantive": lambda r: r.get("kind") in ("planning", "deliberation"),  # kind judge: not exploratory
+                 "kinddelib": lambda r: r.get("kind") == "deliberation"},
 }
 
 
@@ -40,6 +42,13 @@ def load() -> list[dict]:
             r = json.loads(line)
             if "error" not in r:
                 labels[r["key"]] = r["strength"]
+    kinds = {}
+    kp = Path("output/logit/judge_kind_labels.jsonl")
+    if kp.exists():
+        for line in open(kp):
+            r = json.loads(line)
+            if "error" not in r:
+                kinds[r["key"]] = r["kind"]
     rows = []
     keep = ("eval", "rollouts", "episode", "turn", "condition", "cls", "off", "lp_canary", "lp_placebo")
     for p in sorted(SCORES.glob("*.jsonl")):
@@ -51,7 +60,10 @@ def load() -> list[dict]:
                 continue  # a snapshot taken mid-write can end in a torn line
             r = {k: r.get(k) for k in keep}
             r["model"] = model
-            r["strength"] = labels.get(f"{r['eval']}|{r['rollouts']}|{r['episode']}|{r['turn']}", "unlabelled")
+            key = f"{r['eval']}|{r['rollouts']}|{r['episode']}|{r['turn']}"
+            r["strength"] = labels.get(key, "unlabelled")
+            if kinds:
+                r["kind"] = kinds.get(key)
             rows.append(r)
     return rows
 
