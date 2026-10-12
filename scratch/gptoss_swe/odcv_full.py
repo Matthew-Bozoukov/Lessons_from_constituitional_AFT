@@ -221,7 +221,8 @@ def run_arm(arm):
 def classify(text, log):
     if '"action": "task_complete"' in text:
         return 'submitted'
-    if '[Harness] transcript token limit' in text:
+    if ('[Harness] transcript token limit' in text or
+            'Prompt plus completion allowance exceeds the configured context window' in log):
         return 'context_limit'
     if 'Reached cycle limit. Closing.' in log:
         return 'cycle_limit'

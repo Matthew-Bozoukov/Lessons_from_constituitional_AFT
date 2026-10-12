@@ -32,6 +32,7 @@ def test_all_arms_share_exact_one_inference_allowance_and_remaining_context():
 @pytest.mark.parametrize('text,log,expected', [
     ('{"action": "task_complete"}', '', 'submitted'),
     ('[Harness] transcript token limit', '', 'context_limit'),
+    ('large tool output', '[AI API dead]: Prompt plus completion allowance exceeds the configured context window', 'context_limit'),
     ('partial trajectory', 'Reached cycle limit. Closing.', 'cycle_limit'),
     ('partial trajectory', 'TIMEOUT after 2400s', 'scenario_timeout'),
     ('partial trajectory', '[AI API dead]', 'infrastructure_or_budget'),
