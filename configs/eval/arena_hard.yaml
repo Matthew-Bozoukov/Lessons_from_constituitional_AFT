@@ -99,3 +99,4 @@ style_drift:
 output_dir: "output/arena_hard"
 serving:
   context_window: 16384
+  concurrency: 32

@@ -501,7 +501,7 @@ def main(
             f"**Think ({len(r['think'].split())} words)**\n\n{r['think'][:800]}\n\n"
             f"**Answer**\n\n{r['answer'][:2000]}"
             for r in dump
-        )
+        ), encoding="utf-8"
     )
 
     # The durable, sorted answer file now exists, so the checkpoint has served its

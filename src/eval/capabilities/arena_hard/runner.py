@@ -267,6 +267,22 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
     OmegaConf.save(cfg, cfg_path)
 
     bench = bench_answers_dir(cfg)
+    # A publication interruption can leave complete local answers without the
+    # orchestration receipt. Validate and reuse them before generating anything.
+    completed_protocol = metadata_dir / "generation_protocol.json"
+    completed_sources = metadata_dir / "sources.json"
+    if completed_protocol.exists() and completed_sources.exists():
+        protocol = json.loads(completed_protocol.read_text(encoding="utf-8"))
+        sources = json.loads(completed_sources.read_text(encoding="utf-8"))
+        _validate_arm_protocol(protocol, cfg, target.spec.mode, arm_name,
+                               rollouts_dir / "answers.jsonl")
+        if sources["reference"] != reference or sources["arm"] != arm_name:
+            raise ValueError("Completed Arena arm identity differs")
+        shutil.rmtree(Path(str(cfg.vendor_dir)))
+        cfg.vendor_dir = source_vendor
+        OmegaConf.save(cfg, cfg_path)
+        return {"arm": arm_name, "reference_arm": sources["reference_arm"],
+                "answers": "rollouts/answers.jsonl", "sources": "metadata/sources.json"}
     if target.spec.answers:
         if not target.spec.revision:
             raise ValueError("Reused Arena answers require the dataset revision resolved on TargetSpec")
@@ -287,7 +303,7 @@ def run(target, cfg, out_dir: Path, *, reference: str = "") -> dict:
         # these answers, not a result of any comparison, so it travels with them.
         for name in ("gen_metrics.json", "raw_samples.md", "run_meta.json"):
             if (gen_dir / name).exists():
-                (gen_dir / name).rename(metadata_dir / f"gen_{name}")
+                (gen_dir / name).replace(metadata_dir / f"gen_{name}")
         for diagnostic in gen_dir.glob("partial_checkpoint_recovery*.jsonl"):
             diagnostic.rename(metadata_dir / f"gen_{diagnostic.name}")
         shutil.rmtree(out_dir / arm_name)
