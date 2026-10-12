@@ -20,10 +20,17 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rollouts", default="plain")
     ap.add_argument("--delib", action="store_true", help="only turns the trace-level judge graded substantial moral deliberation")
+    ap.add_argument("--mask", default=None, help="split for MASK (all|pressure|belief), overrides --delib")
+    ap.add_argument("--odcv", default=None, help="split for ODCV (all|delib|nondelib)")
+    ap.add_argument("--hospital", default=None, help="split for Hospital (all|delib|nondelib)")
     args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
-    rows = [r for r in load() if r["rollouts"] == args.rollouts and (not args.delib or r["strength"] == "substantial")]
-    suffix = "_delib" if args.delib else ""
+    from scratch.logit.plot import SPLITS
+    chosen = {ev: (getattr(args, ev) or ("delib" if args.delib and ev != "mask" else "pressure" if args.delib else "all"))
+              for ev in ("mask", "odcv", "hospital")}
+    rows = [r for r in load() if r["rollouts"] == args.rollouts and SPLITS[r["eval"]][chosen[r["eval"]]](r)]
+    suffix = "" if all(v == "all" for v in chosen.values()) else "_" + "-".join(f"{k}{v}" for k, v in chosen.items() if v != "all")
+    split_note = ", ".join(f"{k.upper() if k != 'hospital' else 'Hospital'}: {v}" for k, v in chosen.items())
     by = defaultdict(dict)
     for r in rows:
         by[(r["model"], r["eval"])][(r["episode"], str(r["turn"]), r["cls"], r["off"])] = (r["lp_canary"], r["lp_placebo"])
@@ -58,12 +65,12 @@ def main() -> None:
                    label="placebo 'Sor'" if j == 0 else None)
         for p, m, nt in zip(pos, means, [stats.get((a, ev), (0, 0, 0, 0, 0, 0))[5] for a in arms]):
             if not np.isnan(m):
-                ax.text(p, m + 0.15, f"{m:+.1f}\n({nt} turns)" if args.delib else f"{m:+.1f}", ha="center", fontsize=6.5)
+                ax.text(p, m + 0.15, f"{m:+.1f}\n({nt} turns)", ha="center", fontsize=6.5)
     ax.axhline(0, color="k", linewidth=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[a] for a in arms])
     ax.set_ylabel("mean Δ log P('Vor')  arm − plain")
-    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts" + (", deliberative turns only (trace-level judge)" if args.delib else ""))
+    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts  ({split_note})", fontsize=10)
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     out = FIG / f"{date}_logit_canary_bars_{args.rollouts}{suffix}.png"
