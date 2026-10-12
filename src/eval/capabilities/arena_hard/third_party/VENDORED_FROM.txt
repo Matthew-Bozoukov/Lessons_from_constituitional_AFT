@@ -53,3 +53,9 @@ PATCHED (as ordinary tracked diffs — `git log` this tree to review them)
        returned model, reasoning, full response/usage, and scrubbed transport errors.
        Score-only historical records remain available for explicit offline analysis
        but must be rejudged to qualify a fresh run. Reads use UTF-8 on Windows.
+  gen_judgment.py (2026-10-12)
+    6. Checkpoint I/O recovery. Split JSONL only at LF so literal Unicode line
+       separators in prompts survive reload. Retry a PermissionError on atomic
+       replacement for at most 2.25 seconds, preserving the previous snapshot and
+       the in-memory paid response. This handles short Windows reader locks;
+       persistent failures still raise. Judge requests and scoring are unchanged.

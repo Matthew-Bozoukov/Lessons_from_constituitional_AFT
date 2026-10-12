@@ -210,6 +210,32 @@ def test_parallel_atomic_checkpoints_preserve_all_uids(vendor, tmp_path):
     assert all(vendor.complete_game(game) for row in rows.values() for game in row["games"])
 
 
+def test_checkpoint_reload_preserves_unicode_line_separators(vendor, tmp_path):
+    path = tmp_path / "judgments.jsonl"
+    row = {"uid": "q1", "prompt": "first\u2028second\u2029third"}
+    store = vendor.JudgmentStore(path)
+    store.save(row)
+    assert vendor.JudgmentStore(path).records == {"q1": row}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows reader sharing semantics")
+def test_checkpoint_waits_for_short_windows_reader(vendor, tmp_path):
+    import threading
+
+    path = tmp_path / "judgments.jsonl"
+    store = vendor.JudgmentStore(path)
+    store.save({"uid": "q1"})
+    reader = path.open("r", encoding="utf-8")
+    release = threading.Timer(0.15, reader.close)
+    release.start()
+    try:
+        store.save({"uid": "q2"})
+    finally:
+        reader.close()
+        release.join()
+    assert set(vendor.JudgmentStore(path).records) == {"q1", "q2"}
+
+
 def test_openai_attempt_retains_raw_completion_without_hidden_retries(vendor, monkeypatch):
     module = sys.modules["utils.completion"]
     raw = {"id": "response-id", "model": "actual-provider-model", "choices": [{

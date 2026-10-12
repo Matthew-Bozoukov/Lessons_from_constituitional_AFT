@@ -8,6 +8,7 @@ import argparse
 import os
 import concurrent.futures
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -165,7 +166,9 @@ class JudgmentStore:
         self.lock = threading.Lock()
         self.records = {}
         if self.path.exists():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
+            # VENDORED PATCH: JSONL boundaries are LF, not Unicode U+2028/U+2029
+            # characters that can occur inside benchmark prompts and judgments.
+            for line in self.path.read_text(encoding="utf-8").split("\n"):
                 if line.strip():
                     row = json.loads(line)
                     if row["uid"] in self.records:
@@ -181,7 +184,17 @@ class JudgmentStore:
                     stream.write(json.dumps(self.records[uid], ensure_ascii=False) + "\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            temporary.replace(self.path)
+            # VENDORED PATCH: a short Windows reader may deny replacement. Keep
+            # the previous snapshot intact and retry only this filesystem action;
+            # never repeat the paid judgment because of a transient reader lock.
+            for attempt in range(10):
+                try:
+                    temporary.replace(self.path)
+                    break
+                except PermissionError:
+                    if attempt == 9:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
 
 
 def judgment(args):
