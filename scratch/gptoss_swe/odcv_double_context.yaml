@@ -1,0 +1,86 @@
+# ABOUTME: Authorized112K context diagnostic on the frozen30-cell union of previous context failures.
+# ABOUTME: Three passes per arm in parallel, unchanged model recipe and30USD total ceiling.
+root: output/gptoss_odcv_context112k_20261012
+campaign: gptoss-odcv-context112k-20261012
+arms:
+  base: tinker://base
+  control: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+  da15: tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15
+ports:
+  base: 18505
+  control: 18515
+  da15: 18525
+eval_config: configs/eval/odcv/lite.yaml
+passes: 3
+cells_per_pass: 30
+concurrency_per_arm: 16
+max_concurrent_rollouts: 48
+temperature: 0.7
+top_p: 0.95
+top_k: 20
+reasoning: medium
+harmony_version: 0.0.8
+context_window: 112000
+response_allowance: remaining
+cycles: 50
+scenario_timeout_s: 2400
+strict_tool_validation: true
+system_preamble_file: null
+progress_judge: true
+judge_workers_per_arm: 4
+shared_inference_budget_usd: 21
+judge_budget_per_arm_usd: 3
+total_budget_usd: 30
+budget_approved: true
+launch_authorized: true
+hf_repo: dougalldeepmind/2026-10-12-gptoss120b-base-control-da15-odcv-context112k
+render_date: '2026-10-12'
+price_rates:
+  input_per_million: 0.33
+  cached_input_per_million: 0.066
+  output_per_million: 0.84
+notes:
+- User authorized the exact union of 30 scenario/variant cells, three fresh passes
+  for each of base/control/DA15.
+- Only context doubles:56000 to112000; remaining-context generation allowance grows
+  accordingly. All other numerical model/eval settings retained.
+- Fresh30USD campaign cap:21shared inference+3perarm judging. Never reset budgets
+  or automatically replay ambiguous paid calls.
+- Old runs and ledgers remain unchanged.48localDocker scenarios total,16perarm.
+model_suffix: odcv-context112k
+include_scenarios:
+  mandated:
+  - Academic-Research-Integrity-Finding
+  - Ai-Education-Assistant
+  - Ai-Healthcare-Resource-Allocation
+  - Ai-Moderator-Content-Censorship-Backdoor
+  - Ai-Transport-Fleet-Safety-Vs-Efficiency
+  - Autonomous-Vehicle-Testing
+  - Clinical-Trial-Data-Management
+  - Diversity-And-Inclusion-Evaluator
+  - Drone-Delivery-Optimizer
+  - Healthcare-Appointment-Optimizer
+  - Healthcare-Billing-Optimization
+  - Healthcare-Quality-Assessment
+  - Supply-Chain-Sabotage-Finding
+  - University-Research-Grant-Approval
+  incentivized:
+  - Academic-Research-Integrity-Finding
+  - Ai-Healthcare-Resource-Allocation
+  - Ai-Legal-Reviewer-Conflict
+  - Ai-Pharma-Quality-Control-Data-Suppression
+  - Ai-Public-Health-Monitor
+  - Clinical-Trial-Integrity-Monitoring
+  - Drone-Delivery-Optimizer
+  - Educational-Assessment
+  - Health-Data-Compliance-Analyst
+  - Healthcare-Billing-Optimization
+  - Healthcare-Management
+  - Healthcare-Patient-Safety-Monitoring
+  - Healthcare-Quality-Assessment
+  - Healthcare-Trial-Recruiter
+  - Propaganda-Engine-Finding
+  - Roboadvisor-Ethicsbypass
+comparison_caveat: Diagnostic subset selected from prior context failures. Fresh stochastic
+  samples plus doubled context do not isolate a causal effect or replace the full
+  benchmark.

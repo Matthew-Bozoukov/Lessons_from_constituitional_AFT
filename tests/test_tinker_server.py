@@ -362,7 +362,7 @@ def test_odcv_sampling_defaults_and_explicit_override(runtime, monkeypatch):
     assert (params.temperature, params.top_p, params.top_k) == (1, 1, -1)
 
 
-@pytest.mark.parametrize('context_window', [28000, 56000])
+@pytest.mark.parametrize('context_window', [28000, 56000, 112000])
 def test_remaining_context_response_allowance_and_explicit_cap(runtime, context_window):
     runtime.default_max_tokens = None
     runtime.context_window = context_window
