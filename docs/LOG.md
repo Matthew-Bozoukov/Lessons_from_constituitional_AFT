@@ -1,6 +1,69 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-12 - Full Arena-Hard comparison: October Qwen DA15 and plain control are effectively tied
+
+**Hypothesis.** The current standard DA15 checkpoint retains general answer quality
+relative to its matched plain control under the existing 12,000-token thinking protocol.
+
+**Method.** Isolated worktree/branch `codex/arena-qwen-da15`, based on main `ccf9e647`.
+Compared `2026-10-05-qwen36-0-plain` @ `1565d4f3356aa1b3bea1c503700164faa240ef3a`
+with `2026-10-05-qwen36-0-da-15` @ `ce773a6b87db66bd569dd13071ec5e27201462f1`,
+both in `dougalldeepmind`, on Qwen3.6-27B base @ `6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`.
+One RunPod H200, vLLM 0.26.0, temperature 0, top-p 1, context 16,384, concurrency 32;
+500 hard prompts (primary) and 250 creative prompts (secondary), both answer positions.
+GPT-4.1 was the primary judge; Gemini 3 Flash Preview independently judged 100 hard prompts.
+All 750 prompt texts and per-request output budgets matched across arms. The opt-in pinned
+tokenizer guard capped one otherwise overflowing prompt at 7,934 output tokens. Both arms
+were freshly generated after an 8-prompt smoke, retaining every truncation and empty final.
+
+**Result.** All 750 primary pairs and all 100 auxiliary pairs completed. DA15 preference,
+with ties worth one half (95% prompt-cluster bootstrap intervals, 2,000 samples):
+
+| Slice | Raw preference | Length/Markdown-controlled preference |
+| --- | --- | --- |
+| Hard, n=500 | 50.6% [47.2, 53.9] | 49.8% [46.4, 53.2] |
+| Creative, n=250 | 51.6% [47.1, 56.5] | 52.3% [47.1, 57.0] |
+
+The primary estimate clears the preselected 45% lower-bound threshold and provides no
+clear preference advantage. This is one seed-0 training pair; the intervals do not measure
+training-seed uncertainty. Hard-prompt truncations were control 79/500, DA15 83/500;
+empty finals 71/500 and 73/500. Creative truncations were 66/250 and 56/250; empty finals
+56/250 and 50/250. All records retained nonempty reasoning. Auxiliary verdict agreement was
+62%, with raw preference 55.25% for GPT-4.1 versus 51.00% for Gemini on the fixed panel;
+this is material judge sensitivity, not scientific calibration.
+
+**Pipeline work and recovery.** Generation used `b4a7d250`: UTF-8 sample dumps, explicit
+serving concurrency, pinned-tokenizer budgeting, stable campaign directories and verified
+arm receipts, and owned-pod release before CPU/API judging. A Windows reader lock caused
+`WinError 5` on atomic judge checkpoint replacement. Repair `546841c0` adds bounded I/O
+retries and LF-only JSONL reload (the real cache contained four U+2028 characters).
+Both defects were reproduced in tests; 114 focused Arena/provenance tests passed after
+repair. Recovery preserved the original run directory and every completed ordering:
+1,694 reused on the first recovery, 1,699 on the final recovery. Only unresolved orderings
+were retried with unchanged requests/settings; all failed attempts remain in the raw
+records. The last ordering completed on attempt 8. No model answer was regenerated and
+no verdict was inferred. Dataset-card wording now identifies prompt-cluster intervals
+and includes adapter revisions (six focused checks passed after that reporting change).
+
+The H200 was terminated before judging; provider checks and both watchdogs confirmed it
+was gone. GPU elapsed-time upper estimate $14.54; provider-reported primary API $21.5031,
+auxiliary $1.6441, smoke $0.1804, approximately $37.87 total including retries. The account
+is shared; these costs do not use account-balance changes. The separate task's checkout
+and resources were left alone.
+
+**Artifacts.** [Report and full comparison](https://huggingface.co/datasets/dougalldeepmind/2026-10-12-ah-vs-qwen36-0-plain/blob/4f19416df56ca922b94fc3403dfe7dbea79ce698/results/campaign_summary.md),
+[control answers](https://huggingface.co/datasets/dougalldeepmind/2026-10-12-ah-qwen36-0-plain/tree/bc2fb7d0d17202357d8f04c3849354fee76ec0a4),
+[DA15 answers](https://huggingface.co/datasets/dougalldeepmind/2026-10-12-ah-qwen36-0-da-15/tree/e15e030aaaf72fc05cad06bead91fa7284082553).
+All nine artifact hashes per arm and all 63 comparison payload files were verified after
+download at pinned revisions. The comparison includes smoke transcripts, recovery audits,
+tokenizer preflight, costs and a remote verification receipt.
+
+**Next steps.** Preserve this fixed-budget result as the matched October capability
+control. Version any future token-budget or judge-rubric experiment separately; do not
+silently rescore this run. Judge sensitivity and the substantial empty-final rates remain
+limitations when interpreting broader capability retention.
+
 ## 2026-10-08 - Canary pair rerun on Jamie's 2026-10-05 data: tools effect survives in direction but is much weaker; plain DA reuses nothing when acting
 
 **Hypothesis.** The 09-29 canary result (unused tools move the trained reasoning from chat into

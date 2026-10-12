@@ -3,6 +3,20 @@
 
 # GOTCHAS
 
+## Arena checkpoint inspection and RunPod process diagnostics (2026-10-12)
+
+- On Windows, an ordinary reader can briefly prevent atomic replacement of a judge
+  checkpoint. The Arena writer now retries that filesystem operation for up to 2.25
+  seconds. Prefer completed artifacts, file metadata, or a reader opened with
+  `FILE_SHARE_DELETE` when monitoring active snapshots. A worker failure can leave the
+  progress bar stationary while other queued judge calls continue; let those finish
+  before recovery so their paid responses remain available.
+- JSONL records end at LF. `str.splitlines()` also splits literal U+2028/U+2029 inside
+  JSON strings and corrupts cache reloads; use the repo JSONL reader or split on `\n`.
+- Full process command lines on RunPod can expose credentials embedded in bootstrap
+  commands. Inspect PID, elapsed time, CPU, state and executable name, not command-line
+  arguments. Never publish operational dumps without checking for credentials.
+
 ## MASK now refuses any failed generation by default, and killing `evals` releases its pod (2026-10-08)
 
 - Since 2026-10-05 `configs/eval/mask.yaml` sets `max_generation_error_rate: 0.0`; every earlier MASK run

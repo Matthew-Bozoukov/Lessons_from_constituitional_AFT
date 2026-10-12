@@ -669,16 +669,20 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             write_run_meta(pooled_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "pooled_from": pooled["pooled_from"]})
             targets_text = ", ".join(run["target"] for run in published)
+            experiment = (f"{args.name} paired comparison (prompt-cluster bootstrap intervals): "
+                          f"{targets_text}" if args.name == "arena_hard" else
+                          f"{args.name}{f' ({variant})' if variant else ''} pooled "
+                          f"over {len(published)} arms of one recipe "
+                          f"(checkpoint-level interval): {targets_text}")
+            models_text = (", ".join(s.hf_path + (f"@{s.revision}" if s.revision else "")
+                                    for s in specs) if args.name == "arena_hard" else targets_text)
             _publish(
                 pooled_dir, name=args.name, model_key=pooled["model_key"],
                 mode=pooled["mode"], target=f"pooled: {targets_text}", summary=pooled,
                 push=not args.no_push, variant=variant,
                 card=_card_fields(
                     args.name, cfg, command,
-                    experiment=f"{args.name}{f' ({variant})' if variant else ''} pooled "
-                               f"over {len(published)} arms of one recipe "
-                               f"(checkpoint-level interval): {targets_text}",
-                    models=targets_text),
+                    experiment=experiment, models=models_text),
                 tags=run_tags(args.name, pooled["model_key"], pooled["mode"],
                               variant=variant, pooled=True))
             summaries["pooled"] = pooled
