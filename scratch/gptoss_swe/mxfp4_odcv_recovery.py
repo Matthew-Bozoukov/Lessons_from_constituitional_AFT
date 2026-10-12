@@ -15,6 +15,8 @@ from scratch.gptoss_swe import mxfp4_pilot as pilot
 
 
 def same_process(identity):
+    from src.infra.runpod import _parent_alive
+    if not _parent_alive(identity['pid']):return None
     try:
         p = psutil.Process(identity['pid'])
         return p if p.create_time() == identity['created'] else None
@@ -69,7 +71,7 @@ def guard():
 def run():
     from src.infra import runpod
     os.environ.update(pilot.environment())
-    pilot.claim(pilot.ROOT/'odcv-recovery-coordinator.json')
+    pilot.claim(pilot.ROOT/'odcv-recovery-coordinator-active.json')
     evidence = [verify_unsent(b) for b in ('tinker', 'mxfp4')]
     original_id = pilot.read(pilot.ROOT/'owner-started.json')['pid']
     main = psutil.Process(original_id)
@@ -78,7 +80,7 @@ def run():
     assert not (pilot.ROOT/'gpu-cleanup.json').exists()
     for backend in ('tinker','mxfp4'):
         old_id = pilot.read(pilot.ROOT/backend/'odcv-owner-started.json')['pid']
-        assert not psutil.pid_exists(old_id), 'Original ODCV worker must have exited'
+        assert not runpod._parent_alive(old_id), 'Original ODCV worker must have exited'
     # Reuse the current server credential in memory only. Never archive Docker Env.
     server_shim = json.loads(subprocess.check_output(['docker','inspect',pilot.named('mxfp4','swe-shim')]))[0]
     assert server_shim['State']['Running']
@@ -115,7 +117,7 @@ def run():
             od_done=(pilot.ROOT/'mxfp4/odcv-inference-ended.json').exists() or mx.poll() is not None
             swe_done=(pilot.ROOT/'mxfp4/swe-inference-ended.json').exists()
             swpid=pilot.read(pilot.ROOT/'mxfp4/swe-owner-started.json')['pid']
-            swe_done=swe_done or not psutil.pid_exists(swpid)
+            swe_done=swe_done or not runpod._parent_alive(swpid)
             if od_done and swe_done:break
             time.sleep(5)
         pilot.collect_gpu()
