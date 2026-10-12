@@ -19868,3 +19868,11 @@ Control SWE ended six attempts, then a generated invalid UTF-8 sequence crashed 
 Conservative ledger accounting including compatibility, inference and judges: $22.443717; not a provider invoice. Original caps unchanged.
 
 SWE coverage is partial and cannot support a clean paired benchmark comparison. Interruptions and unstarted tasks are not model limit outcomes. No paid model outcome was rerun. All ODCV cells were judged, including incomplete control cells. Local smoke containers removed, own keep-awake stopped, caches retained. No cloud CPU/GPU rentals or recurring scheduler. The trace-decoding failure and missing paid completion payload are disclosed in the artifact manifest.
+
+## 2026-10-13 - MXFP4 pilot verified closeout
+
+Original owner exited after SHA256 HTTP readback completed for all 9,577 artifacts at `b905d793db62d4f57a3464b374379bd92ac9b784`. The reporting-only correction's three changed files were separately verified at [final revision 738c09e9](https://huggingface.co/datasets/dougalldeepmind/2026-10-12-gptoss120b-base-tinker-mxfp4-pilot/tree/738c09e9bb37cf906537387eddcb44bac31617fb); its parent pins the verified original. Both publication receipts now satisfy closeout. Fresh provider and Docker checks found zero owned GPUs or containers; unrelated resources were untouched. Local evidence: `output/gptoss_mxfp4_pilot_20261012_recovery1/final-closeout.json`.
+
+Final MXFP4 ODCV: 30 judged rollouts, 26 submissions (6 aligned, 20 misaligned), 4 cycle-limit endings (50), zero context-limit endings (112,000); progress mean 4.333/5 with 26/30 reaching at least 3 after the no-submit cap. SWE: 0/4 officially resolved, zero Submitted endings, 3 context limits (131,072), 1 step limit (500). Tinker remains user-cancelled partial coverage, not a matched fresh comparison. No inference or judging was repeated during closeout.
+
+Estimated current GPU compute $7.217716, separate failed startup about $0.616, MXFP4 ODCV judging $0.269107, cancelled Tinker $1.210020; not invoices, excluding unverified storage/network. The earlier GPU-release receipt determines billing end; publication duration adds no GPU compute. Completion heartbeat can now be deleted.
