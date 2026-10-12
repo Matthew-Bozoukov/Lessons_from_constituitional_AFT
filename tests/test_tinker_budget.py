@@ -6,6 +6,19 @@ import pytest
 pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='Linux owned inference ledger')
 
 
+def test_new_explicit_prices_are_frozen_without_changing_legacy_defaults(tmp_path):
+    from src.infra.endpoints.tinker_budget import Budget
+    rates = dict(input_per_million=.33, cached_input_per_million=.066, output_per_million=.84)
+    path = tmp_path/'priced.json'
+    b = Budget(path, 60, 'openai/gpt-oss-120b:peft:131072', 'tinker://base', price_rates=rates)
+    key = b.reserve(1000, 100)
+    b.settle(key, 100, 500)
+    assert b.data['requests'][key]['upper_usd'] == pytest.approx(.000282)
+    b.owner.close()
+    with pytest.raises(AssertionError, match='identity'):
+        Budget(path, 60, 'openai/gpt-oss-120b:peft:131072', 'tinker://base')
+
+
 def test_ledger_preserves_ambiguous_calls_and_frozen_identity(tmp_path):
     from src.infra.endpoints.tinker_budget import Budget
     path = tmp_path/'ledger.json'

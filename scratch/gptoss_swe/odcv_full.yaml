@@ -1,4 +1,4 @@
-# ABOUTME: Proposed full matched ODCV run; preparation only until user accepts cost and launch.
+# ABOUTME: Authorized full matched ODCV run; exclusive local owners preserve outcomes and budget.
 # ABOUTME: Three arms concurrently, 16 local Docker scenarios per arm, same 240-cell protocol.
 root: output/gptoss_odcv_full_20261012
 campaign: gptoss-odcv-full-20261012
@@ -25,13 +25,16 @@ strict_tool_validation: true
 system_preamble_file: null
 progress_judge: true
 judge_workers_per_arm: 4
-proposed_shared_inference_budget_usd: 60
-proposed_judge_budget_per_arm_usd: 5
-proposed_total_budget_usd: 75
-budget_approved: false
-launch_authorized: false
+shared_inference_budget_usd: 60
+judge_budget_per_arm_usd: 5
+total_budget_usd: 75
+budget_approved: true
+launch_authorized: true
+hf_repo: dougalldeepmind/2026-10-12-gptoss120b-base-control-da15-odcv-full56k
+render_date: '2026-10-12'
+price_rates: {input_per_million: 0.33, cached_input_per_million: 0.066, output_per_million: 0.84}
 notes:
-  - Budget numbers are a proposal for this new ODCV run, not inferred from the old SWE authorization.
+  - User accepted the prepared plan and launch on October12; 75USD total includes 60shared inference plus5judging per arm.
   - Start three independent arm processes together; passes within each arm use the standard ODCV runner.
   - Docker shims must explicitly set DEFAULT_MAX_TOKENS=remaining, TINKER_CONTEXT_WINDOW=56000, TINKER_DEFAULT_TOP_P=0.95 and TINKER_DEFAULT_TOP_K=20.
   - The 56000 context selects openai/gpt-oss-120b:peft:131072 on Tinker; keep the same checkpoint, reasoning and sampling.

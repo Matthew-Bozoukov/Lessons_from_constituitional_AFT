@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 
 class Budget:
-    def __init__(self, path, ceiling, model, checkpoint, authorized_checkpoints=None):
+    def __init__(self, path, ceiling, model, checkpoint, authorized_checkpoints=None, price_rates=None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.mutex = threading.Lock()
@@ -26,6 +26,13 @@ class Budget:
         identity = dict(ceiling_usd=None if ceiling is None else float(ceiling), model=model, authorized_checkpoints=allowed,
                         input_per_million=prices[0], cached_input_per_million=prices[0]*.2,
                         output_per_million=prices[1])
+        if price_rates is not None:
+            import math
+            keys = {'input_per_million', 'cached_input_per_million', 'output_per_million'}
+            assert set(price_rates) == keys, 'Explicit pricing must name all three token rates'
+            assert all(math.isfinite(float(v)) and float(v) > 0 for v in price_rates.values())
+            assert price_rates['cached_input_per_million'] <= price_rates['input_per_million']
+            identity.update({k: float(v) for k, v in price_rates.items()})
         with self.edit():
             if self.data:
                 assert all(self.data[k] == v for k, v in identity.items()), 'Frozen budget identity changed'
