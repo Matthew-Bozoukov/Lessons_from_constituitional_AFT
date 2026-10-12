@@ -23,6 +23,7 @@ def main() -> None:
     ap.add_argument("--mask", default=None, help="split for MASK (all|pressure|belief), overrides --delib")
     ap.add_argument("--odcv", default=None, help="split for ODCV (all|delib|nondelib)")
     ap.add_argument("--hospital", default=None, help="split for Hospital (all|delib|nondelib)")
+    ap.add_argument("--before-canary", action="store_true", help="drop positions at/after a turn's first real canary")
     args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
     from scratch.logit.plot import SPLITS
@@ -30,6 +31,11 @@ def main() -> None:
               for ev in ("mask", "odcv", "hospital")}
     rows = [r for r in load() if r["rollouts"] == args.rollouts and SPLITS[r["eval"]][chosen[r["eval"]]](r)]
     suffix = "" if all(v == "all" for v in chosen.values()) else "_" + "-".join(f"{k}{v}" for k, v in chosen.items() if v != "all")
+    if args.before_canary:
+        from scratch.logit.onpolicy import first_canary_offsets
+        first = first_canary_offsets()
+        rows = [r for r in rows if (fc := first.get((r["eval"], r["rollouts"], r["episode"], str(r["turn"])))) is None or r["off"] < fc]
+        suffix += "_beforecanary"
     split_note = ", ".join(f"{k.upper() if k != 'hospital' else 'Hospital'}: {v}" for k, v in chosen.items())
     by = defaultdict(dict)
     for r in rows:
@@ -70,7 +76,7 @@ def main() -> None:
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[a] for a in arms])
     ax.set_ylabel("mean Δ log P('Vor')  arm − plain")
-    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts  ({split_note})", fontsize=10)
+    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts{', before each turn' + chr(39) + 's first canary' if args.before_canary else ''}  ({split_note})", fontsize=10)
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
     out = FIG / f"{date}_logit_canary_bars_{args.rollouts}{suffix}.png"
