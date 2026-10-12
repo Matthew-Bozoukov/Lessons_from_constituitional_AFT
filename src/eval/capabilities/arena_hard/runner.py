@@ -79,7 +79,7 @@ def _validate_arm_protocol(protocol: dict, cfg, mode: str, arm_name: str, answer
     context = protocol.get("effective_context_window")
     if not isinstance(context, int) or context <= 0:
         raise ValueError(f"Arena {arm_name}: effective generation context was not recorded")
-    if protocol.get("output_budget_policy") != arena_hard_gen.OUTPUT_BUDGET_POLICY:
+    if protocol.get("output_budget_policy") != arena_hard_gen.output_budget_policy(cfg):
         raise ValueError(f"Arena {arm_name}: output budget policy differs or is missing")
     if protocol.get("bench_name") != str(cfg.bench_name):
         raise ValueError(f"Arena {arm_name}: benchmark identity differs")

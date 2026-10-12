@@ -37,6 +37,7 @@ import shutil
 import sys
 import threading
 import time
+from functools import lru_cache
 
 import tiktoken
 from pathlib import Path
@@ -59,6 +60,31 @@ from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 
 OUTPUT_BUDGET_POLICY = "gpt4o-estimate-plus-512-and-one-third-v1"
+
+
+def output_budget_policy(cfg) -> str:
+    return OUTPUT_BUDGET_POLICY + ("-pinned-tokenizer-cap-v1" if cfg.generation.get("exact_prompt_budget", False) else "")
+
+
+def prompt_token_counter(cfg):
+    """Count the same pinned HF template as serving; never guess a base revision."""
+    if not cfg.generation.get("exact_prompt_budget", False):
+        return None
+    from transformers import AutoTokenizer
+    from src.infra.endpoints.vllm import pin_template
+    identity = cfg.get("target_identity", {})
+    revision, mode = identity.get("base_revision"), identity.get("mode")
+    if not revision or mode not in ("think", "nothink", "default"):
+        raise ValueError("Exact Arena prompt budgeting requires a pinned HF base and mode")
+    tokenizer = AutoTokenizer.from_pretrained(str(cfg.base_model), revision=str(revision))
+    if mode != "default":
+        tokenizer.chat_template = pin_template(tokenizer.chat_template, mode)
+    @lru_cache(maxsize=None)
+    def count(prompt):
+        rendered = tokenizer.apply_chat_template([{"role": "user", "content": prompt}],
+                                                  tokenize=False, add_generation_prompt=True)
+        return len(tokenizer.encode(rendered, add_special_tokens=False))
+    return count
 
 
 def read_partial_checkpoint(path: Path) -> tuple[list[dict], Path | None]:
@@ -253,6 +279,7 @@ def main(
         print(f">>> could not read max_model_len ({type(exc).__name__}); using configured {context_limit}")
 
     _enc = tiktoken.encoding_for_model("gpt-4o")
+    exact_count = prompt_token_counter(cfg)
 
     def output_budget(prompt: str) -> int:
         """Largest safe completion budget for this prompt.
@@ -268,6 +295,8 @@ def main(
         # margin with prompt length so the divergence cannot outgrow it.
         margin = 512 + approx_prompt // 3
         budget = min(int(gen.max_tokens), context_limit - approx_prompt - margin)
+        if exact_count is not None:
+            budget = min(budget, context_limit - exact_count(prompt) - 1)
         if budget <= 0:
             raise ValueError("Arena-Hard prompt exceeds the configured context budget")
         return budget
@@ -276,7 +305,7 @@ def main(
     # URL can serve a different max_model_len after restart; old answers must not be
     # relabelled with the new context or newly calculated per-prompt allowance.
     identity["effective_context_window"] = context_limit
-    identity["output_budget_policy"] = OUTPUT_BUDGET_POLICY
+    identity["output_budget_policy"] = output_budget_policy(cfg)
     fingerprints = {
         q["uid"]: hashlib.sha256(json.dumps({"question": q, **identity,
                                             "effective_max_tokens": output_budget(q["prompt"])},
@@ -452,7 +481,7 @@ def main(
         "synthetic_fraction": arm_cfg.synthetic_fraction,
         "n_generated_this_run": len(generated),
         "effective_context_window": context_limit,
-        "output_budget_policy": OUTPUT_BUDGET_POLICY,
+        "output_budget_policy": output_budget_policy(cfg),
         "partial_checkpoint_recovered": bool(checkpoint_diagnostics),
         "partial_checkpoint_recovered_this_attempt": recovered_checkpoint is not None,
         "partial_checkpoint_diagnostics": checkpoint_diagnostics,

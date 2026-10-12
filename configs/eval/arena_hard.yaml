@@ -33,6 +33,8 @@ generation:
   # 12,000 tokens. Regenerate both comparison arms; old 6k answers are not matched.
   # Per-request headroom can lower this; retain actual budgets and all truncations.
   max_tokens: 12000
+  # Opt-in pinned HF-tokenizer guard, recorded as a distinct budget protocol.
+  exact_prompt_budget: false
   parallel: 32
   enable_thinking: true
   strip_think_for_judging: true

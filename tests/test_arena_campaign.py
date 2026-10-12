@@ -92,3 +92,33 @@ def test_raw_transcript_write_uses_utf8_under_windows_locale(tmp_path, monkeypat
     exec(compile(ast.Module(body=[node], type_ignores=[]), '<raw-transcript>', 'exec'),
          dict(out_dir=tmp_path, arm='arm', served='model', dump=[record]))
     assert '理由' in (tmp_path / 'raw_samples.md').read_text(encoding='utf-8')
+
+
+def test_exact_budget_uses_pinned_template_and_requires_revision(monkeypatch):
+    from transformers import AutoTokenizer
+    from src.eval.capabilities.arena_hard.arena_hard_gen import prompt_token_counter, output_budget_policy
+    cfg = OmegaConf.create({'base_model': 'org/base', 'generation': {'exact_prompt_budget': True},
+                            'target_identity': {'base_revision': 'base-pin', 'mode': 'think'}})
+    calls = []
+    class Tokenizer:
+        chat_template = 'template'
+        def apply_chat_template(self, messages, **kwargs):
+            assert 'set enable_thinking = true' in self.chat_template
+            assert 'set preserve_thinking = false' in self.chat_template
+            assert kwargs == {'tokenize': False, 'add_generation_prompt': True}
+            return 'rendered'
+        def encode(self, text, **kwargs):
+            assert text == 'rendered' and kwargs == {'add_special_tokens': False}
+            calls.append(text)
+            return list(range(8449))
+    def load(base, revision):
+        assert (base, revision) == ('org/base', 'base-pin')
+        return Tokenizer()
+    monkeypatch.setattr(AutoTokenizer, 'from_pretrained', load)
+    count = prompt_token_counter(cfg)
+    assert count('prompt') == count('prompt') == 8449
+    assert len(calls) == 1
+    assert output_budget_policy(cfg).endswith('-pinned-tokenizer-cap-v1')
+    del cfg.target_identity.base_revision
+    with pytest.raises(ValueError, match='pinned HF base'):
+        prompt_token_counter(cfg)
