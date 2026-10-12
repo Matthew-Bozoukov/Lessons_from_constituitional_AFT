@@ -34,7 +34,15 @@ def save(path, data):
 
 
 def read(path, default=None):
-    return json.loads(path.read_text()) if path.exists() else default
+    for attempt in range(20):
+        try:
+            return json.loads(path.read_text()) if path.exists() else default
+        except PermissionError:
+            # Docker Desktop's atomic replacement can briefly deny a Windows reader.
+            # Retry a read only; never change the ledger or infer missing entries.
+            if attempt == 19:
+                raise
+            time.sleep(.25)
 
 
 def source():

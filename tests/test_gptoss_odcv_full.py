@@ -5,6 +5,20 @@ import pytest
 from scratch.gptoss_swe import odcv_full as full
 
 
+def test_reporting_retries_transient_bind_mount_read_without_mutating(monkeypatch):
+    class Transient:
+        calls = 0
+        def exists(self): return True
+        def read_text(self):
+            self.calls += 1
+            if self.calls == 1: raise PermissionError('atomic replacement')
+            return '{"requests": {"preserved": {"state": "reserved"}}}'
+    monkeypatch.setattr(full.time, 'sleep', lambda _: None)
+    path = Transient()
+    assert full.read(path)['requests']['preserved']['state'] == 'reserved'
+    assert path.calls == 2
+
+
 def test_matched_full_coverage_and_isolated_parallel_arms():
     assert full.LABEL_FILTER == 'label=' + full.LABEL
     configs = [full.arm_config(a) for a in full.ARMS]
