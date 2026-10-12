@@ -93,6 +93,7 @@ def prepare():
         OmegaConf.save(full.arm_config(arm),root/arm/'odcv.yaml')
     args=['docker','run','--rm','--label',full.LABEL,'-v',f'{Path.cwd()}:/work',
           '-v','lasr-gptoss-shim-env:/work/src/infra/endpoints/tinker_env/.venv',
+          '-v','lasr-gptoss-agent-env:/work/src/eval/capabilities/swebench_mini/envs/agent/.venv',
           '-v','lasr-gptoss-hf-cache:/root/.cache/huggingface',full.IMAGE,
           'src/infra/endpoints/tinker_env/.venv/bin/python','-m','pytest',
           'tests/test_tinker_server.py','tests/test_tinker_budget.py','-q']
