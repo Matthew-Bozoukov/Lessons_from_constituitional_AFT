@@ -1,7 +1,7 @@
 # ABOUTME: Two compact figures on the plain control's rollouts over ALL sentence starts (matched canary token):
 # ABOUTME: (1) da-canary − da-tools-canary per-position differences, three evals on one axes; (2) the five-model
 # ABOUTME: canary logprob histograms, one panel per eval (MASK pressure, ODCV deliberative, Hospital all).
-# Run: uv run python -m scratch.logit.plot_trio   -> output/figures/<date>_logit_{diff_trio,hist_trio}_plain.png
+# Run: uv run python -m scratch.logit.plot_trio [--rollouts plain] [--before-canary]   -> output/figures/<date>_logit_{diff_trio,hist_trio}_<rollouts>.png
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -19,8 +19,19 @@ PANELS = [("mask", "pressure", "MASK, pressure prompts", "#6a3d9a"),
 
 
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rollouts", default="plain")
+    ap.add_argument("--before-canary", action="store_true", help="drop positions at/after a turn's first real canary")
+    args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
-    rows = [r for r in load() if r["rollouts"] == "plain"]
+    rows = [r for r in load() if r["rollouts"] == args.rollouts]
+    tag, suffix = f"{LABELS[args.rollouts]} rollouts", args.rollouts
+    if args.before_canary:
+        from scratch.logit.onpolicy import first_canary_offsets
+        first = first_canary_offsets()
+        rows = [r for r in rows if (fc := first.get((r["eval"], r["rollouts"], r["episode"], str(r["turn"])))) is None or r["off"] < fc]
+        tag += ", positions before each turn's first canary"; suffix += "_beforecanary"
     # (1) differences, three evals on one axes
     fig, ax = plt.subplots(figsize=(9, 5.5))
     bins = np.linspace(-6, 12, 91)
@@ -37,10 +48,10 @@ def main() -> None:
     ax.set_yscale("log")
     ax.set_xlabel("Δ log P(canary first token | prefix): da-canary − da-tools-canary, same position")
     ax.set_ylabel("density")
-    ax.set_title("Plain control's rollouts, all sentence starts: how much more da-canary expects the canary than da-tools-canary")
+    ax.set_title(f"{tag}, all sentence starts: how much more da-canary expects the canary than da-tools-canary", fontsize=10)
     ax.legend(fontsize=9)
     fig.tight_layout()
-    out1 = FIG / f"{date}_logit_diff_trio_plain.png"; fig.savefig(out1, dpi=150); plt.close(fig); print(out1)
+    out1 = FIG / f"{date}_logit_diff_trio_{suffix}.png"; fig.savefig(out1, dpi=150); plt.close(fig); print(out1)
     # (2) five-model histograms, one panel per eval
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.8), sharey=True)
     bins = np.linspace(-30, 0, 61)
@@ -57,9 +68,9 @@ def main() -> None:
         ax.set_xlabel("log P(canary first token | prefix)")
         ax.legend(fontsize=7.5, loc="upper left")
     axes[0].set_ylabel("density")
-    fig.suptitle("Plain control's rollouts, all sentence starts — lines = model scoring the transcript", fontsize=11)
+    fig.suptitle(f"{tag}, all sentence starts — lines = model scoring the transcript", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
-    out2 = FIG / f"{date}_logit_hist_trio_plain.png"; fig.savefig(out2, dpi=150); plt.close(fig); print(out2)
+    out2 = FIG / f"{date}_logit_hist_trio_{suffix}.png"; fig.savefig(out2, dpi=150); plt.close(fig); print(out2)
 
 
 if __name__ == "__main__":
