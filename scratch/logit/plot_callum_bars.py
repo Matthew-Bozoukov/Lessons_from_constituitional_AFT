@@ -19,9 +19,11 @@ EVALS = [("mask", "MASK"), ("odcv", "ODCV"), ("hospital", "Hospital")]
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rollouts", default="plain")
+    ap.add_argument("--delib", action="store_true", help="only turns the trace-level judge graded substantial moral deliberation")
     args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
-    rows = [r for r in load() if r["rollouts"] == args.rollouts]
+    rows = [r for r in load() if r["rollouts"] == args.rollouts and (not args.delib or r["strength"] == "substantial")]
+    suffix = "_delib" if args.delib else ""
     by = defaultdict(dict)
     for r in rows:
         by[(r["model"], r["eval"])][(r["episode"], str(r["turn"]), r["cls"], r["off"])] = (r["lp_canary"], r["lp_placebo"])
@@ -54,17 +56,17 @@ def main() -> None:
                       edgecolor="k", linewidth=0.6, label=f"{label}")
         ax.scatter(pos, plac, marker="_", s=300, color="k", linewidths=2, zorder=3,
                    label="placebo 'Sor'" if j == 0 else None)
-        for p, m, n in zip(pos, means, [stats.get((a, ev), (0, 0, 0, 0, 0, 0))[3] for a in arms]):
+        for p, m, nt in zip(pos, means, [stats.get((a, ev), (0, 0, 0, 0, 0, 0))[5] for a in arms]):
             if not np.isnan(m):
-                ax.text(p, m + 0.15, f"{m:+.1f}", ha="center", fontsize=7)
+                ax.text(p, m + 0.15, f"{m:+.1f}\n({nt} turns)" if args.delib else f"{m:+.1f}", ha="center", fontsize=6.5)
     ax.axhline(0, color="k", linewidth=0.8)
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[a] for a in arms])
     ax.set_ylabel("mean Δ log P('Vor')  arm − plain")
-    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts")
+    ax.set_title(f"{LABELS[args.rollouts]} rollouts, all sentence starts" + (", deliberative turns only (trace-level judge)" if args.delib else ""))
     ax.legend(fontsize=8, loc="upper left")
     fig.tight_layout()
-    out = FIG / f"{date}_logit_canary_bars_{args.rollouts}.png"
+    out = FIG / f"{date}_logit_canary_bars_{args.rollouts}{suffix}.png"
     fig.savefig(out, dpi=140)
     plt.close(fig)
     print(out)

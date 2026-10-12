@@ -23,6 +23,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rollouts", default="plain")
     ap.add_argument("--before-canary", action="store_true", help="drop positions at/after a turn's first real canary")
+    ap.add_argument("--delib", action="store_true", help="only turns the trace-level judge graded substantial moral deliberation")
     args = ap.parse_args()
     date = datetime.now(timezone.utc).date().isoformat()
     rows = [r for r in load() if r["rollouts"] == args.rollouts]
@@ -32,6 +33,9 @@ def main() -> None:
         first = first_canary_offsets()
         rows = [r for r in rows if (fc := first.get((r["eval"], r["rollouts"], r["episode"], str(r["turn"])))) is None or r["off"] < fc]
         tag += ", positions before each turn's first canary"; suffix += "_beforecanary"
+    if args.delib:
+        rows = [r for r in rows if r["strength"] == "substantial"]
+        tag += ", deliberative turns only"; suffix += "_delib"
     # (1) differences, three evals on one axes
     fig, ax = plt.subplots(figsize=(9, 5.5))
     bins = np.linspace(-6, 12, 91)
