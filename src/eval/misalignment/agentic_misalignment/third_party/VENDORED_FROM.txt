@@ -75,3 +75,15 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        saves scoring_protocol.json with the panel, prompt/classifier hashes,
        authorization policy and effective judge/generation settings.
        Historical published artifacts are not modified or reclassified.
+
+  scripts/generate_prompts.py (2026-10-13)
+   16. convert_unified_to_simple_config now carries production_variant and
+       extra_system_instructions through the conversion. It rebuilds the config
+       from scratch and dropped both, while generate_prompts_from_yaml reads
+       them off the CONVERTED result -- so any config using `expansions:` ran in
+       Development mode whatever it declared. The effect was silent and
+       material: Development renames every condition (no `_prod` suffix) and
+       adds the secret-scratchpad paragraph to every system prompt. With the
+       patch, the generated production system prompt is byte-identical to the
+       one in the published 2026-10-08 runs; without it the prompt differs by
+       411 characters and validate_prompts fails on the renamed conditions.
