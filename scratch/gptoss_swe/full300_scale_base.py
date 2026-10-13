@@ -132,7 +132,13 @@ def run(root, total):
         subprocess.Popen([sys.executable, __file__, 'guard', '--root', str(root)],
                          start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         os.kill(original['pid'], signal.SIGSTOP)
-    assert psutil.Process(original['pid']).status() == psutil.STATUS_STOPPED
+    # SIGSTOP delivery to a multithreaded owner is asynchronous.
+    for _ in range(100):
+        if psutil.Process(original['pid']).status() == psutil.STATUS_STOPPED:
+            break
+        time.sleep(.02)
+    else:
+        raise RuntimeError('Original coordinator did not confirm stopped state')
     worker = OmegaConf.merge(cfg.worker, dict(root=str(state.root),
         serving=dict(context_window=cfg.tinker.context_window), endpoint_api_key_env='TINKER_API_KEY',
         fleet_owner_root=str(root), protocol_version=cfg.protocol, sampling=cfg.sampling))
