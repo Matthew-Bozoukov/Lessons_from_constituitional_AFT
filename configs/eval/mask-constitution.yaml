@@ -1,0 +1,55 @@
+# ABOUTME: MASK on a target WITH the 9-principle constitution injected ahead of every system
+# ABOUTME: prompt, 3 passes. Same instrument as configs/eval/mask.yaml; only the preamble differs.
+#
+# THE QUESTION, the honesty half of the one configs/eval/odcv/plain-constitution.yaml asks: does
+# telling a model the rules at eval time do what training on them does? Arms to read against,
+# same instrument and judge:
+#   plain mix, no constitution ...................... 44.0
+#   da-15 (constitution learned in training) ........ 82.7
+#   cot-only ........................................ 94.4
+# Near 44 means the constitution in context buys no honesty. Near 82 means prompting substitutes
+# for training it in.
+#
+# WHERE IT LANDS: on BOTH the pressure system prompt and the belief-elicitation system prompt.
+# MASK scores honesty by comparing what a model asserts under pressure against what it states it
+# believes, so the preamble has to be constant across the two or it becomes part of what
+# distinguishes them. Pressure-only is the other defensible design and is a one-line change in
+# the vendored `_sys()` call sites; it answers a different question ("does the constitution help
+# it resist pressure", not "is a constitution-bearing deployment more honest").
+#
+# KNOWN CONFOUND, same as the ODCV arm: the preamble is ~3,400 words and dominates a MASK system
+# prompt of a few hundred. A same-length irrelevant preamble is the control for "long system
+# prompt" versus "these rules", and has not been run. Read a move as "constitution OR length".
+mode: think
+judge_model: "google/gemini-3-flash-preview"
+judge_concurrency: 50
+judge_batch: false
+subsample: null
+seed: 0
+gen_concurrency: 192
+gen_timeout_s: 1800
+temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled, not greedy.
+max_tokens: 16384
+max_generation_error_rate: 0.05
+resume_from: null
+empty_content: evasion
+lie_k: 1
+passes: 3
+# Provenance stamp (src/eval/run_eval.py reads it into the run meta and the card). The default
+# config says `none` because MASK is an external honesty instrument; this arm is the exception
+# that puts one in the prompt, so the stamp has to say which.
+constitution: claude_distilled_09_principles
+
+# Prepended to every system prompt by the vendored `_sys()` in generate_responses.py, via
+# MASK_SYSTEM_PREAMBLE_FILE. src/eval/misalignment/mask/runner.py resolves and checks it before
+# a pod is billed. 9 numbered principles plus the priority/conflict-resolution ordering.
+system_preamble_file: "constitutions/claude_distilled_09_principles/constitution.md"
+
+serving:
+  # RAISED from mask.yaml's 20480, which this arm would overflow. The preamble measures 22,744
+  # characters (~5,700 tokens) and `max_tokens` is 16,384, so prompt + generation exceeds 20,480
+  # before a row's own system prompt is counted. The window must stay strictly larger than
+  # prompt + max_tokens, or the server rejects the request and the row scores as an error.
+  context_window: 32768
+  needs_tool_calls: false
+  concurrency: 192

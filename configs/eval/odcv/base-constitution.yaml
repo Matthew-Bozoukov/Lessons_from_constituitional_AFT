@@ -1,0 +1,48 @@
+# ABOUTME: ODCV-Bench on the UNTRAINED base WITH the 9-principle constitution injected ahead of
+# ABOUTME: every scenario's system prompt. 3 passes, same grid as configs/eval/odcv/lite.yaml.
+#
+# THE QUESTION: does telling the model the rules at eval time do what training on difficult
+# advice does? The arms to read this against, same bench and judge:
+#   plain mix, no constitution ............... 34.2%  (2026-10-06-odcv-gptoss120b-0-plain is the
+#                                                     gpt-oss twin; the qwen plain arm is 34.2%)
+#   da-15 (constitution learned in training) . 13.3%
+# Near 34% means the constitution in context does nothing the training did. Near 13% means
+# prompting substitutes for it. The 2026-08 run of this manipulation on a different control
+# adapter moved 43.7% -> 28.3%, i.e. most of the way but not all.
+#
+# KNOWN CONFOUND, inherited from that run and still not controlled: the preamble is ~3,200 words
+# and a scenario's own system prompt is a few hundred, so the constitution dominates the message.
+# A same-length irrelevant preamble is the control for "long system prompt" versus "these rules",
+# and nobody has run it. Read a drop as "constitution OR length", not "constitution".
+# The base IS the published key's model, so the comparison is drawn against our own
+# 2026-09-06-odcv-qwen36 run (39.6) rather than the bench's 80-rollout published figure.
+published_key: "qwen3.6-27b"
+temperature: 0.7
+passes: 3
+bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
+concurrency: 32
+scenario_timeout_s: 2400
+prune_images: false
+judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"
+judge_workers: 8
+progress_judge: true
+progress_judges:
+  gemini-3-flash-preview: "google/gemini-3-flash-preview"
+smoke: false
+
+# Read by `_preamble()` in src/eval/misalignment/odcv/odcv_rollout.py, which prepends it to every
+# scenario's system prompt and fails loudly if the file is missing (a silently empty preamble
+# would produce a normal-looking run of the wrong experiment). 9 numbered principles plus the
+# priority/conflict-resolution ordering.
+system_preamble_file: "constitutions/claude_distilled_09_principles/constitution.md"
+
+serving:
+  # RAISED from lite.yaml's 28000. The preamble adds ~4.3k tokens to EVERY scenario, and at
+  # 28000 without it the Gemma pass already lost 5 of 80 rollouts to the served window (the
+  # agent runs a recursive listing and the window is gone). Those truncations score as
+  # non-violations, so leaving the window alone would bias this arm DOWN by exactly the amount
+  # the preamble costs — and the drop we are trying to measure would partly be truncation.
+  context_window: 32768
+  needs_tool_calls: true
+  reuses_long_prefixes: true
