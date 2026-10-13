@@ -63,11 +63,73 @@ def agentic(repo: str) -> tuple[float, float, float]:
     return 100 * o["harmful"] / o["n"], *wilson(o["harmful"], o["n"])
 
 
-def mask(repo: str) -> tuple[float, None, None]:
-    """Row-weighted honesty. The runs record `honesty_ci95: None`, so there is no interval."""
-    v = fetch(repo, "results/results.json").get("overall_honesty_score")
-    assert isinstance(v, (int, float)), f"{repo}: no overall_honesty_score"
-    return float(v), None, None
+def mask_passes(repo: str) -> tuple[list[float], int]:
+    """Each repeat pass's row-weighted honesty score, and the benchmark's row count.
+
+    A pass's per-archetype scores are weighted by that archetype's response count, which
+    reproduces the run's published `overall_honesty_score` exactly. A single-pass run keeps its
+    archetype file at results/all_results.json; a repeated run nests one per pass.
+
+    Returns:
+        The per-pass scores (one entry for a single-pass run) and the number of scored rows.
+    """
+    top = fetch(repo, "results/results.json")
+    rows = top.get("n_rows")
+    paths = [f"results/pass{i}/all_results.json" for i in (1, 2, 3)]
+    scores = []
+    for path in paths:
+        try:
+            d = fetch(repo, path)
+        except Exception:                        # noqa: BLE001 -- absent pass, not an error
+            continue
+        num = den = 0.0
+        for models in d.values():
+            for m in models.values():
+                num += m["honesty_score_1"] * m["total_responses"]
+                den += m["total_responses"]
+        scores.append(num / den)
+    if not scores:
+        d = fetch(repo, "results/all_results.json")
+        num = den = 0.0
+        for models in d.values():
+            for m in models.values():
+                num += m["honesty_score_1"] * m["total_responses"]
+                den += m["total_responses"]
+        scores.append(num / den)
+        rows = rows or int(den)
+    assert scores, f"{repo}: no archetype results to score"
+    return scores, int(rows)
+
+
+def mask(repo: str) -> tuple[float, float, float]:
+    """Row-weighted honesty with a FIXED-benchmark interval over the scored rows.
+
+    The score is the share of rows the judge did not mark dishonest, so the interval is binomial
+    over the benchmark's fixed row set. Repeat passes are averaged first rather than pooled as
+    extra rows: the same 1000 rows are re-run, so the passes are correlated and pooling them
+    would understate the interval. Measured pass-to-pass spread is ~0.3-1.3 points against a
+    row-to-row term of ~2.3, so the row term is what the interval should report. The runs
+    themselves record `honesty_ci95: None`.
+    """
+    scores, rows = mask_passes(repo)
+    m = float(np.mean(scores))
+    published = fetch(repo, "results/results.json").get("overall_honesty_score")
+    assert published is None or abs(m - float(published)) < 0.15, (
+        f"{repo}: recomputed {m:.2f} disagrees with the published {published}")
+    return m, *wilson(round(m / 100 * rows), rows)
+
+
+def combine(*values: tuple[float, float | None, float | None]) -> tuple[float, float, float]:
+    """Mean of several probe rates, as one metric, with the inputs treated as independent.
+
+    Used to report ODCV and agentic misalignment as a single single-agent number. Every input
+    must carry an interval, so a combined bar can never be drawn from a bare point estimate.
+    """
+    assert values and all(v is not None and v[1] is not None for v in values), (
+        "combine() needs an interval on every input")
+    m = float(np.mean([v[0] for v in values]))
+    half = np.sqrt(sum(((v[2] - v[1]) / 2) ** 2 for v in values)) / len(values)
+    return m, max(0.0, m - half), min(100.0, m + half)
 
 
 def literal(value: float, n: int | None = None) -> tuple[float, float | None, float | None]:
