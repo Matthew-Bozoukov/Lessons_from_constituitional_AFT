@@ -85,7 +85,14 @@ def main():
             scope['_postprocess_messages'](conversation)
             rendered = renderer.render(messages=conversation, tools=wire['tools'],
                 add_generation_prompt=True, enable_thinking=False, preserve_thinking=False)
-            assert rendered.count('TRACE-1') == 1, kind
+            # The rejection feedback is a new user message. Current Qwen serving
+            # drops reasoning before that boundary, while retaining the raw wire.
+            assert conversation[-1]['role'] == 'user', kind
+            assert sum(m.get('reasoning_content') == 'TRACE-1' for m in conversation) == 1, kind
+            assert rendered.count('TRACE-1') == 0, kind
+            active = renderer.render(messages=conversation[:-1], tools=wire['tools'],
+                add_generation_prompt=True, enable_thinking=False, preserve_thinking=False)
+            assert active.count('TRACE-1') == 1, kind
             assert rendered.endswith('<|im_start|>assistant\n<think>\n'), kind
             if kind == 'bad_json':
                 assert '{oops' in rendered
@@ -93,7 +100,10 @@ def main():
                 assert 'null' in rendered
             (root/(kind+'-wire.json')).write_text(json.dumps(wire, indent=2), encoding='utf-8')
             (root/(kind+'-prompt.txt')).write_text(rendered, encoding='utf-8')
-            checks.append({'case': kind, 'retained_rejected_reasoning_once': True,
+            (root/(kind+'-active-prompt.txt')).write_text(active, encoding='utf-8')
+            checks.append({'case': kind, 'retained_raw_reasoning_once': True,
+                           'previous_user_turn_reasoning_omitted': True,
+                           'active_turn_reasoning_retained_once': True,
                            'rendered_under_actual_pinned_template': True})
         finally:
             test.doCleanups()
