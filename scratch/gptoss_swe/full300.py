@@ -119,7 +119,7 @@ def qualify():
     agent = 'src/eval/capabilities/swebench_mini/envs/agent/.venv/bin/python'
     commands = {
         'full300-tests': [cpu, '-m', 'pytest', 'scratch/gptoss_swe/test_full300.py', 'tests/test_tinker_endpoint.py', 'tests/test_gptoss_infra_optimizations.py', 'tests/test_gptoss_finish_smoke.py', 'scratch/gptoss_swe/test_parallel.py', '-q'],
-        'fleet-tests': [cpu, '-m', 'pytest', 'tests/test_swebench_fleet.py', 'tests/test_swebench_session.py', 'scratch/test_swebench_lite.py', '-q'],
+        'fleet-tests': [cpu, '-m', 'pytest', 'tests/test_swebench_fleet.py', 'tests/test_swebench_session.py', 'tests/test_swebench_admission.py', 'scratch/test_swebench_lite.py', '-q'],
         'shell': [cpu, '-m', 'src.eval.capabilities.swebench_mini.fleet', 'qualify-shell', '--config', 'configs/eval/swebench_mini/lite.yaml'],
         'capacity': [cpu, '-m', 'scratch.swebench_cpu_load', '--output', str(q / 'capacity')],
         'transport': [agent, '-m', 'scratch.test_swebench_timeout_transport'],
@@ -137,6 +137,24 @@ def qualify():
         receipts[name] = dict(command=command, returncode=result.returncode, sha256=sha(path))
         save(q / 'checks.json', receipts)
         assert result.returncode == 0, f'{name} failed; preserve log and diagnose'
+    smoke_receipts = []
+    for line in (q / 'agent-smoke.log').read_text().splitlines():
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict) and value.get('status') == 'passed' and value.get('root'):
+            smoke_receipts.append(value)
+    assert len(smoke_receipts) == 1, 'Missing unambiguous synthetic integration receipt'
+    # This verifier checks all 526 commands, OOM counters, RAM floor, real-agent
+    # results and source hashes; successful subprocess exit alone is insufficient.
+    command = [cpu, '-m', 'scratch.swebench_qualify_recipe', '--load-dir', str(q / 'capacity'),
+               '--smoke-root', smoke_receipts[0]['root'], '--test-log', str(q / 'fleet-tests.log'),
+               '--transport-log', str(q / 'transport.log'), '--protocol-log', str(q / 'protocol.log'),
+               '--template-proof', 'output/swebench-protocol-template-latest.json']
+    with (q / 'recipe.log').open('x') as log:
+        subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
+    receipts['recipe'] = dict(command=command, returncode=0, sha256=sha(q / 'recipe.log'))
     readiness = read(Path(C.input) / 'results/readiness.json')
     gold_source = Path(C.input) / readiness['gold']['artifact_directory'] / 'request.json'
     request = read(gold_source)
@@ -168,6 +186,7 @@ def qualify():
         shutil.copyfile(ROOT / name, package / name)
     for name in commands:
         shutil.copyfile(q / (name + '.log'), package / (name + '.log'))
+    shutil.copyfile(q / 'recipe.log', package / 'recipe.log')
     shutil.copyfile(q / 'capacity/results.json', package / 'capacity-results.json')
     shutil.copyfile(reports[0], package / 'scoped-gold-report.json')
     (package / 'README.md').write_text('---\nlicense: mit\ntags: [infrastructure-check, swebench-lite]\n---\n'
