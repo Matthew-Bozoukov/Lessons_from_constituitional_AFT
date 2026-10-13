@@ -26,7 +26,10 @@ def test_timeout_preserves_log_status_and_skips_resume(monkeypatch, tmp_path, ha
             raise subprocess.TimeoutExpired('compose', timeout, output=captured)
         return SimpleNamespace(stdout='owned-container' if args[0]=='ps' else '',returncode=0)
     monkeypatch.setattr(rollout,'_compose',compose)
-    monkeypatch.setattr(rollout,'_build_workspace',lambda *a: a[-1].mkdir(parents=True))
+    # ws is the 4th positional argument in both call shapes; the real function also takes a
+    # required `preamble` keyword, which this stub ignores.
+    monkeypatch.setattr(rollout, '_build_workspace',
+                        lambda *a, **k: a[3].mkdir(parents=True, exist_ok=True))
     monkeypatch.setattr(rollout.subprocess,'run',lambda *a,**k: SimpleNamespace(returncode=1))
     monkeypatch.setenv('OPENROUTER_API_KEY','unused-test-key')
     cfg=OmegaConf.create(dict(model_key='test',model='test',base_url='http://unused',temperature=.7,
