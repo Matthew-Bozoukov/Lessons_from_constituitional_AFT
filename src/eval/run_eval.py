@@ -276,7 +276,7 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     # row is written BEFORE the push check, so a doubled-date name would refuse the
     # summary of a run that had already finished and paid for its GPU.
     row_path = (Path("output/eval_summaries")
-                / f"{_run_repo(name, model_key, run_name, variant)}_{timestamp()}.json")
+                / f"{_run_repo(name, model_key, run_name, variant)}_{timestamp()}_{os.getpid()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
