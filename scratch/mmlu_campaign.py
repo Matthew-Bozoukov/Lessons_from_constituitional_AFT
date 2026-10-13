@@ -39,7 +39,10 @@ TARGETS = {
 }
 PORTS = {'base': 18201, 'plain': 18202, 'da15': 18203}
 OUT = ROOT / 'output/mmlu_campaign_2026-10-14'
+PRIOR_ATTEMPT = None
 LOCK = threading.RLock()
+ALLOCATION_LOCK = threading.Lock()
+STOP_LOCKS = {a: threading.Lock() for a in TARGETS}
 STATE = {}
 ABORT = threading.Event()
 PROCESSES = {}
@@ -136,6 +139,8 @@ def prepare():
          'questions':570, 'max_prompt_tokens':max(x['prompt_tokens'] for x in manifest),
          'manifest_sha256':hashlib.sha256((OUT/'manifest.json').read_bytes()).hexdigest(),
          'budget_usd':50, 'startup_smoke_budget_usd':8, 'max_hours':3,
+         'prior_attempt': str(PRIOR_ATTEMPT) if PRIOR_ATTEMPT else None,
+         'prior_cost_reserve_usd': max(1, read(PRIOR_ATTEMPT)['estimated_cost_usd']) if PRIOR_ATTEMPT else 0,
          'other_pods':[{k:p.get(k) for k in ['id','name','costPerHr']} for p in runpod.active_pods()]})
     print('PREPARED', OUT, '570 questions; max prompt tokens', max(x['prompt_tokens'] for x in manifest))
 
@@ -177,11 +182,16 @@ def worker(arm, host, identity):
 
 def attributable_cost():
     now = time.time()
-    return sum(max(0, a.get('terminated_at',now)-a['rented_at'])/3600*a['hourly_rate']
+    return STATE.get('prior_cost_reserve_usd', 0) + sum(max(0, a.get('terminated_at',now)-a['rented_at'])/3600*a['hourly_rate']
                for a in STATE['arms'].values() if 'rented_at' in a)
 
 
 def stop_pod(arm):
+    with STOP_LOCKS[arm]:
+        _stop_pod(arm)
+
+
+def _stop_pod(arm):
     with LOCK:
         a = dict(STATE['arms'][arm])
     if a.get('pod_id') and not a.get('terminated_at'):
@@ -238,7 +248,8 @@ def run_arm_process(arm, preflight):
         update(arm, cuda_check=check.strip(), status='serving')
         with (OUT/arm/'driver.log').open('w',encoding='utf-8') as log:
             proc = subprocess.Popen([sys.executable,'-u',str(Path(__file__)), 'worker','--arm',arm,
-                                     '--host',pod.host,'--identity',preflight['key_private_path']],
+                                     '--host',pod.host,'--identity',preflight['key_private_path'],
+                                     '--output-dir',str(OUT)],
                                     cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,
                                     creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             PROCESSES[arm] = proc
@@ -270,10 +281,25 @@ def launch():
     runpod.validate_scheduled_provision()
     assert runpod.gpu_price('NVIDIA H200','SECURE') <= 5.4
     STATE = {'started_at':time.time(),'controller_pid':os.getpid(),'budget_usd':50,'status':'starting',
+             'prior_attempt':preflight.get('prior_attempt'),
+             'prior_cost_reserve_usd':preflight.get('prior_cost_reserve_usd',0),
              'arms':{a:{'target':t,'revision':r,'port':PORTS[a],'status':'pending'} for a,(t,r) in TARGETS.items()}}
     update()
     if os.name == 'nt':
         ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+    # Serialize allocation requests only; boot, downloads and inference remain parallel.
+    original_provision = runpod.provision_runpod
+    def spaced_provision(*args, **kwargs):
+        with ALLOCATION_LOCK:
+            if ABORT.is_set():
+                raise RuntimeError('Campaign aborted before allocation')
+            try:
+                pod_id = original_provision(*args, **kwargs)
+            except BaseException:
+                ABORT.set()
+                raise
+            return pod_id
+    runpod.provision_runpod = spaced_provision
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=3)
     futures = [pool.submit(run_arm_process,a,preflight) for a in TARGETS]
     try:
@@ -372,6 +398,10 @@ if __name__=='__main__':
     p=argparse.ArgumentParser()
     p.add_argument('action',choices=['prepare','launch','worker','status','report'])
     p.add_argument('--arm');p.add_argument('--host');p.add_argument('--identity')
+    p.add_argument('--output-dir', type=Path)
+    p.add_argument('--prior-attempt', type=Path)
     args=p.parse_args()
+    if args.output_dir: OUT = args.output_dir.resolve()
+    PRIOR_ATTEMPT = args.prior_attempt
     if args.action=='worker': worker(args.arm,args.host,args.identity)
     else: globals()[args.action]()
