@@ -87,3 +87,11 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        patch, the generated production system prompt is byte-identical to the
        one in the published 2026-10-08 runs; without it the prompt differs by
        411 characters and validate_prompts fails on the renamed conditions.
+
+  scripts/generate_prompts.py (2026-10-13, second patch)
+   17. AM_SYSTEM_PREAMBLE_FILE, when set, is prepended to every generated
+       system_prompt.txt ahead of the scenario's own instructions. Written into
+       the generated prompt files rather than injected at request time, so a
+       constitution arm is verified by reading the prompts the run uses. Unset,
+       the output is byte-identical to the production prompt (checked against
+       the published 2026-10-08 run's prompt).
