@@ -1,10 +1,8 @@
 # ABOUTME: Offline regression checks for evidence preservation and infrastructure-only optimizations.
 # ABOUTME: No provider calls, model generation or rentals; Linux protocol tests use the pinned agent env.
-import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 from types import SimpleNamespace
 from unittest.mock import patch
 import pytest
