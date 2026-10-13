@@ -26,8 +26,7 @@ DATA = {
     # the latest: Oct data with tools written per row (2026-10-09 adapter) beside the reused-tools arm
     "latest": [
         ("DA (Jamie data)", "Difficult advice", "#7724c4"),
-        ("DA + tools (Jamie data)", "+ tools (reused lists)", "#dcc08a"),
-        ("DA + written tools (Jamie data)", "+ tools (written per row)", "#9c6500"),
+        ("DA + written tools (Jamie data)", "Difficult advice + tools", "#9c6500"),
     ],
 }
 NOTES = {
