@@ -33,8 +33,12 @@ models under test are thinking models:
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import shutil
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -200,12 +204,27 @@ def run_arm(
         timeout=float(gen.get("request_timeout", 180)),
         max_retries=int(gen.get("max_retries", 2)),
     )
+    journal_lock = threading.Lock()
+    attempts_file = arm_dir / "attempts.jsonl"
+
+    def persist(record: dict, question: dict) -> dict:
+        record = _grade(record, question)
+        record["completed_at_unix"] = time.time()
+        # Save each completed response before another worker can fail. The append-only
+        # attempt journal survives final sorting and any later retry of transport errors.
+        with journal_lock:
+            for path in (attempts_file, records_file):
+                with path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    fh.flush()
+                    os.fsync(fh.fileno())
+        return record
 
     def generate(i: int) -> dict:
         q = todo[i]
         prompt = prompts[q["uid"]]
         try:
-            return _one(q, prompt)
+            record = _one(q, prompt)
         except Exception as exc:  # noqa: BLE001
             # A request that times out or errors after the SDK's own retries must not
             # take the whole run down with it — `map_threaded` is fail-fast, and losing
@@ -214,7 +233,7 @@ def run_arm(
             # `parse_rate`, and marked `timeout` so the cache below refuses it and the
             # next run retries just these rather than baking a failure into the result.
             print(f"    !! {q['uid']}: {type(exc).__name__} — recorded as timeout")
-            return {
+            record = {
                 "uid": q["uid"],
                 "prompt_hash": prompt_hash(prompt),
                 "request_hash": request_hash,
@@ -223,15 +242,28 @@ def run_arm(
                 "think": "",
                 "answer": "",
                 "finish_reason": "timeout",
+                "error_type": type(exc).__name__,
             }
+        return persist(record, q)
 
     def _one(q: dict, prompt: str) -> dict:
+        sampling = {}
+        for key in ("presence_penalty", "frequency_penalty"):
+            if key in gen:
+                sampling[key] = float(gen[key])
+        if "sampling_seed" in gen:
+            digest = hashlib.sha256(f"{int(gen.sampling_seed)}:{q['uid']}".encode()).digest()
+            sampling["seed"] = int.from_bytes(digest[:4], "big") & 0x7fffffff
+        if gen.get("extra_body"):
+            sampling["extra_body"] = OmegaConf.to_container(gen.extra_body, resolve=True)
+        started = time.time()
         resp = client.chat.completions.create(
             model=arm["served"],
             messages=[{"role": "user", "content": prompt}],
             temperature=float(gen.temperature),
             top_p=float(gen.top_p),
             max_tokens=int(gen.max_tokens),
+            **sampling,
         )
         choice = resp.choices[0]
         raw = choice.message.content or ""
@@ -253,6 +285,9 @@ def run_arm(
             "think": think,
             "answer": answer,
             "finish_reason": choice.finish_reason or "",
+            "sampling": sampling,
+            "elapsed_seconds": time.time() - started,
+            "usage": (resp.usage.model_dump() if getattr(resp, "usage", None) else None),
         }
 
     fresh = (
@@ -483,6 +518,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     arm_dir = out_dir / mode / arm["name"]
     run_dir = max(p for p in arm_dir.iterdir() if p.is_dir())
     (arm_dir / "records.jsonl").rename(rollouts_dir / "records.jsonl")
+    if (arm_dir / "attempts.jsonl").exists():
+        (arm_dir / "attempts.jsonl").rename(rollouts_dir / "attempts.jsonl")
     (run_dir / "metrics.json").rename(results_dir / "metrics.json")
     (run_dir / "raw_samples.md").rename(results_dir / "raw_samples.md")
     meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))
