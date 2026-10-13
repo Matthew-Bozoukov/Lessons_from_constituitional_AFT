@@ -59,3 +59,7 @@ PATCHED (as ordinary tracked diffs — `git log` this tree to review them)
        replacement for at most 2.25 seconds, preserving the previous snapshot and
        the in-memory paid response. This handles short Windows reader locks;
        persistent failures still raise. Judge requests and scoring are unchanged.
+  gen_judgment.py (2026-10-14)
+    7. Exact complete cache hits return without rewriting the full checkpoint.
+       Both orderings must match request hashes and pass completion validation.
+       Incomplete or changed requests retain the existing retry/history behavior.

@@ -150,6 +150,24 @@ def test_key_rotation_and_concurrency_do_not_change_request(vendor, tmp_path):
     assert old["games"][0]["request_hash"] != old["games"][1]["request_hash"]
 
 
+def test_complete_exact_cache_hit_never_rewrites_checkpoint(vendor, tmp_path, monkeypatch):
+    args = arguments(tmp_path)
+    register(vendor, [completion(), completion()])
+    previous = vendor.judgment(args)
+    original_bytes = Path(args["output_file"]).read_bytes()
+    store = vendor.JudgmentStore(args["output_file"])
+    args["store"] = store
+    def forbidden_save(_):
+        pytest.fail("A certified cache hit must not rewrite the checkpoint")
+    monkeypatch.setattr(store, "save", forbidden_save)
+    calls = register(vendor, [])
+    result = vendor.judgment(args)
+    assert result == previous and not calls
+    result["games"][0]["score"] = "modified"
+    assert store.records["q1"] == previous
+    assert Path(args["output_file"]).read_bytes() == original_bytes
+
+
 def test_legacy_or_null_cache_is_rejudged_but_preserved(vendor, tmp_path):
     args = arguments(tmp_path)
     legacy = {"uid": "q1", "category": "hard_prompt", "model": "target",

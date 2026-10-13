@@ -220,6 +220,11 @@ def judgment(args):
                         and len(old_games) == 2
                         and all(isinstance(game, dict) and game.get("request_hash") == key
                                 for game, key in zip(old_games, expected)))
+    # VENDORED PATCH: a certified exact cache hit needs neither API calls nor a
+    # full-file checkpoint rewrite. Rewriting every hit makes sparse recovery slow.
+    if identity_matches and all(complete_game(game, key)
+                                for game, key in zip(old_games, expected)):
+        return copy.deepcopy(existing)
     # Preserve old identities too; otherwise changing a setting erases the evidence
     # for the invalidated cache entry. Do not recursively duplicate earlier history.
     history = copy.deepcopy(existing.get("prior_judgments") or [])

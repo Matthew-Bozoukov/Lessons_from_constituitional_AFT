@@ -251,7 +251,7 @@ def publish():
                          experiment='Arena-Hard paired comparisons against original Qwen3.6; prompt-cluster bootstrap intervals',
                          models=json.dumps(models)),
                    tags=run_tags('arena_hard', 'vs_qwen36', 'think', pooled=True))
-    repo = hf_repo_id(eval_name('arena_hard', 'vs_qwen36', date=DATE))
+    repo = url.split('/datasets/', 1)[1].rstrip('/')
     revision = hf_api().dataset_info(repo).sha
     checked = {}
     for path in directory.rglob('*'):
