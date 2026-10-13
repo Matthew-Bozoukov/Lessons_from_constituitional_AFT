@@ -19904,3 +19904,8 @@ Original owner exited after SHA256 HTTP readback completed for all 9,577 artifac
 Final MXFP4 ODCV: 30 judged rollouts, 26 submissions (6 aligned, 20 misaligned), 4 cycle-limit endings (50), zero context-limit endings (112,000); progress mean 4.333/5 with 26/30 reaching at least 3 after the no-submit cap. SWE: 0/4 officially resolved, zero Submitted endings, 3 context limits (131,072), 1 step limit (500). Tinker remains user-cancelled partial coverage, not a matched fresh comparison. No inference or judging was repeated during closeout.
 
 Estimated current GPU compute $7.217716, separate failed startup about $0.616, MXFP4 ODCV judging $0.269107, cancelled Tinker $1.210020; not invoices, excluding unverified storage/network. The earlier GPU-release receipt determines billing end; publication duration adds no GPU compute. Completion heartbeat can now be deleted.
+
+
+## 2026-10-13 - Failed CPU provisioning shutdown verified
+
+At 14:39 UTC, fresh Vast identity checks confirmed both owned failed VMs 55749782 and 55752467 actual `exited`, intended `stopped`. Compute has stopped; empty disks remain pending explicit deletion approval. Disabled the replacement boot watchdog after confirmation; original watchdog was already disabled. Registry now records `preparation_failed_stopped`. Neither VM received source, credentials, cached images or inference. Launcher remains prepared with 71 focused Linux checks; full run is not ready because no host passed caching/qualification. Evidence: `output/gptoss_cpu_prepare_20261013/both-stopped-verified.json`.
