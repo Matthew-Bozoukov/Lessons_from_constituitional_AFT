@@ -29,10 +29,12 @@ def _grade_predictions(cfg, root, preds, run_id):
     file = directory/'predictions.jsonl'
     file.write_text(''.join(json.dumps(p | dict(instance_id=i))+'\n' for i,p in preds.items()))
     nonempty = {i:p for i,p in preds.items() if str(p.get('model_patch','')).strip()}
+    priority = {iid: n for n, iid in enumerate(cfg.get('grading_priority', []))}
+    grade_ids = sorted(nonempty, key=lambda iid: (priority.get(iid, len(priority)), iid)) if priority else list(nonempty)
     fixture_path = Path(cfg.cached_campaign)/'metadata/httpbin_fixture.json'
     request = dict(fixture=read(fixture_path) if fixture_path.exists() else None,
         harness=dict(dataset_name=str(root/'metadata/swebench_lite_test.json'), split='test',
-        instance_ids=list(nonempty), predictions_path=str(file), max_workers=int(cfg.grading.max_workers),
+        instance_ids=grade_ids, predictions_path=str(file), max_workers=int(cfg.grading.max_workers),
         force_rebuild=False, cache_level='instance', clean=False, open_file_limit=16384,
         run_id=run_id, timeout=1800, namespace='swebench', rewrite_reports=False, modal=False, report_dir='.'))
     atomic(directory/'request.json', request)
@@ -44,6 +46,8 @@ def _grade_predictions(cfg, root, preds, run_id):
                 command = [str(python), '-c', 'import json,sys; from swebench.harness.run_evaluation import main; main(**json.load(open(sys.argv[1]))["harness"])', str(directory/'request.json')]
             else:
                 command = [str(python), str(repo/'scratch/swebench_local_httpbin.py'), '--request', str(directory/'request.json')]
+            if cfg.grading.get('scoped_image_inventory', False):
+                command = [str(python), str(repo/'scratch/gptoss_swe/scoped_harness.py'), '--request', str(directory/'request.json')]
             subprocess.run(command, cwd=directory, stdout=log,
                 stderr=subprocess.STDOUT, check=True)
     reports = list(directory.glob('*.'+run_id+'.json'))
