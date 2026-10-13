@@ -204,7 +204,7 @@ def publish():
         shutil.copytree(source / 'results', results / 'comparisons' / label, dirs_exist_ok=True)
         shutil.copytree(source / 'metadata', metadata / 'comparisons' / label, dirs_exist_ok=True)
     first, second = summaries.values()
-    for field in ('baseline', 'judge', 'mode', 'judge_policy', 'primary_slice', 'metric'):
+    for field in ('baseline', 'judge', 'mode', 'primary_slice', 'metric'):
         assert first[field] == second[field]
     merged = dict(first)
     merged['n_arms'] = 2
@@ -213,6 +213,16 @@ def publish():
     merged['generation_protocol_validation'] = {'status': 'matched', 'n_questions': 750,
          'by_comparison': {k: v['generation_protocol_validation'] for k, v in summaries.items()}}
     merged['generation_health'] = first['generation_health'] | second['generation_health']
+    merged['judge_policies_by_comparison'] = {k: v['judge_policy'] for k, v in summaries.items()}
+    fallbacks = [f for s in summaries.values() for f in s.get('judge_fallbacks', [])]
+    if fallbacks:
+        assert len(fallbacks) == 1 and fallbacks[0]['valid_primary_verdicts_preserved'] == 1499
+        merged['report_version'] = 4
+        merged['judge_fallbacks'] = fallbacks
+        merged['judge_policy'] = {**merged['judge_policy'], 'primary_completion_required': False,
+             'approved_exception': 'One explicitly labelled Gemini verdict in DA15 versus base',
+             'fallback_judge': fallbacks[0]['fallback_judge']}
+        merged['single_fallback_sensitivity'] = second['single_fallback_sensitivity']
     merged['pooled_from'] = list({r['model_key']: r for s in summaries.values() for r in s['pooled_from']}.values())
     for source in merged['pooled_from']:
         source['repo'] = 'https://huggingface.co/datasets/' + source['target']
@@ -224,6 +234,8 @@ def publish():
         shutil.copy2(path, metadata / path.name)
     for path in ROOT.glob('*.yaml'):
         shutil.copy2(path, metadata / path.name)
+    if (ROOT / 'campaign_costs.json').exists():
+        shutil.copy2(ROOT / 'campaign_costs.json', results / 'campaign_costs.json')
     lines = ['# Qwen control and DA15 versus original Qwen3.6', '',
              'Two independent comparisons using the same 750 frozen base answers and the October 12 protocol.', '',
              '| Target | Slice | Controlled win rate | 95% interval | Raw win rate |', '|---|---|---:|---|---:|']
@@ -234,6 +246,12 @@ def publish():
     lines += ['', 'Intervals bootstrap prompts, not training seeds. GPT-4.1 is primary; Gemini is diagnostic.',
               'All empty and truncated model answers are retained. Model reasoning is saved but hidden from judges.',
               'The two comparisons share answers and are statistically dependent; do not infer DA15 versus control from their score difference.']
+    if fallbacks:
+        lines += ['', '**Approved exception:** DA15 versus base uses 1,499 GPT-4.1 verdicts and one Gemini fallback.',
+                  'The fallback is hard prompt bb45a7aed6cf45cb, ordering 0, after 12 invalid GPT-4.1 attempts.',
+                  'The original messages are unchanged; Gemini returned a valid A>>B on its first attempt.',
+                  'All original primary failures and all valid judgments are retained. Strict GPT-4.1 completeness remains false.',
+                  'Across every possible outcome for this ordering, DA15 hard controlled preference ranges only from 20.2714% to 20.3176%.']
     (results / 'campaign_summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
     # Scan published bytes against actual configured secret values without printing them.
     secrets = [v.encode() for k, v in dotenv_values('.env').items() if v and len(v) >= 16 and any(s in k for s in ('KEY', 'TOKEN', 'SECRET', 'PASSWORD'))]
@@ -248,7 +266,8 @@ def publish():
     url = _publish(directory, name='arena_hard', model_key='vs_qwen36', mode='think',
                    target='pooled: control and DA15 versus Qwen/Qwen3.6-27B', summary=merged, push=True,
                    card=_card_fields('arena_hard', cfg, command,
-                         experiment='Arena-Hard paired comparisons against original Qwen3.6; prompt-cluster bootstrap intervals',
+                         experiment='Arena-Hard paired comparisons against original Qwen3.6; prompt-cluster bootstrap intervals'
+                                     + ('; DA15 includes one explicitly approved Gemini fallback verdict' if fallbacks else ''),
                          models=json.dumps(models)),
                    tags=run_tags('arena_hard', 'vs_qwen36', 'think', pooled=True))
     repo = url.split('/datasets/', 1)[1].rstrip('/')

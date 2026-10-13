@@ -50,6 +50,7 @@ def main():
         ('DA15\nvs base', rows.get('qwen36_0_da_15'), '#8651B2'),
         ('DA15\nvs control', prior['leaderboard'][0], '#8651B2'),
     ]
+    has_fallback = bool(rows.get('qwen36_0_da_15', {}).get('judge_fallbacks'))
     plt.rcParams.update({'font.family': 'DejaVu Sans', 'font.size': 12,
                          'axes.spines.top': False, 'axes.spines.right': False,
                          'axes.spines.left': False, 'axes.spines.bottom': False,
@@ -94,6 +95,9 @@ def main():
     if len(values) < 6:
         fig.text(.08, .035, 'DA15 vs base is incomplete and is not plotted as a score. This figure will need updating after recovery.',
                  fontsize=10, color='#885F28')
+    elif has_fallback:
+        fig.text(.08, .035, 'DA15 vs base: one hard-prompt verdict used an approved Gemini fallback (1 of 1,500); all other verdicts use GPT-4.1.',
+                 fontsize=9.7, color='#885F28')
     else:
         fig.text(.08, .035, 'Pairwise preference scores are not absolute accuracy. The comparisons share answers and are not independent.',
                  fontsize=10, color='#586174')
