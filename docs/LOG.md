@@ -19909,3 +19909,10 @@ Estimated current GPU compute $7.217716, separate failed startup about $0.616, M
 ## 2026-10-13 - Failed CPU provisioning shutdown verified
 
 At 14:39 UTC, fresh Vast identity checks confirmed both owned failed VMs 55749782 and 55752467 actual `exited`, intended `stopped`. Compute has stopped; empty disks remain pending explicit deletion approval. Disabled the replacement boot watchdog after confirmation; original watchdog was already disabled. Registry now records `preparation_failed_stopped`. Neither VM received source, credentials, cached images or inference. Launcher remains prepared with 71 focused Linux checks; full run is not ready because no host passed caching/qualification. Evidence: `output/gptoss_cpu_prepare_20261013/both-stopped-verified.json`.
+
+
+## 2026-10-13 - Explicitly authorized failed VM deletion and replacement
+
+Deleted the chat preparation heartbeat at the user's request. Destroyed exactly 55749782 and 55752467, including their empty disks, and verified both absent via provider lookup. New explicitly authorized CPU VM 55762730 on physical machine 55263 uses label `nika-swebench-cpu-20261013T150900Z-f6f605`. Offer was host-verified, not VM-deverified, reliability 0.9981; advertised 128 CPU threads, 257859 MB RAM and 500 GB disk, with four unused RTX 4090 bundled. Quote $2.364815/hour including disk plus $0.013020833/GB in each direction. Cheaper available offers failed verification/resource filters; both prior qualified machines were still not rentable.
+
+Boot deadline 15:29 UTC is enforced by a separate windowless stop watchdog (execution checked successful). Hidden preparation waiter stages the committed source and starts caching/qualification only after verified SSH/resources; no inference or Tinker calls are queued. Evidence and waiter logs: `output/gptoss_cpu_prepare_20261013_third`. Actual guest resources and caching remain unverified while booting; not ready. No chat heartbeat was recreated.
