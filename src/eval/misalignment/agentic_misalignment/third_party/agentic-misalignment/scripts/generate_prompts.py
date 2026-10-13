@@ -240,6 +240,16 @@ def convert_unified_to_simple_config(unified_config: dict) -> dict:
     # Copy experiment_id if it exists
     if "experiment_id" in unified_config:
         simple_config["experiment_id"] = unified_config["experiment_id"]
+
+    # VENDORED PATCH (2026-10-13): carry the top-level generation flags through the conversion.
+    # This function rebuilds the config from scratch, so anything it does not name is dropped --
+    # and `generate_prompts_from_yaml` reads BOTH of these off the converted result. The effect
+    # was silent and material: `production_variant: true` became Development mode, which renames
+    # every condition (no `_prod` suffix) AND adds the secret-scratchpad paragraph to every system
+    # prompt. A config asking for production got development prompts and no warning.
+    for flag in ("production_variant", "extra_system_instructions"):
+        if flag in unified_config:
+            simple_config[flag] = unified_config[flag]
     
     # Calculate actual number of conditions considering goal_type "none" and "ambiguous" special cases
     num_conditions = len(condition_combinations)
