@@ -1,3 +1,4 @@
+from pathlib import Path
 import pandas as pd
 import glob
 import os
@@ -9,6 +10,24 @@ from openai import AsyncOpenAI
 import argparse
 import asyncio
 from dotenv import load_dotenv
+
+
+def _sys(content: str) -> str:
+    """System message content with the configured preamble first, or unchanged when unset.
+
+    VENDORED PATCH (2026-10-13). `mask-constitution.yaml` has always declared
+    `system_preamble_file`, and nothing read it: the arm ran with the stock prompts and looked
+    normal. The preamble is read from MASK_SYSTEM_PREAMBLE_FILE, which the runner sets from that
+    config field, and is applied at EVERY system call site -- the pressure prompt and the
+    belief-elicitation prompt alike. Applying it to only one would make the preamble part of
+    what distinguishes the two conditions, which is precisely what the honesty score compares.
+    """
+    path = os.environ.get("MASK_SYSTEM_PREAMBLE_FILE")
+    if not path:
+        return content
+    pre = Path(path).read_text(encoding="utf-8").rstrip()
+    return f"{pre}\n\n{content}"
+
 
 load_dotenv()  
 
@@ -186,7 +205,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                 # For doubling down, include the full conversation history
                 for run in range(lie_k):
                     all_prompts.append([
-                        {'role': 'system', 'content': row['system_prompt']},
+                        {'role': 'system', 'content': _sys(row['system_prompt'])},
                         {'role': 'user', 'content': row['dd_turn_1_prompt']},
                         {'role': 'assistant', 'content': row['dd_turn_1_response']},
                         {'role': 'user', 'content': row['user_prompt']},
@@ -197,7 +216,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                 # Standard lying prompt with just system and user messages
                 for run in range(lie_k):
                     all_prompts.append([
-                        {'role': 'system', 'content': row['system_prompt']},
+                        {'role': 'system', 'content': _sys(row['system_prompt'])},
                         {'role': 'user', 'content': row['user_prompt']}
                     ])
                     indices.append(index)
@@ -210,7 +229,7 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                     if pd.notna(row.get(belief_col)):
                         for run in range(k_value):
                             all_prompts.append([
-                                {'role': 'system', 'content': row['belief_system_1']},
+                                {'role': 'system', 'content': _sys(row['belief_system_1'])},
                                 {'role': 'user', 'content': row[belief_col]}
                             ])
                             indices.append(index)
