@@ -1,6 +1,65 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-14 - Arena-Hard: both October SFT arms lose clearly to original Qwen3.6
+
+**Hypothesis.** The matched plain and DA15 SFT checkpoints retain answer quality
+relative to their original Qwen3.6 checkpoint. This extends the October 12
+DA15-versus-plain comparison without regenerating either SFT answer set.
+
+**Method.** Reused the two immutable October 12 arm datasets and generated 750 base
+answers on one dedicated H200. Base revision `6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`;
+explicit thinking template, vLLM 0.26.0, temperature 0, top-p 1, 12k shared output
+budget, 16,384 context, concurrency 32. All 750 prompt identities and actual output
+allowances matched the saved SFT arms exactly. Independent control/base and DA15/base
+judge processes used separate caches and directories; one writer published the combined
+artifact. The GPU was terminated before judging. Other tasks and pods were untouched.
+
+**Results.** Length/Markdown-controlled preference, with ties worth one half and
+95% prompt-cluster bootstrap intervals (2,000 resamples):
+
+| Target versus original Qwen3.6 | Hard, n=500 | Creative, n=250 |
+| --- | --- | --- |
+| Plain control | 21.1% [17.6, 24.5] | 16.8% [12.7, 21.6] |
+| DA15 | 20.3% [16.7, 23.6] | 15.1% [10.7, 19.5] |
+
+Both fail the 45% lower-bound capability-retention gate. Raw hard preference was
+19.7% for control and 19.6% for DA15. The direct October 12 DA15/control result
+remains 49.8% [46.4, 53.2]; subtracting the two base-relative scores is not a
+replacement for that direct comparison. Base hard empty finals were 36/500 (7.2%),
+versus control 71/500 (14.2%) and DA15 73/500 (14.6%); all remain in the denominator.
+
+**Explicit judge exception.** Control completed all 1,500 GPT-4.1 orderings. DA15
+initially lacked two. One completed on attempt seven; hard prompt
+`bb45a7aed6cf45cb`, ordering 0, still looped after twelve 16k-token attempts.
+The user explicitly approved one labelled Gemini fallback. Gemini 3 Flash Preview
+received identical messages and returned a valid `A>>B` on its first attempt.
+DA15 therefore uses 1,499 GPT-4.1 verdicts plus one Gemini verdict; strict GPT-4.1
+completeness remains false. The raw primary failures survive separately, and all
+valid primary judgments are unchanged. Across every possible outcome for that
+ordering, the hard controlled mean ranges only from 20.2714% to 20.3176%.
+Gemini diagnostic agreement was 73.47% on 98 complete control-panel pairs and 73%
+on all 100 DA15-panel pairs. These are diagnostics, not successful calibration.
+
+**Recovery and validation.** Exact certified judge-cache hits now return without
+rewriting the entire JSONL checkpoint. Sparse recovery traversed 749 cached pairs
+in about 15 seconds instead of spending minutes rewriting them. All 47 focused
+recovery/campaign tests passed. Hash checks preserved the original 1,698 valid
+DA15 primary/auxiliary games; application of the approved fallback preserved all
+1,499 subsequently valid primary games. All 57 final comparison payload files
+were downloaded and hash-verified. GPU elapsed-time upper estimate $5.00;
+provider-reported API spend including failed attempts and fallback $42.7899;
+approximately $47.79 total. These are not shared-account balance differences.
+
+**Artifacts.** [Complete report, raw judgments, exception and sensitivity analysis](https://huggingface.co/datasets/dougalldeepmind/2026-10-13-ah-vs-qwen36/blob/99f48c89e31c41626d9311a4f4a95fc965888302/results/campaign_summary.md).
+[Frozen base answers](https://huggingface.co/datasets/dougalldeepmind/2026-10-13-ah-qwen36/tree/0d220b9416c7ece98a185bad5bd32dc275f9fad5).
+The dated vertical-bar chart is reproduced by `scratch/plot_arena_comparisons.py`.
+Source: `ad9b1874`, following the exact-cache optimization in `02b46109`.
+
+**Next.** Investigate the shared SFT-versus-original-checkpoint quality loss using
+saved answers and training provenance. This result does not isolate its mechanism,
+and the single approved fallback does not change the production judge policy.
+
 ## 2026-10-12 - Full Arena-Hard comparison: October Qwen DA15 and plain control are effectively tied
 
 **Hypothesis.** The current standard DA15 checkpoint retains general answer quality
