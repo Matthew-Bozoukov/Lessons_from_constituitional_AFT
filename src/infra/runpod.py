@@ -1122,10 +1122,19 @@ def _wait_for_ssh(host: str, timeout_s: int = 300, identity: str = "") -> bool:
     argv, target = ssh_argv(host, identity)
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        if subprocess.run([*argv, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                           target, "true"], capture_output=True).returncode == 0:
-            return True
-        time.sleep(10)
+        try:
+            # Concurrent Windows SSH children must not share console stdin. The SSH
+            # connect timeout alone does not bound a child stuck on inherited handles.
+            result = subprocess.run(
+                [*argv, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", target, "true"],
+                capture_output=True, stdin=subprocess.DEVNULL,
+                timeout=max(.1, min(15, deadline - time.time())),
+            )
+            if result.returncode == 0:
+                return True
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(max(0, min(10, deadline - time.time())))
     return False
 
 
