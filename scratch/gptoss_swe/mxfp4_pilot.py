@@ -114,6 +114,9 @@ def start_shim(backend,kind):
     args=['docker','run','-d','--name',named(backend,kind+'-shim'),'--label',LABEL,'-p',f'127.0.0.1:{p}:1234',
         '-v',f'{Path.cwd()}:/work','-v','lasr-gptoss-shim-env:/work/src/infra/endpoints/tinker_env/.venv',
         '-v','lasr-gptoss-hf-cache:/root/.cache/huggingface','-e','TINKER_API_KEY','-e','HF_TOKEN']
+    if kind=='swe':
+        from scratch.gptoss_swe.native_evidence import mounts
+        args+=mounts(str(C.campaign),backend,ROOT)
     if backend=='mxfp4':args+=['-e','MXFP4_API_KEY']
     for k,v in settings.items():args+=['-e',k+'='+v]
     subprocess.run(args+[IMAGE,'src/infra/endpoints/tinker_env/.venv/bin/python','-m',module],env=env,check=True)
@@ -194,6 +197,9 @@ def linux_swe(action,backend):
 
 def swe_container(action,backend):
     args=['docker','run','--name',named(backend,action),'--label',LABEL,'-v',f'{Path.cwd()}:/work','-v','/var/run/docker.sock:/var/run/docker.sock','-e','TINKER_API_KEY']
+    if action=='consume':
+        from scratch.gptoss_swe.native_evidence import mounts
+        args+=mounts(str(C.campaign),backend,ROOT)
     for v,p in [('cpu','scratch/swebench_cpu_env'),('agent','src/eval/capabilities/swebench_mini/envs/agent'),('harness','src/eval/capabilities/swebench_mini/envs/harness')]:args+=['-v',f'lasr-gptoss-{v}-env:/work/{p}/.venv']
     with (ROOT/backend/(action+'.log')).open('x',encoding='utf-8') as log:
         subprocess.run(args+[IMAGE,'scratch/swebench_cpu_env/.venv/bin/python','-m','scratch.gptoss_swe.mxfp4_pilot',action,'--backend',backend],env=environment(),stdout=log,stderr=subprocess.STDOUT,check=True)
@@ -202,8 +208,14 @@ def swe_container(action,backend):
 def swe(backend):
     r=ROOT/backend;claim(r/'swe-owner-started.json')
     try:
-        start_shim(backend,'swe');phase(r/'swe','inference');swe_container('consume',backend)
-        stop_shim(backend,'swe');save(r/'swe-inference-ended.json',dict(at=time.time()))
+        from scratch.gptoss_swe.native_evidence import evidence
+        with evidence(str(C.campaign),backend,ROOT,IMAGE,'scratch/swebench_cpu_env/.venv/bin/python'):
+            try:
+                start_shim(backend,'swe');phase(r/'swe','inference');swe_container('consume',backend)
+            finally:
+                stop_shim(backend,'swe')
+            # GPU release must not wait for the final host evidence copy.
+            save(r/'swe-inference-ended.json',dict(at=time.time()))
         phase(r/'swe','awaiting_grading')
     except BaseException as e:
         phase(r/'swe','held',error=repr(e));raise
@@ -226,6 +238,7 @@ uv pip install --python /workspace/vllmenv/bin/python 'vllm=={C.vllm_version}' n
 /workspace/vllmenv/bin/python -c "import torch; print(torch.ones(1,device='cuda')); print(torch.cuda.get_device_name()); print(torch.__version__)"
 export HF_HOME=/workspace/hf
 export VLLM_USE_FLASHINFER_SAMPLER=0
+nvidia-smi --query-gpu=timestamp,utilization.gpu,memory.used,memory.total --format=csv --loop=15 > /workspace/gpu-utilization.csv 2>&1 &
 /workspace/vllmenv/bin/python -m vllm.entrypoints.openai.api_server --model openai/gpt-oss-120b --revision {revision} --tokenizer-revision {revision} --served-model-name gptoss-mxfp4 --dtype bfloat16 --kv-cache-dtype auto --quantization mxfp4 --max-model-len 131072 --max-num-seqs {C.max_num_seqs} --max-num-batched-tokens 8192 --gpu-memory-utilization 0.9 --enable-prefix-caching --generation-config vllm --enable-prompt-tokens-details --host 0.0.0.0 --port 8000 > /workspace/vllm.log 2>&1
 '''
 
@@ -280,10 +293,24 @@ def provision():
 def collect_gpu():
     if not (ROOT/'ssh.json').exists():return
     s=read(ROOT/'ssh.json')
-    for filename in ('boot.log','vllm.log'):
-        result=subprocess.run(['ssh','-i',s['key'],'-p',str(s['port']),'-o','BatchMode=yes','-o','ConnectTimeout=10',
-            'root@'+s['host'],'cat /workspace/'+filename],capture_output=True,timeout=30)
-        (ROOT/filename).write_bytes(result.stdout)
+    receipts=[]
+    for filename, command in [('boot.log', 'cat /workspace/boot.log'),
+                              ('vllm.log', 'cat /workspace/vllm.log'),
+                              ('vllm-metrics.txt', 'curl -fsS --max-time 10 http://127.0.0.1:8000/metrics'),
+                              ('gpu-utilization.csv', 'cat /workspace/gpu-utilization.csv')]:
+        try:
+            result=subprocess.run(['ssh','-i',s['key'],'-p',str(s['port']),'-o','BatchMode=yes','-o','ConnectTimeout=10',
+                'root@'+s['host'],command],capture_output=True,timeout=30)
+            accepted=result.returncode==0 and bool(result.stdout.strip())
+            # A failed/empty late collection must never erase successful startup evidence.
+            if accepted:
+                stamp=str(time.time_ns())
+                (ROOT/(stamp+'-'+filename)).write_bytes(result.stdout)
+                (ROOT/filename).write_bytes(result.stdout)
+            receipts.append(dict(file=filename,accepted=accepted,returncode=result.returncode))
+        except subprocess.TimeoutExpired:
+            receipts.append(dict(file=filename,accepted=False,error='timeout'))
+    save(ROOT/('gpu-collection-'+str(time.time_ns())+'.json'),receipts)
 
 
 def run():

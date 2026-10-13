@@ -1,6 +1,8 @@
 # ABOUTME: Send our unchanged reference Harmony token prompts to raw vLLM completions.
 # ABOUTME: Retain exact output tokens and explicit stop boundaries without template or JSON repair.
 import json
+import asyncio
+import time
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -56,22 +58,35 @@ class RawClient:
 
     async def sample_async(self, *, prompt, num_samples, sampling_params):
         assert num_samples == 1
+        started = time.monotonic()
         body = request_body(prompt.to_ints(), sampling_params)
         trace = self.traces / uuid.uuid4().hex
-        trace.mkdir(parents=True)
-        (trace/'request.json').write_text(json.dumps(body), encoding='utf-8')
-        # A new connection per request avoids Qwen's observed stale keepalive resets.
-        # No automatic retry after an ambiguous paid dispatch.
+        def write(name, text):
+            trace.mkdir(parents=True, exist_ok=True)
+            with (trace/name).open('w', encoding='utf-8') as stream:
+                stream.write(text); stream.flush(); os.fsync(stream.fileno())
+        await asyncio.to_thread(write, 'request.json', json.dumps(body))
+        prepared = time.monotonic()
+        timing = dict(request_evidence_seconds=prepared-started)
+        # Fresh connections preserve the qualified transport; never retry a paid dispatch.
         async with httpx.AsyncClient(timeout=7200, limits=httpx.Limits(max_keepalive_connections=0)) as client:
             try:
+                sent = time.monotonic()
                 response = await client.post(self.url+'/v1/completions', json=body,
                     headers={'Authorization': 'Bearer '+self.key})
-                (trace/'response.txt').write_text(response.text, encoding='utf-8')
+                received = time.monotonic()
+                timing['http_seconds'] = received-sent
+                await asyncio.to_thread(write, 'response.txt', response.text)
                 response.raise_for_status()
-                return sample_result(body, response.json())
+                result = await asyncio.to_thread(sample_result, body, response.json())
+                timing['response_evidence_and_validation_seconds'] = time.monotonic()-received
+                return result
             except BaseException as exc:
-                (trace/'error.json').write_text(json.dumps(dict(error=repr(exc))), encoding='utf-8')
+                await asyncio.to_thread(write, 'error.json', json.dumps(dict(error=repr(exc))))
                 raise
+            finally:
+                timing['total_seconds'] = time.monotonic()-started
+                await asyncio.to_thread(write, 'timing.json', json.dumps(timing))
 
 
 def main():

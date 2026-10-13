@@ -10,6 +10,10 @@ import os
 import time
 import uuid
 import json
+import asyncio
+import threading
+import copy
+from collections import OrderedDict
 from pathlib import Path
 from src.infra.endpoints.tinker_harmony import HarmonyRenderer, generation_prompt, parse_completion
 from dataclasses import dataclass
@@ -185,8 +189,56 @@ def sampling_options(body: dict, runtime: Runtime) -> dict:
             "top_k": top_k, "seed": seed, "stop": runtime.renderer.get_stop_sequences()}
 
 
+class PromptCache:
+    """App-local bounded exact-history cache shared by token admission and generation."""
+    def __init__(self, runtime, max_entries=16, max_tokens=1048576):
+        self.runtime = runtime
+        self.max_entries, self.max_tokens = max_entries, max_tokens
+        self.entries, self.tokens = OrderedDict(), 0
+        # Reference renderer access stays serialized when work leaves the event loop.
+        self.lock = threading.RLock()
+
+    def get(self, body):
+        encoded = json.dumps(dict(messages=body.get('messages'), tools=body.get('tools')),
+                             sort_keys=True, ensure_ascii=False).encode()
+        key = hashlib.sha256(encoded).digest()
+        with self.lock:
+            if key in self.entries:
+                prompt, ids = self.entries.pop(key)
+                self.entries[key] = (prompt, ids)
+                return copy.deepcopy(prompt), list(ids), True
+            messages = build_messages(body.get('messages'), body.get('tools'), self.runtime)
+            prompt = generation_prompt(self.runtime.renderer, messages)
+            ids = prompt.to_ints()
+            if len(ids) <= self.max_tokens:
+                self.entries[key] = (copy.deepcopy(prompt), tuple(ids))
+                self.tokens += len(ids)
+                while len(self.entries) > self.max_entries or self.tokens > self.max_tokens:
+                    _, (_, old_ids) = self.entries.popitem(last=False)
+                    self.tokens -= len(old_ids)
+            return prompt, ids, False
+
+    def decode(self, ids):
+        with self.lock:
+            return self.runtime.renderer.tokenizer.decode(ids)
+
+    def parse(self, ids, stop_reason):
+        with self.lock:
+            return parse_completion(self.runtime.renderer, ids, stop_reason)
+
+
+def _write_trace(path, value):
+    # All writes are awaited: a failed evidence write must prevent dispatch/return.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('w', encoding='utf-8') as stream:
+        json.dump(value, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def create_app(runtime: Runtime) -> FastAPI:
     app = FastAPI()
+    prompts = PromptCache(runtime)
 
     @app.middleware("http")
     async def authenticate(request: Request, call_next):
@@ -208,14 +260,14 @@ def create_app(runtime: Runtime) -> FastAPI:
             body = await req.json()
             if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
                 raise ValueError("Requested model is not served by this shim")
-            messages = build_messages(body.get("messages"), body.get("tools"), runtime)
-            ids = generation_prompt(runtime.renderer, messages).to_ints()
+            _, ids, _ = await asyncio.to_thread(prompts.get, body)
             return {"count": len(ids), "tokens": ids, "max_model_len": runtime.context_window}
         except (ValueError, TypeError, KeyError) as error:
             return JSONResponse({"error": {"message": str(error)}}, status_code=400)
 
     @app.post("/v1/chat/completions")
     async def chat(req: Request):
+        started = time.monotonic()
         try:
             body = await req.json()
             if not isinstance(body, dict):
@@ -223,9 +275,8 @@ def create_app(runtime: Runtime) -> FastAPI:
             if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
                 raise ValueError("Requested model is not served by this shim")
             options = sampling_options(body, runtime)
-            messages = build_messages(body.get("messages"), body.get("tools"), runtime)
-            prompt = generation_prompt(runtime.renderer, messages)
-            prompt_ids = prompt.to_ints()
+            prompt, prompt_ids, cache_hit = await asyncio.to_thread(prompts.get, body)
+            prepared = time.monotonic()
             if options["max_tokens"] is None:
                 # No independent response cap: use the capacity left after the
                 # exact Harmony prompt, including tool schemas and reasoning.
@@ -240,27 +291,29 @@ def create_app(runtime: Runtime) -> FastAPI:
         reservation = None
         if runtime.budget is not None:
             try:
-                reservation = runtime.budget.reserve(len(prompt_ids), options["max_tokens"])
+                reservation = await asyncio.to_thread(runtime.budget.reserve, len(prompt_ids), options["max_tokens"])
             except RuntimeError as error:
                 return JSONResponse({"error": {"message": str(error)}}, status_code=402)
         trace_id = uuid.uuid4().hex
         trace = None
         if runtime.trace_dir:
             trace = Path(runtime.trace_dir) / trace_id
-            trace.mkdir(parents=True, exist_ok=False)
-            (trace/'request.json').write_text(json.dumps(dict(request=body, sampling=options,
-                rendered_prompt=runtime.renderer.tokenizer.decode(prompt_ids), prompt_tokens=prompt_ids)), encoding='utf-8')
+            rendered = await asyncio.to_thread(prompts.decode, prompt_ids)
+            await asyncio.to_thread(_write_trace, trace/'request.json', dict(request=body, sampling=options,
+                rendered_prompt=rendered, prompt_tokens=prompt_ids))
+        dispatched = time.monotonic()
         sample = await runtime.sampling_client.sample_async(
             prompt=prompt, num_samples=1, sampling_params=runtime.sampling_params(**options))
+        received = time.monotonic()
         sequence = sample.sequences[0]
         ids = sequence.tokens
         if trace:
             # Save paid tokens before parsing or display decoding can fail.
-            (trace/'sample.json').write_text(json.dumps(dict(tokens=ids, stop_reason=sequence.stop_reason,
-                prompt_cache_hit_tokens=getattr(sample, 'prompt_cache_hit_tokens', 0))), encoding='utf-8')
+            await asyncio.to_thread(_write_trace, trace/'sample.json', dict(tokens=ids, stop_reason=sequence.stop_reason,
+                prompt_cache_hit_tokens=getattr(sample, 'prompt_cache_hit_tokens', 0)))
         if reservation is not None:
-            runtime.budget.settle(reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
-        out, finish, boundary = parse_completion(runtime.renderer, ids, sequence.stop_reason)
+            await asyncio.to_thread(runtime.budget.settle, reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
+        out, finish, boundary = await asyncio.to_thread(prompts.parse, ids, sequence.stop_reason)
         out['harmony_boundary'] = boundary
         out['provider_specific_fields'] = {'harmony_boundary': boundary}
         for call in out.get('tool_calls', []):
@@ -272,10 +325,13 @@ def create_app(runtime: Runtime) -> FastAPI:
             "sampling": options, "stop_reason": sequence.stop_reason,
             "tokenizer_revision": TOKENIZER_REVISION,
             "prompt_token_sha256": hashlib.sha256(str(prompt_ids).encode()).hexdigest(),
-            "raw_completion": runtime.renderer.tokenizer.decode(ids),
+            "raw_completion": await asyncio.to_thread(prompts.decode, ids),
             "prompt_cache_hit_tokens": getattr(sample, 'prompt_cache_hit_tokens', 0),
             "boundary": boundary,
             "trace_id": trace_id,
+            "timing": {"prepare_seconds": prepared-started, "request_evidence_seconds": dispatched-prepared,
+                       "sample_seconds": received-dispatched, "postprocess_seconds": time.monotonic()-received,
+                       "render_cache_hit": cache_hit},
         }
         result = {
             "id": "chatcmpl-" + uuid.uuid4().hex, "object": "chat.completion",
@@ -284,7 +340,7 @@ def create_app(runtime: Runtime) -> FastAPI:
             "usage": {"prompt_tokens": len(prompt_ids), "completion_tokens": len(ids),
                       "total_tokens": len(prompt_ids) + len(ids)}, "tinker_metadata": diagnostics}
         if trace:
-            (trace/'response.json').write_text(json.dumps(result), encoding='utf-8')
+            await asyncio.to_thread(_write_trace, trace/'response.json', result)
         return JSONResponse(result)
 
     return app

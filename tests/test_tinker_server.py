@@ -392,3 +392,71 @@ def test_remaining_context_refuses_full_prompt_before_budget_or_sampling(runtime
     assert response.status_code == 400
     assert 'context window' in response.json()['error']['message']
     assert runtime.sampling_client.requests == []
+
+
+def test_admission_cache_preserves_exact_tokens_and_invalidates_history(runtime, monkeypatch):
+    import src.infra.endpoints.tinker_server as server
+    original=server.generation_prompt;calls=[]
+    def counted(*args):
+        calls.append(1);return original(*args)
+    monkeypatch.setattr(server,'generation_prompt',counted)
+    http=client(runtime);body=request(max_tokens=1000)
+    counted_ids=http.post('/tokenize',json=body).json()['tokens']
+    reply=http.post('/v1/chat/completions',json=body).json()
+    assert len(calls)==1
+    assert reply['tinker_metadata']['timing']['render_cache_hit'] is True
+    assert runtime.sampling_client.requests[-1]['prompt'].to_ints()==counted_ids
+    body['messages'][0]['content']+=' changed'
+    http.post('/tokenize',json=body)
+    assert len(calls)==2
+    body['tools'][0]['function']['description']='changed tool'
+    http.post('/tokenize',json=body)
+    assert len(calls)==3
+
+
+def test_prompt_cache_is_bounded_and_returns_independent_objects(runtime):
+    from src.infra.endpoints.tinker_server import PromptCache
+    cache=PromptCache(runtime,max_entries=1)
+    first=request();a,ids,hit=cache.get(first)
+    b,ids2,hit=cache.get(first)
+    assert hit and a is not b and ids==ids2
+    ids2.clear()
+    assert cache.get(first)[1]==ids
+    cache.get(request(messages=[dict(role='user',content='different')]))
+    assert len(cache.entries)==1
+    assert cache.get(first)[2] is False
+
+
+def test_request_evidence_failure_prevents_dispatch(runtime,tmp_path,monkeypatch):
+    import src.infra.endpoints.tinker_server as server
+    runtime.trace_dir=str(tmp_path)
+    def fail(*a):raise OSError('disk full')
+    monkeypatch.setattr(server,'_write_trace',fail)
+    with pytest.raises(OSError,match='disk full'):
+        client(runtime).post('/v1/chat/completions',json=request())
+    assert not runtime.sampling_client.requests
+
+
+def test_slow_trace_io_does_not_block_other_requests(runtime,tmp_path,monkeypatch):
+    import asyncio
+    import httpx
+    import threading
+    import src.infra.endpoints.tinker_server as server
+    runtime.trace_dir=str(tmp_path)
+    entered=threading.Event();release=threading.Event();write=server._write_trace
+    def slow(path,value):
+        if path.name=='request.json':
+            entered.set();assert release.wait(5)
+        write(path,value)
+    monkeypatch.setattr(server,'_write_trace',slow)
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(runtime)),base_url='http://test',headers={'Authorization':'Bearer test-key'}) as http:
+            pending=asyncio.create_task(http.post('/v1/chat/completions',json=request()))
+            try:
+                assert await asyncio.to_thread(entered.wait,3)
+                health=await asyncio.wait_for(http.get('/v1/models'),1)
+                assert health.status_code==200
+            finally:
+                release.set()
+            assert (await pending).status_code==200
+    asyncio.run(check())
