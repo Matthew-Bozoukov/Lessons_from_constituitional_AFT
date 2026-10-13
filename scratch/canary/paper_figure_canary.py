@@ -23,8 +23,15 @@ DATA = {
         ("DA", "Difficult advice", "#7724c4"),
         ("DA + tools", "Difficult advice + tools", "#9c6500"),
     ],
+    # the latest: Oct data with tools written per row (2026-10-09 adapter) beside the reused-tools arm
+    "latest": [
+        ("DA (Jamie data)", "Difficult advice", "#7724c4"),
+        ("DA + tools (Jamie data)", "+ tools (reused lists)", "#dcc08a"),
+        ("DA + written tools (Jamie data)", "+ tools (written per row)", "#9c6500"),
+    ],
 }
 NOTES = {
+    "latest": "Oct data (Jamie's 2026-10-05 mix)",
     "oct": "Oct data (Jamie's 2026-10-05 mix)",
     "sept": "Sept data (2026-09-25 DA corpus)",
 }
@@ -61,7 +68,7 @@ def main() -> None:
     d = json.loads(Path("output/canary/autorater.json").read_text())
     r = {(arm, ev): rates(d[f"{arm}|{ev}"]) for arm, _, _ in arms for ev, _ in EVALS}
     with plt.rc_context(PAPER_RC):
-        fig, ax = plt.subplots(figsize=(3.2, 2.7))
+        fig, ax = plt.subplots(figsize=(3.2 if len(arms) == 2 else 3.8, 2.7))
         width = 0.8 / len(arms)
         top = 0
         for j, (arm, lab, col) in enumerate(arms):

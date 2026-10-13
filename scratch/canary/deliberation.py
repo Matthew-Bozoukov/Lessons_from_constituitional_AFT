@@ -67,6 +67,12 @@ LATER_ARMS = [
         "2026-10-0[89]_qwen36_0_da_tools_15_canary_reusedtools_*",
         "output/colosseum_hospital/2026-10-08_canary_j_datools",
     ),
+    # the same rows with tools written per row by the Sept recipe (adapter 2026-10-09); runs pulled by pull_runs.py
+    (
+        "DA + written tools (Jamie data)",
+        "2026-10-11_qwen36_0_da_tools_15_canary_hub",
+        "output/colosseum_hospital/2026-10-12_canary_written",
+    ),
 ]
 
 
