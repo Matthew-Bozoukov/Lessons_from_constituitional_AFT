@@ -124,7 +124,10 @@ class GuardedSampler:
             raise
 
 
-def main():
+def main(*, root=None, ceiling=15):
+    global ROOT
+    if root is not None:
+        ROOT = Path(root)
     import tinker
     import uvicorn
     from tinker.lib.retry_handler import RetryConfig
@@ -156,7 +159,7 @@ def main():
         sampler = GuardedSampler(client)
     budget = CampaignBudget(
         ROOT / ("load-budget.json" if phase == "load" else "budget.json"),
-        15,
+        ceiling,
         "openai/gpt-oss-120b:peft:131072",
         checkpoint,
         list(targets.values()),

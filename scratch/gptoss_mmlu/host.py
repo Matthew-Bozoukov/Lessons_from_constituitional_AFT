@@ -70,7 +70,7 @@ def start():
         "--name",
         NAME,
         "--label",
-        "lasr.campaign=gptoss-mmlu-20261014",
+        f"lasr.campaign={NAME.removeprefix('lasr-')}",
         "--cpus",
         "6",
         "--memory",

@@ -63,11 +63,24 @@ OUTPUT_BUDGET_POLICY = "gpt4o-estimate-plus-512-and-one-third-v1"
 
 
 def output_budget_policy(cfg) -> str:
+    if cfg.generation.get("native_protocol"):
+        return "native-harmony-exact-prompt-v1"
     return OUTPUT_BUDGET_POLICY + ("-pinned-tokenizer-cap-v1" if cfg.generation.get("exact_prompt_budget", False) else "")
 
 
 def prompt_token_counter(cfg):
     """Count the same pinned HF template as serving; never guess a base revision."""
+    if cfg.generation.get("native_protocol"):
+        preflight = json.loads(Path(str(cfg.generation.native_token_counts)).read_text())
+        if preflight["native_protocol"] != OmegaConf.to_container(cfg.generation.native_protocol, resolve=True):
+            raise ValueError("Native token manifest protocol mismatch")
+        counts = {row["prompt_sha256"]: row["prompt_tokens"] for row in preflight["rows"]}
+        def native_count(prompt):
+            key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+            if key not in counts:
+                raise ValueError("Prompt absent from native token manifest")
+            return counts[key]
+        return native_count
     if not cfg.generation.get("exact_prompt_budget", False):
         return None
     from transformers import AutoTokenizer
@@ -261,7 +274,8 @@ def main(
     print(f">>> decoding:     temp={gen.temperature} top_p={gen.top_p} max_tokens={gen.max_tokens}")
 
     base_url = endpoint or str(gen.endpoint)
-    client = OpenAI(base_url=base_url, api_key=api_key or str(gen.api_key))
+    client = OpenAI(base_url=base_url, api_key=api_key or str(gen.api_key),
+                    timeout=float(gen.get("timeout", 600)), max_retries=int(gen.get("max_retries", 2)))
 
     # The output budget must be sized PER PROMPT against the server's context window.
     # A fixed max_tokens large enough for a hard reasoning prompt (the <think> trace is
@@ -288,6 +302,11 @@ def main(
         disagreement; without it a prompt that tokenizes longer than estimated still
         400s.
         """
+        if gen.get("native_protocol"):
+            budget = min(int(gen.max_tokens), context_limit - exact_count(prompt))
+            if budget <= 0:
+                raise ValueError("Native prompt exceeds context budget")
+            return budget
         approx_prompt = len(_enc.encode(prompt, disallowed_special=()))
         # A fixed 512 margin is not enough: on one arena-hard prompt the gpt-4o estimate
         # undercounted Qwen's tokenizer by 26% (1,999 est vs 2,512 actual) and the request
@@ -373,7 +392,10 @@ def main(
                 finish = choice.finish_reason
         raw = "".join(parts)
         reasoning = "".join(reasoning_parts)
-        think, answer = split_think(raw)
+        if gen.get("native_protocol"):
+            think, answer = reasoning.strip(), raw
+        else:
+            think, answer = split_think(raw)
         if reasoning and not think:
             think = reasoning.strip()
         return {
@@ -386,6 +408,9 @@ def main(
             "finish_reason": finish,
             "max_tokens": output_budget(q["prompt"]),
             "request_hash": fingerprints[q["uid"]],
+            **({"usage": stream.usage.model_dump(),
+                "native_metadata": getattr(stream, "tinker_metadata", {}),
+                "response_id": stream.id} if gen.get("native_protocol") else {}),
         }
 
     # Checkpoint every answer to disk as it lands, rather than holding 150 in memory and

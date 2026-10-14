@@ -41,13 +41,17 @@ PROTOCOL_VERSION = 1
 
 
 def _generation_settings(cfg, mode: str) -> dict:
-    return {"thinking_mode": mode,
+    settings = {"thinking_mode": mode,
             "temperature": float(cfg.generation.temperature),
             "top_p": float(cfg.generation.top_p),
             "max_tokens": int(cfg.generation.max_tokens),
             "configured_context_window": int(cfg.serving.context_window),
             "answer_extraction": {"parser": "split-think-visible-answer-v1",
                                   "strip_think_for_judging": bool(cfg.generation.strip_think_for_judging)}}
+    if cfg.generation.get("native_protocol"):
+        settings["native_protocol"] = OmegaConf.to_container(cfg.generation.native_protocol, resolve=True)
+        settings["answer_extraction"]["parser"] = "native-harmony-final-channel-v1"
+    return settings
 
 
 def _questions(cfg, arm_name: str) -> list[dict]:
