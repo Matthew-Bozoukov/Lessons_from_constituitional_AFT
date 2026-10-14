@@ -1542,6 +1542,14 @@ See the [operational record](../scratch/da_supervision/archive/operations.md).
 
 ## Windows concurrent SSH commands must not inherit console stdin (2026-09-22)
 
+Follow-up, 2026-10-14: `runpod._wait_for_ssh` still inherited stdin and had no
+Python subprocess timeout. During the three-H200 MMLU launch, two `ssh ... true`
+children stalled although direct SSH and the provider boot logs showed ready pods.
+Ending only those local probes let the existing launch proceed without restarting
+models. The readiness probe now uses `DEVNULL` and a child timeout bounded by its
+remaining deadline. `tests/test_runpod_ssh_readiness.py` verifies a real stalled
+child cannot hold the launch beyond that deadline.
+
 The practical low-stakes trainer kept advancing while its owner's SSH polls timed out
 during the first3.85GB checkpoint transfer. Direct probes from another process worked;
 the owner recovered immediately after the transfer. Restarting the owner would have
