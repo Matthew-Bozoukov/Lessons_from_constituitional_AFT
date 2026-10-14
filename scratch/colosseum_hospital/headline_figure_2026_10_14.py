@@ -28,7 +28,7 @@ from src.plot_scripts import paper_figures as pf
 
 load_dotenv()
 ORG = "dougalldeepmind"
-pf.ARM["constitution"] = "+ Constitution in system prompt*"
+pf.ARM["constitution"] = "+ Constitution in system prompt"
 FOOTNOTE = {  # keyed by whether a Hospital cell of the arm exists when the figure is built
     False: ("* constitution arm: MASK, single-agent and Hospital bars repeat the 2026-10-13 draft -- no Hospital "
             "run of this arm has landed on the Hub yet (ODCV has one: 2026-10-09-odcv-qwen36-0-plain-constitution)."),
@@ -41,7 +41,8 @@ _save_orig = pf._save
 
 
 def _save_with_footnote(fig, name, rows=None):
-    fig.text(0.01, 0.005, FOOTNOTE[HOSPITAL_CELL_EXISTS], fontsize=10, color="#555", ha="left", va="bottom")
+    # No footnote on the figure (owner's instruction, 2026-10-14); the provenance of every bar,
+    # draft literals included, is in the _results.md beside it.
     # The multi-agent panel names its own measure (owner's request, 2026-10-14): on the shared
     # axis _grid labels only the leftmost panel of each direction.
     for ax in fig.axes:
