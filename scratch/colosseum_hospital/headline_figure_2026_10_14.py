@@ -29,7 +29,23 @@ from src.plot_scripts import paper_figures as pf
 
 load_dotenv()
 ORG = "dougalldeepmind"
-pf.ARM["constitution"] = "+ Constitution in system prompt"
+pf.ARM["constitution"] = "+ Constitution in system prompt*"
+FOOTNOTE = ("* constitution arm: MASK, single-agent and Hospital bars repeat the 2026-10-13 draft -- no run "
+            "of this arm exists on the Hub for those evals (ODCV does: 2026-10-09-odcv-qwen36-0-plain-constitution).")
+_save_orig = pf._save
+
+
+def _save_with_footnote(fig, name, rows=None):
+    fig.text(0.01, 0.005, FOOTNOTE, fontsize=10, color="#555", ha="left", va="bottom")
+    # The multi-agent panel names its own measure (owner's request, 2026-10-14): on the shared
+    # axis _grid labels only the leftmost panel of each direction.
+    for ax in fig.axes:
+        if "hospital" in ax.get_title().lower():
+            ax.set_ylabel("Sabotage rate (%), lower is better")
+    return _save_orig(fig, name, rows)
+
+
+pf._save = _save_with_footnote
 pf.COLOUR["constitution"] = "#2b7a78"
 
 
@@ -95,7 +111,9 @@ def main() -> None:
                 a: _hub.literal(100 * hosp[a]["act"] / hosp[a]["n"], hosp[a]["n"])
                 for a in ("control", "delib", "da", "da_tools")
             },
-            "constitution": None,  # no Hospital run of this arm exists on the Hub
+            # LITERAL (asterisked): the draft's 100.0; no Hospital run of this arm exists on the
+            # Hub, and the Hospital harness has no constitution-in-prompt switch yet.
+            "constitution": _hub.literal(100.0),
         },
     }
     print("| probe | arm | value | lo | hi |")
