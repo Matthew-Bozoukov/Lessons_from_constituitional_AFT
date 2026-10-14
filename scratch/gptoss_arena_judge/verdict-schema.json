@@ -1,0 +1,1 @@
+{"type":"object","properties":{"evaluation":{"type":"string","description":"Apply the supplied Arena-Hard rubric, including your own answer first when required, then explain the comparison."},"verdict":{"type":"string","enum":["[[A>>B]]","[[A>B]]","[[A=B]]","[[B>A]]","[[B>>A]]"]}},"required":["evaluation","verdict"],"additionalProperties":false}

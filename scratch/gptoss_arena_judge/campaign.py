@@ -101,7 +101,7 @@ def prepare():
                 a, b = (inputs[x][q['uid']]['messages'][-1]['content']['answer'] for x in (first, second))
                 prompt = settings.prompt_template.format(QUESTION=q['prompt'], ANSWER_A=a, ANSWER_B=b)
                 identity = dict(pair=pair, uid=q['uid'], order=order, category=q['category'],
-                                model=cfg().model, effort=cfg().reasoning_effort, prompt=prompt,
+                                model=cfg().model, effort=cfg().reasoning_effort, output_schema=read(REPO/'scratch/gptoss_arena_judge/verdict-schema.json'), prompt=prompt,
                                 instructions=rubric.JUDGE_SETTINGS[q['category']]['system_prompt'])
                 job_id = hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
                 job = dict(id=job_id, pair=pair, baseline=baseline, target=target, uid=q['uid'],
@@ -147,7 +147,20 @@ def command(job):
     return [CODEX, '--no-daemon', 'exec', '--ignore-user-config', '--ephemeral', '--skip-git-repo-check',
             '--model', str(cfg().model), '--sandbox', 'read-only', '-c', 'approval_policy="never"',
             '--cd', str(WORKSPACE), '--color', 'never', '--json',
+            '--output-schema', str(REPO/'scratch/gptoss_arena_judge/verdict-schema.json'),
             '--output-last-message', str(ROOT/'jobs'/job['id']/'final.txt'), *options(job['category']), '-']
+
+
+
+def validate_events(events):
+    turns = [e for e in events if e.get('type')=='turn.completed']
+    assert len(turns)==1, 'Expected exactly one completed judge turn'
+    for e in events:
+        if e.get('type')=='item.completed':
+            item=e['item']
+            warning=item['type']=='error' and item.get('message','').startswith('Under-development features enabled: skip_host_skill_discovery.')
+            assert item['type'] in ('agent_message','reasoning') or warning, 'Unexpected tool/error item in judge output'
+    return turns
 
 
 def run_job(job):
@@ -184,13 +197,11 @@ def run_job(job):
                 raise RuntimeError('Judge timeout; retained start and output, no retry')
         events = rows(directory/'events.jsonl')
         assert proc.returncode == 0, f'CLI exit {proc.returncode}; see stderr/events'
-        turns = [e for e in events if e.get('type')=='turn.completed']
-        assert len(turns)==1, 'Expected exactly one completed judge turn'
-        for e in events:
-            if e.get('type')=='item.completed':
-                assert e['item']['type'] in ('agent_message','reasoning'), 'Judge used a tool'
+        turns = validate_events(events)
         answer=(directory/'final.txt').read_text(encoding='utf-8')
-        score=verdict(answer)
+        payload=json.loads(answer)
+        assert isinstance(payload['evaluation'],str) and payload['evaluation'].strip()
+        score=verdict(payload['verdict'])
         assert score is not None, 'Unparseable verdict retained; no automatic resampling'
         result=dict(**job,score=score,usage=turns[0].get('usage'),seconds=time.time()-started,
                     final_sha256=digest(directory/'final.txt'),backend='codex-chatgpt',
@@ -225,7 +236,7 @@ def run(panel=False):
     phase='panel' if panel else 'full'
     with (ROOT/f'{phase}-owner.json').open('x',encoding='utf-8') as f:
         json.dump(dict(pid=os.getpid(),at=time.time(),birth=psutil.Process().create_time()),f)
-    jobs=read(ROOT/'jobs.json')
+    jobs=sorted(read(ROOT/'jobs.json'),key=lambda j:(j['uid'],j['order'],j['pair']))
     if panel:
         selected=set(read(ROOT/'panel.json')); jobs=[j for j in jobs if j['id'] in selected]
     else:
@@ -233,6 +244,8 @@ def run(panel=False):
     workers=int(cfg().qualification_workers if panel else cfg().workers)
     pending=iter(j for j in jobs if not (ROOT/'jobs'/j['id']/'completed.json').exists())
     active={}; exhausted=False; error=None; peak=0
+    snapshot=status()
+    failed=[]
     try:
         with futures.ThreadPoolExecutor(max_workers=workers) as pool:
             while active or not exhausted:
@@ -247,14 +260,20 @@ def run(panel=False):
                     done,_=futures.wait(active,timeout=5,return_when=futures.FIRST_COMPLETED)
                     for future in done:
                         job=active.pop(future)
-                        try: future.result()
+                        try:
+                            result=future.result()
+                            snapshot['completed']+=1
+                            snapshot['pairs'][job['pair']]+=1
+                            for key in snapshot['usage']:
+                                snapshot['usage'][key]+=(result['usage'] or {}).get(key,0)
                         except BaseException as exc:
+                            failed.append(job['id'])
                             error=dict(job=job['id'],error=type(exc).__name__,message=str(exc))
                             save(ROOT/'admission-hold.json',error)
                 else: time.sleep(2)
                 memory=sum(p.memory_info().rss for p in psutil.Process().children(recursive=True) if p.is_running())
                 peak=max(peak,memory)
-                s=status();s.update(active=len(active),workers=workers,peak_child_rss=peak)
+                s=dict(snapshot);s.update(at=time.time(),active=len(active),workers=workers,peak_child_rss=peak,failures=failed,incomplete_started=len(active)+len(failed))
                 save(ROOT/f'{phase}-progress.json',s)
                 if error and not active: raise RuntimeError(str(error))
         s=status()

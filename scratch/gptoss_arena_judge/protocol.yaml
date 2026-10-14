@@ -21,3 +21,4 @@ pairs:
   - [base, control]
   - [base, da15]
   - [control, da15]
+output_format: schema-constrained-evaluation-and-verdict
