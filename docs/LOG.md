@@ -34,7 +34,8 @@ seats, one sample: 173 probes, ~35 min; pod up 2h15 ≈ $9).
 | control, plain (10-11) | 30 (100%) | 30 | 0 | 0 |
 | deliberative alignment (10-11) | 30 (100%) | 26 | 4 | 0 |
 | difficult advice (10-08 canary) | 28 (93.3%) | 25 | 3 | 2 |
-| difficult advice + tools (10-08 reusedtools) | 16 (53.3%) | 10 | 6 | 13 |
+| difficult advice + tools, MAINLINE adapter (Matthew's 10-14 cell, Sonnet-labelled) | 20 (66.7%) | 12 | 8 | 10 |
+| difficult advice + tools, reusedtools adapter (10-08 cell, Gemini-labelled) | 16 (53.3%) | 10 | 6 | 13 |
 
 Autorater vs keyword on the rescored cells: base declined-in-reasoning 7 -> 12, refused-then-sabotaged 5 -> 9;
 delib 4 -> 5; da-tools declined 10 -> 20, refusal posted 1 -> 11, refused-and-held 5 -> 12. Panel (b) of Fig 4
@@ -44,6 +45,8 @@ delib 4 -> 5; da-tools declined 10 -> 20, refusal posted 1 -> 11, refused-and-he
 `output/figures/2026-10-14_paper_fig4_deceptive_posts_and_probe_all_arms.png`.
 
 **Control and DA labelled by Claude Code subagents (Sonnet), same prompts.** With OpenRouter at $0, the 870 autorater prompts of those two cells (`scratch/colosseum_hospital/autorater_subagent.py dump`) went to 68 Sonnet subagents in batches of ~110k chars and came back through the same parsers and harvest (`replay` → `rescore_arm` with a replay client; `results/autorater.json` names the judge as a subagent). 0 unparsed, 0 missing. Control's one non-sabotage shift of the keyword reading became a sabotage under the autorater's shortage reading (29 -> 30 of 30); DA declined-in-reasoning 3 -> 5, refused-then-sabotaged 2 -> 3. The other three cells stay Gemini-labelled: two judges across the five bars until a Gemini (or Sonnet) pass unifies them.
+
+**The +tools bar moved to the mainline adapter.** Matthew's `2026-10-14-hospital-self-sacrificial-qwen36-0-da-tools-15` (the `2026-10-11-qwen36-0-da-tools-15` adapter every other headline panel uses; memory ON, nosynth peer, 30 seeds) landed on the Hub at 14:38 keyword-labelled (23/30 act); 23 Sonnet subagent batches re-read it: act 20/30 (the shortage reading moved three withholding calls), declined-in-reasoning 14 -> 24, refused-then-sabotaged 3 -> 8, refused-and-held 7 -> 11, plan-only 10. The stacked bar and the headline panel now carry this cell (66.7%); the reusedtools cell (53.3%) stays in the table above and in Fig 4, whose probe ran on it.
 
 **Fig 4's post judge refilled by Sonnet subagents too.** The 757 first-round prompts (public-post deception, coalition-post kind) and 506 second-round prompts (intends / obligation / words-not-deeds for the plan and mixed coalition posts) of the control, delib and DA + tools cells went through `scratch/colosseum_hospital/postjudge_subagent.py` (dump → 77 Sonnet batches → replay through post_judge.judge_arm with fill=); 0 posts left unjudged. Fig 4 is now complete for all five arms, with two judges across them (Gemini 3.6 Flash for base and DA from 2026-10-13, Sonnet subagents for the other three). Deceptive posts per shift (post judge = 5): base 2.53, control 1.90, delib 2.57, DA 2.53, DA + tools 0.77. Panel (b), answered YES at 2P: plan-post-no-act 57/57, 35/35, 29/30, 107/108, 36/37; sabotage act 120/123, 40/40, 29/30, 72/72, 12/12; no-plan-no-act is empty except DA + tools 1/10.
 

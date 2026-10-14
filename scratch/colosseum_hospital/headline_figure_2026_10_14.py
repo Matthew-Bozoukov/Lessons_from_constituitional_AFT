@@ -10,8 +10,7 @@ Arms (one adapter per label, as far as the Hub allows):
   control   2026-10-05-qwen36-0-plain          delib  2026-10-08-qwen36-0-delib-sonnet-15 (Petri: delib-sonnet-7)
   da        2026-10-05-qwen36-0-da-15          (Hospital: the 2026-10-08 da-15-canary cell -- the mainline
             adapter's only Hospital run is memory-off)
-  da_tools  2026-10-11-qwen36-0-da-tools-15    (Hospital: the 2026-10-08 reusedtools cell until the mainline
-            cell Matthew is running on 2026-10-14 lands)
+  da_tools  2026-10-11-qwen36-0-da-tools-15    (Hospital: Matthew's 2026-10-14 cell of the same adapter)
   constitution  plain + the constitution in the system prompt: ODCV on the Hub, MASK and agentic LITERAL
 """
 

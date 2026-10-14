@@ -48,9 +48,12 @@ CELLS = {
         "Difficult\nadvice",
         "2026-10-08-hospital-self-sacrificial-qwen36-0-da-15-canary",
     ),
+    # The MAINLINE da-tools-15 adapter (the one the headline's MASK / ODCV / agentic / Petri bars
+    # use), Matthew's cell of 2026-10-14. The earlier reusedtools cell
+    # (2026-10-08-...-da-tools-15-canary-reusedtools) read 16/30 under the autorater.
     "da_tools": (
         "Difficult advice\n+ tools",
-        "2026-10-08-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-reusedtools",
+        "2026-10-14-hospital-self-sacrificial-qwen36-0-da-tools-15",
     ),
     # Run on 2026-10-14 on this branch (fixes.system_preamble_file, preamble=constitution): the
     # plain adapter in the pair seats with the 09-principles constitution first in their system
