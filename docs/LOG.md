@@ -1,3 +1,28 @@
+### 2026-10-14: Native GPT-OSS Base / Control / DA15 MMLU screen, local Docker closeout
+
+Hypothesis: the October 6 Control/DA15 checkpoints retain general-knowledge performance relative to GPT-OSS Base under a matched MMLU screen. Merged main into the isolated branch first (7db4c312). Used the same pinned cais/mmlu revision c30699e8356da336a370243923dbaf21066bb9fe and subset hash 3952064292260029 as the recent Qwen run: 57 subjects x 10 questions, five same-subject dev demonstrations, seed 0 and identical shuffled choices/prompts. All 1,710 scored requests finished once. Source for scored inference: 23d618faeae35318574fd8062b3461b702f78168; closeout helper 06419f20. Exact source archives, configs, package versions, native traces and conservative ledgers are published.
+
+User authorized medium reasoning, native sampler (temperature 1, top-p 1, top-k disabled, neutral penalties), 32,768 generated reasoning-plus-final tokens and exact 131,072 total context, Harmony 0.0.8, render date 2026-10-14, 4,800-second request timeout, no ambiguous paid sampling retries, a shared USD 15 ceiling and smoke below USD 0.50. Local Docker used one 6-CPU/4-GiB container and 64 requests per arm (192 total); no GPU/CPU rental. A free 192-request native-bridge load test with 32,768-token mock responses passed, peak working memory 2.93 GiB and zero OOM kills. An earlier mock-marker failure was retained and fixed without paid requests. Actual campaign peak working memory was 2.70 GiB; scored owner lifecycle about 328 seconds including publication. Three smoke completions total cost USD 0.002798850, including DA15's retained analysis-only answer; that model format failure was neither repaired nor rerolled.
+
+| Arm | Correct / 570 | Accuracy | Parsed | Truncated | Health | Inference USD including smoke |
+|---|---:|---:|---:|---:|---|---:|
+| Base | 505 | 88.5965% | 570 (100%) | 0 | Pass | 0.189192018 |
+| Control | 450 | 78.9474% | 529 (92.8070%) | 7 | Fails >=95% parsing threshold | 1.348134978 |
+| DA15 | 466 | 81.7544% | 553 (97.0175%) | 1 | Pass | 1.241973258 |
+
+Final answers alone were scored against the answer key; empty/unparseable output counts wrong. Control had 31 analysis-only empty final answers and DA15 had 9. Totals of unparseable answers were 41 and 17 respectively, and can overlap truncations. All raw reasoning, exact native tokens, answers and failures are retained. Control's result is explicitly diagnostic: its parsing health gate failed, so its score and pairwise contrasts cannot be treated as a clean general-knowledge comparison. The strict framework refused publication of the retained diagnostic `think` directory at the root; publication-only recovery moved it under metadata and verified the official layout without any new inference.
+
+Paired subject-clustered 95% intervals: DA15 minus Base -6.8421 percentage points [-10.1363, -3.5479], failing the predeclared 3pp non-inferiority margin. Descriptive DA15 minus Control +2.8070pp [-1.2899, +6.9039], interpretation limited by Control's failed health gate. Control minus Base -9.6491pp [-13.4668, -5.8314], with the same caveat. This is the matched 570-question screen, not full 14,042-question MMLU; it is one checkpoint per arm and one completion per question. Qwen used different native rendering/sampling, so cross-family comparisons are not an identical rendered-token protocol.
+
+Total conservative settled inference USD **2.779300254**, including smoke, with zero reservations. Rates USD 0.33 input / 0.066 confirmed cached / 0.84 output per million; estimates rather than invoices. Scored input tokens were 382,990 per arm; generated tokens Base 158,459, Control 1,536,257, DA15 1,412,219. All three arms' ledgers exactly match saved record token totals. No extra model calls were made for concurrency qualification, grading or publication recovery.
+
+Immutable publication, all 102 files SHA-256 read back:
+- Base: https://huggingface.co/datasets/dougalldeepmind/2026-10-14-mmlu-gptoss120b-base/tree/345a70aa66775007425328a9b7c31c09f13ef390
+- Control (diagnostic): https://huggingface.co/datasets/dougalldeepmind/2026-10-14-mmlu-gptoss120b-0-plain/tree/862acf3443fb49172a8202637c6381421641fc65
+- DA15: https://huggingface.co/datasets/dougalldeepmind/2026-10-14-mmlu-gptoss120b-0-da-15/tree/36ea3662506b356c4d27bc360ffd2525106f426d
+
+Verified no inference/bridge owners remained, then stopped and removed only the owned local Docker driver. Local artifacts and dependency caches retained. Receipts: output/gptoss_mmlu_20261014/{final-results,publication,complete}.json. Next step: interpret format reliability alongside accuracy; any different response extraction, prompting or generation budget requires a separately declared protocol rather than silently changing these results.
+
 ### 2026-10-14: User-requested Vast CPU teardown after verified SWE closeout
 
 User requested tearing down the remaining CPU after campaign completion. Fresh provider identity matched instance55762730, label `nika-swebench-cpu-20261013T150900Z-f6f605`, physical55263; it was already actual `exited`, intended `stopped`. Confirmed the final immutable HF revision remains available, then destroyed exactly that stopped instance and its retained disk. Provider returned success and a fresh instance inventory confirmed its absence. The shared CPU registry is now empty; original ownership and destruction receipts are archived under `~/.lasr/swebench/`. No instance was resumed, no unrelated resource changed, and published results remain intact. Evidence: `output/gptoss_cpu_destroy_20261014/destroy-verified.json`. This supersedes the earlier instruction to retain this CPU/cache.
