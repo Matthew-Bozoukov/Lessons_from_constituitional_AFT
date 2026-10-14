@@ -109,7 +109,7 @@ def main() -> None:
         ax.yaxis.grid(True, color=GRID, linewidth=0.6, zorder=0)
         ax.set_axisbelow(True)
         ax.spines[["top", "right"]].set_visible(False)
-        ax.set_ylabel("Deliberations reusing the\ntrained reasoning (%)")
+        ax.set_ylabel("Deliberation turns using\nthe canary (%)")
         ax.legend(
             frameon=False,
             loc="upper right",
