@@ -46,15 +46,16 @@ def connections(owner):
 def probe(path,body=None):
     # Same credentials and native endpoint; UID exclusion bypasses the queue only
     # for local identity/tokenization probes. Never sends a sampling request.
-    payload=dict(path=path,body=body,key=os.environ['TINKER_API_KEY'])
+    timeout=120 if body is not None else 10
+    payload=dict(path=path,body=body,key=os.environ['TINKER_API_KEY'],timeout=timeout)
     code="""import sys,json,urllib.request
 d=json.load(sys.stdin)
 r=urllib.request.Request('http://127.0.0.1:18705'+d['path'],data=None if d['body'] is None else json.dumps(d['body']).encode(),headers={'Authorization':'Bearer '+d['key'],'Content-Type':'application/json'})
-with urllib.request.urlopen(r,timeout=10) as f: print(f.read().decode())
+with urllib.request.urlopen(r,timeout=d['timeout']) as f: print(f.read().decode())
 """
     def nobody():os.setgroups([]);os.setgid(65534);os.setuid(65534)
     result=subprocess.run(['/usr/bin/python3','-c',code],input=json.dumps(payload),text=True,
-                          capture_output=True,timeout=15,preexec_fn=nobody)
+                          capture_output=True,timeout=timeout+5,preexec_fn=nobody)
     if result.returncode:raise RuntimeError('Local bridge probe failed')
     return json.loads(result.stdout)
 
