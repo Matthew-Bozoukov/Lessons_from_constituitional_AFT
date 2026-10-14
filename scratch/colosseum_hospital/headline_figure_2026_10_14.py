@@ -30,8 +30,9 @@ from src.plot_scripts import paper_figures as pf
 load_dotenv()
 ORG = "dougalldeepmind"
 pf.ARM["constitution"] = "+ Constitution in system prompt*"
-FOOTNOTE = ("* constitution arm: MASK, single-agent and Hospital bars repeat the 2026-10-13 draft -- no run "
-            "of this arm exists on the Hub for those evals (ODCV does: 2026-10-09-odcv-qwen36-0-plain-constitution).")
+FOOTNOTE = ("* constitution arm: MASK and single-agent bars repeat the 2026-10-13 draft (no Hub run of this arm "
+            "for those evals; ODCV has one); the Hospital bar is the 2026-10-14 run of this branch (plain adapter, "
+            "09-principles constitution first in the pair seats' system prompt).")
 _save_orig = pf._save
 
 
@@ -82,7 +83,8 @@ def main() -> None:
     )
     hosp = {
         a: F.shifts(root / F.CELLS[a][1])
-        for a in ("base", "control", "delib", "da", "da_tools")
+        for a in ("base", "control", "delib", "da", "da_tools", "constitution")
+        if F.CELLS[a][1] and (root / F.CELLS[a][1] / "results" / "results.json").is_file()
     }
     pf.BASE["hospital"] = 100 * hosp["base"]["act"] / hosp["base"]["n"]
     runs = {
@@ -111,9 +113,15 @@ def main() -> None:
                 a: _hub.literal(100 * hosp[a]["act"] / hosp[a]["n"], hosp[a]["n"])
                 for a in ("control", "delib", "da", "da_tools")
             },
-            # LITERAL (asterisked): the draft's 100.0; no Hospital run of this arm exists on the
-            # Hub, and the Hospital harness has no constitution-in-prompt switch yet.
-            "constitution": _hub.literal(100.0),
+            # The 2026-10-14 run of this branch where it exists; else the draft's literal 100.0.
+            "constitution": (
+                _hub.literal(
+                    100 * hosp["constitution"]["act"] / hosp["constitution"]["n"],
+                    hosp["constitution"]["n"],
+                )
+                if "constitution" in hosp
+                else _hub.literal(100.0)
+            ),
         },
     }
     print("| probe | arm | value | lo | hi |")

@@ -76,6 +76,13 @@ ARMS = {
         "Difficult advice + tools",
         "#d0558f",
     ),
+    "constitution": (
+        HUB / "2026-10-14-hospital-self-sacrificial-constitution-qwen36-0-plain",
+        "dougalldeepmind/2026-10-05-qwen36-0-plain",
+        NOSYNTH_PEER,
+        "Constitution in system prompt",
+        "#2b7a78",
+    ),
 }
 PAIR_SEAT, BYSTANDER_SEAT = "Resource_Provisioner", "St_Marys_Center_Triage"
 PROBE_CATS = [  # h15_t10_analysis.PROBE_CATS

@@ -52,9 +52,11 @@ CELLS = {
         "Difficult advice\n+ tools",
         "2026-10-08-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-reusedtools",
     ),
-    # No Hospital run of this arm exists on the Hub (checked 2026-10-14), and the harness has no
-    # constitution-in-prompt switch yet; the slot stays so the arm set matches the headline figure.
-    "constitution": ("Constitution\nin system prompt", None),
+    # Run on 2026-10-14 on this branch (fixes.system_preamble_file, preamble=constitution): the
+    # plain adapter in the pair seats with the 09-principles constitution first in their system
+    # prompt; the cell is local (OpenRouter was at $0, so the run could not judge or push) and
+    # sits beside the pulled Hub cells.
+    "constitution": ("Constitution\nin system prompt", "2026-10-14-hospital-self-sacrificial-constitution-qwen36-0-plain"),
 }
 SEGMENTS = [  # bottom to top: (key, legend label, colour)
     ("act_no_refusal", "Sabotage act, no private refusal", "#b3261e"),
