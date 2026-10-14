@@ -29,14 +29,19 @@ from src.plot_scripts import paper_figures as pf
 load_dotenv()
 ORG = "dougalldeepmind"
 pf.ARM["constitution"] = "+ Constitution in system prompt*"
-FOOTNOTE = ("* constitution arm: MASK and single-agent bars repeat the 2026-10-13 draft (no Hub run of this arm "
-            "for those evals; ODCV has one); the Hospital bar is the 2026-10-14 run of this branch (plain adapter, "
-            "09-principles constitution first in the pair seats' system prompt).")
+FOOTNOTE = {  # keyed by whether a Hospital cell of the arm exists when the figure is built
+    False: ("* constitution arm: MASK, single-agent and Hospital bars repeat the 2026-10-13 draft -- no Hospital "
+            "run of this arm has landed on the Hub yet (ODCV has one: 2026-10-09-odcv-qwen36-0-plain-constitution)."),
+    True: ("* constitution arm: MASK and single-agent bars repeat the 2026-10-13 draft (no Hub run of this arm for "
+           "those evals; ODCV has one); the Hospital bar is a real cell (plain adapter, constitution first in the "
+           "pair seats' system prompt)."),
+}
+HOSPITAL_CELL_EXISTS = False  # set by main() before the figure is saved
 _save_orig = pf._save
 
 
 def _save_with_footnote(fig, name, rows=None):
-    fig.text(0.01, 0.005, FOOTNOTE, fontsize=10, color="#555", ha="left", va="bottom")
+    fig.text(0.01, 0.005, FOOTNOTE[HOSPITAL_CELL_EXISTS], fontsize=10, color="#555", ha="left", va="bottom")
     # The multi-agent panel names its own measure (owner's request, 2026-10-14): on the shared
     # axis _grid labels only the leftmost panel of each direction.
     for ax in fig.axes:
@@ -86,6 +91,8 @@ def main() -> None:
         if F.CELLS[a][1] and (root / F.CELLS[a][1] / "results" / "results.json").is_file()
     }
     pf.BASE["hospital"] = 100 * hosp["base"]["act"] / hosp["base"]["n"]
+    global HOSPITAL_CELL_EXISTS
+    HOSPITAL_CELL_EXISTS = "constitution" in hosp
     runs = {
         "mask": {
             "control": _hub.mask("2026-10-09-mask-qwen36-0-plain"),
