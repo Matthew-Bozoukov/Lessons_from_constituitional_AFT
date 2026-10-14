@@ -129,6 +129,8 @@ def publish():
         tar.add(ROOT/'qualification-unstructured',arcname='qualification-unstructured')
         for archive in ROOT.glob('transport-validation-*'):
             if archive.is_dir(): tar.add(archive,arcname=archive.name)
+        for archive in ROOT.glob('rate-limit-stop-*'):
+            if archive.is_dir(): tar.add(archive,arcname=archive.name)
     source=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip()
     subprocess.run(['git','archive','--format=tar.gz',f'--output={meta / "judge-source.tar.gz"}',source,
                     'scratch/gptoss_arena_judge','src/eval/capabilities/arena_hard/arena_hard_stats.py'],cwd=REPO,check=True)

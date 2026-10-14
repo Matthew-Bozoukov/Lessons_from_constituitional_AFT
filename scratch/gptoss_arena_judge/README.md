@@ -16,6 +16,14 @@ This is not the official leaderboard judge and should not be mixed with earlier
 GPT-4.1 judgments. Eight-worker schema qualification passed 12/12; the full run
 uses 16 workers and reuses those 12 outputs.
 
+After 290 completions, one call was explicitly rejected with 429 and no returned
+answer. The user authorized continuation. Source d0ab0dc3 reduces scheduling to
+four workers, at most one new request every two seconds, with a shared 120-second
+exponential backoff on explicit empty 429 rejections only. Each job has at most
+three attempts including archived rejected attempts. Completed judgments and
+ambiguous failures are never automatically retried. Original scheduling configs,
+owner logs and the rejected request remain archived. Scoring settings are unchanged.
+
 Read `full-progress.json` for inexpensive monitoring. `full-owner.json` and
 `finish-owner.json` record PID and birth time; check both before interpreting a
 PID. The full owner keeps Windows awake. The finish owner waits without making
