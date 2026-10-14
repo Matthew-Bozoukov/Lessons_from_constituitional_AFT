@@ -1,6 +1,7 @@
 # ABOUTME: Codex Arena judge parsing and privacy checks, with no model calls.
 # ABOUTME: Verify last-verdict semantics and subscription-only command construction.
 from scratch.gptoss_arena_judge import campaign as c
+import pytest
 
 
 def test_final_verdict_is_last_and_strict():
@@ -19,3 +20,17 @@ def test_command_is_ephemeral_subscription_and_requested_judge():
     assert 'features.shell_tool=false' in args
     assert 'project_doc_max_bytes=0' in args
     assert not any('OPENROUTER' in a for a in args)
+
+
+def test_transport_notice_requires_completed_turn_and_rejects_tools():
+    notice={'type':'item.completed','item':{'type':'error','message':'Falling back from WebSockets to HTTPS transport. unexpected status 403 Forbidden: url: wss://chatgpt.com/backend-api/codex/responses'}}
+    done={'type':'turn.completed','usage':{}}
+    assert c.validate_events([notice,done])==[done]
+    with pytest.raises(AssertionError): c.validate_events([notice])
+    with pytest.raises(AssertionError): c.validate_events([{'type':'item.completed','item':{'type':'tool_call'}},done])
+
+
+def test_order_orientation():
+    from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments
+    rec={'uid':'x','category':'hard_prompt','model':'target','games':[{'score':'B>A'},{'score':'A>B'}]}
+    assert [b['score'] for b in battles_from_judgments([rec])]==[1,1]

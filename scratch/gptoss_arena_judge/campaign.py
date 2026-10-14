@@ -159,6 +159,7 @@ def validate_events(events):
         if e.get('type')=='item.completed':
             item=e['item']
             warning=item['type']=='error' and item.get('message','').startswith('Under-development features enabled: skip_host_skill_discovery.')
+            warning = warning or (item['type']=='error' and item.get('message','').startswith('Falling back from WebSockets to HTTPS transport. unexpected status 403 Forbidden:') and 'wss://chatgpt.com/backend-api/codex/responses' in item['message'])
             assert item['type'] in ('agent_message','reasoning') or warning, 'Unexpected tool/error item in judge output'
     return turns
 
