@@ -1,5 +1,6 @@
 # ABOUTME: Authorized112K context diagnostic on the frozen30-cell union of previous context failures.
 # ABOUTME: Three passes per arm in parallel, unchanged model recipe and30USD total ceiling.
+# Run (historical campaign): uv run python -m scratch.gptoss_swe.odcv_double_context prepare
 root: output/gptoss_odcv_context112k_20261012
 campaign: gptoss-odcv-context112k-20261012
 arms:

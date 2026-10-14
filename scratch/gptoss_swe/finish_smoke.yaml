@@ -1,5 +1,6 @@
 # ABOUTME: Complete the authorized ten-task base/control smoke with explicit unlimited spending accounting.
 # ABOUTME: Preserve valid outcomes; budget-denial attempts do not consume infrastructure retry eligibility.
+# Run (historical campaign): uv run python -m scratch.gptoss_swe.finish_smoke prepare
 root: output/gptoss_finish_smoke_20261009
 campaign: gptoss-finish-smoke-20261009
 port_base: 18265

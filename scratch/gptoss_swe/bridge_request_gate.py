@@ -17,14 +17,18 @@ class Gate:
     async def upstream(self):
         while True:
             value = json.loads(self.control.read_text())
-            port = value.get('port')
+            port = value.get("port")
             # Before the bridge is touched, an expired drain lease returns new
             # requests to the original. Once replacement begins no fail-open.
-            if port is None and value.get('fallback_port') and time.time() > value['lease_until']:
-                port = value['fallback_port']
+            if (
+                port is None
+                and value.get("fallback_port")
+                and time.time() > value["lease_until"]
+            ):
+                port = value["fallback_port"]
             if port is not None:
                 return int(port)
-            await asyncio.sleep(.05)
+            await asyncio.sleep(0.05)
 
     async def handle(self, reader, writer):
         self.accepted += 1
@@ -33,7 +37,9 @@ class Gate:
         upstream_writer = None
         try:
             port = await self.upstream()
-            upstream_reader, upstream_writer = await asyncio.open_connection('127.0.0.1', port)
+            upstream_reader, upstream_writer = await asyncio.open_connection(
+                "127.0.0.1", port
+            )
             self.connected += 1
             self.queued -= 1
 
@@ -44,7 +50,9 @@ class Gate:
                 if dst.can_write_eof():
                     dst.write_eof()
 
-            await asyncio.gather(pipe(reader, upstream_writer), pipe(upstream_reader, writer))
+            await asyncio.gather(
+                pipe(reader, upstream_writer), pipe(upstream_reader, writer)
+            )
             self.finished += 1
         except Exception as exc:
             self.errors.append(type(exc).__name__)
@@ -56,20 +64,28 @@ class Gate:
 
     async def report(self):
         while True:
-            value = dict(at=time.time(), pid=os.getpid(), accepted=self.accepted,
-                         connected=self.connected, finished=self.finished,
-                         active=self.active, queued=self.queued, errors=self.errors)
-            tmp = self.status.with_suffix('.tmp')
+            value = dict(
+                at=time.time(),
+                pid=os.getpid(),
+                accepted=self.accepted,
+                connected=self.connected,
+                finished=self.finished,
+                active=self.active,
+                queued=self.queued,
+                errors=self.errors,
+            )
+            tmp = self.status.with_suffix(".tmp")
             tmp.write_text(json.dumps(value))
             os.replace(tmp, self.status)
-            await asyncio.sleep(.1)
+            await asyncio.sleep(0.1)
 
     async def run(self, port):
-        server = await asyncio.start_server(self.handle, '127.0.0.1', port, backlog=256)
+        server = await asyncio.start_server(self.handle, "127.0.0.1", port, backlog=256)
         async with server:
             await asyncio.gather(server.serve_forever(), self.report())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import sys
+
     asyncio.run(Gate(sys.argv[2], sys.argv[3]).run(int(sys.argv[1])))

@@ -3,6 +3,27 @@
 
 # GOTCHAS
 
+## GPT-OSS local MMLU qualification and format failures (2026-10-14)
+
+- Keep the reference Harmony renderer and native traces separate from answer
+  extraction. An analysis-only completion can be a valid transport response but
+  an unparseable MMLU answer. The October 14 protocol scored final content only;
+  do not silently mine reasoning or rerun failures to improve a score. Publish
+  instrument-health failures alongside the raw outcomes and accuracy.
+- A Docker memory limit includes reclaimable file cache. The local 192-request
+  synthetic qualification measured working memory as `memory.current` minus
+  `inactive_file`, and checked OOM events separately. The worker count was
+  qualified for that API-driver workload, not 192 locally loaded models.
+- Tinker SDK retries can exist below an HTTP client's retry settings. The MMLU
+  campaign wrapper explicitly disabled ambiguous sampling-POST retries and kept
+  unknown paid requests reserved. This is campaign-specific behavior in
+  `scratch/gptoss_mmlu/bridge.py`, not a guarantee of every Tinker entrypoint.
+- A failed health gate can leave diagnostic files outside the normal HF layout.
+  Preserve them under metadata for publication recovery; do not regenerate or
+  claim that successful publication means instrument health passed.
+
+See [the campaign results and source index](gptoss_campaigns.md) for pinned evidence.
+
 ## MASK now refuses any failed generation by default, and killing `evals` releases its pod (2026-10-08)
 
 - Since 2026-10-05 `configs/eval/mask.yaml` sets `max_generation_error_rate: 0.0`; every earlier MASK run

@@ -1,5 +1,6 @@
 # ABOUTME: Base-only matched Tinker versus released MXFP4 backend diagnostic.
 # ABOUTME: Local environments; one H200 with independent teardown and no LoRA changes.
+# Run (historical campaign): uv run python -m scratch.gptoss_swe.mxfp4_pilot prepare
 root: output/gptoss_mxfp4_pilot_20261012_recovery1
 campaign: gptoss-mxfp4-pilot-20261012
 seed: 20261012

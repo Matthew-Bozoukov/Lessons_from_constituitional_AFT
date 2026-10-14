@@ -3,7 +3,8 @@
 
 # GPT-OSS120B through Tinker
 
-The maintained eval entrypoint accepts `tinker://RUN/sampler_weights/NAME`. Only
+The maintained eval entrypoint accepts `tinker://base` and
+`tinker://RUN/sampler_weights/NAME`. Only
 `openai/gpt-oss-120b` is supported. The driver starts an authenticated, loopback-only
 OpenAI-compatible shim and owns its Python process. It chooses a local port per
 checkpoint and checks the exact checkpoint, instance nonce, reasoning effort and
@@ -21,12 +22,28 @@ environment automatically; to prepare it without sampling:
 uv sync --project src/infra/endpoints/tinker_env --frozen
 ```
 
-The GPT-OSS tokenizer is pinned to
-[`b5c939de8f754692c1647ca79fbf85e8c1e70f8a`](https://huggingface.co/openai/gpt-oss-120b/tree/b5c939de8f754692c1647ca79fbf85e8c1e70f8a).
+The current tokenizer and renderer use `openai-harmony==0.0.8` with
+`HARMONY_GPT_OSS`, pinned in that nested lock. The earlier cookbook/tokenizer
+implementation is historical; its artifacts retain their original source pins.
 Model weights/checkpoint identity come from Tinker. The shim records the effective
 rendering date, checkpoint, sampling controls, tokenizer revision, prompt-token
 hash, raw Harmony completion, and stop reason in `tinker_metadata` on each response.
 It does not infer a constitution or training provenance from a sampler path.
+
+## Completed campaigns and code ownership
+
+The [campaign index](gptoss_campaigns.md) links the final SWE-bench and MMLU results,
+ODCV diagnostics and exact immutable artifacts. Campaign drivers, one-off configs
+and recovery tests live in [scratch/gptoss_swe](../scratch/gptoss_swe/README.md) and
+[scratch/gptoss_mmlu](../scratch/gptoss_mmlu/README.md). Generic transport, accounting
+and rendering live in `src/infra/endpoints/tinker{,_server,_harmony,_budget}.py`;
+registered evaluators retain their existing `src/eval/` implementation.
+
+The October 13 full SWE campaign used the fleet task loop through its separately
+qualified scratch owner. It is distinct from the older stock-agent v1 entrypoint
+below. MMLU used the maintained scorer through a local campaign wrapper, not a new
+scorer. The closed campaigns' dates, budgets, host IDs and launch commands are
+historical evidence, not defaults for a new run.
 
 ## Base-only smoke evidence (October 8-9, 2026)
 
@@ -89,7 +106,7 @@ Primary API/renderer references:
 [Tinker renderer source](https://github.com/thinking-machines-lab/tinker-cookbook/blob/main/tinker_cookbook/renderers/gpt_oss.py).
 Runtime versions are pinned by the nested lock; those web links describe upstream.
 
-## SWE-bench Lite route
+## Earlier stock-agent SWE-bench Lite route (v1)
 
 Use the existing pinned mini-SWE-agent runner through the ordinary eval entrypoint,
 with this explicit Tinker config. **Do not use `--fleet` for Tinker.** The Qwen fleet
@@ -127,9 +144,10 @@ this with the qualified Qwen `lite-v5` fleet. Both paths use 16,384 response tok
 | Cost control | Tinker account; stock local-cost registry is not a dollar cap | Campaign ledger/watchdog |
 
 These are separate protocols; do not interpret their score difference as a
-matched model-only effect. Further transport refactoring would be needed to run
-exactly the fleet task loop on Tinker. The working Qwen path was not altered to
-achieve this API integration. Before a full run, identify the checkpoint, estimate Tinker costs against account
+matched model-only effect. The later scratch v2 campaigns run the fleet task loop
+on Tinker, with authenticated token admission and their own frozen configs; see
+the campaign index above. The working Qwen defaults were not changed to achieve
+this API integration. Before a new full run, identify the checkpoint, estimate Tinker costs against account
 limits, check balances and flag expected spend above $20 as the project requires.
 Qualify a real task first; final scores require official grading.
 

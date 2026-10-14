@@ -1,5 +1,6 @@
 # ABOUTME: Authorized full matched ODCV run; exclusive local owners preserve outcomes and budget.
 # ABOUTME: Three arms concurrently, 16 local Docker scenarios per arm, same 240-cell protocol.
+# Run (historical campaign): uv run python -m scratch.gptoss_swe.odcv_full prepare
 root: output/gptoss_odcv_full_20261012
 campaign: gptoss-odcv-full-20261012
 arms:

@@ -1,5 +1,6 @@
 # ABOUTME: User-authorized alternate alignment judge for exactly two Gemini-blocked transcripts.
 # ABOUTME: Retains original results and charges the existing per-arm five-dollar judge ledgers.
+# Run (historical campaign): uv run python -m scratch.gptoss_swe.odcv_alternate_judge run
 root: output/gptoss_odcv_full_20261012/alternate-judge
 model: anthropic/claude-sonnet-4.5
 max_tokens: 8192
