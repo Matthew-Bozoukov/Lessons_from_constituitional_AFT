@@ -1,5 +1,10 @@
 ### 2026-10-14: GPT-OSS three-pair subscription Arena judging launched
 
+## 2026-10-14: User-accepted Arena wait-call exception
+
+At 4408 completions the validator stopped on one completed empty-recipient `wait` collaboration call. User authorized retaining its response and continuing. Existing structured final verdict retained without a model rerun; original events and validation failure preserved. Exception validation is bound to exact event/final SHA256 and job identity, and accepts only that single empty-recipient completed wait. Publication discloses the exception. Remaining 83 unstarted judgments continue with unchanged two-worker/three-second scheduling; two unanswered timeouts remain for review. Focused tests: 7 passed.
+
+
 ## 2026-10-14: Arena judge oversized-input exclusion and continuation
 
 User approved excluding question `c41838dac4504b21` across all three pairs and both orders: six judgments, leaving 4494 judged calls / 749 questions per pair (499 hard, 250 creative). CLI rejected a 2.46M-character request against its 1,048,576-character limit. Original text, failure evidence and all 3468 completed judgment hashes are preserved; no answer cleanup, reroll or imputed verdict. Two Luna-low subscription workers continue with three-second admission spacing. Known item-local failures are recorded for review while independent jobs continue; global/identity/tool failures still halt. Final scoring and publication audit the exclusion manifest. Focused tests: 7 passed.

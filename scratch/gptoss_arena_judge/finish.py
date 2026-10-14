@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from omegaconf import OmegaConf
 
-from scratch.gptoss_arena_judge.campaign import ROOT, REPO, cfg, digest, read, rows, save, validate_events, verdict, excluded_ids
+from scratch.gptoss_arena_judge.campaign import ROOT, REPO, cfg, digest, read, rows, save, validate_events, verdict, excluded_ids, validate_job_events
 from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments, evaluate_arm
 
 OUT = ROOT / 'publication'
@@ -37,7 +37,7 @@ def assemble(jobs):
         assert result['request_hash'] == job['id']
         assert digest(directory/'final.txt') == result['final_sha256']
         assert (directory/'prompt.txt').read_text(encoding='utf-8') == identity['prompt']
-        events = validate_events(rows(directory/'events.jsonl'))
+        events = validate_job_events(directory)
         assert events[0]['usage'] == result['usage']
         answer = read(directory/'final.txt')
         assert verdict(answer['verdict']) == result['score']
@@ -96,6 +96,7 @@ def score():
                 api_calls=0,subscription_usage_not_dollar_invoice=True,
                 caveats=['User-approved oversized-input exclusions remove the entire matched question from all pairs; no imputed verdicts.',
                          'Codex Luna low judge variant, not official leaderboard-equivalent.',
+                         'One user-accepted empty-recipient wait tool call is retained with its existing final verdict and raw evidence.',
                          'Visible final answers only; empty and truncated generations retained.',
                          '95% prompt-cluster bootstrap; ordinary verdicts equal weight, ties half credit.',
                          'Style-adjusted estimates condition on observed output formatting; empty-answer failures remain.',

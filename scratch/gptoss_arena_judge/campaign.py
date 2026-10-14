@@ -165,6 +165,22 @@ def validate_events(events):
     return turns
 
 
+def validate_job_events(directory):
+    events=rows(directory/'events.jsonl')
+    exception=directory/'accepted-tool-exception.json'
+    if exception.exists():
+        receipt=read(exception)
+        assert receipt['events_sha256']==digest(directory/'events.jsonl')
+        assert receipt['final_sha256']==digest(directory/'final.txt')
+        assert receipt['job']==directory.name
+        calls=[e for e in events if e.get('type')=='item.completed' and e.get('item',{}).get('type')=='collab_tool_call']
+        assert len(calls)==1
+        item=calls[0]['item']
+        assert item['tool']=='wait' and item['receiver_thread_ids']==[] and item['agents_states']=={} and item['status']=='completed'
+        events=[e for e in events if e not in calls]
+    return validate_events(events)
+
+
 def _run_job_once(job):
     directory = ROOT / 'jobs' / job['id']
     completed = directory/'completed.json'
