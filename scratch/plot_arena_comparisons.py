@@ -1,10 +1,9 @@
 # ABOUTME: Draw vertical bars for the three October Qwen Arena pairwise comparisons.
-# ABOUTME: Read verified results, preserve confidence intervals, and mark incomplete comparisons pending.
+# ABOUTME: Read immutable published results, preserve confidence intervals, and label the judge exception.
 from __future__ import annotations
 
 import json
 from pathlib import Path
-import sys
 
 import matplotlib
 matplotlib.use('Agg')
@@ -28,26 +27,14 @@ def main():
     prior_sha = '4f19416df56ca922b94fc3403dfe7dbea79ce698'
     prior = read(hf_download(prior_repo, 'results/results.json', repo_type='dataset', revision=prior_sha))
     sources = [{'repo': prior_repo, 'revision': prior_sha, 'file': 'results/results.json'}]
-    rows = {}
-    receipt = ROOT / 'publication_verification.json'
-    if receipt.exists():
-        publication = read(receipt)
-        current = read(hf_download(publication['repo'], 'results/results.json', repo_type='dataset', revision=publication['revision']))
-        rows = {r['model_key']: r for r in current['leaderboard']}
-        sources.append({k: publication[k] for k in ('repo', 'revision')} | {'file': 'results/results.json'})
-    elif '--allow-pending' in sys.argv:
-        # A requested live status figure can show completed local results with explicit provenance.
-        for label in ('control', 'da15'):
-            path = ROOT / label / 'comparison/results/results.json'
-            if path.exists():
-                current = read(path)
-                rows.update({r['model_key']: r for r in current['leaderboard']})
-                sources.append({'local_file': str(path.resolve()), 'publication': 'pending'})
-    else:
-        raise RuntimeError('Combined publication not yet verified; use --allow-pending for an explicitly provisional figure')
+    current_repo = 'dougalldeepmind/2026-10-13-ah-vs-qwen36'
+    current_sha = '99f48c89e31c41626d9311a4f4a95fc965888302'
+    current = read(hf_download(current_repo, 'results/results.json', repo_type='dataset', revision=current_sha))
+    rows = {r['model_key']: r for r in current['leaderboard']}
+    sources.append({'repo': current_repo, 'revision': current_sha, 'file': 'results/results.json'})
     comparisons = [
-        ('Control\nvs base', rows.get('qwen36_0_plain'), '#6D7786'),
-        ('DA15\nvs base', rows.get('qwen36_0_da_15'), '#8651B2'),
+        ('Control\nvs base', rows['qwen36_0_plain'], '#6D7786'),
+        ('DA15\nvs base', rows['qwen36_0_da_15'], '#8651B2'),
         ('DA15\nvs control', prior['leaderboard'][0], '#8651B2'),
     ]
     has_fallback = bool(rows.get('qwen36_0_da_15', {}).get('judge_fallbacks'))
@@ -76,10 +63,6 @@ def main():
         ax.set_title(title, fontsize=15, loc='left', pad=18, weight='bold', color='#263248')
         ax.set_xticks(range(3), [c[0] for c in comparisons])
         for i, (label, row, color) in enumerate(comparisons):
-            if row is None:
-                ax.text(i, .08, 'Pending\njudge completion', ha='center', va='center',
-                        fontsize=10.5, color='#7B8392')
-                continue
             data = row['by_slice'][category]['controlled']
             mean, lo, hi = data['mean'], data['ci_lower'], data['ci_upper']
             ax.bar(i, mean, width=.55, color=color, zorder=3)
@@ -92,17 +75,14 @@ def main():
              fontsize=10.5, color='#586174')
     fig.text(.08, .082, 'Matched thinking / 12k-token protocol; GPT-4.1 judge; length + Markdown control; prompt-bootstrap intervals.',
              fontsize=10, color='#586174')
-    if len(values) < 6:
-        fig.text(.08, .035, 'DA15 vs base is incomplete and is not plotted as a score. This figure will need updating after recovery.',
-                 fontsize=10, color='#885F28')
-    elif has_fallback:
+    if has_fallback:
         fig.text(.08, .035, 'DA15 vs base: one hard-prompt verdict used an approved Gemini fallback (1 of 1,500); all other verdicts use GPT-4.1.',
                  fontsize=9.7, color='#885F28')
     else:
         fig.text(.08, .035, 'Pairwise preference scores are not absolute accuracy. The comparisons share answers and are not independent.',
                  fontsize=10, color='#586174')
     OUT.mkdir(parents=True, exist_ok=True)
-    stem = artifact_name('arena-qwen36-pairwise-comparisons', date='2026-10-14')
+    stem = artifact_name('arena-qwen36-pairwise-comparisons')
     for extension in ('png', 'svg', 'pdf'):
         fig.savefig(OUT / f'{stem}.{extension}', dpi=200, facecolor=fig.get_facecolor())
     write_run_meta(OUT, {'sources': sources, 'values': values, 'pending': len(values) < 6},
