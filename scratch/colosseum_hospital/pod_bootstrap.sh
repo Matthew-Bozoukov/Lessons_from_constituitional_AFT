@@ -1,6 +1,6 @@
 #!/bin/bash
 # ABOUTME: One-shot setup of a `runpod up --eval` pod for colosseum_hospital: this repo at a
-# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all ten patches, smoke.
+# ABOUTME: commit, uv sync, Colosseum @ ac0b405 + terrarium 0.1.1 with all eleven patches, smoke.
 #
 #   bash scratch/colosseum_hospital/pod_bootstrap.sh root@<ip>:<port> <branch> <sha>
 #
@@ -121,6 +121,15 @@ else
     fi
     patch -p1 -d "${SITE}" -f < "${TPATCH_NOSIM}"
 fi
+# 2026-10-09: the standard conversation (keep_briefings, board_deltas), cut on top of all
+# four above and applied last. It touches base.py and the hospital_env stamp only, so the
+# ladder above is undisturbed by it; checked on its own.
+TPATCH4=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_4.patch
+if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH4}" >/dev/null 2>&1; then
+    echo "    2026-10-09 patch already applied in ${SITE}"
+else
+    patch -p1 -d "${SITE}" -f < "${TPATCH4}"
+fi
 
 echo ">>> verify"
 cd /root/colosseum
@@ -142,8 +151,10 @@ print('    ok  seating + eval-fixes patches (2026-09-09, 2026-09-13, 2026-09-15)
 from terrarium.agents.base import TERRARIUM_FIXES, RETRY_NOTE
 from envs.dcops.hospital.hospital_env import HOSPITAL_FIXES
 from envs.dcops.hospital.hospital_tools import ADMINISTRATOR_TOOL
-# Both stamps, and the 2026-09-15 value: a package holding only the earlier patches imports fine.
-assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-09-15', (TERRARIUM_FIXES, HOSPITAL_FIXES)
+# Both stamps, and the 2026-10-09 value: a package holding only the earlier patches imports fine.
+assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-10-09', (TERRARIUM_FIXES, HOSPITAL_FIXES)
+import terrarium.agents.base as base_mod
+assert 'keep_briefings' in open(base_mod.__file__).read(), 'terrarium_hospital_fixes_4.patch missing'
 assert RETRY_NOTE.startswith('[Note from the harness:')
 print('    ok  terrarium fixes', TERRARIUM_FIXES)
 import envs.dcops.hospital.hospital_prompts as hp_mod

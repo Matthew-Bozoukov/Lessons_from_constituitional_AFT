@@ -11,7 +11,8 @@ Colosseum runs as a SUBPROCESS with cwd set to its own checkout (the same reason
 the Jira runner: its own asyncio orchestration, cwd-relative conventions, an rmtree
 helper). The only contract between us is a config file in and a directory tree out.
 
-run() measures ONE arm, judge included: the harvest's action measures and the judge's
+run() measures ONE arm, judge included: the harvest's action measures (their text read by
+the autorater, hospital/autorater.py) and the judge's
 channel readings both land in results/per_seed.json before run_eval publishes the arm,
 so one `uv run evals` invocation is the whole eval — served, run, judged, named by the
 law, pushed — and nothing is left for a second script (CLAUDE.md "The eval framework").
@@ -37,6 +38,7 @@ from src.eval.misalignment.colosseum.hospital.config import (
     TERRARIUM_FIXES_STAMP,
     build_sweep_config,
 )
+from src.eval.misalignment.colosseum.hospital.autorater import autorate_arm
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_run_root
 from src.eval.misalignment.colosseum.hospital.judge import judge_arm
 
@@ -63,6 +65,12 @@ TERRARIUM_PATCH_3 = (
 )
 TERRARIUM_PATCH_NOSIM = (
     "src/eval/misalignment/colosseum/third_party/terrarium_no_simulation_framing.patch"
+)
+# 2026-10-09, the standard conversation: a carried turn keeps its briefing (no marker) and
+# its tool results whole, and each later briefing lists only the board events the seat has
+# not been shown (keep_briefings, board_deltas). Cut on top of all four above, applied last.
+TERRARIUM_PATCH_4 = (
+    "src/eval/misalignment/colosseum/third_party/terrarium_hospital_fixes_4.patch"
 )
 
 
@@ -140,10 +148,11 @@ def _terrarium_fixes_version() -> str:
         f"the installed terrarium-agents package carries fixes stamp {version!r}, not "
         f"{TERRARIUM_FIXES_STAMP!r}: the later switches (2026-09-13: "
         "end_turn_on_no_tool_call, retry_explains_itself; 2026-09-15: "
-        "administrator_channel and the tool-less survey) would be ignored without a "
-        f"word. Apply {TERRARIUM_PATCH_2}, {TERRARIUM_PATCH_3}, then {TERRARIUM_PATCH_NOSIM}, "
-        f"in that order, on top of {TERRARIUM_PATCH} "
-        "(scratch/colosseum_hospital/pod_bootstrap.sh does all four)."
+        "administrator_channel and the tool-less survey; 2026-10-09: keep_briefings, "
+        "board_deltas) would be ignored without a word. Apply "
+        f"{TERRARIUM_PATCH_2}, {TERRARIUM_PATCH_3}, {TERRARIUM_PATCH_NOSIM}, then "
+        f"{TERRARIUM_PATCH_4}, in that order, on top of {TERRARIUM_PATCH} "
+        "(scratch/colosseum_hospital/pod_bootstrap.sh does all five)."
     )
     # Checked by content, not stamp: without this patch every system prompt keeps its
     # "distributed simulation" opening while the config says no_simulation_framing.
@@ -242,7 +251,9 @@ def run(target, cfg, out_dir: Path) -> dict:
     if partner is not None:
         print(f">>> seating partner {partner.model_name} in {partner_seat}")
 
-    sweep_cfg = build_sweep_config(condition, target, peer, cfg, out_dir, partner=partner)
+    sweep_cfg = build_sweep_config(
+        condition, target, peer, cfg, out_dir, partner=partner
+    )
     config_path = metadata_dir / f"colosseum_{condition}.yaml"
     config_path.write_text(yaml.safe_dump(sweep_cfg, sort_keys=False))
 
@@ -271,6 +282,20 @@ def run(target, cfg, out_dir: Path) -> dict:
     expected = {"pair": target.model_name, "other": peer.model_name}
     if partner is not None:
         expected["by_seat"] = {partner_seat: partner.model_name}
+    # The action measures' text — each seat's reasoning, its coalition-board posts, the
+    # shortage reports — is read by the autorater (the judge model) before the harvest,
+    # never by keywords (hospital/autorater.py). Writes results/autorater.json.
+    labels = autorate_arm(
+        out_dir,
+        run_root,
+        cfg,
+        pair=PAIR,
+        max_workers=int(cfg.judge.get("workers", 8)),
+    )
+    print(
+        f">>> autorater ({labels['model']}): {labels['n_calls']} calls, "
+        f"{labels['unparsed']} unparsed"
+    )
     # Upstream ignores logging.root_dir: the environment's end-of-iteration snapshots
     # (data_iteration_N.json, the true inventories) land under the checkout's own logs/,
     # which the action measures read for the objective deficit (hospital/actions.py).
@@ -280,6 +305,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         expected_fixes=sweep_cfg["fixes"],
         pair=PAIR,
         env_logs_root=root / "logs",
+        labels=labels["per_run"],
     )
 
     (results_dir / "per_seed.json").write_text(
@@ -347,6 +373,7 @@ def run(target, cfg, out_dir: Path) -> dict:
         "measures": measures,
         "measure_definitions": dict(MEASURES),
         "judge": judge,
+        "autorater": {k: v for k, v in labels.items() if k != "per_run"},
         "health": health,
         "colosseum_run_root": str(run_root.relative_to(out_dir)),
     }
