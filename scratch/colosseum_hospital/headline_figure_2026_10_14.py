@@ -118,7 +118,7 @@ def main() -> None:
         ["mask", "single_agent", "petri", "hospital"],
         arms,
         runs,
-        width=4.6,
+        width=5.6,
         shared_y=True,
     )
     print("wrote", out)
