@@ -255,6 +255,7 @@ def run(panel=False):
                     job=next(pending,None)
                     if job is None: exhausted=True; break
                     active[pool.submit(run_job,job)]=job
+                    snapshot['started']+=1
                 if error: exhausted=True
                 if active:
                     done,_=futures.wait(active,timeout=5,return_when=futures.FIRST_COMPLETED)
@@ -271,7 +272,12 @@ def run(panel=False):
                             error=dict(job=job['id'],error=type(exc).__name__,message=str(exc))
                             save(ROOT/'admission-hold.json',error)
                 else: time.sleep(2)
-                memory=sum(p.memory_info().rss for p in psutil.Process().children(recursive=True) if p.is_running())
+                memory=0
+                for child in psutil.Process().children(recursive=True):
+                    try:
+                        memory+=child.memory_info().rss
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
                 peak=max(peak,memory)
                 s=dict(snapshot);s.update(at=time.time(),active=len(active),workers=workers,peak_child_rss=peak,failures=failed,incomplete_started=len(active)+len(failed))
                 save(ROOT/f'{phase}-progress.json',s)
