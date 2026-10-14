@@ -38,6 +38,33 @@ at closeout; these are accounting estimates, not invoices. The full SWE CPU was
 destroyed at the user's request after publication. The MMLU Docker driver was
 removed; local caches were retained. Neither campaign needs an active owner.
 
+## Arena-Hard generation and pairwise judging
+
+All three arms generated 750 answers with native Tinker, medium reasoning,
+32,768 response tokens and 131,072 total context. The generation estimate was
+**$13.361015346 including smoke**, with no outstanding reservations.
+
+- [Base generation](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-gptoss120b-base/tree/ad9e5c9f86b650318e31d56f18a7efabf1703429)
+- [Control generation](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-gptoss120b-0-plain/tree/ff601cfd84340770fe511d32023b867ee0fc7d64)
+- [DA15 generation](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-gptoss120b-0-da-15/tree/4bebdd1da589080668b129fd77a4e061a527768f)
+- [Pairwise judgments, scores, source and raw evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-luna-low-gptoss120b-three-pairs/tree/0ca407d879ac54516b1cc0c0a66a6b7dc79f0c6b)
+
+| Target vs reference | Hard raw % | Hard style-controlled % (95% CI) | Creative raw % | Creative style-controlled % (95% CI) |
+|---|---:|---:|---:|---:|
+| Control vs Base | 32.67 | 46.16 [38.74, 54.49] | 27.20 | 28.45 [22.68, 34.38] |
+| DA15 vs Base | 33.17 | 47.54 [39.58, 56.26] | 27.50 | 31.34 [24.80, 37.99] |
+| DA15 vs Control | 53.21 | 52.04 [48.45, 55.39] | 52.80 | 52.75 [47.45, 57.80] |
+
+Above 50% favors the target, ties count half. Hard is primary; creative secondary.
+This is a **Codex GPT-6 Luna-low subscription judge variant, not official
+leaderboard-equivalent**. 4,494 judgments cover 749 matched questions per pair,
+both orders. One oversized question was excluded across all pairs (six jobs).
+Empty/truncated answers remain; final-only extraction does not mine reasoning.
+Two final failed attempts were explicitly retried once; one empty-recipient wait
+call was accepted with its existing verdict. Raw originals and exceptions remain
+published. Codex context was not literally rubric-only. All owner processes
+exited and reporting was removed after immutable hash verification.
+
 ## Separate diagnostics
 
 These have different selections or protocols and must not be pooled with the final
@@ -58,6 +85,9 @@ evaluations above. Earlier smokes and intermediate revision links remain in LOG.
   isolated recovery helpers, configs and campaign tests in `scratch/`.
 - [MMLU campaign code map](../scratch/gptoss_mmlu/README.md): local Docker orchestration,
   bounded ledger, qualification and publication around the maintained MMLU evaluator.
+- [Arena generation code map](../scratch/gptoss_arena/README.md) and
+  [subscription judge code map](../scratch/gptoss_arena_judge/README.md): campaign
+  configs, offline tests and historical recovery helpers remain in `scratch/`.
 - Reusable implementations and regression tests remain in `src/` and `tests/`.
   Bulk data stays on HF, with local receipts under gitignored `output/`.
 

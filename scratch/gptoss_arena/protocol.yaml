@@ -1,5 +1,6 @@
 # ABOUTME: Authorized generation-only GPT-OSS Arena campaign; judging is deferred.
-# Run: CPU environment python -m scratch.gptoss_arena.campaign all
+# ABOUTME: Config consumed by the historical generation campaign phases.
+# Run: CPU environment python -m scratch.gptoss_arena.campaign <phase>
 seed: 0
 base_model: openai/gpt-oss-120b
 generation:

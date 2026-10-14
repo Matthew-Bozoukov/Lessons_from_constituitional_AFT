@@ -26,3 +26,24 @@ Raw native tokens, reasoning, visible final answers, usage, source and exact
 checkpoint identities are preserved. The publication has answers, not scores;
 judging is deliberately deferred. Stop only the owned container after all
 publication receipts verify; preserve shared environment/cache volumes.
+
+
+## Completed campaign and source map
+
+Completed October 14, 2026: all 2,250 answers published. Generation cost was
+$13.361015346 including smoke (estimate, not invoice). The owned Docker driver
+was stopped; shared caches were retained. Judging subsequently completed in
+[`../gptoss_arena_judge/`](../gptoss_arena_judge/README.md). The
+[campaign index](../../docs/gptoss_campaigns.md) links all immutable revisions.
+The sequence above documents historical execution; do not restart completed owners.
+
+- `campaign.py`: three-arm orchestration, budgets, qualification and publication.
+- `bridge.py`, `host.py`: campaign adapters around the MMLU scratch driver.
+- `preflight.py`: native Harmony prompt-token manifest.
+- `freeze.py`: source-byte archive and Git identity before generation.
+- `protocol.yaml`: campaign parameters consumed by `campaign.py`.
+- `test_generation_campaign.py`: offline registration/host-guard checks.
+
+Run `uv run pytest scratch/gptoss_arena/test_generation_campaign.py -q` from the root.
+Reusable token-budget and answer-channel handling remains in
+`src/eval/capabilities/arena_hard/`; its offline regression test remains in `tests/`.

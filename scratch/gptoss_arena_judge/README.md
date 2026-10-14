@@ -1,49 +1,67 @@
-<!-- ABOUTME: GPT-OSS Arena-Hard subscription judge campaign and evidence ownership. -->
-<!-- ABOUTME: Unofficial Codex Luna-low judge variant; generation artifacts stay immutable. -->
+<!-- ABOUTME: Completed GPT-OSS Arena judge campaign, code map and immutable evidence. -->
+<!-- ABOUTME: Historical subscription judge variant; not the official Arena leaderboard protocol. -->
 
 # GPT-OSS three-pair judging
 
-`protocol.yaml` is consumed by `uv run python -m scratch.gptoss_arena_judge.campaign`.
-The prepared campaign lives at `output/gptoss_arena_judge_20261014`. It judges
-Control versus Base, DA15 versus Base, and DA15 versus Control, on 750 prompts
-in both orders (4,500 independent ephemeral contexts). Only visible final answers
-are supplied. Empty and truncated generations remain in the evaluation.
+Completed October 14, 2026: **4,494 judgments plus six excluded**, 749 matched
+questions per pair (499 hard, 250 creative), both independent A/B orders.
+[Immutable results and raw evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-luna-low-gptoss120b-three-pairs/tree/0ca407d879ac54516b1cc0c0a66a6b7dc79f0c6b).
+See [the campaign index](../../docs/gptoss_campaigns.md) for generation artifacts,
+results and costs. All owners exited and the reporting heartbeat was deleted.
 
-Judge: `gpt-6-luna`, low effort, `codex exec` with ChatGPT sign-in forced. No API
-fallback. CLI-managed temperature and output cap. No tools or repo instructions;
-the published prompt-context inspection records the remaining Codex harness.
-This is not the official leaderboard judge and should not be mixed with earlier
-GPT-4.1 judgments. Eight-worker schema qualification passed 12/12; the full run
-uses 16 workers and reuses those 12 outputs.
+This directory is campaign-specific scratch, not a supported evaluation entrypoint.
+Do not rerun these launch/recovery commands against the completed output directory.
+Use the published source archive and resolved configuration to inspect the exact
+run; this cleanup revision is not its generating revision.
 
-After 290 completions, one call was explicitly rejected with 429 and no returned
-answer. The user authorized continuation. Source d0ab0dc3 reduces scheduling to
-four workers, at most one new request every two seconds, with a shared 120-second
-exponential backoff on explicit empty 429 rejections only. Each job has at most
-three attempts including archived rejected attempts. Completed judgments and
-ambiguous failures are never automatically retried. Original scheduling configs,
-owner logs and the rejected request remain archived. Scoring settings are unchanged.
+## Source map
 
-Read `full-progress.json` for inexpensive monitoring. `full-owner.json` and
-`finish-owner.json` record PID and birth time; check both before interpreting a
-PID. The full owner keeps Windows awake. The finish owner waits without making
-model calls, audits all outputs, scores them, publishes, and verifies hashes at
-an immutable HF revision recorded in `publication.json`. Failure evidence is
-retained in `admission-hold.json` or `finish-failure.json`; never blindly relaunch
-or delete started records.
+| File | Responsibility |
+|---|---|
+| `campaign.py` | Freeze anonymous question/answer pairs, invoke ephemeral subscription sessions, preserve per-job evidence and monitor admission |
+| `protocol.yaml`, `verdict-schema.json` | Judge settings and structured evaluation/verdict schema |
+| `finish.py` | Audit included judgments, reuse maintained Arena statistics, publish and verify immutable hashes |
+| `test_judge_campaign.py` | Offline campaign parsing, command, failure and exclusion tests |
+| `recover_transport.py` | Historical recovery of already-completed outputs rejected for a transport notice; no model calls |
+| `exclude_oversized.py` | User-approved whole-question exclusion; preserves all six jobs |
+| `accept_wait.py` | User-approved retention of one existing verdict with a hash-bound empty-recipient wait-call exception |
+| `retry_final_two.py` | One explicitly authorized retry of the final two failed calls, retaining original attempts |
+| `publish_recovery.py` | Publication-only recovery using existing HF environment; contains the historical local config path |
 
-The first unstructured 12-call qualification had one missing verdict. All twelve
-are preserved separately and excluded from the scored campaign. The structured
-output schema requires an evaluation plus a five-way verdict. A later validator
-hold was a Codex WebSocket-to-HTTPS transport notice, not a failed judge: all 16
-already completed outputs were recovered without model calls. Original failures
-and stopped-owner logs are preserved. `recover_transport.py` handles only that
-specific validated condition, not general inference failures.
+Run offline tests from the checkout root:
+`uv run pytest scratch/gptoss_arena_judge/test_judge_campaign.py -q`.
+Config consumer: `uv run python -m scratch.gptoss_arena_judge.campaign <phase>`;
+scoring/publication consumer: `uv run python -m scratch.gptoss_arena_judge.finish <phase>`.
+These are historical lifecycle references, not restart instructions.
 
-Scoring reuses the repository's equal-verdict-weight, prompt-cluster bootstrap
-and style-controlled comparison. Hard prompts are primary and creative writing
-secondary. An additional decisive-verdict-times-three point estimate is clearly
-diagnostic; it does not claim upstream leaderboard confidence intervals. No
-unvalidated Luna-based non-inferiority pass/fail gate is emitted.
+## Protocol and exceptions
 
-Current scheduling: two workers, three-second admission spacing. User approved exclusion of all six judgments for oversized question c41838dac4504b21. Original answers and failure evidence remain unchanged; scored denominator is 4494 judgments, 749 questions per pair (499 hard, 250 creative). exclusions.json is audited and published. Known item-local input-size, timeout, or parse failures are retained as review-needed.json while other jobs continue, without retries. Unknown, identity, tool, authentication or exhausted rate failures still stop admission. Final scoring waits for all included jobs.
+Judge: `gpt-6-luna`, low effort, ChatGPT sign-in forced, no API fallback.
+Only visible final answers were supplied; empty/truncated generations were retained.
+Both orders used fresh contexts without conversation history or user preferences.
+Codex still injected environment/skill boilerplate. Tool-disable settings did not
+prevent one empty-recipient `wait` call; the user accepted its existing verdict.
+Do not describe this as bare-rubric prompting or strict filesystem isolation.
+Temperature and output cap were CLI-managed. This is **not official leaderboard-equivalent**.
+
+The run began with 16 workers, reduced to four after an empty 429 rejection, and
+finished with two workers and three-second admission spacing. Explicit empty 429
+rejections had shared exponential backoff and at most three attempts. Ambiguous
+failures were preserved, never silently rerun. Item-local failures were recorded
+while independent work continued. The final two retries required explicit user
+authorization and both succeeded. The earlier unstructured 12-call qualification
+was excluded; the structured 12-call panel was reused.
+
+Question `c41838dac4504b21` exceeded the CLI input-character limit. All six jobs were
+excluded with user approval, without editing generation text or imputing verdicts.
+Exclusions, original failures, retry authorizations, source and prompt-context
+inspections are published. The accepted wait exception checks exact event/final
+hashes and permits only one completed call with empty recipients and agent states.
+
+Scoring uses equal verdict weights, half credit for ties, 2,000 prompt-cluster
+bootstrap rounds and style-controlled comparisons. Hard is primary; creative is
+secondary. The decisive-verdict-times-three diagnostic is separate and does not
+claim upstream leaderboard confidence intervals. No Luna non-inferiority gate is
+validated. Generation inference dollars and scored subscription token usage are
+separate accounting quantities; failed/qualification attempts are not included in
+the scored-usage total.

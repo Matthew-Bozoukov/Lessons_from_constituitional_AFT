@@ -3,6 +3,23 @@
 
 # GOTCHAS
 
+## Subscription Arena judging boundaries (2026-10-14)
+
+- Codex feature-disable settings did not guarantee a tool-free context: one judge
+  emitted an empty-recipient `wait` call. Validate saved event types, retain failures,
+  and disclose any explicitly accepted exception. Empty neutral cwd and read-only
+  mode do not establish filesystem isolation; injected skill/environment context
+  remains visible. See the [campaign protocol and evidence](../scratch/gptoss_arena_judge/README.md).
+- A transport timeout is not proof of no output or no usage. One timeout contained
+  repeated escaped null characters and an incomplete output-token-limit stream.
+  Preserve all events before a specifically authorized retry; do not infer a verdict.
+- Literal LF is the JSONL separator; `splitlines()` also splits Unicode line separators
+  inside model text. Oversized generated text can exceed CLI input-character limits
+  despite fitting model token limits. Record whole-question exclusions explicitly.
+- A detached finalizer may lack the launcher's HF environment. Resolve the existing
+  repository configuration for publication only; missing HF_ORG does not require
+  new inference or rescoring. Never print credential values while diagnosing this.
+
 ## GPT-OSS local MMLU qualification and format failures (2026-10-14)
 
 - Keep the reference Harmony renderer and native traces separate from answer

@@ -1,5 +1,6 @@
 # ABOUTME: Subscription-backed Codex judge variant; answers are frozen and never regenerated.
 # ABOUTME: Both independent answer orders, with hard primary and creative secondary.
+# Run: uv run python -m scratch.gptoss_arena_judge.campaign <phase>
 model: gpt-6-luna
 reasoning_effort: low
 backend: codex-exec-chatgpt
