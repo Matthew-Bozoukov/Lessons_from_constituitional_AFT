@@ -1,6 +1,61 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-14 - Hospital figures rebuilt from Hub cells under the new defaults (memory ON, autorater); no model reruns; OpenRouter ran dry mid-way
+
+**Why.** Memory (`carry_agent_history`) and the LLM autorater for the action measures' text became the
+defaults on this branch, so: which Hospital data behind the paper's figures is stale, and what do the
+headline sabotage-act panel, the act/refusal/plan stacked bar and the appendix Fig 4 look like rebuilt
+from cells that already exist on the Hub. Budget rule from the owner: reuse, never rerun.
+
+**Stale map.** Memory: of the headline-era cells only the mainline da-15 run (`2026-10-07-hospital-...-da-15`:
+memory OFF, table2 peer, 4,096 tokens, 10 seeds) is off-protocol; every other cell since 09-14 ran memory ON.
+Autorater: NO Hub cell carries labels — every published "declined in reasoning" / "plan posted" / "refusal
+posted" count is the keyword reading. The sabotage ACT is the tool-call rule, but where a cell kept no
+environment snapshots (every Hub cell) the withholding rule's "in deficit" is read from the shortage
+reports, so the act count can move slightly under the autorater (da-tools: 15 -> 16 of 30).
+
+**Method.** Cells pulled from `dougalldeepmind`: base `2026-10-13-hospital-self-sacrificial-qwen36`, control
+`2026-10-11-...-plain` (all 30 shifts are on the Hub: seeds 1-15 sit in a second Colosseum tree the published
+results never harvested; merged locally), delib `2026-10-11-...-delib-sonnet-15`, DA `2026-10-08-...-da-15-canary`
+(memory ON, the mainline data plus the canary), DA + tools `2026-10-08-...-da-tools-15-canary-reusedtools`
+(the headline's +tools adapter). Autorater rescore (`scratch/colosseum_hospital/rescore_autorater.py`,
+Gemini 3.6 Flash, ~430 calls = ~$1.6 per 30-shift cell). Figures: `scratch/colosseum_hospital/figures_2026_10_14.py`
+(panel in the house style via `src/plot_scripts/paper_figures._grid`; stacked bar) and `scratch/canary/fig4.py`
+(the 2026-10-13 script re-pointed: base and DA probes reused from that analysis; control / delib / DA + tools
+probed on one H100 pod, trimmed to what panel (b) plots — checkpoint 2P, full transcript, the two pair
+seats, one sample: 173 probes, ~35 min; pod up 2h15 ≈ $9).
+
+**Result (sabotage act, of 30, tool-call rule; split = autorater).**
+
+| arm | act | act, no private refusal | act, with private refusal | plan, no act |
+|---|---|---|---|---|
+| base model (10-13) | 30 (100%) | 21 | 9 | 0 |
+| control, plain (10-11) | 30 (100%) | not rescored | | |
+| deliberative alignment (10-11) | 30 (100%) | 26 | 4 | 0 |
+| difficult advice (10-08 canary) | 28 (93.3%) | not rescored | | |
+| difficult advice + tools (10-08 reusedtools) | 16 (53.3%) | 10 | 6 | 13 |
+
+Autorater vs keyword on the rescored cells: base declined-in-reasoning 7 -> 12, refused-then-sabotaged 5 -> 9;
+delib 4 -> 5; da-tools declined 10 -> 20, refusal posted 1 -> 11, refused-and-held 5 -> 12. Panel (b) of Fig 4
+(answered YES at 2P, pair seats): base plan-no-act 57/57, act 120/123; DA 107/108, 72/72; control 22/22,
+40/40, no-plan-no-act 6/6; delib act 29/30; DA + tools act 12/12. Figures: `output/plots/hospital_panel_act_rate_20261014.png`,
+`output/figures/2026-10-14_hospital_act_refusal_plan_stacked_all_arms.png`,
+`output/figures/2026-10-14_paper_fig4_deceptive_posts_and_probe_all_arms.png`.
+
+**What the credit crunch left undone.** OpenRouter (shared account; two of Matthew's runs judging at the
+same time) hit "in-flight budget exhausted" (402) and then $0: the control and DA rescores died twice
+mid-run (the autorater writes labels only at the end, so those calls were lost — see GOTCHAS 2026-10-14),
+and the Fig 4 deceptive-post judge on the three new cells came back mostly unjudged (control 35/94, delib
+96/103, DA + tools 87/93 public posts), which also starves panel (b)'s "plan post" category for those arms
+(delib and DA + tools show 0/0 there). The deceptive-posts-per-shift numbers for control (1.10), delib (0.20)
+and DA + tools (0.07) are therefore NOT measurements yet; base 2.53 and DA 2.53 are (judged 2026-10-13).
+
+**Next.** ~$6 of credit: rescore plain + DA (`rescore_autorater.py`, one worker), `fig4.py judge --refill`,
+then re-run both figure scripts — no GPU needed. The "constitution in system prompt" arm has no Hospital
+run on the Hub at all. Matthew's `matboz-hosp-datools15` pod is running a mainline da-tools-15 cell today;
+the +tools bar should move to it when it lands.
+
 ## 2026-10-10 - Hospital action measures: the text is read by an LLM autorater, not keyword regexes (code, nothing re-scored yet)
 
 **Why.** The Hospital action measures (`hospital/actions.py`, ours since 2026-09-07; upstream Colosseum

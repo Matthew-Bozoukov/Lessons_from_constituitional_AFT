@@ -3,6 +3,16 @@
 
 # GOTCHAS
 
+## OpenRouter's in-flight budget: a low shared balance 402s, and the autorater loses its labels (2026-10-14)
+
+With the shared account under ~$5 and two other runs judging on the same key, every autorater call failed
+with `402 in_flight_budget_exhausted` ("would exceed your available credits given your current in-flight
+requests"). The repo's client does not retry 4xx, and `hospital/autorater.py` writes `results/autorater.json`
+only when the whole arm is labelled, so a crash at call 194 of 442 bills 194 calls and keeps none; the
+Fig 4 post judge (`scratch/colosseum_hospital/post_judge.py`) surfaces the same failure as `deceive: None`
+posts that look like a judged-benign arm. Check `openrouter.ai/api/v1/credits` before a rescore, run with
+`--workers 1` when the balance is low, and count `None` verdicts before plotting a judge-derived panel.
+
 ## MASK now refuses any failed generation by default, and killing `evals` releases its pod (2026-10-08)
 
 - Since 2026-10-05 `configs/eval/mask.yaml` sets `max_generation_error_rate: 0.0`; every earlier MASK run
