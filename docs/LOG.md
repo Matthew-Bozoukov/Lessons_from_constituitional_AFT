@@ -1,3 +1,28 @@
+### 2026-10-14: GPT-OSS Base / Control / DA15 Arena-Hard native answers, judging deferred
+
+Generated all 2,250 responses exactly once for the October 6 Base/Control/DA15 Tinker checkpoints. This is the generation stage for later matched pairwise Arena-Hard comparisons, not an Arena-Hard score. Each arm used the same 750 prompts (500 hard and 250 creative) from the vendored Arena-Hard v2 question set; dataset SHA256 670bc856439fda00ebfa9403b0201e443e623fd2f8e2bb7de2f027b1dfdaae46.
+
+Authorized protocol: native Tinker sampling, medium reasoning, Harmony 0.0.8, render date 2026-10-14, temperature 0, top-p 1, top-k disabled, neutral penalties, no generation seed, 32,768 shared reasoning-plus-final output tokens, exact 131,072 total context. Dataset selection seed 0. Checkpoints are tinker://base, tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain, and tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15. Sampling base model openai/gpt-oss-120b:peft:131072. Maximum prompt length 6,464 native tokens, allowing the full response budget on every prompt. Completely uncached worst-case output/input upper bound USD 62.19017037; shared ceiling USD 70, smoke cap USD 0.49. Sampling POST retries disabled; 4,800-second request timeout.
+
+Used one local Docker driver (6 CPUs, 4 GiB, 1,024 PIDs), 64 request workers per arm / 192 total, and no rented hardware. The free 192-way synthetic 32K load test passed with 3.04 GiB peak working memory and zero OOM kills; real full-run peak was 2.62 GiB. Qualification failures (served-name mismatch, progress-file read race, and bind-mount cleanup contention) were preserved, with no paid calls. All three paid smoke responses were reused unchanged in the full run; total smoke cost USD 0.059607390 is already included below.
+
+| Arm | Responses | Empty visible final | Token-cap endings | Settled inference USD, including smoke |
+|---|---:|---:|---:|---:|
+| base | 750 | 0 | 3 | 1.844636262 |
+| control | 750 | 156 | 176 | 5.891063262 |
+| da15 | 750 | 150 | 162 | 5.625315822 |
+
+Total conservative accounted inference USD **13.361015346**, zero reservations, estimates rather than invoices. Rates USD 0.33 input / 0.066 confirmed cached / 0.84 output per million. Empty-final and token-cap counts overlap. Analysis-only outputs remain empty: no extraction from reasoning, output repair, quality-based retry, or reroll. No judge calls or pairwise scores yet. All 750 question hashes, generation settings, effective context and output allowances matched across arms.
+
+Frozen generation source: d17eeacf2e188c2e5a245169b4b4fa04925e18ed, isolated branch codex/gptoss-arena-three-arms based on main 6d4d5197. A transient Windows file-lock error stopped the external resource guard; stale evidence correctly paused new admissions while in-flight requests completed. A retrying external guard resumed admissions without restarting inference. Publication-only recovery registered the three arm names for protocol validation after all inference had completed. Both recovery scripts and first-failure evidence are included in metadata, alongside original frozen source/config/packages/native traces/ledgers. The maintained runner now includes those two fixes; 46 focused tests pass, plus 4 campaign/budget tests (5 optional dependency skips).
+
+Each arm has 28 files verified by SHA256 readback at an immutable HF commit:
+- base: [dougalldeepmind/2026-10-14-ah-gptoss120b-base@ad9e5c9f86b650318e31d56f18a7efabf1703429](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-gptoss120b-base/tree/ad9e5c9f86b650318e31d56f18a7efabf1703429)
+- control: [dougalldeepmind/2026-10-14-ah-gptoss120b-0-plain@ff601cfd84340770fe511d32023b867ee0fc7d64](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-gptoss120b-0-plain/tree/ff601cfd84340770fe511d32023b867ee0fc7d64)
+- da15: [dougalldeepmind/2026-10-14-ah-gptoss120b-0-da-15@4bebdd1da589080668b129fd77a4e061a527768f](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-gptoss120b-0-da-15/tree/4bebdd1da589080668b129fd77a4e061a527768f)
+
+All inference, bridge and publisher processes exited. The exclusively owned lasr-gptoss-arena-20261014 container was removed after publication; shared cached environment volumes were preserved. Host awake/resource guard exited. Local evidence: output/gptoss_arena_20261014/{complete,publication,cleanup}.json. The earlier SWE rental remains destroyed. Judging is a separate future decision.
+
 ### 2026-10-14: Native GPT-OSS Base / Control / DA15 MMLU screen, local Docker closeout
 
 Hypothesis: the October 6 Control/DA15 checkpoints retain general-knowledge performance relative to GPT-OSS Base under a matched MMLU screen. Merged main into the isolated branch first (7db4c312). Used the same pinned cais/mmlu revision c30699e8356da336a370243923dbaf21066bb9fe and subset hash 3952064292260029 as the recent Qwen run: 57 subjects x 10 questions, five same-subject dev demonstrations, seed 0 and identical shuffled choices/prompts. All 1,710 scored requests finished once. Source for scored inference: 23d618faeae35318574fd8062b3461b702f78168; closeout helper 06419f20. Exact source archives, configs, package versions, native traces and conservative ledgers are published.

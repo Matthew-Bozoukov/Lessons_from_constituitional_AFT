@@ -31,6 +31,17 @@ def key(arm):
     return undated(sampler_name(TARGETS[arm]))
 
 
+
+def comparison_config():
+    from src.eval.capabilities.arena_hard.runner import register
+    cfg = config()
+    arms = []
+    for arm, target in TARGETS.items():
+        arms = register(arms, key(arm), target, 'target', cfg)
+    cfg.arms = arms
+    return cfg
+
+
 def prepare():
     from src.utils import read_jsonl
     cfg = config()
@@ -217,12 +228,13 @@ def publish():
     from src.eval.run_eval import _card_fields
     from src.naming import eval_name
     source = verify_source()
+    cfg = comparison_config()
     ledger = json.loads((ROOT / 'budget.json').read_text())
     entries = list(ledger['requests'].values())
     assert len(entries) == 2250 and all(e['state'] == 'completed' for e in entries)
     assert sum(e['upper_usd'] for e in entries) <= 70
     runs = [dict(model_key=key(a), out_dir=str(ROOT/'arms'/a), mode='think') for a in TARGETS]
-    save(ROOT/'protocol-validation.json', validate_generation_protocols(runs, config()))
+    save(ROOT/'protocol-validation.json', validate_generation_protocols(runs, cfg))
     results, published = {}, {}
     for arm in TARGETS:
         out = ROOT/'arms'/arm
@@ -243,9 +255,9 @@ def publish():
             for phase in ('smoke','run'):
                 tar.add(ROOT/phase/arm, arcname=f'{phase}/{arm}')
         save(meta/'run_meta.json', dict(git_sha=source['sha'], target=TARGETS[arm], target_revision=TARGETS[arm],
-            model_key=key(arm), base_model='openai/gpt-oss-120b', base_model_revision=None, mode='think', config=OmegaConf.to_container(config(), resolve=True),
+            model_key=key(arm), base_model='openai/gpt-oss-120b', base_model_revision=None, mode='think', config=OmegaConf.to_container(cfg, resolve=True),
             summary=results[arm], command='python -m scratch.gptoss_arena.campaign all'))
-        fields = _card_fields('arena_hard', config(), 'python -m scratch.gptoss_arena.campaign all',
+        fields = _card_fields('arena_hard', cfg, 'python -m scratch.gptoss_arena.campaign all',
             experiment=f'GPT-OSS Arena native answers: {arm}; 750 prompts; no judging yet',
             models=TARGETS[arm], source_revision=source['sha'])
         repo = 'dougalldeepmind/' + eval_name('arena_hard',key(arm))
