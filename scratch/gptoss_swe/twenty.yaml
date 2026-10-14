@@ -1,0 +1,20 @@
+# ABOUTME: Three-arm twenty-task expansion, retaining ten base outcomes and sampling fifty fresh tasks.
+# ABOUTME: Run on the qualified native-Docker CPU: python -m scratch.gptoss_swe.twenty prepare|run|status|publish
+root: /srv/lasr/runs/gptoss-twenty-20261009
+input: /srv/lasr/staging/twenty-input
+campaign: gptoss-twenty-20261009
+hf_repo: dougalldeepmind/2026-10-09-gptoss120b-base-control-da15-swe-smoke20
+workers: {base: 10, control: 20, da15: 20}
+ports: {base: 18305, control: 18315, da15: 18325}
+targets:
+  base: tinker://base
+  control: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+  da15: tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15
+tool_concurrency: 32
+min_available_memory_gib: 32
+grading_workers: 12
+min_cpus: 60
+min_ram_gib: 190
+min_free_gib: 50
+image_pull_workers: 6
+render_date: '2026-10-09'

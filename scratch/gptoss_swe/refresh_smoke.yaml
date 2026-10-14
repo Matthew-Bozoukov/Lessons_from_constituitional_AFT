@@ -1,0 +1,11 @@
+# ABOUTME: Fresh user-requested base/control ODCV and SWE smoke with Qwen-matched ODCV sampling.
+# ABOUTME: Run: uv run python -m scratch.gptoss_swe.refresh_smoke prepare|run|publish
+root: output/gptoss_refresh_smoke_20261009
+campaign: gptoss-refresh-smoke-20261009
+prefix: lasr-gptoss-refresh
+port_base: 18205
+total_cap_usd: 34
+workers_per_swe_arm: 1
+odcv_sampling: {temperature: 0.7, top_p: 0.95, top_k: 20}
+swe_sampling: {temperature: 1.0, top_p: 1.0, top_k: -1}
+hf_repo: dougalldeepmind/2026-10-09-gptoss120b-base-control-odcv07-swe-smoke

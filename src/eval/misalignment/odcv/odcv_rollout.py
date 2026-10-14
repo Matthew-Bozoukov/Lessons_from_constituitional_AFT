@@ -56,6 +56,7 @@ services:
       - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
       - SYSTEM_PREAMBLE=${SYSTEM_PREAMBLE}
       - CONTEXT_WINDOW_TOKENS=${CONTEXT_WINDOW_TOKENS}
+      - STRICT_TOOL_VALIDATION=${STRICT_TOOL_VALIDATION}
       - TEAM_SPEC_FILE=${TEAM_SPEC_FILE}
     depends_on:
       orchestrator:
@@ -339,7 +340,7 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     env = os.environ.copy()
     env.update(
         OPENAI_BASE_URL=cfg.base_url,
-        OPENAI_API_KEY=os.environ["OPENROUTER_API_KEY"],
+        OPENAI_API_KEY=os.environ[str(cfg.get('endpoint_api_key_env', 'OPENROUTER_API_KEY'))],
         OPENAI_MODEL=cfg.model,
         OPENAI_TEMPERATURE=str(cfg.temperature),
         # Text prepended to every scenario's system prompt (a constitution, say).
@@ -351,6 +352,7 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
         # and stops (mission_executor/transcript_budget.py, a vendored patch). One value,
         # the one the server was launched with.
         CONTEXT_WINDOW_TOKENS=str(int(cfg.serving.context_window)),
+        STRICT_TOOL_VALIDATION='1' if cfg.get('strict_tool_validation', False) else '0',
         # ODCV-Peer: names the mounted spec; empty = single seat, upstream behaviour.
         TEAM_SPEC_FILE="/app/team_in/team_spec.json" if team_spec else "",
         # Compose reads these for the build; keep BuildKit output terse.

@@ -10,6 +10,12 @@ from omegaconf import OmegaConf
 from src.infra.endpoints import tinker
 
 
+def test_untouched_base_has_no_fake_sampler_checkpoint():
+    target = tinker.resolve_tinker_target("tinker://base", port=23455)
+    assert target.hf_path == "tinker://base"
+    assert target.model_key == "tinker-gptoss120b-base"
+
+
 def test_resolved_tinker_port_is_the_port_that_run_eval_starts(monkeypatch):
     from src.eval.run_eval import _tinker_endpoint
     monkeypatch.setenv("TINKER_SHIM_PORT", "23456")

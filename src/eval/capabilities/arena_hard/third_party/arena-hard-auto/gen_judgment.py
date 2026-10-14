@@ -8,6 +8,7 @@ import argparse
 import os
 import concurrent.futures
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -165,7 +166,9 @@ class JudgmentStore:
         self.lock = threading.Lock()
         self.records = {}
         if self.path.exists():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
+            # VENDORED PATCH: JSONL boundaries are LF, not Unicode U+2028/U+2029
+            # characters that can occur inside benchmark prompts and judgments.
+            for line in self.path.read_text(encoding="utf-8").split("\n"):
                 if line.strip():
                     row = json.loads(line)
                     if row["uid"] in self.records:
@@ -181,7 +184,17 @@ class JudgmentStore:
                     stream.write(json.dumps(self.records[uid], ensure_ascii=False) + "\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            temporary.replace(self.path)
+            # VENDORED PATCH: a short Windows reader may deny replacement. Keep
+            # the previous snapshot intact and retry only this filesystem action;
+            # never repeat the paid judgment because of a transient reader lock.
+            for attempt in range(10):
+                try:
+                    temporary.replace(self.path)
+                    break
+                except PermissionError:
+                    if attempt == 9:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
 
 
 def judgment(args):
@@ -207,6 +220,11 @@ def judgment(args):
                         and len(old_games) == 2
                         and all(isinstance(game, dict) and game.get("request_hash") == key
                                 for game, key in zip(old_games, expected)))
+    # VENDORED PATCH: a certified exact cache hit needs neither API calls nor a
+    # full-file checkpoint rewrite. Rewriting every hit makes sparse recovery slow.
+    if identity_matches and all(complete_game(game, key)
+                                for game, key in zip(old_games, expected)):
+        return copy.deepcopy(existing)
     # Preserve old identities too; otherwise changing a setting erases the evidence
     # for the invalidated cache entry. Do not recursively duplicate earlier history.
     history = copy.deepcopy(existing.get("prior_judgments") or [])

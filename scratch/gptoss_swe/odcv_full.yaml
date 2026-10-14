@@ -1,0 +1,45 @@
+# ABOUTME: Authorized full matched ODCV run; exclusive local owners preserve outcomes and budget.
+# ABOUTME: Three arms concurrently, 16 local Docker scenarios per arm, same 240-cell protocol.
+# Run (historical campaign): uv run python -m scratch.gptoss_swe.odcv_full prepare
+root: output/gptoss_odcv_full_20261012
+campaign: gptoss-odcv-full-20261012
+arms:
+  base: tinker://base
+  control: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+  da15: tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15
+ports: {base: 18405, control: 18415, da15: 18425}
+eval_config: configs/eval/odcv/lite.yaml
+passes: 3
+cells_per_pass: 80
+concurrency_per_arm: 16
+max_concurrent_rollouts: 48
+temperature: 0.7
+top_p: 0.95
+top_k: 20
+reasoning: medium
+harmony_version: 0.0.8
+context_window: 56000
+response_allowance: remaining
+cycles: 50
+scenario_timeout_s: 2400
+strict_tool_validation: true
+system_preamble_file: null
+progress_judge: true
+judge_workers_per_arm: 4
+shared_inference_budget_usd: 60
+judge_budget_per_arm_usd: 5
+total_budget_usd: 75
+budget_approved: true
+launch_authorized: true
+hf_repo: dougalldeepmind/2026-10-12-gptoss120b-base-control-da15-odcv-full56k
+render_date: '2026-10-12'
+price_rates: {input_per_million: 0.33, cached_input_per_million: 0.066, output_per_million: 0.84}
+notes:
+  - User accepted the prepared plan and launch on October12; 75USD total includes 60shared inference plus5judging per arm.
+  - Start three independent arm processes together; passes within each arm use the standard ODCV runner.
+  - Docker shims must explicitly set DEFAULT_MAX_TOKENS=remaining, TINKER_CONTEXT_WINDOW=56000, TINKER_DEFAULT_TOP_P=0.95 and TINKER_DEFAULT_TOP_K=20.
+  - The 56000 context selects openai/gpt-oss-120b:peft:131072 on Tinker; keep the same checkpoint, reasoning and sampling.
+  - User doubled context before launch; earlier cost/time estimates and 28000-context smoke outcomes are historical, not guarantees for this configuration.
+  - Do not launch through the legacy generic Tinker entrypoint defaults; they still specify an 8192 response allowance and a 131072 context.
+  - Inference and judging use fresh durable ledgers; ambiguous paid calls must not be resampled.
+  - Provider throughput and arbitrary model shell commands are not covered by the scripted capacity test.

@@ -3,7 +3,8 @@
 
 # GPT-OSS120B through Tinker
 
-The maintained eval entrypoint accepts `tinker://RUN/sampler_weights/NAME`. Only
+The maintained eval entrypoint accepts `tinker://base` and
+`tinker://RUN/sampler_weights/NAME`. Only
 `openai/gpt-oss-120b` is supported. The driver starts an authenticated, loopback-only
 OpenAI-compatible shim and owns its Python process. It chooses a local port per
 checkpoint and checks the exact checkpoint, instance nonce, reasoning effort and
@@ -21,12 +22,39 @@ environment automatically; to prepare it without sampling:
 uv sync --project src/infra/endpoints/tinker_env --frozen
 ```
 
-The GPT-OSS tokenizer is pinned to
-[`b5c939de8f754692c1647ca79fbf85e8c1e70f8a`](https://huggingface.co/openai/gpt-oss-120b/tree/b5c939de8f754692c1647ca79fbf85e8c1e70f8a).
+The current tokenizer and renderer use `openai-harmony==0.0.8` with
+`HARMONY_GPT_OSS`, pinned in that nested lock. The earlier cookbook/tokenizer
+implementation is historical; its artifacts retain their original source pins.
 Model weights/checkpoint identity come from Tinker. The shim records the effective
 rendering date, checkpoint, sampling controls, tokenizer revision, prompt-token
 hash, raw Harmony completion, and stop reason in `tinker_metadata` on each response.
 It does not infer a constitution or training provenance from a sampler path.
+
+## Completed campaigns and code ownership
+
+The [campaign index](gptoss_campaigns.md) links the final SWE-bench and MMLU results,
+ODCV diagnostics and exact immutable artifacts. Campaign drivers, one-off configs
+and recovery tests live in [scratch/gptoss_swe](../scratch/gptoss_swe/README.md) and
+[scratch/gptoss_mmlu](../scratch/gptoss_mmlu/README.md). Generic transport, accounting
+and rendering live in `src/infra/endpoints/tinker{,_server,_harmony,_budget}.py`;
+registered evaluators retain their existing `src/eval/` implementation.
+
+The October 13 full SWE campaign used the fleet task loop through its separately
+qualified scratch owner. It is distinct from the older stock-agent v1 entrypoint
+below. MMLU used the maintained scorer through a local campaign wrapper, not a new
+scorer. The closed campaigns' dates, budgets, host IDs and launch commands are
+historical evidence, not defaults for a new run.
+
+## Base-only smoke evidence (October 8-9, 2026)
+
+The shared-interface diagnostic smoke is [published with pinned evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-08-gptoss120b-base-shared-interface-smoke/tree/429a5c3124c7b11ec7ddfbb8020ce54f286f99b0).
+ODCV completed all ten cells without numerical limits, but three retain an initial
+terminal-marker bug and seven use the corrected parser. SWE-bench resolved 4/10;
+three attempts hit limits, including two serious no-tool/repetitive-generation
+loops and one long tool-using conversation exhausting context. The latter still
+resolved. These subsets are not full benchmark estimates or proof that the shared
+interface is ready for a full campaign. See `results/failure-analysis.md` and
+`results/interface-audit.json` in the dataset. No full run was launched.
 
 ## Supported request contract
 
@@ -38,22 +66,47 @@ It does not infer a constitution or training provenance from a sampler path.
   forced/disabled tool choice, `parallel_tool_calls=false`, strict schemas,
   constrained response formats, non-neutral penalties and unknown sampling
   parameters are refused before sampling. They are not silently ignored.
-- Assistant reasoning is retained when supplied in history. Harmony-generated
+- Assistant reasoning is retained within a tool cycle and removed from completed
+  cycles when an explicit final marker is present in history (including LiteLLM's
+  `provider_specific_fields`). Harmony-generated
   tool calls receive unique nonempty OpenAI IDs. Result messages must identify
   an unresolved call; tool names are recovered from that call and conflicts fail.
-- Truncated or malformed call batches never expose executable `tool_calls`.
-  Their original Harmony output remains in response diagnostics. This is not a
-  promise that the model always emits correct tool calls.
+- Truncated responses and ambiguous/missing Harmony boundaries do not expose
+  tool calls. Complete recipient/body calls retain **raw argument strings**, even
+  invalid JSON. Callers must validate JSON and the declared schema before execution,
+  return specific errors as tool results, and retain the malformed original call.
+  Neither the adapter nor strict execution repairs arguments. As in the pinned
+  official cookbook parser, complete calls with a return marker are accepted;
+  the noncanonical ending is recorded as `tool_call_return`.
 - Prompt plus completion allowance must fit the configured cap (at most 131,072).
   A stopped response lacking a Harmony boundary is treated conservatively as
   incomplete rather than as a completed public answer.
+- `TINKER_TRACE_DIR` saves actual rendered prompt tokens/text, request parameters
+  and full raw responses. Missing boundaries are diagnosed separately from real
+  response-token exhaustion; neither causes hidden inference retries.
+
+The shared interface has no eval names, tool-name allowlist, bash examples, bracket
+warnings or custom JSON coaching. The system contains the standard GPT-OSS preamble
+plus the standard function-routing sentence. Benchmark system instructions become
+ordered developer messages; declared schemas become the functions namespace. Plain
+chat has no tool namespace. ODCV's generic `strict_tool_validation: true` opts out of
+its historical regex argument repair. This changes the execution protocol and must
+be recorded; historical scores are not rescored.
+
+The October 8 **local shared-interface smoke** uses `scratch/gptoss_swe/shared_smoke.py`
+and the fleet-based v2 task loop, not the older v1 route below. Its SWE limits remain
+16,384 response / 131,072 context / 262,144 generated task tokens / 500 steps, with
+two local workers and a 12-dollar ceiling. Its ODCV subset uses 8,192 response /
+28,000 context / 50 steps, one worker and a 3-dollar ceiling. These are diagnostic
+subsets, not full benchmark scores. Source revisions, selections and intermediate
+failures are retained under `output/gptoss_shared_smoke` and in `docs/LOG.md`.
 
 Primary API/renderer references:
 [Tinker SamplingParams](https://github.com/thinking-machines-lab/tinker/blob/main/docs/api/types.md),
 [Tinker renderer source](https://github.com/thinking-machines-lab/tinker-cookbook/blob/main/tinker_cookbook/renderers/gpt_oss.py).
 Runtime versions are pinned by the nested lock; those web links describe upstream.
 
-## SWE-bench Lite route
+## Earlier stock-agent SWE-bench Lite route (v1)
 
 Use the existing pinned mini-SWE-agent runner through the ordinary eval entrypoint,
 with this explicit Tinker config. **Do not use `--fleet` for Tinker.** The Qwen fleet
@@ -91,9 +144,10 @@ this with the qualified Qwen `lite-v5` fleet. Both paths use 16,384 response tok
 | Cost control | Tinker account; stock local-cost registry is not a dollar cap | Campaign ledger/watchdog |
 
 These are separate protocols; do not interpret their score difference as a
-matched model-only effect. Further transport refactoring would be needed to run
-exactly the fleet task loop on Tinker. The working Qwen path was not altered to
-achieve this API integration. Before a full run, identify the checkpoint, estimate Tinker costs against account
+matched model-only effect. The later scratch v2 campaigns run the fleet task loop
+on Tinker, with authenticated token admission and their own frozen configs; see
+the campaign index above. The working Qwen defaults were not changed to achieve
+this API integration. Before a new full run, identify the checkpoint, estimate Tinker costs against account
 limits, check balances and flag expected spend above $20 as the project requires.
 Qualify a real task first; final scores require official grading.
 

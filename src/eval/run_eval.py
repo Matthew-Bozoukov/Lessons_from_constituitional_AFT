@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -45,6 +46,8 @@ def _tinker_endpoint(spec, cfg):
                        max_tokens=int(t.get("max_tokens", 8192)),
                        context_window=int(t.get("context_window", 131072)),
                        render_date=t.get("render_date"),
+                       budget_usd=t.get("budget_usd"), budget_ledger=t.get("budget_ledger"),
+                       budget_checkpoints=t.get("budget_checkpoints"),
                        log_dir=Path(str(cfg.get("output_root") or Path("output"))) / "tinker_shim")
 
 
@@ -262,7 +265,7 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
         arms it pooled.
     """
     _, results_dir, metadata_dir = publish_layout(out_dir)
-    (out_dir / "run_meta.json").rename(metadata_dir / "run_meta.json")
+    (out_dir / "run_meta.json").replace(metadata_dir / "run_meta.json")
     scored = any(results_dir.iterdir())
     if scored:
         (results_dir / "results.json").write_text(json.dumps(summary, indent=2))
@@ -275,7 +278,7 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     # row is written BEFORE the push check, so a doubled-date name would refuse the
     # summary of a run that had already finished and paid for its GPU.
     row_path = (Path("output/eval_summaries")
-                / f"{_run_repo(name, model_key, run_name, variant)}_{timestamp()}.json")
+                / f"{_run_repo(name, model_key, run_name, variant)}_{timestamp()}_{os.getpid()}.json")
     row_path.parent.mkdir(parents=True, exist_ok=True)
     row_path.write_text(json.dumps(summary, indent=2))
     if not push:
@@ -289,6 +292,47 @@ def _publish(out_dir: Path, *, name: str, model_key: str, mode: str, target: str
     url = push_run_dir(out_dir, repo_id, card, front_matter={"tags": tags})
     print(f">>> pushed {url}")
     return url
+
+
+def _arena_campaign(cfg, name, specs, run_kwargs):
+    """Opt-in stable Arena directories, refusing changed inputs on a restart."""
+    if not cfg.get("campaign_dir"):
+        return None
+    if name != "arena_hard":
+        raise ValueError("campaign_dir currently supports arena_hard only")
+    root = Path(str(cfg.campaign_dir)).resolve()
+    identity = {"config": OmegaConf.to_container(cfg, resolve=True),
+                "arguments": run_kwargs, "git_sha": _git_sha(),
+                "targets": [{"target": s.hf_path, "revision": s.revision,
+                             "base_revision": s.base_revision, "mode": s.mode,
+                             "model_key": s.model_key} for s in specs]}
+    manifest = root / "campaign.json"
+    if manifest.exists():
+        if json.loads(manifest.read_text(encoding="utf-8")) != identity:
+            raise ValueError("Arena campaign inputs changed; use a new campaign_dir")
+    else:
+        if root.exists() and any(root.iterdir()):
+            raise ValueError("Arena campaign directory is nonempty without a manifest")
+        root.mkdir(parents=True, exist_ok=True)
+        temp = root / "campaign.json.tmp"
+        temp.write_text(json.dumps(identity, indent=2), encoding="utf-8")
+        temp.replace(manifest)
+    return root
+
+
+def _arena_receipt(campaign, spec):
+    """Verify the completed arm before skipping serving/generation/publication."""
+    if campaign is None:
+        return None
+    receipt = campaign / f"{spec.model_key}.json"
+    if not receipt.exists():
+        return None
+    saved = json.loads(receipt.read_text(encoding="utf-8"))
+    root = campaign / "arms" / spec.model_key
+    for name, expected in saved["sha256"].items():
+        if hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
+            raise ValueError(f"Arena completed artifact changed: {root / name}")
+    return saved
 
 
 def main(argv: list[str] | None = None, *, runner=None) -> None:
@@ -490,7 +534,7 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             revision = revisions[hf_path]
         spec = resolve_target(hf_path, revision=str(revision)) if revision else resolve_target(hf_path)
         if args.name == "swebench_mini" and spec.api_base:
-            if not is_tinker_target(hf_path) or cfg.get("protocol") != "gptoss-tinker-lite-v1":
+            if not is_tinker_target(hf_path) or cfg.get("protocol") not in ("gptoss-tinker-lite-v1", "gptoss-tinker-lite-v2"):
                 raise SystemExit("SWE API targets require a Tinker GPT-OSS checkpoint and "
                                  "--config configs/eval/swebench_mini/gptoss-tinker.yaml; "
                                  "the Qwen fleet protocol is unchanged")
@@ -533,17 +577,25 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     # since a collision is the cheaper refusal. A credential that only fails at the push or
     # at judging fails after the whole run has been paid for.
     _credentials_preflight(push=not args.no_push)
+    campaign = _arena_campaign(cfg, args.name, specs, run_kwargs)
 
     summaries: dict[str, dict] = {}
     published: list[dict] = []
     try:
         for spec in specs:
             hf_path = spec.hf_path
+            cached = _arena_receipt(campaign, spec)
+            if cached is not None:
+                print(f">>> completed arm reused: {hf_path}")
+                published.append(cached["published"])
+                summaries[hf_path] = cached["summary"]
+                continue
             print(f">>> {args.name} | {hf_path} | base={spec.base_model} mode={spec.mode}")
             served = server.ensure(spec)
-            out_dir = run_dir(Path(str(cfg.get("output_root") or Path("output") / args.name)),
+            out_dir = (campaign / "arms" / spec.model_key if campaign is not None else
+                       run_dir(Path(str(cfg.get("output_root") or Path("output") / args.name)),
                               f"{variant} {cfg.get('run_name') or spec.model_key} "
-                              f"{datetime.now().strftime('%H%M%S')}")
+                              f"{datetime.now().strftime('%H%M%S')}"))
             out_dir.mkdir(parents=True, exist_ok=True)
             launch_meta_path = write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
@@ -584,8 +636,22 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             published.append({"target": hf_path, "model_key": spec.model_key,
                               "mode": spec.mode, "out_dir": out_dir, "repo": url})
             summaries[hf_path] = summary
+            if campaign is not None:
+                files = list((out_dir / "rollouts").rglob("*")) + list((out_dir / "metadata").rglob("*"))
+                saved = {"published": {**published[-1], "out_dir": str(out_dir)},
+                         "summary": summary,
+                         "sha256": {p.relative_to(out_dir).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                                    for p in files if p.is_file()}}
+                temp = campaign / f"{spec.model_key}.json.tmp"
+                temp.write_text(json.dumps(saved, indent=2), encoding="utf-8")
+                temp.replace(campaign / f"{spec.model_key}.json")
     finally:
         server.stop()
+
+    # All arms are durable before the CPU/API-only comparison begins. Stopping
+    # vLLM alone leaves a RunPod billing; release only the explicitly owned pod.
+    if release_pod is not None:
+        release_pod()
 
     # Pooling runs LAST, after every arm is on the Hub and after the server is released:
     # several arms of one recipe are replicates, and the question they exist to answer is
@@ -594,23 +660,31 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     # scenarios, or different modes — is reported rather than raised, because the arms are
     # already published and dying here would read as the whole invocation having failed.
     if EVALS[args.name].pools and len(published) > 1:
-        pooled_dir = Path("output") / args.name / "pooled" / timestamp()
+        pooled_dir = (campaign / "comparison" if campaign is not None else
+                      Path("output") / args.name / "pooled" / timestamp())
         pooled_dir.mkdir(parents=True, exist_ok=True)
         try:
-            pooled = resolve_pool(args.name)(published, cfg, pooled_dir)
+            completed = pooled_dir / "results" / "leaderboard.json"
+            pooled = (json.loads(completed.read_text(encoding="utf-8"))
+                      if campaign is not None and completed.exists() else
+                      resolve_pool(args.name)(published, cfg, pooled_dir))
             write_run_meta(pooled_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "pooled_from": pooled["pooled_from"]})
             targets_text = ", ".join(run["target"] for run in published)
+            experiment = (f"{args.name} paired comparison (prompt-cluster bootstrap intervals): "
+                          f"{targets_text}" if args.name == "arena_hard" else
+                          f"{args.name}{f' ({variant})' if variant else ''} pooled "
+                          f"over {len(published)} arms of one recipe "
+                          f"(checkpoint-level interval): {targets_text}")
+            models_text = (", ".join(s.hf_path + (f"@{s.revision}" if s.revision else "")
+                                    for s in specs) if args.name == "arena_hard" else targets_text)
             _publish(
                 pooled_dir, name=args.name, model_key=pooled["model_key"],
                 mode=pooled["mode"], target=f"pooled: {targets_text}", summary=pooled,
                 push=not args.no_push, variant=variant,
                 card=_card_fields(
                     args.name, cfg, command,
-                    experiment=f"{args.name}{f' ({variant})' if variant else ''} pooled "
-                               f"over {len(published)} arms of one recipe "
-                               f"(checkpoint-level interval): {targets_text}",
-                    models=targets_text),
+                    experiment=experiment, models=models_text),
                 tags=run_tags(args.name, pooled["model_key"], pooled["mode"],
                               variant=variant, pooled=True))
             summaries["pooled"] = pooled

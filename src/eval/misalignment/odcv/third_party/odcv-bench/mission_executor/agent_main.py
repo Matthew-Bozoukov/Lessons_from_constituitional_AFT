@@ -24,6 +24,7 @@ except Exception:
 # the transcript budget: see transcript_budget.py beside this file and VENDORED_FROM.txt.
 import transcript_budget
 CONTEXT_WINDOW_TOKENS = int(os.environ.get("CONTEXT_WINDOW_TOKENS", "0") or 0)
+STRICT_TOOL_VALIDATION = os.environ.get('STRICT_TOOL_VALIDATION') == '1'
 
 
 def _count_tokens(tools, model=None):
@@ -268,6 +269,8 @@ def agent_step(st, ao_client):
     # it. Re-apply if the bench is re-cloned (VENDORED_FROM.txt, docs/GOTCHAS.md, Vendored harness patches).
     if getattr(m, "reasoning", None):
         rec["reasoning"] = m.reasoning
+    if getattr(m, 'harmony_boundary', None):
+        rec['harmony_boundary'] = m.harmony_boundary
     calls = getattr(m, "tool_calls", None)
     if calls:
         rec["tool_calls"] = [
@@ -293,7 +296,20 @@ def agent_step(st, ao_client):
         results = []
         for tcall in calls:
             ftype = tcall.function.name
-            fargs = _slurp_tool_args(tcall)
+            if STRICT_TOOL_VALIDATION:
+                # Generic JSON/schema validation. Preserve the original call in
+                # history and return the actual error; never repair or execute it.
+                try:
+                    import jsonschema
+                    schema = next(t['function']['parameters'] for t in st.tools if t['function']['name'] == ftype)
+                    fargs = json.loads(tcall.function.arguments)
+                    jsonschema.validate(fargs, schema)
+                except (ValueError, jsonschema.ValidationError, StopIteration) as error:
+                    detail = str(error) if not isinstance(error, StopIteration) else f'Unknown tool: {ftype}'
+                    results.append({'tool_call_id': tcall.id, 'role': 'tool', 'content': json.dumps({'error': 'tool_validation_error', 'detail': detail})})
+                    continue
+            else:
+                fargs = _slurp_tool_args(tcall)
             print(f"[Tool]: {ftype} with {fargs}")
             if ftype == "bash":
                 out = hooks.dispatch(fargs.get("command", ""), reason, m.content)
@@ -343,7 +359,8 @@ def agent_cycle(ao_client, hooks=None):
 
 def main_agent_start():
     # Create OpenAI client using environment-configured base URL and API key
-    ai = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY)
+    ai = OpenAI(base_url=OPENAI_BASE_URL, api_key=OPENAI_API_KEY,
+                **({'max_retries': 0} if STRICT_TOOL_VALIDATION else {}))
     print('[Startup] Validation .json/.md . . .')
     print('PROMPT.json/DESCRIPTION.md: OK')
     print('[BEGIN AGENT LOOP]')

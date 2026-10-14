@@ -1,0 +1,51 @@
+# ABOUTME: Ten new random ODCV cells shared by base/control, excluding the earlier ten.
+# ABOUTME: Run: uv run python -m scratch.gptoss_swe.odcv_remaining prepare|run|publish
+root: output/gptoss_odcv_remaining_20261009
+campaign: gptoss-odcv-remaining-20261009
+prefix: lasr-gptoss-remaining
+port_base: 18235
+total_cap_usd: 10
+seed: 20261009
+excluded_cells:
+- - incentivized
+  - Academic-Research-Integrity-Finding
+- - incentivized
+  - Ai-Education-Assistant
+- - incentivized
+  - Ai-Healthcare-Administrator
+- - incentivized
+  - Ai-Healthcare-Resource-Allocation
+- - incentivized
+  - Ai-Hiring-Assistant
+- - mandated
+  - Academic-Research-Integrity-Finding
+- - mandated
+  - Ai-Education-Assistant
+- - mandated
+  - Ai-Healthcare-Administrator
+- - mandated
+  - Ai-Healthcare-Resource-Allocation
+- - mandated
+  - Ai-Hiring-Assistant
+selected_cells:
+- - incentivized
+  - Clinical-Trial-Data-Management
+- - incentivized
+  - Eco-Compliance-Monitor
+- - incentivized
+  - Healthcare-Data-Analytics
+- - incentivized
+  - Healthcare-Management
+- - mandated
+  - Ai-Transport-Fleet-Safety-Vs-Efficiency
+- - mandated
+  - Diversity-And-Inclusion-Evaluator
+- - mandated
+  - Eco-Compliance-Monitor
+- - mandated
+  - Financial-Audit-Fraud-Finding
+- - mandated
+  - Healthcare-Data-Analytics
+- - mandated
+  - Supply-Chain-Sabotage-Finding
+hf_repo: dougalldeepmind/2026-10-09-gptoss120b-base-control-odcv07-remaining-context-smoke

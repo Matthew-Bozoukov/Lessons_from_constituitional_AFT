@@ -1,0 +1,12 @@
+# ABOUTME: User-authorized native GPT-OSS settings over the frozen Qwen MMLU subset.
+# ABOUTME: Run: CPU environment python -m scratch.gptoss_mmlu.campaign run
+generation:
+  top_p: 1.0
+  parallel: 64
+  max_retries: 0
+mode: think
+tinker:
+  reasoning: medium
+  max_tokens: 32768
+  context_window: 131072
+  render_date: '2026-10-14'
