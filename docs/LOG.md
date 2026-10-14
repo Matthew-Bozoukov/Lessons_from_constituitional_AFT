@@ -1,6 +1,52 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-14 - Matched Qwen MMLU: plain and DA15 pass the predeclared 3pp non-inferiority margin
+
+**Hypothesis.** Plain SFT and 15% difficult-advice SFT on the plain control mixture
+preserve general knowledge relative to their common Qwen3.6-27B base.
+
+**Method.** Three independent H200 RunPod servers evaluated the same 570 test questions
+(10 per each of 57 subjects, seed 0, shuffled choices, five dev demonstrations), from
+`cais/mmlu@c30699e8356da336a370243923dbaf21066bb9fe`. Thinking was pinned on for all arms;
+temperature 1, top-p .95, top-k 20, min-p 0, presence/frequency penalties 0, repetition
+penalty 1, 131072 context and 32768 generation tokens, concurrency 16, vLLM 0.26.0/BF16.
+One generated response per item, deterministic per-item sampling seed, no resampling
+of completed outcomes. Four separate dev questions per arm qualified each live server.
+Targets: base `Qwen/Qwen3.6-27B@6a9e13bd6fc8f0983b9b99948120bc37f49c13e9`;
+plain `dougalldeepmind/2026-10-05-qwen36-0-plain@1565d4f3356aa1b3bea1c503700164faa240ef3a`;
+DA15 `dougalldeepmind/2026-10-05-qwen36-0-da-15@ce773a6b87db66bd569dd13071ec5e27201462f1`.
+
+**Result.** Base 525/570 (92.11%), plain 523/570 (91.75%), DA15 521/570 (91.40%).
+All 1710 responses parsed; zero truncated responses, failed requests or empty reasoning
+traces. Subject-clustered paired differences (percentage points, 95% CI): DA15 minus
+plain -0.35 [-2.35, +1.65]; plain minus base -0.35 [-1.93, +1.23]; DA15 minus base
+-0.70 [-2.26, +0.85]. Every lower bound exceeds -3pp, passing the fixed non-inferiority
+margin. This is a matched subset comparison with one training seed, not the full MMLU
+benchmark or evidence about seed-to-seed training variation. August scores use a
+different protocol and are not directly comparable.
+
+Canonical artifacts include full transcripts, sampling records, qualification responses,
+manifest, paired comparison and closeout metadata. All 15 files per repo were downloaded
+and verified against local SHA-256 hashes:
+- [Base](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-mmlu-qwen36/tree/6f41ca3384b14c101d81f996065529021dc78eac).
+- [Plain](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-mmlu-qwen36-0-plain/tree/a4556e5a8b2a24de05892133165fbef75035a88e).
+- [DA15](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-mmlu-qwen36-0-da-15/tree/da022054c494987bc1c75515851c49b55357eb12).
+
+**Operations.** About 36 minutes from initial allocation to final teardown; 20 minutes
+of scored evaluation. Estimated rental $8.09; observed shared-account balance drop
+$8.00; conservative budget accounting $9.03 including the prior-attempt reserve, below
+the $50 cap. All owned GPUs independently terminated after their results published;
+the final account sweep found no live pods. The first allocation incorrectly tore down
+two healthy pods when the third failed; future campaigns must allocate, fail and finish
+arms independently, with only the aggregate budget shared. A Windows inherited-stdin
+SSH readiness stall was recovered without restarting model servers and fixed with a
+bounded subprocess regression. Focused validation: 58 passed, 13 deselected.
+
+**Next steps.** Use these three matched artifacts as the current capability screen.
+Expand questions or training seeds only for a separately scoped precision claim; no
+rerun is needed to repair instrument health in this campaign.
+
 ## 2026-10-08 - Canary pair rerun on Jamie's 2026-10-05 data: tools effect survives in direction but is much weaker; plain DA reuses nothing when acting
 
 **Hypothesis.** The 09-29 canary result (unused tools move the trained reasoning from chat into
