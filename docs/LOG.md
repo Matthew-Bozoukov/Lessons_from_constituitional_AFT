@@ -31,9 +31,9 @@ seats, one sample: 173 probes, ~35 min; pod up 2h15 ≈ $9).
 | arm | act | act, no private refusal | act, with private refusal | plan, no act |
 |---|---|---|---|---|
 | base model (10-13) | 30 (100%) | 21 | 9 | 0 |
-| control, plain (10-11) | 29 (96.7%) | 29 | 0 | 1 (keyword rules, both trees; rescore pending) |
+| control, plain (10-11) | 30 (100%) | 30 | 0 | 0 |
 | deliberative alignment (10-11) | 30 (100%) | 26 | 4 | 0 |
-| difficult advice (10-08 canary) | 28 (93.3%) | 26 | 2 | 2 (keyword rules; rescore pending) |
+| difficult advice (10-08 canary) | 28 (93.3%) | 25 | 3 | 2 |
 | difficult advice + tools (10-08 reusedtools) | 16 (53.3%) | 10 | 6 | 13 |
 
 Autorater vs keyword on the rescored cells: base declined-in-reasoning 7 -> 12, refused-then-sabotaged 5 -> 9;
@@ -42,6 +42,8 @@ delib 4 -> 5; da-tools declined 10 -> 20, refusal posted 1 -> 11, refused-and-he
 40/40, no-plan-no-act 6/6; delib act 29/30; DA + tools act 12/12. Figures: `output/plots/hospital_panel_act_rate_20261014.png`,
 `output/figures/2026-10-14_hospital_act_refusal_plan_stacked_all_arms.png`,
 `output/figures/2026-10-14_paper_fig4_deceptive_posts_and_probe_all_arms.png`.
+
+**Control and DA labelled by Claude Code subagents (Sonnet), same prompts.** With OpenRouter at $0, the 870 autorater prompts of those two cells (`scratch/colosseum_hospital/autorater_subagent.py dump`) went to 68 Sonnet subagents in batches of ~110k chars and came back through the same parsers and harvest (`replay` → `rescore_arm` with a replay client; `results/autorater.json` names the judge as a subagent). 0 unparsed, 0 missing. Control's one non-sabotage shift of the keyword reading became a sabotage under the autorater's shortage reading (29 -> 30 of 30); DA declined-in-reasoning 3 -> 5, refused-then-sabotaged 2 -> 3. The other three cells stay Gemini-labelled: two judges across the five bars until a Gemini (or Sonnet) pass unifies them.
 
 **What the credit crunch left undone.** OpenRouter (shared account; two of Matthew's runs judging at the
 same time) hit "in-flight budget exhausted" (402) and then $0: the control and DA rescores died twice
