@@ -4,12 +4,14 @@ model: gpt-6-luna
 reasoning_effort: low
 backend: codex-exec-chatgpt
 qualification_workers: 8
-workers: 16
+workers: 4
+admission_interval_seconds: 2
+rate_limit_backoff_seconds: 120
 question_count: 750
 orders: 2
 expected_judgments: 4500
 timeout_seconds: 900
-max_attempts: 1
+max_attempts: 3
 bootstrap_rounds: 2000
 seed: 0
 auth: chatgpt

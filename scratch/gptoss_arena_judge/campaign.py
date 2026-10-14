@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 
 from omegaconf import OmegaConf
 
@@ -164,7 +165,7 @@ def validate_events(events):
     return turns
 
 
-def run_job(job):
+def _run_job_once(job):
     directory = ROOT / 'jobs' / job['id']
     completed = directory/'completed.json'
     if completed.exists():
@@ -212,6 +213,54 @@ def run_job(job):
     except BaseException as exc:
         save(directory/'failure.json',dict(at=time.time(),error=type(exc).__name__,message=str(exc)))
         raise
+
+
+_admission_lock = threading.Lock()
+_next_admission = 0.0
+_cooldown_until = 0.0
+
+
+def rejected_without_output(directory):
+    if not (directory/'events.jsonl').exists(): return False
+    events=rows(directory/'events.jsonl')
+    failed=[e for e in events if e.get('type')=='turn.failed']
+    return (len(failed)==1 and '429 Too Many Requests' in failed[0].get('error',{}).get('message','')
+            and not any(e.get('type')=='turn.completed' or (e.get('type')=='item.completed' and e.get('item',{}).get('type') in ('agent_message','reasoning')) for e in events)
+            and (not (directory/'final.txt').exists() or not (directory/'final.txt').read_text(encoding='utf-8').strip()))
+
+
+def archive_rejected(directory):
+    assert rejected_without_output(directory), 'Only explicit rate rejection without output can be retried'
+    archive=directory/'rejected-attempts'/str(time.time_ns())
+    archive.mkdir(parents=True)
+    for name in ('started.json','process.json','command.json','events.jsonl','stderr.txt','final.txt','failure.json'):
+        if (directory/name).exists(): (directory/name).rename(archive/name)
+    save(archive/'classification.json',dict(reason='explicit 429 rejection, no answer or completed turn',at=time.time()))
+
+
+def run_job(job):
+    global _next_admission, _cooldown_until
+    directory=ROOT/'jobs'/job['id']
+    if (directory/'completed.json').exists(): return _run_job_once(job)
+    prior=len(list((directory/'rejected-attempts').glob('*'))) if (directory/'rejected-attempts').exists() else 0
+    for attempt in range(prior,int(cfg().max_attempts)):
+        while True:
+            with _admission_lock:
+                delay=max(_next_admission,_cooldown_until)-time.time()
+                if delay<=0:
+                    _next_admission=time.time()+float(cfg().admission_interval_seconds)
+                    break
+            time.sleep(min(delay,5))
+        try:
+            return _run_job_once(job)
+        except Exception:
+            if not rejected_without_output(directory) or attempt+1>=int(cfg().max_attempts): raise
+            cooldown=float(cfg().rate_limit_backoff_seconds)*2**attempt
+            with _admission_lock:
+                _cooldown_until=max(_cooldown_until,time.time()+cooldown)
+                save(ROOT/'rate-limit-backoff.json',dict(job=job['id'],until=_cooldown_until,seconds=cooldown,attempt=attempt+1))
+            archive_rejected(directory)
+    raise RuntimeError('Rate rejection attempt limit exhausted')
 
 
 def status():

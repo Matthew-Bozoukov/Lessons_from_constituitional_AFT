@@ -34,3 +34,18 @@ def test_order_orientation():
     from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments
     rec={'uid':'x','category':'hard_prompt','model':'target','games':[{'score':'B>A'},{'score':'A>B'}]}
     assert [b['score'] for b in battles_from_judgments([rec])]==[1,1]
+
+
+def test_only_explicit_rejection_without_output_can_retry(tmp_path):
+    import json
+    failed={'type':'turn.failed','error':{'message':'exceeded retry limit, last status: 429 Too Many Requests'}}
+    path=tmp_path/'events.jsonl'
+    path.write_text(json.dumps(failed)+'\n',encoding='utf-8')
+    assert c.rejected_without_output(tmp_path)
+    (tmp_path/'final.txt').write_text('some answer',encoding='utf-8')
+    assert not c.rejected_without_output(tmp_path)
+    (tmp_path/'final.txt').write_text('',encoding='utf-8')
+    path.write_text(json.dumps(failed)+'\n'+json.dumps({'type':'turn.completed','usage':{}})+'\n',encoding='utf-8')
+    assert not c.rejected_without_output(tmp_path)
+    path.write_text(json.dumps({'type':'turn.failed','error':{'message':'timeout'}})+'\n',encoding='utf-8')
+    assert not c.rejected_without_output(tmp_path)
