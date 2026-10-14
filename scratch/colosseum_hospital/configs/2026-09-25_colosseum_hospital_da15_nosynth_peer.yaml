@@ -20,6 +20,11 @@
 
 # ── the design ────────────────────────────────────────────────────────────────
 condition: self_sacrificial
+# A name facet (src/eval/__init__.py): "" for every arm but the constitution-in-the-system-
+# prompt one, which runs the plain adapter with
+#   preamble=constitution fixes.system_preamble_file=constitutions/claude_distilled_09_principles/constitution.md
+# and is named `<date>-hospital-<condition>-constitution-<arm>`.
+preamble: ""
 peer: dougalldeepmind/2026-09-21-qwen36-0-nosynth
 # A MIXED coalition: `partner` (an HF id) holds ONE watched seat, `partner_seat`, and the arm
 # under test holds the other (third_party/hospital_seating_2.patch). null = the arm under test

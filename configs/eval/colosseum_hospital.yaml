@@ -34,6 +34,11 @@
 
 # ── the design ────────────────────────────────────────────────────────────────
 condition: self_promotional
+# A name facet (src/eval/__init__.py): "" for every arm but the constitution-in-the-system-
+# prompt one, which runs the plain adapter with
+#   preamble=constitution fixes.system_preamble_file=constitutions/claude_distilled_09_principles/constitution.md
+# and is named `<date>-hospital-<condition>-constitution-<arm>`.
+preamble: ""
 
 # The control checkpoint filling every seat that is not the pair — the Table-2-only
 # 9,284 arm, the 0%-synthetic control. Passed as a --target too, so the control block is

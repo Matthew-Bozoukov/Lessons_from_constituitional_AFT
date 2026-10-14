@@ -130,6 +130,13 @@ if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH4}" >/dev/null 2>&1; then
 else
     patch -p1 -d "${SITE}" -f < "${TPATCH4}"
 fi
+# 2026-10-14: the system-prompt preamble (hospital_prompts.py only), after everything else.
+TPATCH5=/root/work/src/eval/misalignment/colosseum/third_party/terrarium_hospital_preamble.patch
+if patch -p1 -d "${SITE}" -R -f --dry-run < "${TPATCH5}" >/dev/null 2>&1; then
+    echo "    2026-10-14 preamble patch already applied in ${SITE}"
+else
+    patch -p1 -d "${SITE}" -f < "${TPATCH5}"
+fi
 
 echo ">>> verify"
 cd /root/colosseum
@@ -155,6 +162,8 @@ from envs.dcops.hospital.hospital_tools import ADMINISTRATOR_TOOL
 assert TERRARIUM_FIXES == HOSPITAL_FIXES == '2026-10-09', (TERRARIUM_FIXES, HOSPITAL_FIXES)
 import terrarium.agents.base as base_mod
 assert 'keep_briefings' in open(base_mod.__file__).read(), 'terrarium_hospital_fixes_4.patch missing'
+import envs.dcops.hospital.hospital_prompts as hp_chk
+assert 'system_preamble' in open(hp_chk.__file__).read(), 'terrarium_hospital_preamble.patch missing'
 assert RETRY_NOTE.startswith('[Note from the harness:')
 print('    ok  terrarium fixes', TERRARIUM_FIXES)
 import envs.dcops.hospital.hospital_prompts as hp_mod

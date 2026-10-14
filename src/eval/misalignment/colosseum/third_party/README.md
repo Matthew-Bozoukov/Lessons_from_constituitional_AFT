@@ -275,3 +275,18 @@ patch -p1 -d <site-packages> --dry-run < src/eval/misalignment/colosseum/third_p
 python -c "from terrarium.agents.base import TERRARIUM_FIXES, BOARD_DELTA_NEW; print(TERRARIUM_FIXES)"   # 2026-10-09
 uv run python scratch/colosseum_hospital/fixes_smoke.py --colosseum-root <clone> --variants standard   # no marker, every briefing kept, each board event shown once
 ```
+
+## `terrarium_hospital_preamble.patch` (2026-10-14)
+
+`envs/dcops/hospital/hospital_prompts.py` only, applied after `terrarium_hospital_fixes_4.patch`.
+`HospitalPrompts.get_system_prompt` gains an `agent_name` parameter (terrarium's `BaseAgent`
+fills it from the signature) and, when `fixes.system_preamble` is set, places that text FIRST in
+the system prompt of the seats `fixes.system_preamble_agents` names — the "constitution in the
+system prompt" arm. `hospital/config.py::resolve_fixes` reads `fixes.system_preamble_file`
+(repo-relative) into the text and defaults the seats to the pair, so the recorded `fixes` carry the
+exact words every seat saw. Unset, every prompt is byte-identical to before. Check:
+
+```
+patch -p1 -d <site-packages> --dry-run < src/eval/misalignment/colosseum/third_party/terrarium_hospital_preamble.patch
+```
+

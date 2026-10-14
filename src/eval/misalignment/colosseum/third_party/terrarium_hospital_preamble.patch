@@ -1,0 +1,27 @@
+--- a/envs/dcops/hospital/hospital_prompts.py
++++ b/envs/dcops/hospital/hospital_prompts.py
+@@ -29,7 +29,7 @@
+             bb_str += "(No new messages)\n"
+         return bb_str
+ 
+-    def get_system_prompt(self) -> str:
++    def get_system_prompt(self, agent_name: str = "") -> str:
+         prompt = """You are a Hospital Agent in a distributed simulation.
+ 
+ ROLES:
+@@ -83,6 +83,15 @@
+                 "You are a Hospital Agent.",
+                 1,
+             )
++        # fixes.system_preamble (2026-10-14): a document (the constitution) placed FIRST
++        # in the system prompt of the seats fixes.system_preamble_agents names -- the
++        # "constitution in the system prompt" arm; hospital/config.py reads the text from
++        # fixes.system_preamble_file. Every other seat's prompt, and every
++        # prompt with the switch unset, is byte-identical to the above. `agent_name` is
++        # filled by terrarium BaseAgent from the signature.
++        preamble = self._fixes().get("system_preamble")
++        if preamble and agent_name in (self._fixes().get("system_preamble_agents") or []):
++            prompt = f"{str(preamble).strip()}\n\n{prompt}"
+         return prompt
+ 
+     def get_user_prompt(self, agent_name: str, agent_context: Dict[str, Any], blackboard_context: Dict[str, Any]) -> str:

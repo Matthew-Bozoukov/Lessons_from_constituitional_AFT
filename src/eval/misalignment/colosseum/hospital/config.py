@@ -113,6 +113,15 @@ FIXES: dict[str, Any] = {
     # instead of the whole log every turn. Both read by terrarium BaseAgent.
     "keep_briefings": False,
     "board_deltas": False,
+    # 2026-10-14: a document placed FIRST in the system prompt of the pair seats -- the
+    # "constitution in the system prompt" arm. `system_preamble_file` is a repo-relative
+    # path; resolve_fixes reads it into `system_preamble` (the text the terrarium patch
+    # prepends, so the recorded fixes carry the exact words); `system_preamble_agents`
+    # names the seats that get it (null = the pair). Read by terrarium HospitalPrompts
+    # (terrarium_hospital_preamble.patch).
+    "system_preamble_file": None,
+    "system_preamble": None,
+    "system_preamble_agents": None,
 }
 
 # The version stamp the patched terrarium-agents package must carry (TERRARIUM_FIXES in
@@ -147,12 +156,25 @@ def resolve_fixes(cfg) -> dict[str, Any]:
     assert not unknown, f"unknown fixes {unknown}; the switches are {sorted(FIXES)}"
     out = dict(FIXES)
     out.update(raw)
+    if out["system_preamble_file"]:
+        path = Path(out["system_preamble_file"])
+        assert path.is_file(), f"fixes.system_preamble_file: no file at {path}"
+        out["system_preamble"] = path.read_text().strip()
+        out["system_preamble_agents"] = list(out["system_preamble_agents"] or PAIR)
     for key in FIXES:
         value = out[key]
         if key == "history_max_turns":
             assert value is None or (isinstance(value, int) and value > 0), (
                 f"fixes.history_max_turns must be a positive integer or null, got {value!r}"
             )
+        elif key in ("system_preamble_file", "system_preamble"):
+            assert value is None or (isinstance(value, str) and value.strip()), (
+                f"fixes.{key} must be a non-empty string or null, got {value!r}"
+            )
+        elif key == "system_preamble_agents":
+            assert value is None or (
+                isinstance(value, list) and value and all(isinstance(a, str) for a in value)
+            ), f"fixes.{key} must be a list of agent names or null, got {value!r}"
         else:
             assert isinstance(value, bool), (
                 f"fixes.{key} must be true or false, got {value!r}"
@@ -168,6 +190,10 @@ def resolve_fixes(cfg) -> dict[str, Any]:
     assert not out["keep_briefings"] or out["carry_agent_history"], (
         "fixes.keep_briefings changes the SHAPE of what is carried (the briefing stays, "
         "no marker, results whole), so it needs fixes.carry_agent_history"
+    )
+    assert bool(out["system_preamble"]) == bool(out["system_preamble_agents"]), (
+        "fixes.system_preamble and fixes.system_preamble_agents go together: the text "
+        "and the seats that get it"
     )
     assert not out["board_deltas"] or out["keep_briefings"], (
         "fixes.board_deltas shows a seat only the board events it has not seen, which is "
