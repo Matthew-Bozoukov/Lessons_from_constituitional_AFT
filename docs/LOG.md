@@ -1,5 +1,10 @@
 ### 2026-10-14: GPT-OSS three-pair subscription Arena judging launched
 
+## 2026-10-14: Explicit final-two Arena retry authorization
+
+All independent jobs finished at 4492/4494 included judgments, with six oversized-input exclusions. User explicitly requested retrying the remaining two timeout cases once. One original attempt has no answer; the other contains repeated escaped null characters and no completed verdict. Both full attempts are retained under per-job `user-authorized-retry-original`; all 4492 completed hashes verified unchanged. Same Luna-low subscription judge, prompts, schema, two workers and three-second spacing. No generation rerolls.
+
+
 ## 2026-10-14: User-accepted Arena wait-call exception
 
 At 4408 completions the validator stopped on one completed empty-recipient `wait` collaboration call. User authorized retaining its response and continuing. Existing structured final verdict retained without a model rerun; original events and validation failure preserved. Exception validation is bound to exact event/final SHA256 and job identity, and accepts only that single empty-recipient completed wait. Publication discloses the exception. Remaining 83 unstarted judgments continue with unchanged two-worker/three-second scheduling; two unanswered timeouts remain for review. Focused tests: 7 passed.
