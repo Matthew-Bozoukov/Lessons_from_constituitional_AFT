@@ -332,16 +332,7 @@ def figure() -> None:
                     zorder=4,
                 )
             )
-        a1.set_xticks(
-            range(len(arms)),
-            [
-                ARMS[a][3]
-                .replace(" + ", "\n+ ")
-                .replace("Difficult advice", "Difficult\nadvice")
-                for a in arms
-            ],
-            fontsize=6.5,
-        )
+        a1.set_xticks(range(len(arms)), [""] * len(arms))  # the legend names the arms
         a1.tick_params(axis="x", length=0)
         a1.set_ylabel("Deceptive posts per shift\n(post judge = 5)")
         w = 0.8 / len(arms)
