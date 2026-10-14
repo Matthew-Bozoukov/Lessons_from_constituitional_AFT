@@ -113,7 +113,29 @@ def arm(phase,name):
         framework._tinker_endpoint=lambda spec,cfg: bridge(phase,name)
         cfgpath=directory/'config.yaml'; directory.mkdir(parents=True,exist_ok=True); OmegaConf.save(cfg,cfgpath)
         def run_with_evidence(target,cfg,out):
-            result=r.run(target,cfg,out)
+            try:
+                result=r.run(target,cfg,out)
+            except ValueError as error:
+                if 'MMLU instrument-health check failed' not in str(error): raise
+                # A full set of real model format failures is a diagnostic result,
+                # never a reason to repair/resample or label the arm healthy.
+                import shutil
+                arm_dir=out/'think'/target.spec.model_key
+                records=[json.loads(l) for l in (arm_dir/'records.jsonl').read_text().splitlines()]
+                assert len(records)==570 and all(x['finish_reason']!='timeout' for x in records)
+                measured=max(p for p in arm_dir.iterdir() if p.is_dir())
+                result=json.loads((measured/'metrics.json').read_text())
+                assert result['valid'] is False
+                from src.eval.layout import publish_layout
+                rollouts,results,metadata=publish_layout(out)
+                shutil.copy2(arm_dir/'records.jsonl',rollouts/'records.jsonl')
+                shutil.copy2(arm_dir/'attempts.jsonl',rollouts/'attempts.jsonl')
+                shutil.copy2(measured/'metrics.json',results/'metrics.json')
+                shutil.copy2(measured/'raw_samples.md',results/'raw_samples.md')
+                meta=json.loads((measured/'run_meta.json').read_text())
+                meta['records_file']='rollouts/records.jsonl'
+                save(metadata/'mmlu_run_meta.json',meta)
+                save(metadata/'health-failure.json',dict(message=str(error),valid=False,no_rerolls=True))
             with tarfile.open(out/'metadata/native-traces.tar.gz','w:gz') as archive:
                 archive.add(directory/'traces',arcname='traces')
             for p in ('config.yaml','prepared.json','token-preflight.json','load-qualification.json','smoke-complete.json','targets.json','source.json','source.tar.gz'):
@@ -172,8 +194,31 @@ def phase_run(phase):
     finally:
         for log in logs: log.close()
 
+def qualify_smoke():
+    budget=json.loads((ROOT/'budget.json').read_text())
+    rows=list(budget['requests'].values())
+    assert len(rows)==3 and all(x['state']=='completed' and x['phase']=='smoke' for x in rows)
+    failures=[]
+    for a in TARGETS:
+        directory=ROOT/'smoke'/a
+        records=[json.loads(l) for l in (directory/'think'/a/'records.jsonl').read_text().splitlines()]
+        assert len(records)==1 and records[0]['finish_reason']=='stop'
+        responses=list((directory/'traces').glob('*/response.json'))
+        assert len(responses)==1
+        response=json.loads(responses[0].read_text())
+        assert response['tinker_metadata']['checkpoint']==TARGETS[a]
+        assert response['tinker_metadata']['boundary']=='final'
+        assert records[0]['think'] or records[0]['answer']
+        if not records[0]['parsed']: failures.append(a)
+    cost=sum(x['upper_usd'] for x in rows)
+    assert cost<.49
+    save(ROOT/'smoke-complete.json',dict(at=time.time(),requests=3,accounted_usd=cost,
+        transport_qualified=True,model_format_failures=failures,
+        interpretation='Analysis-only model output remains unparseable; no repair, retry or sampling change. Full screen will report health.'))
+
 if __name__=='__main__':
     command=sys.argv[1]
     if command=='prepare': prepare()
+    elif command=='qualify-smoke': qualify_smoke()
     elif command=='arm': arm(sys.argv[2],sys.argv[3])
     else: phase_run(command)
