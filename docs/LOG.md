@@ -1,5 +1,22 @@
 ### 2026-10-14: GPT-OSS three-pair subscription Arena judging launched
 
+## 2026-10-14: GPT-OSS Arena-Hard three-pair judging complete
+
+All 4494 included judgments completed and scored, with six user-approved oversized-input exclusions: 749 matched questions per pair (499 hard, 250 creative), both orders. GPT-6 Luna low via ChatGPT subscription; unofficial judge variant, not official leaderboard-equivalent. Immutable publication and 24-file SHA256 readback verified; all owned judge/finalizer processes exited. Source: judging recovery `da4b4ee2`, publication `6665e094`.
+
+| Target vs reference | Hard raw % | Hard style-controlled % (95% CI) | Creative raw % | Creative style-controlled % (95% CI) |
+|---|---:|---:|---:|---:|
+| Control vs Base | 32.67 | 46.16 [38.74, 54.49] | 27.20 | 28.45 [22.68, 34.38] |
+| DA15 vs Base | 33.17 | 47.54 [39.58, 56.26] | 27.50 | 31.34 [24.80, 37.99] |
+| DA15 vs Control | 53.21 | 52.04 [48.45, 55.39] | 52.80 | 52.75 [47.45, 57.80] |
+
+Scores favor the target above 50%; ties count half. Hard primary, creative secondary. Prompt-cluster bootstrap 2000 rounds. Raw scores retain empty/truncated-generation failures; style adjustment conditions on observed formatting and is not a repair. DA15-vs-Control intervals include 50%. Generation cost $13.361015346 including smoke, separate from subscription judge usage (not an API dollar invoice). Scored judge usage: 45,086,367 input tokens, including 25,875,968 cached, and 1,343,744 output tokens; this excludes failed/qualification attempts and is not total subscription billing.
+
+All original failures are archived. Two final timeouts retried once with explicit user authorization; both succeeded. One accepted empty-recipient wait tool call is retained and disclosed with exact event/final hashes. Six excluded oversized jobs remain in raw evidence; no imputed scores. Codex injected environment/skill boilerplate, so this is not bare-prompt or strict filesystem isolation. Publication-only recovery loaded existing HF settings after missing HF_ORG; no inference rerun.
+
+[Immutable results and raw evidence](https://huggingface.co/datasets/dougalldeepmind/2026-10-14-ah-luna-low-gptoss120b-three-pairs/tree/0ca407d879ac54516b1cc0c0a66a6b7dc79f0c6b)
+
+
 ## 2026-10-14: Explicit final-two Arena retry authorization
 
 All independent jobs finished at 4492/4494 included judgments, with six oversized-input exclusions. User explicitly requested retrying the remaining two timeout cases once. One original attempt has no answer; the other contains repeated escaped null characters and no completed verdict. Both full attempts are retained under per-job `user-authorized-retry-original`; all 4492 completed hashes verified unchanged. Same Luna-low subscription judge, prompts, schema, two workers and three-second spacing. No generation rerolls.
