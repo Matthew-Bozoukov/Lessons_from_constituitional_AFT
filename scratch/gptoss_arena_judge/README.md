@@ -45,3 +45,5 @@ and style-controlled comparison. Hard prompts are primary and creative writing
 secondary. An additional decisive-verdict-times-three point estimate is clearly
 diagnostic; it does not claim upstream leaderboard confidence intervals. No
 unvalidated Luna-based non-inferiority pass/fail gate is emitted.
+
+Current scheduling: two workers, three-second admission spacing. User approved exclusion of all six judgments for oversized question c41838dac4504b21. Original answers and failure evidence remain unchanged; scored denominator is 4494 judgments, 749 questions per pair (499 hard, 250 creative). exclusions.json is audited and published. Known item-local input-size, timeout, or parse failures are retained as review-needed.json while other jobs continue, without retries. Unknown, identity, tool, authentication or exhausted rate failures still stop admission. Final scoring waits for all included jobs.

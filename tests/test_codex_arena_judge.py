@@ -49,3 +49,24 @@ def test_only_explicit_rejection_without_output_can_retry(tmp_path):
     assert not c.rejected_without_output(tmp_path)
     path.write_text(json.dumps({'type':'turn.failed','error':{'message':'timeout'}})+'\n',encoding='utf-8')
     assert not c.rejected_without_output(tmp_path)
+
+
+def test_item_local_failure_does_not_hide_global_errors(tmp_path):
+    from scratch.gptoss_arena_judge.campaign import item_local_failure
+    assert item_local_failure(tmp_path, RuntimeError('Judge timeout; retained start and output, no retry'))
+    assert not item_local_failure(tmp_path, AssertionError('Unexpected tool/error item in judge output'))
+    assert not item_local_failure(tmp_path, RuntimeError('Rate rejection attempt limit exhausted'))
+    (tmp_path/'stderr.txt').write_text('input_too_large')
+    assert item_local_failure(tmp_path, AssertionError('CLI exit 1'))
+
+
+def test_exclusion_requires_whole_matched_question(tmp_path, monkeypatch):
+    import pytest
+    from scratch.gptoss_arena_judge import campaign as c
+    monkeypatch.setattr(c, 'ROOT', tmp_path)
+    jobs=[dict(id=str(i),uid='q') for i in range(6)]
+    c.save(tmp_path/'jobs.json',jobs)
+    c.save(tmp_path/'exclusions.json',dict(jobs=jobs[:1]))
+    with pytest.raises(AssertionError): c.excluded_ids()
+    c.save(tmp_path/'exclusions.json',dict(jobs=jobs))
+    assert c.excluded_ids()=={str(i) for i in range(6)}

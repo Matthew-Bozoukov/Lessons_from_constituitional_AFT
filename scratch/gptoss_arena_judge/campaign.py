@@ -263,8 +263,32 @@ def run_job(job):
     raise RuntimeError('Rate rejection attempt limit exhausted')
 
 
-def status():
+def excluded_ids():
+    path=ROOT/'exclusions.json'
+    if not path.exists(): return set()
+    records=read(path)['jobs']
+    ids={r['id'] for r in records}
     jobs=read(ROOT/'jobs.json')
+    assert len(ids)==len(records) and ids <= {j['id'] for j in jobs}
+    for uid in {j['uid'] for j in jobs if j['id'] in ids}:
+        assert {j['id'] for j in jobs if j['uid']==uid} <= ids, 'Exclude entire matched question'
+    assert not any((ROOT/'jobs'/i/'completed.json').exists() for i in ids)
+    return ids
+
+
+def item_local_failure(directory, exc):
+    # Only known per-item problems continue. Identity/tool/auth/rate failures stop.
+    if isinstance(exc, RuntimeError) and str(exc).startswith('Judge timeout;'): return True
+    if isinstance(exc, json.JSONDecodeError): return True
+    if 'Unparseable verdict' in str(exc): return True
+    path=directory/'stderr.txt'
+    return path.exists() and 'input_too_large' in path.read_text(encoding='utf-8')
+
+
+def status():
+    all_jobs=read(ROOT/'jobs.json')
+    excluded=excluded_ids()
+    jobs=[j for j in all_jobs if j['id'] not in excluded]
     results=[read(ROOT/'jobs'/j['id']/'completed.json') for j in jobs if (ROOT/'jobs'/j['id']/'completed.json').exists()]
     failures=[j['id'] for j in jobs if (ROOT/'jobs'/j['id']/'failure.json').exists()]
     started=sum((ROOT/'jobs'/j['id']/'started.json').exists() for j in jobs)
@@ -274,7 +298,7 @@ def status():
     for r in results:
         counts[r['pair']]+=1
     usage={k:sum((r['usage'] or {}).get(k,0) for r in results) for k in ('input_tokens','cached_input_tokens','output_tokens')}
-    value=dict(at=time.time(),completed=len(results),expected=len(jobs),started=started,
+    value=dict(at=time.time(),completed=len(results),expected=len(jobs),planned=len(all_jobs),excluded=len(excluded),started=started,
                incomplete_started=started-len(results),failures=failures,pairs=counts,usage=usage)
     save(ROOT/'status.json',value)
     return value
@@ -292,7 +316,9 @@ def run(panel=False):
     else:
         assert (ROOT/'panel-complete.json').exists()
     workers=int(cfg().qualification_workers if panel else cfg().workers)
-    pending=iter(j for j in jobs if not (ROOT/'jobs'/j['id']/'completed.json').exists())
+    excluded=excluded_ids()
+    jobs=[j for j in jobs if j['id'] not in excluded]
+    pending=iter(j for j in jobs if not any((ROOT/'jobs'/j['id']/name).exists() for name in ('completed.json','review-needed.json')))
     active={}; exhausted=False; error=None; peak=0
     snapshot=status()
     failed=[]
@@ -319,8 +345,12 @@ def run(panel=False):
                                 snapshot['usage'][key]+=(result['usage'] or {}).get(key,0)
                         except BaseException as exc:
                             failed.append(job['id'])
-                            error=dict(job=job['id'],error=type(exc).__name__,message=str(exc))
-                            save(ROOT/'admission-hold.json',error)
+                            issue=dict(job=job['id'],error=type(exc).__name__,message=str(exc),at=time.time())
+                            if item_local_failure(ROOT/'jobs'/job['id'],exc):
+                                save(ROOT/'jobs'/job['id']/'review-needed.json',issue)
+                            else:
+                                error=issue
+                                save(ROOT/'admission-hold.json',error)
                 else: time.sleep(2)
                 memory=0
                 for child in psutil.Process().children(recursive=True):
@@ -333,8 +363,10 @@ def run(panel=False):
                 save(ROOT/f'{phase}-progress.json',s)
                 if error and not active: raise RuntimeError(str(error))
         s=status()
-        assert not s['failures'] and s['incomplete_started']==0
-        save(ROOT/f'{phase}-complete.json',dict(at=time.time(),completed=len(jobs),workers=workers,peak_child_rss=peak))
+        if s['failures'] or s['incomplete_started']:
+            save(ROOT/'review-needed.json',dict(at=time.time(),status=s,message='Independent jobs drained; item decisions needed. No automatic retry.'))
+            raise RuntimeError('Independent jobs finished; review recorded item failures')
+        save(ROOT/f'{phase}-complete.json',dict(at=time.time(),completed=len(jobs),excluded=len(excluded),planned=len(jobs)+len(excluded),workers=workers,peak_child_rss=peak))
     finally:
         if os.name=='nt': ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
 

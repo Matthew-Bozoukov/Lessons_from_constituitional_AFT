@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from omegaconf import OmegaConf
 
-from scratch.gptoss_arena_judge.campaign import ROOT, REPO, cfg, digest, read, rows, save, validate_events, verdict
+from scratch.gptoss_arena_judge.campaign import ROOT, REPO, cfg, digest, read, rows, save, validate_events, verdict, excluded_ids
 from src.eval.capabilities.arena_hard.arena_hard_stats import battles_from_judgments, evaluate_arm
 
 OUT = ROOT / 'publication'
@@ -55,9 +55,12 @@ def assemble(jobs):
 
 
 def score():
-    assert read(ROOT/'full-complete.json')['completed'] == 4500
     jobs = read(ROOT/'jobs.json')
     assert len(jobs)==len({j['id'] for j in jobs})==4500
+    excluded=excluded_ids()
+    jobs=[j for j in jobs if j['id'] not in excluded]
+    assert read(ROOT/'full-complete.json')['completed']==len(jobs)
+    questions_per_pair=len(jobs)//6
     for folder in ('rollouts','results','metadata'): (OUT/folder).mkdir(parents=True,exist_ok=True)
     inputs = {}
     sources = read(ROOT/'sources.json')
@@ -69,13 +72,14 @@ def score():
     jsonl(OUT/'rollouts/judgments.jsonl', transcripts)
     results = {}
     for pair, recs in records.items():
-        assert len(recs)==750
+        assert len(recs)==questions_per_pair
         jsonl(OUT/f'results/{pair}.jsonl',recs)
         target, baseline = recs[0]['model'], recs[0]['baseline']
         battles = battles_from_judgments(recs)
-        assert len(battles)==1500
+        assert len(battles)==2*questions_per_pair
         results[pair] = {}
-        for category, count in (('hard_prompt',1000),('creative_writing',500)):
+        for category in ('hard_prompt','creative_writing'):
+            count=sum(j['pair']==pair and j['category']==category for j in jobs)
             subset=[b for b in battles if b['category']==category]
             assert len(subset)==count
             block=evaluate_arm(subset,{u:r['metadata'] for u,r in inputs[target].items()},
@@ -88,9 +92,10 @@ def score():
             results[pair][category]=block
         save(ROOT/'scoring-progress.json',dict(pair=pair,at=time.time()))
     result=dict(judge='gpt-6-luna',reasoning_effort='low',backend='codex-exec-chatgpt',
-                judgments=4500,questions_per_pair=750,orders=2,results=results,usage=usage,
+                judgments=len(jobs),planned_judgments=4500,excluded_judgments=len(excluded),questions_per_pair=questions_per_pair,orders=2,results=results,usage=usage,
                 api_calls=0,subscription_usage_not_dollar_invoice=True,
-                caveats=['Codex Luna low judge variant, not official leaderboard-equivalent.',
+                caveats=['User-approved oversized-input exclusions remove the entire matched question from all pairs; no imputed verdicts.',
+                         'Codex Luna low judge variant, not official leaderboard-equivalent.',
                          'Visible final answers only; empty and truncated generations retained.',
                          '95% prompt-cluster bootstrap; ordinary verdicts equal weight, ties half credit.',
                          'Style-adjusted estimates condition on observed output formatting; empty-answer failures remain.',
@@ -106,7 +111,7 @@ def score():
             table.append(f"| {pair} | {cat} | {100*u['mean']:.2f} | {100*c['mean']:.2f} [{100*c['ci_lower']:.2f}, {100*c['ci_upper']:.2f}] |")
     table.extend(['','Above 50% favors the target; ties count half. Hard is primary; creative is secondary.','']+result['caveats'])
     (OUT/'results/results.md').write_text('\n'.join(table)+'\n',encoding='utf-8')
-    save(ROOT/'scoring-complete.json',dict(at=time.time(),judgments=4500,usage=usage))
+    save(ROOT/'scoring-complete.json',dict(at=time.time(),judgments=len(jobs),excluded=len(excluded),usage=usage))
     return result
 
 
@@ -117,7 +122,7 @@ def publish():
     from src.naming import eval_name
     assert (ROOT/'scoring-complete.json').exists()
     meta=OUT/'metadata'
-    for name in ('sources.json','prepared.json','protocol.yaml','judge-source.json','full-source-sha.txt',
+    for name in ('exclusions.json','sources.json','prepared.json','protocol.yaml','judge-source.json','full-source-sha.txt',
                  'panel-complete.json','full-complete.json','status.json','scoring-complete.json',
                  'prompt-context-inspection.json','prompt-context-clean.json'):
         if (ROOT/name).exists(): shutil.copy2(ROOT/name,meta/name)
