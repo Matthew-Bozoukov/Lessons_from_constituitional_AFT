@@ -98,37 +98,40 @@ prompt:
 
 # --- Generation ---------------------------------------------------------------------
 # Decoding parity is the same requirement as arena_hard.yaml §4: identical settings
-# across all arms, temperature 0, one sample. Stamped into each arm's run_meta.json.
+# across all arms, identical sampling, one sample. Stamped into each arm's run_meta.json.
 generation:
   endpoint: "http://localhost:8000/v1"   # override with --endpoint for a RunPod proxy
-  temperature: 0.0
-  top_p: 1.0
-  # CLAUDE.md gotcha 6, and the single most common way this eval reports a false 0%.
+  temperature: 1.0
+  top_p: 0.95
+  sampling_seed: 0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  # Qwen-specific sampler extensions are explicit launch overrides; see docs/mmlu.md.
+  # Leave them unset for endpoints that only accept standard OpenAI sampling fields.
+  # Reasoning headroom prevents a token cap from being scored as lost knowledge.
   # A thinking model spends most of its budget inside <think>; if generation runs out
   # before the trace closes there is no visible answer at all, every question scores
   # wrong, and it reads as catastrophic capability loss. 2048 was comfortable in
   # nothink mode but truncated ~9% of THINKING generations (concentrated in hard
   # math/science, observed live 2026-07-31) — a biased loss, not noise; 4096 still
-  # truncated 4.2% of the BASE arm, whose traces ruminate longest. 8192 requires the
-  # 16384 --max-model-len the arena-hard pod now boots with: the longest prompt in
-  # the per_subject=20 superset measures 3069 tokens with the real tokenizer, and
-  # vLLM 400s an overflowing request rather than clamping it. Compare against
-  # earlier budgets only as separate historical protocols. Greedy decoding does not
-  # guarantee identical trajectories across serving runs; regenerate matched arms.
-  # `truncation_rate` in the output is the check — if it is not ~0, raise this
-  # before believing any number in the report.
-  max_tokens: 8192
+  # truncated 4.2% of the BASE arm, whose traces ruminate longest. The August 5
+  # base run still truncated 2.46% at 8192 tokens. The matched 2026-10-14 campaign
+  # used 32768 output and 131072 context, with zero truncations across all three arms.
+  # This is an allowance, not a required response length; verify truncation live.
+  # Compare earlier budgets only as separate historical protocols. Greedy decoding
+  # does not guarantee identical trajectories across serving runs; regenerate all arms.
+  # A cap change requires a new matched protocol, never selective regeneration.
+  max_tokens: 32768
   parallel: 16
   # Per-request deadline, in seconds. NOT optional on a long run: the OpenAI SDK
   # defaults to 600s with 2 retries, so a single request that never returns — a dropped
   # connection through the RunPod proxy, or a generation that grinds toward the token
   # cap — stalls a worker for up to 30 minutes while the other 15 sit idle. Observed
   # exactly this on the first live run: 566/570 finished in 48s and the last 4 hung for
-  # longer than the whole rest of the arm. Sized for the max_tokens above: a full
-  # 4096-token thinking generation at the ~8 tok/s this endpoint sustains under load
-  # runs ~9 min, so 600s is the floor that does not kill legitimate hard-question
-  # generations. (180s was right for 2048 tokens in nothink mode.)
-  request_timeout: 600
+  # longer than the whole rest of the arm. At the historically observed ~8 tok/s,
+  # a full 32768-token response takes ~68 min. Allow 80 min so the larger token
+  # allowance is not defeated by the old 10-minute timeout; qualify throughput live.
+  request_timeout: 4800
   max_retries: 2
   # Thinking ON matches how these checkpoints are trained and evaluated elsewhere in the
   # repo (CLAUDE.md gotcha 5: do not cross modes). Set false for a fast, cheap sanity
@@ -157,7 +160,8 @@ thresholds:
 output_dir: "output/mmlu_eval"
 
 serving:
-  # The window this eval runs at (required — see VllmServer._start; part of the eval's
-  # scientific record). 16384 = the window the Qwen3.6 sweep was tuned at, previously an
-  # implicit family default (moved here 2026-08-05).
-  context_window: 16384
+  # Shared context window for prompt plus reasoning/final answer. The 2026-10-14
+  # campaign uses Qwen guidance (128K context, 32K output), a new historical protocol.
+  context_window: 131072
+  concurrency: 16
+  reuses_long_prefixes: true

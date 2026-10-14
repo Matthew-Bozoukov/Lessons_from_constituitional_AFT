@@ -32,9 +32,13 @@ models under test are thinking models:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import shutil
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +61,7 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     subset_hash,
 )
 from src.model_profile import resolve_trace  # noqa: E402
-from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
+from src.utils import timestamp, write_run_meta  # noqa: E402
 
 
 def resolve_arms(cfg: DictConfig) -> list[dict]:
@@ -134,6 +138,37 @@ def _grade(record: dict, question: dict) -> dict:
     }
 
 
+def _resume_records(path: Path) -> list[dict]:
+    """Recover flushed JSONL rows, repairing only an incomplete final append.
+
+    Interior corruption remains an error. Both cache files are owned by this arm;
+    callers must not run two writers against the same output directory.
+    """
+    if not path.exists():
+        return []
+    records = []
+    with path.open("r+b") as stream:
+        while line := stream.readline():
+            start = stream.tell() - len(line)
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if line.endswith(b"\n"):
+                    raise
+                # Preserve the torn bytes for diagnosis before repairing the journal.
+                path.with_suffix(path.suffix + ".incomplete").write_bytes(line)
+                stream.seek(start)
+                stream.truncate()
+                break
+            if not line.endswith(b"\n"):
+                stream.write(b"\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    return records
+
+
 def run_arm(
     arm: dict,
     questions: list[dict],
@@ -153,6 +188,7 @@ def run_arm(
     arm_dir = out_root / mode / arm["name"]
     arm_dir.mkdir(parents=True, exist_ok=True)
     records_file = arm_dir / "records.jsonl"
+    attempts_file = arm_dir / "attempts.jsonl"
 
     prompts = {
         q["uid"]: build_prompt(
@@ -176,8 +212,10 @@ def run_arm(
     cached: dict[str, dict] = {}
     stale = 0
     retry_failed = 0
-    if records_file.exists():
-        for rec in read_jsonl(records_file):
+    # The journal can be ahead of records.jsonl if an interruption lands between
+    # the two writes. Older runs only have records.jsonl; keep those resumable too.
+    for path in (records_file, attempts_file):
+        for rec in _resume_records(path):
             if (rec.get("request_hash") != request_hash
                     or rec.get("prompt_hash") != prompt_hash(prompts.get(rec["uid"], ""))):
                 stale += 1
@@ -200,12 +238,26 @@ def run_arm(
         timeout=float(gen.get("request_timeout", 180)),
         max_retries=int(gen.get("max_retries", 2)),
     )
+    journal_lock = threading.Lock()
+
+    def persist(record: dict, question: dict) -> dict:
+        record = _grade(record, question)
+        record["completed_at_unix"] = time.time()
+        # Save each completed response before another worker can fail. The append-only
+        # attempt journal survives final sorting and any later retry of transport errors.
+        with journal_lock:
+            for path in (attempts_file, records_file):
+                with path.open("a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    fh.flush()
+                    os.fsync(fh.fileno())
+        return record
 
     def generate(i: int) -> dict:
         q = todo[i]
         prompt = prompts[q["uid"]]
         try:
-            return _one(q, prompt)
+            record = _one(q, prompt)
         except Exception as exc:  # noqa: BLE001
             # A request that times out or errors after the SDK's own retries must not
             # take the whole run down with it — `map_threaded` is fail-fast, and losing
@@ -214,7 +266,7 @@ def run_arm(
             # `parse_rate`, and marked `timeout` so the cache below refuses it and the
             # next run retries just these rather than baking a failure into the result.
             print(f"    !! {q['uid']}: {type(exc).__name__} — recorded as timeout")
-            return {
+            record = {
                 "uid": q["uid"],
                 "prompt_hash": prompt_hash(prompt),
                 "request_hash": request_hash,
@@ -223,15 +275,28 @@ def run_arm(
                 "think": "",
                 "answer": "",
                 "finish_reason": "timeout",
+                "error_type": type(exc).__name__,
             }
+        return persist(record, q)
 
     def _one(q: dict, prompt: str) -> dict:
+        sampling = {}
+        for key in ("presence_penalty", "frequency_penalty"):
+            if key in gen:
+                sampling[key] = float(gen[key])
+        if "sampling_seed" in gen:
+            digest = hashlib.sha256(f"{int(gen.sampling_seed)}:{q['uid']}".encode()).digest()
+            sampling["seed"] = int.from_bytes(digest[:4], "big") & 0x7fffffff
+        if gen.get("extra_body"):
+            sampling["extra_body"] = OmegaConf.to_container(gen.extra_body, resolve=True)
+        started = time.time()
         resp = client.chat.completions.create(
             model=arm["served"],
             messages=[{"role": "user", "content": prompt}],
             temperature=float(gen.temperature),
             top_p=float(gen.top_p),
             max_tokens=int(gen.max_tokens),
+            **sampling,
         )
         choice = resp.choices[0]
         raw = choice.message.content or ""
@@ -253,6 +318,9 @@ def run_arm(
             "think": think,
             "answer": answer,
             "finish_reason": choice.finish_reason or "",
+            "sampling": sampling,
+            "elapsed_seconds": time.time() - started,
+            "usage": (resp.usage.model_dump() if getattr(resp, "usage", None) else None),
         }
 
     fresh = (
@@ -266,9 +334,13 @@ def run_arm(
     graded += [_grade(r, by_uid[uid]) for uid, r in cached.items()]
     graded.sort(key=lambda r: r["uid"])
 
-    with records_file.open("w", encoding="utf-8") as fh:
+    compacted = records_file.with_suffix(".jsonl.tmp")
+    with compacted.open("w", encoding="utf-8") as fh:
         for rec in graded:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    compacted.replace(records_file)
 
     scores = score_records(graded)
     issues = health_issues(scores, cfg.thresholds)
@@ -483,6 +555,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     arm_dir = out_dir / mode / arm["name"]
     run_dir = max(p for p in arm_dir.iterdir() if p.is_dir())
     (arm_dir / "records.jsonl").rename(rollouts_dir / "records.jsonl")
+    if (arm_dir / "attempts.jsonl").exists():
+        (arm_dir / "attempts.jsonl").rename(rollouts_dir / "attempts.jsonl")
     (run_dir / "metrics.json").rename(results_dir / "metrics.json")
     (run_dir / "raw_samples.md").rename(results_dir / "raw_samples.md")
     meta = json.loads((run_dir / "run_meta.json").read_text(encoding="utf-8"))

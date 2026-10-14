@@ -240,6 +240,16 @@ def convert_unified_to_simple_config(unified_config: dict) -> dict:
     # Copy experiment_id if it exists
     if "experiment_id" in unified_config:
         simple_config["experiment_id"] = unified_config["experiment_id"]
+
+    # VENDORED PATCH (2026-10-13): carry the top-level generation flags through the conversion.
+    # This function rebuilds the config from scratch, so anything it does not name is dropped --
+    # and `generate_prompts_from_yaml` reads BOTH of these off the converted result. The effect
+    # was silent and material: `production_variant: true` became Development mode, which renames
+    # every condition (no `_prod` suffix) AND adds the secret-scratchpad paragraph to every system
+    # prompt. A config asking for production got development prompts and no warning.
+    for flag in ("production_variant", "extra_system_instructions"):
+        if flag in unified_config:
+            simple_config[flag] = unified_config[flag]
     
     # Calculate actual number of conditions considering goal_type "none" and "ambiguous" special cases
     num_conditions = len(condition_combinations)
@@ -584,6 +594,17 @@ def generate_prompts_from_yaml(config_path: Path, output_dir: Path = None, valid
                             scenario, goal_type, goal_value, urgency_type,
                             extra_system_instructions, prod_flag, alignment_faking_config
                         )
+                        # VENDORED PATCH (2026-10-13): a configured constitution goes FIRST in the
+                        # system prompt, ahead of the scenario's own instructions. Written into the
+                        # generated system_prompt.txt rather than injected at request time, so the
+                        # arm can be verified by reading the prompt files the run actually uses.
+                        _pre_path = os.environ.get("AM_SYSTEM_PREAMBLE_FILE")
+                        if _pre_path:
+                            _pre = Path(_pre_path).read_text(encoding="utf-8").rstrip()
+                            assert _pre, f"AM_SYSTEM_PREAMBLE_FILE is empty: {_pre_path}"
+                            system_prompt = f"{_pre}\n\n{system_prompt}"
+                            assert system_prompt.startswith(_pre[:80]), (
+                                "constitution is not first in the generated system prompt")
                         
                         # Generate email content (standalone)
                         email_content = generate_email_content(
