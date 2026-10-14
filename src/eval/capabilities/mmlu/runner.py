@@ -32,8 +32,8 @@ models under test are thinking models:
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -61,7 +61,7 @@ from src.eval.capabilities.mmlu.mmlu import (  # noqa: E402
     subset_hash,
 )
 from src.model_profile import resolve_trace  # noqa: E402
-from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
+from src.utils import timestamp, write_run_meta  # noqa: E402
 
 
 def resolve_arms(cfg: DictConfig) -> list[dict]:
@@ -138,6 +138,37 @@ def _grade(record: dict, question: dict) -> dict:
     }
 
 
+def _resume_records(path: Path) -> list[dict]:
+    """Recover flushed JSONL rows, repairing only an incomplete final append.
+
+    Interior corruption remains an error. Both cache files are owned by this arm;
+    callers must not run two writers against the same output directory.
+    """
+    if not path.exists():
+        return []
+    records = []
+    with path.open("r+b") as stream:
+        while line := stream.readline():
+            start = stream.tell() - len(line)
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if line.endswith(b"\n"):
+                    raise
+                # Preserve the torn bytes for diagnosis before repairing the journal.
+                path.with_suffix(path.suffix + ".incomplete").write_bytes(line)
+                stream.seek(start)
+                stream.truncate()
+                break
+            if not line.endswith(b"\n"):
+                stream.write(b"\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    return records
+
+
 def run_arm(
     arm: dict,
     questions: list[dict],
@@ -157,6 +188,7 @@ def run_arm(
     arm_dir = out_root / mode / arm["name"]
     arm_dir.mkdir(parents=True, exist_ok=True)
     records_file = arm_dir / "records.jsonl"
+    attempts_file = arm_dir / "attempts.jsonl"
 
     prompts = {
         q["uid"]: build_prompt(
@@ -180,8 +212,10 @@ def run_arm(
     cached: dict[str, dict] = {}
     stale = 0
     retry_failed = 0
-    if records_file.exists():
-        for rec in read_jsonl(records_file):
+    # The journal can be ahead of records.jsonl if an interruption lands between
+    # the two writes. Older runs only have records.jsonl; keep those resumable too.
+    for path in (records_file, attempts_file):
+        for rec in _resume_records(path):
             if (rec.get("request_hash") != request_hash
                     or rec.get("prompt_hash") != prompt_hash(prompts.get(rec["uid"], ""))):
                 stale += 1
@@ -205,7 +239,6 @@ def run_arm(
         max_retries=int(gen.get("max_retries", 2)),
     )
     journal_lock = threading.Lock()
-    attempts_file = arm_dir / "attempts.jsonl"
 
     def persist(record: dict, question: dict) -> dict:
         record = _grade(record, question)
@@ -301,9 +334,13 @@ def run_arm(
     graded += [_grade(r, by_uid[uid]) for uid, r in cached.items()]
     graded.sort(key=lambda r: r["uid"])
 
-    with records_file.open("w", encoding="utf-8") as fh:
+    compacted = records_file.with_suffix(".jsonl.tmp")
+    with compacted.open("w", encoding="utf-8") as fh:
         for rec in graded:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    compacted.replace(records_file)
 
     scores = score_records(graded)
     issues = health_issues(scores, cfg.thresholds)
