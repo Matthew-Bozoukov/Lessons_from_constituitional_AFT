@@ -31,9 +31,9 @@ seats, one sample: 173 probes, ~35 min; pod up 2h15 ≈ $9).
 | arm | act | act, no private refusal | act, with private refusal | plan, no act |
 |---|---|---|---|---|
 | base model (10-13) | 30 (100%) | 21 | 9 | 0 |
-| control, plain (10-11) | 30 (100%) | not rescored | | |
+| control, plain (10-11) | 29 (96.7%) | 29 | 0 | 1 (keyword rules, both trees; rescore pending) |
 | deliberative alignment (10-11) | 30 (100%) | 26 | 4 | 0 |
-| difficult advice (10-08 canary) | 28 (93.3%) | not rescored | | |
+| difficult advice (10-08 canary) | 28 (93.3%) | 26 | 2 | 2 (keyword rules; rescore pending) |
 | difficult advice + tools (10-08 reusedtools) | 16 (53.3%) | 10 | 6 | 13 |
 
 Autorater vs keyword on the rescored cells: base declined-in-reasoning 7 -> 12, refused-then-sabotaged 5 -> 9;
