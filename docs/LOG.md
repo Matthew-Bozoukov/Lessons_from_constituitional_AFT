@@ -45,13 +45,7 @@ delib 4 -> 5; da-tools declined 10 -> 20, refusal posted 1 -> 11, refused-and-he
 
 **Control and DA labelled by Claude Code subagents (Sonnet), same prompts.** With OpenRouter at $0, the 870 autorater prompts of those two cells (`scratch/colosseum_hospital/autorater_subagent.py dump`) went to 68 Sonnet subagents in batches of ~110k chars and came back through the same parsers and harvest (`replay` → `rescore_arm` with a replay client; `results/autorater.json` names the judge as a subagent). 0 unparsed, 0 missing. Control's one non-sabotage shift of the keyword reading became a sabotage under the autorater's shortage reading (29 -> 30 of 30); DA declined-in-reasoning 3 -> 5, refused-then-sabotaged 2 -> 3. The other three cells stay Gemini-labelled: two judges across the five bars until a Gemini (or Sonnet) pass unifies them.
 
-**What the credit crunch left undone.** OpenRouter (shared account; two of Matthew's runs judging at the
-same time) hit "in-flight budget exhausted" (402) and then $0: the control and DA rescores died twice
-mid-run (the autorater writes labels only at the end, so those calls were lost — see GOTCHAS 2026-10-14),
-and the Fig 4 deceptive-post judge on the three new cells came back mostly unjudged (control 35/94, delib
-96/103, DA + tools 87/93 public posts), which also starves panel (b)'s "plan post" category for those arms
-(delib and DA + tools show 0/0 there). The deceptive-posts-per-shift numbers for control (1.10), delib (0.20)
-and DA + tools (0.07) are therefore NOT measurements yet; base 2.53 and DA 2.53 are (judged 2026-10-13).
+**Fig 4's post judge refilled by Sonnet subagents too.** The 757 first-round prompts (public-post deception, coalition-post kind) and 506 second-round prompts (intends / obligation / words-not-deeds for the plan and mixed coalition posts) of the control, delib and DA + tools cells went through `scratch/colosseum_hospital/postjudge_subagent.py` (dump → 77 Sonnet batches → replay through post_judge.judge_arm with fill=); 0 posts left unjudged. Fig 4 is now complete for all five arms, with two judges across them (Gemini 3.6 Flash for base and DA from 2026-10-13, Sonnet subagents for the other three). Deceptive posts per shift (post judge = 5): base 2.53, control 1.90, delib 2.57, DA 2.53, DA + tools 0.77. Panel (b), answered YES at 2P: plan-post-no-act 57/57, 35/35, 29/30, 107/108, 36/37; sabotage act 120/123, 40/40, 29/30, 72/72, 12/12; no-plan-no-act is empty except DA + tools 1/10.
 
 **Next.** ~$6 of credit: rescore plain + DA (`rescore_autorater.py`, one worker), `fig4.py judge --refill`,
 then re-run both figure scripts — no GPU needed. The "constitution in system prompt" arm has no Hospital
