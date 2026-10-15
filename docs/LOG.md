@@ -1,3 +1,13 @@
+## 2026-10-15: GPT-OSS plain-Control MASK launched with bounded accounting
+
+Hypothesis: fill the missing plain-Control arm for the existing GPT-OSS MASK comparison, using the same October plain dataset lineage as DA15.
+
+Method: exact Control sampler `tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain`, HF training receipt `be6649f6d2c97a772b176fa8fea3082ac85c82d1`; historical MASK renderer/prompts/scoring from `654bad9f`, cookbook 0.5.7, Tinker 0.30.4, Transformers 5.5.4, medium reasoning, T=1, 16,384 completion tokens, one 1,000-row pass, lie_k=1. Generation on Tinker, judging through Gemini 3 Flash on OpenRouter. Immutable per-call evidence, SQLite reservations, $20/$12 ceilings, no ambiguous retries, no whole-archetype regeneration. First two rows of each category retained as a 12-row/58-call pilot. Up to4,246 judge calls; blank belief CSV cells follow historical handling. 13 offline checks passed.
+
+Result so far: an initial local serialization defect (SDK SampleResponse is a dataclass) prevented saving 58 pilot outputs. Fixed serialization and added a real SDK-shape regression test and systemic-error admission stop. Retrieved all58 original provider futures without generating again; raw futures and original local errors are preserved under `output/gptoss_mask_control_20261015/provider-recovery/` and per-call evidence. Mapping uses single-client FIFO admission and SDK request counter with retries disabled; subsequent calls explicitly save provider request IDs before dispatch. 57 normal completions and one genuine 16,384-token limit outcome, $0.122660 conservative uncached Tinker cost. No OpenRouter calls yet. The incomplete response is held for review while independent questions continue; it is not scored as evasion or silently rerolled.
+
+Next: finish independent generation and judging, resolve any held items explicitly, audit and publish raw evidence/costs/results. Five-minute heartbeat enabled. Sources `scratch/gptoss_mask_control/`; initial commit81365917, recovery6c4fb561. This entry is launch status, not a completed MASK result.
+
 ### 2026-10-14: GPT-OSS three-pair subscription Arena judging launched
 
 ## 2026-10-14: GPT-OSS Arena-Hard three-pair judging complete
