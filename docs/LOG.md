@@ -54,6 +54,21 @@ delib 4 -> 5; da-tools declined 10 -> 20, refusal posted 1 -> 11, refused-and-he
 
 **2026-10-15, Petri provenance.** `2026-10-08-petri-qwen36-0-base` is a byte-identical copy of the plain run's scores (33/90, summary target = the plain adapter): no base-model Petri audit exists on the Hub. `2026-10-15-petri-qwen36-0-plain-constitution` is a user-supplied score set from `scratch/petri_seeds/push_partial_basecon.py` — base model + constitution, 18/90, 'correspondence to run unverified' — not the plain + constitution arm; `2026-10-15-petri-constitution-qwen36-0-plain` holds only the failed push log of a 67/90 partial plain + constitution audit. The headline's Petri constitution bar is therefore `no run` until that audit is pushed; the draft's 20.0 was the base + constitution set.
 
+**2026-10-15, one judge, and the Hub carries it.** The Sonnet-subagent labelling of control, DA and the
+mainline DA + tools cell was redone with the configured judge (Gemini 3.6 Flash, 1,252 calls, 0 unparsed,
+~$4.5) once credit came back, so every cell in the figures is read by one judge; the subagent files stay
+local as `results/{autorater,per_seed}_subagent.json`. Gemini vs Sonnet on the same prompts: control
+sabotage act 30 -> 29 (one withholding call read as no shortage), DA unchanged at 28, DA + tools 20 -> 19
+(refused-then-sabotaged 8 -> 5, plan-no-act 10 -> 11); the keyword reading of that cell on the Hub was
+23/30, which is why a reader of the Hub saw 0.77 while the figure said 0.67. All six cells were then
+pushed back to their Hub repos (`scratch/colosseum_hospital/push_rescored_results.py`, one commit each):
+`results/` is now the autorater reading, `results/keyword/` keeps the reading each repo published first,
+the card gains `autorater` + `rescore_provenance` rows, and the control repo gains the 15 seed-1-15
+episodes copied beside its harvested tree (the Hub already held them in the first tree). Figures
+rebuilt: Hospital act rate control 96.7, delib 100, DA 93.3, DA + tools 63.3 [45.5, 78.1] (Wilson, 30);
+`output/plots/probes_five_20261015.png`, `output/figures/2026-10-15_hospital_act_refusal_plan_stacked_all_arms.png`.
+Fig 4 (deceptive posts) still reads the reusedtools cell and the subagent-refilled post judge; not redone.
+
 **Next.** ~$6 of credit: rescore plain + DA (`rescore_autorater.py`, one worker), `fig4.py judge --refill`,
 then re-run both figure scripts — no GPU needed. The "constitution in system prompt" arm has no Hospital
 run on the Hub at all. Matthew's `matboz-hosp-datools15` pod is running a mainline da-tools-15 cell today;
