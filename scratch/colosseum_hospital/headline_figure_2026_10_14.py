@@ -113,10 +113,13 @@ def main() -> None:
             "delib": petri("2026-10-09-petri-qwen36-0-delib-sonnet-7"),
             "da": petri("2026-10-09-petri-qwen36-0-da-15"),
             "da_tools": petri("2026-10-13-petri-qwen36-0-da-tools-15"),
-            # A summary + scores pushed by hand on 2026-10-15 (no rollouts); it names the FULL
-            # constitution.md as the preamble and `Qwen/Qwen3.6-27B` as the target, so this bar is
-            # the least certain on the figure.
-            "constitution": petri("2026-10-15-petri-qwen36-0-plain-constitution"),
+            # No plain + constitution Petri run on the Hub (2026-10-15): the repo named
+            # `2026-10-15-petri-qwen36-0-plain-constitution` is a user-supplied base-model +
+            # constitution score set (push_partial_basecon.py, target Qwen/Qwen3.6-27B, 18/90), and
+            # `2026-10-15-petri-constitution-qwen36-0-plain` holds only a failed push log of a
+            # 67/90 partial. The `-base` Petri repo is a byte-identical copy of the plain run's
+            # scores, so the Petri panel has no base line either.
+            "constitution": None,
         },
         "hospital": {
             **{
