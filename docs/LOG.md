@@ -1,3 +1,9 @@
+## 2026-10-15: Control MASK publication and figure verified
+
+Closeout verified at 08:00 UTC: published `dougalldeepmind/2026-10-15-mask-gptoss120b-0-plain` at immutable revision `df0addf0f7e40ae7109a41f575f1b0d628e9fd58`. All 43 uploaded files were downloaded at that revision and matched SHA256. The evidence ZIP separately passed an internal audit of all 30,060 entries. Source snapshot is commit `d4cd717d`; raw original and retry results, evaluation CSVs, exclusion manifest, exact-request reconciliation and ledger are preserved. Paid retry owner PID 54196/birth1792050574.4065685 and offline scoring owner PID34524/birth1792050990.0499134 both exited with matching receipts; zero unresolved reservations.
+
+Local figure: `output/figures/2026-10-15-gptoss120b-mask-base-control-da15.{png,pdf,svg}`, with adjacent provenance JSON and results Markdown. Chart values are read from pinned HF results: Base87.4, Control69.72, DA15 95.9; it labels Control's994/1000 coverage after one retry and1000 rows for each historical arm. Monitoring can now be retired. No further paid calls or reruns are authorized or needed for this closeout.
+
 ## 2026-10-15: GPT-OSS plain-Control MASK closed after one authorized retry
 
 Hypothesis: fill the plain-Control arm of the historical GPT-OSS Base/DA15 MASK comparison under matched renderer, sampling and judge settings.
