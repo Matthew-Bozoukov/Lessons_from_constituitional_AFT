@@ -6,6 +6,7 @@ import argparse
 import ast
 import asyncio
 import contextlib
+import contextvars
 import ctypes
 import hashlib
 import importlib.util
@@ -26,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT))
 FROZEN = HERE / 'frozen'
+CURRENT_JOB=contextvars.ContextVar('mask_generation_job')
 
 
 def utc():
@@ -49,6 +51,11 @@ def save(path, value):
 
 class Hold(RuntimeError):
     pass
+
+
+def sample_payload(sample):
+    return {'sequences':[{'tokens':list(s.tokens),'stop_reason':s.stop_reason,'sequence_id':s.sequence_id} for s in sample.sequences],
+            'prompt_cache_hit_tokens':getattr(sample,'prompt_cache_hit_tokens',0)}
 
 
 class Ledger:
@@ -205,7 +212,10 @@ class Campaign:
                     r=json.loads(p.read_text(encoding='utf-8'))
                     done+=r.get('valid') is True; review+=r.get('valid') is not True
             counts[stage]=dict(total=len(jobs),completed=done,review=review,pending=len(jobs)-done-review)
-        save(self.out/'progress.json',dict(at=utc(),phase=self.phase,hold=self.halt,counts=counts,budget=self.ledger.summary()))
+        report=dict(at=utc(),phase=self.phase,hold=self.halt,counts=counts,budget=self.ledger.summary())
+        save(self.out/'progress.json',report)
+        with (self.out/'progress-history.jsonl').open('a',encoding='utf-8') as f:
+            f.write(json.dumps(report)+'\n')
 
     async def ticker(self):
         while True:
@@ -219,6 +229,7 @@ class Campaign:
         sem=asyncio.Semaphore(self.cfg['generation_concurrency'])
         async def one(j):
             async with sem:
+                if (self.out/'admission-hold.json').exists(): self.halt='External admission hold'
                 if self.halt or self.path('generation',j['id']).exists(): return
                 prompt=render_prompt(renderer,j['messages'])
                 tokens=prompt.to_ints()
@@ -234,10 +245,11 @@ class Campaign:
                         save(self.path('generation',j['id']),dict(valid=False,reason='Prior dispatched request has no validated result; retained for review'))
                         return
                     save(self.path('generation',j['id'],'request.json'),req)
+                    CURRENT_JOB.set(j['id'])
                     sample=await asyncio.wait_for(sampler.sample_async(prompt=prompt,num_samples=1,sampling_params=params),cfg['generation_timeout_s'])
                     seq=sample.sequences[0]; ids=seq.tokens
                     # Save original paid output BEFORE parsing or settling.
-                    save(self.path('generation',j['id'],'sample.json'),sample.model_dump())
+                    save(self.path('generation',j['id'],'sample.json'),sample_payload(sample))
                     charged=(len(tokens)*cfg['tinker_input_per_million']+len(ids)*cfg['tinker_output_per_million'])/1e6
                     self.ledger.finish('generation',j['id'],'received',charged)
                     parsed,term=renderer.parse_response(ids)
@@ -251,10 +263,13 @@ class Campaign:
                 except Hold as e:
                     self.halt=str(e)
                 except Exception as e:
+                    import traceback
                     status=getattr(e,'status_code',None)
-                    save(self.path('generation',j['id']),dict(valid=False,error_type=type(e).__name__,status=status,at=utc()))
+                    save(self.path('generation',j['id']),dict(valid=False,error_type=type(e).__name__,traceback=traceback.format_exc(),status=status,at=utc()))
                     self.ledger.finish('generation',j['id'],'review')
                     if status in (400,401,402,403,404,429): self.halt=f'Tinker {status}: review required'
+                    if isinstance(e,(AttributeError,TypeError,NameError,AssertionError)):
+                        self.halt=f'Systemic local implementation error: {type(e).__name__}'
         await asyncio.gather(*(one(j) for j in jobs))
         self.progress()
 
@@ -328,8 +343,21 @@ class Campaign:
         cfg=self.cfg; sem=asyncio.Semaphore(cfg['judge_concurrency'])
         headers={'Authorization':'Bearer '+os.environ['OPENROUTER_API_KEY']}
         async with httpx.AsyncClient(timeout=cfg['judge_timeout_s'],headers=headers) as client:
+            async def balance_watch():
+                while True:
+                    try:
+                        resp=await client.get('https://openrouter.ai/api/v1/credits')
+                        resp.raise_for_status(); data=resp.json()['data']
+                        remaining=data['total_credits']-data['total_usage']
+                        reserved=self.ledger.summary()['judge']['reserved_usd']
+                        save(self.out/'openrouter-live-balance.json',dict(remaining_usd=remaining,reserved_usd=reserved,at=utc()))
+                        if remaining-reserved<cfg['openrouter_reserve_usd']: self.halt='OpenRouter account reserve reached'
+                    except Exception as e:
+                        self.halt=f'OpenRouter balance check failed: {type(e).__name__}'
+                    await asyncio.sleep(30)
             async def one(j):
                 async with sem:
+                    if (self.out/'admission-hold.json').exists(): self.halt='External admission hold'
                     if self.halt or self.path('judge',j['id']).exists(): return
                     body=j['body']
                     # UTF-8 bytes upper-bound ordinary text tokens, with generous framing/schema headroom.
@@ -388,7 +416,12 @@ class Campaign:
                         except Exception as e:
                             save(self.path('judge',j['id']),dict(valid=False,error_type=type(e).__name__,at=utc()))
                             self.ledger.finish('judge',aid,'review');return
-            await asyncio.gather(*(one(j) for j in jobs))
+            watcher=asyncio.create_task(balance_watch())
+            try:
+                await asyncio.gather(*(one(j) for j in jobs))
+            finally:
+                watcher.cancel()
+                with contextlib.suppress(asyncio.CancelledError):await watcher
         self.progress()
 
 
@@ -426,12 +459,23 @@ async def run(cfg,out,ledger,mode):
         # No completion re-submission by either retry layer.
         service=tinker.ServiceClient(max_retries=0)
         sampler=service.create_sampling_client(base_model=cfg['base_model'],model_path=cfg['checkpoint'],retry_config=RetryConfig(enable_retry_logic=False,enable_stuck_detection=True,progress_timeout=cfg['generation_timeout_s']))
+        original_send=sampler._send_asample_request
+        async def recorded_send(request_id,num_samples,prompt,*args,**kwargs):
+            key=CURRENT_JOB.get()
+            save(c.path('generation',key,'provider-dispatch.json'),dict(sampler_id=sampler._sampling_session_id,
+                 request_id=f'{sampler._sampling_session_id}:{request_id}',prompt_sha256=digest(prompt.to_ints()),at=utc()))
+            return await original_send(request_id,num_samples,prompt,*args,**kwargs)
+        sampler._send_asample_request=recorded_send
+        save(out/f'sampler-{int(time.time())}.json',dict(id=sampler._sampling_session_id,checkpoint=cfg['checkpoint'],at=utc()))
         c.phase='generation-pilot'
         pilot=[j for j in c.gen_jobs if j['pilot']]
         await c.generate(pilot,renderer,sampler)
-        valid=all(c.path('generation',j['id']).exists() and json.loads(c.path('generation',j['id']).read_text(encoding='utf-8')).get('valid') for j in pilot)
-        save(out/'generation-pilot.json',dict(valid=valid,calls=len(pilot),rows=12,budget=ledger.summary(),at=utc()))
-        if c.halt or not valid: c.phase='review';c.progress();return
+        records=[json.loads(c.path('generation',j['id']).read_text(encoding='utf-8')) for j in pilot if c.path('generation',j['id']).exists()]
+        valid=len(records)==len(pilot) and all(r.get('valid') for r in records)
+        transport_ok=len(records)==len(pilot) and all(r.get('valid') or (r.get('stop_reason')=='length' and r.get('completion_tokens')==cfg['max_tokens'] and 'message' in r) for r in records)
+        save(out/'generation-pilot.json',dict(valid=valid,transport_ok=transport_ok,calls=len(pilot),rows=12,budget=ledger.summary(),at=utc()))
+        # A recorded model token-limit outcome is item-specific, not a transport fault.
+        if c.halt or not transport_ok: c.phase='review';c.progress();return
         if mode=='pilot': c.phase='pilot-complete';c.progress();return
         c.phase='generation'
         await c.generate(c.gen_jobs,renderer,sampler)
@@ -481,6 +525,8 @@ def main():
     from dotenv import load_dotenv
     load_dotenv(cfg['main_env'])
     with owner(out):
+        code_receipt={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in HERE.glob('*.py')}
+        save(out/f'code-{int(time.time())}.json',code_receipt)
         identity=freeze(cfg,out);ledger=Ledger(out/'ledger.sqlite',identity)
         try:
             preflight(cfg,out)

@@ -77,6 +77,8 @@ def test_judge_no_ambiguous_retry_and_accounting(tmp_path,monkeypatch,kind):
         def __init__(self,**kw):pass
         async def __aenter__(self):return self
         async def __aexit__(self,*args):pass
+        async def get(self,*args,**kwargs):
+            return httpx.Response(200,json={'data':{'total_credits':15,'total_usage':0}},request=httpx.Request('GET','https://example.invalid'))
         async def post(self,*args,**kw):
             attempts.append(kw)
             if kind=='timeout':raise TimeoutError()
@@ -92,6 +94,41 @@ def test_judge_no_ambiguous_retry_and_accounting(tmp_path,monkeypatch,kind):
     assert rec['valid']==(kind in ('valid','missing_cost'))
     if kind=='missing_cost':assert runner.halt and runner.ledger.summary()['judge']['reserved_usd']>0
     if kind=='timeout':assert runner.ledger.summary()['judge']['reserved_usd']>0
+
+
+def test_real_sdk_dataclass_serialization(tmp_path):
+    import tinker
+    from tinker.types.sample_response import SampleResponse
+    from tinker.types.sampled_sequence import SampledSequence
+    sample=SampleResponse(sequences=[SampledSequence(stop_reason='stop',sequence_id='test',_tokens_list=[1,2,3])])
+    c.save(tmp_path/'sample.json',c.sample_payload(sample))
+    assert json.loads((tmp_path/'sample.json').read_text())['sequences'][0]['tokens']==[1,2,3]
+
+
+@pytest.mark.parametrize('parse_error',[False,True])
+def test_generation_real_sdk_shape_saved_before_parse_and_not_repeated(tmp_path,monkeypatch,parse_error):
+    from tinker.types.sample_response import SampleResponse
+    from tinker.types.sampled_sequence import SampledSequence
+    from types import SimpleNamespace
+    import frozen.harmony as harmony
+    monkeypatch.setattr(harmony,'render_prompt',lambda *args:SimpleNamespace(to_ints=lambda:[1,2]))
+    sample=SampleResponse(sequences=[SampledSequence(stop_reason='stop',sequence_id='s:0',_tokens_list=[200002])])
+    attempts=[]
+    class Sampler:
+        async def sample_async(self,**kwargs):attempts.append(kwargs);return sample
+    class Renderer:
+        def get_stop_sequences(self):return [200002]
+        def parse_response(self,ids):
+            if parse_error:raise ValueError('deliberate parser failure')
+            return {'content':'yes'},SimpleNamespace(is_stop_sequence=True)
+        def to_openai_message(self,parsed):return {'role':'assistant','content':'yes'}
+    cfg=c.load_config();runner=c.Campaign(cfg,tmp_path,c.Ledger(tmp_path/'ledger.sqlite',{}))
+    jobs=[dict(id='one',messages=[{'role':'user','content':'hello'}])]
+    asyncio.run(runner.generate(jobs,Renderer(),Sampler()))
+    asyncio.run(runner.generate(jobs,Renderer(),Sampler()))
+    assert len(attempts)==1
+    assert json.loads(runner.path('generation','one','sample.json').read_text())['sequences'][0]['tokens']==[200002]
+    assert json.loads(runner.path('generation','one').read_text())['valid']==(not parse_error)
 
 
 
