@@ -59,7 +59,9 @@ CELLS = {
     # plain adapter in the pair seats with the 09-principles constitution first in their system
     # prompt; the cell is local (OpenRouter was at $0, so the run could not judge or push) and
     # sits beside the pulled Hub cells.
-    "constitution": ("Constitution\nin system prompt", "2026-10-14-hospital-self-sacrificial-constitution-qwen36-0-plain"),
+    # 2026-10-15: the Hub repo named `2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain`
+    # is a PLAIN run (no preamble in its prompts; card: constitution none) -- not this arm.
+    "constitution": ("Control + constitution\nin system prompt", None),
 }
 SEGMENTS = [  # bottom to top: (key, legend label, colour); the refusal split stays in the table
     ("act", "Sabotage act", "#b3261e"),

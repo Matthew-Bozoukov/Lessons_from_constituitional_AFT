@@ -28,7 +28,7 @@ from src.plot_scripts import paper_figures as pf
 
 load_dotenv()
 ORG = "dougalldeepmind"
-pf.ARM["constitution"] = "+ Constitution in system prompt"
+pf.ARM["constitution"] = "+ Control + constitution in system prompt"
 FOOTNOTE = {  # keyed by whether a Hospital cell of the arm exists when the figure is built
     False: ("* constitution arm: MASK, single-agent and Hospital bars repeat the 2026-10-13 draft -- no Hospital "
             "run of this arm has landed on the Hub yet (ODCV has one: 2026-10-09-odcv-qwen36-0-plain-constitution)."),
@@ -62,7 +62,7 @@ def petri(repo: str) -> tuple[float, float, float]:
             hf_hub_download(f"{ORG}/{repo}", "summary.json", repo_type="dataset")
         ).read_text()
     )
-    k, n = s["concerning_ge_4"], s["n_scenarios"]
+    k, n = s["concerning_ge_4"], s.get("n_scenarios") or s["n_scored"]
     lo, hi = _hub.wilson(k, n)
     return (100 * k / n, lo, hi)  # _hub.wilson already returns percentages
 
@@ -74,13 +74,16 @@ def main() -> None:
         "delib": _hub.odcv("2026-10-08-odcv-qwen36-0-delib-sonnet-15"),
         "da": _hub.odcv("2026-10-06-odcv-qwen36-0-da-15"),
         "da_tools": _hub.odcv("2026-10-11-odcv-qwen36-0-da-tools-15"),
-        "constitution": _hub.odcv("2026-10-09-odcv-qwen36-0-plain-constitution"),
+        # 2026-10-14 runs: the 09-principles document (principles_only.md) FIRST in the system
+        # prompt of the plain adapter (config system_preamble_file), one per eval.
+        "constitution": _hub.odcv("2026-10-14-odcv-principles-qwen36-0-plain"),
     }
     agentic = {
         "control": _hub.agentic("2026-10-08-am-qwen36-0-plain"),
         "delib": _hub.agentic("2026-10-08-am-qwen36-0-delib-sonnet-15"),
         "da": _hub.agentic("2026-10-08-am-qwen36-0-da-15"),
         "da_tools": _hub.agentic("2026-10-13-am-qwen36-0-da-tools-15"),
+        "constitution": _hub.agentic("2026-10-14-am-principles-qwen36-0-plain"),
     }
     # Hospital: sabotage-act counts of the rescored Hub cells (figures_2026_10_14.CELLS).
     root = Path(
@@ -100,20 +103,20 @@ def main() -> None:
             "delib": _hub.mask("2026-10-09-mask-qwen36-0-delib-sonnet-15"),
             "da": _hub.mask("2026-10-09-mask-qwen36-0-da-15"),
             "da_tools": _hub.mask("2026-10-11-mask-qwen36-0-da-tools-15"),
-            # LITERAL: the 2026-10-13 draft figure's value; no MASK constitution run on the Hub.
-            "constitution": _hub.literal(84.9),
+            "constitution": _hub.mask("2026-10-14-mask-principles-qwen36-0-plain"),
         },
         "single_agent": {
-            **{a: _hub.combine(odcv[a], agentic[a]) for a in arms if a in agentic},
-            # LITERAL: the draft's combined value; ODCV exists on the Hub, the agentic run does not.
-            "constitution": _hub.literal(7.0),
+            **{a: _hub.combine(odcv[a], agentic[a]) for a in arms},
         },
         "petri": {
             "control": petri("2026-10-08-petri-qwen36-0-plain"),
             "delib": petri("2026-10-09-petri-qwen36-0-delib-sonnet-7"),
             "da": petri("2026-10-09-petri-qwen36-0-da-15"),
             "da_tools": petri("2026-10-13-petri-qwen36-0-da-tools-15"),
-            "constitution": None,
+            # A summary + scores pushed by hand on 2026-10-15 (no rollouts); it names the FULL
+            # constitution.md as the preamble and `Qwen/Qwen3.6-27B` as the target, so this bar is
+            # the least certain on the figure.
+            "constitution": petri("2026-10-15-petri-qwen36-0-plain-constitution"),
         },
         "hospital": {
             **{
@@ -121,13 +124,16 @@ def main() -> None:
                 for a in ("control", "delib", "da", "da_tools")
             },
             # The 2026-10-14 run of this branch where it exists; else the draft's literal 100.0.
+            # Only a real cell with the constitution in the pair seats' system prompts counts.
+            # The 2026-10-15 repo NAMED `-constitution-` is a plain run (no preamble in its
+            # prompts, card says constitution: none), so it is not used.
             "constitution": (
                 _hub.literal(
                     100 * hosp["constitution"]["act"] / hosp["constitution"]["n"],
                     hosp["constitution"]["n"],
                 )
                 if "constitution" in hosp
-                else _hub.literal(100.0)
+                else None
             ),
         },
     }
