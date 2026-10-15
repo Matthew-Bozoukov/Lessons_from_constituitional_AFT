@@ -59,12 +59,16 @@ This is an available-row score after a targeted retry, not a complete first-pass
 estimate. `publish_closeout.py` audits counts/costs/metrics, publishes raw evidence
 and the ledger to HF, reads back every uploaded file at its immutable revision,
 and plots the historical Base and DA15 scores alongside Control with coverage.
+The Control protocol specifies 28,000 context tokens; the historical Base/DA15
+run metadata specifies 20,480. Both cap responses at 16,384. Disclose this context
+difference as well as retry selection and incomplete coverage in comparisons.
 
 Commands (using the pinned runtime above):
-`python closeout.py`, then `python score_local.py` and
+`python closeout.py` (includes offline request-hash scoring), then
 `python publish_closeout.py references|audit|publish|plot`
-from this script directory. The 16 offline tests include retry isolation, shared
-budget ceilings and restart no-repeat behavior. No Base or DA15 calls are made.
+from this script directory. The 18 offline tests include retry isolation, shared
+budget ceilings and refusal to restart a scored/published run. No Base or DA15 calls are made.
+`score_local.py` remains the offline recovery entry point used in the original closeout.
 
 Recovering first-row generations changed dataframe column insertion order and
 therefore ordinal judge IDs for 255 saved requests. `score_local.py` matches the

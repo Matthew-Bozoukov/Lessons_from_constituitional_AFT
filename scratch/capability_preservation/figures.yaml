@@ -1,0 +1,47 @@
+# ABOUTME: Published October plain-control / DA15 capability results and figure settings.
+# ABOUTME: Run: uv run python scratch/capability_preservation/plot.py
+output: output/figures/capability_preservation
+date: '2026-10-14'
+colours: {Base: '#27364B', Control: '#9298A1', DA15: '#8752B2'}
+arena_sources:
+  qwen_base:
+    repo: dougalldeepmind/2026-10-13-ah-vs-qwen36
+    revision: 99f48c89e31c41626d9311a4f4a95fc965888302
+  qwen_control:
+    repo: dougalldeepmind/2026-10-12-ah-vs-qwen36-0-plain
+    revision: 4f19416df56ca922b94fc3403dfe7dbea79ce698
+  gptoss:
+    repo: dougalldeepmind/2026-10-14-ah-luna-low-gptoss120b-three-pairs
+    revision: 0ca407d879ac54516b1cc0c0a66a6b7dc79f0c6b
+models:
+  qwen36:
+    title: Qwen3.6-27B
+    checkpoints: 'Base Qwen3.6-27B; October 5 plain Control and DA15 (seed 0).'
+    mmlu: [525, 523, 521]
+    swe: [179, 178, 182]
+    mmlu_repos:
+      - [2026-10-14-mmlu-qwen36, 6f41ca3384b14c101d81f996065529021dc78eac]
+      - [2026-10-14-mmlu-qwen36-0-plain, a4556e5a8b2a24de05892133165fbef75035a88e]
+      - [2026-10-14-mmlu-qwen36-0-da-15, da022054c494987bc1c75515851c49b55357eb12]
+    swe_repos:
+      - [2026-10-07-swebench-qwen36-lite-v5, 9e7447f072aaacfbb4919a8c6f62ac881c04004a]
+      - [2026-10-07-swebench-qwen36-0-plain-lite-v5, 1148e0db51d4bbb7ac25d22be593a6bb77e63581]
+      - [2026-10-07-swebench-qwen36-0-da-15-lite-v5, bde7963c515c5f2e7be59fe50d6883cf48650e31]
+    arena_notes:
+      - '500 hard prompts per pair, judged in both answer orders.'
+      - 'Judge: GPT-4.1; one approved Gemini fallback in DA15 vs Base.'
+  gptoss120b:
+    title: GPT-OSS-120B
+    checkpoints: 'Base GPT-OSS-120B; October 6 plain Control and DA15 (seed 0).'
+    mmlu: [505, 450, 466]
+    swe: [67, 58, 87]
+    mmlu_repos:
+      - [2026-10-14-mmlu-gptoss120b-base, 345a70aa66775007425328a9b7c31c09f13ef390]
+      - [2026-10-14-mmlu-gptoss120b-0-plain, 862acf3443fb49172a8202637c6381421641fc65]
+      - [2026-10-14-mmlu-gptoss120b-0-da-15, 36ea3662506b356c4d27bc360ffd2525106f426d]
+    swe_repos:
+      - [2026-10-13-gptoss120b-base-control-da15-swe-lite300-context65000, 4ccd7690774909418179133c1204a0a058f86cc8]
+    arena_notes:
+      - '499 hard prompts per pair, both orders; one oversized prompt excluded.'
+      - 'Judge: Codex GPT-6 Luna, low effort. Not official leaderboard-equivalent.'
+      - 'One empty-recipient wait-call exception retained with its existing verdict.'

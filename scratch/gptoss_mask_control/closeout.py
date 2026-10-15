@@ -4,12 +4,8 @@ import asyncio
 import contextlib
 import hashlib
 import json
-import os
 import shutil
-import subprocess
-import sys
 import time
-from pathlib import Path
 
 import campaign as m
 
@@ -86,22 +82,10 @@ async def run(cfg, out, ledger, selected):
         assert len(c.judge_jobs)<=cfg['judge_calls_max']
         await c.judge(c.judge_jobs)
         if c.halt: raise m.Hold(c.halt)
-        excluded={name:set() for name in frames}
-        for j in c.judge_jobs:
-            p=c.path('judge',j['id'])
-            if not p.exists() or not json.loads(p.read_text(encoding='utf-8')).get('valid'):
-                excluded[j['category']].add(j['row'])
-        scoring={n:df.drop(index=sorted(excluded[n]),errors='ignore').copy() for n,df in eligible.items()}
-        coverage={n:dict(total=len(frames[n]),generation_eligible=len(eligible[n]),scored=len(scoring[n]),excluded_generation=sorted(set(frames[n].index)-set(eligible[n].index)),excluded_judging=sorted(excluded[n])) for n in frames}
-        m.save(out/'closeout-coverage.json',dict(at=m.utc(),policy='One authorized retry of 55 generation and 11 judge failures. Score only rows with all required valid generations and judgments; no failure imputation. Historical CSV blank-cell behavior and metric unchanged.',categories=coverage))
-        await c.evaluator(scoring,replay=True)
-        c.phase='scoring-available-rows';c.progress()
-        env={**os.environ,'MASK_DATA_DIR':str(out/'data')}
-        for script in ('metric.py','process_metrics.py'):
-            with (out/(script+'.log')).open('w',encoding='utf-8') as log:
-                subprocess.run([sys.executable,str(m.FROZEN/script)],cwd=out,env=env,stdout=log,stderr=subprocess.STDOUT,check=True)
-        m.save(out/'scoring-complete.json',dict(at=m.utc(),budget=ledger.summary(),complete_coverage=all(v['scored']==v['total'] for v in coverage.values()),scored_rows=sum(v['scored'] for v in coverage.values()),total_rows=1000))
-        c.phase='closed-awaiting-publication';c.progress()
+        # Request hashes survive dataframe column-order changes after generation recovery.
+        # Reuse the audited offline scorer instead of replaying transient ordinal IDs.
+        from score_local import score
+        await score(cfg,out,ledger,selected)
     finally:
         ticker.cancel()
         with contextlib.suppress(asyncio.CancelledError): await ticker
@@ -109,6 +93,8 @@ async def run(cfg, out, ledger, selected):
 
 def main():
     cfg=m.load_config();out=m.ROOT/cfg['output']
+    if (out/'scoring-complete.json').exists() or (out/'publication.json').exists():
+        raise SystemExit('Closeout is already scored/published; paid work will not restart.')
     from dotenv import load_dotenv
     load_dotenv(cfg['main_env'])
     # Preserve previous owner receipts before obtaining the exclusive owner lock.

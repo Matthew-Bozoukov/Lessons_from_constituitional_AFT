@@ -1,3 +1,50 @@
+## 2026-10-15: Paper appendix handoff and final capability/MASK code integration
+
+Reviewed the completed October Qwen and GPT-OSS Base/Control/DA15 artifacts and prepared
+`docs/appendix_capability_replication_2026-10-15.md` plus an immutable HF link catalogue.
+The handoff contains six main figures and one optional five-arm MASK figure in PNG/PDF/SVG,
+recommended captions, model/data provenance, and per-run context/output/step/judge limits.
+All figures use pinned published results; capability bar counts now validate against HF
+receipts, and the older misalignment plot now includes the published Control MASK score.
+No new inference or judging. The 445-file local ZIP was SHA256 readback-verified.
+
+Scientific boundaries: Qwen MMLU/SWE are similar across arms but Arena preference declines
+for both fine-tunes; GPT-OSS capability results are mixed. Control MMLU fails parsing health.
+Control MASK is 994/1000 after one selected retry, with 28000 context versus historical
+20480; it is not a matched complete first pass. GPT-OSS DA15's export lacks training_meta;
+its sampler/rank are bound, while remaining training settings are launch-config evidence.
+
+Cleanup: closeout.py now invokes the audited request-hash scorer directly, removes the
+superseded ordinal replay, and refuses paid restart after scoring/publication. All 18
+MASK offline tests pass, including closed-run refusal, exact-request matching and budgets.
+All 41 naming tests and the staged whitespace check also pass.
+Recent MMLU/Arena/SWE branches were already in main; the outstanding MASK commits and
+capability scripts are the integration scope. Older exploratory/parallel branches remain
+preserved rather than restoring superseded code. Generated figure/evidence files stay local.
+
+## 2026-10-14: Offline Qwen Arena loss diagnosis against MMLU/SWE preservation
+
+Question: is the shared plain/DA15 loss to Base just verbosity or truncation? Audited
+the pinned 2,250 generations and existing base-relative judgments using
+`scratch/capability_preservation/audit_qwen.py`; no inference or judge calls.
+Source comparisons: `2026-10-13-ah-vs-qwen36@99f48c89e31c41626d9311a4f4a95fc965888302`.
+All prompt identities and actual output allowances matched. Hard raw preference on
+both-nonempty, normally stopped answers remains Control 16.75% (397 prompts),
+DA15 16.52% (392); restricting visible length ratios to 0.8–1.25 gives 17.06% (189)
+and 13.69% (210). These selected subsets are diagnostics, not revised scores.
+All 36/71/73 hard empty finals (Base/Control/DA15) ended at the length limit.
+Median paired nonempty SFT/Base answer length is 0.88 for both arms. Saved Gemini
+panels also favor Base (Control 14.03%, n=98; DA15 20.50%, n=100).
+Reviewed loss examples include equivalent correct solutions losing for extra
+context/presentation, and a DA15 clustering answer with provably contradictory
+assignment constraints. Most completed-answer losses were slight preferences;
+slight and decisive losses each count zero. Preference is not percent capability
+retained. Findings and sample-selection limits are in
+`output/arena_qwen_diagnosis_20261014/diagnosis_results.md`, with source hashes.
+Next: a separate correctness-only assessment could distinguish preference from
+task success; larger-budget inference would test truncation causally. Neither run
+was started. Original benchmark results and figures are unchanged by this audit.
+
 ## 2026-10-15: Control MASK publication and figure verified
 
 Closeout verified at 08:00 UTC: published `dougalldeepmind/2026-10-15-mask-gptoss120b-0-plain` at immutable revision `df0addf0f7e40ae7109a41f575f1b0d628e9fd58`. All 43 uploaded files were downloaded at that revision and matched SHA256. The evidence ZIP separately passed an internal audit of all 30,060 entries. Source snapshot is commit `d4cd717d`; raw original and retry results, evaluation CSVs, exclusion manifest, exact-request reconciliation and ledger are preserved. Paid retry owner PID 54196/birth1792050574.4065685 and offline scoring owner PID34524/birth1792050990.0499134 both exited with matching receipts; zero unresolved reservations.

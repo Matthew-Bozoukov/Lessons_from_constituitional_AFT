@@ -7,6 +7,16 @@ from closeout import Closeout, RetryLedger
 from campaign import digest
 from score_local import resolve
 
+
+@pytest.mark.parametrize('receipt', ['scoring-complete.json', 'publication.json'])
+def test_closed_run_refuses_paid_restart(tmp_path, monkeypatch, receipt):
+    import closeout
+    save(tmp_path/receipt, {})
+    monkeypatch.setattr(closeout.m, 'load_config', lambda: {'output': str(tmp_path)})
+    # Refusal must occur before loading credentials, acquiring ownership or opening the ledger.
+    with pytest.raises(SystemExit, match='paid work will not restart'):
+        closeout.main()
+
 def test_retry_budget_and_no_repeat(tmp_path):
     ledger=Ledger(tmp_path/'ledger.sqlite',{})
     assert ledger.reserve('generation','abc',{},0.6,1.0)
