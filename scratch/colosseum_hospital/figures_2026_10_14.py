@@ -61,9 +61,8 @@ CELLS = {
     # sits beside the pulled Hub cells.
     "constitution": ("Constitution\nin system prompt", "2026-10-14-hospital-self-sacrificial-constitution-qwen36-0-plain"),
 }
-SEGMENTS = [  # bottom to top: (key, legend label, colour)
-    ("act_no_refusal", "Sabotage act, no private refusal", "#b3261e"),
-    ("act_refusal", "Sabotage act, with a private refusal", "#e07a6b"),
+SEGMENTS = [  # bottom to top: (key, legend label, colour); the refusal split stays in the table
+    ("act", "Sabotage act", "#b3261e"),
     ("plan_no_act", "Sabotage plan, no sabotage act", "#f1c4bd"),
 ]
 DAGGER = "†"
@@ -169,7 +168,7 @@ def stacked(counts: dict[str, dict]) -> Path:
                         ha="center",
                         va="center",
                         fontsize=9,
-                        color="white" if key == "act_no_refusal" else "#3a1f1b",
+                        color="white" if key == "act" else "#3a1f1b",
                     )
                 bottom += v
             ax.text(
