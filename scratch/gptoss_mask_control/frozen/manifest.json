@@ -1,0 +1,37 @@
+{
+  "harmony.py": {
+    "source": "src/infra/endpoints/harmony.py",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "3cfc122ac48d93af30c0b2e6ad6cea3f56659dc4f2224bf6c59022d27dfbd31a"
+  },
+  "historical_server.py": {
+    "source": "src/infra/endpoints/tinker_server.py",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "296b3971c6a92304ad556030833b5b534a54a72df3ef2a315d8ec6706c1c43f0"
+  },
+  "evaluate.py": {
+    "source": "src/eval/misalignment/mask/third_party/mask/mask/evaluate.py",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "6d9ba00c6b56370ed4b30d4cae3bdbbd77a636bf2cb7c15b5044534a498bd751"
+  },
+  "evaluation_prompts.py": {
+    "source": "src/eval/misalignment/mask/third_party/mask/mask/prompts/evaluation_prompts.py",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "b0d6153aa9f4d3e994d61c55398cefc01d9f8f2aab87a527b202cf8ae592a813"
+  },
+  "metric.py": {
+    "source": "src/eval/misalignment/mask/third_party/mask/mask/metric.py",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "e68d20557df4c0db177f7576dcebb3b2fcefb5a8a593f43ef4572ad5a78b7f45"
+  },
+  "process_metrics.py": {
+    "source": "src/eval/misalignment/mask/third_party/mask/mask/process_metrics.py",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "b19fa9692cddfbd22d44fd6bc61e174294b3afae8d4ac19550b71605f1b074ec"
+  },
+  "runtime.toml": {
+    "source": "src/infra/endpoints/tinker_runtime/pyproject.toml",
+    "revision": "654bad9ff1f9ca0f91b5b1285bdd320dc0718aae",
+    "sha256": "41cb17d92d65bcea67370d5e1a77dc17dc93c4ebec47bcbd2e305272f1db8727"
+  }
+}

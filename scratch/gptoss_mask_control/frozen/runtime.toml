@@ -1,0 +1,36 @@
+# ABOUTME: Isolated Tinker runtime; cookbook Transformers constraints conflict with the GPU stack.
+# ABOUTME: Run from the repository root: uv run --project src/infra/endpoints/tinker_runtime python <script>.
+[project]
+name = "lasr-tinker-runtime"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "tinker==0.30.4",
+  "tinker-cookbook==0.5.7",
+  "transformers==5.5.4",
+  "fastapi>=0.115",
+  "uvicorn>=0.34",
+  "python-dotenv>=1.0",
+  "omegaconf>=2.3",
+  "requests>=2.31",
+  "tenacity>=9",
+  "openai>=1.0",
+  "fire>=0.7",
+  "matplotlib>=3.9",
+  "pytest>=8",
+  "scipy>=1.14",
+]
+
+[tool.uv]
+package = false
+# Inkling-only native renderer has no Windows wheel. GPT-OSS uses the independent
+# pure-Python GptOssRenderer and HF tokenizer; tested without this lazy dependency.
+override-dependencies = ["tml-renderers==0.1.0; sys_platform != 'win32'"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

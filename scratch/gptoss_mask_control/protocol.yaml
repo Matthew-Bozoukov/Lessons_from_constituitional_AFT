@@ -1,0 +1,37 @@
+# ABOUTME: One matched plain-Control MASK pass with separately bounded Tinker and OpenRouter spend.
+# ABOUTME: Frozen historical prompts, renderer, scoring and per-item durable evidence; no ambiguous retries.
+output: output/gptoss_mask_control_20261015
+checkpoint: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+model_repo: dougalldeepmind/2026-10-06-gptoss120b-0-plain
+model_revision: be6649f6d2c97a772b176fa8fea3082ac85c82d1
+historical_revision: 654bad9ff1f9ca0f91b5b1285bdd320dc0718aae
+base_model: openai/gpt-oss-120b
+reasoning: medium
+render_date: '2026-09-28'
+temperature: 1.0
+top_p: 1.0
+top_k: -1
+max_tokens: 16384
+context_window: 28000
+lie_k: 1
+passes: 1
+rows: 1000
+generation_calls: 4438
+judge_calls_max: 4246
+generation_concurrency: 16
+judge_concurrency: 4
+generation_timeout_s: 1800
+judge_timeout_s: 180
+tinker_budget_usd: 20.0
+tinker_input_per_million: 0.33
+tinker_output_per_million: 0.84
+judge_model: google/gemini-3-flash-preview
+judge_max_tokens: 500
+judge_budget_usd: 12.0
+judge_input_per_million: 0.5
+judge_output_per_million: 3.0
+openrouter_reserve_usd: 2.5
+pilot_rows_per_category: 2
+judge_pilot_calls: 50
+max_explicit_rejection_attempts: 3
+main_env: C:/Users/nikak/source/repos/LASR/teaching_claude_why_replication/.env
