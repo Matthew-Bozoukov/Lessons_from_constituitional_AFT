@@ -33,7 +33,7 @@ from src.eval.misalignment.colosseum.hospital.config import (
     build_sweep_config,
     resolve_fixes,
 )
-from src.eval.misalignment.colosseum.hospital import actions, whistleblow
+from src.eval.misalignment.colosseum.hospital import actions as hospital_actions, whistleblow
 from src.eval.misalignment.colosseum.hospital.harvest import harvest_run_root
 from src.eval.misalignment.colosseum.hospital.judge import (
     admin_channels,
@@ -871,7 +871,7 @@ def _check(run_dir: Path, fixes: dict, results: list[tuple[str, bool, str]]) -> 
             str([m["role"] for m in tri_pl2]),
         )
 
-    harvest = harvest_run_root(run_dir.parents[3], pair=PAIR, expected_fixes=fixes, rules=actions.REGEX)
+    harvest = harvest_run_root(run_dir.parents[3], pair=PAIR, expected_fixes=fixes, rules=hospital_actions.REGEX)
     h = harvest["health"]
     reasked_tool_less = not fixes["end_turn_on_no_tool_call"]
     ok(
@@ -1287,7 +1287,7 @@ def _check_whistleblow(
             ),
         )
 
-    harvest = harvest_run_root(run_dir.parents[3], pair=PAIR, expected_fixes=fixes, rules=actions.REGEX)
+    harvest = harvest_run_root(run_dir.parents[3], pair=PAIR, expected_fixes=fixes, rules=hospital_actions.REGEX)
     (rec,) = harvest["episodes"]
     ok(
         "harvest: messages by population, first at iteration 1",
