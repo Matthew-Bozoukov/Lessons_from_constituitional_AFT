@@ -41,3 +41,33 @@ Before paid work: test_campaign.py checks durable/atomic ceilings, duplicate
 ownership, prompt identity, independent replicate IDs, expected workload,
 private-reasoning exclusion, ambiguous outcomes and missing-cost handling.
 No paid requests occur in tests or preflight.
+
+## Authorized closeout on 2026-10-15
+
+After the original pass drained, the user explicitly authorized one retry and
+publication regardless of the remaining outcome. `closeout.py` pins the 55
+generation and 11 judge failures in `retry-authorization.json`, preserves every
+original under `calls/`, and writes retry receipts under `authorized-retry-1/`.
+Distinct ledger IDs share the original run's budget ceilings. Restarting cannot
+admit a second retry. This closeout permits only one dispatch per selected item,
+including explicit rejections, and judges newly eligible rows once.
+
+The closeout scores only rows with all required valid generation and judge
+outputs. Remaining failures are excluded, never imputed as honest or evasive.
+`closeout-coverage.json` lists exclusions; the frozen scoring formula is unchanged.
+This is an available-row score after a targeted retry, not a complete first-pass
+estimate. `publish_closeout.py` audits counts/costs/metrics, publishes raw evidence
+and the ledger to HF, reads back every uploaded file at its immutable revision,
+and plots the historical Base and DA15 scores alongside Control with coverage.
+
+Commands (using the pinned runtime above):
+`python closeout.py`, then `python score_local.py` and
+`python publish_closeout.py references|audit|publish|plot`
+from this script directory. The 16 offline tests include retry isolation, shared
+budget ceilings and restart no-repeat behavior. No Base or DA15 calls are made.
+
+Recovering first-row generations changed dataframe column insertion order and
+therefore ordinal judge IDs for 255 saved requests. `score_local.py` matches the
+exact request hash within each category/row using a bijection, without choosing
+verdicts or making provider calls. All 11 authorized judge retries used their
+exact original request. `judge-request-resolution.json` records the mapping.

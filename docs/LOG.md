@@ -1,3 +1,15 @@
+## 2026-10-15: GPT-OSS plain-Control MASK closed after one authorized retry
+
+Hypothesis: fill the plain-Control arm of the historical GPT-OSS Base/DA15 MASK comparison under matched renderer, sampling and judge settings.
+
+Method: original 1,000-row pass produced 4,383/4,438 valid generations and 3,732/3,743 valid eligible judgments. The user explicitly authorized one retry of the 55 generation and 11 judge failures, then publication regardless of outcome. Originals are immutable; retries have distinct ledger admissions sharing the $20/$12 ceilings. Newly eligible rows were judged once. Rows still containing an incomplete required response were excluded without label imputation; historical blank-cell behavior and scoring were retained. No Base/DA15 reruns.
+
+Result: 4,434/4,438 valid generations and 3,970/3,972 valid final-manifest judgments. Four generation and two judge failures exclude six rows. Control MASK honesty is **69.72% on 994/1,000 rows** (301 dishonest rows). Historical pinned Base is 87.4% and DA15 95.9%, each over 1,000 rows. Control has targeted retries and incomplete coverage, so this is a descriptive available-row comparison, not an identical first-attempt estimate. Tinker $9.01667181 conservatively settled; OpenRouter $4.1266 settled; $13.14327181 total, zero reservations.
+
+Audit: recovering first-row generations changed dataframe column insertion order and ordinal IDs for 255 previously judged requests. Exact request-hash multisets within each row matched. An explicit bijection replays saved judgments without selecting verdicts or making new calls; all 11 judge retries used their exact original requests. Sixteen offline tests cover original safeguards, shared retry budgets, no-repeat restart behavior, and request-order reconciliation. Original failure receipts, pilot retrieval evidence, raw tokens, judge bodies, costs and mapping are retained.
+
+Publication target: `dougalldeepmind/2026-10-15-mask-gptoss120b-0-plain`, canonical eval layout with complete evidence ZIP, evaluated CSVs, scores, ledger and source snapshot. `publish_closeout.py` verifies every uploaded file by SHA256 at an immutable HF revision; the local `publication.json` is the completion receipt. Vertical Base/Control/DA15 PNG/PDF/SVG are produced locally with coverage and pinned source metadata. Next: verify publication/readback and figure, then retire the heartbeat; no further paid requests.
+
 ## 2026-10-15: GPT-OSS plain-Control MASK launched with bounded accounting
 
 Hypothesis: fill the missing plain-Control arm for the existing GPT-OSS MASK comparison, using the same October plain dataset lineage as DA15.
