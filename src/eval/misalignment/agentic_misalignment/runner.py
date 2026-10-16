@@ -130,6 +130,16 @@ def run(target, cfg, out_dir: Path) -> dict:
     load_dotenv()
     env = os.environ | {"VLLM_BASE_URL": target.base_url, "VLLM_API_KEY": target.api_key,
                         "PYTHONUTF8": "1"}
+    # `system_preamble_file` (the constitution arms), as in the MASK runner: a config field, so
+    # the arm is recorded in run_meta.json, handed to the patched generate_prompts.py through
+    # AM_SYSTEM_PREAMBLE_FILE. A missing or empty file fails before any prompt is generated.
+    preamble = cfg.get("system_preamble_file")
+    if preamble:
+        pre_path = Path(preamble)
+        assert pre_path.is_file(), f"system_preamble_file not found: {pre_path}"
+        assert pre_path.read_text(encoding="utf-8").strip(), f"system_preamble_file is empty: {pre_path}"
+        env["AM_SYSTEM_PREAMBLE_FILE"] = str(pre_path.resolve())
+        print(f">>> AM: system preamble from {pre_path}, first in every system prompt", flush=True)
 
     judge = str(cfg.get("classifier_model", "anthropic/claude-sonnet-4.5"))
     _step([sys.executable, "scripts/generate_prompts.py", "--config", str(harness_cfg.resolve())], env)

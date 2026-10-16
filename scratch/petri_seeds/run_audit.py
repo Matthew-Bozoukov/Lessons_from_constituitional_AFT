@@ -40,7 +40,8 @@ SEEDS = REPO / "src/eval/audits/petri/petri-subscription/seeds-constitution"
 def main() -> None:
     """Serve the target, run the audit, leave the pod up."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--server", required=True, help="root@<ip>:<port>")
+    ap.add_argument("--server", default=None,
+                    help="root@<ip>:<port>; omit to serve on this machine (a GPU box running the audit itself)")
     ap.add_argument("--target", required=True)
     ap.add_argument("--auditor", default="openrouter/anthropic/claude-sonnet-5")
     ap.add_argument("--judge", default="openrouter/google/gemini-3-flash-preview")
@@ -78,6 +79,15 @@ def main() -> None:
         # finished run beside it, so the run directory must be the original's, not a new one.
         retry_log = Path(args.retry).resolve()
         assert retry_log.is_file(), f"--retry: no such log {retry_log}"
+        # eval-retry reuses the target base_url the log recorded and ignores VLLM_BASE_URL, so
+        # a tunnel on any other port leaves every target call failing while the auditor and
+        # judge carry on and score the silence as concerning=1 (2026-10-09: 50 da-15 seeds).
+        from urllib.parse import urlparse
+        from inspect_ai.log import read_eval_log
+        recorded = read_eval_log(str(retry_log), header_only=True).eval.model_roles["target"].base_url
+        assert urlparse(recorded).port == args.port, (
+            f"--retry: the log's target is {recorded}; serve on --port {urlparse(recorded).port} "
+            f"(and stop any stale driver still pointed at it, or it reconnects too)")
         out = retry_log.parent.parent
         print(f">>> resuming {retry_log.name} in {out}", flush=True)
     else:
@@ -86,8 +96,10 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     spec = resolve_target(args.target)
-    executor = SshExec(args.server, port=args.port, bind="127.0.0.1")
-    executor.check_ready()
+    executor = None  # VllmServer serves on this machine when no --server is given
+    if args.server:
+        executor = SshExec(args.server, port=args.port, bind="127.0.0.1")
+        executor.check_ready()
     server = VllmServer(
         work_dir=out / "server", port=args.port, executor=executor,
         # Petri's target turns carry the whole scenario history plus synthetic tool

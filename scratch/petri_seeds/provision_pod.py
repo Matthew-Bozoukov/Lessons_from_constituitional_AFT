@@ -16,7 +16,7 @@ from src.infra.runpod import _ssh_endpoint, up  # noqa: E402
 
 
 def main(name: str, target: str, out: str = "/tmp/petri_pod.json",
-         max_hours: float = 6.0) -> None:
+         max_hours: float = 6.0, gpu: str | None = None) -> None:
     """Provision a vLLM inference pod for `target` and write its endpoint to `out`.
 
     Args:
@@ -24,13 +24,16 @@ def main(name: str, target: str, out: str = "/tmp/petri_pod.json",
         target: HF adapter the audit will serve.
         out: Where to record pod id, ip and ssh port.
         max_hours: Watchdog ceiling.
+        gpu: RunPod catalogue id overriding the profile's card for MASK (the H200), e.g. when
+            that pool is out of stock.
     """
     def record(pod_id: str) -> None:
         ip, port = _ssh_endpoint(pod_id)
         Path(out).write_text(json.dumps({"pod_id": pod_id, "ip": ip, "port": port}))
         print(f">>> recorded {pod_id} {ip}:{port}", flush=True)
 
-    up(name=name, eval="mask", target=target, max_hours=max_hours, on_provisioned=record)
+    up(name=name, eval="mask", target=target, max_hours=max_hours, gpu=gpu,
+       on_provisioned=record)
     print(">>> POD READY", flush=True)
 
 

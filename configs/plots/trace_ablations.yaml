@@ -1,0 +1,43 @@
+# ABOUTME: The data behind the trace_ablations figure: per panel and arm, the HF eval run it reads
+# ABOUTME: (or a supplied value), in plot order. Labels, colours and base lines live in paper_figures.py.
+# Run: uv run python -m src.plot_scripts.paper_figures --only trace_ablations
+#
+# A source is one of:
+#   {repo: <dougalldeepmind dataset>}   read and scored by the panel's _hub reader (mask/odcv/agentic)
+#   {literal: <value>, n: <samples>}     a supplied rate; Wilson interval over n
+#   {value: v, lo: l, hi: h}             a supplied point with an explicit interval
+name: trace_ablations
+panels: [mask, odcv, agentic]
+arms: [control, mask_cot, empty_think, da, cot_only, stated_harm]
+
+runs:
+  odcv:
+    control: {repo: 2026-10-06-odcv-qwen36-0-plain}
+    mask_cot: {repo: 2026-10-11-odcv-qwen36-0-da-15-response-only}
+    empty_think: {repo: 2026-10-08-odcv-qwen36-0-da-15-emptythink}
+    da: {repo: 2026-10-06-odcv-qwen36-0-da-15}
+    cot_only: {repo: 2026-10-11-odcv-qwen36-0-da-15-cot}
+    stated_harm: {repo: 2026-10-04-odcv-qwen36-0-ablation-stated-harm-15}
+  agentic:
+    control: {repo: 2026-10-08-am-qwen36-0-plain}
+    mask_cot: {repo: 2026-10-11-am-qwen36-0-da-15-response-only}
+    empty_think: {repo: 2026-10-11-am-qwen36-0-da-15-emptythink}
+    da: {repo: 2026-10-08-am-qwen36-0-da-15}
+    cot_only: {repo: 2026-10-11-am-qwen36-0-da-15-cot}
+    stated_harm: {repo: 2026-10-14-am-qwen36-0-ablation-stated-harm-15}
+  mask:
+    control: {repo: 2026-10-09-mask-qwen36-0-plain}
+    mask_cot: {repo: 2026-10-08-mask-qwen36-0-da-15-response-only}
+    # supplied by the user 2026-10-11; no dataset exists for this arm
+    empty_think: {literal: 71.2, n: 1000}
+    da: {repo: 2026-10-09-mask-qwen36-0-da-15}
+    cot_only: {repo: 2026-10-08-mask-qwen36-0-da-15-cot}
+    # 75.2 supplied by the user 2026-10-15 "from a different run" (no dataset named), drawn with the
+    # interval of the published 3-pass run it replaces: 2026-10-14-mask-qwen36-0-ablation-stated-harm-15
+    # read 86.6 [84.3, 88.6], i.e. 2.29 below and 1.94 above the point.
+    stated_harm: {value: 75.2, lo: 72.91, hi: 77.14}
+
+note: |-
+  **One-sided ablation MASK.** 75.2 is a user-supplied value from a run not named here, drawn with the interval of the published 3-pass run (2026-10-14-mask-qwen36-0-ablation-stated-harm-15, 86.6 [84.3, 88.6]).
+
+  **Stated-harm.** `+ stated-harm 15% mix` (2026-10-04-qwen36-0-ablation-stated-harm-15) was trained on a mix whose replay half is the older tulu/smol/no_robots set, not the nemotron replay of every other arm in this figure.
