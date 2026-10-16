@@ -1,0 +1,64 @@
+# ABOUTME: Frozen GPT-OSS SWE recipe with 65000 current prompt plus response tokens.
+# ABOUTME: Consumed by python -m scratch.gptoss_swe.full300 prepare; inference requires explicit admission.
+protocol: gptoss-tinker-lite-v2
+campaign: UNPREPARED
+run_name: gptoss120b-base-openai-smoke
+output_root: UNPREPARED
+cached_campaign: /srv/lasr/runs/cpu-readiness
+dataset: princeton-nlp/SWE-bench_Lite
+dataset_revision: 6ec7bb89b9342f664a54a6e0a6ea6501d3437cc2
+dataset_sha256: 6594069ee4d3497a4afc0f604c2ae7aa0bf87e2e898c1533273d1cce9c347222
+instance_ids: []
+subset:
+  fraction: null
+  'n': 300
+  seed: 0
+workers: 27
+constitution: none
+grade: false
+grading:
+  max_workers: 12
+  scoped_image_inventory: true
+tinker:
+  reasoning: medium
+  max_tokens: 16384
+  context_window: 65000
+  render_date: '2026-10-09'
+  budget_usd: null
+  budget_ledger: UNPREPARED
+sampling:
+  temperature: 1.0
+  top_p: 1.0
+  top_k: -1
+  min_p: 0.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+  repetition_penalty: 1.0
+serving:
+  context_window: 65000
+  needs_tool_calls: true
+worker:
+  agent_cpus: 2
+  agent_memory: 4g
+  agent_pids: 512
+  agent_environment:
+    BASH_ENV: /root/.bashrc
+  max_response_tokens: 16384
+  max_task_tokens: 262144
+  step_limit: 500
+  model_request_timeout_seconds: 7200
+  model_request_attempts: 2
+  tool_concurrency: 32
+  tool_queue_timeout_seconds: 600
+  min_available_memory_gib: 32
+  max_infrastructure_attempts: 3
+  max_infrastructure_failures: 6
+  cleanup_reserve_seconds: 180
+  task_admission_seconds: 7200
+task_scheduling:
+  repo: dougalldeepmind/2026-09-24-swebench-lite-infrastructure
+  revision: 515b606b1c5c25e42ed554e4c04b747f8b518549
+  path: metadata/runtime-priority-v3.json
+  sha256: ab477e3c2575c62f9cb8ba0d1bb2ad071901e907644fa7b5701a2ba2249d6a27
+grading_priority:
+- sympy__sympy-11870

@@ -150,6 +150,24 @@ def test_key_rotation_and_concurrency_do_not_change_request(vendor, tmp_path):
     assert old["games"][0]["request_hash"] != old["games"][1]["request_hash"]
 
 
+def test_complete_exact_cache_hit_never_rewrites_checkpoint(vendor, tmp_path, monkeypatch):
+    args = arguments(tmp_path)
+    register(vendor, [completion(), completion()])
+    previous = vendor.judgment(args)
+    original_bytes = Path(args["output_file"]).read_bytes()
+    store = vendor.JudgmentStore(args["output_file"])
+    args["store"] = store
+    def forbidden_save(_):
+        pytest.fail("A certified cache hit must not rewrite the checkpoint")
+    monkeypatch.setattr(store, "save", forbidden_save)
+    calls = register(vendor, [])
+    result = vendor.judgment(args)
+    assert result == previous and not calls
+    result["games"][0]["score"] = "modified"
+    assert store.records["q1"] == previous
+    assert Path(args["output_file"]).read_bytes() == original_bytes
+
+
 def test_legacy_or_null_cache_is_rejudged_but_preserved(vendor, tmp_path):
     args = arguments(tmp_path)
     legacy = {"uid": "q1", "category": "hard_prompt", "model": "target",
@@ -208,6 +226,32 @@ def test_parallel_atomic_checkpoints_preserve_all_uids(vendor, tmp_path):
     rows = vendor.JudgmentStore(args["output_file"]).records
     assert len(rows) == 8
     assert all(vendor.complete_game(game) for row in rows.values() for game in row["games"])
+
+
+def test_checkpoint_reload_preserves_unicode_line_separators(vendor, tmp_path):
+    path = tmp_path / "judgments.jsonl"
+    row = {"uid": "q1", "prompt": "first\u2028second\u2029third"}
+    store = vendor.JudgmentStore(path)
+    store.save(row)
+    assert vendor.JudgmentStore(path).records == {"q1": row}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows reader sharing semantics")
+def test_checkpoint_waits_for_short_windows_reader(vendor, tmp_path):
+    import threading
+
+    path = tmp_path / "judgments.jsonl"
+    store = vendor.JudgmentStore(path)
+    store.save({"uid": "q1"})
+    reader = path.open("r", encoding="utf-8")
+    release = threading.Timer(0.15, reader.close)
+    release.start()
+    try:
+        store.save({"uid": "q2"})
+    finally:
+        reader.close()
+        release.join()
+    assert set(vendor.JudgmentStore(path).records) == {"q1", "q2"}
 
 
 def test_openai_attempt_retains_raw_completion_without_hidden_retries(vendor, monkeypatch):

@@ -130,7 +130,7 @@ def test_team_seat_gets_the_team_text_and_board_tools(tm, tmp_path):
     assert st.traj[0]["content"] == "SYS" + tm.am.TOOL_SENTENCE + " TEAM"
     assert [tool["function"]["name"] for tool in st.tools] == ["bash", "task_complete", "post_to_board", "read_board"]
     assert h.archive_path == "/app/messages_record.txt"          # the measured seat keeps upstream's path
-    assert tm.TeamHooks(t, t.seats[0]).archive_path.endswith("/team/agent-1/messages_record.txt")
+    assert Path(tm.TeamHooks(t, t.seats[0]).archive_path).parts[-3:] == ("team", "agent-1", "messages_record.txt")
 
 
 def test_cell_facts_opportunity_repair_and_delivery(tm, tmp_path):

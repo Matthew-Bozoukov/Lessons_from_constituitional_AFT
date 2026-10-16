@@ -3,6 +3,106 @@
 
 # GOTCHAS
 
+## Subscription Arena judging boundaries (2026-10-14)
+
+- Codex feature-disable settings did not guarantee a tool-free context: one judge
+  emitted an empty-recipient `wait` call. Validate saved event types, retain failures,
+  and disclose any explicitly accepted exception. Empty neutral cwd and read-only
+  mode do not establish filesystem isolation; injected skill/environment context
+  remains visible. See the [campaign protocol and evidence](../scratch/gptoss_arena_judge/README.md).
+- A transport timeout is not proof of no output or no usage. One timeout contained
+  repeated escaped null characters and an incomplete output-token-limit stream.
+  Preserve all events before a specifically authorized retry; do not infer a verdict.
+- Literal LF is the JSONL separator; `splitlines()` also splits Unicode line separators
+  inside model text. Oversized generated text can exceed CLI input-character limits
+  despite fitting model token limits. Record whole-question exclusions explicitly.
+- A detached finalizer may lack the launcher's HF environment. Resolve the existing
+  repository configuration for publication only; missing HF_ORG does not require
+  new inference or rescoring. Never print credential values while diagnosing this.
+
+## GPT-OSS local MMLU qualification and format failures (2026-10-14)
+
+- Keep the reference Harmony renderer and native traces separate from answer
+  extraction. An analysis-only completion can be a valid transport response but
+  an unparseable MMLU answer. The October 14 protocol scored final content only;
+  do not silently mine reasoning or rerun failures to improve a score. Publish
+  instrument-health failures alongside the raw outcomes and accuracy.
+- A Docker memory limit includes reclaimable file cache. The local 192-request
+  synthetic qualification measured working memory as `memory.current` minus
+  `inactive_file`, and checked OOM events separately. The worker count was
+  qualified for that API-driver workload, not 192 locally loaded models.
+- Tinker SDK retries can exist below an HTTP client's retry settings. The MMLU
+  campaign wrapper explicitly disabled ambiguous sampling-POST retries and kept
+  unknown paid requests reserved. This is campaign-specific behavior in
+  `scratch/gptoss_mmlu/bridge.py`, not a guarantee of every Tinker entrypoint.
+- A failed health gate can leave diagnostic files outside the normal HF layout.
+  Preserve them under metadata for publication recovery; do not regenerate or
+  claim that successful publication means instrument health passed.
+
+See [the campaign results and source index](gptoss_campaigns.md) for pinned evidence.
+
+## Arena checkpoint inspection and RunPod process diagnostics (2026-10-12)
+
+- On Windows, an ordinary reader can briefly prevent atomic replacement of a judge
+  checkpoint. The Arena writer now retries that filesystem operation for up to 2.25
+  seconds. Prefer completed artifacts, file metadata, or a reader opened with
+  `FILE_SHARE_DELETE` when monitoring active snapshots. A worker failure can leave the
+  progress bar stationary while other queued judge calls continue; let those finish
+  before recovery so their paid responses remain available.
+- JSONL records end at LF. `str.splitlines()` also splits literal U+2028/U+2029 inside
+  JSON strings and corrupts cache reloads; use the repo JSONL reader or split on `\n`.
+- Full process command lines on RunPod can expose credentials embedded in bootstrap
+  commands. Inspect PID, elapsed time, CPU, state and executable name, not command-line
+  arguments. Never publish operational dumps without checking for credentials.
+
+## MASK now refuses any failed generation by default, and killing `evals` releases its pod (2026-10-08)
+
+- Since 2026-10-05 `configs/eval/mask.yaml` sets `max_generation_error_rate: 0.0`; every earlier MASK run
+  had 0.2-1.1% generations die at the 16,384-token cap inside `<think>`, so a run on the default now
+  fails AFTER the 40-minute generation stage (`RuntimeError: MASK pass 1: 0.2% of generations failed`).
+  The work tree is kept. Resume it on a new pod with the old tolerance instead of regenerating:
+  `uv run evals --name mask resume_from=output/mask/<run dir> max_generation_error_rate=0.02 --target ...`
+  (overrides go before `--target`); only the archetypes with failures are regenerated.
+- Killing the local `evals` process to relaunch with an override does NOT keep its pod: the
+  `--terminate-pod` cleanup runs on exit, and the relaunch then fails with `--terminate-pod requires
+  exactly one live pod matching <server>`. Rent a new pod (or launch without `--terminate-pod` when
+  a restart is likely).
+- `scratch/canary/launch_when_ready.py <up.log> <eval> <target> <port> <eval.log> [overrides...]`
+  waits for a rented eval pod's `READY` before starting `evals`, which the 2026-09-29 gotcha below asks for.
+
+## Docker Desktop idles while ODCV waits for vLLM, fails to wake, and every cell dies in under a second (2026-10-01)
+
+- An ODCV run passes `docker_preflight`, then makes no Docker call for the 6-8 minutes vLLM takes to
+  load on the pod. Docker Desktop's Resource Saver puts its VM to sleep in that gap; on 2026-10-01 the
+  wake-up at the first cell failed, Docker showed an error dialog and quit, and all 240 cells came back
+  `compose_exit_1+no_transcript` in ~1 s each. The run then crashes at the judge (`no agent_logs
+  directory`) and `--terminate-pod` takes the pod with it. Docker's own log has the sequence:
+  `~/Library/Containers/com.docker.docker/Data/log/host/com.docker.backend.log` (`idle -> busy`, then
+  `"action":"Quit"`). The same thing probably caused the two "Docker Desktop is stopped" surprises on
+  2026-09-29.
+- Keep Docker awake for the whole run: `nohup uv run python scratch/canary/docker_keepalive.py 5 &`
+  (a `docker ps` every 20 s). With it, two ODCV runs back to back completed 240/240 each.
+- A waiter written as `until ! pgrep -f "<the evals command line>"` can match its own shell (the pattern
+  is in the waiter's command line) and never return. Wait on the log's result line or on the run dir's
+  `rollouts/` instead.
+- The HF json loader coerces number types across rows, so a few native tool rows render numbers with
+  float noise (`0.3` -> `0.30000000000000004`): 17 function-calling rows of 9,061 in the native-tools
+  base. Harmless, but a "loader render == direct render" check must allow it.
+
+## An `--eval` pod's vLLM can start before its install finishes; a dead pod hangs `evals` for hours (2026-09-29)
+
+- `runpod up --eval` prints `host:` as soon as SSH answers, before the boot script has finished
+  building `/workspace/vllmenv`. An `evals --server` launched at that moment died with vLLM's
+  `RuntimeError: Failed to infer device type` although the GPU was fine (a fresh pod on the same
+  host ran cleanly). Wait for `uv run runpod status --pod <id>` to print `READY vllm venv at
+  /workspace/vllmenv` before starting the eval.
+- When the serving pod disappears mid-run (here during the last ODCV cell; ssh printed
+  `Connection to <ip> closed by remote host`), the local `evals` process does not exit: it waited
+  on the hung cell for 6+ hours with nothing billing. Watch the log's mtime, not just the process.
+  Salvage without re-running: `scratch/odcv_combine_passes.py --config <run>/odcv_config.yaml`
+  then `scratch/odcv_judge_cli.py --rollout_dir <combined> --config <same>`; the run is then not on
+  the Hub.
+
 ## `evals --server --port 8080` fails on an eval pod: the boot-log server holds it (2026-10-04)
 
 `RemoteVllmServer` forwards `-L <bind>:<port>:localhost:<port>`, so vLLM binds the SAME
@@ -1499,6 +1599,14 @@ See the [operational record](../scratch/da_supervision/archive/operations.md).
 
 ## Windows concurrent SSH commands must not inherit console stdin (2026-09-22)
 
+Follow-up, 2026-10-14: `runpod._wait_for_ssh` still inherited stdin and had no
+Python subprocess timeout. During the three-H200 MMLU launch, two `ssh ... true`
+children stalled although direct SSH and the provider boot logs showed ready pods.
+Ending only those local probes let the existing launch proceed without restarting
+models. The readiness probe now uses `DEVNULL` and a child timeout bounded by its
+remaining deadline. `tests/test_runpod_ssh_readiness.py` verifies a real stalled
+child cannot hold the launch beyond that deadline.
+
 The practical low-stakes trainer kept advancing while its owner's SSH polls timed out
 during the first3.85GB checkpoint transfer. Direct probes from another process worked;
 the owner recovered immediately after the transfer. Restarting the owner would have
@@ -1987,3 +2095,31 @@ as `MASK_JUDGE_ROW_TIMEOUT_S`, a marked vendored patch), the runner counts `TIME
 old run: a pass whose archetypes show both `honest_pct` and `unhonest_pct` near zero is this failure, not honesty;
 check the `eval(...)` columns of `results/*_evaluated.csv` for `TIMEOUT_ERROR`. Generations are stored, so such a run
 can be re-judged without regenerating.
+
+## 2026-10-09: Hospital carried turns rendered as empty think blocks before 2026-10-05 — memory-on runs across that date are not comparable
+
+The Hospital eval's `fixes.carry_agent_history` re-sends a seat's earlier turns as
+`user "[Your earlier turn …]" > assistant(content + tool_calls) > tool(results)`, with NO
+reasoning field (terrarium_hospital_fixes.patch, `_remember_turn`); within one turn the
+re-ask does carry reasoning (vLLM 0.26 returns `reasoning`, maps it back to
+`reasoning_content`, the template renders it after the last user message). From 2026-08-04 to
+2026-10-05 serving pinned `preserve_thinking=true`, which draws a think block on EVERY past
+assistant turn and leaves it empty when none was sent — so every carried turn rendered as
+`<think>\n\n</think>\n\n<reply>`, token for token a nothink turn. Since 2026-10-05
+(`pin_prefix` pins it false) a carried turn renders with no block, the rule every reasoning
+model is served under. The 2026-10-05 LOG entry lists psychosis, ctfish, dictator, odcv_peer
+and the ODCV nudge as affected and omits the Hospital: every memory-on Hospital cell published
+2026-09-10 → 2026-10-02 is on the empty-block rendering, and any run from now on is not.
+
+Verified 2026-10-07 against `dougalldeepmind/2026-09-28-hospital-self-sacrificial-qwen36-0-da-15`
+(`prompts.jsonl`: 216/216 carried assistant messages without a reasoning field, 12/12
+within-turn ones with) and by rendering the shapes with the cached Qwen3.6 tokenizer. The
+empty blocks coincide with shorter reasoning on later iterations (pair seats, planning,
+iteration 1 → 3: 3,305 → 1,837 chars with memory on vs 3,354 → 2,459 with it off; the nosynth
+bystanders 6,460 → 3,855 vs 6,109 → 6,500), unattributed between priming and redundancy. No
+clean on/off replicate exists: the 2026-09-25 memory-off cells (`…-qwen36-0-da-15`,
+`…-da-multiparty-human-15`, 15 seeds, never logged) used a different peer from the 2026-09-24
+memory-on cells. Before comparing a new Hospital run with the 09-14 → 10-02 series, check
+`fixes.carry_agent_history` in its `run_meta.json` AND the date against 2026-10-05. The
+default config carries memory ON since 2026-10-09; the paper's harness is now three overrides
+(`fixes.carry_agent_history=false` added).

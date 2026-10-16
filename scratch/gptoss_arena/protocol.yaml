@@ -1,0 +1,32 @@
+# ABOUTME: Authorized generation-only GPT-OSS Arena campaign; judging is deferred.
+# ABOUTME: Config consumed by the historical generation campaign phases.
+# Run: CPU environment python -m scratch.gptoss_arena.campaign <phase>
+seed: 0
+base_model: openai/gpt-oss-120b
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  max_tokens: 32768
+  parallel: 64
+  stream: false
+  timeout: 4800
+  max_retries: 0
+  native_token_counts: /work/output/gptoss_arena_20261014/token-preflight.json
+  native_protocol:
+    backend: tinker-native
+    sampling_model: openai/gpt-oss-120b:peft:131072
+    reasoning: medium
+    harmony_version: 0.0.8
+    render_date: '2026-10-14'
+    top_k: -1
+    seed: null
+    penalties: neutral
+serving:
+  context_window: 131072
+  concurrency: 64
+judge_validation:
+  enabled: false
+campaign:
+  ceiling_usd: 70
+  smoke_ceiling_usd: 0.49
+  judging: deferred

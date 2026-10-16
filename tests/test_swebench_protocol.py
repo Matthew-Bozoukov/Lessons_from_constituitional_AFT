@@ -64,11 +64,13 @@ class ProtocolTests(unittest.TestCase):
                     message = {'role': 'assistant', 'content': 'audit answer', 'reasoning': 'TRACE-' + str(len(test.calls))}
                     if test.kind != 'no_tool':
                         arguments = '{"command":"echo audit"}'
-                        if test.kind == 'bad_json': arguments = '{oops'
+                        if test.kind in ('bad_json','raw_bad_json'): arguments = '{oops'
                         if test.kind == 'null_args': arguments = 'null'
                         if test.kind == 'bad_command': arguments = '{"command":123}'
                         message['tool_calls'] = [{'id': 'call-'+str(len(test.calls)), 'type': 'function',
                             'function': {'name': 'unknown' if test.kind == 'bad_tool' else 'bash', 'arguments': arguments}}]
+                        if test.kind == 'raw_bad_json':
+                            message['provider_specific_fields'] = {'harmony_boundary':'handoff'}
                     payload = json.dumps({'id': 'audit', 'object': 'chat.completion', 'created': 1, 'model': 'audit',
                         'choices': [{'index': 0, 'finish_reason': 'length' if test.kind == 'length' else 'tool_calls', 'message': message}],
                         'usage': {'prompt_tokens': 20, 'completion_tokens': 7, 'total_tokens': 27}}).encode()
@@ -111,6 +113,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(row['complete'])
         self.assertEqual(row['parameters']['temperature'], 1.0)
         self.assertNotIn('api_key', json.dumps(row))
+
         messages = []
         for sha in row['message_hashes']:
             message = json.loads((self.root/'http/messages'/f'{sha}.json').read_text())
@@ -121,6 +124,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(raw['choices'][0]['message']['reasoning'], 'TRACE-1')
         self.assertNotIn('reasoning_content', raw['choices'][0]['message'])
         self.assertEqual(self.agent.messages[-1]['reasoning_content'], 'TRACE-1')
+
+    def test_disabled_top_k_is_forwarded_and_other_negatives_rejected(self):
+        request = copy.deepcopy(self.request)
+        request['sampling']['top_k'] = -1
+        options = {'model': {'model_kwargs': {}}}
+        configure_protocol(options, request)
+        self.assertEqual(options['model']['model_kwargs']['extra_body']['top_k'], -1)
+        for invalid in (0, -2):
+            request['sampling']['top_k'] = invalid
+            with self.assertRaises(AssertionError):
+                configure_protocol(options, request)
 
     def test_all_rejected_response_variants_preserve_reasoning(self):
         for kind in ('no_tool', 'bad_tool', 'bad_json', 'null_args', 'bad_command'):
@@ -147,6 +161,19 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(caught.exception.messages[0]['reasoning_content'], 'TRACE-1')
         self.assertEqual(caught.exception.messages[0]['extra']['actions'], [])
         self.assertEqual(len(self.calls), 1)
+
+    def test_raw_argument_backend_preserves_json_error_for_next_turn(self):
+        self.kind='raw_bad_json'
+        with self.assertRaises(FormatError) as caught:
+            self.agent.query()
+        history=caught.exception.messages
+        self.assertEqual(history[0]['tool_calls'][0]['function']['arguments'],'{oops')
+        self.assertEqual(history[1]['role'],'tool')
+        self.assertIn('Expecting property name',history[1]['content'])
+        self.agent.add_messages(*history)
+        self.kind='normal'
+        self.agent.query()
+        self.assertEqual(self.calls[-1]['messages'][-2]['tool_calls'][0]['function']['arguments'],'{oops')
 
     def test_socket_loss_fences_only_own_replica_without_hidden_sdk_retry(self):
         self.kind = 'drop'

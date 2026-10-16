@@ -1,0 +1,32 @@
+# ABOUTME: Prepare 900 fresh GPT-OSS outcomes; inference requires a separate explicit launch.
+# ABOUTME: python -m scratch.gptoss_swe.full300 prepare|status|run --authorize-inference
+root: /srv/lasr/runs/gptoss-full300-65000-20261013
+input: /srv/lasr/runs/cpu-readiness
+campaign: gptoss-full300-65000-20261013
+hf_repo: dougalldeepmind/2026-10-13-gptoss120b-base-control-da15-swe-lite300-context65000
+workers:
+  base: 27
+  control: 27
+  da15: 26
+ports:
+  base: 18705
+  control: 18715
+  da15: 18725
+targets:
+  base: tinker://base
+  control: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+  da15: tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15
+tool_concurrency: 32
+min_available_memory_gib: 32
+grading_workers: 12
+min_cpus: 60
+min_ram_gib: 190
+min_free_gib: 50
+image_pull_workers: 6
+render_date: '2026-10-09'
+context_tokens: 65000
+baseline: scratch/gptoss_swe/full300_baseline.yaml
+price_rates:
+  input_per_million: 0.33
+  cached_input_per_million: 0.066
+  output_per_million: 0.84

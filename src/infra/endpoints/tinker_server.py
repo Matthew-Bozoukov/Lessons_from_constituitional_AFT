@@ -9,14 +9,21 @@ import math
 import os
 import time
 import uuid
+import json
+import asyncio
+import threading
+import copy
+from collections import OrderedDict
+from pathlib import Path
+from src.infra.endpoints.tinker_harmony import HarmonyRenderer, generation_prompt, parse_completion
 from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-# Tokenizer files reviewed alongside the pinned renderer; model weights remain on Tinker.
-TOKENIZER_REVISION = "b5c939de8f754692c1647ca79fbf85e8c1e70f8a"
+# OpenAI's reference encoding/renderer is locked in the nested environment.
+TOKENIZER_REVISION = "openai-harmony==0.0.8:HARMONY_GPT_OSS"
 
 
 @dataclass
@@ -31,8 +38,11 @@ class Runtime:
     convert_tools: Any
     api_key: str
     instance_id: str
-    default_max_tokens: int = 8192
+    default_max_tokens: int | None = 8192
     context_window: int = 131072
+    sampling_model: str | None = None
+    budget: Any = None
+    trace_dir: str | None = None
 
 
 def _text(content: Any) -> str:
@@ -53,7 +63,11 @@ def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runt
     if not isinstance(messages, list) or not messages:
         raise ValueError("messages must be a nonempty list")
     out, pending, seen = [], {}, set()
-    for message in messages:
+    # Only an explicitly observed final boundary closes a reasoning cycle.
+    # A validation nudge or a malformed response is not a final answer.
+    last_final = max((i for i, m in enumerate(messages) if m.get('harmony_boundary',
+        (m.get('provider_specific_fields') or {}).get('harmony_boundary')) == 'final'), default=-1)
+    for index, message in enumerate(messages):
         role = message.get("role")
         content = _text(message.get("content"))
         if role in {"system", "developer", "user"}:
@@ -65,11 +79,16 @@ def build_messages(messages: list[dict], tools: list[dict] | None, runtime: Runt
             if pending:
                 raise ValueError("Previous assistant tool calls have no tool results")
             reasoning = message.get("reasoning_content") or message.get("reasoning") or ""
+            if index <= last_final:
+                reasoning = ""
             if not isinstance(reasoning, str):
                 raise ValueError("reasoning_content must be text")
             parts = ([{"type": "thinking", "thinking": reasoning}] if reasoning else [])
             parts.append({"type": "text", "text": content})
             item: dict[str, Any] = {"role": role, "content": parts}
+            boundary = message.get('harmony_boundary', (message.get('provider_specific_fields') or {}).get('harmony_boundary'))
+            if boundary:
+                item['harmony_boundary'] = boundary
             calls = []
             for call in message.get("tool_calls") or []:
                 cid, function = call.get("id"), call.get("function") or {}
@@ -150,17 +169,17 @@ def sampling_options(body: dict, runtime: Runtime) -> dict:
     max_tokens = body.get("max_tokens", body.get("max_completion_tokens"))
     if max_tokens is None:
         max_tokens = runtime.default_max_tokens
-    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0:
+    if max_tokens is not None and (not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens <= 0):
         raise ValueError("max_tokens must be a positive integer")
     temperature = body.get("temperature")
     temperature = 1.0 if temperature is None else float(temperature)
     top_p = body.get("top_p")
-    top_p = 1.0 if top_p is None else float(top_p)
+    top_p = float(os.environ.get("TINKER_DEFAULT_TOP_P", "1.0")) if top_p is None else float(top_p)
     if not math.isfinite(temperature) or temperature < 0:
         raise ValueError("temperature must be finite and nonnegative")
     if not math.isfinite(top_p) or not 0 < top_p <= 1:
         raise ValueError("top_p must be in (0, 1]")
-    top_k = body.get("top_k", -1)
+    top_k = body.get("top_k", int(os.environ.get("TINKER_DEFAULT_TOP_K", "-1")))
     if not isinstance(top_k, int) or isinstance(top_k, bool) or (top_k != -1 and top_k <= 0):
         raise ValueError("top_k must be -1 or a positive integer")
     seed = body.get("seed")
@@ -170,8 +189,56 @@ def sampling_options(body: dict, runtime: Runtime) -> dict:
             "top_k": top_k, "seed": seed, "stop": runtime.renderer.get_stop_sequences()}
 
 
+class PromptCache:
+    """App-local bounded exact-history cache shared by token admission and generation."""
+    def __init__(self, runtime, max_entries=16, max_tokens=1048576):
+        self.runtime = runtime
+        self.max_entries, self.max_tokens = max_entries, max_tokens
+        self.entries, self.tokens = OrderedDict(), 0
+        # Reference renderer access stays serialized when work leaves the event loop.
+        self.lock = threading.RLock()
+
+    def get(self, body):
+        encoded = json.dumps(dict(messages=body.get('messages'), tools=body.get('tools')),
+                             sort_keys=True, ensure_ascii=False).encode()
+        key = hashlib.sha256(encoded).digest()
+        with self.lock:
+            if key in self.entries:
+                prompt, ids = self.entries.pop(key)
+                self.entries[key] = (prompt, ids)
+                return copy.deepcopy(prompt), list(ids), True
+            messages = build_messages(body.get('messages'), body.get('tools'), self.runtime)
+            prompt = generation_prompt(self.runtime.renderer, messages)
+            ids = prompt.to_ints()
+            if len(ids) <= self.max_tokens:
+                self.entries[key] = (copy.deepcopy(prompt), tuple(ids))
+                self.tokens += len(ids)
+                while len(self.entries) > self.max_entries or self.tokens > self.max_tokens:
+                    _, (_, old_ids) = self.entries.popitem(last=False)
+                    self.tokens -= len(old_ids)
+            return prompt, ids, False
+
+    def decode(self, ids):
+        with self.lock:
+            return self.runtime.renderer.tokenizer.decode(ids)
+
+    def parse(self, ids, stop_reason):
+        with self.lock:
+            return parse_completion(self.runtime.renderer, ids, stop_reason)
+
+
+def _write_trace(path, value):
+    # All writes are awaited: a failed evidence write must prevent dispatch/return.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('w', encoding='utf-8') as stream:
+        json.dump(value, stream)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def create_app(runtime: Runtime) -> FastAPI:
     app = FastAPI()
+    prompts = PromptCache(runtime)
 
     @app.middleware("http")
     async def authenticate(request: Request, call_next):
@@ -184,10 +251,23 @@ def create_app(runtime: Runtime) -> FastAPI:
         return {"object": "list", "data": [{"id": runtime.model, "object": "model", "owned_by": "tinker",
                  "checkpoint": runtime.checkpoint, "instance_id": runtime.instance_id,
                  "reasoning_effort": runtime.reasoning, "context_window": runtime.context_window,
+                 "sampling_model": runtime.sampling_model,
                  "renderer_date": runtime.renderer.current_date, "tokenizer_revision": TOKENIZER_REVISION}]}
+
+    @app.post("/tokenize")
+    async def tokenize(req: Request):
+        try:
+            body = await req.json()
+            if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
+                raise ValueError("Requested model is not served by this shim")
+            _, ids, _ = await asyncio.to_thread(prompts.get, body)
+            return {"count": len(ids), "tokens": ids, "max_model_len": runtime.context_window}
+        except (ValueError, TypeError, KeyError) as error:
+            return JSONResponse({"error": {"message": str(error)}}, status_code=400)
 
     @app.post("/v1/chat/completions")
     async def chat(req: Request):
+        started = time.monotonic()
         try:
             body = await req.json()
             if not isinstance(body, dict):
@@ -195,46 +275,73 @@ def create_app(runtime: Runtime) -> FastAPI:
             if body.get("model") not in (runtime.model, runtime.checkpoint, "tinker"):
                 raise ValueError("Requested model is not served by this shim")
             options = sampling_options(body, runtime)
-            messages = build_messages(body.get("messages"), body.get("tools"), runtime)
-            prompt = runtime.renderer.build_generation_prompt(messages)
-            prompt_ids = prompt.to_ints()
+            prompt, prompt_ids, cache_hit = await asyncio.to_thread(prompts.get, body)
+            prepared = time.monotonic()
+            if options["max_tokens"] is None:
+                # No independent response cap: use the capacity left after the
+                # exact Harmony prompt, including tool schemas and reasoning.
+                options["max_tokens"] = runtime.context_window - len(prompt_ids)
+                if options["max_tokens"] <= 0:
+                    raise ValueError("Prompt plus completion allowance exceeds the configured context window")
             if len(prompt_ids) + options["max_tokens"] > runtime.context_window:
                 raise ValueError("Prompt plus completion allowance exceeds the configured context window")
         except (ValueError, TypeError, KeyError) as error:
             return JSONResponse({"error": {"message": str(error), "type": "invalid_request_error"}}, status_code=400)
 
+        reservation = None
+        if runtime.budget is not None:
+            try:
+                reservation = await asyncio.to_thread(runtime.budget.reserve, len(prompt_ids), options["max_tokens"])
+            except RuntimeError as error:
+                return JSONResponse({"error": {"message": str(error)}}, status_code=402)
+        trace_id = uuid.uuid4().hex
+        trace = None
+        if runtime.trace_dir:
+            trace = Path(runtime.trace_dir) / trace_id
+            rendered = await asyncio.to_thread(prompts.decode, prompt_ids)
+            await asyncio.to_thread(_write_trace, trace/'request.json', dict(request=body, sampling=options,
+                rendered_prompt=rendered, prompt_tokens=prompt_ids))
+        dispatched = time.monotonic()
         sample = await runtime.sampling_client.sample_async(
             prompt=prompt, num_samples=1, sampling_params=runtime.sampling_params(**options))
+        received = time.monotonic()
         sequence = sample.sequences[0]
         ids = sequence.tokens
-        message, termination = runtime.renderer.parse_response(ids)
-        oai = runtime.renderer.to_openai_message(message)
-        out: dict[str, Any] = {"role": "assistant", "content": oai.get("content") or ""}
-        if oai.get("reasoning_content"):
-            out["reasoning"] = out["reasoning_content"] = oai["reasoning_content"]
-        # No partial batch can become executable, even when the parser recovered calls.
-        complete = termination.is_stop_sequence and sequence.stop_reason != "length"
-        finish = "stop" if complete else "length"
-        if complete and oai.get("tool_calls") and not message.get("unparsed_tool_calls"):
-            out["tool_calls"] = []
-            for call in oai["tool_calls"]:
-                out["tool_calls"].append({**call, "id": "call_" + uuid.uuid4().hex})
-            finish = "tool_calls"
+        if trace:
+            # Save paid tokens before parsing or display decoding can fail.
+            await asyncio.to_thread(_write_trace, trace/'sample.json', dict(tokens=ids, stop_reason=sequence.stop_reason,
+                prompt_cache_hit_tokens=getattr(sample, 'prompt_cache_hit_tokens', 0)))
+        if reservation is not None:
+            await asyncio.to_thread(runtime.budget.settle, reservation, len(ids), getattr(sample, 'prompt_cache_hit_tokens', 0))
+        out, finish, boundary = await asyncio.to_thread(prompts.parse, ids, sequence.stop_reason)
+        out['harmony_boundary'] = boundary
+        out['provider_specific_fields'] = {'harmony_boundary': boundary}
+        for call in out.get('tool_calls', []):
+            call['id'] = 'call_' + uuid.uuid4().hex
         diagnostics = {
             "checkpoint": runtime.checkpoint, "base_model": runtime.model,
+            "sampling_model": runtime.sampling_model,
             "reasoning_effort": runtime.reasoning, "renderer_date": runtime.renderer.current_date,
             "sampling": options, "stop_reason": sequence.stop_reason,
             "tokenizer_revision": TOKENIZER_REVISION,
             "prompt_token_sha256": hashlib.sha256(str(prompt_ids).encode()).hexdigest(),
-            "raw_completion": runtime.renderer.tokenizer.decode(ids),
-            "unparsed_tool_calls": [str(x) for x in message.get("unparsed_tool_calls", [])],
+            "raw_completion": await asyncio.to_thread(prompts.decode, ids),
+            "prompt_cache_hit_tokens": getattr(sample, 'prompt_cache_hit_tokens', 0),
+            "boundary": boundary,
+            "trace_id": trace_id,
+            "timing": {"prepare_seconds": prepared-started, "request_evidence_seconds": dispatched-prepared,
+                       "sample_seconds": received-dispatched, "postprocess_seconds": time.monotonic()-received,
+                       "render_cache_hit": cache_hit},
         }
-        return JSONResponse({
+        result = {
             "id": "chatcmpl-" + uuid.uuid4().hex, "object": "chat.completion",
             "created": int(time.time()), "model": runtime.checkpoint,
             "choices": [{"index": 0, "message": out, "finish_reason": finish}],
             "usage": {"prompt_tokens": len(prompt_ids), "completion_tokens": len(ids),
-                      "total_tokens": len(prompt_ids) + len(ids)}, "tinker_metadata": diagnostics})
+                      "total_tokens": len(prompt_ids) + len(ids)}, "tinker_metadata": diagnostics}
+        if trace:
+            await asyncio.to_thread(_write_trace, trace/'response.json', result)
+        return JSONResponse(result)
 
     return app
 
@@ -242,9 +349,7 @@ def create_app(runtime: Runtime) -> FastAPI:
 def main():
     import tinker
     import uvicorn
-    from transformers import AutoTokenizer
     from tinker_cookbook.renderers.base import ToolCall
-    from tinker_cookbook.renderers.gpt_oss import GptOssRenderer
     from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
     from datetime import date
 
@@ -255,17 +360,30 @@ def main():
     if reasoning not in {"low", "medium", "high"}:
         raise ValueError("REASONING_LEVEL must be low, medium or high")
     checkpoint = os.environ["TINKER_CKPT"]
+    context = int(os.environ.get("TINKER_CONTEXT_WINDOW", "131072"))
+    sampling_model = model if context <= 32768 else model + ":peft:131072"
+    budget = None
+    if os.environ.get("TINKER_BUDGET_USD"):
+        import json
+        from src.infra.endpoints.tinker_budget import Budget
+        budget = Budget(os.environ["TINKER_BUDGET_LEDGER"],
+                        None if os.environ["TINKER_BUDGET_USD"] == "unlimited" else float(os.environ["TINKER_BUDGET_USD"]), sampling_model, checkpoint,
+                        json.loads(os.environ.get('TINKER_BUDGET_CHECKPOINTS', 'null')),
+                        price_rates=json.loads(os.environ.get('TINKER_PRICE_RATES_JSON', 'null')))
     runtime = Runtime(
         checkpoint=checkpoint, model=model, reasoning=reasoning,
-        renderer=GptOssRenderer(AutoTokenizer.from_pretrained(model, revision=TOKENIZER_REVISION), use_system_prompt=True,
+        renderer=HarmonyRenderer(
                                reasoning_effort=reasoning,
                                current_date=os.environ.get("TINKER_RENDER_DATE", date.today().isoformat())),
-        sampling_client=tinker.ServiceClient().create_sampling_client(model_path=checkpoint, base_model=model),
+        sampling_client=tinker.ServiceClient().create_sampling_client(
+            model_path=None if checkpoint == "tinker://base" else checkpoint, base_model=sampling_model),
+        sampling_model=sampling_model, budget=budget,
         sampling_params=tinker.SamplingParams, tool_call_type=ToolCall, convert_tools=openai_tools_to_tinker,
         api_key=os.environ["TINKER_API_KEY"], instance_id=os.environ.get("TINKER_SHIM_INSTANCE", uuid.uuid4().hex),
-        default_max_tokens=int(os.environ.get("DEFAULT_MAX_TOKENS", "8192")),
-        context_window=int(os.environ.get("TINKER_CONTEXT_WINDOW", "131072")))
-    uvicorn.run(create_app(runtime), host="127.0.0.1", port=int(os.environ.get("PORT", "1234")), log_level="warning")
+        default_max_tokens=(None if os.environ.get("DEFAULT_MAX_TOKENS") == "remaining"
+                            else int(os.environ.get("DEFAULT_MAX_TOKENS", "8192"))),
+        context_window=context, trace_dir=os.environ.get('TINKER_TRACE_DIR'))
+    uvicorn.run(create_app(runtime), host=os.environ.get('TINKER_BIND_HOST', '127.0.0.1'), port=int(os.environ.get("PORT", "1234")), log_level="warning")
 
 
 if __name__ == "__main__":

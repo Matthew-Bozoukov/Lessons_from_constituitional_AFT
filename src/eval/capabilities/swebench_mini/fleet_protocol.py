@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 import time
 import uuid
+import threading
+from collections import OrderedDict
 
 from src.eval.capabilities.swebench_mini.fleet_state import atomic
 
@@ -23,7 +25,7 @@ def configure_protocol(config, request):
     assert all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
                for v in sampling.values()), 'Invalid sampling value'
     assert 0 < sampling['temperature'] <= 2 and 0 < sampling['top_p'] <= 1
-    assert isinstance(sampling['top_k'], int) and sampling['top_k'] > 0
+    assert isinstance(sampling['top_k'], int) and (sampling['top_k'] == -1 or sampling['top_k'] > 0)
     assert 0 <= sampling['min_p'] <= 1 and 0 < sampling['repetition_penalty'] <= 2
     assert all(-2 <= sampling[k] <= 2 for k in ('presence_penalty', 'frequency_penalty'))
     options = config['model']['model_kwargs']
@@ -51,6 +53,21 @@ def rejected_history(raw, corrections):
         except (KeyError, TypeError, ValueError, AssertionError):
             renderable = False
     feedback = []
+    # The shared Harmony adapter accepts raw string arguments in history. Its
+    # capability marker allows ordinary validation feedback without the legacy
+    # Qwen mapping-template workaround (quoting/dropping malformed tool calls).
+    boundary = message.get('harmony_boundary', (message.get('provider_specific_fields') or {}).get('harmony_boundary'))
+    if calls and boundary in ('handoff', 'tool_call_return'):
+        detail = '\n'.join(c.get('content', '') for c in corrections)
+        for call in calls:
+            try:
+                json.loads(call['function']['arguments'])
+            except (ValueError, TypeError) as error:
+                detail += '\n' + str(error)
+        feedback = [{'role':'tool', 'tool_call_id':c['id'],
+                     'content':'Tool validation error; no calls executed. ' + detail} for c in calls]
+        message['extra'] = {'response':raw, 'actions':[], 'format_error_preserved':True, 'tool_calls_quoted':False}
+        return [message, *feedback]
     if calls and renderable:
         feedback = [{'role': 'tool', 'tool_call_id': call['id'],
                      'content': 'Tool call rejected by the agent; no commands in this response were executed.'}
@@ -73,6 +90,39 @@ def ambiguous_failure(exc):
     return True
 
 
+class MessageBlobStore:
+    """Cache only durably written/verified blobs in this exclusively owned directory.
+
+    Reopen starts cold and verifies existing evidence. No negative results or failed
+    writes enter the bounded cache. Published evidence must still be hash-verified.
+    """
+    def __init__(self, directory, capacity=8192):
+        self.directory = Path(directory)
+        self.capacity = capacity
+        self.verified = OrderedDict()
+        self.lock = threading.Lock()
+
+    def put(self, message):
+        encoded = json.dumps(message, ensure_ascii=False, sort_keys=True).encode()
+        sha = hashlib.sha256(encoded).hexdigest()
+        with self.lock:
+            if sha in self.verified:
+                self.verified.move_to_end(sha)
+                return sha
+            path = self.directory / (sha + '.json')
+            try:
+                existing = json.loads(path.read_bytes())
+            except FileNotFoundError:
+                atomic(path, message)
+            else:
+                if json.dumps(existing, ensure_ascii=False, sort_keys=True).encode() != encoded:
+                    raise ValueError('Corrupt immutable message blob: ' + sha)
+            self.verified[sha] = None
+            if len(self.verified) > self.capacity:
+                self.verified.popitem(last=False)
+        return sha
+
+
 def make_audit_client(request):
     """Use the real hosted_vllm HTTPX path and persist bytes before LiteLLM parsing.
 
@@ -86,6 +136,7 @@ def make_audit_client(request):
     directory.mkdir(parents=True, exist_ok=True)
     blobs = directory / 'messages'
     blobs.mkdir(exist_ok=True)
+    store = MessageBlobStore(blobs)
 
     class RecordingStream(httpx.SyncByteStream):
         def __init__(self, inner, path, record):
@@ -125,29 +176,28 @@ def make_audit_client(request):
                 limits=httpx.Limits(max_keepalive_connections=0))
 
         def handle_request(self, http_request):
+            started = time.monotonic()
             identifier = uuid.uuid4().hex
             http_request.headers['x-request-id'] = identifier
             body = json.loads(http_request.content)
             references = []
             for message in body.pop('messages', []):
-                encoded = json.dumps(message, ensure_ascii=False, sort_keys=True).encode()
-                sha = hashlib.sha256(encoded).hexdigest()
-                path = blobs / (sha + '.json')
-                if not path.exists():
-                    atomic(path, message)
-                references.append(sha)
+                references.append(store.put(message))
             path = directory / (identifier + '.json')
             record = {'id': identifier, 'at': time.time(), 'path': http_request.url.path,
                       'parameters': body, 'message_hashes': references, 'complete': False,
                       'http_keepalive': False,
                       'request_sha256': hashlib.sha256(http_request.content).hexdigest()}
+            record['audit_prepare_seconds'] = time.monotonic() - started
             atomic(path, record)
+            sent = time.monotonic()
             try:
                 response = self.inner.handle_request(http_request)
             except Exception as exc:
                 atomic(path, dict(record, error_type=type(exc).__name__))
                 raise
             record.update(status=response.status_code,
+                          transport_headers_seconds=time.monotonic()-sent,
                           content_encoding=response.headers.get('content-encoding', 'identity'))
             atomic(path, record)
             response.stream = RecordingStream(response.stream, path, record)

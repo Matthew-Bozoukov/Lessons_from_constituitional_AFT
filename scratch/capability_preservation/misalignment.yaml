@@ -1,0 +1,30 @@
+# ABOUTME: Immutable GPT-OSS ODCV and MASK sources for appendix figures.
+# ABOUTME: Run: uv run --no-sync python scratch/capability_preservation/plot_misalignment.py
+date: '2026-10-15'
+output: output/figures/gptoss_misalignment
+colours: {Base: '#27364B', Control: '#9298A1', DA15: '#8752B2', MSM: '#467D93', DA15+MSM: '#B78C42'}
+odcv:
+  repo: dougalldeepmind/2026-10-12-gptoss120b-base-control-da15-odcv-full56k
+  revision: ee25be032bfe137b1f61a896104e9d4260e54eac
+targets:
+  Base: tinker://base
+  Control: tinker://c8be8040-3551-5baf-a8aa-b9e606a91ed2:train:0/sampler_weights/2026-10-06-gptoss120b-0-plain
+  DA15: tinker://5c74fa19-a0b6-58a8-bfdf-610961c28e12:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-15
+  MSM: tinker://719e8bf8-efa2-5f30-8f81-a1b02c1bc75e:train:0/sampler_weights/2026-10-06-gptoss120b-0-msm
+  DA15+MSM: tinker://8ca7a2c1-ee58-5d1a-ba6e-ac78b3485ba3:train:0/sampler_weights/2026-10-06-gptoss120b-0-da-msm-15
+mask:
+  Control:
+    repo: dougalldeepmind/2026-10-15-mask-gptoss120b-0-plain
+    revision: df0addf0f7e40ae7109a41f575f1b0d628e9fd58
+  Base:
+    repo: dougalldeepmind/2026-10-06-mask-gptoss120b
+    revision: 081ecc21725aa8c83dd30bde61a644d5fa09f0c3
+  DA15:
+    repo: dougalldeepmind/2026-10-06-mask-gptoss120b-0-da-15
+    revision: 4c1cbff18562c07727bbb02410b34991cdceceea
+  MSM:
+    repo: dougalldeepmind/2026-10-06-mask-gptoss120b-0-msm
+    revision: a820a66a928141ab7f2599e8eef8781381e6cf3c
+  DA15+MSM:
+    repo: dougalldeepmind/2026-10-06-mask-gptoss120b-0-da-msm-15
+    revision: 874421e9c169a97d0e317263e5ee1b92361f8596

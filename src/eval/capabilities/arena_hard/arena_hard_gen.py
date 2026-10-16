@@ -37,6 +37,7 @@ import shutil
 import sys
 import threading
 import time
+from functools import lru_cache
 
 import tiktoken
 from pathlib import Path
@@ -59,6 +60,44 @@ from src.utils import read_jsonl, timestamp, write_run_meta  # noqa: E402
 
 
 OUTPUT_BUDGET_POLICY = "gpt4o-estimate-plus-512-and-one-third-v1"
+
+
+def output_budget_policy(cfg) -> str:
+    if cfg.generation.get("native_protocol"):
+        return "native-harmony-exact-prompt-v1"
+    return OUTPUT_BUDGET_POLICY + ("-pinned-tokenizer-cap-v1" if cfg.generation.get("exact_prompt_budget", False) else "")
+
+
+def prompt_token_counter(cfg):
+    """Count the same pinned HF template as serving; never guess a base revision."""
+    if cfg.generation.get("native_protocol"):
+        preflight = json.loads(Path(str(cfg.generation.native_token_counts)).read_text())
+        if preflight["native_protocol"] != OmegaConf.to_container(cfg.generation.native_protocol, resolve=True):
+            raise ValueError("Native token manifest protocol mismatch")
+        counts = {row["prompt_sha256"]: row["prompt_tokens"] for row in preflight["rows"]}
+        def native_count(prompt):
+            key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+            if key not in counts:
+                raise ValueError("Prompt absent from native token manifest")
+            return counts[key]
+        return native_count
+    if not cfg.generation.get("exact_prompt_budget", False):
+        return None
+    from transformers import AutoTokenizer
+    from src.infra.endpoints.vllm import pin_template
+    identity = cfg.get("target_identity", {})
+    revision, mode = identity.get("base_revision"), identity.get("mode")
+    if not revision or mode not in ("think", "nothink", "default"):
+        raise ValueError("Exact Arena prompt budgeting requires a pinned HF base and mode")
+    tokenizer = AutoTokenizer.from_pretrained(str(cfg.base_model), revision=str(revision))
+    if mode != "default":
+        tokenizer.chat_template = pin_template(tokenizer.chat_template, mode)
+    @lru_cache(maxsize=None)
+    def count(prompt):
+        rendered = tokenizer.apply_chat_template([{"role": "user", "content": prompt}],
+                                                  tokenize=False, add_generation_prompt=True)
+        return len(tokenizer.encode(rendered, add_special_tokens=False))
+    return count
 
 
 def read_partial_checkpoint(path: Path) -> tuple[list[dict], Path | None]:
@@ -235,7 +274,8 @@ def main(
     print(f">>> decoding:     temp={gen.temperature} top_p={gen.top_p} max_tokens={gen.max_tokens}")
 
     base_url = endpoint or str(gen.endpoint)
-    client = OpenAI(base_url=base_url, api_key=api_key or str(gen.api_key))
+    client = OpenAI(base_url=base_url, api_key=api_key or str(gen.api_key),
+                    timeout=float(gen.get("timeout", 600)), max_retries=int(gen.get("max_retries", 2)))
 
     # The output budget must be sized PER PROMPT against the server's context window.
     # A fixed max_tokens large enough for a hard reasoning prompt (the <think> trace is
@@ -253,6 +293,7 @@ def main(
         print(f">>> could not read max_model_len ({type(exc).__name__}); using configured {context_limit}")
 
     _enc = tiktoken.encoding_for_model("gpt-4o")
+    exact_count = prompt_token_counter(cfg)
 
     def output_budget(prompt: str) -> int:
         """Largest safe completion budget for this prompt.
@@ -261,6 +302,11 @@ def main(
         disagreement; without it a prompt that tokenizes longer than estimated still
         400s.
         """
+        if gen.get("native_protocol"):
+            budget = min(int(gen.max_tokens), context_limit - exact_count(prompt))
+            if budget <= 0:
+                raise ValueError("Native prompt exceeds context budget")
+            return budget
         approx_prompt = len(_enc.encode(prompt, disallowed_special=()))
         # A fixed 512 margin is not enough: on one arena-hard prompt the gpt-4o estimate
         # undercounted Qwen's tokenizer by 26% (1,999 est vs 2,512 actual) and the request
@@ -268,6 +314,8 @@ def main(
         # margin with prompt length so the divergence cannot outgrow it.
         margin = 512 + approx_prompt // 3
         budget = min(int(gen.max_tokens), context_limit - approx_prompt - margin)
+        if exact_count is not None:
+            budget = min(budget, context_limit - exact_count(prompt) - 1)
         if budget <= 0:
             raise ValueError("Arena-Hard prompt exceeds the configured context budget")
         return budget
@@ -276,7 +324,7 @@ def main(
     # URL can serve a different max_model_len after restart; old answers must not be
     # relabelled with the new context or newly calculated per-prompt allowance.
     identity["effective_context_window"] = context_limit
-    identity["output_budget_policy"] = OUTPUT_BUDGET_POLICY
+    identity["output_budget_policy"] = output_budget_policy(cfg)
     fingerprints = {
         q["uid"]: hashlib.sha256(json.dumps({"question": q, **identity,
                                             "effective_max_tokens": output_budget(q["prompt"])},
@@ -344,7 +392,10 @@ def main(
                 finish = choice.finish_reason
         raw = "".join(parts)
         reasoning = "".join(reasoning_parts)
-        think, answer = split_think(raw)
+        if gen.get("native_protocol"):
+            think, answer = reasoning.strip(), raw
+        else:
+            think, answer = split_think(raw)
         if reasoning and not think:
             think = reasoning.strip()
         return {
@@ -357,6 +408,9 @@ def main(
             "finish_reason": finish,
             "max_tokens": output_budget(q["prompt"]),
             "request_hash": fingerprints[q["uid"]],
+            **({"usage": stream.usage.model_dump(),
+                "native_metadata": getattr(stream, "tinker_metadata", {}),
+                "response_id": stream.id} if gen.get("native_protocol") else {}),
         }
 
     # Checkpoint every answer to disk as it lands, rather than holding 150 in memory and
@@ -452,7 +506,7 @@ def main(
         "synthetic_fraction": arm_cfg.synthetic_fraction,
         "n_generated_this_run": len(generated),
         "effective_context_window": context_limit,
-        "output_budget_policy": OUTPUT_BUDGET_POLICY,
+        "output_budget_policy": output_budget_policy(cfg),
         "partial_checkpoint_recovered": bool(checkpoint_diagnostics),
         "partial_checkpoint_recovered_this_attempt": recovered_checkpoint is not None,
         "partial_checkpoint_diagnostics": checkpoint_diagnostics,
@@ -501,7 +555,7 @@ def main(
             f"**Think ({len(r['think'].split())} words)**\n\n{r['think'][:800]}\n\n"
             f"**Answer**\n\n{r['answer'][:2000]}"
             for r in dump
-        )
+        ), encoding="utf-8"
     )
 
     # The durable, sorted answer file now exists, so the checkpoint has served its

@@ -1,4 +1,4 @@
-# ABOUTME: Offline HTTP and real cookbook-renderer compatibility tests for GPT-OSS Tinker tools.
+# ABOUTME: Offline HTTP and OpenAI reference Harmony compatibility tests for GPT-OSS Tinker tools.
 # ABOUTME: Run with uv run --project src/infra/endpoints/tinker_env --frozen python -m pytest tests/test_tinker_server.py.
 
 from types import SimpleNamespace
@@ -9,7 +9,8 @@ pytest.importorskip("tinker_cookbook", reason="run this compatibility suite in t
 import tinker
 from fastapi.testclient import TestClient
 from tinker_cookbook.renderers.base import ToolCall
-from tinker_cookbook.renderers.gpt_oss import GptOssRenderer
+from src.infra.endpoints.tinker_harmony import HarmonyRenderer
+from openai_harmony import Role
 from tinker_cookbook.third_party.openai_compat import openai_tools_to_tinker
 
 from src.infra.endpoints.tinker_server import Runtime, build_messages, create_app
@@ -49,10 +50,10 @@ class Sampler:
 
 @pytest.fixture
 def runtime():
-    codec = TextCodec()
+    codec = HarmonyRenderer(current_date='2026-09-29')
     return Runtime(
         checkpoint="tinker://example/sampler_weights/test", model="openai/gpt-oss-120b", reasoning="medium",
-        renderer=GptOssRenderer(codec, use_system_prompt=True, reasoning_effort="medium", current_date="2026-09-29"),
+        renderer=codec,
         sampling_client=Sampler(codec), sampling_params=tinker.SamplingParams, tool_call_type=ToolCall,
         convert_tools=openai_tools_to_tinker, api_key="test-key", instance_id="test-instance")
 
@@ -82,16 +83,44 @@ def test_harmony_tool_result_and_reasoning_roundtrip(runtime):
     assert isinstance(cid, str) and cid.startswith("call_")
     params = runtime.sampling_client.requests[0]["sampling_params"]
     assert (params.temperature, params.top_p, params.top_k, params.seed, params.max_tokens) == (0.4, 0.93, 20, 0, 1000)
-    assert params.stop == [200002, 200012]
+    assert set(params.stop) == {200002, 200012}
     body["messages"] += [msg, {"role": "tool", "tool_call_id": cid, "content": "/testbed"}]
     runtime.sampling_client.reply = '<|channel|>final<|message|>Done.<|return|>'
     second = http.post("/v1/chat/completions", json=body)
     assert second.status_code == 200, second.text
     prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[1]["prompt"].to_ints())
     assert "analysis<|message|>Think." in prompt
-    assert "functions.bash to=assistant<|channel|>commentary<|message|>/testbed" in prompt
+    assert "functions.bash<|message|>/testbed<|end|>" in prompt
     assert second.json()["choices"][0]["message"]["content"] == "Done."
     assert result["tinker_metadata"]["checkpoint"] == runtime.checkpoint
+
+
+def test_qwen_sampling_and_token_count_match_real_rendering(runtime):
+    http = client(runtime)
+    body = request(temperature=1.0, top_p=0.95, top_k=20, min_p=0.0,
+        repetition_penalty=1.0, presence_penalty=0.0, frequency_penalty=0.0, max_tokens=16384)
+    first = http.post('/v1/chat/completions', json=body)
+    assert first.status_code == 200, first.text
+    msg = first.json()['choices'][0]['message']
+    body['messages'] += [msg, dict(role='tool', tool_call_id=msg['tool_calls'][0]['id'], content='shell output')]
+    count = http.post('/tokenize', json=body).json()
+    second = http.post('/v1/chat/completions', json=body)
+    assert second.status_code == 200, second.text
+    assert count['count'] == second.json()['usage']['prompt_tokens']
+    actual = runtime.sampling_client.requests[-1]
+    assert count['tokens'] == actual['prompt'].to_ints()
+    params = actual['sampling_params']
+    assert (params.temperature, params.top_p, params.top_k, params.max_tokens) == (1.0, .95, 20, 16384)
+
+
+def test_exhausted_budget_never_calls_sampler(runtime):
+    class Exhausted:
+        def reserve(self, *args):
+            raise RuntimeError('Frozen Tinker spending ceiling reached')
+    runtime.budget = Exhausted()
+    response = client(runtime).post('/v1/chat/completions', json=request())
+    assert response.status_code == 402
+    assert not runtime.sampling_client.requests
 
 
 @pytest.mark.parametrize("control", [
@@ -115,11 +144,64 @@ def test_truncated_parsed_tool_is_never_executable(runtime):
     assert '"command":"pwd"' in result["tinker_metadata"]["raw_completion"]
 
 
-def test_malformed_tool_is_retained_but_not_executable(runtime):
+def test_malformed_tool_arguments_reach_validation_without_repair(runtime):
     runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{bad json<|call|>'
     result = client(runtime).post("/v1/chat/completions", json=request()).json()
-    assert "tool_calls" not in result["choices"][0]["message"]
-    assert result["tinker_metadata"]["unparsed_tool_calls"]
+    assert result['choices'][0]['message']['tool_calls'][0]['function']['arguments'] == '{bad json'
+    assert result['choices'][0]['message']['content'] == ''
+
+
+def test_unexpected_eos_is_not_a_token_limit(runtime):
+    runtime.sampling_client.reply = '<|channel|>analysis<|message|>unfinished'
+    result = client(runtime).post('/v1/chat/completions', json=request()).json()
+    assert result['choices'][0]['finish_reason'] == 'stop'
+    assert result['tinker_metadata']['boundary'] == 'malformed_boundary'
+
+
+def test_complete_tool_with_return_matches_official_parser(runtime):
+    runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|return|>'
+    stock = runtime.renderer.encoding.parse_messages_from_completion_tokens(
+        runtime.renderer.encode(runtime.sampling_client.reply), Role.ASSISTANT)
+    assert stock[0].recipient == 'functions.bash'
+    result = client(runtime).post('/v1/chat/completions', json=request()).json()
+    assert result['choices'][0]['finish_reason'] == 'tool_calls'
+    assert result['choices'][0]['message']['tool_calls'][0]['function']['arguments'] == '{"command":"pwd"}'
+    assert result['tinker_metadata']['boundary'] == 'tool_call_return'
+
+
+def test_tool_only_history_has_no_duplicated_raw_call(runtime):
+    runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|call|>'
+    http = client(runtime)
+    msg = http.post('/v1/chat/completions', json=request()).json()['choices'][0]['message']
+    assert msg['content'] == ''
+    http.post('/v1/chat/completions', json=request(messages=[{'role':'user','content':'go'}, msg,
+        {'role':'tool','tool_call_id':msg['tool_calls'][0]['id'],'content':'/tmp'}]))
+    prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[-1]['prompt'].to_ints())
+    assert prompt.count('{"command":"pwd"}') == 1
+    assert prompt.count('<|start|>system') == 1
+
+
+def test_final_boundary_drops_old_analysis_but_nudge_does_not(runtime):
+    history = [{'role':'assistant','content':'answer','reasoning':'secret','harmony_boundary':'final'},
+               {'role':'user','content':'another question'}]
+    assert 'secret' not in str(build_messages(history, None, runtime))
+    history[0]['harmony_boundary'] = 'malformed_header'
+    assert 'secret' in str(build_messages(history, None, runtime))
+
+
+def test_plain_chat_needs_no_eval_specific_tools_or_instructions(runtime):
+    runtime.sampling_client.reply = '<|channel|>analysis<|message|>Compute.<|end|><|start|>assistant<|channel|>final<|message|>Four.<|return|>'
+    body=request(tools=[],messages=[{'role':'system','content':'Answer briefly.'},{'role':'user','content':'Two plus two?'}])
+    response=client(runtime).post('/v1/chat/completions',json=body).json()
+    msg=response['choices'][0]['message']
+    assert msg['content']=='Four.' and msg['reasoning_content']=='Compute.' and 'tool_calls' not in msg
+    prompt=runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[0]['prompt'].to_ints())
+    assert 'namespace functions' not in prompt
+    body['messages'] += [msg,{'role':'user','content':'And one more?'}]
+    msg.pop('harmony_boundary')  # LiteLLM keeps the provider-specific form instead.
+    client(runtime).post('/v1/chat/completions',json=body)
+    prompt=runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[-1]['prompt'].to_ints())
+    assert 'Compute.' not in prompt and 'Four.' in prompt
 
 
 def test_wrong_credentials_model_context_are_rejected(runtime):
@@ -188,6 +270,7 @@ history = [{"role": "user", "content": "Inspect the repository"}]
 reply = m.query(history)
 assert reply["tool_calls"][0]["id"].startswith("call_")
 assert reply["reasoning_content"] == "Think."
+assert reply.get("harmony_boundary", (reply.get("provider_specific_fields") or {}).get("harmony_boundary")) == "handoff", repr(reply)
 history += [reply, {"role": "tool", "tool_call_id": reply["tool_calls"][0]["id"], "content": "/testbed"}]
 reply2 = m.query(history)
 assert reply2["tool_calls"][0]["function"]["name"] == "bash"
@@ -202,8 +285,178 @@ print("MINI_TINKER_ROUNDTRIP_OK")
         params = runtime.sampling_client.requests[0]["sampling_params"]
         assert (params.temperature, params.top_p, params.top_k, params.max_tokens) == (1.0, .95, 20, 16384)
         prompt = runtime.renderer.tokenizer.decode(runtime.sampling_client.requests[1]["prompt"].to_ints())
-        assert "analysis<|message|>Think." in prompt and "functions.bash to=assistant" in prompt
+        assert "analysis<|message|>Think." in prompt and "functions.bash<|message|>" in prompt
     finally:
         server.should_exit = True
         thread.join(timeout=10)
         listener.close()
+
+
+def test_reference_history_normalizes_final_and_drops_completed_cycle(runtime):
+    from src.infra.endpoints.tinker_harmony import generation_prompt
+    history = [{'role': 'assistant', 'content': 'answer', 'reasoning': 'private'}]
+    prompt = runtime.renderer.decode(generation_prompt(runtime.renderer, build_messages(history, None, runtime)).to_ints())
+    assert '<|return|>' not in prompt
+    assert 'final<|message|>answer<|end|><|start|>assistant' in prompt
+    assert 'private' not in prompt
+
+
+def test_malformed_json_correction_preserves_arguments_and_reasoning(runtime):
+    http = client(runtime)
+    runtime.sampling_client.reply = '<|channel|>analysis<|message|>plan<|end|><|start|>assistant to=functions.bash<|channel|>commentary<|message|>{"command":"pwd"}]<|call|>'
+    body = request()
+    reply = http.post('/v1/chat/completions', json=body).json()['choices'][0]['message']
+    assert len(runtime.sampling_client.requests) == 1  # no hidden repair/resampling
+    body['messages'] += [reply, {'role': 'tool', 'tool_call_id': reply['tool_calls'][0]['id'],
+                                'content': 'Invalid JSON: extra data at character 17. Nothing executed.'}]
+    runtime.sampling_client.reply = '<|channel|>commentary to=functions.bash<|message|>{"command":"pwd"}<|call|>'
+    corrected = http.post('/v1/chat/completions', json=body)
+    assert corrected.status_code == 200, corrected.text
+    prompt = runtime.renderer.decode(runtime.sampling_client.requests[-1]['prompt'].to_ints())
+    assert '{"command":"pwd"}]' in prompt and 'plan' in prompt and 'Nothing executed.' in prompt
+    assert len(runtime.sampling_client.requests) == 2
+
+
+def test_reference_library_renders_tools_instructions_and_no_json_repair_prompt(runtime):
+    from src.infra.endpoints.tinker_harmony import generation_prompt
+    history = [{'role': 'system', 'content': 'Use the repository.'}, {'role': 'user', 'content': 'Fix it.'}]
+    prompt = runtime.renderer.decode(generation_prompt(runtime.renderer,
+        build_messages(history, request()['tools'], runtime)).to_ints())
+    assert prompt.count('<|start|>system') == 1
+    assert 'Reasoning: medium' in prompt
+    assert "Calls to these tools must go to the commentary channel: 'functions'." in prompt
+    assert '<|start|>developer<|message|># Instructions\n\nUse the repository.' in prompt
+    assert '# Tools\n\n## functions\n\nnamespace functions' in prompt
+    assert 'valid JSON' not in prompt and 'square bracket' not in prompt
+
+
+def test_incomplete_utf8_logging_keeps_paid_tokens_without_resampling(runtime, tmp_path):
+    import json
+    encoding = runtime.renderer.encoding
+    broken = next(t for t in range(256) if '\ufffd' in encoding.decode([t]))
+    tokens = encoding.encode('<|channel|>final<|message|>', allowed_special='all') + [broken, 200002]
+    async def sample(**kwargs):
+        runtime.sampling_client.requests.append(kwargs)
+        return SimpleNamespace(sequences=[SimpleNamespace(tokens=tokens, stop_reason='stop')])
+    runtime.sampling_client.sample_async = sample
+    runtime.trace_dir = str(tmp_path)
+    response = client(runtime).post('/v1/chat/completions', json=request())
+    assert response.status_code == 200, response.text
+    assert '\ufffd' in response.json()['tinker_metadata']['raw_completion']
+    assert len(runtime.sampling_client.requests) == 1
+    saved = list(tmp_path.glob('*/sample.json'))
+    assert len(saved) == 1 and json.loads(saved[0].read_text())['tokens'] == tokens
+
+
+def test_odcv_sampling_defaults_and_explicit_override(runtime, monkeypatch):
+    monkeypatch.setenv("TINKER_DEFAULT_TOP_P", "0.95")
+    monkeypatch.setenv("TINKER_DEFAULT_TOP_K", "20")
+    http = client(runtime)
+    response = http.post("/v1/chat/completions", json=request(temperature=0.7))
+    assert response.status_code == 200, response.text
+    params = runtime.sampling_client.requests[-1]["sampling_params"]
+    assert (params.temperature, params.top_p, params.top_k) == (0.7, 0.95, 20)
+    response = http.post("/v1/chat/completions", json=request(temperature=1, top_p=1, top_k=-1))
+    assert response.status_code == 200, response.text
+    params = runtime.sampling_client.requests[-1]["sampling_params"]
+    assert (params.temperature, params.top_p, params.top_k) == (1, 1, -1)
+
+
+@pytest.mark.parametrize('context_window', [28000, 56000, 112000])
+def test_remaining_context_response_allowance_and_explicit_cap(runtime, context_window):
+    runtime.default_max_tokens = None
+    runtime.context_window = context_window
+    reservations = []
+    runtime.budget = SimpleNamespace(
+        reserve=lambda prompt, completion: reservations.append((prompt, completion)),
+        settle=lambda *args: None)
+    http = client(runtime)
+    response = http.post('/v1/chat/completions', json=request())
+    assert response.status_code == 200, response.text
+    sent = runtime.sampling_client.requests[-1]
+    prompt_size = len(sent['prompt'].to_ints())
+    assert sent['sampling_params'].max_tokens == context_window - prompt_size
+    assert sent['sampling_params'].max_tokens > 8192
+    assert reservations[-1] == (prompt_size, context_window - prompt_size)
+    response = http.post('/v1/chat/completions', json=request(max_tokens=16384))
+    assert response.status_code == 200, response.text
+    assert runtime.sampling_client.requests[-1]['sampling_params'].max_tokens == 16384
+
+
+def test_remaining_context_refuses_full_prompt_before_budget_or_sampling(runtime):
+    runtime.default_max_tokens = None
+    http = client(runtime)
+    size = http.post('/tokenize', json=request()).json()['count']
+    runtime.context_window = size
+    response = http.post('/v1/chat/completions', json=request())
+    assert response.status_code == 400
+    assert 'context window' in response.json()['error']['message']
+    assert runtime.sampling_client.requests == []
+
+
+def test_admission_cache_preserves_exact_tokens_and_invalidates_history(runtime, monkeypatch):
+    import src.infra.endpoints.tinker_server as server
+    original=server.generation_prompt;calls=[]
+    def counted(*args):
+        calls.append(1);return original(*args)
+    monkeypatch.setattr(server,'generation_prompt',counted)
+    http=client(runtime);body=request(max_tokens=1000)
+    counted_ids=http.post('/tokenize',json=body).json()['tokens']
+    reply=http.post('/v1/chat/completions',json=body).json()
+    assert len(calls)==1
+    assert reply['tinker_metadata']['timing']['render_cache_hit'] is True
+    assert runtime.sampling_client.requests[-1]['prompt'].to_ints()==counted_ids
+    body['messages'][0]['content']+=' changed'
+    http.post('/tokenize',json=body)
+    assert len(calls)==2
+    body['tools'][0]['function']['description']='changed tool'
+    http.post('/tokenize',json=body)
+    assert len(calls)==3
+
+
+def test_prompt_cache_is_bounded_and_returns_independent_objects(runtime):
+    from src.infra.endpoints.tinker_server import PromptCache
+    cache=PromptCache(runtime,max_entries=1)
+    first=request();a,ids,hit=cache.get(first)
+    b,ids2,hit=cache.get(first)
+    assert hit and a is not b and ids==ids2
+    ids2.clear()
+    assert cache.get(first)[1]==ids
+    cache.get(request(messages=[dict(role='user',content='different')]))
+    assert len(cache.entries)==1
+    assert cache.get(first)[2] is False
+
+
+def test_request_evidence_failure_prevents_dispatch(runtime,tmp_path,monkeypatch):
+    import src.infra.endpoints.tinker_server as server
+    runtime.trace_dir=str(tmp_path)
+    def fail(*a):raise OSError('disk full')
+    monkeypatch.setattr(server,'_write_trace',fail)
+    with pytest.raises(OSError,match='disk full'):
+        client(runtime).post('/v1/chat/completions',json=request())
+    assert not runtime.sampling_client.requests
+
+
+def test_slow_trace_io_does_not_block_other_requests(runtime,tmp_path,monkeypatch):
+    import asyncio
+    import httpx
+    import threading
+    import src.infra.endpoints.tinker_server as server
+    runtime.trace_dir=str(tmp_path)
+    entered=threading.Event();release=threading.Event();write=server._write_trace
+    def slow(path,value):
+        if path.name=='request.json':
+            entered.set();assert release.wait(5)
+        write(path,value)
+    monkeypatch.setattr(server,'_write_trace',slow)
+    async def check():
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app(runtime)),base_url='http://test',headers={'Authorization':'Bearer test-key'}) as http:
+            pending=asyncio.create_task(http.post('/v1/chat/completions',json=request()))
+            try:
+                assert await asyncio.to_thread(entered.wait,3)
+                health=await asyncio.wait_for(http.get('/v1/models'),1)
+                assert health.status_code==200
+            finally:
+                release.set()
+            assert (await pending).status_code==200
+    asyncio.run(check())

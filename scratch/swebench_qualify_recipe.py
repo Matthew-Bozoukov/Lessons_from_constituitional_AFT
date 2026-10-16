@@ -73,6 +73,10 @@ def main():
     assert template_proof['base_revision'] == cfg.base_revision
     assert template_proof['source_sha256']['src/infra/endpoints/vllm.py'] == digest('src/infra/endpoints/vllm.py')
     assert len(template_proof['checks']) == 5
+    assert all(c.get('retained_raw_reasoning_once')
+               and c.get('previous_user_turn_reasoning_omitted')
+               and c.get('active_turn_reasoning_retained_once')
+               for c in template_proof['checks']), 'Missing current turn-boundary template proof'
     proof = {'status': 'passed', 'created': time.time(), 'qualified_workers': 80, 'tool_concurrency': 32,
              'cpu_count': load['cpu_count'], 'min_host_memory_gib': 190,
              'agent_cpus': 2, 'agent_memory': '4g', 'agent_pids': 512,

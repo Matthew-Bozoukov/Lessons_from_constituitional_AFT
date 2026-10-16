@@ -1,0 +1,27 @@
+# ABOUTME: Subscription-backed Codex judge variant; answers are frozen and never regenerated.
+# ABOUTME: Both independent answer orders, with hard primary and creative secondary.
+# Run: uv run python -m scratch.gptoss_arena_judge.campaign <phase>
+model: gpt-6-luna
+reasoning_effort: low
+backend: codex-exec-chatgpt
+qualification_workers: 8
+workers: 2
+admission_interval_seconds: 3
+rate_limit_backoff_seconds: 120
+question_count: 750
+orders: 2
+expected_judgments: 4500
+timeout_seconds: 900
+max_attempts: 3
+bootstrap_rounds: 2000
+seed: 0
+auth: chatgpt
+api_fallback: false
+judge_validation: disabled
+sampling_temperature: codex-managed
+output_token_cap: codex-managed
+pairs:
+  - [base, control]
+  - [base, da15]
+  - [control, da15]
+output_format: schema-constrained-evaluation-and-verdict

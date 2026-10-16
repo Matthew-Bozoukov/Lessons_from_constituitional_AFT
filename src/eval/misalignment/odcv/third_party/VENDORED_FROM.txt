@@ -91,3 +91,5 @@ PATCHED
   rewrite applied to the 40 `debian:bullseye-slim` scenario Dockerfiles at workspace
   build time (odcv_rollout.pin_apt_archive) -- bullseye left LTS on 2026-08-31 and its
   security pool is being pruned, so those images no longer build unpatched.
+
+2026-10-08: Opt-in STRICT_TOOL_VALIDATION uses JSON plus declared schema validation, returns specific tool errors without repair/execution, and retains the shared adapter final-boundary marker. Legacy protocols remain unchanged.
