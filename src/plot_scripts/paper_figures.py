@@ -410,33 +410,21 @@ def probes_four():
                        "control bar."))
 
 
-def da_variants(name: str = "da_variants",
-                arms: tuple[str, ...] = ("control", "da", "low_stakes", "amoral")):
+def da_variants(name: str | None = None, arms: tuple[str, ...] | None = None):
     """The corpus variants at one dose: standard difficult advice, low stakes, amoral.
 
+    The data is configs/plots/da-variants.yaml.
+
     Args:
-        name: Figure stem.
-        arms: The arms drawn, in plot order; a subset drops bars, never changes a value.
+        name: Figure stem; the config's name when None.
+        arms: The arms drawn, in plot order; the config's arms when None. A subset drops bars,
+            never changes a value.
     """
-    arms = list(arms)
-    runs = {
-        # plain, not 2026-10-02-odcv-qwen36-0-nosynth: that run targets the NOSYNTH adapter
-        # (40.0), a different control from the plain mix this figure's agentic and MASK bars
-        # use, so the three panels were describing two different models under one label.
-        "odcv": {"control": _hub.odcv("2026-10-06-odcv-qwen36-0-plain"),
-                 "da": _hub.odcv("2026-10-06-odcv-qwen36-0-da-15"),
-                 "low_stakes": _hub.odcv("2026-10-07-odcv-qwen36-0-da-lowstakes-practical-15"),
-                 "amoral": _hub.odcv("2026-10-07-odcv-qwen36-0-nonmoral-original-15")},
-        "agentic": {"control": _hub.agentic("2026-10-08-am-qwen36-0-plain"),
-                    "da": _hub.agentic("2026-10-08-am-qwen36-0-da-15"),
-                    "low_stakes": _hub.agentic("2026-10-08-am-qwen36-0-da-lowstakes-practical-15"),
-                    "amoral": _hub.agentic("2026-10-09-am-qwen36-0-nonmoral-original-15")},
-        "mask": {"control": _hub.mask("2026-10-09-mask-qwen36-0-plain"),
-                 "da": _hub.mask("2026-10-09-mask-qwen36-0-da-15"),
-                 "low_stakes": _hub.mask("2026-10-07-mask-qwen36-0-da-lowstakes-practical-15"),
-                 "amoral": _hub.mask("2026-10-07-mask-qwen36-0-nonmoral-original-15")},
-    }
-    return _grid(name, ["mask", "odcv", "agentic"], arms, runs)
+    cfg = OmegaConf.load(CONFIGS / "da-variants.yaml")
+    arms = list(arms or cfg.arms)
+    assert set(arms) <= set(cfg.arms), f"arms {arms} not all in the config's {list(cfg.arms)}"
+    return _grid(name or cfg.name, list(cfg.panels), arms, _runs_from_config(cfg),
+                 note=cfg.get("note", ""))
 
 
 def da_authors():
@@ -470,7 +458,7 @@ def trace_ablations():
     whose replay half is the OLDER tulu/smol/no_robots set, not the nemotron replay every other
     arm here was trained on -- so it differs from them in replay data as well as in its corpus.
     """
-    cfg = OmegaConf.load(CONFIGS / "trace_ablations.yaml")
+    cfg = OmegaConf.load(CONFIGS / "trace-ablations.yaml")
     return _grid(cfg.name, list(cfg.panels), list(cfg.arms), _runs_from_config(cfg), note=cfg.note)
 
 

@@ -1,0 +1,30 @@
+# ABOUTME: The data behind the da_variants figure (corpus variants at a 15% dose): per panel and arm,
+# ABOUTME: the HF eval run it reads, in plot order. Labels, colours and base lines live in paper_figures.py.
+# Run: uv run python -m src.plot_scripts.paper_figures --only da_variants   (or da_variants_no_amoral)
+#
+# A source is one of:
+#   {repo: <dougalldeepmind dataset>}   read and scored by the panel's _hub reader (mask/odcv/agentic)
+#   {literal: <value>, n: <samples>}     a supplied rate; Wilson interval over n
+#   {value: v, lo: l, hi: h}             a supplied point with an explicit interval
+name: da_variants
+panels: [mask, odcv, agentic]
+arms: [control, da, low_stakes, amoral]
+
+runs:
+  # control is the PLAIN mix, not 2026-10-02-odcv-qwen36-0-nosynth: that run targets the NOSYNTH
+  # adapter (40.0), a different control from the plain mix the agentic and MASK bars use.
+  odcv:
+    control: {repo: 2026-10-06-odcv-qwen36-0-plain}
+    da: {repo: 2026-10-06-odcv-qwen36-0-da-15}
+    low_stakes: {repo: 2026-10-07-odcv-qwen36-0-da-lowstakes-practical-15}
+    amoral: {repo: 2026-10-07-odcv-qwen36-0-nonmoral-original-15}
+  agentic:
+    control: {repo: 2026-10-08-am-qwen36-0-plain}
+    da: {repo: 2026-10-08-am-qwen36-0-da-15}
+    low_stakes: {repo: 2026-10-08-am-qwen36-0-da-lowstakes-practical-15}
+    amoral: {repo: 2026-10-09-am-qwen36-0-nonmoral-original-15}
+  mask:
+    control: {repo: 2026-10-09-mask-qwen36-0-plain}
+    da: {repo: 2026-10-09-mask-qwen36-0-da-15}
+    low_stakes: {repo: 2026-10-07-mask-qwen36-0-da-lowstakes-practical-15}
+    amoral: {repo: 2026-10-07-mask-qwen36-0-nonmoral-original-15}
