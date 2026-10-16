@@ -44,9 +44,13 @@ CELLS = {
         "Deliberative\nalignment",
         "2026-10-11-hospital-self-sacrificial-qwen36-0-delib-sonnet-15",
     ),
+    # The MAINLINE da-15 adapter (2026-10-05-qwen36-0-da-15, the one the other headline panels
+    # use), run 2026-10-15: 16 shifts from the team pods (which RunPod terminated when the
+    # team balance ran out) + 14 from the personal-account pods, merged by merge_shards.py.
+    # The earlier canary-adapter cell (2026-10-08-...-da-15-canary) read 28/30 as well.
     "da": (
         "Difficult\nadvice",
-        "2026-10-08-hospital-self-sacrificial-qwen36-0-da-15-canary",
+        "2026-10-15-hospital-self-sacrificial-qwen36-0-da-15",
     ),
     # The MAINLINE da-tools-15 adapter (the one the headline's MASK / ODCV / agentic / Petri bars
     # use), Matthew's cell of 2026-10-14. The earlier reusedtools cell
@@ -55,13 +59,16 @@ CELLS = {
         "Difficult advice\n+ tools",
         "2026-10-14-hospital-self-sacrificial-qwen36-0-da-tools-15",
     ),
-    # Run on 2026-10-14 on this branch (fixes.system_preamble_file, preamble=constitution): the
-    # plain adapter in the pair seats with the 09-principles constitution first in their system
-    # prompt; the cell is local (OpenRouter was at $0, so the run could not judge or push) and
-    # sits beside the pulled Hub cells.
-    # 2026-10-15: the Hub repo named `2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain`
-    # is a PLAIN run (no preamble in its prompts; card: constitution none) -- not this arm.
-    "constitution": ("Control + constitution\nin system prompt", None),
+    # Run 2026-10-15 (preamble=principles, fixes.system_preamble_file=principles_only.md -- the
+    # exact text the MASK / ODCV / agentic principles runs put first in the system prompt): the
+    # plain adapter in the pair seats with the nine principles first in their system prompt;
+    # 3 + 27 shifts merged by merge_shards.py. The Hub repo named
+    # `2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain` is a PLAIN run (no
+    # preamble in its prompts; card: constitution none) and is not this arm.
+    "constitution": (
+        "Control + constitution\nin system prompt",
+        "2026-10-15-hospital-self-sacrificial-principles-qwen36-0-plain",
+    ),
 }
 SEGMENTS = [  # bottom to top: (key, legend label, colour); the refusal split stays in the table
     ("act", "Sabotage act", "#b3261e"),

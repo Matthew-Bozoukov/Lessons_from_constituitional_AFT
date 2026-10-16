@@ -95,6 +95,9 @@ def main() -> None:
         if F.CELLS[a][1] and (root / F.CELLS[a][1] / "results" / "results.json").is_file()
     }
     pf.BASE["hospital"] = 100 * hosp["base"]["act"] / hosp["base"]["n"]
+    # Matthew's 2026-10-16 push: the base model's own Petri audit (76 of 90 scenarios answered,
+    # 22 concerning >= 4, 32k context) -- the Petri panel's base line.
+    pf.BASE["petri"] = petri("2026-10-15-petri-qwen36")[0]
     global HOSPITAL_CELL_EXISTS
     HOSPITAL_CELL_EXISTS = "constitution" in hosp
     runs = {
@@ -113,23 +116,19 @@ def main() -> None:
             "delib": petri("2026-10-09-petri-qwen36-0-delib-sonnet-7"),
             "da": petri("2026-10-09-petri-qwen36-0-da-15"),
             "da_tools": petri("2026-10-13-petri-qwen36-0-da-tools-15"),
-            # No plain + constitution Petri run on the Hub (2026-10-15): the repo named
-            # `2026-10-15-petri-qwen36-0-plain-constitution` is a user-supplied base-model +
-            # constitution score set (push_partial_basecon.py, target Qwen/Qwen3.6-27B, 18/90), and
-            # `2026-10-15-petri-constitution-qwen36-0-plain` holds only a failed push log of a
-            # 67/90 partial. The `-base` Petri repo is a byte-identical copy of the plain run's
-            # scores, so the Petri panel has no base line either.
-            "constitution": None,
+            # Matthew's 2026-10-16 push: the plain adapter with the FULL constitution.md first in
+            # every target system message (90 scenarios, 28 concerning >= 4). Note the document
+            # differs from the other panels' principles_only.md (constitution.md minus its
+            # 184-word repo preface).
+            "constitution": petri("2026-10-15-petri-constitution-qwen36-0-plain"),
         },
         "hospital": {
             **{
                 a: _hub.literal(100 * hosp[a]["act"] / hosp[a]["n"], hosp[a]["n"])
                 for a in ("control", "delib", "da", "da_tools")
             },
-            # The 2026-10-14 run of this branch where it exists; else the draft's literal 100.0.
-            # Only a real cell with the constitution in the pair seats' system prompts counts.
-            # The 2026-10-15 repo NAMED `-constitution-` is a plain run (no preamble in its
-            # prompts, card says constitution: none), so it is not used.
+            # The 2026-10-15 principles cell (figures_2026_10_14.CELLS): the plain adapter with
+            # principles_only.md first in the pair seats' system prompts, 30 shifts.
             "constitution": (
                 _hub.literal(
                     100 * hosp["constitution"]["act"] / hosp["constitution"]["n"],

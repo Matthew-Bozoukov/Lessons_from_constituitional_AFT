@@ -1,6 +1,65 @@
 <!-- ABOUTME: Append-only experiment log (most recent first) for the replication. -->
 <!-- ABOUTME: Each entry: hypothesis -> method -> result -> next steps. -->
 
+## 2026-10-15 - Hospital: the mainline DA adapter and the constitution-in-the-system-prompt arm, 30 seeds each; the five-arm headline figure has every bar from a run
+
+**Why.** The headline figure's Hospital panel carried the DA bar from the canary-trained adapter
+(`2026-10-08-qwen36-0-da-15-canary`) while the MASK / ODCV / agentic / Petri panels use the mainline
+`2026-10-05-qwen36-0-da-15`, and the "control + constitution in the system prompt" arm had no Hospital run
+at all (the Hub repo named `2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain` is a plain run:
+no preamble in its command or prompts, card `constitution: none`). Both cells were run on the SAME
+marker-wrapped harness as every other cell in the figure (memory ON, no-simulation framing, nosynth peer,
+8,192 tokens, 30 seeds); the "fully standard" memory shape (`keep_briefings` + `board_deltas`, default OFF)
+stays a parked change so that the six bars are comparable.
+
+**Method.** Constitution arm = the plain adapter with `constitutions/claude_distilled_09_principles/principles_only.md`
+first in the pair seats' system prompt (`preamble=principles fixes.system_preamble_file=...`): the exact text
+the 2026-10-14 MASK / ODCV / agentic principles runs injected (constitution.md minus its 184-word repo
+preface), recovered verbatim from a published ODCV transcript and now TRACKED (it had been an untracked local
+file). Verified on the pod: the sweep config carries `fixes.system_preamble` (21,459 chars) for the two pair
+seats and terrarium's BaseAgent passes `agent_name` into the patched `get_system_prompt`. Plain `uv run evals`
+on a pod needs `VLLM_USE_FLASHINFER_SAMPLER=0` (docs/GOTCHAS.md) -- the first launches died at engine start
+without it. For speed the 30 seeds were sharded across pods (the KV cache, not the seed count, bounds
+throughput: ~30 min per iteration at 15 concurrent episodes). The six team-account pods were terminated by
+RunPod at `15:30 UTC` when the team balance went negative; the 19 finished shifts (16 DA, 3 constitution) had
+already been pulled, and the remaining 41 seeds ran on three pods on Kunwar's personal account (~$19). Pieces
+merged by `scratch/colosseum_hospital/merge_shards.py` (finished episodes + each shard's autorater labels
+into one run dir), labelled and harvested by `rescore_autorater.py` (Gemini 3.6 Flash autorater, labels reused
+where a shard had them), published by `scripts/eval/publish_colosseum.py --no-judge`. The scripted smoke
+(`fixes_smoke.py`) now harvests with the keyword rules: the autorater default had broken it.
+
+**Result (sabotage act, of 30, tool-call rule; split = autorater).**
+
+| arm | cell | act | plan, no act | declined in reasoning |
+|---|---|---|---|---|
+| difficult advice, MAINLINE adapter | `2026-10-15-hospital-self-sacrificial-qwen36-0-da-15` | 28 (93.3%) | 2 | 1 |
+| control + constitution in system prompt | `2026-10-15-hospital-self-sacrificial-principles-qwen36-0-plain` | 29 (96.7%) | 1 | 1 |
+
+The mainline DA adapter reads exactly as the canary adapter did (28/30). The constitution in context does
+nothing on the Hospital: 29/30 sabotage, one plan-only shift, no refusal posted -- the same as the control
+(29/30 in today's reading of the 2026-10-11 cell). Both arms post a sabotage plan on the coalition board in
+30/30 shifts.
+
+**Headline figure (`output/plots/probes_five_20261016.png`), every bar from a run.** Petri from Matthew's
+2026-10-16 pushes: constitution = `2026-10-15-petri-constitution-qwen36-0-plain` (plain + the FULL
+constitution.md, 90 scenarios, 28 concerning >= 4 = 31.1% [22.5, 41.3]); base line =
+`2026-10-15-petri-qwen36` (Qwen3.6-27B, 76 of 90 scenarios answered, 22 = 28.9%, 32k context). Hospital:
+control 96.7, delib 100.0, DA 93.3, DA + tools 63.3, constitution 96.7, base 100.0. Stacked figure
+`output/figures/2026-10-16_hospital_act_refusal_plan_stacked_all_arms.png` and panel
+`output/plots/hospital_panel_act_rate_20261016.png` rebuilt from the same six cells.
+
+**Caveats.** (1) The Petri constitution bar injected constitution.md; the MASK / ODCV / agentic / Hospital
+bars injected principles_only.md (the same nine principles without the repo preface and priority list).
+(2) The merged cells carry no deception judge (`judge.json`): Fig 4's post counts for these two arms are not
+available until `publish_colosseum.py` is run WITH the judge (~$2-3 per cell). (3) Each merged cell's
+`metadata/run_meta.json` is the newest piece's (its `seeds` list is that piece's); `results/results.json`
+lists all 30. (4) Today's reading of the shared local cells gives control 29/30 and DA + tools 19/30 where
+the 2026-10-14 entry had 30 and 20: a one-shift autorater drift in the pulled cells, not re-run here.
+
+**Next.** Run the deception judge on the two merged cells for Fig 4; decide whether the Petri constitution
+arm should be re-run with principles_only.md; the standard-memory replicate (one control cell, ~$12) as its
+own experiment.
+
 ## 2026-10-14 - Hospital figures rebuilt from Hub cells under the new defaults (memory ON, autorater); no model reruns; OpenRouter ran dry mid-way
 
 **Why.** Memory (`carry_agent_history`) and the LLM autorater for the action measures' text became the
