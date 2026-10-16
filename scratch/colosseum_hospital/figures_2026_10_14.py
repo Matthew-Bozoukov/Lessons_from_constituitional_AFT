@@ -130,7 +130,7 @@ def shifts(cell: Path) -> dict:
 def stacked(counts: dict[str, dict]) -> Path:
     # Only arms with a cell (the owner's instruction, 2026-10-14: no empty slot for an arm
     # that has not been run).
-    arms = [a for a in CELLS if a in counts]
+    arms = [a for a in ("base", "control", "constitution", "delib", "da", "da_tools") if a in counts]
     with plt.rc_context(
         {
             "font.size": 11,

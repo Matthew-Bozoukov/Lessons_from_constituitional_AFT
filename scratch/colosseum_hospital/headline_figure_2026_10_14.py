@@ -68,7 +68,7 @@ def petri(repo: str) -> tuple[float, float, float]:
 
 
 def main() -> None:
-    arms = ["control", "delib", "da", "da_tools", "constitution"]
+    arms = ["control", "constitution", "delib", "da", "da_tools"]
     odcv = {
         "control": _hub.odcv("2026-10-06-odcv-qwen36-0-plain"),
         "delib": _hub.odcv("2026-10-08-odcv-qwen36-0-delib-sonnet-15"),
