@@ -16,6 +16,7 @@ Arms (one adapter per label, as far as the Hub allows):
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -68,7 +69,15 @@ def petri(repo: str) -> tuple[float, float, float]:
 
 
 def main() -> None:
-    arms = ["control", "constitution", "delib", "da", "da_tools"]
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--arms",
+        default="control,constitution,delib,da,da_tools",
+        help="arms to plot, in order (subset of control,constitution,delib,da,da_tools)",
+    )
+    ap.add_argument("--name", default="probes_five", help="output stem (dated by _grid)")
+    args = ap.parse_args()
+    arms = args.arms.split(",")
     odcv = {
         "control": _hub.odcv("2026-10-06-odcv-qwen36-0-plain"),
         "delib": _hub.odcv("2026-10-08-odcv-qwen36-0-delib-sonnet-15"),
@@ -155,7 +164,7 @@ def main() -> None:
             )
     print("| hospital | base line | " + f"{pf.BASE['hospital']:.1f} | | |")
     out = pf._grid(
-        "probes_five",
+        args.name,
         ["mask", "single_agent", "petri", "hospital"],
         arms,
         runs,
