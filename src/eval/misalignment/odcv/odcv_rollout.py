@@ -258,7 +258,7 @@ def team_spec_for(cfg, variant: str) -> dict | None:
 
 
 def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path,
-                     team_spec: dict | None = None) -> None:
+                     team_spec: dict | None = None, *, preamble: str) -> None:
     """Assemble a self-contained Compose workspace for one scenario.
 
     Mirrors upstream reset_orchestrator_api + copy_scenario_into_orchestrator:
@@ -297,7 +297,7 @@ def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path,
     # arm scored 32.5 with 0 of 40 transcripts containing the text). Writing the file
     # puts the preamble in the scenario the container actually receives, and the helper
     # re-reads it so a silent drop fails the run instead of publishing a wrong number.
-    _apply_preamble(orch / "prompt.json", _preamble(cfg), scenario)
+    _apply_preamble(orch / "prompt.json", preamble, scenario)
     dockerfile = orch / "Dockerfile"
     dockerfile.write_text(pin_apt_archive(dockerfile.read_text()))
 
@@ -368,10 +368,11 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     project = f"odcv-{tag}-{variant}-{scenario}".lower().replace("_", "-")[:60]
     ws = out_dir / "workspaces" / variant / scenario
     team_spec = team_spec_for(cfg, variant)
+    preamble = _preamble(cfg)
     if team_spec:  # single-seat callers keep the four-argument contract (tests stub it so)
-        _build_workspace(bench_dir, variant, scenario, ws, team_spec)
+        _build_workspace(bench_dir, variant, scenario, ws, team_spec, preamble=preamble)
     else:
-        _build_workspace(bench_dir, variant, scenario, ws)
+        _build_workspace(bench_dir, variant, scenario, ws, preamble=preamble)
 
     env = os.environ.copy()
     env.update(
