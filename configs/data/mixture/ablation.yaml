@@ -1,0 +1,38 @@
+# ABOUTME: The reasoning-structure ablation arm (configs/data/synth/ablation.yaml, all 1,283 da rows
+# ABOUTME: rewritten) on the PLAIN base blend at a 15% supervised-token share.
+# Run: uv run mix --config configs/data/mixture/ablation.yaml
+#
+# Source: 2026-10-27-ablation-synth, the full 2026-10-02 da corpus with the reasoning rewritten to
+# background -> background -> harm-and-plan (1,238 of 1,283 rows survive the weighing-vocabulary
+# lint). A local no-push preview of this exact blend realised 15.09% with 1,053 rows (117 per
+# trait), so the share is funded with room to spare.
+#
+# NOT row-matched to any da arm: at 0.71x the source's reasoning length the ablated rows buy less
+# gradient each, so 15% takes more rows than da-15 spends. Same base and seed as da-15, so the
+# arms differ in the synthetic share's text and its row count.
+
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+sources:
+  ablation:
+    dataset: "${oc.env:HF_ORG}/2026-10-27-ablation-synth"
+    examples: 1
+    reasoning: native
+    balance_by: trait_id
+
+output_dir: "output/mixture_ablation"
+
+hf:
+  experiment: "on the PLAIN base blend — reasoning-structure ablation arm: the full da corpus with its reasoning rewritten to background -> background -> harm and plan, the open weighing removed"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: true
