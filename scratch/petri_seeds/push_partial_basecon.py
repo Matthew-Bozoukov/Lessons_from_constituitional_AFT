@@ -3,7 +3,6 @@
 # Run: uv run python scratch/petri_seeds/push_partial_basecon.py
 import json
 import os
-import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -11,11 +10,10 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env", override=True)
-sys.path.insert(0, str(ROOT / "scratch" / "petri_seeds"))
 
 from huggingface_hub import HfApi  # noqa: E402
 
-from push_results import SEEDS, valid_scores  # noqa: E402
+from src.eval.audits.petri.tenet_audit.scores import SEEDS, valid_scores  # noqa: E402
 
 RUN = ROOT / "output/petri/2026-10-13_224529_Qwen3.6-27B"
 REPO = "2026-10-14-petri-qwen36-constitution-32k-partial"
@@ -61,7 +59,7 @@ was started and stopped at 8 seeds.
 
 - constitution: claude_distilled_09_principles
 - auditor `claude-sonnet-5`, judge `gemini-3-flash-preview`, `max_turns=25`
-- source_repo: teaching_claude_why_replication, `scratch/petri_seeds/run_audit.py` + the inspect_petri
+- source_repo: teaching_claude_why_replication, `scripts/eval/audits/petri/run_audit.py` + the inspect_petri
   system-preamble patch (`PETRI_SYSTEM_PREAMBLE_FILE`)
 - provenance: `uv run python scratch/petri_seeds/push_partial_basecon.py`
 

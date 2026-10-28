@@ -39,7 +39,7 @@ for i in $(seq 1 80); do
   [ "$i" = 80 ] && { down "never READY"; exit 1; }
   sleep 30
 done
-audit() { ./.venv/bin/python -u scratch/petri_seeds/run_audit.py --server "$SERVER" --target "$TARGET" \
+audit() { ./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py --server "$SERVER" --target "$TARGET" \
   --context-window "$CTX" "$@"; }
 
 echo ">>> VERIFY: 2 seeds"
@@ -47,7 +47,7 @@ echo ">>> VERIFY: 2 seeds"
 # full run started (2026-10-15).
 audit --port $((PORT + 1)) --connections 2 --limit 2 > "${LOG%.log}_verify.txt" 2>&1; tail -5 "${LOG%.log}_verify.txt"
 VLOG=$(ls -t output/petri/*_2026-10-05-qwen36-0-plain/logs/*.eval | head -1)
-./.venv/bin/python scratch/petri_seeds/verify_target_preamble.py "$VLOG" "$PETRI_SYSTEM_PREAMBLE_FILE" \
+./.venv/bin/python scripts/eval/audits/petri/verify_target_preamble.py "$VLOG" "$PETRI_SYSTEM_PREAMBLE_FILE" \
   || { down "constitution NOT first in every target system message ($VLOG)"; exit 1; }
 echo ">>> injection verified in $VLOG"
 
@@ -58,7 +58,7 @@ rc=$?
 tail -25 "$AOUT"
 grep -oiE "Error code: [0-9]+|in_flight_budget_exhausted|Task interrupted" "$AOUT" | sort -u | sed 's/^/    /'
 RUN_LOG=$(ls -t output/petri/*_2026-10-05-qwen36-0-plain/logs/*.eval | head -1)
-./.venv/bin/python scratch/petri_seeds/verify_target_preamble.py "$RUN_LOG" "$PETRI_SYSTEM_PREAMBLE_FILE" \
+./.venv/bin/python scripts/eval/audits/petri/verify_target_preamble.py "$RUN_LOG" "$PETRI_SYSTEM_PREAMBLE_FILE" \
   || echo "!!! full-run injection check FAILED ($RUN_LOG)"
 echo ">>> petri plain+constitution rc=$rc at $(date -u +%FT%TZ) | log $RUN_LOG"
 down "run finished (scored samples are in the local .eval; resume with run_audit.py --retry)"

@@ -17,7 +17,7 @@ for i in $(seq 1 80); do
   sleep 30
 done
 
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server "$HOST" --port 8001 \
   --target dougalldeepmind/2026-10-02-qwen36-0-da-25 \
   --retry "$RETRY" 2>&1 | tail -25

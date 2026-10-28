@@ -21,7 +21,7 @@ done
 # gemini-3-flash-preview, max_turns 25, connections 8, the full 90-seed set, 32k context --
 # the same settings the 2026-09-22-nosynth audit ran on, so the two are comparable.
 echo ">>> auditing $TARGET (90 seeds, sonnet-5 auditor, flash judge, 25 turns)" | tee "$LOG"
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server "$SERVER" --target "$TARGET" 2>&1 | tee -a "$LOG" | tail -30
 echo ">>> audit finished rc=${PIPESTATUS[0]}" | tee -a "$LOG"
 

@@ -41,8 +41,8 @@ uv pip install --quiet --python .venv/bin/python inspect-petri==3.1.0 inspect-sc
 REMOTE
 
 echo ">>> shipping the working-tree files the commit lacks, and the two vendored patches"
-tar -czf - scratch/petri_seeds/run_audit.py scratch/petri_seeds/push_results.py scratch/petri_seeds/plot_misalignment.py \
-  scratch/petri_seeds/verify_target_preamble.py scratch/petri_seeds/overnight_plain_const.sh \
+tar -czf - scripts/eval/audits/petri/run_audit.py scripts/eval/audits/petri/push_results.py scratch/petri_seeds/plot_misalignment.py \
+  scripts/eval/audits/petri/verify_target_preamble.py scratch/petri_seeds/overnight_plain_const.sh \
   src/eval/audits/petri/petri-subscription/seeds-constitution | $SSH 'cd /root/work && tar -xzf -'
 cat $SP/inspect_petri/target/_controller.py | $SSH "cat > /root/work/$SP/inspect_petri/target/_controller.py"
 cat $SP/inspect_ai/model/_providers/openrouter.py | $SSH "cat > /root/work/$SP/inspect_ai/model/_providers/openrouter.py"

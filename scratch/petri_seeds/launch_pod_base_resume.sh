@@ -46,7 +46,7 @@ uv pip install --quiet --python .venv/bin/python inspect-petri==3.1.0 inspect-sc
 REMOTE
 
 echo ">>> shipping scripts, seeds, the partial run's logs and the vendored patches"
-tar -czf - scratch/petri_seeds/run_audit.py scratch/petri_seeds/push_results.py scratch/petri_seeds/plot_misalignment.py \
+tar -czf - scripts/eval/audits/petri/run_audit.py scripts/eval/audits/petri/push_results.py scratch/petri_seeds/plot_misalignment.py \
   scratch/petri_seeds/pod_base_resume.sh src/eval/audits/petri/petri-subscription/seeds-constitution \
   "$RUN_DIR/logs" | $SSH 'cd /root/work && tar -xzf -' || fail "shipping failed"
 cat $SP/inspect_petri/target/_controller.py | $SSH "cat > /root/work/$SP/inspect_petri/target/_controller.py"

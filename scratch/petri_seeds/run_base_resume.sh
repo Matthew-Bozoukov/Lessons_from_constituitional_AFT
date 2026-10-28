@@ -37,7 +37,7 @@ for i in $(seq 1 80); do
 done
 AOUT="${LOG%.log}_audit.txt"
 # --port 8000: eval-retry reuses the base_url the log recorded (http://127.0.0.1:8000/v1).
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py --server "$SERVER" --target "$TARGET" \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py --server "$SERVER" --target "$TARGET" \
   --connections "$CONN" --port 8000 --retry "$RETRY" > "$AOUT" 2>&1
 rc=$?
 tail -25 "$AOUT"

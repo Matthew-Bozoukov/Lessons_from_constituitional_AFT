@@ -1,14 +1,11 @@
 # ABOUTME: Copy the constitution seeds that have no valid score yet in an arm's audit runs into one
 # ABOUTME: directory, so `run_audit.py --seeds <dir>` reruns exactly those against a live target.
 import shutil
-import sys
 from pathlib import Path
 
 import fire
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from push_results import SEEDS, valid_scores  # noqa: E402
+from src.eval.audits.petri.tenet_audit.scores import SEEDS, valid_scores
 
 
 def main(out: str, *run_dirs: str) -> None:

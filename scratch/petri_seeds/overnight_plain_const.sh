@@ -38,15 +38,14 @@ push_whatever() {   # push the scored seeds (partial allowed, each missing seed 
   .venv/bin/python - "$run_dir" "$repo" <<'PY'
 import subprocess, sys
 from pathlib import Path
-sys.path.insert(0, "scratch/petri_seeds")
-from push_results import SEEDS, valid_scores
+from src.eval.audits.petri.tenet_audit.scores import SEEDS, valid_scores
 run_dir, repo = sys.argv[1], sys.argv[2]
 scores, _ = valid_scores(list(Path(run_dir, "logs").glob("*.eval")))
 missing = sorted({p.stem for p in SEEDS.glob("*.md")} - set(scores))
 print(f">>> scored {len(scores)}/90, missing {len(missing)}")
 if not scores:
     sys.exit(3)
-cmd = [".venv/bin/python", "scratch/petri_seeds/push_results.py", "--run_dirs", run_dir,
+cmd = [".venv/bin/python", "scripts/eval/audits/petri/push_results.py", "--run_dirs", run_dir,
        "--target", "dougalldeepmind/2026-10-05-qwen36-0-plain", "--repo", repo,
        "--preamble", "constitutions/claude_distilled_09_principles/constitution.md",
        "--context_window", "65536"]
@@ -67,10 +66,10 @@ print('>>> driver log pushed to', r)"
 
 # 1. Injection check on 2 seeds: the constitution must be first in every target system message.
 echo ">>> VERIFY: 2 seeds"
-.venv/bin/python -u scratch/petri_seeds/run_audit.py --target "$TARGET" --connections 4 --limit 2 \
+.venv/bin/python -u scripts/eval/audits/petri/run_audit.py --target "$TARGET" --connections 4 --limit 2 \
   --context-window "$CTX"
 VLOG=$(ls -t output/petri/*/logs/*.eval | head -1)
-if ! .venv/bin/python scratch/petri_seeds/verify_target_preamble.py "$VLOG" "$PETRI_SYSTEM_PREAMBLE_FILE"; then
+if ! .venv/bin/python scripts/eval/audits/petri/verify_target_preamble.py "$VLOG" "$PETRI_SYSTEM_PREAMBLE_FILE"; then
   echo "!!! constitution NOT first in every target system message ($VLOG) -- not running the 90"
   push_whatever "$(dirname "$(dirname "$VLOG")")" || true
   self_delete "verification failed"; exit 1
@@ -79,11 +78,11 @@ echo ">>> injection verified in $VLOG"
 
 # 2. The full 90 seeds, in a fresh run directory.
 echo ">>> FULL: 90 seeds"
-.venv/bin/python -u scratch/petri_seeds/run_audit.py --target "$TARGET" --connections 24 \
+.venv/bin/python -u scripts/eval/audits/petri/run_audit.py --target "$TARGET" --connections 24 \
   --context-window "$CTX"
 echo ">>> audit exited $? at $(date -u +%FT%TZ)"
 RUN=$(dirname "$(dirname "$(ls -t output/petri/*/logs/*.eval | head -1)")")
-.venv/bin/python scratch/petri_seeds/verify_target_preamble.py "$(ls -t $RUN/logs/*.eval | head -1)" \
+.venv/bin/python scripts/eval/audits/petri/verify_target_preamble.py "$(ls -t $RUN/logs/*.eval | head -1)" \
   "$PETRI_SYSTEM_PREAMBLE_FILE" || echo "!!! full-run injection check FAILED -- see the pushed card/log"
 
 # 3. Push (partial if the credit or the audit ran out), then delete the pod.

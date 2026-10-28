@@ -66,7 +66,7 @@ echo ">>> pre-run backup"
 backup_logs || echo "!!! pre-run backup failed (continuing; the shipped log is also on the laptop)"
 
 AOUT=output/logs/pod_base_resume_audit.txt
-.venv/bin/python -u scratch/petri_seeds/run_audit.py --target "$TARGET" --connections "$CONN" \
+.venv/bin/python -u scripts/eval/audits/petri/run_audit.py --target "$TARGET" --connections "$CONN" \
   --port 8000 --retry "$RETRY" > "$AOUT" 2>&1 &
 AUDIT=$!
 echo ">>> audit pid $AUDIT, output $AOUT"
@@ -94,9 +94,8 @@ grep -v "open failed" "$AOUT" | tail -15
 .venv/bin/python - "$RUN_DIR" "$REPO" "$TARGET" <<'PY'
 import sys
 from pathlib import Path
-sys.path.insert(0, "scratch/petri_seeds")
-from push_results import SEEDS, valid_scores
-from push_results import main as push
+from src.eval.audits.petri.tenet_audit.scores import SEEDS, valid_scores
+from src.eval.audits.petri.tenet_audit.push_results import main as push
 run_dir, repo, target = sys.argv[1:]
 scores, _ = valid_scores(list(Path(run_dir, "logs").glob("*.eval")))
 missing = sorted({p.stem for p in SEEDS.glob("*.md")} - set(scores))

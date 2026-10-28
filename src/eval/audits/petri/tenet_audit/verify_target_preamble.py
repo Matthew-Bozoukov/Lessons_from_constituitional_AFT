@@ -2,7 +2,7 @@
 # ABOUTME: with the configured constitution file, byte for byte; auditor and judge prompts ignored.
 """Written-output check of the constitution injection, run before paying for a full audit.
 
-    .venv/bin/python scratch/petri_seeds/verify_target_preamble.py <log.eval> <preamble.md>
+    uv run python scripts/eval/audits/petri/verify_target_preamble.py <log.eval> <preamble.md>
 
 Reads the target's own model calls (the `openai-api/vllm/...` role) with attachments resolved,
 since Inspect stores long message content as `attachment://<hash>` references. Exit status 0

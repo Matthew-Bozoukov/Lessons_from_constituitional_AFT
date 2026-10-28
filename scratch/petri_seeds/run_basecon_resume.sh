@@ -31,7 +31,7 @@ for i in $(seq 1 80); do
   sleep 30
 done
 AOUT="${LOG%.log}_audit.txt"
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py --server "$SERVER" --target "$TARGET" \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py --server "$SERVER" --target "$TARGET" \
   --connections "$CONN" --retry "$RETRY" > "$AOUT" 2>&1
 rc=$?
 tail -25 "$AOUT"

@@ -29,7 +29,7 @@ echo ">>> budget before: $(bal)"
 # 8 in flight, the full 90-seed set, 32k context -- so this is comparable to nosynth, da-5,
 # da-15 and da-25. The driver's liveness watchdog aborts if the target stops answering, which is
 # what a dead tunnel cost on 2026-10-03 (~$52 of auditor spend for 7 scored samples).
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server "$ADDR" --port 8004 --target "$TARGET" 2>&1 | tail -25
 echo ">>> audit rc=${PIPESTATUS[0]} | budget now: $(bal)"
 

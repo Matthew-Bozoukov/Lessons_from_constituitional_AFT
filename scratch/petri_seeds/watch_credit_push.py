@@ -15,7 +15,6 @@ import os
 import re
 import signal
 import subprocess
-import sys
 import time
 import urllib.request
 from pathlib import Path
@@ -24,9 +23,8 @@ import fire
 from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "scratch" / "petri_seeds"))
-from push_results import SEEDS, valid_scores  # noqa: E402
-from push_results import main as push  # noqa: E402
+from src.eval.audits.petri.tenet_audit.scores import SEEDS, valid_scores  # noqa: E402
+from src.eval.audits.petri.tenet_audit.push_results import main as push  # noqa: E402
 
 CREDIT_ERRORS = re.compile(r"Error code: 402|insufficient credits|requires more credits", re.I)
 

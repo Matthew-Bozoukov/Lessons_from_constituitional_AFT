@@ -48,7 +48,7 @@ down () {
 }
 
 echo ">>> petri rerun of missing seeds -> $TARGET, push to $REPO, budget before: $(bal)"
-./.venv/bin/python scratch/petri_seeds/missing_seeds.py "$SUB" "${OLD[@]}" || exit 1
+./.venv/bin/python scripts/eval/audits/petri/missing_seeds.py "$SUB" "${OLD[@]}" || exit 1
 ./.venv/bin/python -u scratch/petri_seeds/provision_pod.py \
   --name "matboz-petri-$ARM" --target "$TARGET" --out "$POD_JSON" --max_hours 4 --gpu "$GPU" \
   || { echo "!!! provisioning failed"; [ -f "$POD_JSON" ] && down; exit 1; }
@@ -64,7 +64,7 @@ for i in $(seq 1 80); do
 done
 
 # run_audit's defaults are the plain audit's: sonnet-5 auditor, flash judge, 25 turns, 8 in flight.
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server "$ADDR" --port "$PORT" --target "$TARGET" --seeds "$SUB" \
   --context-window "$CTX" --connections "$CONN"
 RC=$?
@@ -74,7 +74,7 @@ echo ">>> audit rc=$RC | budget now: $(bal)"
 down
 [ "$RC" = 0 ] || exit "$RC"
 
-./.venv/bin/python -u scratch/petri_seeds/push_results.py \
+./.venv/bin/python -u scripts/eval/audits/petri/push_results.py \
   --run_dirs "$(printf '%s\n' "${OLD[@]}" "$NEW" | ./.venv/bin/python -c 'import json,sys;print(json.dumps(sys.stdin.read().split()))')" \
   --target "$TARGET" --repo "$REPO"
 echo ">>> done"
