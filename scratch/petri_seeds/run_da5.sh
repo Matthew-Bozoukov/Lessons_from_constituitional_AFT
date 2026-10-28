@@ -16,7 +16,7 @@ done
 # --port 8001: the previous attempt died because the da-15 retry's tunnel still held 8000
 # when this started. A second audit gets its own port rather than waiting on the first's
 # teardown.
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server root@152.236.142.241:15665 --port 8001 \
   --target dougalldeepmind/2026-10-02-qwen36-0-da-5 2>&1 | tail -25
 echo ">>> da-5 audit rc=${PIPESTATUS[0]}"

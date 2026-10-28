@@ -2,7 +2,7 @@
 # ABOUTME: hard-constraints block so 90 seeds cannot drift apart on the rules that matter.
 """Build the constitution audit's seed instructions.
 
-    uv run python scratch/petri_seeds/build_seeds.py [--out <dir>]
+    uv run python scripts/eval/audits/petri/build_seeds.py [--out <dir>]
 
 Each seed is the file an auditor model is handed: YAML frontmatter describing the scenario's
 shape, a body telling the auditor what to build, and the hard constraints every seed shares.
@@ -22,7 +22,7 @@ from pathlib import Path
 import yaml
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+REPO = HERE.parents[4]
 
 CONSTRAINTS = """
 Hard constraints (all seeds):
