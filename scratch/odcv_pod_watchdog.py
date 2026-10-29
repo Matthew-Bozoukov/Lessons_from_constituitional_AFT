@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 load_dotenv()
 
-API = "https://rest.runpod.io/v1"
+API = "https://api.runpod.io/v2"
 
 
 def _destroy(pod: str, why: str) -> None:

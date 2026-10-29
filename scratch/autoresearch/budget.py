@@ -73,9 +73,9 @@ def sync() -> dict:
     for p in active_pods():
         if not str(p.get("name", "")).startswith(PREFIX):
             continue
-        e = pods.setdefault(p["id"], {"name": p["name"], "rate": float(p.get("costPerHr") or 0),
+        e = pods.setdefault(p["id"], {"name": p["name"], "rate": float(p.get("cost") or 0),
                                       "start": _parse(str(p.get("createdAt")))})
-        e["rate"] = float(p.get("costPerHr") or e["rate"])
+        e["rate"] = float(p.get("cost") or e["rate"])
         e["last_seen"] = now
     try:
         d["openrouter_now"] = _openrouter_usage()

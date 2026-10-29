@@ -1,5 +1,5 @@
-# ABOUTME: Minimal RunPod REST helper for the SAE embed runs — create/status/terminate
-# ABOUTME: one pod, ssh details from its runtime ports. Never touches other pods.
+# ABOUTME: Minimal RunPod REST v2 helper for the SAE embed runs — create/status/terminate
+# ABOUTME: one pod, ssh details from its `ssh.direct` block. Never touches other pods.
 
 """Usage (from repo root, any env with requests + python-dotenv):
 
@@ -22,22 +22,26 @@ from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(REPO_ROOT / ".env")
-BASE = "https://rest.runpod.io/v1"
+BASE = "https://api.runpod.io/v2"
 HEADERS = {"Authorization": f"Bearer {os.environ['RUNPOD_API_KEY']}",
            "Content-Type": "application/json"}
 PUBKEY_PATH = Path.home() / ".ssh" / "id_ed25519.pub"
 
 
+def _ssh(pod: dict) -> tuple[str, int] | None:
+    direct = (pod.get("ssh") or {}).get("direct") or {}
+    if direct.get("host") and direct.get("port"):
+        return str(direct["host"]), int(direct["port"])
+    return None
+
+
 def create(args) -> None:
     body = {
         "name": args.name,
-        "imageName": args.image,
-        "gpuTypeIds": [args.gpu],
-        "gpuCount": args.count,
-        "containerDiskInGb": args.disk,
-        "volumeInGb": 0,
-        "cloudType": args.cloud,
-        "supportPublicIp": True,
+        "image": args.image,
+        "gpu": {"id": args.gpu, "count": args.count},
+        "disk": args.disk,
+        "cloud": args.cloud,
         "ports": ["22/tcp"],
         "env": {"PUBLIC_KEY": PUBKEY_PATH.read_text().strip()},
     }
@@ -50,9 +54,10 @@ def create(args) -> None:
 def status(args) -> None:
     r = requests.get(f"{BASE}/pods/{args.pod_id}", headers=HEADERS)
     p = r.json()
-    print(json.dumps({k: p.get(k) for k in ("id", "name", "desiredStatus", "costPerHr", "lastStatusChange")}, default=str))
-    ip, port = p.get("publicIp"), (p.get("portMappings") or {}).get("22")
-    if ip and port:
+    print(json.dumps({k: p.get(k) for k in ("id", "name", "status", "cost", "startedAt")}, default=str))
+    endpoint = _ssh(p)
+    if endpoint:
+        ip, port = endpoint
         print(f"ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p {port} root@{ip}")
     else:
         print("ssh not ready yet")
@@ -61,9 +66,9 @@ def status(args) -> None:
 def wait(args) -> None:
     import time
     for _ in range(args.tries):
-        r = requests.get(f"{BASE}/pods/{args.pod_id}", headers=HEADERS).json()
-        ip, port = r.get("publicIp"), (r.get("portMappings") or {}).get("22")
-        if ip and port:
+        endpoint = _ssh(requests.get(f"{BASE}/pods/{args.pod_id}", headers=HEADERS).json())
+        if endpoint:
+            ip, port = endpoint
             print(f"ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no -p {port} root@{ip}")
             return
         time.sleep(args.interval)
@@ -73,9 +78,9 @@ def wait(args) -> None:
 def terminate(args) -> None:
     r = requests.delete(f"{BASE}/pods/{args.pod_id}", headers=HEADERS)
     print("terminate:", r.status_code, r.text[:200])
-    left = requests.get(f"{BASE}/pods", headers=HEADERS).json()
+    left = requests.get(f"{BASE}/pods", headers=HEADERS).json().get("pods", [])
     print("pods remaining on account:",
-          [{"id": p["id"], "name": p["name"], "costPerHr": p["costPerHr"]} for p in left])
+          [{"id": p["id"], "name": p["name"], "cost": p.get("cost")} for p in left])
 
 
 def main() -> None:

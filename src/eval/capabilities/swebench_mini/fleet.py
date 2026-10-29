@@ -104,7 +104,7 @@ def prepare_target(cfg, args):
 
 
 def account():
-    return runpod.graphql('query { myself { clientBalance currentSpendPerHr } }')['myself']
+    return runpod.account_spend()
 
 
 def qualify_shell(cfg):
@@ -193,7 +193,6 @@ def preflight(cfg):
     spec = resolve_target(cfg.target, revision=cfg.target_revision)
     assert spec.base_model == cfg.base and spec.base_revision == cfg.base_revision and spec.mode == cfg.mode
     assert spec.adapter and spec.lora_rank == 64
-    runpod.validate_scheduled_provision()
     quote = runpod.gpu_price(cfg.gpu)
     assert quote and quote <= cfg.max_hourly_usd, 'GPU quote missing or exceeds configured hourly ceiling'
     balance = account()
@@ -203,7 +202,7 @@ def preflight(cfg):
     assert fixture == read(ready / 'metadata/httpbin_fixture.json')
     return {'status': 'ready_to_launch', 'tasks': 300, 'model': cfg.target, 'revision': cfg.target_revision,
             'replicas': cfg.replicas, 'workers': cfg.replicas * cfg.workers_per_replica,
-            'gpu_quote_usd_hour': quote, 'balance': balance, 'cpu_stop_at': receipt['stop_at'],
+            'gpu_quote_usd_hour': quote, 'account': balance, 'cpu_stop_at': receipt['stop_at'],
             'recommended_budget_usd': cfg.recommended_budget_usd,
             'paid_gpu_test': 'one calibration replica' if cfg.calibrate else 'fixed fleet; CPU/recovery qualified, no new paid calibration'}
 
@@ -450,10 +449,10 @@ def final_accounting(cfg):
     try:
         rows = runpod.call('GET', '/billing/pods', params={
             'startTime': manifest['created'][:10] + 'T00:00:00Z', 'endTime': datetime.now(timezone.utc).isoformat(),
-            'bucketSize': 'hour', 'grouping': 'podId'})
+            'bucketSize': 'hour'}).get('records')
         assert isinstance(rows, list), 'Unexpected provider billing schema'
         rows = [r for r in rows if r.get('podId') in ids]
-        report.update(provider_gpu_recorded_usd=sum(float(r['amount']) for r in rows),
+        report.update(provider_gpu_recorded_usd=sum(float(r['totalAmount']) for r in rows),
                       provider_rows=rows, provider_missing_pod_ids=sorted(ids - {r['podId'] for r in rows}))
     except Exception as exc:
         report.update(provider_gpu_recorded_usd=None, billing_error=type(exc).__name__ + ': ' + str(exc))
@@ -613,7 +612,7 @@ def replica(cfg, config_path, slot, allowed_path, expires, manifest):
         guard = runpod.start_watchdog(identifier, max(1, math.ceil(expires - time.time())),
                                       Path(cfg.root) / 'metadata' / f'watchdog-{slot}.log')
         actual = next(p for p in runpod.active_pods() if p['id'] == identifier)
-        cost = actual.get('costPerHr')
+        cost = actual.get('cost')
         if cost is None or float(cost) > ceiling:
             raise RuntimeError('Allocated hourly cost missing or over ceiling')
         update(actual_hourly=float(cost))
@@ -915,7 +914,8 @@ def execute(cfg, config_path, action, budget):
         print(json.dumps(plan, indent=2), flush=True)
         if action == 'run':
             assert budget is not None and 0 < budget <= cfg.recommended_budget_usd, 'Explicit positive --budget-usd required, at most configured recommendation'
-            assert float(plan['balance']['clientBalance']) >= budget, 'RunPod balance below campaign cap'
+            # REST v2 exposes spend, not credit: the operator confirms the balance covers
+            # the cap in the console before `run`; plan['account'] records the spend.
             manifest = initialize(cfg, config_path, budget)
         else:
             manifest = read(root / 'metadata/manifest.json')

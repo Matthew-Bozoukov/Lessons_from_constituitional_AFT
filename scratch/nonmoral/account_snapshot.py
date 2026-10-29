@@ -1,4 +1,4 @@
-# ABOUTME: Read-only provider balances and pod inventory for the authorized overnight work.
+# ABOUTME: Read-only provider spend and pod inventory for the authorized overnight work.
 # ABOUTME: Records selected billing fields only, never authentication headers or credentials.
 import json
 import os
@@ -16,18 +16,7 @@ from src.infra import runpod
 def snapshot():
     load_dotenv()
     out = {"time_utc": datetime.now(timezone.utc).isoformat()}
-    response = requests.post(
-        "https://api.runpod.io/graphql",
-        headers={"Authorization": "Bearer " + runpod._key()},
-        json={"query": "query { myself { clientBalance currentSpendPerHr } }"},
-        timeout=30,
-    )
-    out["runpod_http_status"] = response.status_code
-    if response.ok:
-        body = response.json()
-        out["runpod"] = body.get("data", {}).get("myself")
-        if body.get("errors"):
-            out["runpod_errors"] = [x.get("message") for x in body["errors"]]
+    out["runpod"] = runpod.account_spend()  # v2 has no balance route: spend + burn
     response = requests.get(
         "https://openrouter.ai/api/v1/credits",
         headers={"Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"]},
@@ -38,7 +27,7 @@ def snapshot():
         data = response.json().get("data", {})
         out["openrouter"] = {k: data.get(k) for k in ("total_credits", "total_usage")}
     out["pods"] = [
-        {k: p.get(k) for k in ("id", "name", "gpuCount", "costPerHr", "createdAt", "desiredStatus")}
+        {k: p.get(k) for k in ("id", "name", "gpu", "cost", "createdAt", "status")}
         for p in runpod.active_pods()
     ]
     return out

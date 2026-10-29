@@ -107,7 +107,7 @@ def run(plan_path, out):
         # Reserve $2 for API latency and teardown. Never leave bootstrap unprotected.
         dog = runpod.start_watchdog(pod_id, max_lifetime_s, out / "watchdog.log")
         info = runpod.call("GET", "/pods/" + pod_id)
-        state["gpu_hourly_usd"] = float(info["costPerHr"])
+        state["gpu_hourly_usd"] = float(info["cost"])
         state["budget_hourly_usd"] = state["gpu_hourly_usd"] + 0.10
         assert state["budget_hourly_usd"] <= rate_ceiling, "Quote exceeds reserved hourly ceiling"
         dump(out / "status.json", state)
@@ -116,7 +116,7 @@ def run(plan_path, out):
         rendered = runpod.up(run_name, train="configs/train/sft.yaml",
                              model="qwen36", count=gpu_count, push_env=True,
                              max_hours=max_lifetime_s/3600,
-                             countries=plan.get('countries',''),
+                             data_centers=plan.get('data_centers', ''),
                              on_provisioned=registered)
         (out / "provision.txt").write_text(rendered, encoding="utf-8")
         host = re.search(r"^host:\s+(\S+)", rendered, re.M).group(1)
@@ -335,7 +335,7 @@ print(json.dumps(r))
                         time.sleep(min(15,created+max_lifetime_s-time.time()))
             state["terminated"] = (runpod.terminate(state["owned_pod"])
                                    if may_terminate_training(state) else False)
-            state["remaining_pods"] = [{k:p.get(k) for k in ("id","name","costPerHr")}
+            state["remaining_pods"] = [{k:p.get(k) for k in ("id","name","cost")}
                                        for p in runpod.active_pods()]
             state["elapsed_s"] = time.time()-created
             state["estimated_gpu_usd"] = state["elapsed_s"]/3600*state.get("budget_hourly_usd",rate_ceiling)

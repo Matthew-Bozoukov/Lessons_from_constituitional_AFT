@@ -75,7 +75,7 @@ open("/workspace/DONE", "w").write("ok")
 print("DONE", flush=True)
 '''
 
-# A custom dockerStartCmd replaces the image's own startup, which is what normally launches
+# A custom `cmd` replaces the image's own startup, which is what normally launches
 # sshd — so there is no SSH into this pod. This server adds PUT to the usual static serving,
 # so the feature list goes up and the vectors come back over the one :8080 proxy.
 UPLOAD_HTTP_SERVER = r'''
@@ -111,7 +111,7 @@ def build_bootstrap(encode_batch_size: int) -> str:
         encode_batch_size: Encoding batch size.
 
     Returns:
-        The shell script for dockerStartCmd.
+        The shell script for `cmd`.
     """
     embedding_job = (EMBEDDING_JOB
                      .replace("MODEL_ID", EMBEDDING_MODEL_ID)
@@ -176,18 +176,15 @@ def create(name: str = "matthew-bozoukov-feature-embed", gpu: str = DEFAULT_GPU_
     public_ssh_key = (Path.home() / ".ssh/id_ed25519.pub").read_text().strip()
     payload = {
         "name": name,
-        "imageName": RUNPOD_IMAGE,
-        "gpuTypeIds": [gpu],
-        "gpuCount": 1,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
+        "image": RUNPOD_IMAGE,
+        "gpu": {"id": gpu, "count": 1},
+        "disk": disk_gb,
         "ports": ["8080/http", "22/tcp"],
-        "cloudType": "SECURE",
-        "dockerStartCmd": ["bash", "-lc", build_bootstrap(batch)],
+        "cloud": "SECURE",
+        "cmd": ["bash", "-lc", build_bootstrap(batch)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": public_ssh_key},
     }
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    return pod.get("id") or pod.get("podId", "")
+    return str(call("POST", "/pods", json=payload)["id"])
 
 
 def push(pod: str, run: RunDir) -> int:
@@ -225,17 +222,17 @@ def status(pod: str) -> dict:
         pod: Pod id.
 
     Returns:
-        {"desiredStatus", "costPerHr", "log_name", "log_tail"}; log fields are None when
+        {"status", "cost", "log_name", "log_tail"}; log fields are None when
         no log is reachable yet.
     """
     info = call("GET", f"/pods/{pod}")
     for log_name in ("embed.log", "boot.log"):
         resp = requests.get(f"{_base_url(pod)}/{log_name}", timeout=20)
         if resp.ok and resp.text.strip():
-            return {"desiredStatus": info.get("desiredStatus"),
-                    "costPerHr": info.get("costPerHr"), "log_name": log_name,
+            return {"status": info.get("status"),
+                    "cost": info.get("cost"), "log_name": log_name,
                     "log_tail": "\n".join(resp.text.strip().splitlines()[-6:])}
-    return {"desiredStatus": info.get("desiredStatus"), "costPerHr": info.get("costPerHr"),
+    return {"status": info.get("status"), "cost": info.get("cost"),
             "log_name": None, "log_tail": None}
 
 

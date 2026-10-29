@@ -24,15 +24,10 @@ MODELS = {
 
 
 def account():
-    response = requests.post("https://api.runpod.io/graphql",
-        headers={"Authorization": "Bearer " + runpod._key()},
-        json={"query": "query { myself { clientBalance currentSpendPerHr } gpuTypes { id securePrice } }"},
-        timeout=30)
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("errors"):
-        raise RuntimeError("Cannot read provider balance/prices")
-    return payload["data"]
+    """Spend snapshot plus the SECURE price list (REST v2; v2 has no balance route)."""
+    gpus = runpod.call("GET", "/catalog/gpus")["gpus"]
+    return {"spend": runpod.account_spend(),
+            "gpuTypes": [{"id": g["id"], "securePrice": g["price"].get("secure")} for g in gpus]}
 
 
 def main():
@@ -67,7 +62,7 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     state = {"arm": args.arm, "model": model, "revision": spec.revision,
              "base_revision": spec.base_revision, "eval_name": name,
-             "account_before": snapshot["myself"], "quoted_gpu_hourly_usd": quote,
+             "account_before": snapshot["spend"], "quoted_gpu_hourly_usd": quote,
              "max_hours": hours, "prior_gpu_usd_estimate": spent,
              "api_budget_usd": float(cfg.judge.budget_usd),
              "budget_usd": 30, "pid": os.getpid(), "status": "provisioning"}
@@ -80,7 +75,7 @@ def main():
         save(statefile, state)
         guard = runpod.start_watchdog(pod_id, int(hours*3600), root / "watchdog.log")
         pod = runpod.call("GET", f"/pods/{pod_id}")
-        rate = float(pod.get("costPerHr") or 0)
+        rate = float(pod.get("cost") or 0)
         if rate <= 0 or rate * hours + spent > 15:
             raise RuntimeError("Actual pod hourly charge cannot fit GPU budget")
         state["actual_pod_hourly_usd"] = rate
@@ -92,7 +87,8 @@ def main():
         if not runpod.wait_bootstrapped(pod_id, timeout_s=2400):
             raise RuntimeError("GPU bootstrap did not finish")
         pod = runpod.call("GET", f"/pods/{pod_id}")
-        host = f"root@{pod['publicIp']}:{pod['portMappings']['22']}"
+        ip, ssh_port = runpod.ssh_endpoint(pod)
+        host = f"root@{ip}:{ssh_port}"
         port = 9101 if args.arm == "control" else 9102
         state.update(server=host, local_port=port, status="evaluating")
         command = [sys.executable, "scripts/run_eval.py", "--target", model, "--name", "delegated_harm",
@@ -113,7 +109,7 @@ def main():
     finally:
         if state.get("pod_id"):
             runpod.teardown(state["pod_id"])
-            state.update(terminated=True, finished=time.time(), account_after=account()["myself"])
+            state.update(terminated=True, finished=time.time(), account_after=account()["spend"])
             save(statefile, state)
             if guard is not None:
                 guard.terminate()

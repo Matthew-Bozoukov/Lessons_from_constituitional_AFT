@@ -28,7 +28,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-REST = "https://rest.runpod.io/v1"
+REST = "https://api.runpod.io/v2"
 
 # (gpuTypeId, note) in preference order — memory headroom first, price second.
 GPU_LADDER = [
@@ -38,7 +38,7 @@ GPU_LADDER = [
     ("NVIDIA H100 80GB HBM3", "80GB — train split only; long val rows may OOM"),
 ]
 
-COUNTRIES = ["US", "CA", "NL", "DE", "FR", "GB", "IE", "BE", "SE", "NO", "FI", "CH", "AT", "ES", "IT"]
+DATA_CENTERS: list[str] = []  # RunPod data-centre ids to pin placement to (EU-SE-1); [] = anywhere
 
 START = (
     "mkdir -p /workspace ~/.ssh && printf '%s\\n' \"$PUBLIC_KEY\" >> ~/.ssh/authorized_keys "
@@ -78,11 +78,10 @@ def main() -> None:
     ladder = ([(args.gpu, "pinned by --gpu")] if args.gpu else GPU_LADDER)
     for gpu, note in ladder:
         payload = {
-            "name": args.name, "imageName": args.image,
-            "gpuTypeIds": [gpu], "gpuCount": args.gpus,
-            "containerDiskInGb": args.disk, "volumeInGb": 0,
-            "ports": ["8080/http", "22/tcp"], "cloudType": "SECURE",
-            "countryCodes": COUNTRIES,
+            "name": args.name, "image": args.image,
+            "disk": args.disk,
+            "ports": ["8080/http", "22/tcp"], "cloud": "SECURE",
+            **({"dataCenterIds": DATA_CENTERS} if DATA_CENTERS else {}),
             # The repo's lock pins torch 2.11.0+cu130, which needs a host driver >= 580.
             # A CUDA-12.8 host (driver 570.x) schedules and boots fine, `nvidia-smi` lists
             # every GPU, and the IMAGE's own python3 imports its cu128 torch happily -- then
@@ -90,15 +89,16 @@ def main() -> None:
             # once on 2026-08-20 (LOG, vast) and again on 2026-08-31 (RunPod, this script,
             # ~$3). src/endpoints/runpod.py has constrained scheduling this way all along;
             # this script simply never passed it.
-            "allowedCudaVersions": [c.strip() for c in args.cuda.split(",") if c.strip()],
-            "dockerStartCmd": ["bash", "-lc", START],
+            "gpu": {"id": gpu, "count": args.gpus,
+                    "allowedCudaVersions": [c.strip() for c in args.cuda.split(",") if c.strip()]},
+            "cmd": ["bash", "-lc", START],
             "env": {"PUBLIC_KEY": pub, "HF_HUB_ENABLE_HF_TRANSFER": "1"},
         }
         r = requests.post(f"{REST}/pods", headers=headers, data=json.dumps(payload), timeout=120)
         if r.ok:
             pod = r.json()
             print(f">>> {args.gpus}x {gpu} — {note}")
-            print(f">>> pod {pod.get('id')}  ${pod.get('costPerHr')}/hr")
+            print(f">>> pod {pod.get('id')}  ${pod.get('cost')}/hr")
             print(f">>> poll for SSH, then: uv run python scratch/less/teardown.py "
                   f"--pod {pod.get('id')}")
             return

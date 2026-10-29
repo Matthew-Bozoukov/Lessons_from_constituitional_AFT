@@ -45,13 +45,12 @@ sys.path.insert(0, str(ROOT))
 from src.infra.huggingface import card_markdown, hf_api, push_run_dir  # noqa: E402
 from src.utils import git_sha, origin_url  # noqa: E402
 
-REST = "https://rest.runpod.io/v1"
+REST = "https://api.runpod.io/v2"
 BUNDLE = "LASR-Callum/2026-08-20-t10-curiosity-arm-code-bundle"
 BASE = "Qwen/Qwen3.6-27B"
 IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 GPU_LADDER = [("NVIDIA H200", "141GB"), ("NVIDIA H200 NVL", "143GB")]
-COUNTRIES = ["US", "CA", "NL", "DE", "FR", "GB", "IE", "BE", "SE", "NO", "FI", "CH", "AT",
-             "ES", "IT"]
+DATA_CENTERS: list[str] = []  # RunPod data-centre ids to pin placement to (EU-SE-1); [] = anywhere
 
 TRAIN_CONFIG = "scratch/trait10_curiosity/lora_qwen36_t2_9284_t10_curiosity_716_dynbatch_2xh200.yaml"
 ADAPTER_REPO = "LASR-Callum/2026-08-20-qwen36-lora-table2-9284-t10-curiosity-716-rank-64-dynbatch"
@@ -168,12 +167,12 @@ def up(gpus: int = 2, name: str = "nika-t10-curiosity-arm", disk_gb: int = 200,
     ladder = [(gpu, "pinned")] if gpu else GPU_LADDER
     for gpu_id, note in ladder:
         payload = {
-            "name": name, "imageName": IMAGE,
-            "gpuTypeIds": [gpu_id], "gpuCount": gpus,
-            "containerDiskInGb": disk_gb, "volumeInGb": 0,
-            "ports": ["8080/http", "22/tcp"], "cloudType": "SECURE",
-            "countryCodes": COUNTRIES,
-            "dockerStartCmd": ["bash", "-lc", _bootstrap(gpus)],
+            "name": name, "image": IMAGE,
+            "gpu": {"id": gpu_id, "count": gpus},
+            "disk": disk_gb,
+            "ports": ["8080/http", "22/tcp"], "cloud": "SECURE",
+            **({"dataCenterIds": DATA_CENTERS} if DATA_CENTERS else {}),
+            "cmd": ["bash", "-lc", _bootstrap(gpus)],
             "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
         }
         r = requests.post(f"{REST}/pods", headers=_headers(),
@@ -182,7 +181,7 @@ def up(gpus: int = 2, name: str = "nika-t10-curiosity-arm", disk_gb: int = 200,
             pod = r.json()
             pid = pod.get("id")
             return (
-                f">>> {gpus}x {gpu_id} ({note})  pod {pid}  ${pod.get('costPerHr')}/hr\n"
+                f">>> {gpus}x {gpu_id} ({note})  pod {pid}  ${pod.get('cost')}/hr\n"
                 f"boot:    https://{pid}-8080.proxy.runpod.net/boot.log\n"
                 f"train:   https://{pid}-8080.proxy.runpod.net/train.log\n"
                 f"adapter: https://{pid}-8080.proxy.runpod.net/adapter.tar.gz "
@@ -196,8 +195,8 @@ def up(gpus: int = 2, name: str = "nika-t10-curiosity-arm", disk_gb: int = 200,
 def status(pod: str, lines: int = 8) -> str:
     """Pod state plus the tail of the logs the pod is serving."""
     info = requests.get(f"{REST}/pods/{pod}", headers=_headers(), timeout=30).json()
-    out = [f"status: {info.get('desiredStatus')}  gpus: {info.get('gpuCount')}  "
-           f"${info.get('costPerHr')}/hr"]
+    out = [f"status: {info.get('status')}  gpus: {(info.get('gpu') or {}).get('count')}  "
+           f"${info.get('cost')}/hr"]
     for log in ("boot.log", "train.log"):
         try:
             r = requests.get(f"https://{pod}-8080.proxy.runpod.net/{log}", timeout=20)

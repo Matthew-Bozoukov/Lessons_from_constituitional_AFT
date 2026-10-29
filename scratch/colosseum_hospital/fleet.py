@@ -92,16 +92,12 @@ def seed_count(job: str) -> int:
     return int(hi) - int(lo) + 1
 
 
-def runpod_balance() -> tuple[float, float]:
+def runpod_spend() -> tuple[float, float]:
+    """(spend today, live burn per hour) from REST v2; v2 has no balance route."""
     load_dotenv(".env")
-    r = requests.post(
-        "https://api.runpod.io/graphql",
-        json={"query": "query { myself { clientBalance currentSpendPerHr } }"},
-        headers={"Authorization": f"Bearer {os.environ['RUNPOD_API_KEY']}"},
-        timeout=30,
-    )
-    me = r.json()["data"]["myself"]
-    return float(me["clientBalance"]), float(me.get("currentSpendPerHr") or 0.0)
+    from src.infra import runpod
+    s = runpod.account_spend()
+    return float(s["spend_today_usd"]), float(s["spend_per_hr_usd"])
 
 
 class Fleet:
@@ -562,7 +558,7 @@ class Fleet:
         bal = self.state.get("balance")
         text = (
             f"updated {time.strftime('%H:%M:%S')}; est. spend ${total:.0f}"
-            + (f"; runpod balance ${bal[1]:.0f}" if bal else "")
+            + (f"; runpod spend today ${bal[1]:.0f}" if bal else "")
             + "\n\n| pod | status | episodes | hours | note |\n|---|---|---|---|---|\n"
             + "\n".join(rows)
             + "\n"
@@ -623,14 +619,12 @@ class Fleet:
                         log(f"{n}: check raised {type(e).__name__}: {e}")
             if time.time() - last_balance > 600:
                 try:
-                    b, rate = runpod_balance()
+                    b, rate = runpod_spend()
                     self.state["balance"] = [time.time(), b, rate]
                     self.save()
-                    log(f"runpod balance ${b:.2f}, account spend ${rate:.2f}/h")
-                    if b < float(self.plan.get("low_balance", 25)):
-                        log("LOW BALANCE: top up RunPod or pods stop")
+                    log(f"runpod spend today ${b:.2f}, account burn ${rate:.2f}/h")
                 except Exception as e:  # noqa: BLE001
-                    log(f"balance check failed: {type(e).__name__}")
+                    log(f"spend check failed: {type(e).__name__}")
                 last_balance = time.time()
             self.write_status()
             busy = [n for n in self.pods if self.st(n)["status"] not in TERMINAL]

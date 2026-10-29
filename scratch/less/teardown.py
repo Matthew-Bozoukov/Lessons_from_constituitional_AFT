@@ -23,7 +23,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-REST = "https://rest.runpod.io/v1"
+REST = "https://api.runpod.io/v2"
 
 
 def _headers() -> dict:
@@ -35,7 +35,7 @@ def _headers() -> dict:
 
 
 def report(headers: dict) -> list[dict]:
-    pods = requests.get(f"{REST}/pods", headers=headers, timeout=45).json()
+    pods = requests.get(f"{REST}/pods", headers=headers, timeout=45).json().get("pods", [])
     if not pods:
         print(">>> no pods running on the account")
         return []
@@ -43,7 +43,7 @@ def report(headers: dict) -> list[dict]:
     for p in pods:
         name = str(p.get("name", ""))
         who = "OURS — orphan?" if name.startswith("nika-") else "not ours, leave alone"
-        print(f"    {p.get('id')}  {name!r:<40} ${p.get('costPerHr')}/hr  [{who}]")
+        print(f"    {p.get('id')}  {name!r:<40} ${p.get('cost')}/hr  [{who}]")
     return pods
 
 

@@ -34,7 +34,7 @@ from omegaconf import OmegaConf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.infra.runpod import GPU, ProvisionSpec, call, provision_runpod  # noqa: E402
+from src.infra.runpod import GPU, ProvisionSpec, active_pods, call, provision_runpod  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = GPU   # one definition, in src/infra/runpod.py
@@ -88,7 +88,7 @@ pip install --no-cache-dir -q "vllm>=0.8.5" "transformers>=4.51.3" peft huggingf
 mkdir -p /workspace/adapters
 {downloads}
 echo ADAPTERS_DOWNLOADED
-# vLLM runs in the FOREGROUND as the last command, deliberately. `dockerStartCmd` is
+# vLLM runs in the FOREGROUND as the last command, deliberately. `cmd` is
 # PID 1: if this script backgrounds vLLM and then exits, PID 1 dies and the container
 # reaps every child with it — the pod stays "RUNNING" with nothing listening on any
 # port, which is indistinguishable from "still downloading" unless you happen to notice
@@ -128,7 +128,7 @@ def up(
     disk_gb: int = 200,
     image: str = DEFAULT_IMAGE,
     cloud: str = "SECURE",
-    countries: str = "US,CA,NL,DE,FR,GB,IE,BE,SE,NO,FI,CH,AT,ES,IT",
+    data_centers: str = "",
 ) -> str:
     """Create a pod serving every arm in the config that has an adapter.
 
@@ -139,11 +139,10 @@ def up(
         disk_gb: Container disk. Holds the base model plus the adapters.
         image: Container image.
         cloud: SECURE or COMMUNITY.
-        countries: Comma-separated ISO country codes to restrict placement to. Defaults
-            to US/Canada and Western Europe — close to both HuggingFace's CDN and to us,
-            which matters because every boot pulls ~55GB of base weights and a distant
-            datacenter turns that into the dominant cost of the run. Pass "" to let
-            RunPod place the pod anywhere.
+        data_centers: Comma-separated RunPod data-centre ids to restrict placement to
+            (`EU-SE-1`; `GET /catalog/datacenters` lists them). Default "" lets RunPod place
+            the pod anywhere; pin one when a host's network crawls, since every boot
+            pulls ~55GB of base weights (docs/GOTCHAS.md, 2026-09-09).
 
     Returns:
         Pod id, base URL, and the served name for each arm.
@@ -157,15 +156,15 @@ def up(
     # insurance against a silent boot failure billing at H100 rates.
     pod_id = provision_runpod(
         ProvisionSpec(gpu=gpu, disk_gb=disk_gb, cloud=cloud, image=image, cuda="",
-                      countries=countries),
+                      data_centers=data_centers),
         name=name,
         start_script=_bootstrap(str(cfg.base_model), modules, 32),
         ports=("8000/http", "8080/http", "22/tcp"),
     )
-    codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
+    ids = [c.strip().upper() for c in data_centers.split(",") if c.strip()]
     url = f"https://{pod_id}-8000.proxy.runpod.net/v1"
     served = "\n".join(f"    {n:16} <- {r}" for n, r in modules.items())
-    region = ",".join(codes) if codes else "anywhere"
+    region = ",".join(ids) if ids else "anywhere"
     return (
         f"pod:      {pod_id}\n"
         f"region:   {region}\n"
@@ -185,7 +184,7 @@ def status(pod: str) -> str:
 
     info = call("GET", f"/pods/{pod}")
     url = f"https://{pod}-8000.proxy.runpod.net/v1/models"
-    line = f"status: {info.get('desiredStatus')}  machine: {info.get('machine', {}).get('gpuTypeId')}"
+    line = f"status: {info.get('status')}  gpu: {(info.get('gpu') or {}).get('id')}"
     try:
         r = requests.get(url, timeout=15)
         if r.ok:
@@ -204,11 +203,10 @@ def down(pod: str) -> str:
 
 def list_pods() -> str:
     """List active pods, so a forgotten one cannot bill quietly."""
-    pods = call("GET", "/pods")
-    rows = pods if isinstance(pods, list) else pods.get("data", [])
+    rows = active_pods()
     if not rows:
         return "no active pods"
-    return "\n".join(f"{p.get('id')}  {p.get('name')}  {p.get('desiredStatus')}" for p in rows)
+    return "\n".join(f"{p.get('id')}  {p.get('name')}  {p.get('status')}" for p in rows)
 
 
 if __name__ == "__main__":

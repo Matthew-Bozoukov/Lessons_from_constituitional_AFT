@@ -19,9 +19,8 @@ KEY_ARG=""; [ -n "$SSH_KEY" ] && KEY_ARG="-i $SSH_KEY"
 # RunPod exposes SSH on a per-pod host:port; read it from the API rather than guessing.
 read -r IP PORT < <(cd "$REPO" && uv run python -c "
 import sys; sys.path.insert(0,'.')
-from src.eval.misalignment.internalization.scripts.runpod import call
-p=call('GET','/pods/$POD')
-print(p['publicIp'], p['portMappings']['22'])
+from src.infra.runpod import call, ssh_endpoint
+print(*ssh_endpoint(call('GET','/pods/$POD')))
 ")
 SSH="ssh $KEY_ARG -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $PORT root@$IP"
 SCP="scp $KEY_ARG -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P $PORT"

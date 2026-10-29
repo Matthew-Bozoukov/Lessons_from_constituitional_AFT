@@ -11,17 +11,16 @@ import fire
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
+from src.infra.runpod import active_pods  # noqa: E402
 
 
 def main(prefix: str = "") -> None:
-    pods = call("GET", "/pods")
-    pods = pods if isinstance(pods, list) else pods.get("pods", [])
+    pods = active_pods()
     rows = [p for p in pods if p.get("name", "").startswith(prefix)]
     for p in rows:
         print(
-            f"{p.get('id'):16s} {p.get('name', ''):32s} {p.get('desiredStatus', ''):10s} "
-            f"gpus={p.get('gpuCount')} ${p.get('costPerHr')}/h"
+            f"{p.get('id'):16s} {p.get('name', ''):32s} {p.get('status', ''):10s} "
+            f"gpus={(p.get('gpu') or {}).get('count')} ${p.get('cost')}/h"
         )
     print(
         f"{len(rows)} pod(s)"

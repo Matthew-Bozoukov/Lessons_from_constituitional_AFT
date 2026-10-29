@@ -153,8 +153,8 @@ def run():
     cfg,root=config(); manifest=json.loads((root/'manifest.json').read_text())
     assert manifest['config']==cfg
     assert not (root/'pod.json').exists(), 'Existing receipt: diagnose, never rent a second GPU automatically'
-    before=runpod.active_pods();save(root/'inventory-before.json',[{k:p.get(k) for k in ('id','name','desiredStatus','costPerHr')} for p in before])
-    save(root/'balance-before.json',runpod.graphql('query { myself { currentSpendPerHr clientBalance } }'))
+    before=runpod.active_pods();save(root/'inventory-before.json',[{k:p.get(k) for k in ('id','name','status','cost')} for p in before])
+    save(root/'spend-before.json',runpod.account_spend())
     spec=resolve_target(cfg['target'],revision=cfg['target_revision'])
     assert spec.base_revision==cfg['base_revision']
     gpu=cfg['gpu']; price=runpod.gpu_price(gpu)
@@ -215,7 +215,7 @@ def run():
         for pod_id in owned:
             runpod.teardown(pod_id)
         cost=(time.time()-start)*price/3600*1.05
-        save(root/'cleanup.json',dict(owned_ids=owned,remaining_ids=[p['id'] for p in runpod.active_pods()],elapsed_seconds=time.time()-start,quoted_cost_upper_estimate=cost,cumulative_quoted_cost_upper_estimate=previous_cost+cost,balance=runpod.graphql('query { myself { currentSpendPerHr clientBalance } }')))
+        save(root/'cleanup.json',dict(owned_ids=owned,remaining_ids=[p['id'] for p in runpod.active_pods()],elapsed_seconds=time.time()-start,quoted_cost_upper_estimate=cost,cumulative_quoted_cost_upper_estimate=previous_cost+cost,spend=runpod.account_spend()))
 
 
 if __name__=='__main__':

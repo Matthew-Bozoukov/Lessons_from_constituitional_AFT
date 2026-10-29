@@ -137,7 +137,7 @@ def down(pod: str) -> None:
         f"active pods now: {len(pods)}"
     )
     for p in pods:
-        print("   ", p["id"], p.get("desiredStatus"), p.get("name"))
+        print("   ", p["id"], p.get("status"), p.get("name"))
 
 
 if __name__ == "__main__":

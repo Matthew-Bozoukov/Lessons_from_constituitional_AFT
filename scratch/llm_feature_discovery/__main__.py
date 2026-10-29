@@ -320,7 +320,7 @@ class Embed:
             pod: Pod id.
         """
         info = embed_mod.status(pod)
-        print(f"status: {info['desiredStatus']}  cost/hr: ${info['costPerHr']}")
+        print(f"status: {info['status']}  cost/hr: ${info['cost']}")
         if info["log_name"]:
             print(f"--- {info['log_name']} tail ---\n{info['log_tail']}")
         else:

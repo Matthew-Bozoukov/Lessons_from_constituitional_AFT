@@ -18,7 +18,7 @@ def main():
     plan = base / "plan_dual.json"
     if len(sys.argv) > 3:
         cfg = json.loads(plan.read_text())
-        cfg["pod"]["countries"] = sys.argv[3]
+        cfg["pod"]["data_centers"] = sys.argv[3]
         if len(sys.argv) > 4:
             assert sys.argv[4] in ("SECURE", "COMMUNITY")
             cfg["pod"]["cloud"] = sys.argv[4]

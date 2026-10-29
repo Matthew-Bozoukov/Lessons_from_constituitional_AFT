@@ -1,4 +1,4 @@
-# ABOUTME: The one place this repo rents a GPU: RunPod REST client, `provision_runpod` (rent a
+# ABOUTME: The one place this repo rents a GPU: RunPod REST v2 client, `provision_runpod` (rent a
 # ABOUTME: pod running any script) and `serve_vllm` (rent one serving a base + LoRA modules).
 
 """RunPod pods: rent, serve, and above all tear down.
@@ -36,7 +36,6 @@ pulls the weights, on the card the model's profile names for THAT eval.
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import re
@@ -57,7 +56,7 @@ import requests
 from src.infra.endpoints.vllm import POD_VENV, pin_prefix, ssh_argv
 from src.model_profile import gpu_entry, gpu_for
 
-REST = "https://rest.runpod.io/v1"
+REST = "https://api.runpod.io/v2"
 IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 GPU = "NVIDIA H100 80GB HBM3"
 # Pods this repo's chat tool provisions carry this prefix, which is the ONLY thing the
@@ -73,9 +72,11 @@ def pod_for_server(server: str) -> dict:
     config = dict(line.split(None, 1) for line in result.stdout.splitlines() if " " in line)
     if config.get("proxycommand", "none") != "none" or config.get("proxyjump", "none") != "none":
         raise ValueError("Automatic teardown does not support SSH proxy/jump hosts")
-    addresses = {item[4][0] for item in socket.getaddrinfo(config["hostname"], None)}
-    matches = [p for p in active_pods() if p.get("publicIp") in addresses
-               and str((p.get("portMappings") or {}).get("22")) == config["port"]]
+    def resolve(host: str) -> set[str]:
+        return {item[4][0] for item in socket.getaddrinfo(host, None)}
+    addresses = resolve(config["hostname"])
+    matches = [p for p in active_pods() if (endpoint := ssh_endpoint(p)) is not None
+               and str(endpoint[1]) == config["port"] and resolve(endpoint[0]) & addresses]
     if len(matches) != 1:
         raise ValueError(f"--terminate-pod requires exactly one live pod matching {server}")
     pod = matches[0]
@@ -89,19 +90,11 @@ def pod_for_server(server: str) -> dict:
 
 
 def teardown(pod_id: str) -> None:
-    """Verify termination, report the account sweep and balance before retiring a guard."""
+    """Verify termination, report the account sweep and spend before retiring a guard."""
     gone = terminate(pod_id)
     remaining = active_pods()
     print("Remaining account pods:", [(p.get("id"), p.get("name")) for p in remaining], flush=True)
-    response = requests.post("https://api.runpod.io/graphql",
-                             headers={"Authorization": "Bearer " + _key()},
-                             json={"query": "query { myself { clientBalance currentSpendPerHr } }"},
-                             timeout=30)
-    response.raise_for_status()
-    payload = response.json()
-    if payload.get("errors") or not payload.get("data", {}).get("myself"):
-        raise RuntimeError("RunPod balance query failed")
-    print("RunPod balance:", payload["data"]["myself"], flush=True)
+    print("RunPod spend:", account_spend(remaining), flush=True)
     if not gone or any(p.get("id") == pod_id for p in remaining):
         raise RuntimeError(f"Pod {pod_id} may still be billing")
 
@@ -152,18 +145,24 @@ def _key() -> str:
     return key
 
 
-def call(method: str, path: str, **kwargs: Any) -> Any:
-    """Call the RunPod REST API, turning an auth failure into an actionable message."""
-    resp = requests.request(
-        method,
-        f"{REST}{path}",
-        headers={
-            "Authorization": f"Bearer {_key()}",
-            "Content-Type": "application/json",
-        },
-        timeout=60,
-        **kwargs,
-    )
+def call(method: str, path: str, *, attempts: int = 6, **kwargs: Any) -> Any:
+    """Call the RunPod REST v2 API (`REST` + path, Bearer key), with the retries it asks for.
+
+    Every public RunPod API is rate-limited per account (2026-10-27: 180/min, 3600/hr,
+    43200/day) and answers a 429 with `Retry-After`; this sleeps that out and retries, and
+    does the same with exponential backoff on a 5xx, which the API documents as transient
+    and safe to retry. Any other failure raises `requests.HTTPError` (with `.response`) whose
+    message carries the API's RFC 9457 problem detail, so a 422 names the offending field.
+    """
+    headers = {"Authorization": f"Bearer {_key()}", "Content-Type": "application/json"}
+    for attempt in range(attempts):
+        resp = requests.request(method, f"{REST}{path}", headers=headers, timeout=60, **kwargs)
+        transient = resp.status_code == 429 or resp.status_code >= 500
+        if not transient or attempt + 1 == attempts:
+            break
+        wait = _retry_after(resp) or min(60, 2 ** attempt)
+        print(f"RunPod {resp.status_code} on {method} {path}; retrying in {wait}s", flush=True)
+        time.sleep(wait)
     if resp.status_code == 401:
         raise RuntimeError(
             "RunPod rejected the API key (401). Keys are created at "
@@ -171,8 +170,31 @@ def call(method: str, path: str, **kwargs: Any) -> Any:
             "permission to create pods - a read-only key 401s on every endpoint. Check the "
             "key belongs to the account holding your credit."
         )
-    resp.raise_for_status()
+    if not resp.ok:
+        raise requests.HTTPError(
+            f"{resp.status_code} from {method} {path}: {_problem(resp)}", response=resp)
     return resp.json() if resp.content else {}
+
+
+def _retry_after(resp: requests.Response) -> int:
+    """`Retry-After` in whole seconds (the API sends an integer), 0 when absent or odd."""
+    try:
+        return max(0, int(float(resp.headers.get("Retry-After", "0"))))
+    except ValueError:
+        return 0
+
+
+def _problem(resp: requests.Response) -> str:
+    """The API's RFC 9457 problem (`title`, `detail`, `errors`) on one line, else the raw body."""
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        return resp.text[:300]
+    parts = [str(body[k]) for k in ("title", "detail") if body.get(k)]
+    parts += [str(e) for e in body.get("errors") or []]
+    return "; ".join(parts) or resp.text[:300]
 
 
 def endpoint_url(pod_id: str) -> str:
@@ -181,6 +203,22 @@ def endpoint_url(pod_id: str) -> str:
 
 def boot_log_url(pod_id: str) -> str:
     return f"https://{pod_id}-8080.proxy.runpod.net/boot.log"
+
+
+def ssh_endpoint(pod: dict) -> tuple[str, int] | None:
+    """A pod's direct SSH (host, port), or None until RunPod has published its 22/tcp mapping.
+
+    `ssh.direct` is the API's own answer (null while provisioning); the runtime port table
+    is the same mapping seen from the container side and covers a pod whose `ssh` block
+    is missing, so both are read before giving up.
+    """
+    direct = (pod.get("ssh") or {}).get("direct") or {}
+    if direct.get("host") and direct.get("port"):
+        return str(direct["host"]), int(direct["port"])
+    for mapping in (pod.get("runtime") or {}).get("ports") or []:
+        if mapping.get("private") == 22 and mapping.get("ip") and mapping.get("public"):
+            return str(mapping["ip"]), int(mapping["public"])
+    return None
 
 
 # --- the serving pod ------------------------------------------------------------------------
@@ -200,11 +238,11 @@ class ProvisionSpec:
     cloud: str = "SECURE"
     disk_gb: int = 200
     cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
-    countries: str = ""         # comma-separated placement codes; "" = anywhere
+    data_centers: str = ""      # comma-separated RunPod data-centre ids (EU-SE-1); "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
     pubkey_path: str = "~/.ssh/id_ed25519.pub"
-    terminate_at: str = ""      # absolute provider-side expiry, atomically set at creation
+    terminate_at: str = ""      # RFC 3339 expiry: the pod deletes ITSELF then (self_destruct_prefix)
 
     @classmethod
     def from_config(cls, cfg: Any | None) -> "ProvisionSpec":
@@ -248,74 +286,71 @@ def provision_runpod(
         deadline = datetime.fromisoformat(spec.terminate_at.replace("Z", "+00:00"))
         if deadline.tzinfo is None or deadline <= datetime.now(timezone.utc):
             raise ValueError("terminate_at must be a future timezone-aware timestamp")
-        if spec.countries:
-            raise ValueError("Scheduled provisioning does not support country lists")
-        payload = {
-            "name": name, "imageName": spec.image, "gpuTypeId": spec.gpu,
-            "gpuCount": spec.count, "containerDiskInGb": spec.disk_gb, "volumeInGb": 0,
-            "cloudType": spec.cloud, "ports": ",".join(ports), "startSsh": True,
-            "dockerArgs": shlex.join(["bash", "-lc", start_script]),
-            "env": [{"key": k, "value": v} for k, v in env.items()],
-            "terminateAfter": spec.terminate_at,
-            **({"allowedCudaVersions": spec.cuda.split(",")} if spec.cuda else {}),
-        }
-        result = graphql("mutation($input: PodFindAndDeployOnDemandInput!) { "
-                         "podFindAndDeployOnDemand(input: $input) { id } }", {"input": payload})
-        return str(result["podFindAndDeployOnDemand"]["id"])
-    pod = call(
-        "POST",
-        "/pods",
-        data=json.dumps(
-            {
-                # The RunPod account is SHARED with teammates: the name says whose pod it is and
-                # what it serves, and the prefix is what marks it as this tool's to tear down.
-                "name": name,
-                "imageName": spec.image,
-                "gpuTypeIds": [spec.gpu],
-                "gpuCount": spec.count,
-                "containerDiskInGb": spec.disk_gb,
-                "volumeInGb": 0,
-                "ports": list(ports),
-                "cloudType": spec.cloud,
-                "dockerStartCmd": ["bash", "-lc", start_script],
-                "env": env,
-                # Both constraints are omitted entirely when unset: an empty allowedCudaVersions
-                # or countryCodes is not "no preference" to the scheduler, and a CUDA pin that
-                # only the vLLM image needs would leave a training pod unschedulable.
-                **({"allowedCudaVersions": cuda} if (cuda := [
-                    c.strip() for c in str(spec.cuda).split(",") if c.strip()]) else {}),
-                **({"countryCodes": codes} if (codes := [
-                    c.strip().upper() for c in str(spec.countries).split(",") if c.strip()]) else {}),
-            }
-        ),
-    )
-    return str(pod.get("id") or pod.get("podId", ""))
+        # The expiry travels IN the pod, armed before the first line of the caller's script.
+        start_script = self_destruct_prefix(deadline.timestamp()) + start_script
+    cuda = [c.strip() for c in str(spec.cuda).split(",") if c.strip()]
+    data_centers = [c.strip().upper() for c in str(spec.data_centers).split(",") if c.strip()]
+    pod = call("POST", "/pods", json={
+        # The RunPod account is SHARED with teammates: the name says whose pod it is and
+        # what it serves, and the prefix is what marks it as this tool's to tear down.
+        "name": name,
+        "image": spec.image,
+        "cloud": spec.cloud,
+        # Both constraints are omitted entirely when unset: an explicit empty
+        # allowedCudaVersions means "no constraint" but a CUDA pin that only the vLLM image
+        # needs would leave a training pod unschedulable; and v2 places by data-centre id
+        # (`EU-SE-1`, `US-CA-2`; `GET /catalog/datacenters` lists them), never by country.
+        "gpu": {"id": spec.gpu, "count": spec.count,
+                **({"allowedCudaVersions": cuda} if cuda else {})},
+        "disk": spec.disk_gb,
+        "ports": list(ports),
+        # The container command: it REPLACES the image's own start script (see `bootstrap_script`).
+        "cmd": ["bash", "-lc", start_script],
+        "env": env,
+        **({"dataCenterIds": data_centers} if data_centers else {}),
+    })
+    return str(pod["id"])
 
 
-def graphql(query: str, variables: dict | None = None) -> dict:
-    """Provider GraphQL transport; never include credentials or request bodies in errors."""
-    response = requests.post("https://api.runpod.io/graphql",
-                             headers={"Authorization": "Bearer " + _key()},
-                             json={"query": query, "variables": variables or {}}, timeout=60)
-    if response.status_code != 200:
-        raise RuntimeError(f"RunPod GraphQL HTTP {response.status_code}")
-    payload = response.json()
-    if payload.get("errors") or "data" not in payload:
-        detail = "; ".join(str(e.get("message", "provider error")) for e in payload.get("errors", []))
-        # Variable-validation errors can echo request values. Keep useful provider
-        # diagnostics while redacting credentials before anything reaches a log.
-        for key, value in os.environ.items():
-            if value and any(marker in key.upper() for marker in ("TOKEN", "API_KEY", "PASSWORD")):
-                detail = detail.replace(value, "[REDACTED]")
-        raise RuntimeError("RunPod GraphQL rejected the request; allocation may be ambiguous: " + detail[:600])
-    return payload["data"]
+def self_destruct_prefix(deadline_epoch: float) -> str:
+    """Shell that deletes THIS pod at an absolute time, from inside the pod.
+
+    REST v2 has no provider-side expiry. The GraphQL `terminateAfter` this replaced was, per
+    RunPod's own CLI maintainers, accepted and never enforced (they dropped `--terminate-after`
+    for that reason); nothing in this repo's logs shows it ever firing either -- every
+    automatic teardown on record was the LOCAL watchdog (`start_watchdog`), which stays. So
+    the pod now also carries its own: RunPod injects a pod-scoped `RUNPOD_API_KEY`
+    and `RUNPOD_POD_ID` into every container; a v2 DELETE with that key removes the pod, and
+    `runpodctl`, which every RunPod pod ships with configured for that same key, is the
+    second shot each round (both of its spellings, the CLI renamed the verb).
+    The clock is an absolute epoch, not a sleep, so a container restart cannot push the
+    deadline back, and the loop retries every 30s through a 429 until the pod is gone,
+    which ends it. No credential of ours leaves. NOT yet verified live: the account had no
+    credit on 2026-10-29 (402 on every create) -- the first `runpod up` after a top-up is
+    the check (watch `runpod pods` past the deadline).
+    """
+    deadline = int(math.ceil(deadline_epoch))
+    return ('(while [ "$(date +%s)" -lt ' + str(deadline) + ' ]; do sleep 30; done; '
+            'while :; do curl -sf -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" '
+            '"' + REST + '/pods/$RUNPOD_POD_ID" && break; '
+            'runpodctl pod delete "$RUNPOD_POD_ID" && break; '
+            'runpodctl remove pod "$RUNPOD_POD_ID" && break; sleep 30; done) '
+            '>/dev/null 2>&1 </dev/null &\n')
 
 
-def validate_scheduled_provision() -> None:
-    """Validate the provider's expiry input WITHOUT executing a rental resolver."""
-    graphql('mutation { podFindAndDeployOnDemand(input: {name: "schema-check", '
-            'imageName: "unused", gpuTypeId: "unused", gpuCount: 1, '
-            'terminateAfter: "2099-01-01T00:00:00Z"}) @skip(if: true) { id } }')
+def account_spend(pods: list[dict] | None = None) -> dict:
+    """What the account is spending, from REST v2: today's total (UTC) and the live burn.
+
+    v2 has no balance route -- `GET /billing*` is spend history, and every "balance" in
+    its schema is a load balancer -- so the credit remaining is read in the console, not
+    here. `pods` is an `active_pods()` listing to reuse under the rate limit.
+    """
+    pods = active_pods() if pods is None else pods
+    today = call("GET", "/billing", params={"lastN": 1, "bucketSize": "day"})
+    running = [p for p in pods if p.get("status") == "RUNNING"]
+    return {"spend_today_usd": round(float(today["metadata"]["totals"]["totalAmount"]), 2),
+            "spend_per_hr_usd": round(sum(float(p.get("cost") or 0) for p in running), 2),
+            "running_pods": len(running)}
 
 
 def bootstrap_script(
@@ -396,8 +431,8 @@ exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
 # SSH, so a docker host can tunnel to this endpoint instead of using the HTTPS proxy
 # (docs/LOG.md 2026-08-09: the proxy times out on ODCV's long non-streaming rollouts).
-# Overriding dockerStartCmd REPLACES the image entrypoint that normally installs
-# PUBLIC_KEY and starts sshd, so it has to be redone here or the pod has no SSH at all.
+# Overriding the container command (`cmd`) REPLACES the image start script that normally
+# installs PUBLIC_KEY and starts sshd, so it has to be redone here or the pod has no SSH at all.
 # PUBLIC_KEY is public by definition -- nothing secret is echoed into the world-readable
 # :8080 boot log by these lines.
 (mkdir -p ~/.ssh && [ -n "${{PUBLIC_KEY:-}}" ] && echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys) || true
@@ -531,25 +566,23 @@ def serve_vllm(
 
 
 def active_pods() -> list[dict]:
-    pods = call("GET", "/pods")
-    return pods if isinstance(pods, list) else pods.get("data", [])
+    """Every pod on the account, following the cursor (a page holds at most 1000)."""
+    pods: list[dict] = []
+    params: dict[str, Any] = {"limit": 1000}
+    while True:
+        page = call("GET", "/pods", params=params)
+        pods += page.get("pods") or []
+        pagination = page.get("pagination") or {}
+        if not (pagination.get("hasNextPage") and pagination.get("nextCursor")):
+            return pods
+        params["cursor"] = pagination["nextCursor"]
 
 
 def gpu_price(gpu: str = GPU, cloud: str = "SECURE") -> float | None:
     """$/hour for a GPU type, or None if the catalogue does not list it."""
-    try:
-        rows = call("GET", "/gputypes")
-    except requests.HTTPError as exc:
-        if exc.response is None or exc.response.status_code not in (400, 404):
-            raise
-        # The REST catalogue route is unavailable on some account/API versions.
-        # Use the provider's typed catalogue, never an assumed advertised price.
-        rows = graphql("query { gpuTypes { id securePrice communityPrice } }")["gpuTypes"]
-    rows = rows if isinstance(rows, list) else rows.get("data", [])
-    field = "securePrice" if cloud.upper() == "SECURE" else "communityPrice"
-    for g in rows:
-        if g.get("id") == gpu:
-            price = g.get(field)
+    for entry in call("GET", "/catalog/gpus").get("gpus") or []:
+        if entry.get("id") == gpu:
+            price = (entry.get("price") or {}).get(cloud.lower())
             return float(price) if price else None
     return None
 
@@ -1106,11 +1139,9 @@ def _ssh_endpoint(pod_id: str, timeout_s: int = SSH_ENDPOINT_TIMEOUT_S) -> tuple
     """Poll until RunPod publishes the pod's public IP and its mapped port 22."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        info = call("GET", f"/pods/{pod_id}")
-        ip = info.get("publicIp")
-        port = (info.get("portMappings") or {}).get("22")
-        if ip and port:
-            return str(ip), int(port)
+        endpoint = ssh_endpoint(call("GET", f"/pods/{pod_id}"))
+        if endpoint is not None:
+            return endpoint
         time.sleep(10)
     raise SystemExit(
         f"pod {pod_id} published no SSH endpoint within {timeout_s}s — it is still "
@@ -1246,7 +1277,7 @@ def default_keypair() -> tuple[str, str] | None:
 
 def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | None = None,
                        count: int = 1, disk_gb: int = 200, cloud: str = "SECURE",
-                       image: str = IMAGE, countries: str = "", pubkey_path: str = "",
+                       image: str = IMAGE, data_centers: str = "", pubkey_path: str = "",
                        identity: str = "", eval: str | None = None,
                        revisions: dict[str, str] | None = None, terminate_at: str = "",
                        cuda_versions: str = "13.0",
@@ -1283,7 +1314,7 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
         # vLLM brings a torch built for CUDA 13, which dies at `_cuda_init` on an older
         # host driver — same constraint `up --eval` applies.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda=cuda_versions, countries=countries, terminate_at=terminate_at,
+                      cuda=cuda_versions, data_centers=data_centers, terminate_at=terminate_at,
                       **({"pubkey_path": pubkey_path} if pubkey_path else {})),
         name=name,
         start_script=script,
@@ -1310,7 +1341,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        target: str | Sequence[str] | None = None, model: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
-       image: str = IMAGE, countries: str = "", push_env: bool = False,
+       image: str = IMAGE, data_centers: str = "", push_env: bool = False,
        max_hours: float = 6.0, boot_timeout_s: int = 2400,
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
@@ -1378,9 +1409,12 @@ def up(name: str, train: str | None = None, eval: str | None = None,
             for the whole download and delivered nothing.
         cloud: SECURE or COMMUNITY.
         image: Container image.
-        countries: Comma-separated placement codes; "" is anywhere.
-        max_hours: Positive lifetime cap, enforced by a detached LOCAL watchdog (default 6).
-            The local machine must remain awake and connected for enforcement.
+        data_centers: Comma-separated RunPod data-centre ids to place in (`EU-SE-1,EU-NL-1`;
+            `GET /catalog/datacenters` lists them); "" is anywhere. Reach for it to dodge a
+            host with a crawling network (docs/GOTCHAS.md, 2026-09-09).
+        max_hours: Positive lifetime cap (default 6), enforced twice: the pod deletes itself
+            at the deadline (`self_destruct_prefix`, needs nothing of ours to stay up), and
+            a detached LOCAL watchdog backs that up while this machine stays awake.
         boot_timeout_s: How long a `--train` pod may take to echo `READY <sha>` before
             `up` refuses to hand it back (default 40 min; a normal boot is ~10).
         push_env: Write HF_TOKEN and HF_ORG — plus WANDB_API_KEY / WANDB_PROJECT /
@@ -1453,7 +1487,8 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
         # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="13.0", countries=countries),
+                      cuda="13.0", data_centers=data_centers,
+                      terminate_at=datetime.fromtimestamp(deadline, timezone.utc).isoformat()),
         name=name,
         start_script=script,
         env={"LASR_POD_OWNER": POD_OWNER,
@@ -1542,7 +1577,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         f"Want to type a name instead? Add a Host entry for {ip}:{port} to your own",
         "~/.ssh/config (or ask Claude to) — nothing here will write it for you.",
         "",
-        f"Local watchdog lifetime cap: {max_hours}h (keep this machine awake and connected).",
+        f"Lifetime cap: {max_hours}h — the pod deletes itself then; a local watchdog backs it up.",
         "For automatic eval cleanup add --terminate-pod to uv run evals.",
         "To terminate earlier:",
         f"  uv run runpod down --pod {pod_id}",
@@ -1554,8 +1589,9 @@ def status(pod: str) -> str:
     import requests
 
     info = call("GET", f"/pods/{pod}")
-    lines = [f"status:  {info.get('desiredStatus')}  ({info.get('name')})",
-             f"gpu:     {info.get('gpuCount')}x  ${info.get('costPerHr')}/hr",
+    gpu = info.get("gpu") or {}
+    lines = [f"status:  {info.get('status')}  ({info.get('name')})",
+             f"gpu:     {gpu.get('count')}x {gpu.get('id')}  ${info.get('cost')}/hr",
              f"created: {info.get('createdAt')}"]
     try:
         r = requests.get(f"https://{pod}-8080.proxy.runpod.net/boot.log", timeout=15)
@@ -1573,8 +1609,8 @@ def pods() -> str:
     if not rows:
         return "no active pods"
     return "\n".join(
-        f"{p.get('id')}  {p.get('gpuCount')}x  ${p.get('costPerHr')}/hr  "
-        f"{p.get('desiredStatus')}  {p.get('name')}  (since {p.get('createdAt')})"
+        f"{p.get('id')}  {(p.get('gpu') or {}).get('count')}x  ${p.get('cost')}/hr  "
+        f"{p.get('status')}  {p.get('name')}  (since {p.get('createdAt')})"
         for p in rows)
 
 

@@ -280,18 +280,15 @@ class RentalTests(unittest.TestCase):
                 fleet.guard(OmegaConf.create({'root': temp}))
             cleanup.assert_not_called()
 
-    def test_expiry_is_atomic_with_creation(self):
-        with patch.object(runpod, 'graphql', return_value={'podFindAndDeployOnDemand': {'id': 'owned'}}) as gql:
-            with patch.object(runpod, 'call', side_effect=AssertionError('No unscheduled REST rental')):
-                result = runpod.provision_runpod(runpod.ProvisionSpec(terminate_at='2099-01-01T00:00:00Z'),
-                                                name='nika-test', start_script='echo ok')
+    def test_expiry_is_carried_by_the_pod_itself(self):
+        with patch.object(runpod, 'call', return_value={'id': 'owned'}) as call:
+            result = runpod.provision_runpod(runpod.ProvisionSpec(terminate_at='2099-01-01T00:00:00Z'),
+                                            name='nika-test', start_script='echo ok')
         self.assertEqual(result, 'owned')
-        self.assertEqual(gql.call_args.args[1]['input']['terminateAfter'], '2099-01-01T00:00:00Z')
-
-    def test_validation_cannot_allocate(self):
-        with patch.object(runpod, 'graphql') as gql:
-            runpod.validate_scheduled_provision()
-        self.assertIn('@skip(if: true)', gql.call_args.args[0])
+        script = call.call_args.kwargs['json']['cmd'][-1]
+        self.assertIn('4070908800', script)  # 2099-01-01T00:00:00Z as an epoch, inside the pod
+        self.assertIn('$RUNPOD_POD_ID', script)
+        self.assertTrue(script.endswith('echo ok'))
 
     def test_bootstrap_downloads_exact_weight_revisions(self):
         script = runpod._bootstrap(None, (['org/base', 'org/adapter'], None),
@@ -407,7 +404,7 @@ class RentalTests(unittest.TestCase):
             cfg.allocation_min_remaining_seconds = 900
             manifest = {'campaign': 'only-ours', 'budget_usd': 100}
             atomic(Path(temp) / 'metadata/state.json', {'pods': [], 'halt': None})
-            live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'costPerHr': 4.59,
+            live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'cost': 4.59,
                     'env': {'LASR_POD_OWNER': runpod.POD_OWNER, 'LASR_CAMPAIGN': 'only-ours'}}
             guard = Mock()
 

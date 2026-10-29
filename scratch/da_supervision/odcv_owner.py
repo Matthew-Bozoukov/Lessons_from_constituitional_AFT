@@ -46,7 +46,7 @@ def main(key, resume=False, plan_path="scratch/da_supervision/odcv_plan.yaml"):
             pod, int(plan.max_hours * 3600), out / "watchdog.log"
         )
         info = runpod.call("GET", f"/pods/{pod}")
-        price = float(info["costPerHr"])
+        price = float(info["cost"])
         save(hourly_usd=price, watchdog_pid=guard.pid)
         assert price <= float(plan.hourly_ceiling_usd), (
             f"Price {price} exceeds campaign ceiling"

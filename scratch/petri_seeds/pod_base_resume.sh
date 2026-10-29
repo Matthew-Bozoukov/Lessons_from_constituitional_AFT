@@ -26,7 +26,7 @@ echo ">>> start $(date -u +%FT%TZ) pod=$RUNPOD_POD_ID retry=$RETRY conn=$CONN de
 
 self_delete() {
   echo ">>> deleting pod ${RUNPOD_POD_ID} at $(date -u +%FT%TZ): $1"
-  curl -s -X DELETE "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}" \
+  curl -s -X DELETE "https://api.runpod.io/v2/pods/${RUNPOD_POD_ID}" \
     -H "Authorization: Bearer ${RUNPOD_API_KEY}" -o /dev/null -w "    delete HTTP %{http_code}\n"
 }
 ( sleep "$DEADLINE_S"; self_delete "deadline ${DEADLINE_S}s reached" ) &

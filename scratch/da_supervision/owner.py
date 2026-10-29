@@ -95,7 +95,7 @@ def run(plan_path, key, out):
         guard = runpod.start_watchdog(pod, seconds, out / "owner_watchdog.log")
         state["watchdog_pid"] = guard.pid
         info = runpod.call("GET", "/pods/" + pod)
-        state["hourly_usd"] = float(info["costPerHr"]) + 0.10
+        state["hourly_usd"] = float(info["cost"]) + 0.10
         save()
         assert state["hourly_usd"] <= limits["hourly_ceiling_usd"], (
             "Actual quote exceeds cap"
@@ -113,7 +113,7 @@ def run(plan_path, key, out):
             count=int(limits["count"]),
             push_env=True,
             max_hours=limits["max_hours"],
-            countries=limits["countries"],
+            data_centers=limits.get("data_centers", ""),
             cloud=limits.get("cloud", "SECURE"),
             on_provisioned=registered,
         )

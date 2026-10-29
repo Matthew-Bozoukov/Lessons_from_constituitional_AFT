@@ -205,7 +205,7 @@ open("/workspace/DONE", "w").write("ok")
 print("DONE", flush=True)
 '''
 
-# A custom dockerStartCmd replaces the image's own startup, which is what normally launches
+# A custom `cmd` replaces the image's own startup, which is what normally launches
 # sshd — so there is no SSH into this pod. This server adds PUT to the usual static serving,
 # so the text list goes up and the vectors come back over the one :8080 proxy.
 _POD_SERVER = r'''
@@ -246,7 +246,7 @@ def pod_bootstrap(model: str, batch: int) -> str:
         batch: Encoding batch size.
 
     Returns:
-        The shell script for dockerStartCmd.
+        The shell script for `cmd`.
     """
     job = (_POD_JOB.replace("MODEL_ID", model)
            .replace("PROBE_TEXTS", repr(SANITY_PROBES))
@@ -301,13 +301,11 @@ def pod_create(model: str, batch: int = 128, name: str = "properties-embed",
     """
     from src.eval.misalignment.internalization.scripts.runpod import call
 
-    payload = {"name": name, "imageName": RUNPOD_IMAGE, "gpuTypeIds": [gpu],
-               "gpuCount": 1, "containerDiskInGb": disk_gb, "volumeInGb": 0,
-               "ports": ["8080/http"], "cloudType": "SECURE",
-               "dockerStartCmd": ["bash", "-lc", pod_bootstrap(model, batch)],
+    payload = {"name": name, "image": RUNPOD_IMAGE, "gpu": {"id": gpu, "count": 1},
+               "disk": disk_gb, "ports": ["8080/http"], "cloud": "SECURE",
+               "cmd": ["bash", "-lc", pod_bootstrap(model, batch)],
                "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"}}
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    return pod.get("id") or pod.get("podId", "")
+    return str(call("POST", "/pods", json=payload)["id"])
 
 
 def pod_terminate(pod: str) -> list[tuple[str, str]]:
@@ -322,10 +320,10 @@ def pod_terminate(pod: str) -> list[tuple[str, str]]:
     Returns:
         (id, name) of every pod still running.
     """
-    from src.eval.misalignment.internalization.scripts.runpod import call
+    from src.eval.misalignment.internalization.scripts.runpod import active_pods, call
 
     call("DELETE", f"/pods/{pod}")
-    return [(p["id"], p.get("name")) for p in (call("GET", "/pods") or [])]
+    return [(p["id"], p.get("name")) for p in active_pods()]
 
 
 def _embed_runpod(texts: list[str], model: str, batch: int, poll_s: int,

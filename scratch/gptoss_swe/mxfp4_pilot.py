@@ -531,7 +531,6 @@ def provision():
 
     quote = runpod.gpu_price(str(C.gpu))
     assert quote and quote <= float(C.gpu_rate_ceiling)
-    runpod.validate_scheduled_provision()
     name = "nika-" + str(C.campaign)
     assert not any(p.get("name") == name for p in runpod.active_pods())
     key = Path.home() / ".ssh/msm_audit"
