@@ -1,4 +1,4 @@
-# ABOUTME: The Qwen responder-swap difficult-advice arm: the base blend (configs/data/mixture/nosynth.yaml) scaled around a
+# ABOUTME: The Qwen responder-swap difficult-advice arm: the base blend (configs/data/mixture/plain.yaml) scaled around a
 # ABOUTME: synthetic share whose prompts are the da corpus's and whose responses Qwen3.6-27B wrote (configs/data/synth/da-qwen-resp.yaml).
 # Run: uv run mix --config configs/data/mixture/da-qwen-resp.yaml [synthetic_pct=15]
 #
@@ -11,11 +11,15 @@ seed: 0
 tokenizer: "Qwen/Qwen3.6-27B"
 max_seq_len: 8192
 
-base: "configs/data/mixture/nosynth.yaml"
+base: "configs/data/mixture/plain.yaml"
 base_mixture:
-  repo: "${oc.env:HF_ORG}/2026-09-29-nosynth-mix"
+  # 2026-10-08: the `plain` base, as da.yaml (1,832 rows / 5,000,005 supervised tokens, published GLM/DeepSeek
+  # traces on every row), at the commit whose stats carry `reasoning_traces.origin: published` (identical rows to
+  # da.yaml's 019e239c pin). Until this date this arm sat on 2026-09-29-nosynth-mix @ 058e163e (Qwen3.6 on-policy
+  # traces), the base every arm before 2026-10-05 used; its results are not comparable to the plain-base ladder.
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
   file: mixture.jsonl
-  revision: "058e163e7d02bfa01503506653e9e360e2e5798c"
+  revision: "c118c4b0a4a66eec4020edf2f6964b8a2bcf955b"
 
 synthetic_pct: 15
 share_unit: supervised_tokens

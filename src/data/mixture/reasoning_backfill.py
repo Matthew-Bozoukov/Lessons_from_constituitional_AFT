@@ -22,11 +22,14 @@ said `reasoning: none` on every source. Now:
     mixture_stats.json and names the generator in its card's `models` field;
   * an arm mixture built on a published base (`base_mixture:`) copies that block forward, so
     no arm config names a model -- it points at a base and inherits whose traces it holds;
-  * `uv run train` refuses a mixture whose trace family is not the model being trained
-    (src/train/launch.py check_trace_family) unless `allow_trace_family_mismatch=true`.
+  * `uv run train` stamps that block into training_meta.json (src/train/launch.py
+    trace_record). It does not gate on it: until 2026-10-07 a family mismatch refused the
+    run, and the gate's own bookkeeping (`origin: published` missing from one revision of
+    the plain base) killed a run for the very model the base was built for.
 
-A new base model therefore needs its own base blend: change `reasoning_backfill.model` (and
-`tokenizer`) and rebuild; every arm config then points at the new base repo.
+A new base model still wants its own base blend: change `reasoning_backfill.model` (and
+`tokenizer`) and rebuild; every arm config then points at the new base repo. That is the
+mixture author's call when pinning `base_mixture:`, and nothing in the trainer enforces it.
 """
 from __future__ import annotations
 
@@ -320,6 +323,9 @@ def describe(traces: dict | None) -> str:
     if not traces:
         return "base-blend reasoning traces: none"
     turns = traces.get("turns")
-    return (f"base-blend reasoning traces: on-policy {traces['model']} (family {traces['family']}"
+    # A backfilled base's traces are on-policy; a base assembled from published SFT sets (plain, 2026-10-05)
+    # records `origin: published` in its block and must not be described as on-policy.
+    origin = traces.get("origin", "on-policy")
+    return (f"base-blend reasoning traces: {origin} {traces['model']} (family {traces['family']}"
             + (f", {turns} turns" if turns is not None else "")
             + (f", judged by {traces['judge']}" if traces.get("judge") else "") + ")")

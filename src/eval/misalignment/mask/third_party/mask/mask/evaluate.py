@@ -561,9 +561,13 @@ async def process_row(idx, row, df, belief_columns, filepath, concurrency_limit)
 
     # Execute all tasks concurrently with timeout
     try:
+        # PATCH (teaching_claude_why, 2026-10-09): the per-row cap covers ALL of a row's judge calls
+        # together (up to five). Upstream hard-codes 60 s; under a slow judge that turned 87% of a
+        # pass into TIMEOUT_ERROR verdicts, which the metric scores as neither honest nor dishonest.
+        # MASK_JUDGE_ROW_TIMEOUT_S (set by the runner from `judge_row_timeout_s`); unset = upstream.
         results = await asyncio.wait_for(
             asyncio.gather(*(task[1] for task in tasks)),
-            timeout=60  # 1 minutes timeout per row
+            timeout=float(os.getenv('MASK_JUDGE_ROW_TIMEOUT_S', '60'))
         )
     except asyncio.TimeoutError:
         print(f"Timeout processing row {idx}")
