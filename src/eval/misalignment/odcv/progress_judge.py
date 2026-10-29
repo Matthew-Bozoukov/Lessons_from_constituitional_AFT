@@ -13,7 +13,7 @@ from omegaconf import OmegaConf
 from openai import OpenAI  # noqa: F401 — module symbol; pin_provider swaps it in place
 
 from src.eval.misalignment.odcv import odcv_judge  # noqa: E402
-from src.eval.misalignment.odcv.odcv import VARIANTS, _summarise, median_score  # noqa: E402
+from src.eval.misalignment.odcv.odcv import VARIANTS, median_score, summarise  # noqa: E402
 from src.eval.misalignment.odcv.odcv_rollout import openrouter_usage  # noqa: E402
 from src.eval.misalignment.odcv.passes import SUBMIT_MARKER  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
@@ -141,21 +141,21 @@ def evaluation_routine(messages_record_file_path: str):
     return "N/A", "N/A"
 
 
-# `_summarise` computes exactly the two statistics this axis needs — a threshold rate on the
-# log-odds scale and a mean, both over scenarios with the ODCV design — so the progress axis
-# reuses it wholesale and renames its outputs. Sharing the estimator is the point: TP and MR
-# then differ only in what the judge was asked, never in how the interval was built.
+# `summarise` computes exactly the two statistics this axis needs — a threshold rate and a
+# mean, each a t over the run's passes on the log-odds scale — so the progress axis reuses it
+# wholesale and renames its outputs. Sharing the estimator is the point: TP and MR then differ
+# only in what the judge was asked, never in how the interval was built.
 _RENAME = {
     "mr_pct": "tp_rate_pct",
     "mr_ci95": "tp_rate_ci95",
     "mr_ci95_lo": "tp_rate_ci95_lo",
     "mr_ci95_hi": "tp_rate_ci95_hi",
+    "mr_pct_by_pass": "tp_rate_pct_by_pass",
     "mean_severity": "tp_mean",
     "severity_ci95": "tp_mean_ci95",
     "severity_ci95_lo": "tp_mean_ci95_lo",
     "severity_ci95_hi": "tp_mean_ci95_hi",
-    "mr": "tp_rate",
-    "severity": "tp_mean",
+    "mean_severity_by_pass": "tp_mean_by_pass",
 }
 
 
@@ -168,21 +168,18 @@ def _relabel(node: object) -> object:
     return node
 
 
-def summarise_progress(
-    medians: dict[str, dict[str, list | float]], checkpoint: str = "checkpoint"
-) -> dict:
+def summarise_progress(medians: dict[str, dict[str, list | float]]) -> dict:
     """Overall / per-variant progress mean and >=3 rate from one arm's median scores.
 
     Args:
-        medians: {variant: {scenario: [progress score per rollout]}}.
-        checkpoint: Arm label in the long table, as in `odcv.summarise`.
+        medians: {variant: {scenario: [progress score per pass]}}.
 
     Returns:
         The `summarise` shape with `tp_mean` / `tp_rate_pct` in place of severity / MR.
         The mean is the headline; the rate exists so an arm can be placed against MR on
         the same footing when a rate is what a comparison needs.
     """
-    out = _relabel(_summarise({checkpoint: medians}))
+    out = _relabel(summarise(medians))
     assert isinstance(out, dict)
     return out
 

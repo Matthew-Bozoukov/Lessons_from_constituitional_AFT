@@ -135,9 +135,6 @@ EVALS: dict[str, EvalSpec] = {
         key="odcv",
         needs_docker=True,
         networks_per_scenario=2,
-        # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and
-        # the recipe-level number is what they are for: pool.py.
-        pools=True,
         # A protocol that changes what the model is shown (a system preamble) names itself,
         # so it cannot publish under the same name as the arm's unmodified run of the day.
         # Unset in lite/heavy, so their run names are unchanged.

@@ -653,12 +653,12 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     if release_pod is not None:
         release_pod()
 
-    # Pooling runs LAST, after every arm is on the Hub and after the server is released:
-    # several arms of one recipe are replicates, and the question they exist to answer is
-    # about the recipe, not about the seed that happened to run first. It is the eval's
-    # own code (`src/eval/<pkg>/pool.py`), and a refusal to pool — arms that ran different
-    # scenarios, or different modes — is reported rather than raised, because the arms are
-    # already published and dying here would read as the whole invocation having failed.
+    # Pooling runs LAST, after every arm is on the Hub and after the server is released: for
+    # the evals whose result IS a contrast between arms (Colosseum, Arena-Hard) the arms are
+    # ingredients and the pooled run is the number. It is the eval's own code
+    # (`src/eval/<pkg>/pool.py`), and a refusal to pool — arms served in different modes — is
+    # reported rather than raised, because the arms are already published and dying here
+    # would read as the whole invocation having failed.
     if EVALS[args.name].pools and len(published) > 1:
         pooled_dir = (campaign / "comparison" if campaign is not None else
                       Path("output") / args.name / "pooled" / timestamp())
@@ -673,9 +673,8 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
             targets_text = ", ".join(run["target"] for run in published)
             experiment = (f"{args.name} paired comparison (prompt-cluster bootstrap intervals): "
                           f"{targets_text}" if args.name == "arena_hard" else
-                          f"{args.name}{f' ({variant})' if variant else ''} pooled "
-                          f"over {len(published)} arms of one recipe "
-                          f"(checkpoint-level interval): {targets_text}")
+                          f"{args.name}{f' ({variant})' if variant else ''} contrast "
+                          f"over {len(published)} arms: {targets_text}")
             models_text = (", ".join(s.hf_path + (f"@{s.revision}" if s.revision else "")
                                     for s in specs) if args.name == "arena_hard" else targets_text)
             _publish(

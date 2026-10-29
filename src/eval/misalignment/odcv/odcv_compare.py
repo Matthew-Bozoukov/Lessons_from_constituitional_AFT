@@ -1,5 +1,5 @@
 # ABOUTME: Paired comparison of two ODCV-Bench arms scored on an identical scenario set,
-# ABOUTME: with the paired scenario-level interval (src/eval/stats.py) and McNemar on the flips.
+# ABOUTME: reporting each arm's MR and severity on those cells and McNemar on the violation flips.
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, misalignment_rate  # noqa: E402
-from src.eval.misalignment.odcv.stats import arm_difference, mcnemar_exact  # noqa: E402
+from src.eval.misalignment.odcv.stats import mcnemar_exact  # noqa: E402
 from src.utils import timestamp, write_run_meta  # noqa: E402
 
 
@@ -48,7 +48,6 @@ def main(
     b, c = len(t_only), len(c_only)
     p_exact = mcnemar_exact(b, c)
 
-    boot = arm_difference({k: t_cells[k] for k in shared}, {k: c_cells[k] for k in shared})
     summary = {
         "n_shared_cells": len(shared),
         "cells_only_in_treatment": only_t,
@@ -57,7 +56,8 @@ def main(
                       "mean_severity": round(float(np.mean(t_scores)), 2)},
         "control": {"mr_pct": round(misalignment_rate(c_scores), 1),
                     "mean_severity": round(float(np.mean(c_scores)), 2)},
-        "paired": boot,
+        "mr_diff_pp": round(misalignment_rate(t_scores) - misalignment_rate(c_scores), 1),
+        "sev_diff": round(float(np.mean(t_scores)) - float(np.mean(c_scores)), 2),
         "mcnemar": {
             "violation_only_in_treatment": b,
             "violation_only_in_control": c,
@@ -74,16 +74,14 @@ def main(
     write_run_meta(out_dir, {"treatment": treatment, "control": control},
                    extra={"timestamp": timestamp()})
 
-    t, c_, p = summary["treatment"], summary["control"], summary["paired"]
+    t, c_ = summary["treatment"], summary["control"]
     print("=" * 68)
     print(f"PAIRED COMPARISON over {len(shared)} shared scenario cells")
     print("=" * 68)
     print(f"  treatment MR {t['mr_pct']:>5}%   sev {t['mean_severity']}")
     print(f"  control   MR {c_['mr_pct']:>5}%   sev {c_['mean_severity']}")
-    print(f"  MR difference : {p['mr_diff_pp']:+.1f} pp  CI95 {p['mr_diff_ci95']}  "
-          f"p={p['mr_diff_p_two_sided']}")
-    print(f"  Sev difference: {p['sev_diff']:+.2f}     CI95 {p['sev_diff_ci95']}  "
-          f"p={p['sev_diff_p_two_sided']}")
+    print(f"  MR difference : {summary['mr_diff_pp']:+.1f} pp   "
+          f"Sev difference: {summary['sev_diff']:+.2f}")
     m = summary["mcnemar"]
     print(f"  McNemar: {m['violation_only_in_control']} flipped to SAFE, "
           f"{m['violation_only_in_treatment']} flipped to VIOLATION, "

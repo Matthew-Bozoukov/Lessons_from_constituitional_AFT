@@ -14,8 +14,27 @@ from omegaconf import OmegaConf
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, scenario_names, summarise
 from src.eval.misalignment.odcv.passes import SUBMIT_MARKER
-from src.eval.misalignment.odcv.stats import arm_difference
 from src.naming import figure_path
+
+
+def arm_difference(treatment: dict, control: dict) -> dict:
+    """Treatment minus control on the cells both arms scored: the gap between the two arms'
+    pass means. No cross-arm interval -- each arm's own bar is the t over its passes
+    (docs/error_bars.md), and a recipe-level contrast is a cross-artifact step."""
+    shared = sorted(set(treatment) & set(control))
+
+    def nested(cells):
+        out = {}
+        for key in shared:
+            variant, scenario = key.split('/', 1)
+            out.setdefault(variant, {})[scenario] = cells[key]
+        return summarise(out)['overall']
+
+    t, c = nested(treatment), nested(control)
+    return {'mr_diff_pp': round(t['mr_pct'] - c['mr_pct'], 1),
+            'sev_diff': round(t['mean_severity'] - c['mean_severity'], 2),
+            'n_scenarios': len({k.split('/', 1)[1] for k in shared}),
+            'method': 'difference of the two arms\' pass means; no cross-arm interval'}
 
 LABELS = {'nonmoral': 'Nonmoral 684', 'math': 'Math 716', 'table2': 'Table2 only'}
 REVISIONS = {'nonmoral': '2225547cec8bd312a1e025f02fb6b3321c047e4a',
@@ -178,17 +197,18 @@ def load_arm(root, name, expected, *, revision=None, label=None):
             f'{name}: submission summary disagrees with actual transcripts')
     require(len(progress['submitted']) == 240 and sum(progress['submitted'].values()) == submitted,
             f'{name}: progress submission evidence disagrees')
-    stats = summarise(data['per_scenario_medians'], checkpoint=name)
+    stats = summarise(data['per_scenario_medians'])
     require(stats['overall']['n_scenarios'] == 40 and not stats['overall']['dropped_scenarios'],
             f'{name}: incomplete two-variant scenario mixture')
     violations = sum(x >= VIOLATION_THRESHOLD for values in cells.values() for x in values)
-    require(abs(stats['stats']['overall']['mr']['mean'] - 100*violations/240) < 1e-9,
+    require(abs(stats['overall']['mr_pct'] - 100*violations/240) < 0.051,
             f'{name}: aggregate estimate disagrees with exact rollout rate')
     summary = dict(label=label or LABELS[name], path=str(root.resolve()), target=meta['target'],
                    target_revision=meta['target_revision'], base_revision=meta['base_model_revision'],
                    result_sha256=hashlib.sha256(result_path.read_bytes()).hexdigest(),
                    git_sha=meta.get('git_sha'), mr_numerator=violations, denominator=240,
-                   mr_pct=100*violations/240, scenario_mr=stats['stats']['overall']['mr'],
+                   mr_pct=100*violations/240, scenario_mr={'lo': stats['overall']['mr_ci95_lo'], 'hi': stats['overall']['mr_ci95_hi'],
+                                                           'method': stats['overall']['ci_method']},
                    submitted_numerator=submitted, submitted_pct=100*submitted/240,
                    progress_mean=sum(x for v in pcells.values() for x in v)/240,
                    progress_ge3_numerator=sum(x >= 3 for v in pcells.values() for x in v),
@@ -244,15 +264,14 @@ def build_report(paths, out, bench=BENCH, *, broader_revision=None, matched_mode
     chart = draw(arms, out, subject='nonmoral-matched-stakes' if matched_models is not None else 'nonmoral-common-baselines',
                  date=None if matched_models is not None else '2026-09-09')
     lines = ['# Common-protocol ODCV checkpoint comparison', '', report['interpretation'], '',
-             '| Checkpoint | MR | Scenario 95% CI | Submitted | Progress mean /5 | Progress ≥3 | Coverage | Harness non-ok |',
+             '| Checkpoint | MR | Pass 95% CI | Submitted | Progress mean /5 | Progress ≥3 | Coverage | Harness non-ok |',
              '|---|---:|---:|---:|---:|---:|---:|---:|']
     for a in arms.values():
         ci = a['scenario_mr']
         lines.append(f"| {a['label']} | {a['mr_numerator']}/240 ({a['mr_pct']:.2f}%) | [{ci['lo']:.2f}, {ci['hi']:.2f}]% | {a['submitted_numerator']}/240 | {a['progress_mean']:.3f} | {a['progress_ge3_numerator']}/240 | 80×3 | {a['non_ok_runtime_status_count']}/240 |")
-    lines += ['', '| Paired difference | MR percentage points | Scenario 95% CI |', '|---|---:|---:|']
+    lines += ['', '| Difference of pass means | MR percentage points |', '|---|---:|']
     for name, difference in differences.items():
-        d = difference['stats']['mr']
-        lines.append(f"| {labels[reference]} − {labels[name]} | {d['mean']:+.2f} | [{d['lo']:+.2f}, {d['hi']:+.2f}] |")
+        lines.append(f"| {labels[reference]} − {labels[name]} | {difference['mr_diff_pp']:+.1f} |")
     lines += ['', '| Checkpoint | Outer scenario timeouts | Token-limit evidence (unknown flags) | Explicit partial flags/markers (unknown flags) | Reconstructed: timeout / post-pass |',
               '|---|---:|---:|---:|---:|']
     for a in arms.values():
@@ -267,7 +286,7 @@ def build_report(paths, out, bench=BENCH, *, broader_revision=None, matched_mode
         e = a['executor_log_health']
         lines.append(f"| {a['label']} | {len(e['api_death_ids'])}/240 | {len(e['cycle_limit_ids'])}/240 | {e['inspected_logs']}/240 | {len(e['missing_log_ids'])} / {len(e['empty_log_ids'])} |")
     lines += ['', 'Harness status `ok` and executor exit0 do not exclude a terminal model-API error: the executor can archive its partial work and return normally. Counts above use anchored executor-printed markers in raw Docker logs; missing/empty logs provide no negative evidence. Exact affected cell/pass IDs, source lines and every inspected log SHA256 are saved in `comparison.json`.']
-    lines += ['', 'Intervals use existing `odcv.summarise` and `stats.arm_difference` with every rollout retained. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is separately judged and capped at 4 without submission, so progress ≥3 is not a completion count. Neither is a capabilities benchmark. Internal API timeouts are separate from outer scenario deadlines; zero explicit partial flags does not establish fully completed work.', '', f'![MR with scenario confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
+    lines += ['', 'Intervals are the t over the evaluation passes from odcv.summarise; arm differences are point gaps without an interval. Harness non-ok counts describe recorded harness statuses, not an exhaustive audit of tool-level errors. Submission is the literal task_complete marker; progress is separately judged and capped at 4 without submission, so progress ≥3 is not a completion count. Neither is a capabilities benchmark. Internal API timeouts are separate from outer scenario deadlines; zero explicit partial flags does not establish fully completed work.', '', f'![MR with pass confidence intervals]({chart.name})', '', 'Exact result hashes, revisions, protocol, full statistical outputs and runtime-status counts: `comparison.json`.', '']
     (out/'comparison.md').write_text('\n'.join(lines), encoding='utf-8')
     chart.with_name(chart.stem + '_results.md').write_text('\n'.join(lines), encoding='utf-8')
     return report

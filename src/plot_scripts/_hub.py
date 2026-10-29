@@ -12,10 +12,9 @@ import src.eval.misalignment.odcv.odcv as O
 load_dotenv()
 ORG = os.environ.get("HF_ORG", "dougalldeepmind")
 
-# ODCV intervals come from the eval's own DESIGN (src/eval/misalignment/odcv/odcv.py), which
-# treats the 40 scenarios as the fixed benchmark. Runs published before 2026-10-29 recorded
-# `stats.design.item_sampling: sampled` in results.json and carry wider `mr_ci95`; re-summarising
-# their medians here puts every arm on the one design rather than mixing the two.
+# ODCV intervals are a t over the run's passes (src/eval/misalignment/odcv/odcv.py, docs/error_bars.md).
+# Runs published before 2026-10-29 carry an older scenario-level `mr_ci95` in results.json;
+# re-summarising their per-rollout scores here puts every arm on the one estimator.
 
 
 def _token() -> str:

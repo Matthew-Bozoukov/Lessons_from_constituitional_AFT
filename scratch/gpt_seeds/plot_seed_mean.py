@@ -3,7 +3,7 @@
 # Run: uv run python scratch/gpt_seeds/plot_seed_mean.py [--results gpt.42=<results.json>,gpt.69=<...>,grok.42=<repo::file>,...] [--out_dir output/gpt_seeds/plots]
 #
 # Supersedes scratch/par_b/plot_seed_mean.py (PAR seeds only): every arm with >= 2 seeds is
-# scored through odcv.summarise_pooled, which puts the training seed on its own axis of the
+# scored as a t over its per-seed MRs (each seed one pass through odcv.summarise), the
 # ODCV design. That replaced a mean-of-per-seed-MRs +- 1.96*SEM: the old figure drew two
 # different quantities as the same whisker (training variance for seeded arms, eval-sampling
 # noise for single runs), so the widths could not be compared. Now every bar carries scenario
@@ -29,12 +29,10 @@ sys.path.insert(0, str(ROOT))
 # one-pass-per-seed rule and the seed mean are all reusable and were duplicated across
 # three scratch scripts before. Nothing in this file recomputes them.
 from src.naming import figure_path  # noqa: E402
+from src.eval.stats import t_mean  # noqa: E402
 from src.eval.misalignment.odcv.odcv import (  # noqa: E402
     passes_by_index,
-    pick_most_complete_pass,
-    shared_cells,
     summarise,
-    summarise_pooled,
 )
 
 CFG = "configs/eval/2026-08-24_odcv_bench_table2_9284_gpt_responder_685_rank64_paired_2_65.yaml"
@@ -280,33 +278,48 @@ def _to_medians(cells: dict[str, list[float]], keys) -> dict[str, dict[str, list
     return out
 
 
-def _arm_stats(cells_by_seed: dict, keys) -> dict:
-    """MR + per-variant MR with intervals from src/eval/stats, via odcv.summarise[_pooled].
+def pick_most_complete_pass(passes: dict[str, dict[str, list[float]]]) -> dict[str, list[float]]:
+    """ONE pass from a seed's passes: the one that scored the most cells, so every seed enters
+    the seed-level interval with the same weight."""
+    assert passes, "no passes to pick from"
+    return max(passes.values(), key=len)
 
-    This is the whole reason the figure changed shape. It used to draw two incomparable
-    whiskers: a mean-of-per-seed-MRs +- 1.96*SEM for seeded arms, and a cell bootstrap for
-    single runs -- different quantities, same visual. `summarise_pooled` instead puts the
-    CHECKPOINT (the training seed) on its own axis of the ODCV design, so a seeded arm's
-    interval carries scenario sampling AND seed-to-seed variance in one number, on the same
-    scale as a single run's. One kind of whisker, and the seeded arms' are honestly wider.
+
+def shared_cells(per_seed: dict) -> list[str]:
+    """Cells every seed scored, sorted. A cell missing from ANY seed is dropped from ALL."""
+    assert per_seed, "no seeds"
+    return sorted(set.intersection(*(set(c) for c in per_seed.values())))
+
+
+def _arm_stats(cells_by_seed: dict, keys) -> dict:
+    """MR + per-variant MR, with the interval over TRAINING SEEDS (docs/error_bars.md section 4).
+
+    Each seed is summarised on its own (one pass each here, so no within-seed interval), and
+    the arm's bar is `t_mean` over the per-seed MRs: three seeds, df 2. A single-seed arm has
+    no spread to measure and draws a point.
     """
-    by_ckpt = {str(sd): _to_medians(c, keys) for sd, c in cells_by_seed.items()}
-    s = summarise_pooled(by_ckpt) if len(by_ckpt) > 1 else summarise(next(iter(by_ckpt.values())))
-    o = s["overall"]
+    per_seed = {str(sd): summarise(_to_medians(c, keys)) for sd, c in cells_by_seed.items()}
+
+    def pooled(block: str) -> tuple[float, float, float]:
+        mrs = [s[block]["mr_pct"] for s in per_seed.values() if block in s]
+        r = t_mean(mrs)
+        return r["mean"], (r["lo"] if r["lo"] is not None else r["mean"]), (r["hi"] if r["hi"] is not None else r["mean"])
+
+    mr, lo, hi = pooled("overall")
+    first = next(iter(per_seed.values()))["overall"]
     out = dict(
-        mr=o["mr_pct"],
-        lo=o["mr_ci95"][0],
-        hi=o["mr_ci95"][1],
-        n_scenarios=o["n_scenarios"],
-        n_rollouts=o["n_rollouts"],
-        sev=o["mean_severity"],
-        n_checkpoints=o.get("n_checkpoints", 1),
-        claims=s["stats"]["overall"]["mr"].get("claims", []),
+        mr=mr, lo=lo, hi=hi,
+        n_scenarios=first["n_scenarios"],
+        n_rollouts=sum(s["overall"]["n_rollouts"] for s in per_seed.values()),
+        sev=float(sum(s["overall"]["mean_severity"] for s in per_seed.values()) / len(per_seed)),
+        n_checkpoints=len(per_seed),
+        claims=[],
     )
     for v in ("mandated", "incentivized"):
-        b = s.get(v) or {}
-        ci = b.get("mr_ci95") or [b.get("mr_pct", 0.0), b.get("mr_pct", 0.0)]
-        out["mand" if v == "mandated" else "inc"] = (b.get("mr_pct", 0.0), ci[0], ci[1])
+        if any(v in s for s in per_seed.values()):
+            out["mand" if v == "mandated" else "inc"] = pooled(v)
+        else:
+            out["mand" if v == "mandated" else "inc"] = (0.0, 0.0, 0.0)
     return out
 
 

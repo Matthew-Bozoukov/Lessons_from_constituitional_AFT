@@ -7,6 +7,9 @@ import math
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+from src.eval.stats import mcnemar_exact as _mcnemar_exact
+from src.eval.stats import wilson as _wilson
+
 from .hashing import stream_rng
 
 # 97.5th percentile of the standard normal, i.e. a two-sided 95% interval.
@@ -57,11 +60,8 @@ def wilson(successes: float, n: int, z: float = Z_95) -> Interval:
     """
     if n <= 0:
         return Interval(0.0, 0.0, 1.0, 0)
-    p = successes / n
-    denom = 1.0 + z * z / n
-    center = (p + z * z / (2 * n)) / denom
-    margin = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return Interval(p, max(0.0, center - margin), min(1.0, center + margin), n)
+    lo, hi = _wilson(successes, n, z)
+    return Interval(successes / n, lo, hi, n)
 
 
 def bootstrap_mean(
@@ -144,30 +144,14 @@ def agreement(a: Sequence[int], b: Sequence[int]) -> dict[str, float]:
 
 
 def mcnemar_exact(b: int, c: int) -> float:
-    """Two-sided exact McNemar p-value for a paired binary comparison.
+    """Two-sided exact McNemar p-value for a paired binary comparison (`src.eval.stats`).
 
     Only DISCORDANT pairs carry information: pairs where both conditions agree tell you nothing
     about the difference. v1's real constraint was discordance, not n - 662 rows collapsed to 12
     discordant pairs in the best cell and 0-3 in most, which no amount of extra rows would fix if
     the effect is small.
-
-    Args:
-        b: Pairs where the first condition passed and the second failed.
-        c: Pairs where the second passed and the first failed.
-
-    Returns:
-        Two-sided p-value from the exact binomial test on b vs b+c. Returns 1.0 when there are no
-        discordant pairs (nothing to distinguish).
     """
-    n = b + c
-    if n == 0:
-        return 1.0
-    from math import comb
-
-    # Two-sided: sum the probabilities of every outcome at least as extreme as min(b, c).
-    k = min(b, c)
-    tail = sum(comb(n, i) for i in range(0, k + 1)) / (2**n)
-    return min(1.0, 2.0 * tail)
+    return _mcnemar_exact(b, c)
 
 
 def cluster_bootstrap(

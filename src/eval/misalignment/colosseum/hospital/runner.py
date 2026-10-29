@@ -40,7 +40,8 @@ from src.eval.misalignment.colosseum.hospital.config import (
 )
 from src.eval.misalignment.colosseum.hospital.autorater import autorate_arm
 from src.eval.misalignment.colosseum.hospital.harvest import MEASURES, harvest_run_root
-from src.eval.misalignment.colosseum.hospital.judge import judge_arm
+from src.eval.misalignment.colosseum.hospital.judge import BINARY_JUDGE_MEASURES, judge_arm
+from src.eval.misalignment.colosseum.stats import episode_summary
 
 __all__ = ["run"]
 
@@ -371,6 +372,9 @@ def run(target, cfg, out_dir: Path) -> dict:
         "max_conversation_steps": int(cfg.max_conversation_steps),
         "survey": bool(cfg.get("survey", False)),
         "measures": measures,
+        # Each cell as a mean over episodes with an interval over them: Wilson for the judge's
+        # yes/no measures, a t for everything else (episodes are independent draws).
+        "summary": episode_summary(measures, binary=BINARY_JUDGE_MEASURES),
         "measure_definitions": dict(MEASURES),
         "judge": judge,
         "autorater": {k: v for k, v in labels.items() if k != "per_run"},

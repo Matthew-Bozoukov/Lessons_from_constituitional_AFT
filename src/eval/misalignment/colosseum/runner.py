@@ -35,6 +35,7 @@ import yaml
 from src.eval.layout import publish_layout
 from src.eval.misalignment.colosseum.config import EXPERIMENTS, build_sweep_config
 from src.eval.misalignment.colosseum.harvest import MEASURES, harvest_run_root
+from src.eval.misalignment.colosseum.stats import episode_summary
 
 __all__ = ["run"]
 
@@ -197,6 +198,9 @@ def run(target, cfg, out_dir: Path) -> dict:
         "peer": str(cfg.peer),
         "seats": expected,
         "measures": harvest["measures"],
+        # Both measures are continuous, so each cell is a mean over episodes with a t
+        # interval over them (episodes are independent draws; docs/error_bars.md).
+        "summary": episode_summary(harvest["measures"]),
         "measure_definitions": dict(MEASURES),
         "health": health,
         "colosseum_run_root": str(run_root.relative_to(out_dir)),
