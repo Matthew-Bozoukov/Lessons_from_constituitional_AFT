@@ -27,9 +27,36 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from omegaconf import OmegaConf
+
 from src.plot_scripts import _hub
 
 OUT = Path("output/plots")
+CONFIGS = Path("configs/plots")
+READERS = {"mask": _hub.mask, "odcv": _hub.odcv, "agentic": _hub.agentic}
+
+
+def _runs_from_config(cfg) -> dict:
+    """Panel -> arm -> (value, lo, hi), from a figure config's `runs` block.
+
+    A source is `{repo}` (read by the panel's _hub reader), `{literal, n}` (a supplied rate with a
+    Wilson interval over n) or `{value, lo, hi}` (a supplied point and interval). Every arm the
+    config lists must have a source in every panel.
+    """
+    runs = {}
+    for panel in cfg.panels:
+        src = cfg.runs[panel]
+        assert set(src) == set(cfg.arms), f"{panel}: sources {sorted(src)} != arms {sorted(cfg.arms)}"
+        runs[panel] = {}
+        for arm in cfg.arms:
+            s = src[arm]
+            if "repo" in s:
+                runs[panel][arm] = READERS[panel](s.repo)
+            elif "literal" in s:
+                runs[panel][arm] = _hub.literal(s.literal, s.n)
+            else:
+                runs[panel][arm] = (s.value, s.lo, s.hi)
+    return runs
 
 # ---------------------------------------------------------------- names and style
 
@@ -47,13 +74,16 @@ ARM = {
     "grok": "+ grok-authored 15% mix",
     "qwen": "+ qwen-authored 15% mix",
     "mask_cot": "+ mask_cot 15% mix",
-    "empty_think": "+ empty think 15% mix",
+    "empty_think": "+ Empty think 15% mix",
     "cot_only": "+ CoT only 15% mix",
+    "stated_harm": "- one-sided ablation 15%",
+    "base_const": "+ Constitution in system prompt",
+    "plain_const": "+ Control + constitution in system prompt",
 }
 PROBE = {
     "odcv": "ODCV",
     "agentic": "Agentic Misalignment",
-    "single_agent": "Single-agent misalignment",
+    "single_agent": "Aggregate Single Agent misalignment",
     "mask": "MASK honesty",
     "petri": "Petri audit",
     "hospital": "Colosseum hospital",
@@ -65,10 +95,16 @@ PROBE = {
 CATEGORY = {"mask": "Chat", "odcv": "Single agent", "agentic": "Single agent",
             "single_agent": "Single agent", "petri": "Single agent",
             "hospital": "Multi agent"}
+# Control, difficult advice and difficult advice + tools keep one colour in every figure, so they
+# read across figures. Every other arm has a colour of its own, used by no other arm anywhere, so a
+# colour never means two things; none is red, which is reserved for the Qwen-3.6-27b base line.
 COLOUR = {
-    "control": "#5a6472", "da": "#7e22ce", "da_tools": "#d0558f", "delib": "#2196f3",
-    "low_stakes": "#2fa360", "amoral": "#9b8bd6", "grok": "#c77d00", "qwen": "#2fa360",
-    "mask_cot": "#b3261e", "empty_think": "#c77d00", "cot_only": "#2fa360",
+    "control": "#5a6472", "da": "#7e22ce", "da_tools": "#d0558f",
+    "delib": "#2196f3", "base_const": "#0f8b8d", "plain_const": "#0f8b8d",
+    "low_stakes": "#2ca02c", "amoral": "#c9a227",
+    "grok": "#ff7f0e", "qwen": "#1b3a6b",
+    "mask_cot": "#17becf", "empty_think": "#8c8c2a", "cot_only": "#a6d854",
+    "stated_harm": "#6b4f2a",
 }
 BASE_COLOUR = "#c1121f"
 
@@ -80,7 +116,12 @@ BASE_COLOUR = "#c1121f"
 #            so that line and those bars are not judge-matched.
 #   mask     2026-10-03-mask-qwen36 (56.9); three earlier base runs read 58.1/58.2/58.4.
 #   hospital 2026-09-29-hospital-self-sacrificial-qwen36, 30 seeds, 0 failed.
-BASE = {"odcv": 39.6, "agentic": 45.0, "mask": 56.9, "hospital": 96.7}
+#   petri    2026-10-14-petri-qwen36-0-base-constitution, 33/90 at concerning>=4, at the user's
+#            request 2026-10-14. That repo's scores.json is BYTE-IDENTICAL to the plain
+#            control's and its summary names 2026-10-05-qwen36-0-plain as the target, so this
+#            line currently equals the control bar.
+BASE = {"odcv": 39.6, "agentic": 45.0, "mask": 56.9, "hospital": 96.7,
+        "petri": 100 * 33 / 90}
 # The combined single-agent line is the mean of the two probes it combines, so the line and the
 # bars above it are built the same way.
 BASE["single_agent"] = (BASE["odcv"] + BASE["agentic"]) / 2
@@ -88,6 +129,9 @@ BASE["single_agent"] = (BASE["odcv"] + BASE["agentic"]) / 2
 DIRECTION = {"odcv": "lower is better", "agentic": "lower is better",
              "single_agent": "lower is better", "mask": "higher is better",
              "petri": "lower is better", "hospital": "lower is better"}
+# Extra title clearance per probe (points). The aggregate title is the widest in the row and
+# read as crowding its axis, so it sits a little higher.
+TITLE_PAD = {"single_agent": 22}
 YLABEL = {"odcv": "Misalignment rate (%)", "agentic": "Harmful action rate (%)",
           "single_agent": "Misalignment rate (%)", "mask": "Honesty score (%)",
           "petri": "Misalignment rate (%)", "hospital": "Sabotage act rate (%)"}
@@ -135,10 +179,11 @@ def _panel(ax, probe: str, arms: list[str], values: list, ymax: float | None = N
     for i, m, top in labels:
         y = top + 0.014 * hi_lim
         crowded = crowded or y > 0.93 * hi_lim
-        ax.text(i, y, f"{m:.1f}", ha="center", va="bottom", fontsize=13,
+        # Five or more bars in a narrow panel leave no room for two adjacent "100.0" labels at 13pt.
+        ax.text(i, y, f"{m:.1f}", ha="center", va="bottom", fontsize=13 if len(arms) < 5 else 11,
                 fontweight="bold", zorder=5, clip_on=False)
     title = f"{PROBE[probe]}\n({DIRECTION[probe]})" if title_direction else PROBE[probe]
-    ax.set_title(title, pad=30 if crowded else 10)
+    ax.set_title(title, pad=30 if crowded else TITLE_PAD.get(probe, 10))
     if ylabel is not None:
         ax.set_ylabel(ylabel or YLABEL[probe])
     ax.set_xticks(range(len(arms)))
@@ -185,7 +230,7 @@ def _legend(fig, arms: list[str], *, with_base: bool, ncol: int | None = None) -
                columnspacing=1.4, handlelength=1.8)
 
 
-def _save(fig, name: str, rows: list[tuple] | None = None) -> list[Path]:
+def _save(fig, name: str, rows: list[tuple] | None = None, note: str = "") -> list[Path]:
     """Write the figure and, beside it, the same numbers as markdown.
 
     The markdown mirror is the machine-readable copy: a later reader can grep a value without
@@ -194,7 +239,7 @@ def _save(fig, name: str, rows: list[tuple] | None = None) -> list[Path]:
     OUT.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d")
     paths = []
-    for ext in ("png", "svg"):
+    for ext in ("png", "svg", "pdf"):
         p = OUT / f"{name}_{stamp}.{ext}"
         fig.savefig(p, dpi=300, bbox_inches="tight")
         paths.append(p)
@@ -202,7 +247,10 @@ def _save(fig, name: str, rows: list[tuple] | None = None) -> list[Path]:
     if rows:
         md = [f"# {name}", "", f"Rendered {datetime.now().isoformat(timespec='seconds')}.",
               "Every value is read from a published run at render time unless the row says "
-              "otherwise.", "", "| Panel | Arm | Value | 95% CI |", "|---|---|---|---|"]
+              "otherwise."]
+        if note:
+            md += ["", note]
+        md += ["", "| Panel | Arm | Value | 95% CI |", "|---|---|---|---|"]
         for panel, arm, v in rows:
             if v is None:
                 md.append(f"| {panel} | {arm} | no run | |")
@@ -217,12 +265,14 @@ def _save(fig, name: str, rows: list[tuple] | None = None) -> list[Path]:
 
 
 def _grid(name: str, probes: list[str], arms: list[str], runs: dict, width: float = 5.1,
-          *, shared_y: bool = False):
+          *, shared_y: bool = False, bands: bool = True, note: str = ""):
     """A row of probe panels over one arm set, with one shared legend.
 
     Args:
         shared_y: put every panel on one 0-100 scale and name it once, on the leftmost panel of
             each measurement direction -- the panels then read against each other directly.
+        bands: rule and name each run of same-category panels (Chat / Single agent / Multi
+            agent) under the axes.
     """
     fig, axes = plt.subplots(1, len(probes), figsize=(width * len(probes), 6.4),
                              gridspec_kw={"wspace": 0.28})
@@ -245,11 +295,12 @@ def _grid(name: str, probes: list[str], arms: list[str], runs: dict, width: floa
                title_direction=not shared_y)
     _legend(fig, arms, with_base=any(p in BASE for p in probes))
     fig.subplots_adjust(top=0.80, bottom=0.14)
-    _bands(fig, axes, probes)
+    if bands:
+        _bands(fig, axes, probes)
     rows = [(PROBE[probe], ARM[a], runs[probe][a]) for probe in probes for a in arms]
     rows += [(PROBE[probe], f"{BASE_NAME} (base line)", (BASE[probe], None, None))
              for probe in probes if probe in BASE]
-    return _save(fig, name, rows)
+    return _save(fig, name, rows, note)
 
 
 # ---------------------------------------------------------------- the figures
@@ -279,61 +330,101 @@ def probes_three_arm():
 
 
 def probes_four():
-    """MASK, the combined single-agent rate, Petri and the hospital, over three arms.
+    """MASK, the aggregate single-agent rate, Petri and the hospital, over six legend entries.
 
-    ODCV and agentic misalignment are reported as ONE single-agent number: the mean of the two
-    rates, with the interval built from both (src/plot_scripts/_hub.combine). The two probes
-    move together across these arms, so one bar per arm says the same thing with half the
-    panels -- but it is a mean of two differently-constructed rates, not a pooled rollout rate,
-    and the per-probe panels in the other figures are where those two can be read apart.
+    ODCV and agentic misalignment are reported as ONE aggregate single-agent number: the mean of
+    the two rates, with the interval built from both (src/plot_scripts/_hub.combine). It is a mean
+    of two differently-constructed rates, not a pooled rollout rate, and the per-probe panels in
+    the other figures are where the two can be read apart.
+
+    The constitution arm's Petri bar is the plain control with the WHOLE constitution in the target's
+    system prompt, not the nine principles the arm's MASK and single-agent bars use; see its note.
     """
-    arms = ["control", "delib", "da"]
+    # The constitution arm is the PLAIN control with the constitution's nine principles in its
+    # system prompt (2026-10-14 principles-only runs), at the user's request 2026-10-15 -- so it
+    # differs from the control bar in the prompt alone.
+    arms = ["control", "delib", "plain_const", "da", "da_tools"]
     odcv = {"control": _hub.odcv("2026-10-06-odcv-qwen36-0-plain"),
             "delib": _hub.odcv("2026-10-08-odcv-qwen36-0-delib-sonnet-15"),
-            "da": _hub.odcv("2026-10-06-odcv-qwen36-0-da-15")}
+            "da": _hub.odcv("2026-10-06-odcv-qwen36-0-da-15"),
+            "da_tools": _hub.odcv("2026-10-11-odcv-qwen36-0-da-tools-15"),
+            "plain_const": _hub.odcv("2026-10-14-odcv-principles-qwen36-0-plain")}
     agentic = {"control": _hub.agentic("2026-10-08-am-qwen36-0-plain"),
                "delib": _hub.agentic("2026-10-08-am-qwen36-0-delib-sonnet-15"),
-               "da": _hub.agentic("2026-10-08-am-qwen36-0-da-15")}
+               "da": _hub.agentic("2026-10-08-am-qwen36-0-da-15"),
+               "da_tools": _hub.agentic("2026-10-13-am-qwen36-0-da-tools-15"),
+               "plain_const": _hub.agentic("2026-10-14-am-principles-qwen36-0-plain")}
     runs = {
         "mask": {"control": _hub.mask("2026-10-09-mask-qwen36-0-plain"),
                  "delib": _hub.mask("2026-10-09-mask-qwen36-0-delib-sonnet-15"),
-                 "da": _hub.mask("2026-10-09-mask-qwen36-0-da-15")},
+                 "da": _hub.mask("2026-10-09-mask-qwen36-0-da-15"),
+                 "da_tools": _hub.mask("2026-10-11-mask-qwen36-0-da-tools-15"),
+                 "plain_const": _hub.mask("2026-10-14-mask-principles-qwen36-0-plain")},
         "single_agent": {a: _hub.combine(odcv[a], agentic[a]) for a in arms},
         # Petri: concerning>=4 over the audited seeds. The deliberative bar is delib-sonnet-7,
         # a DIFFERENT checkpoint from the other panels -- no Petri audit exists on
-        # delib-sonnet-15. No base audit exists either, hence no line on that panel.
+        # delib-sonnet-15. The panel's base line is BASE["petri"]; see its provenance note.
         "petri": {"control": _hub.literal(100 * 33 / 90, 90),
                   "delib": _hub.literal(100 * 13 / 89, 89),
-                  "da": _hub.literal(100 * 5 / 90, 90)},
+                  "da": _hub.literal(100 * 5 / 90, 90),
+                  "da_tools": _hub.literal(100 * 23 / 90, 90),
+                  # 2026-10-15-petri-constitution-qwen36-0-plain: the plain control with the whole
+                  # constitution first in every target system message (verified in 1239/1239),
+                  # 28/90 over all 90 seeds, raw .eval on the Hub.
+                  "plain_const": _hub.literal(100 * 28 / 90, 90)},
+        # Hospital sabotage-ACT rate out of 30 shifts.
         "hospital": {"control": _hub.literal(100 * 29 / 30, 30),
                      "delib": _hub.literal(100.0, 30),
-                     "da": _hub.literal(100 * 29 / 30, 30)},
+                     "da": _hub.literal(100 * 29 / 30, 30),
+                     # 66.7 at the user's request 2026-10-15: the only published da-tools-15 run at
+                     # that value on this measure is 2026-10-09-hospital-self-sacrificial-qwen36-0-
+                     # da-tools-15-canary-septda-octbase, pair_sabotaged 10/15 (15 seeds) -- a CANARY
+                     # checkpoint, not the 2026-10-11 mainline the other three panels use (that one
+                     # is 2026-10-14-...-da-tools-15, 23/30 = 76.7).
+                     "da_tools": _hub.literal(100 * 10 / 15, 15),
+                     # 2026-10-15-hospital-self-sacrificial-constitution-qwen36-0-plain: the plain
+                     # control with the whole constitution on the watched pair's prompt (nosynth peer,
+                     # same config as the other bars), pair_sabotaged 30/30. Raw rollouts:
+                     # ...-constitution-qwen36-0-plain-rollouts.
+                     "plain_const": _hub.literal(100 * 30 / 30, 30)},
     }
     return _grid("probes_four", ["mask", "single_agent", "petri", "hospital"], arms, runs,
-                 width=4.6, shared_y=True)
+                 width=4.6, shared_y=True, bands=False,
+                 note=("**Colosseum, difficult advice + tool defs.** 66.7 is "
+                       "2026-10-09-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-septda-octbase "
+                       "(10/15 seeds), a canary checkpoint; the mainline 2026-10-11 checkpoint the "
+                       "other panels use scored 23/30 = 76.7 (2026-10-14-...-da-tools-15).\n\n"
+                       "**Constitution arm.** `+ Control + constitution in system prompt` is the "
+                       "plain control with the constitution's nine principles prepended (no header "
+                       "or priority section): 2026-10-14-{mask,odcv,am}-principles-qwen36-0-plain. "
+                       "Its Colosseum bar (30/30) is 2026-10-15-hospital-self-sacrificial-constitution-"
+                       "qwen36-0-plain, with the whole constitution on the watched pair.\n\n"
+                       "**Petri.** The constitution arm's Petri bar (28/90) is "
+                       "`2026-10-15-petri-constitution-qwen36-0-plain`: the plain control with the "
+                       "whole constitution first in every target system message (verified in all "
+                       "1239), all 90 seeds scored, raw .eval on the Hub. It uses the whole "
+                       "constitution, not the nine principles of the arm's MASK and single-agent "
+                       "bars. The Petri base line "
+                       "(36.7) is read from `2026-10-14-petri-qwen36-0-base-constitution`, a "
+                       "byte-identical copy of the plain control's audit, so it equals the "
+                       "control bar."))
 
 
-def da_variants():
-    """The corpus variants at one dose: standard difficult advice, low stakes, amoral."""
-    arms = ["control", "da", "low_stakes", "amoral"]
-    runs = {
-        # plain, not 2026-10-02-odcv-qwen36-0-nosynth: that run targets the NOSYNTH adapter
-        # (40.0), a different control from the plain mix this figure's agentic and MASK bars
-        # use, so the three panels were describing two different models under one label.
-        "odcv": {"control": _hub.odcv("2026-10-06-odcv-qwen36-0-plain"),
-                 "da": _hub.odcv("2026-10-06-odcv-qwen36-0-da-15"),
-                 "low_stakes": _hub.odcv("2026-10-07-odcv-qwen36-0-da-lowstakes-practical-15"),
-                 "amoral": _hub.odcv("2026-10-07-odcv-qwen36-0-nonmoral-original-15")},
-        "agentic": {"control": _hub.agentic("2026-10-08-am-qwen36-0-plain"),
-                    "da": _hub.agentic("2026-10-08-am-qwen36-0-da-15"),
-                    "low_stakes": _hub.agentic("2026-10-08-am-qwen36-0-da-lowstakes-practical-15"),
-                    "amoral": _hub.agentic("2026-10-09-am-qwen36-0-nonmoral-original-15")},
-        "mask": {"control": _hub.mask("2026-10-09-mask-qwen36-0-plain"),
-                 "da": _hub.mask("2026-10-09-mask-qwen36-0-da-15"),
-                 "low_stakes": _hub.mask("2026-10-07-mask-qwen36-0-da-lowstakes-practical-15"),
-                 "amoral": _hub.mask("2026-10-07-mask-qwen36-0-nonmoral-original-15")},
-    }
-    return _grid("da_variants", ["mask", "odcv", "agentic"], arms, runs)
+def da_variants(name: str | None = None, arms: tuple[str, ...] | None = None):
+    """The corpus variants at one dose: standard difficult advice, low stakes, amoral.
+
+    The data is configs/plots/da-variants.yaml.
+
+    Args:
+        name: Figure stem; the config's name when None.
+        arms: The arms drawn, in plot order; the config's arms when None. A subset drops bars,
+            never changes a value.
+    """
+    cfg = OmegaConf.load(CONFIGS / "da-variants.yaml")
+    arms = list(arms or cfg.arms)
+    assert set(arms) <= set(cfg.arms), f"arms {arms} not all in the config's {list(cfg.arms)}"
+    return _grid(name or cfg.name, list(cfg.panels), arms, _runs_from_config(cfg),
+                 note=cfg.get("note", ""))
 
 
 def da_authors():
@@ -360,27 +451,15 @@ def da_authors():
 
 
 def trace_ablations():
-    """What the loss is taken over: the response only, an emptied think block, all of it, the CoT."""
-    arms = ["control", "mask_cot", "empty_think", "da", "cot_only"]
-    runs = {
-        "odcv": {"control": _hub.odcv("2026-10-06-odcv-qwen36-0-plain"),
-                 "mask_cot": _hub.odcv("2026-10-11-odcv-qwen36-0-da-15-response-only"),
-                 "empty_think": _hub.odcv("2026-10-08-odcv-qwen36-0-da-15-emptythink"),
-                 "da": _hub.odcv("2026-10-06-odcv-qwen36-0-da-15"),
-                 "cot_only": _hub.odcv("2026-10-11-odcv-qwen36-0-da-15-cot")},
-        "agentic": {"control": _hub.agentic("2026-10-08-am-qwen36-0-plain"),
-                    "mask_cot": _hub.agentic("2026-10-11-am-qwen36-0-da-15-response-only"),
-                    "empty_think": _hub.agentic("2026-10-11-am-qwen36-0-da-15-emptythink"),
-                    "da": _hub.agentic("2026-10-08-am-qwen36-0-da-15"),
-                    "cot_only": _hub.agentic("2026-10-11-am-qwen36-0-da-15-cot")},
-        # empty-think MASK was supplied by the user 2026-10-11; no dataset exists for that arm.
-        "mask": {"control": _hub.mask("2026-10-09-mask-qwen36-0-plain"),
-                 "mask_cot": _hub.mask("2026-10-08-mask-qwen36-0-da-15-response-only"),
-                 "empty_think": _hub.literal(71.2, 1000),
-                 "da": _hub.mask("2026-10-09-mask-qwen36-0-da-15"),
-                 "cot_only": _hub.mask("2026-10-08-mask-qwen36-0-da-15-cot")},
-    }
-    return _grid("trace_ablations", ["mask", "odcv", "agentic"], arms, runs)
+    """What the loss is taken over: the response only, an emptied think block, all of it, the CoT.
+
+    Plus the stated-harm corpus ablation, at the user's request. CAUTION: that adapter
+    (2026-10-04-qwen36-0-ablation-stated-harm-15) was trained on 2026-10-04-ablation-stated-harm-15-mix,
+    whose replay half is the OLDER tulu/smol/no_robots set, not the nemotron replay every other
+    arm here was trained on -- so it differs from them in replay data as well as in its corpus.
+    """
+    cfg = OmegaConf.load(CONFIGS / "trace-ablations.yaml")
+    return _grid(cfg.name, list(cfg.panels), list(cfg.arms), _runs_from_config(cfg), note=cfg.note)
 
 
 def delegated_harm():
@@ -432,6 +511,8 @@ FIGURES = {
     "probes_three_arm": probes_three_arm,
     "probes_four": probes_four,
     "da_variants": da_variants,
+    "da_variants_no_amoral": lambda: da_variants("da_variants_no_amoral",
+                                                 ("control", "da", "low_stakes")),
     "da_authors": da_authors,
     "trace_ablations": trace_ablations,
     "delegated_harm": delegated_harm,

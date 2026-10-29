@@ -2,11 +2,13 @@
 # ABOUTME: auditor on Sonnet 5 and judge on Gemini Flash, both through OpenRouter.
 """The constitution audit: 90 seeds, one transcript each.
 
-    uv run python scratch/petri_seeds/run_audit.py --server root@<ip>:<port> \\
-        --target dougalldeepmind/2026-09-22-qwen36-0-nosynth [--limit 1]
+    uv run python scripts/eval/audits/petri/run_audit.py --server root@<ip>:<port> \\
+        --target dougalldeepmind/2026-09-22-qwen36-0-nosynth [--limit 1] \\
+        [--preamble constitutions/claude_distilled_09_principles/constitution.md]
 
 Petri is not a registered eval (it runs from its own nested project, per pyproject.toml),
-so this drives `inspect eval inspect_petri/audit` directly. The target is served by this
+so this drives `inspect eval task.py@tenet_audit` (Petri's `audit`, see task.py) directly,
+with inspect-petri pinned through `uv run --with`. The target is served by this
 repo's own VllmServer over an ssh tunnel and reached through Inspect's OpenAI-compatible
 provider as `openai-api/vllm/<served name>`, the same wiring whistlebench_team uses.
 
@@ -24,23 +26,29 @@ from __future__ import annotations
 import argparse
 import os
 import signal
-import threading
-import urllib.request
 import subprocess
 import sys
+import threading
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-REPO = Path(__file__).resolve().parents[2]
-SEEDS = REPO / "src/eval/audits/petri/petri-subscription/seeds-constitution"
+from src.eval.audits.petri.tenet_audit import PETRI_VERSION
+from src.eval.audits.petri.tenet_audit.scores import REPO, SEEDS
+
+TASK = "src/eval/audits/petri/tenet_audit/task.py@tenet_audit"
+# The audit runs in a child process with Petri added at the pinned version; the parent only
+# serves the target, so it never needs Petri itself.
+INSPECT = ["uv", "run", "--frozen", "--with", f"inspect-petri=={PETRI_VERSION}", "inspect"]
 
 
 def main() -> None:
     """Serve the target, run the audit, leave the pod up."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--server", required=True, help="root@<ip>:<port>")
+    ap.add_argument("--server", default=None,
+                    help="root@<ip>:<port>; omit to serve on this machine (a GPU box running the audit itself)")
     ap.add_argument("--target", required=True)
     ap.add_argument("--auditor", default="openrouter/anthropic/claude-sonnet-5")
     ap.add_argument("--judge", default="openrouter/google/gemini-3-flash-preview")
@@ -50,6 +58,9 @@ def main() -> None:
     ap.add_argument("--seeds", default=None,
                     help="seed directory to run; default is the full 90-seed set")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--preamble", default=None,
+                    help="file prepended to every target system message (the constitution arms); "
+                         "exported as PETRI_SYSTEM_PREAMBLE_FILE for task.py")
     ap.add_argument("--context-window", type=int, default=32768)
     ap.add_argument("--health-every", type=int, default=30,
                     help="seconds between target liveness probes through the tunnel")
@@ -70,7 +81,6 @@ def main() -> None:
     load_dotenv(REPO / ".env")
     assert os.environ.get("OPENROUTER_API_KEY"), "auditor and judge both route through OpenRouter"
 
-    sys.path.insert(0, str(REPO))
     from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 
     if args.retry:
@@ -78,6 +88,16 @@ def main() -> None:
         # finished run beside it, so the run directory must be the original's, not a new one.
         retry_log = Path(args.retry).resolve()
         assert retry_log.is_file(), f"--retry: no such log {retry_log}"
+        # eval-retry reuses the target base_url the log recorded and ignores VLLM_BASE_URL, so
+        # a tunnel on any other port leaves every target call failing while the auditor and
+        # judge carry on and score the silence as concerning=1 (2026-10-09: 50 da-15 seeds).
+        from urllib.parse import urlparse
+
+        from inspect_ai.log import read_eval_log
+        recorded = read_eval_log(str(retry_log), header_only=True).eval.model_roles["target"].base_url
+        assert urlparse(recorded).port == args.port, (
+            f"--retry: the log's target is {recorded}; serve on --port {urlparse(recorded).port} "
+            f"(and stop any stale driver still pointed at it, or it reconnects too)")
         out = retry_log.parent.parent
         print(f">>> resuming {retry_log.name} in {out}", flush=True)
     else:
@@ -86,8 +106,10 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     spec = resolve_target(args.target)
-    executor = SshExec(args.server, port=args.port, bind="127.0.0.1")
-    executor.check_ready()
+    executor = None  # VllmServer serves on this machine when no --server is given
+    if args.server:
+        executor = SshExec(args.server, port=args.port, bind="127.0.0.1")
+        executor.check_ready()
     server = VllmServer(
         work_dir=out / "server", port=args.port, executor=executor,
         # Petri's target turns carry the whole scenario history plus synthetic tool
@@ -104,14 +126,19 @@ def main() -> None:
                "VLLM_BASE_URL": base_url,
                "VLLM_API_KEY": served.api_key or "EMPTY",
                "INSPECT_LOG_DIR": str(out / "logs")}
+        if args.preamble:
+            pre = Path(args.preamble).resolve()
+            assert pre.is_file(), f"--preamble: no such file {pre}"
+            env["PETRI_SYSTEM_PREAMBLE_FILE"] = str(pre)
+            print(f">>> constitution prepended to every target system message: {pre}", flush=True)
         if args.retry:
             # eval-retry carries the original run's task, seeds, max_turns and model roles in
             # the log itself; passing them again would be a second source of truth for facts
             # the log already fixes.
-            cmd = [str(REPO / ".venv/bin/inspect"), "eval-retry", str(retry_log),
+            cmd = [*INSPECT, "eval-retry", str(retry_log),
                    "--max-connections", str(args.connections), "--log-level", "warning"]
         else:
-            cmd = [str(REPO / ".venv/bin/inspect"), "eval", "inspect_petri/audit",
+            cmd = [*INSPECT, "eval", TASK,
                    "-T", f"seed_instructions={args.seeds or SEEDS}",
                    "-T", f"max_turns={args.max_turns}",
                    "--model-role", f"auditor={args.auditor}",

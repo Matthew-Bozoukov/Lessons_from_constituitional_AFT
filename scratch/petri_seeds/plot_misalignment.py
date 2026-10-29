@@ -33,17 +33,23 @@ RUNS = {
 ORDER = ["da-5", "da-15", "da-25", "nosynth"]
 
 
+def sample_concerning(s) -> float | None:
+    """One sample's `concerning` score, or None when it was not scored."""
+    for sc in (s.scores or {}).values():
+        v = sc.value
+        if isinstance(v, dict) and "concerning" in v:
+            return float(v["concerning"])
+    return None
+
+
 def concerning(paths: list[str]) -> dict[str, float]:
     """scenario id -> its `concerning` score."""
     out: dict[str, float] = {}
     for p in paths:
         for s in (read_eval_log(REPO / p).samples or []):
-            if not s.scores or str(s.id) in out:
-                continue
-            for sc in s.scores.values():
-                v = sc.value
-                if isinstance(v, dict) and "concerning" in v:
-                    out[str(s.id)] = float(v["concerning"])
+            v = sample_concerning(s)
+            if v is not None and str(s.id) not in out:
+                out[str(s.id)] = v
     return out
 
 

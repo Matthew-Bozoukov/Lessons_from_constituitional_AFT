@@ -23,14 +23,14 @@ done
 # Served under the da-15 adapter because eval-retry reads `target=openai-api/vllm/
 # qwen36_0_da_15` from the log and the name must resolve to the same model.
 echo "=== finishing the da-15 audit (87/90 scored) ==="
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server "$SERVER" --target dougalldeepmind/2026-10-02-qwen36-0-da-15 \
   --retry "$DA15_LOG" 2>&1 | tail -20
 echo ">>> da-15 retry rc=${PIPESTATUS[0]}"
 
 # --- 2. the full audit on da-5, same settings as every other arm ----------------------
 echo "=== auditing da-5 (90 seeds, sonnet-5 auditor, flash judge, 25 turns) ==="
-./.venv/bin/python -u scratch/petri_seeds/run_audit.py \
+./.venv/bin/python -u scripts/eval/audits/petri/run_audit.py \
   --server "$SERVER" --target dougalldeepmind/2026-10-02-qwen36-0-da-5 2>&1 | tail -25
 echo ">>> da-5 audit rc=${PIPESTATUS[0]}"
 

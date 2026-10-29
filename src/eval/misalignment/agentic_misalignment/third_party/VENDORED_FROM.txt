@@ -95,3 +95,10 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        constitution arm is verified by reading the prompts the run uses. Unset,
        the output is byte-identical to the production prompt (checked against
        the published 2026-10-08 run's prompt).
+
+  scripts/run_experiments.py (2026-10-14)
+   18. TASK_TIMEOUT_SECONDS and API_TIMEOUT_SECONDS raised 600 -> 1800. With a
+       ~3,200-word constitution preamble on a thinking-mode target, completed
+       samples took up to 540 s and two timed out at 600 s mid-generation; one
+       failed sample fails the whole grid. Generation length is still capped
+       by max_tokens, and no sample that finished under 600 s is affected.

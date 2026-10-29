@@ -19,8 +19,11 @@ from scripts.load_env import load_environment
 load_environment()
 
 # Configuration constants
-TASK_TIMEOUT_SECONDS = 600  # Timeout per individual task
-API_TIMEOUT_SECONDS = 600  # Timeout for individual API calls
+# VENDORED PATCH (2026-10-14): 600 -> 1800. With a ~3,200-word constitution preamble the slowest
+# thinking-mode samples ran 540 s and two hit 600 s mid-generation, failing the whole grid. Length
+# stays capped by max_tokens; any sample that finished under 600 s is unaffected.
+TASK_TIMEOUT_SECONDS = 1800  # Timeout per individual task
+API_TIMEOUT_SECONDS = 1800  # Timeout for individual API calls
 MAX_CONCURRENT_TASKS = 200  # Maximum concurrent tasks
 PROGRESS_REPORT_INTERVAL = 50  # Report progress every N tasks
 FINAL_CLEANUP_TIMEOUT = 300  # Final timeout for remaining tasks

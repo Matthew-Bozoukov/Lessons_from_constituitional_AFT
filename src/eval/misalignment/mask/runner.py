@@ -578,6 +578,19 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     empty_policy = str(cfg.get("empty_content", "evasion"))
     assert empty_policy in ("evasion", "reasoning"), f"empty_content must be evasion|reasoning, not {empty_policy!r}"
     env["MASK_EMPTY_CONTENT"] = empty_policy
+    # `system_preamble_file` (the constitution arms): resolved and CHECKED here, before a pod
+    # is billed, then read by generate_responses._sys at every system call site. The config
+    # field existed from the start and nothing consumed it, so a constitution arm ran with the
+    # stock prompts and published a normal-looking number (2026-10-13). A missing or empty file
+    # is a hard failure for the same reason: a silently absent preamble is the wrong experiment.
+    preamble = cfg.get("system_preamble_file")
+    if preamble:
+        _pre_path = Path(preamble)
+        assert _pre_path.is_file(), f"system_preamble_file not found: {_pre_path}"
+        _pre_text = _pre_path.read_text(encoding="utf-8")
+        assert _pre_text.strip(), f"system_preamble_file is empty: {_pre_path}"
+        env["MASK_SYSTEM_PREAMBLE_FILE"] = str(_pre_path.resolve())
+        print(f">>> MASK: system preamble from {_pre_path} ({len(_pre_text):,} chars), prepended to every system prompt", flush=True)
 
     # Generate pass k, then score it in the background while pass k+1 generates. Scoring is
     # OpenRouter traffic and CPU; generation is the served model — they do not contend.

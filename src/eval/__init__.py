@@ -125,6 +125,9 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/agentic_misalignment.yaml",
         key="am",
         supports_api_target=True,
+        # A protocol that changes what the model is shown (a system preamble) names itself,
+        # as for odcv; unset in the default config, so default run names are unchanged.
+        name_facets=("protocol",),
     ),
     "odcv": EvalSpec(
         "misalignment.odcv",
@@ -135,6 +138,10 @@ EVALS: dict[str, EvalSpec] = {
         # Seed replicates are the standard ODCV shape (`--target seed0 seed1 seed2`), and
         # the recipe-level number is what they are for: pool.py.
         pools=True,
+        # A protocol that changes what the model is shown (a system preamble) names itself,
+        # so it cannot publish under the same name as the arm's unmodified run of the day.
+        # Unset in lite/heavy, so their run names are unchanged.
+        name_facets=("protocol",),
     ),
     # ODCV with a teammate (docs/LOG.md 2026-09-22, "ODCV-Peer"): two CONCURRENT seats per
     # cell on ONE shared ODCV sandbox — the measured arm beside live base Qwen, co-served on
@@ -192,6 +199,9 @@ EVALS: dict[str, EvalSpec] = {
         "configs/eval/mask.yaml",
         key="mask",
         supports_api_target=True,
+        # A protocol that changes what the model is shown (a system preamble) names itself,
+        # as for odcv; unset in the default config, so default run names are unchanged.
+        name_facets=("protocol",),
     ),
     # Six agents on one shared task, seated from TWO checkpoints at once — so it refuses an
     # API target for a reason the others do not: the mixed team is built out of two LoRA

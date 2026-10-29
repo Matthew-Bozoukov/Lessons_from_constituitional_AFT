@@ -127,6 +127,35 @@ def openrouter_usage(settle_s: int = 0) -> float | None:
         return None
 
 
+def _apply_preamble(prompt_path, preamble: str, scenario: str) -> None:
+    """Prepend `preamble` to a staged scenario's system prompt, in place.
+
+    The preamble goes ahead of everything the scenario says, which is the manipulation the
+    constitution arms test: the rules are the first thing in the system message.
+
+    Args:
+        prompt_path: The staged `prompt.json`, already copied into the run's workspace.
+        preamble: Text to prepend; a no-op when empty, which is the unset case.
+        scenario: Scenario name, for the error messages.
+
+    Raises:
+        AssertionError: If the file has no `system_prompt`, or if the preamble is not first in
+            the result -- either means the arm would run without the manipulation it names.
+    """
+    if not preamble:
+        return
+    path = Path(prompt_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert "system_prompt" in data, f"{scenario}: prompt.json has no system_prompt"
+    head = preamble.rstrip()
+    data["system_prompt"] = f"{head}\n\n{data['system_prompt']}"
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    written = json.loads(path.read_text(encoding="utf-8"))["system_prompt"]
+    assert written.startswith(head[:200]), (
+        f"{scenario}: the preamble is not first in the staged system prompt"
+    )
+
+
 def _preamble(cfg) -> str:
     """Text to prepend to every scenario's system prompt, or "" if none is configured.
 
@@ -230,7 +259,7 @@ def team_spec_for(cfg, variant: str) -> dict | None:
 
 
 def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path,
-                     team_spec: dict | None = None) -> None:
+                     team_spec: dict | None = None, *, preamble: str) -> None:
     """Assemble a self-contained Compose workspace for one scenario.
 
     Mirrors upstream reset_orchestrator_api + copy_scenario_into_orchestrator:
@@ -262,6 +291,14 @@ def _build_workspace(bench_dir: Path, variant: str, scenario: str, ws: Path,
             shutil.copy2(item, target)
     assert (orch / "Dockerfile").is_file(), f"{scenario} has no Dockerfile"
     assert (orch / "prompt.json").is_file(), f"{scenario} has no prompt.json"
+    # The constitution (or any `system_preamble_file`) is written INTO the staged
+    # prompt.json rather than passed as SYSTEM_PREAMBLE: the compose file exports that
+    # variable but nothing in the vendored bench has ever read it, so a configured
+    # preamble was silently dropped and the run still looked normal (2026-10-13: a base
+    # arm scored 32.5 with 0 of 40 transcripts containing the text). Writing the file
+    # puts the preamble in the scenario the container actually receives, and the helper
+    # re-reads it so a silent drop fails the run instead of publishing a wrong number.
+    _apply_preamble(orch / "prompt.json", preamble, scenario)
     dockerfile = orch / "Dockerfile"
     dockerfile.write_text(pin_apt_archive(dockerfile.read_text()))
 
@@ -332,10 +369,11 @@ def _run_scenario(cfg, bench_dir: Path, out_dir: Path, variant: str, scenario: s
     project = f"odcv-{tag}-{variant}-{scenario}".lower().replace("_", "-")[:60]
     ws = out_dir / "workspaces" / variant / scenario
     team_spec = team_spec_for(cfg, variant)
+    preamble = _preamble(cfg)
     if team_spec:  # single-seat callers keep the four-argument contract (tests stub it so)
-        _build_workspace(bench_dir, variant, scenario, ws, team_spec)
+        _build_workspace(bench_dir, variant, scenario, ws, team_spec, preamble=preamble)
     else:
-        _build_workspace(bench_dir, variant, scenario, ws)
+        _build_workspace(bench_dir, variant, scenario, ws, preamble=preamble)
 
     env = os.environ.copy()
     env.update(
