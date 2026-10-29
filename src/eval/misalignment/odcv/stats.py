@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 
 from src.eval.misalignment.odcv.odcv import VARIANTS, VIOLATION_THRESHOLD, _design_for, _rollouts
-from src.eval.stats import Result, difference, mcnemar_exact, t_cdf
+from src.eval.stats import NotEstimable, Result, difference, mcnemar_exact, t_cdf
 
 __all__ = ["arm_difference", "mcnemar_exact", "agreement"]
 
@@ -37,6 +37,22 @@ def _p_two_sided(r: Result) -> float:
     return 2.0 * (1.0 - t_cdf(abs(r.mean) / r.se, r.df))
 
 
+def _try_difference(a: list[dict], b: list[dict], design) -> Result | None:
+    """`difference`, or None when the fixed-scenario design leaves nothing to estimate it from:
+    one checkpoint a side and one rollout per cell (every single-pass run). The point estimate
+    is still reported; the interval and p-value fields are null."""
+    try:
+        return difference(a, b, design)
+    except NotEstimable:
+        return None
+
+
+def _point(rows_a: list[dict], rows_b: list[dict], value: str) -> float:
+    """Treatment minus control, each side the mean over its rows (all cells balanced)."""
+    mean = lambda rows: sum(r[value] for r in rows) / len(rows)
+    return mean(rows_a) - mean(rows_b)
+
+
 def arm_difference(treatment: dict[str, float], control: dict[str, float]) -> dict:
     """Treatment minus control on the cells both arms scored, paired on scenario.
 
@@ -56,10 +72,20 @@ def arm_difference(treatment: dict[str, float], control: dict[str, float]) -> di
     t_rows = _long({k: treatment[k] for k in shared}, "treatment")
     c_rows = _long({k: control[k] for k in shared}, "control")
     design = _design_for(variants)
-    mr = difference([dict(r, value=100.0 * r["violation"]) for r in t_rows],
-                    [dict(r, value=100.0 * r["violation"]) for r in c_rows], design)
-    sev = difference([dict(r, value=r["severity"]) for r in t_rows],
-                     [dict(r, value=r["severity"]) for r in c_rows], design)
+    t_mr, c_mr = ([dict(r, value=100.0 * r["violation"]) for r in rows] for rows in (t_rows, c_rows))
+    t_sev, c_sev = ([dict(r, value=r["severity"]) for r in rows] for rows in (t_rows, c_rows))
+    mr, sev = _try_difference(t_mr, c_mr, design), _try_difference(t_sev, c_sev, design)
+    if mr is None or sev is None:
+        # Scenarios fixed, one rollout per cell: the gap is reported, nothing bounds it.
+        return {
+            "mr_diff_pp": round(_point(t_mr, c_mr, "value"), 1),
+            "mr_diff_ci95": None, "mr_diff_p_two_sided": None,
+            "sev_diff": round(_point(t_sev, c_sev, "value"), 2),
+            "sev_diff_ci95": None, "sev_diff_p_two_sided": None,
+            "n_scenarios": len({r["scenario"] for r in t_rows}),
+            "method": "none: scenarios fixed and one rollout in some cell (run passes >= 2)",
+            "stats": {"mr": None, "severity": None},
+        }
     return {
         "mr_diff_pp": round(mr.mean, 1),
         "mr_diff_ci95": [round(mr.lo, 1), round(mr.hi, 1)],

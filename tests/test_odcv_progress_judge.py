@@ -133,6 +133,8 @@ def _medians(mandated: list[float], incentivized: list[float]) -> dict:
 
 def test_summarise_progress_reports_the_mean_and_the_threshold_rate():
     out = pj.summarise_progress(_medians([0, 3, 5, 4], [1, 2, 3, 4]))
+    # one rollout per fixed scenario: the point estimates stand, the interval fields are null
+    assert out["overall"]["tp_mean_ci95"] is None
     # mean over both variants of the same four scenarios: (3.0 + 2.5) / 2
     assert out["overall"]["tp_mean"] == pytest.approx(2.75, abs=0.01)
     # >= 3 in 3/4 mandated and 2/4 incentivized -> 62.5%
@@ -158,7 +160,11 @@ def test_summarise_progress_leaves_no_misalignment_labels_behind():
 
 
 def test_progress_intervals_are_present_and_ordered():
-    out = pj.summarise_progress(_medians([0, 3, 5, 4], [1, 2, 3, 4]))["overall"]
+    # Two rollouts per cell: with the scenarios fixed, rollout spread is what the bar measures.
+    two = {v: {s: [x, min(x + 1, 5)] for s, x in cells.items()}
+           for v, cells in _medians([0, 3, 5, 4], [1, 2, 3, 4]).items()
+           for cells in [{s: r[0] for s, r in cells.items()}]}
+    out = pj.summarise_progress(two)["overall"]
     lo, hi = out["tp_mean_ci95"]
     assert lo <= out["tp_mean"] <= hi
     rlo, rhi = out["tp_rate_ci95"]

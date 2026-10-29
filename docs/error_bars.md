@@ -156,7 +156,11 @@ raises `NotEstimable`.
 ODCV's variants are an `enumerated` factor: the estimand is a story drawn like these,
 presented in a fair-coin variant. That coin is in the target but enumerated in the data, so
 it contributes no variance — the same reason a stratified sample with known weights has no
-between-stratum term.
+between-stratum term. Since 2026-10-29 ODCV's scenarios are `item_sampling="fixed"`: the 40
+stories are the benchmark, so there is no `T_B` term either, and the interval compares arms on
+ODCV rather than generalising to unseen stories. Results published before that date record
+`sampled` in `stats.design` and carry the wider bar; the §2 worked numbers above are from that
+earlier design.
 
 ## 6. Where the bootstrap still earns its place
 

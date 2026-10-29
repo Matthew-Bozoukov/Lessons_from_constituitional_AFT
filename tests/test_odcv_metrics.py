@@ -59,7 +59,8 @@ def test_reproduces_published_qwen3_6_27b_headline():
     """The metric code must recover the paper's 43.8% / 1.67 from its own medians."""
     summary = summarise(load_published_medians(PUBLISHED_CSV, "qwen3.6-27b"))
     # 40 stories x 2 variants, one rollout each: the 50/50 mixture over 40 stories is the
-    # same number as the mean over 80 cells, and the interval is over the 40 stories.
+    # same number as the mean over 80 cells. The 40 stories are the fixed benchmark, so with
+    # one rollout per cell there is nothing left to build an interval from: point estimates.
     assert summary["overall"]["n_scenarios"] == 40
     assert summary["overall"]["n_cells"] == 80
     assert summary["overall"]["n_rollouts"] == 80
@@ -68,10 +69,10 @@ def test_reproduces_published_qwen3_6_27b_headline():
     assert summary["overall"]["mean_severity"] == 1.67
     assert summary["mandated"]["mr_pct"] == 45.0
     assert summary["incentivized"]["mr_pct"] == 42.5
-    lo, hi = summary["overall"]["mr_ci95"]
-    assert lo < 43.8 < hi and summary["overall"]["mr_ci95_lo"] == lo
-    assert summary["stats"]["overall"]["mr"]["n_checkpoints"] == 1
-    assert summary["stats"]["overall"]["mr"]["checkpoint_sampling"] == "fixed"
+    assert summary["overall"]["mr_ci95"] is None and summary["overall"]["mr_ci95_lo"] is None
+    assert summary["overall"]["ci_method"].startswith("none: scenarios fixed and one rollout")
+    assert summary["stats"]["overall"]["mr"] is None
+    assert "passes >= 2" in summary["stats"]["overall"]["note"]
 
 
 # --- scenario clustering -------------------------------------------------------------
@@ -119,7 +120,9 @@ def test_mixture_uses_only_scenarios_with_both_variants():
 
 
 def test_interval_is_over_scenarios_not_rollouts():
-    """Three identical rollouts of one prompt are not three independent draws."""
+    """Three identical rollouts of one prompt are not three independent draws: with the
+    scenarios fixed they measure rollout noise, which identical repeats put at zero, and a
+    single rollout per cell leaves no interval at all."""
     three = {
         "mandated": {},
         "incentivized": {f"S{i}": [4.0] * 3 if i < 5 else [0.0] * 3 for i in range(10)},
@@ -129,19 +132,23 @@ def test_interval_is_over_scenarios_not_rollouts():
         "incentivized": {f"S{i}": [4.0] if i < 5 else [0.0] for i in range(10)},
     }
     a, b = summarise(three)["overall"], summarise(one)["overall"]
-    assert a["mr_ci95"] == b["mr_ci95"]  # repeats add nothing when identical
+    assert a["mr_pct"] == b["mr_pct"] == 50.0
     assert a["n_rollouts"] == 30 and b["n_rollouts"] == 10
+    assert b["mr_ci95"] is None  # one rollout per fixed scenario: nothing to measure
     r = summarise(three)["stats"]["overall"]["mr"]
     assert r["rollouts"]["max"] == 3 and r["noise"]["estimable"] is True
     assert r["noise"]["term"] == pytest.approx(
         0.0
     )  # identical repeats: no rollout noise
+    lo, hi = a["mr_ci95"]  # a bar exists, and zero spread is flagged, not read as certainty
+    assert lo <= 50.0 <= hi and any(c.startswith("DEGENERATE") for c in r["claims"])
 
 
 def test_summarise_records_what_the_interval_claims():
-    med = {"mandated": {"A": 4.0, "B": 0.0}, "incentivized": {"A": 0.0, "B": 0.0}}
+    med = {"mandated": {"A": [4.0, 0.0], "B": [0.0, 0.0]}, "incentivized": {"A": [0.0, 4.0], "B": [0.0, 0.0]}}
     r = summarise(med)["stats"]["overall"]["mr"]
-    assert any("one rollout per cell" in c for c in r["claims"])
+    assert any("2-2 draws per cell" in c for c in r["claims"])
+    assert any("units fixed: about these 2 scenarios only" in c for c in r["claims"])
     assert any(
         "pipeline (seed-to-seed) variance is not estimated" in c for c in r["claims"]
     )

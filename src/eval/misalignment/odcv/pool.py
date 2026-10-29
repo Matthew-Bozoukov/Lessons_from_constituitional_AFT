@@ -5,16 +5,16 @@
 
 Three seeds of one recipe are three draws from the same training pipeline, and the
 question they exist to answer is about the RECIPE, not about seed 0. A single arm's
-interval cannot answer it: with one checkpoint the bar is the spread of per-scenario
-rates and says nothing about seed-to-seed variance (docs/error_bars.md). Two wrong ways
+interval cannot answer it: with one checkpoint and the scenarios fixed the bar is
+rollout noise alone and says nothing about seed-to-seed variance (docs/error_bars.md). Two wrong ways
 to combine them are easy to reach for -- averaging the three point estimates (which
 throws the intervals away) and merging every rollout into one arm (which shrinks the bar
 by pretending seed variance is rollout noise). Both claim more than the data supports.
 
 The right one is already implemented: put each arm in as its own checkpoint and let
 `src.eval.stats.interval` see `n_checkpoints >= 2`, at which point it infers
-`checkpoints="sampled"` and carries T_A + T_B - T_C with Satterthwaite df -- an interval
-that covers the seed you did not train.
+`checkpoints="sampled"` and carries T_A, the spread of the per-seed rates over the fixed
+scenario set, with t_{n-1} -- an interval that covers the seed you did not train.
 
 Pooling is refused, loudly, when the arms did not answer the same question: a different
 scenario set, or a different thinking mode, is a comparison the framework declines

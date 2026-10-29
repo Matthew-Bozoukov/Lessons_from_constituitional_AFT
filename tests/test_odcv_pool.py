@@ -58,9 +58,8 @@ def test_the_pooled_claim_is_about_the_recipe_not_the_seeds_that_ran(tmp_path):
     # The point of pooling is WHICH CLAIM the interval supports. Merging every rollout
     # into one arm keeps the old claim ("about this checkpoint only") on more data;
     # entering each arm as a checkpoint switches the estimator to the seed-sampled path,
-    # so the estimand becomes the pipeline. Note this does not always WIDEN the bar —
-    # SE^2 = T_A + T_B - T_C, and a large interaction term can shrink it — so the property
-    # worth pinning is the claim and the method, never the width.
+    # so the estimand becomes the pipeline: SE^2 = T_A, the spread of per-seed rates over the
+    # fixed scenario set. The property worth pinning is the claim and the method, never the width.
     rates = (0.25, 0.375, 0.5)
     runs = [arm(tmp_path, f"rec_s{i}", r) for i, r in enumerate(rates)]
     pooled = pool(runs, cfg=None, out_dir=tmp_path / "pooled")["ours"]
@@ -73,12 +72,14 @@ def test_the_pooled_claim_is_about_the_recipe_not_the_seeds_that_ran(tmp_path):
     assert pooled["overall"]["mr_pct"] == pytest.approx(as_one_arm["overall"]["mr_pct"], abs=1.0)
 
     pooled_mr = pooled["stats"]["overall"]["mr"]
-    assert pooled_mr["method"].startswith("T_A + T_B - T_C")
+    assert pooled_mr["method"].startswith("T_A (per-model rates)")
     assert "a checkpoint from the pipeline" in pooled_mr["estimand"]
     assert any("seed-to-seed variance estimated" in c for c in pooled_mr["claims"])
 
     one_mr = as_one_arm["stats"]["overall"]["mr"]
-    assert "T_B" in one_mr["method"] and "T_A" not in one_mr["method"]
+    # merged into one arm the scenarios are fixed and the seeds masquerade as rollouts: the
+    # bar is rollout noise and the claim says the pipeline variance is not estimated
+    assert one_mr["method"].startswith("within-cell rollout noise only")
     assert any("not estimated" in c for c in one_mr["claims"])
 
 

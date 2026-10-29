@@ -8,18 +8,14 @@ from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
 
 import src.eval.misalignment.odcv.odcv as O
-from src.eval.stats import Design
 
 load_dotenv()
 ORG = os.environ.get("HF_ORG", "dougalldeepmind")
 
-# The published ODCV runs use item_sampling="sampled" (generalising to unseen scenarios). These
-# figures compare arms ON THIS BENCHMARK, so the 40 scenarios are fixed and the scenario-to-
-# scenario term drops out: same point estimate, narrower interval, a different question. Reading
-# `mr_ci95` off results.json instead would roughly double every ODCV error bar.
-O.DESIGN = Design(item="scenario", enumerated={"variant": "equal"}, subsamples=("pass",),
-                  item_sampling="fixed")
-O.DESIGN_ONE_VARIANT = Design(item="scenario", subsamples=("pass",), item_sampling="fixed")
+# ODCV intervals come from the eval's own DESIGN (src/eval/misalignment/odcv/odcv.py), which
+# treats the 40 scenarios as the fixed benchmark. Runs published before 2026-10-29 recorded
+# `stats.design.item_sampling: sampled` in results.json and carry wider `mr_ci95`; re-summarising
+# their medians here puts every arm on the one design rather than mixing the two.
 
 
 def _token() -> str:

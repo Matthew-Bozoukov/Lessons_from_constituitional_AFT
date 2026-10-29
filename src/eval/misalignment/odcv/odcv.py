@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.eval.stats import Design, Result, interval
+from src.eval.stats import Design, NotEstimable, Result, interval
 
 VARIANTS = ("mandated", "incentivized")
 
@@ -112,12 +112,18 @@ def scenario_violation_rate(severities: list[float]) -> float:
     return sum(s >= VIOLATION_THRESHOLD for s in severities) / len(severities)
 
 
-# The eval's structure, for src/eval/stats.py: a story is the sampled unit; its two variants
-# are enumerated in every cell and mixed 50/50 (the estimand is "a story drawn like these,
-# presented in a fair-coin variant"); passes are rollouts averaged into the cell. The model
-# axis is never declared here -- stats.interval infers it from how many checkpoints it sees.
-DESIGN = Design(item="scenario", enumerated={"variant": "equal"}, subsamples=("pass",))
-DESIGN_ONE_VARIANT = Design(item="scenario", subsamples=("pass",))
+# The eval's structure, for src/eval/stats.py: the 40 scenarios ARE the benchmark
+# (item_sampling="fixed"), so the interval carries no scenario-to-scenario term and answers
+# "how do these arms compare on ODCV", not "how would they do on new scenarios like these".
+# Until 2026-10-29 the scenarios were treated as a draw from a population ("sampled"), which
+# roughly doubled every bar; the paper figures then overrode this constant to "fixed" from
+# outside the module, so the published results.json and the figures disagreed. One design,
+# declared here, recorded in `stats.design` of every results.json. The two variants are
+# enumerated in every cell and mixed 50/50; passes are rollouts averaged into the cell. The
+# model axis is never declared here -- stats.interval infers it from how many checkpoints it sees.
+DESIGN = Design(item="scenario", enumerated={"variant": "equal"}, subsamples=("pass",),
+                item_sampling="fixed")
+DESIGN_ONE_VARIANT = Design(item="scenario", subsamples=("pass",), item_sampling="fixed")
 
 # The misaligned-response rate is a percentage, so its interval is built on the log-odds scale
 # (asymmetric, cannot escape [0, 100]) -- it matters because a good arm sits near 0, exactly where
@@ -236,13 +242,29 @@ def _design_for(variants: list[str]) -> Design:
     return DESIGN if len(variants) > 1 else DESIGN_ONE_VARIANT
 
 
-def _ci_fields(prefix: str, r: Result, nd: int) -> dict:
-    """The interval as the scalar pairs the dashboard reads (it skips arrays)."""
+def _ci_fields(prefix: str, r: Result | None, nd: int) -> dict:
+    """The interval as the scalar pairs the dashboard reads (it skips arrays); null when none."""
+    if r is None:
+        return {f"{prefix}_ci95": None, f"{prefix}_ci95_lo": None, f"{prefix}_ci95_hi": None}
     return {
         f"{prefix}_ci95": [round(r.lo, nd), round(r.hi, nd)],
         f"{prefix}_ci95_lo": round(r.lo, nd),
         f"{prefix}_ci95_hi": round(r.hi, nd),
     }
+
+
+def _try_interval(rows: list[dict], design: Design, **kw) -> Result | None:
+    """`interval`, or None where the design leaves nothing to estimate one from.
+
+    With the scenarios fixed (DESIGN) and one checkpoint, rollouts are the only randomness,
+    and a cell holding a single rollout has none to measure: stats raises NotEstimable. For
+    the paper's single-pass runs and any `passes: 1` arm the right answer is a point estimate
+    and no bar -- recorded as such, not a crash after the paid judging.
+    """
+    try:
+        return interval(rows, design, **kw)
+    except NotEstimable:
+        return None
 
 
 def summarise(
@@ -339,23 +361,26 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
             "mean_severity": round(sum(sevs) / len(sevs), 2),
         }
         if len(rates) >= 2:
-            v_mr = interval(
+            v_mr = _try_interval(
                 [r for r in mr_rows if r["variant"] == variant],
                 DESIGN_ONE_VARIANT,
                 bounds=MR_BOUNDS,
             )
-            v_sev = interval(
+            v_sev = _try_interval(
                 [r for r in sev_rows if r["variant"] == variant], DESIGN_ONE_VARIANT
             )
             block.update(_ci_fields("mr", v_mr, 1), **_ci_fields("severity", v_sev, 2))
-            stats[variant] = {"mr": v_mr.as_dict(), "severity": v_sev.as_dict()}
+            stats[variant] = {"mr": v_mr.as_dict() if v_mr else None,
+                              "severity": v_sev.as_dict() if v_sev else None}
         per_variant[variant] = block
         n_rollouts += n_roll
 
     design = _design_for(present)
     complete = sorted(set.intersection(*(set(medians[v]) for v in present)))
+    mr = sev = None
     if len(complete) >= 2:
-        mr, sev = interval(mr_rows, design, bounds=MR_BOUNDS), interval(sev_rows, design)
+        mr, sev = _try_interval(mr_rows, design, bounds=MR_BOUNDS), _try_interval(sev_rows, design)
+    if mr is not None and sev is not None:
         stats["overall"] = {"mr": mr.as_dict(), "severity": sev.as_dict()}
         overall = {
             "n_scenarios": mr.n_items,
@@ -371,14 +396,17 @@ def _summarise(by_checkpoint: dict[str, dict[str, dict[str, list | float]]]) -> 
             "dropped_scenarios": mr.dropped_items,
         }
     else:
-        # A smoke: one scenario per variant. There is no spread to build an interval from,
-        # and `interval` asserts on it (2026-09-22: every `--smoke` died here AFTER the paid
-        # judging). Point estimates only, the interval fields present but null.
+        # No interval: a smoke with one scenario per variant (no spread to build one from;
+        # `interval` asserts on it, and on 2026-09-22 every `--smoke` died here AFTER the paid
+        # judging), or a single-pass run under the fixed-scenario design (the only randomness
+        # is the rollouts, and one per cell cannot be measured). Point estimates only, the
+        # interval fields present but null, the reason in `stats.overall.note`.
         if complete:
             rates = [float(np.mean([scenario_violation_rate(_rollouts(medians[v][s])) for v in present]))
                      for s in complete]
             sevs = [float(np.mean([np.mean(_rollouts(medians[v][s])) for v in present])) for s in complete]
-            note = "fewer than two complete scenarios: no interval"
+            note = ("fewer than two complete scenarios: no interval" if len(complete) < 2 else
+                    "scenarios fixed and one rollout in some cell: no interval (run passes >= 2)")
         else:
             # No scenario ran every variant (a smoke naming one scenario PER variant, 2026-09-23):
             # the same equal-weight variant mixture, each variant over its own scenarios.
