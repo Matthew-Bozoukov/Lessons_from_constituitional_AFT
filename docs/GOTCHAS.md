@@ -1240,16 +1240,11 @@ nothing said so: nosynth.yaml declared `reasoning: none` on every source and the
 sources, fraction, max_tokens}` (src/data/mixture/reasoning_backfill.py), the built mixture
 records `reasoning_traces` (model, family, counts) in mixture_stats.json and names the
 generator in its card, an arm mixture inherits the block from the base it pins (the
-pre-record base is read through its enrichment_report.json), and `uv run train` stamps the
-block into training_meta.json. **Until 2026-10-07 the trainer also refused a mixture whose
-trace family was not the model being trained** (`allow_trace_family_mismatch=true` to
-override). Removed that day at Jamie's request: the plain base's record was edited on the Hub
-to add `origin: published`, an arm pinned to the earlier revision inherited the block without
-it, and a 2xH200 run for the base's own model died at start-up on a bookkeeping field. Which
-base suits a model is decided when an arm pins `base_mixture:`; the trainer records only.
-**A new base model still needs its own base blend**: change `reasoning_backfill.model` and
-`tokenizer` in nosynth.yaml, rebuild (~$10 of generation + judge), and point the arm configs'
-`base_mixture:` at the new repo.
+pre-record base is read through its enrichment_report.json), and `uv run train` refuses a
+mixture whose trace family is not the model being trained unless
+`allow_trace_family_mismatch=true`. **A new base model needs its own base blend**: change
+`reasoning_backfill.model` and `tokenizer` in nosynth.yaml, rebuild (~$10 of generation +
+judge), and point the arm configs' `base_mixture:` at the new repo.
 
 ## Killarney (Alliance SLURM): a non-login shell silently builds the wrong venv (2026-09-03)
 
@@ -2070,31 +2065,6 @@ belongs to the dead run via its labels: `docker inspect <name> --format '{{index
 
 A report that something died is a claim to verify, not a fact to act on: look at the process
 list and the log before touching anything.
-
-## A pod that never says READY bills until the deadline watchdog (2026-10-09)
-
-Seven `runpod up --eval mask` pods were rented at once; for six the boot log said READY in 5-8 min, for one
-(k7j4ngx5z3rvm1, H200 SECURE) the driver's poll of `https://<pod>-8080.proxy.runpod.net/boot.log` never saw a READY
-line in six hours. Whether the boot failed or only the proxy never served the log is NOT known: nobody read
-`boot_diagnosis()` or tried SSH before the deadline watchdog terminated the pod at the `max_hours` cap (21,599 s).
-Either way ~$28 bought nothing and the arm's eval silently never ran, because `runpod up` returns at "BILLING NOW"
-and leaves the boot to the caller, and the driver script polled with no cutoff. Rule for any script that waits on a boot: poll with a deadline (40 min is twice
-the slow case), and on expiry print `boot_diagnosis()`'s read, tear the pod down with `uv run runpod down --pod
-<id>` (it is yours; the memory rule against auto-teardown is about letting a HUMAN read a slow boot, not about a pod
-that has clearly failed), and re-rent. RunPod's REST API also returned transient 500s on `POST /pods` three times
-on 2026-10-07/08 with no incident on its status page; one retry succeeded each time.
-
-## MASK: a judge verdict that times out is scored as "neither", which inflates honesty (2026-10-09)
-
-The vendored `evaluate.py` wraps ALL of a row's judge calls (up to five) in one `asyncio.wait_for(..., timeout=60)`.
-When the judge (Gemini 3 Flash via OpenRouter) was slow, 873 of 1,000 rows of one pass came back `TIMEOUT_ERROR`;
-`metric.py` treats a missing verdict as not-a-lie, and the honesty score is 100 minus the dishonest share, so the pass
-read 96.3 for a model that scores ~68. Nothing printed a warning. Now: the cap is `judge_row_timeout_s` (600, exported
-as `MASK_JUDGE_ROW_TIMEOUT_S`, a marked vendored patch), the runner counts `TIMEOUT_ERROR` / `ERROR:` verdicts per pass
-(`judge_errors`, `judge_error_rate` in results.json) and refuses a pass above `max_judge_error_rate` (0.01). Reading an
-old run: a pass whose archetypes show both `honest_pct` and `unhonest_pct` near zero is this failure, not honesty;
-check the `eval(...)` columns of `results/*_evaluated.csv` for `TIMEOUT_ERROR`. Generations are stored, so such a run
-can be re-judged without regenerating.
 
 ## 2026-10-09: Hospital carried turns rendered as empty think blocks before 2026-10-05 — memory-on runs across that date are not comparable
 
