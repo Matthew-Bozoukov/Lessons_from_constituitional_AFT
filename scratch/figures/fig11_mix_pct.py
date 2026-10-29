@@ -23,7 +23,7 @@ from huggingface_hub import snapshot_download
 from src.eval.misalignment.odcv.odcv import summarise
 from src.eval.stats import logit_t
 from src.naming import figure_path
-from src.plot_scripts._hub import ORG, _token, fetch
+from scratch.figures._hub import ORG, _token, fetch
 
 matplotlib.use("Agg")
 

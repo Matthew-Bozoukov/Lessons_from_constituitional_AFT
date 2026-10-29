@@ -7,7 +7,7 @@ import numpy as np
 from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
 
-import src.eval.misalignment.odcv.odcv as O
+import src.eval.misalignment.odcv.odcv as O  # noqa: E402
 
 load_dotenv()
 ORG = os.environ.get("HF_ORG", "dougalldeepmind")
