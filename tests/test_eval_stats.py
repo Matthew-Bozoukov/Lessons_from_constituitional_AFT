@@ -26,11 +26,12 @@ def test_t_mean_is_the_textbook_t_interval():
 
 
 def test_logit_t_matches_the_worked_example():
-    # Three ODCV passes over 80 cells: 26.2, 16.2, 20.0 -> mean 20.8, interval 11.2 to 35.6.
+    # Three ODCV passes over 80 cells: 26.2, 16.2, 20.0 -> mean 20.8, interval 10.7 to 35.4
+    # (the t-step on the empirical logit, mapped back through its exact inverse).
     r = logit_t([26.2, 16.2, 20.0], 80)
     assert r["mean"] == pytest.approx(20.8, abs=0.01)
-    assert r["lo"] == pytest.approx(11.2, abs=0.05)
-    assert r["hi"] == pytest.approx(35.6, abs=0.05)
+    assert r["lo"] == pytest.approx(10.7, abs=0.05)
+    assert r["hi"] == pytest.approx(35.4, abs=0.05)
     assert r["method"] == "t over 3 passes (df 2) on the log-odds scale"
 
 
@@ -46,8 +47,10 @@ def test_logit_t_is_asymmetric_and_stays_inside_the_range():
 def test_logit_t_handles_zero_and_full_passes_through_the_continuity_correction():
     r = logit_t([0.0, 0.0, 1.25], 80)
     assert r["lo"] >= 0.0 and r["hi"] < 100.0 and math.isfinite(r["hi"])
-    both = logit_t([0.0, 0.0, 0.0], 80)      # no spread: a zero-width interval at the floor
-    assert both["lo"] == pytest.approx(both["hi"], abs=1e-9)
+    both = logit_t([0.0, 0.0, 0.0], 80)      # no spread: a zero-width interval AT the floor
+    assert both["lo"] == pytest.approx(0.0, abs=1e-9) and both["hi"] == pytest.approx(0.0, abs=1e-9)
+    full = logit_t([100.0, 100.0, 100.0], 80)
+    assert full["lo"] == pytest.approx(100.0, abs=1e-9) and full["hi"] == pytest.approx(100.0, abs=1e-9)
 
 
 def test_logit_t_on_another_scale():

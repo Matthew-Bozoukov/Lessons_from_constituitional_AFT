@@ -71,8 +71,12 @@ def logit_t(values: Sequence[float], n_items: int, scale: float = 100.0,
     0-5 mean over them). The interval: q = value/scale, z = ln((q + c) / (1 - q + c)) with the
     empirical-logit correction c = 0.5 / n_items (so 0% and 100% have a finite z), the mean
     and sd of the z's, half-width t_{n-1} * sd / sqrt(n), and the ends mapped back through the
-    logistic and rescaled. The POINT estimate is the plain mean of the values, so a one-pass
-    run reports exactly its own number.
+    exact inverse of that transform (q = (e^z (1 + c) - c) / (1 + e^z), clamped to the range)
+    so three identical passes give a zero-width interval at their own value. The POINT
+    estimate is the plain mean of the values, so a one-pass run reports exactly its own
+    number; with passes near the floor the interval sits around the mean of the log-odds,
+    which is below the plain mean, so the two are reported side by side rather than forced
+    to agree.
 
     Args:
         values: One score per pass, each in [0, scale].
@@ -97,7 +101,8 @@ def logit_t(values: Sequence[float], n_items: int, scale: float = 100.0,
     half = t_quantile(0.5 + level / 2, n - 1) * sd / math.sqrt(n)
 
     def back(x: float) -> float:
-        return scale / (1.0 + math.exp(-x))
+        e = math.exp(x)
+        return scale * min(1.0, max(0.0, (e * (1.0 + c) - c) / (1.0 + e)))
 
     return _finish(values, mean, back(z_mean - half), back(z_mean + half),
                    f"t over {n} passes (df {n - 1}) on the log-odds scale")
