@@ -325,15 +325,15 @@ def test_plan_serving_reports_impossible_prefix_caching_without_failing():
 
     cannot = dict(QWEN36_FACTS, supports_prefix_caching=False)
     plan = plan_serving(
-        cannot, {"context_window": 16384, "reuses_long_prefixes": True}, "m", "think"
+        cannot, {"context_window": 16384, "enable_prefix_caching": True}, "m", "think"
     )
     assert plan["prefix_caching"] is False
-    assert len(plan["warnings"]) == 1 and "reuses_long_prefixes" in plan["warnings"][0]
+    assert len(plan["warnings"]) == 1 and "enable_prefix_caching" in plan["warnings"][0]
     # Qwen3.6 supports it (measured, docs/LOG.md 2026-08-07) and gets it, silently.
     assert QWEN36_FACTS["supports_prefix_caching"] is True
     plan = plan_serving(
         QWEN36_FACTS,
-        {"context_window": 16384, "reuses_long_prefixes": True},
+        {"context_window": 16384, "enable_prefix_caching": True},
         "m",
         "think",
     )

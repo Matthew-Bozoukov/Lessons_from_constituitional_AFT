@@ -118,9 +118,12 @@ def main() -> None:
         work_dir=out / "server", port=args.port, executor=executor,
         # Petri's target turns carry the whole scenario history plus synthetic tool
         # results; `needs_tool_calls` because every seed hands the target real tools.
+        # Petri resends the whole transcript every turn; with prefix caching vLLM reuses the
+        # KV blocks of everything up to the previous assistant turn instead of re-prefilling.
         serve_requirements={"context_window": args.context_window,
                             "concurrency": args.connections,
-                            "needs_tool_calls": True},
+                            "needs_tool_calls": True,
+                            "enable_prefix_caching": True},
     )
     served = server.ensure(spec)
     try:

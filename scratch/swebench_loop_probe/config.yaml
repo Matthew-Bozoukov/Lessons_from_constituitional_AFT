@@ -43,4 +43,4 @@ serving:
   context_window: 262144
   concurrency: 4
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true

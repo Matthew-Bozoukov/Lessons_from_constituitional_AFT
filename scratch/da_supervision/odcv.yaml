@@ -18,4 +18,4 @@ smoke: false
 serving:
   context_window: 28000
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true

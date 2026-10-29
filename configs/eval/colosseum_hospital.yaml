@@ -194,4 +194,4 @@ serving:
   # Non-negotiable: every action is a tool call. Qwen3.6 emits XML — the parser is a
   # ModelProfile fact, not a choice made here.
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true

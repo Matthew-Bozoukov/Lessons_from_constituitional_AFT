@@ -108,7 +108,7 @@ def load_plan(path):
     judge_spec = {'gemini-3-flash-preview': 'google/gemini-3-flash-preview'}
     if cfg.judges != judge_spec or cfg.progress_judges != judge_spec:
         raise ValueError('Both judges must match the common baseline protocol')
-    if cfg.serving != dict(context_window=28000, needs_tool_calls=True, reuses_long_prefixes=True):
+    if cfg.serving != dict(context_window=28000, needs_tool_calls=True, enable_prefix_caching=True):
         raise ValueError('Serving protocol differs from the common baseline')
     if cfg.get('exclude_scenarios') or cfg.get('mode') or cfg.get('system_preamble_file'):
         raise ValueError('No exclusions or intervention overrides in this evaluation')
@@ -442,7 +442,7 @@ def main(checkpoint='nonmoral', plan_path=None):
         watchdog=runpod.start_watchdog(pod_id,lifetime,out/f'watchdog_{pod_id}.log')
         save(watchdog_pid=watchdog.pid)
         info=runpod.call('GET',f'/pods/{pod_id}')
-        rate=float(info['costPerHr'])
+        rate=float(info['cost'])
         save(actual_gpu_hourly_usd=rate,provider_created_at=info.get('createdAt'),
              worst_case_gpu_storage_and_teardown_usd=prior_spend+lifetime/3600*(rate+storage)+(0 if plan else reserve))
         if plan and not 0 < rate <= max_rate:

@@ -484,7 +484,7 @@ _EVAL_REQUIREMENT_KEYS = {
     "context_window",
     "concurrency",
     "needs_tool_calls",
-    "reuses_long_prefixes",
+    "enable_prefix_caching",
     "rope_scaling",
 }
 
@@ -623,11 +623,11 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # docs/LOG.md 2026-08-07 measured ~3.5x generation throughput given KV headroom;
     # the earlier 07-29 "forced off" note was wrong. The fact lives in ModelProfile.)
     warnings = [rope_note] if rope_note else []
-    prefix_caching = bool(requirements.get("reuses_long_prefixes"))
+    prefix_caching = bool(requirements.get("enable_prefix_caching"))
     if prefix_caching and not facts.get("supports_prefix_caching"):
         prefix_caching = False
         warnings.append(
-            f"reuses_long_prefixes: {base_model} cannot cache prefixes "
+            f"enable_prefix_caching: {base_model} cannot cache prefixes "
             "(supports_prefix_caching is false), so each step re-prefills its whole "
             "context. Throughput only — outputs are unaffected.")
 

@@ -139,4 +139,4 @@ serving:
   # Requested honestly and expected to be refused: this architecture cannot reuse a shared
   # prefix, so the long common board is re-encoded every call. plan_serving reports the
   # unmet request rather than pretending, and it is the dominant cost in this eval.
-  reuses_long_prefixes: true
+  enable_prefix_caching: true
