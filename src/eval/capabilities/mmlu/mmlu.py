@@ -368,7 +368,7 @@ def parse_answer(text: str, n_choices: int = 4) -> tuple[str | None, str]:
 # reports a binomial proportion too, and two copies of an interval estimator drift.
 # Re-imported here so this module's existing callers (and tests) are unaffected.
 from src.eval.capabilities.stats import _z_for, wilson_ci  # noqa: E402,F401
-from src.eval.stats import Design, difference, interval  # noqa: E402
+from src.eval.stats import t_mean, t_quantile  # noqa: E402
 
 
 def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> dict[str, float]:
@@ -409,41 +409,16 @@ def mcnemar(a_correct: Sequence[bool], b_correct: Sequence[bool]) -> dict[str, f
     return {"n_discordant": n, "b01": b01, "b10": b10, "p_value": p}
 
 
-DESIGN = Design(item="subject", subsamples=("question",))
-
-# Accuracy is a rate on [0, 1] (`to_long` emits 0/1 correctness), so the interval is built on the
-# log-odds scale: asymmetric, and it cannot report an accuracy below 0 or above 1.
-ACC_BOUNDS = (0.0, 1.0)
-"""MMLU's sampling design, for src/eval/stats.
-
-The 57 subjects are treated as SAMPLED, not as the benchmark: the claim is about
-MMLU-like knowledge domains, so which domains were chosen is uncertainty. Questions are
-sampled within each subject (`per_subject` of them). Both sources are carried by T_B over
-the 57 subject accuracies, which estimates sigma_S^2/S + sigma_q^2/(S n_q).
-
-The alternative reading -- questions as i.i.d. draws from one pool, `Design(item="question")`
--- treats subject membership as carrying no information and gives a materially narrower
-interval: 1.3x at per_subject=10, 4.9x on the full 14,042-question split, because it keeps
-shrinking with more questions while the clustered reading hits the sigma_S^2/57 floor. That
-floor is the useful fact: past a point only more SUBJECTS buy precision, not more questions.
-Rejected deliberately -- see docs/error_bars.md and the `stats` block in configs/eval/mmlu.yaml.
-"""
-
-
-def to_long(records: Sequence[dict], checkpoint: str = "model") -> list[dict]:
-    """Graded records -> the long table src/eval/stats expects (one row per question)."""
-    return [{"checkpoint": checkpoint, "subject": str(r["subject"]),
-             "question": str(r.get("uid", i)), "value": float(bool(r["correct"]))}
-            for i, r in enumerate(records)]
-
-
+# The subject is the clustering unit for the paired difference: a difference concentrated in
+# one subject is less certain than the same difference spread over all 57, and the per-subject
+# mean differences are what the t-interval is taken over.
 def paired_diff(a_records: Sequence[dict], b_records: Sequence[dict]) -> dict[str, float]:
     """Accuracy difference b - a over identical questions, clustered by subject.
 
-    Closed form, not a bootstrap: the difference of two means has an exact SE (see
-    src/eval/stats). Questions are paired -- both arms answered the same ones, so the
-    shared question difficulty cancels -- and the residual spread is taken over SUBJECTS,
-    which is what makes this a cluster-robust interval rather than a per-question one.
+    Questions are paired -- both arms answered the same ones, so the shared question
+    difficulty cancels -- and the spread is taken over the per-SUBJECT mean differences
+    (`stats.t_mean`), which is what makes this a cluster-robust interval rather than a
+    per-question one.
 
     Args:
         a_records: Reference arm's graded records.
@@ -466,10 +441,14 @@ def paired_diff(a_records: Sequence[dict], b_records: Sequence[dict]) -> dict[st
         for key in ("subject", "prompt_hash", "answer_letter"):
             if a.get(key) != b.get(key):
                 raise ValueError(f"paired diff has different {key} for question {a['uid']}")
-    r = difference(to_long(b_records, "b"), to_long(a_records, "a"), DESIGN,
-                   paired_checkpoints=False)
-    return {"diff": r.mean, "ci_lower": r.lo, "ci_upper": r.hi, "std_error": r.se,
-            "n": len(a_records), "df": r.df, "method": r.method}
+    by_subject: dict[str, list[float]] = {}
+    for a, b in zip(a_records, b_records):
+        by_subject.setdefault(str(a["subject"]), []).append(float(bool(b["correct"])) - float(bool(a["correct"])))
+    r = t_mean([sum(d) / len(d) for d in by_subject.values()])
+    se = (r["hi"] - r["mean"]) / t_quantile(0.975, r["n"] - 1) if r["lo"] is not None else float("nan")
+    return {"diff": r["mean"], "ci_lower": r["lo"], "ci_upper": r["hi"], "std_error": se,
+            "n": len(a_records), "df": r["n"] - 1,
+            "method": f"paired on question, {r['method'].replace('passes', 'subjects')}"}
 
 
 def score_records(records: Sequence[dict]) -> dict[str, Any]:
@@ -508,23 +487,11 @@ def score_records(records: Sequence[dict]) -> dict[str, Any]:
     for r in records:
         tiers[r.get("parse_tier", "none")] = tiers.get(r.get("parse_tier", "none"), 0) + 1
 
-    # Headline interval: subjects sampled, questions sampled within them (see DESIGN).
-    # Wilson stays for the per-subject/per-category breakdowns, where a single subject's
-    # questions really are the only randomness and the count is small.
+    # Headline interval: Wilson over the questions asked.
     n_subjects = len({str(r["subject"]) for r in records})
-    if n_subjects >= 2:
-        overall = interval(to_long(records), DESIGN, bounds=ACC_BOUNDS)
-        headline = {"ci_lower": overall.lo, "ci_upper": overall.hi, "ci_df": overall.df,
-                    "ci_method": overall.method, "stats": overall.as_dict()}
-    else:
-        # One subject: there is no between-subject spread to estimate, so the clustered
-        # interval is not defined. Fall back to Wilson over that subject's questions and
-        # SAY SO -- this is the smoke-test shape, never a reportable run.
-        w = wilson_ci(n_correct, n)
-        headline = {"ci_lower": w["ci_lower"], "ci_upper": w["ci_upper"], "ci_df": float(n - 1),
-                    "ci_method": f"Wilson over {n} questions of a single subject "
-                                 "(too few subjects for the clustered interval)",
-                    "stats": None}
+    w = wilson_ci(n_correct, n)
+    headline = {"ci_lower": w["ci_lower"], "ci_upper": w["ci_upper"], "ci_df": float(n - 1),
+                "ci_method": f"Wilson over {n} questions"}
     return {
         "n": n,
         "n_correct": n_correct,

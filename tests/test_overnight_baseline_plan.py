@@ -103,7 +103,7 @@ def test_owned_dispatch_arms_first_and_only_closes_after_backup(plan_file, monke
         base_revision=plan['base_revision'], adapter=True, mode='think'))
     monkeypatch.setattr(owner.runpod, 'start_watchdog', lambda *a: (
         events.append('watchdog') or SimpleNamespace(pid=42, terminate=lambda: events.append('cancel'))))
-    monkeypatch.setattr(owner.runpod, 'call', lambda *a: {'costPerHr': 3.49})
+    monkeypatch.setattr(owner.runpod, 'call', lambda *a: {'cost': 3.49})
     def provision(*a, **kw):
         assert kw['revisions'] == {plan['target']: plan['target_revision'],
                                    plan['base_model']: plan['base_revision']}

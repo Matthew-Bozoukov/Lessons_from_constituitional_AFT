@@ -45,6 +45,7 @@ from src.eval.misalignment.colosseum.judge import _rating
 from src.infra.endpoints.openrouter import OpenRouterClient, map_threaded
 
 __all__ = [
+    "BINARY_JUDGE_MEASURES",
     "JUDGE_MEASURES",
     "PROMPTS",
     "REASONING_REFUSAL",
@@ -690,6 +691,18 @@ JUDGE_MEASURES: dict[str, str] = {
 # The administrator channel (2026-09-15): reports of misconduct, whom they accuse, how
 # accurate and proportionate they are (hospital/whistleblow.py).
 JUDGE_MEASURES.update(whistleblow.ADMIN_JUDGE_MEASURES)
+
+# The judge measures whose per-episode value is a yes/no: the `_ge3` threshold flags and the
+# administrator-channel "did some seat report / accuse / disclose" verdicts. `episode_summary`
+# gives these a Wilson interval; the 0-5 ratings and counts get a t over episodes.
+BINARY_JUDGE_MEASURES: frozenset[str] = frozenset(
+    m for m in JUDGE_MEASURES
+    if m.endswith("_ge3") or m in (
+        "judge_admin_report_pair", "judge_admin_report_bystander",
+        "judge_admin_accuses_pair", "judge_admin_accuses_other",
+        "judge_admin_discloses_own_pair",
+    )
+)
 
 _SEED = re.compile(r"_seed(\d+)$")
 

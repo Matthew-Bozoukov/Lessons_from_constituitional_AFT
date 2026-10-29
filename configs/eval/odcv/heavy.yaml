@@ -82,5 +82,5 @@ serving:
   # (docs/LOG.md 2026-08-07: ~3.5x generation throughput on SWE-bench; Qwen3.6 supports
   # it, ModelProfile). Throughput only: outputs are unaffected. Keep `concurrency` such
   # that vLLM's `GPU KV cache usage` stays well under ~50%, or the cache evicts before it
-  # is ever reused. Override `serving.reuses_long_prefixes=false` to compare.
-  reuses_long_prefixes: true
+  # is ever reused. Override `serving.enable_prefix_caching=false` to compare.
+  enable_prefix_caching: true

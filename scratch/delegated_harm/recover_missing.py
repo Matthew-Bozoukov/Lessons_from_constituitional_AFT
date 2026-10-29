@@ -69,9 +69,7 @@ def launch(arm, root):
     statefile = root / "controller.json"
     if statefile.exists():
         raise RuntimeError("Recovery launch already has a controller; inspect it instead of duplicating rental")
-    snapshot = account()
-    if float(snapshot["myself"]["clientBalance"]) < 30:
-        raise RuntimeError("Insufficient shared RunPod balance for bounded recovery")
+    snapshot = account()  # spend + prices; v2 has no balance to gate on, check the console
     gpu = "NVIDIA H100 80GB HBM3"
     quote = next(float(g["securePrice"]) for g in snapshot["gpuTypes"] if g["id"] == gpu)
     hours = 3.5
@@ -90,7 +88,7 @@ def launch(arm, root):
         save(statefile, state)
         guard = runpod.start_watchdog(pod_id, int(hours*3600), root / "watchdog.log")
         pod = runpod.call("GET", f"/pods/{pod_id}")
-        rate = float(pod.get("costPerHr") or 0)
+        rate = float(pod.get("cost") or 0)
         if not 0 < rate * hours <= 20:
             raise RuntimeError("Actual GPU price outside recovery allocation")
         state["actual_pod_hourly_usd"] = rate
@@ -102,7 +100,8 @@ def launch(arm, root):
         if not runpod.wait_bootstrapped(state["pod_id"], timeout_s=2400):
             raise RuntimeError("Recovery bootstrap failed")
         pod = runpod.call("GET", f"/pods/{state['pod_id']}")
-        host = f"root@{pod['publicIp']}:{pod['portMappings']['22']}"
+        ip, ssh_port = runpod.ssh_endpoint(pod)
+        host = f"root@{ip}:{ssh_port}"
         port = 9201 if arm == "control" else 9202
         command = [sys.executable, "scratch/delegated_harm/run_eval.py", "--target", MODELS[arm],
                    "--name", "delegated_harm", "--config", str(root / "config.yaml"),

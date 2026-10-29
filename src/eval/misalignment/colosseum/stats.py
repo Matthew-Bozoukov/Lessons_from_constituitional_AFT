@@ -1,60 +1,70 @@
-# ABOUTME: Colosseum contrast statistics on src/eval/stats.py: the arm difference paired on
-# ABOUTME: seed, and the multi-agent/single-agent transfer ratio with a joint seed bootstrap.
+# ABOUTME: Colosseum statistics on src/eval/stats.py: per-arm episode summaries (Wilson or t over
+# ABOUTME: episodes), the arm difference paired on seed, and the transfer ratio's seed bootstrap.
 
-"""Statistics for the three Colosseum experiments.
+"""Statistics for the Colosseum experiments.
 
-Everything here is paired on SEED. The same seeds are run in every block, so a seed is a
-task instance both arms faced, and the seed-to-seed spread — which is large in this
-environment, because the seed picks the ticket set and therefore how much surplus is
-available to capture at all — is variance the pairing removes rather than variance the
-interval has to carry.
-
-Two estimators:
-
-`arm_difference` is the ordinary treatment-minus-control interval, delegated to
-`src.eval.stats.difference`, which knows how to pair on the item axis and gets the
-degrees of freedom right.
+Colosseum is the one eval here whose unit really is an independent draw: a seed is one
+episode of the environment with its own ticket (or patient) set, each arm runs the same
+seeds, and no two episodes share anything. So the per-arm interval is over EPISODES — Wilson
+for a yes/no measure (`episode_summary` is told which those are), a plain t for a continuous
+one — and the arm contrast is paired on seed, because the seed's own generosity (some sets
+simply leave more to capture) is the largest source of variance and the pairing removes it.
 
 `transfer_ratio` is the quantity Experiment 2 exists to produce: the multi-agent effect
 divided by the single-agent effect. It is a RATIO OF TWO NOISY ESTIMATES and so has no
-usable closed-form interval — when the denominator's interval covers zero the ratio's
-does not converge, and a naive standard error would report a tight interval around a
-number that means nothing. It is bootstrapped over seeds instead, both effects
-recomputed on each resample so their shared seed draw stays shared, and it refuses to
-report at all unless the single-agent effect is separated from zero. That refusal is the
-point: "the disposition transfers" and "neither experiment moved" produce similar-looking
-ratios, and only the denominator check tells them apart.
+usable closed-form interval — when the denominator's interval covers zero the ratio's does
+not converge, and a naive standard error would report a tight interval around a number that
+means nothing. It is bootstrapped over seeds instead, both effects recomputed on each
+resample so their shared seed draw stays shared, and it refuses to report at all unless the
+single-agent effect is separated from zero.
 """
 
 from __future__ import annotations
 
+from typing import Collection
+
 import numpy as np
 
-from src.eval.stats import Design, Result, difference, t_cdf
+from src.eval.stats import t_cdf, t_mean, wilson
 
-__all__ = ["SEED_DESIGN", "arm_difference", "transfer_ratio"]
-
-# A seed is a sampled draw: we generalise to the environment's task distribution, not to
-# these forty ticket sets. There are no enumerated factors and no within-cell subsamples
-# — one episode per (arm, condition, seed) — so the design is just the pairing axis.
-SEED_DESIGN = Design(
-    item="seed", item_sampling="sampled", checkpoint="checkpoint", value="value"
-)
+__all__ = ["arm_difference", "episode_summary", "transfer_ratio"]
 
 
-def _rows(per_seed: dict[int, float], checkpoint: str) -> list[dict]:
-    """{seed: value} -> the long rows src.eval.stats consumes."""
-    return [
-        {"checkpoint": checkpoint, "seed": int(s), "value": float(v)}
-        for s, v in sorted(per_seed.items())
-    ]
+def episode_summary(per_seed: dict[str, dict[str, dict]], binary: Collection[str] = ()) -> dict:
+    """One arm's measures as a mean over episodes with an interval over episodes.
 
+    Args:
+        per_seed: `{measure: {cell: {seed: value}}}`, the shape `per_seed.json` holds.
+        binary: Measures whose per-episode value is 0/1 (a refusal happened, a report was
+            made); these get a Wilson interval. Every other measure gets a t over episodes.
+            A measure named here whose values are not all 0/1 is an error, not a guess.
 
-def _p_two_sided(r: Result) -> float:
-    """Two-sided p-value from an interval result (0 when the SE is zero and the gap is not)."""
-    if r.se == 0:
-        return 1.0 if r.mean == 0 else 0.0
-    return 2.0 * (1.0 - t_cdf(abs(r.mean) / r.se, r.df))
+    Returns:
+        `{measure: {cell: {"mean", "ci95", "n_episodes", "ci_method"}}}`.
+    """
+    out: dict[str, dict[str, dict]] = {}
+    for measure, cells in per_seed.items():
+        out[measure] = {}
+        for cell, seeds in cells.items():
+            values = [float(v) for v in seeds.values() if v is not None]
+            if not values:
+                continue
+            if measure in binary:
+                assert all(v in (0.0, 1.0) for v in values), (
+                    f"{measure}/{cell} is declared binary but holds {sorted(set(values))[:5]}")
+                k, n = int(sum(values)), len(values)
+                lo, hi = wilson(k, n)
+                out[measure][cell] = {"mean": round(k / n, 4), "ci95": [round(lo, 4), round(hi, 4)],
+                                      "n_episodes": n, "ci_method": f"Wilson over {n} episodes"}
+            else:
+                r = t_mean(values)
+                out[measure][cell] = {
+                    "mean": round(r["mean"], 4),
+                    "ci95": None if r["lo"] is None else [round(r["lo"], 4), round(r["hi"], 4)],
+                    "n_episodes": r["n"],
+                    "ci_method": r["method"].replace("passes", "episodes"),
+                }
+    return out
 
 
 def arm_difference(
@@ -69,8 +79,8 @@ def arm_difference(
             a summary holding several contrasts stays readable.
 
     Returns:
-        The difference, its 95% interval, a two-sided p-value, the seeds it rests on, and
-        the full `src.eval.stats` result under "stats".
+        The difference, its 95% t-interval over the per-seed differences, a two-sided
+        p-value, and the seeds it rests on.
     """
     shared = sorted(set(treatment) & set(control))
     assert len(shared) >= 2, (
@@ -78,21 +88,23 @@ def arm_difference(
         "Seeds are meant to be identical across blocks — check that both arms ran the "
         "same --seeds list and that no episode was dropped."
     )
-    r = difference(
-        _rows({s: treatment[s] for s in shared}, "treatment"),
-        _rows({s: control[s] for s in shared}, "control"),
-        SEED_DESIGN,
-    )
+    r = t_mean([treatment[s] - control[s] for s in shared])
+    n = len(shared)
+    sd = float(np.std(r["values"], ddof=1))
+    se = sd / np.sqrt(n)
+    if se == 0:
+        p = 1.0 if r["mean"] == 0 else 0.0
+    else:
+        p = 2.0 * (1.0 - t_cdf(abs(r["mean"]) / se, n - 1))
     return {
         "measure": label,
         "treatment_mean": round(float(np.mean([treatment[s] for s in shared])), 4),
         "control_mean": round(float(np.mean([control[s] for s in shared])), 4),
-        "diff": round(r.mean, 4),
-        "diff_ci95": [round(r.lo, 4), round(r.hi, 4)],
-        "p_two_sided": round(_p_two_sided(r), 4),
-        "n_seeds": len(shared),
-        "method": r.method,
-        "stats": r.as_dict(),
+        "diff": round(r["mean"], 4),
+        "diff_ci95": [round(r["lo"], 4), round(r["hi"], 4)],
+        "p_two_sided": round(p, 4),
+        "n_seeds": n,
+        "method": f"paired on seed: {r['method'].replace('passes', 'seeds')}",
     }
 
 

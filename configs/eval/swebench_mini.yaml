@@ -119,7 +119,7 @@ serving:
   # because it is a true property of the workload: plan_serving prints the shortfall and
   # serves without it rather than passing a flag vLLM ignores. Throughput only; no output
   # changes. A future family that supports caching gets it for free.
-  reuses_long_prefixes: true
+  enable_prefix_caching: true
 
 # --- Grading ------------------------------------------------------------------------
 # Off by default: grading needs docker and CPU, not a GPU, so it runs after the pod is

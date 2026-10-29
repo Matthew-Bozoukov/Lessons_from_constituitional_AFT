@@ -100,7 +100,6 @@ def execute(cfg, config_path, action, budget):
         for arm, path in zip(arms, paths(cfg, config_path)):
             manifest_path = Path(arm.root) / 'metadata/manifest.json'
             if not manifest_path.exists():
-                assert float(plans[0]['balance']['clientBalance']) >= budget
                 fleet.initialize(arm, path, budget)
             else:
                 manifest = read(manifest_path)

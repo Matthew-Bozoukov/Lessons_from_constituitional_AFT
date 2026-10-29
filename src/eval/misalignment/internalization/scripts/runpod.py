@@ -31,7 +31,7 @@ import requests
 
 # The REST client moved to src/infra/runpod.py (2026-08-27) so `uv run chat` and this
 # module share one; re-exported here because scripts/infra/* and scratch/* import it from here.
-from src.infra.runpod import GPU, REST, ProvisionSpec, call, provision_runpod  # noqa: F401
+from src.infra.runpod import GPU, REST, ProvisionSpec, active_pods, call, provision_runpod, ssh_endpoint  # noqa: F401
 
 # Weights (~55GB bf16) + the merged copy (~55GB) + room for the image and HF cache.
 DEFAULT_DISK_GB = 250
@@ -48,7 +48,7 @@ def _bootstrap(base: str, adapter: str, served_name: str) -> str:
     """
     # NO credentials are placed on the pod. The base model and the adapter are both public
     # HF repos, so no token is needed - and a pod that holds no secret cannot leak one.
-    # Overriding dockerStartCmd REPLACES the image entrypoint, which is what normally
+    # Overriding `cmd` REPLACES the image entrypoint, which is what normally
     # installs PUBLIC_KEY and starts sshd. Without re-doing it here the pod has no SSH and
     # a failed boot is undiagnosable - which is exactly how the first two attempts were lost.
     return f"""set -euxo pipefail
@@ -141,7 +141,7 @@ def train_up(
 ) -> str:
     """Create an SSH-enabled pod for a QLoRA training run.
 
-    Deliberately does NOT set `dockerStartCmd`. RunPod's official images start sshd from
+    Deliberately does NOT set `cmd`. RunPod's official images start sshd from
     their own entrypoint when `PUBLIC_KEY` is set and then idle; overriding the entrypoint
     replaces that, so the container brings up no sshd and exits as soon as the override
     finishes. Dependencies are installed over SSH instead (see `train_setup`), which also
@@ -166,17 +166,14 @@ def train_up(
 
     payload = {
         "name": name,
-        "imageName": image,
-        "gpuTypeIds": [gpu],
-        "gpuCount": 1,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
+        "image": image,
+        "gpu": {"id": gpu, "count": 1},
+        "disk": disk_gb,
         "ports": ["22/tcp"],
-        "cloudType": cloud,
+        "cloud": cloud,
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1", "PUBLIC_KEY": pubkey},
     }
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    pod_id = pod.get("id") or pod.get("podId", "")
+    pod_id = str(call("POST", "/pods", json=payload)["id"])
     return (
         f"pod: {pod_id}\n\n"
         f"Wait for SSH, then rsync the repo to /root/work:\n"
@@ -196,19 +193,14 @@ def ssh_addr(pod: str) -> str:
         The ssh connection details, or a note that SSH is not mapped yet.
     """
     info = call("GET", f"/pods/{pod}")
-    for m in info.get("portMappings") or []:
-        # portMappings is either a list of dicts or a {privatePort: publicPort} map.
-        if isinstance(m, dict) and str(m.get("privatePort")) == "22":
-            host, port = info.get("publicIp", ""), m.get("publicPort")
-            return f"host: {host}\nport: {port}\nssh:  ssh -p {port} root@{host}"
-    mappings = info.get("portMappings")
-    if isinstance(mappings, dict) and "22" in mappings:
-        host, port = info.get("publicIp", ""), mappings["22"]
+    endpoint = ssh_endpoint(info)
+    if endpoint is not None:
+        host, port = endpoint
         return f"host: {host}\nport: {port}\nssh:  ssh -p {port} root@{host}"
     return (
-        f"status: {info.get('desiredStatus', '?')}\n"
+        f"status: {info.get('status', '?')}\n"
         f"SSH not mapped yet. Poll again in ~30s.\n"
-        f"raw portMappings: {json.dumps(mappings)}"
+        f"raw ssh block: {json.dumps(info.get('ssh'))}"
     )
 
 
@@ -233,8 +225,8 @@ def status(pod: str) -> str:
         detail = f"not reachable: {type(e).__name__}"
     return (
         f"pod:     {pod}\n"
-        f"status:  {info.get('desiredStatus', '?')} / {info.get('lastStatusChange', '')}\n"
-        f"cost:    ${info.get('costPerHr', 0)}/hr\n"
+        f"status:  {info.get('status', '?')} (since {info.get('startedAt') or info.get('createdAt', '')})\n"
+        f"cost:    ${info.get('cost', 0)}/hr\n"
         f"url:     {url}\n"
         f"serving: {'YES -> ' + detail if ready else 'no  -> ' + detail}"
     )
@@ -266,16 +258,15 @@ def wait(pod: str, timeout_min: int = 45, interval_s: int = 60) -> str:
 
 def gpus(min_gb: int = 80) -> str:
     """List GPU types with at least `min_gb` of memory, with prices."""
-    rows = call("GET", "/gputypes")
-    rows = rows if isinstance(rows, list) else rows.get("data", [])
     out = []
-    for g in rows:
-        mem = g.get("memoryInGb") or 0
+    for g in call("GET", "/catalog/gpus").get("gpus") or []:
+        mem = g.get("memory") or 0
+        price = g.get("price") or {}
         if mem >= min_gb:
             out.append(
                 f"  {str(g.get('id')):36s} {mem:>4}GB  "
-                f"secure ${g.get('securePrice') or 0:.2f}/hr  "
-                f"community ${g.get('communityPrice') or 0:.2f}/hr"
+                f"secure ${price.get('secure') or 0:.2f}/hr  "
+                f"community ${price.get('community') or 0:.2f}/hr"
             )
     return "\n".join(out) or f"No GPU types with >= {min_gb}GB returned."
 
@@ -295,12 +286,11 @@ def down(pod: str) -> str:
 
 def list_pods() -> str:
     """List every pod on the account, so nothing is left billing unnoticed."""
-    rows = call("GET", "/pods")
-    rows = rows if isinstance(rows, list) else rows.get("data", [])
+    rows = active_pods()
     if not rows:
         return "no pods running"
     return "\n".join(
-        f"  {p.get('id')}  {p.get('name'):28s} {p.get('desiredStatus'):10s} ${p.get('costPerHr', 0)}/hr"
+        f"  {p.get('id')}  {p.get('name'):28s} {p.get('status'):10s} ${p.get('cost', 0)}/hr"
         for p in rows
     )
 

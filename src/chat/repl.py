@@ -870,7 +870,7 @@ def pick_and_serve(
         print(
             f">>> {len(others)} pod(s) on the account are not this tool's/yours — left alone: "
             + ", ".join(
-                f"{p.get('name')} ({p.get('id')}, {p.get('desiredStatus')})"
+                f"{p.get('name')} ({p.get('id')}, {p.get('status')})"
                 for p in others
             )
         )
@@ -960,8 +960,8 @@ def _pods_report(user: str) -> str:
         return "no pods on the account"
     mine = {p["id"] for p in own_pods(pods, user)}
     return "\n".join(
-        f"  {p.get('id')}  {str(p.get('name')):40} {p.get('desiredStatus')}  "
-        f"${p.get('costPerHr', 0)}/h  {'(yours: uv run chat --down ' + str(p.get('id')) + ')' if p['id'] in mine else ''}"
+        f"  {p.get('id')}  {str(p.get('name')):40} {p.get('status')}  "
+        f"${p.get('cost', 0)}/h  {'(yours: uv run chat --down ' + str(p.get('id')) + ')' if p['id'] in mine else ''}"
         for p in pods
     )
 

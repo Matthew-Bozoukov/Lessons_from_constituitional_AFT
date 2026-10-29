@@ -30,7 +30,7 @@ import fire
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.eval.misalignment.internalization.scripts.runpod import call  # noqa: E402
+from src.infra.runpod import active_pods, call  # noqa: E402
 
 DEFAULT_IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 DEFAULT_GPU = "NVIDIA H100 80GB HBM3"
@@ -171,7 +171,7 @@ def up(
     disk_gb: int = 200,
     image: str = DEFAULT_IMAGE,
     cloud: str = "SECURE",
-    countries: str = "US,CA,NL,DE,FR,GB,IE,BE,SE,NO,FI,CH,AT,ES,IT",
+    data_centers: str = "",
     base_only: bool = False,
     reasoning_parser: bool = True,
     tool_calls: bool = False,
@@ -186,7 +186,7 @@ def up(
         disk_gb: Container disk; holds the ~55GB base model plus the adapter.
         image: Container image.
         cloud: SECURE or COMMUNITY.
-        countries: ISO codes to restrict placement to, near the HF CDN. "" for anywhere.
+        data_centers: RunPod data-centre ids to restrict placement to (EU-SE-1). "" for anywhere.
         only: Comma-separated MODULES keys to serve. Default "" serves them all, which is
             what makes an arm comparison free; naming one skips the other adapters'
             downloads when only that arm is under study.
@@ -199,34 +199,30 @@ def up(
     """
     payload = {
         "name": name,
-        "imageName": image,
-        "gpuTypeIds": [gpu],
-        "gpuCount": 1,
-        "containerDiskInGb": disk_gb,
-        "volumeInGb": 0,
+        "image": image,
+        "disk": disk_gb,
         "ports": ["8000/http", "8080/http", "22/tcp"],
-        "cloudType": cloud,
+        "cloud": cloud,
         # vLLM 0.26.0 pulls a torch built against CUDA 13, so a host whose driver only
         # reaches 12.8 dies with "The NVIDIA driver on your system is too old (found
         # version 12080)" — but only AFTER the 55GB base download. RunPod assigns hosts
         # randomly, and three consecutive pods on 2026-08-09 evening drew 12.8 hosts while
         # that morning's pod happened to draw a 13.0 one from identical code. Constrain the
         # host rather than rely on the draw.
-        "allowedCudaVersions": ["13.0"],
-        "dockerStartCmd": ["bash", "-lc",
-                           _bootstrap(BASE, {} if base_only else _selected(only), LORA_RANK,
-                                      reasoning_parser, tool_calls)],
+        "gpu": {"id": gpu, "count": 1, "allowedCudaVersions": ["13.0"]},
+        "cmd": ["bash", "-lc",
+                _bootstrap(BASE, {} if base_only else _selected(only), LORA_RANK,
+                           reasoning_parser, tool_calls)],
         "env": {"HF_HUB_ENABLE_HF_TRANSFER": "1"},
     }
     if pubkey_path:
         key = Path(pubkey_path).expanduser().read_text().strip()
         assert key.startswith("ssh-"), f"not an ssh public key: {pubkey_path}"
         payload["env"]["PUBLIC_KEY"] = key
-    codes = [c.strip().upper() for c in countries.split(",") if c.strip()]
-    if codes:
-        payload["countryCodes"] = codes
-    pod = call("POST", "/pods", data=json.dumps(payload))
-    pod_id = pod.get("id") or pod.get("podId", "")
+    ids = [c.strip().upper() for c in data_centers.split(",") if c.strip()]
+    if ids:
+        payload["dataCenterIds"] = ids
+    pod_id = str(call("POST", "/pods", json=payload)["id"])
     url = f"https://{pod_id}-8000.proxy.runpod.net/v1"
     return (
         f"pod:      {pod_id}\n"
@@ -245,8 +241,7 @@ def status(pod: str) -> str:
     import requests
 
     info = call("GET", f"/pods/{pod}")
-    line = (f"status: {info.get('desiredStatus')}  "
-            f"machine: {info.get('machine', {}).get('gpuTypeId')}")
+    line = f"status: {info.get('status')}  gpu: {(info.get('gpu') or {}).get('id')}"
     try:
         r = requests.get(f"https://{pod}-8000.proxy.runpod.net/v1/models", timeout=15)
         if r.ok:
@@ -264,11 +259,10 @@ def down(pod: str) -> str:
 
 def list_pods() -> str:
     """List active pods, so a forgotten one cannot bill quietly."""
-    pods = call("GET", "/pods")
-    rows = pods if isinstance(pods, list) else pods.get("data", [])
+    rows = active_pods()
     if not rows:
         return "no active pods"
-    return "\n".join(f"{p.get('id')}  {p.get('name')}  {p.get('desiredStatus')}" for p in rows)
+    return "\n".join(f"{p.get('id')}  {p.get('name')}  {p.get('status')}" for p in rows)
 
 
 if __name__ == "__main__":

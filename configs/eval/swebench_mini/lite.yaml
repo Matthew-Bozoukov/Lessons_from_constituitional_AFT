@@ -101,7 +101,7 @@ serving:
   context_window: 262144
   concurrency: 8
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true
 
 # Qualified once on the prepared CPU, reused for compatible LoRAs.
 cpu_qualification_path: /srv/lasr/recipes/cpu-capacity-v2.json

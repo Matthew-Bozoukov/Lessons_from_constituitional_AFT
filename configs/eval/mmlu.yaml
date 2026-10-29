@@ -164,4 +164,4 @@ serving:
   # campaign uses Qwen guidance (128K context, 32K output), a new historical protocol.
   context_window: 131072
   concurrency: 16
-  reuses_long_prefixes: true
+  enable_prefix_caching: true

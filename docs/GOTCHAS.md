@@ -3,6 +3,52 @@
 
 # GOTCHAS
 
+## RunPod REST v1 is gone on 2026-11-15; everything is on REST v2 (2026-10-29)
+
+RunPod rate-limits every public API from 2026-10-27 (180/min, 3600/hr, 43200/day per
+account, stepping down weekly) and returns `410 Gone` from `rest.runpod.io/v1` from
+2026-11-15; GraphQL follows in early 2027. `src/infra/runpod.py` now speaks
+`https://api.runpod.io/v2` (same Bearer key): `call()` sleeps out a 429 (`Retry-After`)
+and a 5xx and otherwise raises an `HTTPError` carrying the RFC 9457 `title`/`detail`.
+What changed shape, for anything in `scratch/` that reads a pod dict:
+
+- create body is nested — `image`, `gpu: {id, count, allowedCudaVersions}`, `disk`, `cloud`,
+  `cmd` (was `dockerStartCmd`), `ports`, `env`; `volumeInGb`/`gpuTypeIds`/`countryCodes` are gone;
+- a pod reads `status` (not `desiredStatus`), `cost` (not `costPerHr`), `gpu.count`
+  (not `gpuCount`), and its SSH endpoint is `ssh.direct.{host,port}` (not
+  `publicIp` + `portMappings["22"]`) — use `runpod.ssh_endpoint(pod)`;
+- `GET /pods` is paginated (`{pods, pagination}`) — use `runpod.active_pods()`;
+- prices come from `GET /catalog/gpus` → `gpus[].price.secure|community`;
+- `GET /billing/pods` returns `{records: [{podId, totalAmount, ...}]}` and has no `grouping`.
+
+Placement: v2 places by `dataCenterIds` only; `GET /catalog/datacenters?include=GPU_AVAILABILITY`
+lists the ids (`EU-SE-1`, `US-CA-2`) and what each stocks. The v1 `countryCodes` filter and
+the `--countries` flag went with it: `runpod up --data_centers EU-SE-1` pins a data centre
+directly, which is what the 2026-09-09 slow-host lesson actually needed (one bad data centre,
+not a country). The GPU catalogue documents a `countryCodes` filter, but live on 2026-10-29 it
+returned an empty list.
+
+Nothing is on GraphQL any more. Two things v2 does not have, and what replaced them:
+
+- **Balance.** No v2 route reports credit: `GET /billing*` is spend history, and every
+  "balance" in the v2 OpenAPI schema is a load balancer. `runpod.account_spend()` reports
+  today's spend (`GET /billing?lastN=1&bucketSize=day`) and the live burn (sum of `cost`
+  over RUNNING pods); the credit remaining is read in the console. The SWE-bench fleet's
+  `balance >= budget` gate is therefore gone -- check the console before `run`.
+- **Expiry.** `CreatePodRequest`/`UpdatePodRequest` have no `terminateAfter`. The GraphQL one
+  this repo passed (SWE-bench fleet only, since 2026-09-23) was, per RunPod's own CLI
+  maintainers, accepted and never enforced (runpodctl v2.12.0 removed `--terminate-after`:
+  pods "kept running and billing past the deadline"); nothing in `output/runpod/*watchdog*.log`
+  shows it firing here either -- all nine automatic teardowns on record (4 lifetime caps, 5
+  parent-gone) were the LOCAL watchdog, which is untouched and still runs. `terminate_at` now
+  additionally arms a timer INSIDE the pod (`runpod.self_destruct_prefix`):
+  the container waits for an absolute epoch, then DELETEs itself through v2 with the
+  pod-scoped `RUNPOD_API_KEY` RunPod injects. `runpod up` arms it at `max_hours` too, so the
+  lifetime cap no longer depends on the laptop staying awake (the local watchdog remains as
+  a backup). NOT verified live yet: on 2026-10-29 the account had no credit (402 on every
+  create), so the first `runpod up` after a top-up is the check -- give it a short
+  `--max_hours` and confirm with `runpod pods` that it is gone past the deadline.
+
 ## Subscription Arena judging boundaries (2026-10-14)
 
 - Codex feature-disable settings did not guarantee a tool-free context: one judge
@@ -1160,7 +1206,8 @@ looks like ordinary boot until you compare against a sibling. `uv run runpod up`
 `ssh: ready` well before the install finishes: at that moment run a 15-second download test
 on the pod (`curl -sL -o /dev/null -m 15 -w '%{speed_download}' <a HF weight shard URL>`) and
 terminate anything under ~1 MB/s. `--countries SE` pinned the re-rent to the datacenter that
-worked. The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
+worked (since 2026-10-29 the flag is `--data_centers EU-SE-1`: REST v2 places by data-centre
+id, which is what this lesson needed anyway). The GraphQL `pod { machine { dataCenterId location } }` query names a pod's
 datacenter; the REST pod object does not.
 
 ## A generator's invented tool output is wrong even when the files are in front of it (2026-09-10)

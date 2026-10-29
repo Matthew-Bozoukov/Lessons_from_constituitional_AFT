@@ -56,7 +56,7 @@ from pathlib import Path
 from omegaconf import DictConfig, OmegaConf
 
 from src.eval.layout import publish_layout
-from src.eval.stats import t_quantile
+from src.eval.stats import logit_t
 from src.infra.endpoints.openrouter import OPENROUTER_BASE_URL, run_batch
 from src.utils import write_run_meta
 
@@ -306,22 +306,19 @@ def batch_judge(exchange: Path, judge_model: str) -> dict:
     return stats
 
 
-def pass_interval(scores: list[float]) -> dict:
+def pass_interval(scores: list[float], n_rows: int) -> dict:
     """The mean of a run's passes and its 95% interval from the spread BETWEEN passes.
 
-    Each pass is an independent sampled draw of every generation (temperature 1.0, no
-    per-request seed), so the pass-to-pass spread is the run-to-run noise of the score —
-    the ~11-point band the 2026-09-21 same-stack replicates showed. A t-interval on n-1
-    degrees of freedom; one pass has no spread and reports no interval.
+    Each pass is one complete run of the eval (every row generated and judged once, at
+    temperature 1.0 with no per-request seed), so the pass-to-pass spread is the run-to-run
+    noise of the score — the ~11-point band the 2026-09-21 same-stack replicates showed. The
+    score is bounded in [0, 100], so the t-step is taken on the log-odds scale
+    (`stats.logit_t`); one pass has no spread and reports no interval. Rows are never counted
+    as draws: they are the fixed benchmark, and `n_rows` only sets the continuity correction.
     """
-    n = len(scores)
-    mean = round(sum(scores) / n, 2)
-    if n < 2:
-        return {"mean": mean, "sd": None, "ci95": None, "n_passes": n}
-    sd = statistics.stdev(scores)
-    half = t_quantile(0.975, n - 1) * sd / n ** 0.5
-    return {"mean": mean, "sd": round(sd, 2), "ci95": [round(mean - half, 2), round(mean + half, 2)],
-            "n_passes": n}
+    r = logit_t(scores, n_rows)
+    return {"mean": round(r["mean"], 2), "n_passes": r["n"], "ci_method": r["method"],
+            "ci95": None if r["lo"] is None else [round(r["lo"], 2), round(r["hi"], 2)]}
 
 
 def combine_passes(per_pass: list[dict]) -> dict:
@@ -333,10 +330,11 @@ def combine_passes(per_pass: list[dict]) -> dict:
 
     Returns:
         `overall_honesty_score` (mean over passes), `honesty_ci95` (None for one pass),
-        `honesty_sd`, `per_archetype` with each archetype's mean score and its per-pass
+        `ci_method`, `per_archetype` with each archetype's mean score and its per-pass
         scores, and `n_passes`. The single-pass values are exactly the pass's own.
     """
-    overall = pass_interval([p["overall_honesty_score"] for p in per_pass])
+    n_rows = sum(c["n_rows"] for c in per_pass[0]["per_archetype"].values())
+    overall = pass_interval([p["overall_honesty_score"] for p in per_pass], n_rows)
     archetypes = sorted({a for p in per_pass for a in p["per_archetype"]})
     per_archetype = {}
     for a in archetypes:
@@ -351,7 +349,7 @@ def combine_passes(per_pass: list[dict]) -> dict:
             "n_rows": cells[0]["n_rows"],
         }
     return {"overall_honesty_score": overall["mean"], "honesty_ci95": overall["ci95"],
-            "honesty_sd": overall["sd"], "n_passes": overall["n_passes"],
+            "ci_method": overall["ci_method"], "n_passes": overall["n_passes"],
             "per_archetype": per_archetype}
 
 
@@ -629,8 +627,8 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
         "mode": target.spec.mode,
         "judge": str(cfg.judge_model),
         "overall_honesty_score": combined["overall_honesty_score"],
-        "honesty_ci95": combined["honesty_ci95"],       # between-pass t-interval; None for one pass
-        "honesty_sd": combined["honesty_sd"],
+        "honesty_ci95": combined["honesty_ci95"],       # t over passes, log-odds scale; None for one pass
+        "ci_method": combined["ci_method"],
         "passes": passes,
         "overall_weighting": "per_row",     # pooled over rows (paper §4.3), not an archetype mean
         "per_archetype": combined["per_archetype"],

@@ -10,7 +10,7 @@ from src.eval import run_eval
 
 
 def pod():
-    return {"id": "owned", "publicIp": "192.0.2.1", "portMappings": {"22": 1234},
+    return {"id": "owned", "ssh": {"direct": {"host": "192.0.2.1", "port": 1234}, "proxy": None},
             "env": {"LASR_POD_OWNER": runpod.POD_OWNER,
                     "LASR_POD_DEADLINE": str(runpod.time.time() + 600)}}
 
@@ -34,7 +34,7 @@ def test_lookup_refuses_unsafe_targets(lookup, case):
     if case == "missing": lookup.clear()
     if case == "ambiguous": lookup.append(pod())
     if case == "unowned": lookup[0]["env"].clear()
-    if case == "port": lookup[0]["portMappings"]["22"] = 99
+    if case == "port": lookup[0]["ssh"]["direct"]["port"] = 99
     if case == "deadline": lookup[0]["env"]["LASR_POD_DEADLINE"] = "nan"
     with pytest.raises(ValueError):
         runpod.pod_for_server("alias")

@@ -61,7 +61,7 @@ serving:
   context_window: 131072   # as the 2026-09-11 arms ran; 90-120-turn episodes grow long
   concurrency: 8
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true
 # Conservative GPU allocation is $15/adapter with $1 left for billing uncertainty.
 # A launcher sets its deadline from the live hourly rate before provisioning.
 checkpoint_every: 36

@@ -175,7 +175,7 @@ def test_real_driver_orders_backup_before_teardown_and_blocks_failed_fetch(tmp_p
     monkeypatch.setattr(driver, 'MAX_LIFETIME_S', 120)
     monkeypatch.setattr(driver, 'RECOVERY_RESERVE_S', 60)
     monkeypatch.setattr(driver.runpod, 'start_watchdog', lambda *a: object())
-    monkeypatch.setattr(driver.runpod, 'call', lambda *a: {'costPerHr':1})
+    monkeypatch.setattr(driver.runpod, 'call', lambda *a: {'cost':1})
     monkeypatch.setattr(driver.runpod, 'wait_bootstrapped', lambda *a,**kw: True)
     monkeypatch.setattr(driver.runpod, 'active_pods', lambda: [])
     monkeypatch.setattr(driver.runpod, 'terminate', lambda pod: events.append('terminate') or True)

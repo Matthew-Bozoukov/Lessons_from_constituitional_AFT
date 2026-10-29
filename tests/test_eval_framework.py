@@ -215,7 +215,7 @@ def test_plan_serving_validates_requirements_against_facts():
         "max_num_seqs": 12,
         "reasoning_parser": "qwen3",
         "tool_call_parser": None,
-        "prefix_caching": False,
+        "prefix_caching": None,
         "hf_overrides": None,
         "warnings": (),
     }
@@ -325,19 +325,29 @@ def test_plan_serving_reports_impossible_prefix_caching_without_failing():
 
     cannot = dict(QWEN36_FACTS, supports_prefix_caching=False)
     plan = plan_serving(
-        cannot, {"context_window": 16384, "reuses_long_prefixes": True}, "m", "think"
+        cannot, {"context_window": 16384, "enable_prefix_caching": True}, "m", "think"
     )
     assert plan["prefix_caching"] is False
-    assert len(plan["warnings"]) == 1 and "reuses_long_prefixes" in plan["warnings"][0]
+    assert len(plan["warnings"]) == 1 and "enable_prefix_caching" in plan["warnings"][0]
     # Qwen3.6 supports it (measured, docs/LOG.md 2026-08-07) and gets it, silently.
     assert QWEN36_FACTS["supports_prefix_caching"] is True
     plan = plan_serving(
         QWEN36_FACTS,
-        {"context_window": 16384, "reuses_long_prefixes": True},
+        {"context_window": 16384, "enable_prefix_caching": True},
         "m",
         "think",
     )
     assert plan["prefix_caching"] is True and plan["warnings"] == ()
+
+
+def test_prefix_caching_is_tristate_and_the_old_key_still_reads():
+    from src.infra.endpoints.vllm import plan_serving
+
+    base = {"context_window": 16384}
+    assert plan_serving(QWEN36_FACTS, base, "m", "think")["prefix_caching"] is None  # vLLM's default
+    assert plan_serving(QWEN36_FACTS, {**base, "enable_prefix_caching": False}, "m", "think")["prefix_caching"] is False
+    # the name every published run_meta.json carried until 2026-10-29
+    assert plan_serving(QWEN36_FACTS, {**base, "reuses_long_prefixes": True}, "m", "think")["prefix_caching"] is True
 
 
 def test_every_eval_config_declares_its_context_window():

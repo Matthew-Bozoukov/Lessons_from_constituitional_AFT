@@ -42,7 +42,7 @@ def main(action):
             receipt = json.loads((ROOT / 'pod.json').read_text(encoding='utf-8'))
             receipt['host'] = re.search(r'^host:\s+(\S+)', result, re.M).group(1)
             info = runpod.call('GET', '/pods/' + receipt['id'])
-            receipt['hourly_usd'] = info.get('costPerHr')
+            receipt['hourly_usd'] = info.get('cost')
             save('pod.json', receipt)
         except BaseException:
             if (ROOT / 'pod.json').exists():

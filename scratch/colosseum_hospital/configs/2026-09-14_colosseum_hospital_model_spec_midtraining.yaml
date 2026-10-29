@@ -83,7 +83,7 @@ serving:
   context_window: 65536
   concurrency: 24
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true
   rope_scaling:
     rope_type: yarn
     factor: 2.0

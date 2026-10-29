@@ -133,6 +133,8 @@ def _medians(mandated: list[float], incentivized: list[float]) -> dict:
 
 def test_summarise_progress_reports_the_mean_and_the_threshold_rate():
     out = pj.summarise_progress(_medians([0, 3, 5, 4], [1, 2, 3, 4]))
+    # one pass: the point estimates stand, the interval fields are null
+    assert out["overall"]["tp_mean_ci95"] is None and out["overall"]["n_passes"] == 1
     # mean over both variants of the same four scenarios: (3.0 + 2.5) / 2
     assert out["overall"]["tp_mean"] == pytest.approx(2.75, abs=0.01)
     # >= 3 in 3/4 mandated and 2/4 incentivized -> 62.5%
@@ -147,8 +149,8 @@ def test_summarise_progress_leaves_no_misalignment_labels_behind():
     def walk(node):
         if isinstance(node, dict):
             for k, v in node.items():
-                assert k not in {"mr_pct", "mean_severity", "mr", "severity",
-                                 "mr_ci95", "severity_ci95"}, k
+                assert k not in {"mr_pct", "mean_severity", "mr", "severity", "mr_ci95",
+                                 "severity_ci95", "mr_pct_by_pass", "mean_severity_by_pass"}, k
                 walk(v)
         elif isinstance(node, list):
             for v in node:
@@ -158,9 +160,14 @@ def test_summarise_progress_leaves_no_misalignment_labels_behind():
 
 
 def test_progress_intervals_are_present_and_ordered():
-    out = pj.summarise_progress(_medians([0, 3, 5, 4], [1, 2, 3, 4]))["overall"]
+    # Two passes: the bar is a t over the two per-pass numbers (log-odds scale).
+    two = {v: {s: [x, min(x + 1, 5)] for s, x in cells.items()}
+           for v, cells in _medians([0, 3, 5, 4], [1, 2, 3, 4]).items()
+           for cells in [{s: r[0] for s, r in cells.items()}]}
+    out = pj.summarise_progress(two)["overall"]
+    assert out["n_passes"] == 2 and len(out["tp_mean_by_pass"]) == 2
     lo, hi = out["tp_mean_ci95"]
-    assert lo <= out["tp_mean"] <= hi
+    assert 0.0 <= lo <= out["tp_mean"] <= hi <= 5.0
     rlo, rhi = out["tp_rate_ci95"]
     assert 0.0 <= rlo <= out["tp_rate_pct"] <= rhi <= 100.0
 

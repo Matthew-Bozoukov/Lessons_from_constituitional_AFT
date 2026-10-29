@@ -116,7 +116,7 @@ def generate():
         print(result, flush=True)
         receipt = read(ROOT / 'pod.json')
         receipt['host'] = re.search(r'^host:\s+(\S+)', result, re.M).group(1)
-        receipt['hourly_usd'] = runpod.call('GET', '/pods/' + receipt['id']).get('costPerHr')
+        receipt['hourly_usd'] = runpod.call('GET', '/pods/' + receipt['id']).get('cost')
         save(ROOT / 'pod.json', receipt)
         command = [sys.executable, '-u', 'scripts/run_eval.py', '--name', 'arena_hard',
                    '--config', str(ROOT / 'base.yaml'), '--target', BASE, '--reference', BASE,
@@ -131,7 +131,7 @@ def generate():
             assert all(p['id'] != receipt['id'] for p in pods)
             save(ROOT / 'teardown_verification.json', {'verified_utc': now(), 'own_pod_absent': True,
                  'owned_pod': receipt['id'], 'other_pods': [{k: p.get(k) for k in ('id', 'name')} for p in pods],
-                 'account': runpod.graphql('query { myself { clientBalance currentSpendPerHr } }')})
+                 'account': runpod.account_spend()})
 
 
 def verify_base():

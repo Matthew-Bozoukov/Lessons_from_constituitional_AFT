@@ -145,7 +145,7 @@ def launch(root, worker):
         state.update(pod_id=pod_id, billing_started=time.time())
         save(folder / 'controller.json', state)
         guard = runpod.start_watchdog(pod_id, int(hours*3600), folder / 'watchdog.log')
-        rate = float(runpod.call('GET', f'/pods/{pod_id}').get('costPerHr') or 0)
+        rate = float(runpod.call('GET', f'/pods/{pod_id}').get('cost') or 0)
         assert 0 < rate * hours <= 12.5
         state['actual_pod_hourly_usd'] = rate
         save(folder / 'controller.json', state)
@@ -170,7 +170,8 @@ def launch(root, worker):
         if not runpod.wait_bootstrapped(state['pod_id'], timeout_s=2400):
             raise RuntimeError('H200 bootstrap failed')
         pod = runpod.call('GET', f"/pods/{state['pod_id']}")
-        host = f"root@{pod['publicIp']}:{pod['portMappings']['22']}"
+        ip, ssh_port = runpod.ssh_endpoint(pod)
+        host = f"root@{ip}:{ssh_port}"
         state.update(server=host, status='evaluating')
         save(folder / 'controller.json', state)
         command = [sys.executable, 'scratch/delegated_harm/run_eval.py', '--name', 'delegated_harm', '--target', target,

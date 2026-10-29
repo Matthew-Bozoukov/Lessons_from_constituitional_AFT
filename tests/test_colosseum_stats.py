@@ -74,3 +74,23 @@ def test_transfer_ratio_pairs_the_two_experiments_on_one_seed_draw():
     sc, st = _cell(0.25, n=25, seed=3), _cell(0.15, n=25, seed=4)
     r = transfer_ratio(mt, mc, st, sc, n_boot=500)
     assert r["n_seeds"] == 25
+
+
+def test_episode_summary_uses_wilson_for_binary_and_t_for_continuous_measures():
+    from src.eval.misalignment.colosseum.stats import episode_summary
+
+    per_seed = {
+        "judge_refusal_all_ge3": {"covert": {str(s): float(s < 6) for s in range(20)}},
+        "regret_norm": {"covert": {str(s): 0.3 + 0.01 * s for s in range(20)}},
+        "lonely": {"covert": {"0": 0.5}},
+    }
+    out = episode_summary(per_seed, binary={"judge_refusal_all_ge3"})
+    b = out["judge_refusal_all_ge3"]["covert"]
+    assert b["mean"] == 0.3 and b["n_episodes"] == 20 and b["ci_method"].startswith("Wilson")
+    assert 0.0 < b["ci95"][0] < 0.3 < b["ci95"][1] < 1.0
+    c = out["regret_norm"]["covert"]
+    assert c["mean"] == pytest.approx(0.395, abs=1e-3) and c["ci_method"].startswith("t over 20 episodes")
+    assert c["ci95"][0] < c["mean"] < c["ci95"][1]
+    assert out["lonely"]["covert"]["ci95"] is None     # one episode: no interval
+    with pytest.raises(AssertionError, match="declared binary"):
+        episode_summary({"regret_norm": per_seed["regret_norm"]}, binary={"regret_norm"})

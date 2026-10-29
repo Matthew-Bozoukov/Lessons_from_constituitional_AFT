@@ -1,6 +1,6 @@
 # ABOUTME: Serve one checkpoint and run the 90-seed constitution audit against it with Petri,
 # ABOUTME: auditor on Sonnet 5 and judge on Gemini Flash, both through OpenRouter.
-"""The constitution audit: 90 seeds, one transcript each.
+"""The constitution audit: 90 seeds, one transcript each per pass.
 
     uv run python scripts/eval/audits/petri/run_audit.py --server root@<ip>:<port> \\
         --target dougalldeepmind/2026-09-22-qwen36-0-nosynth [--limit 1] \\
@@ -57,6 +57,10 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="first N seeds only")
     ap.add_argument("--seeds", default=None,
                     help="seed directory to run; default is the full 90-seed set")
+    ap.add_argument("--passes", type=int, default=1,
+                    help="how many times to run the whole seed set (Inspect epochs). One pass gives "
+                         "the rate and no interval; three give a t over the three per-pass rates "
+                         "(docs/error_bars.md)")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--preamble", default=None,
                     help="file prepended to every target system message (the constitution arms); "
@@ -114,9 +118,12 @@ def main() -> None:
         work_dir=out / "server", port=args.port, executor=executor,
         # Petri's target turns carry the whole scenario history plus synthetic tool
         # results; `needs_tool_calls` because every seed hands the target real tools.
+        # Petri resends the whole transcript every turn; with prefix caching vLLM reuses the
+        # KV blocks of everything up to the previous assistant turn instead of re-prefilling.
         serve_requirements={"context_window": args.context_window,
                             "concurrency": args.connections,
-                            "needs_tool_calls": True},
+                            "needs_tool_calls": True,
+                            "enable_prefix_caching": True},
     )
     served = server.ensure(spec)
     try:
@@ -141,6 +148,7 @@ def main() -> None:
             cmd = [*INSPECT, "eval", TASK,
                    "-T", f"seed_instructions={args.seeds or SEEDS}",
                    "-T", f"max_turns={args.max_turns}",
+                   "--epochs", str(args.passes),
                    "--model-role", f"auditor={args.auditor}",
                    "--model-role", f"judge={args.judge}",
                    "--model-role", f"target=openai-api/vllm/{served.model_name}",

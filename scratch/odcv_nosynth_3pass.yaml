@@ -8,7 +8,7 @@
 # way that arm was: temperature 0.7, 32 scenarios in flight, gemini-3-flash-preview as the
 # only judge with 3 workers, a 16,384-token served window. Two things that run's config did
 # NOT carry are left off deliberately: the progress judge (added to the default since) and
-# `serving.reuses_long_prefixes` (prefix caching, throughput only). `passes: 3` is the one
+# `serving.enable_prefix_caching` (prefix caching, throughput only). `passes: 3` is the one
 # change; `--config` replaces the default file whole, which is what lets the judge mapping
 # be exactly one judge instead of the default two merged with a third.
 

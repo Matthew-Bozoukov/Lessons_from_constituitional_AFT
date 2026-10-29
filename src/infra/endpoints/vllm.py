@@ -484,9 +484,13 @@ _EVAL_REQUIREMENT_KEYS = {
     "context_window",
     "concurrency",
     "needs_tool_calls",
-    "reuses_long_prefixes",
+    "enable_prefix_caching",
     "rope_scaling",
 }
+# `enable_prefix_caching` was called `reuses_long_prefixes` until 2026-10-29; every published
+# run_meta.json before then carries the old name, and re-running from a fetched config has to
+# keep working. Read as the new key, never written.
+_REQUIREMENT_ALIASES = {"reuses_long_prefixes": "enable_prefix_caching"}
 
 
 def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) -> dict:
@@ -515,7 +519,8 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
 
     Returns:
         The launch plan: `context_window`, `max_num_seqs`, `reasoning_parser`,
-        `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`, and
+        `tool_call_parser`, `hf_overrides` (each None when not to be emitted), `prefix_caching`
+        (True/False/None: flag on, flag off, vLLM's default), and
         `warnings` — operator-facing notes to print at serve time.
 
     Raises:
@@ -530,6 +535,7 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
             f"{sorted(unknown_facts)}. Family facts are a closed set "
             f"({sorted(_FAMILY_FACT_KEYS)}) — an eval's needs belong in its config's "
             "serving: block, not in src/model_profile.py.")
+    requirements = {_REQUIREMENT_ALIASES.get(k, k): v for k, v in requirements.items()}
     unknown = set(requirements) - _EVAL_REQUIREMENT_KEYS
     if unknown:
         raise SystemExit(
@@ -622,12 +628,17 @@ def plan_serving(facts: dict, requirements: dict, base_model: str, mode: str) ->
     # reported rather than fatal. (Qwen3.6 DOES support it on the pinned vLLM 0.26 —
     # docs/LOG.md 2026-08-07 measured ~3.5x generation throughput given KV headroom;
     # the earlier 07-29 "forced off" note was wrong. The fact lives in ModelProfile.)
+    # Tri-state, mirroring vLLM's own `--enable-prefix-caching`: True emits the flag, False
+    # emits `--no-enable-prefix-caching`, absent emits nothing and vLLM applies its default
+    # (on for a plain transformer, OFF for a hybrid family such as Qwen3.6, which 0.26 keeps
+    # opt-in). An eval that wants caching therefore has to ask for it.
     warnings = [rope_note] if rope_note else []
-    prefix_caching = bool(requirements.get("reuses_long_prefixes"))
+    prefix_caching = requirements.get("enable_prefix_caching")
+    prefix_caching = None if prefix_caching is None else bool(prefix_caching)
     if prefix_caching and not facts.get("supports_prefix_caching"):
         prefix_caching = False
         warnings.append(
-            f"reuses_long_prefixes: {base_model} cannot cache prefixes "
+            f"enable_prefix_caching: {base_model} cannot cache prefixes "
             "(supports_prefix_caching is false), so each step re-prefills its whole "
             "context. Throughput only — outputs are unaffected.")
 
@@ -1073,8 +1084,10 @@ class VllmServer:
         if plan["tool_call_parser"]:
             argv += ["--enable-auto-tool-choice",
                      "--tool-call-parser", plan["tool_call_parser"]]
-        if plan["prefix_caching"]:
+        if plan["prefix_caching"] is True:
             argv += ["--enable-prefix-caching"]
+        elif plan["prefix_caching"] is False:
+            argv += ["--no-enable-prefix-caching"]
         if plan.get("hf_overrides"):
             argv += ["--hf-overrides", json.dumps(plan["hf_overrides"])]
         template = self._pinned_template_path(spec.base_model, spec.mode, spec.base_revision)

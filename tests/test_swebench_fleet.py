@@ -364,7 +364,7 @@ class ProvenanceTests(unittest.TestCase):
             task = {'status': 'running', 'attempts': [{'worker': '99-0'}]}
             atomic(root/'metadata/state.json', {'pods': [], 'halt': None, 'tasks': {'a': task}})
             atomic(root/'allowed.json', ['a'])
-            live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'costPerHr': 3.19,
+            live = {'id': 'ours', 'name': 'nika-swe-lite-only-our-0', 'cost': 3.19,
                     'env': {'LASR_POD_OWNER': fleet.runpod.POD_OWNER, 'LASR_CAMPAIGN': 'only-ours'}}
             guard = Mock()
             def allocate(*args, **kwargs):
@@ -419,7 +419,7 @@ class ProvenanceTests(unittest.TestCase):
                 {'id': 'lagged', 'created': 100, 'ended': 1900, 'expires': 4000, 'ceiling_hourly': 4}]})
             atomic(root/'metadata/manifest.json', {'campaign': 'test', 'created': datetime.now(timezone.utc).isoformat()})
             atomic(root/'receipt.json', {'offer': {'dph_total': .54}})
-            rows = [{'podId': 'ours', 'amount': 3.5}, {'podId': 'teammate', 'amount': 99}]
+            rows = {'records': [{'podId': 'ours', 'totalAmount': 3.5}, {'podId': 'teammate', 'totalAmount': 99}]}
             with patch.object(fleet.runpod, 'active_pods', return_value=[]), patch.object(fleet.runpod, 'call', return_value=rows):
                 result = fleet.final_accounting(OmegaConf.create({'root': path, 'receipt': str(root/'receipt.json')}))
             self.assertEqual(result['gpu_conservative_ledger_usd'], 6)

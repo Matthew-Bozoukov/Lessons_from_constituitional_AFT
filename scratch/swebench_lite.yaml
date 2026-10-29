@@ -68,4 +68,4 @@ serving:
   context_window: 131072
   concurrency: 8
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true

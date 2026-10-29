@@ -90,4 +90,4 @@ serving:
   context_window: 65536
   concurrency: 30
   needs_tool_calls: true
-  reuses_long_prefixes: true
+  enable_prefix_caching: true

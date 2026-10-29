@@ -312,16 +312,19 @@ def test_archetypes_run_concurrently_under_one_shared_semaphore(monkeypatch):
 
 
 
-# --- passes: independent draws of the whole generation, mean ± between-pass interval -------
+# --- passes: independent draws of the whole generation, mean + between-pass interval -------
 
-def test_pass_interval_is_a_t_interval_over_passes():
-    one = runner.pass_interval([84.9])
-    assert one == {"mean": 84.9, "sd": None, "ci95": None, "n_passes": 1}
-    three = runner.pass_interval([80.0, 84.0, 88.0])
-    assert three["mean"] == 84.0 and three["n_passes"] == 3 and three["sd"] == 4.0
+def test_pass_interval_is_a_t_over_passes_on_the_log_odds_scale():
+    one = runner.pass_interval([84.9], 272)
+    assert one["mean"] == 84.9 and one["ci95"] is None and one["n_passes"] == 1
+    assert one["ci_method"].startswith("none: one pass")
+    three = runner.pass_interval([80.0, 84.0, 88.0], 272)
+    assert three["mean"] == 84.0 and three["n_passes"] == 3
     lo, hi = three["ci95"]
-    # t_{0.975, 2} = 4.303; half-width 4.303 * 4 / sqrt(3) = 9.94
-    assert abs((hi - lo) / 2 - 9.94) < 0.05 and abs((hi + lo) / 2 - 84.0) < 1e-9
+    # log-odds scale: asymmetric, inside [0, 100], and about as wide as the plain t
+    # (t_{0.975, 2} = 4.303; half-width 4.303 * 4 / sqrt(3) = 9.94) this far from the edges
+    assert lo < 84.0 < hi <= 100.0 and 84.0 - lo > hi - 84.0
+    assert abs((hi - lo) / 2 - 9.94) < 1.5
 
 
 def test_combine_passes_means_the_overall_and_each_archetype_and_keeps_the_per_pass_scores():
