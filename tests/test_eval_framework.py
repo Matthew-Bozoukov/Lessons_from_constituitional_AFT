@@ -215,7 +215,7 @@ def test_plan_serving_validates_requirements_against_facts():
         "max_num_seqs": 12,
         "reasoning_parser": "qwen3",
         "tool_call_parser": None,
-        "prefix_caching": False,
+        "prefix_caching": None,
         "hf_overrides": None,
         "warnings": (),
     }
@@ -338,6 +338,16 @@ def test_plan_serving_reports_impossible_prefix_caching_without_failing():
         "think",
     )
     assert plan["prefix_caching"] is True and plan["warnings"] == ()
+
+
+def test_prefix_caching_is_tristate_and_the_old_key_still_reads():
+    from src.infra.endpoints.vllm import plan_serving
+
+    base = {"context_window": 16384}
+    assert plan_serving(QWEN36_FACTS, base, "m", "think")["prefix_caching"] is None  # vLLM's default
+    assert plan_serving(QWEN36_FACTS, {**base, "enable_prefix_caching": False}, "m", "think")["prefix_caching"] is False
+    # the name every published run_meta.json carried until 2026-10-29
+    assert plan_serving(QWEN36_FACTS, {**base, "reuses_long_prefixes": True}, "m", "think")["prefix_caching"] is True
 
 
 def test_every_eval_config_declares_its_context_window():
