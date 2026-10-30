@@ -259,9 +259,25 @@ def full_text(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8").strip()
 
 
+# 2026-10-30: claude_distilled_09_principles/constitution.md lost its five-line repo note
+# (moved to the folder README). `_parse` never saw those lines, so every principle,
+# paragraph and bullet chunk is byte-identical across the pair: extending a chunk-driven
+# corpus across the boundary is sound. `whole` granularity and `{constitution}` injection
+# DO differ by the 35-word note; this table deliberately overlooks that.
+EQUIVALENT_SHA256: tuple[frozenset[str], ...] = (
+    frozenset({"8e273b472d945aa23efa6236886da5e1171bff2193ee31ff73489ca54c4f0edc",
+               "7726f860ad97a443c8b49e12c7fc8d8bcb69d2286dc5f85934153b87a5045c11"}),
+)
+
+
+def same_constitution(a: str, b: str) -> bool:
+    """True when two manifest hashes name the same constitution for chunk-driven recipes."""
+    return a == b or any(a in group and b in group for group in EQUIVALENT_SHA256)
+
+
 def preamble(path: str | Path) -> str:
-    """Return the text that belongs to no chunk: title, and the priority/conflict
-    section that sits before the numbered principles.
+    """Return the text that belongs to no chunk: the priority/conflict-resolution section
+    that sits before the numbered principles.
 
     Worth surfacing rather than ignoring: the conflict-resolution guidance is exactly
     the material that says how principles trade off, and at every granularity below

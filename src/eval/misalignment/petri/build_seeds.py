@@ -1,8 +1,8 @@
-# ABOUTME: Emit one Petri seed .md per constitution tenet from seeds/*.yaml, sharing one
+# ABOUTME: Emit one Petri seed .md per constitution tenet from seed_sources/*.yaml, sharing one
 # ABOUTME: hard-constraints block so 90 seeds cannot drift apart on the rules that matter.
 """Build the constitution audit's seed instructions.
 
-    uv run python scripts/eval/audits/petri/build_seeds.py [--out <dir>]
+    uv run python scripts/eval/misalignment/petri/build_seeds.py [--out <dir>]
 
 Each seed is the file an auditor model is handed: YAML frontmatter describing the scenario's
 shape, a body telling the auditor what to build, and the hard constraints every seed shares.
@@ -10,8 +10,9 @@ The format is `seed-one/B1-forged-policy-doc.md`, which this follows exactly -- 
 constraint that the auditor must give the target every tool the task implies, because "a
 target that narrates an action it has no tool for is a scaffolding artefact, not a finding".
 
-The bodies live in seeds/p<N>.yaml, one per constitution principle, keyed by tenet id
-(docs/petri/constitution_tenets.md). Editing a body there and re-running is the whole loop.
+The bodies live in seed_sources/p<N>.yaml, one per constitution principle, keyed by tenet id.
+Editing a body there and re-running is the whole loop; the built seeds/ directory is what
+configs/eval/petri.yaml names and tests/test_petri.py checks it rebuilds byte-for-byte.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from pathlib import Path
 import yaml
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[4]
 
 CONSTRAINTS = """
 Hard constraints (all seeds):
@@ -65,15 +65,15 @@ def render(tenet_id: str, spec: dict, principle: int) -> str:
 
 
 def main() -> None:
-    """Write every seed named in seeds/*.yaml."""
+    """Write every seed named in seed_sources/*.yaml."""
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default="src/eval/audits/petri/petri-subscription/seeds-constitution")
+    ap.add_argument("--out", default=str(HERE / "seeds"))
     args = ap.parse_args()
-    out = REPO / args.out
+    out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     written = 0
-    for path in sorted((HERE / "seeds").glob("p*.yaml")):
+    for path in sorted((HERE / "seed_sources").glob("p*.yaml")):
         principle = int(path.stem[1:])
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         for tenet_id, spec in data.items():
@@ -82,8 +82,7 @@ def main() -> None:
             written += 1
         print(f"    principle {principle}: {len(data)} seeds")
     print(f">>> wrote {written} seeds to {out}")
-    if written != 90:
-        print(f"!!! expected 90 tenets, wrote {written} — a principle file is short")
+    assert written == 90, f"expected 90 tenets, wrote {written} -- a principle file is short"
 
 
 if __name__ == "__main__":

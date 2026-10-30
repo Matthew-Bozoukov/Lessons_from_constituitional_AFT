@@ -21,6 +21,7 @@ from omegaconf import OmegaConf
 from src.infra.endpoints.vllm import SshExec, VllmServer, resolve_target
 from src.eval import EVALS, resolve, resolve_pool, run_variant
 from src.eval.layout import assert_layout, publish_layout, run_tags
+from src.eval.preamble import Preamble
 from src.infra.huggingface import hf_repo_id, push_run_dir
 from src.naming import today, check_distinct, eval_name, run_dir
 from src.utils import timestamp, write_run_meta
@@ -207,16 +208,21 @@ def _card_fields(name: str, cfg, command: str, *, experiment: str, models: str,
     because a pooled run has no single served target to describe itself from."""
     generation = cfg.get("generation")
     if generation is None:
-        # ODCV stores sampling and repeat settings at the config root, not `generation`.
+        # ODCV stores sampling and repeat settings at the config root, not `generation`;
+        # Petri keeps its auditor/judge/max_turns there too.
         generation = {key: cfg[key] for key in (
             "temperature", "top_p", "seed", "max_tokens", "passes", "concurrency",
             "scenario_timeout_s", "serving", "judges", "judge_workers",
-            "progress_judge", "progress_judges", "judge_budget", "smoke") if key in cfg}
+            "progress_judge", "progress_judges", "judge_budget", "smoke",
+            "auditor", "judge", "max_turns") if key in cfg}
     generation = OmegaConf.to_container(OmegaConf.create(generation), resolve=True)
+    constitution = cfg.get("constitution")
+    if constitution in (None, "", "none") and cfg.get("system_preamble_file"):
+        constitution = cfg.get("system_preamble_file")  # the card names what the model saw
     return {
         "experiment": experiment,
         "date_generated": today(),  # UTC, the clock the run's name is minted from
-        "constitution": str(cfg.get("constitution", "none")),
+        "constitution": str(constitution or "none"),
         "source_repo": f"teaching_claude_why_replication @ {source_revision or _git_sha()}",
         "models": models,
         "generation_config": json.dumps(generation),
@@ -458,6 +464,20 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
     # measured beyond the eval's key (the Hospital condition), and so part of every name
     # it publishes under. "" for the evals whose config is a kind.
     variant = run_variant(EVALS[args.name], cfg)
+    # A preamble changes what the model is shown, so the arm must name itself: a run with
+    # one published under the plain name is the 2026-10-13 silent-wrong-experiment class.
+    preamble = Preamble.from_cfg(cfg)
+    if preamble is not None:
+        facets = EVALS[args.name].name_facets
+        if "protocol" not in facets or not cfg.get("protocol"):
+            raise SystemExit(
+                f"{args.name}: system_preamble_file={preamble.file} is set but no protocol= facet "
+                f"names the arm (pass protocol=constitution"
+                + ("" if "protocol" in facets
+                   else f"; and declare name_facets=('protocol',) on EVALS[{args.name!r}]")
+                + ")")
+        print(f">>> system preamble: {preamble.file} (constitution {preamble.constitution_sha256[:12]}, "
+              f"composed {preamble.sha256[:12]}, {len(preamble.text):,} chars)", flush=True)
     run_fn = runner if runner is not None else resolve(args.name)
     cfg._run_eval = {"push": not args.no_push,
                      "runner": f"{run_fn.__module__}:{run_fn.__qualname__}"}
@@ -597,9 +617,12 @@ def _run(args: argparse.Namespace, unknown: list[str], release_pod=None, *, runn
                               f"{variant} {cfg.get('run_name') or spec.model_key} "
                               f"{datetime.now().strftime('%H%M%S')}"))
             out_dir.mkdir(parents=True, exist_ok=True)
+            if preamble is not None:
+                preamble.materialise(out_dir / "metadata")  # creates only metadata/
             launch_meta_path = write_run_meta(out_dir, OmegaConf.to_container(cfg, resolve=True),
                            extra={"command": command, "target": hf_path,
                                   "runner": cfg._run_eval.runner,
+                                  "system_preamble": preamble.record() if preamble is not None else None,
                                   # The two halves of the published name besides the date
                                   # and the eval's key, recorded so a run dir finished
                                   # after the fact is named exactly as this epilogue

@@ -3,6 +3,44 @@
 
 # GOTCHAS
 
+## A CUDA pin of one version finds no host once the fleet moves on (2026-10-30)
+
+`POST /pods` with `allowedCudaVersions: ["13.0"]` returned "There are no longer any instances
+available with the requested specifications" for H100 80GB, H100 NVL, H100 PCIe, H200 and B200
+in BOTH clouds while `GET /catalog/gpus` showed stock for all of them. The body was fine (an
+unpinned A100 created at once) and so was the capacity (an unpinned H200 created at once and
+reported `cudaVersion: "13.2"`). RunPod matches the host's reported CUDA version against the list
+EXACTLY, with no ">=", and the fleet had moved from 13.0 to 13.2. `src/infra/runpod.py`
+CUDA_VERSIONS now lists the CUDA 13 family (`13.0,13.1,13.2,13.3`) and every default reads it;
+when this error comes back for every GPU at once, check a probe pod's `cudaVersion` before
+assuming capacity. Probing is cheap: create with `start_script="sleep 600"`, read
+`GET /pods/<id>`, `terminate` (cents).
+
+## inspect-ai 0.3.268 -> 0.3.286 came with inspect-petri 3.1.0 (2026-10-30)
+
+`inspect-petri==3.1.0` is a project dependency (`uv run evals --name petri`; docs/petri.md) and
+moved `inspect-ai` for the whole repo: whistlebench_team, petri and the constitution audit's
+`PINNED` share the one pin. Traps met running Petri in-process:
+
+- **`eval_retry` rebuilds every role from the log**: it reuses the recorded target `base_url`
+  (so `resume_from=` refuses a port mismatch) and records NO credential, so the openai-api
+  provider reads `VLLM_API_KEY` from the env -- a `get_model(api_key=)` kwarg is lost on retry.
+- **A dead endpoint scores as `concerning = 1`** (the judge grades silence as good behaviour):
+  `scores.valid_score` drops a seed whose LAST target call errored.
+- **`_thread.interrupt_main()` from the watchdog thread does not raise out of `inspect_ai.eval`**:
+  inspect takes it as a cancel and RETURNS cancelled logs, so the runner checks `wd.tripped`
+  and `log.status` after the call; a `KeyboardInterrupt` handler alone never fires.
+
+## A system preamble is one protocol, not a flag (2026-10-30)
+
+`system_preamble_file=<constitution>` requires `protocol=` (`run_eval` refuses otherwise) and
+the eval must declare `name_facets=("protocol",)`: a preamble arm published under the plain
+name is the 2026-10-13 silent-wrong-experiment class. One composition, `src/eval/preamble.py`,
+recorded in every `run_meta.json["system_preamble"]`; compare its `sha256` before pooling. The
+vendored MASK/AM patches `from src.eval.preamble import ...` inside the harness subprocess,
+which works only under the repo venv's interpreter (`sys.executable`); another Python fails
+the import loudly, as intended.
+
 ## RunPod REST v1 is gone on 2026-11-15; everything is on REST v2 (2026-10-29)
 
 RunPod rate-limits every public API from 2026-10-27 (180/min, 3600/hr, 43200/day per
@@ -958,7 +996,7 @@ Fix: capture each trainer's `$!` and `wait $PID_0 $PID_1 ...` on those PIDs only
   published before 2026-09-05 was measured with earlier steps rendered as EMPTY think blocks.
   Fixed in the vendored loop (VENDORED_FROM.txt); verified on the live server with vLLM's
   `/tokenize` (a resent `reasoning` grows the prompt). Do not compare pre- and post-fix arms.
-- **Prefix caching on Qwen3.6 works and is now on for ODCV** (`serving.reuses_long_prefixes`),
+- **Prefix caching on Qwen3.6 works and is now on for ODCV** (`serving.enable_prefix_caching`),
   but at concurrency 8 on 2-7k contexts it removes ~80% of prefill compute without moving
   the pass wall clock: decode dominates. It is free (KV peaked at 16%), not a speedup here.
 

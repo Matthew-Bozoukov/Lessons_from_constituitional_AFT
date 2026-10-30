@@ -27,6 +27,12 @@ generate_responses.py
      column (None on a failed generation). Every scoring stage selects `generation(` columns
      by prefix, so scores are unchanged; the published rollouts now carry the full transcript.
      Runs before this patch have no trace: the parser had split it off and it was discarded.
+  7. System preamble (2026-10-13; rewired 2026-10-30): when SYSTEM_PREAMBLE_FILE names a
+     constitution, `_sys` = src.eval.preamble.prepend_from_env puts the composed preamble
+     (framing sentence + <constitution> tags + file) first in every system message, at all
+     three call sites; a non-scoring `served_system_prompt` column records what was sent.
+     Unset, requests and CSVs are byte-identical to upstream. (No entry existed for the
+     2026-10-13 version of this patch.)
 
 evaluate.py
   1. The judge is routed through this repo's OpenRouter contract (MASK_JUDGE_MODEL,

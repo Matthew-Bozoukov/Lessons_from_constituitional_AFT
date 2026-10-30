@@ -78,16 +78,17 @@ target defaults to nonstreaming Chat Completions with automatic tool choice,
 compatible with the Tinker shim's supported request shape.
 
 ```powershell
-uv run --frozen --with inspect-petri==3.0.11 --with inspect-ai==0.3.268 python -m src.eval.audits.petri.constitution_audit run --out PREPARED_DIR
+uv run --frozen python -m src.eval.audits.petri.constitution_audit run --out PREPARED_DIR
 
 # Reconcile retained logs after completion or interruption; no new model calls.
-uv run --frozen --with inspect-petri==3.0.11 --with inspect-ai==0.3.268 python -m src.eval.audits.petri.constitution_audit summarize --out PREPARED_DIR
+uv run --frozen python -m src.eval.audits.petri.constitution_audit summarize --out PREPARED_DIR
 ```
 
 This does not provision GPUs, launch Tinker, change other runs, or publish
 results. Serve Qwen with the maintained RunPod/vLLM workflow or start the
 maintained Tinker shim first. The legacy subscription provider is not used.
-The pinned Petri overlay leaves the root dependency lock untouched. Offline
+`inspect-petri` and `inspect-ai` are project dependencies since 2026-10-30 (pinned
+in `pyproject.toml`; `PINNED` in `constitution_audit.py` follows the lock). Offline
 tests construct the real pinned task and execute its target loop with synthetic
 outputs, checking tool history, prompt isolation and incomplete generations.
 

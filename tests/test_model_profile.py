@@ -59,6 +59,7 @@ def test_gpu_and_serving_facts_come_from_the_file():
     # (2026-09-22); every other eval, and no eval named, takes the family default.
     assert gpu_for("Qwen/Qwen3.6-27B", "inference") == "NVIDIA H100 80GB HBM3"
     assert gpu_for("Qwen/Qwen3.6-27B", "inference", "mask") == "NVIDIA H200"
+    assert gpu_for("Qwen/Qwen3.6-27B", "inference", "petri") == "NVIDIA H200"
     assert gpu_for("Qwen/Qwen3.6-27B", "inference", "odcv") == "NVIDIA H100 80GB HBM3"
     assert gpu_entry("qwen36", "inference", "mask") == ("NVIDIA H200", "inference[mask]")
     assert gpu_entry("qwen36", "inference", "odcv")[1] == "inference[default]"

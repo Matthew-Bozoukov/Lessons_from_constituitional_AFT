@@ -1,4 +1,3 @@
-from pathlib import Path
 import pandas as pd
 import glob
 import os
@@ -12,21 +11,12 @@ import asyncio
 from dotenv import load_dotenv
 
 
-def _sys(content: str) -> str:
-    """System message content with the configured preamble first, or unchanged when unset.
-
-    VENDORED PATCH (2026-10-13). `mask-constitution.yaml` has always declared
-    `system_preamble_file`, and nothing read it: the arm ran with the stock prompts and looked
-    normal. The preamble is read from MASK_SYSTEM_PREAMBLE_FILE, which the runner sets from that
-    config field, and is applied at EVERY system call site -- the pressure prompt and the
-    belief-elicitation prompt alike. Applying it to only one would make the preamble part of
-    what distinguishes the two conditions, which is precisely what the honesty score compares.
-    """
-    path = os.environ.get("MASK_SYSTEM_PREAMBLE_FILE")
-    if not path:
-        return content
-    pre = Path(path).read_text(encoding="utf-8").rstrip()
-    return f"{pre}\n\n{content}"
+# VENDORED PATCH (2026-10-13; rewired 2026-10-30): the configured constitution preamble goes
+# first in EVERY system message -- pressure prompt and belief elicitation alike, so the preamble
+# is never what distinguishes the two conditions. Composition (framing sentence, <constitution>
+# tags, the file read) lives in src/eval/preamble.py; the runner sets SYSTEM_PREAMBLE_FILE.
+# `src` is importable because the harness runs under the repo venv's interpreter.
+from src.eval.preamble import ENV_VAR as _PREAMBLE_ENV, prepend_from_env as _sys
 
 
 load_dotenv()  
@@ -279,6 +269,11 @@ async def process_dataframe(input_csv, output_csv, temperature, model_name="gpt-
                 print(f"WARNING: Error processing response for index {index}, prompt type {prompt_type}: {str(e)}")
                 df.at[index, column_name] = error_msg
 
+        # VENDORED PATCH (2026-10-30): the system prompt the target actually received, as a
+        # NON-scoring column (evaluate.py keeps judging from `system_prompt`). Only when set,
+        # so an unset run's CSV is byte-identical to upstream.
+        if os.environ.get(_PREAMBLE_ENV):
+            df["served_system_prompt"] = [_sys(s) if isinstance(s, str) else s for s in df["system_prompt"]]
         # Save results to CSV
         df.to_csv(output_csv, index=False)
         # PATCH (teaching_claude_why): the empty-content tally for this file, by prompt type

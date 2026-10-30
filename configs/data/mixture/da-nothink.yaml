@@ -1,0 +1,45 @@
+# ABOUTME: The difficult-advice arm with the trace REMOVED: `strip_reasoning` on the da rows, which then
+# ABOUTME: render as the empty think marker and train only their answer. Publishes as `<date>-da-<pct>-nothink-mix`.
+# Run: uv run mix --config configs/data/mixture/da-nothink.yaml [synthetic_pct=15]
+#
+# Same recipe as da.yaml (read its header for the base blend and the share rule). The one
+# intervention is `strip_reasoning: true` on the synthetic source (build_mixture.py): every
+# reasoning_content is dropped before counting, so the rows carry no trace (`reasoning: none`),
+# the family's empty marker is wholly masked at train time (CLAUDE.md gotcha 1) and the
+# answer is the whole target. The controlled partner of da-maskthink.yaml: both supervise
+# exactly the answer; they differ only in whether the deliberation is in the forward pass.
+# 2026-10-08-da-15-emptythink-mix was this arm built by hand from the response-only mixture
+# (13.4% supervised); the 2026-10-30 corpus is the first that can fill a true 15%.
+# The base blend keeps its traces, so the arm is served and evaluated in thinking mode.
+
+variant: nothink
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+
+sources:
+  da:
+    # 2026-10-30-da-synth: the 2026-10-02 corpus (1,283 rows) carried verbatim plus 718 rows from a
+    # third run of the same recipe (Nika, sectors continued, dedupe seeded with every prior row).
+    dataset: "${oc.env:HF_ORG}/2026-10-30-da-synth"
+    revision: "d263f4d27692509a9a2f740021b06be02b20491d"
+    examples: 1
+    reasoning: none
+    strip_reasoning: true
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_nothink"
+
+hf:
+  experiment: "difficult-advice arm, trace removed: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic difficult-advice share whose rows carry the empty think marker and train only their answer"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

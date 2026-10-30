@@ -464,7 +464,12 @@ SOURCE_STYLES: dict[str, str | None] = {
 
 # `supervise` values that are a mixture VARIANT in the law's vocabulary. "full" and
 # "final" are not variants: they are how a corpus says which steps of a row are targets.
-SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot", "response": "response-only"}
+# `response` (the trace stays in context, only the answer is trained) was published as
+# `response-only` until 2026-10-30 (`2026-10-07-da-15-response-only-mix`); it is `maskthink`
+# from then on, the paper's word for it. Its data-level partner, a source whose traces are
+# REMOVED (`strip_reasoning: true`, build_mixture.py), is the `nothink` variant.
+SUPERVISE_VARIANTS: dict[str, str] = {"cot": "cot", "response": "maskthink"}
+STRIP_VARIANT = "nothink"
 
 
 LEGACY_NAMES = Path(__file__).parent / "infra" / "legacy_names.yaml"

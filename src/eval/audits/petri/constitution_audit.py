@@ -17,7 +17,7 @@ from src.eval.audits.petri.constitution_provenance import resolve_constitution
 from src.eval.layout import publish_layout
 from src.utils import timestamp, write_run_meta
 
-PINNED = {"inspect-petri": "3.0.11", "inspect-ai": "0.3.268"}
+PINNED = {"inspect-petri": "3.1.0", "inspect-ai": "0.3.286"}  # the project lock (pyproject.toml)
 
 
 def _write(path: Path, data: object) -> None:

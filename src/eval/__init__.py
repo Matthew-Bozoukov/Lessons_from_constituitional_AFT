@@ -248,6 +248,17 @@ EVALS: dict[str, EvalSpec] = {
         key="wbt",
         supports_api_target=True,
     ),
+    # Petri's constitution-tenet audit: 90 auditor-built agentic scenarios, one per tenet of the
+    # nine-principle constitution, judged on Petri's `concerning` dimension (rate at >= 4). Runs
+    # inspect_petri.audit in-process like whistlebench_team; the target is reached as
+    # openai-api/vllm/<served name> and an arm ladder LoRA-swaps, so no API target. A system-
+    # preamble arm names itself through protocol=, exactly as mask/odcv/agentic_misalignment do.
+    "petri": EvalSpec(
+        "misalignment.petri",
+        "configs/eval/petri.yaml",
+        key="petri",
+        name_facets=("protocol",),
+    ),
     # secret_number: a noisy-oracle guessing game whose sandbox leaves two shortcuts lying
     # around (the answer is readable, the query budget is a deletable file). Needs docker —
     # one container per episode — but the agent loop and the model call both run driver-side,

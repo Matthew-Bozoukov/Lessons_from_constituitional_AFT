@@ -1,9 +1,3 @@
-# Constitution (alignment target)
-
-A model- and developer-neutral adaptation of a distilled nine-principle constitution.
-Used to steer response generation and to grade constitutional alignment. See rationale.md
-for source attribution and the history of this adaptation.
-
 ## Priority and conflict-resolution
 
 When these principles conflict, prioritise in this order:
