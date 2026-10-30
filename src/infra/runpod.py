@@ -57,6 +57,13 @@ from src.infra.endpoints.vllm import POD_VENV, pin_prefix, ssh_argv
 from src.model_profile import gpu_entry, gpu_for
 
 REST = "https://api.runpod.io/v2"
+# The host CUDA versions a pod may be scheduled on. RunPod matches the host's REPORTED version
+# against this list exactly (no ">="), and the fleet moves: on 2026-10-30 every available H100
+# and H200 reported 13.2, so the old pin of "13.0" alone found no host in either cloud while
+# the catalogue showed stock ("no longer any instances available"). Everything here needs the
+# CUDA 13 family (torch cu130: driver >= 580), so the list is that family; extend it when
+# hosts move on, and keep "" for "no constraint".
+CUDA_VERSIONS = "13.0,13.1,13.2,13.3"
 IMAGE = "runpod/pytorch:0.7.0-dev-cu1281-torch271-ubuntu2204"
 GPU = "NVIDIA H100 80GB HBM3"
 # Pods this repo's chat tool provisions carry this prefix, which is the ONLY thing the
@@ -237,7 +244,7 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
+    cuda: str = CUDA_VERSIONS   # "" = no constraint; every stack here needs CUDA 13 (see up)
     data_centers: str = ""      # comma-separated RunPod data-centre ids (EU-SE-1); "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
@@ -516,7 +523,7 @@ def serve_vllm(
     gpu: str = GPU,
     disk_gb: int = 200,
     cloud: str = "SECURE",
-    cuda: str = "13.0",
+    cuda: str = CUDA_VERSIONS,
     reasoning_parser: str | None = None,
     tool_call_parser: str | None = None,
     pubkey_path: str = "~/.ssh/id_ed25519.pub",
@@ -532,9 +539,11 @@ def serve_vllm(
     applies them, it does not choose them. Bills from this moment until `terminate`.
 
     Args:
-        cuda: Comma-separated CUDA versions the host driver must satisfy. vLLM pulls torch
-            built for CUDA 13, which needs driver >= 580; an older host dies at `_cuda_init`
-            with "NVIDIA driver too old". Constrain scheduling to CUDA-13 hosts.
+        cuda: Comma-separated CUDA versions the host driver must satisfy (CUDA_VERSIONS: the
+            CUDA 13 family). vLLM pulls torch built for CUDA 13, which needs driver >= 580; an
+            older host dies at `_cuda_init` with "NVIDIA driver too old". RunPod matches the
+            host's reported version against the list exactly, so one version alone finds no
+            host once the fleet has moved past it (2026-10-30).
         max_num_seqs: Qwen3.6's hybrid Mamba arch allocates one cache block per decode
             sequence and REFUSES TO START above the block count (vLLM's default dies with
             "exceeds available Mamba cache blocks"). 32 is the verified value in
@@ -1280,7 +1289,7 @@ def provision_eval_pod(targets: str | Sequence[str], *, name: str, gpu: str | No
                        image: str = IMAGE, data_centers: str = "", pubkey_path: str = "",
                        identity: str = "", eval: str | None = None,
                        revisions: dict[str, str] | None = None, terminate_at: str = "",
-                       cuda_versions: str = "13.0",
+                       cuda_versions: str = CUDA_VERSIONS,
                        boot_deadline: float | None = None,
                        env: dict[str, str] | None = None,
                        on_provisioned: Callable[[str], None] | None = None) -> Pod:
@@ -1487,7 +1496,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
         # CPU after a clean-looking boot (pod n41qb3lmav2cjz, driver 570 / CUDA 12.8,
         # 2026-09-05 — docs/GOTCHAS.md). Until then training pods ran unconstrained.
         ProvisionSpec(gpu=gpu, count=count, disk_gb=disk_gb, cloud=cloud, image=image,
-                      cuda="13.0", data_centers=data_centers,
+                      cuda=CUDA_VERSIONS, data_centers=data_centers,
                       terminate_at=datetime.fromtimestamp(deadline, timezone.utc).isoformat()),
         name=name,
         start_script=script,

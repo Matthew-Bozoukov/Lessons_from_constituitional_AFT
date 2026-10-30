@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## A CUDA pin of one version finds no host once the fleet moves on (2026-10-30)
+
+`POST /pods` with `allowedCudaVersions: ["13.0"]` returned "There are no longer any instances
+available with the requested specifications" for H100 80GB, H100 NVL, H100 PCIe, H200 and B200
+in BOTH clouds while `GET /catalog/gpus` showed stock for all of them. The body was fine (an
+unpinned A100 created at once) and so was the capacity (an unpinned H200 created at once and
+reported `cudaVersion: "13.2"`). RunPod matches the host's reported CUDA version against the list
+EXACTLY, with no ">=", and the fleet had moved from 13.0 to 13.2. `src/infra/runpod.py`
+CUDA_VERSIONS now lists the CUDA 13 family (`13.0,13.1,13.2,13.3`) and every default reads it;
+when this error comes back for every GPU at once, check a probe pod's `cudaVersion` before
+assuming capacity. Probing is cheap: create with `start_script="sleep 600"`, read
+`GET /pods/<id>`, `terminate` (cents).
+
 ## RunPod REST v1 is gone on 2026-11-15; everything is on REST v2 (2026-10-29)
 
 RunPod rate-limits every public API from 2026-10-27 (180/min, 3600/hr, 43200/day per

@@ -253,7 +253,7 @@ def test_an_eval_pod_takes_the_inference_card_and_installs_vllm_without_the_repo
 
     assert seen["gpu"] == gpu_for("Qwen/Qwen3.6-27B", "inference", "odcv")
     # vLLM from PyPI brings a CUDA-13 torch; an older host driver dies at _cuda_init.
-    assert seen["cuda"] == "13.0"
+    assert seen["cuda"] == pod.CUDA_VERSIONS and seen["cuda"].startswith("13.0,")  # the CUDA 13 FAMILY (2026-10-30)
     script = seen["script"]
     assert f"uv venv {vllm.POD_VENV}" in script
     assert "hf download Qwen/Qwen3.6-27B" in script
