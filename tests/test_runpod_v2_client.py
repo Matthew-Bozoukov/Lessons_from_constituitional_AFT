@@ -96,7 +96,9 @@ def test_provision_sends_nested_v2_body(api, tmp_path):
     method, url, kw = api.calls[0]
     body = kw["json"]
     assert (method, url) == ("POST", "https://api.runpod.io/v2/pods")
-    assert body["gpu"] == {"id": "NVIDIA H200", "count": 2, "allowedCudaVersions": ["13.0"]}
+    # A floor, never an exact set: v2 matches allowedCudaVersions exactly, and the H200s with
+    # stock on 2026-10-30 all reported 13.2.
+    assert body["gpu"] == {"id": "NVIDIA H200", "count": 2, "minCudaVersion": "13.0"}
     assert body["image"] == runpod.IMAGE and body["disk"] == 150 and body["cloud"] == "SECURE"
     assert body["cmd"] == ["bash", "-lc", "echo hi"]
     assert body["env"]["A"] == "1" and "dataCenterIds" not in body
@@ -111,7 +113,7 @@ def test_provision_passes_data_centre_ids_through(api, tmp_path):
     assert len(api.calls) == 1
     body = api.calls[0][2]["json"]
     assert body["dataCenterIds"] == ["EU-SE-1", "EU-NL-1"]
-    assert "allowedCudaVersions" not in body["gpu"]
+    assert "allowedCudaVersions" not in body["gpu"] and "minCudaVersion" not in body["gpu"]
 
 
 def test_scheduled_create_makes_the_pod_delete_itself(api, tmp_path):
@@ -148,3 +150,11 @@ def test_account_spend_reads_billing_and_running_burn(api):
     assert runpod.account_spend() == {"spend_today_usd": 12.35, "spend_per_hr_usd": 2.5, "running_pods": 1}
     assert api.calls[1][1].endswith("/billing")
     assert api.calls[1][2]["params"] == {"lastN": 1, "bucketSize": "day"}
+
+
+def test_a_cuda_list_is_read_as_its_floor(api, tmp_path):
+    api.queue.append(response(201, {"id": "pod3"}))
+    spec = runpod.ProvisionSpec(gpu="NVIDIA H200", cuda="13.2,12.10,13.0",
+                                pubkey_path=str(tmp_path / "missing.pub"))
+    runpod.provision_runpod(spec, name="t", start_script="true")
+    assert api.calls[0][2]["json"]["gpu"]["minCudaVersion"] == "12.10"

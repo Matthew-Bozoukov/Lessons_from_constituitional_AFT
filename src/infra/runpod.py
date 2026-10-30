@@ -256,7 +256,7 @@ class ProvisionSpec:
     count: int = 1
     cloud: str = "SECURE"
     disk_gb: int = 200
-    cuda: str = "13.0"          # "" = no constraint; every stack here needs CUDA 13 (see up)
+    cuda: str = "13.0"          # the host's lowest acceptable CUDA (a floor); "" = no constraint
     data_centers: str = ""      # comma-separated RunPod data-centre ids (EU-SE-1); "" = anywhere
     image: str = IMAGE
     max_hours: float = 6.0
@@ -315,12 +315,14 @@ def provision_runpod(
         "name": name,
         "image": spec.image,
         "cloud": spec.cloud,
-        # Both constraints are omitted entirely when unset: an explicit empty
-        # allowedCudaVersions means "no constraint" but a CUDA pin that only the vLLM image
-        # needs would leave a training pod unschedulable; and v2 places by data-centre id
+        # Both constraints are omitted entirely when unset; v2 places by data-centre id
         # (`EU-SE-1`, `US-CA-2`; `GET /catalog/datacenters` lists them), never by country.
+        # CUDA is a FLOOR (`minCudaVersion`), never v2's `allowedCudaVersions`, which matches
+        # EXACTLY: 2026-10-30 every H200 with stock reported 13.2, so `["13.0"]` answered "no
+        # instances available" in every data centre and cloud while an unfiltered create got
+        # one at once. A list given here is read as its lowest version.
         "gpu": {"id": spec.gpu, "count": spec.count,
-                **({"allowedCudaVersions": cuda} if cuda else {})},
+                **({"minCudaVersion": min(cuda, key=_version)} if cuda else {})},
         "disk": spec.disk_gb,
         "ports": list(ports),
         # The container command: it REPLACES the image's own start script (see `bootstrap_script`).
@@ -329,6 +331,11 @@ def provision_runpod(
         **({"dataCenterIds": data_centers} if data_centers else {}),
     })
     return str(pod["id"])
+
+
+def _version(text: str) -> tuple[int, ...]:
+    """`13.2` -> (13, 2), so CUDA versions compare numerically."""
+    return tuple(int(p) for p in str(text).split("."))
 
 
 def self_destruct_prefix(deadline_epoch: float) -> str:
