@@ -1,3 +1,13 @@
+## 2026-10-30: The two CoT-ablation 15% arms trained on the true-15% mixes
+
+Hypothesis: the masked-CoT and no-think arms in Fig. 3 were under-dosed (14.5% and 13.4%, the latter hand-built); retrain both on the 2026-10-30 mixes so every trace-ablation bar is a 15% arm on the same base.
+
+Method: standard recipe (`configs/train/sft.yaml`, Qwen3.6-27B, seed 0), one 2xH200 pod each (`uv run runpod up --name jamie-<arm> --train configs/train/sft.yaml --model qwen36 --count 2 --push_env`, then `torchrun --nproc_per_node=2 scripts/train/train_lora.py --config configs/train/sft.yaml model=qwen36 data_repo=<mix> seed=0`), 183 steps, 1 epoch, ~27 min each. Pods ran the fix branch jamie/runpod-cuda-family @ 18deee80 (origin/main plus the CUDA-family pin); placement needed a retry loop over SECURE/COMMUNITY (H200 stock LOW in two data centres), six refused POSTs created nothing.
+
+Result: `dougalldeepmind/2026-10-30-qwen36-0-da-15-maskthink` @ 02f8004d (train_loss 0.657; census 3,216 real / 0 empty; `supervise` {full: 1568, response: 1353}; 4,999,997 of 7,517,160 tokens supervised) and `dougalldeepmind/2026-10-30-qwen36-0-da-15-nothink` @ fb798208 (train_loss 0.709; census 1,863 real / 1,354 empty / 1,090 absent; no `supervise` column; 4,999,925 of 6,703,528 supervised). The census delta (+1,354 empty, -1,353 real) is exactly the da rows changing bucket; both stamps `thinking: true`. RunPod spend for both: about $7.55. Both pods terminated; `runpod pods` empty.
+
+Next: ODCV, MASK and agentic misalignment on both against `2026-10-05-qwen36-0-da-15` and the plain control; replace the Fig. 3 empty-think MASK literal.
+
 ## 2026-10-30: True 15% masked-CoT and no-think da mixtures from the 2,001-row corpus; `strip_reasoning` enters the mixer
 
 Hypothesis: the trace-ablation arms were under-dosed. `2026-10-07-da-15-response-only-mix` (trace in context, answer trained) used every one of the 2026-10-02 corpus's 1,283 rows and reached 14.48% of supervised tokens, and `2026-10-08-da-15-emptythink-mix` was derived from it by hand (13.4% on the first 400 rows, no mixer stats, no run_meta). An answer-only row supervises about half the tokens of a traced one, so a true 15% needs about 1,350 rows; Nika's `2026-10-30-da-synth` (the 10-02 corpus plus 718 new rows, 2,001 in all) is the first that can fill it.
