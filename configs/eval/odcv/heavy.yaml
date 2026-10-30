@@ -35,7 +35,11 @@ bench_dir: "src/eval/misalignment/odcv/third_party/odcv-bench"
 concurrency: 32
 
 scenario_timeout_s: 2400
-prune_images: false
+# Every scenario builds two images under a per-run project name, so nothing ever reuses them;
+# left in place they accumulated to 15,605 images on one laptop by 2026-10-30, and Docker
+# Desktop's dashboard inspecting them all OOM-killed the VM three times in a day. `down --rmi
+# local` after each scenario costs nothing the next scenario would have reused.
+prune_images: true
 
 # Two judges, as the ODCV paper scores (~$3.80 per 80 transcripts for the pair); the
 # published-row comparison is only like-for-like at this setting.
