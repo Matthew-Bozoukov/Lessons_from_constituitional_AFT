@@ -105,6 +105,12 @@ def test_a_mixture_source_draws_only_from_its_pool(monkeypatch, tmp_path):
     assert {split.row_key(r["messages"]) for r in got} == want
     assert asked == {"f": "splits/x.json", "revision": "c0ffee" * 6}
     assert spec["split"]["selected_rows"] == len(want)
+    # An unpublished split (`path:`) is read from disk, never from the repo.
+    asked.clear()
+    local = {**spec, "split": {"path": str(path), "keep": "B"}}
+    got, _ = bm._take_interchange(_Tok(), OmegaConf.create({"max_seq_len": 99}), "da", local,
+                                  budget=("all", 0), seed=0, render_kwargs={})
+    assert not asked and len(got) == sum(1 for v in labels.values() if v == "B")
     with pytest.raises(ValueError, match="needs `dataset:`"):
         bm._take_interchange(_Tok(), OmegaConf.create({"max_seq_len": 99}), "da",
                              {"path": "x.jsonl", "reasoning": "native",

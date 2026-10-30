@@ -264,7 +264,7 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
                 spec["dataset"], str(split["file"]), repo_type="dataset", revision=info.sha))
             pool = select(pool, labels, str(split["keep"]), name=name)
             spec["split"] = {**split, "selected_rows": len(pool), "meta": meta}
-            print(f"{name}: pool {split['keep']!r} of {split['file']} — {len(pool)} rows")
+            print(f"{name}: pool {split['keep']!r} of {local or split['file']} — {len(pool)} rows")
     elif spec.get("split"):
         raise ValueError(f"source {name!r}: `split:` selects a pool of a published corpus; "
                          "it needs `dataset:` (the labels live in that repo)")
