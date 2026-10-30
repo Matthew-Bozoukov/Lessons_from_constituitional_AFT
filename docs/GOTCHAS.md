@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
+
+The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22
+or any high port times out, so `runpod up`'s `_wait_for_ssh`, `--push_env` (which writes the
+pod's .env over SSH, from a local `.env` file the session does not have either: its secrets
+are environment variables) and the printed `ssh -p ... 'uv run train ...'` launch all fail
+there. `runpod up --train <cfg> --model <key> --push_env --run "uv run train ..."` needs none
+of it: the pod starts the command itself once READY, logs to
+`https://<pod>-8080.proxy.runpod.net/train.log` (HTTPS, readable through the proxy), echoes
+`RUN_EXIT <code>` in the boot log, and deletes itself a minute after a 0; HF_TOKEN/HF_ORG
+reach it as pod environment. `runpod down --pod <id>` is still the teardown of record. The
+pod still clones from origin, so a session that cannot `git push` cannot train either.
+
 ## RunPod REST v1 is gone on 2026-11-15; everything is on REST v2 (2026-10-29)
 
 RunPod rate-limits every public API from 2026-10-27 (180/min, 3600/hr, 43200/day per
