@@ -29,6 +29,15 @@ def test_alias_resolves_live_pod(lookup):
     assert runpod.pod_for_server("my-alias")["id"] == "owned"
 
 
+def test_a_listed_pod_without_a_direct_endpoint_is_resolved_from_its_detail(lookup, monkeypatch):
+    # REST v2's GET /pods lists `ssh.direct: null`; only GET /pods/{id} carries the endpoint
+    # (2026-10-30: --terminate-pod matched nothing against a READY pod).
+    listed = lookup[0]; detail = pod()
+    listed["ssh"] = {"direct": None, "proxy": {"host": "ssh.runpod.io"}}
+    monkeypatch.setattr(runpod, "call", lambda method, path, **kw: detail if path == "/pods/owned" else pytest.fail(path))
+    assert runpod.pod_for_server("my-alias")["id"] == "owned"
+
+
 @pytest.mark.parametrize("case", ["missing", "ambiguous", "unowned", "port", "deadline"])
 def test_lookup_refuses_unsafe_targets(lookup, case):
     if case == "missing": lookup.clear()
