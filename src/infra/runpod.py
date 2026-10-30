@@ -82,7 +82,13 @@ def pod_for_server(server: str) -> dict:
     def resolve(host: str) -> set[str]:
         return {item[4][0] for item in socket.getaddrinfo(host, None)}
     addresses = resolve(config["hostname"])
-    matches = [p for p in active_pods() if (endpoint := ssh_endpoint(p)) is not None
+    def endpoint_of(pod: dict) -> tuple[str, int] | None:
+        # REST v2's `GET /pods` lists every pod with `ssh.direct: null`; only `GET /pods/{id}`
+        # carries the direct endpoint (2026-10-30: `--terminate-pod` matched nothing and the
+        # eval refused to start, with the pod sitting READY). One detail call per candidate.
+        return ssh_endpoint(pod) or ssh_endpoint(call("GET", f"/pods/{pod['id']}"))
+
+    matches = [p for p in active_pods() if (endpoint := endpoint_of(p)) is not None
                and str(endpoint[1]) == config["port"] and resolve(endpoint[0]) & addresses]
     if len(matches) != 1:
         raise ValueError(f"--terminate-pod requires exactly one live pod matching {server}")
