@@ -1,3 +1,15 @@
+## 2026-10-30: Three delib-sonnet-15 arms whose prompts are subsets of the three da-15 mixtures' prompts
+
+Hypothesis: the deliberative-alignment comparison should hold the prompts fixed. The 2026-10-08 delib-sonnet-15 arm shared 3 of its 281 prompts with da-15 #1's 650, so any difference between the arms mixed the trace intervention with a different prompt draw. With da-15 #1 (pool A, `2026-10-05-da-15-mix`) and Nika's B and C mixtures (`2026-10-30-da-15-{b,c}-mix`, disjoint pools of the 2,001-row corpus) there are three da-15 arms to pair.
+
+Method: `configs/data/synth/delib-sonnet.yaml` now reads the 2026-10-30 corpus and takes its prompts through `source.rows_from` (PR #139): the da rows of ONE published da-15 mixture, matched back to the corpus by prompt context (650/653/641 matched 1:1 for A/B/C), then 40 a trait drawn with seed 0 = 360 prompts, headroom over the ~283 rows a 15% share takes. Same generation prompt, model (Sonnet 5), best-of-2 and judge threshold as the 2026-10-04 corpus; constitution.md without its repo note. Three runs (`name_suffix=a|b|c`), 24 workers after the 64-worker launches aborted on HTTP 5xx that the OpenRouter client did not retry (fixed, PR #139) and on an OpenRouter credit exhaustion (402; topped up). Mixtures built from Nika's branch (`name_suffix` on the mixer, `2026-10-30-delib-sonnet-15-{a,b,c}-mix`, 283 rows each, 15.1% supervised); adapters trained from the same branch because main's naming law refuses a one-letter pool suffix in a mix subject (one more reason to merge nika/da-synth-45). Standard recipe, 2xH200, 116 steps.
+
+Result: corpora `2026-10-30-delib-sonnet-{a,b,c}-synth` (359/359/360 survivors of 360; traces cite the constitution at the 2026-10-04 rate: "principle" in 91-94% of traces, a numbered principle in 67-71% (was 85%), "constitution" in 45-47%; replies name it in 0-1%). Every mixture's 283 prompts verified to be prompts of its da-15 counterpart. Adapters: `2026-10-30-qwen36-0-delib-sonnet-15-a` @ e1040aea (train_loss 0.679), `-b` @ 89d16587 (0.677), `-c` @ db860a9d (loss not captured); mask census 2,146 real / 0 empty each, supervise {full 1568, final 283}. Spend: ~$130 of Sonnet for the three corpora, ~$16 of RunPod for the three trainings.
+
+Also today: the two CoT-ablation arms (`da-15-maskthink`, `da-15-nothink`) under eval. Agentic misalignment: maskthink 18.9% [13.4, 23.7] (blackmail 35.0, leaking 1.7, murder 20.0), nothink 5.6% [1.0, 8.6] (11.7, 1.7, 3.3); `2026-10-30-am-qwen36-0-da-15-{maskthink,nothink}`. MASK (3 passes) and ODCV lite (concurrency 16) running.
+
+Next: ODCV, MASK and agentic misalignment on the three delib arms against their da-15 partners and the plain control, three seeds a cell; MASK on the three delib arms is the interval the paper lacks.
+
 ## 2026-10-30: The two CoT-ablation 15% arms trained on the true-15% mixes
 
 Hypothesis: the masked-CoT and no-think arms in Fig. 3 were under-dosed (14.5% and 13.4%, the latter hand-built); retrain both on the 2026-10-30 mixes so every trace-ablation bar is a 15% arm on the same base.
