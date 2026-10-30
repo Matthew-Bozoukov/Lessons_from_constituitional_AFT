@@ -426,7 +426,7 @@ def test_a_run_pod_runs_its_command_after_ready_and_deletes_itself_only_on_succe
     assert ready < script.index("set +e") < script.index("uv run train --config") \
         < script.index('echo "RUN_EXIT $code"') < script.index("sleep infinity")
     assert "> /workspace/train.log 2>&1" in script
-    assert 'if [ "$code" = 0 ]; then (sleep 60; while :; do curl -sf -X DELETE' in script
+    assert 'if [ "$code" = 0 ]; then (sleep 600; while :; do curl -sf -X DELETE' in script
     with pytest.raises(AssertionError, match="needs the clone"):
         pod._bootstrap(None, (["org/m"], None), then="uv run train")
 

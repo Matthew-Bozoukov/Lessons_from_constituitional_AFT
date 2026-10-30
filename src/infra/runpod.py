@@ -1130,7 +1130,7 @@ echo RUN_START
 code=$?
 echo "RUN_EXIT $code"
 set -e
-if [ "$code" = 0 ]; then (sleep 60; {_DELETE_SELF}) >/dev/null 2>&1 </dev/null & fi"""
+if [ "$code" = 0 ]; then (sleep 600; {_DELETE_SELF}) >/dev/null 2>&1 </dev/null & fi"""
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
@@ -1475,7 +1475,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
             --config ... seed=0`), for a driver with no SSH to the pod (a cloud session
             whose network carries HTTPS only). Its log is
             `https://<pod>-8080.proxy.runpod.net/train.log`, it ends with `RUN_EXIT <code>`,
-            and on 0 the pod deletes itself a minute later; `runpod down` is still the
+            and on 0 the pod deletes itself ten minutes later; `runpod down` is still the
             teardown of record.
 
     Returns:
@@ -1616,7 +1616,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
             f"running:   {run}",
             "",
             "The pod runs that itself; it ends `RUN_EXIT <code>` in the boot log and deletes",
-            "itself a minute after a 0. A failure stays up for diagnosis until the "
+            "itself ten minutes after a 0. A failure stays up for diagnosis until the "
             f"{max_hours}h cap.",
             "Teardown of record either way:",
             f"  uv run runpod down --pod {pod_id}",

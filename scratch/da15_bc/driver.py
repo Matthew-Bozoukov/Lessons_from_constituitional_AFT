@@ -469,6 +469,9 @@ def watch(poll_s: int = 300) -> None:
             print(f"[{time.strftime('%H:%M:%S')}] {pool} {pod_id}: "
                   f"{'exit ' + m.group(1) if m else 'running'} — {tail}", flush=True)
             if m:
+                # The whole log, before anything tears the pod down: it is the only record of
+                # the run's loss (the adapter carries its config, not its curve).
+                (OUT / f"train_{pool}.log").write_text(log)
                 url = re.findall(r"pushed adapter .* to (\S+)", log)
                 done[pool] = url[-1] if url and m.group(1) == "0" else f"FAILED exit {m.group(1)}"
                 _save(trained=done)

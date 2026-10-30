@@ -12,7 +12,7 @@ are environment variables) and the printed `ssh -p ... 'uv run train ...'` launc
 there. `runpod up --train <cfg> --model <key> --push_env --run "uv run train ..."` needs none
 of it: the pod starts the command itself once READY, logs to
 `https://<pod>-8080.proxy.runpod.net/train.log` (HTTPS, readable through the proxy), echoes
-`RUN_EXIT <code>` in the boot log, and deletes itself a minute after a 0; HF_TOKEN/HF_ORG
+`RUN_EXIT <code>` in the boot log, and deletes itself ten minutes after a 0; HF_TOKEN/HF_ORG
 reach it as pod environment. `runpod down --pod <id>` is still the teardown of record. The
 pod still clones from origin, so a session that cannot `git push` cannot train either.
 
