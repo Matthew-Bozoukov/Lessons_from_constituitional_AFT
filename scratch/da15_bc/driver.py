@@ -407,29 +407,39 @@ def _pod_name(pool: str) -> str:
     return f"nika-da15{POOLS[pool]}"
 
 
-def train(go: bool = False) -> None:
-    """Two pods in parallel, 1xH200 each, each running its own `uv run train` (no SSH)."""
+def train(go: bool = False, pools: str = "B,C", data_centers: str = "", cloud: str = "SECURE") -> None:
+    """Pods in parallel, 1xH200 each, each running its own `uv run train` (no SSH).
+
+    `pools` relaunches only the named ones (a pod that found no capacity); `data_centers`
+    and `cloud` place them (RunPod's H200 stock is thin: 2026-10-30 it was LOW in one data
+    centre, EUR-IS-4, and a placement-free create found none).
+    """
     st = _state()
     cmds = {}
-    for pool in POOLS:
+    for pool in [p.strip().upper() for p in str(pools).split(",")]:
         m = st.get(f"mix_{pool}")
         assert m, f"pool {pool}'s mixture is not published: run `mix {pool} --go`"
         run = f"uv run train --config {TRAIN} model=qwen36 data_repo={m['repo']} seed=0"
         cmds[pool] = ["uv", "run", "runpod", "up", "--name", _pod_name(pool), "--train", TRAIN,
-                      "--model", "qwen36", "--count", "1", "--push_env", "--run", run]
-    _gate(go, "renting two H200 pods", " &\n  ".join(" ".join(c[:-1]) + f' "{c[-1]}"' for c in cmds.values()))
+                      "--model", "qwen36", "--count", "1", "--push_env", "--cloud", cloud,
+                      *(["--data_centers", data_centers] if data_centers else []), "--run", run]
+    _gate(go, "renting H200 pods", " &\n  ".join(" ".join(c[:-1]) + f' "{c[-1]}"' for c in cmds.values()))
     procs = {p: subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
              for p, c in cmds.items()}
-    pods = {}
+    pods = dict(st.get("pods") or {})
+    failed = []
     for pool, proc in procs.items():
         out = proc.communicate()[0]
         print(f"--- {pool}\n{out}")
         m = re.search(r"pod (\w+) — BILLING NOW", out) or re.search(r"^pod:\s+(\w+)", out, re.M)
         if m:
             pods[pool] = m.group(1)
+        if proc.returncode or not m:
+            failed.append(pool)
     _save(pods=pods)
-    if len(pods) != len(POOLS) or any(p.returncode for p in procs.values()):
-        raise SystemExit(f"=== STOP: a pod did not come up cleanly ({pods}); `teardown` ends ours")
+    if failed:
+        raise SystemExit(f"=== STOP: {failed} did not come up cleanly (pods so far {pods}); "
+                         "a pod that was created is in state.json and `teardown` ends it")
 
 
 def watch(poll_s: int = 300) -> None:
