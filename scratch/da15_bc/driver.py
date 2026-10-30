@@ -416,7 +416,8 @@ def train(go: bool = False, pools: str = "B,C", data_centers: str = "", cloud: s
     """
     st = _state()
     cmds = {}
-    for pool in [p.strip().upper() for p in str(pools).split(",")]:
+    names = pools if isinstance(pools, (list, tuple)) else str(pools).split(",")   # Fire hands `B,C` over as a tuple
+    for pool in [str(p).strip().upper() for p in names]:
         m = st.get(f"mix_{pool}")
         assert m, f"pool {pool}'s mixture is not published: run `mix {pool} --go`"
         run = f"uv run train --config {TRAIN} model=qwen36 data_repo={m['repo']} seed=0"
