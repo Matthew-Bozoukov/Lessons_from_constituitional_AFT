@@ -257,8 +257,11 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
             from src.infra.huggingface import hf_download
 
             split = dict(spec["split"])
-            labels, meta = load_split(hf_download(spec["dataset"], str(split["file"]),
-                                                  repo_type="dataset", revision=info.sha))
+            # `path:` is a split file not yet published, for a build that is checked
+            # before anything is pushed; main() refuses to publish a mixture made from one.
+            local = split.get("path")
+            labels, meta = load_split(local or hf_download(
+                spec["dataset"], str(split["file"]), repo_type="dataset", revision=info.sha))
             pool = select(pool, labels, str(split["keep"]), name=name)
             spec["split"] = {**split, "selected_rows": len(pool), "meta": meta}
             print(f"{name}: pool {split['keep']!r} of {split['file']} — {len(pool)} rows")
@@ -1125,6 +1128,14 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # `name_suffix=b` (a launch argument, never a config field) tells apart two mixtures of
     # one recipe made on one day, and THE NAME LOCK refuses to push into one that exists.
     repo = named(str(cfg.get("name_suffix") or ""))
+    unpublished = sorted(n for n, s in sources.items()
+                         if isinstance(s, dict) and isinstance(s.get("split"), dict)
+                         and s["split"].get("path"))
+    if unpublished and hf_cfg is not None and not smoke:
+        raise ValueError(
+            f"source(s) {unpublished} select a pool from a LOCAL split file: a published "
+            "mixture must name the split published with its corpus (`split.file`), or "
+            "nobody can rebuild it. Build with `hf=null` to check it, then publish the split.")
     if hf_cfg is not None and not smoke:
         from src.infra.huggingface import claim_repo, hf_repo_id
 

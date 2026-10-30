@@ -415,3 +415,47 @@ def test_wait_bootstrapped_matches_the_given_marker_not_any_ready(monkeypatch):
     monkeypatch.setattr(pod.requests, "get", lambda *a, **kw: SimpleNamespace(text=next(logs)))
     monkeypatch.setattr(pod.time, "sleep", lambda s: None)
     assert pod.wait_bootstrapped("p", timeout_s=60, poll_s=0, marker="READY abc1234def")
+
+
+def test_a_run_pod_runs_its_command_after_ready_and_deletes_itself_only_on_success():
+    """`up --run`: the pod starts the train command itself, for a driver with no SSH."""
+    script = pod._bootstrap(("https://github.com/o/r.git", "main", "abc1234"), build_kernels=True,
+                            then="uv run train --config configs/train/sft.yaml seed=0")
+    pod._check_bash(script)
+    ready = script.index("echo READY abc1234")
+    assert ready < script.index("set +e") < script.index("uv run train --config") \
+        < script.index('echo "RUN_EXIT $code"') < script.index("sleep infinity")
+    assert "> /workspace/train.log 2>&1" in script
+    assert 'if [ "$code" = 0 ]; then (sleep 60; while :; do curl -sf -X DELETE' in script
+    with pytest.raises(AssertionError, match="needs the clone"):
+        pod._bootstrap(None, (["org/m"], None), then="uv run train")
+
+
+def test_up_run_needs_no_ssh_and_hands_the_pod_its_hf_env(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_provision(spec, *, name, start_script, ports=(), env=None):
+        seen.update(script=start_script, env=dict(env or {}))
+        return "podid"
+
+    def no_ssh(*_a, **_k):
+        raise AssertionError("a --run pod must not be reached over SSH")
+
+    monkeypatch.setattr(pod, "provision_runpod", fake_provision)
+    monkeypatch.setattr(pod, "_commit_to_run", lambda branch: ("nika/x", "abc1234"))
+    monkeypatch.setattr(pod, "_clone_url", lambda: "https://github.com/o/r.git")
+    monkeypatch.setattr(pod, "_ssh_endpoint", no_ssh)
+    monkeypatch.setattr(pod, "_wait_for_ssh", no_ssh)
+    monkeypatch.setattr(pod, "wait_bootstrapped", lambda *a, **kw: True)
+    monkeypatch.setenv("HF_TOKEN", "hf_test_value")
+    monkeypatch.setenv("HF_ORG", "org")
+    recipe = tmp_path / "sft.yaml"
+    recipe.write_text("lora: {r: 64}\n")
+    cmd = "uv run train --config configs/train/sft.yaml model=qwen36 data_repo=org/m seed=0"
+    out = pod.up(name="nika-t", train=str(recipe), model="qwen36", push_env=True, run=cmd)
+    assert cmd in seen["script"] and "RUN_EXIT" in seen["script"]
+    assert seen["env"]["HF_TOKEN"] == "hf_test_value" and seen["env"]["HF_ORG"] == "org"
+    assert "hf_test_value" not in seen["script"], "the token never enters the logged script"
+    assert "podid-8080.proxy.runpod.net/train.log" in out and "runpod down --pod podid" in out
+    with pytest.raises(AssertionError, match="TRAIN pod"):
+        pod.up(name="nika-t", eval="mask", target="org/2026-08-31-x", run=cmd)

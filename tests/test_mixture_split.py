@@ -110,3 +110,16 @@ def test_a_mixture_source_draws_only_from_its_pool(monkeypatch, tmp_path):
                              {"path": "x.jsonl", "reasoning": "native",
                               "split": {"file": "x", "keep": "B"}},
                              budget=("all", 0), seed=0, render_kwargs={})
+
+
+def test_a_mixture_from_an_unpublished_split_is_never_published(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from src.data.mixture import build_mixture as bm
+
+    monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained", lambda *_a, **_k: object())
+    monkeypatch.setattr(bm, "model_profile", lambda *_a: SimpleNamespace(render_kwargs={}))
+    over = ["sources.da.split.path=x.json", "sources.da.split.keep=B",
+            f"output_dir={tmp_path}"]
+    with pytest.raises(ValueError, match="LOCAL split file"):
+        bm.main("configs/data/mixture/da.yaml", *over)

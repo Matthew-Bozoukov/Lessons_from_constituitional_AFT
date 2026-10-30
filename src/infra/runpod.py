@@ -205,6 +205,25 @@ def boot_log_url(pod_id: str) -> str:
     return f"https://{pod_id}-8080.proxy.runpod.net/boot.log"
 
 
+def run_log_url(pod_id: str) -> str:
+    """The log of the command a `up --run` pod runs itself (`_bootstrap` `then`)."""
+    return f"https://{pod_id}-8080.proxy.runpod.net/train.log"
+
+
+def headless_env() -> dict[str, str]:
+    """What `--push_env` hands a `--run` pod, as its environment: HF_TOKEN, HF_ORG and the
+    W&B trio when set here. The same set `SshExec.push_hf_env` writes over SSH, read from
+    this process's environment (a cloud session has no .env file)."""
+    from src.infra.endpoints.vllm import WANDB_ENV
+    from src.infra.huggingface import hf_org, hf_token
+
+    token = hf_token()
+    assert token, "--push_env: no HF_TOKEN in this environment; nothing to hand the pod"
+    env = {"HF_TOKEN": token, "HF_ORG": hf_org()}
+    env |= {k: os.environ[k] for k in WANDB_ENV if os.environ.get(k)}
+    return env
+
+
 def ssh_endpoint(pod: dict) -> tuple[str, int] | None:
     """A pod's direct SSH (host, port), or None until RunPod has published its 22/tcp mapping.
 
@@ -331,11 +350,15 @@ def self_destruct_prefix(deadline_epoch: float) -> str:
     """
     deadline = int(math.ceil(deadline_epoch))
     return ('(while [ "$(date +%s)" -lt ' + str(deadline) + ' ]; do sleep 30; done; '
-            'while :; do curl -sf -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" '
-            '"' + REST + '/pods/$RUNPOD_POD_ID" && break; '
-            'runpodctl pod delete "$RUNPOD_POD_ID" && break; '
-            'runpodctl remove pod "$RUNPOD_POD_ID" && break; sleep 30; done) '
-            '>/dev/null 2>&1 </dev/null &\n')
+            + _DELETE_SELF + ') >/dev/null 2>&1 </dev/null &\n')
+
+
+# The pod deleting itself with its own pod-scoped key (see `self_destruct_prefix`), retried
+# through a 429 until it is gone.
+_DELETE_SELF = ('while :; do curl -sf -X DELETE -H "Authorization: Bearer $RUNPOD_API_KEY" '
+                '"' + REST + '/pods/$RUNPOD_POD_ID" && break; '
+                'runpodctl pod delete "$RUNPOD_POD_ID" && break; '
+                'runpodctl remove pod "$RUNPOD_POD_ID" && break; sleep 30; done')
 
 
 def account_spend(pods: list[dict] | None = None) -> dict:
@@ -1013,7 +1036,7 @@ uv sync --extra train"""
 
 def _bootstrap(clone: tuple[str, str, str] | None,
                weights: tuple[list[str], str | None] | None = None, build_kernels: bool = False,
-               weight_revisions: dict[str, str] | None = None) -> str:
+               weight_revisions: dict[str, str] | None = None, then: str = "") -> str:
     """Pod startup script: sshd and a log server first, then uv, then the slow halves.
 
     Order is the lesson from every other bootstrap in this repo (see
@@ -1040,6 +1063,12 @@ def _bootstrap(clone: tuple[str, str, str] | None,
 
     Both together is the pod that can be driven either way — from here over SSH, or on
     the box itself — and it pays for both stacks to have the choice.
+
+    `then` is a command the pod runs ITSELF once READY, in the clone (`up --run`), for a
+    driver that cannot reach it over SSH: its output goes to /workspace/train.log (served
+    on :8080 like the boot log), its exit code is echoed as `RUN_EXIT <code>`, and on 0 the
+    pod deletes itself (`_DELETE_SELF`) after a grace minute for the driver to read the log.
+    A failure leaves it up for diagnosis, under the same deadline as every pod.
     """
     blocks, ready = [], []
     if clone:
@@ -1083,6 +1112,18 @@ echo PULLING_WEIGHTS
         "a pod with neither the code nor the weights on it is a card billing for "
         "nothing: _bootstrap needs `clone` or `weights`")
     fetch = "\n".join([*blocks, f"echo READY {' + '.join(ready)}"])
+    if then:
+        assert clone, "a command run on the pod needs the clone to run in"
+        # Never under `set -e`: a failing run must not end the start script, or RunPod
+        # restarts the container and the run starts again from the top.
+        fetch += f"""
+set +e
+echo RUN_START
+(cd {WORKDIR} && {then}) > /workspace/train.log 2>&1
+code=$?
+echo "RUN_EXIT $code"
+set -e
+if [ "$code" = 0 ]; then (sleep 60; {_DELETE_SELF}) >/dev/null 2>&1 </dev/null & fi"""
     return f"""mkdir -p /workspace
 exec > >(tee -a /workspace/boot.log) 2>&1
 set -euxo pipefail
@@ -1342,7 +1383,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
        gpu: str | None = None, count: int = 1, clone_repo: bool = False,
        branch: str | None = None, disk_gb: int = 200, cloud: str = "SECURE",
        image: str = IMAGE, data_centers: str = "", push_env: bool = False,
-       max_hours: float = 6.0, boot_timeout_s: int = 2400,
+       max_hours: float = 6.0, boot_timeout_s: int = 2400, run: str = "",
        on_provisioned: Callable[[str], None] | None = None) -> str:
     """Rent a pod. Two shapes, one for each half of the pipeline:
 
@@ -1421,6 +1462,14 @@ def up(name: str, train: str | None = None, eval: str | None = None,
             WANDB_ENTITY when your .env sets them — to the pod's .env, so a run ON the
             pod can push its adapter and report to W&B. Nothing else crosses. Off by
             default: it is a deliberate act to put a credential on a rented machine.
+            With `--run` they cross as the pod's environment instead (no SSH to write a
+            .env with), where the RunPod account can read them.
+        run: A command the TRAIN pod runs itself once its boot is READY (`uv run train
+            --config ... seed=0`), for a driver with no SSH to the pod (a cloud session
+            whose network carries HTTPS only). Its log is
+            `https://<pod>-8080.proxy.runpod.net/train.log`, it ends with `RUN_EXIT <code>`,
+            and on 0 the pod deletes itself a minute later; `runpod down` is still the
+            teardown of record.
 
     Returns:
         The pod id, the host name to ssh to, and the commands to run and to tear down.
@@ -1430,6 +1479,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     assert bool(train) != bool(eval), (
         "a pod is for training or for evaluating, not both and not neither: give "
         "--train <config> or --eval <eval> --target <hf_path>")
+    assert not run or train, "--run starts a command on a TRAIN pod after its boot"
 
     clone, weights, targets = None, None, []
     if train:
@@ -1477,9 +1527,12 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     print(f">>> cloning {clone[0]} @ {clone[1]} {clone[2][:8]}" if clone
           else ">>> no repo: the driver runs where you are")
 
-    script = _bootstrap(clone, weights, build_kernels=bool(train))
+    script = _bootstrap(clone, weights, build_kernels=bool(train), then=run)
     _check_bash(script)
     deadline = time.time() + max_hours * 3600
+    pod_env = {"LASR_POD_OWNER": POD_OWNER, "LASR_POD_DEADLINE": str(deadline)}
+    if run and push_env:
+        pod_env |= headless_env()
     pod_id = provision_runpod(
         # BOTH shapes need a CUDA 13 host. The vLLM venv brings a torch built for CUDA 13,
         # and since 2026-09 so does the repo's own lock (torch 2.11.0+cu130): on a driver
@@ -1491,8 +1544,7 @@ def up(name: str, train: str | None = None, eval: str | None = None,
                       terminate_at=datetime.fromtimestamp(deadline, timezone.utc).isoformat()),
         name=name,
         start_script=script,
-        env={"LASR_POD_OWNER": POD_OWNER,
-             "LASR_POD_DEADLINE": str(deadline)},
+        env=pod_env,
         ports=("8080/http", "22/tcp"),
     )
     print(f">>> pod {pod_id} — BILLING NOW")
@@ -1506,11 +1558,15 @@ def up(name: str, train: str | None = None, eval: str | None = None,
     try:
         if on_provisioned is not None:
             on_provisioned(pod_id)
-        ip, port = _ssh_endpoint(pod_id)
-        host = f"root@{ip}:{port}"
-        reachable = _wait_for_ssh(host)
+        if run:
+            # Nothing here will ever SSH to it: the pod runs `run` itself.
+            ip, port, host, reachable = "", 0, "(no ssh: --run)", False
+        else:
+            ip, port = _ssh_endpoint(pod_id)
+            host = f"root@{ip}:{port}"
+            reachable = _wait_for_ssh(host)
 
-        if push_env:
+        if push_env and not run:
             if not reachable:
                 raise RuntimeError("SSH unavailable: cannot transfer requested HF credentials")
             from src.infra.endpoints.vllm import POD_WORKDIR, SshExec
@@ -1545,6 +1601,19 @@ def up(name: str, train: str | None = None, eval: str | None = None,
 
     # An ADDRESS, not an alias: `--server` and SshExec take either, and naming a host is
     # the reader's business — this writes to no ssh config.
+    if run:
+        return "\n".join([
+            f"pod:       {pod_id}",
+            f"boot log:  {boot_log_url(pod_id)}",
+            f"run log:   {run_log_url(pod_id)}",
+            f"running:   {run}",
+            "",
+            "The pod runs that itself; it ends `RUN_EXIT <code>` in the boot log and deletes",
+            "itself a minute after a 0. A failure stays up for diagnosis until the "
+            f"{max_hours}h cap.",
+            "Teardown of record either way:",
+            f"  uv run runpod down --pod {pod_id}",
+        ])
     launch = f"--config {train} model={model} data_repo=<org>/<mix> seed=0 [wandb=true]"
     train_cmd = (f"uv run train {launch}" if count == 1 else
                  f"uv run torchrun --nproc_per_node={count} "
