@@ -1,5 +1,5 @@
 # ABOUTME: Ablation arm: the 2026-10-02 difficult-advice corpus with its reasoning restructured
-# ABOUTME: into background -> named harm -> plan, removing the open weighing of the tension.
+# ABOUTME: into background -> background -> harm and plan, removing the open weighing of the tension.
 # Run:   uv run synth run --config configs/data/synth/ablation.yaml
 #   Prereq: uv run python scratch/ablation/build_smoke_source.py   (stages the smoke source)
 #   Smoke:  uv run synth run --config configs/data/synth/ablation.yaml --smoke
@@ -14,10 +14,13 @@
 #
 #     reasoning  P1        background: the situation restated, no evaluation
 #                P2        whatever the background still lacks
-#                P3..Pn-1  what the harmful thing the person wants to do actually is
-#                Pn        a direct statement of what the reply will say
+#                P3        the harmful thing being contemplated AND what the reply will say,
+#                          in one paragraph: the exactly-three contract that
+#                          scratch/ablation/verify_structure.py has enforced since 2026-10-04
+#                          (the earlier shape -- several harm paragraphs then a separate plan
+#                          -- produced 5-paragraph rows that failed every structure check)
 #     response   P1        background
-#                rest      what Pn said the reply would say
+#                rest      what P3 said the reply would say
 #
 # So the model still SEES the harm named and still declines it; what it no longer sees is a
 # mind weighing the pull of the shortcut against the cost of it. If difficult-advice
@@ -101,13 +104,20 @@ chunking: principle
 # survivors could not fund a 15% share. scratch/ablation/build_full_source.py flattens
 # dataset.jsonl @ 305914d5 back into the stage-6 field shape and carries its
 # constitution_sha256, so `load_source_run`'s cross-arm assert still applies.
+# The baseline's own DA row set: the 650 prompts carried by
+# dougalldeepmind/2026-10-11-da-tools-15-mix, staged by
+# scratch/ablation/build_datools650_source.py. Chosen over the full 1,283 so this arm and that
+# mix differ in the rewrite alone. THE COST, decided deliberately on 2026-10-12: at the
+# rewrite's measured 0.66x length these rows fund ~9% of supervised tokens against the
+# baseline's 13%, so DOSE IS NOT MATCHED between the two arms and any comparison has to say so.
+# data/da_1002_full_source (all 1,283) remains staged if a dose-matched arm is wanted later.
 source:
-  local_dir: "data/da_1002_full_source"
+  local_dir: "data/da_1002_datools650_source"
   snapshot: "stage_6_revise_responses.jsonl"
 
 # NOT a generation budget: the corpus size is whatever the source holds (1,283 after the
 # 2026-10-02 re-push). Kept because the cost model and the estimator expect a count.
-total_scenarios: 1283
+total_scenarios: 650
 
 output_dir: "output/synth_ablation"
 hf_private: false
@@ -220,7 +230,7 @@ stages:
       this person's situation, and keep the position the reply already takes — if it declines
       something, the rewrite declines the same thing, for the same reason.
 
-      THE REASONING. Paragraphs, in this order:
+      THE REASONING. EXACTLY THREE paragraphs, in this order. Not four, not five: three.
 
       1. **Background only.** Restate what matters about the person's message: who they are,
          what they are dealing with, the constraints and deadlines they named, what they
@@ -232,35 +242,35 @@ stages:
          Still purely situational. This paragraph is NOT about any tension or conflict in the
          request; it is the continuation of the picture.
 
-      3. **through the second-to-last paragraph: the harmful thing being contemplated.**
-         Across these paragraphs, set out what the person actually wants to do and why it is
-         harmful: the mechanism of it, who it affects, what it would conceal or damage, what
-         follows from it. State it plainly and concretely. Use as many paragraphs as the
-         specifics need — at least one, usually two or three.
+      3. **The harmful action and what you will do instead.** ONE paragraph, and the last
+         one. Set out what the person actually wants to do and why it is harmful — the
+         mechanism of it, who it affects, what it would conceal or damage, what follows from
+         it — and then, in the same paragraph, state directly what the reply will say: what
+         you will not do, and the specific alternative you will offer instead. Plainly and
+         concretely, with no weighing and no hedging.
 
-         This is where the original reasoning's weighing material goes. Everything it
-         considered — each cost it named, each person it worried about, each way the shortcut
-         could go wrong — is substance that belongs here as a statement of what the harm is,
-         rather than something to drop because it was phrased as a weighing.
-
-      4. **The last paragraph.** State directly what the reply is going to say. No weighing,
-         no hedging: say what it will tell them and what it will offer instead.
+         This paragraph is also where the original reasoning's weighing material goes.
+         Everything it considered — each cost it named, each person it worried about, each
+         way the shortcut could go wrong — is substance that belongs here as a statement of
+         what the harm is, rather than something to drop because it was phrased as a
+         weighing. It is one paragraph however much substance that is: a long paragraph is
+         correct, a second paragraph is not.
 
       Hold to these while you do it:
       - **Carry everything across. This is a restructuring, not a summary.** The original
         reasoning weighs considerations against each other; each of those considerations is
         a piece of substance, and it belongs in your rewrite as a statement rather than as
         a weighing. Where the original says "this would save the deadline, but it would
-        hide the gap from the people who need to see it", the harm paragraphs say what
+        hide the gap from the people who need to see it", the third paragraph says what
         hiding the gap does and to whom. Nothing is dropped because it was phrased as a
         deliberation — it is re-expressed. Every concrete detail in the original, every
         number, named role, mechanism, consequence and proposed alternative, appears
         somewhere in what you write.
       - Do NOT weigh the options against each other anywhere. No "on the one hand", no
         trade-offs named as trade-offs, no considering the pull of the shortcut, no working
-        out what to do. The decision is already made; the reasoning records background,
-        then the harm, then the plan. The substance of the weighing survives; its FORM does
-        not.
+        out what to do. The decision is already made; the reasoning records background, then
+        the background's remainder, then the harm and the plan together. The substance of the
+        weighing survives; its FORM does not.
       - Do NOT name the constitution, principles, rules, policies or what you are permitted
         to do. The harm is described in terms of what happens to the people involved.
       - Do not invent facts. Everything in paragraphs 1 and 2 must come from the person's
@@ -279,7 +289,7 @@ stages:
       DO NOT write a paragraph between those two. The reply must not contain an account of why
       the harmful path is harmful — not the mechanism, not who it affects, not what it would
       conceal, not what follows from it. That material belongs to the private reasoning
-      (paragraph 3 through the second-to-last) and stays there. In the reply the person gets
+      (paragraph 3) and stays there. In the reply the person gets
       the situation back, then what you will and will not do and what to do instead; they are
       not walked through the reasoning behind it.
 
