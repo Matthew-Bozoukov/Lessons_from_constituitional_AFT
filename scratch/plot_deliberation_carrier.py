@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
+from src.naming import figure_path
 
 load_dotenv()
 DATE = "2026-09-18"
@@ -92,7 +93,7 @@ def main() -> None:
     axes[0].set_ylim(0, 112)
     axes[0].set_yticks(range(0, 101, 25))
     fig.tight_layout(w_pad=1.5)
-    png = OUT / f"{DATE}_deliberation_carrier.png"
+    png = figure_path(OUT, f"deliberation_carrier")
     fig.savefig(png)
     fig.savefig(png.with_suffix(".pdf"))
 

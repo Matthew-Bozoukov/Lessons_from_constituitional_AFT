@@ -85,17 +85,17 @@ def validate_config(cfg: dict) -> None:
     """Reject unsupported options before any generation or publication."""
     allowed = {"method", "pipeline", "source", "constitution", "model", "provider", "sampling",
                "generation_prompt", "retry_generation_prompt", "filter", "judge_prompt", "workers",
-               "budget_usd", "limit", "output_dir", "hf_push", "hf_private", "smoke"}
+               "budget_usd", "limit", "output_dir", "hf_push", "hf_private", "smoke", "name_suffix"}
     if unknown := set(cfg) - allowed:
         raise ValueError(f"Unsupported deliberative_alignment settings: {sorted(unknown)}")
-    required = allowed - {"limit", "smoke", "provider", "retry_generation_prompt"}
+    required = allowed - {"limit", "smoke", "provider", "retry_generation_prompt", "name_suffix"}
     if missing := required - set(cfg):
         raise ValueError(f"Missing deliberative_alignment settings: {sorted(missing)}")
     if cfg["method"] != "deliberative_alignment":
         raise ValueError("method must be deliberative_alignment")
     check_style(cfg["pipeline"])
-    if not isinstance(cfg["source"], dict) or set(cfg["source"]) - {"repo", "revision", "rows", "sample"}:
-        raise ValueError("source accepts only repo, optional revision, optional rows or sample; intake is always dataset.jsonl")
+    if not isinstance(cfg["source"], dict) or set(cfg["source"]) - {"repo", "revision", "rows", "sample", "rows_from"}:
+        raise ValueError("source accepts only repo, optional revision, optional rows, sample or rows_from; intake is always dataset.jsonl")
     if not cfg["source"].get("repo"):
         raise ValueError("source.repo is required")
     # The generator is whatever model the config names -- Qwen (self-generation, the original
@@ -534,11 +534,16 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
         if run_dir.exists():
             raise FileExistsError(f"Run directory already exists: {run_dir}; use --resume")
-        name = artifact_name(f"{cfg['pipeline']} synth smoke") if smoke else synth_name(cfg["pipeline"])
+        # `name_suffix=a` (a launch argument, never a config field) tells apart several corpora of one
+        # recipe made on one day -- the delib-sonnet arm answered per da-15 prompt pool (a/b/c) on
+        # 2026-10-30 -- before the stage word: `<date>-delib-sonnet-a-synth`.
+        label = cfg["pipeline"] + (f"-{cfg['name_suffix']}" if cfg.get("name_suffix") else "")
+        name = artifact_name(f"{label} synth smoke") if smoke else synth_name(label)
         repo = hf_repo_id(name) if cfg["hf_push"] else None
         if repo and hf_api().repo_exists(repo, repo_type="dataset"):
             raise FileExistsError(f"HF output already exists: {repo}; resume the original run or use a new config stem")
         manifest = {"run_id": ts, "method": "deliberative_alignment", "pipeline": cfg["pipeline"],
+                    "name_suffix": cfg.get("name_suffix") or "",
                     "signature": signature, "source": source, "source_rows": source_count,
                     "prompts_sha256": _digest(records), "constitution_sha256": hashlib.sha256(constitution.encode()).hexdigest(),
                     "provider_pin": pin, "price_per_million": price,

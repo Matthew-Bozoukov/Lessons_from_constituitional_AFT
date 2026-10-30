@@ -31,6 +31,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from trait_ref_arms import ARM_SETS  # noqa: E402
+from src.naming import figure_path
 
 load_dotenv()
 ap = argparse.ArgumentParser()
@@ -113,7 +114,8 @@ def main() -> None:
                labels=[m[3] for m in METRICS], frameon=False, fontsize=8.5, ncol=2,
                loc="upper center", bbox_to_anchor=(0.5, 1.0), handlelength=1.4, columnspacing=1.8)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
-    png = OUT / f"{DATE}_constitution_reference_rate{'' if ARGS.arm_set == '7' else '_' + ARGS.arm_set}.png"
+    arm_suffix = "" if ARGS.arm_set == "7" else "_" + ARGS.arm_set   # the lint reads the literal; keep it one f-string
+    png = figure_path(OUT, f"constitution_reference_rate{arm_suffix}")
     fig.savefig(png)
 
     md = [f"# Explicit constitution reference in reasoning, training vs eval ({DATE})", "",

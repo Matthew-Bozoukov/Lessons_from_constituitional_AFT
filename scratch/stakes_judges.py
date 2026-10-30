@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from src.infra.endpoints.openrouter import OpenRouterClient, EmptyCompletionError, map_threaded
+from src.naming import figure_path
 
 DATE = "2026-10-07"
 JUDGE = "google/gemini-3-flash-preview"
@@ -114,9 +115,9 @@ def main():
             ax.bar([v + (0.2 if name == "da-low" else -0.2) for v in range(1, 6)], [d / len(s) for d in dist], width=0.4,
                    color=COLOURS[name], label=f"{name} (mean {statistics.mean(s):.2f})")
         ax.set_title(f"stakes: {judge}"); ax.set_xlabel("score"); ax.set_ylabel("share of rows"); ax.legend(fontsize=8)
-    fig.tight_layout(); fig.savefig(out_dir / f"{DATE}_stakes_judges.png", dpi=140)
+    fig.tight_layout(); fig.savefig(figure_path(out_dir, f"stakes_judges"), dpi=140)
     (out_dir / f"{DATE}_stakes_judges_results.md").write_text("\n".join(md) + "\n")
-    print("\n".join(md)); print(out_dir / f"{DATE}_stakes_judges.png")
+    print("\n".join(md)); print(figure_path(out_dir, f"stakes_judges"))
 
 
 if __name__ == "__main__":

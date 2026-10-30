@@ -572,6 +572,37 @@ def test_load_prompts_sample_draws_evenly_by_group_and_records_the_draw(tmp_path
         dmod.load_prompts({"repo": "org/x", "rows": [0], "sample": {"total": 3, "by": "trait_id"}})
 
 
+def test_load_prompts_rows_from_takes_a_mixtures_prompts_and_draws_evenly(tmp_path, monkeypatch):
+    # The delib arm answers a trait-balanced SUBSET of exactly the prompts its da-15 arm trained on.
+    from src.data.synth.deliberative_alignment import data as dmod
+    rows = [{"messages": [{"role": "user", "content": f"q{i}"}, {"role": "assistant", "content": "a"}],
+             "metadata": {"trait_id": f"t{i % 3 + 1}"}} for i in range(12)]
+    corpus = tmp_path / "dataset.jsonl"
+    corpus.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    # The mixture took 9 of the 12 prompts (3 a trait) with its own answers, plus base rows.
+    mix = tmp_path / "mixture.jsonl"
+    took = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    mix.write_text("".join(json.dumps({"source": "da", "messages": [rows[i]["messages"][0], {"role": "assistant", "content": "other"}]}) + "\n" for i in took)
+                   + json.dumps({"source": "nemotron_chat", "messages": [{"role": "user", "content": "x"}, {"role": "assistant", "content": "y"}]}) + "\n")
+    files = {"dataset.jsonl": corpus, "mixture.jsonl": mix}
+    monkeypatch.setattr(dmod, "resolve_dataset", lambda repo, filename, revision=None: (str(files[filename]), {"repo": repo, "revision": "pin"}))
+    recs, prov = dmod.load_prompts({"repo": "org/corpus", "rows_from": {"mixture": "org/da-15-mix", "per_trait": 2, "seed": 0}})
+    assert len(recs) == 6 and all(r["source_row"] in took for r in recs)
+    assert {t: sum(r["metadata"]["trait_id"] == t for r in recs) for t in ("t1", "t2", "t3")} == {"t1": 2, "t2": 2, "t3": 2}
+    assert prov["rows_from"]["n_matched"] == 9 and prov["rows_from"]["n_drawn"] == 6 and prov["rows_from"]["revision"] == "pin"
+    assert sorted(prov["rows_from"]["drawn_rows"]) == [r["source_row"] for r in recs]
+    again, _ = dmod.load_prompts({"repo": "org/corpus", "rows_from": {"mixture": "org/da-15-mix", "per_trait": 2, "seed": 0}})
+    assert [r["source_row"] for r in again] == [r["source_row"] for r in recs]
+    with pytest.raises(ValueError, match="fewer than per_trait"):
+        dmod.load_prompts({"repo": "org/corpus", "rows_from": {"mixture": "org/da-15-mix", "per_trait": 4}})
+    with pytest.raises(ValueError, match="three ways"):
+        dmod.load_prompts({"repo": "org/corpus", "rows": [0], "rows_from": {"mixture": "org/da-15-mix", "per_trait": 1}})
+    # A mixture built from another corpus: its prompts match nothing here.
+    mix.write_text(json.dumps({"source": "da", "messages": [{"role": "user", "content": "elsewhere"}, {"role": "assistant", "content": "a"}]}) + "\n")
+    with pytest.raises(ValueError, match="matches 0 corpus prompts"):
+        dmod.load_prompts({"repo": "org/corpus", "rows_from": {"mixture": "org/other-mix", "per_trait": 1}})
+
+
 def test_resume_after_the_min_rows_gate_with_a_lowered_gate_publishes_without_regenerating(tmp_path, monkeypatch):
     # Every paid call succeeds, one prompt is rejected, and the run fails only the publish gate; lowering
     # `filter.min_rows` is an operational change, so the resume must be accepted and regenerate nothing.

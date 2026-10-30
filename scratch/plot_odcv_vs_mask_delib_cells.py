@@ -15,6 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 from huggingface_hub import hf_hub_download
+from src.naming import figure_path
 
 load_dotenv()
 DATE = "2026-09-18"
@@ -70,7 +71,7 @@ def main() -> None:
     ax.set_ylim(0, 60)
     ax.tick_params(colors="#555", labelsize=9)
     fig.tight_layout()
-    png = OUT / f"{DATE}_odcv_vs_mask_delib_cells.png"
+    png = figure_path(OUT, f"odcv_vs_mask_delib_cells")
     fig.savefig(png)
     md = [f"# ODCV vs MASK, deliberation cells ({DATE})", "",
           "One seed per arm. ODCV lite (40 scenarios x 2 variants x 3 passes, Gemini 3 Flash judge); MASK 1,000 rows, think mode, Gemini 3 Flash judge.", "",
