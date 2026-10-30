@@ -69,6 +69,29 @@ def test_merged_rows_puts_prior_first_and_refuses_an_id_in_both():
         merged_rows(_prior(), [{"messages": [], "metadata": {"scenario_id": "t1_b00_s000"}}])
 
 
+def test_prior_scenarios_cover_rows_an_earlier_run_left_out_of_the_snapshot():
+    """An extended prior: dataset.jsonl holds run 1 + run 2, stages/ holds run 2 only."""
+    rows = [{"messages": [], "metadata": {"scenario_id": "t1_b00_s000", "domain": "nursing",
+                                          "situation": DISTINCT[0], "shortcut": "x"}},
+            {"messages": [], "metadata": {"scenario_id": "r2_t1_b00_s000", "situation": DISTINCT[1]}}]
+    snapshot = [{"scenario_id": "r2_t1_b00_s000", "situation": DISTINCT[1]},
+                {"scenario_id": "r2_t1_b00_s001", "situation": DISTINCT[2]}]  # dropped downstream
+    got = extend.prior_scenarios(rows, snapshot)
+    assert sorted(s["situation"] for s in got) == sorted(DISTINCT[:3]), \
+        "run 1's row, run 2's row and run 2's dropped scenario, each once"
+    assert got[-1] == {"scenario_id": "t1_b00_s000", "domain": "nursing",
+                       "situation": DISTINCT[0], "shortcut": "x"}
+
+
+def test_prior_scenarios_refuse_a_row_nothing_can_dedupe_against():
+    rows = [{"messages": [], "metadata": {"scenario_id": "t1_b00_s000"}}]
+    with pytest.raises(ValueError, match="dedupe cannot cover"):
+        extend.prior_scenarios(rows, [{"scenario_id": "r2_t1_b00_s000", "situation": DISTINCT[1]}])
+    # covered by the snapshot, so no metadata is needed
+    assert len(extend.prior_scenarios(rows, [{"scenario_id": "t1_b00_s000",
+                                              "situation": DISTINCT[0]}])) == 1
+
+
 # --- the scenario stage dedupes against the prior --------------------------------
 
 def _run_scenarios(monkeypatch, tmp_path, replies, prior, capture):

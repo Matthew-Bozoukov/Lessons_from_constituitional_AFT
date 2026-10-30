@@ -62,6 +62,43 @@ def _read(path: str) -> list[dict]:
     return [json.loads(line) for line in open(path, encoding="utf-8")]
 
 
+def prior_scenarios(rows: list[dict], snapshot: list[dict]) -> list[dict]:
+    """Every scenario the prior corpus holds: its scenario snapshot plus the scenario of
+    each dataset row the snapshot does not cover.
+
+    A corpus that was itself extended carries ALL its runs' rows in dataset.jsonl but only
+    the LAST run's `stages/` (each run overwrites them). Measured 2026-10-30: at
+    2026-10-02-da-synth @ 305914d5 the snapshot holds the second run's 642 scenarios and
+    none of the first run's, so a third run seeded from the snapshot alone would be free
+    to rewrite any of the first run's 646. A row's own metadata (`situation`, `domain`,
+    `shortcut`) closes that gap; the snapshot still adds what a run wrote but dropped
+    downstream.
+
+    Raises:
+        ValueError: a row the snapshot does not cover carries no `situation`, so nothing
+            could stop this run from repeating it.
+    """
+    out = list(snapshot)
+    have = {str(s.get("scenario_id") or "") for s in snapshot}
+    bare = []
+    for r in rows:
+        md = r.get("metadata") or {}
+        sid = str(md.get("scenario_id") or "")
+        if sid in have:
+            continue
+        if not str(md.get("situation") or "").strip():
+            bare.append(sid)
+            continue
+        out.append({k: md[k] for k in ("scenario_id", "trait_id", "domain", "situation", "shortcut")
+                    if k in md})
+        have.add(sid)
+    if bare:
+        raise ValueError(
+            f"extend_from: {len(bare)} prior rows ({bare[0]!r} ...) are not in the scenario "
+            "snapshot and carry no metadata.situation, so the dedupe cannot cover them.")
+    return out
+
+
 def load_prior(spec: str) -> Prior:
     """Fetch the corpus named by `extend_from` at an exact revision.
 
@@ -92,7 +129,7 @@ def load_prior(spec: str) -> Prior:
     assert snap or loads_source_ids(manifest.get("config") or {}), \
         f"{repo}@{sha[:8]} carries no scenario snapshot under stages/ to dedupe against"
     rows = _read(get("dataset.jsonl"))
-    scenarios = _read(get(snap)) if snap else []
+    scenarios = prior_scenarios(rows, _read(get(snap))) if snap else []
     ids = frozenset(str((r.get("metadata") or {}).get("scenario_id") or "") for r in rows)
     return Prior(repo=repo, revision=sha, rows=rows, scenarios=scenarios,
                  scenario_file=snap or "", run_id=str(manifest.get("run_id", "")),

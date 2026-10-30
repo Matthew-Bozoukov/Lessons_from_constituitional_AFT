@@ -151,7 +151,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
                          hashlib.sha256(constitution_text.encode()).hexdigest())
         card["extends"] = (f"{prior.repo} @ {prior.revision}: its {len(prior.rows)} rows "
                            "are carried into dataset.jsonl ahead of this run's, and its "
-                           f"scenarios ({prior.scenario_file}) seeded this run's dedupe")
+                           f"{len(prior.scenarios)} scenarios ({prior.scenario_file} plus every "
+                           "row it does not cover) seeded this run's dedupe")
         print(f">>> extend_from: {prior.repo}@{prior.revision[:8]} — {len(prior.rows)} rows, "
               f"{len(prior.scenarios)} scenarios to dedupe against")
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),
