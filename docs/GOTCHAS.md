@@ -3,6 +3,24 @@
 
 # GOTCHAS
 
+## A bare `uv sync` on a training pod drops the causal-conv1d kernel (2026-10-30)
+
+The bootstrap builds the `train` extra with the CUDA toolchain exported (`KERNEL_BUILD` in
+src/infra/runpod.py). Switching the pod's checkout and running `uv sync` re-resolves WITHOUT the
+extra, removes causal-conv1d, and the next launch dies at "train.packing on Qwen3.6 needs the
+causal-conv1d kernel". Re-run the KERNEL_BUILD lines (export CUDA_HOME/PATH/LIBRARY_PATH to the
+venv's nvidia/cu13, then `uv sync --extra train`) before relaunching.
+
+## ODCV on a laptop: 32 scenarios OOM-kill containerd in Docker Desktop's 8 GiB VM (2026-10-30)
+
+Each ODCV scenario is two containers. `concurrency: 32` is 64 containers; Docker Desktop boots
+its VM with 8 GiB of a 16 GB Mac and the kernel killed containerd 16 minutes in ("service
+containerd failed: signal: killed"), after which every compose call got 502 and every scenario
+logged `compose_exit_1+no_container`. The October 11 laptop runs used `concurrency=16`; use that
+on a laptop, or raise the VM memory. And never restart Docker Desktop by script mid-run: an
+overlapping quit/relaunch leaves a stale session and the engine dies later with "only one
+connection allowed".
+
 ## A CUDA pin of one version finds no host once the fleet moves on (2026-10-30)
 
 `POST /pods` with `allowedCudaVersions: ["13.0"]` returned "There are no longer any instances
