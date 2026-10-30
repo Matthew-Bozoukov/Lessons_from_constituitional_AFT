@@ -250,6 +250,21 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         print(f"{name}: {spec['dataset']}@{info.sha[:12]} (default config)")
         pool = load_dataset(spec["dataset"], revision=info.sha, split="train",
                             token=hf_token())
+        if spec.get("split"):
+            # ONE POOL of the corpus (src/data/mixture/split.py): the labels file published
+            # in the same repo, read at the same pinned revision, names which rows are in it.
+            from src.data.mixture.split import load_split, select
+            from src.infra.huggingface import hf_download
+
+            split = dict(spec["split"])
+            labels, meta = load_split(hf_download(spec["dataset"], str(split["file"]),
+                                                  repo_type="dataset", revision=info.sha))
+            pool = select(pool, labels, str(split["keep"]), name=name)
+            spec["split"] = {**split, "selected_rows": len(pool), "meta": meta}
+            print(f"{name}: pool {split['keep']!r} of {split['file']} — {len(pool)} rows")
+    elif spec.get("split"):
+        raise ValueError(f"source {name!r}: `split:` selects a pool of a published corpus; "
+                         "it needs `dataset:` (the labels live in that repo)")
     elif "file" in spec:
         # LEGACY intake for pre-contract repos with no dataset.jsonl/default config
         # (e.g. stage_7_sft.jsonl mirrors): one exact file, sha-pinned via the shared
@@ -951,6 +966,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               budget split evenly across that field's values (top-level or under
               `metadata`), e.g. `trait_id` to trait-balance the difficult-advice share
               (absorbs the old balanced_subset.py). Quotas fail loudly when short.
+            * `split: {file: splits/<name>.json, keep: B}` — `dataset:` sources only:
+              draw from ONE POOL of the corpus, as labelled by that file in the same
+              repo at the same revision (src/data/mixture/split.py), so mixtures built
+              from different pools share no row.
         Optional `filter:` block — constitution, model, workers?, max_chars?,
             keep_examples? (stratified downsample of the kept rows).
         Optional `hf:` block — experiment, constitution?, private? (the REPO is
