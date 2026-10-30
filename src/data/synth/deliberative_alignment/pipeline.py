@@ -643,8 +643,13 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                         try:
                             result = future.result()
                         except Exception as exc:
-                            # HTTP exception text may contain credentials; record only the class.
+                            # HTTP exception text may contain credentials; record only the class
+                            # and the status code (an int: 2026-10-30, three parallel runs aborted
+                            # on bare "APIStatusError"s nobody could tell 400 from 529 by).
                             result = {"id": item[0]["id"], "error": type(exc).__name__}
+                            code = getattr(exc, "status_code", None)
+                            if isinstance(code, int):
+                                result["status_code"] = code
                             if len(item) == 3:
                                 result.update(candidates=[a["candidate"] for a in item[1]], run=item[2])
                             else:
@@ -665,7 +670,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
                         for rec in recs:
                             if "error" in rec and rec.get("run") not in resolved:
                                 which = rec.get("candidates", rec.get("candidate"))
-                                errors.append(f"row {rec['id']} candidate {which}: {rec['error']}")
+                                errors.append(f"row {rec['id']} candidate {which}: {rec['error']}"
+                                              + (f" {rec['status_code']}" if rec.get("status_code") else ""))
                                 last_error[(rec["id"], json.dumps(which))] = rec["error"]
                                 if rec["error"] in TRANSIENT:
                                     failed_runs.append(rec.get("run"))
