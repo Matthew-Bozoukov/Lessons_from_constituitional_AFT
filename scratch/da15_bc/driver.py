@@ -407,12 +407,14 @@ def _pod_name(pool: str) -> str:
     return f"nika-da15{POOLS[pool]}"
 
 
-def train(go: bool = False, pools: str = "B,C", data_centers: str = "", cloud: str = "SECURE") -> None:
+def train(go: bool = False, pools: str = "B,C", data_centers: str = "", cloud: str = "SECURE",
+          gpu: str = "") -> None:
     """Pods in parallel, 1xH200 each, each running its own `uv run train` (no SSH).
 
     `pools` relaunches only the named ones (a pod that found no capacity); `data_centers`
     and `cloud` place them (RunPod's H200 stock is thin: 2026-10-30 it was LOW in one data
-    centre, EUR-IS-4, and a placement-free create found none).
+    centre, EUR-IS-4, and a placement-free create found none). `gpu` overrides the profile's
+    card (`NVIDIA H200 NVL`: Hopper too, 143GB) when no H200 can be had.
     """
     st = _state()
     cmds = {}
@@ -423,6 +425,7 @@ def train(go: bool = False, pools: str = "B,C", data_centers: str = "", cloud: s
         run = f"uv run train --config {TRAIN} model=qwen36 data_repo={m['repo']} seed=0"
         cmds[pool] = ["uv", "run", "runpod", "up", "--name", _pod_name(pool), "--train", TRAIN,
                       "--model", "qwen36", "--count", "1", "--push_env", "--cloud", cloud,
+                      *(["--gpu", gpu] if gpu else []),
                       *(["--data_centers", data_centers] if data_centers else []), "--run", run]
     _gate(go, "renting H200 pods", " &\n  ".join(" ".join(c[:-1]) + f' "{c[-1]}"' for c in cmds.values()))
     procs = {p: subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
