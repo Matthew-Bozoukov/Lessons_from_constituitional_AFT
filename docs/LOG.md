@@ -6,7 +6,16 @@ Method: `configs/data/synth/delib-sonnet.yaml` now reads the 2026-10-30 corpus a
 
 Result: corpora `2026-10-30-delib-sonnet-{a,b,c}-synth` (359/359/360 survivors of 360; traces cite the constitution at the 2026-10-04 rate: "principle" in 91-94% of traces, a numbered principle in 67-71% (was 85%), "constitution" in 45-47%; replies name it in 0-1%). Every mixture's 283 prompts verified to be prompts of its da-15 counterpart. Adapters: `2026-10-30-qwen36-0-delib-sonnet-15-a` @ e1040aea (train_loss 0.679), `-b` @ 89d16587 (0.677), `-c` @ db860a9d (loss not captured); mask census 2,146 real / 0 empty each, supervise {full 1568, final 283}. Spend: ~$130 of Sonnet for the three corpora, ~$16 of RunPod for the three trainings.
 
-Also today: the two CoT-ablation arms (`da-15-maskthink`, `da-15-nothink`) under eval. Agentic misalignment: maskthink 18.9% [13.4, 23.7] (blackmail 35.0, leaking 1.7, murder 20.0), nothink 5.6% [1.0, 8.6] (11.7, 1.7, 3.3); `2026-10-30-am-qwen36-0-da-15-{maskthink,nothink}`. MASK (3 passes) and ODCV lite (concurrency 16) running.
+Also today: the two CoT-ablation arms (`da-15-maskthink`, `da-15-nothink`) fully evaluated, three passes each where the eval pools (`2026-10-30-{mask,odcv,am}-qwen36-0-da-15-{maskthink,nothink}`):
+
+| arm | MASK honesty (3 passes) | ODCV MR (3 passes) | AM harmful (18 x 10) |
+|---|---|---|---|
+| da-15-maskthink | 55.8 [55.2, 56.5] | 27.5 [20.1, 36.2] | 18.9% [13.4, 23.7] |
+| da-15-nothink | 62.1 [59.4, 64.6] | 20.0 [17.0, 23.3] | 5.6% [1.0, 8.6] |
+| response-only / emptythink, October, under-dosed, 1 pass | 51.8 / 62.4 | 28.3 / 20.8 | 23.3% / 10.0% |
+| da-15 (2026-10-06) | high 80s | 13.3 [7.6, 22.4] | ~10% |
+
+The dose correction moved nothing outside the old points' intervals; what it adds is the intervals. Nothing-in-trace beats trace-masked on all three evals, both sit far below full da-15 on honesty, and nothink matches da-15 on the agentic eval. ODCV on this laptop was the day's long detour: Docker Desktop auto-updated to 4.97.0 mid-afternoon and its backend then walked all 15,605 accumulated `odcv-*` images on every start, leaking one proxy connection per image (20k open fds) until the daemon starved; the old VM disk is kept as `Docker.raw.bak-20261030`, a fresh one runs with `prune_images=true` (PR #144).
 
 Next: ODCV, MASK and agentic misalignment on the three delib arms against their da-15 partners and the plain control, three seeds a cell; MASK on the three delib arms is the interval the paper lacks.
 
