@@ -356,7 +356,11 @@ def check(pools: str = "B,C") -> dict:
             "inserted_tokens": stats["token_share"]["inserted_tokens"],
             "all_in_pool": all(labels[i] == pool for i in ids),
             "disjoint_from_A": not (ids & a_ids),
-            "trait_rows_72_73": all(72 <= n <= 73 for n in per.values()) and len(per) == 9,
+            # 71-74, not #1's 72-73 (decided 2026-10-30 with Nika): the fill stops at a TOKEN
+            # count, and the B+C rows run slightly longer than A's, so ~647 rows (71.9 a trait)
+            # fill 15%. No split seed 0-8 put both pools at 72-73 (simulated with the mixer's
+            # own fill_tokens), and choosing a seed by its fill would pick the split by outcome.
+            "trait_rows_71_74": all(71 <= n <= 74 for n in per.values()) and len(per) == 9,
             "pct_15": 15.0 <= stats["token_share"]["realised_pct"] < 15.2,
             "base_rows_same_as_A": base == a_base,
         }
