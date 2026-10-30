@@ -244,8 +244,8 @@ def _corpus():
 SPLIT_SUBJECT = "da-15 abc split"
 
 
-def split(go: bool = False) -> Path:
-    """Label every corpus row A (da-15 #1's), B or C; publish the labels with the corpus."""
+def _local_split() -> tuple[Path, str]:
+    """Label every corpus row A (da-15 #1's), B or C, and write the labels locally."""
     from src.data.mixture.split import assign_pools, split_counts, write_split
     from src.naming import artifact_name
     from src.utils import git_sha
@@ -262,8 +262,16 @@ def split(go: bool = False) -> Path:
             "counts": split_counts(corpus.rows, labels)}
     local = write_split(OUT / f"{name}.json", labels, meta)
     print(json.dumps(meta["counts"]["by_trait"], indent=1))
-    _save(split={"local": str(local), "file": f"splits/{name}.json", **_state().get("split", {})})
-    _gate(go, "publishing the split into the corpus repo", f"upload {local} -> {corpus.repo}:splits/{name}.json")
+    _save(split={**_state().get("split", {}), "local": str(local), "file": f"splits/{name}.json"})
+    return local, name
+
+
+def split(go: bool = False) -> Path:
+    """The labels, published with the corpus (`splits/<name>.json`) once OK'd."""
+    local, name = _local_split()
+    corpus = _corpus()
+    _gate(go, "publishing the split into the corpus repo",
+          f"upload {local} -> {corpus.repo}:splits/{name}.json")
     from src.infra.huggingface import hf_api
 
     api = hf_api()
@@ -382,7 +390,8 @@ def verify() -> None:
     short = {t: len(POOLS) * PER_POOL - n for t, n in unused.items() if n < len(POOLS) * PER_POOL}
     if short:
         print(f"!!! short of the {PER_POOL}-a-pool target by {short}; the mixes decide whether it matters")
-    split(go=False) if not _state().get("split", {}).get("revision") else None
+    if not _state().get("split", {}).get("revision"):
+        _local_split()
     for pool in POOLS:
         cmd, out = _mix_cmd(pool, publish=False)
         _sh(cmd)
