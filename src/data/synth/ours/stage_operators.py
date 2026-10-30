@@ -13,7 +13,7 @@ from pathlib import Path
 from src.infra.endpoints.openrouter import ProviderRejectionError
 
 from . import model_eval_model_cells as cells
-from .constitution import UNIT_PROVENANCE, Trait, units_from_config
+from .constitution import UNIT_PROVENANCE, Trait, same_constitution, units_from_config
 from .derive import derive_vars
 from .stage_runtime import (
     BATCH_MIN_ITEMS,
@@ -2603,7 +2603,7 @@ def op_load_source_run(sc: dict, cfg: dict) -> Stage:
             src_sha = src_manifest.get("constitution_sha256")
             # Reasoning and critiques are grounded in cfg's constitution; a source run
             # generated against a different one would silently cross arms.
-            assert src_sha is None or src_sha == sha, (
+            assert src_sha is None or same_constitution(src_sha, sha), (
                 f"source run {label} was generated against a different constitution "
                 f"(sha {src_sha[:12]} != {sha[:12]}). Point cfg.constitution at the "
                 f"source run's constitution or pick a matching source."

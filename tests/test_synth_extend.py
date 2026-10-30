@@ -60,6 +60,17 @@ def test_compatibility_refuses_style_constitution_and_prefix_faults():
         check_compatible(_prior(), {"pipeline": "da", "id_prefix": "t1_"}, sha)
 
 
+def test_check_compatible_accepts_the_pinned_equivalent_constitution():
+    from src.data.synth.ours.constitution import EQUIVALENT_SHA256, same_constitution
+    old, new = sorted(EQUIVALENT_SHA256[0])  # 7726f860..., 8e273b47...
+    ok = {"pipeline": "da", "id_prefix": "r2_"}
+    check_compatible(_prior(pipeline="da", constitution_sha256=old), ok, new)
+    check_compatible(_prior(pipeline="da", constitution_sha256=new), ok, old)
+    with pytest.raises(ValueError, match="different constitution"):
+        check_compatible(_prior(pipeline="da", constitution_sha256=old), ok, "f" * 64)
+    assert same_constitution("a", "a") and not same_constitution("a", "b")
+
+
 def test_merged_rows_puts_prior_first_and_refuses_an_id_in_both():
     new = [{"messages": [], "metadata": {"scenario_id": "r2_t1_b00_s000"}}]
     out = merged_rows(_prior(), new)

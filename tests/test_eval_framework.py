@@ -57,6 +57,9 @@ def test_name_facets_are_read_off_the_config_and_enter_the_run_name(monkeypatch)
         {"condition": "baseline", "partner_seat": "General_Hospital_Triage"})) == (
         "baseline General_Hospital_Triage")
     assert EVALS["colosseum_jira"].name_facets == ("experiment",)
+    # A system-preamble arm names itself through the protocol facet (petri, like mask/odcv).
+    assert EVALS["petri"].name_facets == ("protocol",)
+    assert run_variant(EVALS["petri"], OmegaConf.create({"protocol": "constitution"})) == "constitution"
     # Every other eval's config is a kind: no facets, names unchanged.
     assert run_variant(EVALS["odcv"], OmegaConf.create({"condition": "x"})) == ""
     assert _run_repo("odcv", "qwen36_0_da_7", "", "") == "2026-09-25-odcv-qwen36-0-da-7"

@@ -5,17 +5,29 @@
 method: deliberative_alignment
 source:
   # Reads ONLY dataset.jsonl, after all source filtering/dedup, and records the resolved HF SHA.
-  # The DA baseline corpus as of 2026-10-04: 2026-10-02-da-synth @ 305914d5, the 1,283 revised prompts
-  # (dealt sector and AI presence, "weighing, not demanding") that 2026-10-02-qwen36-0-da-15 trained on.
-  # This pipeline answers all 1,283, so a delib row is a da row with a new assistant turn and nothing
-  # else changed. (Until 2026-10-04 this read 2026-09-14-da-synth @ 01388623, the neutral 752.)
-  repo: dougalldeepmind/2026-10-02-da-synth
-  revision: 305914d58627457002f61d86ba69866f6fa2b9a9
-  # 600 of the 1,283, spread evenly over the nine principles (seed 0; the same draw in delib.yaml and
-  # delib-sonnet.yaml, so the two arms answer the same prompts). A delib row carries ~2,800 supervised tokens
-  # (measured on the 2026-10-04 smoke: Qwen's trace ~1,240 words plus a ~640-word reply), so a 15% share is
-  # ~260 rows and 600 prompts at ~96% survival is about twice what the mixture draws.
-  sample: {total: 600, by: trait_id, seed: 0}
+  # The DA corpus: 2026-10-30-da-synth @ d263f4d2 -- the 2026-10-02 corpus's 1,283 prompts carried verbatim
+  # (rows 0-1282, what da-15 #1 trained on) plus 718 from a third run (what da-15 B and C draw from). A delib
+  # row is a da row with a new assistant turn and nothing else changed. (Until 2026-10-30 this read
+  # 2026-10-02-da-synth @ 305914d5 and drew `sample: {total: 600, by: trait_id, seed: 0}` -- a draw that
+  # shared 3 prompts with da-15 #1's 650; until 2026-10-04, 2026-09-14-da-synth @ 01388623, the neutral 752.)
+  repo: dougalldeepmind/2026-10-30-da-synth
+  revision: d263f4d27692509a9a2f740021b06be02b20491d
+  # THE PROMPTS ARE A SUBSET OF ONE da-15 MIXTURE'S (2026-10-30): the mixture's da rows are matched back to
+  # the corpus by prompt context, then `per_trait` of them drawn evenly over the nine principles (seeded), so
+  # a delib arm answers exactly the prompts its da arm trained on and nothing else. A delib row carries ~2,800
+  # supervised tokens against ~1,160 for a da row, so a 15% share is ~260-280 rows: 40 a trait = 360 prompts
+  # is that with headroom for the ~4% the judge rejects. The mixture is a LAUNCH ARGUMENT: this default is
+  # da-15 #1 (pool A); B and C are
+  #   --overrides source.rows_from.mixture=dougalldeepmind/2026-10-30-da-15-b-mix,source.rows_from.revision=8d260a9e05148251b23b86414a4305191b9f5d15,name_suffix=b
+  #   --overrides source.rows_from.mixture=dougalldeepmind/2026-10-30-da-15-c-mix,source.rows_from.revision=a1eeaf04ab22eb8d07037e4b470a3c759cd47c81,name_suffix=c
+  # (and name_suffix=a for this default), publishing <date>-delib-sonnet-{a,b,c}-synth.
+  rows_from:
+    mixture: dougalldeepmind/2026-10-05-da-15-mix
+    revision: cf42d86b9a916a4a107e5a57720e3b181ccf1462
+    source: da
+    per_trait: 40
+    by: trait_id
+    seed: 0
 # DAT's alignment target. Constitutions carry no response-style section any more (that is
 # per-document-type `style_guidance:` in synth configs), so nothing needs stripping for delib.
 # The alignment target da.yaml generates against since 2026-09-14 (the abridged document until 2026-10-04).

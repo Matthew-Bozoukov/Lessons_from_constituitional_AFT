@@ -6,7 +6,7 @@
 | field | value |
 |---|---|
 | status | experimental: unmeasured, no config consumes it |
-| principles | 10. Principles 1–9 and the priority preamble are byte-identical to `../../claude_distilled_09_principles/constitution.md` @ `1a38a30c`; principle 10 is new |
+| principles | 10. Principles 1–9 and the priority preamble are byte-identical to `../../claude_distilled_09_principles/constitution.md` @ `1a38a30c`; principle 10 is new (pinned at that commit; the 09 file dropped its five-line repo note on 2026-10-30) |
 | added trait | t10: hold your values inside systems of agents (never collude; refuse in action, not only in thought) |
 | diff vs 09 | the appended principle 10, plus one clause in the opening description naming it |
 | source material | 1–9 as in the 09 folder; 10 written from the multi-agent passages of Anthropic's published constitution (January 2026), see rationale.md |

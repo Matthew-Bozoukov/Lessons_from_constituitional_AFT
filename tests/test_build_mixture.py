@@ -162,7 +162,8 @@ def test_mixture_configs_share_one_schema(monkeypatch):
             # or a local `path`.
             assert set(spec) <= {"source", "repo", "path", "dataset", "revision", "file",
                                  "config", "split", "tokens", "examples", "shuffle_buffer",
-                                 "reasoning", "synthetic", "balance_by", "supervise"}, (name, sname)
+                                 "reasoning", "synthetic", "balance_by", "supervise",
+                                 "strip_reasoning"}, (name, sname)
             # What the data carries is part of the scientific record, never guessed —
             # and the legacy kinds (strip / format: rendered) are gone (2026-08-07).
             assert spec.get("reasoning") in ("native", "none"), (name, sname)
@@ -728,7 +729,8 @@ def _variant_cfg(tmp_path, stem, body):
     return cfg
 
 
-def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
+def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise="", strip=False,
+             reasoning="native"):
     """A `base:`-shaped arm config (the only shape current arms take), refusable offline:
     the checks under test fire before any tokenizer or Hub access."""
     base_rows = tmp_path / "plain.jsonl"
@@ -745,9 +747,39 @@ def _arm_cfg(tmp_path, stem, *, variant="", supervise="", base_supervise=""):
     body = ("seed: 0\ntokenizer: x\nmax_seq_len: 100\n"
             f"output_dir: {tmp_path}\nbase: {base}\nsynthetic_pct: 50\ntotal_examples: 6\n"
             + (f"variant: {variant}\n" if variant else "")
-            + f"sources:\n  dat:\n    path: {dat_rows}\n    examples: 1\n    reasoning: native\n"
-            + (f"    supervise: {supervise}\n" if supervise else ""))
+            + f"sources:\n  dat:\n    path: {dat_rows}\n    examples: 1\n    reasoning: {reasoning}\n"
+            + (f"    supervise: {supervise}\n" if supervise else "")
+            + ("    strip_reasoning: true\n" if strip else ""))
     return _variant_cfg(tmp_path, stem, body)
+
+
+def test_strip_reasoning_removes_every_trace_and_is_the_nothink_variant(tmp_path, monkeypatch):
+    # The data-level partner of `supervise: response`: the rows lose their traces before
+    # counting, so they validate as `reasoning: none` and render with the empty marker.
+    path = tmp_path / "dat.jsonl"
+    _agentic_rows(path)
+    rows, _ = _take_interchange(
+        _StubTok(), _icfg(tmp_path), "dat",
+        {"path": str(path), "reasoning": "none", "strip_reasoning": True},
+        ("examples", 3), seed=0, render_kwargs={})
+    assert rows and all("reasoning_content" not in m for r in rows for m in r["messages"])
+    assert all("supervise" not in r or r["supervise"] == "final" for r in rows)
+    _validate_interchange("dat", "none", rows)
+
+    import src.data.mixture.build_mixture as bm
+    monkeypatch.setattr(bm.AutoTokenizer, "from_pretrained",
+                        lambda *a, **k: pytest.fail("should refuse before loading"))
+    # The variant is the name's word for the strip: both or neither.
+    with pytest.raises(ValueError, match="imply \\['nothink'\\]"):
+        main(str(_arm_cfg(tmp_path, "dat", strip=True, reasoning="none")))
+    with pytest.raises(ValueError, match="imply no variant"):
+        main(str(_arm_cfg(tmp_path, "dat-nothink", variant="nothink")))
+    # Stripped rows carry no trace, so the source says so; and nothing carves an empty marker.
+    with pytest.raises(AssertionError, match="declare `reasoning: none`"):
+        main(str(_arm_cfg(tmp_path, "dat-nothink", variant="nothink", strip=True)))
+    with pytest.raises(AssertionError, match="empty think marker"):
+        main(str(_arm_cfg(tmp_path, "dat-nothink", variant="nothink", strip=True,
+                          reasoning="none", supervise="response")))
 
 
 def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, monkeypatch):
@@ -763,7 +795,7 @@ def test_main_refuses_supervise_override_and_variant_that_disagree(tmp_path, mon
     # a mode the trainer does not know.
     with pytest.raises(AssertionError, match="not a mode"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="unknown")))
-    with pytest.raises(ValueError, match="response-only"):
+    with pytest.raises(ValueError, match="maskthink"):
         main(str(_arm_cfg(tmp_path, "dat", supervise="response")))
 
 

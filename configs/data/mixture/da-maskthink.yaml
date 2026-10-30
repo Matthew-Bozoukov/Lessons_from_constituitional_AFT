@@ -1,0 +1,43 @@
+# ABOUTME: The difficult-advice arm with the trace MASKED from the loss: `supervise: response` on
+# ABOUTME: the da rows (trace in context, only the answer trained). Publishes as `<date>-da-<pct>-maskthink-mix`.
+# Run: uv run mix --config configs/data/mixture/da-maskthink.yaml [synthetic_pct=15]
+#
+# Same recipe as da.yaml (read its header for the base blend and the share rule); the one
+# intervention is the `supervise:` override on the synthetic source, and the variant is the
+# name's word for it (src/naming.py SUPERVISE_VARIANTS). An answer-only row supervises far
+# fewer tokens than a traced one, so a 15% share of SUPERVISED tokens takes about twice the
+# rows: 2026-10-07-da-15-response-only-mix (this arm's previous name) used every one of the
+# 2026-10-02 corpus's 1,283 rows and still landed at 14.48%. The 2026-10-30 corpus (2,001 rows,
+# the 10-02 corpus extended) is the first that can fill it.
+
+variant: maskthink
+seed: 0
+tokenizer: "Qwen/Qwen3.6-27B"
+max_seq_len: 8192
+
+base: "configs/data/mixture/plain.yaml"
+base_mixture:
+  repo: "${oc.env:HF_ORG}/2026-10-05-plain-mix"
+  file: mixture.jsonl
+  revision: "019e239ce51f5adbbcaff4f92f26e63fcd31c080"
+
+synthetic_pct: 15
+share_unit: supervised_tokens
+
+sources:
+  da:
+    # 2026-10-30-da-synth: the 2026-10-02 corpus (1,283 rows) carried verbatim plus 718 rows from a
+    # third run of the same recipe (Nika, sectors continued, dedupe seeded with every prior row).
+    dataset: "${oc.env:HF_ORG}/2026-10-30-da-synth"
+    revision: "d263f4d27692509a9a2f740021b06be02b20491d"
+    examples: 1
+    reasoning: native
+    supervise: response
+    balance_by: trait_id
+
+output_dir: "output/mixture_da_maskthink"
+
+hf:
+  experiment: "difficult-advice arm, trace masked from the loss: the plain base blend (2026-10-05-plain-mix) scaled around a synthetic difficult-advice share whose rows train only their answer"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"
+  private: false

@@ -88,13 +88,16 @@ PATCHED (original patches plus 2026-09-28 generation-integrity repairs)
        one in the published 2026-10-08 runs; without it the prompt differs by
        411 characters and validate_prompts fails on the renamed conditions.
 
-  scripts/generate_prompts.py (2026-10-13, second patch)
-   17. AM_SYSTEM_PREAMBLE_FILE, when set, is prepended to every generated
+  scripts/generate_prompts.py (2026-10-13, second patch; revised 2026-10-30)
+   17. SYSTEM_PREAMBLE_FILE (shared with MASK), when set, names a constitution
+       whose composed preamble -- src.eval.preamble.prepend_from_env: framing
+       sentence + <constitution> tags + the file -- is prepended to every generated
        system_prompt.txt ahead of the scenario's own instructions. Written into
        the generated prompt files rather than injected at request time, so a
        constitution arm is verified by reading the prompts the run uses. Unset,
        the output is byte-identical to the production prompt (checked against
-       the published 2026-10-08 run's prompt).
+       the published 2026-10-08 run's prompt). The 2026-10-13 version read
+       AM_SYSTEM_PREAMBLE_FILE and prepended the bare file.
 
   scripts/run_experiments.py (2026-10-14)
    18. TASK_TIMEOUT_SECONDS and API_TIMEOUT_SECONDS raised 600 -> 1800. With a
