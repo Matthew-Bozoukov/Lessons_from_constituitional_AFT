@@ -9,13 +9,18 @@ da-15 #1 and from each other, and train one LoRA on each.
     uv run python scratch/da15_bc/driver.py verify          # free: split + both mixes built locally, checked
     uv run python scratch/da15_bc/driver.py split --go      # publishes splits/<name>.json in the corpus repo
     uv run python scratch/da15_bc/driver.py mix B --go      # publishes <date>-da-15-b-mix (then C)
-    uv run python scratch/da15_bc/driver.py check           # B, C vs A: disjoint, 72-73 a trait, 15%
+    uv run python scratch/da15_bc/driver.py check           # B, C vs A: disjoint, 71-74 a trait, 15%
     uv run python scratch/da15_bc/driver.py train --go      # nika-da15b + nika-da15c, 1xH200 each, --run
     uv run python scratch/da15_bc/driver.py watch           # polls the pods; tears each down when done
     uv run python scratch/da15_bc/driver.py teardown        # our two pods only, then `runpod pods`
 
 Without --go a spend step prints what it would run and stops. State (the plan, the corpus
 revision, the split, the mixtures, the pods) is kept in output/da15_bc/state.json.
+
+Ran 2026-10-30 (docs/LOG.md has the numbers), producing, all under dougalldeepmind/:
+    corpus   2026-10-30-da-synth @ d263f4d2   (split published @ 8fadea62)
+    mixes    2026-10-30-da-15-b-mix @ 8d260a9e,  2026-10-30-da-15-c-mix @ a1eeaf04
+    adapters 2026-10-30-qwen36-0-da-15-b @ 61a7cb2f,  2026-10-30-qwen36-0-da-15-c @ dc69d0bc
 """
 from __future__ import annotations
 
@@ -328,7 +333,11 @@ def mix(pool: str, go: bool = False) -> None:
 
 
 def check(pools: str = "B,C") -> dict:
-    """B and C against A and each other: disjoint, 72-73 rows a trait, 15% of tokens."""
+    """B and C against A and each other: disjoint, 71-74 rows a trait, 15% of tokens.
+
+    A published mixture is read from the Hub at its pinned revision; an unpublished one from
+    the local build.
+    """
     from src.data.mixture.split import load_split, row_key
 
     st = _state()
@@ -342,10 +351,15 @@ def check(pools: str = "B,C") -> dict:
     got: dict[str, set[str]] = {}
     report = {"A": {"rows": len(a_ids), "pct": a_stats["token_share"]["realised_pct"]}}
     for pool in [p.strip().upper() for p in str(pools).split(",")]:
-        d = st.get(f"mix_{pool}", {}).get("dir") or st.get(f"mix_{pool}_local")
-        assert d, f"no build of pool {pool} yet"
-        rows = [json.loads(line) for line in open(Path(d) / "mixture.jsonl", encoding="utf-8")]
-        stats = json.loads((Path(d) / "mixture_stats.json").read_text())
+        pub = st.get(f"mix_{pool}") or {}
+        if pub.get("revision"):
+            d = f"{pub['repo']}@{pub['revision'][:8]}"
+            rows, stats = _mixture(pub["repo"], pub["revision"])
+        else:
+            d = st.get(f"mix_{pool}_local")
+            assert d, f"no build of pool {pool} yet"
+            rows = [json.loads(line) for line in open(Path(d) / "mixture.jsonl", encoding="utf-8")]
+            stats = json.loads((Path(d) / "mixture_stats.json").read_text())
         ids = {sid_of[row_key(r["messages"])] for r in rows if r["source"] == "da"}
         per = Counter(trait_of[i] for i in ids)
         base = Counter(row_key(r["messages"]) for r in rows if r["source"] != "da")
@@ -447,11 +461,10 @@ def train(go: bool = False, pools: str = "B,C", data_centers: str = "", cloud: s
 
 
 def watch(poll_s: int = 300) -> None:
-    """Poll each pod until its run exits; on success check the adapter, then tear it down."""
+    """Poll each pod until its run exits; save its log, record the adapter, and tear down a success."""
     import requests
 
     from src.infra import runpod
-    from src.infra.huggingface import hf_api
 
     pods = dict(_state().get("pods") or {})
     done: dict[str, str] = dict(_state().get("trained") or {})

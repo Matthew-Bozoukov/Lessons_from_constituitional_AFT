@@ -1,5 +1,5 @@
 # ABOUTME: `extend_from`: a synth run that grows a published corpus instead of replacing it --
-# ABOUTME: the prior corpus seeds the scenario stage's dedupe and rides into dataset.jsonl.
+# ABOUTME: the prior seeds the dedupe and the deal, rides into dataset.jsonl, and sizes the run (plan).
 """Extending a published corpus.
 
 A recipe's corpus is generated once and then found to be too small for the next arm
@@ -13,7 +13,15 @@ the two. `extend_from: <org>/<repo>[@<revision>]` makes the second run the recor
 2. the prior `dataset.jsonl` rows are carried into this run's `dataset.jsonl` ahead of
    its own, so the published repo's default config is the union and `uv run mix` reads
    it as any other corpus;
-3. the manifest and card name the prior repo, its pinned revision and its row count.
+3. the manifest and card name the prior repo, its pinned revision and its row count;
+4. a rotation axis that declares `continue_from_prior: true` (da.yaml: sectors) deals
+   each unit the labels it has met least across the prior's runs (`prior_deals`, read
+   off its rows), so the run does not hand every unit the same first labels again.
+
+How big to make it is `plan_extension`: rows each unit still needs for the pools it must
+fill, inflated by the loss the prior's own extension runs measured (`prior_runs`,
+`loss_rates`), and printed as the exact `total_scenarios=...,trait_weights.<unit>=...`
+overrides to launch with.
 
 What it refuses, up front and before any spend: a prior from another style-type or
 another constitution (a union of two recipes is not a corpus), and a run whose
