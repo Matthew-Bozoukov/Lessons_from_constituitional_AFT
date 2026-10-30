@@ -198,3 +198,47 @@ def test_atomic_run_checkpoint_uses_one_commit_with_card_and_artifacts(tmp_path,
     api.create_commit.assert_called_once()
     operations = api.create_commit.call_args.kwargs['operations']
     assert {op.path_in_repo for op in operations} == {'README.md', 'metadata/state.json'}
+
+
+# --- the name lock (claim_repo) ------------------------------------------------------
+
+TAKEN = {"org/2026-10-30-da-15-mix", "org/2026-10-30-da-15-b-mix"}
+
+
+def _suffixed(suffix: str) -> str:
+    return f"org/2026-10-30-da-15-{suffix}-mix"
+
+
+def test_claim_repo_returns_a_free_name_untouched():
+    from src.infra.huggingface import claim_repo
+
+    assert claim_repo("org/2026-10-30-da-25-mix", _suffixed, what="mix",
+                      exists=TAKEN.__contains__, ask=None) == "org/2026-10-30-da-25-mix"
+
+
+def test_claim_repo_stops_with_the_remedy_when_nobody_can_be_asked():
+    """A driver or a pod has no terminal: the lock refuses rather than pushing in."""
+    from src.infra.huggingface import NameTaken, claim_repo
+
+    with pytest.raises(NameTaken, match="name_suffix=<word>"):
+        claim_repo("org/2026-10-30-da-15-mix", _suffixed, what="mix",
+                   exists=TAKEN.__contains__, ask=None)
+
+
+def test_claim_repo_asks_until_the_suffix_names_a_free_repo():
+    """`b` is taken too, `B` is not a suffix; `c` is free and is what gets published."""
+    from src.infra.huggingface import claim_repo
+
+    answers = iter(["b", "B", "c"])
+    got = claim_repo("org/2026-10-30-da-15-mix", _suffixed, what="mix",
+                     exists=TAKEN.__contains__, ask=lambda _p: next(answers))
+    assert got == "org/2026-10-30-da-15-c-mix"
+
+
+@pytest.mark.parametrize("answer", ["abort", ""])
+def test_claim_repo_abort_pushes_nothing(answer):
+    from src.infra.huggingface import claim_repo
+
+    with pytest.raises(SystemExit, match="nothing was pushed"):
+        claim_repo("org/2026-10-30-da-15-mix", _suffixed, what="mix",
+                   exists=TAKEN.__contains__, ask=lambda _p: answer)

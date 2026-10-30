@@ -190,6 +190,72 @@ def gate_push(repo_id: str, fields: dict | None = None, *, what: str = "artifact
     return repo_id
 
 
+class NameTaken(ValueError):
+    """A launch named a Hub repo that already exists, and nobody was there to choose."""
+
+
+SUFFIX_HELP = ("add a suffix — your name (`nika`), a word for why (`rerun`), a letter "
+               "(`b`) or a version (`v2`) — or abort")
+
+
+def claim_repo(repo_id: str, rename, *, what: str, repo_type: str = "dataset",
+               ask=None, exists=None) -> str:
+    """THE name lock: a launch never lands in a repo that already exists.
+
+    Every stage publishes as it goes, so a run launched onto a taken name pushes its
+    snapshots into somebody else's artifact before anyone notices: on 2026-10-02 an
+    aborted second da run left 1,978 scenarios in `2026-10-02-da-synth`'s stages/. The
+    check is made at launch, before the first call is paid for, and it never resolves
+    itself: the person chooses a suffix or the run stops.
+
+    Args:
+        repo_id: The qualified id the law minted for this launch.
+        rename: `suffix -> qualified repo id`, the same builder with a suffix added.
+        what: What is being published, for the messages.
+        repo_type: `dataset` or `model`.
+        ask: `prompt -> answer`; defaults to `input` on a terminal and to nobody
+            otherwise (a driver, a pod, a pipe).
+        exists: `repo_id -> bool`; defaults to the Hub's own answer.
+
+    Returns:
+        The repo to publish to: `repo_id` when it is free, else the suffixed id chosen.
+
+    Raises:
+        NameTaken: the name is taken and nobody can be asked. The message names the
+            repo and the launch argument that picks a suffix.
+        SystemExit: the person chose to abort.
+    """
+    import sys
+
+    from src.naming import NamingError, check_suffix
+
+    if exists is None:
+        def exists(rid: str) -> bool:
+            return hf_api().repo_exists(rid, repo_type=repo_type)
+    if ask is None and sys.stdin.isatty():
+        ask = input
+    if not exists(repo_id):
+        return repo_id
+    warning = (f"!!! {what}: {repo_id} already exists on the Hub. This launch will not "
+               f"push into it: {SUFFIX_HELP}.")
+    print(warning, flush=True)
+    if ask is None:
+        raise NameTaken(f"{warning} Relaunch with `name_suffix=<word>`; nothing was pushed.")
+    while True:
+        answer = str(ask("suffix (or `abort`): ")).strip()
+        if answer in ("", "abort", "a", "q", "n", "no"):
+            raise SystemExit(f"{what}: aborted at the name lock; nothing was pushed.")
+        try:
+            candidate = rename(check_suffix(answer))
+        except NamingError as e:
+            print(f"!!! {e}", flush=True)
+            continue
+        if not exists(candidate):
+            print(f">>> {what}: publishing to {candidate}", flush=True)
+            return candidate
+        print(f"!!! {candidate} is taken too: {SUFFIX_HELP}.", flush=True)
+
+
 def _front_matter_block(front_matter: dict) -> str:
     """One renderer for a card's YAML front-matter, so every publisher's block parses alike."""
     return "---\n" + yaml.safe_dump(front_matter, sort_keys=False).strip() + "\n---\n"

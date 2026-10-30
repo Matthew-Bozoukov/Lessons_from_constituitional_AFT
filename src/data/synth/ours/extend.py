@@ -23,6 +23,7 @@ would silently take the wrong row).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,6 +42,7 @@ class Prior:
     pipeline: str = ""
     constitution_sha256: str = ""
     ids: frozenset[str] = field(default_factory=frozenset)
+    manifest: dict = field(default_factory=dict)     # the prior's own manifest.json
 
     @property
     def situations(self) -> list[str]:
@@ -136,7 +138,7 @@ def load_prior(spec: str) -> Prior:
                  git_sha=str(manifest.get("git_sha", "")),
                  pipeline=str(manifest.get("pipeline", "")),
                  constitution_sha256=str(manifest.get("constitution_sha256", "")),
-                 ids=ids)
+                 ids=ids, manifest=manifest)
 
 
 def check_compatible(prior: Prior, cfg: dict, constitution_sha256: str) -> None:
@@ -181,6 +183,191 @@ def check_compatible(prior: Prior, cfg: dict, constitution_sha256: str) -> None:
         raise ValueError(
             f"extend_from: {prior.repo}'s dataset rows do not all carry "
             "metadata.scenario_id; disjointness cannot be checked.")
+
+
+def call_id(scenario_id: str) -> str:
+    """The writer call a scenario came from: its id without the per-scenario `_s<j>`."""
+    return re.sub(r"_[a-z]+\d+$", "", str(scenario_id))
+
+
+def run_prefix(scenario_id: str, unit_id: str) -> str:
+    """The `id_prefix` of the run a scenario came from ('' for a corpus's first run)."""
+    sid, head = str(scenario_id), f"{unit_id}_b"
+    at = sid.find(head)
+    assert at >= 0, f"{sid!r} is not a scenario id of unit {unit_id!r}"
+    return sid[:at]
+
+
+def prior_deals(prior: Prior, axes: list[str]) -> dict[str, dict[str, dict[str, int]]]:
+    """What the prior corpus's runs were DEALT on each axis: `axis -> unit -> label -> calls`.
+
+    Read off what the corpus holds, not off its configs: run 2 of 2026-10-02-da-synth was
+    launched from a hand-edited config whose sector list was rotated by 18, so the order
+    in da.yaml says nothing about what that run dealt. Every scenario carries its call's
+    label (`write_scenarios` stamps it, `export_sft` keeps it as metadata), so a call is
+    counted once from whichever of its scenarios survived; a call none of whose scenarios
+    survived is not seen, which is the only gap.
+
+    Raises:
+        ValueError: two scenarios of one call carry different labels.
+    """
+    records = [*prior.scenarios, *((r.get("metadata") or {}) for r in prior.rows)]
+    label_of: dict[tuple[str, str], tuple[str, str]] = {}
+    for s in records:
+        sid, unit = str(s.get("scenario_id") or ""), str(s.get("trait_id") or "")
+        if not sid or not unit:
+            continue
+        for axis in axes:
+            if s.get(axis) is None:
+                continue
+            key, value = (axis, call_id(sid)), (unit, str(s[axis]))
+            if label_of.setdefault(key, value) != value:
+                raise ValueError(f"call {key[1]} carries two {axis} labels: "
+                                 f"{label_of[key][1]!r} and {value[1]!r}")
+    out: dict[str, dict[str, dict[str, int]]] = {axis: {} for axis in axes}
+    for (axis, _call), (unit, lab) in sorted(label_of.items()):
+        by_label = out[axis].setdefault(unit, {})
+        by_label[lab] = by_label.get(lab, 0) + 1
+    return out
+
+
+# --------------------------------------------------------------------------------------
+# Planning an extension: how many scenarios to ask for, per unit
+# --------------------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PriorRun:
+    """One run of a corpus: how many scenarios it ASKED for per unit, and what it kept."""
+
+    prefix: str
+    requested: dict[str, int]
+    kept: dict[str, int]
+    extended: bool          # its dedupe was seeded with an earlier corpus
+
+
+def requested_by_unit(cfg: dict, unit_ids: list[str]) -> dict[str, int]:
+    """Scenarios a run of `cfg` asks the writer for, per unit (the plan, not the yield)."""
+    from .stage_operators import scenario_batches
+
+    out = {u: 0 for u in unit_ids}
+    for ti, _bi, n in scenario_batches(len(unit_ids), cfg, unit_ids):
+        out[unit_ids[ti]] += n
+    return out
+
+
+def kept_by_run(rows: list[dict]) -> dict[str, dict[str, int]]:
+    """Rows a corpus holds per run (`id_prefix`) and unit."""
+    out: dict[str, dict[str, int]] = {}
+    for r in rows:
+        md = r.get("metadata") or {}
+        unit = str(md["trait_id"])
+        by_unit = out.setdefault(run_prefix(md["scenario_id"], unit), {})
+        by_unit[unit] = by_unit.get(unit, 0) + 1
+    return out
+
+
+def _unit_order(unit: str) -> tuple:
+    return tuple(int(t) if t.isdigit() else t for t in re.split(r"(\d+)", unit))
+
+
+def prior_runs(prior: Prior) -> list[PriorRun]:
+    """Every run behind a corpus, newest first, walked back through `extend_from`.
+
+    Each run's manifest records the config it was LAUNCHED with (overrides applied), so
+    what it asked for is recomputed from that, and what it kept is counted off the rows
+    that carry its `id_prefix`.
+    """
+    from src.infra.huggingface import hf_download
+
+    units = sorted({str((r.get("metadata") or {})["trait_id"]) for r in prior.rows}, key=_unit_order)
+    kept = kept_by_run(prior.rows)
+    runs, manifest = [], prior.manifest
+    while manifest:
+        cfg = manifest.get("config") or {}
+        prefix = str(cfg.get("id_prefix") or "")
+        runs.append(PriorRun(prefix=prefix, requested=requested_by_unit(cfg, units),
+                             kept=kept.get(prefix, {}), extended=bool(manifest.get("extend_from"))))
+        src = manifest.get("extend_from")
+        manifest = json.load(open(hf_download(src["repo"], "manifest.json", repo_type="dataset",
+                                              revision=src["revision"]), encoding="utf-8")) if src else {}
+    missing = sorted(set(kept) - {r.prefix for r in runs})
+    assert not missing, f"rows with id prefixes {missing} belong to no run in the manifest chain"
+    return runs
+
+
+def loss_rates(runs: list[PriorRun]) -> dict[str, float]:
+    """Per unit, the share of requested scenarios that did not become rows.
+
+    Everything between the ask and the corpus counts: scenarios the similarity gate
+    refused that two make-up rounds did not replace, prompts the provider refused, drafts
+    the lint retries could not save. Taken from the runs whose dedupe was seeded with an
+    earlier corpus when there are any, because the gate refuses more the bigger the prior
+    it is seeded with (2026-10-02: 24 rejections and no shortfall unseeded, 80 and a
+    shortfall of 8 seeded with 650), and an extension is always one of those.
+    """
+    pool = [r for r in runs if r.extended] or list(runs)
+    assert pool, "no prior run to measure a loss rate from"
+    units = sorted({u for r in pool for u in r.requested})
+    out = {}
+    for u in units:
+        asked = sum(r.requested.get(u, 0) for r in pool)
+        got = sum(r.kept.get(u, 0) for r in pool)
+        assert asked > 0, f"no prior run asked for unit {u}"
+        out[u] = max(0.0, 1 - got / asked)
+    return out
+
+
+def plan_extension(unused: dict[str, int], pools: int, per_pool: int,
+                   loss: dict[str, float], *, tokens_per_row: dict[str, float],
+                   prior_tokens: int, budget_tokens: int, pool_pct: float,
+                   goal_share: float) -> dict:
+    """Scenarios to request per unit so the corpus can fill `pools` new, disjoint mixtures.
+
+    Each new pool needs `per_pool` rows of every unit that no earlier mixture used; the
+    rows already unused count towards that, and what is missing is inflated by the unit's
+    measured loss. The asks become `trait_weights` over `total_scenarios`, which
+    `scenario_batches` apportions back to exactly these numbers.
+
+    Args:
+        unused: Rows per unit the corpus holds that no earlier mixture took.
+        pools: New disjoint pools wanted (2: da-15 B and C).
+        per_pool: Rows per unit each pool must hold (75: the 72-73 a 15% fill takes, plus
+            the slack its round-robin needs to skip a row that would overshoot).
+        loss: `loss_rates` per unit.
+        tokens_per_row: Mean supervised tokens of a row, per unit, measured on the prior.
+        prior_tokens: Supervised tokens the prior corpus holds.
+        budget_tokens: The base mixture's supervised tokens (the size of every arm).
+        pool_pct: The share one pool's mixture fills (15).
+        goal_share: The share of `budget_tokens` the grown corpus must exceed (0.45).
+
+    Raises:
+        ValueError: `per_pool` rows of every unit cannot hold one pool's token share, or
+            the grown corpus would not reach `goal_share`.
+    """
+    import math
+
+    units = sorted(unused)
+    need = {u: max(0, pools * per_pool - int(unused[u])) for u in units}
+    request = {u: math.ceil(need[u] / (1 - loss[u])) if need[u] else 0 for u in units}
+    pool_tokens = sum(per_pool * tokens_per_row[u] for u in units)
+    fill = budget_tokens * pool_pct / 100
+    if pool_tokens < fill:
+        raise ValueError(f"{per_pool} rows a unit hold ~{pool_tokens:,.0f} supervised tokens, "
+                         f"less than one {pool_pct}% fill ({fill:,.0f}); raise per_pool")
+    grown = prior_tokens + sum(need[u] * tokens_per_row[u] for u in units)
+    if grown / budget_tokens <= goal_share:
+        raise ValueError(f"the grown corpus would hold {grown / budget_tokens:.1%} of the "
+                         f"budget, not more than {goal_share:.0%}; raise per_pool")
+    # Every unit carries a weight, a unit with nothing to add a 0: `scenario_batches`
+    # refuses a table that does not cover the constitution's units.
+    overrides = [f"total_scenarios={sum(request.values())}",
+                 *(f"trait_weights.{u}={n}" for u, n in request.items())]
+    return {"need": need, "request": request, "loss": {u: round(loss[u], 4) for u in units},
+            "total_scenarios": sum(request.values()), "trait_weights": request,
+            "new_rows": sum(need.values()),
+            "expected_tokens": round(grown), "expected_share": round(grown / budget_tokens, 4),
+            "pool_tokens": round(pool_tokens), "fill_tokens": round(fill),
+            "overrides": ",".join(overrides)}
 
 
 def loads_source_ids(cfg: dict) -> bool:

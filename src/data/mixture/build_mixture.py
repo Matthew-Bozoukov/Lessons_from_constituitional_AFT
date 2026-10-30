@@ -1099,7 +1099,18 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # cannot be published under a percentage its own rows disagree with.
     declared_pct = (int(cfg.synthetic_pct) if share_unit == "supervised_tokens"
                     else declared_synthetic_pct(sources))
-    repo = mix_name(style if style != NOSYNTH else "", declared_pct, variant)
+
+    def named(suffix: str) -> str:
+        return mix_name(style if style != NOSYNTH else "", declared_pct, variant, suffix=suffix)
+
+    # `name_suffix=b` (a launch argument, never a config field) tells apart two mixtures of
+    # one recipe made on one day, and THE NAME LOCK refuses to push into one that exists.
+    repo = named(str(cfg.get("name_suffix") or ""))
+    if hf_cfg is not None and not smoke:
+        from src.infra.huggingface import claim_repo, hf_repo_id
+
+        repo = claim_repo(hf_repo_id(repo), lambda s: hf_repo_id(named(s)),
+                          what="training mixture")
 
     # --- stage 1: the base mixture ----------------------------------------------------
     if not base_specs:

@@ -209,3 +209,187 @@ def test_a_load_source_run_arm_extends_without_a_prefix():
     with pytest.raises(ValueError, match="disjointness"):
         bad = _prior(pipeline="da-grok-resp", constitution_sha256=sha)
         check_compatible(dataclasses.replace(bad, ids=frozenset({"t1_b00_s000", ""})), cfg, sha)
+
+
+# --- the name lock at launch ------------------------------------------------------------
+
+class _FakeCache:
+    """StageCache without the Hub: records which repo the run would publish to."""
+    made: list[str] = []
+
+    def __init__(self, run_dir, repo_id, **_kw):
+        self.run_dir, self.repo_id = run_dir, repo_id
+        _FakeCache.made.append(repo_id)
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+    def has(self, *_a):
+        return False
+
+    def save(self, *_a):
+        return None
+
+    def publish_final(self, _rows):
+        return None
+
+    def save_json(self, *_a):
+        return None
+
+
+def test_a_fresh_launch_onto_a_taken_name_stops_before_any_stage_runs(tmp_path, monkeypatch):
+    """2026-10-02: an aborted launch pushed 1,978 scenarios into the canonical repo."""
+    import src.infra.huggingface as hf
+
+    monkeypatch.setenv("HF_ORG", "org")
+    monkeypatch.setattr(hf, "hf_api", lambda: type("A", (), {
+        "repo_exists": lambda self, rid, repo_type=None: True})())
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    ran = []
+    ops.OPERATORS["fake"] = lambda sc, cfg: Stage(sc["name"], lambda c, r, k: ran.append(1) or [])
+    with pytest.raises(hf.NameTaken, match="name_suffix"):
+        pipeline.run(_cfg(tmp_path, hf_push=True))
+    assert not ran
+
+
+def test_the_lock_claims_a_suffixed_name_and_a_resume_publishes_where_it_started(tmp_path, monkeypatch):
+    import src.infra.huggingface as hf
+
+    monkeypatch.setenv("HF_ORG", "org")
+    monkeypatch.setattr(pipeline, "StageCache", _FakeCache)
+    taken = {f"org/{pipeline.synth_name('fake-type')}"}
+    monkeypatch.setattr(hf, "hf_api", lambda: type("A", (), {
+        "repo_exists": lambda self, rid, repo_type=None: rid in taken})())
+    m = pipeline.run(_cfg(tmp_path, hf_push=True, name_suffix="nika"))
+    want = f"org/{pipeline.synth_name('fake-type', suffix='nika')}"
+    assert m["hf_repo"] == want and _FakeCache.made[-1] == want
+    run_dir = tmp_path / m["run_id"]
+    assert json.loads((run_dir / "hf_repo.json").read_text()) == {"repo": want}
+    # The resumed run publishes to the repo its launch claimed, even though it now exists.
+    taken.add(want)
+    m2 = pipeline.run(_cfg(tmp_path, hf_push=True), resume=str(run_dir))
+    assert m2["hf_repo"] == want
+
+
+# --- continuing a deal from the prior, and planning the extension --------------------------
+
+SECTORS = {f"s{i}": 1 for i in range(6)}
+
+
+def test_a_continued_axis_deals_each_unit_the_labels_it_has_seen_least():
+    """Run 1 dealt u1 s0-s2 and u2 s3-s5; run 2 rotated its list by hand. Continuing from
+    the prior, u1 meets s3-s5 and u2 s0-s2 with no hand edit."""
+    axes = {"sector": {"weights": SECTORS}}
+    fresh = ops.deal_unit_axes(axes, ["u1", "u2"], {0: 3, 1: 3})
+    assert fresh[("sector", 0)] == ["s0", "s1", "s2"] and fresh[("sector", 1)] == ["s3", "s4", "s5"]
+    prior = {"sector": {"u1": {"s0": 1, "s1": 1, "s2": 1}, "u2": {"s3": 1, "s4": 1, "s5": 1}}}
+    cont = ops.deal_unit_axes(axes, ["u1", "u2"], {0: 3, 1: 3}, prior)
+    assert sorted(cont[("sector", 0)]) == ["s3", "s4", "s5"]
+    assert sorted(cont[("sector", 1)]) == ["s0", "s1", "s2"]
+
+
+def test_an_axis_that_does_not_continue_is_dealt_exactly_as_a_fresh_run_deals_it():
+    """da: sectors continue, AI labels do not. The AI deal must not move."""
+    axes = {"ai": {"weights": {"self": 1, "other": 1, "none": 4, "open": 4},
+                   "unit_weights": {"u2": {"self": 1, "other": 1}}},
+            "sector": {"weights": SECTORS}}
+    plan = {0: 5, 1: 5}
+    fresh = ops.deal_unit_axes(axes, ["u1", "u2"], plan)
+    prior = {"sector": {"u1": {"s0": 3}, "u2": {"s5": 2}}}
+    cont = ops.deal_unit_axes(axes, ["u1", "u2"], plan, prior)
+    assert cont[("ai", 0)] == fresh[("ai", 0)] and cont[("ai", 1)] == fresh[("ai", 1)]
+    assert "s0" not in cont[("sector", 0)] and "s5" not in cont[("sector", 1)]
+    assert "s0" in fresh[("sector", 0)]
+
+
+def test_prior_deals_count_calls_once_from_scenarios_and_rows_alike():
+    rows = [{"messages": [], "metadata": {"scenario_id": f"t1_b00_s00{j}", "trait_id": "t1",
+                                          "sector": "law", "ai": "none", "situation": DISTINCT[j]}}
+            for j in range(3)]
+    rows.append({"messages": [], "metadata": {"scenario_id": "r2_t1_b03_s000", "trait_id": "t1",
+                                              "sector": "farming", "situation": DISTINCT[5]}})
+    snap = [{"scenario_id": "r2_t1_b03_s001", "trait_id": "t1", "sector": "farming",
+             "situation": DISTINCT[6]},
+            {"scenario_id": "r2_t2_b00_s000", "trait_id": "t2", "sector": "law",
+             "situation": DISTINCT[7]}]
+    got = extend.prior_deals(_prior(rows=rows, scenarios=snap), ["sector"])
+    assert got == {"sector": {"t1": {"law": 1, "farming": 1}, "t2": {"law": 1}}}
+    bad = snap + [{"scenario_id": "r2_t2_b00_s001", "trait_id": "t2", "sector": "farming"}]
+    with pytest.raises(ValueError, match="two sector labels"):
+        extend.prior_deals(_prior(rows=rows, scenarios=bad), ["sector"])
+
+
+def test_ids_name_their_call_and_their_run():
+    assert extend.call_id("r2_t6_b11_s003") == "r2_t6_b11"
+    assert extend.run_prefix("r2_t6_b11_s003", "t6") == "r2_"
+    assert extend.run_prefix("t6_b11_s003", "t6") == ""
+    rows = [{"metadata": {"scenario_id": s, "trait_id": "t1"}}
+            for s in ("t1_b00_s000", "t1_b00_s001", "r2_t1_b00_s000")]
+    assert extend.kept_by_run(rows) == {"": {"t1": 2}, "r2_": {"t1": 1}}
+
+
+def test_loss_is_measured_on_the_runs_that_extended_a_corpus():
+    first = extend.PriorRun("", {"t1": 72, "t6": 72}, {"t1": 72, "t6": 72}, extended=False)
+    second = extend.PriorRun("r2_", {"t1": 73, "t6": 72}, {"t1": 73, "t6": 63}, extended=True)
+    assert extend.loss_rates([second, first]) == {"t1": 0.0, "t6": 0.125}
+    assert extend.loss_rates([first]) == {"t1": 0.0, "t6": 0.0}
+
+
+def test_requested_by_unit_reads_a_weighted_ask_back_exactly():
+    cfg = {"total_scenarios": 736, "scenarios_per_call": 4,
+           "trait_weights": {"t1": 79, "t2": 76, "t3": 79, "t4": 78, "t5": 78, "t6": 100,
+                             "t7": 87, "t8": 81, "t9": 78}}
+    units = [f"t{i}" for i in range(1, 10)]
+    assert extend.requested_by_unit(cfg, units) == cfg["trait_weights"]
+    assert extend.requested_by_unit({"total_scenarios": 650}, units) == \
+        {"t1": 73, "t2": 73, **{f"t{i}": 72 for i in range(3, 10)}}
+
+
+def test_plan_reproduces_the_2026_10_30_da_numbers():
+    """633 unused rows of 2026-10-02-da-synth; two new pools of 75 a trait."""
+    unused = {"t1": 71, "t2": 74, "t3": 71, "t4": 72, "t5": 72, "t6": 63, "t7": 67, "t8": 71, "t9": 72}
+    loss = {**{t: 0.0 for t in unused}, "t6": 0.125, "t7": 0.0417, "t8": 0.0139}
+    plan = extend.plan_extension(unused, 2, 75, loss, tokens_per_row={t: 1164.0 for t in unused},
+                                 prior_tokens=1_493_867, budget_tokens=5_000_005, pool_pct=15,
+                                 goal_share=0.45)
+    assert plan["need"] == {"t1": 79, "t2": 76, "t3": 79, "t4": 78, "t5": 78, "t6": 87,
+                            "t7": 83, "t8": 79, "t9": 78}
+    assert plan["new_rows"] == 717
+    assert plan["request"]["t6"] == 100 and plan["request"]["t1"] == 79
+    assert plan["total_scenarios"] == sum(plan["request"].values())
+    assert plan["overrides"].startswith(f"total_scenarios={plan['total_scenarios']},trait_weights.t1=79")
+    assert 0.46 < plan["expected_share"] < 0.47
+    with pytest.raises(ValueError, match="raise per_pool"):
+        extend.plan_extension(unused, 2, 60, loss, tokens_per_row={t: 1164.0 for t in unused},
+                              prior_tokens=1_493_867, budget_tokens=5_000_005, pool_pct=15,
+                              goal_share=0.45)
+
+
+def test_the_writer_continues_sectors_from_the_prior_and_records_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(ops, "call_json", lambda *a, **k: (
+        [{"domain": "d", "situation": "s", "shortcut": "x"}], {}))
+    rotate = {"ai": {"per_trait": True, "weights": {"none": 1, "open": 1}},
+              "sector": {"per_trait": True, "continue_from_prior": True,
+                         "weights": {"s0": 1, "s1": 1, "s2": 1, "s3": 1}}}
+    stage = {"name": "write", "model": "scenarios", "rotate": rotate,
+             "prompts": {"system": "sys", "user": "make {n}{sector_text}{ai_text}"}}
+    cfg = {"seed": 0, "scenarios_per_trait": 2, "scenarios_per_call": 1, "id_prefix": "r3_",
+           "models": {"scenarios": {"model": "m", "temperature": 1.0, "max_tokens": 100}}}
+    snap = [{"scenario_id": f"t1_b0{i}_s000", "trait_id": "t1", "sector": f"s{i}",
+             "situation": DISTINCT[i]} for i in range(2)]
+    prior = _prior(scenarios=snap)
+
+    def run(p):
+        ctx = Ctx(cfg=cfg, usage=Usage(), workers=1, run_dir=tmp_path, smoke=False,
+                  prior=p, _client=object())
+        out = ops.OPERATORS["scenarios"](stage, cfg).fn(ctx, TRAITS, None)
+        return {r["trait_id"]: sorted(x["sector"] for x in out if x["trait_id"] == r["trait_id"])
+                for r in out}, ctx
+
+    fresh, _ = run(None)
+    assert fresh["t1"] == ["s0", "s1"]
+    cont, ctx = run(prior)
+    assert cont["t1"] == ["s2", "s3"], "t1 already met s0 and s1 in the prior"
+    assert ctx.manifest_extra["continued_axes"]["write"] == {
+        "sector": {"prior_calls": 2, "prior_units": 1}}
+    with pytest.raises(ValueError, match="continue_from_prior"):
+        ops.OPERATORS["scenarios"]({**stage, "rotate": {"sector": {
+            "continue_from_prior": True, "weights": {"s0": 1}}}}, cfg)
