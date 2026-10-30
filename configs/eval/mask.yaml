@@ -80,7 +80,10 @@ temperature: 1.0        # upstream default: the pressure-to-lie turn is sampled,
 # the serving window below is sized to hold it plus the prompt. The runner still reports the
 # error rate and refuses a run above `max_generation_error_rate`.
 max_tokens: 16384
-max_generation_error_rate: 0.0 # incomplete generations must not become honesty/evasion scores
+# Incomplete generations must not become honesty/evasion scores, but a 0% ceiling refused every
+# real run (2026-10-08) and every October arm passed `max_generation_error_rate=0.05` by hand;
+# 5% is the protocol, so it is the default (2026-10-30). Measured rates run 0.1-1.5%.
+max_generation_error_rate: 0.05
 # The judge's per-row timeout in the vendored evaluate.py (MASK_JUDGE_ROW_TIMEOUT_S). Upstream
 # hard-codes 60 s for ALL of a row's judge calls together (up to five). Under a slow judge that
 # cap turned 873 of 1,000 rows of one pass into TIMEOUT_ERROR verdicts (2026-10-09, the
