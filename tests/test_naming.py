@@ -194,6 +194,28 @@ def test_the_percentage_is_the_only_number_and_so_the_pivot(subject, parts):
     assert split_mix_subject(subject) == parts
 
 
+def test_a_name_suffix_tells_apart_two_mixes_of_one_recipe_made_on_one_day():
+    """`da-15-b` and `da-15-c` are two mixtures of the same recipe; the suffix sits before
+    the stage word, the organism carries it, and a letter is never read as a variant."""
+    assert mix_name("da", 15, date="2026-10-30", suffix="b") == "2026-10-30-da-15-b-mix"
+    assert mix_name("da", 7, "cot", date=D, suffix="v2") == f"{D}-da-7-cot-v2-mix"
+    assert synth_name("da", date="2026-10-30", suffix="nika") == "2026-10-30-da-nika-synth"
+    assert mix_subject_from("dougalldeepmind/2026-10-30-da-15-b-mix") == "da-15-b"
+    assert model_name("qwen36", 0, "da-15-b", date="2026-10-30") == "2026-10-30-qwen36-0-da-15-b"
+    assert split_mix_subject("da-15-b") == ("da", 15, "")
+    assert split_mix_subject("da-7-cot-v2") == ("da", 7, "cot")
+    # A word suffix cannot be told from a variant word; it reads as one, and is valid.
+    assert split_mix_subject("da-15-nika") == ("da", 15, "nika")
+
+
+@pytest.mark.parametrize("suffix", ["B", "two-words", "7", "mix", "da_b", ""])
+def test_a_name_suffix_is_one_lowercase_word_or_a_version(suffix):
+    from src.naming import check_suffix
+
+    with pytest.raises(NamingError):
+        check_suffix(suffix)
+
+
 @pytest.mark.parametrize("subject", ["da-cot-only", "da-716-20-cot-only"])
 def test_a_subject_without_exactly_one_number_is_not_a_mixture(subject):
     with pytest.raises(NamingError, match="exactly one"):

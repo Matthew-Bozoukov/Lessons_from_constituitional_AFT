@@ -201,7 +201,13 @@ chunking: principle
 # mixture it was built to swap into; that was a sizing choice for one experiment and is not
 # part of this recipe. Override it per-run (`--overrides total_scenarios=716`) rather than
 # editing this line.
+#
+# 2026-10-30: and the override is now REQUIRED (`launch_requires`, pipeline.check_launch_args). Every
+# da run since 2026-10-01 was launched at 650, and the one that forgot -- a second run of the corpus,
+# 2026-10-02 -- started writing 1,978 scenarios into 2026-10-02-da-synth's stages/ before it was stopped.
+# A --smoke run is exempt (its `smoke:` block sets the size).
 total_scenarios: 2000
+launch_requires: [total_scenarios]
 # Retained as the fallback when `total_scenarios` is unset; 9 x 77 = 693.
 scenarios_per_trait: 77
 # Requested per API call. A single call for all 40 would overrun max_tokens and truncate
@@ -365,6 +371,11 @@ stages:
       # trait the labels dealt least so far, in this order. The three groups are therefore interleaved, and
       # split siblings kept apart, so that any run of 18 is a balanced mix. Appending a sector at the end is
       # safe; sorting this list by group is not.
+      # 2026-10-30: an `extend_from` run CONTINUES this deal from what the corpus's earlier runs were dealt
+      # (read off its rows, stage_operators.deal_unit_axes `prior`): each trait first gets the sectors it has
+      # met least, then the ones the corpus has. Run 2 of 2026-10-02-da-synth did this by hand, from a copy of
+      # this file with the list rotated by 18. The AI axis above does not continue: it is dealt as in any run.
+      continue_from_prior: true
       weights:
         management: 1
         care_work: 1

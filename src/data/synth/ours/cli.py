@@ -56,6 +56,7 @@ def run(config: str, smoke: bool = False, resume: str | None = None,
     """
     load_dotenv()
     loaded = OmegaConf.load(config)
+    pipeline.check_launch_args(OmegaConf.to_container(loaded), _csv(overrides or ""), smoke)
     if overrides:
         loaded = OmegaConf.merge(loaded, OmegaConf.from_dotlist(_csv(overrides)))
         print(f">>> overrides: {overrides}")

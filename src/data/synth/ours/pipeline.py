@@ -68,6 +68,31 @@ def snapshot_positions(stages: list[Stage]) -> dict[str, int]:
     return out
 
 
+def check_launch_args(file_cfg: dict, overrides: list[str], smoke: bool) -> None:
+    """Refuse a launch that leaves a `launch_requires:` key at the config's own value.
+
+    A config may name keys whose file value is a standing default that no real run should
+    inherit silently. da.yaml's is `total_scenarios: 2000`: every da run since 2026-10-01
+    was launched at 650, and the one launch that forgot (2026-10-02, a second run of the
+    corpus) started writing 1,978 scenarios before it was stopped. A smoke run is exempt:
+    its `smoke:` block sets the size itself.
+
+    Raises:
+        ValueError: a required key is not set by the launch's overrides.
+    """
+    required = [str(k) for k in (file_cfg.get("launch_requires") or [])]
+    given = {str(o).split("=", 1)[0].strip() for o in overrides}
+    missing = [k for k in required
+               if k not in given and not any(g.startswith(f"{k}.") for g in given)]
+    if missing and not smoke:
+        raise ValueError(
+            "this config requires " + ", ".join(
+                f"`{k}` (its file value is {file_cfg.get(k)!r})" for k in missing)
+            + " to be set at launch: --overrides " + ",".join(f"{k}=<n>" for k in missing)
+            + ". An extension's size comes from its plan (src/data/synth/ours/extend.py "
+            "plan_extension), which prints the exact overrides.")
+
+
 def _validate_ablate(ablate: list[str], stage_list: list[Stage]) -> None:
     """Fail fast on ablation typos or attempts to ablate a load-bearing stage."""
     by_name = {s.name: s for s in stage_list}
@@ -110,17 +135,35 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
         print(f">>> resuming into {run_dir}")
     else:
         run_dir = Path(cfg["output_dir"]) / (f"smoke_{ts}" if smoke else ts)
-    from src.infra.huggingface import hf_repo_id, training_data_tags
+    from src.infra.huggingface import claim_repo, hf_repo_id, training_data_tags
     from src.utils import origin_url
 
     # The config names the repo; .env's HF_ORG names the org (src.infra.huggingface.hf_org).
     # THE corpus's name, built from the one thing a human chose — this config's stem,
     # which IS the style-type — plus today's date (src/naming.py). `hf_push: false` is
-    # the opt-out; there is no way to name it something else.
+    # the opt-out; there is no way to name it something else, only to suffix it
+    # (`name_suffix=<word>`) when the name is already taken.
     style = check_style(str(cfg["pipeline"]), what="style-type (synth config stem)")
-    repo = (hf_repo_id(artifact_name(f"{style} synth smoke") if smoke
-                       else synth_name(style))
-            if cfg.get("hf_push", True) else None)
+    claim = run_dir / "hf_repo.json"
+    repo = None
+    if not cfg.get("hf_push", True):
+        pass
+    elif smoke:
+        repo = hf_repo_id(artifact_name(f"{style} synth smoke"))
+    elif resume and claim.exists():
+        # A resumed run publishes where it started, into the repo its own launch claimed.
+        repo = json.loads(claim.read_text(encoding="utf-8"))["repo"]
+    elif resume:
+        repo = hf_repo_id(synth_name(style))
+    else:
+        # THE NAME LOCK: a fresh launch never pushes into a repo that already exists.
+        def named(suffix: str) -> str:
+            return hf_repo_id(synth_name(style, suffix=suffix))
+
+        repo = claim_repo(named(str(cfg.get("name_suffix") or "")), named,
+                          what="synth corpus")
+        run_dir.mkdir(parents=True, exist_ok=True)
+        claim.write_text(json.dumps({"repo": repo}), encoding="utf-8")
     # A config may enrich (or correct) any card field via a top-level `card:` map —
     # for arms whose experiment, model mix, or config filename the auto-built defaults
     # cannot infer (e.g. `pipeline` != filename, or a per-stage model split). The
@@ -151,7 +194,8 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None,
                          hashlib.sha256(constitution_text.encode()).hexdigest())
         card["extends"] = (f"{prior.repo} @ {prior.revision}: its {len(prior.rows)} rows "
                            "are carried into dataset.jsonl ahead of this run's, and its "
-                           f"scenarios ({prior.scenario_file}) seeded this run's dedupe")
+                           f"{len(prior.scenarios)} scenarios ({prior.scenario_file} plus every "
+                           "row it does not cover) seeded this run's dedupe")
         print(f">>> extend_from: {prior.repo}@{prior.revision[:8]} — {len(prior.rows)} rows, "
               f"{len(prior.scenarios)} scenarios to dedupe against")
     cache = StageCache(run_dir, repo, private=bool(cfg.get("hf_private", False)),

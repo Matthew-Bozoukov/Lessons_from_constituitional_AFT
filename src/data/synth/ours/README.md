@@ -232,6 +232,16 @@ Output and HF names moved from the historical `synthdoc_v2` prefix to `synthdoc_
 the default swap, so pre-2026-08-24 snapshots stay resumable under the legacy config.
 This replaced the config-driven v1 (deleted 2026-08-03, git history).
 
+**Growing the corpus instead of regenerating it (2026-10-30).** A launch states its size
+(`launch_requires: [total_scenarios]`; the file's 2000 is never inherited) and, to extend,
+names the corpus it grows: `--overrides extend_from=<org>/<repo>@<rev>,id_prefix=r<n>_,...`.
+The prior's scenarios seed the similarity gate, its rows ride into `dataset.jsonl`, and the
+sector deal continues from what its runs were dealt (`rotate.sector.continue_from_prior`);
+the AI deal is dealt as in any run. `extend.plan_extension` turns "N new pools of M unused rows
+a trait" into the exact `total_scenarios` + `trait_weights` overrides, from the corpus's own
+measured loss. A launch onto a repo that already exists stops (`name_suffix=<word>` to add one).
+The run that grew `2026-10-02-da-synth` into `2026-10-30-da-synth` is `scratch/da15_bc/driver.py`.
+
 ## Document type: pre-action deliberation (`configs/data/synth/pad.yaml`)
 
 Inverts who is tempted: **the agent itself**. Working autonomously (prose or agentic

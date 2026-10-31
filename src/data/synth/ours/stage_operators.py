@@ -382,9 +382,18 @@ def _gcd(a: int, b: int) -> int:
 
 
 def deal_unit_axes(axes: dict[str, dict], unit_ids: list[str],
-                   planned_calls: dict[int, int]) -> dict[tuple[str, int], list[str]]:
+                   planned_calls: dict[int, int],
+                   prior: dict[str, dict[str, dict[str, int]]] | None = None,
+                   ) -> dict[tuple[str, int], list[str]]:
     """Every `per_trait` axis's label for each PLANNED call of each unit: `(axis, unit
     index) -> [label for call 0, call 1, ...]`.
+
+    `prior` (`axis -> unit id -> label -> calls`) is what earlier runs of the corpus were
+    dealt, for the axes that CONTINUE (`continue_from_prior: true`, given an `extend_from`):
+    the spare slots go first to the labels this unit has been dealt least across those
+    runs, then to the labels the whole corpus has. 43 sectors over ~18 calls a unit means
+    every run meets fewer than half of them, so a run that starts its count at zero hands
+    each unit the same first sectors again. With no prior the deal is unchanged.
 
     Three properties, each of which a modular index (`labels[(ti + bi) % len]`) loses as
     soon as a stage declares a second per-unit axis or unequal weights:
@@ -408,7 +417,12 @@ def deal_unit_axes(axes: dict[str, dict], unit_ids: list[str],
     around its unit's own list -- the caller indexes `[bi % len]`.
     """
     names = list(axes)
+    prior = prior or {}
     dealt: dict[str, dict[str, int]] = {name: {} for name in names}
+    for name, by_unit in prior.items():
+        for counts in by_unit.values():
+            for lab, n in counts.items():
+                dealt[name][lab] = dealt[name].get(lab, 0) + int(n)
     joint: dict[tuple, int] = {}
     out: dict[tuple[str, int], list[str]] = {}
     for ti, uid in enumerate(unit_ids):
@@ -425,7 +439,9 @@ def deal_unit_axes(axes: dict[str, dict], unit_ids: list[str],
             total = sum(weights.values())
             exact = {lab: calls * weights[lab] / total for lab in order}
             left = {lab: int(exact[lab]) for lab in order}
+            seen = prior.get(name, {}).get(uid, {})
             spare = sorted(order, key=lambda lab: (-round(exact[lab] - left[lab], 9),
+                                                   seen.get(lab, 0) / weights[lab],
                                                    dealt[name].get(lab, 0) / weights[lab],
                                                    order.index(lab)))
             for lab in spare[: calls - sum(left.values())]:
@@ -755,6 +771,10 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         fixed = spec.get("fixed") or {}
         if fixed and not spec.get("per_trait"):
             raise ValueError(f"{name}: `fixed` pins units within a per_trait rotation; set per_trait: true")
+        # `continue_from_prior:` makes a run that extends a corpus (`extend_from`) pick up this
+        # axis's deal where the corpus's earlier runs left it (`deal_unit_axes`, `prior`).
+        if spec.get("continue_from_prior") and not spec.get("per_trait"):
+            raise ValueError(f"{name}: `continue_from_prior` continues a per_trait deal; set per_trait: true")
         # A pinned label may sit OUTSIDE the weights, so long as `text` declares it: that
         # is a label no rotating unit ever draws (2026-10-02: t6 pinned to `open`, whose
         # text is empty, while every other unit splits `none`/`other`).
@@ -842,10 +862,22 @@ def op_scenarios(sc: dict, cfg: dict) -> Stage:
         # second per-unit axis, which it would lock to the first, or unequal weights,
         # which it would ignore -- is dealt by `deal_unit_axes` instead.
         per_unit = {name: spec for name, spec in rotate.items() if spec.get("per_trait")}
-        cyclic = len(per_unit) <= 1 and all(
+        # An extension continues the axes that ask to from what the prior corpus was dealt;
+        # every other axis is dealt exactly as a fresh run deals it.
+        continuing = [name for name, spec in per_unit.items() if spec.get("continue_from_prior")]
+        extended = getattr(ctx, "prior", None)
+        history = {}
+        if extended is not None and continuing:
+            from .extend import prior_deals
+
+            history = prior_deals(extended, continuing)
+            ctx.manifest_extra.setdefault("continued_axes", {})[sc["name"]] = {
+                name: {"prior_calls": sum(sum(c.values()) for c in by_unit.values()),
+                       "prior_units": len(by_unit)} for name, by_unit in history.items()}
+        cyclic = not history and len(per_unit) <= 1 and all(
             len({float(w) for w in spec["weights"].values()}) == 1 for spec in per_unit.values())
         placed = None if cyclic else deal_unit_axes(
-            per_unit, [t.trait_id for t in traits], planned_calls)
+            per_unit, [t.trait_id for t in traits], planned_calls, history)
 
         def axes_of(spec: tuple) -> dict[str, str]:
             ti, bi, _n = spec

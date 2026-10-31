@@ -537,8 +537,9 @@ def run(cfg: dict, smoke: bool = False, resume: str | None = None) -> dict:
         # `name_suffix=a` (a launch argument, never a config field) tells apart several corpora of one
         # recipe made on one day -- the delib-sonnet arm answered per da-15 prompt pool (a/b/c) on
         # 2026-10-30 -- before the stage word: `<date>-delib-sonnet-a-synth`.
-        label = cfg["pipeline"] + (f"-{cfg['name_suffix']}" if cfg.get("name_suffix") else "")
-        name = artifact_name(f"{label} synth smoke") if smoke else synth_name(label)
+        suffix = str(cfg.get("name_suffix") or "")
+        label = cfg["pipeline"] + (f"-{suffix}" if suffix else "")
+        name = artifact_name(f"{label} synth smoke") if smoke else synth_name(cfg["pipeline"], suffix=suffix)
         repo = hf_repo_id(name) if cfg["hf_push"] else None
         if repo and hf_api().repo_exists(repo, repo_type="dataset"):
             raise FileExistsError(f"HF output already exists: {repo}; resume the original run or use a new config stem")

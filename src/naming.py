@@ -34,6 +34,12 @@ from src.model_profile import model_key
 # `mixture_stats.json` records both, because the same split reads very differently in
 # the two units.
 #
+# A NAME SUFFIX tells apart two artifacts of one recipe made on one day, and is the only
+# other thing a person may add — at launch (`name_suffix=b`), never in a config. It sits
+# just before the stage word: `<date>-da-15-b-mix`, `<date>-da-nika-synth`. It exists
+# because the name lock (`src.infra.huggingface.claim_repo`) refuses to launch onto a repo
+# that already exists, and a suffix is what you add instead of pushing into it.
+#
 # Two spellings of one grammar; `to_hub`/`to_local` convert between them and nothing else
 # may:
 #
@@ -68,6 +74,10 @@ LOCAL_NAME = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_({_TOKEN}(?:_{_TOKEN})*)$"
 HUB_NAME = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})-({_TOKEN}(?:-{_TOKEN})*)$")
 REPO_ID = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)/([^/]+)$")
 STYLE = re.compile(rf"^{_TOKEN}(?:-{_TOKEN})*$")
+# One token: a word (your name, `rerun`) or a version (`v2`). A single letter or a
+# version can only be a suffix, never a variant — so `split_mix_subject` reads it as one.
+SUFFIX = re.compile(r"^(?:[a-z]+|v\d+)$")
+_MARKER = re.compile(r"^(?:[a-z]|v\d+)$")
 
 # Past this the Hub refuses a repo name, and a plot legend is unreadable. The style-type
 # is the only part anyone controls, so it is the only part that can be shortened.
@@ -294,13 +304,27 @@ def check_style(style: str, *, what: str = "style-type", numbers_ok: bool = Fals
 # The builders — one per stage, and the escape hatch for what is not a stage
 # --------------------------------------------------------------------------------------
 
-def synth_name(style: str, *, date: str | None = None) -> str:
-    """`<date>-<style>-synth` — a generated corpus."""
-    return _mint(f"{check_style(style)} synth", date, what="synth corpus")
+def check_suffix(suffix: str, *, what: str = "name suffix") -> str:
+    """Validate a launch-time name suffix (`b`, `nika`, `v2`); return it, or raise."""
+    text = str(suffix)
+    if not SUFFIX.match(text):
+        raise NamingError(
+            f"{what}: {text!r} is not one lowercase word or `v<n>`. A suffix tells apart two "
+            "artifacts of one recipe made on one day: your name (`nika`), a word for why "
+            "(`rerun`), a letter (`b`) or a version (`v2`).")
+    if text in RESERVED:
+        raise NamingError(f"{what}: {text!r} is a stage word ({', '.join(sorted(RESERVED))}).")
+    return text
 
 
-def mix_subject(styles: str, synthetic_pct: int, variant: str = "") -> str:
-    """`<styles>-<pct>[-<variant>]`, or `nosynth` — what a mixture IS, and what its arms carry.
+def synth_name(style: str, *, date: str | None = None, suffix: str = "") -> str:
+    """`<date>-<style>[-<suffix>]-synth` — a generated corpus."""
+    tail = f" {check_suffix(suffix)}" if suffix else ""
+    return _mint(f"{check_style(style)}{tail} synth", date, what="synth corpus")
+
+
+def mix_subject(styles: str, synthetic_pct: int, variant: str = "", suffix: str = "") -> str:
+    """`<styles>-<pct>[-<variant>][-<suffix>]`, or `nosynth` — what a mixture IS, and what its arms carry.
 
     Args:
         styles: The styles making up the synthetic share, hyphenated (`da`, `da-par`);
@@ -310,6 +334,8 @@ def mix_subject(styles: str, synthetic_pct: int, variant: str = "") -> str:
             styles do not say it — `cot` (only the reasoning of a synthetic row
             is supervised). Named by whoever makes the variant, not by this module; it
             reaches here from the config that declares it.
+        suffix: Tells this mixture apart from another of the same recipe made the same
+            day (`b`: `da-15-b`), given at launch. Says nothing about how it was built.
 
     Raises:
         NamingError: styles and a synthetic share disagree. They imply each other — a
@@ -324,7 +350,8 @@ def mix_subject(styles: str, synthetic_pct: int, variant: str = "") -> str:
             f"A mixture with no synthetic rows has no styles and is named `{NOSYNTH}`; a "
             "mixture with synthetic rows names the styles they came from.")
     head = f"{check_style(styles)}-{pct}" if styles else NOSYNTH
-    return f"{head}-{check_style(variant)}" if variant else head
+    head = f"{head}-{check_style(variant)}" if variant else head
+    return f"{head}-{check_suffix(suffix)}" if suffix else head
 
 
 def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, int, str]:
@@ -334,6 +361,10 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
     the variant. It is found by BEING the numeric token rather than by position, because
     the variant may be several tokens long (`da-7-length-capped`) and the styles may be
     too (`da-par-20-cot`).
+
+    A last token that is one letter or `v<n>` is a name suffix (`da-15-b`), never a
+    variant, and is left out of the result. A WORD suffix (`da-15-nika`) reads as a
+    variant: nothing in the name can tell the two apart, and both are valid.
     """
     tokens = str(subject).split("-")
     numeric = [i for i, tok in enumerate(tokens) if tok.isdigit()]
@@ -342,7 +373,10 @@ def split_mix_subject(subject: str, *, what: str = "mix subject") -> tuple[str, 
         styles, pct, variant = "", 0, "-".join(tokens[1:])
     elif len(numeric) == 1:
         i = numeric[0]
-        styles, pct, variant = "-".join(tokens[:i]), int(tokens[i]), "-".join(tokens[i + 1:])
+        tail = tokens[i + 1:]
+        if tail and _MARKER.match(tail[-1]):
+            tail = tail[:-1]
+        styles, pct, variant = "-".join(tokens[:i]), int(tokens[i]), "-".join(tail)
     else:
         raise NamingError(
             f"{what}: {subject!r} carries {len(numeric)} bare numbers; a mix subject "
@@ -375,9 +409,9 @@ def check_mix_subject(subject: str, *, what: str = "mix subject") -> str:
 
 
 def mix_name(styles: str, synthetic_pct: int, variant: str = "", *,
-             date: str | None = None) -> str:
-    """`<date>-<styles>-<pct>[-<variant>]-mix`, or `<date>-nosynth-mix` for the base blend."""
-    return _mint(f"{mix_subject(styles, synthetic_pct, variant)} mix", date,
+             date: str | None = None, suffix: str = "") -> str:
+    """`<date>-<styles>-<pct>[-<variant>][-<suffix>]-mix`, or `<date>-nosynth-mix` for the base blend."""
+    return _mint(f"{mix_subject(styles, synthetic_pct, variant, suffix)} mix", date,
                  what="training mixture")
 
 
@@ -679,6 +713,11 @@ def _check_config(rel: str, stem: str, path: Path) -> str:
     """The violation in one config's stem, or ''."""
     folder = rel.rsplit("/", 1)[0]
     try:
+        if folder.startswith("configs/data/") and "name_suffix" in _yaml(path):
+            raise NamingError(
+                f"{stem}.yaml declares `name_suffix`. A suffix tells apart two artifacts of "
+                "one recipe made on one day, so it belongs to the LAUNCH "
+                "(`name_suffix=b`), never to the config every launch shares.")
         if folder == "configs/data/synth":
             # `<style>[-<variant>]`, used verbatim as the corpus's subject. The variant is
             # part of the stem rather than a field because a synth name has nothing spliced

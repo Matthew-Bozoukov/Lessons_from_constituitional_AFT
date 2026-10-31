@@ -250,6 +250,24 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         print(f"{name}: {spec['dataset']}@{info.sha[:12]} (default config)")
         pool = load_dataset(spec["dataset"], revision=info.sha, split="train",
                             token=hf_token())
+        if spec.get("split"):
+            # ONE POOL of the corpus (src/data/mixture/split.py): the labels file published
+            # in the same repo, read at the same pinned revision, names which rows are in it.
+            from src.data.mixture.split import load_split, select
+            from src.infra.huggingface import hf_download
+
+            split = dict(spec["split"])
+            # `path:` is a split file not yet published, for a build that is checked
+            # before anything is pushed; main() refuses to publish a mixture made from one.
+            local = split.get("path")
+            labels, meta = load_split(local or hf_download(
+                spec["dataset"], str(split["file"]), repo_type="dataset", revision=info.sha))
+            pool = select(pool, labels, str(split["keep"]), name=name)
+            spec["split"] = {**split, "selected_rows": len(pool), "meta": meta}
+            print(f"{name}: pool {split['keep']!r} of {local or split['file']} — {len(pool)} rows")
+    elif spec.get("split"):
+        raise ValueError(f"source {name!r}: `split:` selects a pool of a published corpus; "
+                         "it needs `dataset:` (the labels live in that repo)")
     elif "file" in spec:
         # LEGACY intake for pre-contract repos with no dataset.jsonl/default config
         # (e.g. stage_7_sft.jsonl mirrors): one exact file, sha-pinned via the shared
@@ -965,6 +983,10 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               budget split evenly across that field's values (top-level or under
               `metadata`), e.g. `trait_id` to trait-balance the difficult-advice share
               (absorbs the old balanced_subset.py). Quotas fail loudly when short.
+            * `split: {file: splits/<name>.json, keep: B}` — `dataset:` sources only:
+              draw from ONE POOL of the corpus, as labelled by that file in the same
+              repo at the same revision (src/data/mixture/split.py), so mixtures built
+              from different pools share no row.
         Optional `filter:` block — constitution, model, workers?, max_chars?,
             keep_examples? (stratified downsample of the kept rows).
         Optional `hf:` block — experiment, constitution?, private? (the REPO is
@@ -1122,7 +1144,26 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
     # cannot be published under a percentage its own rows disagree with.
     declared_pct = (int(cfg.synthetic_pct) if share_unit == "supervised_tokens"
                     else declared_synthetic_pct(sources))
-    repo = mix_name(style if style != NOSYNTH else "", declared_pct, variant)
+
+    def named(suffix: str) -> str:
+        return mix_name(style if style != NOSYNTH else "", declared_pct, variant, suffix=suffix)
+
+    # `name_suffix=b` (a launch argument, never a config field) tells apart two mixtures of
+    # one recipe made on one day, and THE NAME LOCK refuses to push into one that exists.
+    repo = named(str(cfg.get("name_suffix") or ""))
+    unpublished = sorted(n for n, s in sources.items()
+                         if isinstance(s, dict) and isinstance(s.get("split"), dict)
+                         and s["split"].get("path"))
+    if unpublished and hf_cfg is not None and not smoke:
+        raise ValueError(
+            f"source(s) {unpublished} select a pool from a LOCAL split file: a published "
+            "mixture must name the split published with its corpus (`split.file`), or "
+            "nobody can rebuild it. Build with `hf=null` to check it, then publish the split.")
+    if hf_cfg is not None and not smoke:
+        from src.infra.huggingface import claim_repo, hf_repo_id
+
+        repo = claim_repo(hf_repo_id(repo), lambda s: hf_repo_id(named(s)),
+                          what="training mixture")
 
     # --- stage 1: the base mixture ----------------------------------------------------
     if not base_specs:

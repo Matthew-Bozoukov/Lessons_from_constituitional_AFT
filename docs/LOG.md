@@ -1,3 +1,23 @@
+## 2026-10-30: da corpus grown to 46.6% of the plain base; da-15 B and C, disjoint from da-15 #1; one LoRA each
+
+Hypothesis: "three independent 15%s" needs da rows worth more than 45% of `2026-10-05-plain-mix`'s 5,000,005 supervised tokens, so that three da-15 mixtures can be cut with no row in common, each by the same process and seed as da-15 #1 (`2026-10-05-da-15-mix` @ f990959a, 650 da rows, 72-73 a trait, 15.09%). `2026-10-02-da-synth` @ 305914d5 held 1,283 rows (29.9%).
+
+Method (all in code: `scratch/da15_bc/driver.py` plan -> smoke -> extend -> verify -> split -> mix -> check -> train -> watch, branch `nika/da-synth-45`):
+- Plan (`extend.plan_extension`): the 633 rows #1 did not take, a target of 75 unused rows a trait in each of two new pools, and per-trait loss measured on run 2 (the only run whose dedupe was seeded with a prior: t6 12.5%, t7 4.2%, t8 1.4%, the rest 0) gave 717 rows needed and 736 asked (`total_scenarios=736`, `trait_weights` t1 79 ... t6 100). Smoke on 9 scenarios, nothing pushed: $0.88.
+- Extend: `configs/data/synth/da.yaml` with `extend_from` 305914d5, `id_prefix=r3_`; the similarity gate seeded with all 1,288 prior scenarios (91b16207); the sector deal CONTINUED from what runs 1-2 were dealt (`continue_from_prior`, read off the rows), so each non-t6 trait got its 7-8 never-met sectors first; the AI deal unchanged (2/2/8/8 a trait, t6 13/12). `launch_requires: [total_scenarios]` now refuses a launch that inherits the file's 2000.
+- Split: `splits/2026-10-30-da-15-abc-split.json` in the corpus repo (@ 8fadea62). A = #1's 650 rows, found by conversation hash, 1:1; B and C dealt round-robin within trait x AI label x run, seed 0.
+- Mixes: `configs/data/mixture/da.yaml` `synthetic_pct=15`, the source restricted to pool B or C (`split: {file, keep}`), `name_suffix=b|c`. Same seed and base as #1. Before publishing, a da-15 built from pool A through the same path reproduced #1's 2,218 rows exactly.
+- Training: `configs/train/sft.yaml`, `model=qwen36`, seed 0, 1xH200 each, 139 steps (~47 min), launched with `runpod up --run` (a cloud session has no SSH; the pod runs `uv run train` itself) at git 34645c24. The training code differs from #1's (5d5ab019) only in the trace-family check becoming a record (b9385e9b, 90409b26).
+
+Result:
+- Corpus `dougalldeepmind/2026-10-30-da-synth` @ d263f4d2: 2,001 rows (1,283 + 718 `r3_`), 2,330,188 supervised tokens = 46.60% of the base. The writer kept 726 of 736 (all 10 short in t6; 101 refused by the 0.78 gate); 8 dropped downstream (1 truncated prompt revision, 2 drafts the lint could not save, 5 at the rewrite: lint and malformed replies). Unused rows a trait 149-152. $74.53 on OpenRouter.
+- `dougalldeepmind/2026-10-30-da-15-b-mix` @ 8d260a9e: 653 da rows, 72-74 a trait, 15.09%. `dougalldeepmind/2026-10-30-da-15-c-mix` @ a1eeaf04: 641 da rows, 71-73 a trait, 15.09%. Both disjoint from A and from each other; base rows identical to #1's. #1 was 72-73 a trait: the fill stops at a token count and the B/C rows run slightly longer than A's (~647 rows, 71.9 a trait, fill 15%). No split seed 0-8 gives both pools 72-73 (simulated with the mixer's own `fill_tokens`); seed 0 was kept rather than choosing a split by its fill.
+- Adapters `dougalldeepmind/2026-10-30-qwen36-0-da-15-b` @ 61a7cb2f and `-c` @ dc69d0bc, thinking on, each pinned to its mix revision. Training loss was NOT recorded: the pods deleted themselves 60 s after a clean exit, before the watcher's next poll saved the log, and an adapter carries no curve. The grace is now 10 min and the watcher saves the whole log on exit.
+- RunPod: ~$10 (two H200s, ~57 min each; billing not yet posted), plus a $0.003 probe.
+- Infrastructure found on the way: REST v2 matches `allowedCudaVersions` EXACTLY, and every H200 with stock reported CUDA 13.2, so `["13.0"]` was "no instances available" everywhere; pods now send `minCudaVersion` (a floor). Pushing from a cloud session needs the Claude GitHub App installed on the repo owner's account. A launch onto an existing HF repo name now stops and asks for a suffix or an abort (synth and mix).
+
+Next steps: evaluate da-15 B and C beside #1 on #1's evals, so the spread across three independent draws of da rows (base, seed and recipe fixed) can be read against seed-to-seed spread.
+
 ## 2026-10-30: The two CoT-ablation 15% arms trained on the true-15% mixes
 
 Hypothesis: the masked-CoT and no-think arms in Fig. 3 were under-dosed (14.5% and 13.4%, the latter hand-built); retrain both on the 2026-10-30 mixes so every trace-ablation bar is a 15% arm on the same base.

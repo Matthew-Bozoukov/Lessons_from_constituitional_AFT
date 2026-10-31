@@ -3,6 +3,19 @@
 
 # GOTCHAS
 
+## A claude.ai cloud session cannot SSH to a pod: use `runpod up --run` (2026-10-30)
+
+The cloud container's network is an HTTPS proxy: there is no `ssh` binary and raw TCP to :22
+or any high port times out, so `runpod up`'s `_wait_for_ssh`, `--push_env` (which writes the
+pod's .env over SSH, from a local `.env` file the session does not have either: its secrets
+are environment variables) and the printed `ssh -p ... 'uv run train ...'` launch all fail
+there. `runpod up --train <cfg> --model <key> --push_env --run "uv run train ..."` needs none
+of it: the pod starts the command itself once READY, logs to
+`https://<pod>-8080.proxy.runpod.net/train.log` (HTTPS, readable through the proxy), echoes
+`RUN_EXIT <code>` in the boot log, and deletes itself ten minutes after a 0; HF_TOKEN/HF_ORG
+reach it as pod environment. `runpod down --pod <id>` is still the teardown of record. The
+pod still clones from origin, so a session that cannot `git push` cannot train either.
+
 ## A CUDA pin of one version finds no host once the fleet moves on (2026-10-30)
 
 `POST /pods` with `allowedCudaVersions: ["13.0"]` returned "There are no longer any instances
@@ -15,6 +28,11 @@ CUDA_VERSIONS now lists the CUDA 13 family (`13.0,13.1,13.2,13.3`) and every def
 when this error comes back for every GPU at once, check a probe pod's `cudaVersion` before
 assuming capacity. Probing is cheap: create with `start_script="sleep 600"`, read
 `GET /pods/<id>`, `terminate` (cents).
+
+Since the same day's merge of `nika/da-synth-45` the list is sent as a FLOOR: `provision_runpod`
+puts its lowest version in `gpu.minCudaVersion` (v2's ">=", which `allowedCudaVersions` lacks),
+so a host past 13.3 still matches; the da-15-b/c pods were placed that way on 13.2 hosts.
+`GET /catalog/gpus?include=AVAILABILITY&product=POD` lists each card's `cudaVersions` without a probe.
 
 ## inspect-ai 0.3.268 -> 0.3.286 came with inspect-petri 3.1.0 (2026-10-30)
 
