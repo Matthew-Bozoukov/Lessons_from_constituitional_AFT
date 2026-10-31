@@ -53,7 +53,7 @@ from src.model_profile import (  # noqa: E402
     ModelProfile, model_profile, parallel_calls, render_chat, tool_rendering)
 from src.train.masking import build_labels  # noqa: E402
 from src.naming import (  # noqa: E402
-    NOSYNTH, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
+    NOSYNTH, STRIP_VARIANT, SUPERVISE_VARIANTS, check_style, mix_name, styles_from_sources,
 )
 from src.utils import git_sha, origin_url, timestamp, write_run_meta  # noqa: E402
 
@@ -288,6 +288,14 @@ def _take_interchange(tok, cfg, name: str, spec: dict, budget: tuple[str, int],
         msgs = to_messages(raw)
         if msgs is None:
             return None
+        if spec.get("strip_reasoning"):
+            # The `nothink` variant: the rows' traces are REMOVED, so the turn renders as
+            # the family's empty think marker (wholly masked, never trained) and only the
+            # answer is supervised. The data-level partner of `supervise: response`, which
+            # keeps the trace in context: 2026-10-08-da-15-emptythink-mix was built this
+            # way by hand from the response-only mixture.
+            for m in msgs:
+                m.pop("reasoning_content", None)
         # `tools` rides top-level on a row (a synth chat_export with `tools:`) or is
         # parsed out of prompt text by the adapter (`to_tools`): the schemas of what the
         # conversation may call; counted AND trained with them, since the template
@@ -965,6 +973,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
               src/train/masking.py's rule. A value that names a variant in
               src/naming.py's SUPERVISE_VARIANTS (`cot` -> `cot`) must match the
               config's declared `variant:`, and vice versa.
+            * `strip_reasoning: true` — remove every turn's `reasoning_content` from this
+              source's rows before counting and validation, so they render with the
+              family's empty think marker and only the answer is supervised. The data
+              then carries no trace, so the source declares `reasoning: none`; it must
+              not also override `supervise:` (masking.py refuses `cot`/`response` on an
+              empty marker). Implies the `nothink` variant (src/naming.py STRIP_VARIANT).
             * `balance_by: <field>` — local-path sources only: take the `examples:`
               budget split evenly across that field's values (top-level or under
               `metadata`), e.g. `trait_id` to trait-balance the difficult-advice share
@@ -1034,6 +1048,14 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
         assert sup is None or sup in ("full", "final", "cot", "response"), (
             f"source {sname!r}: `supervise: {sup}` is not a mode src/train/masking.py "
             "knows (full | final | cot | response)")
+        if spec.get("strip_reasoning"):
+            assert spec.get("reasoning") == "none", (
+                f"source {sname!r}: `strip_reasoning: true` removes the traces, so the rows "
+                "this mixture carries have none: declare `reasoning: none`")
+            assert sup is None, (
+                f"source {sname!r}: `strip_reasoning: true` with `supervise: {sup}` -- a "
+                "stripped turn carries the empty think marker, which masking.py refuses to "
+                "carve (gotcha 2); the stripped answer is the whole target already")
     share_unit = str(cfg.get("share_unit") or "examples")
     assert share_unit in SHARE_UNITS, f"share_unit must be one of {SHARE_UNITS}, not {share_unit!r}"
     if share_unit == "supervised_tokens":
@@ -1069,11 +1091,12 @@ def main(config: str, *overrides: str, smoke: bool = False) -> None:
             "control and trains as its rows are published. Move it to the synthetic "
             "source (under `base:` every entry in `sources:` is one).")
     implied = sorted({SUPERVISE_VARIANTS[s["supervise"]] for s in sources.values()
-                      if s.get("supervise") in SUPERVISE_VARIANTS})
+                      if s.get("supervise") in SUPERVISE_VARIANTS}
+                     | {STRIP_VARIANT for s in sources.values() if s.get("strip_reasoning")})
     if implied != ([variant] if variant else []):
         raise ValueError(
             f"{Path(config).stem}.yaml declares `variant: {variant or '(none)'}` but its "
-            f"sources' `supervise:` overrides imply {implied or 'no variant'}. The variant "
+            f"sources' `supervise:`/`strip_reasoning:` overrides imply {implied or 'no variant'}. The variant "
             "is the name's word for the override, so declare both or neither: a "
             "`supervise: cot` source needs `variant: cot` (and a `-cot` stem), "
             "and a declared variant needs a source that overrides `supervise:` to match "

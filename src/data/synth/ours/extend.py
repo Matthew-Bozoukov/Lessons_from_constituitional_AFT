@@ -35,6 +35,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from src.data.synth.ours.constitution import same_constitution
+
 
 @dataclass(frozen=True)
 class Prior:
@@ -161,7 +163,7 @@ def check_compatible(prior: Prior, cfg: dict, constitution_sha256: str) -> None:
         raise ValueError(
             f"extend_from: {prior.repo} is a `{prior.pipeline}` corpus; this run is "
             f"`{style}`. A union of two style-types is not a corpus.")
-    if prior.constitution_sha256 and prior.constitution_sha256 != constitution_sha256:
+    if prior.constitution_sha256 and not same_constitution(prior.constitution_sha256, constitution_sha256):
         raise ValueError(
             f"extend_from: {prior.repo} was generated against a different constitution "
             f"(sha256 {prior.constitution_sha256[:12]} vs {constitution_sha256[:12]}). "

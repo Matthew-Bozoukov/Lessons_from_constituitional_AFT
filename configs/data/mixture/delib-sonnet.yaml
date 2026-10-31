@@ -53,5 +53,5 @@ output_dir: "output/mixture_delib_sonnet"
 
 hf:
   experiment: "deliberative-alignment arm, Sonnet 5 as teacher: the MSM Table 2 base blend scaled around a synthetic share of Sonnet's constitution-guided answers (templated think traces) to the difficult-advice prompts, best-of-N judge-filtered"
-  constitution: "constitutions/abridged/constitution.md"
+  constitution: "constitutions/claude_distilled_09_principles/constitution.md"   # the recipe's alignment target since 2026-10-04 (was abridged before)
   private: false

@@ -36,6 +36,8 @@ class _ScriptedOpenAI:
         self.requests.append(kw)
         r = self._responses[self.calls]
         self.calls += 1
+        if isinstance(r, Exception):   # a scripted HTTP-level failure
+            raise r
         return r
 
 
@@ -203,6 +205,19 @@ def test_empty_content_preserves_normalized_and_native_length_reason():
     choice = caught.value.diagnostics['choices'][0]
     assert choice['finish_reason'] == 'length' and choice['native_finish_reason'] == 'max_tokens'
     assert caught.value.diagnostics['usage']['prompt_tokens'] == 1
+
+
+def test_http_level_5xx_retries_like_an_in_body_one():
+    # The gateway's own 5xx (the SDK's InternalServerError: 500, 502, 529 overloaded) is as
+    # transient as an in-body one; until 2026-10-30 it was not retried and a single
+    # overloaded response aborted a whole delib-sonnet run.
+    import httpx
+    from openai import InternalServerError
+    req = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    boom = InternalServerError("overloaded", response=httpx.Response(529, request=req), body=None)
+    c = _client([boom, _resp("ok")])
+    result = c.chat("anthropic/claude-sonnet-5", [{"role": "user", "content": "hi"}])
+    assert result.content == "ok" and c.client.calls == 2
 
 
 def test_in_body_transient_code_retries():

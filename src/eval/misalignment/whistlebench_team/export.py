@@ -19,6 +19,7 @@ from pathlib import Path
 from inspect_ai.log import EvalLog
 from inspect_ai.scorer import CORRECT
 
+from src.eval.inspect_messages import content_json, tool_calls_json
 from src.eval.misalignment.whistlebench_team import measures as M
 from src.utils import transcript_markdown
 
@@ -104,24 +105,9 @@ def rows_from_logs(logs: list[EvalLog]) -> list[dict]:
 def _messages_json(messages) -> list[dict]:
     out = []
     for m in messages:
-        d = {"role": m.role}
-        if isinstance(m.content, str):
-            d["content"] = m.content
-        else:
-            parts = []
-            for c in m.content:
-                if c.type == "reasoning":
-                    parts.append({"type": "reasoning", "reasoning": c.reasoning})
-                elif c.type == "text":
-                    parts.append({"type": "text", "text": c.text})
-                else:
-                    parts.append({"type": c.type})
-            d["content"] = parts
+        d = {"role": m.role, "content": content_json(m)}
         if getattr(m, "tool_calls", None):
-            d["tool_calls"] = [
-                {"id": tc.id, "function": tc.function, "arguments": tc.arguments}
-                for tc in m.tool_calls
-            ]
+            d["tool_calls"] = tool_calls_json(m)
         if m.role == "tool":
             d["tool_call_id"] = getattr(m, "tool_call_id", None)
             d["function"] = getattr(m, "function", None)

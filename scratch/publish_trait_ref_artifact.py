@@ -30,6 +30,9 @@ sys.path.insert(0, str(REPO))
 from src.infra.huggingface import push_run_dir  # noqa: E402
 from src.naming import artifact_name  # noqa: E402
 
+sys.path.insert(0, str(REPO / "scratch"))
+from trait_ref_arms import ARM_SETS  # noqa: E402
+
 # The append-only JSONL cache, NOT labels.csv: each run rewrites the csv from the arms IT
 # sampled, so the delib-only and DA-only runs of the same scheme overwrite each other there.
 LABELS = {
@@ -55,9 +58,23 @@ LEAK = re.compile(r"(no|not|don'?t|without|never|avoid|shouldn'?t)[^.\n]{0,40}"
                   r"(mention|cite|refer|quote|reference)[^.\n]{0,25}constitution", re.I)
 
 
-def label_frame() -> pd.DataFrame:
+LABELS_PLAIN15 = {
+    ("reference", "evals"): "output/odcv/2026-10-09_constref_evals_plain15/labels.jsonl",
+    ("reference", "training"): "output/odcv/2026-10-09_constref_training_plain15/labels.jsonl",
+    ("traits", "training"): "output/odcv/2026-10-09_traitref_training_plain15/labels.jsonl",
+    ("traits", "evals"): "output/odcv/2026-10-09_traitref_evals_plain15/labels.jsonl",
+}
+SCORES_PLAIN15 = {  # the arms' published eval results (ODCV 240 rollouts; MASK mean of three runs)
+    "da-15": {"mask_honesty": 83.1, "odcv_mr_pct": 13.3},
+    "delib-sonnet-15": {"mask_honesty": 67.7, "odcv_mr_pct": 14.2},
+    "da-qwen-15": {"mask_honesty": 84.5, "odcv_mr_pct": 22.1},
+    "delib-15": {"mask_honesty": 71.5, "odcv_mr_pct": 30.0},
+}
+
+
+def label_frame(labels: dict) -> pd.DataFrame:
     frames = []
-    for (scheme, source), path in LABELS.items():
+    for (scheme, source), path in labels.items():
         df = pd.DataFrame([json.loads(l) for l in (REPO / path).open()])
         df["scheme"] = scheme
         frames.append(df)
@@ -65,7 +82,7 @@ def label_frame() -> pd.DataFrame:
     return df.drop_duplicates(subset=["scheme", "eval", "arm", "unit"])
 
 
-def regex_training() -> dict:
+def regex_training(arm_set: str) -> dict:
     """The keyword measurement, recomputed here so the artifact is self-contained."""
     from huggingface_hub import hf_hub_download
     from dotenv import load_dotenv
@@ -74,11 +91,16 @@ def regex_training() -> dict:
     local = {"delib-7": REPO / "output/synth_delib/20260916_181728/dataset.jsonl",
              "da-qwen-7": REPO / "output/synth_da_qwen/20260916_215417/dataset.jsonl"}
     out = {}
-    for arm, (repo, _) in CORPORA.items():
-        path = local.get(arm) or hf_hub_download(repo, "dataset.jsonl", repo_type="dataset")
+    arms = ARM_SETS[arm_set]["arms"]
+    for arm in arms:
         traces = []
-        for line in open(path):
-            row = json.loads(line)
+        if arm_set == "7":
+            path = local.get(arm) or hf_hub_download(CORPORA[arm][0], "dataset.jsonl", repo_type="dataset")
+            rows = (json.loads(l) for l in open(path))
+        else:  # the synthetic rows of the mixture the adapter trained on
+            path = hf_hub_download(arms[arm]["mix"], "mixture.jsonl", repo_type="dataset")
+            rows = (r for r in (json.loads(l) for l in open(path)) if r.get("source") == arms[arm]["source"])
+        for row in rows:
             a = [m for m in row["messages"] if m["role"] == "assistant"][-1]
             traces.append(a.get("reasoning_content") or "")
         s = pd.Series(traces)
@@ -91,11 +113,22 @@ def regex_training() -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-push", action="store_true")
+    ap.add_argument("--arm-set", default="7", choices=list(ARM_SETS))
     args = ap.parse_args()
+    arm_set = ARM_SETS[args.arm_set]
+    arm_names = list(arm_set["arms"])
+    if args.arm_set == "7":
+        labels, scores = LABELS, SCORES
+        corpora = {a: c for a, (c, _) in CORPORA.items()}
+        adapters = {a: m for a, (_, m) in CORPORA.items()}
+    else:
+        labels, scores = LABELS_PLAIN15, SCORES_PLAIN15
+        corpora = {a: s["mix"] for a, s in arm_set["arms"].items()}
+        adapters = {a: s["adapter"] for a, s in arm_set["arms"].items()}
 
-    out = REPO / "output" / "trait_ref_artifact"
+    out = REPO / "output" / f"trait_ref_artifact_{args.arm_set}"
     out.mkdir(parents=True, exist_ok=True)
-    df = label_frame()
+    df = label_frame(labels)
     df.to_csv(out / "labels.csv", index=False)
 
     def pct(scheme, ev, label):
@@ -115,29 +148,29 @@ def main() -> int:
                                     df[(df.scheme == "traits") & (df["eval"] == ev)]
                                     .groupby("arm")["leak_check"].mean().dropna().items()}
                                for ev in ("training", "mask", "odcv")},
-        "training_corpus_regex": regex_training(),
-        "eval_scores": SCORES,
-        "corpora": {a: c for a, (c, _) in CORPORA.items()},
-        "adapters": {a: m for a, (_, m) in CORPORA.items()},
+        "training_corpus_regex": regex_training(args.arm_set),
+        "eval_scores": scores,
+        "corpora": corpora,
+        "adapters": adapters,
     }
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
 
     ref, ts = summary["references_the_document_pct"], summary["invokes_a_specific_principle_pct"]
     rgx = summary["training_corpus_regex"]
     lines = ["# Constitution references: training traces vs eval traces", "",
-             "Every arm trains on 700 synthetic rows and the SAME 9,300 replay rows; only the",
-             "synthetic share differs. delib's generation prompt tells the teacher to cite the",
+             "Every arm fills the same synthetic share of the same base blend; only the",
+             "synthetic rows differ. delib's generation prompt tells the teacher to cite the",
              "constitution's principles, DA's never mentions a constitution.", "",
              "## Invokes a SPECIFIC principle (LLM-labelled, %)", "",
              "| arm | training corpus | MASK | ODCV | MASK honesty | ODCV MR |",
              "|---|---|---|---|---|---|"]
-    for arm in ("delib-7", "delib-sonnet-7", "da-7", "da-qwen-7"):
+    for arm in arm_names:
         lines.append(f"| {arm} | {ts['training'].get(arm, 'n/a')} | {ts['mask'].get(arm, 'n/a')} | "
-                     f"{ts['odcv'].get(arm, 'n/a')} | {SCORES[arm]['mask_honesty']} | {SCORES[arm]['odcv_mr_pct']}% |")
+                     f"{ts['odcv'].get(arm, 'n/a')} | {scores[arm]['mask_honesty']} | {scores[arm]['odcv_mr_pct']}% |")
     lines += ["", "Trait scheme: a near-paraphrase of a principle counts, even with the document never named.",
               "", "## References the document at all (LLM-labelled, %)", "",
               "| arm | training corpus | MASK | ODCV |", "|---|---|---|---|"]
-    for arm in ("delib-7", "delib-sonnet-7", "da-7", "da-qwen-7"):
+    for arm in arm_names:
         lines.append(f"| {arm} | {ref['training'].get(arm, 'n/a')} | {ref['mask'].get(arm, 'n/a')} | "
                      f"{ref['odcv'].get(arm, 'n/a')} |")
     lines += ["", "Reference scheme: needs the DOCUMENT invoked as an authority. The DA arms are ~0 here,",
@@ -146,7 +179,7 @@ def main() -> int:
               "", "## Training corpus, keyword measurement (%)", "",
               "| arm | rows | mentions 'constitution' | of which a don't-leak self-check |",
               "|---|---|---|---|"]
-    for arm in ("delib-7", "delib-sonnet-7", "da-7", "da-qwen-7"):
+    for arm in arm_names:
         r = rgx[arm]
         lines.append(f"| {arm} | {r['rows']} | {r['mentions_constitution_pct']} | {r['leak_check_pct']} |")
     lines += ["", "delib-7's teacher wrote a \"No mention of constitution? Checked\" self-check into",
@@ -161,11 +194,11 @@ def main() -> int:
                       "(MASK, ODCV), for the four constitutional-SFT arms — Callum 2026-09-14: "
                       "'have a look at the inner thoughts of the trained models on these evals, and "
                       "see whether they reference the constitution'",
-        "date_generated": "2026-09-17",
-        "constitution": "constitutions/abridged/constitution.md",
+        "date_generated": arm_set["date"],
+        "constitution": ("constitutions/abridged/constitution.md" if args.arm_set == "7"
+                         else "constitutions/claude_distilled_09_principles/constitution.md"),
         "source_repo": f"https://github.com/Matthew-Bozoukov/Lessons_from_constituitional_AFT @ {sha}",
-        "models": {"classifier": "google/gemini-3-flash-preview (temperature 0)",
-                   "arms": {a: m for a, (_, m) in CORPORA.items()}},
+        "models": {"classifier": "google/gemini-3-flash-preview (temperature 0)", "arms": adapters},
         "generation_config": {"sampling": "temperature 0.0, max_tokens 250, trace truncated to 40k chars",
                               "sampling_of_traces": "uniform at random over the pooled traces of all arms, "
                                                     "random.Random(0); 1,000 MASK + 1,000 ODCV; training corpora labelled in full",
@@ -173,9 +206,9 @@ def main() -> int:
                                           "traits": "none | generic | trait_specific, plus leak_check flag and principle numbers"}},
         "schema": "labels.csv: scheme, eval (training|mask|odcv), arm, unit, turn, label, traits, "
                   "leak_check, quote, chars. summary.json: the aggregate rates. summary.md: the headline table.",
-        "provenance": "uv run python scratch/classify_constitution_refs.py --source {evals,training} "
-                      "--scheme {reference,traits} [--arms delib-7,delib-sonnet-7]; then "
-                      "uv run python scratch/publish_trait_ref_artifact.py",
+        "provenance": f"uv run python scratch/classify_constitution_refs.py --arm-set {args.arm_set} "
+                      "--source {evals,training} --scheme {reference,traits}; then "
+                      f"uv run python scratch/publish_trait_ref_artifact.py --arm-set {args.arm_set}",
     }
     name = artifact_name("train-vs-eval-trait-ref")
     print(f">>> artifact name: {name}")

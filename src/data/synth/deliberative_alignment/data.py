@@ -73,9 +73,25 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
     """
     if not isinstance(source, dict) or not isinstance(source.get("repo"), str):
         raise ValueError("source.repo must name a Hugging Face synthetic dataset")
-    unexpected = set(source) - {"repo", "revision", "rows", "sample"}
+    unexpected = set(source) - {"repo", "revision", "rows", "sample", "rows_from"}
     if unexpected:
         raise ValueError(f"unsupported source settings: {sorted(unexpected)}; reads dataset.jsonl only")
+    # `rows_from: {mixture, revision?, source?, per_trait, by?, seed?}` -- the prompts a PUBLISHED
+    # MIXTURE took from this corpus (its rows of `source`, matched to the corpus by the full prompt
+    # context, 1:1 or refused), then `per_trait` of them drawn evenly over metadata field `by`
+    # (seeded). This is how a delib arm answers a subset of exactly the prompts its da arm trained
+    # on: 2026-10-30, three da-15 mixes (A/B/C, disjoint prompt pools) -> three delib-sonnet
+    # corpora whose prompts are subsets of each. The matched rows and the draw are recorded in
+    # the provenance. Exclusive with `rows:` and `sample:`.
+    rows_from = source.get("rows_from")
+    if rows_from is not None:
+        if "rows" in source or source.get("sample") is not None:
+            raise ValueError("source.rows_from, source.rows and source.sample are three ways of choosing prompts; use one")
+        if not isinstance(rows_from, dict) or not isinstance(rows_from.get("mixture"), str) \
+                or set(rows_from) - {"mixture", "revision", "source", "per_trait", "by", "seed"} \
+                or not isinstance(rows_from.get("per_trait"), int) or rows_from["per_trait"] <= 0:
+            raise ValueError("source.rows_from must be {mixture: <org/repo>, revision?, source?: 'da', "
+                             "per_trait: <int>, by?: 'trait_id', seed?: <int>}")
     # `sample: {total, by, seed}` -- `total` prompts spread evenly over the values of metadata
     # field `by`, drawn with a seeded RNG inside each group (the same draw the `ours` pipeline's
     # load_source_run makes). For a corpus whose rows cost more than the share needs: the 2026-10-04
@@ -158,6 +174,9 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
         provenance = {**provenance, "sample": {"total": total, "by": by, "seed": seed,
                                                "n_drawn": len(drawn), "drawn_rows": [r["source_row"] for r in drawn]}}
         records = drawn
+    if rows_from is not None:
+        records, drawn_from = _rows_from_mixture(records, rows_from)
+        provenance = {**provenance, "rows_from": drawn_from}
     if not records:
         raise ValueError("dataset.jsonl contains no final rows")
     if keep is not None:
@@ -166,6 +185,57 @@ def load_prompts(source: dict) -> tuple[list[dict], dict]:
             raise ValueError(f"source.rows names rows the dataset does not have: {missing[:10]}")
         provenance = {**provenance, "rows": sorted(keep)}
     return records, provenance
+
+
+def _prompt_context(messages: list[dict]) -> str:
+    """A row's identity across a corpus and a mixture built from it: its prompt context, every
+    message before the final assistant turn as role + content."""
+    return json.dumps([{"role": m.get("role"), "content": m.get("content") or ""} for m in messages],
+                      sort_keys=True, ensure_ascii=False)
+
+
+def _rows_from_mixture(records: list[dict], spec: dict) -> tuple[list[dict], dict]:
+    """Keep the records a published mixture's rows came from, then draw `per_trait` of them per group.
+
+    Raises:
+        ValueError: a mixture row matches no record or several, a group is short of `per_trait`.
+    """
+    import random
+
+    mixture, source_name = str(spec["mixture"]), str(spec.get("source") or "da")
+    per_trait, by, seed = int(spec["per_trait"]), str(spec.get("by") or "trait_id"), int(spec.get("seed", 0))
+    path, pinned = resolve_dataset(mixture, filename="mixture.jsonl", revision=spec.get("revision"))
+    by_ctx: dict[str, list[dict]] = {}
+    for r in records:
+        by_ctx.setdefault(_prompt_context(r["messages"]), []).append(r)
+    taken: list[dict] = []
+    with Path(path).open(encoding="utf-8") as stream:
+        mix_rows = [json.loads(line) for line in stream if line.strip()]
+    for row in mix_rows:
+        if row.get("source") != source_name:
+            continue
+        hits = by_ctx.get(_prompt_context(row["messages"][:-1]), [])
+        if len(hits) != 1:
+            raise ValueError(f"source.rows_from: a `{source_name}` row of {mixture} matches {len(hits)} "
+                             "corpus prompts; the mixture was not built from this corpus")
+        taken.append(hits[0])
+    if not taken:
+        raise ValueError(f"source.rows_from: {mixture} holds no `{source_name}` rows")
+    if len({r["source_row"] for r in taken}) != len(taken):
+        raise ValueError(f"source.rows_from: two rows of {mixture} are the same corpus prompt")
+    groups: dict[str, list[dict]] = {}
+    for r in taken:
+        groups.setdefault(str(r["metadata"].get(by)), []).append(r)
+    drawn: list[dict] = []
+    for name in sorted(groups):
+        if per_trait > len(groups[name]):
+            raise ValueError(f"source.rows_from: {by}={name} has {len(groups[name])} prompts in {mixture}, "
+                             f"fewer than per_trait={per_trait}")
+        drawn += random.Random(f"{seed}:{name}").sample(sorted(groups[name], key=lambda r: r["source_row"]), per_trait)
+    drawn.sort(key=lambda r: r["source_row"])
+    return drawn, {"mixture": mixture, "revision": pinned.get("revision"), "source": source_name,
+                   "n_matched": len(taken), "per_trait": per_trait, "by": by, "seed": seed,
+                   "n_drawn": len(drawn), "drawn_rows": [r["source_row"] for r in drawn]}
 
 
 def generation_messages(record: dict, augmentation: str) -> list[dict]:

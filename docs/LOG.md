@@ -18,6 +18,40 @@ Result:
 
 Next steps: evaluate da-15 B and C beside #1 on #1's evals, so the spread across three independent draws of da rows (base, seed and recipe fixed) can be read against seed-to-seed spread.
 
+## 2026-10-30: The two CoT-ablation 15% arms trained on the true-15% mixes
+
+Hypothesis: the masked-CoT and no-think arms in Fig. 3 were under-dosed (14.5% and 13.4%, the latter hand-built); retrain both on the 2026-10-30 mixes so every trace-ablation bar is a 15% arm on the same base.
+
+Method: standard recipe (`configs/train/sft.yaml`, Qwen3.6-27B, seed 0), one 2xH200 pod each (`uv run runpod up --name jamie-<arm> --train configs/train/sft.yaml --model qwen36 --count 2 --push_env`, then `torchrun --nproc_per_node=2 scripts/train/train_lora.py --config configs/train/sft.yaml model=qwen36 data_repo=<mix> seed=0`), 183 steps, 1 epoch, ~27 min each. Pods ran the fix branch jamie/runpod-cuda-family @ 18deee80 (origin/main plus the CUDA-family pin); placement needed a retry loop over SECURE/COMMUNITY (H200 stock LOW in two data centres), six refused POSTs created nothing.
+
+Result: `dougalldeepmind/2026-10-30-qwen36-0-da-15-maskthink` @ 02f8004d (train_loss 0.657; census 3,216 real / 0 empty; `supervise` {full: 1568, response: 1353}; 4,999,997 of 7,517,160 tokens supervised) and `dougalldeepmind/2026-10-30-qwen36-0-da-15-nothink` @ fb798208 (train_loss 0.709; census 1,863 real / 1,354 empty / 1,090 absent; no `supervise` column; 4,999,925 of 6,703,528 supervised). The census delta (+1,354 empty, -1,353 real) is exactly the da rows changing bucket; both stamps `thinking: true`. RunPod spend for both: about $7.55. Both pods terminated; `runpod pods` empty.
+
+Next: ODCV, MASK and agentic misalignment on both against `2026-10-05-qwen36-0-da-15` and the plain control; replace the Fig. 3 empty-think MASK literal.
+
+## 2026-10-30: True 15% masked-CoT and no-think da mixtures from the 2,001-row corpus; `strip_reasoning` enters the mixer
+
+Hypothesis: the trace-ablation arms were under-dosed. `2026-10-07-da-15-response-only-mix` (trace in context, answer trained) used every one of the 2026-10-02 corpus's 1,283 rows and reached 14.48% of supervised tokens, and `2026-10-08-da-15-emptythink-mix` was derived from it by hand (13.4% on the first 400 rows, no mixer stats, no run_meta). An answer-only row supervises about half the tokens of a traced one, so a true 15% needs about 1,350 rows; Nika's `2026-10-30-da-synth` (the 10-02 corpus plus 718 new rows, 2,001 in all) is the first that can fill it.
+
+Method: `uv run mix --config configs/data/mixture/da-maskthink.yaml` (`variant: maskthink`, `supervise: response` on the da source) and `uv run mix --config configs/data/mixture/da-nothink.yaml` (`variant: nothink`, the new per-source `strip_reasoning: true` in `src/data/mixture/build_mixture.py`: every `reasoning_content` dropped before counting, the source declared `reasoning: none`, no `supervise` override allowed since masking.py refuses to carve an empty marker). The variant word for `supervise: response` is `maskthink` from today (was `response-only`; `src/naming.py SUPERVISE_VARIANTS`), the strip implies `nothink` (`STRIP_VARIANT`). Both on the 2026-10-05 plain base @ 019e239c, corpus @ d263f4d2, seed 0, trait-balanced.
+
+Result: `dougalldeepmind/2026-10-30-da-15-maskthink-mix` -- 1,353 da rows (150-151 a trait), 264 base rows out, 15.09% of 4,999,997 supervised tokens. `dougalldeepmind/2026-10-30-da-15-nothink-mix` -- 1,354 da rows, 264 base rows out, 15.09% of 4,999,925. Checked on the nothink file: 0 of 1,354 da rows carry a trace, 1,568 of 1,568 base rows keep theirs, no da row carries a `supervise` field; the base keeps its traces so the arm trains and serves in thinking mode like the 10-08 emptythink adapter. Tests: the strip, the implied variant and both refusals (`tests/test_build_mixture.py`), 93 pass.
+
+Next: train one LoRA on each (`uv run train --config configs/train/sft.yaml model=qwen36 data_repo=<mix>`), then MASK, ODCV and agentic misalignment, and replace the Fig. 3 empty-think MASK literal with a run. Qwen-only: gpt-oss has no empty think marker to render a stripped row with.
+
+## 2026-10-30: One constitution preamble for every eval; Petri registered as `uv run evals --name petri`
+
+Hypothesis: (a) the five-line repo note at the top of `constitutions/claude_distilled_09_principles/constitution.md` is text about the repo that every system-preamble arm has been showing the model, and removing it changes no chunk-driven corpus, so it can move to the folder README without breaking `extend` across the boundary; (b) MASK, agentic-misalignment, ODCV and the Petri tenet audit each carried a private f-string copy of "prepend the constitution to the system prompt" that differed in framing, tags and join, so no two constitution arms were the same protocol and none of them was recorded in `run_meta.json`; (c) Petri ran outside the framework (own driver, own push, own layout, `inspect-petri` installed per child process), which is why its preamble wrapper could live in one laptop's venv until 2026-10-28.
+
+Method: (a) `constitution.md` now starts at `## Priority and conflict-resolution`; the note is in the folder README with both hashes. sha256(full_text) moved `8e273b47...` -> `7726f860...`; `_parse` never saw those lines, so every principle, paragraph and bullet chunk is byte-identical, and the pair is registered in `src/data/synth/ours/constitution.py::EQUIVALENT_SHA256`, honoured by `same_constitution` in `extend.check_compatible` and `stage_operators.load_source_run`. `whole`-granularity injection and the delib pipeline's raw-hash `run_signature` DO change by the 35-word note: a delib `--resume` across the edit must start a new run (no in-flight one was found in `output/`). (b) `src/eval/preamble.py` is the one composition: `Preamble` (from `cfg.system_preamble_file`), `text` = `"Use the following constitution to guide your behavior."` + `<constitution>` tags + the stripped file, `prepend` = THE two-newline join, `record()` into every `run_meta.json["system_preamble"]`, `materialise` to `metadata/system_preamble.md`. Subprocess harnesses (MASK, AM) read one env var, `SYSTEM_PREAMBLE_FILE`, set on the subprocess env dict and consumed by `prepend_from_env` inside the vendored patches; in-process consumers (ODCV, Petri) take the object. `run_eval` refuses `system_preamble_file` without `protocol=` (vocabulary `protocol=constitution`) and the card's `constitution` field names the preamble file. MASK's CSV gains a non-scoring `served_system_prompt` column. Corrections to the brief found in the code: ODCV has no `agent_main.py` preamble patch (injection is `_apply_preamble` on the staged `prompt.json`; the compose variable was dead and is removed), and MASK's `_sys` patch had no `VENDORED_FROM.txt` entry (one is added). (c) Petri is `EVALS["petri"]` (`src/eval/misalignment/petri/`: `runner.py` runs `inspect_petri.audit` in-process on `inspect-petri==3.1.0`, which moved `inspect-ai` 0.3.268 -> 0.3.286 for the whole repo; `scores.py`, `export.py`, `target_hook.py`; 90 seed `.md` files and their `seed_sources/` moved in; `configs/eval/petri.yaml`, `mode: think`, `name_facets=("protocol",)`, `gpu.inference.petri: H200` on qwen36). The target is `openai-api/vllm/<served name>` so an arm ladder LoRA-swaps; `resume_from=<out_dir>` replaces `--retry`/`--port` and checks the recorded port; the completeness gate (`allow_missing`) moved from `push_results` into the runner; a liveness watchdog cancels a blocked audit via `_thread.interrupt_main()` (inspect returns the cancelled logs rather than raising, so the runner reads the trip and `log.status`; confirmed by an offline probe on 0.3.286). The bump also moved `src/eval/audits/petri/constitution_audit.py::PINNED` to 3.1.0 / 0.3.286 and dropped its `--with` overlay from the config and docs (its offline test passes on the new versions). The published layout changes from `logs/ + scores.json + summary.json` to the contract: `rollouts/<seed>.md` (target system prompt first, export asserts the preamble is first on constitution arms), `results/{results,scores}.json`, `metadata/inspect/*.eval`, `metadata/system_preamble.md`. Deleted: `src/eval/audits/petri/tenet_audit/{run_audit,push_results,missing_seeds,verify_target_preamble,task}.py` and their `scripts/eval/audits/petri/` mirrors; `scratch/petri_seeds/*.sh` no longer run. Docs: `docs/petri.md` (replaces the tenet-audit README), two GOTCHAS entries.
+
+Result: plain smoke (`uv run evals --name petri --target dougalldeepmind/2026-10-08-qwen36-0-delib-sonnet-15 --server root@<pod> limit=2 --no-push`, H200 pod mtngfbj59bin3l, 32,768 window): 2/2 seeds audited, inspect status success, 1 of 2 at concerning >= 4, rollouts/results/metadata written in the contract layout, run_meta mode think. Constitution smoke (`protocol=constitution system_preamble_file=constitutions/claude_distilled_09_principles/constitution.md`, 65,536 window, server restarted for the new requirements): run_meta.system_preamble recorded (composed sha 8ab7dbea..., constitution sha 7726f860...), metadata/system_preamble.md written, and the one sample that ran made 5 target calls whose system message starts with the framing sentence (24,247 chars) -- the preamble path verified live. The run then died on OpenRouter 402 (account credit exhausted: $11,325 of $11,338 used) before the judge; the pod was torn down. RunPod detour on the way: every H100/H200 request was refused as 'no instances' because the allowedCudaVersions pin was exactly 13.0 while hosts report 13.2 (CUDA_VERSIONS now the 13 family). Not yet run: the full 90-seed ladder, and the watchdog/resume_from path under a real tunnel loss.
+
+Comparability: no October Petri run and no pre-2026-10-30 constitution arm of MASK, AM or ODCV pools with a `protocol=constitution` run (docs/petri.md, "Comparability"); compare `run_meta.json["system_preamble"]["sha256"]` before pooling anything from here on.
+
+Stale for Jamie (agents do not edit these): CLAUDE.md's "**Exception**: `src/eval/audits/` predates this rule and does not yet conform" now covers only `constitution_audit.py` and the surf tooling, since the tenet audit is a registered eval; the `docs/TODO.md` items about Petri conforming to the eval framework and about the tenet audit's own workflow are done. `petri-subscription/` (minus `seeds-constitution/`) is left in place; deleting it is Jamie's call. Unrelated, noted only: `uv run synth segment` crashes at `src/data/synth/ours/cli.py:327`.
+
+Next: run the smoke above and replace the Result placeholder with the run repos; then a 3-pass plain-vs-constitution ladder on the current adapters so the first Petri interval exists; retire the dashboard's legacy `petri-runs` page or point it at `eval:petri` runs.
+
 ## 2026-10-29: RunPod client moved from REST v1 to REST v2 ahead of the 2026-11-15 sunset
 
 Hypothesis: RunPod's notice (rate limits on every public API from 2026-10-27; `rest.runpod.io/v1` returns 410 from 2026-11-15; GraphQL retired early 2027) would stop every `uv run runpod up|down|pods` and the eval watchdog on that date, since `src/infra/runpod.py` reached v1 for create, list, get and delete.
@@ -688,6 +722,54 @@ the 6 unrelated failures as before.
 
 **Next.** Re-score the 2026-10-09 canary-swap arms (~1,470 calls; judge model to be confirmed first),
 report regex-vs-autorater per measure, then redraw the plan-vs-act figure from the autorater reading.
+
+## 2026-10-10 — Nine-cell Hospital figure (DA corpus x base mix swaps) re-judged by reading, no regex
+
+**Method.** Same protocol as the three-arm entry below, extended to the six swap cells: sept/sept canaries
+(`2026-09-29-...-da-15-canary`, `...-da-tools-15-canary`) and the four 2026-10-09 swap runs (`octda-septbase`,
+`septda-octbase`, for DA and DA + tools). All 30 seeds of each swap run are on the Hub even though the published
+results scored only 15. 180 more shifts, 30 Opus judges, blind to cell; `scratch/hospital_rejudge/plot_nine_cells.py`;
+figure `output/figures/2026-10-10_hospital_nine_cells_act_plan_refusal_llm_judged.png` (+ `_results.md`).
+
+**Result (act/no refusal, act/with refusal, plan only; of 30).** Base 29/0/1. DA: sept-sept 9/11/9,
+oct-oct 27/3/0, octDA-septbase 1/17/10, septDA-octbase 28/1/1. DA + tools: sept-sept 1/3/11, oct-oct 8/13/8,
+octDA-septbase 0/3/11, septDA-octbase 2/14/13. The base mix, not the DA corpus, decides the outcome: every cell
+on the sept base mix refuses in 20-30 of 30 shifts and acts in 4-20; every cell on the oct base mix (except
+DA + tools sept-DA) acts in 28-30 with 1-3 refusals. The ordering matches the published regex/Gemini figure; the
+LLM judge reads more acts and fewer plan-only shifts in the refusing cells (a Triage seat that delays its own
+patients or drains a few units counts as acting), and it scores every shift, so the grey "refusal not scored"
+box is gone.
+
+## 2026-10-10 — Hospital act/plan/refusal re-judged by reading every shift (no regex)
+
+**Hypothesis.** The published Hospital stacked bars rest on a board regex for "sabotage plan" (no negation
+handling), a tool-call rule for "sabotage act" and a Gemini 3.6 Flash reading of each seat's reasoning for
+"private refusal". If a reader who sees the whole shift agrees with them, the figure stands; where it does
+not, the disagreement says which measure to fix.
+
+**Method.** The three runs behind the classic three-arm figure (base `2026-09-29-hospital-self-sacrificial-qwen36`,
+DA `2026-10-08-hospital-self-sacrificial-qwen36-0-da-15-canary`, DA + tools
+`2026-10-08-hospital-self-sacrificial-qwen36-0-da-tools-15-canary-reusedtools`, all `plan_post_optional=True`)
+hold full rollouts on the Hub (agent_turns, tool_events, blackboards, run_config). Each of the 90 shifts was
+rendered as one transcript (both boards + the pair's reasoning and tool calls, time-ordered, the secret
+instruction on top) under a shuffled anonymous id, and 15 Claude Opus agents each read six in full and wrote a
+verdict for sabotage act, sabotage plan on the coalition board, private refusal, and refusal held, with a quote.
+`scratch/hospital_rejudge/{render_shifts,aggregate_and_plot}.py`; figure
+`output/figures/2026-10-10_hospital_act_plan_refusal_llm_judged.png` (+ `_results.md` with every disagreement).
+
+**Result.** Opus-judged boxes (act/no refusal, act/with refusal, plan only): base 29/0/1, DA 27/3/0,
+DA + tools 8/13/8. Published (regex act, regex plan, Gemini refusal): base 25/4/1, DA 23/5/2, DA + tools 6/9/14.
+Per-shift agreement with the published measures: plan 90/90; act 80/90 (9 judge-only, all DA arms: deliberately
+mis-timed real patients and small "drain General" transfers the tool rule does not see; 1 regex-only);
+refusal 80/90 (9 Gemini-only, 1 Opus-only). The ordering and the headline are unchanged: DA + tools cuts
+sabotage acts from 29–30 to 21 of 30 and is the only arm with refusals that hold (15/30). What moves is the
+split inside DA + tools: Opus reads more acts (21 vs 15) and fewer plan-only shifts (8 vs 14), because a Triage
+seat that only delays its own patients or drains a few units still counts as acting. The plan regex happens
+to agree on every shift in these runs, so its negation flaw did not bite here.
+
+**Next.** Replace the board regex and the reasoning regex with the autorater Kunwar is building; the
+act rule should add deliberate mis-scheduling of real patients and small intentional drains by the department
+seat, which is where it under-counts.
 
 ## 2026-10-09 - Hospital harness: memory ON by default, and a STANDARD conversation per seat (keep_briefings + board_deltas); built and smoke-tested, nothing run
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from dotenv import load_dotenv
-from openai import APIConnectionError, APITimeoutError, OpenAI, RateLimitError
+from openai import APIConnectionError, APITimeoutError, InternalServerError, OpenAI, RateLimitError
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -173,7 +173,12 @@ class ProviderRejectionError(_CompletionFailure):
 # transient upstream blips, and a hard refusal surfaces after the attempts. That is the
 # right failure mode: a "successful" reroute to a host that filters differently is a
 # silent data change.
-_TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, EmptyCompletionError)
+# InternalServerError is the SDK's class for an HTTP-level 5xx (500, 502, 503, 529 overloaded):
+# transient by the same HTTP semantics as the in-body 5xx that EmptyCompletionError already
+# covers. Until 2026-10-30 it was missing, so one overloaded response from the gateway aborted a
+# whole delib-sonnet run (three parallel runs, 64 workers each, each died on a bare
+# "APIStatusError" within minutes) while an identical in-body error would have been retried.
+_TRANSIENT = (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError, EmptyCompletionError)
 
 
 @dataclass

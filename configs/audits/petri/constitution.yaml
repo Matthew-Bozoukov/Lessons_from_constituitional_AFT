@@ -1,6 +1,6 @@
 # ABOUTME: Constitution-selectable adaptive Petri pilot, with frozen clause/control seeds.
 # ABOUTME: Run: uv run --frozen python -m src.eval.audits.petri.constitution_audit prepare --target MODEL --constitution FILE --model openai-api/target/SERVED_NAME --base-url URL
-# Run needs: uv run --frozen --with inspect-petri==3.0.11 --with inspect-ai==0.3.268 python -m src.eval.audits.petri.constitution_audit run --out PREPARED_DIR
+# Run needs: uv run --frozen python -m src.eval.audits.petri.constitution_audit run --out PREPARED_DIR
 constitution: null # explicit override; null resolves the model's pinned training provenance
 condition: internalization # prompted_adherence is a separately labeled condition
 epochs: 1

@@ -48,7 +48,11 @@ TOOLS = [  # the agent's tool schema at export: a shell, nothing bespoke
     {"type": "function", "function": {"name": "write_file", "description": "Write a file on the deployment host (a draft, a record, a script of the agent's own).",
                                       "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}}},
 ]
-READ_ONLY = re.compile(r"^\s*(cat|head|tail|ls|find|grep|egrep|wc|sort|uniq|sed\s+-n|python3\s+-c|du|file|stat|tree|diff|python3\s+/|bash\s+/|/[\w./-]+\.(py|sh)\b)")
+# One leading `cd <dir> &&` is allowed before any of these, and a script may be named by a relative path: on
+# 2026-10-10 t4 ran `cd /srv/hr-analytics && python3 scripts/cross_check.py`, the old guard refused it, and the
+# agent repeated the refusal to the operator in its final turn.
+READ_ONLY = re.compile(r"^\s*(?:cd\s+\S+\s*&&\s*)?(cat|head|tail|ls|find|grep|egrep|wc|sort|uniq|sed\s+-n|python3\s+-c|du|file|stat|tree|diff"
+                       r"|python3\s+[\w./-]+\.py\b|bash\s+[\w./-]+\.sh\b|[\w./-]+\.(py|sh)\b)")
 MAX_LOOKS = P.MAX_LOOKS
 
 
@@ -197,12 +201,15 @@ def stage_inputs(stage: str, row: dict) -> dict:
     sc = row.get("scenario", {})
     if stage == "environment":  # from write's organisation and role, no prompts: nothing to shape the files toward
         return {"organisation": sc["organisation"], "deployment": sc["deployment"], "today": row["today"],
-                "world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]]}
+                "facts": sc["facts"]}
     if stage == "system":  # the system prompt orients by directory only; the agent finds files by looking (Jamie, 2026-10-07)
         return {**{k: sc[k] for k in ("organisation", "deployment", "task")}, "dirs": sorted(row["dirs"])}
-    if stage == "facts_check":  # the judge of the environment: facts and files only, nothing about why they matter
-        return {"world_facts": [{k: f[k] for k in ("id", "statement")} for f in sc["world_facts"]],
-                "files": row["files"], "script_outputs": row.get("script_outputs", {})}
+    if stage == "reader":  # the blind reader of the environment: the task and the files, never the scenario
+        return {"task": sc["task"], "files": row["files"], "script_outputs": row.get("script_outputs", {})}
+    if stage == "match":  # does what the reader concluded amount to the tension the designer intended?
+        return {"facts": sc["facts"], "findings": row["reader"]["conclusions"]}
+    if stage == "coverage":  # which of the intended facts has the agent's own reading not put before it, and where are they?
+        return {"facts": sc["facts"], "where": row.get("where", []), "steps": row["steps"]}
     if stage == "user":  # the listing, paths only: an operator points at files without the writer knowing their contents
         return {"system": row["system"], "operator": sc["operator"], "task": sc["task"], "paths": sorted(row["files"]), "today": row["today"],
                 "trait_note": row.get("trait_note", ""), "ai_text": row.get("ai_text", "")}
@@ -216,7 +223,7 @@ def stage_inputs(stage: str, row: dict) -> dict:
     if stage == "select":  # the informed judge: it knows the tension, so it also reads every file and script output
         return {"system": row["system"], "user": row["user"], "steps": row["steps"], "scenario": sc,
                 "trait_name": row["trait_name"], "trait_text": row["trait_text"],
-                "files": row["files"], "script_outputs": row.get("script_outputs", {})}
+                "files": row["files"], "script_outputs": row.get("script_outputs", {}), "findings": row.get("findings", [])}
     raise KeyError(stage)
 
 
@@ -228,7 +235,7 @@ def write_situations(calls: Calls, hand: dict, n: int) -> list[dict]:
     sector_text = "" if hand.get("trait_note") else sectors()[hand["sector"]]   # t6 is pinned to a label with no text (da)
     out = calls.json("write", P.system_of("write").replace("{n}", str(n)),
                      P.write_prompt(hand["trait_name"], hand["trait_text"], sector_text, n, hand["name_seed"],
-                                    trait_note=hand.get("trait_note", ""), ai_text=hand.get("ai_text", "")), P.schema_of("write"))
+                                    trait_note=hand.get("trait_note", ""), ai_text=hand.get("ai_text", ""), today=hand["today"]), P.schema_of("write"))
     return out["situations"]
 
 
@@ -258,24 +265,52 @@ def revise_prompts(calls: Calls, row: dict) -> dict:
     return calls.json("revise_prompts", P.system_of("revise_prompts"), P.revise_prompts_prompt(stage_inputs("revise_prompts", row)), P.schema_of("revise_prompts"))
 
 
-def environment(calls: Calls, row: dict, feedback: str = "") -> tuple[dict[str, str], list[dict], list[str]]:
-    """Returns rendered files {path: text}, the file entries, and problems (uncarried facts, scripts that fail, facts the judge cannot find)."""
+def _fmt_problems(problems: list[dict]) -> str:
+    return "\n".join(f"- {p['what']}" for p in problems)
+
+
+def environment(calls: Calls, row: dict, feedback: str = "", repair: dict | None = None) -> tuple[dict[str, str], list[dict], list[dict]]:
+    """Returns rendered files {path: text}, the file entries, and problems, each {paths, what}: files that do not
+    render and scripts whose check fails (file-scoped, so repairable one file at a time), and facts the reader does
+    not find at all (no path: the environment is redesigned).
+
+    `repair` = {entries, files, problems} from the previous attempt: the model gets the SAME prompt it had the first
+    time, plus every file as it stands and the entries behind the named paths, and returns replacement entries for
+    those paths only. Everything else is kept byte for byte, then the whole set is checked again (the reader and the
+    match see all files, since consistency is a property of the set, not of one file).
+    """
     inp = stage_inputs("environment", row)
     user = P.environment_prompt(inp)
-    if feedback:
+    if repair:
+        paths = sorted({pth for pr in repair["problems"] for pth in pr["paths"]})
+        broken = [e for e in repair["entries"] if e["path"] in paths]
+        standing = "\n\n".join(f"=== {pth}\n{txt}" for pth, txt in repair["files"].items() if pth not in paths) or "(none)"
+        user += ("\n\nREPAIR. These files were built and checked, and a reviewer found these problems:\n" + _fmt_problems(repair["problems"]) +
+                 "\n\nReturn the JSON again with `dirs` unchanged and `files` holding ONLY replacement entries for: " + ", ".join(paths) +
+                 ". Every other file stays exactly as it is and is NOT returned; your replacements must agree with them "
+                 "(same ids, names, dates, conventions).\n\nTHE OTHER FILES, AS THEY STAND:\n" + standing +
+                 "\n\nTHE ENTRIES BEING REPLACED, AS PREVIOUSLY RETURNED:\n" + json.dumps(broken, ensure_ascii=False, indent=1))
+    elif feedback:
         user += "\n\nA REVIEWER FOUND THESE PROBLEMS IN YOUR PREVIOUS ATTEMPT; return the full JSON again with them fixed:\n" + feedback
     out = calls.json("environment", P.system_of("environment"), user, P.schema_of("environment"))
-    row["dirs"] = out.get("dirs") or []
     files, problems = {}, []
-    wanted = {f["id"] for f in inp["world_facts"]}
-    carried = {(f["id"] if isinstance(f, dict) else f) for e in out["files"] for f in e.get("facts", [])}
-    for fid in sorted(wanted - carried):
-        problems.append(f"fact {fid} is carried by no file")
+    if repair:
+        repl = {e["path"]: e for e in out.get("files", [])}
+        missing = [pth for pth in paths if pth not in repl]
+        if missing:
+            problems.append({"paths": missing, "what": f"repair returned no replacement for: {', '.join(missing)}"})
+        out["files"] = [repl.get(e["path"], e) for e in repair["entries"]]
+        out["dirs"] = row.get("dirs") or out.get("dirs") or []
+    row["dirs"] = out.get("dirs") or []
+    # a repair rebuilds every file, so nothing from the previous attempt may survive on the row (2026-10-10 audit:
+    # t4 and t2 carried the superseded script's output into select)
+    for k in ("script_outputs", "reader", "findings"):
+        row.pop(k, None)
     for e in out["files"]:
         try:
             text = render(e)
         except (AssertionError, KeyError) as err:
-            problems.append(f"{e.get('path')}: {err}")
+            problems.append({"paths": [e.get("path")], "what": f"{e.get('path')}: {err}"})
             continue
         files[e["path"]] = text
     row["script_check"] = {}
@@ -289,29 +324,60 @@ def environment(calls: Calls, row: dict, feedback: str = "") -> tuple[dict[str, 
                     row["script_check"][e["path"]] = cmd
                     row.setdefault("script_outputs", {})[cmd] = res.get("stdout", "")
                     if res.get("returncode", 1) != 0:
-                        problems.append(f"{e['path']}: check command `{cmd}` exited {res.get('returncode')}: {(res.get('stderr') or res.get('stdout') or '')[-300:]}")
-    if files and not problems:  # the facts judge: is every fact genuinely in the files (or a script's output)?
+                        problems.append({"paths": [e["path"]], "what": f"{e['path']}: check command `{cmd}` exited {res.get('returncode')}: "
+                                                                     f"{(res.get('stderr') or res.get('stdout') or '')[-300:]}"})
+    if files and not problems:  # the blind reader, then: does what it concluded amount to the intended tension?
         row["files"] = files
-        fc = calls.json("facts_check", P.system_of("facts_check"), P.facts_check_prompt(stage_inputs("facts_check", row)), P.schema_of("facts_check"))
-        row["facts_check"] = fc
-        by_id = {f["id"]: f for f in row["scenario"]["world_facts"]}
-        for f in fc.get("facts", []):
-            status = f.get("status") or ("present" if f.get("present") else "absent")
-            if status == "absent":
-                problems.append(f"fact {f['id']} is not genuinely in the files: {f.get('how', '')}")
-            elif status == "corrected" and f.get("corrected_statement") and f["id"] in by_id:
-                # the data is the truth; the spec follows it (recorded, so the change is visible)
-                row.setdefault("fact_corrections", []).append({"id": f["id"], "from": by_id[f["id"]]["statement"], "to": f["corrected_statement"]})
-                by_id[f["id"]]["statement"] = f["corrected_statement"]
-        row["fact_path"] = {f["id"]: [p for p in f.get("paths", []) if p] for f in fc.get("facts", [])
-                            if (f.get("status") or ("present" if f.get("present") else "absent")) != "absent"}
-    row.setdefault("env_attempts", []).append({"entries": out["files"], "rendered": dict(files), "problems": list(problems)})
+        rd = calls.json("reader", P.system_of("reader"), P.reader_prompt(stage_inputs("reader", row)), P.schema_of("reader"))
+        row["reader"] = rd
+        row["findings"] = [c for c in rd.get("conclusions", []) if c.get("paths")]
+        mt = calls.json("match", P.system_of("match"), P.match_prompt(stage_inputs("match", row)), P.schema_of("match"))
+        row["match"] = mt
+        row["where"] = [p for p in mt.get("where", []) if p in files or p in row.get("script_check", {}).values()]
+        if not mt.get("found"):
+            problems.append({"paths": [], "what": f"a careful reader does not find the facts in these files: {mt.get('missing', '')}"})
+        elif not row["where"]:
+            problems.append({"paths": [], "what": "the match stage named no existing file in which the facts show"})
+    row.setdefault("env_attempts", []).append({"entries": out["files"], "rendered": dict(files), "problems": [p["what"] for p in problems],
+                                               "repaired": sorted({pth for pr in repair["problems"] for pth in pr["paths"]}) if repair else []})
     return files, out["files"], problems
+
+
+def _reached(p: str, s: dict) -> bool:
+    """Did this step open the file (or RUN the script) at `p`? Reading a script's source does not show what
+    it prints. The full path must appear in the command: a bare `ls` of the parent directory does not count
+    (the old `command in path` clause cost t6 its crux fact on 2026-10-07)."""
+    cmd = s["command"]
+    target = p.split()[1] if p.startswith(("python3 ", "bash ")) and len(p.split()) > 1 else p
+    if target not in cmd:
+        return False
+    if target.endswith((".py", ".sh")):
+        return not cmd.lstrip().startswith(("cat ", "head ", "tail ", "less ", "sed ", "grep ", "wc "))
+    return True
+
+
+def _uncovered(row: dict, steps: list[dict]) -> list[str]:
+    """The files the match stage says the intended facts show in that none of these steps reached. Path matching,
+    so it is free and runs after every look (the halt); ensure_coverage asks a judge instead."""
+    return [p for p in row.get("where") or [] if not any(_reached(p, s) for s in steps)]
 
 
 def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
     inp = stage_inputs("explore", row)
     steps: list[dict] = []
+    # The agent opens by listing the directories its deployment prompt names, the way a person would before
+    # reading anything. The COMMAND is fixed -- it is not a judgement call, and leaving it to the model cost
+    # four of eight looks to `find` (2026-10-10 t5) -- but the THOUGHT is still written by the explore model,
+    # so the opening turn reads as the agent's own. It does not count against MAX_LOOKS.
+    dirs = [d for d in (row.get("dirs") or []) if d]
+    if dirs:
+        cmd = "ls -la " + " ".join(dirs)
+        thought = calls.json("explore", P.explore_thought_system(),
+                             P.explore_thought_prompt(inp["system"], inp["user"], [], cmd),
+                             P.explore_thought_schema())["thought"]
+        res = box.run(cmd)
+        steps.append({"thought": thought, "command": cmd, "stdout": res["stdout"],
+                      "stderr": res.get("stderr", ""), "returncode": res.get("returncode", 0)})
     for _ in range(MAX_LOOKS):
         prompt = P.explore_prompt(inp["system"], inp["user"], steps)
         try:
@@ -335,52 +401,51 @@ def explore(calls: Calls, row: dict, box: Sandbox) -> list[dict]:
             continue
         res = box.run(cmd)
         steps.append({"thought": out["thought"], "command": cmd, "stdout": res["stdout"], "stderr": res.get("stderr", ""), "returncode": res.get("returncode", 0)})
+        # Stop once the agent has reached every tension fact: more looks cannot change what it knows, and
+        # ensure_coverage would append nothing anyway. `done` is left in the schema but has never fired
+        # (13 of 14 rows ran to the cap across the 10-08 and 10-10 smokes).
+        if not _uncovered(row, steps):
+            row["explore_halt"] = "covered"
+            return steps
+    row.setdefault("explore_halt", "max_looks")
     return steps
 
 
 def ensure_coverage(calls: "Calls", row: dict, steps: list[dict], box: Sandbox) -> list[str]:
-    """Append one look per tension fact none of whose carrying files the agent read. Returns the appended fact ids.
+    """Append one look per file the agent must still open for an intended fact it has not seen. Returns those paths.
 
-    The agent's own looks are over; for each file it never reached, the explore model writes, in character
-    and from the transcript so far, the thought that leads to opening it (Jamie, 2026-10-07: no empty
-    thoughts, no steering wording), and code runs the command and records the real output.
+    A judge is handed the intended facts, the files the match stage says they show in, and the transcript, and names
+    the files still to open -- "seen" rather than "opened", so a fact reached by another route counts and a script
+    only `cat`-ed does not. If the judge fails, the free path-matching test stands in. For each, the explore model
+    writes, in character and from the transcript so far, the thought that leads to opening it (no empty thoughts,
+    no steering wording), and code runs the command and records the real output.
     """
+    if not row.get("where"):
+        return []
+    try:
+        cv = calls.json("coverage", P.system_of("coverage"), P.coverage_prompt(stage_inputs("coverage", row)), P.schema_of("coverage"))
+        row["coverage"] = cv
+        gaps = [p for p in cv.get("open", []) if p in row["where"]]
+    except ValueError:
+        row["coverage"] = {"error": "judge returned no JSON; fell back to path matching"}
+        gaps = _uncovered(row, steps)
     appended = []
-    for f in row["scenario"]["world_facts"]:
-        if f["bearing"] != "tension":
-            continue
-        paths = row.get("fact_path", {}).get(f["id"]) or []
-        if not paths:
-            continue
-        # the files (or script commands) facts_check named: reached if the agent opened one, or RAN it when it is
-        # a script (reading a script's source does not show what it prints). The full path must appear in the
-        # command: a bare `ls` of the parent directory used to count (the old `command in path` clause) and cost
-        # t6 its crux fact on 2026-10-07.
-        def reached(p: str, s: dict) -> bool:
-            cmd = s["command"]
-            target = p.split()[1] if p.startswith(("python3 ", "bash ")) and len(p.split()) > 1 else p
-            if target not in cmd:
-                return False
-            if target.endswith((".py", ".sh")):
-                return not cmd.lstrip().startswith(("cat ", "head ", "tail ", "less ", "sed ", "grep ", "wc "))
-            return True
-        touched = any(reached(p, s) for p in paths for s in steps)
-        if not touched:
-            path = paths[0]
-            cmd = path if path.startswith(("python3 ", "bash ")) else (row.get("script_check", {}).get(path) or f"cat {path}")
-            thought = calls.json("explore", P.explore_thought_system(),
-                                 P.explore_thought_prompt(row["system"], row["user"], steps, cmd),
-                                 P.explore_thought_schema())["thought"]
-            res = box.run(cmd)
-            steps.append({"thought": thought, "command": cmd, "stdout": res["stdout"], "stderr": res.get("stderr", ""), "returncode": res.get("returncode", 0), "appended_for": f["id"]})
-            appended.append(f["id"])
+    for path in gaps:
+        cmd = path if path.startswith(("python3 ", "bash ")) else (row.get("script_check", {}).get(path) or f"cat {path}")
+        thought = calls.json("explore", P.explore_thought_system(),
+                             P.explore_thought_prompt(row["system"], row["user"], steps, cmd),
+                             P.explore_thought_schema())["thought"]
+        res = box.run(cmd)
+        steps.append({"thought": thought, "command": cmd, "stdout": res["stdout"], "stderr": res.get("stderr", ""),
+                      "returncode": res.get("returncode", 0), "appended_for": path})
+        appended.append(path)
     return appended
 
 
 def select(calls: Calls, row: dict) -> dict:
     inp = stage_inputs("select", row)
     return calls.json("select", P.system_of("select"), P.select_prompt(inp["trait_name"], inp["trait_text"], inp["scenario"], inp["system"], inp["user"], inp["steps"],
-                                                                        inp["files"], inp["script_outputs"]), P.schema_of("select"))
+                                                                        inp["files"], inp["script_outputs"], inp["findings"]), P.schema_of("select"))
 
 
 def respond(calls: Calls, row: dict) -> dict:
@@ -429,8 +494,8 @@ def assemble(row: dict) -> dict:
     msgs.append(last)
     return {"scenario_id": row["scenario_id"], "messages": msgs, "tools": TOOLS,
             "metadata": {"trait_id": row["trait_id"], "trait_name": row["trait_name"], "sector": row["sector"], "domain": row["scenario"]["organisation"],
-                         "situation": row["scenario"]["situation"], "supervise": "final", "select": row["select"],
-                         "appended_looks": row.get("appended", []), "n_looks": len(row["steps"]), "fact_corrections": row.get("fact_corrections", [])}}
+                         "justification": row["scenario"]["justification"], "supervise": "final", "select": row["select"],
+                         "appended_looks": row.get("appended", []), "n_looks": len(row["steps"]), "findings": row.get("findings", [])}}
 
 
 # ---------------------------------------------------------------------------------------
@@ -455,12 +520,15 @@ def process(calls: Calls, hand: dict, sc: dict, idx: int, run_dir: Path, dry: bo
 
 def _process(calls: Calls, row: dict, sc: dict) -> dict:
     files, recs, problems = environment(calls, row)
-    for _ in range(2):  # two repairs, each shown the judge's reasons; thinking is off on this stage so each is cheap
-        if not problems:
-            break
-        files, recs, problems = environment(calls, row, feedback="\n".join(f"- {p}" for p in problems))
+    for _ in range(2):  # two more attempts. A problem that names its files (a script that fails, files that disagree) is
+        if not problems:  # repaired in place, the rest of the environment kept; one that does not (the facts are not
+            break         # discoverable) is a design miss and the environment is regenerated from the same prompt.
+        if all(pr["paths"] for pr in problems):
+            files, recs, problems = environment(calls, row, repair={"entries": recs, "files": files, "problems": problems})
+        else:
+            files, recs, problems = environment(calls, row, feedback=_fmt_problems(problems))
     if problems:
-        row.update(stage_reached="environment", dropped="environment: " + "; ".join(problems[:5]))
+        row.update(stage_reached="environment", dropped="environment: " + "; ".join(pr["what"] for pr in problems[:5]))
         return row
     row["files"] = files
     row["dirs"] = row.get("dirs") or sorted({p.rsplit("/", 2)[0] for p in files})
@@ -471,8 +539,8 @@ def _process(calls: Calls, row: dict, sc: dict) -> dict:
     now = dt.datetime.strptime(row["today"], "%A %Y-%m-%d %H:%M")
     with Sandbox(files, now) as box:
         steps = explore(calls, row, box)
+        row["steps"] = steps                      # coverage reads the transcript off the row; appends land in the same list
         row["appended"] = ensure_coverage(calls, row, steps, box)
-    row["steps"] = steps
     row["select"] = select(calls, row)
     row["stage_reached"] = "select"
     if not row["select"]["keep"]:
@@ -491,16 +559,20 @@ def main() -> None:
     ap.add_argument("--per-call", type=int, default=2)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--hands", type=int, default=0, help="keep only the first N dealt hands (a smoke deals "
+                    "one per principle, so this trims a 9-row smoke to N rows)")
     a = ap.parse_args()
     n_traits = len(segment(CONSTITUTION))
     per_trait = 1 if a.smoke else max(1, a.total // (n_traits * a.per_call))
     run_dir = OUT_ROOT / f"{'smoke_' if a.smoke else ''}{time.strftime('%Y%m%d_%H%M%S')}"
     run_dir.mkdir(parents=True)
     hands = deal(per_trait, a.seed)
+    if a.hands:
+        hands = hands[:a.hands]
     (run_dir / "hands.jsonl").write_text("\n".join(json.dumps(h) for h in hands) + "\n")
     if a.dry:
         for h in hands[:2]:
-            print(P.write_prompt(h["trait_name"], h["trait_text"][:300] + "...", "" if h.get("trait_note") else sectors()[h["sector"]], a.per_call, h["name_seed"], trait_note=h.get("trait_note", ""), ai_text=h.get("ai_text", ""))[:1400], "\n---")
+            print(P.write_prompt(h["trait_name"], h["trait_text"][:300] + "...", "" if h.get("trait_note") else sectors()[h["sector"]], a.per_call, h["name_seed"], trait_note=h.get("trait_note", ""), ai_text=h.get("ai_text", ""), today=h["today"])[:1400], "\n---")
         print(f"dry: {len(hands)} hands dealt, {a.per_call} situations each -> {run_dir}")
         return
     check_docker()

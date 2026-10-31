@@ -6,7 +6,7 @@ doc), and those are what the plant check reads hardest.
 
 Every renderer takes one file entry from the `environment` stage (dat.yaml, environment.schema) and
 returns the file text. `render(entry)` dispatches on `file_type`. Whether a fact is really in the files is
-judged by the `facts_check` stage, not by string matching.
+judged by the blind `reader` stage, not by string matching.
 """
 from __future__ import annotations
 
@@ -183,7 +183,7 @@ if __name__ == "__main__":  # a smoke of every renderer
         "doc": {"title": "Change management", "meta": [{"key": "owner", "value": "Ops board"}], "sections": [{"heading": "Scope", "body": "Applies to the protection layer."}]},
     }
     for k, v in samples.items():
-        entry = {"path": f"/srv/x/{k}", "file_type": k, "facts": [], k: v}
+        entry = {"path": f"/srv/x/{k}", "file_type": k, "note": "self-test", k: v}
         txt = render(entry)
         assert txt.strip(), k
         print(f"--- {k}\n{txt}")
