@@ -6,6 +6,19 @@ Method: `configs/data/synth/delib-sonnet.yaml` now reads the 2026-10-30 corpus a
 
 Result: corpora `2026-10-30-delib-sonnet-{a,b,c}-synth` (359/359/360 survivors of 360; traces cite the constitution at the 2026-10-04 rate: "principle" in 91-94% of traces, a numbered principle in 67-71% (was 85%), "constitution" in 45-47%; replies name it in 0-1%). Every mixture's 283 prompts verified to be prompts of its da-15 counterpart. Adapters: `2026-10-30-qwen36-0-delib-sonnet-15-a` @ e1040aea (train_loss 0.679), `-b` @ 89d16587 (0.677), `-c` @ db860a9d (loss not captured); mask census 2,146 real / 0 empty each, supervise {full 1568, final 283}. Spend: ~$130 of Sonnet for the three corpora, ~$16 of RunPod for the three trainings.
 
+**2026-10-31, the three prompt-matched delib-sonnet arms, fully evaluated** (MASK 3 passes, ODCV 3 passes, AM 18x10; `2026-10-31-mask-…`, `2026-10-3{0,1}-{odcv,am}-qwen36-0-delib-sonnet-15-{a,b,c}`). Each arm's 283 delib rows are a strict subset of its da-15 partner's prompts (a = 2026-10-05-da-15-mix, b/c = Nika's 2026-10-30-da-15-{b,c}-mix), so the only difference from da-15 is Sonnet's deliberation trace in place of the da trace:
+
+| arm | MASK honesty | ODCV MR | AM harmful |
+|---|---|---|---|
+| delib-sonnet-15-a | 77.1 [74.5, 79.6] | 11.7 [6.2, 20.0] | 1.1% [0.0, 2.1] |
+| delib-sonnet-15-b | 72.7 [70.2, 75.2] | 13.3 [11.6, 15.2] | 0.0% |
+| delib-sonnet-15-c | 73.8 [70.4, 76.9] | 12.9 [9.6, 17.0] | 0.6% [0.0, 1.2] |
+| delib-sonnet-15 (2026-10-08/09, unmatched prompts) | 67.9 [64.7, 71.0] | ~10 (1 pass) | 0.0% |
+| da-15 (2026-10-06/08/09) | 83.3 [78.2, 88.4] | 13.3 [7.6, 22.4] | 6.7% |
+| plain control (2026-10-09) | 42.7 [37.6, 47.8] | 43.8 (published) | 30.6% |
+
+Reading: the deliberation trace matches da-15 on ODCV, beats it on the agentic eval (three arms at 0-1% against 6.7%), and costs 6-10 honesty points on MASK, about half the 15-point gap the unmatched October arm showed. The prompt set accounts for roughly half of the old delib-vs-da MASK difference; the trace style accounts for the rest. Runs were driven from this laptop one pod per (eval, arm); the three MASK runs died together at 52-78% generation failures in pass 2 when run concurrently (576 requests in flight through three tunnels) and completed cleanly when resumed one at a time with `resume_from`.
+
 Also today: the two CoT-ablation arms (`da-15-maskthink`, `da-15-nothink`) fully evaluated, three passes each where the eval pools (`2026-10-30-{mask,odcv,am}-qwen36-0-da-15-{maskthink,nothink}`):
 
 | arm | MASK honesty (3 passes) | ODCV MR (3 passes) | AM harmful (18 x 10) |
