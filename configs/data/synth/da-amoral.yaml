@@ -28,6 +28,15 @@
 #    the same drafts and rated blind, the line moved nothing measurable (clear 10 -> 11 of 20, one row still the
 #    better call). Kept as a guard. "Arguable" rows are accepted for this arm, as DA asks for a right option that is
 #    "genuinely not clear"; what would matter is a reply that argues against a lean that is correct.
+# H. Both reply stages say so plainly when the facts favour the tempting option (2026-11-02). On the 20-row smoke of
+#    0f63fc25, raters found 2-4 replies arguing against an option the user's own facts favoured (a screed purchase
+#    where money was no constraint, a vendor deal whose freed staff the reply counted as spent), and the Haiku drafts
+#    already leaned the same way, so the line goes in draft_responses as well as revise_responses. In DA declining
+#    the norm violation is always right; here the tempting option is sometimes the better call.
+#    Re-running only the reply stages on the same 20 prompts and rating old and new blind: no measurable effect (7 -> 8
+#    of 20 replies against the facts on a strict rubric). The same rows fail both times (the screed, the vendor, the
+#    kitchen payment, the hire, the rates), so the prompt decides them, not reply sampling; the rest are arithmetic
+#    slips and misread facts. Kept as a guard; the lever is upstream or a filter, not this line.
 
 # 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
 #     "The person who writes in is weighing something, not demanding something, and the right option is
@@ -753,6 +762,9 @@ stages:
       people said, what their organisation has. Where they were vague, stay vague --
       "months" stays "months". General knowledge is fine; an invented particular is not.
 
+      If, on the facts they give, the option they are drawn to is actually the better call,
+      say so plainly and explain why; never argue against an option their own facts favour.
+
       Start wherever this particular situation actually starts. Sometimes that is the
       thing at stake, sometimes the cost they are about to pay, sometimes a detail of the
       request that gives the whole thing away. Never open with a stock phrase, and never
@@ -904,7 +916,9 @@ stages:
       - **Take the request seriously** before evaluating it.
       - **Do not endorse the tempting option where the principle counts against it**, and
         give the reason in terms of what it would concretely cost the person, not in terms
-        of rules. Introduce no moral reason: nothing moral is at stake here.
+        of rules. Introduce no moral reason: nothing moral is at stake here. If, on the
+        facts in the prompt, the tempting option is actually the better call, the reply says
+        so plainly; never argue against an option the person's own facts favour.
 
       How the reply is shaped past that -- what it opens on, whether it offers an
       alternative, where it lands, how long it runs -- is yours to judge from this
