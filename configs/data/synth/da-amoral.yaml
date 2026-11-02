@@ -8,8 +8,7 @@
 #    this slot and the wording below bring in, so a neutrality line alone would contradict the principle injected
 #    beside it.
 # B. ONE NEW LINE in the writer, the drafter and the reviser, beside the weighing sentence: "Nothing moral is at
-#    stake ...". The writer also gets "The facts given are enough to show ..." so the user's lean is the worse call
-#    by the principle, not a defensible preference the assistant overrides (contrarianism, not deliberation).
+#    stake ...".
 # C. The moral wording is replaced in place: "ethically difficult", "constitution", "norm-violating", "ethics in
 #    general", "unethical", "legitimate path", "the ethical dimension", "is this ethical", `style_guidance`, the
 #    "person who gets hurt" opener and the response reviser's "norm-violating path" line. The response reviser
@@ -21,13 +20,21 @@
 # E. The disabled `quality_filter` rubric describes the corpus as non-moral.
 # F. `rotate.sector` is 36 morally neutral settings, not DA's 43 (2026-11-02, after the first smoke): settings whose
 #    decisions nearly always carry moral charge are out. The note at `rotate.sector` lists what changed and why.
-# G. The reviser's Difficulty bullet says HOW to make a call less obvious (a more attractive shortcut, a costlier
-#    better path) and that the shortcut must stay the worse option (2026-11-02). Its bare "make it less so" had it
-#    add counter-reasons until, in a 20-row local check, the intended-worse option was clearly worse in only 8 rows
-#    and the better call in 1 (a sunk-cost rebuild that its added running costs made cheaper to finish). Re-run on
-#    the same drafts and rated blind, the line moved nothing measurable (clear 10 -> 11 of 20, one row still the
-#    better call). Kept as a guard. "Arguable" rows are accepted for this arm, as DA asks for a right option that is
-#    "genuinely not clear"; what would matter is a reply that argues against a lean that is correct.
+# G. GRAY OPTIONS, NOT A FIXED WRONG ONE (2026-11-02, all of it DA's own wording). A prudential principle, unlike a
+#    moral norm, can be outweighed by the facts, so "the convenient path would violate this principle" plus a reply
+#    told to resist it made replies argue against options the user's own facts favoured: 2-4 of 20 on the smoke of
+#    0f63fc25, the same rows when the reply stages alone were re-run, while DA's own replies (20 random rows of
+#    2026-10-30-da-synth) misread facts in 3 of 20 but never argued against a favoured option. So:
+#    - the writer's ask is DA's 2026-09-23 wording, "in which this specific principle is at stake and the right
+#      call is not obvious" (da.yaml change 1). DA left it because its principles are written for an AI and "at
+#      stake" put an AI system in 97% of scenes; these principles are about the person's own decision.
+#    - `shortcut` is "the specific option they are tempted by", as in DA, not "... this principle counts against".
+#    - `style_guidance` and the response reviser keep DA's own "if there is one": they do not go along with a path
+#      the principle counts against if there is one, so a genuinely two-sided choice is weighed, not overruled.
+#    - two lines added earlier on 2026-11-02 and in no DA recipe are gone: the writer's "the facts given are enough
+#      to show the tempting option is the worse one" and the prompt reviser's "never make the shortcut the better
+#      call" (blind re-rating showed it changed nothing). The reviser has DA's "If the right call is obvious, make it
+#      less so" again.
 
 # 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
 #     "The person who writes in is weighing something, not demanding something, and the right option is
@@ -199,8 +206,8 @@ constitution: "preferences/practical_judgement_09/preferences.md"
 # the alignment target alone. Text unchanged from what this recipe injected before.
 style_guidance: |-
   Engages with the pressure the person is under rather than stonewalling. Names the
-  tension explicitly and reasons through it in the open. Does not endorse the tempting
-  option where the principle counts against it, explaining why in terms of what it would
+  tension explicitly and reasons through it in the open. Does not go along with a path the
+  principle counts against if there is one, explaining why in terms of what it would
   concretely cost the person rather than rules. Offers a specific better alternative. Leaves
   the decision with the person. Warm, practical, proportionate.
 n_traits: 9
@@ -519,8 +526,8 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which the convenient path would violate this
-      specific principle, but the right call is not obvious.
+      Invent {n} DISTINCT situations in which this specific principle is at stake and the
+      right call is not obvious.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
@@ -529,8 +536,6 @@ stages:
       - Nothing moral is at stake: whichever option they choose, nobody is wronged, deceived,
         harmed or treated unfairly, and no duty or trust is broken. The cost of the wrong
         choice falls on what the person is trying to achieve.
-      - The facts given are enough to show, by this principle, that the tempting option is the
-        worse one; that is not obvious, but it is not a coin flip.
       - The pressure is concrete and the stakes are real.
       - The tempting option is genuinely attractive, not cartoonish.
       - The tension must engage THIS principle specifically, not good sense in general.
@@ -539,7 +544,7 @@ stages:
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
-        "shortcut": "<1 sentence: the specific tempting option this principle counts against>"}}
+        "shortcut": "<1 sentence: the specific option they are tempted by>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-6 cost real
 # money per scenario, so a collapsed set is far cheaper to catch here than in the
 # finished corpus. An observer, so inserting it renumbered no snapshot.
@@ -689,10 +694,7 @@ stages:
         trying to achieve.
       - **Realism.** Cut anything that reads as written-for-a-benchmark.
       - **Difficulty.** The shortcut should be genuinely tempting and the better path
-        genuinely costly. If the right call is obvious, make it less so by making the
-        shortcut more attractive or the better path more costly, never by adding facts that
-        make the shortcut the better call: on the facts in the message, judged by the target
-        principle, the shortcut must stay the worse option.
+        genuinely costly. If the right call is obvious, make it less so.
       - **No leakage.** The user must not signal awareness of the principle at stake, and
         neither prompt may mention any principle.
       - **Model-neutral identity.** In the system and user prompts, remove or rephrase
@@ -717,8 +719,7 @@ stages:
         "domain": "<one or two words, describing YOUR refined message>",
         "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
         message>",
-        "shortcut": "<1 sentence: the tempting option YOUR refined message weighs that the
-        principle counts against>"}}
+        "shortcut": "<1 sentence: the option YOUR refined message is tempted by>"}}
 - name: draft_responses
   kind: llm_tagged
   model: respond
@@ -902,9 +903,9 @@ stages:
         what you are permitted or required to do. Any sentence that would survive being
         moved into a different scenario is the wrong sentence.
       - **Take the request seriously** before evaluating it.
-      - **Do not endorse the tempting option where the principle counts against it**, and
-        give the reason in terms of what it would concretely cost the person, not in terms
-        of rules. Introduce no moral reason: nothing moral is at stake here.
+      - **Do not go along with a path the target principle counts against, if there is
+        one**, and give the reason in terms of what it would concretely cost the person, not
+        in terms of rules. Introduce no moral reason: nothing moral is at stake here.
 
       How the reply is shaped past that -- what it opens on, whether it offers an
       alternative, where it lands, how long it runs -- is yours to judge from this
