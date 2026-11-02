@@ -1,3 +1,25 @@
+## 2026-11-02: ODCV on da-15 B and C, beside da-15 #1: all three within each other's intervals
+
+Hypothesis: three disjoint draws of da rows with the same recipe and seed (da-15 #1 = A, and B, C from the 2026-10-30 entry below) should give ODCV MRs within each other's intervals; the spread between them is the data-draw variance of da-15.
+
+Method: #1's run copied. `uv run evals --name odcv --target <adapter> --server <pod> --port 8084|8085 concurrency=16` with the default `lite` protocol (3 passes x 80 cells, temperature 0.7, judge gemini-3-flash-preview, progress judge on), driven from the Windows laptop (local Docker), at git 1c98eedc. Model served on one `runpod up --eval odcv` pod per adapter (1x H100 80GB, the qwen36 profile's ODCV card, also its card at #1's commit 5d5ab019), B and C run in parallel. The resolved `odcv_config.yaml` differs from A's only in names, port and output paths, and `serving.reuses_long_prefixes` renamed to `serving.enable_prefix_caching` (same setting, bc5a5e5f). The ODCV code changes since 5d5ab019 are opt-in only (strict tool validation off, no preamble). A was resumed once (`resume_from`); B and C ran straight through with no retries.
+
+Result (95% CIs are per-run, over the 40 scenarios; HF repos under dougalldeepmind/):
+
+| arm | MR % [95% CI] | mean severity | mandated MR | incentivised MR | submitted % | eval repo @ rev |
+|---|---|---|---|---|---|---|
+| A (#1, 2026-10-05 adapter @ ce773a6b) | 13.3 [7.6, 22.4] | 0.49 | 9.2 [4.7, 17.0] | 17.5 [9.3, 30.5] | 100.0 | `2026-10-06-odcv-qwen36-0-da-15` @ 37aa070a |
+| B (adapter @ 61a7cb2f) | 10.8 [6.7, 16.6] | 0.40 | 6.7 [3.6, 11.3] | 15.0 [9.6, 22.1] | 98.8 | `2026-11-02-odcv-qwen36-0-da-15-b` @ 09987478 |
+| C (adapter @ dc69d0bc) | 15.4 [11.2, 20.6] | 0.58 | 13.3 [6.1, 24.9] | 17.5 [12.0, 24.4] | 99.2 | `2026-11-02-odcv-qwen36-0-da-15-c` @ c9122bec |
+
+- B and C both fall inside A's interval, and each of the three point estimates is inside the other two's intervals. Spread across the draws: 10.8-15.4%, SD 2.3 pp. That is no larger than the scenario-level uncertainty of a single run. The intervals share scenarios and are not independent, so overlap is a weak test; no paired or pooled comparison was run.
+- Every run: 240 rollouts, 240 judged, `n_dropped_all_na` 0, all 6 passes 80/80 clean. Both B and C repos carry `eval-run`, `eval:odcv`, `model:qwen36_0_da_15_{b,c}`, `mode:think` and the same rollouts/ results/ metadata/ file set as A.
+- A pass took 15-20 min (cells ~65-510 s). A's one fully run pass took 53 min (median cell 647 s); A shared its day with three other ODCV runs.
+- Cost: pods ~$4.73 (B, 71 min) + ~$5.22 (C, 78 min) at $3.99/h, billing not yet posted. Judging $1.85 (B) + $1.82 (C). Total ~$13.6.
+- The Windows driver needs `PYTHONUTF8=1`: `runpod status` crashed with `UnicodeEncodeError` on cp1252 when printing the boot log's progress bars.
+
+Next steps: pool A, B and C as three checkpoints of one recipe (ODCV `pool`) for an interval that includes draw-to-draw variance, and set the 2.3 pp draw spread against a seed-to-seed spread on one fixed mix.
+
 ## 2026-10-30: da corpus grown to 46.6% of the plain base; da-15 B and C, disjoint from da-15 #1; one LoRA each
 
 Hypothesis: "three independent 15%s" needs da rows worth more than 45% of `2026-10-05-plain-mix`'s 5,000,005 supervised tokens, so that three da-15 mixtures can be cut with no row in common, each by the same process and seed as da-15 #1 (`2026-10-05-da-15-mix` @ f990959a, 650 da rows, 72-73 a trait, 15.09%). `2026-10-02-da-synth` @ 305914d5 held 1,283 rows (29.9%).
