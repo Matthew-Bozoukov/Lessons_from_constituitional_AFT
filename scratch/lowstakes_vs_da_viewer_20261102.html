@@ -1,0 +1,265 @@
+<title>Low Stakes vs Difficult Advice</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap">
+<style>
+/* Layout: a reading desk. Summary strip, a sticky pair navigator, then two transcripts in matched columns. */
+:root {
+  --bg: #f6f5f8;
+  --surface: #ffffff;
+  --ink: #1f1c26;
+  --muted: #6b6578;
+  --rule: #dedbe5;
+  --da: #7a4fc4;        /* plain difficult advice: purple, per the repo's fixed arm colours */
+  --da-soft: #efe8fa;
+  --low: #12857a;       /* low-stakes da */
+  --low-soft: #e2f3f0;
+  --focus: #2f6fe0;
+  --display: "Literata", Georgia, "Times New Roman", serif;
+  --body: "Literata", Georgia, "Times New Roman", serif;
+  --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15131a; --surface: #1d1a24; --ink: #e9e6f0; --muted: #a39dae; --rule: #34303d;
+    --da: #b293ec; --da-soft: #2c2340; --low: #4cc6b8; --low-soft: #17322f; --focus: #7aa7ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15131a; --surface: #1d1a24; --ink: #e9e6f0; --muted: #a39dae; --rule: #34303d;
+  --da: #b293ec; --da-soft: #2c2340; --low: #4cc6b8; --low-soft: #17322f; --focus: #7aa7ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--ui); font-size: 15px; line-height: 1.5; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1440px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+header.top { padding-block: 28px 18px; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); align-items: end; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(26px, 3.4vw, 36px); line-height: 1.15; margin: 0 0 8px; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { color: var(--muted); margin: 0; max-width: 64ch; }
+.corpora { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: 13px; }
+.corpus { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.corpus code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.corpus .n { color: var(--muted); }
+
+.lens { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; }
+.lens h2 { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.lens-row { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 4px 10px; align-items: center; margin-bottom: 8px; }
+.lens-row:last-child { margin-bottom: 0; }
+.lens-row .lab { font-size: 13px; }
+.bars { display: grid; gap: 3px; }
+.bar { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar i { display: block; height: 7px; border-radius: 2px; }
+
+nav.ctl { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-block: 1px solid var(--rule); }
+.ctl-in { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding-block: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font: 500 12px var(--mono); border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 3px 9px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.step { display: flex; align-items: center; gap: 6px; }
+button.btn { font: 500 13px var(--ui); border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+button.btn:hover, .chip:hover { border-color: var(--muted); }
+.pos { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 9ch; text-align: center; }
+select { font: 13px var(--ui); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 5px; padding: 5px 8px; max-width: 100%; min-width: 0; }
+.jump { flex: 1 1 260px; min-width: 0; display: flex; }
+.jump select { width: 100%; }
+.toggles { display: flex; gap: 12px; font-size: 13px; color: var(--muted); }
+.toggles label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+
+.pairhead { padding-block: 22px 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+.pairhead h2 { font-family: var(--display); font-weight: 600; font-size: 21px; margin: 0; text-wrap: balance; }
+.pairhead .tid { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.pill { font: 500 11px var(--mono); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); }
+.trait-text { color: var(--muted); font-size: 13px; margin: 0; flex-basis: 100%; }
+
+.cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding-bottom: 48px; }
+.col { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.colhead { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding-bottom: 6px; border-bottom: 2px solid currentColor; }
+.col.low .colhead { color: var(--low); }
+.col.da .colhead { color: var(--da); }
+.colhead span.id { margin-left: auto; font: 400 12px var(--mono); letter-spacing: 0; text-transform: none; color: var(--muted); }
+
+.meta { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 5px 12px; font-size: 13px; padding: 12px 14px; border-radius: 6px; }
+.col.low .meta { background: var(--low-soft); }
+.col.da .meta { background: var(--da-soft); }
+.meta dt { color: var(--muted); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding-top: 2px; }
+.meta dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.meta dd.domain { font-weight: 600; }
+
+details.sec { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+details.sec > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary::before { content: "▸"; font-size: 11px; transition: transform .15s; }
+details.sec[open] > summary::before { transform: rotate(90deg); }
+details.sec > summary .wc { margin-left: auto; font: 400 11px var(--mono); letter-spacing: 0; text-transform: none; }
+.txt { padding: 2px 16px 14px; font-family: var(--body); font-size: 15px; line-height: 1.62; overflow-wrap: anywhere; }
+.txt p { margin: 0 0 0.8em; }
+.txt p:last-child { margin-bottom: 0; }
+.txt ul, .txt ol { margin: 0 0 0.8em; padding-left: 1.3em; }
+.txt h4 { font: 600 14px var(--ui); margin: 1em 0 0.4em; }
+.sec.reasoning .txt { font-size: 14px; color: var(--muted); }
+.sec.system .txt { font-family: var(--ui); font-size: 13px; color: var(--muted); }
+.sec.user { border-left: 3px solid var(--rule); }
+
+footer { color: var(--muted); font-size: 12px; padding-block: 0 32px; }
+footer code { font-family: var(--mono); }
+
+@media (max-width: 860px) {
+  header.top { grid-template-columns: minmax(0, 1fr); }
+  .cols { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+}
+@media (prefers-reduced-motion: reduce) { details.sec > summary::before { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Low-stakes difficult advice, beside the original</h1>
+      <p class="lede">Each pair shares a scenario id, so both rows came from the same trait and, usually, the same sector and AI line. The low-stakes recipe is da.yaml with three generator sentences changed to keep consequences small. Everything else, including the response stages, is the same.</p>
+      <div class="corpora" id="corpora"></div>
+    </div>
+    <section class="lens" aria-label="Median length, whole corpora">
+      <h2>Median words per row, whole corpus</h2>
+      <div id="lens"></div>
+    </section>
+  </header>
+</div>
+
+<nav class="ctl" aria-label="Pair navigation">
+  <div class="wrap ctl-in">
+    <div class="chips" id="chips" role="group" aria-label="Filter by trait"></div>
+    <div class="step">
+      <button class="btn" id="prev" type="button" aria-label="Previous pair">←</button>
+      <span class="pos" id="pos"></span>
+      <button class="btn" id="next" type="button" aria-label="Next pair">→</button>
+      <button class="btn" id="rand" type="button">Random</button>
+    </div>
+    <div class="jump"><select id="jump" aria-label="Jump to pair"></select></div>
+    <div class="toggles">
+      <label><input type="checkbox" id="t-sys"> System</label>
+      <label><input type="checkbox" id="t-think" checked> Reasoning</label>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap">
+  <div class="pairhead" id="pairhead"></div>
+  <div class="cols">
+    <div class="col low" id="col-low"></div>
+    <div class="col da" id="col-da"></div>
+  </div>
+</main>
+<div class="wrap"><footer id="foot"></footer></div>
+
+<script>
+const DATA = /*DATA*/null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const words = (s) => (s.trim() ? s.trim().split(/\s+/).length : 0);
+const AI_LINE = { none: "no AI in the situation", open: "AI line left open", other: "another AI system", self: "the assistant itself" };
+const SIDES = [["low", "Low stakes", "--low"], ["da", "Difficult advice", "--da"]];
+
+function inline(s) {
+  return esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+}
+function md(src) {
+  const out = []; let list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const block of src.replace(/\r/g, "").split(/\n{2,}/)) {
+    const lines = block.split("\n");
+    if (lines.every((l) => /^\s*([-*•]|\d+[.)])\s+/.test(l))) {
+      const kind = /^\s*\d/.test(lines[0]) ? "ol" : "ul";
+      if (list !== kind) { close(); out.push(`<${kind}>`); list = kind; }
+      for (const l of lines) out.push(`<li>${inline(l.replace(/^\s*([-*•]|\d+[.)])\s+/, ""))}</li>`);
+      continue;
+    }
+    close();
+    const h = block.match(/^#{1,6}\s+(.*)$/);
+    if (h && lines.length === 1) { out.push(`<h4>${inline(h[1])}</h4>`); continue; }
+    out.push(`<p>${lines.map(inline).join("<br>")}</p>`);
+  }
+  close();
+  return out.join("");
+}
+
+// Header: corpora and the length lens, drawn on one shared scale.
+const hf = (c) => `https://huggingface.co/datasets/${c.repo}/tree/${c.rev}`;
+$("corpora").innerHTML = SIDES.map(([k, label, tok]) => {
+  const c = DATA[k];
+  return `<div class="corpus"><span class="swatch" style="background:var(${tok})"></span><span>${label}</span>
+    <a href="${hf(c)}" target="_blank" rel="noopener"><code>${c.repo.split("/")[1]}@${c.rev.slice(0, 8)}</code></a><span class="n">${c.rows.toLocaleString()} rows</span></div>`;
+}).join("");
+const parts = [["user", "Prompt"], ["reasoning", "Reasoning"], ["response", "Response"]];
+const max = Math.max(...parts.flatMap(([p]) => SIDES.map(([k]) => DATA[k].median_words[p])));
+$("lens").innerHTML = parts.map(([p, lab]) => `<div class="lens-row"><span class="lab">${lab}</span><div class="bars">${
+  SIDES.map(([k, , tok]) => { const v = DATA[k].median_words[p];
+    return `<div class="bar"><i style="width:${(v / max) * 78}%;background:var(${tok})"></i>${v}</div>`; }).join("")
+}</div></div>`).join("");
+
+const traitName = Object.fromEntries(DATA.traits.map((t) => [t.id, t.name]));
+let filter = "all", view = [], idx = 0;
+
+function chips() {
+  const opts = [["all", "All"], ...DATA.traits.map((t) => [t.id, t.id])];
+  $("chips").innerHTML = opts.map(([id, lab]) => `<button type="button" class="chip" data-t="${id}" aria-pressed="${id === filter}" title="${esc(id === "all" ? "All traits" : traitName[id])}">${lab}</button>`).join("");
+}
+function rebuild() {
+  view = DATA.pairs.map((p, i) => i).filter((i) => filter === "all" || DATA.pairs[i].low.meta.trait_id === filter);
+  $("jump").innerHTML = view.map((i, j) => { const p = DATA.pairs[i];
+    return `<option value="${j}">${p.low.meta.trait_id} · ${esc(p.low.meta.domain)}  ↔  ${esc(p.da.meta.domain)}</option>`; }).join("");
+  idx = Math.min(idx, view.length - 1);
+}
+
+function column(side, d) {
+  const m = d.meta, sys = $("t-sys").checked, think = $("t-think").checked;
+  const sec = (cls, title, text, open) => `<details class="sec ${cls}" ${open ? "open" : ""}><summary>${title}<span class="wc">${words(text)} words</span></summary><div class="txt">${md(text)}</div></details>`;
+  return `<div class="colhead">${side[1]}<span class="id">${esc(m.scenario_id)}</span></div>
+    <dl class="meta">
+      <dt>Domain</dt><dd class="domain">${esc(m.domain)}</dd>
+      <dt>Sector</dt><dd>${esc(m.sector.replace(/_/g, " "))}</dd>
+      <dt>AI line</dt><dd>${esc(AI_LINE[m.ai] || m.ai)}</dd>
+      <dt>Situation</dt><dd>${esc(m.situation)}</dd>
+      <dt>Shortcut</dt><dd>${esc(m.shortcut)}</dd>
+    </dl>
+    ${sec("system", "System", d.system, sys)}
+    ${sec("user", "User", d.user, true)}
+    ${sec("reasoning", "Reasoning", d.reasoning, think)}
+    ${sec("response", "Response", d.response, true)}`;
+}
+
+function render() {
+  if (!view.length) return;
+  const p = DATA.pairs[view[idx]], t = p.low.meta.trait_id;
+  $("pos").textContent = `${idx + 1} / ${view.length}`;
+  $("jump").value = String(idx);
+  $("pairhead").innerHTML = `<span class="tid">${t}</span><h2>${esc(traitName[t])}</h2>
+    <span class="pill">${p.same_deal ? "same sector and AI line" : "sector or AI line differs"}</span>`;
+  $("col-low").innerHTML = column(SIDES[0], p.low);
+  $("col-da").innerHTML = column(SIDES[1], p.da);
+}
+function go(n) { idx = (n + view.length) % view.length; render(); window.scrollTo({ top: Math.min(window.scrollY, $("pairhead").offsetTop - 60) }); }
+
+$("chips").addEventListener("click", (e) => { const b = e.target.closest(".chip"); if (!b) return;
+  filter = b.dataset.t; idx = 0; chips(); rebuild(); render(); });
+$("prev").onclick = () => go(idx - 1);
+$("next").onclick = () => go(idx + 1);
+$("rand").onclick = () => go(Math.floor(Math.random() * view.length));
+$("jump").onchange = (e) => go(Number(e.target.value));
+// Section toggles act on both columns at once, so the two transcripts stay aligned.
+for (const [id, cls] of [["t-sys", "system"], ["t-think", "reasoning"]])
+  $(id).onchange = (e) => document.querySelectorAll(`details.${cls}`).forEach((d) => (d.open = e.target.checked));
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, select, textarea")) return;
+  if (e.key === "ArrowRight") go(idx + 1);
+  if (e.key === "ArrowLeft") go(idx - 1);
+});
+
+$("foot").innerHTML = `${DATA.pairs.length} pairs, ${DATA.pairs.length / DATA.traits.length} per trait, drawn with seed 0 from scenario ids present in both corpora, preferring pairs whose sector and AI line match. ← and → step through pairs. Built by <code>scratch/lowstakes_vs_da_viewer_20261102.py</code>.`;
+chips(); rebuild(); render();
+</script>
