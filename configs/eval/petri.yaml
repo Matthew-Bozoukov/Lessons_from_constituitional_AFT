@@ -17,6 +17,11 @@ passes: 1            # Inspect epochs. 1 = a rate, no interval; 3 = t over passe
 max_turns: 25
 auditor: anthropic/claude-sonnet-5           # OpenRouter ids; the runner prefixes openrouter/ and pins
 judge: google/gemini-3-flash-preview         # the provider (src/infra/endpoints/openrouter.provider_pin)
+# Anthropic prompt caching on the auditor via OpenRouter's top-level cache_control (the runner
+# puts it in the auditor's GenerateConfig.extra_body). The transcript is resent every turn, so
+# without it a 90-seed pass bills ~33M uncached input tokens (2026-10 logs: $66 of $89). Billing
+# only; the auditor reads the same prompt. `auditor_cache=false` to measure a run without it.
+auditor_cache: true
 protocol: null       # launch argument; names a system-preamble arm (protocol=constitution)
 system_preamble_file: null   # the constitution the target is shown first; requires protocol=
 resume_from: null    # out_dir of a run that FAILED; same target, revision, mode and --port

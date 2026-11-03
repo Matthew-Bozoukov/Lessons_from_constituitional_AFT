@@ -4,11 +4,11 @@
 """Six arms over three probes, each panel on its own scale, with "Chat eval" / "Single agent evals"
 rules under the panels. Same type sizes and two-row legend as scratch/plot_probes_four_remake.py.
 
-Hub coverage (2026-10-27): 17 of the 18 bars are published runs. The empty-think MASK bar has no run on
-the Hub and is the 71.2 the user supplied on 2026-10-11, drawn with the interval a 1000-row run would
-have; it is marked in the results mirror. The one-sided-ablation MASK bar is the published 3-pass run
-(86.6); configs/plots/trace-ablations.yaml on main overrides it with a user-supplied 75.2, which this
-figure does not do.
+Hub coverage (2026-11-03): all 18 bars are published runs. The masked-CoT and no-think bars are the
+2026-10-30 true-15% arms (`da-15-maskthink`, `da-15-nothink`; docs/LOG.md 2026-10-30), replacing the
+under-dosed 10-07/10-08 response-only and emptythink arms and the supplied 71.2 MASK literal. The
+deliberation-ablation MASK bar is the published 3-pass run (86.6); configs/plots/trace-ablations.yaml
+overrides it with a user-supplied 75.2, which this figure does not do.
 """
 from datetime import datetime
 from pathlib import Path
@@ -22,52 +22,61 @@ from matplotlib.patches import Patch
 from scratch.figures import _hub
 
 OUT = Path("output/plots")
-BASE_NAME = "Qwen-3.6-27b"
-ARMS = ["control", "mask_cot", "empty_think", "da", "cot_only", "stated_harm"]
+BASE_NAME = "Qwen3.6-27B"
+# Control first, the full recipe beside it, then its four ablations: three on which tokens of the
+# trace carry the loss, one on the trace's content. No "+": every arm after the first two is a
+# Difficult Advice variant, not an addition to it.
+ARMS = ["control", "da", "mask_cot", "empty_think", "cot_only", "stated_harm"]
 ARM = {
-    "control": "+ Control (Standard SFT)",
-    "mask_cot": "+ mask_cot 15% mix",
-    "empty_think": "+ Empty think 15% mix",
-    "da": "+ difficult advice 15% mix",
-    "cot_only": "+ CoT only 15% mix",
-    "stated_harm": "+ difficult advice, no deliberation 15% mix",
+    "control": "+ Control (standard SFT)",
+    "da": "+ Difficult Advice 15% mix",
+    "mask_cot": "+ DA, masked CoT",
+    "empty_think": "+ DA, empty CoT",
+    "cot_only": "+ DA, CoT only",
+    "stated_harm": "+ DA, deliberation ablation",
 }
-COLOUR = {"control": "#5a6472", "mask_cot": "#17becf", "empty_think": "#8c8c2a",
-          "da": "#7e22ce", "cot_only": "#a6d854", "stated_harm": "#6b4f2a"}
+# Control grey and DA purple are the report-wide arm colours. The four ablations are two hue pairs,
+# greens for the two loss-mask ablations and browns for the two content ablations, chosen away from
+# the blue, teal, pink, red and gold the other main-body figures use.
+COLOUR = {"control": "#5a6472", "da": "#7e22ce",
+          "mask_cot": "#2f7d4a", "empty_think": "#8fcf9a",
+          "cot_only": "#7a4f2b", "stated_harm": "#c9a27a"}
 BASE_COLOUR = "#c1121f"
 
 PANELS = ["mask", "odcv", "agentic"]
 RUNS = {
     "mask": {"control": "2026-10-09-mask-qwen36-0-plain",
-             "mask_cot": "2026-10-08-mask-qwen36-0-da-15-response-only",
-             "empty_think": None,                       # no MASK run on the Hub; see LITERAL
+             "mask_cot": "2026-10-30-mask-qwen36-0-da-15-maskthink",
+             "empty_think": "2026-10-30-mask-qwen36-0-da-15-nothink",
              "da": "2026-10-09-mask-qwen36-0-da-15",
              "cot_only": "2026-10-08-mask-qwen36-0-da-15-cot",
              "stated_harm": "2026-10-14-mask-qwen36-0-ablation-stated-harm-15"},
     "odcv": {"control": "2026-10-06-odcv-qwen36-0-plain",
-             "mask_cot": "2026-10-11-odcv-qwen36-0-da-15-response-only",
-             "empty_think": "2026-10-08-odcv-qwen36-0-da-15-emptythink",
+             "mask_cot": "2026-10-30-odcv-qwen36-0-da-15-maskthink",
+             "empty_think": "2026-10-30-odcv-qwen36-0-da-15-nothink",
              "da": "2026-10-06-odcv-qwen36-0-da-15",
              "cot_only": "2026-10-11-odcv-qwen36-0-da-15-cot",
              "stated_harm": "2026-10-04-odcv-qwen36-0-ablation-stated-harm-15"},
     "agentic": {"control": "2026-10-08-am-qwen36-0-plain",
-                "mask_cot": "2026-10-11-am-qwen36-0-da-15-response-only",
-                "empty_think": "2026-10-11-am-qwen36-0-da-15-emptythink",
+                "mask_cot": "2026-10-30-am-qwen36-0-da-15-maskthink",
+                "empty_think": "2026-10-30-am-qwen36-0-da-15-nothink",
                 "da": "2026-10-08-am-qwen36-0-da-15",
                 "cot_only": "2026-10-11-am-qwen36-0-da-15-cot",
                 "stated_harm": "2026-10-14-am-qwen36-0-ablation-stated-harm-15"},
 }
 # Supplied by the user 2026-10-11; no empty-think MASK dataset exists on the Hub.
-LITERAL = {("mask", "empty_think"): (71.2, 1000)}
-READ = {"mask": _hub.mask, "odcv": _hub.odcv, "agentic": _hub.agentic}
+LITERAL: dict = {}   # 2026-11-03: the nothink MASK run exists; the 71.2 literal is gone
+# Per-repeat readers: the bar is the mean over whole-benchmark repeats, the error bar ±1 SEM over
+# them, and every repeat is drawn as a dot (2026-11-03; the t-interval readers are still in _hub).
+READ = {"mask": _hub.mask_repeats, "odcv": _hub.odcv_repeats, "agentic": _hub.agentic_repeats}
 BASE_RUNS = {"mask": "2026-10-03-mask-qwen36", "odcv": "2026-09-06-odcv-qwen36",
              "agentic": "2026-10-25-am-qwen36"}
 
 TITLE = {"mask": "MASK honesty\n(higher is better)", "odcv": "ODCV\n(lower is better)",
          "agentic": "Agentic Misalignment\n(lower is better)"}
 YLABEL = {"mask": "Honesty score (%)", "odcv": "Misalignment rate (%)",
-          "agentic": "Harmful action rate (%)"}
-CATEGORY = {"mask": "Chat eval", "odcv": "Single agent evals", "agentic": "Single agent evals"}
+          "agentic": "Misalignment rate (%)"}
+CATEGORY = {"mask": "Chat eval", "odcv": "Single-agent evals", "agentic": "Single-agent evals"}
 
 plt.rcParams.update({"font.size": 19, "axes.labelsize": 19, "xtick.labelsize": 17,
                      "ytick.labelsize": 18, "axes.titlesize": 20, "legend.fontsize": 18})
@@ -99,27 +108,31 @@ def main() -> None:
                 vals[p][a] = _hub.literal(v, n)
                 rows.append((p, a, vals[p][a], f"SUPPLIED VALUE, no Hub run (interval as for n={n})"))
             else:
-                vals[p][a] = READ[p](RUNS[p][a])
+                vals[p][a] = _hub.sem_bar(READ[p](RUNS[p][a]))
                 rows.append((p, a, vals[p][a], RUNS[p][a]))
-    base = {p: READ[p](BASE_RUNS[p])[0] for p in PANELS}
+    base = {p: _hub.sem_bar(READ[p](BASE_RUNS[p]))[0] for p in PANELS}
 
     fig, axes = plt.subplots(1, 3, figsize=(20.0, 7.8), gridspec_kw={"wspace": 0.30})
     for ax, p in zip(axes, PANELS):
         for i, a in enumerate(ARMS):
-            m, lo, hi = vals[p][a]
+            m, lo, hi, pts = vals[p][a]
             ax.bar(i, m, width=0.68, color=COLOUR[a], edgecolor="black", linewidth=0.8, zorder=3)
             ax.errorbar(i, m, yerr=[[m - lo], [hi - m]], fmt="none", ecolor="#2b2523",
                         elinewidth=1.3, capsize=5, capthick=1.3, zorder=4)
+            # one dot per repeat, spread evenly across the bar so coincident values stay visible
+            xs = [i + (0.0 if len(pts) == 1 else -0.2 + 0.4 * j / (len(pts) - 1)) for j in range(len(pts))]
+            ax.scatter(xs, pts, s=22, facecolor="white", edgecolor="#2b2523", linewidth=0.9, zorder=5)
         ax.axhline(base[p], color=BASE_COLOUR, linestyle=(0, (2.5, 2.5)), linewidth=1.8, zorder=2)
-        ceiling = max([v[2] for v in vals[p].values()] + [base[p]])
+        ceiling = max([max(v[2], max(v[3])) for v in vals[p].values()] + [base[p]])
         top = min(max(ceiling * 1.3, 12), 100.0)
         ax.set_ylim(0, top)
         if top >= 99.5:
             ax.set_yticks(range(0, 101, 20))
         for i, a in enumerate(ARMS):
-            m, _, hi = vals[p][a]
+            m, _, hi, pts = vals[p][a]
+            hi = max(hi, max(pts))
             ax.text(i, hi + 0.014 * top, f"{m:.1f}", ha="center", va="bottom",
-                    fontsize=13 if top >= 99.5 else 16, fontweight="bold", zorder=5, clip_on=False)
+                    fontsize=16, fontweight="bold", zorder=5, clip_on=False)
         ax.set_title(TITLE[p], pad=14)
         ax.set_ylabel(YLABEL[p])
         ax.set_xticks(range(len(ARMS))); ax.set_xticklabels([])
@@ -130,7 +143,11 @@ def main() -> None:
     handles = [Line2D([0], [0], color=BASE_COLOUR, linestyle=(0, (2.5, 2.5)), linewidth=1.8, label=BASE_NAME)]
     handles += [Patch(facecolor=COLOUR[a], edgecolor="black", label=ARM[a]) for a in ARMS]
     # fig.legend fills column by column; reorder so the two rows read left to right.
-    handles = [handles[i] for i in (0, 4, 1, 5, 2, 3, 6)]   # long label alone in the last column
+    # Column-major fill, 4 columns x 2 rows: the base line stands alone in column 1 (an invisible
+    # handle fills the slot under it); row 1 then reads control, DA, CoT masked and row 2 empty CoT,
+    # CoT only, deliberation ablation.
+    blank = Patch(facecolor="none", edgecolor="none", label=" ")
+    handles = [handles[0], blank, handles[1], handles[4], handles[2], handles[5], handles[3], handles[6]]
     fig.legend(handles=handles, frameon=False, loc="upper center", ncol=4,
                bbox_to_anchor=(0.5, 1.02), fontsize=18, columnspacing=1.6, handlelength=1.8,
                handleheight=1.0, labelspacing=0.5)

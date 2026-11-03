@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 from inspect_ai import eval as inspect_eval
 from inspect_ai import eval_retry
 from inspect_ai.log import read_eval_log
-from inspect_ai.model import get_model
+from inspect_ai.model import GenerateConfig, get_model
 from inspect_petri import audit
 from omegaconf import DictConfig
 
@@ -141,8 +141,18 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
     # the log's ModelConfig, which records base_url but never a credential, and the openai-api
     # provider then reads <SERVICE>_API_KEY (whistlebench's wiring).
     os.environ["VLLM_API_KEY"] = target.api_key or "EMPTY"
+    # Prompt caching for the auditor. Every auditor turn resends the whole transcript, and through
+    # OpenRouter Anthropic caches nothing past the system prompt and tool list unless the request
+    # asks: inspect_ai's OpenRouter provider marks only list-form messages and Petri's are strings
+    # (0.3.286; main unchanged). OpenRouter's top-level `cache_control` makes it place one
+    # breakpoint on the last cacheable block and advance it every turn. Billing only: the auditor
+    # reads the identical prompt. `auditor_cache=false` measures a run without it.
+    auditor_cache = bool(cfg.get("auditor_cache", True))
+    auditor_config = (GenerateConfig(extra_body={"cache_control": {"type": "ephemeral"}})
+                      if auditor_cache else GenerateConfig())
     roles = {"target": get_model(target_model, base_url=base_url),
-             "auditor": get_model(f"openrouter/{cfg.auditor}", provider=provider_pin(str(cfg.auditor))),
+             "auditor": get_model(f"openrouter/{cfg.auditor}", provider=provider_pin(str(cfg.auditor)),
+                                  config=auditor_config),
              "judge": get_model(f"openrouter/{cfg.judge}", provider=provider_pin(str(cfg.judge)))}
 
     # Resume: the prior run's logs are copied in so this run dir is self-contained, and
@@ -225,6 +235,7 @@ def run(target, cfg: DictConfig, out_dir: Path) -> dict:
           f"missing {len(summary['missing_seeds'])}", flush=True)
     return {**summary, **counts,
             "auditor": str(cfg.auditor), "judge": str(cfg.judge), "max_turns": int(cfg.max_turns),
+            "auditor_cache": auditor_cache,
             "passes": passes, "limit": limit, "seeds_dir": str(cfg.seeds),
             "context_window": int(cfg.serving.context_window),
             "inspect_logs": "metadata/inspect",

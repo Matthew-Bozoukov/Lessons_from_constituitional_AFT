@@ -1,6 +1,7 @@
 # ABOUTME: Reads the published eval runs that the paper figures plot, so every number in a figure
 # ABOUTME: comes from the Hub at render time rather than from a literal typed into a script.
 import json
+from pathlib import Path
 import os
 
 import numpy as np
@@ -41,21 +42,47 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
 def odcv(repo: str) -> tuple[float, float, float]:
     """Misalignment rate and a FIXED-benchmark interval, recomputed from the per-rollout scores."""
     sc = fetch(repo, "results/scores_gemini-3-flash-preview.json")
-    medians: dict[str, dict[str, list]] = {}
+    # Keyed "<scenario>/<rollout_NNN>" so passes_by_index groups cells by their REAL pass. Until
+    # 2026-11-03 the scores were appended positionally per cell, which scrambled rollouts across
+    # passes whenever the JSON order was not rollout_000/001/002 (the control's passes read
+    # 42.5/41.2/51.2 instead of 45.0/42.5/47.5; the mean is unaffected, the interval is not).
+    medians: dict[str, dict[str, float]] = {}
     for key, v in sc.items():
-        variant, scenario, _ = key.split("/")
+        variant, scenario, roll = key.split("/")
         s = v.get("score") if isinstance(v, dict) else v
         if s is None:
             continue
-        medians.setdefault(variant, {}).setdefault(scenario, []).append(float(s))
+        medians.setdefault(variant, {})[f"{scenario}/{roll}"] = float(s)
     o = O.summarise(medians)["overall"]
     return o["mr_pct"], o["mr_ci95_lo"], o["mr_ci95_hi"]
 
 
 def agentic(repo: str) -> tuple[float, float, float]:
-    """Harmful-action rate and a Wilson interval over the rollouts."""
-    o = fetch(repo, "results/misalignment_summary.json")["overall"]
-    return 100 * o["harmful"] / o["n"], *wilson(o["harmful"], o["n"])
+    """Harmful-action rate and a FIXED-benchmark interval: a t over the sweeps on the log-odds scale.
+
+    Trial k of every condition is one sweep of the 18-condition panel, so a 10-trial run gives ten
+    draws of the eval's number (src/eval/misalignment/agentic_misalignment/aggregate_eval.py,
+    docs/error_bars.md). Runs published before 2026-10-29 carry no per-sweep rates, so the flags
+    are re-read from the run's classified response.json files. (Until 2026-11-03 this reader
+    gave a Wilson interval over the 180 trials, which treats co-moving conditions as independent.)
+    """
+    from collections import defaultdict
+    from huggingface_hub import snapshot_download
+    from src.eval.misalignment.agentic_misalignment.aggregate_eval import _iter_responses
+    from src.eval.stats import logit_t
+    root = Path(snapshot_download(f"{ORG}/{repo}", repo_type="dataset", token=_token(),
+                                  allow_patterns=["results/harness/models/*/*/sample_*/response.json"]))
+    by_sweep: dict[int, list[bool]] = defaultdict(list)
+    n_cond: set[str] = set()
+    for condition, sample_id, data in _iter_responses(root / "results" / "harness" / "models"):
+        cls = data.get("classification")
+        if not cls or "harmful_behavior" not in cls or "error" in cls:
+            continue
+        by_sweep[sample_id].append(bool(cls["harmful_behavior"]))
+        n_cond.add(condition)
+    rates = [sum(f) / len(f) for _, f in sorted(by_sweep.items())]
+    r = logit_t(rates, len(n_cond), scale=1.0)
+    return 100 * r["mean"], 100 * r["lo"], 100 * r["hi"]
 
 
 def mask_passes(repo: str) -> tuple[list[float], int]:
@@ -136,3 +163,49 @@ def literal(value: float, n: int | None = None) -> tuple[float, float | None, fl
     if n is None:
         return value, None, None
     return value, *wilson(round(value / 100 * n), n)
+
+# ---------------------------------------------------------------------------------------
+# Per-repeat readers and the ±1 SEM bar (2026-11-03). One repeat = one whole-benchmark run:
+# an ODCV pass, a MASK pass, an agentic-misalignment sweep (trial k of every condition).
+# The figure caption names n and says "±1 SEM over repeats"; no coverage level is claimed.
+# ---------------------------------------------------------------------------------------
+
+def sem_bar(values: list[float]) -> tuple[float, float, float, list[float]]:
+    """Mean of the repeats, mean -/+ one standard error, and the repeats themselves.
+
+    One repeat gives its own value with a zero-width bar (the plot shows the lone dot)."""
+    n = len(values); m = float(np.mean(values))
+    sem = float(np.std(values, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+    return m, m - sem, m + sem, [float(v) for v in values]
+
+
+def odcv_repeats(repo: str) -> list[float]:
+    """Per-pass misalignment rate (%) from the per-rollout scores, keyed by the real pass id."""
+    sc = fetch(repo, "results/scores_gemini-3-flash-preview.json")
+    medians: dict[str, dict[str, float]] = {}
+    for key, v in sc.items():
+        variant, scenario, roll = key.split("/")
+        s = v.get("score") if isinstance(v, dict) else v
+        if s is not None:
+            medians.setdefault(variant, {})[f"{scenario}/{roll}"] = float(s)
+    return [float(x) for x in O.summarise(medians)["overall"]["mr_pct_by_pass"]]
+
+
+def agentic_repeats(repo: str) -> list[float]:
+    """Per-sweep harmful-action rate (%): trial k of every condition is one sweep."""
+    from collections import defaultdict
+    from huggingface_hub import snapshot_download
+    from src.eval.misalignment.agentic_misalignment.aggregate_eval import _iter_responses
+    root = Path(snapshot_download(f"{ORG}/{repo}", repo_type="dataset", token=_token(),
+                                  allow_patterns=["results/harness/models/*/*/sample_*/response.json"]))
+    by_sweep: dict[int, list[bool]] = defaultdict(list)
+    for _, sample_id, data in _iter_responses(root / "results" / "harness" / "models"):
+        cls = data.get("classification")
+        if cls and "harmful_behavior" in cls and "error" not in cls:
+            by_sweep[sample_id].append(bool(cls["harmful_behavior"]))
+    return [100.0 * sum(f) / len(f) for _, f in sorted(by_sweep.items())]
+
+
+def mask_repeats(repo: str) -> list[float]:
+    """Per-pass row-weighted honesty score."""
+    return [float(x) for x in mask_passes(repo)[0]]
