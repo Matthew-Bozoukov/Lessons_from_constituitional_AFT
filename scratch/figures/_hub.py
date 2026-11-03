@@ -1,11 +1,16 @@
 # ABOUTME: Reads the published eval runs that the paper figures plot, so every number in a figure
 # ABOUTME: comes from the Hub at render time rather than from a literal typed into a script.
-# THE ERROR-BAR RULE FOR FIGURES (2026-11-03, Jamie's decision): the benchmark is FIXED and the
-# only randomness is the model's sampling, so a single-model bar shows the mean over the
-# benchmark's items with -/+ one standard error propagated from each item's own repeats:
+# THE ERROR-BAR RULE FOR FIGURES (locked in by Jamie, 2026-11-03). The benchmark is FIXED and the
+# only randomness is the model's sampling, so a single-model bar is the mean over the benchmark's
+# items with a 95% interval propagated from each item's own repeats:
 #   SE = sqrt(sum_i s_i^2 / k_i) / N      (N items, k_i repeats of item i, s_i^2 their sample variance)
+#   bar = mean -/+ 1.96 * SE
 # An ODCV item is a cell (scenario x variant, 3 rollouts), an agentic item is a condition (10
-# trials), a MASK item is a row (3 passes). No coverage claim; a single repeat gives no bar.
+# trials), a MASK item is a row (3 passes). The SE has as many degrees of freedom as there are
+# items with disagreeing repeats, which is why 1.96 is honest here and a t over three whole-pass
+# scores (4.30) is not needed. Demonstrated in output/figures/2026-11-03_errorbar_sim.html.
+# Assumes items are independent within a pass (no shared "tilt"); the agreement with the
+# pass-level spread on ODCV and MASK supports that. A single repeat gives no bar.
 # Every figure reads through `item_se`; paired-difference plots are the only exception.
 # tests/test_figure_intervals.py refuses figure code that builds its own interval instead.
 import json
@@ -164,8 +169,11 @@ def mask_repeats(repo: str) -> list[float]:
 # Per-item readers: each item's repeats, so the standard error can be propagated from them.
 # ---------------------------------------------------------------------------------------
 
+Z_95 = 1.96   # the figure rule's multiplier: a 95% interval on the per-item SE
+
+
 def item_se(cells: list[list[float]]) -> tuple[float, float | None, float | None]:
-    """Mean over items of the item means, -/+ one SE propagated from each item's repeats.
+    """Mean over items of the item means, -/+ Z_95 times the SE propagated from each item's repeats.
 
     Items with one repeat contribute no variance; if no item has two, there is no bar."""
     means = [float(np.mean(c)) for c in cells]
@@ -175,7 +183,7 @@ def item_se(cells: list[list[float]]) -> tuple[float, float | None, float | None
         return m, None, None
     var = sum(float(np.var(c, ddof=1)) / len(c) for c in multi) / len(cells) ** 2
     se = float(np.sqrt(var))
-    return m, m - se, m + se
+    return m, m - Z_95 * se, m + Z_95 * se
 
 
 def odcv_cells(repo: str) -> list[list[float]]:

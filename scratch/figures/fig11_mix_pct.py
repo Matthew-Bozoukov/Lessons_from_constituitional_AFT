@@ -1,7 +1,7 @@
 # ABOUTME: Fig. 11 remake: misalignment vs the share of difficult-advice data (0/5/15/25%) on
 # ABOUTME: ODCV, agentic misalignment, Petri and MASK, every number read from the Hub at render time.
 # Run: uv run python scratch/figures/fig11_mix_pct.py [--out_dir output/figures]
-"""Bands are -/+ one SE propagated from each item's repeats (the rule at the top of scratch/figures/_hub.py).
+"""Bands are 95% intervals (1.96 x SE) propagated from each item's repeats (the rule at the top of scratch/figures/_hub.py).
 
 ODCV: three passes per artifact. Agentic: trial k of every condition is sweep k, ten sweeps per
 artifact. MASK: the plain-protocol passes of each adapter live across two artifacts, so the

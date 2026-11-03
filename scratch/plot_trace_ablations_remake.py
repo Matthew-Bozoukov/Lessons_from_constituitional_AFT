@@ -66,7 +66,7 @@ RUNS = {
 }
 # Supplied by the user 2026-10-11; no empty-think MASK dataset exists on the Hub.
 LITERAL: dict = {}   # 2026-11-03: the nothink MASK run exists; the 71.2 literal is gone
-# Bars: mean over the benchmark's items, -/+ one SE propagated from each item's repeats (the
+# Bars: mean over the benchmark's items with a 95% interval (1.96 x SE) propagated from each item's repeats (the
 # rule at the top of scratch/figures/_hub.py). The repeats are read for the results mirror only.
 READ = {"mask": _hub.mask, "odcv": _hub.odcv, "agentic": _hub.agentic}
 REPEATS = {"mask": _hub.mask_repeats, "odcv": _hub.odcv_repeats, "agentic": _hub.agentic_repeats}
