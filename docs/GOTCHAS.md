@@ -2196,3 +2196,10 @@ memory-on cells. Before comparing a new Hospital run with the 09-14 → 10-02 se
 `fixes.carry_agent_history` in its `run_meta.json` AND the date against 2026-10-05. The
 default config carries memory ON since 2026-10-09; the paper's harness is now three overrides
 (`fixes.carry_agent_history=false` added).
+
+## Back-to-back `uv run evals --server` runs must use different `--port`s (2026-11-03)
+
+The SSH tunnel of a finished `evals --server ... --port N` run can still hold local port N for a
+while after the process exits. The next run on the same port fails fast at `assert_local_port_free`
+("local port 127.0.0.1:N is already taken") before serving or spending anything. Chain consecutive
+runs on distinct ports (8097, 8098, ...) or check `lsof -nP -iTCP:N` first.

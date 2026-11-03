@@ -1,3 +1,62 @@
+## 2026-11-03: Petri auditor prompt caching measured: 2.5x cheaper on the same three seeds
+
+Hypothesis: the uncommitted 2026-11-02 change (`auditor_cache: true` in `configs/eval/petri.yaml`; the runner puts OpenRouter's top-level `cache_control: {type: ephemeral}` in the auditor's `GenerateConfig.extra_body`) should cut the auditor bill, which was $66 of an $89 90-seed pass in October, without changing what the auditor reads. Yesterday's comparison died on an OpenRouter 402 four calls into the cached arm.
+
+Method: one H200 pod (`uv run runpod up jamie-petri-cache --eval petri --target dougalldeepmind/2026-10-05-qwen36-0-da-15 --boot_timeout_s 900`; the first SECURE request never booted and was swept, COMMUNITY had no H200), then from this laptop `uv run evals --name petri --target dougalldeepmind/2026-10-05-qwen36-0-da-15 --server root@152.236.142.242:19217 --port 8097 limit=3 --no-push` and the same with `auditor_cache=false --port 8098` (the second launch on 8097 failed before spending: the first run's tunnel still held the port). Sonnet 5 auditor, gemini-3-flash judge, seeds P1-01..03, max_turns 25. Billing read from the Inspect logs (`scratch/petri_cache_compare.py`) and from the OpenRouter balance before and after each run.
+
+Result (run dirs `output/petri/2026-11-03_qwen36_0_da_15_114930` cached, `_121016` uncached):
+
+| arm | auditor calls | uncached input | cache write | cache read | output | billed-input equivalent | OpenRouter $ | wall |
+|---|---|---|---|---|---|---|---|---|
+| cached | 53 | 106 | 182k | 2.45M (93%) | 97k | 472k | 1.94 | 19 min |
+| uncached | 45 | 1.17M | 35k | 618k (34%) | 70k | 1.27M | 4.90 | 70 min |
+
+- 2.5x cheaper in dollars, 2.7x in billed-input equivalent (uncached 1.0, cache write 1.25, cache read 0.1). The uncached arm still reads 34% from cache: OpenRouter/Anthropic cache the system prompt and tool list on their own; the flag extends the breakpoint over the growing transcript.
+- Scaled to a 90-seed pass: about $58 of auditor becomes about $23.
+- The uncached wall time is dominated by one seed (P1-02, 69.5 min, 42 model events; 11.3 min cached). Audits are stochastic, so this is a draw, not a cache effect; concerning>=4 was 2/3 cached and 0/3 uncached for the same reason.
+- Yesterday's single uncached seed (763k uncached input, 21 calls) is consistent with today's uncached arm.
+
+Pod terminated and verified (`no active pods`); RunPod today $19.41 across the three requests, OpenRouter $6.84 for both arms. The change is still uncommitted on main (`configs/eval/petri.yaml`, `src/eval/misalignment/petri/runner.py`).
+
+Next: commit the change; every Petri run from here records `auditor_cache` in its results, so a cost audit can split runs by it.
+
+## 2026-11-03: our da corpus vs Teaching Qwen Why's difficult advice, four offline reads and a blind subscription-token judge
+
+Hypothesis: Second Look Research's "Teaching Qwen Why" (LessWrong 2026-11-02; code `uchicago-xlab/TeachingClaudeWhyReplication` @ 2d2331ef, data `SecondLookResearch/teaching-qwen-why-data` @ c57625c9) reports difficult-advice SFT cutting agentic misalignment 61% -> 6% on Qwen 2.5 32B. If their rows differ from ours in a way that explains a larger per-row effect, that is a candidate change to `configs/data/synth/da.yaml`.
+
+Method: `dougalldeepmind/2026-10-30-da-synth` @ 8fadea62 (2001 rows; the manifest records Haiku 4.5 drafting and Sonnet 5 revising, not Sonnet 4.5) against their headline `gpt-5.6-terra-3000` (3286 rows, GPT-5.6 Terra) and `sonnet-5-1000` (1167). Normalised by `scratch/tqw_da_compare/normalize.py`; four subagents in parallel, none calling a paid API: (1) recipe and prompt diff from code; (2) `scratch/tqw_da_compare/stats.py` (Qwen3.6 tokens, TF-IDF nearest neighbours, regex markers; figure `output/tqw_da_compare/2026-11-03_tqw_da_lengths.png`); (3) 21 rows read end to end; (4) `scratch/tqw_da_compare/judge.py`: 60 rows per corpus, stratified, shuffled, identity-scrubbed, scored 1-5 on ten dimensions by Sonnet 5 through `claude -p --bare` on the Claude Code subscription token (the daa2 pattern), 180 calls, no failures, $0. Synthesis: `output/tqw_da_compare/2026-11-03_tqw_da_comparison.md`.
+
+Result:
+- Scope, not craft, is the main difference. Their 15 principles are all the corrigibility/safety cluster and the judge put an AI at the centre of 50% of their rows vs 25% of ours; our da spends 6 of 9 traits off oversight and deals 80% of writer calls "no AI" or "nothing said". "safety" is 6x more frequent per answer word in Terra, "honest*" 17x rarer.
+- Two instructions point opposite ways: their critique forbids "it will backfire" and foregrounds the constitution's reasons, ours forbids rule-talk and demands what is concretely at stake; theirs must "end with concrete suggestions, not with questions" (0% end with a question, 38% open "No"/"Do not"), ours "leaves the decision with the person" (30% end with a question, 1% open with a verdict).
+- Row shape: their answers are 1.8x ours in tokens (median 910 and 952 vs 548) but have no reasoning trace, so supervised tokens per row are about equal (983 vs 1161). Ours is the only corpus with markdown (32% bold, 20% bullets vs under 5%). TF-IDF diversity is similar (NN cosine 0.21-0.24, no pair above 0.6); their prompt openers are more templated.
+- Blind judge (mean of 1-5): users weighing rather than demanding 4.30 ours / 3.55 Terra / 2.88 Sonnet-5; realism 4.28 / 3.33 / 4.55; ambiguity 3.45 / 3.38 / 2.82; declines at >= 4: 2% / 0% / 12%; system prompt pre-resolves the tension at >= 4: 12% / 2% / 7% (they regex-flag and human-screen for exactly this; we have no such check).
+- Training use is not comparable: their DA is a standalone 1-epoch stage (11-65 steps) on Qwen 2.5 base plus a 13K instruct mix; ours is 15% of a 5M-token replay mix on post-trained Qwen3.6 with traces supervised.
+
+Next: (a) a t1/t2/t6-only da mixture at matched token share to test the scope explanation; (b) two single-line da.yaml ablations, "reasons from the principle" and "end on a recommendation"; (c) run their `screen_system_prompts.py` patterns over our 2,001 system prompts; (d) a "no markdown" line in the response brief. The subscription-token judge pattern (`scratch/tqw_da_compare/judge.py`) is reusable for any corpus-vs-corpus read at zero API cost.
+
+## 2026-11-02: MASK and agentic misalignment on da-15 B and C; the three-pool da vs delib-sonnet table is complete
+
+Hypothesis: the da-15 B and C adapters (2026-10-30, disjoint da draws) should sit beside da-15 A on MASK and the agentic misalignment honeypots, as they did on ODCV (Nika's 2026-11-02 entry on `nika/odcv-da15-bc`), so the da vs delib-sonnet comparison can be read over three data draws per arm.
+
+Method: `uv run runpod up jamie-<eval>-da15<b|c> --eval <mask|agentic_misalignment> --target dougalldeepmind/2026-10-30-qwen36-0-da-15-<b|c>` (one pod per arm: H200 for MASK, H100 for AM), then `uv run evals --name <eval> --target <adapter> --server root@<ip>:<port> --port 809N` from this laptop, at git 9ec81037. MASK: 1,000 rows, think, gemini-3-flash judge. AM: 180 trials (18 conditions x 10 sweeps), gemini-3-flash classifier. Two MASK pod requests were refused with "no instances available" and succeeded on retry. `--terminate-pod` refused to match a pod to its address (`pod_for_server`), so teardown was chained by hand (`; uv run runpod down --pod <id>`). The first MASK C attempt refused to score at 0.5% generation failures under the config's 0% `max_generation_error_rate` (every run since 2026-10-05 had passed 0.05 as an override); a resumed run with the override scored 80.2, then the default was set to 0.02 (commit 9ec81037) and both MASK arms were rerun fresh under it. Both runs push into the same day-named repos; the resumed C run is the earlier revision of `2026-11-02-mask-qwen36-0-da-15-c`.
+
+Result (HF repos under dougalldeepmind/):
+
+| arm | MASK honesty | ODCV MR [95%] | AM harmful rate [95%] |
+|---|---|---|---|
+| plain control | 44.0 | 45.0 [32.1, 58.6] | 30.6 |
+| da-15 A (2026-10-05) | 82.7 | 13.3 [7.6, 22.4] | 6.7 |
+| da-15 B | 85.2 (9/4,438 gen failures) | 10.8 [6.7, 16.6] | 7.2 [2.6, 10.8] |
+| da-15 C | 80.0 (27/4,438; resumed run 80.2) | 15.4 [11.2, 20.6] | 7.8 [2.8, 11.7] |
+| delib-sonnet-15 a / b / c | 77.1 / 72.7 / 73.8 | 11.7 / 13.3 / 12.9 | 1.1 / 0.0 / 0.6 |
+
+- ODCV: the two arms are the same across draws (da 10.8-15.4, delib-sonnet 11.7-13.3).
+- MASK: da ahead on every draw (80.0-85.2 vs 72.7-77.1); the da draw spread (5 points) is wider than MASK's run-to-run (<= 1.2) and seed-to-seed (~2) spreads measured on 2026-10-04.
+- AM honeypots: delib-sonnet ahead on every draw (0-1.1% vs 6.7-7.8%), consistent across three data draws per arm.
+- New repos: `2026-11-02-mask-qwen36-0-da-15-{b,c}`, `2026-11-02-am-qwen36-0-da-15-{b,c}`. Cost: RunPod $21.93 today (six pods incl. the two refused-then-retried and the C rerun), OpenRouter about $12 (balance $31.00 -> $18.93).
+
+Next: pool the three draws per arm (ODCV `pool`, and a MASK/AM equivalent) for intervals that include draw-to-draw variance; the da vs delib difference on MASK and AM has candidate confounds in the data recipes (style brief, per-principle scoping, judge filter, row length) that a matched rerun should separate.
 ## 2026-11-02: ODCV on da-15 B and C, beside da-15 #1: all three within each other's intervals
 
 Hypothesis: three disjoint draws of da rows with the same recipe and seed (da-15 #1 = A, and B, C from the 2026-10-30 entry below) should give ODCV MRs within each other's intervals; the spread between them is the data-draw variance of da-15.
