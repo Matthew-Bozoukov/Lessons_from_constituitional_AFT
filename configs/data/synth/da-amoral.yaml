@@ -35,6 +35,18 @@
 #      to show the tempting option is the worse one" and the prompt reviser's "never make the shortcut the better
 #      call" (blind re-rating showed it changed nothing). The reviser has DA's "If the right call is obvious, make it
 #      less so" again.
+# H. CLOSER TO DA'S OWN ROWS (2026-11-03; supersedes G's first two bullets). Rows of G's recipe differed from DA's in
+#    ways nothing moral explains: the drafter wrote "decision coach" system prompts telling the assistant to ask
+#    clarifying questions (50-55% of system prompts, DA 8%) and replies committed to a recommendation far less often;
+#    user messages were arithmetic problems (median 4 numbers, DA 1). Measured on four local 20-row arms rated blind
+#    (output/2026-11-02_da_amoral/arms2/), so:
+#    - the writer's ask and `shortcut` are DA's current wording again: "the convenient path would violate this
+#      specific principle, but the right call is not obvious" / "the specific principle-violating action". With "at
+#      stake" the user leaned toward the tempted option in 2 of 20 rows; with DA's ask, 13-17.
+#    - TWO LINES IN NO DA RECIPE: the drafter's system-prompt sentence and the prompt reviser's "ordinary deployment
+#      prompt" say the system prompt does not tell the assistant how to advise; the writer gets "The call turns on
+#      judgement about the situation, not on a calculation." (numbers per message 4 -> 2; facts favouring the tempted
+#      option 4 -> 1 of 20 against DA's ask alone).
 
 # 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
 #     "The person who writes in is weighing something, not demanding something, and the right option is
@@ -526,8 +538,8 @@ stages:
       {trait_text}
       </principle>
 
-      Invent {n} DISTINCT situations in which this specific principle is at stake and the
-      right call is not obvious.
+      Invent {n} DISTINCT situations in which the convenient path would violate this
+      specific principle, but the right call is not obvious.
 
       Requirements for every situation:
       - Whoever is under pressure is sympathetic and their underlying goal is legitimate.
@@ -537,6 +549,7 @@ stages:
         harmed or treated unfairly, and no duty or trust is broken. The cost of the wrong
         choice falls on what the person is trying to achieve.
       - The pressure is concrete and the stakes are real.
+      - The call turns on judgement about the situation, not on a calculation.
       - The tempting option is genuinely attractive, not cartoonish.
       - The tension must engage THIS principle specifically, not good sense in general.
       - The setting is specific rather than a category.
@@ -544,7 +557,7 @@ stages:
 
       Return ONLY a JSON array of {n} objects, each:
       {{"domain": "<one or two words>", "situation": "<3-5 sentences, third person, no dialogue>",
-        "shortcut": "<1 sentence: the specific option they are tempted by>"}}
+        "shortcut": "<1 sentence: the specific principle-violating action they are tempted by>"}}
 # Scenario-level checks, where diversity is actually DECIDED: stages 3-6 cost real
 # money per scenario, so a collapsed set is far cheaper to catch here than in the
 # finished corpus. An observer, so inserting it renumbered no snapshot.
@@ -601,7 +614,8 @@ stages:
       - read as something someone actually typed, not as a case study{ai_text}
 
       The system prompt should be an ordinary, plausible deployment prompt for a general
-      assistant. It must NOT mention the constitution, ethics, or this exercise, and
+      assistant. It sets up the deployment and does not tell the assistant how to advise (no
+      instructions to ask questions, stay neutral or hold back a recommendation). It must NOT mention the constitution, ethics, or this exercise, and
       neither prompt may name the model or the company that built it.
 
       Return ONLY JSON:
@@ -704,7 +718,9 @@ stages:
         Never name the model you are, or the company that built you, anywhere in either
         prompt -- not as the assistant's identity and not in passing.{ai_text}
 
-      Keep the system prompt an ordinary deployment prompt.
+      Keep the system prompt an ordinary deployment prompt, one that does not tell the
+      assistant how to advise (no instructions to ask questions, stay neutral or hold back a
+      recommendation).
 
       Finally, re-describe what you actually produced. `domain`, `situation` and `shortcut`
       arrive here describing the DRAFT, and you are about to replace or reframe most
@@ -719,7 +735,8 @@ stages:
         "domain": "<one or two words, describing YOUR refined message>",
         "situation": "<3-5 sentences, third person, no dialogue, describing YOUR refined
         message>",
-        "shortcut": "<1 sentence: the option YOUR refined message is tempted by>"}}
+        "shortcut": "<1 sentence: the principle-violating action YOUR refined message is
+        tempted by>"}}
 - name: draft_responses
   kind: llm_tagged
   model: respond
