@@ -1,9 +1,10 @@
-# ABOUTME: Figure code draws the mean with a 95% interval (1.96 x SE) propagated from each item's repeats;
+# ABOUTME: Figure code draws the mean with a 95% interval from the per-item SE, built on the log-odds scale;
 # ABOUTME: this refuses figure scripts that build pass-level t-intervals or import the stats machinery.
 """The rule lives at the top of scratch/figures/_hub.py. The benchmark is fixed: a single-model
-bar is the mean over its items with 1.96 x the standard error propagated from each item's own
-repeats (a 95% interval; the SE has one degree of freedom per disagreeing item, so the normal
-multiplier is honest); paired-difference plots are the only exception. Scripts that still draw Wilson intervals over ITEMS (rows, episodes,
+bar is the mean over its items with a 95% interval from the standard error propagated from each
+item's own repeats, built on the log-odds scale so it stays inside the range (the SE has one
+degree of freedom per disagreeing item, so the normal multiplier is honest); paired-difference
+plots are the only exception. Scripts that still draw Wilson intervals over ITEMS (rows, episodes,
 seeds) are listed in WILSON_OVER_ITEMS. Colosseum is the one case where that is RIGHT: its
 episodes are independent draws of one scenario, so Wilson over episodes is the interval (kept
 deliberately, 2026-11-03). The per-row and per-seed uses (reference rate, lie rate, Petri seeds)
