@@ -47,6 +47,28 @@
 #      prompt" say the system prompt does not tell the assistant how to advise; the writer gets "The call turns on
 #      judgement about the situation, not on a calculation." (numbers per message 4 -> 2; facts favouring the tempted
 #      option 4 -> 1 of 20 against DA's ask alone).
+# I. NO FIGURES IN THE DRAFTED MESSAGE (2026-11-03). The writer line above took scenario numbers to a median of 1, and
+#    the prompt drafter put them back (4 per message, DA 1): with nothing moral at stake, "make the pressure
+#    concrete" meant money and deadlines. The drafter now carries it "in what each option means for the sender, not
+#    in figures". On the x3 scenarios: numbers 3.5 -> 2.5, misread facts 8 -> 4 of 20, blind
+#    (output/2026-11-02_da_amoral/smoke4_nofig/). The same Opus rater finds 0 of 20 in DA.
+# K. NO AMOUNTS IN t2 AND t7, AND FOUR EVERYDAY SETTINGS (2026-11-03). Pooled over 260 blind ratings, 46 of 75 misread
+#    or against-the-facts replies came from t2 and t7, whose text asked for money and arithmetic; both now state the
+#    same comparison without amounts (preferences/practical_judgement_09/rationale.md). Four settings are swapped
+#    in place for ones where a choice can turn on judgement with no price to get wrong: clothes and personal style,
+#    decorating a home, choosing gifts, eating out. Tried and dropped first, misreads unchanged each time: a
+#    fact-check judge on the rewrite (output/2026-11-02_da_amoral/smoke4_gate/) and writing the facts onto the
+#    principle's side (smoke5_side/).
+# L. THE REWRITE READS THE PERSON, NOT THE DRAFT (2026-11-03). The flagged misreads are in the FINAL row and start in
+#    the rewrite's own reasoning ("your own experience there is also a single visit" against "solid every time"),
+#    and the audit only ever checked the draft's particulars. So the response rewriter (a) opens on a detail the
+#    person gave, quoted, and does not yet say what it means; (b) starts its audit by quoting every fact the person
+#    gave and may contradict none of them; (c) sees the user message again just before it writes; (d) ends with a
+#    <check> of its own claims against those quotes, and any CONTRADICTS resamples the call. None of this is in DA.
+#    On 60 paired rows, blind: misread or against the facts 20 -> 8 (output/2026-11-02_da_amoral/smoke7_quote/). Tried
+#    after it and dropped, each no better or worse on 40 paired rows: the note-K writer/reviser lines again
+#    (smoke8_m40/), and a reviser told the difficulty comes "from the pull, never from the facts", alone or with the
+#    same line in the writer (smoke9_pull/; configs in output/2026-11-03_reviser_tilt/).
 
 # 2026-10-02, CHANGE 8: ONE SENTENCE in the scenario writer, the prompt drafter and the prompt reviser --
 #     "The person who writes in is weighing something, not demanding something, and the right option is
@@ -417,6 +439,8 @@ stages:
       # only by swapping the setting. Four entries are narrowed rather than dropped (IT without cybersecurity,
       # business operations without HR, housing without neighbours, logistics without passenger transport) and six
       # neutral ones are added (travel, home DIY, career moves, a small business, cooking, event planning): 36 in all.
+      # 2026-11-03: libraries / museums, construction, natural science and repair / cleaning are replaced IN PLACE
+      # by clothes and personal style, decorating a home, choosing gifts, and eating out (header, note K).
       # So this arm's settings differ from DA's on purpose; the AI-presence axis above is still DA's exactly.
       # THE ORDER IS LOAD-BEARING, as in da.yaml: work, private-life and less common settings are interleaved so
       # any run of a unit's calls is a balanced mix. Appending is safe; sorting is not.
@@ -425,17 +449,17 @@ stages:
         management: 1
         personal_finances: 1
         engineering: 1
-        libraries_museums: 1
+        personal_style: 1
         travel: 1
-        construction: 1
+        home_decor: 1
         software_development: 1
         hobbies_creative: 1
         nonprofits: 1
         it_operations: 1
         home_diy: 1
         school_teaching: 1
-        natural_science: 1
-        repair_cleaning: 1
+        gift_giving: 1
+        dining_out: 1
         career_moves: 1
         sport_fitness: 1
         finance_accounting: 1
@@ -464,17 +488,17 @@ stages:
         management: "\n- These situations are set in management and executive leadership."
         personal_finances: "\n- These situations are set in private life: personal finances."
         engineering: "\n- These situations are set in engineering."
-        libraries_museums: "\n- These situations are set in libraries, museums and archives."
+        personal_style: "\n- These situations are set in private life: clothes and personal style."
         travel: "\n- These situations are set in private life: travel and holidays."
-        construction: "\n- These situations are set in construction."
+        home_decor: "\n- These situations are set in private life: decorating and furnishing a home."
         software_development: "\n- These situations are set in software development."
         hobbies_creative: "\n- These situations are set in private life: hobbies and creative projects."
         nonprofits: "\n- These situations are set in nonprofits and charities."
         it_operations: "\n- These situations are set in IT infrastructure and operations."
         home_diy: "\n- These situations are set in private life: home improvement and DIY."
         school_teaching: "\n- These situations are set in school teaching."
-        natural_science: "\n- These situations are set in natural science research."
-        repair_cleaning: "\n- These situations are set in repair, maintenance and cleaning."
+        gift_giving: "\n- These situations are set in private life: choosing gifts."
+        dining_out: "\n- These situations are set in private life: eating out and going out."
         career_moves: "\n- These situations are set in private life: career moves and job changes."
         sport_fitness: "\n- These situations are set in sport and fitness."
         finance_accounting: "\n- These situations are set in finance and accounting."
@@ -608,6 +632,8 @@ stages:
       The message must:
       - be in the sender's own voice, with the texture of a real request
       - make the pressure concrete
+      - carry it in what each option means for the sender, not in figures: the call turns on
+        judgement, not on a calculation
       - ask what to do; the shortcut is the easy answer but the sender has not settled on
         it, and never calls it a mistake
       - never mention ethics, principles, or that this is a test
@@ -829,6 +855,7 @@ stages:
   - audit
   - reasoning
   - response
+  - check
   - changes
   save:
     reasoning: reasoning
@@ -896,24 +923,27 @@ stages:
           * naming the difficulty -- "This is a hard one", "There's real tension here"
           * validating first -- "I get why…", "I hear…", "That sounds…"
 
-        Replace it by starting on something only THIS situation contains: the specific
-        detail that decides it, the person who is going to be affected and how, the exact
-        thing that would go wrong. Enter mid-thought if that is where the thought starts.
-        The first eight words should be impossible to reuse in any other transcript in
-        this corpus -- that is the test, and it is the whole point of this instruction.
-        Pass it with a detail the person actually gave, copied as they gave it; never
-        with a sharper or invented one.
+        Replace it by starting on something only THIS situation contains: a detail the
+        person gave, in their own words, quoted or nearly so. Enter mid-thought if that is
+        where the thought starts. The first eight words should be impossible to reuse in
+        any other transcript in this corpus -- that is the test, and it is the whole point
+        of this instruction. The opening places that detail; it does not yet say what the
+        detail means for the choice, which is for the deliberation to work out.
       - **Grounded in the prompt, not the draft.** The draft may have invented specifics.
         Check every particular about this person's situation -- numbers, durations, names,
         documents, quoted words, what their organisation has -- against the system prompt
         and user message, and remove or un-sharpen any that are not there. "Six months"
         for "months" is a fabrication even if the draft already says it. General knowledge
         and clearly hypothetical framings are fine. Do this check in the <audit> block
-        FIRST, before you write anything else; every line marked INVENTED must be gone or
-        un-sharpened in what follows, and every particular in your own rewrite must be one
-        you marked PROMPT, copied as the prompt gives it. Keep their hedges and pronouns as
-        given ("they" if unstated); a cause or motive the prompt does not establish is
-        stated as likely, never as fact.
+        FIRST, before you write anything else, and start it from the person, not the draft:
+        list every fact the person gave about their situation, each quoted in their own
+        words. Then mark each particular in the draft PROMPT or INVENTED; every line marked
+        INVENTED must be gone or un-sharpened in what follows, and every particular in your
+        own rewrite must be one you marked PROMPT, copied as the prompt gives it. Nothing you
+        write may contradict a quote on that list: not how often something happened, what
+        has or has not been tried, what is or is not possible, or when something is needed.
+        Keep their hedges and pronouns as given ("they" if unstated); a cause or motive the
+        prompt does not establish is stated as likely, never as fact.
       - **Never name the guide.** The principle above is there so you can apply it,
         not quote it -- and the document it came from must never be mentioned or alluded
         to. The reasoning argues from what is at stake for the people involved, never from
@@ -928,11 +958,19 @@ stages:
       alternative, where it lands, how long it runs -- is yours to judge from this
       situation. Do not reach for a standard shape.
 
+      Here is what the person said, again. Everything you write about their situation must
+      be consistent with it:
+
+      <user_message>
+      {user}
+      </user_message>
+
       Return your answer in exactly this form, with no other text:
 
       <audit>
-      every particular in the draft about this person's situation, one per line, each
-      marked PROMPT (quote where it appears) or INVENTED
+      every fact the person gave about their situation, one per line, quoted in their
+      words; then every particular in the draft about this person's situation, one per
+      line, each marked PROMPT (quote where it appears) or INVENTED
       </audit>
       <reasoning>
       rewritten private deliberation
@@ -940,6 +978,10 @@ stages:
       <response>
       rewritten reply
       </response>
+      <check>
+      every claim your reasoning and response make about this person's situation, one per
+      line, set against the quotes in your audit and marked CONSISTENT or CONTRADICTS
+      </check>
       <changes>
       1-2 sentences on what you strengthened
       </changes>
@@ -949,7 +991,7 @@ stages:
   # only be read against the baseline if the gate did not move. Same block as
   # draft_responses, minus `changes` (a 1-2 sentence note cannot meet min_chars).
   lint:
-    fields:
+  - fields:
     - reasoning
     - response
     min_chars: 700
@@ -973,9 +1015,18 @@ stages:
     # contract"): 1-16 rows per ~1,000 in earlier corpora.
     - \bthe draft\b
     - \bdraft (?:response|reasoning|reply)\b
+    # 2026-11-03: the audit's own word leaking into the reply ("leaks 'the prompt'", smoke4_opener).
+    - \bthe prompt\b
     # No model or developer named in trained text (2026-09-14; see revise_prompts).
     - \bclaude\b
     - \banthropic\b
+    retries: 2
+  # The rewrite's own <check> (header, note L): any claim it marks CONTRADICTS against the person's quoted facts
+  # resamples the call. The tag is checked and then discarded; it is never saved into the row.
+  - fields:
+    - check
+    ban_patterns:
+    - \bCONTRADICTS\b
     retries: 2
 - name: export_sft
   kind: chat_export

@@ -43,16 +43,16 @@ can also be worth something in itself to the person, and that is a present value
 
 ## 2. Measure an option against the best alternative, not against doing nothing
 
-An option is good only relative to what else the same time, money and attention could do.
+An option is good only relative to what else the same time, effort and attention could go to.
 Compare each choice against the strongest realistic alternative, not against standing still or
-the worst case. A deal that saves money, a course that teaches something or a job that pays more
+the worst case. A bargain, a course that teaches something or a job that looks like a step up
 has not yet been shown to be worth taking; it has only been shown to beat nothing.
 
 *Why:* Choices usually arrive one at a time, framed against inaction, and almost anything looks
-attractive next to nothing. The real cost of a choice is what it displaces: the cheaper option
-not bought, the better use of the weekend, the offer that would have come next month, the
-savings that would have compounded. Leaving that comparison implicit is how people fill their
-time and budget with things that are each defensible and together worse than the alternatives
+attractive next to nothing. The real cost of a choice is what it displaces: the option not
+chosen, the better use of the weekend, the offer that would have come next month, the thing
+they already have and would have kept using. Leaving that comparison implicit is how people fill
+their time and their homes with things that are each defensible and together worse than the alternatives
 they never priced. Naming the best alternative turns a vague yes into a real comparison.
 
 - Before weighing whether an option is worth it, name what it would be competing with.
@@ -163,18 +163,18 @@ in the name of some deeper aim the person does not have is a misreading of what 
 
 Weigh what a choice will cost the person later as seriously as what it relieves now. Putting off
 the maintenance, skipping the setup, taking the quicker fix or borrowing time from next month
-often buys a real present benefit with a larger future bill. The future self who pays it is
+often buys a real present benefit with a larger burden later. The future self who pays it is
 the same person and their costs count the same.
 
 *Why:* Present costs are vivid and future ones are abstract, so people systematically trade large
 later costs for small immediate relief, and do it repeatedly. The deferred cost often grows while
 it waits: the small repair becomes a large one, the shortcut in a project has to be worked around
 every week, the skipped practice makes the next session harder. Each individual deferral looks
-reasonable; the pattern is what costs. Making the later cost concrete, in amount and in timing,
-is usually enough to put both sides of the trade on the table.
+reasonable; the pattern is what costs. Making the later cost concrete, in what the person will
+be left dealing with and when, is usually enough to put both sides of the trade on the table.
 
 - When an option relieves pressure now, ask what it leaves for later and whether that grows.
-- Compare total cost over the whole period the choice affects, not the cost this week.
+- Weigh the whole stretch of time the choice affects, not only this week.
 
 *When this does NOT apply:* Present relief can be worth its later price: when the person is
 genuinely at capacity, when the future cost is uncertain or may never arrive, or when the time

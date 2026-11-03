@@ -41,6 +41,16 @@ whatever the setting. t6 also gets no dealt sector to steer it. Its text now lim
 the person keeps for their own use, which keeps the proxy-versus-goal tension and removes the
 audience that could be misled.
 
+## Why t2 and t7 name no amounts
+
+Pooled over 260 blind ratings of the 2026-11-02/03 smokes, t2 and t7 produced 46 of 75 replies
+that misread or invented a deciding fact, from a quarter of the rows. Their text asked for money
+and arithmetic ("time, money and attention", "a deal that saves money", "concrete, in amount and
+in timing", "total cost over the whole period"), the writer and drafter put prices into the
+scenario, and the replies then got the prices wrong. DA's principles make no such ask, and its
+user messages carry about one number. Both units now state the same comparison without amounts:
+what a choice displaces, and what it leaves the person dealing with, and when.
+
 ## Known differences from the constitution
 
 - Shorter: about 260 words a unit against about 340.
