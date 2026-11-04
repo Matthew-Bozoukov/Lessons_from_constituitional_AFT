@@ -220,6 +220,52 @@ def test_resume_copies_the_prior_logs_and_eval_retry_can_rebuild_the_target(tmp_
     assert json.loads((out / "results" / "scores.json").read_text()) == {"P1-01": {"1": 5.0}}
 
 
+# ── retry_unscored ──────────────────────────────────────────────────────────────────────────
+
+def _two_seed_run(tmp_path, monkeypatch, retry_unscored: int):
+    """A full (unlimited) run over two seeds whose first pass scores only P1-01; a fake eval_retry
+    scores P1-02 when it runs. Returns (result or the raised RuntimeError, retry calls)."""
+    seeds = tmp_path / "seeds"
+    seeds.mkdir()
+    (seeds / "P1-01.md").write_text("one")
+    (seeds / "P1-02.md").write_text("two")
+    (tmp_path / "out" / "metadata" / "inspect").mkdir(parents=True)
+    first = tmp_path / "out" / "metadata" / "inspect" / "a.eval"
+    first.write_bytes(b"")
+    s1, s2 = _fake_sample("stock"), _fake_sample("stock")
+    s2.id = "P1-02"
+    scored = [s1]
+    retried = []
+
+    def fake_retry(log, **kw):
+        retried.append(Path(log).name)
+        (tmp_path / "out" / "metadata" / "inspect" / "b.eval").write_bytes(b"")
+        scored.append(s2)
+        return [SimpleNamespace(status="success", location="b.eval")]
+
+    monkeypatch.setattr(runner, "inspect_eval", lambda *a, **k: [SimpleNamespace(status="success", location="a.eval")])
+    monkeypatch.setattr(runner, "eval_retry", fake_retry)
+    monkeypatch.setattr(scores, "read_eval_log_samples", lambda *a, **k: iter(list(scored)))
+    monkeypatch.setattr(export, "read_eval_log", lambda *a, **k: SimpleNamespace(samples=list(scored)))
+    cfg = _cfg(seeds=str(seeds), retry_unscored=retry_unscored)
+    try:
+        return runner.run(_target(), cfg, tmp_path / "out"), retried
+    except RuntimeError as e:
+        return e, retried
+
+
+def test_retry_unscored_reruns_the_missing_seed_in_place_before_the_gate(tmp_path, offline_run, monkeypatch):
+    result, retried = _two_seed_run(tmp_path, monkeypatch, retry_unscored=1)
+    assert retried == ["a.eval"], "eval_retry runs once, on the newest log"
+    assert isinstance(result, dict) and result["missing_seeds"] == [] and result["unscored_retries"] == 1
+    assert result["retry_unscored"] == 1 and result["n_scenarios"] == 2
+
+
+def test_retry_unscored_zero_leaves_the_gate_as_it_was(tmp_path, offline_run, monkeypatch):
+    result, retried = _two_seed_run(tmp_path, monkeypatch, retry_unscored=0)
+    assert retried == [] and isinstance(result, RuntimeError) and "resume_from=" in str(result)
+
+
 # ── export ──────────────────────────────────────────────────────────────────────────────────
 
 def _fake_sample(system: str, error=None):
