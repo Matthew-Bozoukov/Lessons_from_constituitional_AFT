@@ -40,10 +40,10 @@ COLOUR = {"control": "#5a6472", "plain_const": "#0f8b8d", "delib": "#2196f3",
 BASE_COLOUR = "#c1121f"
 
 RUNS = {
-    "mask": {"control": "2026-10-09-mask-qwen36-0-plain",
+    "mask": {"control": "2026-11-03-mask-qwen36-0-plain",
              "plain_const": "2026-10-14-mask-principles-qwen36-0-plain",
              "delib": "2026-10-09-mask-qwen36-0-delib-sonnet-15",
-             "da": "2026-10-09-mask-qwen36-0-da-15",
+             "da": "2026-11-03-mask-qwen36-0-da-15",
              "da_tools": "2026-10-11-mask-qwen36-0-da-tools-15"},
     "odcv": {"control": "2026-10-06-odcv-qwen36-0-plain",
              "plain_const": "2026-10-14-odcv-principles-qwen36-0-plain",
@@ -57,11 +57,11 @@ RUNS = {
                 "da_tools": "2026-10-13-am-qwen36-0-da-tools-15"},
     # delib: delib-sonnet-7 -- no Petri audit exists on delib-sonnet-15.
     # plain_const: the plain control with the 09-principles constitution as system preamble.
-    "petri": {"control": "2026-10-08-petri-qwen36-0-plain",
+    "petri": {"control": "2026-10-28-petri-qwen36-0-plain",
               "plain_const": "2026-10-15-petri-constitution-qwen36-0-plain",
               "delib": "2026-10-09-petri-qwen36-0-delib-sonnet-7",
-              "da": "2026-10-09-petri-qwen36-0-da-15",
-              "da_tools": "2026-10-13-petri-qwen36-0-da-tools-15"},
+              "da": "2026-10-28-petri-qwen36-0-da-15",
+              "da_tools": "2026-10-28-petri-qwen36-0-da-tools-15"},
     # plain_const: the principles (not whole-constitution) run, matching the other three panels.
     "hospital": {"control": "2026-10-11-hospital-self-sacrificial-qwen36-0-plain",
                  "plain_const": "2026-10-15-hospital-self-sacrificial-principles-qwen36-0-plain",
@@ -75,7 +75,7 @@ RUNS = {
 # system prompt (visible in rollouts/*/sample_*.md), so it is a base+constitution run, not a base.
 BASE_RUNS = {"mask": "2026-10-03-mask-qwen36", "odcv": "2026-09-06-odcv-qwen36",
              "agentic": "2026-10-25-am-qwen36",
-             "petri": "2026-10-15-petri-qwen36", "hospital": "2026-10-13-hospital-self-sacrificial-qwen36"}
+             "petri": "2026-10-28-petri-qwen36", "hospital": "2026-10-13-hospital-self-sacrificial-qwen36"}
 
 PANELS = ["mask", "single_agent", "petri", "hospital"]
 TITLE = {"mask": "MASK honesty (chat)", "single_agent": "Aggregate single agent\nmisalignment",
@@ -136,13 +136,14 @@ def main() -> None:
     for ax, p in zip(axes, PANELS):
         # Labels on bars whose intervals reach the top of the axis all land on one line and would
         # overlap at full size, so in such a panel they are set smaller to fit on one row.
-        crowded = max(v[2] for v in vals[p].values()) > 93
+        crowded = max((v[2] if v[2] is not None else v[0]) for v in vals[p].values()) > 93
         for i, a in enumerate(ARMS):
             m, lo, hi = vals[p][a]
             ax.bar(i, m, width=0.68, color=COLOUR[a], edgecolor="black", linewidth=0.8, zorder=3)
-            ax.errorbar(i, m, yerr=[[m - lo], [hi - m]], fmt="none", ecolor="#2b2523",
-                        elinewidth=1.3, capsize=5, capthick=1.3, zorder=4)
-            ax.text(i, hi + 1.4, f"{m:.1f}", ha="center", va="bottom",
+            if lo is not None:   # one repeat gives no bar
+                ax.errorbar(i, m, yerr=[[m - lo], [hi - m]], fmt="none", ecolor="#2b2523",
+                            elinewidth=1.3, capsize=5, capthick=1.3, zorder=4)
+            ax.text(i, (hi if hi is not None else m) + 1.4, f"{m:.1f}", ha="center", va="bottom",
                     fontsize=12.5 if crowded else 16, fontweight="bold", zorder=5, clip_on=False)
         ax.axhline(base[p], color=BASE_COLOUR, linestyle=(0, (2.5, 2.5)), linewidth=1.8, zorder=2)
         ax.set_title(TITLE[p], pad=30 if crowded else 12)
@@ -170,7 +171,7 @@ def main() -> None:
     md = [f"# {stem.name}", "", f"Rendered {datetime.now().isoformat(timespec='seconds')} by "
           "scratch/plot_probes_four_remake.py; every bar read from the Hub at render time.", "",
           "| Panel | Arm | Value | 95% CI | Run |", "|---|---|---|---|---|"]
-    md += [f"| {p} | {ARM[a]} | {v[0]:.1f} | [{v[1]:.1f}, {v[2]:.1f}] | {r} |" for p, a, v, r in rows]
+    md += [f"| {p} | {ARM[a]} | {v[0]:.1f} | " + (f"[{v[1]:.1f}, {v[2]:.1f}]" if v[1] is not None else "one repeat") + f" | {r} |" for p, a, v, r in rows]
     md += [f"| {p} | {BASE_NAME} (base line) | {base[p]:.1f} | | {BASE_RUNS.get(p, f"mean of {BASE_RUNS['odcv']} ({base['odcv']:.1f}) and {BASE_RUNS['agentic']} ({base['agentic']:.1f})")} |"
            for p in PANELS]
     Path(f"{stem}_results.md").write_text("\n".join(md) + "\n", encoding="utf-8")

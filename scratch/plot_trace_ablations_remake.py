@@ -45,11 +45,11 @@ BASE_COLOUR = "#c1121f"
 
 PANELS = ["mask", "odcv", "agentic"]
 RUNS = {
-    "mask": {"control": "2026-10-09-mask-qwen36-0-plain",
+    "mask": {"control": "2026-11-03-mask-qwen36-0-plain",
              "mask_cot": "2026-10-30-mask-qwen36-0-da-15-maskthink",
              "empty_think": "2026-10-30-mask-qwen36-0-da-15-nothink",
-             "da": "2026-10-09-mask-qwen36-0-da-15",
-             "cot_only": "2026-10-08-mask-qwen36-0-da-15-cot",
+             "da": "2026-11-03-mask-qwen36-0-da-15",
+             "cot_only": "2026-11-03-mask-qwen36-0-da-15-cot",
              "stated_harm": "2026-10-14-mask-qwen36-0-ablation-stated-harm-15"},
     "odcv": {"control": "2026-10-06-odcv-qwen36-0-plain",
              "mask_cot": "2026-10-30-odcv-qwen36-0-da-15-maskthink",
@@ -66,9 +66,10 @@ RUNS = {
 }
 # Supplied by the user 2026-10-11; no empty-think MASK dataset exists on the Hub.
 LITERAL: dict = {}   # 2026-11-03: the nothink MASK run exists; the 71.2 literal is gone
-# Per-repeat readers: the bar is the mean over whole-benchmark repeats, the error bar ±1 SEM over
-# them, and every repeat is drawn as a dot (2026-11-03; the t-interval readers are still in _hub).
-READ = {"mask": _hub.mask_repeats, "odcv": _hub.odcv_repeats, "agentic": _hub.agentic_repeats}
+# Bars: mean over the benchmark's items with a 95% interval (1.96 x SE) propagated from each item's repeats (the
+# rule at the top of scratch/figures/_hub.py). The repeats are read for the results mirror only.
+READ = {"mask": _hub.mask, "odcv": _hub.odcv, "agentic": _hub.agentic}
+REPEATS = {"mask": _hub.mask_repeats, "odcv": _hub.odcv_repeats, "agentic": _hub.agentic_repeats}
 BASE_RUNS = {"mask": "2026-10-03-mask-qwen36", "odcv": "2026-09-06-odcv-qwen36",
              "agentic": "2026-10-25-am-qwen36"}
 
@@ -108,29 +109,27 @@ def main() -> None:
                 vals[p][a] = _hub.literal(v, n)
                 rows.append((p, a, vals[p][a], f"SUPPLIED VALUE, no Hub run (interval as for n={n})"))
             else:
-                vals[p][a] = _hub.sem_bar(READ[p](RUNS[p][a]))
+                vals[p][a] = (*READ[p](RUNS[p][a]), REPEATS[p](RUNS[p][a]))
                 rows.append((p, a, vals[p][a], RUNS[p][a]))
-    base = {p: _hub.sem_bar(READ[p](BASE_RUNS[p]))[0] for p in PANELS}
+    base = {p: READ[p](BASE_RUNS[p])[0] for p in PANELS}
 
     fig, axes = plt.subplots(1, 3, figsize=(20.0, 7.8), gridspec_kw={"wspace": 0.30})
     for ax, p in zip(axes, PANELS):
         for i, a in enumerate(ARMS):
             m, lo, hi, pts = vals[p][a]
             ax.bar(i, m, width=0.68, color=COLOUR[a], edgecolor="black", linewidth=0.8, zorder=3)
-            ax.errorbar(i, m, yerr=[[m - lo], [hi - m]], fmt="none", ecolor="#2b2523",
-                        elinewidth=1.3, capsize=5, capthick=1.3, zorder=4)
-            # one dot per repeat, spread evenly across the bar so coincident values stay visible
-            xs = [i + (0.0 if len(pts) == 1 else -0.2 + 0.4 * j / (len(pts) - 1)) for j in range(len(pts))]
-            ax.scatter(xs, pts, s=22, facecolor="white", edgecolor="#2b2523", linewidth=0.9, zorder=5)
+            if lo is not None:   # one repeat gives no bar, only its dot
+                ax.errorbar(i, m, yerr=[[m - lo], [hi - m]], fmt="none", ecolor="#2b2523",
+                            elinewidth=1.3, capsize=5, capthick=1.3, zorder=4)
         ax.axhline(base[p], color=BASE_COLOUR, linestyle=(0, (2.5, 2.5)), linewidth=1.8, zorder=2)
-        ceiling = max([max(v[2], max(v[3])) for v in vals[p].values()] + [base[p]])
+        ceiling = max([v[2] if v[2] is not None else v[0] for v in vals[p].values()] + [base[p]])
         top = min(max(ceiling * 1.3, 12), 100.0)
         ax.set_ylim(0, top)
         if top >= 99.5:
             ax.set_yticks(range(0, 101, 20))
         for i, a in enumerate(ARMS):
-            m, _, hi, pts = vals[p][a]
-            hi = max(hi, max(pts))
+            m, _, hi, _pts = vals[p][a]
+            hi = hi if hi is not None else m
             ax.text(i, hi + 0.014 * top, f"{m:.1f}", ha="center", va="bottom",
                     fontsize=16, fontweight="bold", zorder=5, clip_on=False)
         ax.set_title(TITLE[p], pad=14)
@@ -161,7 +160,7 @@ def main() -> None:
     md = [f"# {stem.name}", "", f"Rendered {datetime.now().isoformat(timespec='seconds')} by "
           "scratch/plot_trace_ablations_remake.py; every bar read from the Hub at render time unless "
           "the row says SUPPLIED VALUE.", "", "| Panel | Arm | Value | 95% CI | Run |", "|---|---|---|---|---|"]
-    md += [f"| {p} | {ARM[a]} | {v[0]:.1f} | [{v[1]:.1f}, {v[2]:.1f}] | {r} |" for p, a, v, r in rows]
+    md += [f"| {p} | {ARM[a]} | {v[0]:.1f} | " + (f"[{v[1]:.1f}, {v[2]:.1f}]" if v[1] is not None else "one repeat") + f" | {r} |" for p, a, v, r in rows]
     md += [f"| {p} | {BASE_NAME} (base line) | {base[p]:.1f} | | {BASE_RUNS[p]} |" for p in PANELS]
     Path(f"{stem}_results.md").write_text("\n".join(md) + "\n", encoding="utf-8")
     print(f"{stem}.png")

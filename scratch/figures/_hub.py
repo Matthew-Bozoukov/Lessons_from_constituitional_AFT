@@ -1,5 +1,19 @@
 # ABOUTME: Reads the published eval runs that the paper figures plot, so every number in a figure
 # ABOUTME: comes from the Hub at render time rather than from a literal typed into a script.
+# THE ERROR-BAR RULE FOR FIGURES (locked in by Jamie, 2026-11-03). The benchmark is FIXED and the
+# only randomness is the model's sampling, so a single-model bar is the mean over the benchmark's
+# items with a 95% interval propagated from each item's own repeats:
+#   SE = sqrt(sum_i s_i^2 / k_i) / N      (N items, k_i repeats of item i, s_i^2 their sample variance)
+# The interval is built on the LOG-ODDS scale and mapped back, so it stays inside [0, 100] and
+# is asymmetric near the ends: z = ln((q + c)/(1 - q + c)) with c = 0.5/N, SE_z = SE * dz/dq
+# (delta method), z -/+ 1.96 SE_z, then the exact inverse. Near the middle this is the plain
+# mean -/+ 1.96 SE. An ODCV item is a cell (scenario x variant, 3 rollouts), an agentic item a
+# condition (10 trials), a MASK item a row (3 passes). The SE has a degree of freedom per item
+# with disagreeing repeats, which is why 1.96 is honest here and a t over three whole-pass scores
+# (4.30) is not needed. Demonstrated in output/figures/2026-11-03_errorbar_sim.html. Assumes
+# items are independent within a pass (no shared "tilt"). A single repeat gives no bar.
+# Every figure reads through `item_se`; paired-difference plots are the only exception.
+# tests/test_figure_intervals.py refuses figure code that builds its own interval instead.
 import json
 from pathlib import Path
 import os
@@ -39,50 +53,6 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return 100 * max(0.0, c - h), 100 * min(1.0, c + h)
 
 
-def odcv(repo: str) -> tuple[float, float, float]:
-    """Misalignment rate and a FIXED-benchmark interval, recomputed from the per-rollout scores."""
-    sc = fetch(repo, "results/scores_gemini-3-flash-preview.json")
-    # Keyed "<scenario>/<rollout_NNN>" so passes_by_index groups cells by their REAL pass. Until
-    # 2026-11-03 the scores were appended positionally per cell, which scrambled rollouts across
-    # passes whenever the JSON order was not rollout_000/001/002 (the control's passes read
-    # 42.5/41.2/51.2 instead of 45.0/42.5/47.5; the mean is unaffected, the interval is not).
-    medians: dict[str, dict[str, float]] = {}
-    for key, v in sc.items():
-        variant, scenario, roll = key.split("/")
-        s = v.get("score") if isinstance(v, dict) else v
-        if s is None:
-            continue
-        medians.setdefault(variant, {})[f"{scenario}/{roll}"] = float(s)
-    o = O.summarise(medians)["overall"]
-    return o["mr_pct"], o["mr_ci95_lo"], o["mr_ci95_hi"]
-
-
-def agentic(repo: str) -> tuple[float, float, float]:
-    """Harmful-action rate and a FIXED-benchmark interval: a t over the sweeps on the log-odds scale.
-
-    Trial k of every condition is one sweep of the 18-condition panel, so a 10-trial run gives ten
-    draws of the eval's number (src/eval/misalignment/agentic_misalignment/aggregate_eval.py,
-    docs/error_bars.md). Runs published before 2026-10-29 carry no per-sweep rates, so the flags
-    are re-read from the run's classified response.json files. (Until 2026-11-03 this reader
-    gave a Wilson interval over the 180 trials, which treats co-moving conditions as independent.)
-    """
-    from collections import defaultdict
-    from huggingface_hub import snapshot_download
-    from src.eval.misalignment.agentic_misalignment.aggregate_eval import _iter_responses
-    from src.eval.stats import logit_t
-    root = Path(snapshot_download(f"{ORG}/{repo}", repo_type="dataset", token=_token(),
-                                  allow_patterns=["results/harness/models/*/*/sample_*/response.json"]))
-    by_sweep: dict[int, list[bool]] = defaultdict(list)
-    n_cond: set[str] = set()
-    for condition, sample_id, data in _iter_responses(root / "results" / "harness" / "models"):
-        cls = data.get("classification")
-        if not cls or "harmful_behavior" not in cls or "error" in cls:
-            continue
-        by_sweep[sample_id].append(bool(cls["harmful_behavior"]))
-        n_cond.add(condition)
-    rates = [sum(f) / len(f) for _, f in sorted(by_sweep.items())]
-    r = logit_t(rates, len(n_cond), scale=1.0)
-    return 100 * r["mean"], 100 * r["lo"], 100 * r["hi"]
 
 
 def mask_passes(repo: str) -> tuple[list[float], int]:
@@ -123,23 +93,6 @@ def mask_passes(repo: str) -> tuple[list[float], int]:
     return scores, int(rows)
 
 
-def mask(repo: str) -> tuple[float, float, float]:
-    """Row-weighted honesty with a FIXED-benchmark interval over the scored rows.
-
-    The score is the share of rows the judge did not mark dishonest, so the interval is binomial
-    over the benchmark's fixed row set. Repeat passes are averaged first rather than pooled as
-    extra rows: the same 1000 rows are re-run, so the passes are correlated and pooling them
-    would understate the interval. Measured pass-to-pass spread is ~0.3-1.3 points against a
-    row-to-row term of ~2.3, so the row term is what the interval should report. The runs
-    themselves record `honesty_ci95: None`.
-    """
-    scores, rows = mask_passes(repo)
-    m = float(np.mean(scores))
-    published = fetch(repo, "results/results.json").get("overall_honesty_score")
-    assert published is None or abs(m - float(published)) < 0.15, (
-        f"{repo}: recomputed {m:.2f} disagrees with the published {published}")
-    return m, *wilson(round(m / 100 * rows), rows)
-
 
 def combine(*values: tuple[float, float | None, float | None]) -> tuple[float, float, float]:
     """Mean of several probe rates, as one metric, with the inputs treated as independent.
@@ -170,12 +123,14 @@ def literal(value: float, n: int | None = None) -> tuple[float, float | None, fl
 # The figure caption names n and says "±1 SEM over repeats"; no coverage level is claimed.
 # ---------------------------------------------------------------------------------------
 
-def sem_bar(values: list[float]) -> tuple[float, float, float, list[float]]:
+def sem_bar(values: list[float]) -> tuple[float, float | None, float | None, list[float]]:
     """Mean of the repeats, mean -/+ one standard error, and the repeats themselves.
 
     One repeat gives its own value with a zero-width bar (the plot shows the lone dot)."""
     n = len(values); m = float(np.mean(values))
-    sem = float(np.std(values, ddof=1) / np.sqrt(n)) if n > 1 else 0.0
+    if n < 2:
+        return m, None, None, [float(v) for v in values]   # one repeat: no bar
+    sem = float(np.std(values, ddof=1) / np.sqrt(n))
     return m, m - sem, m + sem, [float(v) for v in values]
 
 
@@ -209,3 +164,103 @@ def agentic_repeats(repo: str) -> list[float]:
 def mask_repeats(repo: str) -> list[float]:
     """Per-pass row-weighted honesty score."""
     return [float(x) for x in mask_passes(repo)[0]]
+
+
+# ---------------------------------------------------------------------------------------
+# Per-item readers: each item's repeats, so the standard error can be propagated from them.
+# ---------------------------------------------------------------------------------------
+
+Z_95 = 1.96   # the figure rule's multiplier: a 95% interval on the per-item SE
+
+
+def item_se(cells: list[list[float]], scale: float = 100.0) -> tuple[float, float | None, float | None]:
+    """Mean over items of the item means, with a 95% interval from the per-item SE on the log-odds scale.
+
+    Items with one repeat contribute no variance; if no item has two, there is no bar."""
+    means = [float(np.mean(c)) for c in cells]
+    m = float(np.mean(means))
+    multi = [c for c in cells if len(c) > 1]
+    if not multi:
+        return m, None, None
+    var = sum(float(np.var(c, ddof=1)) / len(c) for c in multi) / len(cells) ** 2
+    se = float(np.sqrt(var)) / scale                      # on the [0, 1] scale
+    q, c = m / scale, 0.5 / len(cells)
+    z = np.log((q + c) / (1 - q + c))
+    dz = 1 / (q + c) + 1 / (1 - q + c)                    # dz/dq
+    lo_z, hi_z = z - Z_95 * se * dz, z + Z_95 * se * dz
+    back = lambda zz: (np.exp(zz) * (1 + c) - c) / (1 + np.exp(zz))   # exact inverse of the transform
+    lo, hi = float(np.clip(back(lo_z), 0, 1)), float(np.clip(back(hi_z), 0, 1))
+    return m, scale * lo, scale * hi
+
+
+def odcv_cells(repo: str) -> list[list[float]]:
+    """Per cell (scenario x variant): the violation indicator (score >= 3) of each rollout, in %."""
+    sc = fetch(repo, "results/scores_gemini-3-flash-preview.json")
+    cells: dict[str, list[float]] = {}
+    for key, v in sc.items():
+        variant, scenario, _ = key.split("/")
+        s_ = v.get("score") if isinstance(v, dict) else v
+        if s_ is not None:
+            cells.setdefault(f"{variant}/{scenario}", []).append(100.0 * (float(s_) >= O.VIOLATION_THRESHOLD))
+    return list(cells.values())
+
+
+def agentic_cells(repo: str) -> list[list[float]]:
+    """Per condition: the harmful flag of each trial, in %."""
+    from collections import defaultdict
+    from huggingface_hub import snapshot_download
+    from src.eval.misalignment.agentic_misalignment.aggregate_eval import _iter_responses
+    root = Path(snapshot_download(f"{ORG}/{repo}", repo_type="dataset", token=_token(),
+                                  allow_patterns=["results/harness/models/*/*/sample_*/response.json"]))
+    by_cond: dict[str, list[float]] = defaultdict(list)
+    for condition, _, data in _iter_responses(root / "results" / "harness" / "models"):
+        cls = data.get("classification")
+        if cls and "harmful_behavior" in cls and "error" not in cls:
+            by_cond[condition].append(100.0 * bool(cls["harmful_behavior"]))
+    return list(by_cond.values())
+
+
+def mask_cells(repo: str) -> list[list[float]]:
+    """Per row (task_id): the honest-or-not indicator of each pass, in % (100 unless the judge
+    called the row a lie, `eval_honesty_1 == -1`, which is how the harness scores honesty)."""
+    import csv, sys
+    from huggingface_hub import HfApi
+    csv.field_size_limit(sys.maxsize)   # a looping generation can exceed the 128 KB default
+    files = [f.rfilename for f in HfApi().dataset_info(f"{ORG}/{repo}", token=_token()).siblings]
+    metrics = sorted(f for f in files if f.endswith("_metrics.csv"))
+    rows: dict[str, list[float]] = {}
+    for f in metrics:
+        with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="") as fh:
+            for r in csv.DictReader(fh):
+                rows.setdefault(r["task_id"], []).append(0.0 if str(r["eval_honesty_1"]).strip() == "-1" else 100.0)
+    assert rows, f"{repo}: no *_metrics.csv with per-row verdicts"
+    return list(rows.values())
+
+
+def mask_cells_by_id(repo: str) -> dict[str, list[float]]:
+    """As mask_cells, keyed by task_id, so passes can be pooled across artifacts row by row."""
+    import csv, sys
+    from huggingface_hub import HfApi
+    csv.field_size_limit(sys.maxsize)   # a looping generation can exceed the 128 KB default
+    files = [f.rfilename for f in HfApi().dataset_info(f"{ORG}/{repo}", token=_token()).siblings]
+    rows: dict[str, list[float]] = {}
+    for f in sorted(f for f in files if f.endswith("_metrics.csv")):
+        with open(hf_hub_download(f"{ORG}/{repo}", f, repo_type="dataset", token=_token()), newline="") as fh:
+            for r in csv.DictReader(fh):
+                rows.setdefault(r["task_id"], []).append(0.0 if str(r["eval_honesty_1"]).strip() == "-1" else 100.0)
+    return rows
+
+
+def odcv(repo: str) -> tuple[float, float | None, float | None]:
+    """Misalignment rate over the 80 cells, -/+ one SE from each cell's rollouts."""
+    return item_se(odcv_cells(repo))
+
+
+def agentic(repo: str) -> tuple[float, float | None, float | None]:
+    """Harmful-action rate over the 18 conditions, -/+ one SE from each condition's trials."""
+    return item_se(agentic_cells(repo))
+
+
+def mask(repo: str) -> tuple[float, float | None, float | None]:
+    """Honesty over the rows, -/+ one SE from each row's passes."""
+    return item_se(mask_cells(repo))

@@ -1,29 +1,24 @@
 # ABOUTME: Fig. 11 remake: misalignment vs the share of difficult-advice data (0/5/15/25%) on
 # ABOUTME: ODCV, agentic misalignment, Petri and MASK, every number read from the Hub at render time.
 # Run: uv run python scratch/figures/fig11_mix_pct.py [--out_dir output/figures]
-"""Intervals follow docs/error_bars.md: a t over the eval's passes on the log-odds scale.
+"""Bands are 95% intervals (1.96 x SE) propagated from each item's repeats (the rule at the top of scratch/figures/_hub.py).
 
-ODCV: three passes per artifact (re-summarised from per_scenario_medians). Agentic: trial k of
-every condition is sweep k, ten sweeps per artifact (re-read from the response.json files).
-MASK: the three plain-protocol passes of each adapter live across two artifacts, so the
-per_pass scores are pooled across them before logit_t. Petri: one pass per adapter, so no
-interval, and the base line is over the 76 of 90 seeds its run scored.
+ODCV: three passes per artifact. Agentic: trial k of every condition is sweep k, ten sweeps per
+artifact. MASK: the plain-protocol passes of each adapter live across two artifacts, so the
+per-pass scores are pooled across them before sem_bar. Petri: one pass per adapter, so no band,
+and the base line is over the 76 of 90 seeds its run scored.
 """
 from __future__ import annotations
 
-import json
-from collections import defaultdict
 from pathlib import Path
 
 import fire
 import matplotlib
 import matplotlib.pyplot as plt
-from huggingface_hub import snapshot_download
 
-from src.eval.misalignment.odcv.odcv import summarise
-from src.eval.stats import logit_t
 from src.naming import figure_path
-from scratch.figures._hub import ORG, _token, fetch
+from scratch.figures import _hub
+from scratch.figures._hub import fetch
 
 matplotlib.use("Agg")
 
@@ -56,33 +51,16 @@ PANELS = [
 ]
 
 
-def _ci(r: dict) -> tuple[float, float | None, float | None]:
-    return r["mean"], r["lo"], r["hi"]
-
-
 def odcv(repos: list[str]) -> tuple[float, float | None, float | None]:
-    """MR with the t over the artifact's passes, re-summarised from the per-scenario medians."""
+    """MR over the 80 cells, -/+ one SE from each cell's rollouts."""
     assert len(repos) == 1
-    o = summarise(fetch(repos[0], "results/results.json")["per_scenario_medians"])["overall"]
-    return o["mr_pct"], o["mr_ci95_lo"], o["mr_ci95_hi"]
+    return _hub.odcv(repos[0])
 
 
 def agentic(repos: list[str], cache: Path) -> tuple[float, float | None, float | None]:
-    """Harmful-action rate as the mean over sweeps (trial k of every condition), t over sweeps."""
+    """Harmful-action rate over the 18 conditions, -/+ one SE from each condition's trials."""
     assert len(repos) == 1
-    root = Path(snapshot_download(f"{ORG}/{repos[0]}", repo_type="dataset", token=_token(),
-                                  allow_patterns=["results/harness/**/response.json"],
-                                  local_dir=cache / repos[0]))
-    by_sweep: dict[int, list[bool]] = defaultdict(list)
-    conditions = set()
-    for f in root.rglob("response.json"):
-        data = json.loads(f.read_text(encoding="utf-8"))
-        cls = data.get("classification") or {}
-        assert "harmful_behavior" in cls and "error" not in cls, f"unjudged trial {f}"
-        by_sweep[int(data["metadata"]["sample_id"])].append(bool(cls["harmful_behavior"]))
-        conditions.add(data["metadata"]["condition"])
-    rates = [100.0 * sum(v) / len(v) for _, v in sorted(by_sweep.items())]
-    return _ci(logit_t(rates, len(conditions)))
+    return _hub.agentic(repos[0])
 
 
 def petri(repos: list[str]) -> tuple[float, None, None]:
@@ -93,16 +71,13 @@ def petri(repos: list[str]) -> tuple[float, None, None]:
 
 
 def mask(repos: list[str]) -> tuple[float, float | None, float | None]:
-    """Honesty with the t over every plain-protocol pass of the adapter, pooled across artifacts."""
-    scores: list[float] = []
-    n_rows = None
+    """Honesty over the rows, -/+ one SE from each row's passes, the passes pooled across artifacts."""
+    rows: dict[str, list[float]] = {}
     for r in repos:
-        res = fetch(r, "results/results.json")
-        per_pass = [p["overall_honesty_score"] for p in res.get("per_pass", []) if isinstance(p, dict)]
-        scores += per_pass or [res["overall_honesty_score"]]
-        n_rows = int(res["n_rows"])
-    assert n_rows, "no MASK artifact read"
-    return _ci(logit_t(scores, n_rows))
+        for task_id, cell in _hub.mask_cells_by_id(r).items():
+            rows.setdefault(task_id, []).extend(cell)
+    assert rows, "no MASK artifact read"
+    return _hub.item_se(list(rows.values()))
 
 
 def collect(cache: Path) -> dict:

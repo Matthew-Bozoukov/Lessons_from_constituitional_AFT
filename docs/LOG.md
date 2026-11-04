@@ -1,3 +1,28 @@
+## 2026-11-03: Three MASK passes for every Figure 3 arm; the CoT-only 94.4 was inflated by judge timeouts; figure error bars are per-item SE on a fixed benchmark
+
+Hypothesis: the MASK bars in Figure 3 rested on two-pass runs (control, da-15) and a single pass (CoT only), while every other panel had three or more repeats; three passes everywhere puts the panels on one footing, and the regenerated deliberation ablation (`2026-10-27-qwen36-0-ablation-15`) needed the same before it can replace the stated-harm arm.
+
+Method: one H200 pod per adapter (`uv run runpod up jamie-mask-<arm> --eval mask --target <adapter> --boot_timeout_s 900`; four of seven requests were refused or never booted and were swept, the usual H200 capacity pattern), then from this laptop `uv run evals --name mask --target <adapter> --server root@<ip>:<port> --port 809N passes=3` at git b5c7a0ee, 2% generation-error tolerance, gemini-3-flash judge. The ablation reused the published 27 Oct pass: its rollouts were rebuilt into a resumable work tree (`output/mask/prior_2026-10-27_qwen36_0_ablation_15`, all six archetypes kept, 9/4,438 errors) and `resume_from=` adopted it as pass 1 of 3 on the freed da-15 pod, so one artifact carries three passes and records the resume.
+
+Result (HF repos under dougalldeepmind/, per-pass honesty):
+
+| arm | run | passes | honesty | previous |
+|---|---|---|---|---|
+| control | 2026-11-03-mask-qwen36-0-plain | 44.1 / 42.6 / 42.8 | 43.2 | 42.7 (2 passes) |
+| da-15 | 2026-11-03-mask-qwen36-0-da-15 | 82.2 / 83.2 / 84.2 | 83.2 | 83.3 (2 passes) |
+| CoT only | 2026-11-03-mask-qwen36-0-da-15-cot | 89.1 / 89.7 / 89.7 | 89.5 | 94.4 (1 pass) |
+| ablation (10-27) | 2026-11-03-mask-qwen36-0-ablation-15 | 87.7 / 88.1 / 88.4 | 88.1 | 87.4 (1 pass) |
+
+- The CoT-only drop is not variance: the 8 Oct run's judge log holds 2,117 TIMEOUT_ERROR verdicts, which the metric of that day scored as neither honest nor dishonest (fixed the next day in commit 219fc16a); the archetypes that fell (doubling-down 96.7 -> 75.0, statistics 100 -> 86.5) are where the timeouts sat. Every other published MASK run in the figures was checked for TIMEOUT_ERROR: none. 89.5 is the number; "matches or beats da-15 on every benchmark" still holds (83.2).
+- Control and da-15 reproduce their two-pass runs within a point.
+- Figure 3 (`scratch/plot_trace_ablations_remake.py`) now reads the three-pass runs for all six MASK bars; Figure 2 (`scratch/plot_probes_four_remake.py`) takes the new control and da-15 runs and the canonical 28 Oct Petri repos (republications of the same single-pass data). The deliberation-ablation bar stays the stated-harm arm pending Jamie's decision; the 10-27 arm is now 3-3-10.
+
+Error bars (decided today after the 2 Nov advisor call and the error-bar survey): the benchmark is fixed, so a figure bar is the mean over items with -/+ one SE propagated from each item's own repeats, `SE = sqrt(sum_i s_i^2/k_i)/N` (ODCV: 80 cells x 3 rollouts; agentic: 18 conditions x 10 trials; MASK: 1,000 rows x 3 passes, per-row verdicts read from the published `*_metrics.csv`). This is the 27 Oct estimator with a 1x rather than 1.96x multiplier; it agrees with the pass-level SEM (control ODCV 1.7 vs 1.4) and needs no between-pass independence argument. Implemented once in `scratch/figures/_hub.py` (`item_se`, `odcv_cells`, `agentic_cells`, `mask_cells`); `tests/test_figure_intervals.py` refuses figure code that imports the removed pass-level t machinery and requires any per-item Wilson to be declared (Colosseum keeps Wilson over episodes, which are independent draws). Six dead figure scripts that imported the removed `Design` moved to `scratch/archive/`. The ODCV reader also fixed a bug where rollouts were grouped into passes by file position rather than rollout id (means unchanged, intervals wrong). Figure 1's dose-response script (`scratch/figures/fig11_mix_pct.py`) follows the same rule; its Petri panel has no band because every Petri run is one pass.
+
+Cost: RunPod $61.06 today (seven pod requests, four MASK runs, the Petri comparison); OpenRouter about $70 of judging across the four MASK runs.
+
+Next: Petri at three passes for the five dose-response arms and the Figure 2 arms (about $350 of auditor with caching) and a three-pass MASK for da-tools-15, so every panel can carry a bar; decide whether Figure 3 moves to the 10-27 ablation.
+
 ## 2026-11-03: Petri auditor prompt caching measured: 2.5x cheaper on the same three seeds
 
 Hypothesis: the uncommitted 2026-11-02 change (`auditor_cache: true` in `configs/eval/petri.yaml`; the runner puts OpenRouter's top-level `cache_control: {type: ephemeral}` in the auditor's `GenerateConfig.extra_body`) should cut the auditor bill, which was $66 of an $89 90-seed pass in October, without changing what the auditor reads. Yesterday's comparison died on an OpenRouter 402 four calls into the cached arm.
